@@ -6,7 +6,9 @@ System-agnostic character and NPC sheets for one Owlbear Rodeo room, driven by a
 
 - **Roles:** the GM edits everything. Players read the character list. The GM toggles write access per player per character.
 - **NPCs:** GM-only. Hirelings and pets are characters.
-- **Preset:** JSON template of sections and text rows (name, value). List sections let each character add rows.
+- **Preset:** JSON template: section, rows, cells. Cell kinds are `text`, `field` (types `text`, `number`, `check`, each with a stable id) and `dice`. Values are stored apart from the template, by field id.
+- **Layout:** a section with `columns` puts all its rows in one grid, so columns align. A section without `columns` flows inline. A section with `repeat` repeats a row template per character; ids resolve inside the row first, then globally.
+- **Dice:** a cell holds a formula over field ids, for example `1d20 <= str - 2*str_tired`. A check counts as 0 or 1. Formulas support `floor`, `ceil` and roll-under. A formula with an empty, non-numeric or removed field shows an error and does not roll. Formulas run through a small parser, never `eval`, because presets are shared files.
 - **Live preset:** edits apply to all sheets. A new field is empty, removal confirms and erases values, rename keeps values.
 - **Storage:** full data in the GM's browser. A compressed snapshot in room metadata when it fits. The extension checks free space before it writes and skips the snapshot when it does not fit.
 - **Sync:** edits go by broadcast with a version per row, latest version wins. All GM tabs and devices can edit. Live exchange needs a GM online.
@@ -19,7 +21,7 @@ One real session with party and NPCs kept only in the extension and no data lost
 ## Later
 
 - v2: Cloudflare D1 storage with version-checked writes and a GM write key. Removes the 16kB limit and the dependence on one browser.
-- Request-and-confirm write access, field types (counters), token-linked stats, guest "open this character", dice integration.
+- Request-and-confirm write access, counter fields with + and − buttons, token-linked stats, guest "open this character", sending rolls to the Dice extension.
 
 ## Rejected
 
@@ -27,7 +29,7 @@ One real session with party and NPCs kept only in the extension and no data lost
 - Own server in v1: the user accepts needing a GM online.
 - Cloudflare KV: reads can lag 60 seconds or more and writes are not atomic.
 - One editing GM tab: every tab must edit.
-- Per-character sections, formulas, per-edit approval.
+- Per-character sections, computed display fields, per-edit approval.
 
 ## Constraints and open risks
 
