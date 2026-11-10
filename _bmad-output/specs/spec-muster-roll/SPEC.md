@@ -3,6 +3,7 @@ id: SPEC-muster-roll
 companions:
   - preset-format.md
   - storage-and-sync.md
+  - stack.md
 sources:
   - ../../forge/muster-roll/forged-idea.md
 ---
