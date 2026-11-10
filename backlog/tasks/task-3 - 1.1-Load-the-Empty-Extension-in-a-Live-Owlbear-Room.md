@@ -1,10 +1,11 @@
 ---
 id: TASK-3
 title: 1.1 Load the Empty Extension in a Live Owlbear Room
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-10T15:37:00Z'
-updated_date: '2026-11-10T15:38:00Z'
+updated_date: '2026-11-10T16:00:00Z'
 labels:
   - epic-1
 milestone: m-0
@@ -35,10 +36,29 @@ Story 1.1 of `_bmad-output/planning-artifacts/epics.md`. Other stories are named
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 **Given** a clean checkout **When** dependencies install and `vite build` runs **Then** the installed versions equal the Architecture Stack table **And** the build emits the `index.html` and `background.html` entry pages, with `src/core`, `src/replica`, `src/platform/obr`, `src/platform/mock` and `src/ui` in place
-- [ ] #2 **Given** a file outside `src/platform/obr` **When** that file imports `@owlbear-rodeo/sdk` **Then** lint fails
-- [ ] #3 **Given** the repository hooks **When** a developer commits or pushes **Then** lefthook runs lint and format on pre-commit and typecheck on pre-push **And** TypeScript runs strict with `skipLibCheck: true`
-- [ ] #4 **Given** the ports for broadcast, metadata, party, player, storage, context menu, popover, action, notification and theme **When** `bun test` and Playwright run **Then** both run against the mock adapter of the same ports
+- [x] #1 **Given** a clean checkout **When** dependencies install and `vite build` runs **Then** the installed versions equal the Architecture Stack table **And** the build emits the `index.html` and `background.html` entry pages, with `src/core`, `src/replica`, `src/platform/obr`, `src/platform/mock` and `src/ui` in place
+- [x] #2 **Given** a file outside `src/platform/obr` **When** that file imports `@owlbear-rodeo/sdk` **Then** lint fails
+- [x] #3 **Given** the repository hooks **When** a developer commits or pushes **Then** lefthook runs lint and format on pre-commit and typecheck on pre-push **And** TypeScript runs strict with `skipLibCheck: true`
+- [x] #4 **Given** the ports for broadcast, metadata, party, player, storage, context menu, popover, action, notification and theme **When** `bun test` and Playwright run **Then** both run against the mock adapter of the same ports
 - [ ] #5 **Given** a manual `wrangler deploy` by the owner (human gate) **When** `https://musterroll.2249364.xyz/manifest.json` and the HTML pages are fetched **Then** responses send `Access-Control-Allow-Origin` for `https://www.owlbear.rodeo` and no-cache for HTML and `manifest.json` **And** other assets have content-hashed names (AD-17, NFR1)
 - [ ] #6 **Given** the owner adds the manifest URL to a live Owlbear room (human gate) **When** the GM opens the extension **Then** the action window and the background page both load with no console error
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Scaffold the exact Stack versions, tooling and Structural Seed at the repository root.
+2. Define ten ports with one Platform type, an Owlbear adapter and a mock adapter.
+3. Add manifest, _headers and wrangler.toml; do not deploy.
+4. Verify build, lint boundary, typecheck, bun test, Playwright and headers on local wrangler dev.
+5. Hand the owner the checklist for AC 5 and AC 6.
+Spec: _bmad-output/implementation-artifacts/spec-1-1-load-the-empty-extension.md
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Scaffold, ports, Owlbear and mock adapters, tests and deploy config are in the working tree (uncommitted). Verified: clean install and build in a fresh copy, format, lint boundary red/green, typecheck, bun test (9 pass, unsubscribe mutation goes red), Playwright smoke (3 pass on installed Chromium 1248, since the download of build 1254 was refused), headers on local wrangler dev, lefthook pre-commit and pre-push in a scratch repo. AC 5 and AC 6 are human gates; the owner checklist is in the spec under Implementation Notes.
+
+Review: 29 findings triaged in the spec. Confirmed defects patched; 5 items deferred to deferred-work.md. Verified: frozen install, build, lint, typecheck, bun test 17 pass, Playwright 4 pass, headers on local wrangler dev. AC 5 and AC 6 wait for the owner's deploy and live-room check.
+<!-- SECTION:NOTES:END -->
