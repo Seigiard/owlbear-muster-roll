@@ -93,7 +93,7 @@ Short and literal. Commands are perfective verbs. Places are nouns. Statuses are
 | Duplicate | NPC menu | Inline number from 1 to 50, default 1. A name is the source name without its trailing number plus the highest existing number + 1. A source with no number stays as is. Duplicates copy values and have no token. They appear at the end |
 | Token menu | Owlbear | GM on a token with no sheet: "Привязать лист…". GM on a linked token: "Открыть лист" and "Отвязать лист". Player: "Открыть лист" only on tokens linked to a character, and nothing on an NPC token. One token links to one sheet. One sheet can have many tokens. The token status in the window is read-only |
 | Link picker | Token menu | Small Owlbear popover. Characters, then NPCs, with sheets with no token first. With no sheets: "Сначала создайте лист" |
-| Settings | Gear | Sections in this order: Пресет, Снимок, Копия в комнате. Results and file errors appear under the button that caused them. "Копия в комнате" shows "Сохранена" and the used and available size, or the not-saved message. With no preset, "Скачать пресет", "Скачать снимок" and "Загрузить снимок" are disabled with "Сначала загрузите пресет." |
+| Settings | Gear | Sections in this order: Пресет, Снимок, Копия в комнате. Results and file errors appear under the button that caused them. "Копия в комнате" shows "Сохранена" and the used and available size, "Не сохранена" with no room copy yet, or the not-saved message. With no preset, "Скачать пресет", "Скачать снимок" and "Загрузить снимок" are disabled with "Сначала загрузите пресет." |
 | Status banner | Under tab bar | One banner, only when something is wrong. Priority: local save failed, room copy not saved, new version, no GM |
 | Confirmation | Upload, import, delete | One inline block for the whole action, at the top of the content area. Focus moves to "Отменить". Never one per field |
 
@@ -112,7 +112,7 @@ Short and literal. Commands are perfective verbs. Places are nouns. Statuses are
 | Edit denied | Player | The value returns, with the notification |
 | Access revoked during an edit | Player | The field returns to read-only and the edit is dropped, with the same notification |
 | Room copy not saved | GM | Danger banner. Settings shows the same fact |
-| Upload or import during catch-up | GM | The buttons are disabled with "Загрузка…" for the short catch-up |
+| Upload, import or download during catch-up | GM | The buttons are disabled with "Загрузка…" for the short catch-up |
 | GM edit during catch-up | GM | The value shows at once, with no mark |
 | Import by another GM | Any | Pending edits are dropped, with the notification |
 | Value edited by another client | Sheets | Updates in place, unless that field has focus. A focused field keeps its text. `Esc` returns it to the current value |

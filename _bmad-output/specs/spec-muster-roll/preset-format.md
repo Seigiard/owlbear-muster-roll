@@ -14,7 +14,7 @@ A preset is a JSON template with the shape section → rows → cells. It holds 
 
 | Section property | Effect |
 | --- | --- |
-| `columns` | All rows of the section share one grid, so columns align |
+| `columns` | All rows of the section share one grid, so columns align. A shorter row leaves trailing cells empty, and a row with more cells than the grid is refused |
 | No `columns` | Rows flow inline |
 | `repeat` | A row template repeats per character, and each character has its own rows |
 | `width` | `1/3`, `1/2` or `full` (default). Sections flow side by side and wrap as whole blocks |
@@ -31,6 +31,7 @@ Example: `1d20 <= str - 2*str_tired`.
 - A formula with an empty, non-numeric or removed field shows an error and does not roll.
 - A preset with a formula syntax error, an unknown function or a dice term outside 1 to 100 dice and 1 to 1000 sides is refused at upload.
 - A dice button's label is the nearest preceding `text` cell in its row, otherwise its formula.
+- A formula holds integer literals, field ids, `+ - * /`, parentheses, `floor()`, `ceil()`, `NdM` with literal `N` and `M`, and at most one comparison from `<= < >= >`.
 - Formulas run through a small parser, never `eval`.
 - Anyone who can see a sheet can roll its dice cells.
 - The extension rolls itself. A result from a character sheet goes to everyone by broadcast, with the roller's name.

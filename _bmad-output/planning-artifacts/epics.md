@@ -79,17 +79,17 @@ FR numbers equal SPEC capability numbers: FRn is CAP-n.
 - AD-2 identifiers and values: `rowId` is the id of the first `field` in the preset row, and `sectionId` is the same for the template row of a `repeat` section. The preset schema refuses a duplicate field id within one non-repeat scope. A value is a JSON number, string or boolean by field type. An empty field has no key.
 - AD-2 batches: deleting a sheet tombstones its `row:`, `rep:`, `acl:`, `link:` and `plink:` records in one batch. Copying an NPC writes new `sheet:`, `row:` and `rep:` records under a new `sheetId` at `c: 1`, with no `link:` record.
 - AD-3: record A beats B when `(A.c, A.a) > (B.c, B.a)`. Only `core/merge` compares versions. A new edit takes the highest known `c` for that key, pending entries included, + 1. Device time never enters a version. One connection never emits one `(k, c, a)` with two different `d`.
-- AD-4: a player never merges its own edit. The pending queue has at most one entry per key, holding a field patch, and only the newest entry is sent as `propose` and resent with backoff. A GM client validates only when not `catching-up`, merges with `c` and `a` unchanged and broadcasts `commit`. `reject` carries reason `denied` or `stale`. On `stale` the player applies its patch to the returned record, takes `c` + 1 and proposes again. `commit` beats `reject`.
+- AD-4: a player never merges its own edit. The pending queue has at most one entry per key, holding a field patch, and for each key only the newest version of its entry is sent as `propose` and resent with backoff. A GM client validates only when not `catching-up`, merges with `c` and `a` unchanged and broadcasts `commit`. `reject` carries reason `denied` or `stale`. On `stale` the player applies its patch to the returned record, takes `c` + 1 and proposes again. `commit` beats `reject`.
 - AD-5: one gate in `replica`, on channel `app.muster-roll/sync` with destination `REMOTE`, checks message type, sender role and generation before dispatch. Sender identity comes from `event.connectionId` through the party port, re-read once on a miss. A role change enters `catching-up`. Unlisted combinations are dropped.
 - AD-6: `replica` alone owns `gmLink`. A client with no GM-origin message for half the timeout sends `ping`. A GM client that is not `catching-up` answers `alive` on receipt. The party list never sets `gmLink`. A hidden tab that still responds counts as online, because a frozen tab cannot respond. SPEC states the same rule.
-- AD-7: a client enters `catching-up` on start, page visible, Page Lifecycle `resume`, browser `online`, role change, higher generation, and a differing `alive` digest seen twice in a row from one GM client. The digest is the XOR of a hash of `(k, c, a)` over all records. Catch-up uses `state-request` with nonce `r` and `state` messages `i of n`. A partial answer counts as no answer. Edits made during catch-up wait in the pending queue and take `c` on exit, and inputs stay enabled.
+- AD-7: a client enters `catching-up` on start, page visible, Page Lifecycle `resume`, browser `online`, role change, higher generation, and a differing `alive` digest seen twice in a row from one GM client. The digest is the XOR of a hash of `(k, c, a)` over all records. Catch-up uses `state-request` with nonce `r` and `state` messages `i of n`. A partial answer counts as no answer. A GM client whose confirmed party read shows no other GM connection exits with no wait. Edits made during catch-up wait in the pending queue and take `c` on exit, and inputs stay enabled.
 - AD-8: only a GM client that is not `catching-up` writes the snapshot under `app.muster-roll/snapshot`, after a pause in edits with jitter and when its page becomes hidden. The sequence is read, merge, encode sorted by key, deflated and base64, size check over all room metadata against 15500 UTF-8 bytes, write, immediate read-back verify. A higher `v` or an undecodable snapshot stops the write and raises a notice.
 - AD-9: a room generation is `{ n, a }`, starting at `{ n: 0, a: "" }`, and only a snapshot import changes it. Import output holds records at `c: 1`, the current `preset`, all `link:` records from the file, and no `acl:` or `plink:`. A link to an absent token is inert. The importer persists the new generation, writes the snapshot, then broadcasts `reset`. If the snapshot cannot be written, the import still finishes, and the old-generation copy is removed from the room. An adopting client drops its pending queue with a notice and keeps its old copy until the new generation is complete.
 - AD-9 scope: the room snapshot in metadata and the export file are two formats. Only the metadata one holds `acl:`, `plink:`, tombstones and versions.
 - AD-10: only `src/replica` in the background page mutates the replica, composes `d`, mints `c` or calls room broadcast and metadata. Windows talk on `app.muster-roll/ui` with destination `LOCAL`, under schemas in `core`. Commands are intents and never carry a whole record. A window opens with `projection-request` and gets a full projection, then deltas. Handlers tolerate an echo of their own message.
 - AD-11: a GM client persists a record under `mr1:{roomId}:{n}:{a}:{k}`. A write reads that key, merges and sets it in one synchronous step. A failed write raises a notice. Player clients do not persist.
 - AD-12: room traffic uses `{ v, g, t, ... }` with `t` one of `commit`, `propose`, `reject`, `ping`, `alive`, `state-request`, `state`, `reset`, `roll`. Zod schemas in `core` parse every inbound message, snapshot and file. One function splits batches under 15000 UTF-8 bytes per message on either channel. A record that cannot fit one message is refused at input with an error.
-- AD-12 pacing and versions: every send on both channels goes through one serial queue, starting at 50 ms spacing. `RateLimitHit` is waited out with backoff, and pending `commit` batches are coalesced by key. A message with another `v` is dropped, and a higher one makes the UI ask for a reload. A snapshot or file with a higher `v` is neither read nor overwritten. A lower one is read only through a migration in `core`.
+- AD-12 pacing and versions: every send on both channels goes through one serial queue, starting at 50 ms spacing. A closing window's last field patch goes ahead of the queue. `RateLimitHit` is waited out with backoff, and pending `commit` batches are coalesced by key. A message with another `v` is dropped, and a higher one makes the UI ask for a reload. A snapshot or file with a higher `v` is neither read nor overwritten. A lower one is read only through a migration in `core`.
 - AD-13: the roller's `replica` evaluates the formula once and sends one `roll` with `{ id, sheetId, kind, roller, sheetName, cell, result }`. Receivers do not recompute and deduplicate by `id`. Each client shows the result through the notification port. A player shows only `kind: "pc"`. Rolls never enter records, storage or snapshots.
 - AD-14: preset upload and preset import are the same path and do not change the generation. In `replica`, not while `catching-up`, one `core/preset` diff runs over the full replica and returns removed field ids that hold a value, where a key with `false` holds a value. A field moved across a `repeat` boundary counts as removed. The batch writes `preset`, moves values by field id, strips removed ids and tombstones rows that no longer exist. Every later write strips field ids absent from the current preset.
 - AD-17: the production URL is `https://musterroll.2249364.xyz/` and does not change after the first real session. Deployment is a manual `wrangler deploy` of Workers static assets. `public/_headers` sends `Access-Control-Allow-Origin` for `https://www.owlbear.rodeo` and no-cache for HTML and `manifest.json`. Assets are content-hashed. A release passes one check in a live room. A rollback may not cross a `v` change.
@@ -127,7 +127,7 @@ FR numbers equal SPEC capability numbers: FRn is CAP-n.
 - UX-DR27: Build empty states. No preset, GM: "Загрузить пресет" and the gear. No preset, player with a GM online: "ГМ ещё не настроил листы.". No data and no GM: "ГМ ещё не заходил. Листов пока нет." with the no-GM banner. No characters, GM: "+", NPC and the gear. No characters, player: "ГМ ещё не создал персонажей.". No NPCs: "Добавить NPC" only.
 - UX-DR28: Build the pending state for players: the typed value shows at once. The "Ожидает" mark in `label-sm` appears when the edit is unanswered after a short delay, or at once with no GM. A pending new repeat row carries the same mark. A pending removed row stays dimmed with the mark.
 - UX-DR29: Build edit outcomes. Confirmed: the mark disappears with no message. Denied: the value returns with the notification "Нет прав на правку". Access revoked during an edit: the field returns to read-only and the edit is dropped, with the same notification. No GM: sheets stay readable and the edit stays visible.
-- UX-DR30: Build GM catch-up states: upload and import buttons are disabled with "Загрузка…" during catch-up. A GM edit during catch-up shows at once, with no mark.
+- UX-DR30: Build GM catch-up states: upload, import and download buttons are disabled with "Загрузка…" during catch-up. A GM edit during catch-up shows at once, with no mark.
 - UX-DR31: Build the import-by-another-GM state: pending edits are dropped, with the notification "Данные комнаты заменены".
 - UX-DR32: Build remote update handling: a value edited by another client updates in place unless that field has focus. A focused field keeps its text, and `Esc` returns it to the current value.
 - UX-DR33: Use the exact copy of the `EXPERIENCE.md` Voice and Tone table for every command, place, status, banner, confirmation and error string.
@@ -248,17 +248,17 @@ So that the extension does not distract from the table.
 **And** tabs use `md` on the top corners, the window `lg`, chips `full` and buttons `sm` (UX-DR4)  
 **And** the owner confirms or adjusts the 720 by 600 px window size in a live room (human gate, UX-DR7, NFR15)
 
-**Given** any control  
-**When** it has keyboard focus  
+**Given** the shared Button, Chip and Field primitives, which later stories use  
+**When** one has keyboard focus  
 **Then** a 2 px outline in `focus` shows, and the control's touch target is at least 32 px high (UX-DR36)
 
-**Given** a disabled control  
+**Given** a disabled primitive  
 **When** it renders  
 **Then** it shows at 50% opacity with a text reason near it (UX-DR34)
 
-**Given** any control  
+**Given** a primitive  
 **When** the GM uses touch or a mouse  
-**Then** tap and click act the same, and no control depends on hover or drag (UX-DR34)
+**Then** tap and click act the same, and the primitive has no hover-only or drag behavior (UX-DR34)
 
 **Given** interface strings  
 **When** a developer adds a string from the `EXPERIENCE.md` Voice and Tone table  
@@ -312,14 +312,15 @@ So that closing the window loses nothing.
 **Given** the background page starts on a GM client  
 **When** it loads  
 **Then** `src/replica` merges all persisted records of the current generation (AD-10)  
-**And** a stored record that fails its schema is skipped and raises the local-save notice  
+**And** a stored record that fails its schema is skipped, raises the local-save notice, and counts as absent when that key is next written  
 **And** a player client persists nothing (AD-11)
 
 **Given** a window opens  
 **When** it sends `projection-request` on `app.muster-roll/ui` with destination `LOCAL`  
 **Then** it receives a full projection, then deltas, and the projection holds records and notices, read through `core/visibility(role)` (AD-10)  
 **And** `core/visibility` is a pass-through until player rules exist, and until then a player client shows only "Загрузка…"  
-**And** the window repeats `projection-request` until a projection arrives, so a window that loads before the background page still gets one  
+**And** the window repeats `projection-request` until the first part arrives, and restarts only after a timeout with an incomplete set, so a window that loads before the background page still gets one  
+**And** a request carries a window nonce and the projection echoes it, so other windows ignore a projection that is not theirs  
 **And** a projection split across messages carries `i of n` and a sequence number, and the window buffers deltas until it is complete
 
 **Given** a window sends a command  
@@ -343,7 +344,7 @@ So that closing the window loses nothing.
 **Given** a local write fails  
 **When** the projection reports the notice  
 **Then** a status banner under the tab bar shows "Не удалось сохранить в браузере. Скачайте снимок." at full window width, as a live region (UX-DR24)  
-**And** the banner disappears after the next successful write
+**And** the banner disappears when no failed or corrupt key remains
 
 ### Story 1.5: Load and Download a Preset
 
@@ -368,14 +369,15 @@ So that sheets fit my game system and I can reuse the format in another room.
 **When** the GM uploads it  
 **Then** it is accepted, because each template and each repeat template row is its own scope
 
-**Given** an invalid file, a duplicate field id in one non-repeat scope, or a record that cannot fit one message  
+**Given** an invalid file, a duplicate field id within one scope, or a record that cannot fit one message  
 **When** the GM uploads it  
 **Then** "Файл не подошёл: {reason}. Ничего не изменено." appears under the button, and no data changes
 
-**Given** a preset with a field id that holds characters other than ASCII letters, digits and `_`, an id equal to `__proto__`, `floor`, `ceil` or a dice token such as `d20`, a repeat template row with no field, two repeat sections with one `sectionId`, rows of a `columns` section with different cell counts, an unknown `width` value or field type, a formula with a syntax error or an unknown function, or a dice term over the limits  
+**Given** a preset with a field id that does not match `^[A-Za-z_][A-Za-z0-9_]*$`, matches `^[dD][0-9]+$`, or equals `floor`, `ceil` or an `Object.prototype` member name, a repeat section that does not hold exactly one template row with at least one field, two repeat sections with one `sectionId`, a row of a `columns` section with more cells than the grid, an unknown `width` value or field type, a formula with a syntax error or an unknown function, a formula over 200 characters, or a dice term over the limits  
 **When** the GM uploads it  
 **Then** the same bad file message appears, and no data changes  
-**And** a dice term has 1 to 100 dice and 1 to 1000 sides
+**And** `core/formula` parses every formula with this grammar: integer literals, field ids, `+ - * /` and parentheses, `floor()`, `ceil()`, `NdM` with literal `N` from 1 to 100 and literal `M` from 1 to 1000, and at most one comparison from `<= < >= >`  
+**And** a row of a `columns` section with fewer cells than the grid leaves the trailing grid cells empty
 
 **Given** a file with a higher format `v`  
 **When** the GM uploads it  
@@ -384,13 +386,16 @@ So that sheets fit my game system and I can reuse the format in another room.
 **Given** a loaded preset  
 **When** the GM presses "Скачать пресет"  
 **Then** the file holds structure and no values, and carries the current `v` (FR12)  
-**And** uploading that file in another room gives the same structure  
-**And** a file with a lower `v` is read only through a migration in `core`
+**And** uploading that file in another room gives the same structure
+
+**Given** a file with no `v`, or a lower `v` and no registered migration  
+**When** the GM uploads it  
+**Then** the bad file message appears, and no data changes
 
 **Given** no preset is loaded  
 **When** Settings renders  
 **Then** "Скачать пресет" is disabled with "Сначала загрузите пресет." (UX-DR23)  
-**And** the first action in each section uses `button-primary` and the others `button-secondary` (UX-DR23)
+**And** in each Settings section the upload action comes first and uses `button-primary`, and the others use `button-secondary` (UX-DR23)
 
 **Given** sheets already exist  
 **When** Settings renders  
@@ -413,7 +418,7 @@ So that the party has a place in the room.
 **Then** the tab and header show the new name, and it stays after a reload (UX-DR10)  
 **And** the name renders in `sheet-title` with a bottom rule in `line`
 
-**Given** an empty, whitespace-only or too long name  
+**Given** an empty, whitespace-only or too long name, where too long means over 100 characters, a named constant  
 **When** the GM leaves the name field  
 **Then** an empty or whitespace-only name returns the old name with nothing saved, and a too long name shows "Слишком длинно" and is not saved
 
@@ -451,7 +456,7 @@ So that a mistake does not cost me a character.
 **When** the GM confirms  
 **Then** one batch tombstones the `sheet:` record and every `row:`, `rep:`, `acl:`, `link:` and `plink:` record of that sheet (AD-2, FR17)  
 **And** the sheet does not return after a reload  
-**And** a `replica` test with seeded records of every key form shows that all of them are tombstoned
+**And** a `replica` test seeds records of the deleted sheet, of a second sheet and `preset`, and shows that all five dependent forms of the target are tombstoned, including a `link:` found by its `d`, and that `preset` and the second sheet are unchanged
 
 **Given** the active sheet is deleted  
 **When** the tab closes  
@@ -480,7 +485,7 @@ So that any game system fits with no code change.
 
 **Given** preset cells  
 **When** they render  
-**Then** `text` renders its label, `field` its value and `dice` an inactive dice button whose label is the nearest preceding `text` cell in its row, otherwise its formula (UX-DR13)  
+**Then** `text` renders its label, `field` its value and `dice` its label as static text, the nearest preceding `text` cell in its row, otherwise its formula (UX-DR13)  
 **And** a field's accessible name is the nearest preceding `text` cell in its row, otherwise its id
 
 **Given** a rendered sheet  
@@ -504,11 +509,12 @@ So that a sheet stays current with no edit mode.
 **Given** a `text` or `number` field  
 **When** the GM types  
 **Then** the value saves on blur or after a typing pause, never per keystroke  
-**And** change is measured against the value at focus, and a blur with no user change sends nothing and shows the current record value
+**And** change is measured against the value at focus or at the last pause save, and a blur with no user change sends nothing and shows the current record value
 
 **Given** a changed field  
 **When** the tab changes or the window closes before the pause or blur  
-**Then** a valid value is saved first
+**Then** a valid value is saved first, and on `pagehide` it is sent ahead of the spacing queue  
+**And** an invalid value is not saved
 
 **Given** a changed field  
 **When** it saves  
@@ -518,7 +524,7 @@ So that a sheet stays current with no edit mode.
 **Given** a `number` field with text that is not a number  
 **When** the GM leaves it  
 **Then** "Нужно число" shows under the field, the text stays, and nothing saves  
-**And** `1,5` counts as 1.5, and `1e999` or spaces only count as not a number
+**And** one `core` number parser accepts `1,5` as 1.5 and refuses `1e999` and spaces only
 
 **Given** a value that makes its whole record too long for one message  
 **When** the GM leaves the field  
@@ -553,6 +559,10 @@ So that each character has its own inventory.
 **Given** a repeat row  
 **When** the GM presses its "Удалить"  
 **Then** its record becomes a tombstone, and the row disappears
+
+**Given** a field in a repeat row  
+**When** it saves  
+**Then** `replica` merges the patch into `cells` of its `rep:` record, a cleared field has no key, `order` is kept, and the Story 1.9 validation errors apply (FR5)
 
 **Given** two rows with one `order`  
 **When** the section renders  
@@ -653,7 +663,7 @@ So that I never work from stale data.
 **Given** a client  
 **When** it starts, a page becomes visible, Page Lifecycle `resume` fires, the browser `online` event fires, its role changes, or it sees a higher generation  
 **Then** it enters `catching-up` and broadcasts `state-request` with a nonce `r` (AD-7, FR9, FR11)  
-**And** a client already in `catching-up` keeps its current `r` and does not start again  
+**And** a client already in `catching-up` keeps its current `r`, unless the trigger is a higher generation or a role change, which issue a new `r` and discard partial answers  
 **And** a GM client first merges all its persisted records of the current generation
 
 **Given** a GM client that is not `catching-up`  
@@ -666,24 +676,27 @@ So that I never work from stale data.
 **Then** it leaves `catching-up`  
 **And** a partial answer counts as no answer, and every `state` message is still merged whenever it arrives
 
-**Given** a GM client with no other GM connection in the party  
+**Given** a GM client whose confirmed party read shows no other GM connection  
 **When** it enters `catching-up`  
-**Then** it merges what it holds and leaves `catching-up` with no wait for the timeout
+**Then** it merges its persisted records and leaves `catching-up` with no wait for the timeout
 
 **Given** a GM edit during `catching-up`  
 **When** the GM types  
 **Then** the value shows at once with no mark, the edit waits in the pending queue and takes `c` on exit, and inputs stay enabled (UX-DR30)  
 **And** the pending queue holds one field-patch entry per key, so two edits of one row combine  
-**And** batch intents such as create and delete wait in order and run on exit
+**And** all GM intents made during `catching-up` replay on exit in arrival order, and patches to one key combine in place  
+**And** a queued create shows its sheet at once and focuses its name
 
 **Given** the first catch-up has not ended  
 **When** the window renders  
 **Then** it shows the tab bar from known data and "Загрузка…", and never an empty state (UX-DR26)  
-**And** the role is read before any data renders
+**And** the role is read before any data renders  
+**And** this state replaces the Story 1.5 gate: the no-preset state shows only after the first catch-up ends  
+**And** a player client stays on "Загрузка…" after catch-up until player views exist
 
 **Given** a GM client in `catching-up`  
 **When** Settings renders  
-**Then** upload buttons are disabled with "Загрузка…" (UX-DR30)  
+**Then** upload buttons and "Скачать пресет" are disabled with "Загрузка…" (UX-DR30)  
 **And** `replica` checks the state again when the command arrives and refuses it during `catching-up`
 
 **Given** a client whose role changes to GM  
@@ -701,7 +714,7 @@ So that I know the current state of the party.
 **Given** a player client after catch-up  
 **When** the window renders  
 **Then** a tab for every character shows with its full sheet, and no NPC, no NPC tab, no gear and no "+" show (FR2, UX-DR8)  
-**And** `core/visibility` now applies the player rules, and views get sheets only through it
+**And** `core/visibility` now applies the player rules, views get sheets only through it, and the player loading-only rule of Story 1.4 no longer applies
 
 **Given** a player  
 **When** the character header renders  
@@ -736,10 +749,11 @@ So that I do not assume the table is live.
 **When** a `ping` arrives  
 **Then** it answers `alive` on receipt with the generation and the digest, which is the XOR of a hash of `(k, c, a)` over all records
 
-**Given** a player client, with the party list showing a GM  
+**Given** a player client, whatever the party list shows  
 **When** no GM-origin message arrives within the timeout  
 **Then** `gmLink` is `offline`, and the banner shows "Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку." (UX-DR24, FR15)  
-**And** `replica` alone sets `gmLink`, the party list never sets it, and the projection carries it to every window
+**And** `replica` alone sets `gmLink`, the party list never sets it, and the projection carries it to every window  
+**And** `gmLink` starts `offline` with no banner until the first catch-up ends
 
 **Given** a GM client, also one alone in the room  
 **When** no other GM client answers  
@@ -756,7 +770,7 @@ So that I do not assume the table is live.
 **Given** `alive` from one GM client of the client's own generation  
 **When** it shows a different digest twice in a row  
 **Then** the client enters `catching-up` (AD-7)  
-**And** after a completed catch-up, that GM client's digest is ignored until it changes, so a lagging GM does not cause a loop
+**And** after a catch-up that held all `n` messages from that GM client, its digest is ignored until it changes, so a lagging GM does not cause a loop, and a timeout exit does not start the ignore
 
 ### Story 2.5: Save a Room Copy That Survives the GM's Browser
 
@@ -780,7 +794,11 @@ So that I can re-enter from another device.
 
 **Given** the read snapshot has a higher generation  
 **When** the writer reads it  
-**Then** the writer does not merge or write, and starts AD-9 adoption
+**Then** the writer does not merge or write, and enters `catching-up`
+
+**Given** a room copy with a lower generation than the client's own  
+**When** a client reads it  
+**Then** it is not merged, and a GM client overwrites it on its next write (AD-9)
 
 **Given** a `resume` or visibility change falls between the read and the write  
 **When** the writer continues  
@@ -797,21 +815,23 @@ So that I can re-enter from another device.
 **Given** a client in catch-up  
 **When** a snapshot exists  
 **Then** the client merges it before it broadcasts `state-request` (AD-7)  
+**And** a GM client with no other GM connection merges it before it leaves `catching-up`  
 **And** a GM on a new device gets the data from the snapshot (FR9, NFR8)
 
 **Given** Settings  
 **When** it renders  
-**Then** the section "Копия в комнате" after "Пресет" shows "Сохранена" with the used and available size, or the not-saved message (UX-DR23)
+**Then** the section "Копия в комнате" after "Пресет" shows "Сохранена" with the used and available size, or the not-saved message (UX-DR23)  
+**And** with no room copy yet it shows "Не сохранена", and the available size is 15500 minus the bytes used by all room metadata
 
 **Given** two or more active notices  
 **When** the banner renders  
 **Then** one shows, by priority: local save failed, room copy not saved, new version, no GM (UX-DR24)  
 **And** the not-saved banner disappears after the next verified write
 
-**Given** a synthetic party of 6 characters and 60 NPCs with Russian text in the real format  
+**Given** a synthetic party of 6 characters and 60 NPCs with Russian text in the real format, using the larger Story 1.11 preset fixture  
 **When** the snapshot is encoded  
 **Then** its byte size is recorded in the story notes against the 15500 limit (NFR16)  
-**And** if the size is over 15500 bytes or the margin is under 1500 bytes, a Backlog task is created and decided before Epic 3
+**And** if the size is over 15500 bytes or the margin is under 1500 bytes, a Backlog task is created and the owner decides it before Epic 3 (human gate)
 
 ### Story 2.6: Read Characters With No GM Online
 
@@ -910,8 +930,8 @@ So that the player finds their character first.
 **When** the GM picks it  
 **Then** the owner link is removed, and write access stays as it was
 
-**Given** a character owned by player A
-**When** the GM picks player B in "Его персонаж"
+**Given** a character owned by player A  
+**When** the GM picks player B in "Его персонаж"  
 **Then** B becomes the owner, and A's write access stays until the GM clears it (FR19)
 
 **Given** a player owns a character  
@@ -949,20 +969,22 @@ So that sheets change only with the GM's permission.
 **When** it arrives  
 **Then** the entry stays until a `commit` or `reject` matches its own `(k, c, a)`
 
-**Given** a `propose` for a tombstoned or `npc` sheet, for a tombstoned `rep:` record, for a key outside the current preset, for a sheet with no access, or in a key form reserved for the GM  
+**Given** a `propose` for a tombstoned or `npc` sheet, for an edit of a tombstoned `rep:` record, for a key outside the template of the sheet's kind in the current preset, with a field id absent from that template, with a value whose JSON type differs from its field type, for a sheet with no access, or in a key form reserved for the GM  
 **When** `core/access` checks it  
 **Then** the GM client sends `reject` with reason `denied`, echoing `(k, c, a)` (FR3, NFR6)  
-**And** a sender still unknown after one party re-read is dropped by the AD-5 gate, and its entry is resent
+**And** a sender still unknown after one party re-read is dropped by the AD-5 gate, and its entry stays pending under the normal backoff  
+**And** `core/access` checks in this order: an identical record gets `commit`; a remove of a tombstoned `rep:` gets `commit` of the existing tombstone, echoing the proposer's `(k, c, a)`; an edit of a tombstoned `rep:` is `denied`; then the `c` check  
+**And** a GM client never rewrites the `d` of a `propose`
 
 **Given** `reject` with reason `denied` that echoes the `(k, c, a)` of this client's pending entry  
 **When** the player receives it  
 **Then** the entry is dropped, the value returns, and the notification "Нет прав на правку" shows (UX-DR29)  
-**And** a `reject` that matches no pending entry of this client is ignored
+**And** any `reject` that matches no pending entry of this client is ignored
 
 **Given** a `propose` with a low `c`  
-**When** the GM client answers `reject` with reason `stale` and the current record  
+**When** the GM client answers `reject` with reason `stale` and the current record, echoing `(k, c, a)`  
 **Then** the player applies its patch to that record, takes `c` + 1 and proposes again  
-**And** if that record is a tombstone, the entry is dropped with the same notification
+**And** if that record is a tombstone and the entry is an edit, the entry is dropped with the same notification
 
 **Given** both `commit` and `reject` arrive for one edit  
 **When** the player handles them  
@@ -1026,7 +1048,7 @@ So that a shared preset cannot run code.
 **Acceptance Criteria:**
 
 **Given** the formula `1d20 <= str - 2*str_tired` and filled fields  
-**When** `core/formula` evaluates it  
+**When** `core/formula` evaluates its Story 1.5 parse tree  
 **Then** it returns one result with the roll, the target and the outcome (FR6)  
 **And** tests with a seeded random source show the exact arithmetic
 
@@ -1046,7 +1068,7 @@ So that a shared preset cannot run code.
 **Given** a formula with an empty, non-numeric or removed field  
 **When** it is evaluated  
 **Then** the result is an error naming the field, and no exception is thrown (FR7)  
-**And** a `text` field counts only when its whole value is a number
+**And** a `text` field counts only when the Story 1.9 number parser accepts its whole value
 
 **Given** a formula with a division by zero or a non-finite result  
 **When** it is evaluated  
@@ -1067,7 +1089,7 @@ So that the table sees one result and I do not need to remember the rules.
 **Given** a valid dice cell  
 **When** a client that can see the sheet presses its button, with or without write access  
 **Then** that client's `replica` evaluates the formula once and sends one `roll` with `{ id, sheetId, kind, roller, sheetName, cell, result }` (AD-13, FR6)  
-**And** the button styling follows `dice-button` (UX-DR17)
+**And** the static label of Story 1.8 becomes a button styled by `dice-button` (UX-DR17)
 
 **Given** a roll from a character sheet  
 **When** it arrives on all connected clients  
@@ -1075,7 +1097,8 @@ So that the table sees one result and I do not need to remember the rules.
 **And** receivers do not recompute, and a duplicate `id` is ignored  
 **And** the roller's own `replica` shows the result through the same `id` check, because `REMOTE` does not echo to the sender  
 **And** only the background page calls the notification port  
-**And** `{result}` holds the rolled number, and for a comparison also "успех" or "провал"
+**And** `{result}` holds the rolled number, and for a comparison also "успех" or "провал"  
+**And** `cell` is the dice button's label by the Story 1.8 rule
 
 **Given** a roll from an NPC sheet  
 **When** it arrives  
@@ -1090,9 +1113,10 @@ So that the table sees one result and I do not need to remember the rules.
 **When** a client presses the button  
 **Then** "Нельзя бросить: формула не дала числа" shows under the button, and nothing is sent
 
-**Given** a player with a pending edit in a referenced field  
-**When** the player rolls  
-**Then** the formula uses the value the player sees
+**Given** a client with a queued or pending edit in a referenced field  
+**When** the client rolls  
+**Then** the formula uses the value the client shows  
+**And** a referenced field in an error state gives the field error and sends no roll
 
 **Given** any roll  
 **When** it completes  
@@ -1110,7 +1134,7 @@ So that each token has its own NPC.
 **When** the GM picks "Дублировать…" in "⋯"  
 **Then** an inline number field from 1 to 50 with default 1 opens (UX-DR19, UX-DR20)
 
-**Given** a count that is empty, fractional, below 1 or above 50  
+**Given** a count that is empty, not a number, fractional, below 1 or above 50  
 **When** the GM confirms  
 **Then** "Нужно число от 1 до 50" shows under the field, and nothing is written
 
@@ -1139,7 +1163,7 @@ So that the sheet is one click from the map.
 **Given** a token with no sheet  
 **When** a GM opens its Owlbear menu  
 **Then** "Привязать лист…" shows, and it opens a small Owlbear popover (UX-DR21, UX-DR22)  
-**And** the menu item applies to one selected token only (`max: 1`)
+**And** every Muster Roll token menu item applies to one selected token only (`max: 1`)
 
 **Given** the link picker  
 **When** it renders  
@@ -1157,7 +1181,7 @@ So that the sheet is one click from the map.
 **When** the GM picks "Отвязать лист"  
 **Then** the `link:` record is tombstoned, and the sheet and the token stay (FR18, UX-DR21)
 
-**Given** the `link:` records or the client's role change  
+**Given** the `link:` or `sheet:` records or the client's role change  
 **When** the delta arrives, also after the first catch-up  
 **Then** the context menu is re-created with filters built from current records and role, because SDK filters are static and match item keys only
 
@@ -1176,7 +1200,7 @@ So that I do not search through tabs in play.
 **Given** a token linked to a character  
 **When** a GM or a player picks "Открыть лист"  
 **Then** the window opens on that character's tab, and the tab scrolls into view (FR14, UX-DR8, UX-DR21)  
-**And** when the window was closed, `replica` holds the requested tab and the projection delivers it
+**And** when the window was closed, `replica` holds the requested tab, delivers it once to the action window, and discards it if the sheet is not visible to this role
 
 **Given** a token linked to an NPC  
 **When** the GM picks "Открыть лист"  
@@ -1218,20 +1242,26 @@ So that the format can grow during a campaign.
 **And** "Отменить" changes nothing
 
 **Given** an open confirmation  
-**When** the replica changes or `catching-up` starts  
-**Then** the diff runs again, and the new count is confirmed
+**When** `catching-up` starts  
+**Then** the confirmation closes, and nothing is written
+
+**Given** an open confirmation and a changed replica  
+**When** the GM confirms  
+**Then** the diff runs once more, and if the count differs the block shows the new count, focus returns to "Отменить" and a second confirmation is required  
+**And** a new count of 0 closes the block and takes the removes-nothing path
 
 **Given** the confirmed upload, or an upload that removes nothing  
 **When** the batch runs  
 **Then** it writes `preset`, moves values by field id to the row that now holds them, strips removed ids and tombstones records of rows that no longer exist  
-**And** when a repeat template's first field changes and its field ids survive, every `rep:` record is rewritten under the new `sectionId` with its `instanceId`, `order` and values, and the old key is tombstoned  
-**And** moved rows are sent before `preset`  
+**And** when at least one field id of a repeat template row survives, every `rep:` record moves to the new `sectionId` with its `instanceId`, `order` and surviving values, and only removed ids are erased and counted  
+**And** when none survive, the record is tombstoned and all its values are counted  
+**And** the send order is new-key rows, then `preset`, then tombstones of old keys and stripped rows, so a closure at any point leaves values readable under one of the two presets  
 **And** an upload that removes nothing shows "Формат листов изменён." under the button
 
 **Given** the new preset  
 **When** sheets render on all clients  
 **Then** a new field is empty, and a renamed field with the same id keeps its value (FR8)  
-**And** every later write strips field ids absent from the current preset
+**And** every later write that mints a new `c` strips field ids absent from the template of the record's sheet kind, and values whose type differs from their field
 
 **Given** a formula that refers to a removed field  
 **When** a client rolls it  
@@ -1273,7 +1303,8 @@ So that a campaign moves to another room or computer.
 **Given** a valid file  
 **When** the GM presses "Загрузить снимок"  
 **Then** one confirmation shows "Все данные комнаты будут заменены. Игроки потеряют привязки и права. Загрузить снимок?", with "Не войдут значения удалённых полей: {count}." added when values are dropped (FR13, UX-DR25)  
-**And** nothing is written before the confirmation
+**And** nothing is written before the confirmation  
+**And** the confirmation follows the Story 1.7 close rules and closes when `catching-up` starts
 
 **Given** an invalid or newer file  
 **When** the GM uploads it  
@@ -1283,6 +1314,14 @@ So that a campaign moves to another room or computer.
 **When** `core/snapshot` reads it  
 **Then** the value is dropped and counted in `{count}`
 
+**Given** a field still in the template of the sheet's kind but in another row  
+**When** `core/snapshot` reads it  
+**Then** the value is placed by field id, and only an id absent from that template or moved across a `repeat` boundary is dropped and counted
+
+**Given** local persistence of the new generation fails  
+**When** the import runs  
+**Then** the import stops before the snapshot and `reset`, the local-save notice shows, and nothing changes
+
 **Given** the confirmation  
 **When** the GM confirms  
 **Then** the importer takes a higher generation, persists it, writes the snapshot and only then broadcasts `reset` (AD-9)  
@@ -1290,17 +1329,17 @@ So that a campaign moves to another room or computer.
 
 **Given** the new snapshot does not fit the 15500 limit or fails read-back  
 **When** the import runs  
-**Then** the import still finishes and `reset` goes out, the not-saved banner shows, and the old-generation copy is removed from the room, so players with no GM do not read replaced data
+**Then** the import still finishes and `reset` goes out, the not-saved banner shows, and a room copy with a lower generation than the importer's is removed, so players with no GM do not read replaced data
 
 **Given** a token link in the file  
 **When** the token exists in the room  
 **Then** the link works, and a link to an absent token is inert (FR13)
 
-**Given** a client sees a higher generation  
+**Given** a client sees a higher generation, also through the snapshot writer  
 **When** it adopts it  
 **Then** it drops its pending queue with the notification "Данные комнаты заменены" and runs catch-up (UX-DR31)  
 **And** it keeps its old copy until the new generation is complete, then deletes it, where complete means all `n` messages of one responder or a decoded new-generation room copy  
-**And** an incomplete new generation writes no snapshot, and the client repeats `state-request`
+**And** while its generation is incomplete, a client stays in `catching-up` past the timeout, writes no snapshot, does not answer `state-request`, `ping` or `propose`, and repeats `state-request` with backoff from the constants module
 
 **Given** a client starts after an import  
 **When** it reads its persisted records and the snapshot  
@@ -1324,9 +1363,9 @@ So that I know the POC holds.
 
 **Given** a release candidate deployed by the owner (human gate)  
 **When** the release check runs in a live room  
-**Then** preset upload and download, a GM edit, owner assignment, a player edit, a character roll, an NPC roll seen only by GM clients, a token open, a no-GM read, and snapshot download and import all work, because the mock proves app logic only (AD-17)
+**Then** preset upload and download, a GM edit, owner assignment, a player edit, a character roll, an NPC roll seen only by GM clients, a token open, a no-GM read, an edit followed by closing the window at once, and snapshot download and import all work, because the mock proves app logic only (AD-17)
 
 **Given** one real session with the party and NPCs kept only in the extension (human gate)  
 **When** the session ends  
-**Then** snapshot files from before and after the session show no lost values, and any incident is recorded in Backlog (NFR17)  
+**Then** a snapshot exported at session end matches one exported after a reload on the same device and re-entry on a second GM device, and the owner records any value reported as lost in Backlog (NFR17)  
 **And** deferred timeouts, pauses and spacing are confirmed or adjusted from that session

@@ -85,8 +85,8 @@ graph TD
 
 - **Binds:** CAP-3, CAP-15
 - **Prevents:** Unchecked player edits, lost fast edits, and two GM clients producing different records from one edit.
-- **Rule, player:** A player never merges its own edit. `src/replica` owns the pending queue and exposes it in the projection. The queue has at most one entry per key, holding a field patch. A newer edit updates the entry and raises `c`. Only the newest entry is sent, as `propose`, and it is resent with backoff until answered. An edit is identified by `(k, c, a)`.
-- **Rule, GM client:** A GM client validates only when it is not `catching-up`. `core/access` refuses an unknown player, a tombstoned or `npc` sheet, a key outside the current preset, and any key form that AD-2 reserves for the GM.
+- **Rule, player:** A player never merges its own edit. `src/replica` owns the pending queue and exposes it in the projection. The queue has at most one entry per key, holding a field patch. A newer edit updates the entry and raises `c`. For each key, only the newest version of its entry is sent, as `propose`, and it is resent with backoff until answered. An edit is identified by `(k, c, a)`.
+- **Rule, GM client:** A GM client validates only when it is not `catching-up`. An unknown sender never reaches `core/access`, because the AD-5 gate drops it. `core/access` refuses a tombstoned or `npc` sheet, a key outside the current preset, and any key form that AD-2 reserves for the GM.
   - On pass with `c` above the current `c`, or with a record identical to the current one, it merges the record with `c` and `a` unchanged and broadcasts `commit`, echoing `(k, c, a)`.
   - On a refused access it sends `reject` with reason `denied`. The player drops the entry and shows a notice.
   - On a low `c` it sends `reject` with reason `stale` and the current record. The player applies its patch to that record, takes `c` + 1 and proposes again.
@@ -135,7 +135,7 @@ A message with a higher generation also starts AD-9 adoption.
 - **Rule, entry:** A client enters `catching-up` on start, when a page becomes visible, on Page Lifecycle `resume`, on the browser `online` event, on a role change, on a higher generation, and when `alive` from one GM client shows a different digest twice in a row. The digest is the XOR of a hash of `(k, c, a)` over all records, and `alive` carries it with the generation.
 - **Rule, steps:** A GM client first merges all its persisted records of the current generation. The client then merges the snapshot and broadcasts `state-request` with a nonce `r`.
 - **Rule, answer:** A GM client that is not `catching-up` answers after a random short delay, unless it has already seen an answer to `r`. `state` echoes `r` and carries `i of n`. Its records are deflated. Every `state` message holds complete records, and a client merges it whenever it arrives, in any state.
-- **Rule, exit:** A client leaves `catching-up` when it holds all `n` messages of one responder for its own `r`, or on timeout. A partial answer counts as no answer.
+- **Rule, exit:** A client leaves `catching-up` when it holds all `n` messages of one responder for its own `r`, or on timeout. A partial answer counts as no answer. A GM client whose confirmed party read shows no other GM connection merges its persisted records and the snapshot, then leaves with no wait. After a catch-up that held all `n` messages of one GM client, that client's digest is ignored until it changes.
 - **Rule, edits:** An edit made during `catching-up` waits in the pending queue and takes `c` on exit. A GM client then merges it. Inputs stay enabled.
 
 ### AD-8 — Snapshot is read, merge, write, verify [ADOPTED]
@@ -178,7 +178,7 @@ A message with a higher generation also starts AD-9 adoption.
 - **Prevents:** Incompatible messages, sends past 16KB, Owlbear refusing a client for bursts, and an old build destroying newer data.
 - **Rule, envelope:** Room traffic uses `{ v, g, t, ... }`. `t` is one of `commit`, `propose`, `reject`, `ping`, `alive`, `state-request`, `state`, `reset`, `roll`. `core` owns the zod schemas, and every inbound message, snapshot and file is parsed through them.
 - **Rule, size:** One function splits batches so that each message on either channel is under 15000 UTF-8 bytes of JSON. A record that cannot fit one message is refused at input with an error.
-- **Rule, pacing:** Every send on both channels goes through one serial queue with spacing between sends. `RateLimitHit` is waited out with backoff. Pending `commit` batches are coalesced by key.
+- **Rule, pacing:** Every send on both channels goes through one serial queue with spacing between sends. A closing window's last field patch goes ahead of the queue. `RateLimitHit` is waited out with backoff. Pending `commit` batches are coalesced by key.
 - **Rule, versions:** `v` changes with any change to a message, snapshot or stored record format. A message with another `v` is dropped, and a higher one makes the UI ask for a reload. A snapshot or file with a higher `v` is neither read nor overwritten. A lower one is read only through a migration in `core`.
 
 ### AD-13 — Rolls are events, not state
@@ -191,7 +191,7 @@ A message with a higher generation also starts AD-9 adoption.
 
 - **Binds:** CAP-4, CAP-8, CAP-12
 - **Prevents:** Values lost on a moved field, erased values returning, and two diffs of one upload.
-- **Rule:** Preset upload and preset import are the same path, and neither changes the generation. In `replica`, not while `catching-up`, one `core/preset` diff runs over the full replica. It returns removed field ids that hold a value. A key present with `false` holds a value. A field moved across a `repeat` boundary counts as removed. If any exist, the UI asks one confirmation, otherwise it shows the short notice. The batch then writes `preset`, moves values by field id to the row that now holds them, strips removed ids, and tombstones records of rows that no longer exist. Every later write strips field ids absent from the current preset. If the uploader closes mid-batch, an erased value can return only when the same field id is added again, which is an accepted loss.
+- **Rule:** Preset upload and preset import are the same path, and neither changes the generation. In `replica`, not while `catching-up`, one `core/preset` diff runs over the full replica. It returns removed field ids that hold a value. A key present with `false` holds a value. A field moved across a `repeat` boundary counts as removed. If any exist, the UI asks one confirmation, otherwise it shows the short notice. The diff runs again only when the replica changed before the confirm press. The batch then writes `preset`, moves values by field id to the row that now holds them, strips removed ids, and tombstones records of rows that no longer exist. New-key rows go first, then `preset`, then the tombstones of old keys and stripped rows. Every later write that mints a new `c` strips field ids absent from the template of the record's sheet kind. If the uploader closes mid-batch, an erased value can return only when the same field id is added again, which is an accepted loss.
 
 ### AD-17 — The production origin is permanent
 
