@@ -105,6 +105,5 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 
 ## Open Questions
 
-- Does the sync scheme work in a live Owlbear room, with two GM tabs and a player editing at once? Needs an experiment.
 - Does the `background_url` page stay alive while the room is open, including with the GM's extension window closed and the tab in the background? If it stops, player edits do not reach the GM. Needs an experiment.
 - Does a guest keep the player id after a reload and in another browser, and does a logged-in player keep it for the long term? Write rights bind to that id, and the docs do not say. Needs an experiment with guests and logged-in players.
