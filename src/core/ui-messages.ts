@@ -78,12 +78,30 @@ const fieldPatchSchema = z.strictObject({
   value: z.json(),
 });
 
+// The window picks the instanceId, so it can focus the new row when the delta arrives. The engine
+// composes the order and the empty cells.
+const repeatRowAddSchema = z.strictObject({
+  type: z.literal('repeat-row-add'),
+  sheetId: z.string(),
+  sectionId: z.string(),
+  instanceId: z.string(),
+});
+
+const repeatRowDeleteSchema = z.strictObject({
+  type: z.literal('repeat-row-delete'),
+  sheetId: z.string(),
+  sectionId: z.string(),
+  instanceId: z.string(),
+});
+
 const commandIntentSchema = z.discriminatedUnion('type', [
   sheetCreateSchema,
   sheetRenameSchema,
   sheetDeleteSchema,
   presetUploadSchema,
   fieldPatchSchema,
+  repeatRowAddSchema,
+  repeatRowDeleteSchema,
 ]);
 
 const commandSchema = z.strictObject({
@@ -108,6 +126,9 @@ const commandRejectedSchema = z.strictObject({
     'invalid-value',
     'unknown-instance',
     'unchanged',
+    'unknown-section',
+    'invalid-instance-id',
+    'instance-exists',
   ]),
 });
 

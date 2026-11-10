@@ -1,13 +1,16 @@
 import { useId, useMemo } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefCallback } from 'react';
 
 import { patchRecordKey, type FieldPatchTarget } from '@/core/field-patch';
 import { firstFieldId, type PresetCell, type PresetSection } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { repeatInstances, rowValues, sectionTitle, type FieldValues } from '@/core/sheet-values';
+import { copy } from '@/ui/copy';
+import { Button } from '@/ui/primitives/button';
 
 import { SheetCell } from './preset-cell';
 import type { FieldPlace } from './use-field-edit';
+import { useRepeatRows, type RepeatRows } from './use-repeat-rows';
 
 // The share of the line minus the gaps beside it. Below 480 px of content area every section
 // takes the whole line, so the share applies only from 480 px up.
@@ -30,36 +33,49 @@ type SheetSectionProps = {
   records: ReadonlyMap<string, VersionedRecord>;
 };
 
+// `instanceId` is set for a row of a repeat section.
 type SheetRow = {
   key: string;
   cells: readonly PresetCell[];
   values: FieldValues;
   place: FieldPlace | null;
+  instanceId: string | null;
 };
 
-type RowsProps = { section: PresetSection; rows: readonly SheetRow[] };
+type RowsProps = { section: PresetSection; rows: readonly SheetRow[]; controls?: RepeatRows };
+
+type SectionContentProps = SheetSectionProps & {
+  sectionId: string;
+  template: readonly PresetCell[];
+};
 
 export function SheetSection({ section, sheetId, records }: SheetSectionProps): ReactNode {
   const headingId = useId();
   const title = sectionTitle(section);
-  const rows = useMemo(() => sheetRows(section, sheetId, records), [section, sheetId, records]);
+  const repeat = repeatTemplate(section);
 
   const className = [
     'min-w-[0] shrink-0 grow-0 basis-full border-l-2 border-line pl-2',
     WIDTH_CLASSES[section.width ?? 'full'],
   ].join(' ');
 
-  // A grid wider than the section scrolls here, so the page itself never scrolls sideways.
-  const body = (
-    <div className="overflow-x-auto" data-section-body>
-      <Rows section={section} rows={rows} />
-    </div>
-  );
+  const content =
+    repeat === null ? (
+      <PlainContent section={section} sheetId={sheetId} records={records} />
+    ) : (
+      <RepeatContent
+        section={section}
+        sheetId={sheetId}
+        records={records}
+        sectionId={repeat.sectionId}
+        template={repeat.template}
+      />
+    );
 
   if (title === null) {
     return (
       <div className={className} data-section>
-        {body}
+        {content}
       </div>
     );
   }
@@ -69,45 +85,142 @@ export function SheetSection({ section, sheetId, records }: SheetSectionProps): 
       <h2 id={headingId} className="mb-1 text-section-heading text-accent">
         {title}
       </h2>
-      {body}
+      {content}
     </section>
+  );
+}
+
+// A grid wider than the section scrolls here, so the page itself never scrolls sideways.
+function Body({ children }: { children: ReactNode }): ReactNode {
+  return (
+    <div className="overflow-x-auto" data-section-body>
+      {children}
+    </div>
+  );
+}
+
+function PlainContent({ section, sheetId, records }: SheetSectionProps): ReactNode {
+  const rows = useMemo(() => plainRows(section, sheetId, records), [section, sheetId, records]);
+
+  return (
+    <Body>
+      <Rows section={section} rows={rows} />
+    </Body>
+  );
+}
+
+// A repeat section renders its one template row once per instance of this sheet, each with its
+// "Удалить", and "Добавить строку" under them.
+function RepeatContent({
+  section,
+  sheetId,
+  records,
+  sectionId,
+  template,
+}: SectionContentProps): ReactNode {
+  const rows = useMemo(
+    () => repeatRows(template, sectionId, sheetId, records),
+    [template, sectionId, sheetId, records],
+  );
+
+  const instanceIds = useMemo(() => rows.flatMap((row) => row.instanceId ?? []), [rows]);
+  const controls = useRepeatRows(sheetId, sectionId, instanceIds);
+
+  return (
+    <>
+      <Body>
+        <Rows section={section} rows={rows} controls={controls} />
+      </Body>
+      <div className="mt-1">
+        <Button ref={controls.addButton} onPress={controls.add}>
+          {copy.command.addRow}
+        </Button>
+      </div>
+    </>
   );
 }
 
 // Keyed by row id, instance id or field id where one exists, so the state a field keeps stays with
 // that field when the preset changes around it.
 // Rows count from 1, so the second, fourth and later even rows stripe.
-function Rows({ section, rows }: RowsProps): ReactNode {
+function Rows({ section, rows, controls }: RowsProps): ReactNode {
   if (section.columns === undefined) {
     return rows.map((row, index) => (
       <div
         key={row.key}
+        ref={rowRef(row, controls)}
         className={`flex flex-wrap gap-y-1 ${ROW_CLASS} ${stripe(index)}`}
         data-row
       >
         <Cells row={row} />
+        <DeleteControl row={row} index={index} controls={controls} />
       </div>
     ));
   }
 
   // Each row is a subgrid over all tracks, so its cells align with every other row and its stripe
-  // spans the whole grid. A short row leaves its last tracks empty.
+  // spans the whole grid. A short row leaves its last tracks empty. Row controls take one more
+  // track after the preset's columns, so they line up too.
+  const columns = section.columns;
+  const tracks = `repeat(${columns}, auto)${controls === undefined ? '' : ' auto'}`;
+
   return (
-    <div
-      className="grid w-max min-w-full gap-x-2"
-      style={{ gridTemplateColumns: `repeat(${section.columns}, auto)` }}
-    >
+    <div className="grid w-max min-w-full gap-x-2" style={{ gridTemplateColumns: tracks }}>
       {rows.map((row, index) => (
         <div
           key={row.key}
+          ref={rowRef(row, controls)}
           className={`col-span-full grid grid-cols-subgrid ${ROW_CLASS} ${stripe(index)}`}
           data-row
         >
           <Cells row={row} />
+          <DeleteControl row={row} index={index} controls={controls} column={columns + 1} />
         </div>
       ))}
     </div>
   );
+}
+
+// `column` places the control in the extra grid track, past a short row's empty tracks.
+function DeleteControl({
+  row,
+  index,
+  controls,
+  column,
+}: {
+  row: SheetRow;
+  index: number;
+  controls: RepeatRows | undefined;
+  column?: number;
+}): ReactNode {
+  const { instanceId } = row;
+
+  if (controls === undefined || instanceId === null) {
+    return null;
+  }
+
+  return (
+    <div style={column === undefined ? undefined : { gridColumnStart: column }}>
+      <Button
+        ref={controls.deleteButton(instanceId)}
+        accessibleName={copy.label.deleteRow(index + 1)}
+        onPress={() => {
+          controls.remove(instanceId);
+        }}
+      >
+        {copy.command.delete}
+      </Button>
+    </div>
+  );
+}
+
+function rowRef(
+  row: SheetRow,
+  controls: RepeatRows | undefined,
+): RefCallback<HTMLElement> | undefined {
+  return controls === undefined || row.instanceId === null
+    ? undefined
+    : controls.rowElement(row.instanceId);
 }
 
 function stripe(index: number): string {
@@ -126,32 +239,42 @@ function Cells({ row }: { row: SheetRow }): ReactNode {
   ));
 }
 
-// A repeat section renders its one template row once per instance of this sheet.
-function sheetRows(
+// The template row of a repeat section and the id that names it, or `null` for a plain section.
+function repeatTemplate(
+  section: PresetSection,
+): { template: readonly PresetCell[]; sectionId: string } | null {
+  const [template] = section.rows;
+  const sectionId = template === undefined ? null : firstFieldId(template);
+
+  return section.repeat !== true || template === undefined || sectionId === null
+    ? null
+    : { template, sectionId };
+}
+
+function plainRows(
   section: PresetSection,
   sheetId: string,
   records: ReadonlyMap<string, VersionedRecord>,
 ): SheetRow[] {
-  if (section.repeat !== true) {
-    return section.rows.map((cells, index) => {
-      const rowId = firstFieldId(cells);
+  return section.rows.map((cells, index) => {
+    const rowId = firstFieldId(cells);
 
-      return {
-        key: rowId ?? `${INDEX_KEY_PREFIX}${index}`,
-        cells,
-        values: rowValues(records, sheetId, rowId),
-        place: rowId === null ? null : placeOf(records, sheetId, { kind: 'row', rowId }),
-      };
-    });
-  }
+    return {
+      key: rowId ?? `${INDEX_KEY_PREFIX}${index}`,
+      cells,
+      values: rowValues(records, sheetId, rowId),
+      place: rowId === null ? null : placeOf(records, sheetId, { kind: 'row', rowId }),
+      instanceId: null,
+    };
+  });
+}
 
-  const [template] = section.rows;
-  const sectionId = template === undefined ? null : firstFieldId(template);
-
-  if (template === undefined || sectionId === null) {
-    return [];
-  }
-
+function repeatRows(
+  template: readonly PresetCell[],
+  sectionId: string,
+  sheetId: string,
+  records: ReadonlyMap<string, VersionedRecord>,
+): SheetRow[] {
   return repeatInstances(records, sheetId, sectionId).map((instance) => ({
     key: instance.instanceId,
     cells: template,
@@ -161,6 +284,7 @@ function sheetRows(
       sectionId,
       instanceId: instance.instanceId,
     }),
+    instanceId: instance.instanceId,
   }));
 }
 

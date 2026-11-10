@@ -2,10 +2,16 @@ import { z } from 'zod';
 
 import type { JsonValue } from '@/core/json';
 import { recordFitsOneMessage } from '@/core/message-size';
-import { firstFieldId, type PresetFieldCell, type PresetTemplate } from '@/core/preset';
+import {
+  firstFieldId,
+  type PresetCell,
+  type PresetFieldCell,
+  type PresetTemplate,
+} from '@/core/preset';
 import {
   fieldValuesSchema,
   repDataSchema,
+  repKeyPrefix,
   type FieldValue,
   type VersionedRecord,
 } from '@/core/records';
@@ -48,7 +54,7 @@ export type FieldPatchFailure = 'unknown-instance' | 'unchanged';
 export function patchRecordKey(sheetId: string, target: FieldPatchTarget): string {
   return target.kind === 'row'
     ? `row:${sheetId}:${target.rowId}`
-    : `rep:${sheetId}:${target.sectionId}:${target.instanceId}`;
+    : `${repKeyPrefix(sheetId, target.sectionId)}${target.instanceId}`;
 }
 
 // The field with this id in the targeted row: a plain row whose first field names it, or the
@@ -58,23 +64,15 @@ export function findPatchField(
   target: FieldPatchTarget,
   fieldId: string,
 ): PresetFieldCell | null {
-  for (const section of template.sections) {
-    const isRepeat = section.repeat === true;
+  const row = targetRow(template, target);
+  const field = row?.find((cell) => cell.kind === 'field' && cell.id === fieldId);
 
-    if (isRepeat === (target.kind === 'rep')) {
-      for (const row of section.rows) {
-        const rowId = firstFieldId(row);
+  return field?.kind === 'field' ? field : null;
+}
 
-        if (rowId !== null && rowId === (target.kind === 'row' ? target.rowId : target.sectionId)) {
-          const field = row.find((cell) => cell.kind === 'field' && cell.id === fieldId);
-
-          return field?.kind === 'field' ? field : null;
-        }
-      }
-    }
-  }
-
-  return null;
+// A repeat section is named by the id of its template row's first field.
+export function isRepeatSectionId(template: PresetTemplate, sectionId: string): boolean {
+  return targetRow(template, { kind: 'rep', sectionId }) !== null;
 }
 
 // `number` takes a finite number, `text` a non-empty string and `check` a boolean. Any type may
@@ -157,4 +155,23 @@ function withValue(
   }
 
   return next;
+}
+
+function targetRow(
+  template: PresetTemplate,
+  target: { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string },
+): readonly PresetCell[] | null {
+  const id = target.kind === 'row' ? target.rowId : target.sectionId;
+
+  for (const section of template.sections) {
+    if ((section.repeat === true) === (target.kind === 'rep')) {
+      const row = section.rows.find((cells) => firstFieldId(cells) === id);
+
+      if (row !== undefined) {
+        return row;
+      }
+    }
+  }
+
+  return null;
 }

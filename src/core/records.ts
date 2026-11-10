@@ -80,6 +80,12 @@ export function parseStoredRecord(
   }
 }
 
+// The key prefix of every row one sheet has in one repeat section. It ends with ":", so a sheet "a"
+// never reads the rows of a sheet "ab".
+export function repKeyPrefix(sheetId: string, sectionId: string): string {
+  return `rep:${sheetId}:${sectionId}:`;
+}
+
 // A tombstoned sheet is deleted, so it does not count.
 export function hasLiveSheet(records: Iterable<VersionedRecord>): boolean {
   for (const record of records) {

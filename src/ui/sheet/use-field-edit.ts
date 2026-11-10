@@ -343,7 +343,7 @@ export function useCheckFieldEdit({ place, fieldId, recordValue }: FieldArgument
   };
 }
 
-function useFieldEditing(): FieldEditing {
+export function useFieldEditing(): FieldEditing {
   const editing = useContext(FieldEditingContext);
 
   if (editing === null) {

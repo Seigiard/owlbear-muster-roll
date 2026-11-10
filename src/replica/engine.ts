@@ -4,16 +4,19 @@ import { createBoundedIdSet } from '@/core/bounded-id-set';
 import {
   acceptedFieldValue,
   findPatchField,
+  isRepeatSectionId,
   patchedRecord,
   patchedRecordFits,
   patchRecordKey,
 } from '@/core/field-patch';
 import { jsonByteLength, recordFitsOneMessage, splitBatch } from '@/core/message-size';
 import { mergeRecords } from '@/core/merge';
-import { decodePreset, encodePreset, type Preset } from '@/core/preset';
+import { decodePreset, encodePreset, type Preset, type PresetTemplate } from '@/core/preset';
 import {
   hasLiveSheet,
   presetDataSchema,
+  repDataSchema,
+  repKeyPrefix,
   sheetDataSchema,
   type SheetData,
   type VersionedRecord,
@@ -316,6 +319,10 @@ export async function startReplicaEngine(
         return listOf(composePresetUpload(command));
       case 'field-patch':
         return listOf(composeFieldPatch(command));
+      case 'repeat-row-add':
+        return listOf(composeRepeatRowAdd(command));
+      case 'repeat-row-delete':
+        return listOf(composeRepeatRowDelete(command));
       default:
         return unknownCommand(command);
     }
@@ -353,25 +360,13 @@ export async function startReplicaEngine(
   function composeFieldPatch(
     command: Extract<Command, { type: 'field-patch' }>,
   ): Result<VersionedRecord, RejectionReason> {
-    const current = liveSheetRecord(command.sheetId);
+    const template = sheetTemplate(command.sheetId, 'unknown-field');
 
-    if (!current.ok) {
-      return current;
+    if (!template.ok) {
+      return template;
     }
 
-    const sheet = sheetDataSchema.safeParse(current.value.d);
-    const preset = currentPreset();
-
-    if (!sheet.success) {
-      return err('unknown-sheet');
-    }
-
-    if (preset === null) {
-      return err('unknown-field');
-    }
-
-    const template = sheet.data.kind === 'pc' ? preset.character : preset.npc;
-    const field = findPatchField(template, command.target, command.fieldId);
+    const field = findPatchField(template.value, command.target, command.fieldId);
 
     if (field === null) {
       return err('unknown-field');
@@ -404,6 +399,106 @@ export async function startReplicaEngine(
     const { c, a } = minter.mint(patched.value.k, existing?.c ?? 0);
 
     return ok({ ...patched.value, c, a });
+  }
+
+  // A new row goes after every row this sheet has in the section. The id is the window's, so a
+  // tombstone's id counts as taken: a deleted row must never come back.
+  function composeRepeatRowAdd(
+    command: Extract<Command, { type: 'repeat-row-add' }>,
+  ): Result<VersionedRecord, RejectionReason> {
+    const section = repeatSection(command);
+
+    if (!section.ok) {
+      return section;
+    }
+
+    if (!sheetIdSchema.safeParse(command.instanceId).success) {
+      return err('invalid-instance-id');
+    }
+
+    const k = repKey(command);
+
+    if (replica.has(k)) {
+      return err('instance-exists');
+    }
+
+    const { c, a } = minter.mint(k, 0);
+    const record: VersionedRecord = { k, d: { order: nextRowOrder(command), cells: {} }, c, a };
+
+    return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+  }
+
+  function composeRepeatRowDelete(
+    command: Extract<Command, { type: 'repeat-row-delete' }>,
+  ): Result<VersionedRecord, RejectionReason> {
+    const section = repeatSection(command);
+
+    if (!section.ok) {
+      return section;
+    }
+
+    const current = replica.get(repKey(command));
+
+    return current === undefined || current.d === null
+      ? err('unknown-instance')
+      : ok(tombstone(current));
+  }
+
+  // The sheet must be live and the section a repeat section of the sheet's own template.
+  function repeatSection(command: {
+    sheetId: string;
+    sectionId: string;
+  }): Result<null, RejectionReason> {
+    const template = sheetTemplate(command.sheetId, 'unknown-section');
+
+    if (!template.ok) {
+      return template;
+    }
+
+    return isRepeatSectionId(template.value, command.sectionId) ? ok(null) : err('unknown-section');
+  }
+
+  // `noPreset` names the rejection for a sheet whose template cannot be known yet.
+  function sheetTemplate(
+    sheetId: string,
+    noPreset: RejectionReason,
+  ): Result<PresetTemplate, RejectionReason> {
+    const current = liveSheetRecord(sheetId);
+
+    if (!current.ok) {
+      return current;
+    }
+
+    const sheet = sheetDataSchema.safeParse(current.value.d);
+    const preset = currentPreset();
+
+    if (!sheet.success) {
+      return err('unknown-sheet');
+    }
+
+    if (preset === null) {
+      return err(noPreset);
+    }
+
+    return ok(sheet.data.kind === 'pc' ? preset.character : preset.npc);
+  }
+
+  // A tombstone holds no order, so only live rows count.
+  function nextRowOrder(command: { sheetId: string; sectionId: string }): number {
+    const prefix = repKeyPrefix(command.sheetId, command.sectionId);
+    let highest = -1;
+
+    for (const record of replica.values()) {
+      if (record.k.startsWith(prefix)) {
+        const row = repDataSchema.safeParse(record.d);
+
+        if (row.success) {
+          highest = Math.max(highest, row.data.order);
+        }
+      }
+    }
+
+    return highest + 1;
   }
 
   function currentPreset(): Preset | null {
@@ -491,6 +586,12 @@ export async function startReplicaEngine(
   });
 
   return { stop: unsubscribe };
+}
+
+function repKey(command: { sheetId: string; sectionId: string; instanceId: string }): string {
+  const { sheetId, sectionId, instanceId } = command;
+
+  return patchRecordKey(sheetId, { kind: 'rep', sectionId, instanceId });
 }
 
 function listOf<Value, Failure>(result: Result<Value, Failure>): Result<Value[], Failure> {

@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 
 const VARIANT_CLASS = {
@@ -13,6 +13,9 @@ export type PressableProps = {
   // A control is disabled only through its reason, so no disabled control can lack one.
   disabledReason?: string;
   autoFocus?: boolean;
+  // Replaces the visible text as the name, for a control that repeats and must say which one it is.
+  accessibleName?: string;
+  ref?: Ref<HTMLButtonElement>;
 };
 
 type ButtonProps = PressableProps & { variant?: keyof typeof VARIANT_CLASS };
@@ -27,12 +30,16 @@ export function Pressable({
   onPress,
   disabledReason,
   autoFocus,
+  accessibleName,
+  ref,
 }: PressableProps & { className: string }): ReactNode {
   const reasonId = useId();
   const isDisabled = disabledReason !== undefined;
 
   const button = (
     <AriaButton
+      ref={ref}
+      aria-label={accessibleName}
       className={`touch-target inline-flex items-center justify-center data-disabled:opacity-50 ${className}`}
       isDisabled={isDisabled}
       onPress={onPress}

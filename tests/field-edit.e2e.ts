@@ -603,7 +603,7 @@ test('passing through a number field that holds a string or an exponent form cha
   }).toEqual({ messages: 0, str: 'много', dex: '1e+21', sent: 0 });
 });
 
-test('Tab goes through the tab bar, the header, then every field in preset order', async ({
+test('Tab goes through the tab bar, the header, then every field and row control in preset order', async ({
   page,
   context,
 }) => {
@@ -614,7 +614,7 @@ test('Tab goes through the tab bar, the header, then every field in preset order
   const reached: string[] = [];
 
   // #when
-  for (let press = 0; press < 12; press += 1) {
+  for (let press = 0; press < 14; press += 1) {
     // Each step reads the focus the previous key left.
     // oxlint-disable-next-line no-await-in-loop
     reached.push(await focusedControl(page));
@@ -635,6 +635,8 @@ test('Tab goes through the tab bar, the header, then every field in preset order
     'textbox Девиз',
     'textbox attack',
     'textbox bonus',
+    'button Удалить строку 1',
+    'button Добавить строку',
     'checkbox Отдых',
   ]);
 });

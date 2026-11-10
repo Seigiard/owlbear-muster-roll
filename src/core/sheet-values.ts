@@ -2,6 +2,7 @@ import type { PresetCell, PresetSection } from '@/core/preset';
 import {
   fieldValuesSchema,
   repDataSchema,
+  repKeyPrefix,
   type FieldValue,
   type VersionedRecord,
 } from '@/core/records';
@@ -27,14 +28,13 @@ export function rowValues(
   return data.success ? new Map(Object.entries(data.data)) : NO_VALUES;
 }
 
-// Ties compare by code unit, not by locale, so every client and reload gets the same order. The
-// prefix ends with ":", so a sheet "a" never reads the instances of a sheet "ab".
+// Ties compare by code unit, not by locale, so every client and reload gets the same order.
 export function repeatInstances(
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
   sectionId: string,
 ): RepeatInstance[] {
-  const prefix = `rep:${sheetId}:${sectionId}:`;
+  const prefix = repKeyPrefix(sheetId, sectionId);
   const instances: (RepeatInstance & { order: number })[] = [];
 
   for (const record of records.values()) {

@@ -2201,6 +2201,344 @@ describe('field-patch', () => {
   });
 });
 
+describe('repeat rows', () => {
+  // Two repeat sections, so a row of one never counts for the other, and an NPC template with none.
+  const ROWS_PRESET: Preset = {
+    v: 1,
+    character: {
+      sections: [
+        { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] },
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+            ],
+          ],
+        },
+        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
+      ],
+    },
+    npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+  };
+
+  async function rowsRig(
+    ...records: VersionedRecord[]
+  ): Promise<{ rig: Rig; engine: ReplicaEngine; view: WindowView }> {
+    const rig = createRig();
+
+    seed(
+      rig,
+      'preset',
+      JSON.stringify({ k: 'preset', d: encodePreset(ROWS_PRESET), c: 1, a: 'z' }),
+    );
+
+    for (const record of [sheet('brok', 'Брок'), sheet('liza', 'Лиза'), ...records]) {
+      seed(rig, record.k, JSON.stringify(record));
+    }
+
+    const engine = await startEngine(rig);
+
+    return { rig, engine, view: await openAndLoad(rig) };
+  }
+
+  test('adds a row with the sent id, order 0 and empty cells, and persists it', async () => {
+    // #given
+    const { rig, view } = await rowsRig();
+
+    // #when
+    view.client.sendCommand(addRow('r1'));
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    const expected = {
+      k: 'rep:brok:attack:r1',
+      d: { order: 0, cells: {} },
+      c: 1,
+      a: 'mock-connection',
+    };
+
+    expect({
+      window: view.store.$records.get().get('rep:brok:attack:r1'),
+      stored: storedRecord(rig, 'rep:brok:attack:r1'),
+    }).toEqual({ window: expected, stored: expected });
+  });
+
+  test("puts a new row above the section's highest order, counting no other section or sheet", async () => {
+    // #given
+    const { rig, view } = await rowsRig(
+      rep('rep:brok:attack:a', 3),
+      rep('rep:brok:attack:b', 7),
+      rep('rep:brok:item:c', 40),
+      rep('rep:liza:attack:d', 50),
+    );
+
+    // #when
+    view.client.sendCommand(addRow('r1'));
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect(view.store.$records.get().get('rep:brok:attack:r1')?.d).toEqual({ order: 8, cells: {} });
+  });
+
+  test("leaves the other character's rows as they were", async () => {
+    // #given
+    const { rig, view } = await rowsRig(rep('rep:liza:attack:d', 0, { attack: 'Лук' }));
+
+    // #when
+    view.client.sendCommand(addRow('r1'));
+    view.client.sendCommand(addRow('r2'));
+    await waitUntil(() => deltas(rig).length === 2);
+
+    // #then
+    expect(
+      byKey(recordsOf(view.store).filter((one) => one.k.startsWith('rep:'))).map((one) => one.k),
+    ).toEqual(['rep:brok:attack:r1', 'rep:brok:attack:r2', 'rep:liza:attack:d']);
+  });
+
+  test('tombstones the deleted row and leaves the others', async () => {
+    // #given
+    const { rig, view } = await rowsRig(
+      rep('rep:brok:attack:a', 0, { attack: 'Меч' }),
+      rep('rep:brok:attack:b', 1, { attack: 'Нож' }),
+    );
+
+    // #when
+    view.client.sendCommand(deleteRow('a'));
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    const tombstone = { k: 'rep:brok:attack:a', d: null, c: 2, a: 'mock-connection' };
+
+    expect({
+      window: view.store.$records.get().get('rep:brok:attack:a'),
+      stored: storedRecord(rig, 'rep:brok:attack:a'),
+      other: view.store.$records.get().get('rep:brok:attack:b'),
+    }).toEqual({
+      window: tombstone,
+      stored: tombstone,
+      other: rep('rep:brok:attack:b', 1, { attack: 'Нож' }),
+    });
+  });
+
+  test('puts a row added after the last one was deleted after every live row', async () => {
+    // #given: "A0" sorts before "a" by id, so only its order can put it last.
+    const { rig, view } = await rowsRig(rep('rep:brok:attack:a', 0), rep('rep:brok:attack:b', 1));
+
+    view.client.sendCommand(deleteRow('b'));
+
+    // #when
+    view.client.sendCommand(addRow('A0'));
+    await waitUntil(() => deltas(rig).length === 2);
+
+    // #then
+    expect(view.store.$records.get().get('rep:brok:attack:A0')?.d).toEqual({ order: 1, cells: {} });
+  });
+
+  test('saves a field of an added row into its cells, keeps its order, and a clear drops the key', async () => {
+    // #given
+    const { rig, view } = await rowsRig(rep('rep:brok:attack:a', 4));
+
+    view.client.sendCommand(addRow('r1'));
+
+    // #when
+    view.client.sendCommand({
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'rep', sectionId: 'attack', instanceId: 'r1' },
+      fieldId: 'bonus',
+      value: 2,
+    });
+    view.client.sendCommand({
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'rep', sectionId: 'attack', instanceId: 'r1' },
+      fieldId: 'attack',
+      value: 'Топор',
+    });
+    view.client.sendCommand({
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'rep', sectionId: 'attack', instanceId: 'r1' },
+      fieldId: 'bonus',
+      value: null,
+    });
+    await waitUntil(() => deltas(rig).length === 4);
+
+    // #then
+    expect(storedRecord(rig, 'rep:brok:attack:r1')).toEqual({
+      k: 'rep:brok:attack:r1',
+      d: { order: 5, cells: { attack: 'Топор' } },
+      c: 4,
+      a: 'mock-connection',
+    });
+  });
+
+  test('shows the same rows after the background restarts over the same storage', async () => {
+    // #given
+    const { rig, engine, view } = await rowsRig(rep('rep:brok:attack:a', 0));
+
+    view.client.sendCommand(addRow('r1'));
+    view.client.sendCommand(addRow('r2'));
+    view.client.sendCommand(deleteRow('a'));
+    view.client.sendCommand(deleteRow('r1'));
+    await waitUntil(() => deltas(rig).length === 4);
+    engine.stop();
+    view.client.stop();
+
+    // #when
+    await startEngine(rig);
+
+    const second = await openAndLoad(rig);
+
+    // #then
+    expect(byKey(recordsOf(second.store).filter((one) => one.k.startsWith('rep:')))).toEqual([
+      { k: 'rep:brok:attack:a', d: null, c: 2, a: 'mock-connection' },
+      { k: 'rep:brok:attack:r1', d: null, c: 2, a: 'mock-connection' },
+      { k: 'rep:brok:attack:r2', d: { order: 2, cells: {} }, c: 1, a: 'mock-connection' },
+    ]);
+  });
+
+  test.each<[string, string, Command, VersionedRecord[]]>([
+    ['an add to an unknown sheet', 'unknown-sheet', addRow('r1', 'nobody'), []],
+    [
+      'an add to a deleted sheet',
+      'deleted-sheet',
+      addRow('r1', 'gone'),
+      [{ k: 'sheet:gone', d: null, c: 2, a: 'z' }],
+    ],
+    [
+      'an add to a sheet id outside the nanoid alphabet',
+      'invalid-sheet-id',
+      addRow('r1', 'a:b'),
+      [],
+    ],
+    ['an add to a plain row', 'unknown-section', addRow('r1', 'brok', 'str'), []],
+    [
+      'an add to a field that does not name its section',
+      'unknown-section',
+      addRow('r1', 'brok', 'bonus'),
+      [],
+    ],
+    ['an add to a section not in the preset', 'unknown-section', addRow('r1', 'brok', 'spell'), []],
+    [
+      'an add to a character section on an NPC',
+      'unknown-section',
+      addRow('r1', 'goblin'),
+      [{ k: 'sheet:goblin', d: { kind: 'npc', name: 'Гоблин', order: 0 }, c: 1, a: 'z' }],
+    ],
+    [
+      'an add with the id of a live row',
+      'instance-exists',
+      addRow('a'),
+      [rep('rep:brok:attack:a', 0)],
+    ],
+    [
+      'an add with the id of a deleted row',
+      'instance-exists',
+      addRow('a'),
+      [{ k: 'rep:brok:attack:a', d: null, c: 2, a: 'z' }],
+    ],
+    ['an add with an id outside the nanoid alphabet', 'invalid-instance-id', addRow('a:b'), []],
+    ['an add with an empty id', 'invalid-instance-id', addRow(''), []],
+    ['a delete on an unknown sheet', 'unknown-sheet', deleteRow('a', 'nobody'), []],
+    [
+      'a delete on a deleted sheet',
+      'deleted-sheet',
+      deleteRow('a', 'gone'),
+      [{ k: 'sheet:gone', d: null, c: 2, a: 'z' }],
+    ],
+    [
+      'a delete on a sheet id outside the nanoid alphabet',
+      'invalid-sheet-id',
+      deleteRow('a', 'a:b'),
+      [],
+    ],
+    [
+      'a delete in a character section on an NPC',
+      'unknown-section',
+      deleteRow('a', 'goblin'),
+      [
+        { k: 'sheet:goblin', d: { kind: 'npc', name: 'Гоблин', order: 0 }, c: 1, a: 'z' },
+        rep('rep:goblin:attack:a', 0),
+      ],
+    ],
+    ['a delete in a plain row', 'unknown-section', deleteRow('a', 'brok', 'str'), []],
+    ['a delete of an unknown row', 'unknown-instance', deleteRow('a'), []],
+    [
+      'a delete of a deleted row',
+      'unknown-instance',
+      deleteRow('a'),
+      [{ k: 'rep:brok:attack:a', d: null, c: 2, a: 'z' }],
+    ],
+    [
+      "a delete of another sheet's row",
+      'unknown-instance',
+      deleteRow('d'),
+      [rep('rep:liza:attack:d', 0)],
+    ],
+    [
+      'a delete of a row of another section',
+      'unknown-instance',
+      deleteRow('c'),
+      [rep('rep:brok:item:c', 0)],
+    ],
+  ])('rejects %s and changes nothing', async (_name, reason, command, records) => {
+    // #given
+    const { rig, view } = await rowsRig(...records);
+    const before = recordsOf(view.store);
+
+    // #when
+    const rejection = await rejectionOf(view, command);
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: reason,
+      unchanged: { records: before, deltas: 0 },
+    });
+  });
+
+  test('rejects an add while no preset is loaded', async () => {
+    // #given
+    const rig = createRig();
+
+    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok')));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, addRow('r1'));
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'unknown-section',
+      unchanged: { records: [sheet('brok')], deltas: 0 },
+    });
+  });
+});
+
+function addRow(instanceId: string, sheetId = 'brok', sectionId = 'attack'): Command {
+  return { type: 'repeat-row-add', sheetId, sectionId, instanceId };
+}
+
+function deleteRow(instanceId: string, sheetId = 'brok', sectionId = 'attack'): Command {
+  return { type: 'repeat-row-delete', sheetId, sectionId, instanceId };
+}
+
+function rep(
+  key: string,
+  order: number,
+  cells: Record<string, string | number> = {},
+): VersionedRecord {
+  return { k: key, d: { order, cells }, c: 1, a: 'z' };
+}
+
+function storedRecord(rig: Rig, key: string): VersionedRecord | null {
+  return storedRecords(rig).find((one) => one.k === key) ?? null;
+}
+
 function examplePreset(): Preset {
   const parsed = parsePresetFile(EXAMPLE_PRESET_TEXT);
 

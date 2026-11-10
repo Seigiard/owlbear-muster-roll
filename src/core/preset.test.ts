@@ -13,7 +13,9 @@ import {
   firstFieldId,
   formatPresetFile,
   parsePresetFile,
+  resolveFieldReference,
   type Preset,
+  type PresetTemplate,
 } from './preset';
 
 const EXAMPLE_PATH = join(import.meta.dir, '../../docs/example-preset.json');
@@ -373,6 +375,98 @@ describe('firstFieldId', () => {
 
     // #then
     expect(id).toBeNull();
+  });
+});
+
+describe('resolveFieldReference', () => {
+  // `bonus` sits in the attack row and in the sheet's grid. `weight` only in another repeat section.
+  // Sections: 0 grid, 1 attacks (repeat), 2 inventory (repeat), 3 a dice row with no field.
+  const TEMPLATE: PresetTemplate = {
+    sections: [
+      {
+        rows: [
+          [
+            { kind: 'text', text: 'Сила' },
+            { kind: 'field', type: 'number', id: 'str' },
+          ],
+          [
+            { kind: 'field', type: 'number', id: 'level' },
+            { kind: 'field', type: 'number', id: 'bonus' },
+          ],
+        ],
+      },
+      {
+        repeat: true,
+        rows: [
+          [
+            { kind: 'field', type: 'text', id: 'attack' },
+            { kind: 'field', type: 'number', id: 'bonus' },
+            { kind: 'dice', formula: '1d20+bonus+str' },
+          ],
+        ],
+      },
+      {
+        repeat: true,
+        rows: [
+          [
+            { kind: 'field', type: 'text', id: 'item' },
+            { kind: 'field', type: 'number', id: 'weight' },
+          ],
+        ],
+      },
+      { rows: [[{ kind: 'dice', formula: '1d20+str' }]] },
+    ],
+  };
+
+  test.each<
+    [string, PresetTemplate, number, number, string, ReturnType<typeof resolveFieldReference>]
+  >([
+    [
+      'an id in the same repeat row over one elsewhere on the sheet',
+      TEMPLATE,
+      1,
+      0,
+      'bonus',
+      { scope: 'row' },
+    ],
+    [
+      'an id only in the non-repeat scope, from a repeat row',
+      TEMPLATE,
+      1,
+      0,
+      'str',
+      { scope: 'sheet', rowId: 'str' },
+    ],
+    [
+      'an id in another row of the sheet, named by that row',
+      TEMPLATE,
+      1,
+      0,
+      'level',
+      { scope: 'sheet', rowId: 'level' },
+    ],
+    ['an id in the same plain row', TEMPLATE, 0, 1, 'bonus', { scope: 'row' }],
+    [
+      'an id of another plain row, from a row with no field',
+      TEMPLATE,
+      3,
+      0,
+      'str',
+      { scope: 'sheet', rowId: 'str' },
+    ],
+    ['an id only in another repeat section', TEMPLATE, 1, 0, 'weight', null],
+    ['a repeat id from a plain row', TEMPLATE, 0, 0, 'attack', null],
+    ['an id the template does not hold', TEMPLATE, 1, 0, 'hp', null],
+    ['a sheet id from a section index past the template', TEMPLATE, 9, 0, 'str', null],
+    ['a sheet id from a row index past a real section', TEMPLATE, 1, 1, 'str', null],
+    ['a sheet id from a negative row index', TEMPLATE, 0, -1, 'str', null],
+    ['a sheet id from a negative section index', TEMPLATE, -1, 0, 'str', null],
+  ])('resolves %s', (_name, template, sectionIndex, rowIndex, id, expected) => {
+    // #when
+    const reference = resolveFieldReference(template, { sectionIndex, rowIndex }, id);
+
+    // #then
+    expect(reference).toEqual(expected);
   });
 });
 

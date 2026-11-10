@@ -59,6 +59,13 @@ export type PresetCell = z.infer<typeof cellSchema>;
 
 export type PresetFieldCell = z.infer<typeof fieldCellSchema>;
 
+// A row of a template by position, so a row with no field, as a dice row, can be named too.
+export type TemplateRowPlace = { sectionIndex: number; rowIndex: number };
+
+// `row`: the same row, and for a repeat row the same instance. `sheet`: the `row:` record of
+// `rowId` on the same sheet. The caller reads values only from the sheet the cell is on.
+export type FieldReference = { scope: 'row' } | { scope: 'sheet'; rowId: string };
+
 export type PresetFailure =
   | { code: 'too-large' }
   | { code: 'not-json' }
@@ -154,6 +161,34 @@ export function firstFieldId(row: readonly PresetCell[]): string | null {
   }
 
   return null;
+}
+
+// Where `id` resolves from a cell of the row at `from`: its own row first, then the template's
+// non-repeat scope. A field of a repeat section is reachable only from inside its own row, so an id
+// found only in another repeat section, or only in another template, resolves to `null`.
+export function resolveFieldReference(
+  template: PresetTemplate,
+  from: TemplateRowPlace,
+  id: string,
+): FieldReference | null {
+  const row = template.sections[from.sectionIndex]?.rows[from.rowIndex];
+
+  if (row === undefined) {
+    return null;
+  }
+
+  if (hasField(row, id)) {
+    return { scope: 'row' };
+  }
+
+  const owner = template.sections
+    .filter((section) => section.repeat !== true)
+    .flatMap((section) => section.rows)
+    .find((other) => hasField(other, id));
+
+  const rowId = owner === undefined ? null : firstFieldId(owner);
+
+  return rowId === null ? null : { scope: 'sheet', rowId };
 }
 
 // All non-repeat fields of one template are one scope, and each repeat row is its own.
@@ -279,4 +314,8 @@ function toBase64(bytes: Uint8Array): string {
 
 function fromBase64(text: string): Uint8Array {
   return Uint8Array.from(atob(text), (character) => character.charCodeAt(0));
+}
+
+function hasField(row: readonly PresetCell[], id: string): boolean {
+  return row.some((cell) => cell.kind === 'field' && cell.id === id);
 }
