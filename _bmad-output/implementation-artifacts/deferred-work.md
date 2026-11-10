@@ -25,3 +25,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-keep-records-safe-in-the-browser.md`
   summary: Prove through a real reload that the browser storage adapter persists.
   evidence: Tests inject their own getter. TASK-6 is the first production caller.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-own-the-replica-in-the-background.md`
+  summary: Give the window delivery evidence for commands, or send them only while live.
+  evidence: `sendCommand` returns `ok` on enqueue, and a command with no listening engine vanishes. Story 1.6 is the first caller.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-own-the-replica-in-the-background.md`
+  summary: Expose loaded versus empty from the projection store and clear old rejections.
+  evidence: The client phase is private. Story 1.5 adds the no-preset state.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-own-the-replica-in-the-background.md`
+  summary: Decide how a corrupt stored sheet clears its banner.
+  evidence: Its random key is never written again, so the notice stays until the stored value goes.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-own-the-replica-in-the-background.md`
+  summary: Test that projection assembly refuses parts of another answer.
+  evidence: No test delivers a part from another engine or sequence into an open assembly.
