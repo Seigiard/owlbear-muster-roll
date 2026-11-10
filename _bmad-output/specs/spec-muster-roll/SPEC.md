@@ -81,7 +81,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 
 ## Constraints
 
-- No own server in v1. Live exchange needs a GM online. A hidden GM tab in Chrome stopped receiving edits after about 13 minutes, so a hidden tab does not count as online.
+- No own server in v1. Live exchange needs a GM online. A hidden GM tab in Chrome stopped receiving edits after about 13 minutes, so a GM counts as online only when a GM client answers. A hidden tab that still answers counts as online, and a frozen one does not.
 - Full data lives in the GM's browser. Room metadata holds only a compressed snapshot, and only when it fits.
 - Room metadata is under 16kB in total and is shared with other extensions. The extension checks free space before it writes, because Owlbear reports success for a write past the limit and drops it.
 - Broadcast messages are limited to 16KB.

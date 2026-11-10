@@ -29,6 +29,8 @@ Example: `1d20 <= str - 2*str_tired`.
 - A check counts as 0 or 1.
 - Formulas support `floor`, `ceil` and roll-under.
 - A formula with an empty, non-numeric or removed field shows an error and does not roll.
+- A preset with a formula syntax error, an unknown function or a dice term outside 1 to 100 dice and 1 to 1000 sides is refused at upload.
+- A dice button's label is the nearest preceding `text` cell in its row, otherwise its formula.
 - Formulas run through a small parser, never `eval`.
 - Anyone who can see a sheet can roll its dice cells.
 - The extension rolls itself. A result from a character sheet goes to everyone by broadcast, with the roller's name.
@@ -44,5 +46,6 @@ The GM downloads the JSON file, edits it and uploads it. An upload that removes 
 | Add a field | The field is empty |
 | Remove a field | Its values are erased after the confirmation |
 | Rename a field (same id) | Keeps its values |
+| Change a field's type (same id) | Counts as a removal: its values are erased after the confirmation |
 
 A formula that refers to a removed field shows the error above.

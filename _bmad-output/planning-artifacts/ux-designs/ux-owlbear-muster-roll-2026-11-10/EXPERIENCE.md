@@ -56,6 +56,7 @@ Short and literal. Commands are perfective verbs. Places are nouns. Statuses are
 | No GM | "Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку." |
 | Room copy not saved | "Копия в комнате не сохранена. Игра идёт дальше, но скачайте снимок." |
 | Local save failed | "Не удалось сохранить в браузере. Скачайте снимок." |
+| Room copy unreadable | "Копия в комнате не читается. Дождитесь ГМ." |
 | New version | "Вышла новая версия. Перезагрузите страницу." |
 | Preset upload removes values | "Значения удалённых полей будут стёрты: {count}. Загрузить пресет?" |
 | Preset upload removes nothing | "Формат листов изменён." |
@@ -63,12 +64,14 @@ Short and literal. Commands are perfective verbs. Places are nouns. Statuses are
 | Snapshot import drops values | Add to the import message: "Не войдут значения удалённых полей: {count}." |
 | Delete | "Удалить «{name}»? Это нельзя отменить." |
 | Bad formula | "Нельзя бросить: поле «{field}» пустое или не число" |
+| Bad formula result | "Нельзя бросить: формула не дала числа" |
 | Bad number | "Нужно число" |
+| Bad duplicate count | "Нужно число от 1 до 50" |
 | Value too long | "Слишком длинно" |
 | Bad file | "Файл не подошёл: {reason}. Ничего не изменено." |
 | Newer file | "Файл из более новой версии. Перезагрузите страницу." |
 | No preset for a snapshot | "Сначала загрузите пресет." |
-| Roll | "{roller}: {sheet}, {cell} — {result}" |
+| Roll | "{roller}: {sheet}, {cell} — {result}". `{result}` is the rolled number, and for a comparison also "успех" or "провал" |
 | Edit denied | "Нет прав на правку" |
 | Data replaced | "Данные комнаты заменены" |
 | Guest note | "Гость привязан к своему браузеру. Из другого браузера доступ придётся выдать снова." |
@@ -80,7 +83,7 @@ Short and literal. Commands are perfective verbs. Places are nouns. Statuses are
 | Tab bar | All surfaces | Character tabs scroll horizontally when they overflow, also with a vertical mouse wheel. A token opening a tab scrolls it into view. The player's own character is first and marked "вы". NPC and the gear stay pinned at the right for the GM. The GM's "+" follows the last character, scrolls with the tabs and is a button outside the tab list |
 | Character header | Character tab | Name. GM: click to rename, "Доступ" chip, token status, "⋯" with "Удалить". Player: "Можно править" or "Только чтение" |
 | New sheet | "+", "Добавить NPC" | Creates a sheet named "Новый персонаж" or "Новый NPC", opens it and focuses the name |
-| Access panel | Character tab | Opens inline under the header. One row per player id, GMs excluded, from players in the room and players who already hold rights, by last known name. A radio group "Его персонаж" with a "Никто" option, and a checkbox "Может править" per player. Choosing an owner also turns editing on, and the GM can turn it off. Changes apply at once. With no players: "Пока никого нет". Shows the guest note |
+| Access panel | Character tab | Opens inline under the header. One row per player id, GMs excluded, from players in the room and players who already hold rights, by last known name. A radio group "Его персонаж" with a "Никто" option, and a checkbox "Может править" per player. Choosing an owner also turns editing on, and the GM can turn it off. Changing or clearing the owner does not change the previous owner's editing. Changes apply at once. With no players: "Пока никого нет". Shows the guest note |
 | Preset cell | Sheets, NPCs | `text` renders its label. `field` renders its value. `dice` renders a dice button. A field's accessible name is the nearest preceding `text` cell in its row, otherwise its id |
 | Field value | Sheets, NPCs | Click to edit in place, with no edit mode. A `check` toggles and saves on one click. A `text` or `number` field saves on blur or after a typing pause. A blur with no change sends nothing. A bad number or too long a value stays in the field with an error under it and is not saved. Empty values show an empty editable area. Read-only values take no focus |
 | Repeat row | Sheets, NPCs | "Добавить строку" adds a row at the end. Each row has a "Удалить" control. Shown only with edit rights |
