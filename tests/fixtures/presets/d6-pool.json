@@ -1,0 +1,196 @@
+{
+  "v": 1,
+  "character": {
+    "sections": [
+      {
+        "title": "Характеристики",
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "text": "СИЛ"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "str"
+            },
+            {
+              "kind": "text",
+              "text": "ЛОВ"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "dex"
+            },
+            {
+              "kind": "text",
+              "text": "ИНТ"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "int"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Навыки",
+        "columns": 3,
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "text": "Стрельба"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "gun"
+            },
+            {
+              "kind": "dice",
+              "formula": "2D6 + gun >= 8"
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "text": "Пилот"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "pilot"
+            },
+            {
+              "kind": "dice",
+              "formula": "2D6 + pilot >= 8"
+            }
+          ],
+          [
+            {
+              "kind": "dice",
+              "formula": "2D6"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Состояние",
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "text": "Ранен"
+            },
+            {
+              "kind": "field",
+              "type": "check",
+              "id": "wounded"
+            },
+            {
+              "kind": "text",
+              "text": "Заметки"
+            },
+            {
+              "kind": "field",
+              "type": "text",
+              "id": "notes"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Снаряжение",
+        "repeat": true,
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "text": "Вещь"
+            },
+            {
+              "kind": "field",
+              "type": "text",
+              "id": "item"
+            },
+            {
+              "kind": "text",
+              "text": "Масса"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "mass"
+            }
+          ]
+        ]
+      }
+    ]
+  },
+  "npc": {
+    "sections": [
+      {
+        "title": "Профиль",
+        "columns": 4,
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "text": "Навык"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "skill"
+            },
+            {
+              "kind": "text",
+              "text": "Ранен"
+            },
+            {
+              "kind": "field",
+              "type": "check",
+              "id": "wounded"
+            }
+          ],
+          [
+            {
+              "kind": "dice",
+              "formula": "2D6 >= skill"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Снаряжение",
+        "repeat": true,
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "text": "Вещь"
+            },
+            {
+              "kind": "field",
+              "type": "text",
+              "id": "gear"
+            },
+            {
+              "kind": "text",
+              "text": "Носит"
+            },
+            {
+              "kind": "field",
+              "type": "check",
+              "id": "carried"
+            }
+          ]
+        ]
+      }
+    ]
+  }
+}

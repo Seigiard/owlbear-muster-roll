@@ -6,7 +6,7 @@ import { createRoot } from 'react-dom/client';
 
 import { decodePreset, type Preset } from '@/core/preset';
 import { hasLiveSheet, presetDataSchema, type VersionedRecord } from '@/core/records';
-import { liveSheets, sheetKey } from '@/core/sheets';
+import { liveSheets, sheetKey, type SheetSummary } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
 import type { Notice } from '@/core/ui-messages';
 import type { PlayerRole } from '@/core/visibility';
@@ -18,8 +18,9 @@ import type { BannerMessage } from '@/ui/primitives/banner';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
 import { SettingsView } from '@/ui/settings/settings-view';
-import { CharacterHeader } from '@/ui/sheet/character-header';
+import { SheetHeader } from '@/ui/sheet/sheet-header';
 import { DeleteConfirmation } from '@/ui/sheet/delete-confirmation';
+import { NpcTab } from '@/ui/sheet/npc-tab';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { createFieldFlushes, type FieldEditing } from '@/ui/sheet/use-field-edit';
 import { focusTab } from '@/ui/shell/tab-bar';
@@ -37,10 +38,23 @@ const SETTINGS_TAB = 'settings';
 
 type PresetState = 'unknown' | 'absent' | 'present';
 
-// The command id ties a rejection to the creation, so a refused sheet stops waiting for its tab.
-type CreatedTab = { tab: string; commandId: string };
+// A sheet is named by its record key. The command id ties a rejection to the creation, so a
+// refused sheet stops waiting for its tab.
+type CreatedSheet = { sheet: string; commandId: string };
 
-type DeleteAsk = { tab: string; request: number };
+// `neighbours` is `null` for a character. For an NPC it holds the NPC after it, then the one
+// before it, which take the focus when its block goes.
+type DeleteAsk = { sheet: string; request: number; neighbours: readonly string[] | null };
+
+// The command id ties a rejection to the deletion, so a refused one stops waiting.
+type DeletingSheet = { sheet: string; commandId: string; neighbours: readonly string[] | null };
+
+// Where the focus goes once the control that held it is gone: the selected tab, the first of
+// `neighbours` still listed or else "Добавить NPC", or the "⋯" of a sheet whose deletion failed.
+type FocusAfterLoss =
+  | { kind: 'tab' }
+  | { kind: 'npc'; neighbours: readonly string[] }
+  | { kind: 'actions'; sheet: string; tab: string | null };
 
 type WindowRootProps = {
   role: PlayerRole;
@@ -97,6 +111,7 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
   const presetData = presetDataOf(records);
   const preset = useMemo(() => decodedPreset(presetData), [presetData]);
   const characters = useMemo(() => liveSheets(records.values(), 'pc'), [records]);
+  const npcs = useMemo(() => liveSheets(records.values(), 'npc'), [records]);
   const presetState: PresetState = !loaded ? 'unknown' : preset === null ? 'absent' : 'present';
   // Starts unseen, as a projection can land before the first render, and a preset that came with
   // it must still select the first tab.
@@ -104,15 +119,19 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
   const [selectedTab, setSelectedTab] = useState(NPC_TAB);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // A sheet this window created, until its record arrives and its tab can open.
-  const [createdTab, setCreatedTab] = useState<CreatedTab | null>(null);
+  const [created, setCreated] = useState<CreatedSheet | null>(null);
   const [focusNameOf, setFocusNameOf] = useState<string | null>(null);
   // The open confirmation. Kept in memory only, so a window that closes forgets it and deletes
   // nothing.
   const [deleteAsk, setDeleteAsk] = useState<DeleteAsk | null>(null);
   const [focusActionsOf, setFocusActionsOf] = useState<string | null>(null);
-  // A tab this window has confirmed the deletion of, until its sheet is gone.
-  const [deletingTab, setDeletingTab] = useState<string | null>(null);
+  const [focusAddNpc, setFocusAddNpc] = useState(false);
+  // A sheet this window has confirmed the deletion of, until it is gone or the deletion fails.
+  const [deleting, setDeleting] = useState<DeletingSheet | null>(null);
+  const [focusAfterLoss, setFocusAfterLoss] = useState<FocusAfterLoss | null>(null);
   const characterTabs = characters.map((sheet) => sheetKey(sheet.sheetId));
+  // Kept stable between renders, as the focus effect reads it.
+  const npcSheets = useMemo(() => npcs.map((sheet) => sheetKey(sheet.sheetId)), [npcs]);
 
   const editing = useMemo<FieldEditing>(
     () => ({
@@ -134,6 +153,32 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
     setFocusActionsOf(null);
   }, []);
 
+  const clearAddNpcFocus = useCallback(() => {
+    setFocusAddNpc(false);
+  }, []);
+
+  // The tab that shows a sheet, or `null` for a sheet that is not listed.
+  function tabOf(sheet: string): string | null {
+    if (characterTabs.includes(sheet)) {
+      return sheet;
+    }
+
+    return npcSheets.includes(sheet) ? NPC_TAB : null;
+  }
+
+  // The NPC after `sheet`, then the one before it, or `null` for a sheet that is not a listed NPC.
+  function npcNeighbours(sheet: string): readonly string[] | null {
+    const index = npcSheets.indexOf(sheet);
+
+    if (index === -1) {
+      return null;
+    }
+
+    return [npcSheets[index + 1], npcSheets[index - 1]].filter(
+      (neighbour) => neighbour !== undefined,
+    );
+  }
+
   let shownTab = selectedTab;
 
   if (presetState !== seenPresetState) {
@@ -147,12 +192,21 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
     }
   }
 
-  if (createdTab !== null && rejections.has(createdTab.commandId)) {
-    setCreatedTab(null);
-  } else if (createdTab !== null && characterTabs.includes(createdTab.tab)) {
-    setCreatedTab(null);
-    setFocusNameOf(createdTab.tab);
-    shownTab = createdTab.tab;
+  const createdTab = created === null ? null : tabOf(created.sheet);
+
+  if (created !== null && rejections.has(created.commandId)) {
+    setCreated(null);
+  } else if (created !== null && createdTab !== null) {
+    setCreated(null);
+
+    // A character's tab opens. An NPC lands on its own tab and pulls no GM back to it.
+    if (createdTab !== NPC_TAB) {
+      shownTab = createdTab;
+    }
+
+    if (shownTab === createdTab) {
+      setFocusNameOf(created.sheet);
+    }
   }
 
   // A selected sheet that disappears hands the selection to the first tab.
@@ -166,55 +220,124 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
 
   // Another tab, or a sheet deleted elsewhere, closes the confirmation for good, so returning to
   // the tab does not bring it back.
-  if (deleteAsk !== null && shownTab !== deleteAsk.tab) {
+  if (deleteAsk !== null && tabOf(deleteAsk.sheet) !== shownTab) {
     setDeleteAsk(null);
+
+    // An NPC deleted elsewhere takes "Отменить" with it, on a tab that stays open.
+    if (deleteAsk.neighbours !== null && tabOf(deleteAsk.sheet) === null) {
+      setFocusAfterLoss({ kind: 'npc', neighbours: deleteAsk.neighbours });
+    }
   }
 
-  const deletedTabGone = deletingTab !== null && !characterTabs.includes(deletingTab);
+  // The pressed "Удалить" is gone with its block. A refused deletion leaves the sheet, so the
+  // focus goes back to its "⋯".
+  if (deleting !== null && tabOf(deleting.sheet) === null) {
+    setDeleting(null);
+    setFocusAfterLoss(
+      deleting.neighbours === null
+        ? { kind: 'tab' }
+        : { kind: 'npc', neighbours: deleting.neighbours },
+    );
+  } else if (deleting !== null && rejections.has(deleting.commandId)) {
+    setDeleting(null);
+    setFocusAfterLoss({ kind: 'actions', sheet: deleting.sheet, tab: tabOf(deleting.sheet) });
+  }
 
-  // The pressed "Удалить" is gone with its block, so the focus would stay on the page body.
+  // Applied only to focus that fell to the page body, and only on the tab that lost it, so a
+  // target set elsewhere never grabs the focus on a later visit.
   useEffect(() => {
-    if (!deletedTabGone) {
+    if (focusAfterLoss === null) {
       return;
     }
 
-    if (document.activeElement === null || document.activeElement === document.body) {
-      focusTab(shownTab);
+    setFocusAfterLoss(null);
+
+    if (document.activeElement !== null && document.activeElement !== document.body) {
+      return;
     }
 
-    setDeletingTab(null);
-  }, [deletedTabGone, shownTab]);
+    if (focusAfterLoss.kind === 'tab') {
+      focusTab(shownTab);
+    } else if (focusAfterLoss.kind === 'actions') {
+      if (focusAfterLoss.tab === shownTab) {
+        setFocusActionsOf(focusAfterLoss.sheet);
+      }
+    } else if (shownTab === NPC_TAB) {
+      const neighbour = focusAfterLoss.neighbours.find((sheet) => npcSheets.includes(sheet));
 
-  function askDelete(tab: string): void {
+      if (neighbour === undefined) {
+        setFocusAddNpc(true);
+      } else {
+        setFocusActionsOf(neighbour);
+      }
+    }
+  }, [focusAfterLoss, shownTab, npcSheets]);
+
+  function askDelete(sheet: string): void {
+    const neighbours = npcNeighbours(sheet);
+
     // A new request remounts the block, so a repeated "Удалить" takes the focus again.
-    setDeleteAsk((current) => ({ tab, request: (current?.request ?? 0) + 1 }));
+    setDeleteAsk((current) => ({ sheet, request: (current?.request ?? 0) + 1, neighbours }));
   }
 
-  function cancelDelete(tab: string): void {
+  function cancelDelete(sheet: string): void {
     setDeleteAsk(null);
-    setFocusActionsOf(tab);
+    setFocusActionsOf(sheet);
   }
 
-  function confirmDelete(tab: string, sheetId: string): void {
+  function confirmDelete(sheet: SheetSummary): void {
+    const key = sheetKey(sheet.sheetId);
+
     // Closed at once, so a second press on the same block sends no second command.
     setDeleteAsk(null);
-    setDeletingTab(tab);
-    sendCommand({ type: 'sheet-delete', sheetId });
+
+    const sent = sendCommand({ type: 'sheet-delete', sheetId: sheet.sheetId });
+
+    if (sent.ok) {
+      setDeleting({ sheet: key, commandId: sent.value, neighbours: npcNeighbours(key) });
+    } else {
+      setFocusActionsOf(key);
+    }
   }
 
-  function addCharacter(): void {
+  function addSheet(kind: SheetSummary['kind']): void {
     const sheetId = nanoid();
+
+    // The GM has moved on from the open confirmation.
+    setDeleteAsk(null);
 
     const sent = sendCommand({
       type: 'sheet-create',
       sheetId,
-      kind: 'pc',
-      name: copy.newCharacter,
+      kind,
+      name: kind === 'pc' ? copy.newCharacter : copy.newNpc,
     });
 
     if (sent.ok) {
-      setCreatedTab({ tab: sheetKey(sheetId), commandId: sent.value });
+      setCreated({ sheet: sheetKey(sheetId), commandId: sent.value });
     }
+  }
+
+  // The open confirmation, when it asks about `sheet`.
+  function confirmationFor(sheet: SheetSummary | undefined): ReactNode {
+    if (sheet === undefined || deleteAsk?.sheet !== sheetKey(sheet.sheetId)) {
+      return null;
+    }
+
+    const asked = deleteAsk.sheet;
+
+    return (
+      <DeleteConfirmation
+        key={deleteAsk.request}
+        name={sheet.name}
+        onConfirm={() => {
+          confirmDelete(sheet);
+        }}
+        onCancel={() => {
+          cancelDelete(asked);
+        }}
+      />
+    );
   }
 
   const sheetsExist = hasLiveSheet(records.values());
@@ -268,19 +391,8 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
           label: sheet.name,
           content: (
             <>
-              {deleteAsk?.tab === id ? (
-                <DeleteConfirmation
-                  key={deleteAsk.request}
-                  name={sheet.name}
-                  onConfirm={() => {
-                    confirmDelete(id, sheet.sheetId);
-                  }}
-                  onCancel={() => {
-                    cancelDelete(id);
-                  }}
-                />
-              ) : null}
-              <CharacterHeader
+              {confirmationFor(sheet)}
+              <SheetHeader
                 key={id}
                 sheetId={sheet.sheetId}
                 name={sheet.name}
@@ -311,12 +423,44 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
           ? {
               label: copy.addSign,
               accessibleName: copy.command.addCharacter,
-              onPress: addCharacter,
+              onPress: () => {
+                addSheet('pc');
+              },
             }
           : undefined,
       pinnedTabs: [
-        // Temporary until Story 1.11 gives the NPC tab its content.
-        { id: NPC_TAB, label: copy.place.npc, content: loading },
+        {
+          id: NPC_TAB,
+          label: copy.place.npc,
+          content:
+            preset === null ? (
+              loading
+            ) : (
+              <NpcTab
+                npcs={npcs}
+                template={preset.npc}
+                records={records}
+                editing={editing}
+                sendCommand={sendCommand}
+                store={projection}
+                confirmation={confirmationFor(
+                  npcs.find((npc) => sheetKey(npc.sheetId) === deleteAsk?.sheet),
+                )}
+                onAdd={() => {
+                  addSheet('npc');
+                }}
+                onDelete={(npc) => {
+                  askDelete(sheetKey(npc.sheetId));
+                }}
+                focusNameOf={focusNameOf}
+                onNameFocused={clearNameFocus}
+                focusActionsOf={focusActionsOf}
+                onActionsFocused={clearActionsFocus}
+                focusAdd={focusAddNpc}
+                onAddFocused={clearAddNpcFocus}
+              />
+            ),
+        },
         {
           id: SETTINGS_TAB,
           label: GEAR,

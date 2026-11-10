@@ -8,7 +8,8 @@ import {
   openBackground,
   openRoom,
   record,
-  STORAGE_PREFIX,
+  storedData,
+  storedRecords,
   type StoredRecord,
 } from './support/room';
 
@@ -70,11 +71,6 @@ const RECORDS = [
   record('rep:brok:attack:i2', { order: 2, cells: { attack: 'Лук' } }),
   record('rep:liza:attack:x', { order: 0, cells: { attack: 'Чужой' } }),
 ] as const;
-
-// What `storedData` reads for a key with no record, so a tombstone's `null` cannot pass for one.
-const ABSENT = '(absent)';
-
-const storedRecordSchema = z.object({ k: z.string(), d: z.json() });
 
 const deltaSchema = z.object({ t: z.literal('delta'), engine: z.string(), seq: z.number() });
 
@@ -147,7 +143,7 @@ test('rows added to one character leave the other with its own rows', async ({ p
   // #then
   expect({
     shown: await valuesOf(attackFields(page)),
-    stored: (await storedRows(page, 'rep:liza:')).map((one) => one.k),
+    stored: (await storedRecords(page, 'rep:liza:')).map((one) => one.k),
   }).toEqual({ shown: ['Чужой'], stored: ['rep:liza:attack:x'] });
 });
 
@@ -474,35 +470,13 @@ async function box(
   return found;
 }
 
-// Every stored record whose key starts with `prefix`, in no set order.
-async function storedRows(page: Page, prefix: string): Promise<{ k: string; d: JsonValue }[]> {
-  const texts = await page.evaluate(
-    (start) =>
-      Object.keys(localStorage)
-        .filter((key) => key.startsWith(start))
-        .map((key) => localStorage.getItem(key) ?? 'null'),
-    `${STORAGE_PREFIX}${prefix}`,
-  );
-
-  return texts.map((text) => storedRecordSchema.parse(JSON.parse(text)));
-}
-
 // The stored rows under `prefix` that were not seeded, with the id the window gave each.
 async function addedRows(page: Page, prefix: string): Promise<{ id: string; d: JsonValue }[]> {
   const seeded = new Set<string>(RECORDS.map((one) => one.k));
 
-  return (await storedRows(page, prefix))
+  return (await storedRecords(page, prefix))
     .filter((one) => !seeded.has(one.k))
     .map((one) => ({ id: one.k.slice(prefix.length), d: one.d }));
-}
-
-async function storedData(page: Page, key: string): Promise<JsonValue> {
-  const text = await page.evaluate(
-    (storageKey) => localStorage.getItem(storageKey),
-    `${STORAGE_PREFIX}${key}`,
-  );
-
-  return text === null ? ABSENT : storedRecordSchema.parse(JSON.parse(text)).d;
 }
 
 // Saves one field, so the background's delta names its engine and sequence, then closes the

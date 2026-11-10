@@ -1,47 +1,27 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { z } from 'zod';
 
 import { cssValue, renderedColor, tokenColor } from './support/colors';
 import {
+  afterSettling,
   EXAMPLE_PRESET_TEXT,
+  keyed,
   openBackground,
   openRoom,
   presetRecord,
   record,
   sheetRecord,
   STORAGE_PREFIX,
+  storedRecords,
+  watchCommands,
 } from './support/room';
 
-const CHANNEL = 'app.muster-roll/ui';
 const ADD = 'Добавить персонажа';
 const ACTIONS = 'Действия с листом';
 const DELETE = 'Удалить';
 const CANCEL = 'Отменить';
 const NAME_FIELD = 'Имя персонажа';
 const GEAR = '⚙︎';
-
-const storedRecordSchema = z.object({
-  k: z.string(),
-  d: z.json(),
-  c: z.number(),
-  a: z.string(),
-});
-
-type StoredRecord = z.infer<typeof storedRecordSchema>;
-
-type Keyed = Record<string, StoredRecord>;
-
-type SeenCommand = { id: string; type: string };
-
-declare global {
-  interface Window {
-    seenCommands: SeenCommand[];
-    rejectedCommandIds: string[];
-  }
-}
-
-let probes = 0;
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
@@ -283,7 +263,9 @@ test('a window closed with the block open shows no block and has deleted nothing
   // #then
   await expect(nameField(page)).toHaveValue('Брок');
   await expect(page.getByRole('group')).toHaveCount(0);
-  expect(await storedRecords(page)).toEqual(keyed(seeded));
+  expect(keyed((await storedRecords(page)).filter((one) => one.k !== 'preset'))).toEqual(
+    keyed(seeded),
+  );
 });
 
 test('"Удалить" in the block sends one command, tombstones the sheet and its records only', async ({
@@ -410,72 +392,4 @@ async function askDelete(page: Page): Promise<void> {
   await actionsButton(page).click();
   await page.getByRole('menuitem', { name: DELETE }).click();
   await expect(confirmation(page)).toBeVisible();
-}
-
-// Every stored record but the preset.
-async function storedRecords(page: Page): Promise<Keyed> {
-  const texts = await page.evaluate(
-    (prefix) =>
-      Object.keys(localStorage)
-        .filter((key) => key.startsWith(prefix) && key !== `${prefix}preset`)
-        .map((key) => localStorage.getItem(key) ?? 'null'),
-    STORAGE_PREFIX,
-  );
-
-  return keyed(texts.map((text) => storedRecordSchema.parse(JSON.parse(text))));
-}
-
-// Compared as an object, so the order the storage lists its keys in does not matter.
-function keyed(records: readonly StoredRecord[]): Keyed {
-  return Object.fromEntries(records.map((one) => [one.k, one]));
-}
-
-// Commands from every window reach this one too, as all windows share the LOCAL bus.
-async function watchCommands(page: Page): Promise<void> {
-  await page.evaluate((channel) => {
-    window.seenCommands = [];
-    window.rejectedCommandIds = [];
-
-    window.mockPlatform.broadcast.onMessage(channel, (event) => {
-      const message = Object(event.data);
-
-      if (message.t === 'command') {
-        window.seenCommands.push({
-          id: String(message.id),
-          type: String(Object(message.command).type),
-        });
-      } else if (message.t === 'command-rejected') {
-        window.rejectedCommandIds.push(String(message.id));
-      }
-    });
-  }, CHANNEL);
-}
-
-// The background answers in order, so once it rejects a probe sent now, every command that reached
-// it before the probe has been handled and its records saved.
-async function afterSettling(page: Page): Promise<{ commands: string[]; stored: Keyed }> {
-  probes += 1;
-
-  const probe = `probe-${probes}`;
-
-  await page.evaluate(
-    ([channel, id]) => {
-      void window.mockPlatform.broadcast.sendMessage(
-        channel,
-        { t: 'command', id, command: { type: 'sheet-delete', sheetId: 'probe' } },
-        { destination: 'LOCAL' },
-      );
-    },
-    [CHANNEL, probe] as const,
-  );
-  await expect
-    .poll(() => page.evaluate((id) => window.rejectedCommandIds.includes(id), probe))
-    .toBe(true);
-
-  const seen = await page.evaluate(() => window.seenCommands);
-
-  return {
-    commands: seen.filter((command) => command.id !== probe).map((command) => command.type),
-    stored: await storedRecords(page),
-  };
 }

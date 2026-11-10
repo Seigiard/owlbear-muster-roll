@@ -7,7 +7,7 @@ import { SheetSection } from './preset-section';
 import { FieldEditingContext, type FieldEditing } from './use-field-edit';
 
 type SheetBodyProps = {
-  // The character template now. Story 1.11 passes the NPC template.
+  // The character template or the NPC template, by the sheet's kind.
   template: PresetTemplate;
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;

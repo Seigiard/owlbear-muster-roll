@@ -1,0 +1,202 @@
+{
+  "v": 1,
+  "character": {
+    "sections": [
+      {
+        "title": "Персонаж",
+        "columns": 4,
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "text": "Класс"
+            },
+            {
+              "kind": "field",
+              "type": "text",
+              "id": "class"
+            },
+            {
+              "kind": "text",
+              "text": "Уровень"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "level"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Характеристики",
+        "width": "1/2",
+        "columns": 4,
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "text": "Сила"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "str"
+            },
+            {
+              "kind": "field",
+              "type": "check",
+              "id": "str_save"
+            },
+            {
+              "kind": "dice",
+              "formula": "1d20+str"
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "text": "Ловкость"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "dex"
+            },
+            {
+              "kind": "field",
+              "type": "check",
+              "id": "dex_save"
+            },
+            {
+              "kind": "dice",
+              "formula": "1d20+dex"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Хиты",
+        "width": "1/2",
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "text": "Хиты"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "hp"
+            },
+            {
+              "kind": "text",
+              "text": "из"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "hp_max"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Атаки",
+        "columns": 3,
+        "repeat": true,
+        "rows": [
+          [
+            {
+              "kind": "field",
+              "type": "text",
+              "id": "attack"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "bonus"
+            },
+            {
+              "kind": "dice",
+              "formula": "1d20+bonus"
+            }
+          ]
+        ]
+      }
+    ]
+  },
+  "npc": {
+    "sections": [
+      {
+        "title": "Характеристики",
+        "columns": 4,
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "text": "КД"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "ac"
+            },
+            {
+              "kind": "text",
+              "text": "Хиты"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "hp"
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "text": "Сила"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "str"
+            },
+            {
+              "kind": "field",
+              "type": "check",
+              "id": "elite"
+            },
+            {
+              "kind": "dice",
+              "formula": "1d20+str"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Атаки",
+        "columns": 3,
+        "repeat": true,
+        "rows": [
+          [
+            {
+              "kind": "field",
+              "type": "text",
+              "id": "attack"
+            },
+            {
+              "kind": "field",
+              "type": "number",
+              "id": "bonus"
+            },
+            {
+              "kind": "dice",
+              "formula": "1d20+bonus"
+            }
+          ]
+        ]
+      }
+    ]
+  }
+}

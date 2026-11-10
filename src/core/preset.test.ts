@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { inflateSync, strFromU8 } from 'fflate';
@@ -21,6 +21,8 @@ import {
 const EXAMPLE_PATH = join(import.meta.dir, '../../docs/example-preset.json');
 
 const EXAMPLE_TEXT = readFileSync(EXAMPLE_PATH, 'utf8');
+
+const FIXTURE_DIR = join(import.meta.dir, '../../tests/fixtures/presets');
 
 const NUMBER_FIELD = (id: string): JsonObject => ({ kind: 'field', type: 'number', id });
 
@@ -567,3 +569,26 @@ function randomLabel(length: number): string {
     return alphabet[(state >>> 16) % 64] ?? 'x';
   }).join('');
 }
+
+describe('the e2e preset fixtures', () => {
+  test('are the two game systems the NPC tests load', () => {
+    // #when
+    const names = new Set(readdirSync(FIXTURE_DIR));
+
+    // #then
+    expect(names).toEqual(new Set(['d20.json', 'd6-pool.json']));
+  });
+
+  for (const name of readdirSync(FIXTURE_DIR)) {
+    test(`${name} parses into the preset it holds`, () => {
+      // #given
+      const text = readFileSync(join(FIXTURE_DIR, name), 'utf8');
+
+      // #when
+      const parsed = parsePresetFile(text);
+
+      // #then
+      expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    });
+  }
+});

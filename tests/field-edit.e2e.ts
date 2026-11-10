@@ -5,10 +5,12 @@ import { z } from 'zod';
 import type { JsonValue } from '@/core/json';
 
 import {
+  ABSENT,
   openBackground,
   openRoom,
   record,
   STORAGE_PREFIX,
+  storedData,
   type StoredRecord,
 } from './support/room';
 
@@ -276,7 +278,7 @@ test('an invalid value is not saved when its tab goes away', async ({ page, cont
   expect({
     sent: (await fieldPatches(page)).length,
     stored: await storedData(page, 'row:brok:dex'),
-  }).toEqual({ sent: 0, stored: null });
+  }).toEqual({ sent: 0, stored: ABSENT });
 });
 
 test('a changed field is saved when the window closes before the pause', async ({
@@ -340,7 +342,7 @@ test('an invalid value is not saved when the window closes', async ({ page, cont
   await background.waitForTimeout(PAST_PAUSE_MS);
 
   // #then
-  expect(await storedData(background, 'row:brok:dex')).toBeNull();
+  expect(await storedData(background, 'row:brok:dex')).toBe(ABSENT);
 });
 
 test('a number is stored as a JSON number, text as typed, and a cleared field has no key', async ({
@@ -701,12 +703,6 @@ async function openSheet(
 
 async function storedText(page: Page, key: string): Promise<string | null> {
   return page.evaluate((storageKey) => localStorage.getItem(storageKey), `${STORAGE_PREFIX}${key}`);
-}
-
-async function storedData(page: Page, key: string): Promise<JsonValue> {
-  const text = await storedText(page, key);
-
-  return text === null ? null : z.object({ d: z.json() }).parse(JSON.parse(text)).d;
 }
 
 async function isFocused(locator: Locator): Promise<boolean> {

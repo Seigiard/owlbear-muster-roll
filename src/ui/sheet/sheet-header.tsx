@@ -17,7 +17,9 @@ import { copy } from '@/ui/copy';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
-type CharacterHeaderProps = {
+type SheetHeaderProps = {
+  // `character` heads a character's tab. `npc` heads one NPC's block on the NPC tab.
+  variant?: 'character' | 'npc';
   sheetId: string;
   name: string;
   sendCommand: ReplicaClient['sendCommand'];
@@ -44,7 +46,21 @@ const DELETE_ACTION = 'delete';
 
 const MORE = '⋯';
 
-export function CharacterHeader({
+const VARIANT = {
+  character: {
+    header: 'mb-3 border-b border-line pb-2',
+    name: 'text-sheet-title',
+    label: copy.label.sheetName,
+  },
+  npc: {
+    header: 'mb-2 border-l-2 border-line pl-2',
+    name: 'text-section-heading',
+    label: copy.label.npcName,
+  },
+} as const;
+
+export function SheetHeader({
+  variant = 'character',
   sheetId,
   name,
   sendCommand,
@@ -54,11 +70,12 @@ export function CharacterHeader({
   onDelete,
   focusActions,
   onActionsFocused,
-}: CharacterHeaderProps): ReactNode {
+}: SheetHeaderProps): ReactNode {
   const inputRef = useRef<HTMLInputElement>(null);
   const actionsRef = useRef<HTMLButtonElement>(null);
   const rejections = useStore(store.$rejections);
   const [edit, setEdit] = useState<NameEdit>(NO_EDIT);
+  const look = VARIANT[variant];
 
   // Only the projection bringing back the last sent name ends the wait. An earlier rename that
   // lands first must not show while the last one is still on its way.
@@ -124,10 +141,10 @@ export function CharacterHeader({
   }
 
   return (
-    <header className="mb-3 flex items-start gap-2 border-b border-line pb-2">
+    <header className={`flex items-start gap-2 ${look.header}`}>
       <TextField
         className="flex min-w-[0] flex-1 flex-col gap-1"
-        aria-label={copy.label.sheetName}
+        aria-label={look.label}
         value={edit.typed ?? shownName}
         isInvalid={edit.tooLong}
         onChange={(typed) => {
@@ -138,7 +155,7 @@ export function CharacterHeader({
         <Input
           ref={inputRef}
           onKeyDown={handleKeyDown}
-          className="touch-target w-full border-b border-dotted border-line-strong bg-transparent px-1 text-sheet-title text-text"
+          className={`touch-target w-full border-b border-dotted border-line-strong bg-transparent px-1 text-text ${look.name}`}
         />
         <FieldError className="text-label-sm text-danger-text">{copy.valueTooLong}</FieldError>
       </TextField>

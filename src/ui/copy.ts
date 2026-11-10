@@ -16,11 +16,13 @@ export const copy = {
   },
   label: {
     sheetName: 'Имя персонажа',
+    npcName: 'Имя NPC',
     sheetActions: 'Действия с листом',
     // The accessible name of a repeat row's "Удалить", with the row's position from 1.
     deleteRow: (n: number): string => `Удалить строку ${n}`,
   },
   newCharacter: 'Новый персонаж',
+  newNpc: 'Новый NPC',
   addSign: '+',
   place: {
     settings: 'Настройки',
