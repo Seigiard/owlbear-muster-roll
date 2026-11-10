@@ -1,11 +1,11 @@
 ---
 id: TASK-4
 title: 1.2 See a Window That Belongs to Owlbear
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-10T15:37:00Z'
-updated_date: '2026-11-10T16:42:00Z'
+updated_date: '2026-11-10T16:53:00Z'
 labels:
   - epic-1
 milestone: m-0
@@ -40,7 +40,7 @@ Story 1.2 of `_bmad-output/planning-artifacts/epics.md`. Other stories are named
 - [x] #1 **Given** the `DESIGN.md` tokens **When** the theme builds **Then** Tailwind exposes all colors, typography styles, radii and spacing steps (UX-DR1) **And** the UI uses the system font only, no shadows inside the window, no color coding for game concepts, and no icon where a word fits except the gear (UX-DR4)
 - [x] #2 **Given** a window is open **When** `OBR.theme` changes **Then** every token updates by the `DESIGN.md` runtime table with no reload, including the `color-mix` tokens (UX-DR2, NFR14) **And** hex values of theme-mapped tokens apply only in tests and mocks, and warning and danger tokens are fixed hex values in production
 - [x] #3 **Given** the Owlbear light theme **When** a warning or danger pair renders **Then** it uses the `-light` tokens, and text contrast is at least 4.5:1 in both themes (UX-DR3, UX-DR36)
-- [ ] #4 **Given** the window shell **When** it renders **Then** it holds the tab bar, an optional banner and one scrolling content area with padding `spacing-3` (UX-DR5) **And** gaps use `spacing-1` inside a row, `spacing-2` between controls and `spacing-4` between sections (UX-DR5) **And** tabs use `md` on the top corners, the window `lg`, chips `full` and buttons `sm` (UX-DR4) **And** the owner confirms or adjusts the 720 by 600 px window size in a live room (human gate, UX-DR7, NFR15)
+- [x] #4 **Given** the window shell **When** it renders **Then** it holds the tab bar, an optional banner and one scrolling content area with padding `spacing-3` (UX-DR5) **And** gaps use `spacing-1` inside a row, `spacing-2` between controls and `spacing-4` between sections (UX-DR5) **And** tabs use `md` on the top corners, the window `lg`, chips `full` and buttons `sm` (UX-DR4) **And** the owner confirms or adjusts the 720 by 600 px window size in a live room (human gate, UX-DR7, NFR15)
 - [x] #5 **Given** the shared Button, Chip and Field primitives, which later stories use **When** one has keyboard focus **Then** a 2 px outline in `focus` shows, and the control's touch target is at least 32 px high (UX-DR36)
 - [x] #6 **Given** a disabled primitive **When** it renders **Then** it shows at 50% opacity with a text reason near it (UX-DR34)
 - [x] #7 **Given** a primitive **When** the GM uses touch or a mouse **Then** tap and click act the same, and the primitive has no hover-only or drag behavior (UX-DR34)
@@ -64,4 +64,12 @@ Spec: _bmad-output/implementation-artifacts/spec-1-2-window-that-belongs-to-owlb
 Implemented the spec: tokens, runtime theme, shell, Button, Chip, Field, Banner and the copy catalog. lint, typecheck, bun test (57) and Playwright (36) pass. Open: the owner must confirm the 720 by 600 px window size in a live room (AC 4).
 
 Review: 24 triaged findings in the spec. Confirmed defects and test gaps patched; 2 items deferred. Verified on the mock adapter: lint with no errors, typecheck, bun test 58 pass, Playwright 48 pass, build. AC 4 waits for the owner to confirm the window size in a live room. The owner's live check also covers theme mapping in both real Owlbear themes.
+
+AC 4: the owner looked at the window in a live room, found the corners clean, and adjusted the width from 720 to 600 px. The manifest, EXPERIENCE.md and UX-DR7 now say 600 by 600.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added the DESIGN.md tokens with no theme-mapped hex in production, runtime mapping from OBR.theme, the window shell, the Button, Chip, Field and Banner primitives, and the copy catalog. Verified on the mock adapter: bun test, Playwright, lint and typecheck. The owner adjusted the window size to 600 by 600 px in a live room. Two follow-ups are in deferred-work.md.
+<!-- SECTION:FINAL_SUMMARY:END -->
