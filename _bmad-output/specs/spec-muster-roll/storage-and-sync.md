@@ -33,6 +33,7 @@ If the snapshot does not fit, the GM sees a notice and play continues by broadca
 - Measured in a live room: 16000 bytes of metadata JSON were stored, 16050 were not. A write past the limit resolves as a success and is dropped. The earlier data stays, other clients get no change event, and later small writes still work.
 - Measured in a live room: two GM connections of one account and a guest each sent 50 edits at once to a shared row and an own row. All clients received every edit in order and ended with the same data.
 - A hidden tab runs timers late: gaps of 3 seconds in Firefox and up to 60 seconds in Chrome were measured. Do not depend on timers in a hidden GM tab.
+- Measured with a hidden GM tab. Firefox: 34 minutes hidden, every ping received. Chrome: every ping received for about 13 minutes, then the page stopped timers and messages until the GM returned 27 minutes later. The page resumed without a restart. One observation per browser.
 - The Player and Room SDK APIs expose no signed token. A server cannot verify by itself that a request comes from the GM, so v2 needs a GM write key.
 
 ## Size measurements
@@ -49,8 +50,7 @@ Russian text and the preset add more. These measurements predate the typed-field
 
 ## Untested or undocumented
 
-- How long the `background_url` page stays alive is not tested. Experiment: keep the room open with the GM's extension window closed and the tab in the background, and check that player edits still reach the GM. If the page stops, those edits are lost.
-- Player id, write rights bind to it. The docs do not say how long it lasts. Experiment: does a guest keep the id after a reload and in another browser, and does a logged-in player keep it for the long term? The result decides whether a right can bind to a guest, or only to a logged-in player.
+- A guest keeps the player id across reloads, a rename and about 2.5 hours. An account has one id across browsers. Not checked: a guest in another browser.
 
 ## Accepted losses
 

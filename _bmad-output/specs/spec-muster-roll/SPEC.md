@@ -63,7 +63,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 
 ## Constraints
 
-- No own server in v1. Live exchange needs a GM online.
+- No own server in v1. Live exchange needs a GM online. A hidden GM tab in Chrome stopped receiving edits after about 13 minutes, so a hidden tab does not count as online.
 - Full data lives in the GM's browser. Room metadata holds only a compressed snapshot, and only when it fits.
 - Room metadata is under 16kB in total and is shared with other extensions. The extension checks free space before it writes, because Owlbear reports success for a write past the limit and drops it.
 - Broadcast messages are limited to 16KB.
@@ -105,5 +105,5 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 
 ## Open Questions
 
-- Does the `background_url` page stay alive while the room is open, including with the GM's extension window closed and the tab in the background? If it stops, player edits do not reach the GM. Needs an experiment.
-- Does a guest keep the player id after a reload and in another browser, and does a logged-in player keep it for the long term? Write rights bind to that id, and the docs do not say. Needs an experiment with guests and logged-in players.
+- What happens to a player's edit while no GM client responds, for example when Chrome has frozen a hidden GM tab? Player edits take effect only after a GM client checks them.
+- Does a guest keep the player id in another browser? A guest keeps it across reloads, and an account keeps it across browsers. Write rights bind to that id. Needs one more check.

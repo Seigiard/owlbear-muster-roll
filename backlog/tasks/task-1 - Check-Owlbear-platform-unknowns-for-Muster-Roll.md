@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-10T05:34:00Z'
-updated_date: '2026-11-10T09:26:00Z'
+updated_date: '2026-11-10T09:31:00Z'
 labels: []
 dependencies: []
 documentation:
@@ -51,4 +51,6 @@ First live run, player client data, one GM and one guest. Sync: 50 of 50 edits e
 Second live run, GM client data. Metadata limit is answered: 16000 bytes stored, 16050 dropped, the write still resolves as success, peers see no change, earlier data stays. Guest id stayed the same across reloads, a rename and about 2.5 hours; the player list showed the guest as not signed in. The first three-client sync round ended too early because a hidden tab sends slowly; the probe now waits, so that round must run again. Hidden GM tab test and guest in another browser are still open.
 
 Third live run, GM Firefox data. Sync passed: three clients, 50 edits each, none lost or out of order, same fingerprint. Hidden GM tab in Firefox: 34 minutes hidden, 176 pings received while hidden, none lost, no page restart. The window-closed counter stayed 0, so the closed state is not confirmed; the GM Chrome tab holds that data. No guest from a second browser appeared in the roster.
+
+GM Chrome data. Hidden tab received 156 pings with none lost for about 13 minutes, then the last timer fired and messages stopped: no activity for 27 minutes while the guest kept sending (Firefox received seq 167 to 191). The page resumed on return without a restart. The window-closed counter stayed 0 on both browsers and is unreliable: pagehide may not fire for a cross-site iframe. Only a guest in a second browser remains.
 <!-- SECTION:NOTES:END -->
