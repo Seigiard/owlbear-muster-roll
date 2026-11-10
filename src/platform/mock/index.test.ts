@@ -4,7 +4,7 @@ import type { JsonObject, JsonValue } from '@/core/json';
 import { platform as currentPlatform } from '@/platform/current';
 
 import { LIGHT_THEME } from '../../../tests/support/colors';
-import { createMockPlatform } from './index';
+import { createMemoryBus, createMockPlatform } from './index';
 
 describe('mock broadcast', () => {
   test('delivers a LOCAL message to a listener on the same channel', async () => {
@@ -75,6 +75,84 @@ describe('mock broadcast', () => {
 
     // #then
     expect({ removed, kept }).toEqual({ removed: [], kept: ['after'] });
+  });
+});
+
+describe('mock LOCAL bus shared between pages', () => {
+  test('delivers a LOCAL message to every platform on the bus, the sender included', async () => {
+    // #given
+    const bus = createMemoryBus();
+    const sender = createMockPlatform(bus);
+    const receiver = createMockPlatform(bus);
+    const received: string[] = [];
+
+    sender.broadcast.onMessage('ui', () => {
+      received.push('sender');
+    });
+
+    receiver.broadcast.onMessage('ui', () => {
+      received.push('receiver');
+    });
+
+    // #when
+    await sender.broadcast.sendMessage('ui', 'hello', { destination: 'LOCAL' });
+
+    // #then
+    expect(received).toEqual(['sender', 'receiver']);
+  });
+});
+
+describe('mock send failures', () => {
+  test('reports a simulated rate limit and delivers nothing', async () => {
+    // #given
+    const platform = createMockPlatform();
+    const received: JsonValue[] = [];
+
+    platform.broadcast.onMessage('ui', (event) => {
+      received.push(event.data);
+    });
+
+    platform.failNextSends([{ kind: 'rate-limited' }]);
+
+    // #when
+    const result = await platform.broadcast.sendMessage('ui', 'x', { destination: 'LOCAL' });
+
+    // #then
+    expect({ result, received }).toEqual({
+      result: { ok: false, error: { kind: 'rate-limited' } },
+      received: [],
+    });
+  });
+
+  test('fails only the simulated number of sends', async () => {
+    // #given
+    const platform = createMockPlatform();
+
+    platform.failNextSends([{ kind: 'failed', reason: 'gone' }]);
+    await platform.broadcast.sendMessage('ui', 'first', { destination: 'LOCAL' });
+
+    // #when
+    const second = await platform.broadcast.sendMessage('ui', 'second', { destination: 'LOCAL' });
+
+    // #then
+    expect(second).toEqual({ ok: true, value: undefined });
+  });
+});
+
+describe('mock role', () => {
+  test('is the GM until a test changes it', async () => {
+    // #given
+    const platform = createMockPlatform();
+    const initial = await platform.player.getRole();
+
+    // #when
+    platform.setRole('PLAYER');
+
+    // #then
+    expect({ initial, changed: await platform.player.getRole() }).toEqual({
+      initial: 'GM',
+      changed: 'PLAYER',
+    });
   });
 });
 

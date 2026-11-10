@@ -1,9 +1,10 @@
 import type { JsonObject, JsonValue } from '@/core/json';
 import type { Result } from '@/core/result';
+import type { PlayerRole } from '@/core/visibility';
 
 export type Unsubscribe = () => void;
 
-export type PlayerRole = 'GM' | 'PLAYER';
+export type { PlayerRole };
 
 export type BroadcastDestination = 'LOCAL' | 'REMOTE';
 
@@ -11,8 +12,13 @@ export type BroadcastOptions = { destination: BroadcastDestination };
 
 export type BroadcastEvent = { data: JsonValue; connectionId: string };
 
+// Only the adapter knows how Owlbear reports these. A send never rejects.
+export type SendFailure = { kind: 'rate-limited' } | { kind: 'failed'; reason: string };
+
+export type SendResult = Result<void, SendFailure>;
+
 export type BroadcastPort = {
-  sendMessage: (channel: string, data: JsonValue, options: BroadcastOptions) => Promise<void>;
+  sendMessage: (channel: string, data: JsonValue, options: BroadcastOptions) => Promise<SendResult>;
   onMessage: (channel: string, callback: (event: BroadcastEvent) => void) => Unsubscribe;
 };
 

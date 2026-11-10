@@ -4,13 +4,15 @@ import type { JsonObject, JsonValue } from '@/core/json';
 import type { PartyMember, Platform } from '@/platform/ports';
 
 import { createBrowserStorage } from './browser-storage';
+import { toSendResult } from './send-result';
 
 export const platform: Platform = {
   onReady: (callback) => {
     OBR.onReady(callback);
   },
   broadcast: {
-    sendMessage: (channel, data, options) => OBR.broadcast.sendMessage(channel, data, options),
+    sendMessage: (channel, data, options) =>
+      toSendResult(() => OBR.broadcast.sendMessage(channel, data, options)),
     onMessage: (channel, callback) =>
       OBR.broadcast.onMessage(channel, (event) => {
         callback({

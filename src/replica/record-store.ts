@@ -17,12 +17,14 @@ import type { StorageFailure, StoragePort } from '@/platform/ports';
 
 export type RecordStoreFailure = RecordFailure | StorageFailure | StorageKeyFailure;
 
+export type GenerationLoad = { records: VersionedRecord[]; corruptKeys: string[] };
+
 export type RecordStore = {
   write: (
     generation: Generation,
     record: VersionedRecord,
   ) => Result<VersionedRecord, RecordStoreFailure>;
-  loadGeneration: (generation: Generation) => Result<VersionedRecord[], StorageFailure>;
+  loadGeneration: (generation: Generation) => Result<GenerationLoad, StorageFailure>;
   readHighestGeneration: () => Result<Generation, StorageFailure>;
 };
 
@@ -66,6 +68,7 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
       }
 
       const records: VersionedRecord[] = [];
+      const corruptKeys: string[] = [];
 
       for (const storageKey of keys.value) {
         const parts = parseStorageKey(storageKey);
@@ -75,19 +78,25 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
           parts.value.roomId === roomId &&
           compareGenerations(parts.value.generation, generation) === 0
         ) {
-          const stored = readRecord(storage, storageKey, parts.value.key);
+          const text = storage.getItem(storageKey);
 
-          if (!stored.ok) {
-            return stored;
+          if (!text.ok) {
+            return text;
           }
 
-          if (stored.value !== null) {
-            records.push(stored.value);
+          if (text.value !== null) {
+            const record = parseStoredRecord(text.value, parts.value.key);
+
+            if (record.ok) {
+              records.push(record.value);
+            } else {
+              corruptKeys.push(parts.value.key);
+            }
           }
         }
       }
 
-      return ok(records);
+      return ok({ records, corruptKeys });
     },
     readHighestGeneration: () => {
       const keys = storage.keys();

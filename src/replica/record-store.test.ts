@@ -253,7 +253,9 @@ describe('record store loadGeneration', () => {
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
 
     // #then
-    expect(loaded).toEqual(ok([{ k: 'link:t', d: 'mine', c: 1, a: 'conn' }]));
+    expect(loaded).toEqual(
+      ok({ records: [{ k: 'link:t', d: 'mine', c: 1, a: 'conn' }], corruptKeys: [] }),
+    );
   });
 
   test('returns a tombstone', () => {
@@ -266,7 +268,9 @@ describe('record store loadGeneration', () => {
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
 
     // #then
-    expect(loaded).toEqual(ok([{ k: 'link:t', d: null, c: 6, a: 'conn' }]));
+    expect(loaded).toEqual(
+      ok({ records: [{ k: 'link:t', d: null, c: 6, a: 'conn' }], corruptKeys: [] }),
+    );
   });
 
   test('skips a corrupt value and keeps the valid records', () => {
@@ -280,7 +284,33 @@ describe('record store loadGeneration', () => {
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
 
     // #then
-    expect(loaded).toEqual(ok([link(1)]));
+    expect(loaded).toEqual(ok({ records: [link(1)], corruptKeys: ['link:bad'] }));
+  });
+
+  test('does not report a corrupt value of another generation', () => {
+    // #given
+    const storage = createFakeStorage();
+
+    storage.entries.set('mr1:r:1:x:link:bad', '{not json');
+
+    // #when
+    const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
+
+    // #then
+    expect(loaded).toEqual(ok({ records: [], corruptKeys: [] }));
+  });
+
+  test('reports a record filed under another key as corrupt', () => {
+    // #given
+    const storage = createFakeStorage();
+
+    storage.entries.set(STORAGE_KEY, '{"k":"link:other","d":"s","c":9,"a":"conn"}');
+
+    // #when
+    const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
+
+    // #then
+    expect(loaded).toEqual(ok({ records: [], corruptKeys: ['link:t'] }));
   });
 
   test('returns a failure when listing keys fails', () => {

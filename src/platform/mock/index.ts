@@ -1,13 +1,18 @@
 import type { JsonObject } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
 import type {
-  BroadcastEvent,
   Platform,
+  PlayerRole,
+  SendFailure,
   StorageFailure,
   StorageOperation,
   Theme,
   Unsubscribe,
 } from '@/platform/ports';
+
+import { createMemoryBus, createPageBus, type LocalBus } from './local-bus';
+
+export { createMemoryBus };
 
 const MOCK_ROOM_ID = 'mock-room';
 const MOCK_PLAYER_ID = 'mock-player';
@@ -17,6 +22,7 @@ const MOCK_NOTIFICATION_ID = 'mock-notification';
 const THEME_READ_FAILS_PARAM = 'mock-theme-read-fails';
 const THEME_READ_SLOW_PARAM = 'mock-theme-read-slow';
 const THEME_READ_SLOW_MS = 200;
+const ROLE_PARAM = 'mock-role';
 
 const unsubscribeNothing: Unsubscribe = () => undefined;
 
@@ -27,35 +33,50 @@ const MOCK_THEME: Theme = {
   text: { primary: '#DDDDDD', secondary: '#AAAAAA' },
 };
 
-type BroadcastListener = (event: BroadcastEvent) => void;
-
 type MetadataListener = (metadata: JsonObject) => void;
 
 type ThemeListener = (theme: Theme) => void;
 
+export type MockStorageBacking = {
+  get: (key: string) => string | null;
+  set: (key: string, value: string) => void;
+  remove: (key: string) => void;
+  keys: () => string[];
+};
+
 export type MockPlatform = Platform & {
   setTheme: (theme: Theme) => void;
+  setRole: (role: PlayerRole) => void;
   setFailingStorageOperations: (operations: StorageOperation[]) => void;
+  failNextSends: (failures: SendFailure[]) => void;
 };
 
 declare global {
   interface Window {
     // Playwright reaches the mock through this. The mock never enters a production build.
     setMockTheme: (theme: Theme) => void;
+    mockPlatform: MockPlatform;
   }
 }
 
-const mockPlatform = createMockPlatform();
+const mockPlatform = createMockPlatform(createPageBus(), createPageBacking());
+
+mockPlatform.setRole(roleFromPageUrl());
 
 export const platform: Platform = mockPlatform;
 
 window.setMockTheme = mockPlatform.setTheme;
 
-export function createMockPlatform(): MockPlatform {
-  const broadcastListeners = new Map<string, Set<BroadcastListener>>();
+window.mockPlatform = mockPlatform;
+
+export function createMockPlatform(
+  localBus: LocalBus = createMemoryBus(),
+  backing: MockStorageBacking = createMemoryBacking(),
+): MockPlatform {
   const metadataListeners = new Set<MetadataListener>();
   const themeListeners = new Set<ThemeListener>();
-  const stored = new Map<string, string>();
+  const sendFailures: SendFailure[] = [];
+  let role: PlayerRole = 'GM';
   let failingStorageOperations = new Set<StorageOperation>();
   let metadata: JsonObject = {};
   let currentTheme = MOCK_THEME;
@@ -77,25 +98,20 @@ export function createMockPlatform(): MockPlatform {
     },
     broadcast: {
       sendMessage: (channel, data, options) => {
-        // One mock client has no peers, and Owlbear never echoes REMOTE to its sender.
-        if (options.destination === 'LOCAL') {
-          for (const listener of broadcastListeners.get(channel) ?? []) {
-            listener({ data: structuredClone(data), connectionId: MOCK_CONNECTION_ID });
-          }
+        const failure = sendFailures.shift();
+
+        if (failure !== undefined) {
+          return Promise.resolve(err(failure));
         }
 
-        return Promise.resolve();
-      },
-      onMessage: (channel, callback) => {
-        const listeners = broadcastListeners.get(channel) ?? new Set<BroadcastListener>();
+        // One mock client has no peers, and Owlbear never echoes REMOTE to its sender.
+        if (options.destination === 'LOCAL') {
+          localBus.post(channel, data, MOCK_CONNECTION_ID);
+        }
 
-        broadcastListeners.set(channel, listeners);
-        listeners.add(callback);
-
-        return () => {
-          listeners.delete(callback);
-        };
+        return Promise.resolve(ok(undefined));
       },
+      onMessage: (channel, callback) => localBus.subscribe(channel, callback),
     },
     metadata: {
       getRoomId: () => MOCK_ROOM_ID,
@@ -135,21 +151,21 @@ export function createMockPlatform(): MockPlatform {
       getId: () => Promise.resolve(MOCK_PLAYER_ID),
       getConnectionId: () => Promise.resolve(MOCK_CONNECTION_ID),
       getName: () => Promise.resolve(MOCK_PLAYER_NAME),
-      getRole: () => Promise.resolve('GM'),
+      getRole: () => Promise.resolve(role),
     },
     storage: {
-      getItem: (key) => attemptStorage('read', () => stored.get(key) ?? null),
+      getItem: (key) => attemptStorage('read', () => backing.get(key)),
       setItem: (key, value) => {
         return attemptStorage('write', () => {
-          stored.set(key, value);
+          backing.set(key, value);
         });
       },
       removeItem: (key) => {
         return attemptStorage('remove', () => {
-          stored.delete(key);
+          backing.remove(key);
         });
       },
-      keys: () => attemptStorage('list', () => [...stored.keys()]),
+      keys: () => attemptStorage('list', () => backing.keys()),
     },
     contextMenu: {
       create: () => Promise.resolve(),
@@ -199,8 +215,51 @@ export function createMockPlatform(): MockPlatform {
         listener(theme);
       }
     },
+    setRole: (next) => {
+      role = next;
+    },
     setFailingStorageOperations: (operations) => {
       failingStorageOperations = new Set(operations);
     },
+    failNextSends: (failures) => {
+      sendFailures.push(...failures);
+    },
   };
+}
+
+function createMemoryBacking(): MockStorageBacking {
+  const stored = new Map<string, string>();
+
+  return {
+    get: (key) => stored.get(key) ?? null,
+    set: (key, value) => {
+      stored.set(key, value);
+    },
+    remove: (key) => {
+      stored.delete(key);
+    },
+    keys: () => [...stored.keys()],
+  };
+}
+
+// Real pages of one mock client share this browser's storage, as Owlbear iframes do.
+function createPageBacking(): MockStorageBacking {
+  return {
+    get: (key) => localStorage.getItem(key),
+    set: (key, value) => {
+      localStorage.setItem(key, value);
+    },
+    remove: (key) => {
+      localStorage.removeItem(key);
+    },
+    keys: () => Array.from({ length: localStorage.length }, readKey),
+  };
+}
+
+function readKey(_value: undefined, index: number): string {
+  return localStorage.key(index) ?? '';
+}
+
+function roleFromPageUrl(): PlayerRole {
+  return new URLSearchParams(window.location.search).get(ROLE_PARAM) === 'PLAYER' ? 'PLAYER' : 'GM';
 }

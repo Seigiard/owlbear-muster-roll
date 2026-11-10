@@ -28,7 +28,7 @@ const fieldValuesSchema = z.record(z.string().min(1), fieldValueSchema);
 
 const presetDataSchema = z.base64().min(1);
 
-const sheetDataSchema = z.strictObject({
+export const sheetDataSchema = z.strictObject({
   kind: z.enum(['pc', 'npc']),
   name: z.string(),
   order: z.number(),
