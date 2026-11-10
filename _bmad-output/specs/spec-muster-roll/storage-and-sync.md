@@ -34,6 +34,7 @@ If the snapshot does not fit, the GM sees a notice and play continues by broadca
 - Measured in a live room: two GM connections of one account and a guest each sent 50 edits at once to a shared row and an own row. All clients received every edit in order and ended with the same data.
 - A hidden tab runs timers late: gaps of 3 seconds in Firefox and up to 60 seconds in Chrome were measured. Do not depend on timers in a hidden GM tab.
 - Measured with a hidden GM tab. Firefox: 34 minutes hidden, every ping received. Chrome: every ping received for about 13 minutes, then the page stopped timers and messages until the GM returned 27 minutes later. The page resumed without a restart. One observation per browser.
+- Measured player ids: a guest kept its id across reloads, a rename and about 2.5 hours, and got a new id in another browser. An account had one id in two browsers.
 - The Player and Room SDK APIs expose no signed token. A server cannot verify by itself that a request comes from the GM, so v2 needs a GM write key.
 
 ## Size measurements
@@ -47,10 +48,6 @@ Deflate plus base64, on synthetic data with English notes.
 | 6 PC + 60 NPC | 13kB | 16.7kB |
 
 Russian text and the preset add more. These measurements predate the typed-field format, so measure again on the real format.
-
-## Untested or undocumented
-
-- A guest keeps the player id across reloads, a rename and about 2.5 hours. An account has one id across browsers. Not checked: a guest in another browser.
 
 ## Accepted losses
 

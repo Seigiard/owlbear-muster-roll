@@ -71,6 +71,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - Values are stored apart from the template, by field id.
 - Every GM tab and device can edit.
 - A player's edit takes effect only after a GM client checks the write right.
+- A write right binds to the player id. A guest's id holds only in one browser. An account has one id across browsers.
 - A room has one preset file. It holds a character template and a short NPC template, and all sheets follow it.
 - Hirelings and pets are characters, so NPCs stay GM-only.
 - The interface matches the simplicity of dummy-sheet. Muster Roll takes no code or storage from it.
@@ -106,4 +107,3 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 ## Open Questions
 
 - What happens to a player's edit while no GM client responds, for example when Chrome has frozen a hidden GM tab? Player edits take effect only after a GM client checks them.
-- Does a guest keep the player id in another browser? A guest keeps it across reloads, and an account keeps it across browsers. Write rights bind to that id. Needs one more check.
