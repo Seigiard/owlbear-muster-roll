@@ -1,11 +1,13 @@
 import { useId, useMemo } from 'react';
 import type { ReactNode } from 'react';
 
+import { patchRecordKey, type FieldPatchTarget } from '@/core/field-patch';
 import { firstFieldId, type PresetCell, type PresetSection } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { repeatInstances, rowValues, sectionTitle, type FieldValues } from '@/core/sheet-values';
 
 import { SheetCell } from './preset-cell';
+import type { FieldPlace } from './use-field-edit';
 
 // The share of the line minus the gaps beside it. Below 480 px of content area every section
 // takes the whole line, so the share applies only from 480 px up.
@@ -28,7 +30,12 @@ type SheetSectionProps = {
   records: ReadonlyMap<string, VersionedRecord>;
 };
 
-type SheetRow = { key: string; cells: readonly PresetCell[]; values: FieldValues };
+type SheetRow = {
+  key: string;
+  cells: readonly PresetCell[];
+  values: FieldValues;
+  place: FieldPlace | null;
+};
 
 type RowsProps = { section: PresetSection; rows: readonly SheetRow[] };
 
@@ -114,6 +121,7 @@ function Cells({ row }: { row: SheetRow }): ReactNode {
       cell={cell}
       before={row.cells.slice(0, index)}
       values={row.values}
+      place={row.place}
     />
   ));
 }
@@ -125,11 +133,16 @@ function sheetRows(
   records: ReadonlyMap<string, VersionedRecord>,
 ): SheetRow[] {
   if (section.repeat !== true) {
-    return section.rows.map((cells, index) => ({
-      key: firstFieldId(cells) ?? `${INDEX_KEY_PREFIX}${index}`,
-      cells,
-      values: rowValues(records, sheetId, firstFieldId(cells)),
-    }));
+    return section.rows.map((cells, index) => {
+      const rowId = firstFieldId(cells);
+
+      return {
+        key: rowId ?? `${INDEX_KEY_PREFIX}${index}`,
+        cells,
+        values: rowValues(records, sheetId, rowId),
+        place: rowId === null ? null : placeOf(records, sheetId, { kind: 'row', rowId }),
+      };
+    });
   }
 
   const [template] = section.rows;
@@ -143,5 +156,18 @@ function sheetRows(
     key: instance.instanceId,
     cells: template,
     values: instance.values,
+    place: placeOf(records, sheetId, {
+      kind: 'rep',
+      sectionId,
+      instanceId: instance.instanceId,
+    }),
   }));
+}
+
+function placeOf(
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  target: FieldPatchTarget,
+): FieldPlace {
+  return { sheetId, target, record: records.get(patchRecordKey(sheetId, target)) };
 }

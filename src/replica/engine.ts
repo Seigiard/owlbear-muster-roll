@@ -1,11 +1,19 @@
 import { nanoid } from 'nanoid';
 
 import { createBoundedIdSet } from '@/core/bounded-id-set';
+import {
+  acceptedFieldValue,
+  findPatchField,
+  patchedRecord,
+  patchedRecordFits,
+  patchRecordKey,
+} from '@/core/field-patch';
 import { jsonByteLength, recordFitsOneMessage, splitBatch } from '@/core/message-size';
 import { mergeRecords } from '@/core/merge';
-import { decodePreset, encodePreset } from '@/core/preset';
+import { decodePreset, encodePreset, type Preset } from '@/core/preset';
 import {
   hasLiveSheet,
+  presetDataSchema,
   sheetDataSchema,
   type SheetData,
   type VersionedRecord,
@@ -46,6 +54,9 @@ type Persistence = { store: RecordStore; generation: Generation };
 
 type Persisted = { record: VersionedRecord; saved: boolean };
 
+// The preset decoded from the `d` it came from, so a run of patches decodes it once.
+type DecodedPreset = { d: string; preset: Preset | null };
+
 type LoadedReplica = {
   records: VersionedRecord[];
   problemKeys: Set<string>;
@@ -70,6 +81,7 @@ export async function startReplicaEngine(
   const recentCommandIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
   const answeringNonces = new Set<string>();
   let sequence = 0;
+  let decodedPreset: DecodedPreset | null = null;
 
   for (const record of loaded.records) {
     merge(record);
@@ -302,6 +314,8 @@ export async function startReplicaEngine(
         return composeSheetDelete(command);
       case 'preset-upload':
         return listOf(composePresetUpload(command));
+      case 'field-patch':
+        return listOf(composeFieldPatch(command));
       default:
         return unknownCommand(command);
     }
@@ -332,6 +346,80 @@ export async function startReplicaEngine(
     const { c, a } = minter.mint('preset', replica.get('preset')?.c ?? 0);
 
     return ok({ k: 'preset', d, c, a });
+  }
+
+  // The field must be in the targeted row of the sheet's own template, and the value of its type.
+  // The patch merges into the record as it is now, so a field another window just saved stays.
+  function composeFieldPatch(
+    command: Extract<Command, { type: 'field-patch' }>,
+  ): Result<VersionedRecord, RejectionReason> {
+    const current = liveSheetRecord(command.sheetId);
+
+    if (!current.ok) {
+      return current;
+    }
+
+    const sheet = sheetDataSchema.safeParse(current.value.d);
+    const preset = currentPreset();
+
+    if (!sheet.success) {
+      return err('unknown-sheet');
+    }
+
+    if (preset === null) {
+      return err('unknown-field');
+    }
+
+    const template = sheet.data.kind === 'pc' ? preset.character : preset.npc;
+    const field = findPatchField(template, command.target, command.fieldId);
+
+    if (field === null) {
+      return err('unknown-field');
+    }
+
+    const value = acceptedFieldValue(field, command.value);
+
+    if (!value.ok) {
+      return value;
+    }
+
+    const existing = replica.get(patchRecordKey(command.sheetId, command.target));
+
+    const patched = patchedRecord(
+      command.sheetId,
+      command.target,
+      existing,
+      command.fieldId,
+      value.value,
+    );
+
+    if (!patched.ok) {
+      return patched;
+    }
+
+    if (!patchedRecordFits(patched.value)) {
+      return err('too-large');
+    }
+
+    const { c, a } = minter.mint(patched.value.k, existing?.c ?? 0);
+
+    return ok({ ...patched.value, c, a });
+  }
+
+  function currentPreset(): Preset | null {
+    const data = presetDataSchema.safeParse(replica.get('preset')?.d);
+
+    if (!data.success) {
+      return null;
+    }
+
+    if (decodedPreset?.d !== data.data) {
+      const decoded = decodePreset(data.data);
+
+      decodedPreset = { d: data.data, preset: decoded.ok ? decoded.value : null };
+    }
+
+    return decodedPreset.preset;
   }
 
   function nextOrder(kind: 'pc' | 'npc'): number {

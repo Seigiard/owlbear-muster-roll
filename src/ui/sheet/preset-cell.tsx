@@ -1,59 +1,119 @@
-import type { MouseEvent, ReactNode } from 'react';
+import { useId } from 'react';
+import type { ReactNode } from 'react';
 
-import type { PresetCell } from '@/core/preset';
-import { cellLabel, isChecked, valueText, type FieldValues } from '@/core/sheet-values';
+import type { PresetCell, PresetFieldCell } from '@/core/preset';
+import { cellLabel, type FieldValues } from '@/core/sheet-values';
+import { copy } from '@/ui/copy';
+
+import {
+  useCheckFieldEdit,
+  useTextFieldEdit,
+  type FieldErrorKind,
+  type FieldPlace,
+} from './use-field-edit';
 
 type SheetCellProps = {
   cell: PresetCell;
   // The cells before this one in its row, where its label comes from.
   before: readonly PresetCell[];
   values: FieldValues;
+  // `null` for a row with no field, which has no record.
+  place: FieldPlace | null;
 };
 
-// Read-only until Story 1.9 makes values editable, so no value takes the focus: a textbox is a
-// plain element, and a checkbox, focusable by nature, leaves the Tab order.
-export function SheetCell({ cell, before, values }: SheetCellProps): ReactNode {
+type FieldProps = {
+  field: PresetFieldCell;
+  label: string;
+  values: FieldValues;
+  place: FieldPlace;
+};
+
+const ERROR_TEXT: Record<FieldErrorKind, string> = {
+  'bad-number': copy.badNumber,
+  'too-long': copy.valueTooLong,
+};
+
+// The content sizes the control, so a long value widens its grid column as plain text would.
+const VALUE_CLASS =
+  'touch-target min-w-[3rem] max-w-full resize-none border-b border-dotted border-line-strong bg-transparent px-1 text-text [field-sizing:content] [overflow-wrap:anywhere]';
+
+// Every value is editable in place, with no edit mode.
+export function SheetCell({ cell, before, values, place }: SheetCellProps): ReactNode {
   const label = cellLabel(cell, before);
 
-  if (cell.kind !== 'field') {
-    // A dice cell is a static label until Epic 4 makes it roll.
+  // A dice cell is a static label until Epic 4 makes it roll.
+  if (cell.kind !== 'field' || place === null) {
     return <span>{label}</span>;
   }
 
-  const value = values.get(cell.id);
-
-  if (cell.type === 'check') {
-    return (
-      <input
-        type="checkbox"
-        className="size-4 justify-self-start"
-        aria-label={label}
-        aria-readonly="true"
-        // `readOnly` only quiets React's warning about `checked` with no `onChange`, as a checkbox
-        // ignores it. `keepState` cancels the click, so the box neither toggles nor fires a change.
-        readOnly
-        tabIndex={-1}
-        checked={isChecked(value)}
-        onClick={keepState}
-      />
-    );
-  }
-
-  return (
-    <div
-      role="textbox"
-      aria-label={label}
-      aria-readonly="true"
-      aria-multiline={cell.type === 'text'}
-      className="min-h-[1lh] min-w-[3rem] border-b border-dotted border-line-strong px-1 whitespace-pre-wrap [overflow-wrap:anywhere]"
-    >
-      {valueText(value)}
-    </div>
+  return cell.type === 'check' ? (
+    <CheckField field={cell} label={label} values={values} place={place} />
+  ) : (
+    <TextValueField field={cell} label={label} values={values} place={place} />
   );
 }
 
-// React also puts a controlled `checked` back after a click. This does not rely on that, and it
-// keeps the change event from reaching the handlers Story 1.9 adds.
-function keepState(event: MouseEvent<HTMLInputElement>): void {
-  event.preventDefault();
+function CheckField({ field, label, values, place }: FieldProps): ReactNode {
+  const edit = useCheckFieldEdit({ place, fieldId: field.id, recordValue: values.get(field.id) });
+
+  return (
+    <input
+      type="checkbox"
+      className="size-4 justify-self-start"
+      aria-label={label}
+      checked={edit.checked}
+      onChange={edit.onToggle}
+    />
+  );
+}
+
+// A `text` field is a textarea that grows with its lines. A `number` field is a text input with
+// the full keyboard, so `1,5` and a minus can be typed: the iOS decimal keypad has no minus.
+function TextValueField({ field, label, values, place }: FieldProps): ReactNode {
+  const errorId = useId();
+
+  const edit = useTextFieldEdit(field.type === 'number' ? 'number' : 'text', {
+    place,
+    fieldId: field.id,
+    recordValue: values.get(field.id),
+  });
+
+  const common = {
+    'aria-label': label,
+    'aria-invalid': edit.error === null ? undefined : true,
+    'aria-describedby': edit.error === null ? undefined : errorId,
+    className: VALUE_CLASS,
+    value: edit.text,
+    onFocus: edit.onFocus,
+    onBlur: edit.onBlur,
+    onKeyDown: edit.onKeyDown,
+  };
+
+  return (
+    <div className="flex min-w-[0] flex-col">
+      {field.type === 'number' ? (
+        <input
+          {...common}
+          type="text"
+          inputMode="text"
+          onChange={(event) => {
+            edit.onChange(event.target.value);
+          }}
+        />
+      ) : (
+        <textarea
+          {...common}
+          // A browser without `field-sizing` sizes the textarea by its rows.
+          rows={edit.text.split('\n').length}
+          onChange={(event) => {
+            edit.onChange(event.target.value);
+          }}
+        />
+      )}
+      {/* Always mounted, so a screen reader announces the message after the focus has left. */}
+      <span id={errorId} aria-live="polite" className="text-label-sm text-danger-text">
+        {edit.error === null ? '' : ERROR_TEXT[edit.error]}
+      </span>
+    </div>
+  );
 }

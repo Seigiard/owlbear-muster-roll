@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { FieldPatchTarget } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
 
 import {
@@ -151,6 +152,76 @@ describe('parseWindowMessage', () => {
     ['no data', { type: 'preset-upload' }],
     ['a whole record beside its data', { type: 'preset-upload', data: 'AAAA', k: 'preset' }],
   ])('refuses a preset-upload command with %s', (_name, command) => {
+    // #when
+    const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+  });
+
+  test.each<[string, FieldPatchTarget, JsonValue]>([
+    ['a row field', { kind: 'row', rowId: 'str' }, 12],
+    ['a repeat instance field', { kind: 'rep', sectionId: 'attack', instanceId: 'i1' }, 'Меч'],
+    ['a clear', { kind: 'row', rowId: 'str' }, null],
+    ['a value of any JSON type, for the engine to check', { kind: 'row', rowId: 'str' }, [1]],
+  ])('accepts a field-patch command for %s', (_name, target, value) => {
+    // #given
+    const message: WindowMessage = {
+      t: 'command',
+      id: 'c1',
+      command: { type: 'field-patch', sheetId: 's1', target, fieldId: 'str', value },
+    };
+
+    // #when
+    const parsed = parseWindowMessage(message);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: message });
+  });
+
+  test.each<[string, JsonValue]>([
+    [
+      'no value',
+      { type: 'field-patch', sheetId: 's1', target: { kind: 'row', rowId: 'str' }, fieldId: 'str' },
+    ],
+    ['no target', { type: 'field-patch', sheetId: 's1', fieldId: 'str', value: 1 }],
+    [
+      'a target of another kind',
+      { type: 'field-patch', sheetId: 's1', target: { kind: 'sheet' }, fieldId: 'str', value: 1 },
+    ],
+    [
+      'a repeat target with no instance',
+      {
+        type: 'field-patch',
+        sheetId: 's1',
+        target: { kind: 'rep', sectionId: 'attack' },
+        fieldId: 'attack',
+        value: 'x',
+      },
+    ],
+    [
+      'a whole record data beside the value',
+      {
+        type: 'field-patch',
+        sheetId: 's1',
+        target: { kind: 'row', rowId: 'str' },
+        fieldId: 'str',
+        value: 1,
+        d: { str: 1 },
+      },
+    ],
+    [
+      'a version beside the value',
+      {
+        type: 'field-patch',
+        sheetId: 's1',
+        target: { kind: 'row', rowId: 'str' },
+        fieldId: 'str',
+        value: 1,
+        c: 9,
+      },
+    ],
+  ])('refuses a field-patch command with %s', (_name, command) => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
 

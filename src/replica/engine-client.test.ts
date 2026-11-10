@@ -11,7 +11,7 @@ import { encodePreset, parsePresetFile, type Preset } from '@/core/preset';
 import { presetDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
 import { err } from '@/core/result';
 import type { Timing } from '@/core/timing';
-import { UI_CHANNEL, type Command } from '@/core/ui-messages';
+import { UI_CHANNEL, type Command, type CommandRejectedMessage } from '@/core/ui-messages';
 import { createMemoryBus, createMockPlatform, type MockPlatform } from '@/platform/current';
 import type { PlayerRole, SendResult } from '@/platform/ports';
 import { createSendQueue } from '@/platform/send-queue';
@@ -25,6 +25,7 @@ const TIMING: Timing = {
   rateLimitBackoffMaxMs: 2,
   projectionRequestRepeatMs: 25,
   projectionIncompleteTimeoutMs: 80,
+  fieldSavePauseMs: 1,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -223,9 +224,13 @@ async function rejectionOf(view: WindowView, command: Command): Promise<string |
     throw new Error(`the window refused the command before sending it: ${sent.error}`);
   }
 
-  await waitUntil(() => view.store.$rejection.get()?.id === sent.value);
+  await waitUntil(() => view.store.$rejections.get().has(sent.value));
 
-  return view.store.$rejection.get()?.reason;
+  return view.store.$rejections.get().get(sent.value)?.reason;
+}
+
+function lastRejection(store: ProjectionStore): CommandRejectedMessage | null {
+  return [...store.$rejections.get().values()].at(-1) ?? null;
 }
 
 // What a rejected command must leave: the window's records and no delta at all.
@@ -1159,7 +1164,7 @@ describe('sheet-create', () => {
     await rejectionOf(sender, { type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: ' ' });
 
     // #then
-    expect(other.store.$rejection.get()).toBeNull();
+    expect(lastRejection(other.store)).toBeNull();
   });
 });
 
@@ -1769,11 +1774,11 @@ describe('preset upload', () => {
     // #when
     const sent = view.client.sendCommand({ type: 'preset-upload', data });
 
-    await waitUntil(() => view.store.$rejection.get() !== null);
+    await waitUntil(() => lastRejection(view.store) !== null);
 
     // #then
     expect({
-      rejection: view.store.$rejection.get(),
+      rejection: lastRejection(view.store),
       records: recordsOf(view.store),
       deltas: deltas(rig).length,
       stored: rig.platform.storage.keys(),
@@ -1797,12 +1802,12 @@ describe('preset upload', () => {
     // #when
     const sent = view.client.sendCommand({ type: 'preset-upload', data });
 
-    await waitUntil(() => view.store.$rejection.get() !== null);
+    await waitUntil(() => lastRejection(view.store) !== null);
 
     // #then
     expect({
       sent: sent.ok,
-      rejection: view.store.$rejection.get()?.reason,
+      rejection: lastRejection(view.store)?.reason,
       stored: rig.platform.storage.keys(),
     }).toEqual({ sent: true, rejection: 'too-large', stored: { ok: true, value: [] } });
   });
@@ -1818,11 +1823,11 @@ describe('preset upload', () => {
 
     // #when
     view.client.sendCommand({ type: 'preset-upload', data: encodePreset(examplePreset()) });
-    await waitUntil(() => view.store.$rejection.get() !== null);
+    await waitUntil(() => lastRejection(view.store) !== null);
 
     // #then
     expect({
-      reason: view.store.$rejection.get()?.reason,
+      reason: lastRejection(view.store)?.reason,
       preset: view.store.$records.get().has('preset'),
       stored: rig.platform.storage.getItem(`${STORAGE_PREFIX}preset`),
     }).toEqual({ reason: 'sheets-exist', preset: false, stored: { ok: true, value: null } });
@@ -1861,11 +1866,11 @@ describe('preset upload', () => {
       data: encodePreset(examplePreset()),
     });
 
-    await waitUntil(() => view.store.$rejection.get() !== null);
+    await waitUntil(() => lastRejection(view.store) !== null);
 
     // #then
     expect({
-      rejection: view.store.$rejection.get(),
+      rejection: lastRejection(view.store),
       preset: view.store.$records.get().has('preset'),
     }).toEqual({
       rejection: {
@@ -1874,6 +1879,324 @@ describe('preset upload', () => {
         reason: 'sheets-exist',
       },
       preset: false,
+    });
+  });
+});
+
+describe('field-patch', () => {
+  const ROW_STR = { kind: 'row', rowId: 'str' } as const;
+  const ATTACK_I1 = { kind: 'rep', sectionId: 'attack', instanceId: 'i1' } as const;
+
+  // A preset with a plain row, a text row and a repeat section, and an NPC template of its own.
+  const PATCH_PRESET: Preset = {
+    v: 1,
+    character: {
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'check', id: 'str_tired' },
+            ],
+            [{ kind: 'field', type: 'text', id: 'notes' }],
+          ],
+        },
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+            ],
+          ],
+        },
+      ],
+    },
+    npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+  };
+
+  async function patchRig(...records: VersionedRecord[]): Promise<{ rig: Rig; view: WindowView }> {
+    const rig = createRig();
+
+    seed(
+      rig,
+      'preset',
+      JSON.stringify({ k: 'preset', d: encodePreset(PATCH_PRESET), c: 1, a: 'z' }),
+    );
+
+    for (const record of [sheet('brok', 'Брок'), ...records]) {
+      seed(rig, record.k, JSON.stringify(record));
+    }
+
+    await startEngine(rig);
+
+    return { rig, view: await openAndLoad(rig) };
+  }
+
+  function patch(
+    target: Extract<Command, { type: 'field-patch' }>['target'],
+    fieldId: string,
+    value: JsonValue,
+    sheetId = 'brok',
+  ): Command {
+    return { type: 'field-patch', sheetId, target, fieldId, value };
+  }
+
+  function stored(rig: Rig, key: string): JsonValue {
+    const text = rig.platform.storage.getItem(`${STORAGE_PREFIX}${key}`);
+
+    return text.ok && text.value !== null ? z.json().parse(JSON.parse(text.value)) : null;
+  }
+
+  test('merges a number into the row record as a JSON number, keeps its other fields and persists it', async () => {
+    // #given
+    const { rig, view } = await patchRig({
+      k: 'row:brok:str',
+      d: { str: 9, str_tired: true },
+      c: 4,
+      a: 'z',
+    });
+
+    // #when
+    view.client.sendCommand(patch(ROW_STR, 'str', 12));
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    const expected = {
+      k: 'row:brok:str',
+      d: { str: 12, str_tired: true },
+      c: 5,
+      a: 'mock-connection',
+    };
+
+    expect({
+      window: view.store.$records.get().get('row:brok:str'),
+      stored: stored(rig, 'row:brok:str'),
+    }).toEqual({ window: expected, stored: expected });
+  });
+
+  test('starts an absent row record empty and stores false for an unchecked box', async () => {
+    // #given
+    const { rig, view } = await patchRig();
+
+    // #when
+    view.client.sendCommand(patch(ROW_STR, 'str_tired', false));
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect(stored(rig, 'row:brok:str')).toEqual({
+      k: 'row:brok:str',
+      d: { str_tired: false },
+      c: 1,
+      a: 'mock-connection',
+    });
+  });
+
+  test('stores a text value as typed, line breaks included', async () => {
+    // #given
+    const { rig, view } = await patchRig();
+
+    // #when
+    view.client.sendCommand(patch({ kind: 'row', rowId: 'notes' }, 'notes', ' abc\nдва '));
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect(view.store.$records.get().get('row:brok:notes')?.d).toEqual({ notes: ' abc\nдва ' });
+  });
+
+  test('removes the key of a cleared field', async () => {
+    // #given
+    const { rig, view } = await patchRig({
+      k: 'row:brok:str',
+      d: { str: 9, str_tired: true },
+      c: 1,
+      a: 'z',
+    });
+
+    // #when
+    view.client.sendCommand(patch(ROW_STR, 'str', null));
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect(stored(rig, 'row:brok:str')).toEqual({
+      k: 'row:brok:str',
+      d: { str_tired: true },
+      c: 2,
+      a: 'mock-connection',
+    });
+  });
+
+  test('saves a field of an existing repeat instance into its cells and keeps its order', async () => {
+    // #given
+    const { rig, view } = await patchRig({
+      k: 'rep:brok:attack:i1',
+      d: { order: 3, cells: { attack: 'Меч' } },
+      c: 1,
+      a: 'z',
+    });
+
+    // #when
+    view.client.sendCommand(patch(ATTACK_I1, 'bonus', 2));
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect(stored(rig, 'rep:brok:attack:i1')).toEqual({
+      k: 'rep:brok:attack:i1',
+      d: { order: 3, cells: { attack: 'Меч', bonus: 2 } },
+      c: 2,
+      a: 'mock-connection',
+    });
+  });
+
+  test('reads the NPC template for an NPC sheet', async () => {
+    // #given
+    const { rig, view } = await patchRig({
+      k: 'sheet:goblin',
+      d: { kind: 'npc', name: 'Гоблин', order: 0 },
+      c: 1,
+      a: 'z',
+    });
+
+    // #when
+    view.client.sendCommand(patch({ kind: 'row', rowId: 'hp' }, 'hp', 7, 'goblin'));
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect(view.store.$records.get().get('row:goblin:hp')?.d).toEqual({ hp: 7 });
+  });
+
+  test.each<[string, string, Command, VersionedRecord[]]>([
+    ['an unknown sheet', 'unknown-sheet', patch(ROW_STR, 'str', 1, 'nobody'), []],
+    [
+      'a deleted sheet',
+      'deleted-sheet',
+      patch(ROW_STR, 'str', 1, 'gone'),
+      [{ k: 'sheet:gone', d: null, c: 2, a: 'z' }],
+    ],
+    [
+      'a sheet id outside the nanoid alphabet',
+      'invalid-sheet-id',
+      patch(ROW_STR, 'str', 1, 'a:b'),
+      [],
+    ],
+    ['a field of another row', 'unknown-field', patch(ROW_STR, 'notes', 'x'), []],
+    ['a field not in the preset', 'unknown-field', patch(ROW_STR, 'dex', 1), []],
+    [
+      'a character field on an NPC',
+      'unknown-field',
+      patch(ROW_STR, 'str', 1, 'goblin'),
+      [{ k: 'sheet:goblin', d: { kind: 'npc', name: 'Гоблин', order: 0 }, c: 1, a: 'z' }],
+    ],
+    ['a string for a number field', 'invalid-value', patch(ROW_STR, 'str', '12'), []],
+    ['a number for a check field', 'invalid-value', patch(ROW_STR, 'str_tired', 1), []],
+    [
+      'an empty string for a text field',
+      'invalid-value',
+      patch({ kind: 'row', rowId: 'notes' }, 'notes', ''),
+      [],
+    ],
+    [
+      'an object for a text field',
+      'invalid-value',
+      patch({ kind: 'row', rowId: 'notes' }, 'notes', { a: 1 }),
+      [],
+    ],
+    ['an unknown instance', 'unknown-instance', patch(ATTACK_I1, 'bonus', 2), []],
+    [
+      'a deleted instance',
+      'unknown-instance',
+      patch(ATTACK_I1, 'bonus', 2),
+      [{ k: 'rep:brok:attack:i1', d: null, c: 2, a: 'z' }],
+    ],
+    [
+      'a clear of an absent key',
+      'unchanged',
+      patch(ROW_STR, 'str', null),
+      [{ k: 'row:brok:str', d: { str_tired: true }, c: 1, a: 'z' }],
+    ],
+    [
+      'a record that would not fit one message',
+      'too-large',
+      patch({ kind: 'row', rowId: 'notes' }, 'notes', 'ы'.repeat(7400)),
+      [],
+    ],
+  ])('rejects %s and changes nothing', async (_name, reason, command, records) => {
+    // #given
+    const { rig, view } = await patchRig(...records);
+    const before = recordsOf(view.store);
+
+    // #when
+    const rejection = await rejectionOf(view, command);
+
+    // #then
+    expect({ rejection, records: recordsOf(view.store), deltas: deltas(rig).length }).toEqual({
+      rejection: reason,
+      records: before,
+      deltas: 0,
+    });
+  });
+
+  test('reads the preset uploaded after an earlier patch', async () => {
+    // #given: a patch under the first preset, then the only sheet deleted so a new preset can load.
+    const { view } = await patchRig();
+
+    view.client.sendCommand(patch(ROW_STR, 'str', 1));
+    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    view.client.sendCommand({
+      type: 'preset-upload',
+      data: encodePreset({
+        v: 1,
+        character: {
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'number', id: 'dex' },
+                ],
+              ],
+            },
+          ],
+        },
+        npc: { sections: [] },
+      }),
+    });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'liza', kind: 'pc', name: 'Лиза' });
+    await waitUntil(() => view.store.$records.get().has('sheet:liza'));
+
+    // #when
+    view.client.sendCommand(patch(ROW_STR, 'dex', 5, 'liza'));
+    await waitUntil(() => view.store.$records.get().has('row:liza:str'));
+
+    const removed = await rejectionOf(
+      view,
+      patch({ kind: 'row', rowId: 'notes' }, 'notes', 'x', 'liza'),
+    );
+
+    // #then
+    expect({ added: view.store.$records.get().get('row:liza:str')?.d, removed }).toEqual({
+      added: { dex: 5 },
+      removed: 'unknown-field',
+    });
+  });
+
+  test('rejects a patch while no preset is loaded', async () => {
+    // #given
+    const rig = createRig();
+
+    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok')));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, patch(ROW_STR, 'str', 1));
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'unknown-field',
+      unchanged: { records: [sheet('brok')], deltas: 0 },
     });
   });
 });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { fieldPatchTargetSchema } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
 import { recordSchema } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
@@ -67,11 +68,22 @@ const presetUploadSchema = z.strictObject({
   data: z.base64().min(1),
 });
 
+// One field, one value or a clear as `null`. The value is any JSON, so the engine, which knows
+// the field's type, rejects a wrong one instead of the schema dropping it in silence.
+const fieldPatchSchema = z.strictObject({
+  type: z.literal('field-patch'),
+  sheetId: z.string(),
+  target: fieldPatchTargetSchema,
+  fieldId: z.string(),
+  value: z.json(),
+});
+
 const commandIntentSchema = z.discriminatedUnion('type', [
   sheetCreateSchema,
   sheetRenameSchema,
   sheetDeleteSchema,
   presetUploadSchema,
+  fieldPatchSchema,
 ]);
 
 const commandSchema = z.strictObject({
@@ -92,6 +104,10 @@ const commandRejectedSchema = z.strictObject({
     'unknown-sheet',
     'deleted-sheet',
     'invalid-name',
+    'unknown-field',
+    'invalid-value',
+    'unknown-instance',
+    'unchanged',
   ]),
 });
 

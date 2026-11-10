@@ -29,13 +29,14 @@ const NO_ATTEMPT: UploadAttempt = { error: null, commandId: null };
 
 type PresetUploadProps = {
   sendCommand: ReplicaClient['sendCommand'];
-  store: Pick<ProjectionStore, '$rejection'>;
+  store: Pick<ProjectionStore, '$rejections'>;
   disabledReason?: string;
 };
 
 export function PresetUpload({ sendCommand, store, disabledReason }: PresetUploadProps): ReactNode {
   const [attempt, setAttempt] = useState<UploadAttempt>(NO_ATTEMPT);
-  const rejection = useStore(store.$rejection);
+  const rejections = useStore(store.$rejections);
+  const rejection = attempt.commandId === null ? undefined : rejections.get(attempt.commandId);
   const message = attempt.error ?? rejectionMessageFor(attempt, rejection);
 
   async function upload(file: File): Promise<void> {
@@ -125,9 +126,9 @@ async function sendPreset(
 
 function rejectionMessageFor(
   attempt: UploadAttempt,
-  rejection: CommandRejectedMessage | null,
+  rejection: CommandRejectedMessage | undefined,
 ): string | null {
-  if (rejection === null || attempt.commandId === null || rejection.id !== attempt.commandId) {
+  if (rejection === undefined || rejection.id !== attempt.commandId) {
     return null;
   }
 

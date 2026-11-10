@@ -21,6 +21,7 @@ import { SettingsView } from '@/ui/settings/settings-view';
 import { CharacterHeader } from '@/ui/sheet/character-header';
 import { DeleteConfirmation } from '@/ui/sheet/delete-confirmation';
 import { SheetBody } from '@/ui/sheet/sheet-body';
+import { createFieldFlushes, type FieldEditing } from '@/ui/sheet/use-field-edit';
 import { focusTab } from '@/ui/shell/tab-bar';
 import { WindowShell, type ShellLayout } from '@/ui/shell/window-shell';
 import { followTheme } from '@/ui/theme';
@@ -55,6 +56,7 @@ if (container === null) {
 
 const root = createRoot(container);
 const store = createProjectionStore();
+const pageHideFlushes = createFieldFlushes();
 
 platform.onReady(() => {
   void start();
@@ -74,6 +76,13 @@ async function start(): Promise<void> {
       TIMING,
     );
 
+    // A closing window still sends what waits in its queue, then the fields typed into and not
+    // yet saved, so a newer value of a field lands after an older one.
+    window.addEventListener('pagehide', () => {
+      client.flushNow();
+      pageHideFlushes.flushAll();
+    });
+
     root.render(<WindowRoot role={role} store={store} sendCommand={client.sendCommand} />);
   } catch (error) {
     console.error('Muster Roll could not render its window', error);
@@ -84,7 +93,7 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
   const notices = useStore(projection.$notices);
   const loaded = useStore(projection.$loaded);
   const records = useStore(projection.$records);
-  const rejection = useStore(projection.$rejection);
+  const rejections = useStore(projection.$rejections);
   const presetData = presetDataOf(records);
   const preset = useMemo(() => decodedPreset(presetData), [presetData]);
   const characters = useMemo(() => liveSheets(records.values(), 'pc'), [records]);
@@ -104,6 +113,17 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
   // A tab this window has confirmed the deletion of, until its sheet is gone.
   const [deletingTab, setDeletingTab] = useState<string | null>(null);
   const characterTabs = characters.map((sheet) => sheetKey(sheet.sheetId));
+
+  const editing = useMemo<FieldEditing>(
+    () => ({
+      sendCommand,
+      $rejections: projection.$rejections,
+      pauseMs: TIMING.fieldSavePauseMs,
+      pageHideFlushes,
+    }),
+    [sendCommand, projection],
+  );
+
   const firstTab = characterTabs[0] ?? NPC_TAB;
 
   const clearNameFocus = useCallback(() => {
@@ -127,7 +147,7 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
     }
   }
 
-  if (createdTab !== null && createdTab.commandId === rejection?.id) {
+  if (createdTab !== null && rejections.has(createdTab.commandId)) {
     setCreatedTab(null);
   } else if (createdTab !== null && characterTabs.includes(createdTab.tab)) {
     setCreatedTab(null);
@@ -275,7 +295,12 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
                 onActionsFocused={clearActionsFocus}
               />
               {preset === null ? null : (
-                <SheetBody template={preset.character} sheetId={sheet.sheetId} records={records} />
+                <SheetBody
+                  template={preset.character}
+                  sheetId={sheet.sheetId}
+                  records={records}
+                  editing={editing}
+                />
               )}
             </>
           ),

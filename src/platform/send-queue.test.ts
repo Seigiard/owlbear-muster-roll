@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 
 import type { JsonValue } from '@/core/json';
 import { err, ok } from '@/core/result';
@@ -13,6 +13,7 @@ const TIMING: Timing = {
   rateLimitBackoffMaxMs: 1000,
   projectionRequestRepeatMs: 1,
   projectionIncompleteTimeoutMs: 1,
+  fieldSavePauseMs: 1,
 };
 
 const LOCAL = { destination: 'LOCAL' } as const;
@@ -52,6 +53,10 @@ function createRig(): Rig {
     },
   };
 }
+
+afterEach(() => {
+  mock.restore();
+});
 
 describe('send queue', () => {
   test('sends in order and spaces each send by the injected value', async () => {
@@ -152,6 +157,94 @@ describe('send queue', () => {
     expect({ sent: rig.sent, waits: rig.waits }).toEqual({
       sent: ['a', 'b'],
       waits: [250, 500, 1000, 1000, 50, 50],
+    });
+  });
+
+  test('sendNow goes out at once, ahead of the spacing pause and the waiting messages', async () => {
+    // #given: the first message is in its spacing pause, and a second one waits behind it.
+    const rig = createRig();
+    const pauses: (() => void)[] = [];
+
+    const queue = createSendQueue(rig, TIMING, () => {
+      return new Promise((resolve) => {
+        pauses.push(resolve);
+      });
+    });
+
+    await queue.enqueue('ui', 'first', LOCAL);
+
+    const waiting = queue.enqueue('ui', 'waiting', LOCAL);
+
+    // #when
+    await queue.sendNow('ui', 'urgent', LOCAL);
+
+    const sentBeforePause = [...rig.sent];
+
+    for (const finish of pauses.splice(0)) {
+      finish();
+    }
+
+    await waiting;
+
+    // #then
+    expect({ sentBeforePause, sent: rig.sent }).toEqual({
+      sentBeforePause: ['first', 'urgent'],
+      sent: ['first', 'urgent', 'waiting'],
+    });
+  });
+
+  test('sendNow makes one attempt and waits out no rate limit', async () => {
+    // #given
+    const rig = createRig();
+    const queue = createSendQueue(rig, TIMING, rig.wait);
+
+    spyOn(console, 'error').mockImplementation(() => undefined);
+    rig.failures.push({ kind: 'rate-limited' });
+
+    // #when
+    await queue.sendNow('ui', 'urgent', LOCAL);
+
+    // #then
+    expect({ sent: rig.sent, waits: rig.waits }).toEqual({ sent: [], waits: [] });
+  });
+
+  test('flushNow sends the message in its backoff and every waiting one in order, once each', async () => {
+    // #given: the first message met a rate limit and waits out its backoff, two wait behind it.
+    const rig = createRig();
+    const backoffs: (() => void)[] = [];
+
+    const queue = createSendQueue(rig, TIMING, () => {
+      return new Promise((resolve) => {
+        backoffs.push(resolve);
+      });
+    });
+
+    rig.failures.push({ kind: 'rate-limited' });
+
+    const all = Promise.all([
+      queue.enqueue('ui', 'in backoff', LOCAL),
+      queue.enqueue('ui', 'second', LOCAL),
+      queue.enqueue('ui', 'third', LOCAL),
+    ]);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // #when
+    queue.flushNow();
+
+    const sentAtOnce = [...rig.sent];
+
+    for (const finish of backoffs.splice(0)) {
+      finish();
+    }
+
+    await all;
+
+    // #then
+    expect({ sentAtOnce, sent: rig.sent }).toEqual({
+      sentAtOnce: ['in backoff', 'second', 'third'],
+      sent: ['in backoff', 'second', 'third'],
     });
   });
 

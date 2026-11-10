@@ -32,8 +32,13 @@ type Assembly = {
 
 export type CommandFailure = 'too-large';
 
+// `urgent` skips the spacing queue, for a window that is closing.
+export type SendCommandOptions = { urgent?: boolean };
+
 export type ReplicaClient = {
-  sendCommand: (command: Command) => Result<string, CommandFailure>;
+  sendCommand: (command: Command, options?: SendCommandOptions) => Result<string, CommandFailure>;
+  // Sends every waiting message at once, for a window that is closing.
+  flushNow: () => void;
   stop: () => void;
 };
 
@@ -198,7 +203,7 @@ export function startReplicaClient(
   sendRequest();
 
   return {
-    sendCommand: (command) => {
+    sendCommand: (command, options) => {
       const id = newId();
       const message: WindowMessage = { t: 'command', id, command };
 
@@ -207,12 +212,17 @@ export function startReplicaClient(
       }
 
       ownCommandIds.add(id);
-      send(message).catch((error) => {
+
+      const sent =
+        options?.urgent === true ? sendQueue.sendNow(UI_CHANNEL, message, LOCAL) : send(message);
+
+      sent.catch((error) => {
         console.error('Muster Roll could not send a command', error);
       });
 
       return ok(id);
     },
+    flushNow: sendQueue.flushNow,
     stop: () => {
       unsubscribe();
       clearTimeout(repeatTimer);

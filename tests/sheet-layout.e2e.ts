@@ -4,7 +4,6 @@ import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { cssValue, renderedColor, tokenColor } from './support/colors';
 import { openRoom, record } from './support/room';
 
-const ACTIONS = 'Действия с листом';
 const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 const SECTION_GAP = 16;
 const LONG_VALUE = 'Ш'.repeat(120);
@@ -233,22 +232,19 @@ test('stored text, number and check values show in their fields', async ({ page,
   const grid = region(page, 'Сетка');
 
   // #then
-  await expect(grid.getByRole('textbox', { name: 'Сила' })).toHaveText('14');
+  await expect(grid.getByRole('textbox', { name: 'Сила' })).toHaveValue('14');
   await expect(grid.getByRole('checkbox', { name: 'Сила' })).toBeChecked();
-  await expect(region(page, 'Строки').getByRole('textbox', { name: 'motto' })).toHaveText('Вперёд');
+  await expect(region(page, 'Строки').getByRole('textbox', { name: 'motto' })).toHaveValue(
+    'Вперёд',
+  );
 });
 
 test('a text value keeps its line breaks', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
 
-  // #when
-  const shown = await page
-    .getByRole('textbox', { name: 'Заметки' })
-    .evaluate((element) => (element instanceof HTMLElement ? element.innerText : ''));
-
   // #then
-  expect(shown).toBe('Первая\nВторая');
+  await expect(page.getByRole('textbox', { name: 'Заметки' })).toHaveValue('Первая\nВторая');
 });
 
 test('a field with no value shows an empty value area', async ({ page, context }) => {
@@ -257,7 +253,7 @@ test('a field with no value shows an empty value area', async ({ page, context }
   const empty = region(page, 'Сетка').getByRole('textbox', { name: 'Ловкость' });
 
   // #then
-  await expect(empty).toHaveText('');
+  await expect(empty).toHaveValue('');
   await expect(empty).toBeVisible();
   await expect(region(page, 'Отметки').getByRole('checkbox', { name: 'Отдых' })).not.toBeChecked();
 });
@@ -271,7 +267,11 @@ test('a dice cell shows the preceding text cell, otherwise its formula, as stati
   const rows = rowsOf(region(page, 'Строки'));
 
   // #then
-  await expect(rows).toHaveText(['Хиты сейчас7из максимума12', 'Вперёд', 'УдачаУдача', '1d20+str']);
+  await expect(rows.nth(0)).toHaveText('Хиты сейчасиз максимума');
+  expect(await valuesOf(rows.nth(0).getByRole('textbox'))).toEqual(['7', '12']);
+  expect(await valuesOf(rows.nth(1).getByRole('textbox'))).toEqual(['Вперёд']);
+  await expect(rows.nth(2)).toHaveText('УдачаУдача');
+  await expect(rows.nth(3)).toHaveText('1d20+str');
   await expect(rows.nth(2).getByRole('button')).toHaveCount(0);
 });
 
@@ -300,7 +300,7 @@ test("a repeat section shows this sheet's instances by order, then id, and no ot
   await openSheet(page, context);
 
   // #then
-  await expect(region(page, 'Атаки').getByRole('textbox', { name: 'attack' })).toHaveText([
+  expect(await valuesOf(region(page, 'Атаки').getByRole('textbox', { name: 'attack' }))).toEqual([
     'Меч',
     'Нож',
     'Лук',
@@ -318,10 +318,10 @@ test("the other character's tab shows its own instances and values only", async 
   await page.getByRole('tab', { name: 'Лиза' }).click();
 
   // #then
-  await expect(region(page, 'Атаки').getByRole('textbox', { name: 'attack' })).toHaveText([
+  await expect(region(page, 'Сетка').getByRole('textbox', { name: 'Сила' })).toHaveValue('9');
+  expect(await valuesOf(region(page, 'Атаки').getByRole('textbox', { name: 'attack' }))).toEqual([
     'Чужой',
   ]);
-  await expect(region(page, 'Сетка').getByRole('textbox', { name: 'Сила' })).toHaveText('9');
 });
 
 test('rows 2 and 4 of a section use surface-stripe, rows 1 and 3 do not', async ({
@@ -428,52 +428,6 @@ test('a value has a dotted underline in line-strong, and every row is at least 3
   });
 });
 
-test('Tab from the header never lands inside the sheet body', async ({ page, context }) => {
-  // #given
-  await openSheet(page, context);
-  await page.getByRole('button', { name: ACTIONS }).focus();
-
-  // #when
-  const reached: boolean[] = [];
-
-  for (let press = 0; press < 12; press += 1) {
-    await page.keyboard.press('Tab');
-    reached.push(
-      // A grid wider than its section scrolls, and Chrome lets the keyboard focus such a scroller,
-      // so the scroller itself is the one stop allowed inside the body.
-      await page.evaluate(() => {
-        const focused = document.activeElement;
-
-        return (
-          focused !== null &&
-          !focused.hasAttribute('data-section-body') &&
-          focused.closest('[data-sheet-body]') !== null
-        );
-      }),
-    );
-  }
-
-  // #then
-  expect(reached.filter((inside) => inside)).toEqual([]);
-});
-
-test('a click on a read-only checkbox leaves it as stored', async ({ page, context }) => {
-  // #given
-  await openSheet(page, context);
-  const checked = region(page, 'Сетка').getByRole('checkbox', { name: 'Сила' });
-  const unchecked = region(page, 'Отметки').getByRole('checkbox', { name: 'Отдых' });
-
-  // #when
-  await checked.click();
-  await unchecked.click();
-
-  // #then
-  expect({
-    checked: await checked.isChecked(),
-    unchecked: await unchecked.isChecked(),
-  }).toEqual({ checked: true, unchecked: false });
-});
-
 test('a repeat section with no instances shows its heading and no row', async ({
   page,
   context,
@@ -489,6 +443,17 @@ test('a repeat section with no instances shows its heading and no row', async ({
 
 function region(page: Page, name: string): Locator {
   return page.getByRole('tabpanel').getByRole('region', { name });
+}
+
+// The values of the matched fields, in page order.
+function valuesOf(fields: Locator): Promise<string[]> {
+  return fields.evaluateAll((elements) =>
+    elements.map((element) =>
+      element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+        ? element.value
+        : '',
+    ),
+  );
 }
 
 function rowsOf(section: Locator): Locator {

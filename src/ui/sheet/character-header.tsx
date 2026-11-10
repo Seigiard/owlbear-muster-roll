@@ -21,7 +21,7 @@ type CharacterHeaderProps = {
   sheetId: string;
   name: string;
   sendCommand: ReplicaClient['sendCommand'];
-  store: Pick<ProjectionStore, '$rejection'>;
+  store: Pick<ProjectionStore, '$rejections'>;
   // True for a sheet this window has just created, so the GM can type its name at once.
   focusName: boolean;
   onNameFocused: () => void;
@@ -57,13 +57,13 @@ export function CharacterHeader({
 }: CharacterHeaderProps): ReactNode {
   const inputRef = useRef<HTMLInputElement>(null);
   const actionsRef = useRef<HTMLButtonElement>(null);
-  const rejection = useStore(store.$rejection);
+  const rejections = useStore(store.$rejections);
   const [edit, setEdit] = useState<NameEdit>(NO_EDIT);
 
   // Only the projection bringing back the last sent name ends the wait. An earlier rename that
   // lands first must not show while the last one is still on its way.
   const settled =
-    edit.sent !== null && (edit.sent.name === name || edit.sent.commandId === rejection?.id);
+    edit.sent !== null && (edit.sent.name === name || rejections.has(edit.sent.commandId));
 
   if (settled) {
     setEdit({ ...edit, sent: null });

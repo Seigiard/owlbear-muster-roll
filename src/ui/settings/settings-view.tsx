@@ -11,7 +11,7 @@ type SettingsViewProps = {
   preset: Preset | null;
   sheetsExist: boolean;
   sendCommand: ReplicaClient['sendCommand'];
-  store: Pick<ProjectionStore, '$rejection'>;
+  store: Pick<ProjectionStore, '$rejections'>;
 };
 
 // Sections come in the order Пресет, Снимок, Копия в комнате. Later stories add the other two.
