@@ -55,3 +55,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-6-create-and-name-characters.md`
   summary: Test that a disappearing selected tab hands the selection to the first tab.
   evidence: The branch exists in `main.tsx`, but nothing can remove a sheet until Story 1.11.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-8-see-a-sheet-laid-out-by-the-preset.md`
+  summary: Assert `aria-multiline` on text and number value controls.
+  evidence: No test reads it; Story 1.9 replaces the read-only controls with editable ones.
