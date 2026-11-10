@@ -19,3 +19,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-2-window-that-belongs-to-owlbear.md`
   summary: Give the TabList an accessible name from the copy catalog.
   evidence: No string exists in `EXPERIENCE.md`. Story 1.6 builds the real tab bar.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-keep-records-safe-in-the-browser.md`
+  summary: Refuse `__proto__`, `constructor` and `:` in preset field ids.
+  evidence: Zod drops a `__proto__` key from a parsed record with no error. Story 1.5 owns the preset schema.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-keep-records-safe-in-the-browser.md`
+  summary: Prove through a real reload that the browser storage adapter persists.
+  evidence: Tests inject their own getter. TASK-6 is the first production caller.
