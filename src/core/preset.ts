@@ -144,6 +144,18 @@ export function formatPresetFile(preset: Preset): string {
   return JSON.stringify(file, null, 2);
 }
 
+// The id of a row's first field. It names the row's `row:` record, and for a repeat row the
+// section's `rep:` records. A row with no field has no record.
+export function firstFieldId(row: readonly PresetCell[]): string | null {
+  for (const cell of row) {
+    if (cell.kind === 'field') {
+      return cell.id;
+    }
+  }
+
+  return null;
+}
+
 // All non-repeat fields of one template are one scope, and each repeat row is its own.
 function templateFailure(template: PresetTemplate): PresetFailure | null {
   const templateScope = new Set<string>();
@@ -168,9 +180,9 @@ function repeatSectionFailure(
   sectionIds: Set<string>,
 ): PresetFailure | null {
   const [row, ...others] = section.rows;
-  const firstField = row?.find(isFieldCell);
+  const sectionId = row === undefined ? null : firstFieldId(row);
 
-  if (row === undefined || others.length > 0 || firstField === undefined) {
+  if (row === undefined || others.length > 0 || sectionId === null) {
     return { code: 'bad-repeat' };
   }
 
@@ -180,12 +192,11 @@ function repeatSectionFailure(
     return failure;
   }
 
-  // The first field id of the repeat row is its `sectionId` in `rep:` keys.
-  if (sectionIds.has(firstField.id)) {
-    return { code: 'duplicate-section', detail: shortDetail(firstField.id) };
+  if (sectionIds.has(sectionId)) {
+    return { code: 'duplicate-section', detail: shortDetail(sectionId) };
   }
 
-  sectionIds.add(firstField.id);
+  sectionIds.add(sectionId);
 
   return null;
 }
@@ -254,10 +265,6 @@ function shortDetail(text: string): string {
   return characters.length > DETAIL_MAX_CHARACTERS
     ? `${characters.slice(0, DETAIL_MAX_CHARACTERS).join('')}…`
     : text;
-}
-
-function isFieldCell(cell: PresetCell): cell is PresetFieldCell {
-  return cell.kind === 'field';
 }
 
 function toBase64(bytes: Uint8Array): string {

@@ -24,7 +24,7 @@ export const recordKeySchema = z.union([
 // An empty text field has no key, so "" is never a stored value.
 export const fieldValueSchema = z.union([z.number(), z.string().min(1), z.boolean()]);
 
-const fieldValuesSchema = z.record(z.string().min(1), fieldValueSchema);
+export const fieldValuesSchema = z.record(z.string().min(1), fieldValueSchema);
 
 export const presetDataSchema = z.base64().min(1);
 
@@ -34,7 +34,7 @@ export const sheetDataSchema = z.strictObject({
   order: z.number(),
 });
 
-const repDataSchema = z.strictObject({ order: z.number(), cells: fieldValuesSchema });
+export const repDataSchema = z.strictObject({ order: z.number(), cells: fieldValuesSchema });
 
 const playerDataSchema = z.strictObject({ name: z.string() });
 
@@ -53,6 +53,8 @@ export const recordSchema = z.union([
 export type VersionedRecord = z.infer<typeof recordSchema>;
 
 export type SheetData = z.infer<typeof sheetDataSchema>;
+
+export type FieldValue = z.infer<typeof fieldValueSchema>;
 
 export type RecordFailure = 'invalid-record';
 

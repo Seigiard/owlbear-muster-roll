@@ -20,6 +20,7 @@ import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
 import { SettingsView } from '@/ui/settings/settings-view';
 import { CharacterHeader } from '@/ui/sheet/character-header';
 import { DeleteConfirmation } from '@/ui/sheet/delete-confirmation';
+import { SheetBody } from '@/ui/sheet/sheet-body';
 import { focusTab } from '@/ui/shell/tab-bar';
 import { WindowShell, type ShellLayout } from '@/ui/shell/window-shell';
 import { followTheme } from '@/ui/theme';
@@ -239,7 +240,6 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
       kind: 'tabs',
       selectedTab: shownTab,
       onSelectTab: setSelectedTab,
-      // Temporary until Story 1.8 lays out the sheet: a character tab holds its header only.
       scrollingTabs: characters.map((sheet) => {
         const id = sheetKey(sheet.sheetId);
 
@@ -274,6 +274,9 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
                 focusActions={focusActionsOf === id}
                 onActionsFocused={clearActionsFocus}
               />
+              {preset === null ? null : (
+                <SheetBody template={preset.character} sheetId={sheet.sheetId} records={records} />
+              )}
             </>
           ),
         };

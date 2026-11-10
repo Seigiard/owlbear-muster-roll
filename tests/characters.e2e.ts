@@ -1,16 +1,19 @@
-import { readFileSync } from 'node:fs';
-
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-import { deflateSync, strToU8 } from 'fflate';
 import { z } from 'zod';
 
 import type { JsonValue } from '@/core/json';
 
 import { cssValue, renderedColor } from './support/colors';
+import {
+  openBackground,
+  openRoom,
+  sheetRecord,
+  STORAGE_PREFIX,
+  type SeededSheet,
+} from './support/room';
 
 const CHANNEL = 'app.muster-roll/ui';
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
 const ADD = 'Добавить персонажа';
 const NAME_FIELD = 'Имя персонажа';
 const NEW_CHARACTER = 'Новый персонаж';
@@ -19,8 +22,6 @@ const SETTINGS = 'Настройки';
 const GEAR = '⚙︎';
 const LINE: readonly [number, number, number] = [85, 85, 85];
 const LINE_STRONG: readonly [number, number, number] = [136, 136, 136];
-
-const EXAMPLE_TEXT = readFileSync(new URL('../docs/example-preset.json', import.meta.url), 'utf8');
 
 const storedSheetSchema = z.object({
   k: z.string(),
@@ -40,8 +41,6 @@ type StoredSheet = z.infer<typeof storedSheetSchema>;
 type SentCommand = z.infer<typeof sentCommandSchema>;
 
 type Delta = z.infer<typeof deltaSchema>;
-
-type SeededSheet = { id: string; name: string; order: number };
 
 type Saved = { commands: number; names: string[] };
 
@@ -63,7 +62,7 @@ test('with a preset and no sheet the bar shows "+", NPC and the gear', async ({
   context,
 }) => {
   // #when
-  await openRoom(page, context);
+  await openWithSheets(page, context);
 
   // #then
   await expect(page.getByRole('tab')).toHaveText(['NPC', GEAR]);
@@ -72,7 +71,7 @@ test('with a preset and no sheet the bar shows "+", NPC and the gear', async ({
 
 test('"+" creates a character, selects its tab and focuses its name', async ({ page, context }) => {
   // #given
-  await openRoom(page, context);
+  await openWithSheets(page, context);
 
   // #when
   await page.getByRole('button', { name: ADD }).click();
@@ -98,7 +97,7 @@ test('a new character gets the next order and its tab goes after the others', as
   context,
 }) => {
   // #given
-  await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 3 }]);
+  await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 3 }]);
 
   // #when
   await page.getByRole('button', { name: ADD }).click();
@@ -116,7 +115,7 @@ test('a name changed and left shows in the tab and the header and stays after a 
   context,
 }) => {
   // #given
-  const background = await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+  const background = await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
 
   // #when
   await nameField(page).fill('Лиза');
@@ -132,7 +131,7 @@ test('a name changed and left shows in the tab and the header and stays after a 
 
 test('Enter saves the name as leaving the field does', async ({ page, context }) => {
   // #given
-  await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+  await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
 
   // #when
   await nameField(page).fill('Лиза');
@@ -145,7 +144,7 @@ test('Enter saves the name as leaving the field does', async ({ page, context })
 
 test('Escape returns the old name and saves nothing', async ({ page, context }) => {
   // #given
-  await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+  await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
   await watchWire(page);
   await nameField(page).fill('Лиза');
 
@@ -164,7 +163,7 @@ for (const [label, typed] of [
 ] as const) {
   test(`${label} returns the old name and saves nothing`, async ({ page, context }) => {
     // #given
-    await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+    await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
     await watchWire(page);
 
     // #when
@@ -179,7 +178,7 @@ for (const [label, typed] of [
 
 test('the spaces around a name are not saved', async ({ page, context }) => {
   // #given
-  await openRoom(page, context, [{ id: 'brok', name: 'Лиза', order: 0 }]);
+  await openWithSheets(page, context, [{ id: 'brok', name: 'Лиза', order: 0 }]);
 
   // #when
   await nameField(page).fill('  Брок ');
@@ -195,7 +194,7 @@ test('a name over 100 characters shows the message, stays in the field and is no
   context,
 }) => {
   // #given
-  await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+  await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
   await watchWire(page);
 
   const tooLong = 'ы'.repeat(101);
@@ -216,7 +215,7 @@ test('the too long message sits under the field and goes with the next valid sav
   context,
 }) => {
   // #given
-  await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+  await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
   await nameField(page).fill('ы'.repeat(101));
   await page.keyboard.press('Tab');
 
@@ -238,7 +237,7 @@ test('the too long message sits under the field and goes with the next valid sav
 
 test('leaving the field with the same name sends no command', async ({ page, context }) => {
   // #given
-  await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+  await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
   await watchWire(page);
 
   // #when
@@ -252,7 +251,7 @@ test('leaving the field with the same name sends no command', async ({ page, con
 
 test('a refused rename returns the old name to the field', async ({ page, context }) => {
   // #given: with no background, the rename gets no answer but the one the test sends.
-  const background = await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+  const background = await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
 
   await watchWire(page);
   await background.close();
@@ -278,7 +277,7 @@ test('a rename back to the shown name while the first is on its way still goes o
   context,
 }) => {
   // #given: with no background, the first rename stays on its way.
-  const background = await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+  const background = await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
 
   await watchWire(page);
   await background.close();
@@ -302,7 +301,7 @@ test('a refused creation does not take the selection when its record shows up la
   context,
 }) => {
   // #given: a rename gives the test the engine id and the sequence of a real delta.
-  const background = await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+  const background = await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
 
   await watchWire(page);
   await nameField(page).fill('Лиза');
@@ -343,7 +342,7 @@ test('tabs sort by order, then by sheetId in code unit order, the same after a r
   context,
 }) => {
   // #given
-  const background = await openRoom(page, context, [
+  const background = await openWithSheets(page, context, [
     // Locale order would put "a" first. Code unit order puts "B" first.
     { id: 'a', name: 'Бэ', order: 1 },
     { id: 'B', name: 'А', order: 1 },
@@ -364,7 +363,7 @@ test('tabs sort by order, then by sheetId in code unit order, the same after a r
 
 test('after the projection the first character tab is selected', async ({ page, context }) => {
   // #when
-  await openRoom(page, context, [
+  await openWithSheets(page, context, [
     { id: 'b', name: 'Бэ', order: 1 },
     { id: 'z', name: 'Зет', order: 0 },
   ]);
@@ -378,7 +377,7 @@ test('a window opened while the background runs selects the first character tab'
   context,
 }) => {
   // #given
-  await openRoom(page, context, [
+  await openWithSheets(page, context, [
     { id: 'b', name: 'Бэ', order: 1 },
     { id: 'z', name: 'Зет', order: 0 },
   ]);
@@ -397,7 +396,7 @@ test('the tab list holds only tabs and "+" is a named button outside it', async 
   context,
 }) => {
   // #when
-  await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+  await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
 
   // #then
   await expect(page.getByRole('tablist')).toMatchAriaSnapshot(`
@@ -420,7 +419,7 @@ test('arrow keys move focus through every tab, NPC and the gear included', async
   context,
 }) => {
   // #given
-  await openRoom(page, context, [
+  await openWithSheets(page, context, [
     { id: 'a', name: 'Брок', order: 0 },
     { id: 'b', name: 'Лиза', order: 1 },
   ]);
@@ -446,7 +445,7 @@ test('the header shows the name in sheet-title over a bottom rule in line', asyn
   context,
 }) => {
   // #given
-  await openRoom(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+  await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
 
   const header = page.getByRole('tabpanel').locator('header');
 
@@ -483,7 +482,7 @@ test('a long name is cut with an ellipsis and stays whole as the accessible name
   const longName = 'Эльверанха Длинноименная из Дома Бесконечных Имён';
 
   // #when
-  await openRoom(page, context, [{ id: 'long', name: longName, order: 0 }]);
+  await openWithSheets(page, context, [{ id: 'long', name: longName, order: 0 }]);
 
   // #then
   const tab = page.getByRole('tab', { name: longName });
@@ -505,7 +504,7 @@ test.describe('with more characters than fit', () => {
 
   test('a vertical wheel over the bar scrolls the tabs sideways', async ({ page, context }) => {
     // #given
-    await openRoom(page, context, many);
+    await openWithSheets(page, context, many);
     await page.getByRole('tab', { name: 'Персонаж 1', exact: true }).hover();
 
     // #when
@@ -517,7 +516,7 @@ test.describe('with more characters than fit', () => {
 
   test('a wheel that counts lines scrolls 20 px per line', async ({ page, context }) => {
     // #given
-    await openRoom(page, context, many);
+    await openWithSheets(page, context, many);
 
     // #when
     await page
@@ -532,7 +531,7 @@ test.describe('with more characters than fit', () => {
 
   test('a horizontal gesture scrolls the tabs', async ({ page, context }) => {
     // #given
-    await openRoom(page, context, many);
+    await openWithSheets(page, context, many);
     await page.getByRole('tab', { name: 'Персонаж 1', exact: true }).hover();
 
     // #when
@@ -547,7 +546,7 @@ test.describe('with more characters than fit', () => {
     context,
   }) => {
     // #given
-    await openRoom(page, context, many);
+    await openWithSheets(page, context, many);
 
     const before = await pinnedBoxes(page);
 
@@ -569,7 +568,7 @@ test.describe('with more characters than fit', () => {
 
   test('"+" follows the last character and scrolls with the tabs', async ({ page, context }) => {
     // #given
-    await openRoom(page, context, many);
+    await openWithSheets(page, context, many);
 
     const add = page.getByRole('button', { name: ADD });
     const startX = (await add.boundingBox())?.x ?? 0;
@@ -589,7 +588,7 @@ test.describe('with more characters than fit', () => {
 
   test('at the end of the scroll "+" is clear of NPC', async ({ page, context }) => {
     // #given
-    await openRoom(page, context, many);
+    await openWithSheets(page, context, many);
 
     // #when
     await scrollBarTo(page, 100_000);
@@ -603,7 +602,7 @@ test.describe('with more characters than fit', () => {
 
   test('"+" opens the new tab at the end and scrolls it into view', async ({ page, context }) => {
     // #given
-    await openRoom(page, context, many);
+    await openWithSheets(page, context, many);
 
     // #when
     await scrollBarTo(page, 100_000);
@@ -627,52 +626,12 @@ function nameField(page: Page): Locator {
   return page.getByRole('textbox', { name: NAME_FIELD });
 }
 
-function presetRecord(text: string): string {
-  const d = Buffer.from(deflateSync(strToU8(JSON.stringify(JSON.parse(text))))).toString('base64');
-
-  return JSON.stringify({ k: 'preset', d, c: 1, a: 'mock-connection' });
-}
-
-function sheetRecord(sheet: SeededSheet): string {
-  return JSON.stringify({
-    k: `sheet:${sheet.id}`,
-    d: { kind: 'pc', name: sheet.name, order: sheet.order },
-    c: 1,
-    a: 'mock-connection',
-  });
-}
-
-async function openBackground(context: BrowserContext): Promise<Page> {
-  const background = await context.newPage();
-
-  await background.goto('/background.html', { waitUntil: 'networkidle' });
-
-  return background;
-}
-
-// The window loads first, so the storage it seeds is what the background reads at start.
-async function openRoom(
+function openWithSheets(
   page: Page,
   context: BrowserContext,
   sheets: readonly SeededSheet[] = [],
 ): Promise<Page> {
-  const entries: (readonly [string, string])[] = [
-    [`${STORAGE_PREFIX}preset`, presetRecord(EXAMPLE_TEXT)],
-    ...sheets.map((sheet) => [`${STORAGE_PREFIX}sheet:${sheet.id}`, sheetRecord(sheet)] as const),
-  ];
-
-  await page.goto('/index.html');
-  await page.evaluate((seeded) => {
-    for (const [key, value] of seeded) {
-      localStorage.setItem(key, value);
-    }
-  }, entries);
-
-  const background = await openBackground(context);
-
-  await expect(page.getByRole('button', { name: ADD })).toBeVisible();
-
-  return background;
+  return openRoom(page, context, sheets.map(sheetRecord));
 }
 
 async function reloadRoom(page: Page, context: BrowserContext, background: Page): Promise<void> {

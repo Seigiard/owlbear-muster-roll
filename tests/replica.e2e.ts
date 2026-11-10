@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test';
-import type { BrowserContext, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 import type { JsonValue } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
 
+import { openBackground, STORAGE_PREFIX } from './support/room';
+
 const CHANNEL = 'app.muster-roll/ui';
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
 const LOCAL_SAVE_FAILED = 'Не удалось сохранить в браузере. Скачайте снимок.';
 
 type Projection = { records: VersionedRecord[]; notices: string[] };
@@ -277,14 +278,6 @@ function sheet(id: string): VersionedRecord {
     c: 1,
     a: 'mock-connection',
   };
-}
-
-async function openBackground(context: BrowserContext, path = '/background.html'): Promise<Page> {
-  const background = await context.newPage();
-
-  await background.goto(path, { waitUntil: 'networkidle' });
-
-  return background;
 }
 
 async function seedStorage(page: Page, key: string, value: string): Promise<void> {

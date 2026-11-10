@@ -9,10 +9,11 @@ import type { JsonValue } from '@/core/json';
 import { MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 
 import { cssValue, renderedColor } from './support/colors';
+import { EXAMPLE_PRESET_TEXT, openBackground, presetRecord, STORAGE_PREFIX } from './support/room';
 
 const CHANNEL = 'app.muster-roll/ui';
-const PRESET_KEY = 'mr1:mock-room:0::preset';
-const SHEET_KEY = 'mr1:mock-room:0::sheet:saved';
+const PRESET_KEY = `${STORAGE_PREFIX}preset`;
+const SHEET_KEY = `${STORAGE_PREFIX}sheet:saved`;
 const UPLOAD = 'Загрузить пресет';
 const DOWNLOAD = 'Скачать пресет';
 const SETTINGS = 'Настройки';
@@ -24,9 +25,7 @@ const TOO_LARGE = 'Файл не подошёл: файл слишком бол�
 const RECORD_REFUSAL_MIN_DATA_BYTES = MESSAGE_BYTE_LIMIT - 400;
 const RECORD_REFUSAL_MAX_DATA_BYTES = MESSAGE_BYTE_LIMIT - 200;
 
-const EXAMPLE_TEXT = readFileSync(new URL('../docs/example-preset.json', import.meta.url), 'utf8');
-
-const EXAMPLE: JsonValue = z.json().parse(JSON.parse(EXAMPLE_TEXT));
+const EXAMPLE: JsonValue = z.json().parse(JSON.parse(EXAMPLE_PRESET_TEXT));
 
 const SAVED_SHEET = JSON.stringify({
   k: 'sheet:saved',
@@ -182,7 +181,7 @@ test('a valid file is stored deflated and base64-encoded and stays after a reloa
   // #given
   const background = await openWindowAndBackground(page, context);
 
-  await uploadFile(page, EXAMPLE_TEXT);
+  await uploadFile(page, EXAMPLE_PRESET_TEXT);
   await expect(page.getByRole('tab', { name: SETTINGS })).toHaveAttribute('aria-selected', 'true');
 
   // #when: the window reloads first, so it sees the projection that the new background sends.
@@ -294,7 +293,7 @@ test('a file the browser cannot read shows the not-JSON message and sends nothin
   });
 
   // #when
-  await uploadFile(page, EXAMPLE_TEXT);
+  await uploadFile(page, EXAMPLE_PRESET_TEXT);
 
   // #then
   await expect(page.getByText('Файл не подошёл: это не JSON. Ничего не изменено.')).toBeVisible();
@@ -314,7 +313,7 @@ test('a rejection of an earlier upload goes once the next upload starts', async 
   await expect(page.getByText(TOO_LARGE)).toBeVisible();
 
   // #when
-  await uploadFile(page, EXAMPLE_TEXT);
+  await uploadFile(page, EXAMPLE_PRESET_TEXT);
 
   await expect.poll(() => storedPreset(page)).toEqual(EXAMPLE);
   await renderedFrames(page);
@@ -330,7 +329,7 @@ test('a file error stays until the next upload attempt', async ({ page, context 
   await expect(page.getByText('Файл не подошёл: это не JSON. Ничего не изменено.')).toBeVisible();
 
   // #when
-  await uploadFile(page, EXAMPLE_TEXT);
+  await uploadFile(page, EXAMPLE_PRESET_TEXT);
 
   // #then
   await expect(page.getByRole('tab', { name: SETTINGS })).toHaveAttribute('aria-selected', 'true');
@@ -344,7 +343,7 @@ test('the downloaded preset holds the structure at the current v and loads in an
 }) => {
   // #given
   await openWindowAndBackground(page, context);
-  await uploadFile(page, EXAMPLE_TEXT);
+  await uploadFile(page, EXAMPLE_PRESET_TEXT);
 
   const downloading = page.waitForEvent('download');
 
@@ -404,7 +403,7 @@ test('with a preset and a sheet, Settings disables the upload and keeps the down
   // #given
   await page.goto('/index.html');
   await seedStorage(page, SHEET_KEY, SAVED_SHEET);
-  await seedStorage(page, PRESET_KEY, presetRecord(EXAMPLE_TEXT));
+  await seedStorage(page, PRESET_KEY, presetRecord(EXAMPLE_PRESET_TEXT));
   await openBackground(context);
 
   // #when
@@ -423,12 +422,6 @@ function field(id: string): JsonValue {
 
 function fileText(section: JsonValue): string {
   return JSON.stringify({ v: 1, character: { sections: [section] }, npc: { sections: [] } });
-}
-
-function presetRecord(text: string): string {
-  const d = Buffer.from(deflateSync(strToU8(JSON.stringify(JSON.parse(text))))).toString('base64');
-
-  return JSON.stringify({ k: 'preset', d, c: 1, a: 'mock-connection' });
 }
 
 function randomLabel(length: number): string {
@@ -457,14 +450,6 @@ function fileJustOverTheRecordLimit(): string {
   }
 
   throw new Error('no label length lands in the window');
-}
-
-async function openBackground(context: BrowserContext, path = '/background.html'): Promise<Page> {
-  const background = await context.newPage();
-
-  await background.goto(path, { waitUntil: 'networkidle' });
-
-  return background;
 }
 
 async function openWindowAndBackground(page: Page, context: BrowserContext): Promise<Page> {

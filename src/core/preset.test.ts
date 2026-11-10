@@ -10,6 +10,7 @@ import type { JsonObject, JsonValue } from '@/core/json';
 import {
   decodePreset,
   encodePreset,
+  firstFieldId,
   formatPresetFile,
   parsePresetFile,
   type Preset,
@@ -347,6 +348,31 @@ describe('parsePresetFile', () => {
 
     // #then
     expect(parsed.ok).toBe(true);
+  });
+});
+
+describe('firstFieldId', () => {
+  test('is the id of the first field, after any text cell', () => {
+    // #when
+    const id = firstFieldId([
+      { kind: 'text', text: 'Сила' },
+      { kind: 'field', type: 'number', id: 'str' },
+      { kind: 'field', type: 'check', id: 'str_tired' },
+    ]);
+
+    // #then
+    expect(id).toBe('str');
+  });
+
+  test('is null for a row with no field', () => {
+    // #when
+    const id = firstFieldId([
+      { kind: 'text', text: 'Сила' },
+      { kind: 'dice', formula: '1d20' },
+    ]);
+
+    // #then
+    expect(id).toBeNull();
   });
 });
 

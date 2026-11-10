@@ -1,24 +1,25 @@
-import { readFileSync } from 'node:fs';
-
 import { expect, test } from '@playwright/test';
-import type { BrowserContext, Locator, Page } from '@playwright/test';
-import { deflateSync, strToU8 } from 'fflate';
+import type { Locator, Page } from '@playwright/test';
 import { z } from 'zod';
 
-import type { JsonValue } from '@/core/json';
-
 import { cssValue, renderedColor, tokenColor } from './support/colors';
+import {
+  EXAMPLE_PRESET_TEXT,
+  openBackground,
+  openRoom,
+  presetRecord,
+  record,
+  sheetRecord,
+  STORAGE_PREFIX,
+} from './support/room';
 
 const CHANNEL = 'app.muster-roll/ui';
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
 const ADD = 'Добавить персонажа';
 const ACTIONS = 'Действия с листом';
 const DELETE = 'Удалить';
 const CANCEL = 'Отменить';
 const NAME_FIELD = 'Имя персонажа';
 const GEAR = '⚙︎';
-
-const EXAMPLE_TEXT = readFileSync(new URL('../docs/example-preset.json', import.meta.url), 'utf8');
 
 const storedRecordSchema = z.object({
   k: z.string(),
@@ -30,8 +31,6 @@ const storedRecordSchema = z.object({
 type StoredRecord = z.infer<typeof storedRecordSchema>;
 
 type Keyed = Record<string, StoredRecord>;
-
-type SeededSheet = { id: string; name: string; order: number };
 
 type SeenCommand = { id: string; type: string };
 
@@ -322,7 +321,7 @@ test('"Удалить" in the block sends one command, tombstones the sheet and 
     ...(await afterSettling(page)),
     preset: await page.evaluate((key) => localStorage.getItem(key), `${STORAGE_PREFIX}preset`),
   }).toEqual({
-    preset: presetText(EXAMPLE_TEXT),
+    preset: presetRecord(EXAMPLE_PRESET_TEXT),
     commands: ['sheet-delete'],
     stored: keyed([
       record('sheet:brok', null, 2),
@@ -411,55 +410,6 @@ async function askDelete(page: Page): Promise<void> {
   await actionsButton(page).click();
   await page.getByRole('menuitem', { name: DELETE }).click();
   await expect(confirmation(page)).toBeVisible();
-}
-
-// A seeded record has the author "seed". A tombstone is minted by the background, as the mock's
-// own connection.
-function record(k: string, d: JsonValue, c: number): StoredRecord {
-  return { k, d, c, a: d === null ? 'mock-connection' : 'seed' };
-}
-
-function sheetRecord(sheet: SeededSheet): StoredRecord {
-  return record(`sheet:${sheet.id}`, { kind: 'pc', name: sheet.name, order: sheet.order }, 1);
-}
-
-function presetText(text: string): string {
-  const d = Buffer.from(deflateSync(strToU8(JSON.stringify(JSON.parse(text))))).toString('base64');
-
-  return JSON.stringify({ k: 'preset', d, c: 1, a: 'mock-connection' });
-}
-
-async function openBackground(context: BrowserContext): Promise<Page> {
-  const background = await context.newPage();
-
-  await background.goto('/background.html', { waitUntil: 'networkidle' });
-
-  return background;
-}
-
-// The window loads first, so the storage it seeds is what the background reads at start.
-async function openRoom(
-  page: Page,
-  context: BrowserContext,
-  records: readonly StoredRecord[],
-): Promise<Page> {
-  const entries: (readonly [string, string])[] = [
-    [`${STORAGE_PREFIX}preset`, presetText(EXAMPLE_TEXT)],
-    ...records.map((one) => [`${STORAGE_PREFIX}${one.k}`, JSON.stringify(one)] as const),
-  ];
-
-  await page.goto('/index.html');
-  await page.evaluate((seeded) => {
-    for (const [key, value] of seeded) {
-      localStorage.setItem(key, value);
-    }
-  }, entries);
-
-  const background = await openBackground(context);
-
-  await expect(page.getByRole('button', { name: ADD })).toBeVisible();
-
-  return background;
 }
 
 // Every stored record but the preset.
