@@ -58,3 +58,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-8-see-a-sheet-laid-out-by-the-preset.md`
   summary: Assert `aria-multiline` on text and number value controls.
   evidence: No test reads it; Story 1.9 replaces the read-only controls with editable ones.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-11-keep-npcs-on-their-own-tab.md`
+  summary: No test proves NPC delete focus skips a next neighbour deleted in another window before the tombstone lands.
+  evidence: Replacing the `find(... npcSheets.includes ...)` with `neighbours[0]` keeps all focus tests green.
