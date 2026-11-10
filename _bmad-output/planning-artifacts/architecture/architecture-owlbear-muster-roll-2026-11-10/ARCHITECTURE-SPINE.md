@@ -195,7 +195,7 @@ A message with a higher generation also starts AD-9 adoption.
 
 - **Binds:** CAP-1, CAP-9
 - **Prevents:** A URL change orphaning the only full copy of each GM's data, and Owlbear failing to load the extension.
-- **Rule:** The production URL is fixed before the first real session, and it does not change afterwards, because the origin scopes `localStorage`. Deployment is a manual `wrangler deploy` of Workers static assets. `public/_headers` sends `Access-Control-Allow-Origin` for `https://www.owlbear.rodeo`, and no-cache for HTML and `manifest.json`. Assets are content-hashed. A release passes one check in a live room, because the mock proves app logic only. A rollback may not cross a `v` change.
+- **Rule:** The production URL is `https://musterroll.2249364.xyz/`. It does not change after the first real session, because the origin scopes `localStorage`. Deployment is a manual `wrangler deploy` of Workers static assets. `public/_headers` sends `Access-Control-Allow-Origin` for `https://www.owlbear.rodeo`, and no-cache for HTML and `manifest.json`. Assets are content-hashed. A release passes one check in a live room, because the mock proves app logic only. A rollback may not cross a `v` change.
 
 ## Consistency Conventions
 
@@ -289,7 +289,6 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 
 | Item | Why it can wait | Revisit |
 | --- | --- | --- |
-| The production URL itself | AD-17 fixes when it must be chosen | Before the first real session |
 | Timeout, pause, delay and spacing values | One owner each. Start spacing at 150 ms, as public extensions do | When the burst measurement exists |
 | Preset JSON keys beyond those in `preset-format.md` | One schema in `core/preset` owns them | First preset |
 | Snapshot byte layout, such as an author table | One codec in `core/snapshot`, under the AD-12 version rule | When size pressure appears |
