@@ -45,7 +45,14 @@ const sheetCreateSchema = z.strictObject({
   name: z.string(),
 });
 
-const commandIntentSchema = z.discriminatedUnion('type', [sheetCreateSchema]);
+// The window sends the deflated data, not the JSON, because a preset over the message limit as
+// JSON can still fit once deflated. The engine decodes and validates it again.
+const presetUploadSchema = z.strictObject({
+  type: z.literal('preset-upload'),
+  data: z.base64().min(1),
+});
+
+const commandIntentSchema = z.discriminatedUnion('type', [sheetCreateSchema, presetUploadSchema]);
 
 const commandSchema = z.strictObject({
   t: z.literal('command'),
@@ -56,7 +63,7 @@ const commandSchema = z.strictObject({
 const commandRejectedSchema = z.strictObject({
   t: z.literal('command-rejected'),
   id: idSchema,
-  reason: z.enum(['too-large']),
+  reason: z.enum(['too-large', 'invalid-preset', 'sheets-exist']),
 });
 
 const windowMessageSchema = z.discriminatedUnion('t', [projectionRequestSchema, commandSchema]);
@@ -74,6 +81,8 @@ export type Command = z.infer<typeof commandIntentSchema>;
 export type CommandMessage = z.infer<typeof commandSchema>;
 
 export type CommandRejectedMessage = z.infer<typeof commandRejectedSchema>;
+
+export type RejectionReason = CommandRejectedMessage['reason'];
 
 export type ProjectionRequestMessage = z.infer<typeof projectionRequestSchema>;
 

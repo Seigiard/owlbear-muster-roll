@@ -3,7 +3,9 @@ import { nanoid } from 'nanoid';
 import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { jsonByteLength, recordFitsOneMessage, splitBatch } from '@/core/message-size';
 import { mergeRecords } from '@/core/merge';
-import { sheetDataSchema, type VersionedRecord } from '@/core/records';
+import { decodePreset, encodePreset } from '@/core/preset';
+import { hasLiveSheet, sheetDataSchema, type VersionedRecord } from '@/core/records';
+import { err, ok, type Result } from '@/core/result';
 import {
   parseWindowMessage,
   UI_CHANNEL,
@@ -13,6 +15,7 @@ import {
   type EngineMessage,
   type Notice,
   type ProjectionMessage,
+  type RejectionReason,
 } from '@/core/ui-messages';
 import type { Generation } from '@/core/storage-key';
 import { visibleRecords, type PlayerRole } from '@/core/visibility';
@@ -175,16 +178,45 @@ export async function startReplicaEngine(
 
   function composeSheetCreate(
     command: Extract<Command, { type: 'sheet-create' }>,
-  ): VersionedRecord {
+  ): Result<VersionedRecord, RejectionReason> {
     const k = `sheet:${newId()}`;
     const { c, a } = minter.mint(k, replica.get(k)?.c ?? 0);
 
-    return {
+    const record: VersionedRecord = {
       k,
       d: { kind: command.kind, name: command.name, order: nextOrder(command.kind) },
       c,
       a,
     };
+
+    return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+  }
+
+  function composePresetUpload(
+    command: Extract<Command, { type: 'preset-upload' }>,
+  ): Result<VersionedRecord, RejectionReason> {
+    const preset = decodePreset(command.data);
+
+    if (!preset.ok) {
+      return err('invalid-preset');
+    }
+
+    // Composed from the validated preset, so the record never holds what the window sent as is.
+    const d = encodePreset(preset.value);
+
+    // Measured at the largest counter a version can reach, so the check needs no mint.
+    if (!recordFitsOneMessage({ k: 'preset', d, c: Number.MAX_SAFE_INTEGER, a: connectionId })) {
+      return err('too-large');
+    }
+
+    // Temporary until Story 5.1 brings the AD-14 diff: a preset change must not orphan values.
+    if (hasLiveSheet(replica.values())) {
+      return err('sheets-exist');
+    }
+
+    const { c, a } = minter.mint('preset', replica.get('preset')?.c ?? 0);
+
+    return ok({ k: 'preset', d, c, a });
   }
 
   function nextOrder(kind: 'pc' | 'npc'): number {
@@ -210,17 +242,20 @@ export async function startReplicaEngine(
 
     recentCommandIds.add(message.id);
 
-    const record = composeSheetCreate(message.command);
+    const command = message.command;
 
-    if (!recordFitsOneMessage(record)) {
-      send({ t: 'command-rejected', id: message.id, reason: 'too-large' }).catch((error) => {
+    const composed =
+      command.type === 'sheet-create' ? composeSheetCreate(command) : composePresetUpload(command);
+
+    if (!composed.ok) {
+      send({ t: 'command-rejected', id: message.id, reason: composed.error }).catch((error) => {
         console.error('Muster Roll could not reject a command', error);
       });
 
       return;
     }
 
-    const applied = merge(persist(record));
+    const applied = merge(persist(composed.value));
 
     emitDelta([applied]);
   }

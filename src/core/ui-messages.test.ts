@@ -70,6 +70,34 @@ describe('parseWindowMessage', () => {
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
 
+  test('accepts a preset-upload command carrying base64 data', () => {
+    // #given
+    const message: WindowMessage = {
+      t: 'command',
+      id: 'c1',
+      command: { type: 'preset-upload', data: 'eJyrVipTsjKsBQAIkwIe' },
+    };
+
+    // #when
+    const parsed = parseWindowMessage(message);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: message });
+  });
+
+  test.each<[string, JsonValue]>([
+    ['data that is not base64', { type: 'preset-upload', data: '{"v":1}' }],
+    ['empty data', { type: 'preset-upload', data: '' }],
+    ['no data', { type: 'preset-upload' }],
+    ['a whole record beside its data', { type: 'preset-upload', data: 'AAAA', k: 'preset' }],
+  ])('refuses a preset-upload command with %s', (_name, command) => {
+    // #when
+    const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+  });
+
   test('refuses a command of an unknown type', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command: { type: 'other' } });
@@ -100,6 +128,25 @@ describe('parseWindowMessage', () => {
 });
 
 describe('parseEngineMessage', () => {
+  test.each(['too-large', 'invalid-preset', 'sheets-exist'])(
+    'accepts a rejection for the reason %s',
+    (reason) => {
+      // #when
+      const parsed = parseEngineMessage({ t: 'command-rejected', id: 'c1', reason });
+
+      // #then
+      expect(parsed).toEqual({ ok: true, value: { t: 'command-rejected', id: 'c1', reason } });
+    },
+  );
+
+  test('refuses a rejection for an unknown reason', () => {
+    // #when
+    const parsed = parseEngineMessage({ t: 'command-rejected', id: 'c1', reason: 'other' });
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+  });
+
   const PROJECTION: EngineMessage = {
     t: 'projection',
     nonce: 'n1',

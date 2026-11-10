@@ -29,7 +29,7 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
 });
 
-test('the window shows only the loading text once its own client has the projection', async ({
+test('the window leaves the loading text once its own client has the projection', async ({
   page,
   context,
 }) => {
@@ -42,8 +42,9 @@ test('the window shows only the loading text once its own client has the project
   // Only the projection delivered to the window's own client can raise this banner.
   await expect(page.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
 
-  // #then
-  await expect(page.getByRole('tabpanel')).toHaveText('Загрузка…');
+  // #then: a room with no preset shows the GM the upload instead.
+  await expect(page.getByRole('button', { name: 'Загрузить пресет' })).toBeVisible();
+  await expect(page.getByText('Загрузка…')).toHaveCount(0);
 });
 
 test('a GM start puts the persisted records in the projection', async ({ page, context }) => {

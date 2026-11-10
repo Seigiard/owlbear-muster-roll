@@ -18,6 +18,9 @@ export const copy = {
     access: 'Доступ',
     npc: 'NPC',
   },
+  section: {
+    preset: 'Пресет',
+  },
   status: {
     pending: 'Ожидает',
     readOnly: 'Только чтение',
@@ -46,7 +49,21 @@ export const copy = {
   valueTooLong: 'Слишком длинно',
   badFile: (reason: string): string => `Файл не подошёл: ${reason}. Ничего не изменено.`,
   newerFile: 'Файл из более новой версии. Перезагрузите страницу.',
-  noPresetForSnapshot: 'Сначала загрузите пресет.',
+  badFileReason: {
+    notJson: 'это не JSON',
+    invalidStructure: 'неверная структура',
+    unsupportedVersion: 'неподдерживаемая версия формата',
+    invalidFieldId: (id: string): string => `недопустимый id поля «${id}»`,
+    duplicateFieldId: (id: string): string => `поле «${id}» повторяется`,
+    badRepeat: 'в повторяемой секции нужна одна строка хотя бы с одним полем',
+    duplicateSection: (id: string): string => `две повторяемые секции с id «${id}»`,
+    rowTooWide: 'в строке больше ячеек, чем колонок',
+    badFormula: (formula: string): string => `ошибка в формуле «${formula}»`,
+    tooLarge: 'файл слишком большой',
+  },
+  presetRequired: 'Сначала загрузите пресет.',
+  // Temporary until Story 5.1 lets a preset change go over existing sheets.
+  presetLocked: 'Удалите листы, чтобы заменить пресет.',
   roll: (roller: string, sheet: string, cell: string, result: string): string =>
     `${roller}: ${sheet}, ${cell} — ${result}`,
   rollSuccess: 'успех',

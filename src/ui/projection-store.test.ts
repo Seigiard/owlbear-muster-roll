@@ -41,6 +41,28 @@ describe('projection store', () => {
     }).toEqual({ records: [updated, SECOND], notices: ['local-save-failed'] });
   });
 
+  test('is not loaded before the first projection, even after a delta', () => {
+    // #given
+    const store = createProjectionStore();
+
+    // #when
+    store.applyDelta([FIRST], []);
+
+    // #then
+    expect(store.$loaded.get()).toBe(false);
+  });
+
+  test('is loaded once a projection replaces all records, even an empty one', () => {
+    // #given
+    const store = createProjectionStore();
+
+    // #when
+    store.replaceAll([], []);
+
+    // #then
+    expect(store.$loaded.get()).toBe(true);
+  });
+
   test('remembers a rejected command', () => {
     // #given
     const store = createProjectionStore();

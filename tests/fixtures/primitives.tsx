@@ -43,11 +43,8 @@ function Primitives(): ReactNode {
     setPresses((count) => count + 1);
   };
 
-  return (
-    <WindowShell
-      tabs={[{ id: 'fixture', label: 'Fixture' }]}
-      banner={{ variant: 'warning', text: 'Warning banner' }}
-    >
+  const content = (
+    <>
       <Banner message={{ variant: 'danger', text: 'Danger banner' }} />
       <div style={ROW_STYLE}>
         <Button variant="primary" onPress={press}>
@@ -79,7 +76,19 @@ function Primitives(): ReactNode {
         </Chip>
         <Field accessibleName="Disabled field" disabledReason="Field reason" />
       </div>
-    </WindowShell>
+    </>
+  );
+
+  return (
+    <WindowShell
+      layout={{
+        kind: 'tabs',
+        tabs: [{ id: 'fixture', label: 'Fixture', content }],
+        selectedTab: 'fixture',
+        onSelectTab: () => undefined,
+      }}
+      banner={{ variant: 'warning', text: 'Warning banner' }}
+    />
   );
 }
 

@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
+import { z } from 'zod';
 
 import type { JsonValue } from '@/core/json';
-import { jsonByteLength } from '@/core/message-size';
-import type { VersionedRecord } from '@/core/records';
+import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
+import { encodePreset, parsePresetFile, type Preset } from '@/core/preset';
+import { presetDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
 import type { Timing } from '@/core/timing';
 import { UI_CHANNEL } from '@/core/ui-messages';
 import { createMemoryBus, createMockPlatform, type MockPlatform } from '@/platform/current';
@@ -21,6 +27,12 @@ const TIMING: Timing = {
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
+
+const EXAMPLE_PRESET_TEXT = readFileSync(
+  join(import.meta.dir, '../../docs/example-preset.json'),
+  'utf8',
+);
+
 const LOCAL = { destination: 'LOCAL' } as const;
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
@@ -1094,3 +1106,280 @@ describe('write failure', () => {
     },
   );
 });
+
+describe('preset upload', () => {
+  test('stores the preset deflated and base64-encoded and sends it to the window', async () => {
+    // #given
+    const rig = createRig();
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    view.client.sendCommand({ type: 'preset-upload', data: encodePreset(examplePreset()) });
+    await waitUntil(() => view.store.$records.get().has('preset'));
+
+    // #then
+    expect({
+      stored: storedPreset(rig),
+      projected: presetJsonOf(view.store.$records.get().get('preset')),
+    }).toEqual({
+      stored: { c: 1, a: 'mock-connection', preset: JSON.parse(EXAMPLE_PRESET_TEXT) },
+      projected: JSON.parse(EXAMPLE_PRESET_TEXT),
+    });
+  });
+
+  test('keeps the preset for a window opened after the background restarts', async () => {
+    // #given
+    const rig = createRig();
+    const engine = await startEngine(rig);
+    const first = await openAndLoad(rig);
+
+    first.client.sendCommand({ type: 'preset-upload', data: encodePreset(examplePreset()) });
+    await waitUntil(() => first.store.$records.get().has('preset'));
+    engine.stop();
+    first.client.stop();
+
+    // #when
+    await startEngine(rig);
+
+    const second = await openAndLoad(rig);
+
+    // #then
+    expect(presetJsonOf(second.store.$records.get().get('preset'))).toEqual(
+      JSON.parse(EXAMPLE_PRESET_TEXT),
+    );
+  });
+
+  test('replaces an earlier preset while no sheet exists', async () => {
+    // #given
+    const rig = createRig();
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+    const replacement: Preset = { v: 1, character: { sections: [] }, npc: { sections: [] } };
+
+    view.client.sendCommand({ type: 'preset-upload', data: encodePreset(examplePreset()) });
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #when
+    view.client.sendCommand({ type: 'preset-upload', data: encodePreset(replacement) });
+    await waitUntil(() => deltas(rig).length === 2);
+
+    // #then
+    expect(storedPreset(rig)).toEqual({
+      c: 2,
+      a: 'mock-connection',
+      preset: { v: 1, character: { sections: [] }, npc: { sections: [] } },
+    });
+  });
+
+  test.each([
+    ['bytes that are not deflated', btoa('plain text')],
+    [
+      'a preset that repeats an id, which the window would have refused',
+      deflatedJson({
+        v: 1,
+        character: {
+          sections: [{ rows: [[numberField('str'), numberField('str')]] }],
+        },
+        npc: { sections: [] },
+      }),
+    ],
+    ['a newer preset', deflatedJson({ v: 2, character: { sections: [] }, npc: { sections: [] } })],
+  ])('validates again and rejects %s, storing nothing', async (_name, data) => {
+    // #given
+    const rig = createRig();
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const sent = view.client.sendCommand({ type: 'preset-upload', data });
+
+    await waitUntil(() => view.store.$rejection.get() !== null);
+
+    // #then
+    expect({
+      rejection: view.store.$rejection.get(),
+      records: recordsOf(view.store),
+      deltas: deltas(rig).length,
+      stored: rig.platform.storage.keys(),
+    }).toEqual({
+      rejection: { t: 'command-rejected', id: sent.ok ? sent.value : '', reason: 'invalid-preset' },
+      records: [],
+      deltas: 0,
+      stored: { ok: true, value: [] },
+    });
+  });
+
+  test('rejects a preset whose record cannot fit one message and stores nothing', async () => {
+    // #given
+    const rig = createRig();
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+    const data = incompressiblePresetData();
+
+    // #when
+    const sent = view.client.sendCommand({ type: 'preset-upload', data });
+
+    await waitUntil(() => view.store.$rejection.get() !== null);
+
+    // #then
+    expect({
+      sent: sent.ok,
+      rejection: view.store.$rejection.get()?.reason,
+      stored: rig.platform.storage.keys(),
+    }).toEqual({ sent: true, rejection: 'too-large', stored: { ok: true, value: [] } });
+  });
+
+  test('rejects an upload while a sheet exists and leaves the preset as it was', async () => {
+    // #given
+    const rig = createRig();
+
+    seed(rig, 'sheet:saved', JSON.stringify(sheet('saved')));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    view.client.sendCommand({ type: 'preset-upload', data: encodePreset(examplePreset()) });
+    await waitUntil(() => view.store.$rejection.get() !== null);
+
+    // #then
+    expect({
+      reason: view.store.$rejection.get()?.reason,
+      preset: view.store.$records.get().has('preset'),
+      stored: rig.platform.storage.getItem(`${STORAGE_PREFIX}preset`),
+    }).toEqual({ reason: 'sheets-exist', preset: false, stored: { ok: true, value: null } });
+  });
+
+  test('accepts an upload when the only sheet is deleted', async () => {
+    // #given
+    const rig = createRig();
+
+    seed(rig, 'sheet:gone', JSON.stringify({ k: 'sheet:gone', d: null, c: 2, a: 'other' }));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    view.client.sendCommand({ type: 'preset-upload', data: encodePreset(examplePreset()) });
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect(storedPreset(rig)?.preset).toEqual(JSON.parse(EXAMPLE_PRESET_TEXT));
+  });
+
+  test('rejects an upload that a sheet-create reaches the replica before', async () => {
+    // #given
+    const rig = createRig();
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Брок' });
+
+    const upload = view.client.sendCommand({
+      type: 'preset-upload',
+      data: encodePreset(examplePreset()),
+    });
+
+    await waitUntil(() => view.store.$rejection.get() !== null);
+
+    // #then
+    expect({
+      rejection: view.store.$rejection.get(),
+      preset: view.store.$records.get().has('preset'),
+    }).toEqual({
+      rejection: {
+        t: 'command-rejected',
+        id: upload.ok ? upload.value : '',
+        reason: 'sheets-exist',
+      },
+      preset: false,
+    });
+  });
+});
+
+function examplePreset(): Preset {
+  const parsed = parsePresetFile(EXAMPLE_PRESET_TEXT);
+
+  if (!parsed.ok) {
+    throw new Error('the committed example preset must parse');
+  }
+
+  return parsed.value;
+}
+
+function numberField(id: string): JsonValue {
+  return { kind: 'field', type: 'number', id };
+}
+
+function deflatedJson(value: JsonValue): string {
+  return Buffer.from(deflateSync(strToU8(JSON.stringify(value)))).toString('base64');
+}
+
+function presetJsonOf(record: VersionedRecord | undefined): JsonValue {
+  const data = presetDataSchema.safeParse(record?.d);
+
+  return data.success ? inflatedJson(data.data) : null;
+}
+
+function inflatedJson(data: string): JsonValue {
+  return z.json().parse(JSON.parse(strFromU8(inflateSync(Buffer.from(data, 'base64')))));
+}
+
+function storedPreset(rig: Rig): { c: number; a: string; preset: JsonValue } | null {
+  const text = rig.platform.storage.getItem(`${STORAGE_PREFIX}preset`);
+
+  if (!text.ok || text.value === null) {
+    return null;
+  }
+
+  const record = recordSchema.parse(JSON.parse(text.value));
+
+  return { c: record.c, a: record.a, preset: presetJsonOf(record) };
+}
+
+// Random labels barely deflate, so the data lands where the command still fits one message and
+// the record, with its envelope reserve, does not.
+function incompressiblePresetData(): string {
+  let state = 7;
+  let label = '';
+
+  const nextCharacter = (): string => {
+    state = (Math.imul(state, 1103515245) + 12345) >>> 0;
+
+    return (
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-'[(state >>> 16) % 64] ?? 'x'
+    );
+  };
+
+  for (;;) {
+    label += Array.from({ length: 50 }, nextCharacter).join('');
+
+    const data = encodePreset({
+      v: 1,
+      character: { sections: [{ rows: [[{ kind: 'text', text: label }]] }] },
+      npc: { sections: [] },
+    });
+
+    // The command, with its envelope of about 85 bytes, still fits one message. The record, with
+    // the largest counter and the 512-byte reserve, does not.
+    if (data.length >= MESSAGE_BYTE_LIMIT - 400) {
+      if (data.length > MESSAGE_BYTE_LIMIT - 200) {
+        throw new Error(`the preset data overshot its window: ${data.length}`);
+      }
+
+      return data;
+    }
+  }
+}

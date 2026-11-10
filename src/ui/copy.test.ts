@@ -67,7 +67,7 @@ const CATALOG_BY_JOB: ReadonlyMap<string, readonly string[]> = new Map<string, r
   ['Value too long', [copy.valueTooLong]],
   ['Bad file', [copy.badFile('нет поля')]],
   ['Newer file', [copy.newerFile]],
-  ['No preset for a snapshot', [copy.noPresetForSnapshot]],
+  ['No preset for a snapshot', [copy.presetRequired]],
   ['Roll', [copy.roll('Лиза', 'Брок', 'Атака', '15'), copy.rollSuccess, copy.rollFailure]],
   ['Edit denied', [copy.editDenied]],
   ['Data replaced', [copy.dataReplaced]],

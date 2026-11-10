@@ -1,0 +1,69 @@
+import { describe, expect, test } from 'bun:test';
+
+import type { PresetFailure } from '@/core/preset';
+
+import { presetFailureMessage, presetRejectionMessage } from './preset-errors';
+
+describe('presetFailureMessage', () => {
+  test.each<[PresetFailure, string]>([
+    [{ code: 'not-json' }, 'Файл не подошёл: это не JSON. Ничего не изменено.'],
+    [{ code: 'invalid-structure' }, 'Файл не подошёл: неверная структура. Ничего не изменено.'],
+    [
+      { code: 'unsupported-version' },
+      'Файл не подошёл: неподдерживаемая версия формата. Ничего не изменено.',
+    ],
+    [
+      { code: 'invalid-id', detail: 'd20' },
+      'Файл не подошёл: недопустимый id поля «d20». Ничего не изменено.',
+    ],
+    [
+      { code: 'duplicate-id', detail: 'str' },
+      'Файл не подошёл: поле «str» повторяется. Ничего не изменено.',
+    ],
+    [
+      { code: 'bad-repeat' },
+      'Файл не подошёл: в повторяемой секции нужна одна строка хотя бы с одним полем. Ничего не изменено.',
+    ],
+    [
+      { code: 'duplicate-section', detail: 'item' },
+      'Файл не подошёл: две повторяемые секции с id «item». Ничего не изменено.',
+    ],
+    [
+      { code: 'row-too-wide' },
+      'Файл не подошёл: в строке больше ячеек, чем колонок. Ничего не изменено.',
+    ],
+    [
+      { code: 'bad-formula', detail: '1d0' },
+      'Файл не подошёл: ошибка в формуле «1d0». Ничего не изменено.',
+    ],
+    [{ code: 'too-large' }, 'Файл не подошёл: файл слишком большой. Ничего не изменено.'],
+    [{ code: 'newer-version' }, 'Файл из более новой версии. Перезагрузите страницу.'],
+  ])('gives %j its message', (failure, message) => {
+    // #when
+    const text = presetFailureMessage(failure);
+
+    // #then
+    expect(text).toBe(message);
+  });
+});
+
+describe('presetRejectionMessage', () => {
+  test.each([
+    ['too-large', 'Файл не подошёл: файл слишком большой. Ничего не изменено.'],
+    ['invalid-preset', 'Файл не подошёл: неверная структура. Ничего не изменено.'],
+  ] as const)('gives the engine reason %s its bad file message', (reason, message) => {
+    // #when
+    const text = presetRejectionMessage(reason);
+
+    // #then
+    expect(text).toBe(message);
+  });
+
+  test('leaves sheets-exist to the disabled reason of the upload', () => {
+    // #when
+    const text = presetRejectionMessage('sheets-exist');
+
+    // #then
+    expect(text).toBeNull();
+  });
+});

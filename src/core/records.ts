@@ -26,7 +26,7 @@ export const fieldValueSchema = z.union([z.number(), z.string().min(1), z.boolea
 
 const fieldValuesSchema = z.record(z.string().min(1), fieldValueSchema);
 
-const presetDataSchema = z.base64().min(1);
+export const presetDataSchema = z.base64().min(1);
 
 export const sheetDataSchema = z.strictObject({
   kind: z.enum(['pc', 'npc']),
@@ -74,6 +74,17 @@ export function parseStoredRecord(
   } catch {
     return err('invalid-record');
   }
+}
+
+// A tombstoned sheet is deleted, so it does not count.
+export function hasLiveSheet(records: Iterable<VersionedRecord>): boolean {
+  for (const record of records) {
+    if (record.k.startsWith('sheet:') && record.d !== null) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function versionedRecordOf<Key extends z.ZodType, Data extends z.ZodType>(key: Key, data: Data) {
