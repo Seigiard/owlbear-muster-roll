@@ -1,0 +1,15 @@
+/manifest.json
+  Access-Control-Allow-Origin: https://www.owlbear.rodeo
+  Cache-Control: no-cache
+
+/index.html
+  Access-Control-Allow-Origin: https://www.owlbear.rodeo
+  Cache-Control: no-cache
+
+/background.html
+  Access-Control-Allow-Origin: https://www.owlbear.rodeo
+  Cache-Control: no-cache
+
+/icon.svg
+  Access-Control-Allow-Origin: https://www.owlbear.rodeo
+  Cache-Control: no-cache

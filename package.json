@@ -1,0 +1,51 @@
+{
+  "name": "muster-roll",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:mock": "vite --mode mock",
+    "build": "vite build",
+    "lint": "oxlint --type-aware",
+    "format": "oxfmt --ignore-path .gitignore .",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:browser": "playwright test",
+    "prepare": "lefthook install"
+  },
+  "dependencies": {
+    "@nanostores/react": "2.0.1",
+    "@owlbear-rodeo/sdk": "3.1.0",
+    "fflate": "0.8.3",
+    "nanoid": "6.0.2",
+    "nanostores": "1.5.5",
+    "react": "19.3.1",
+    "react-aria-components": "1.22.1",
+    "react-dom": "19.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "21.0.4",
+    "@oxlint/plugins": "1.93.0",
+    "@playwright/test": "1.65.0",
+    "@tailwindcss/vite": "4.3.5",
+    "@types/bun": "1.4.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "happy-dom": "21.0.4",
+    "lefthook": "2.2.2",
+    "oxfmt": "0.78.0",
+    "oxlint": "1.93.0",
+    "oxlint-tsgolint": "7.0.2006",
+    "tailwindcss": "4.3.5",
+    "typescript": "7.0.2",
+    "vite": "8.3.7",
+    "wrangler": "4.159.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "bun@1.4.4"
+}

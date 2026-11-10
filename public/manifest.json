@@ -1,0 +1,15 @@
+{
+  "name": "Muster Roll",
+  "version": "0.0.1",
+  "manifest_version": 2,
+  "description": "Character and NPC sheets for any game system, defined by a JSON preset.",
+  "icon": "/icon.svg",
+  "background_url": "/background.html",
+  "action": {
+    "title": "Muster Roll",
+    "icon": "/icon.svg",
+    "popover": "/index.html",
+    "height": 600,
+    "width": 720
+  }
+}

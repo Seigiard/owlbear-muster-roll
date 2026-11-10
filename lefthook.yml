@@ -1,0 +1,15 @@
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      glob: '*.{ts,tsx}'
+      run: bunx oxlint --type-aware --no-error-on-unmatched-pattern {staged_files}
+    format:
+      glob: '*.{ts,tsx,css,json}'
+      run: bunx oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+
+pre-push:
+  commands:
+    typecheck:
+      run: bun run typecheck

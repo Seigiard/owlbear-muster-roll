@@ -1,0 +1,116 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn",
+    "style": "off"
+  },
+  "ignorePatterns": [
+    "dist/",
+    "node_modules/",
+    "_bmad/**",
+    "_bmad-output/**",
+    "backlog/**",
+    "prototypes/**",
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
+    "tools/oxlint/anti-slop/**"
+  ],
+  "jsPlugins": [{ "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "@owlbear-rodeo/sdk",
+            "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
+          }
+        ],
+        "patterns": [
+          {
+            "group": ["@owlbear-rodeo/sdk/**"],
+            "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
+          },
+          {
+            "group": [
+              "**/platform/obr",
+              "**/platform/obr/**",
+              "**/platform/mock",
+              "**/platform/mock/**",
+              "./obr",
+              "./obr/**",
+              "../obr",
+              "../obr/**",
+              "./mock",
+              "./mock/**",
+              "../mock",
+              "../mock/**"
+            ],
+            "message": "Import the adapter through @/platform/current, so the build mode picks it."
+          }
+        ]
+      }
+    ],
+    "oxc/no-accumulating-spread": "error",
+    "anti-slop/no-array-filter-map": "error",
+    "anti-slop/no-reduce-accumulator-copy": "error",
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-runtime-typeof": "error",
+    "anti-slop/no-shape-in-symbol-names": "error",
+    "anti-slop/no-unknown-parameters": "error",
+    "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-unsafe-dictionary-type": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/require-readable-spacing": "error",
+    "anti-slop/require-safety-comment-for-type-assertion": "error"
+  },
+  "overrides": [
+    {
+      "files": ["src/platform/obr/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "**/platform/obr",
+                  "**/platform/obr/**",
+                  "**/platform/mock",
+                  "**/platform/mock/**",
+                  "./obr",
+                  "./obr/**",
+                  "../obr",
+                  "../obr/**",
+                  "./mock",
+                  "./mock/**",
+                  "../mock",
+                  "../mock/**"
+                ],
+                "message": "Import the adapter through @/platform/current, so the build mode picks it."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

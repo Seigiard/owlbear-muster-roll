@@ -1,0 +1,14 @@
+node_modules/
+dist/
+
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+.wrangler/
+
+playwright-report/
+test-results/
+.playwright-mcp/
+
+.DS_Store
