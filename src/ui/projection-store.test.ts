@@ -12,6 +12,7 @@ const LIVE: SyncState = {
   state: 'live',
   firstCatchUpDone: true,
   gmAnswered: false,
+  gmLink: 'offline',
   role: 'GM',
 };
 
@@ -19,6 +20,7 @@ const CATCHING_UP: SyncState = {
   state: 'catching-up',
   firstCatchUpDone: true,
   gmAnswered: false,
+  gmLink: 'offline',
   role: 'GM',
 };
 
@@ -92,6 +94,7 @@ describe('projection store', () => {
         state: 'catching-up',
         firstCatchUpDone: false,
         gmAnswered: false,
+        gmLink: 'offline',
         role: 'PLAYER',
       },
       after: LIVE,

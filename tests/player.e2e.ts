@@ -17,6 +17,7 @@ import {
 } from './support/room';
 
 const LOADING = 'Загрузка…';
+const NO_GM = 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.';
 const READ_ONLY = 'Только чтение';
 const NO_PRESET = 'ГМ ещё не настроил листы.';
 const NO_CHARACTERS = 'ГМ ещё не создал персонажей.';
@@ -225,8 +226,11 @@ test('a player with no preset and no answer keeps the loading text after its cat
   await openClientBackground(context, params);
   await expect.poll(() => syncRead(window)).toEqual({ state: 'live', answered: false });
 
-  // #then
-  await expect(window.getByRole('main')).toHaveText(LOADING);
+  // #then: the panel keeps loading, and the banner says that no GM answers (Story 2.4).
+  await expect(window.getByRole('status')).toHaveText(NO_GM);
+  await expect(window.getByRole('main').getByText(LOADING, { exact: true })).toBeVisible();
+  await expect(window.getByText(NO_PRESET)).toHaveCount(0);
+  await expect(window.getByText(NO_CHARACTERS)).toHaveCount(0);
 });
 
 test('a player in a room with a preset and no character sees that the GM has not made any', async ({

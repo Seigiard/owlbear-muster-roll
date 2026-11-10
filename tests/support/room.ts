@@ -14,6 +14,7 @@ import {
   CLIENT_PARAM,
   DEVICE_PARAM,
   deviceStoragePrefix,
+  GM_LINK_TIMEOUT_PARAM,
   MOCK_ROOM_ID,
   mockConnectionId,
   NAME_PARAM,
@@ -64,6 +65,8 @@ export type ClientParams = {
   device?: string;
   // The background's catch-up timeout, shorter or longer than the 4 s of `TIMING`.
   catchUpTimeoutMs?: number;
+  // The background's GM link timeout, shorter than the 20 s of `TIMING`.
+  gmLinkTimeoutMs?: number;
 };
 
 // One client: its background page and one window, which share a connection id.
@@ -352,6 +355,7 @@ function clientQuery(params: ClientParams): string {
     [NAME_PARAM, params.name],
     [DEVICE_PARAM, params.device],
     [CATCH_UP_TIMEOUT_PARAM, params.catchUpTimeoutMs?.toString()],
+    [GM_LINK_TIMEOUT_PARAM, params.gmLinkTimeoutMs?.toString()],
   ] as const) {
     if (value !== undefined) {
       query.set(name, value);

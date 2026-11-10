@@ -33,6 +33,8 @@ const TIMING: Timing = {
   catchUpTimeoutMs: 400,
   stateAnswerDelayMinMs: 0,
   stateAnswerDelayMaxMs: 5,
+  // Far past any test, so no ping goes out unless a test asks for one.
+  gmLinkTimeoutMs: 60000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -71,6 +73,7 @@ const LIVE: SyncState = {
   state: 'live',
   firstCatchUpDone: true,
   gmAnswered: false,
+  gmLink: 'offline',
   role: 'GM',
 };
 
@@ -338,6 +341,7 @@ describe('start', () => {
         state: 'catching-up',
         firstCatchUpDone: false,
         gmAnswered: false,
+        gmLink: 'offline',
         role: 'GM',
       },
       brok: BROK,
@@ -385,6 +389,7 @@ describe('start', () => {
         state: 'catching-up',
         firstCatchUpDone: false,
         gmAnswered: false,
+        gmLink: 'offline',
         role: 'GM',
       },
       after: LIVE,
@@ -619,7 +624,7 @@ describe('exit', () => {
 
     // #then
     expect({ sync: sync(client), waited: Date.now() - started >= 150 }).toEqual({
-      sync: LIVE,
+      sync: { ...LIVE, gmLink: 'online' },
       waited: true,
     });
   });
@@ -645,7 +650,7 @@ describe('exit', () => {
       shown: shown(client, liza.k),
       stored: stored(client, liza.k),
       sync: sync(client),
-    }).toEqual({ shown: liza, stored: liza, sync: LIVE });
+    }).toEqual({ shown: liza, stored: liza, sync: { ...LIVE, gmLink: 'online' } });
   });
 });
 
@@ -669,6 +674,7 @@ describe('re-entry', () => {
         state: 'catching-up',
         firstCatchUpDone: true,
         gmAnswered: false,
+        gmLink: 'offline',
         role: 'GM',
       },
     });
@@ -1178,9 +1184,10 @@ test('a complete answer ends the first catch-up, and the window learns it', asyn
       state: 'catching-up',
       firstCatchUpDone: false,
       gmAnswered: false,
+      gmLink: 'offline',
       role: 'GM',
     },
-    after: { ...LIVE, gmAnswered: true },
+    after: { ...LIVE, gmAnswered: true, gmLink: 'online' },
   });
 });
 
@@ -1233,7 +1240,7 @@ describe('player visibility', () => {
       sync: sync(client),
     }).toEqual({
       keys: ['preset', 'row:brok:str', 'sheet:brok'],
-      sync: { ...LIVE, gmAnswered: true, role: 'PLAYER' },
+      sync: { ...LIVE, gmAnswered: true, gmLink: 'online', role: 'PLAYER' },
     });
   });
 
@@ -1422,7 +1429,7 @@ describe('player visibility', () => {
     // #then
     expect({ before, after: sync(client) }).toEqual({
       before: false,
-      after: { ...LIVE, gmAnswered: true, role: 'PLAYER' },
+      after: { ...LIVE, gmAnswered: true, gmLink: 'online', role: 'PLAYER' },
     });
   });
 
@@ -1449,7 +1456,7 @@ describe('player visibility', () => {
     expect({ before, preset: shown(client, 'preset'), sync: sync(client) }).toEqual({
       before: false,
       preset: PRESET_RECORD,
-      sync: { ...LIVE, gmAnswered: true, role: 'PLAYER' },
+      sync: { ...LIVE, gmAnswered: true, gmLink: 'online', role: 'PLAYER' },
     });
   });
 });

@@ -17,6 +17,7 @@ const LIVE: SyncState = {
   state: 'live',
   firstCatchUpDone: true,
   gmAnswered: false,
+  gmLink: 'offline',
   role: 'GM',
 };
 
@@ -306,6 +307,7 @@ describe('parseEngineMessage', () => {
       state: 'catching-up',
       firstCatchUpDone: false,
       gmAnswered: false,
+      gmLink: 'offline',
       role: 'GM',
     },
   };

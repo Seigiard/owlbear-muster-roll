@@ -20,6 +20,7 @@ const TIMING: Timing = {
   catchUpTimeoutMs: 4000,
   stateAnswerDelayMinMs: 20,
   stateAnswerDelayMaxMs: 300,
+  gmLinkTimeoutMs: 20000,
 };
 
 const GENERATION = { n: 0, a: '' };

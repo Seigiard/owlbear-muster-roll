@@ -4,8 +4,10 @@ import type { JsonValue } from '@/core/json';
 import { encodeStateRecords } from '@/core/state-records';
 import {
   admitRoomMessage,
+  aliveMessage,
   generationRelation,
   parseRoomMessage,
+  pingMessage,
   stateRequestMessage,
   type GenerationRelation,
   type RoomMessageType,
@@ -127,6 +129,32 @@ describe('parseRoomMessage', () => {
     expect(parseRoomMessage(request)).toEqual({ ok: true, value: request });
   });
 
+  test('reads a ping and an alive with its digest', () => {
+    // #given
+    const ping = { v: 1, g: { n: 0, a: '' }, t: 'ping' } as const;
+    const alive = { v: 1, g: { n: 3, a: 'y' }, t: 'alive', digest: 4294967295 } as const;
+
+    // #when
+    const parsed = [parseRoomMessage(ping), parseRoomMessage(alive)];
+
+    // #then
+    expect(parsed).toEqual([
+      { ok: true, value: ping },
+      { ok: true, value: alive },
+    ]);
+  });
+
+  test('builds a ping and an alive that parse back as themselves', () => {
+    // #when
+    const built = [pingMessage({ n: 1, a: 'x' }), aliveMessage({ n: 1, a: 'x' }, 0)];
+
+    // #then
+    expect(built.map((message) => parseRoomMessage(message))).toEqual([
+      { ok: true, value: { v: 1, g: { n: 1, a: 'x' }, t: 'ping' } },
+      { ok: true, value: { v: 1, g: { n: 1, a: 'x' }, t: 'alive', digest: 0 } },
+    ]);
+  });
+
   test('reports a higher v before it looks at the rest of the message', () => {
     // #when
     const parsed = parseRoomMessage({ v: 2, t: 'something-new', anything: [1, 2] });
@@ -151,7 +179,15 @@ describe('parseRoomMessage', () => {
     ['no records', commit({ records: [] })],
     ['no generation', { v: 1, t: 'commit', records: [RECORD] }],
     ['an extra key', commit({ extra: true })],
-    ['a type with no schema yet', commit({ t: 'ping' })],
+    ['a type with no schema yet', commit({ t: 'roll' })],
+    ['a ping with an extra key', commit({ t: 'ping' })],
+    ['an alive with no digest', { v: 1, g: { n: 0, a: '' }, t: 'alive' }],
+    ['an alive with a negative digest', { v: 1, g: { n: 0, a: '' }, t: 'alive', digest: -1 }],
+    [
+      'an alive with a digest past 32 bits',
+      { v: 1, g: { n: 0, a: '' }, t: 'alive', digest: 4294967296 },
+    ],
+    ['an alive with a fractional digest', { v: 1, g: { n: 0, a: '' }, t: 'alive', digest: 1.5 }],
     ['a state-request with no nonce', { v: 1, g: { n: 0, a: '' }, t: 'state-request' }],
     [
       'a state-request with an empty nonce',

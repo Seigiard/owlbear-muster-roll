@@ -21,4 +21,9 @@ describe('timing constants', () => {
       TIMING.stateAnswerDelayMaxMs,
     ]).toEqual([4000, 20, 300]);
   });
+
+  test('starts the GM link timeout at the 20 s of the 2.4 spec', () => {
+    // #then
+    expect(TIMING.gmLinkTimeoutMs).toBe(20000);
+  });
 });

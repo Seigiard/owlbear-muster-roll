@@ -37,6 +37,7 @@ const UNKNOWN_SYNC: SyncState = {
   state: 'catching-up',
   firstCatchUpDone: false,
   gmAnswered: false,
+  gmLink: 'offline',
   role: 'PLAYER',
 };
 

@@ -8,6 +8,7 @@ export type Timing = {
   readonly catchUpTimeoutMs: number;
   readonly stateAnswerDelayMinMs: number;
   readonly stateAnswerDelayMaxMs: number;
+  readonly gmLinkTimeoutMs: number;
 };
 
 export const TIMING: Timing = {
@@ -26,6 +27,9 @@ export const TIMING: Timing = {
   // usually goes out and the other GM clients see it and stay quiet.
   stateAnswerDelayMinMs: 20,
   stateAnswerDelayMaxMs: 300,
+  // AD-6: a client that heard no GM client this long shows "no connection to GM", and it pings
+  // after half of it.
+  gmLinkTimeoutMs: 20000,
 };
 
 // A browser may read a download's object URL after the click returns, so it lives this long.

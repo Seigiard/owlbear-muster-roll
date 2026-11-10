@@ -8,13 +8,12 @@ import { decodePreset, type Preset } from '@/core/preset';
 import { hasLiveSheet, presetDataSchema, type VersionedRecord } from '@/core/records';
 import { sheetKey, type SheetSummary } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
-import type { Notice } from '@/core/ui-messages';
 import { visibleRecordMap, visibleSheets, type PlayerRole } from '@/core/visibility';
 import { platform } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
+import { bannerFor } from '@/ui/banner-message';
 import { copy } from '@/ui/copy';
 import { PresetUpload, uploadDisabledReason } from '@/ui/preset-actions';
-import type { BannerMessage } from '@/ui/primitives/banner';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
 import { SettingsView } from '@/ui/settings/settings-view';
@@ -564,7 +563,7 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
     };
   }
 
-  return <WindowShell layout={layout} banner={bannerFor(notices)} />;
+  return <WindowShell layout={layout} banner={bannerFor(notices, sync)} />;
 }
 
 function presetDataOf(records: ReadonlyMap<string, VersionedRecord>): string | null {
@@ -582,17 +581,4 @@ function decodedPreset(data: string | null): Preset | null {
   const decoded = decodePreset(data);
 
   return decoded.ok ? decoded.value : null;
-}
-
-// One banner at a time, by the UX-DR24 priority.
-function bannerFor(notices: readonly Notice[]): BannerMessage | undefined {
-  if (notices.includes('local-save-failed')) {
-    return { variant: 'danger', text: copy.localSaveFailed };
-  }
-
-  if (notices.includes('new-version')) {
-    return { variant: 'warning', text: copy.newVersion };
-  }
-
-  return undefined;
 }

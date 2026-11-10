@@ -87,10 +87,27 @@ const stateSchema = z
   })
   .refine((message) => message.i <= message.n);
 
+// AD-6: a client that heard no GM for half the timeout asks whether one is there.
+const pingSchema = z.strictObject({
+  v: z.literal(FORMAT_VERSION),
+  g: generationSchema,
+  t: z.literal('ping'),
+});
+
+// AD-6, AD-7: a GM client's answer to `ping`, with the `recordDigest` of all its records.
+const aliveSchema = z.strictObject({
+  v: z.literal(FORMAT_VERSION),
+  g: generationSchema,
+  t: z.literal('alive'),
+  digest: z.number().int().min(0).max(0xffffffff),
+});
+
 const roomMessageSchema = z.discriminatedUnion('t', [
   commitSchema,
   stateRequestSchema,
   stateSchema,
+  pingSchema,
+  aliveSchema,
 ]);
 
 export type CommitMessage = z.infer<typeof commitSchema>;
@@ -98,6 +115,10 @@ export type CommitMessage = z.infer<typeof commitSchema>;
 export type StateRequestMessage = z.infer<typeof stateRequestSchema>;
 
 export type StateMessage = z.infer<typeof stateSchema>;
+
+export type PingMessage = z.infer<typeof pingSchema>;
+
+export type AliveMessage = z.infer<typeof aliveSchema>;
 
 export type RoomMessage = z.infer<typeof roomMessageSchema>;
 
@@ -155,4 +176,12 @@ export function commitEnvelope(generation: Generation): CommitMessage {
 
 export function stateRequestMessage(generation: Generation, r: string): StateRequestMessage {
   return { v: FORMAT_VERSION, g: generation, t: 'state-request', r };
+}
+
+export function pingMessage(generation: Generation): PingMessage {
+  return { v: FORMAT_VERSION, g: generation, t: 'ping' };
+}
+
+export function aliveMessage(generation: Generation, digest: number): AliveMessage {
+  return { v: FORMAT_VERSION, g: generation, t: 'alive', digest };
 }

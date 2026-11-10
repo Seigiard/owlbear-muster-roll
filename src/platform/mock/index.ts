@@ -13,6 +13,7 @@ import type {
 
 import {
   CATCH_UP_TIMEOUT_PARAM,
+  GM_LINK_TIMEOUT_PARAM,
   CLIENT_PARAM,
   DEVICE_PARAM,
   deviceStoragePrefix,
@@ -34,6 +35,9 @@ const MOCK_NOTIFICATION_ID = 'mock-notification';
 const THEME_READ_FAILS_PARAM = 'mock-theme-read-fails';
 const THEME_READ_SLOW_PARAM = 'mock-theme-read-slow';
 const THEME_READ_SLOW_MS = 200;
+
+// The longest delay a browser timer keeps; a longer one fires at once.
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 // The default device lists no key that starts with this, so mock bookkeeping stays out of it.
 const MOCK_STORAGE_PREFIX = 'mock-';
@@ -104,7 +108,8 @@ if (window.location.pathname.endsWith('/background.html')) {
 
 export const platform: Platform = mockPlatform;
 
-// The background's timing: `TIMING`, with the catch-up timeout a test page names in its URL.
+// The background's timing: `TIMING`, with the catch-up and GM link timeouts a test page names in
+// its URL.
 export const timing: Timing = timingFromPageUrl();
 
 window.setMockTheme = mockPlatform.setTheme;
@@ -392,12 +397,24 @@ function clientFromPageUrl(): MockClient {
 function timingFromPageUrl(): Timing {
   const params = new URLSearchParams(window.location.search);
 
-  // An empty value counts as absent, as `Number('')` would read it as 0.
-  const text = params.get(CATCH_UP_TIMEOUT_PARAM) ?? '';
-  const value = text === '' ? Number.NaN : Number(text);
-
   return {
     ...TIMING,
-    catchUpTimeoutMs: Number.isFinite(value) && value >= 0 ? value : TIMING.catchUpTimeoutMs,
+    catchUpTimeoutMs: durationParam(params, CATCH_UP_TIMEOUT_PARAM) ?? TIMING.catchUpTimeoutMs,
+    gmLinkTimeoutMs: gmLinkTimeoutParam(params) ?? TIMING.gmLinkTimeoutMs,
   };
+}
+
+// 0, or a value past the longest timer delay, would ping in a loop with no pause.
+function gmLinkTimeoutParam(params: URLSearchParams): number | null {
+  const value = durationParam(params, GM_LINK_TIMEOUT_PARAM);
+
+  return value !== null && value > 0 && value <= MAX_TIMER_DELAY_MS ? value : null;
+}
+
+function durationParam(params: URLSearchParams, name: string): number | null {
+  // An empty value counts as absent, as `Number('')` would read it as 0.
+  const text = params.get(name) ?? '';
+  const value = text === '' ? Number.NaN : Number(text);
+
+  return Number.isFinite(value) && value >= 0 ? value : null;
 }

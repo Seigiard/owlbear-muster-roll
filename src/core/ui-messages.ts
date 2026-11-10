@@ -22,6 +22,9 @@ export const syncSchema = z.strictObject({
   // later one when the first ended by timeout. A player with no preset tells "the GM has not set up
   // sheets" from "nobody answered yet" by it.
   gmAnswered: z.boolean(),
+  // AD-6: `online` while a GM-origin message arrived within the timeout. Only the engine sets it,
+  // never from the party list. It starts `offline`.
+  gmLink: z.enum(['online', 'offline']),
   // The engine's role, re-read on every party change, so a window follows a promotion.
   role: z.enum(['GM', 'PLAYER']),
 });
@@ -170,6 +173,8 @@ const engineMessageSchema = z.discriminatedUnion('t', [
 export type Notice = z.infer<typeof noticeSchema>;
 
 export type SyncState = z.infer<typeof syncSchema>;
+
+export type GmLink = SyncState['gmLink'];
 
 export type Command = z.infer<typeof commandIntentSchema>;
 

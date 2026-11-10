@@ -177,7 +177,13 @@ test('a row that arrives after the GM moved to another field leaves the focus in
     notices: [],
     pending: [],
     withdrawn: [],
-    sync: { state: 'live', firstCatchUpDone: true, gmAnswered: false, role: 'GM' },
+    sync: {
+      state: 'live',
+      firstCatchUpDone: true,
+      gmAnswered: false,
+      gmLink: 'offline',
+      role: 'GM',
+    },
   });
   await expect(attackFields(page)).toHaveCount(3);
 
@@ -204,7 +210,13 @@ test('a delete that lands after the GM moved to another field leaves the focus i
     notices: [],
     pending: [],
     withdrawn: [],
-    sync: { state: 'live', firstCatchUpDone: true, gmAnswered: false, role: 'GM' },
+    sync: {
+      state: 'live',
+      firstCatchUpDone: true,
+      gmAnswered: false,
+      gmLink: 'offline',
+      role: 'GM',
+    },
   });
   await expect(attackFields(page)).toHaveCount(1);
 

@@ -16,6 +16,8 @@ export type CommitOutbox = {
   flush: () => void;
   // Sends nothing more, not even a commit already waiting in the queue.
   stop: () => void;
+  // True while a record is held here or a commit is in the send queue and not yet sent.
+  hasUnsent: () => boolean;
 };
 
 // AD-12: pending commits are coalesced by key. A record waits here, not in the queue, so a newer
@@ -28,6 +30,19 @@ export function createCommitOutbox(
   const held = new Map<string, VersionedRecord>();
   let scheduled = false;
   let stopped = false;
+  // Commit sends the queue has not settled yet.
+  let unsentSends = 0;
+
+  function track(send: Promise<void>): void {
+    unsentSends += 1;
+    send
+      .catch((error) => {
+        console.error('Muster Roll could not send a commit', error);
+      })
+      .finally(() => {
+        unsentSends -= 1;
+      });
+  }
 
   // One message of held records, which leave the outbox, or `null` when none is held.
   function nextChunk(): JsonValue | null {
@@ -75,9 +90,7 @@ export function createCommitOutbox(
     }
 
     scheduled = true;
-    sendQueue.enqueueComposed(SYNC_CHANNEL, take, REMOTE).catch((error) => {
-      console.error('Muster Roll could not send a commit', error);
-    });
+    track(sendQueue.enqueueComposed(SYNC_CHANNEL, take, REMOTE));
   }
 
   return {
@@ -96,14 +109,13 @@ export function createCommitOutbox(
     },
     flush: () => {
       for (let message = nextChunk(); message !== null; message = nextChunk()) {
-        sendQueue.enqueue(SYNC_CHANNEL, message, REMOTE).catch((error) => {
-          console.error('Muster Roll could not send a commit', error);
-        });
+        track(sendQueue.enqueue(SYNC_CHANNEL, message, REMOTE));
       }
     },
     stop: () => {
       stopped = true;
       held.clear();
     },
+    hasUnsent: () => held.size > 0 || unsentSends > 0,
   };
 }

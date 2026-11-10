@@ -19,6 +19,9 @@ export const DEVICE_PARAM = 'mock-device';
 // A shorter catch-up timeout for tests, in milliseconds. A production build reads only `TIMING`.
 export const CATCH_UP_TIMEOUT_PARAM = 'mock-catch-up-timeout-ms';
 
+// A shorter GM link timeout for tests, in milliseconds, as with the catch-up timeout.
+export const GM_LINK_TIMEOUT_PARAM = 'mock-gm-link-timeout-ms';
+
 // The party of a mock room lives in localStorage under this prefix and the room id, and a
 // BroadcastChannel of this prefix and the room id tells the other pages it changed. It starts with
 // `mock-`, so the default storage namespace never lists it.

@@ -31,6 +31,8 @@ const TIMING: Timing = {
   catchUpTimeoutMs: 200,
   stateAnswerDelayMinMs: 0,
   stateAnswerDelayMaxMs: 5,
+  // Far past any test, so no ping goes out unless a test asks for one.
+  gmLinkTimeoutMs: 60000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
