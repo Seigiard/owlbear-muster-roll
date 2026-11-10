@@ -245,7 +245,7 @@ test('the banner goes when the notices clear', async ({ page }) => {
     records: [],
     notices: ['local-save-failed'],
     pending: [],
-    sync: { state: 'live', firstCatchUpDone: true, role: 'GM' },
+    sync: { state: 'live', firstCatchUpDone: true, gmAnswered: false, role: 'GM' },
   });
   await expect(page.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
 
@@ -258,7 +258,7 @@ test('the banner goes when the notices clear', async ({ page }) => {
     pending: [],
     withdrawn: [],
     notices: [],
-    sync: { state: 'live', firstCatchUpDone: true, role: 'GM' },
+    sync: { state: 'live', firstCatchUpDone: true, gmAnswered: false, role: 'GM' },
   });
 
   // #then

@@ -332,7 +332,7 @@ test('a refused creation does not take the selection when its record shows up la
     notices: [],
     pending: [],
     withdrawn: [],
-    sync: { state: 'live', firstCatchUpDone: true, role: 'GM' },
+    sync: { state: 'live', firstCatchUpDone: true, gmAnswered: false, role: 'GM' },
   });
 
   // #then

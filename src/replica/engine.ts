@@ -93,12 +93,18 @@ type AnswerParts = { n: number; parts: Set<number> };
 type CatchUpTrigger = 'start' | 'return' | 'role' | 'generation';
 
 // The engine's own catch-up state. Windows get it with the engine's role.
-type CatchUpState = Pick<SyncState, 'state' | 'firstCatchUpDone'>;
+type CatchUpState = Omit<SyncState, 'role'>;
+
+// How a catch-up ended: with all parts of one answer, or with none (timeout, alone, closing page).
+type CatchUpExit = 'answered' | 'unanswered';
 
 // A delta or projection part: records of the replica, or records of the pending view.
 type Part = { records: VersionedRecord[]; pending: VersionedRecord[] };
 
 type PendingChanges = { records: VersionedRecord[]; withdrawn: string[] };
+
+// What one delta carries: replica records, pending view records, and keys the windows drop.
+type DeltaContent = Part & { withdrawn: string[] };
 
 export async function startReplicaEngine(
   platform: ReplicaEnginePlatform,
@@ -117,7 +123,10 @@ export async function startReplicaEngine(
   const loaded = loadReplica(platform, startRole);
   const replica = new Map<string, VersionedRecord>();
   const problemKeys = loaded.problemKeys;
-  const engineId = newId();
+  // Names the stream of projections and deltas. A role change starts a new stream, so every window
+  // asks for a fresh projection: visibility changes the record set, and a delta cannot take a
+  // record out of a window.
+  let engineId = newId();
   const minter = createVersionMinter(connectionId);
   const composers = createComposers(connectionId);
   const recentCommandIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
@@ -136,9 +145,18 @@ export async function startReplicaEngine(
   // AD-12: once a newer build has spoken in the room, the banner stays until a reload.
   let newerVersionSeen = false;
   let stopped = false;
+
   // AD-7 catch-up. `ownNonce` is set only while catching up.
-  let sync: CatchUpState = { state: 'catching-up', firstCatchUpDone: false };
+  let sync: CatchUpState = {
+    state: 'catching-up',
+    firstCatchUpDone: false,
+    gmAnswered: false,
+  };
+
   let ownNonce: string | null = null;
+  // The last `r` this client asked with. A complete answer to it that comes after a timeout still
+  // shows that a GM client answered.
+  let lastNonce: string | null = null;
   let answers = new Map<string, AnswerParts>();
   // True once any `state` for `ownNonce` arrived, so a re-entry need not ask again.
   let answerSeen = false;
@@ -154,6 +172,9 @@ export async function startReplicaEngine(
   let roleReads = 0;
   // A window ignores deltas until its first projection, so none is worth sending before one.
   let projectionSent = false;
+  // A player's windows hold the replica records visible when they were last sent. Each delta sends
+  // the records that became visible and withdraws the keys that no longer are.
+  let sentVisible = new Set<string>();
 
   for (const record of loaded.records) {
     merge(record);
@@ -195,9 +216,11 @@ export async function startReplicaEngine(
       return;
     }
 
-    const records = visibleRecords(role, [...replica.values()]);
     const shownRecords = sync.state === 'live' ? [] : [...shownPending.values()];
-    const pendingRecords = visibleRecords(role, shownRecords);
+    // GM visibility is the identity, so a GM builds no view to judge kinds by.
+    const known = role === 'GM' ? [] : shownView();
+    const records = visibleRecords(role, [...replica.values()], known);
+    const pendingRecords = visibleRecords(role, shownRecords, known);
     const largestCount = records.length + pendingRecords.length + 1;
 
     const envelope: ProjectionMessage = {
@@ -223,6 +246,7 @@ export async function startReplicaEngine(
 
     answeringNonces.add(nonce);
     projectionSent = true;
+    sentVisible = role === 'GM' ? new Set() : new Set(records.map((record) => record.k));
 
     const sends = parts.map((part, index) =>
       send({ ...envelope, i: index + 1, n: parts.length, ...part }),
@@ -237,23 +261,34 @@ export async function startReplicaEngine(
       });
   }
 
+  // The records as the windows show them: the replica, with the pending view over it. A sheet's
+  // kind is read from here, so a row is judged by its sheet even when the sheet is not in the batch.
+  function shownView(): VersionedRecord[] {
+    const view = new Map(replica);
+
+    for (const [key, record] of shownPending) {
+      view.set(key, record);
+    }
+
+    return [...view.values()];
+  }
+
   function emitDelta(records: readonly VersionedRecord[]): void {
-    const visible = visibleRecords(role, records);
     const changes = pendingViewChanges();
-    const pendingRecords = visibleRecords(role, changes.records);
+    const content = role === 'GM' ? gmDelta(records, changes) : playerDelta(records, changes);
 
     const envelope: DeltaMessage = {
       t: 'delta',
       engine: engineId,
-      seq: sequence + visible.length + pendingRecords.length + 1,
+      seq: sequence + content.records.length + content.pending.length + 1,
       records: [],
       pending: [],
-      withdrawn: changes.withdrawn,
+      withdrawn: content.withdrawn,
       notices: currentNotices(),
       sync: { ...sync, role },
     };
 
-    const parts = splitParts(visible, pendingRecords, jsonByteLength(envelope));
+    const parts = splitParts(content.records, content.pending, jsonByteLength(envelope));
 
     if (parts === null) {
       console.error('Muster Roll could not split a delta');
@@ -261,12 +296,73 @@ export async function startReplicaEngine(
       return;
     }
 
-    for (const part of parts) {
+    for (const [index, part] of parts.entries()) {
       sequence += 1;
-      send({ ...envelope, seq: sequence, ...part }).catch((error) => {
+
+      // A window drops the withdrawn keys before it takes the records, so only the first part
+      // withdraws: a later one would drop records an earlier part brought.
+      const withdrawn = index === 0 ? content.withdrawn : [];
+
+      send({ ...envelope, seq: sequence, withdrawn, ...part }).catch((error) => {
         console.error('Muster Roll could not send a delta', error);
       });
     }
+  }
+
+  // A window drops a withdrawn key from its replica too, so a key that leaves the pending view comes
+  // with the replica's record again.
+  function gmDelta(records: readonly VersionedRecord[], changes: PendingChanges): DeltaContent {
+    const sent = new Map(records.map((record) => [record.k, record]));
+
+    for (const key of changes.withdrawn) {
+      const record = replica.get(key);
+
+      if (record !== undefined) {
+        sent.set(key, record);
+      }
+    }
+
+    return { records: [...sent.values()], pending: changes.records, withdrawn: changes.withdrawn };
+  }
+
+  // A record can become visible or stop being visible without changing itself: a character's rows
+  // when its sheet arrives, a link that now points to an NPC. So a player's delta compares the whole
+  // visible set with the one the windows hold.
+  function playerDelta(records: readonly VersionedRecord[], changes: PendingChanges): DeltaContent {
+    const known = shownView();
+
+    const visibleNow = new Map(
+      visibleRecords(role, [...replica.values()], known).map((record) => [record.k, record]),
+    );
+
+    const sent = new Map<string, VersionedRecord>();
+
+    for (const key of [...records.map((record) => record.k), ...changes.withdrawn]) {
+      const record = visibleNow.get(key);
+
+      if (record !== undefined) {
+        sent.set(key, record);
+      }
+    }
+
+    // Before the first projection no window holds anything to compare with.
+    if (projectionSent) {
+      for (const [key, record] of visibleNow) {
+        if (!sentVisible.has(key)) {
+          sent.set(key, record);
+        }
+      }
+    }
+
+    const gone = projectionSent ? [...sentVisible].filter((key) => !visibleNow.has(key)) : [];
+
+    sentVisible = new Set(visibleNow.keys());
+
+    return {
+      records: [...sent.values()],
+      pending: visibleRecords(role, changes.records, known),
+      withdrawn: [...new Set([...changes.withdrawn, ...gone])],
+    };
   }
 
   function persist(record: VersionedRecord): Persisted {
@@ -548,8 +644,9 @@ export async function startReplicaEngine(
 
     const nonce = newId();
 
-    sync = { state: 'catching-up', firstCatchUpDone: sync.firstCatchUpDone };
+    sync = { ...sync, state: 'catching-up' };
     ownNonce = nonce;
+    lastNonce = nonce;
     answers = new Map();
     answerSeen = false;
 
@@ -578,7 +675,7 @@ export async function startReplicaEngine(
 
     catchUpTimer = setTimeout(() => {
       if (!stopped && sync.state === 'catching-up' && ownNonce === nonce) {
-        leaveCatchUp();
+        leaveCatchUp('unanswered');
       }
     }, timing.catchUpTimeoutMs);
   }
@@ -601,15 +698,18 @@ export async function startReplicaEngine(
     }
 
     if (!players.some((player) => player.role === 'GM')) {
-      leaveCatchUp();
+      leaveCatchUp('unanswered');
     }
   }
 
-  function leaveCatchUp(): void {
+  function leaveCatchUp(exit: CatchUpExit): void {
     clearTimeout(catchUpTimer);
-    sync = { state: 'live', firstCatchUpDone: true };
+    sync = {
+      state: 'live',
+      firstCatchUpDone: true,
+      gmAnswered: sync.gmAnswered || exit === 'answered',
+    };
     ownNonce = null;
-    answers = new Map();
     shownPending = new Map();
 
     const changed: VersionedRecord[] = [];
@@ -749,8 +849,10 @@ export async function startReplicaEngine(
   }
 
   // A partial answer counts as no answer: only all `n` messages of one responder end catch-up.
+  // The parts of the last own `r` still count after a timeout, so a late complete answer shows
+  // that a GM client answered.
   function countAnswerPart(message: StateMessage, sender: string): void {
-    if (sync.state !== 'catching-up' || message.r !== ownNonce) {
+    if (message.r !== lastNonce) {
       return;
     }
 
@@ -760,8 +862,15 @@ export async function startReplicaEngine(
     answer.parts.add(message.i);
     answers.set(sender, answer);
 
-    if (answer.parts.size === answer.n) {
-      leaveCatchUp();
+    if (answer.parts.size !== answer.n) {
+      return;
+    }
+
+    if (sync.state === 'catching-up') {
+      leaveCatchUp('answered');
+    } else if (!sync.gmAnswered) {
+      sync = { ...sync, gmAnswered: true };
+      emitDelta([]);
     }
   }
 
@@ -807,6 +916,10 @@ export async function startReplicaEngine(
 
   function changeRole(next: PlayerRole): void {
     role = next;
+    // A new stream: the catch-up entry below sends a delta, and each window that gets it from a
+    // new engine id asks for a projection of the records the new role sees.
+    engineId = newId();
+    sequence = 0;
     persistAllOnExit = false;
     persistence = null;
 
@@ -950,7 +1063,7 @@ export async function startReplicaEngine(
     flushNow: () => {
       // A closing page cannot wait for catch-up, so the intents it holds apply and go out now.
       if (sync.state === 'catching-up' && pending.entries().length > 0) {
-        leaveCatchUp();
+        leaveCatchUp('unanswered');
       }
 
       outbox.flush();

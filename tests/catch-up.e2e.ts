@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 
-import { UI_CHANNEL } from '@/core/ui-messages';
-
 import {
   addPartyMember,
   connectionIdOf,
@@ -19,6 +17,7 @@ import {
 } from './support/room';
 
 const LOADING = 'Загрузка…';
+const READ_ONLY = 'Только чтение';
 const ADD = 'Добавить персонажа';
 const GEAR = '⚙︎';
 const SETTINGS = 'Настройки';
@@ -27,8 +26,6 @@ const DOWNLOAD_PRESET = 'Скачать пресет';
 const NEW_CHARACTER = 'Новый персонаж';
 
 type Return = 'online' | 'resume' | 'visibilitychange';
-
-type ProjectionRead = { state: string; keys: string[] };
 
 // A GM listed in the party with no page behind it: it never answers a request.
 const SILENT_GM = 'mock-connection-silent';
@@ -200,28 +197,6 @@ test('a page that becomes visible again catches up, and the upload waits for it'
   await expect(uploadButton(client.window)).toBeEnabled({ timeout: 6000 });
 });
 
-test('a player stays on the loading text after its catch-up ends', async ({ context }) => {
-  // #given
-  const gm = await openClient(context, { client: 'a', device: 'a' }, RECORDS);
-
-  await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
-
-  // #when
-  const player = await openClient(
-    context,
-    { client: 'p', role: 'PLAYER', player: 'lisa', device: 'p' },
-    null,
-  );
-
-  // #then
-  await expect
-    .poll(() => projectionRead(player.window))
-    .toEqual({ state: 'live', keys: expect.arrayContaining(['preset', 'sheet:brok']) });
-  await expect(player.window.getByText(LOADING)).toBeVisible();
-  await expect(player.window.getByRole('tab')).toHaveCount(0);
-  expect(await deviceKeys(player.window, 'p')).toEqual([]);
-});
-
 test('a player made GM gets the GM view without reopening the window', async ({ context }) => {
   // #given
   const gm = await openClient(context, { client: 'a', device: 'a' }, RECORDS);
@@ -234,7 +209,7 @@ test('a player made GM gets the GM view without reopening the window', async ({ 
     null,
   );
 
-  await expect(player.window.getByText(LOADING)).toBeVisible();
+  await expect(player.window.getByText(READ_ONLY)).toBeVisible();
 
   // #when: the role belongs to the background, which owns the replica.
   await player.background.evaluate(() => {
@@ -278,39 +253,6 @@ async function returnWithSilentGm(client: RoomClient, event: Return): Promise<vo
       document.dispatchEvent(new Event('visibilitychange'));
     }
   }, event);
-}
-
-// The engine's own answer to a projection request: its sync state and the keys of its records.
-async function projectionRead(page: Page): Promise<ProjectionRead> {
-  return page.evaluate(
-    (channel) =>
-      new Promise<ProjectionRead>((resolve) => {
-        const nonce = `read-${Date.now()}`;
-        const keys: string[] = [];
-
-        const stop = window.mockPlatform.broadcast.onMessage(channel, (event) => {
-          const message = Object(event.data);
-
-          if (message.t !== 'projection' || message.nonce !== nonce) {
-            return;
-          }
-
-          keys.push(...message.records.map((one: { k: string }) => one.k));
-
-          if (message.i === message.n) {
-            stop();
-            resolve({ state: String(message.sync.state), keys });
-          }
-        });
-
-        void window.mockPlatform.broadcast.sendMessage(
-          channel,
-          { t: 'projection-request', nonce },
-          { destination: 'LOCAL' },
-        );
-      }),
-    UI_CHANNEL,
-  );
 }
 
 function strength(page: Page): Locator {

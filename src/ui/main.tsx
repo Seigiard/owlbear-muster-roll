@@ -6,10 +6,10 @@ import { createRoot } from 'react-dom/client';
 
 import { decodePreset, type Preset } from '@/core/preset';
 import { hasLiveSheet, presetDataSchema, type VersionedRecord } from '@/core/records';
-import { liveSheets, sheetKey, type SheetSummary } from '@/core/sheets';
+import { sheetKey, type SheetSummary } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
 import type { Notice } from '@/core/ui-messages';
-import type { PlayerRole } from '@/core/visibility';
+import { visibleRecordMap, visibleSheets, type PlayerRole } from '@/core/visibility';
 import { platform } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { copy } from '@/ui/copy';
@@ -18,7 +18,7 @@ import type { BannerMessage } from '@/ui/primitives/banner';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
 import { SettingsView } from '@/ui/settings/settings-view';
-import { SheetHeader } from '@/ui/sheet/sheet-header';
+import { ReadOnlySheetHeader, SheetHeader } from '@/ui/sheet/sheet-header';
 import { DeleteConfirmation } from '@/ui/sheet/delete-confirmation';
 import { NpcTab } from '@/ui/sheet/npc-tab';
 import { SheetBody } from '@/ui/sheet/sheet-body';
@@ -112,12 +112,20 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
   const sync = useStore(projection.$sync);
   // The engine re-reads the role on every party change, so the window follows it.
   const role = loaded ? sync.role : initialRole;
-  const records = useStore(projection.$records);
+  const isGm = role === 'GM';
+  const allRecords = useStore(projection.$records);
+  // Every view reads the records and the sheets through visibility, so no view filters by kind or
+  // role on its own.
+  const records = useMemo(() => visibleRecordMap(role, allRecords), [role, allRecords]);
   const rejections = useStore(projection.$rejections);
   const presetData = presetDataOf(records);
   const preset = useMemo(() => decodedPreset(presetData), [presetData]);
-  const characters = useMemo(() => liveSheets(records.values(), 'pc'), [records]);
-  const npcs = useMemo(() => liveSheets(records.values(), 'npc'), [records]);
+
+  const { characters, npcs } = useMemo(
+    () => visibleSheets(role, records.values()),
+    [role, records],
+  );
+
   // AD-7: until the first catch-up ends, no data counts as the room's. The tab bar shows what is
   // known and every panel says "Загрузка…", so no empty or no-preset state shows too early.
   const ready = loaded && sync.firstCatchUpDone;
@@ -154,6 +162,8 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
   );
 
   const firstTab = characterTabs[0] ?? NPC_TAB;
+  // A player has character tabs only (UX-DR8).
+  const pinnedTabIds = isGm ? [NPC_TAB, SETTINGS_TAB] : [];
 
   const clearNameFocus = useCallback(() => {
     setFocusNameOf(null);
@@ -202,11 +212,33 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
     }
   }
 
-  const createdTab = created === null ? null : tabOf(created.sheet);
+  // A player creates and deletes nothing, so a demotion drops what this window waited for and
+  // meant to focus, and a later promotion starts clean, with the gear toggle off.
+  const awaitedCreate = isGm ? created : null;
+  const awaitedDelete = isGm ? deleting : null;
 
-  if (created !== null && rejections.has(created.commandId)) {
+  if (
+    !isGm &&
+    (settingsOpen ||
+      created !== null ||
+      deleting !== null ||
+      focusNameOf !== null ||
+      focusActionsOf !== null ||
+      focusAddNpc)
+  ) {
+    setSettingsOpen(false);
     setCreated(null);
-  } else if (created !== null && createdTab !== null) {
+    setDeleting(null);
+    setFocusNameOf(null);
+    setFocusActionsOf(null);
+    setFocusAddNpc(false);
+  }
+
+  const createdTab = awaitedCreate === null ? null : tabOf(awaitedCreate.sheet);
+
+  if (awaitedCreate !== null && rejections.has(awaitedCreate.commandId)) {
+    setCreated(null);
+  } else if (awaitedCreate !== null && createdTab !== null) {
     setCreated(null);
 
     // A character's tab opens. An NPC lands on its own tab and pulls no GM back to it.
@@ -215,12 +247,13 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
     }
 
     if (shownTab === createdTab) {
-      setFocusNameOf(created.sheet);
+      setFocusNameOf(awaitedCreate.sheet);
     }
   }
 
-  // A selected sheet that disappears hands the selection to the first tab.
-  if (shownTab !== NPC_TAB && shownTab !== SETTINGS_TAB && !characterTabs.includes(shownTab)) {
+  // A selected sheet that disappears, or a tab the role does not have, hands the selection to the
+  // first tab (UX-DR9).
+  if (!characterTabs.includes(shownTab) && !pinnedTabIds.includes(shownTab)) {
     shownTab = firstTab;
   }
 
@@ -228,29 +261,33 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
     setSelectedTab(shownTab);
   }
 
-  // Another tab, or a sheet deleted elsewhere, closes the confirmation for good, so returning to
-  // the tab does not bring it back.
-  if (deleteAsk !== null && tabOf(deleteAsk.sheet) !== shownTab) {
+  // Another tab, a sheet deleted elsewhere, or a role that cannot delete closes the confirmation
+  // for good, so returning to the tab does not bring it back.
+  if (deleteAsk !== null && (!isGm || tabOf(deleteAsk.sheet) !== shownTab)) {
     setDeleteAsk(null);
 
     // An NPC deleted elsewhere takes "Отменить" with it, on a tab that stays open.
-    if (deleteAsk.neighbours !== null && tabOf(deleteAsk.sheet) === null) {
+    if (isGm && deleteAsk.neighbours !== null && tabOf(deleteAsk.sheet) === null) {
       setFocusAfterLoss({ kind: 'npc', neighbours: deleteAsk.neighbours });
     }
   }
 
   // The pressed "Удалить" is gone with its block. A refused deletion leaves the sheet, so the
   // focus goes back to its "⋯".
-  if (deleting !== null && tabOf(deleting.sheet) === null) {
+  if (awaitedDelete !== null && tabOf(awaitedDelete.sheet) === null) {
     setDeleting(null);
     setFocusAfterLoss(
-      deleting.neighbours === null
+      awaitedDelete.neighbours === null
         ? { kind: 'tab' }
-        : { kind: 'npc', neighbours: deleting.neighbours },
+        : { kind: 'npc', neighbours: awaitedDelete.neighbours },
     );
-  } else if (deleting !== null && rejections.has(deleting.commandId)) {
+  } else if (awaitedDelete !== null && rejections.has(awaitedDelete.commandId)) {
     setDeleting(null);
-    setFocusAfterLoss({ kind: 'actions', sheet: deleting.sheet, tab: tabOf(deleting.sheet) });
+    setFocusAfterLoss({
+      kind: 'actions',
+      sheet: awaitedDelete.sheet,
+      tab: tabOf(awaitedDelete.sheet),
+    });
   }
 
   // Applied only to focus that fell to the page body, and only on the tab that lost it, so a
@@ -364,9 +401,8 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
   );
 
   const layout = ((): ShellLayout => {
-    // Temporary until Story 2.3: a player client shows only the loading text.
-    if (role !== 'GM') {
-      return { kind: 'plain', content: loading };
+    if (!isGm) {
+      return playerLayout();
     }
 
     if (presetState === 'absent') {
@@ -483,6 +519,50 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
       ],
     };
   })();
+
+  // UX-DR10, UX-DR27: character tabs only, each read-only. Both empty-state texts need a GM client
+  // that answered; with no answer the window keeps loading until Story 2.6.
+  function playerLayout(): ShellLayout {
+    if (ready && preset === null) {
+      return {
+        kind: 'plain',
+        content: sync.gmAnswered ? <p>{copy.playerNoPreset}</p> : loading,
+      };
+    }
+
+    // A preset from a partial answer proves no GM said there are no characters.
+    if (characters.length === 0) {
+      return {
+        kind: 'plain',
+        content: ready && sync.gmAnswered ? <p>{copy.playerNoCharacters}</p> : loading,
+      };
+    }
+
+    return {
+      kind: 'tabs',
+      selectedTab: shownTab,
+      onSelectTab: setSelectedTab,
+      scrollingTabs: characters.map((sheet) => ({
+        id: sheetKey(sheet.sheetId),
+        label: sheet.name,
+        content:
+          !ready || preset === null ? (
+            loading
+          ) : (
+            <>
+              <ReadOnlySheetHeader name={sheet.name} />
+              <SheetBody
+                template={preset.character}
+                sheetId={sheet.sheetId}
+                records={records}
+                editing={null}
+              />
+            </>
+          ),
+      })),
+      pinnedTabs: [],
+    };
+  }
 
   return <WindowShell layout={layout} banner={bannerFor(notices)} />;
 }

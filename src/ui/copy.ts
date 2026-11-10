@@ -20,6 +20,9 @@ export const copy = {
     sheetActions: 'Действия с листом',
     // The accessible name of a repeat row's "Удалить", with the row's position from 1.
     deleteRow: (n: number): string => `Удалить строку ${n}`,
+    // The accessible name of a read-only check mark: its field's label and its state.
+    checked: (name: string): string => `${name}: отмечено`,
+    unchecked: (name: string): string => `${name}: не отмечено`,
   },
   newCharacter: 'Новый персонаж',
   newNpc: 'Новый NPC',
@@ -40,6 +43,8 @@ export const copy = {
     noToken: 'Нет токена',
   },
   loading: 'Загрузка…',
+  playerNoPreset: 'ГМ ещё не настроил листы.',
+  playerNoCharacters: 'ГМ ещё не создал персонажей.',
   noGm: 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.',
   roomCopyNotSaved: 'Копия в комнате не сохранена. Игра идёт дальше, но скачайте снимок.',
   localSaveFailed: 'Не удалось сохранить в браузере. Скачайте снимок.',

@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-import { sheetDataSchema, type SheetData, type VersionedRecord } from '@/core/records';
+import {
+  linkDataSchema,
+  sheetDataSchema,
+  type SheetData,
+  type VersionedRecord,
+} from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 
 export const SHEET_NAME_MAX_LENGTH = 100;
@@ -28,11 +33,40 @@ export function isSheetDependent(
   record: Pick<VersionedRecord, 'd'>,
   sheetId: string,
 ): boolean {
-  if (key.startsWith('link:')) {
-    return record.d === sheetId;
+  return dependentSheetId(key, record) === sheetId;
+}
+
+// True for a key of a form that belongs to a sheet: `row:`, `rep:`, `acl:`, `plink:` and `link:`.
+export function isDependentKey(key: string): boolean {
+  return (
+    key.startsWith('link:') || KEYED_DEPENDENT_FORMS.some((form) => key.startsWith(`${form}:`))
+  );
+}
+
+// The id of the sheet a record depends on, or `null` for a record that names no valid sheet id. A
+// `link:` holds it in its data, so a tombstoned one names none. A keyed form holds it in the key,
+// before the next ":".
+export function dependentSheetId(key: string, record: Pick<VersionedRecord, 'd'>): string | null {
+  const candidate = key.startsWith('link:')
+    ? linkDataSchema.safeParse(record.d).data
+    : keyedSheetSegment(key);
+
+  const sheetId = sheetIdSchema.safeParse(candidate);
+
+  return sheetId.success ? sheetId.data : null;
+}
+
+function keyedSheetSegment(key: string): string | undefined {
+  const form = KEYED_DEPENDENT_FORMS.find((candidate) => key.startsWith(`${candidate}:`));
+
+  if (form === undefined) {
+    return undefined;
   }
 
-  return KEYED_DEPENDENT_FORMS.some((form) => key.startsWith(`${form}:${sheetId}:`));
+  const rest = key.slice(form.length + 1);
+  const end = rest.indexOf(':');
+
+  return end === -1 ? undefined : rest.slice(0, end);
 }
 
 export function parseSheetName(candidate: string): Result<string, SheetNameFailure> {

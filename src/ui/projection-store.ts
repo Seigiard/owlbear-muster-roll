@@ -33,7 +33,12 @@ const REJECTION_LIMIT = 256;
 
 // What a window assumes before its first projection: the first catch-up has not ended, and the
 // role allows the least.
-const UNKNOWN_SYNC: SyncState = { state: 'catching-up', firstCatchUpDone: false, role: 'PLAYER' };
+const UNKNOWN_SYNC: SyncState = {
+  state: 'catching-up',
+  firstCatchUpDone: false,
+  gmAnswered: false,
+  role: 'PLAYER',
+};
 
 // The engine orders messages by sequence, so a window replaces records and never compares versions.
 export function createProjectionStore(): ProjectionStore {
@@ -72,6 +77,12 @@ export function createProjectionStore(): ProjectionStore {
       $loaded.set(true);
     },
     applyDelta: (records, pending, withdrawn, notices, sync) => {
+      // Dropped first, so a record the same delta brings again stays.
+      for (const key of withdrawn) {
+        replica.delete(key);
+        pendingView.delete(key);
+      }
+
       for (const record of records) {
         replica.set(record.k, record);
       }
@@ -80,10 +91,6 @@ export function createProjectionStore(): ProjectionStore {
       if (sync.state === 'live') {
         pendingView = new Map();
       } else {
-        for (const key of withdrawn) {
-          pendingView.delete(key);
-        }
-
         for (const record of pending) {
           pendingView.set(record.k, record);
         }

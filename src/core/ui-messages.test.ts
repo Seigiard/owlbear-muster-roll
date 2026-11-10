@@ -13,7 +13,12 @@ import {
   type WindowMessage,
 } from './ui-messages';
 
-const LIVE: SyncState = { state: 'live', firstCatchUpDone: true, role: 'GM' };
+const LIVE: SyncState = {
+  state: 'live',
+  firstCatchUpDone: true,
+  gmAnswered: false,
+  role: 'GM',
+};
 
 const SHEET_CREATE: Command = { type: 'sheet-create', sheetId: 's1', kind: 'pc', name: 'Брок' };
 
@@ -297,7 +302,12 @@ describe('parseEngineMessage', () => {
     records: [{ k: 'link:t', d: 's', c: 1, a: 'conn' }],
     pending: [{ k: 'link:u', d: 's', c: 2, a: 'conn' }],
     notices: ['local-save-failed'],
-    sync: { state: 'catching-up', firstCatchUpDone: false, role: 'GM' },
+    sync: {
+      state: 'catching-up',
+      firstCatchUpDone: false,
+      gmAnswered: false,
+      role: 'GM',
+    },
   };
 
   test('accepts a projection part', () => {

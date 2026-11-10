@@ -2,7 +2,7 @@ import { useId } from 'react';
 import type { ReactNode } from 'react';
 
 import type { PresetCell, PresetFieldCell } from '@/core/preset';
-import { cellLabel, type FieldValues } from '@/core/sheet-values';
+import { cellLabel, isChecked, valueText, type FieldValues } from '@/core/sheet-values';
 import { copy } from '@/ui/copy';
 
 import {
@@ -19,6 +19,7 @@ type SheetCellProps = {
   values: FieldValues;
   // `null` for a row with no field, which has no record.
   place: FieldPlace | null;
+  readOnly: boolean;
 };
 
 type FieldProps = {
@@ -37,8 +38,19 @@ const ERROR_TEXT: Record<FieldErrorKind, string> = {
 const VALUE_CLASS =
   'touch-target min-w-[3rem] max-w-full resize-none border-b border-dotted border-line-strong bg-transparent px-1 text-text [field-sizing:content] [overflow-wrap:anywhere]';
 
-// Every value is editable in place, with no edit mode.
-export function SheetCell({ cell, before, values, place }: SheetCellProps): ReactNode {
+// A read-only value takes the place and size of the control, with no dotted line, so a sheet looks
+// the same for both roles. It is no form control, so Tab skips it.
+const READ_ONLY_VALUE_CLASS =
+  'touch-target inline-flex min-w-[3rem] max-w-full items-center whitespace-pre-wrap border-b border-transparent px-1 text-text [overflow-wrap:anywhere]';
+
+// The box of a check, as the checkbox of the GM draws it.
+const READ_ONLY_CHECK_CLASS =
+  'inline-flex size-4 items-center justify-center justify-self-start rounded-sm border border-line-strong text-label-sm text-text';
+
+const CHECK_MARK = '✓';
+
+// Every value is editable in place, with no edit mode. For a player every value is text.
+export function SheetCell({ cell, before, values, place, readOnly }: SheetCellProps): ReactNode {
   const label = cellLabel(cell, before);
 
   // A dice cell is a static label until Epic 4 makes it roll.
@@ -46,10 +58,40 @@ export function SheetCell({ cell, before, values, place }: SheetCellProps): Reac
     return <span>{label}</span>;
   }
 
+  if (readOnly) {
+    return <ReadOnlyValue field={cell} label={label} values={values} />;
+  }
+
   return cell.type === 'check' ? (
     <CheckField field={cell} label={label} values={values} place={place} />
   ) : (
     <TextValueField field={cell} label={label} values={values} place={place} />
+  );
+}
+
+// Named by the field's label, as the GM's control is, so a screen reader says what the value is.
+function ReadOnlyValue({ field, label, values }: Omit<FieldProps, 'place'>): ReactNode {
+  const value = values.get(field.id);
+
+  if (field.type === 'check') {
+    const checked = isChecked(value);
+
+    return (
+      <span
+        role="img"
+        aria-label={checked ? copy.label.checked(label) : copy.label.unchecked(label)}
+        className={READ_ONLY_CHECK_CLASS}
+        data-read-only-value
+      >
+        {checked ? CHECK_MARK : ''}
+      </span>
+    );
+  }
+
+  return (
+    <span role="group" aria-label={label} className={READ_ONLY_VALUE_CLASS} data-read-only-value>
+      {valueText(value)}
+    </span>
   );
 }
 

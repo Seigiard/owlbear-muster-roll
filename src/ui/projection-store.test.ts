@@ -7,8 +7,20 @@ import { createProjectionStore } from './projection-store';
 
 const FIRST: VersionedRecord = { k: 'link:a', d: 's1', c: 1, a: 'conn' };
 const SECOND: VersionedRecord = { k: 'link:b', d: 's2', c: 1, a: 'conn' };
-const LIVE: SyncState = { state: 'live', firstCatchUpDone: true, role: 'GM' };
-const CATCHING_UP: SyncState = { state: 'catching-up', firstCatchUpDone: true, role: 'GM' };
+
+const LIVE: SyncState = {
+  state: 'live',
+  firstCatchUpDone: true,
+  gmAnswered: false,
+  role: 'GM',
+};
+
+const CATCHING_UP: SyncState = {
+  state: 'catching-up',
+  firstCatchUpDone: true,
+  gmAnswered: false,
+  role: 'GM',
+};
 
 describe('projection store', () => {
   test('replaces all records and notices from a projection', () => {
@@ -76,7 +88,12 @@ describe('projection store', () => {
 
     // #then
     expect({ before, after: store.$sync.get() }).toEqual({
-      before: { state: 'catching-up', firstCatchUpDone: false, role: 'PLAYER' },
+      before: {
+        state: 'catching-up',
+        firstCatchUpDone: false,
+        gmAnswered: false,
+        role: 'PLAYER',
+      },
       after: LIVE,
     });
   });
@@ -116,7 +133,7 @@ describe('projection store', () => {
     expect([...store.$records.get().values()]).toEqual([FIRST]);
   });
 
-  test('shows the replica record again for a withdrawn pending key, or nothing when it has none', () => {
+  test('shows the replica record a delta brings again for a withdrawn pending key, or nothing', () => {
     // #given
     const store = createProjectionStore();
     const pendingFirst: VersionedRecord = { k: 'link:a', d: 's7', c: 2, a: 'conn' };
@@ -125,10 +142,23 @@ describe('projection store', () => {
     store.replaceAll([FIRST], [pendingFirst, created], [], CATCHING_UP);
 
     // #when
-    store.applyDelta([], [], ['link:a', 'link:c'], [], CATCHING_UP);
+    store.applyDelta([FIRST], [], ['link:a', 'link:c'], [], CATCHING_UP);
 
     // #then
     expect([...store.$records.get().values()]).toEqual([FIRST]);
+  });
+
+  test('drops a withdrawn key from the replica, also while live', () => {
+    // #given
+    const store = createProjectionStore();
+
+    store.replaceAll([FIRST, SECOND], [], [], LIVE);
+
+    // #when
+    store.applyDelta([], [], ['link:a'], [], LIVE);
+
+    // #then
+    expect([...store.$records.get().values()]).toEqual([SECOND]);
   });
 
   test('keeps no pending view from a projection of a live engine', () => {

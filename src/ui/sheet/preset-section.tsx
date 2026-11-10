@@ -31,6 +31,7 @@ type SheetSectionProps = {
   section: PresetSection;
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
+  readOnly: boolean;
 };
 
 // `instanceId` is set for a row of a repeat section.
@@ -42,14 +43,24 @@ type SheetRow = {
   instanceId: string | null;
 };
 
-type RowsProps = { section: PresetSection; rows: readonly SheetRow[]; controls?: RepeatRows };
+type RowsProps = {
+  section: PresetSection;
+  rows: readonly SheetRow[];
+  readOnly: boolean;
+  controls?: RepeatRows;
+};
 
-type SectionContentProps = SheetSectionProps & {
+type SectionContentProps = Omit<SheetSectionProps, 'readOnly'> & {
   sectionId: string;
   template: readonly PresetCell[];
 };
 
-export function SheetSection({ section, sheetId, records }: SheetSectionProps): ReactNode {
+export function SheetSection({
+  section,
+  sheetId,
+  records,
+  readOnly,
+}: SheetSectionProps): ReactNode {
   const headingId = useId();
   const title = sectionTitle(section);
   const repeat = repeatTemplate(section);
@@ -61,7 +72,15 @@ export function SheetSection({ section, sheetId, records }: SheetSectionProps): 
 
   const content =
     repeat === null ? (
-      <PlainContent section={section} sheetId={sheetId} records={records} />
+      <PlainContent section={section} sheetId={sheetId} records={records} readOnly={readOnly} />
+    ) : readOnly ? (
+      <ReadOnlyRepeatContent
+        section={section}
+        sheetId={sheetId}
+        records={records}
+        sectionId={repeat.sectionId}
+        template={repeat.template}
+      />
     ) : (
       <RepeatContent
         section={section}
@@ -99,12 +118,32 @@ function Body({ children }: { children: ReactNode }): ReactNode {
   );
 }
 
-function PlainContent({ section, sheetId, records }: SheetSectionProps): ReactNode {
+function PlainContent({ section, sheetId, records, readOnly }: SheetSectionProps): ReactNode {
   const rows = useMemo(() => plainRows(section, sheetId, records), [section, sheetId, records]);
 
   return (
     <Body>
-      <Rows section={section} rows={rows} />
+      <Rows section={section} rows={rows} readOnly={readOnly} />
+    </Body>
+  );
+}
+
+// A player's repeat section: the rows, with no "Удалить" and no "Добавить строку".
+function ReadOnlyRepeatContent({
+  section,
+  sheetId,
+  records,
+  sectionId,
+  template,
+}: SectionContentProps): ReactNode {
+  const rows = useMemo(
+    () => repeatRows(template, sectionId, sheetId, records),
+    [template, sectionId, sheetId, records],
+  );
+
+  return (
+    <Body>
+      <Rows section={section} rows={rows} readOnly />
     </Body>
   );
 }
@@ -129,7 +168,7 @@ function RepeatContent({
   return (
     <>
       <Body>
-        <Rows section={section} rows={rows} controls={controls} />
+        <Rows section={section} rows={rows} readOnly={false} controls={controls} />
       </Body>
       <div className="mt-1">
         <Button ref={controls.addButton} onPress={controls.add}>
@@ -143,7 +182,7 @@ function RepeatContent({
 // Keyed by row id, instance id or field id where one exists, so the state a field keeps stays with
 // that field when the preset changes around it.
 // Rows count from 1, so the second, fourth and later even rows stripe.
-function Rows({ section, rows, controls }: RowsProps): ReactNode {
+function Rows({ section, rows, readOnly, controls }: RowsProps): ReactNode {
   if (section.columns === undefined) {
     return rows.map((row, index) => (
       <div
@@ -152,7 +191,7 @@ function Rows({ section, rows, controls }: RowsProps): ReactNode {
         className={`flex flex-wrap gap-y-1 ${ROW_CLASS} ${stripe(index)}`}
         data-row
       >
-        <Cells row={row} />
+        <Cells row={row} readOnly={readOnly} />
         <DeleteControl row={row} index={index} controls={controls} />
       </div>
     ));
@@ -173,7 +212,7 @@ function Rows({ section, rows, controls }: RowsProps): ReactNode {
           className={`col-span-full grid grid-cols-subgrid ${ROW_CLASS} ${stripe(index)}`}
           data-row
         >
-          <Cells row={row} />
+          <Cells row={row} readOnly={readOnly} />
           <DeleteControl row={row} index={index} controls={controls} column={columns + 1} />
         </div>
       ))}
@@ -227,7 +266,7 @@ function stripe(index: number): string {
   return index % 2 === 1 ? STRIPE_CLASS : '';
 }
 
-function Cells({ row }: { row: SheetRow }): ReactNode {
+function Cells({ row, readOnly }: { row: SheetRow; readOnly: boolean }): ReactNode {
   return row.cells.map((cell, index) => (
     <SheetCell
       key={cell.kind === 'field' ? cell.id : `${INDEX_KEY_PREFIX}${index}`}
@@ -235,6 +274,7 @@ function Cells({ row }: { row: SheetRow }): ReactNode {
       before={row.cells.slice(0, index)}
       values={row.values}
       place={row.place}
+      readOnly={readOnly}
     />
   ));
 }

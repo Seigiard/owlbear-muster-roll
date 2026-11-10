@@ -39,7 +39,14 @@ const EXAMPLE_PRESET_TEXT = readFileSync(
 );
 
 const LOCAL = { destination: 'LOCAL' } as const;
-const LIVE_SYNC = { state: 'live', firstCatchUpDone: true, role: 'GM' } as const;
+
+const LIVE_SYNC = {
+  state: 'live',
+  firstCatchUpDone: true,
+  gmAnswered: false,
+  role: 'GM',
+} as const;
+
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 

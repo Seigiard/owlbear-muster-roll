@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import type { VersionedRecord } from '@/core/records';
 
 import {
+  dependentSheetId,
   isSheetDependent,
   liveSheets,
   parseSheetName,
@@ -181,5 +182,25 @@ describe('isSheetDependent', () => {
 
     // #then
     expect(dependent).toBe(false);
+  });
+});
+
+describe('dependentSheetId', () => {
+  test.each([
+    ['a row', 'row:brok:str', { str: 3 }, 'brok'],
+    ['an access grant', 'acl:brok:p1', { name: 'Оля' }, 'brok'],
+    ['a player link', 'plink:brok:p1', { name: 'Оля' }, 'brok'],
+    ['a token link', 'link:token1', 'brok', 'brok'],
+    ['a row key with no second ":"', 'row:brok', { str: 3 }, null],
+    ['a row key with an empty sheet id', 'row::x', { str: 3 }, null],
+    ['a token link whose data is no sheet id', 'link:token1', 'not a sheet id', null],
+    ['a tombstoned token link', 'link:token1', null, null],
+    ['the sheet record itself', 'sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }, null],
+  ])('reads %s', (_name, key, d, expected) => {
+    // #when
+    const sheetId = dependentSheetId(key, { d });
+
+    // #then
+    expect(sheetId).toBe(expected);
   });
 });

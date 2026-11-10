@@ -18,6 +18,10 @@ export const noticeSchema = z.enum(['local-save-failed', 'new-version']);
 export const syncSchema = z.strictObject({
   state: z.enum(['catching-up', 'live']),
   firstCatchUpDone: z.boolean(),
+  // True once a catch-up has ended with a complete answer from a GM client: the first one, or a
+  // later one when the first ended by timeout. A player with no preset tells "the GM has not set up
+  // sheets" from "nobody answered yet" by it.
+  gmAnswered: z.boolean(),
   // The engine's role, re-read on every party change, so a window follows a promotion.
   role: z.enum(['GM', 'PLAYER']),
 });
@@ -51,7 +55,8 @@ const deltaSchema = z.strictObject({
   records: z.array(recordSchema),
   // Changed records of the pending view. A delta in `live` carries none and drops the view.
   pending: z.array(recordSchema),
-  // Keys the pending view no longer changes: the window shows the replica's record for them again.
+  // Keys the window drops before it takes this delta's records: keys the pending view no longer
+  // changes, whose replica record the delta brings again, and keys the role no longer sees.
   withdrawn: z.array(z.string()),
   notices: z.array(noticeSchema),
   sync: syncSchema,

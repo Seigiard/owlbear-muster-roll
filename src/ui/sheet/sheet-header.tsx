@@ -185,6 +185,18 @@ export function SheetHeader({
   );
 }
 
+// A player's header: the name as text, with no rename and no "⋯", and the status beside it.
+export function ReadOnlySheetHeader({ name }: { name: string }): ReactNode {
+  const look = VARIANT.character;
+
+  return (
+    <header className={`flex items-baseline gap-2 ${look.header}`}>
+      <h1 className={`min-w-[0] px-1 text-text [overflow-wrap:anywhere] ${look.name}`}>{name}</h1>
+      <span className="shrink-0 text-label-sm text-text-muted">{copy.status.readOnly}</span>
+    </header>
+  );
+}
+
 // Drops what the GM typed and keeps a rename that is still on its way.
 function cancelled(edit: NameEdit): NameEdit {
   return { ...NO_EDIT, sent: edit.sent };

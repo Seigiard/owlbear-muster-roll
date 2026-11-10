@@ -11,7 +11,8 @@ type SheetBodyProps = {
   template: PresetTemplate;
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
-  editing: FieldEditing;
+  // `null` shows every value read-only, with no row controls: a player edits nothing until Epic 3.
+  editing: FieldEditing | null;
 };
 
 // The container query measures the content area, so a narrow window stacks every section.
@@ -21,7 +22,13 @@ export function SheetBody({ template, sheetId, records, editing }: SheetBodyProp
       <div className="@container">
         <div className="flex flex-wrap gap-4" data-sheet-body>
           {template.sections.map((section, index) => (
-            <SheetSection key={index} section={section} sheetId={sheetId} records={records} />
+            <SheetSection
+              key={index}
+              section={section}
+              sheetId={sheetId}
+              records={records}
+              readOnly={editing === null}
+            />
           ))}
         </div>
       </div>

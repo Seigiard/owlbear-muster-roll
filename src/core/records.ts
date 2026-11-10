@@ -38,7 +38,7 @@ export const repDataSchema = z.strictObject({ order: z.number(), cells: fieldVal
 
 const playerDataSchema = z.strictObject({ name: z.string() });
 
-const linkDataSchema = z.string().regex(/^[^:]+$/);
+export const linkDataSchema = z.string().regex(/^[^:]+$/);
 
 export const recordSchema = z.union([
   versionedRecordOf(presetKeySchema, presetDataSchema),

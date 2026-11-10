@@ -67,7 +67,12 @@ const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c
 
 const BROK = sheet('brok', 'Брок');
 
-const LIVE: SyncState = { state: 'live', firstCatchUpDone: true, role: 'GM' };
+const LIVE: SyncState = {
+  state: 'live',
+  firstCatchUpDone: true,
+  gmAnswered: false,
+  role: 'GM',
+};
 
 type ClientOptions = {
   role?: PlayerRole;
@@ -329,7 +334,12 @@ describe('start', () => {
       brok: shown(client, BROK.k),
       request: heardOf(room, 'gm-b', 'state-request'),
     }).toEqual({
-      sync: { state: 'catching-up', firstCatchUpDone: false, role: 'GM' },
+      sync: {
+        state: 'catching-up',
+        firstCatchUpDone: false,
+        gmAnswered: false,
+        role: 'GM',
+      },
       brok: BROK,
       request: [{ v: 1, g: INITIAL, t: 'state-request', r: lastRequest(room, 'gm-b') }],
     });
@@ -371,7 +381,12 @@ describe('start', () => {
 
     // #then
     expect({ before, after: sync(client) }).toEqual({
-      before: { state: 'catching-up', firstCatchUpDone: false, role: 'GM' },
+      before: {
+        state: 'catching-up',
+        firstCatchUpDone: false,
+        gmAnswered: false,
+        role: 'GM',
+      },
       after: LIVE,
     });
   });
@@ -650,7 +665,12 @@ describe('re-entry', () => {
     // #then
     expect({ fresh: lastRequest(room, 'gm-a') !== first, sync: sync(client) }).toEqual({
       fresh: true,
-      sync: { state: 'catching-up', firstCatchUpDone: true, role: 'GM' },
+      sync: {
+        state: 'catching-up',
+        firstCatchUpDone: true,
+        gmAnswered: false,
+        role: 'GM',
+      },
     });
   });
 
@@ -1079,6 +1099,8 @@ describe('role and generation', () => {
     // #when
     client.platform.setRole('GM');
     await waitUntil(() => requestsOf(room, 'player-p').length === 2);
+    // The role change starts a new projection stream, so the window takes one more round trip.
+    await waitUntil(() => shown(client, liza.k) !== undefined);
 
     // #then
     expect({
@@ -1152,7 +1174,282 @@ test('a complete answer ends the first catch-up, and the window learns it', asyn
 
   // #then
   expect({ before, after: sync(client) }).toEqual({
-    before: { state: 'catching-up', firstCatchUpDone: false, role: 'GM' },
-    after: LIVE,
+    before: {
+      state: 'catching-up',
+      firstCatchUpDone: false,
+      gmAnswered: false,
+      role: 'GM',
+    },
+    after: { ...LIVE, gmAnswered: true },
+  });
+});
+
+describe('player visibility', () => {
+  const skeleton: VersionedRecord = {
+    k: 'sheet:skel',
+    d: { kind: 'npc', name: 'Скелет', order: 0 },
+    c: 1,
+    a: 'seed',
+  };
+
+  const skeletonHp: VersionedRecord = { k: 'row:skel:hp', d: { hp: 7 }, c: 1, a: 'seed' };
+  const brokStr: VersionedRecord = { k: 'row:brok:str', d: { str: 14 }, c: 1, a: 'seed' };
+
+  // A player that a GM answered with a character and an NPC.
+  async function answeredPlayer(room: Room, catchUpTimeoutMs = 1500): Promise<Client> {
+    joinAs(room, GHOST, 'GM');
+
+    const client = await startClient(room, 'player-p', {
+      role: 'PLAYER',
+      seeded: [],
+      timing: { catchUpTimeoutMs },
+    });
+
+    room.post(
+      GHOST,
+      stateMessage(lastRequest(room, 'player-p'), [
+        PRESET_RECORD,
+        BROK,
+        brokStr,
+        skeleton,
+        skeletonHp,
+      ]),
+    );
+    await waitUntil(() => sync(client).state === 'live');
+
+    return client;
+  }
+
+  test('a player window gets the preset and the characters with their rows, and no NPC', async () => {
+    // #given
+    const room = openRoom();
+
+    // #when
+    const client = await answeredPlayer(room);
+
+    // #then
+    expect({
+      keys: [...client.store.$records.get().keys()].sort(),
+      sync: sync(client),
+    }).toEqual({
+      keys: ['preset', 'row:brok:str', 'sheet:brok'],
+      sync: { ...LIVE, gmAnswered: true, role: 'PLAYER' },
+    });
+  });
+
+  test('an NPC a GM creates never reaches a player window', async () => {
+    // #given
+    const room = openRoom();
+    const client = await answeredPlayer(room);
+
+    const goblin: VersionedRecord = {
+      k: 'sheet:gob',
+      d: { kind: 'npc', name: 'Гоблин', order: 1 },
+      c: 1,
+      a: GHOST,
+    };
+
+    const edited: VersionedRecord = { ...brokStr, d: { str: 16 }, c: 2, a: GHOST };
+
+    // #when: the edit after the NPC shows that the NPC commit was handled.
+    room.post(GHOST, commit([goblin, { k: 'row:gob:hp', d: { hp: 5 }, c: 1, a: GHOST }]));
+    room.post(GHOST, commit([{ ...skeletonHp, d: { hp: 3 }, c: 2, a: GHOST }]));
+    room.post(GHOST, commit([edited]));
+    await waitUntil(() => shown(client, brokStr.k)?.c === 2);
+
+    // #then
+    expect([...client.store.$records.get().keys()].sort()).toEqual([
+      'preset',
+      'row:brok:str',
+      'sheet:brok',
+    ]);
+  });
+
+  test('a GM made a player gets a fresh projection with no NPC in it', async () => {
+    // #given
+    const room = openRoom();
+
+    const client = await startClient(room, 'gm-a', {
+      seeded: [PRESET_RECORD, BROK, skeleton, skeletonHp],
+      untilLive: true,
+    });
+
+    const before = shown(client, skeleton.k);
+
+    // #when
+    client.platform.setRole('PLAYER');
+    await waitUntil(
+      () => sync(client).role === 'PLAYER' && shown(client, skeleton.k) === undefined,
+    );
+
+    // #then
+    expect({
+      before,
+      keys: [...client.store.$records.get().keys()].sort(),
+    }).toEqual({ before: skeleton, keys: ['preset', 'sheet:brok'] });
+  });
+
+  test('a player made GM gets a fresh projection with the NPCs in it', async () => {
+    // #given
+    const room = openRoom();
+    const client = await answeredPlayer(room);
+
+    // #when
+    client.platform.setRole('GM');
+    await waitUntil(() => sync(client).role === 'GM' && shown(client, skeleton.k) !== undefined);
+
+    // #then
+    expect([shown(client, skeleton.k), shown(client, skeletonHp.k)]).toEqual([
+      skeleton,
+      skeletonHp,
+    ]);
+  });
+
+  test('a catch-up that ends by timeout leaves gmAnswered false', async () => {
+    // #given
+    const room = openRoom();
+
+    joinAs(room, GHOST, 'GM');
+
+    // #when
+    const client = await startClient(room, 'player-p', {
+      role: 'PLAYER',
+      seeded: [],
+      timing: { catchUpTimeoutMs: 100 },
+      untilLive: true,
+    });
+
+    // #then
+    expect(sync(client)).toEqual({ ...LIVE, role: 'PLAYER' });
+  });
+
+  test('a two-part answer with rows before their sheets shows the character rows and no NPC record', async () => {
+    // #given
+    const room = openRoom();
+
+    joinAs(room, GHOST, 'GM');
+
+    const client = await startClient(room, 'player-p', {
+      role: 'PLAYER',
+      seeded: [],
+      timing: { catchUpTimeoutMs: 1500 },
+    });
+
+    const r = lastRequest(room, 'player-p');
+    const skeletonLink: VersionedRecord = { k: 'link:token-2', d: 'skel', c: 1, a: 'seed' };
+
+    // #when: the first part holds the rows, the second their sheets.
+    room.post(GHOST, stateMessage(r, [skeletonHp, skeletonLink, brokStr], 1, 2));
+    room.post(GHOST, stateMessage(r, [PRESET_RECORD, skeleton, BROK], 2, 2));
+    await waitUntil(() => sync(client).state === 'live');
+    await waitUntil(() => shown(client, brokStr.k) !== undefined);
+
+    // #then
+    expect([...client.store.$records.get().keys()].sort()).toEqual([
+      'preset',
+      'row:brok:str',
+      'sheet:brok',
+    ]);
+  });
+
+  test('a link that a GM points from a character to an NPC leaves the player window', async () => {
+    // #given
+    const room = openRoom();
+
+    joinAs(room, GHOST, 'GM');
+
+    const client = await startClient(room, 'player-p', {
+      role: 'PLAYER',
+      seeded: [],
+      timing: { catchUpTimeoutMs: 1500 },
+    });
+
+    const link: VersionedRecord = { k: 'link:token-1', d: 'brok', c: 1, a: 'seed' };
+
+    room.post(
+      GHOST,
+      stateMessage(lastRequest(room, 'player-p'), [PRESET_RECORD, BROK, brokStr, skeleton, link]),
+    );
+    await waitUntil(() => shown(client, link.k) !== undefined);
+
+    // #when: the edit after the link shows that the link commit was handled.
+    room.post(GHOST, commit([{ ...link, d: 'skel', c: 2, a: GHOST }]));
+    room.post(GHOST, commit([{ ...brokStr, d: { str: 16 }, c: 2, a: GHOST }]));
+    await waitUntil(() => shown(client, brokStr.k)?.c === 2);
+
+    // #then
+    expect(shown(client, link.k)).toBeUndefined();
+  });
+
+  test('gmAnswered stays true during and after a later catch-up that times out', async () => {
+    // #given
+    const room = openRoom();
+    const client = await answeredPlayer(room, 300);
+
+    // #when
+    client.engine.catchUp();
+    await waitUntil(() => sync(client).state === 'catching-up');
+
+    const during = sync(client).gmAnswered;
+
+    await waitUntil(() => sync(client).state === 'live');
+
+    // #then
+    expect({ during, after: sync(client).gmAnswered }).toEqual({ during: true, after: true });
+  });
+
+  test('a catch-up answered after an earlier one timed out sets gmAnswered', async () => {
+    // #given
+    const room = openRoom();
+
+    joinAs(room, GHOST, 'GM');
+
+    const client = await startClient(room, 'player-p', {
+      role: 'PLAYER',
+      seeded: [],
+      timing: { catchUpTimeoutMs: 100 },
+      untilLive: true,
+    });
+
+    const before = sync(client).gmAnswered;
+
+    // #when
+    client.engine.catchUp();
+    await waitUntil(() => requestsOf(room, 'player-p').length === 2);
+    room.post(GHOST, stateMessage(lastRequest(room, 'player-p'), [PRESET_RECORD]));
+    await waitUntil(() => sync(client).gmAnswered);
+
+    // #then
+    expect({ before, after: sync(client) }).toEqual({
+      before: false,
+      after: { ...LIVE, gmAnswered: true, role: 'PLAYER' },
+    });
+  });
+
+  test('a complete answer that comes after the timeout sets gmAnswered', async () => {
+    // #given
+    const room = openRoom();
+
+    joinAs(room, GHOST, 'GM');
+
+    const client = await startClient(room, 'player-p', {
+      role: 'PLAYER',
+      seeded: [],
+      timing: { catchUpTimeoutMs: 100 },
+      untilLive: true,
+    });
+
+    const before = sync(client).gmAnswered;
+
+    // #when
+    room.post(GHOST, stateMessage(lastRequest(room, 'player-p'), [PRESET_RECORD]));
+    await waitUntil(() => sync(client).gmAnswered);
+
+    // #then
+    expect({ before, preset: shown(client, 'preset'), sync: sync(client) }).toEqual({
+      before: false,
+      preset: PRESET_RECORD,
+      sync: { ...LIVE, gmAnswered: true, role: 'PLAYER' },
+    });
   });
 });
