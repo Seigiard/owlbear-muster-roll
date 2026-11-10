@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-10T05:34:00Z'
-updated_date: '2026-11-10T05:38:00Z'
+updated_date: '2026-11-10T05:45:00Z'
 labels: []
 dependencies: []
 documentation:
@@ -40,3 +40,9 @@ The Muster Roll POC has no server: it relies on broadcast between clients, a bac
 3. The user runs it in a throwaway room with guests and logged-in players.
 4. Record each result in the spec through bmad-spec.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Probe extension is on branch prototype/owlbear-probe, in prototypes/owlbear-probe, with run steps in its README. Its logic passed against a mock SDK, and the manifest served through a tunnel with CORS. It has not run in a live Owlbear room, so no acceptance criterion is met yet.
+<!-- SECTION:NOTES:END -->
