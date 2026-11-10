@@ -67,3 +67,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-1-see-edits-from-other-gm-tabs-live.md`
   summary: A player client keeps INITIAL_GENERATION, so once the room generation moves past it, the gate drops every GM commit at that player.
   evidence: `src/replica/engine.ts` sets the player's generation only at start. Stories 2.2 and 2.5 must take it from the room copy and from `state`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-catch-up-on-join-and-on-return.md`
+  summary: A GM client that sees a higher generation enters catch-up but drops every higher-generation `state`, waits the full timeout, then replays pending intents as commits that peers of the higher generation drop.
+  evidence: `receiveState` adopts a higher generation only for a client without persisted data. Epic 5 owns AD-9 adoption.
