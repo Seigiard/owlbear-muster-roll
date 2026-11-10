@@ -8,12 +8,31 @@ export const SHEET_NAME_MAX_LENGTH = 100;
 // The nanoid alphabet. A narrower rule than the record key's, so an id never holds ":".
 export const sheetIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 
+// The forms whose key holds the sheet id right after the form name. A `link:` key holds a token id
+// instead, so it is matched by its data.
+const KEYED_DEPENDENT_FORMS = ['row', 'rep', 'acl', 'plink'] as const;
+
 export type SheetSummary = SheetData & { sheetId: string };
 
 export type SheetNameFailure = 'empty' | 'too-long';
 
 export function sheetKey(sheetId: string): string {
   return `sheet:${sheetId}`;
+}
+
+// True for a live record the sheet's deletion must tombstone with it. A tombstone needs no second
+// one, so the caller filters tombstones out first. The trailing ":" keeps a sheet "a" from matching
+// the records of a sheet "ab".
+export function isSheetDependent(
+  key: string,
+  record: Pick<VersionedRecord, 'd'>,
+  sheetId: string,
+): boolean {
+  if (key.startsWith('link:')) {
+    return record.d === sheetId;
+  }
+
+  return KEYED_DEPENDENT_FORMS.some((form) => key.startsWith(`${form}:${sheetId}:`));
 }
 
 export function parseSheetName(candidate: string): Result<string, SheetNameFailure> {

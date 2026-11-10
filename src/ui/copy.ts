@@ -16,6 +16,7 @@ export const copy = {
   },
   label: {
     sheetName: 'Имя персонажа',
+    sheetActions: 'Действия с листом',
   },
   newCharacter: 'Новый персонаж',
   addSign: '+',

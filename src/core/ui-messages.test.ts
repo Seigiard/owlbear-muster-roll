@@ -102,6 +102,34 @@ describe('parseWindowMessage', () => {
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
 
+  test('accepts a sheet-delete command that names only the sheet', () => {
+    // #given
+    const message: WindowMessage = {
+      t: 'command',
+      id: 'c1',
+      command: { type: 'sheet-delete', sheetId: 's1' },
+    };
+
+    // #when
+    const parsed = parseWindowMessage(message);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: message });
+  });
+
+  test.each<[string, JsonValue]>([
+    ['no sheetId', { type: 'sheet-delete' }],
+    ['a kind beside the sheetId', { type: 'sheet-delete', sheetId: 's1', kind: 'pc' }],
+    ['d beside the sheetId', { type: 'sheet-delete', sheetId: 's1', d: null }],
+    ['the keys to delete', { type: 'sheet-delete', sheetId: 's1', keys: ['row:s1:a'] }],
+  ])('refuses a sheet-delete command with %s', (_name, command) => {
+    // #when
+    const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+  });
+
   test('accepts a preset-upload command carrying base64 data', () => {
     // #given
     const message: WindowMessage = {

@@ -84,6 +84,11 @@ export function TabBar({ scrollingTabs, pinnedTabs, add }: TabBarProps): ReactNo
   );
 }
 
+// React Aria marks each tab with its key, and the app gives a tab no id of its own in the DOM.
+export function focusTab(id: string): void {
+  document.querySelector<HTMLElement>(`[role="tab"][data-key="${CSS.escape(id)}"]`)?.focus();
+}
+
 // A tab bar with one tab could never switch away, so a lone gear is a toggle button instead.
 export function ToggleBar({ toggle }: { toggle: ShellToggle }): ReactNode {
   return (

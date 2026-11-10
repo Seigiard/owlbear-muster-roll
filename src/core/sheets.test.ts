@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import type { VersionedRecord } from '@/core/records';
 
 import {
+  isSheetDependent,
   liveSheets,
   parseSheetName,
   SHEET_NAME_MAX_LENGTH,
@@ -148,5 +149,37 @@ describe('liveSheets', () => {
       { sheetId: 'a', kind: 'pc', name: 'Брок', order: 1 },
       { sheetId: 'b', kind: 'pc', name: 'Лиза', order: 1 },
     ]);
+  });
+});
+
+describe('isSheetDependent', () => {
+  test.each([
+    ['a row', 'row:brok:str', { str: 3 }],
+    ['a repeat instance', 'rep:brok:items:i1', { order: 0, cells: {} }],
+    ['an access grant', 'acl:brok:p1', { name: 'Оля' }],
+    ['a player link', 'plink:brok:p1', { name: 'Оля' }],
+    ['a token link that names the sheet', 'link:token1', 'brok'],
+  ])('counts %s of the sheet', (_name, key, d) => {
+    // #when
+    const dependent = isSheetDependent(key, { d }, 'brok');
+
+    // #then
+    expect(dependent).toBe(true);
+  });
+
+  test.each([
+    ['the sheet record itself', 'sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }],
+    ['the preset', 'preset', 'AAAA'],
+    ['a row of another sheet', 'row:liza:str', { str: 3 }],
+    ['a row of a sheet whose id starts with this one', 'row:brokk:str', { str: 3 }],
+    ['an access grant of a sheet whose id starts with this one', 'acl:brok2:p1', { name: 'Оля' }],
+    ['a token link that names another sheet', 'link:token1', 'liza'],
+    ['a token link whose token id is the sheet id', 'link:brok', 'liza'],
+  ])('does not count %s', (_name, key, d) => {
+    // #when
+    const dependent = isSheetDependent(key, { d }, 'brok');
+
+    // #then
+    expect(dependent).toBe(false);
   });
 });

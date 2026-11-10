@@ -9,6 +9,7 @@ import type { JsonValue } from '@/core/json';
 import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { encodePreset, parsePresetFile, type Preset } from '@/core/preset';
 import { presetDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
+import { err } from '@/core/result';
 import type { Timing } from '@/core/timing';
 import { UI_CHANNEL, type Command } from '@/core/ui-messages';
 import { createMemoryBus, createMockPlatform, type MockPlatform } from '@/platform/current';
@@ -153,6 +154,27 @@ function seed(rig: Rig, key: string, value: string): void {
 
 function sheet(id: string, name = id, c = 1): VersionedRecord {
   return { k: `sheet:${id}`, d: { kind: 'pc', name, order: 0 }, c, a: 'mock-connection' };
+}
+
+function byKey(records: readonly VersionedRecord[]): VersionedRecord[] {
+  return [...records].sort((first, second) => (first.k < second.k ? -1 : 1));
+}
+
+// Every record the GM's storage holds now, read back through the mock's own key list.
+function storedRecords(rig: Rig): VersionedRecord[] {
+  const keys = rig.platform.storage.keys();
+
+  if (!keys.ok) {
+    throw new Error('the mock storage could not list its keys');
+  }
+
+  return keys.value
+    .filter((key) => key.startsWith(STORAGE_PREFIX))
+    .map((key) => {
+      const text = rig.platform.storage.getItem(key);
+
+      return recordSchema.parse(JSON.parse(text.ok && text.value !== null ? text.value : 'null'));
+    });
 }
 
 function recordsOf(store: ProjectionStore): VersionedRecord[] {
@@ -1263,6 +1285,290 @@ describe('sheet-rename', () => {
     expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
       rejection: 'invalid-name',
       unchanged: { records: [sheet('brok', 'Брок')], deltas: 0 },
+    });
+  });
+});
+
+describe('sheet-delete', () => {
+  test('tombstones the sheet and all five dependent forms in one delta, and nothing else', async () => {
+    // #given: the target "brok", a second sheet "liza" with records of every form, and a preset.
+    const rig = createRig();
+
+    const kept: VersionedRecord[] = [
+      { k: 'preset', d: 'AAAA', c: 1, a: 'z' },
+      { k: 'sheet:liza', d: { kind: 'npc', name: 'Лиза', order: 0 }, c: 1, a: 'z' },
+      { k: 'row:liza:str', d: { str: 9 }, c: 1, a: 'z' },
+      { k: 'rep:liza:items:i2', d: { order: 0, cells: { item: 'Лук' } }, c: 1, a: 'z' },
+      { k: 'acl:liza:p1', d: { name: 'Оля' }, c: 1, a: 'z' },
+      { k: 'plink:liza:p1', d: { name: 'Оля' }, c: 1, a: 'z' },
+      { k: 'link:token2', d: 'liza', c: 1, a: 'z' },
+    ];
+
+    const target: VersionedRecord[] = [
+      { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 3, a: 'z' },
+      { k: 'row:brok:str', d: { str: 3 }, c: 2, a: 'z' },
+      { k: 'rep:brok:items:i1', d: { order: 0, cells: { item: 'Меч' } }, c: 1, a: 'z' },
+      { k: 'acl:brok:p1', d: { name: 'Оля' }, c: 4, a: 'z' },
+      { k: 'plink:brok:p1', d: { name: 'Оля' }, c: 1, a: 'z' },
+      { k: 'link:token1', d: 'brok', c: 5, a: 'z' },
+    ];
+
+    for (const record of [...kept, ...target]) {
+      seed(rig, record.k, JSON.stringify(record));
+    }
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    await waitUntil(() => deltas(rig).length === 1);
+    await pause(5);
+
+    // #then
+    const tombstones: VersionedRecord[] = [
+      { k: 'acl:brok:p1', d: null, c: 5, a: 'mock-connection' },
+      { k: 'link:token1', d: null, c: 6, a: 'mock-connection' },
+      { k: 'plink:brok:p1', d: null, c: 2, a: 'mock-connection' },
+      { k: 'rep:brok:items:i1', d: null, c: 2, a: 'mock-connection' },
+      { k: 'row:brok:str', d: null, c: 3, a: 'mock-connection' },
+      { k: 'sheet:brok', d: null, c: 4, a: 'mock-connection' },
+    ];
+
+    expect({
+      deltas: deltas(rig).map((delta) => byKey(delta.records ?? [])),
+      window: byKey(recordsOf(view.store)),
+      stored: byKey(storedRecords(rig)),
+    }).toEqual({
+      deltas: [tombstones],
+      window: byKey([...kept, ...tombstones]),
+      stored: byKey([...kept, ...tombstones]),
+    });
+  });
+
+  test('does not write again a dependent that is already a tombstone', async () => {
+    // #given
+    const rig = createRig();
+    const oldTombstone: VersionedRecord = { k: 'row:brok:old', d: null, c: 7, a: 'other' };
+
+    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok', 'Брок')));
+    seed(rig, 'row:brok:old', JSON.stringify(oldTombstone));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect({
+      delta: deltas(rig)[0]?.records,
+      stored: rig.platform.storage.getItem(`${STORAGE_PREFIX}row:brok:old`),
+    }).toEqual({
+      delta: [{ k: 'sheet:brok', d: null, c: 2, a: 'mock-connection' }],
+      stored: { ok: true, value: JSON.stringify(oldTombstone) },
+    });
+  });
+
+  test('keeps the sheet deleted after the background restarts over the same storage', async () => {
+    // #given
+    const rig = createRig();
+
+    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok', 'Брок')));
+    seed(rig, 'row:brok:str', JSON.stringify({ k: 'row:brok:str', d: { str: 3 }, c: 1, a: 'z' }));
+
+    const engine = await startEngine(rig);
+    const first = await openAndLoad(rig);
+
+    first.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    await waitUntil(() => deltas(rig).length === 1);
+    engine.stop();
+    first.client.stop();
+
+    // #when
+    await startEngine(rig);
+
+    const second = await openAndLoad(rig);
+
+    // #then
+    expect(byKey(recordsOf(second.store))).toEqual([
+      { k: 'row:brok:str', d: null, c: 2, a: 'mock-connection' },
+      { k: 'sheet:brok', d: null, c: 2, a: 'mock-connection' },
+    ]);
+  });
+
+  test('deletes an NPC the same way, as the command names no kind', async () => {
+    // #given
+    const rig = createRig();
+
+    const npc: VersionedRecord = {
+      k: 'sheet:skel',
+      d: { kind: 'npc', name: 'Скелет 1', order: 0 },
+      c: 1,
+      a: 'z',
+    };
+
+    seed(rig, 'sheet:skel', JSON.stringify(npc));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'skel' });
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect(recordsOf(view.store)).toEqual([
+      { k: 'sheet:skel', d: null, c: 2, a: 'mock-connection' },
+    ]);
+  });
+
+  test.each([
+    ['an id outside the nanoid alphabet', 'a:b', 'invalid-sheet-id'],
+    ['an empty id', '', 'invalid-sheet-id'],
+    ['a sheet that does not exist', 'nobody', 'unknown-sheet'],
+    ['a sheet that is already deleted', 'gone', 'deleted-sheet'],
+  ])('rejects %s and changes nothing', async (_name, sheetId, reason) => {
+    // #given: a live sheet with a row, and a deleted one.
+    const rig = createRig();
+
+    const seeded: VersionedRecord[] = [
+      sheet('brok', 'Брок'),
+      { k: 'row:brok:str', d: { str: 3 }, c: 1, a: 'z' },
+      { k: 'sheet:gone', d: null, c: 2, a: 'other' },
+    ];
+
+    for (const record of seeded) {
+      seed(rig, record.k, JSON.stringify(record));
+    }
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, { type: 'sheet-delete', sheetId });
+
+    // #then
+    expect({
+      rejection,
+      window: byKey(recordsOf(view.store)),
+      stored: byKey(storedRecords(rig)),
+      deltas: deltas(rig).length,
+    }).toEqual({ rejection: reason, window: byKey(seeded), stored: byKey(seeded), deltas: 0 });
+  });
+
+  test('leaves the sheet live when a dependent fails to save, so a second delete reaches it', async () => {
+    // #given
+    const rig = createRig();
+    const setItem = rig.platform.storage.setItem;
+
+    silenceErrors();
+
+    for (const record of [
+      sheet('brok', 'Брок'),
+      { k: 'row:brok:str', d: { str: 3 }, c: 1, a: 'z' },
+      { k: 'acl:brok:p1', d: { name: 'Оля' }, c: 1, a: 'z' },
+    ]) {
+      seed(rig, record.k, JSON.stringify(record));
+    }
+
+    const engine = await startEngine(rig);
+    const first = await openAndLoad(rig);
+
+    const failing = spyOn(rig.platform.storage, 'setItem').mockImplementation((key, value) =>
+      key === `${STORAGE_PREFIX}acl:brok:p1`
+        ? err({ operation: 'write', reason: 'quota' })
+        : setItem(key, value),
+    );
+
+    first.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    await waitUntil(() => deltas(rig).length === 1);
+    failing.mockRestore();
+    engine.stop();
+    first.client.stop();
+    await startEngine(rig);
+
+    const second = await openAndLoad(rig);
+    const reloaded = second.store.$records.get().get('sheet:brok')?.d;
+
+    // #when
+    second.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    await waitUntil(() => second.store.$records.get().get('sheet:brok')?.d === null);
+
+    // #then
+    expect({
+      reloaded,
+      stored: byKey(storedRecords(rig)).map((record) => [record.k, record.d]),
+    }).toEqual({
+      reloaded: { kind: 'pc', name: 'Брок', order: 0 },
+      stored: [
+        ['acl:brok:p1', null],
+        ['row:brok:str', null],
+        ['sheet:brok', null],
+      ],
+    });
+  });
+
+  test('splits a delete over the message limit into parts in sequence that all arrive', async () => {
+    // #given: each row key is over 4000 bytes, so its tombstone is too.
+    const rig = createRig();
+    const rowKeys = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => `row:brok:${'ы'.repeat(2000)}${id}`);
+
+    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok', 'Брок')));
+
+    for (const k of rowKeys) {
+      seed(rig, k, JSON.stringify({ k, d: { str: 3 }, c: 1, a: 'z' }));
+    }
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    await waitUntil(() => recordsOf(view.store).every((record) => record.d === null));
+
+    // #then
+    const parts = deltas(rig);
+
+    expect({
+      seqs: parts.map((part) => part.seq),
+      underLimit: parts.every((part) => jsonByteLength(part) < MESSAGE_BYTE_LIMIT),
+      window: byKey(recordsOf(view.store)),
+    }).toEqual({
+      seqs: [1, 2],
+      underLimit: true,
+      window: byKey([
+        { k: 'sheet:brok', d: null, c: 2, a: 'mock-connection' },
+        ...rowKeys.map((k) => ({ k, d: null, c: 2, a: 'mock-connection' })),
+      ]),
+    });
+  });
+
+  test('raises the notice when a tombstone cannot be saved and still removes the sheet', async () => {
+    // #given
+    const rig = createRig();
+
+    silenceErrors();
+    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok', 'Брок')));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    rig.platform.setFailingStorageOperations(['write']);
+
+    // #when
+    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    await waitUntil(() => deltas(rig).length === 1);
+    await pause(5);
+
+    // #then
+    expect({ window: recordsOf(view.store), notices: view.store.$notices.get() }).toEqual({
+      window: [{ k: 'sheet:brok', d: null, c: 2, a: 'mock-connection' }],
+      notices: ['local-save-failed'],
     });
   });
 });

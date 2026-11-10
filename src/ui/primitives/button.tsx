@@ -12,6 +12,7 @@ export type PressableProps = {
   onPress?: () => void;
   // A control is disabled only through its reason, so no disabled control can lack one.
   disabledReason?: string;
+  autoFocus?: boolean;
 };
 
 type ButtonProps = PressableProps & { variant?: keyof typeof VARIANT_CLASS };
@@ -25,6 +26,7 @@ export function Pressable({
   children,
   onPress,
   disabledReason,
+  autoFocus,
 }: PressableProps & { className: string }): ReactNode {
   const reasonId = useId();
   const isDisabled = disabledReason !== undefined;
@@ -34,6 +36,7 @@ export function Pressable({
       className={`touch-target inline-flex items-center justify-center data-disabled:opacity-50 ${className}`}
       isDisabled={isDisabled}
       onPress={onPress}
+      autoFocus={autoFocus}
       aria-describedby={isDisabled ? reasonId : undefined}
     >
       {children}

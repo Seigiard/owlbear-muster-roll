@@ -54,6 +54,12 @@ const sheetRenameSchema = z.strictObject({
   name: z.string(),
 });
 
+// Names no kind: the engine deletes a character and an NPC alike.
+const sheetDeleteSchema = z.strictObject({
+  type: z.literal('sheet-delete'),
+  sheetId: z.string(),
+});
+
 // The window sends the deflated data, not the JSON, because a preset over the message limit as
 // JSON can still fit once deflated. The engine decodes and validates it again.
 const presetUploadSchema = z.strictObject({
@@ -64,6 +70,7 @@ const presetUploadSchema = z.strictObject({
 const commandIntentSchema = z.discriminatedUnion('type', [
   sheetCreateSchema,
   sheetRenameSchema,
+  sheetDeleteSchema,
   presetUploadSchema,
 ]);
 

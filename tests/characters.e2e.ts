@@ -373,6 +373,25 @@ test('after the projection the first character tab is selected', async ({ page, 
   await expect(page.getByRole('tab', { name: 'Зет' })).toHaveAttribute('aria-selected', 'true');
 });
 
+test('a window opened while the background runs selects the first character tab', async ({
+  page,
+  context,
+}) => {
+  // #given
+  await openRoom(page, context, [
+    { id: 'b', name: 'Бэ', order: 1 },
+    { id: 'z', name: 'Зет', order: 0 },
+  ]);
+
+  const second = await context.newPage();
+
+  // #when
+  await second.goto('/index.html');
+
+  // #then
+  await expect(second.getByRole('tab', { name: 'Зет' })).toHaveAttribute('aria-selected', 'true');
+});
+
 test('the tab list holds only tabs and "+" is a named button outside it', async ({
   page,
   context,

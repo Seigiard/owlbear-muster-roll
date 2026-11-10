@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react';
 import { nanoid } from 'nanoid';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -19,6 +19,8 @@ import { createProjectionStore, type ProjectionStore } from '@/ui/projection-sto
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
 import { SettingsView } from '@/ui/settings/settings-view';
 import { CharacterHeader } from '@/ui/sheet/character-header';
+import { DeleteConfirmation } from '@/ui/sheet/delete-confirmation';
+import { focusTab } from '@/ui/shell/tab-bar';
 import { WindowShell, type ShellLayout } from '@/ui/shell/window-shell';
 import { followTheme } from '@/ui/theme';
 
@@ -35,6 +37,8 @@ type PresetState = 'unknown' | 'absent' | 'present';
 
 // The command id ties a rejection to the creation, so a refused sheet stops waiting for its tab.
 type CreatedTab = { tab: string; commandId: string };
+
+type DeleteAsk = { tab: string; request: number };
 
 type WindowRootProps = {
   role: PlayerRole;
@@ -84,17 +88,29 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
   const preset = useMemo(() => decodedPreset(presetData), [presetData]);
   const characters = useMemo(() => liveSheets(records.values(), 'pc'), [records]);
   const presetState: PresetState = !loaded ? 'unknown' : preset === null ? 'absent' : 'present';
-  const [seenPresetState, setSeenPresetState] = useState(presetState);
+  // Starts unseen, as a projection can land before the first render, and a preset that came with
+  // it must still select the first tab.
+  const [seenPresetState, setSeenPresetState] = useState<PresetState>('unknown');
   const [selectedTab, setSelectedTab] = useState(NPC_TAB);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // A sheet this window created, until its record arrives and its tab can open.
   const [createdTab, setCreatedTab] = useState<CreatedTab | null>(null);
   const [focusNameOf, setFocusNameOf] = useState<string | null>(null);
+  // The open confirmation. Kept in memory only, so a window that closes forgets it and deletes
+  // nothing.
+  const [deleteAsk, setDeleteAsk] = useState<DeleteAsk | null>(null);
+  const [focusActionsOf, setFocusActionsOf] = useState<string | null>(null);
+  // A tab this window has confirmed the deletion of, until its sheet is gone.
+  const [deletingTab, setDeletingTab] = useState<string | null>(null);
   const characterTabs = characters.map((sheet) => sheetKey(sheet.sheetId));
   const firstTab = characterTabs[0] ?? NPC_TAB;
 
   const clearNameFocus = useCallback(() => {
     setFocusNameOf(null);
+  }, []);
+
+  const clearActionsFocus = useCallback(() => {
+    setFocusActionsOf(null);
   }, []);
 
   let shownTab = selectedTab;
@@ -125,6 +141,44 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
 
   if (shownTab !== selectedTab) {
     setSelectedTab(shownTab);
+  }
+
+  // Another tab, or a sheet deleted elsewhere, closes the confirmation for good, so returning to
+  // the tab does not bring it back.
+  if (deleteAsk !== null && shownTab !== deleteAsk.tab) {
+    setDeleteAsk(null);
+  }
+
+  const deletedTabGone = deletingTab !== null && !characterTabs.includes(deletingTab);
+
+  // The pressed "Удалить" is gone with its block, so the focus would stay on the page body.
+  useEffect(() => {
+    if (!deletedTabGone) {
+      return;
+    }
+
+    if (document.activeElement === null || document.activeElement === document.body) {
+      focusTab(shownTab);
+    }
+
+    setDeletingTab(null);
+  }, [deletedTabGone, shownTab]);
+
+  function askDelete(tab: string): void {
+    // A new request remounts the block, so a repeated "Удалить" takes the focus again.
+    setDeleteAsk((current) => ({ tab, request: (current?.request ?? 0) + 1 }));
+  }
+
+  function cancelDelete(tab: string): void {
+    setDeleteAsk(null);
+    setFocusActionsOf(tab);
+  }
+
+  function confirmDelete(tab: string, sheetId: string): void {
+    // Closed at once, so a second press on the same block sends no second command.
+    setDeleteAsk(null);
+    setDeletingTab(tab);
+    sendCommand({ type: 'sheet-delete', sheetId });
   }
 
   function addCharacter(): void {
@@ -193,15 +247,34 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
           id,
           label: sheet.name,
           content: (
-            <CharacterHeader
-              key={id}
-              sheetId={sheet.sheetId}
-              name={sheet.name}
-              sendCommand={sendCommand}
-              store={projection}
-              focusName={focusNameOf === id}
-              onNameFocused={clearNameFocus}
-            />
+            <>
+              {deleteAsk?.tab === id ? (
+                <DeleteConfirmation
+                  key={deleteAsk.request}
+                  name={sheet.name}
+                  onConfirm={() => {
+                    confirmDelete(id, sheet.sheetId);
+                  }}
+                  onCancel={() => {
+                    cancelDelete(id);
+                  }}
+                />
+              ) : null}
+              <CharacterHeader
+                key={id}
+                sheetId={sheet.sheetId}
+                name={sheet.name}
+                sendCommand={sendCommand}
+                store={projection}
+                focusName={focusNameOf === id}
+                onNameFocused={clearNameFocus}
+                onDelete={() => {
+                  askDelete(id);
+                }}
+                focusActions={focusActionsOf === id}
+                onActionsFocused={clearActionsFocus}
+              />
+            </>
           ),
         };
       }),

@@ -1,7 +1,16 @@
 import { useStore } from '@nanostores/react';
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
-import { FieldError, Input, TextField } from 'react-aria-components';
+import {
+  Button as AriaButton,
+  FieldError,
+  Input,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Popover,
+  TextField,
+} from 'react-aria-components';
 
 import { parseSheetName } from '@/core/sheets';
 import { copy } from '@/ui/copy';
@@ -16,6 +25,10 @@ type CharacterHeaderProps = {
   // True for a sheet this window has just created, so the GM can type its name at once.
   focusName: boolean;
   onNameFocused: () => void;
+  onDelete: () => void;
+  // True after the GM cancels a deletion, so the focus goes back where the GM asked from.
+  focusActions: boolean;
+  onActionsFocused: () => void;
 };
 
 // `typed` is what the GM has typed and not yet left. `sent` is a saved name the projection has not
@@ -27,6 +40,10 @@ type NameEdit = { typed: string | null; sent: SentName | null; tooLong: boolean 
 
 const NO_EDIT: NameEdit = { typed: null, sent: null, tooLong: false };
 
+const DELETE_ACTION = 'delete';
+
+const MORE = '⋯';
+
 export function CharacterHeader({
   sheetId,
   name,
@@ -34,8 +51,12 @@ export function CharacterHeader({
   store,
   focusName,
   onNameFocused,
+  onDelete,
+  focusActions,
+  onActionsFocused,
 }: CharacterHeaderProps): ReactNode {
   const inputRef = useRef<HTMLInputElement>(null);
+  const actionsRef = useRef<HTMLButtonElement>(null);
   const rejection = useStore(store.$rejection);
   const [edit, setEdit] = useState<NameEdit>(NO_EDIT);
 
@@ -57,6 +78,13 @@ export function CharacterHeader({
       onNameFocused();
     }
   }, [focusName, onNameFocused]);
+
+  useEffect(() => {
+    if (focusActions) {
+      actionsRef.current?.focus();
+      onActionsFocused();
+    }
+  }, [focusActions, onActionsFocused]);
 
   function save(): void {
     if (edit.typed === null) {
@@ -96,9 +124,9 @@ export function CharacterHeader({
   }
 
   return (
-    <header className="mb-3 border-b border-line pb-2">
+    <header className="mb-3 flex items-start gap-2 border-b border-line pb-2">
       <TextField
-        className="flex flex-col gap-1"
+        className="flex min-w-[0] flex-1 flex-col gap-1"
         aria-label={copy.label.sheetName}
         value={edit.typed ?? shownName}
         isInvalid={edit.tooLong}
@@ -114,6 +142,28 @@ export function CharacterHeader({
         />
         <FieldError className="text-label-sm text-danger-text">{copy.valueTooLong}</FieldError>
       </TextField>
+      <MenuTrigger>
+        <AriaButton
+          ref={actionsRef}
+          aria-label={copy.label.sheetActions}
+          className="touch-target inline-flex shrink-0 items-center justify-center rounded-sm px-3 text-text"
+        >
+          {MORE}
+        </AriaButton>
+        <Popover
+          placement="bottom end"
+          className="rounded-md border border-line bg-surface-bar p-1 text-body text-text"
+        >
+          <Menu onAction={onDelete}>
+            <MenuItem
+              id={DELETE_ACTION}
+              className="touch-target flex cursor-default items-center rounded-sm px-3 data-focused:bg-surface-tab"
+            >
+              {copy.command.delete}
+            </MenuItem>
+          </Menu>
+        </Popover>
+      </MenuTrigger>
     </header>
   );
 }

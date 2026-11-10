@@ -11,7 +11,7 @@ import {
   type VersionedRecord,
 } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
-import { parseSheetName, sheetIdSchema, sheetKey } from '@/core/sheets';
+import { isSheetDependent, parseSheetName, sheetIdSchema, sheetKey } from '@/core/sheets';
 import {
   parseWindowMessage,
   UI_CHANNEL,
@@ -43,6 +43,8 @@ export type ReplicaEnginePlatform = Pick<Platform, 'broadcast' | 'metadata' | 'p
 export type ReplicaEngine = { stop: () => void };
 
 type Persistence = { store: RecordStore; generation: Generation };
+
+type Persisted = { record: VersionedRecord; saved: boolean };
 
 type LoadedReplica = {
   records: VersionedRecord[];
@@ -162,9 +164,9 @@ export async function startReplicaEngine(
     }
   }
 
-  function persist(record: VersionedRecord): VersionedRecord {
+  function persist(record: VersionedRecord): Persisted {
     if (loaded.persistence === null) {
-      return record;
+      return { record, saved: true };
     }
 
     const { store, generation } = loaded.persistence;
@@ -173,13 +175,13 @@ export async function startReplicaEngine(
     if (written.ok) {
       problemKeys.delete(record.k);
 
-      return written.value;
+      return { record: written.value, saved: true };
     }
 
     console.error('Muster Roll could not save a record', written.error);
     problemKeys.add(record.k);
 
-    return record;
+    return { record, saved: false };
   }
 
   function composeSheetCreate(
@@ -212,22 +214,13 @@ export async function startReplicaEngine(
   function composeSheetRename(
     command: Extract<Command, { type: 'sheet-rename' }>,
   ): Result<VersionedRecord, RejectionReason> {
-    if (!sheetIdSchema.safeParse(command.sheetId).success) {
-      return err('invalid-sheet-id');
+    const current = liveSheetRecord(command.sheetId);
+
+    if (!current.ok) {
+      return current;
     }
 
-    const k = sheetKey(command.sheetId);
-    const current = replica.get(k);
-
-    if (current === undefined) {
-      return err('unknown-sheet');
-    }
-
-    if (current.d === null) {
-      return err('deleted-sheet');
-    }
-
-    const sheet = sheetDataSchema.safeParse(current.d);
+    const sheet = sheetDataSchema.safeParse(current.value.d);
 
     if (!sheet.success) {
       return err('unknown-sheet');
@@ -239,7 +232,53 @@ export async function startReplicaEngine(
       return err('invalid-name');
     }
 
-    return mintedSheet(k, current.c, { ...sheet.data, name: name.value });
+    return mintedSheet(current.value.k, current.value.c, { ...sheet.data, name: name.value });
+  }
+
+  // The sheet and every record that depends on it go in one batch. Storage gets the whole batch
+  // before any send, and the sheet tombstone goes last, so a write that fails part way leaves a live
+  // sheet the GM can delete again. The kind is not checked: an NPC goes the same way.
+  function composeSheetDelete(
+    command: Extract<Command, { type: 'sheet-delete' }>,
+  ): Result<VersionedRecord[], RejectionReason> {
+    const current = liveSheetRecord(command.sheetId);
+
+    if (!current.ok) {
+      return current;
+    }
+
+    const doomed: VersionedRecord[] = [];
+
+    for (const [key, record] of replica) {
+      // A tombstone already says deleted, and writing it again would only add a version.
+      if (record.d !== null && isSheetDependent(key, record, command.sheetId)) {
+        doomed.push(record);
+      }
+    }
+
+    doomed.push(current.value);
+
+    return ok(doomed.map((record) => tombstone(record)));
+  }
+
+  function liveSheetRecord(sheetId: string): Result<VersionedRecord, RejectionReason> {
+    if (!sheetIdSchema.safeParse(sheetId).success) {
+      return err('invalid-sheet-id');
+    }
+
+    const current = replica.get(sheetKey(sheetId));
+
+    if (current === undefined) {
+      return err('unknown-sheet');
+    }
+
+    return current.d === null ? err('deleted-sheet') : ok(current);
+  }
+
+  function tombstone(record: VersionedRecord): VersionedRecord {
+    const { c, a } = minter.mint(record.k, record.c);
+
+    return { ...record, d: null, c, a };
   }
 
   function mintedSheet(
@@ -253,14 +292,16 @@ export async function startReplicaEngine(
     return recordFitsOneMessage(record) ? ok(record) : err('too-large');
   }
 
-  function compose(command: Command): Result<VersionedRecord, RejectionReason> {
+  function compose(command: Command): Result<VersionedRecord[], RejectionReason> {
     switch (command.type) {
       case 'sheet-create':
-        return composeSheetCreate(command);
+        return listOf(composeSheetCreate(command));
       case 'sheet-rename':
-        return composeSheetRename(command);
+        return listOf(composeSheetRename(command));
+      case 'sheet-delete':
+        return composeSheetDelete(command);
       case 'preset-upload':
-        return composePresetUpload(command);
+        return listOf(composePresetUpload(command));
       default:
         return unknownCommand(command);
     }
@@ -326,9 +367,24 @@ export async function startReplicaEngine(
       return;
     }
 
-    const applied = merge(persist(composed.value));
+    // A batch is saved in order and stops at its first failed write. The failed record and the
+    // ones after it are not applied, so a retry of the command reaches them again. A single record
+    // keeps its value after a failed write, and the notice asks the GM for a snapshot.
+    const isBatch = composed.value.length > 1;
+    const applied: VersionedRecord[] = [];
 
-    emitDelta([applied]);
+    for (const record of composed.value) {
+      const persisted = persist(record);
+
+      if (!persisted.saved && isBatch) {
+        break;
+      }
+
+      applied.push(merge(persisted.record));
+    }
+
+    // Sent even when empty, so the window still learns of the notice.
+    emitDelta(applied);
   }
 
   const unsubscribe: Unsubscribe = platform.broadcast.onMessage(UI_CHANNEL, (event) => {
@@ -347,6 +403,10 @@ export async function startReplicaEngine(
   });
 
   return { stop: unsubscribe };
+}
+
+function listOf<Value, Failure>(result: Result<Value, Failure>): Result<Value[], Failure> {
+  return result.ok ? ok([result.value]) : result;
 }
 
 // `tsc` fails here when a command type has no composer above.
