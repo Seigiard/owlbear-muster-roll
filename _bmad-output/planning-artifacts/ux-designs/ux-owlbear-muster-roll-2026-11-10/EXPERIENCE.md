@@ -135,7 +135,7 @@ Short and literal. Commands are perfective verbs. Places are nouns. Statuses are
 
 ## Responsive & Platform
 
-The window opens at 720 by 600 px. Tablet and laptop behave the same. Check the size in a live room in the first interface story.
+The window opens at 600 by 600 px, confirmed by the owner in a live room. Tablet and laptop behave the same.
 
 ## Key Flows
 

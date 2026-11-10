@@ -33,7 +33,7 @@ const LIGHT_TOKENS: ReadonlyMap<string, Rgb> = new Map<string, Rgb>([
 ]);
 
 test.beforeEach(async ({ page }) => {
-  await page.setViewportSize({ width: 720, height: 600 });
+  await page.setViewportSize({ width: 600, height: 600 });
 });
 
 test('the dark theme gives every mapped token its DESIGN.md color', async ({ page }) => {
