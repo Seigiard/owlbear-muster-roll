@@ -8,12 +8,13 @@ scope: 'The Muster Roll v1 Owlbear Rodeo extension, with no own server'
 status: final
 created: '2026-11-10'
 updated: '2026-11-10'
-binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15]
+binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-16]
 sources:
   - ../../../specs/spec-muster-roll/SPEC.md
   - ../../../specs/spec-muster-roll/preset-format.md
   - ../../../specs/spec-muster-roll/storage-and-sync.md
   - ../../../specs/spec-muster-roll/stack.md
+  - ../../ux-designs/ux-owlbear-muster-roll-2026-11-10/EXPERIENCE.md
 companions: []
 ---
 
@@ -29,7 +30,7 @@ Code is a functional core with ports and adapters:
 | --- | --- | --- |
 | Core | `src/core` | Records, merge, access check, visibility, preset schema, formula parser, snapshot codec. Pure, with no DOM or SDK |
 | Replica | `src/replica` | The engine in the background page. Owns the replica, protocol, catch-up and snapshot timing |
-| Platform | `src/platform` | Ports for broadcast, metadata, party, player, storage, context menu and popover. The Owlbear adapter and the test mock |
+| Platform | `src/platform` | Ports for broadcast, metadata, party, player, storage, context menu, popover, action, notification and theme. The Owlbear adapter and the test mock |
 | UI | `src/ui` | React views and nanostores. A projection of the replica |
 
 ```mermaid
@@ -63,15 +64,16 @@ graph TD
 | `sheet:{sheetId}` | `{ kind: "pc" \| "npc", name, order }` | GM |
 | `row:{sheetId}:{rowId}` | `{ fieldId: value }` for all fields of one preset row | GM, or a player with access to a `pc` sheet |
 | `rep:{sheetId}:{sectionId}:{instanceId}` | `{ order, cells: { fieldId: value } }` for one repeat row | GM, or a player with access to a `pc` sheet |
-| `acl:{sheetId}:{playerId}` | `true` | GM |
+| `acl:{sheetId}:{playerId}` | `{ name }`, the last known player name | GM |
 | `link:{tokenId}` | `sheetId` | GM |
-| `plink:{sheetId}:{playerId}` | `true` | GM |
+| `plink:{sheetId}:{playerId}` | `{ name }`, the last known player name | GM |
 
 - `rowId` is the id of the first `field` in that preset row. `sectionId` is the same for the template row of a `repeat` section. Preset files carry no row or section ids. Rows with no field have no record.
 - Within one non-repeat scope a field id is unique, and the preset schema refuses a duplicate.
 - A value is a JSON number for `number`, a string for `text`, a boolean for `check`. An empty field has no key.
 - `sheetId` and `instanceId` are client-generated nanoids. Field ids come from the preset. `order` is a number, with ties broken by id.
 - Deleting a sheet tombstones its `row:`, `rep:`, `acl:`, `link:` and `plink:` records in one batch.
+- Copying an NPC writes new `sheet:`, `row:` and `rep:` records under a new `sheetId`, at `c: 1`. A copy gets no `link:` record.
 
 ### AD-3 — One merge, ordered by counter [ADOPTED]
 
@@ -161,7 +163,7 @@ A message with a higher generation also starts AD-9 adoption.
 - **Binds:** CAP-1, CAP-6, CAP-9, CAP-15
 - **Prevents:** Sync logic in windows that close, two owners of one copy, and whole-row writes from a stale view.
 - **Rule:** Only `src/replica`, in the background page, mutates the replica, composes `d`, mints `c` or calls room broadcast and metadata. Windows and the background talk on channel `app.muster-roll/ui` with destination `LOCAL`, under schemas in `core`. Handlers tolerate an echo of their own message.
-  - Commands are intents: a field patch, add or remove a repeat row, a roll request, an upload, an import. A command never carries a whole record.
+  - Commands are intents, such as a field patch, a repeat row change, a sheet create, rename or delete, an NPC copy, an access or token link change, a roll request, an upload, an import, or opening a tab. A command never carries a whole record.
   - A window opens by sending `projection-request` and gets a full projection, then deltas. The projection holds records through `core/visibility`, the pending queue, `gmLink`, notices and rolls.
 
 ### AD-11 — One localStorage key per record [ADOPTED]
@@ -183,7 +185,7 @@ A message with a higher generation also starts AD-9 adoption.
 
 - **Binds:** CAP-6, CAP-7
 - **Prevents:** A roll made twice, an NPC roll shown to a player, or a roll persisted through the replica.
-- **Rule:** A window sends a roll request. The roller's `replica` evaluates the formula once with `core/formula` and sends one `roll` with `{ id, sheetId, kind, name, result }`. Receivers do not recompute and deduplicate by `id`. The name in the message is shown. A player shows only `kind: "pc"`. Rolls never enter records, storage or snapshots. No message is sent when evaluation fails.
+- **Rule:** A window sends a roll request. The roller's `replica` evaluates the formula once with `core/formula` and sends one `roll` with `{ id, sheetId, kind, roller, sheetName, cell, result }`. Receivers do not recompute and deduplicate by `id`. The names in the message are shown. Each client shows a result through the notification port, so it appears with the window closed. A player shows only `kind: "pc"`. Rolls never enter records, storage or snapshots. No message is sent when evaluation fails.
 
 ### AD-14 — A preset upload rewrites values in one pass
 
@@ -284,6 +286,7 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 | CAP-13 | core/snapshot, replica | AD-2, AD-9 |
 | CAP-14 | ui, platform | AD-2, Visibility convention |
 | CAP-15 | replica, ui | AD-4, AD-6, AD-10, AD-12 |
+| CAP-16 | core, replica, ui | AD-2, AD-10 |
 
 ## Deferred
 

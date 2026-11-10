@@ -4,6 +4,9 @@ companions:
   - preset-format.md
   - storage-and-sync.md
   - stack.md
+  - ../../planning-artifacts/architecture/architecture-owlbear-muster-roll-2026-11-10/ARCHITECTURE-SPINE.md
+  - ../../planning-artifacts/ux-designs/ux-owlbear-muster-roll-2026-11-10/DESIGN.md
+  - ../../planning-artifacts/ux-designs/ux-owlbear-muster-roll-2026-11-10/EXPERIENCE.md
 sources:
   - ../../forge/muster-roll/forged-idea.md
 ---
@@ -63,6 +66,9 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - **CAP-15**
   - **intent:** A player's edit waits for a GM client, and the player sees when none responds.
   - **success:** With no GM client responding, the player sees a "no connection to GM" status and the edit does not apply. When a GM client responds, the edit is sent again, confirmed and applied.
+- **CAP-16**
+  - **intent:** The GM can make several copies of an NPC, so that each token has its own NPC.
+  - **success:** Nine copies of one NPC give ten NPCs with the same values and numbered names. An edit to one does not change the others. A copy has no token link until the GM links one.
 
 ## Constraints
 

@@ -17,6 +17,7 @@ A preset is a JSON template with the shape section → rows → cells. It holds 
 | `columns` | All rows of the section share one grid, so columns align |
 | No `columns` | Rows flow inline |
 | `repeat` | A row template repeats per character, and each character has its own rows |
+| `width` | `1/3`, `1/2` or `full` (default). Sections flow side by side and wrap as whole blocks |
 
 Ids resolve inside the row first, then globally.
 
