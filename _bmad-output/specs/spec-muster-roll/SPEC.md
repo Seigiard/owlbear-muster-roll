@@ -27,23 +27,23 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **intent:** The GM can turn write access on or off per player and per character.
   - **success:** With access on, the player's edit reaches all clients. Characters without access stay read-only for that player. With access off, the edit does not apply.
 - **CAP-4**
-  - **intent:** A JSON preset defines the sheets for any game system (`preset-format.md`).
+  - **intent:** A JSON preset defines the character sheets and the shorter NPC sheets for any game system (`preset-format.md`).
   - **success:** A preset for a second system gives working sheets with no code change.
 - **CAP-5**
   - **intent:** The preset controls sheet layout through aligned columns, inline flow and repeated rows.
   - **success:** Rows in a `columns` section align in one grid. A `repeat` section gives each character its own number of rows. Ids resolve inside the row first, then globally.
 - **CAP-6**
-  - **intent:** A user can roll a dice cell, and everyone in the room sees the result.
-  - **success:** `1d20 <= str - 2*str_tired` with filled fields rolls once, and all connected clients show the same result.
+  - **intent:** Anyone who can see a sheet can roll its dice cells. Everyone in the room sees the result of a roll from a character sheet.
+  - **success:** `1d20 <= str - 2*str_tired` with filled fields rolls once, and all connected clients show the same result with the roller's name. A roll from an NPC sheet shows only on GM clients.
 - **CAP-7**
   - **intent:** A formula with bad input refuses to roll.
   - **success:** A formula with an empty, non-numeric or removed field shows an error. No roll and no broadcast occur.
 - **CAP-8**
-  - **intent:** The GM can edit the preset after sheets exist, and the edit applies to all sheets.
-  - **success:** A new field is empty on all sheets. A removal asks for confirmation, then erases the values on all sheets. A rename keeps the values.
+  - **intent:** The GM can change the preset by uploading a JSON file after sheets exist, and the change applies to all sheets.
+  - **success:** A new field is empty on all sheets. The values of a removed field are erased on all sheets. A rename keeps the values. The upload shows a short notice that the format changed.
 - **CAP-9**
   - **intent:** Room data stays after a reload and after re-entry to the room.
-  - **success:** A GM reload keeps all data. The snapshot is written when it fits and skipped when it does not. Room metadata never goes past the limit.
+  - **success:** A GM reload keeps all data. The snapshot is written when it fits. When it does not fit, it is skipped and the GM sees a notice. Room metadata never goes past the limit.
 - **CAP-10**
   - **intent:** Players can read the last snapshot when no GM is online.
   - **success:** With no GM online and a snapshot present, a player sees the characters from it. No live edit is exchanged.
@@ -55,7 +55,10 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **success:** The file holds no values. Import into another room gives the same structure.
 - **CAP-13**
   - **intent:** The GM can export and import a room snapshot as a JSON file.
-  - **success:** The file holds values and token links. Import restores a token link where the token exists. Import resets player links and write rights to read.
+  - **success:** The file holds values and token links. Import replaces all room data after confirmation. Values of field ids not in the current preset are dropped, and the GM sees their count. Import restores a token link where the token exists. Import resets player links and write rights to read.
+- **CAP-14**
+  - **intent:** A user can open a linked sheet from its token.
+  - **success:** The sheet opens for those who can already see it. An NPC sheet opens only for the GM.
 
 ## Constraints
 
@@ -67,7 +70,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - Values are stored apart from the template, by field id.
 - Every GM tab and device can edit.
 - A player's edit takes effect only after a GM client checks the write right.
-- A room has one preset, and all sheets follow it.
+- A room has one preset file. It holds a character template and a short NPC template, and all sheets follow it.
 - Hirelings and pets are characters, so NPCs stay GM-only.
 - The interface matches the simplicity of dummy-sheet. Muster Roll takes no code or storage from it.
 
@@ -78,9 +81,11 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - dummy-sheet as a code or storage base. It stores each sheet in the player's browser.
 - One editing GM tab.
 - Per-character sections, computed display fields and per-edit approval.
-- Past the POC: request-and-confirm write access, + and − buttons as a property of number fields, token-linked stats, guest "open this character", sending rolls to the Dice extension.
+- An in-extension preset editor and per-field confirmation of a preset upload. Presets are usually set before a game.
+- Past the POC: a separate preset editor with preview, request-and-confirm write access, + and − buttons as a property of number fields, token-linked stats, guest "open this character", sending rolls to the Dice extension.
 - Merging two simultaneous edits of one row. Only the latest stays.
-- Hiding NPC data from a client that reads the room snapshot. NPCs are hidden in the interface only.
+- Merging an imported snapshot into room data.
+- Hiding NPC data from a modified client. NPC sheets and NPC rolls are hidden in the interface only, and any client can read the room snapshot.
 - Protection of the local copy before v2, other than the room snapshot and manual export.
 
 ## Success signal
@@ -94,19 +99,11 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - "Globally" in id resolution means inside the same character's sheet, never across characters.
 - An unchecked check counts as 0 and is not an empty field.
 - A `text` cell is fixed label text from the preset, with no id and no stored value.
-- Upload of a preset over existing sheets follows the rules of CAP-8.
 - Write access to a character includes adding and removing its `repeat` rows.
 - A joining client gets current data from an online GM client, otherwise from the last snapshot.
 
 ## Open Questions
 
-- Do NPCs use the same preset as characters, or a shorter template of their own?
-- Does the POC include a preset editor inside the extension, or is JSON upload the only edit path?
-- Who can roll a dice cell: anyone who can read it, or only those with write access?
-- Does a roll from an NPC sheet also go to everyone, given that NPCs are GM-only?
-- Does the GM see a visible notice when the snapshot is skipped?
-- What does a token link do in the POC, other than being stored and exported?
-- Does a snapshot import replace or merge room data, and what happens to values whose field id is not in the current preset?
 - Does the sync scheme work in a live Owlbear room, and how long does `background_url` stay alive? Neither is tested.
 - Does a guest keep the player id in another browser? Write rights bind to that id, and the docs do not say.
 - What does Owlbear do past 16kB of room metadata? The docs do not say.

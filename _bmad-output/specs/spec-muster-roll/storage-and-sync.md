@@ -8,7 +8,7 @@
 | Room snapshot | Room metadata | Compressed data | Only when it fits free space |
 | Manual export | Files the GM downloads | Preset, or room snapshot | On GM request |
 
-If the snapshot does not fit, play continues by broadcast. Two things are lost: reading with no GM online, and moving to another GM device.
+If the snapshot does not fit, the GM sees a notice and play continues by broadcast. Two things are lost: reading with no GM online, and moving to another GM device.
 
 ## Sync rules
 
@@ -24,7 +24,7 @@ If the snapshot does not fit, play continues by broadcast. Two things are lost: 
 | File | Holds | On import |
 | --- | --- | --- |
 | Preset | Structure only | Gives the same structure |
-| Room snapshot | Values and token links | Restores a token link where the token exists. Resets player links and write rights to read |
+| Room snapshot | Values and token links | Replaces all room data after confirmation. Drops values of field ids not in the current preset and shows their count. Restores a token link where the token exists. Resets player links and write rights to read |
 
 ## Platform limits
 
@@ -54,4 +54,4 @@ Russian text and the preset add more. These measurements predate the typed-field
 ## Accepted losses
 
 - Until v2, only the room snapshot and manual export protect against loss of the local copy.
-- NPCs are hidden in the interface only. Any client can read the room snapshot.
+- NPC sheets and NPC rolls are hidden in the interface only. Any client can read the room snapshot.
