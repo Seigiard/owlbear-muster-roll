@@ -6,9 +6,22 @@ import { deflateSync, strToU8 } from 'fflate';
 import { z } from 'zod';
 
 import type { JsonValue } from '@/core/json';
+import { SYNC_CHANNEL } from '@/core/room-messages';
+// The side-effect-free part of the mock: its URL params and naming rules, never the platform.
+// oxlint-disable-next-line no-restricted-imports
+import {
+  CLIENT_PARAM,
+  DEVICE_PARAM,
+  deviceStoragePrefix,
+  MOCK_ROOM_ID,
+  mockConnectionId,
+  NAME_PARAM,
+  PLAYER_PARAM,
+  ROLE_PARAM,
+} from '@/platform/mock/client-params';
 
 // The mock room's storage before any import: generation 0 with no author.
-export const STORAGE_PREFIX = 'mr1:mock-room:0::';
+export const STORAGE_PREFIX = `mr1:${MOCK_ROOM_ID}:0::`;
 
 export const EXAMPLE_PRESET_TEXT = readFileSync(
   new URL('../../docs/example-preset.json', import.meta.url),
@@ -38,6 +51,18 @@ export type StoredRecord = { k: string; d: JsonValue; c: number; a: string };
 export type Keyed = Record<string, StoredRecord>;
 
 export type SeenCommand = { id: string; type: string };
+
+// The mock's URL params for one client of the room. An empty client is the default one.
+export type ClientParams = {
+  client?: string;
+  player?: string;
+  role?: 'GM' | 'PLAYER';
+  name?: string;
+  device?: string;
+};
+
+// One client: its background page and one window, which share a connection id.
+export type RoomClient = { window: Page; background: Page; connectionId: string };
 
 declare global {
   interface Window {
@@ -85,23 +110,119 @@ export async function openRoom(
   records: readonly StoredRecord[] = [],
   presetText = EXAMPLE_PRESET_TEXT,
 ): Promise<Page> {
-  const entries: (readonly [string, string])[] = [
-    [`${STORAGE_PREFIX}preset`, presetRecord(presetText)],
-    ...records.map((one) => [`${STORAGE_PREFIX}${one.k}`, JSON.stringify(one)] as const),
-  ];
-
   await page.goto('/index.html');
-  await page.evaluate((seeded) => {
-    for (const [key, value] of seeded) {
-      localStorage.setItem(key, value);
-    }
-  }, entries);
+  await seedStorage(page, records, presetText);
 
   const background = await openBackground(context);
 
   await expect(page.getByRole('button', { name: ADD })).toBeVisible();
 
   return background;
+}
+
+// Seeds the preset and the records into the storage of one device, before its background starts.
+export async function seedStorage(
+  page: Page,
+  records: readonly StoredRecord[],
+  presetText = EXAMPLE_PRESET_TEXT,
+  device = '',
+): Promise<void> {
+  const prefix = `${deviceStoragePrefix(device)}${STORAGE_PREFIX}`;
+
+  const entries: (readonly [string, string])[] = [
+    [`${prefix}preset`, presetRecord(presetText)],
+    ...records.map((one) => [`${prefix}${one.k}`, JSON.stringify(one)] as const),
+  ];
+
+  await page.evaluate((seeded) => {
+    for (const [key, value] of seeded) {
+      localStorage.setItem(key, value);
+    }
+  }, entries);
+}
+
+export function connectionIdOf(params: ClientParams): string {
+  return mockConnectionId(params.client ?? '');
+}
+
+// Opens the window of a client. Its background is opened apart, so a test can seed storage first.
+export async function openClientWindow(
+  context: BrowserContext,
+  params: ClientParams = {},
+): Promise<Page> {
+  const window = await context.newPage();
+
+  await window.goto(`/index.html${clientQuery(params)}`);
+
+  return window;
+}
+
+export async function openClientBackground(
+  context: BrowserContext,
+  params: ClientParams = {},
+): Promise<Page> {
+  return openBackground(context, `/background.html${clientQuery(params)}`);
+}
+
+// GM clients in one browser, so they share the storage seeded once. Each window shows its sheets.
+export async function openGmClients(
+  context: BrowserContext,
+  records: readonly StoredRecord[],
+  presetText: string,
+  ...clients: ClientParams[]
+): Promise<RoomClient[]> {
+  const windows: Page[] = [];
+
+  for (const params of clients) {
+    // Every window opens before any background, so the seed below is what each background reads.
+    // oxlint-disable-next-line no-await-in-loop
+    windows.push(await openClientWindow(context, params));
+  }
+
+  const [first] = windows;
+
+  if (first === undefined) {
+    throw new Error('openGmClients needs at least one client');
+  }
+
+  await seedStorage(first, records, presetText);
+
+  const opened: RoomClient[] = [];
+
+  for (const [index, params] of clients.entries()) {
+    const window = windows[index];
+
+    if (window === undefined) {
+      throw new Error('a client lost its window');
+    }
+
+    // oxlint-disable-next-line no-await-in-loop
+    const background = await openClientBackground(context, params);
+
+    // oxlint-disable-next-line no-await-in-loop
+    await expect(window.getByRole('button', { name: ADD })).toBeVisible();
+    opened.push({ window, background, connectionId: connectionIdOf(params) });
+  }
+
+  return opened;
+}
+
+// Puts a raw REMOTE message on the room as the given connection sent it, so every other client
+// hears it.
+export async function postRemote(
+  page: Page,
+  connectionId: string,
+  message: JsonValue,
+): Promise<void> {
+  await page.evaluate(
+    ([channel, sender, text]) => {
+      // SAFETY: the text is the JSON.stringify of a JsonValue, one line below.
+      const data = JSON.parse(text) as JsonValue;
+
+      window.mockPlatform.sendRemoteAs(sender, channel, data);
+    },
+    [SYNC_CHANNEL, connectionId, JSON.stringify(message)] as const,
+  );
 }
 
 export async function storedData(page: Page, key: string): Promise<JsonValue> {
@@ -125,6 +246,19 @@ export async function storedRecords(page: Page, prefix = ''): Promise<StoredReco
   );
 
   return texts.map((text) => storedRecordSchema.parse(JSON.parse(text)));
+}
+
+// The keys one device holds, with its device prefix taken off.
+export async function deviceKeys(page: Page, device: string): Promise<string[]> {
+  const prefix = deviceStoragePrefix(device);
+
+  return page.evaluate(
+    (start) =>
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith(start))
+        .map((key) => key.slice(start.length)),
+    prefix,
+  );
 }
 
 export function keyed(records: readonly StoredRecord[]): Keyed {
@@ -179,4 +313,24 @@ export async function afterSettling(page: Page): Promise<{ commands: string[]; s
   const stored = (await storedRecords(page)).filter((one) => one.k !== 'preset');
 
   return { commands: seen.map((command) => command.type), stored: keyed(stored) };
+}
+
+function clientQuery(params: ClientParams): string {
+  const query = new URLSearchParams();
+
+  for (const [name, value] of [
+    [CLIENT_PARAM, params.client],
+    [PLAYER_PARAM, params.player],
+    [ROLE_PARAM, params.role],
+    [NAME_PARAM, params.name],
+    [DEVICE_PARAM, params.device],
+  ] as const) {
+    if (value !== undefined) {
+      query.set(name, value);
+    }
+  }
+
+  const text = query.toString();
+
+  return text === '' ? '' : `?${text}`;
 }

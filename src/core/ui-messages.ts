@@ -11,7 +11,8 @@ const idSchema = z.string().min(1).max(64);
 
 const sequenceSchema = z.number().int().nonnegative();
 
-export const noticeSchema = z.enum(['local-save-failed']);
+// `new-version` stays until a reload: a newer build is in the room (AD-12).
+export const noticeSchema = z.enum(['local-save-failed', 'new-version']);
 
 const projectionRequestSchema = z.strictObject({
   t: z.literal('projection-request'),
@@ -129,6 +130,8 @@ const commandRejectedSchema = z.strictObject({
     'unknown-section',
     'invalid-instance-id',
     'instance-exists',
+    // A player client edits nothing until Epic 3 brings `propose`.
+    'not-allowed',
   ]),
 });
 

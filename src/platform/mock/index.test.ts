@@ -2,9 +2,11 @@ import { describe, expect, test } from 'bun:test';
 
 import type { JsonObject, JsonValue } from '@/core/json';
 import { platform as currentPlatform } from '@/platform/current';
+import type { PlayerRole } from '@/platform/ports';
 
 import { LIGHT_THEME } from '../../../tests/support/colors';
-import { createMemoryBus, createMockPlatform } from './index';
+import { createMemoryBus, createMemoryRoom, createMockPlatform, type MockPlatform } from './index';
+import type { MockRoom } from './room';
 
 describe('mock broadcast', () => {
   test('delivers a LOCAL message to a listener on the same channel', async () => {
@@ -99,6 +101,127 @@ describe('mock LOCAL bus shared between pages', () => {
 
     // #then
     expect(received).toEqual(['sender', 'receiver']);
+  });
+});
+
+describe('mock room with several clients', () => {
+  test('delivers REMOTE to every page of the other clients with the sender id, and to no page of the sender', async () => {
+    // #given: client A has a background and a window on one LOCAL bus.
+    const room = createMemoryRoom();
+    const busA = createMemoryBus();
+    const backgroundA = client(room, 'a', 'GM', busA);
+    const windowA = client(room, 'a', 'GM', busA);
+    const busB = createMemoryBus();
+    const received: string[] = [];
+
+    for (const [label, page] of [
+      ['window A', windowA],
+      ['background B', client(room, 'b', 'GM', busB)],
+      ['window B', client(room, 'b', 'GM', busB)],
+    ] as const) {
+      page.broadcast.onMessage('sync', (event) => {
+        received.push(`${label} from ${event.connectionId}`);
+      });
+    }
+
+    // #when
+    await backgroundA.broadcast.sendMessage('sync', 'hello', { destination: 'REMOTE' });
+
+    // #then
+    expect(received).toEqual(['background B from a', 'window B from a']);
+  });
+
+  test('keeps LOCAL within the sending client', async () => {
+    // #given
+    const room = createMemoryRoom();
+    const busA = createMemoryBus();
+    const backgroundA = client(room, 'a', 'GM', busA);
+    const received: string[] = [];
+
+    client(room, 'a', 'GM', busA).broadcast.onMessage('ui', () => {
+      received.push('window A');
+    });
+
+    client(room, 'b').broadcast.onMessage('ui', () => {
+      received.push('client B');
+    });
+
+    // #when
+    await backgroundA.broadcast.sendMessage('ui', 'hello', { destination: 'LOCAL' });
+
+    // #then
+    expect(received).toEqual(['window A']);
+  });
+
+  test('lists every joined member but the caller, as Owlbear does', async () => {
+    // #given
+    const room = createMemoryRoom();
+    const gm = client(room, 'a');
+    const player = client(room, 'p', 'PLAYER');
+
+    gm.joinParty();
+    player.joinParty();
+
+    // #when
+    const seenByGm = await gm.party.getPlayers();
+
+    // #then
+    expect(seenByGm).toEqual([
+      { id: 'player-p', connectionId: 'p', name: 'Name p', role: 'PLAYER' },
+    ]);
+  });
+
+  test('tells party listeners about a join, a role change and a leave', () => {
+    // #given
+    const room = createMemoryRoom();
+    const watcher = client(room, 'w');
+    const other = client(room, 'b');
+    const seen: string[][] = [];
+
+    watcher.party.onChange((players) => {
+      seen.push(players.map((player) => `${player.connectionId} ${player.role}`));
+    });
+
+    // #when
+    other.joinParty();
+    other.setRole('PLAYER');
+    other.leaveParty();
+
+    // #then
+    expect(seen).toEqual([['b GM'], ['b PLAYER'], []]);
+  });
+
+  test('puts a message on the room as if another connection had sent it', () => {
+    // #given
+    const room = createMemoryRoom();
+    const sender = client(room, 'a');
+    const received: string[] = [];
+
+    client(room, 'b').broadcast.onMessage('sync', (event) => {
+      received.push(event.connectionId);
+    });
+
+    // #when
+    sender.sendRemoteAs('stranger', 'sync', 'hello');
+
+    // #then
+    expect(received).toEqual(['stranger']);
+  });
+
+  test('reads its own player from the client it was made for', async () => {
+    // #given
+    const platform = client(createMemoryRoom(), 'a', 'PLAYER');
+
+    // #when
+    const read = await Promise.all([
+      platform.player.getId(),
+      platform.player.getConnectionId(),
+      platform.player.getName(),
+      platform.player.getRole(),
+    ]);
+
+    // #then
+    expect(read).toEqual(['player-a', 'a', 'Name a', 'PLAYER']);
   });
 });
 
@@ -352,6 +475,21 @@ describe('current platform under bun test', () => {
     expect(roomId).toBe('mock-room');
   });
 });
+
+function client(
+  room: MockRoom,
+  connectionId: string,
+  role: PlayerRole = 'GM',
+  bus = createMemoryBus(),
+): MockPlatform {
+  return createMockPlatform(bus, undefined, {
+    room,
+    connectionId,
+    playerId: `player-${connectionId}`,
+    name: `Name ${connectionId}`,
+    role,
+  });
+}
 
 function pushIntoList(metadata: JsonObject): void {
   const list = metadata['list'];

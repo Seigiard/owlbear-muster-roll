@@ -22,6 +22,13 @@ import {
   type VersionedRecord,
 } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
+import {
+  admitRoomMessage,
+  generationRelation,
+  parseRoomMessage,
+  SYNC_CHANNEL,
+  type RoomMessage,
+} from '@/core/room-messages';
 import { isSheetDependent, parseSheetName, sheetIdSchema, sheetKey } from '@/core/sheets';
 import {
   parseWindowMessage,
@@ -34,10 +41,12 @@ import {
   type ProjectionMessage,
   type RejectionReason,
 } from '@/core/ui-messages';
-import type { Generation } from '@/core/storage-key';
+import { INITIAL_GENERATION, type Generation } from '@/core/storage-key';
 import { visibleRecords, type PlayerRole } from '@/core/visibility';
-import type { BroadcastOptions, Platform, Unsubscribe } from '@/platform/ports';
+import type { BroadcastEvent, BroadcastOptions, Platform } from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
+import { createCommitOutbox } from '@/replica/commit-outbox';
+import { createPartyRoster } from '@/replica/party-roster';
 import { createRecordStore, type RecordStore } from '@/replica/record-store';
 import { createVersionMinter } from '@/replica/version-minter';
 
@@ -49,9 +58,16 @@ const RECENT_COMMAND_ID_LIMIT = 256;
 // Sits in the problem set, and no write clears it: a reload has to read the storage again.
 const UNREADABLE_STORAGE_MARK = '(unreadable)';
 
-export type ReplicaEnginePlatform = Pick<Platform, 'broadcast' | 'metadata' | 'player' | 'storage'>;
+export type ReplicaEnginePlatform = Pick<
+  Platform,
+  'broadcast' | 'metadata' | 'party' | 'player' | 'storage'
+>;
 
-export type ReplicaEngine = { stop: () => void };
+export type ReplicaEngine = {
+  stop: () => void;
+  // Sends every waiting message at once, held commits included, for a page that is about to close.
+  flushNow: () => void;
+};
 
 type Persistence = { store: RecordStore; generation: Generation };
 
@@ -83,8 +99,15 @@ export async function startReplicaEngine(
   const minter = createVersionMinter(connectionId);
   const recentCommandIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
   const answeringNonces = new Set<string>();
+  // A player client has no room copy yet (Story 2.5), so it stays at the initial generation.
+  const ownGeneration = loaded.persistence?.generation ?? INITIAL_GENERATION;
+  const outbox = createCommitOutbox(sendQueue, () => ownGeneration);
+  const roster = createPartyRoster(platform.party);
   let sequence = 0;
   let decodedPreset: DecodedPreset | null = null;
+  // AD-12: once a newer build has spoken in the room, the banner stays until a reload.
+  let newerVersionSeen = false;
+  let stopped = false;
 
   for (const record of loaded.records) {
     merge(record);
@@ -100,7 +123,13 @@ export async function startReplicaEngine(
   }
 
   function currentNotices(): Notice[] {
-    return problemKeys.size === 0 ? [] : ['local-save-failed'];
+    const notices: Notice[] = problemKeys.size === 0 ? [] : ['local-save-failed'];
+
+    if (newerVersionSeen) {
+      notices.push('new-version');
+    }
+
+    return notices;
   }
 
   function send(message: EngineMessage): Promise<void> {
@@ -540,7 +569,9 @@ export async function startReplicaEngine(
 
     recentCommandIds.add(message.id);
 
-    const composed = compose(message.command);
+    // Every command writes. A player's own record would beat later GM edits of its key in merge.
+    const composed: Result<VersionedRecord[], RejectionReason> =
+      role === 'GM' ? compose(message.command) : err('not-allowed');
 
     if (!composed.ok) {
       send({ t: 'command-rejected', id: message.id, reason: composed.error }).catch((error) => {
@@ -568,9 +599,95 @@ export async function startReplicaEngine(
 
     // Sent even when empty, so the window still learns of the notice.
     emitDelta(applied);
+
+    // AD-4: a GM edit goes to the room after it is merged and persisted. A GM whose storage could
+    // not be read minted without the saved state, so its records stay in this client.
+    if (loaded.persistence !== null) {
+      outbox.add(applied);
+    }
   }
 
-  const unsubscribe: Unsubscribe = platform.broadcast.onMessage(UI_CHANNEL, (event) => {
+  // A GM client persists each record that changes its replica. A player client persists nothing.
+  // A remote commit is never sent on again.
+  function receiveCommit(records: readonly VersionedRecord[]): void {
+    const noticesBefore = currentNotices().join();
+    const changed: VersionedRecord[] = [];
+
+    for (const record of records) {
+      // A record this large could never reach a window, as with one read from storage.
+      if (!recordFitsOneMessage(record)) {
+        console.error('Muster Roll dropped a remote record too large for one message', record.k);
+        continue;
+      }
+
+      const before = replica.get(record.k);
+      let winner = merge(record);
+
+      if (winner !== before) {
+        // The store can hold a newer record from another tab of this browser.
+        winner = merge(persist(winner).record);
+        changed.push(winner);
+      }
+    }
+
+    if (changed.length > 0 || currentNotices().join() !== noticesBefore) {
+      emitDelta(changed);
+    }
+  }
+
+  function raiseNewerVersion(): void {
+    if (newerVersionSeen) {
+      return;
+    }
+
+    newerVersionSeen = true;
+    emitDelta([]);
+  }
+
+  // AD-5: `v`, then the schema, then the gate, and only then a handler.
+  async function handleRoomMessage(event: BroadcastEvent): Promise<void> {
+    const parsed = parseRoomMessage(event.data);
+
+    if (!parsed.ok) {
+      if (parsed.error === 'newer-version') {
+        raiseNewerVersion();
+      }
+
+      return;
+    }
+
+    const sender = await roster.senderOf(event.connectionId);
+    const relation = generationRelation(parsed.value.g, ownGeneration);
+
+    if (stopped || !admitRoomMessage(parsed.value.t, sender?.role ?? null, relation)) {
+      return;
+    }
+
+    dispatchRoomMessage(parsed.value);
+  }
+
+  function dispatchRoomMessage(message: RoomMessage): void {
+    switch (message.t) {
+      case 'commit':
+        receiveCommit(message.records);
+        break;
+      default:
+        unknownRoomMessage(message.t);
+    }
+  }
+
+  // One message at a time in arrival order, so a sender lookup never lets a later message overtake.
+  let roomMessages: Promise<void> = Promise.resolve();
+
+  const unsubscribeRoom = platform.broadcast.onMessage(SYNC_CHANNEL, (event) => {
+    roomMessages = roomMessages
+      .then(() => handleRoomMessage(event))
+      .catch((error) => {
+        console.error('Muster Roll could not handle a room message', error);
+      });
+  });
+
+  const unsubscribeUi = platform.broadcast.onMessage(UI_CHANNEL, (event) => {
     // Echoes of the engine's own messages fail this schema and stop here.
     const parsed = parseWindowMessage(event.data);
 
@@ -585,7 +702,19 @@ export async function startReplicaEngine(
     }
   });
 
-  return { stop: unsubscribe };
+  return {
+    stop: () => {
+      stopped = true;
+      unsubscribeUi();
+      unsubscribeRoom();
+      roster.stop();
+      outbox.stop();
+    },
+    flushNow: () => {
+      outbox.flush();
+      sendQueue.flushNow();
+    },
+  };
 }
 
 function repKey(command: { sheetId: string; sectionId: string; instanceId: string }): string {
@@ -601,6 +730,11 @@ function listOf<Value, Failure>(result: Result<Value, Failure>): Result<Value[],
 // `tsc` fails here when a command type has no composer above.
 function unknownCommand(command: never): never {
   throw new Error(`Muster Roll has no composer for the command ${JSON.stringify(command)}`);
+}
+
+// `tsc` fails here when a parsed room message has no handler above.
+function unknownRoomMessage(t: never): never {
+  throw new Error(`Muster Roll has no handler for the room message ${String(t)}`);
 }
 
 function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedReplica {

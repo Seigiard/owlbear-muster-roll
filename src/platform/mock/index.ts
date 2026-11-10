@@ -1,30 +1,40 @@
-import type { JsonObject } from '@/core/json';
+import type { JsonObject, JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
 import type {
+  PartyMember,
   Platform,
   PlayerRole,
   SendFailure,
   StorageFailure,
   StorageOperation,
   Theme,
-  Unsubscribe,
 } from '@/platform/ports';
 
+import {
+  CLIENT_PARAM,
+  DEVICE_PARAM,
+  deviceStoragePrefix,
+  MOCK_CONNECTION_ID,
+  MOCK_ROOM_ID,
+  mockConnectionId,
+  NAME_PARAM,
+  PLAYER_PARAM,
+  ROLE_PARAM,
+} from './client-params';
 import { createMemoryBus, createPageBus, type LocalBus } from './local-bus';
+import { createMemoryRoom, createPageRoom, type MockRoom } from './room';
 
-export { createMemoryBus };
+export { createMemoryBus, createMemoryRoom, type MockRoom };
 
-const MOCK_ROOM_ID = 'mock-room';
 const MOCK_PLAYER_ID = 'mock-player';
-const MOCK_CONNECTION_ID = 'mock-connection';
 const MOCK_PLAYER_NAME = 'Mock GM';
 const MOCK_NOTIFICATION_ID = 'mock-notification';
 const THEME_READ_FAILS_PARAM = 'mock-theme-read-fails';
 const THEME_READ_SLOW_PARAM = 'mock-theme-read-slow';
 const THEME_READ_SLOW_MS = 200;
-const ROLE_PARAM = 'mock-role';
 
-const unsubscribeNothing: Unsubscribe = () => undefined;
+// The default device lists no key that starts with this, so mock bookkeeping stays out of it.
+const MOCK_STORAGE_PREFIX = 'mock-';
 
 const MOCK_THEME: Theme = {
   mode: 'DARK',
@@ -44,11 +54,27 @@ export type MockStorageBacking = {
   keys: () => string[];
 };
 
+// One client of a room: a connection and the player behind it. Two GM tabs of one account are two
+// clients with one player id.
+export type MockClient = {
+  room: MockRoom;
+  connectionId: string;
+  playerId: string;
+  name: string;
+  role: PlayerRole;
+};
+
 export type MockPlatform = Platform & {
   setTheme: (theme: Theme) => void;
   setRole: (role: PlayerRole) => void;
   setFailingStorageOperations: (operations: StorageOperation[]) => void;
   failNextSends: (failures: SendFailure[]) => void;
+  // Adds this client to the room's party, as Owlbear lists a connected client. One page per client
+  // joins, so the party lists each connection once.
+  joinParty: () => void;
+  leaveParty: () => void;
+  // Puts a REMOTE message on the room as if the given connection had sent it.
+  sendRemoteAs: (connectionId: string, channel: string, data: JsonValue) => void;
 };
 
 declare global {
@@ -59,9 +85,19 @@ declare global {
   }
 }
 
-const mockPlatform = createMockPlatform(createPageBus(), createPageBacking());
+const pageClient = clientFromPageUrl();
 
-mockPlatform.setRole(roleFromPageUrl());
+const mockPlatform = createMockPlatform(
+  createPageBus(pageClient.connectionId),
+  createPageBacking(new URLSearchParams(window.location.search).get(DEVICE_PARAM) ?? ''),
+  pageClient,
+);
+
+// The background page stands for its client in the party, as long as it is open.
+if (window.location.pathname.endsWith('/background.html')) {
+  mockPlatform.joinParty();
+  window.addEventListener('pagehide', mockPlatform.leaveParty);
+}
 
 export const platform: Platform = mockPlatform;
 
@@ -72,11 +108,14 @@ window.mockPlatform = mockPlatform;
 export function createMockPlatform(
   localBus: LocalBus = createMemoryBus(),
   backing: MockStorageBacking = createMemoryBacking(),
+  client: MockClient = defaultClient(createMemoryRoom()),
 ): MockPlatform {
   const metadataListeners = new Set<MetadataListener>();
   const themeListeners = new Set<ThemeListener>();
   const sendFailures: SendFailure[] = [];
-  let role: PlayerRole = 'GM';
+  const { room, connectionId, playerId, name } = client;
+  let role: PlayerRole = client.role;
+  let joined = false;
   let failingStorageOperations = new Set<StorageOperation>();
   let metadata: JsonObject = {};
   let currentTheme = MOCK_THEME;
@@ -92,6 +131,16 @@ export function createMockPlatform(
     return ok(action());
   }
 
+  function joinParty(): void {
+    joined = true;
+    room.join({ id: playerId, connectionId, name, role });
+  }
+
+  // Owlbear lists every member but the caller.
+  function others(): PartyMember[] {
+    return room.members().filter((member) => member.connectionId !== connectionId);
+  }
+
   return {
     onReady: (callback) => {
       queueMicrotask(callback);
@@ -104,14 +153,25 @@ export function createMockPlatform(
           return Promise.resolve(err(failure));
         }
 
-        // One mock client has no peers, and Owlbear never echoes REMOTE to its sender.
+        // LOCAL stays within this client. REMOTE reaches the other clients of the room only, as
+        // Owlbear never echoes it to its sender.
         if (options.destination === 'LOCAL') {
-          localBus.post(channel, data, MOCK_CONNECTION_ID);
+          localBus.post(channel, data, connectionId);
+        } else {
+          room.postRemote(channel, data, connectionId);
         }
 
         return Promise.resolve(ok(undefined));
       },
-      onMessage: (channel, callback) => localBus.subscribe(channel, callback),
+      onMessage: (channel, callback) => {
+        const unsubscribeLocal = localBus.subscribe(channel, callback);
+        const unsubscribeRemote = room.onRemote(channel, connectionId, callback);
+
+        return () => {
+          unsubscribeLocal();
+          unsubscribeRemote();
+        };
+      },
     },
     metadata: {
       getRoomId: () => MOCK_ROOM_ID,
@@ -144,13 +204,16 @@ export function createMockPlatform(
       },
     },
     party: {
-      getPlayers: () => Promise.resolve([]),
-      onChange: () => unsubscribeNothing,
+      getPlayers: () => Promise.resolve(others()),
+      onChange: (callback) =>
+        room.onPartyChange(() => {
+          callback(others());
+        }),
     },
     player: {
-      getId: () => Promise.resolve(MOCK_PLAYER_ID),
-      getConnectionId: () => Promise.resolve(MOCK_CONNECTION_ID),
-      getName: () => Promise.resolve(MOCK_PLAYER_NAME),
+      getId: () => Promise.resolve(playerId),
+      getConnectionId: () => Promise.resolve(connectionId),
+      getName: () => Promise.resolve(name),
       getRole: () => Promise.resolve(role),
     },
     storage: {
@@ -217,6 +280,10 @@ export function createMockPlatform(
     },
     setRole: (next) => {
       role = next;
+
+      if (joined) {
+        joinParty();
+      }
     },
     setFailingStorageOperations: (operations) => {
       failingStorageOperations = new Set(operations);
@@ -224,6 +291,25 @@ export function createMockPlatform(
     failNextSends: (failures) => {
       sendFailures.push(...failures);
     },
+    joinParty,
+    leaveParty: () => {
+      joined = false;
+      room.leave(connectionId);
+    },
+    sendRemoteAs: (sender, channel, data) => {
+      room.postRemote(channel, data, sender);
+    },
+  };
+}
+
+// The one GM client every test had before rooms had several.
+export function defaultClient(room: MockRoom): MockClient {
+  return {
+    room,
+    connectionId: MOCK_CONNECTION_ID,
+    playerId: MOCK_PLAYER_ID,
+    name: MOCK_PLAYER_NAME,
+    role: 'GM',
   };
 }
 
@@ -242,17 +328,27 @@ function createMemoryBacking(): MockStorageBacking {
   };
 }
 
-// Real pages of one mock client share this browser's storage, as Owlbear iframes do.
-function createPageBacking(): MockStorageBacking {
+// Real pages share this browser's storage, as Owlbear iframes do. A named device keeps its own
+// keys under a prefix, as a second browser would.
+function createPageBacking(device: string): MockStorageBacking {
+  const prefix = deviceStoragePrefix(device);
+
+  function ownKey(key: string): boolean {
+    return prefix === '' ? !key.startsWith(MOCK_STORAGE_PREFIX) : key.startsWith(prefix);
+  }
+
   return {
-    get: (key) => localStorage.getItem(key),
+    get: (key) => localStorage.getItem(`${prefix}${key}`),
     set: (key, value) => {
-      localStorage.setItem(key, value);
+      localStorage.setItem(`${prefix}${key}`, value);
     },
     remove: (key) => {
-      localStorage.removeItem(key);
+      localStorage.removeItem(`${prefix}${key}`);
     },
-    keys: () => Array.from({ length: localStorage.length }, readKey),
+    keys: () =>
+      Array.from({ length: localStorage.length }, readKey)
+        .filter(ownKey)
+        .map((key) => key.slice(prefix.length)),
   };
 }
 
@@ -260,6 +356,17 @@ function readKey(_value: undefined, index: number): string {
   return localStorage.key(index) ?? '';
 }
 
-function roleFromPageUrl(): PlayerRole {
-  return new URLSearchParams(window.location.search).get(ROLE_PARAM) === 'PLAYER' ? 'PLAYER' : 'GM';
+// An empty `mock-client` is the one client every page had before rooms had several.
+function clientFromPageUrl(): MockClient {
+  const params = new URLSearchParams(window.location.search);
+  const client = params.get(CLIENT_PARAM) ?? '';
+  const role: PlayerRole = params.get(ROLE_PARAM) === 'PLAYER' ? 'PLAYER' : 'GM';
+
+  return {
+    room: createPageRoom(MOCK_ROOM_ID),
+    connectionId: mockConnectionId(client),
+    playerId: params.get(PLAYER_PARAM) ?? MOCK_PLAYER_ID,
+    name: params.get(NAME_PARAM) ?? MOCK_PLAYER_NAME,
+    role,
+  };
 }

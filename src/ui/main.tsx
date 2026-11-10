@@ -491,8 +491,15 @@ function decodedPreset(data: string | null): Preset | null {
   return decoded.ok ? decoded.value : null;
 }
 
+// One banner at a time, by the UX-DR24 priority.
 function bannerFor(notices: readonly Notice[]): BannerMessage | undefined {
-  return notices.includes('local-save-failed')
-    ? { variant: 'danger', text: copy.localSaveFailed }
-    : undefined;
+  if (notices.includes('local-save-failed')) {
+    return { variant: 'danger', text: copy.localSaveFailed };
+  }
+
+  if (notices.includes('new-version')) {
+    return { variant: 'warning', text: copy.newVersion };
+  }
+
+  return undefined;
 }

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { JsonValue } from '@/core/json';
 import type { BroadcastEvent, Unsubscribe } from '@/platform/ports';
 
-const PAGE_CHANNEL_NAME = 'muster-roll-mock-local';
+const PAGE_CHANNEL_PREFIX = 'muster-roll-mock-local:';
 
 const postedMessageSchema = z.object({
   channel: z.string(),
@@ -42,14 +42,15 @@ export function createMemoryBus(): LocalBus {
 }
 
 // Real pages exchange LOCAL over a BroadcastChannel. It skips its sender, so the sender's own
-// listeners are called directly: Owlbear also delivers a LOCAL message to its sender.
-export function createPageBus(): LocalBus {
+// listeners are called directly: Owlbear also delivers a LOCAL message to its sender. The channel
+// is one client's, so LOCAL never reaches another client in the same browser.
+export function createPageBus(client: string): LocalBus {
   const local = createMemoryBus();
   let shared: BroadcastChannel | null = null;
 
   function sharedChannel(): BroadcastChannel {
     if (shared === null) {
-      shared = new BroadcastChannel(PAGE_CHANNEL_NAME);
+      shared = new BroadcastChannel(`${PAGE_CHANNEL_PREFIX}${client}`);
       shared.addEventListener('message', (event: MessageEvent) => {
         const parsed = postedMessageSchema.safeParse(event.data);
 

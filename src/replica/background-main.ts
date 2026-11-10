@@ -9,7 +9,10 @@ platform.onReady(() => {
 
 async function start(): Promise<void> {
   try {
-    await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING));
+    const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING));
+
+    // A closing tab still sends its held commits.
+    window.addEventListener('pagehide', engine.flushNow);
   } catch (error) {
     console.error('Muster Roll could not start its replica', error);
   }

@@ -1,0 +1,142 @@
+import { describe, expect, test } from 'bun:test';
+
+import type { JsonValue } from '@/core/json';
+import {
+  admitRoomMessage,
+  generationRelation,
+  parseRoomMessage,
+  type GenerationRelation,
+  type RoomMessageType,
+  type SenderRole,
+} from '@/core/room-messages';
+
+const TYPES: RoomMessageType[] = [
+  'commit',
+  'propose',
+  'reject',
+  'ping',
+  'alive',
+  'state-request',
+  'state',
+  'reset',
+  'roll',
+];
+
+const SENDERS: SenderRole[] = ['GM', 'PLAYER', null];
+
+const RELATIONS: GenerationRelation[] = ['lower', 'equal', 'higher'];
+
+// AD-5 written out by hand, one admitted combination per line. Everything else is dropped.
+const ADMITTED = new Set([
+  'commit GM equal',
+  'reject GM equal',
+  'state GM equal',
+  'state GM higher',
+  'reset GM higher',
+  'alive GM lower',
+  'alive GM equal',
+  'alive GM higher',
+  'propose GM equal',
+  'propose PLAYER equal',
+  'ping GM lower',
+  'ping GM equal',
+  'ping GM higher',
+  'ping PLAYER lower',
+  'ping PLAYER equal',
+  'ping PLAYER higher',
+  'state-request GM lower',
+  'state-request GM equal',
+  'state-request GM higher',
+  'state-request PLAYER lower',
+  'state-request PLAYER equal',
+  'state-request PLAYER higher',
+  'roll GM lower',
+  'roll GM equal',
+  'roll GM higher',
+  'roll PLAYER lower',
+  'roll PLAYER equal',
+  'roll PLAYER higher',
+]);
+
+const CASES = TYPES.flatMap((t) =>
+  SENDERS.flatMap((sender) => RELATIONS.map((relation) => [t, sender, relation] as const)),
+);
+
+const RECORD = { k: 'sheet:a', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 1, a: 'gm-a' };
+
+function commit(overrides: { [key: string]: JsonValue } = {}): JsonValue {
+  return { v: 1, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], ...overrides };
+}
+
+describe('admitRoomMessage', () => {
+  test.each(CASES)('%s from %s with a %s generation follows the AD-5 table', (t, sender, rel) => {
+    // #when
+    const admitted = admitRoomMessage(t, sender, rel);
+
+    // #then
+    expect(admitted).toBe(ADMITTED.has(`${t} ${sender} ${rel}`));
+  });
+});
+
+describe('parseRoomMessage', () => {
+  test('reads a valid commit', () => {
+    // #when
+    const parsed = parseRoomMessage(commit());
+
+    // #then
+    expect(parsed).toEqual({
+      ok: true,
+      value: { v: 1, g: { n: 0, a: '' }, t: 'commit', records: [RECORD] },
+    });
+  });
+
+  test('reports a higher v before it looks at the rest of the message', () => {
+    // #when
+    const parsed = parseRoomMessage({ v: 2, t: 'something-new', anything: [1, 2] });
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'newer-version' });
+  });
+
+  test('reports a lower v even for a message that is otherwise a valid commit', () => {
+    // #when
+    const parsed = parseRoomMessage(commit({ v: 0 }));
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'older-version' });
+  });
+
+  test.each<[string, JsonValue]>([
+    ['no v', { g: { n: 0, a: '' }, t: 'commit', records: [RECORD] }],
+    ['a v that is not an integer', commit({ v: '1' })],
+    ['not an object', 'commit'],
+    ['a record that fails its schema', commit({ records: [{ ...RECORD, c: 0 }] })],
+    ['no records', commit({ records: [] })],
+    ['no generation', { v: 1, t: 'commit', records: [RECORD] }],
+    ['an extra key', commit({ extra: true })],
+    ['a type with no schema yet', commit({ t: 'ping' })],
+    ['an unknown type', commit({ t: 'shout' })],
+  ])('drops a message with the right v and %s', (_name, candidate) => {
+    // #when
+    const parsed = parseRoomMessage(candidate);
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+  });
+});
+
+describe('generationRelation', () => {
+  test.each<[string, { n: number; a: string }, GenerationRelation]>([
+    ['the same generation', { n: 1, a: 'x' }, 'equal'],
+    ['a higher counter', { n: 2, a: 'a' }, 'higher'],
+    ['a lower counter', { n: 0, a: 'z' }, 'lower'],
+    ['the same counter and a higher author', { n: 1, a: 'y' }, 'higher'],
+    ['the same counter and a lower author', { n: 1, a: 'w' }, 'lower'],
+  ])('compares %s with the own generation', (_name, message, relation) => {
+    // #when
+    const compared = generationRelation(message, { n: 1, a: 'x' });
+
+    // #then
+    expect(compared).toBe(relation);
+  });
+});

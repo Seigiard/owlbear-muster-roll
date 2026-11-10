@@ -336,4 +336,27 @@ describe('parseEngineMessage', () => {
       { ok: true, value: rejected },
     ]);
   });
+
+  test('accepts a delta carrying the new-version notice and refuses an unknown notice', () => {
+    // #given
+    const delta: EngineMessage = {
+      t: 'delta',
+      engine: 'e1',
+      seq: 6,
+      records: [],
+      notices: ['local-save-failed', 'new-version'],
+    };
+
+    // #when
+    const parsed = [
+      parseEngineMessage(delta),
+      parseEngineMessage({ ...delta, notices: ['no-gm-yet'] }),
+    ];
+
+    // #then
+    expect(parsed).toEqual([
+      { ok: true, value: delta },
+      { ok: false, error: 'invalid-message' },
+    ]);
+  });
 });

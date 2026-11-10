@@ -341,7 +341,7 @@ describe('stored record too large for one message', () => {
 });
 
 describe('player start', () => {
-  test('never calls setItem, even after a command is applied', async () => {
+  test('refuses a write command as not allowed and never calls setItem', async () => {
     // #given
     const rig = createRig('PLAYER');
     const setItem = spyOn(rig.platform.storage, 'setItem');
@@ -351,13 +351,18 @@ describe('player start', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
-    await waitUntil(() => recordsOf(view.store).length === 1);
+    const reason = await rejectionOf(view, {
+      type: 'sheet-create',
+      sheetId: 'brok',
+      kind: 'pc',
+      name: 'Брок',
+    });
 
     // #then
-    expect({ calls: setItem.mock.calls.length, names: namesOf(view.store) }).toEqual({
+    expect({ reason, calls: setItem.mock.calls.length, records: recordsOf(view.store) }).toEqual({
+      reason: 'not-allowed',
       calls: 0,
-      names: ['Брок'],
+      records: [],
     });
   });
 });

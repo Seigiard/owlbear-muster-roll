@@ -299,3 +299,98 @@ describe('send queue', () => {
     expect(rig.sent).toEqual(['good']);
   });
 });
+
+describe('send queue with a composed message', () => {
+  test('composes when the queue takes it, so a change made while it waits goes out', async () => {
+    // #given: the first message is in its spacing pause, so the composed one waits.
+    const rig = createRig();
+    const pauses: (() => void)[] = [];
+    let latest = 'old';
+
+    const queue = createSendQueue(rig, TIMING, () => {
+      return new Promise((resolve) => {
+        pauses.push(resolve);
+      });
+    });
+
+    await queue.enqueue('ui', 'first', LOCAL);
+
+    const composedSend = queue.enqueueComposed('sync', () => latest, LOCAL);
+
+    // #when
+    latest = 'new';
+
+    for (const finish of pauses.splice(0)) {
+      finish();
+    }
+
+    await composedSend;
+
+    // #then
+    expect(rig.sent).toEqual(['first', 'new']);
+  });
+
+  test('sends nothing and waits no spacing for a composer that returns null', async () => {
+    // #given
+    const rig = createRig();
+    const queue = createSendQueue(rig, TIMING, rig.wait);
+
+    // #when
+    await Promise.all([
+      queue.enqueueComposed('sync', () => null, LOCAL),
+      queue.enqueue('ui', 'after', LOCAL),
+    ]);
+
+    // #then
+    expect({ sent: rig.sent, waits: rig.waits }).toEqual({ sent: ['after'], waits: [50] });
+  });
+
+  test('resends the composed message through a rate limit without composing it again', async () => {
+    // #given
+    const rig = createRig();
+    const queue = createSendQueue(rig, TIMING, rig.wait);
+    let composes = 0;
+
+    rig.failures.push({ kind: 'rate-limited' });
+
+    // #when
+    await queue.enqueueComposed(
+      'sync',
+      () => {
+        composes += 1;
+
+        return composes;
+      },
+      LOCAL,
+    );
+
+    // #then
+    expect({ sent: rig.sent, composes }).toEqual({ sent: [1], composes: 1 });
+  });
+
+  test('flushNow composes a waiting message at once', async () => {
+    // #given
+    const rig = createRig();
+    const pauses: (() => void)[] = [];
+
+    const queue = createSendQueue(rig, TIMING, () => {
+      return new Promise((resolve) => {
+        pauses.push(resolve);
+      });
+    });
+
+    await queue.enqueue('ui', 'first', LOCAL);
+
+    const composedSend = queue.enqueueComposed('sync', () => 'composed', LOCAL);
+
+    // #when
+    queue.flushNow();
+
+    const sentAtOnce = [...rig.sent];
+
+    await composedSend;
+
+    // #then
+    expect(sentAtOnce).toEqual(['first', 'composed']);
+  });
+});

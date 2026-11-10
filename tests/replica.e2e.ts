@@ -75,17 +75,22 @@ test('a corrupt stored record is skipped and shows the banner', async ({ page, c
   await expect(page.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
 });
 
-test('a player client persists nothing after a command', async ({ page, context }) => {
+test('a player client refuses a command and persists nothing', async ({ page, context }) => {
   // #given
   await page.goto('/index.html');
   await openBackground(context, '/background.html?mock-role=PLAYER');
+  await requestProjection(page, 'player-ready');
+  await startRecordingWire(page);
 
   // #when
   await sendCommand(page, 'player-command', 'Брок');
-  await expect.poll(() => projectedNames(page, 'player-check')).toEqual(['Брок']);
+  await expect.poll(() => recordedTypes(page)).toContain('command-rejected');
 
   // #then
-  expect(await storedKeys(page)).toEqual([]);
+  expect({
+    names: await projectedNames(page, 'player-check'),
+    stored: await storedKeys(page),
+  }).toEqual({ names: [], stored: [] });
 });
 
 test('a command becomes a record in storage and a delta on the wire', async ({ page, context }) => {
