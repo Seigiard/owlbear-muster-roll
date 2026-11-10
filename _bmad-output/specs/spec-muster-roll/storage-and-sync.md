@@ -18,6 +18,7 @@ If the snapshot does not fit, the GM sees a notice and play continues by broadca
 - All GM tabs and devices can edit.
 - A player's edit goes by broadcast. A GM client checks the write right before the edit takes effect.
 - Live exchange needs a GM online.
+- While no GM client responds, a player edit does not apply. The player sees a "no connection to GM" status, and the client resends the edit until a GM client confirms it.
 
 ## Export files
 

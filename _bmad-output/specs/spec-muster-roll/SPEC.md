@@ -60,6 +60,9 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - **CAP-14**
   - **intent:** A user can open a linked sheet from its token.
   - **success:** The sheet opens for those who can already see it. An NPC sheet opens only for the GM.
+- **CAP-15**
+  - **intent:** A player's edit waits for a GM client, and the player sees when none responds.
+  - **success:** With no GM client responding, the player sees a "no connection to GM" status and the edit does not apply. When a GM client responds, the edit is sent again, confirmed and applied.
 
 ## Constraints
 
@@ -87,6 +90,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - Past the POC: a separate preset editor with preview, request-and-confirm write access, + and − buttons as a property of number fields, token-linked stats, guest "open this character", sending rolls to the Dice extension.
 - Merging two simultaneous edits of one row. Only the latest stays.
 - Merging an imported snapshot into room data.
+- Player edits while no GM client responds, in v1. A server in v2 changes this.
 - Hiding NPC data from a modified client. NPC sheets and NPC rolls are hidden in the interface only, and any client can read the room snapshot.
 - Protection of the local copy before v2, other than the room snapshot and manual export.
 
@@ -103,7 +107,3 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - A `text` cell is fixed label text from the preset, with no id and no stored value.
 - Write access to a character includes adding and removing its `repeat` rows.
 - A joining client gets current data from an online GM client, otherwise from the last snapshot.
-
-## Open Questions
-
-- What happens to a player's edit while no GM client responds, for example when Chrome has frozen a hidden GM tab? Player edits take effect only after a GM client checks them.
