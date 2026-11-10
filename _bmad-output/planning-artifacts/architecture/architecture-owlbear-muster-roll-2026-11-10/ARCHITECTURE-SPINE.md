@@ -145,7 +145,7 @@ A message with a higher generation also starts AD-9 adoption.
   2. Merge it into the replica. Stop if a `resume` or visibility change falls between this read and the write.
   3. Encode every record, tombstones and versions included, with the generation, sorted by key, deflated and base64-encoded, using `core/snapshot`.
   4. Compute the UTF-8 JSON size of all room metadata with this key replaced. Over 15500 bytes, skip the write and raise the notice. The previous snapshot stays.
-  5. Write, wait a settle delay of at least 1500 ms, and read back. The check passes when the decoded result holds every written record at an equal or higher version, or has a higher generation. Otherwise raise the same notice.
+  5. Write and read back at once. The check passes when the decoded result holds every written record at an equal or higher version, or has a higher generation. Otherwise raise the same notice.
 
 ### AD-9 — Generation replaces room data
 
@@ -289,7 +289,8 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 
 | Item | Why it can wait | Revisit |
 | --- | --- | --- |
-| Timeout, pause, delay and spacing values | One owner each. Start spacing at 150 ms, as public extensions do | When the burst measurement exists |
+| Timeout, pause and delay values | One owner each | First live-room test |
+| Send spacing | One owner. Start at 50 ms, under the measured limit of about 25 messages per second per connection | If a live session gets `RateLimitHit` |
 | Preset JSON keys beyond those in `preset-format.md` | One schema in `core/preset` owns them | First preset |
 | Snapshot byte layout, such as an author table | One codec in `core/snapshot`, under the AD-12 version rule | When size pressure appears |
 | Removing tombstones inside a generation | Only needed if a room runs out of space | First real-format size measurement |
@@ -298,14 +299,12 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 | Server storage, D1 | Non-goal in v1. Records map to rows with version-checked writes | v2 |
 | Monitoring and error reporting | No backend in v1 | After the first real session |
 
-Facts these rules rely on that are not yet measured. Check them in a live room before the first slice that depends on them:
+Facts still not measured. None changes a rule today:
 
-| Fact | Depends on it |
+| Fact | Touches |
 | --- | --- |
-| Broadcast rate limit: threshold, window, scope, and whether `LOCAL` counts | AD-12 spacing |
-| What a broadcast over 16KB does, and how size is counted for Cyrillic text | AD-12 margin |
-| A `LOCAL` round trip, and whether the sender gets an echo | AD-10 |
-| Whether a second tab of one account appears in the other tab's party list as GM | AD-5 |
-| Whether a read right after `setMetadata` shows a dropped write | AD-8 settle delay |
-| Whether `visibilitychange` or `resume` fires after a Chrome freeze | AD-7 |
-| `localStorage` in a third-party iframe in Safari | AD-11 |
+| Whether the rate limit counts bytes as well as messages | AD-12 spacing for `state` chunks |
+| Whether `LOCAL` and `REMOTE` share one rate budget, and whether other extensions share it | AD-12 spacing |
+| The real broadcast size limit. No limit appeared up to 32000 bytes, and the rule stays at the documented 16KB | AD-12 margin |
+| The events a page receives after a real Chrome freeze | AD-7 entry triggers |
+| Long-term `localStorage` retention in Safari. Only a reload was tested | AD-11 |
