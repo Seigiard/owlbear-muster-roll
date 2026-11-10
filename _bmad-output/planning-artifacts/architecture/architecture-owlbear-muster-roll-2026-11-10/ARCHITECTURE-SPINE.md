@@ -8,7 +8,7 @@ scope: 'The Muster Roll v1 Owlbear Rodeo extension, with no own server'
 status: final
 created: '2026-11-10'
 updated: '2026-11-10'
-binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-16]
+binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-16, CAP-17, CAP-18, CAP-19]
 sources:
   - ../../../specs/spec-muster-roll/SPEC.md
   - ../../../specs/spec-muster-roll/preset-format.md
@@ -287,6 +287,9 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 | CAP-14 | ui, platform | AD-2, Visibility convention |
 | CAP-15 | replica, ui | AD-4, AD-6, AD-10, AD-12 |
 | CAP-16 | core, replica, ui | AD-2, AD-10 |
+| CAP-17 | core, replica, ui | AD-2, AD-5, AD-10 |
+| CAP-18 | replica, ui, platform | AD-2, AD-5, AD-10 |
+| CAP-19 | core/access, replica, ui | AD-2, AD-5, AD-10 |
 
 ## Deferred
 

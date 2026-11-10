@@ -17,7 +17,7 @@ sources:
 
 ## Why
 
-Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep the whole party and the NPCs in one room, for any game system. The simple sheet extension, dummy-sheet, stores each sheet in the player's browser. It has no room storage, no presets and no GM-owned sheets. Muster Roll gives one room GM-owned sheets that a preset defines. Version 1 is a POC without a server. It must prove that this model holds for a real session.
+Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep the whole party and the NPCs in one room, for any game system. The simple sheet extension, dummy-sheet, stores each sheet in the player's browser. It has no room storage, no presets and no GM-owned sheets. Muster Roll gives one room GM-owned sheets that a preset defines. Version 1 is a POC without a server. It must prove that this model holds for a real session. During play, the GM and players open sheets to see current stats and inventory, and dice cells spare players from memorising the rules.
 
 ## Capabilities
 
@@ -69,6 +69,15 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - **CAP-16**
   - **intent:** The GM can make several copies of an NPC, so that each token has its own NPC.
   - **success:** Nine copies of one NPC give ten NPCs with the same values and numbered names. An edit to one does not change the others. A copy has no token link until the GM links one.
+- **CAP-17**
+  - **intent:** The GM can create, rename and delete characters and NPCs.
+  - **success:** A new or renamed sheet shows on every client that can see it. After one confirmation, a deleted sheet disappears with its values, token links, owner and write rights.
+- **CAP-18**
+  - **intent:** The GM can link a token to a sheet and remove that link.
+  - **success:** A linked token opens its sheet (CAP-14). A token links to one sheet, and a sheet can have many tokens. Removing a link keeps the sheet and the token.
+- **CAP-19**
+  - **intent:** The GM can mark a player as the owner of a character.
+  - **success:** A character has at most one owner. The owner's client shows that character first. Choosing an owner turns on write access for that player, and the GM can turn it off (CAP-3).
 
 ## Constraints
 
@@ -113,3 +122,5 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - A `text` cell is fixed label text from the preset, with no id and no stored value.
 - Write access to a character includes adding and removing its `repeat` rows.
 - A joining client gets current data from an online GM client, otherwise from the last snapshot.
+- The interface text is Russian in v1.
+- The interface follows the live Owlbear theme, and no separate palette exists.

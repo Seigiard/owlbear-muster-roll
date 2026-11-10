@@ -136,7 +136,7 @@ The window opens at 720 by 600 px. Tablet and laptop behave the same. Check the 
 
 ## Key Flows
 
-### Oleg prepares the campaign (CAP-1, CAP-3, CAP-4, CAP-5, CAP-12, CAP-14)
+### Oleg prepares the campaign (CAP-1, CAP-3, CAP-4, CAP-5, CAP-12, CAP-14, CAP-17, CAP-18, CAP-19)
 
 1. Oleg, the GM, opens the empty window and presses "Загрузить пресет".
 2. He presses "+", names the character and fills in the sheet. The preset's aligned sections appear as one grid.
@@ -146,7 +146,7 @@ The window opens at 720 by 600 px. Tablet and laptop behave the same. Check the 
 
 Failure path: a file that fails validation shows the bad file message under the button, and nothing changes. Oleg can also press "Скачать пресет" to reuse it in another room.
 
-### Oleg runs a fight with ten skeletons (CAP-6, CAP-7, CAP-14, CAP-16)
+### Oleg runs a fight with ten skeletons (CAP-6, CAP-7, CAP-14, CAP-16, CAP-17, CAP-18)
 
 1. Oleg opens the NPC tab, presses "Добавить NPC" and names it "Скелет 1".
 2. He picks "Дублировать…" and enters 9.
