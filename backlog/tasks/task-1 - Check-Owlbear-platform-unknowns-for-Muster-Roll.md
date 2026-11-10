@@ -1,9 +1,11 @@
 ---
 id: TASK-1
 title: Check Owlbear platform unknowns for Muster Roll
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-10T05:34:00Z'
+updated_date: '2026-11-10T05:38:00Z'
 labels: []
 dependencies: []
 documentation:
@@ -29,3 +31,12 @@ The Muster Roll POC has no server: it relies on broadcast between clients, a bac
 - [ ] #5 The record states what Owlbear does when room metadata is written past 16kB
 - [ ] #6 Each result is recorded in the Muster Roll spec through `bmad-spec`, and the matching open question is closed
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Build a throwaway Owlbear extension on branch prototype/owlbear-probe: sync burst, background page heartbeat with player pings, player id journal, room metadata limit search.
+2. Check the probe logic against a mock SDK, because it cannot run in Owlbear from here.
+3. The user runs it in a throwaway room with guests and logged-in players.
+4. Record each result in the spec through bmad-spec.
+<!-- SECTION:PLAN:END -->
