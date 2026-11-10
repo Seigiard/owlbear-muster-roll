@@ -1,0 +1,182 @@
+import { describe, expect, test } from 'bun:test';
+
+import fc from 'fast-check';
+
+import { compareGenerations, mergeRecords, nextCounter, type Ordering } from '@/core/merge';
+import type { VersionedRecord } from '@/core/records';
+import type { Generation } from '@/core/storage-key';
+
+const NUM_RUNS = 1000;
+
+const fieldValue = fc.oneof(
+  fc.integer({ min: -2, max: 2 }),
+  fc.constantFrom('a', 'b'),
+  fc.boolean(),
+);
+
+const rowData = fc.oneof(
+  fc.constant(null),
+  fc.dictionary(fc.constantFrom('x', 'y', 'z'), fieldValue, { noNullPrototype: true }),
+);
+
+// A small domain, so that equal versions come up often.
+const anyVersion = fc.record({
+  k: fc.constant('row:s:r'),
+  d: rowData,
+  c: fc.integer({ min: 1, max: 3 }),
+  a: fc.constantFrom('a', 'b', 'Z'),
+});
+
+const equalVersion = fc.record({
+  k: fc.constant('row:s:r'),
+  d: rowData,
+  c: fc.constant(4),
+  a: fc.constant('a'),
+});
+
+function row(c: number, a: string, d: Record<string, number> | null = { x: 1 }): VersionedRecord {
+  return { k: 'row:s:r', d, c, a };
+}
+
+describe('mergeRecords', () => {
+  test('picks the higher counter when it is the left record', () => {
+    // #given
+    const newer = row(10, 'a');
+
+    // #when
+    const winner = mergeRecords(newer, row(9, 'z'));
+
+    // #then
+    expect(winner).toBe(newer);
+  });
+
+  test('picks the higher counter when it is the right record', () => {
+    // #given
+    const newer = row(10, 'a');
+
+    // #when
+    const winner = mergeRecords(row(9, 'z'), newer);
+
+    // #then
+    expect(winner).toBe(newer);
+  });
+
+  test('breaks a counter tie with the higher author', () => {
+    // #given
+    const higher = row(5, 'b');
+
+    // #when
+    const winner = mergeRecords(row(5, 'a'), higher);
+
+    // #then
+    expect(winner).toBe(higher);
+  });
+
+  test('orders authors by code unit, not by locale: "a" beats "Z"', () => {
+    // #given
+    const lowerCase = row(5, 'a');
+
+    // #when
+    const winner = mergeRecords(row(5, 'Z'), lowerCase);
+
+    // #then
+    expect(winner).toBe(lowerCase);
+  });
+
+  test('orders authors by UTF-16 code unit, not by code point', () => {
+    // #given
+    const higherCodeUnit = row(5, '\u{FFFD}');
+
+    // #when
+    const winner = mergeRecords(row(5, '\u{1F600}'), higherCodeUnit);
+
+    // #then
+    expect(winner).toBe(higherCodeUnit);
+  });
+
+  test('lets a newer tombstone beat a record with data', () => {
+    // #given
+    const tombstone = row(6, 'a', null);
+
+    // #when
+    const winner = mergeRecords(row(5, 'z'), tombstone);
+
+    // #then
+    expect(winner).toEqual({ k: 'row:s:r', d: null, c: 6, a: 'a' });
+  });
+
+  test('picks the higher JSON text of d for equal versions, from either side', () => {
+    // #given
+    const first = row(5, 'a', { x: 1 });
+    const second = row(5, 'a', { x: 2 });
+
+    // #when
+    const winners = [mergeRecords(first, second), mergeRecords(second, first)];
+
+    // #then
+    expect(winners).toEqual([second, second]);
+  });
+});
+
+describe.each([
+  ['any versions', anyVersion],
+  ['equal (c, a) with different d', equalVersion],
+])('merge laws over %s', (_name, version) => {
+  test('merge is commutative', () => {
+    fc.assert(
+      fc.property(version, version, (left, right) => {
+        expect(mergeRecords(left, right)).toEqual(mergeRecords(right, left));
+      }),
+      { numRuns: NUM_RUNS },
+    );
+  });
+
+  test('merge is associative', () => {
+    fc.assert(
+      fc.property(version, version, version, (first, second, third) => {
+        expect(mergeRecords(mergeRecords(first, second), third)).toEqual(
+          mergeRecords(first, mergeRecords(second, third)),
+        );
+      }),
+      { numRuns: NUM_RUNS },
+    );
+  });
+
+  test('merge is idempotent', () => {
+    fc.assert(
+      fc.property(version, (record) => {
+        expect(mergeRecords(record, record)).toEqual(record);
+      }),
+      { numRuns: NUM_RUNS },
+    );
+  });
+});
+
+describe('compareGenerations', () => {
+  test.each<[Generation, Generation, Ordering]>([
+    [{ n: 2, a: 'a' }, { n: 1, a: 'z' }, 1],
+    [{ n: 10, a: 'a' }, { n: 9, a: 'a' }, 1],
+    [{ n: 1, a: 'a' }, { n: 1, a: 'b' }, -1],
+    [{ n: 1, a: 'a' }, { n: 1, a: 'a' }, 0],
+  ])('orders %j against %j as %d', (left, right, expected) => {
+    // #when
+    const ordering = compareGenerations(left, right);
+
+    // #then
+    expect(ordering).toBe(expected);
+  });
+});
+
+describe('nextCounter', () => {
+  test.each([
+    [7, 0, 8],
+    [7, 8, 9],
+    [12, 8, 13],
+  ])('after known %d and minted %d gives %d', (known, minted, expected) => {
+    // #when
+    const next = nextCounter(known, minted);
+
+    // #then
+    expect(next).toBe(expected);
+  });
+});

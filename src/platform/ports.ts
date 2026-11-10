@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue } from '@/core/json';
+import type { Result } from '@/core/result';
 
 export type Unsubscribe = () => void;
 
@@ -44,12 +45,17 @@ export type PlayerPort = {
   getRole: () => Promise<PlayerRole>;
 };
 
+export type StorageOperation = 'read' | 'write' | 'remove' | 'list';
+
+export type StorageFailure = { operation: StorageOperation; reason: string };
+
 // Synchronous, because one step reads, merges and sets a persisted record.
+// A quota or access error is an expected failure, so it comes back as a result.
 export type StoragePort = {
-  getItem: (key: string) => string | null;
-  setItem: (key: string, value: string) => void;
-  removeItem: (key: string) => void;
-  keys: () => string[];
+  getItem: (key: string) => Result<string | null, StorageFailure>;
+  setItem: (key: string, value: string) => Result<void, StorageFailure>;
+  removeItem: (key: string) => Result<void, StorageFailure>;
+  keys: () => Result<string[], StorageFailure>;
 };
 
 export type ContextMenuKeyFilter = {

@@ -3,6 +3,8 @@ import OBR from '@owlbear-rodeo/sdk';
 import type { JsonObject, JsonValue } from '@/core/json';
 import type { PartyMember, Platform } from '@/platform/ports';
 
+import { createBrowserStorage } from './browser-storage';
+
 export const platform: Platform = {
   onReady: (callback) => {
     OBR.onReady(callback);
@@ -50,16 +52,7 @@ export const platform: Platform = {
     getName: () => OBR.player.getName(),
     getRole: () => OBR.player.getRole(),
   },
-  storage: {
-    getItem: (key) => localStorage.getItem(key),
-    setItem: (key, value) => {
-      localStorage.setItem(key, value);
-    },
-    removeItem: (key) => {
-      localStorage.removeItem(key);
-    },
-    keys: () => Object.keys(localStorage),
-  },
+  storage: createBrowserStorage(() => localStorage),
   contextMenu: {
     create: (item) => OBR.contextMenu.create(item),
     remove: (id) => OBR.contextMenu.remove(id),

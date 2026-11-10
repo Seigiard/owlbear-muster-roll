@@ -1,5 +1,13 @@
 import type { JsonObject } from '@/core/json';
-import type { BroadcastEvent, Platform, Theme, Unsubscribe } from '@/platform/ports';
+import { err, ok, type Result } from '@/core/result';
+import type {
+  BroadcastEvent,
+  Platform,
+  StorageFailure,
+  StorageOperation,
+  Theme,
+  Unsubscribe,
+} from '@/platform/ports';
 
 const MOCK_ROOM_ID = 'mock-room';
 const MOCK_PLAYER_ID = 'mock-player';
@@ -25,7 +33,10 @@ type MetadataListener = (metadata: JsonObject) => void;
 
 type ThemeListener = (theme: Theme) => void;
 
-export type MockPlatform = Platform & { setTheme: (theme: Theme) => void };
+export type MockPlatform = Platform & {
+  setTheme: (theme: Theme) => void;
+  setFailingStorageOperations: (operations: StorageOperation[]) => void;
+};
 
 declare global {
   interface Window {
@@ -45,8 +56,20 @@ export function createMockPlatform(): MockPlatform {
   const metadataListeners = new Set<MetadataListener>();
   const themeListeners = new Set<ThemeListener>();
   const stored = new Map<string, string>();
+  let failingStorageOperations = new Set<StorageOperation>();
   let metadata: JsonObject = {};
   let currentTheme = MOCK_THEME;
+
+  function attemptStorage<Value>(
+    operation: StorageOperation,
+    action: () => Value,
+  ): Result<Value, StorageFailure> {
+    if (failingStorageOperations.has(operation)) {
+      return err({ operation, reason: 'mock storage failure' });
+    }
+
+    return ok(action());
+  }
 
   return {
     onReady: (callback) => {
@@ -115,14 +138,18 @@ export function createMockPlatform(): MockPlatform {
       getRole: () => Promise.resolve('GM'),
     },
     storage: {
-      getItem: (key) => stored.get(key) ?? null,
+      getItem: (key) => attemptStorage('read', () => stored.get(key) ?? null),
       setItem: (key, value) => {
-        stored.set(key, value);
+        return attemptStorage('write', () => {
+          stored.set(key, value);
+        });
       },
       removeItem: (key) => {
-        stored.delete(key);
+        return attemptStorage('remove', () => {
+          stored.delete(key);
+        });
       },
-      keys: () => [...stored.keys()],
+      keys: () => attemptStorage('list', () => [...stored.keys()]),
     },
     contextMenu: {
       create: () => Promise.resolve(),
@@ -171,6 +198,9 @@ export function createMockPlatform(): MockPlatform {
       for (const listener of themeListeners) {
         listener(theme);
       }
+    },
+    setFailingStorageOperations: (operations) => {
+      failingStorageOperations = new Set(operations);
     },
   };
 }

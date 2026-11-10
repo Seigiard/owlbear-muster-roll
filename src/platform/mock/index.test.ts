@@ -142,7 +142,10 @@ describe('mock storage', () => {
     expect({
       value: platform.storage.getItem('mr1:room:0::preset'),
       keys: platform.storage.keys(),
-    }).toEqual({ value: 'value', keys: ['mr1:room:0::preset'] });
+    }).toEqual({
+      value: { ok: true, value: 'value' },
+      keys: { ok: true, value: ['mr1:room:0::preset'] },
+    });
   });
 
   test('returns null for a removed key', () => {
@@ -155,7 +158,55 @@ describe('mock storage', () => {
     platform.storage.removeItem('key');
 
     // #then
-    expect(platform.storage.getItem('key')).toBeNull();
+    expect(platform.storage.getItem('key')).toEqual({ ok: true, value: null });
+  });
+
+  test('reports a simulated write failure and keeps the stored value', () => {
+    // #given
+    const platform = createMockPlatform();
+
+    platform.storage.setItem('key', 'old');
+    platform.setFailingStorageOperations(['write']);
+
+    // #when
+    const written = platform.storage.setItem('key', 'new');
+
+    // #then
+    expect({ written, read: platform.storage.getItem('key') }).toEqual({
+      written: { ok: false, error: { operation: 'write', reason: 'mock storage failure' } },
+      read: { ok: true, value: 'old' },
+    });
+  });
+
+  test.each([
+    ['read', 'getItem'],
+    ['remove', 'removeItem'],
+    ['list', 'keys'],
+  ] as const)('reports a simulated %s failure from %s', (operation, method) => {
+    // #given
+    const platform = createMockPlatform();
+
+    platform.setFailingStorageOperations([operation]);
+
+    // #when
+    const result = platform.storage[method]('key');
+
+    // #then
+    expect(result).toEqual({ ok: false, error: { operation, reason: 'mock storage failure' } });
+  });
+
+  test('stops failing once the failing operations are cleared', () => {
+    // #given
+    const platform = createMockPlatform();
+
+    platform.setFailingStorageOperations(['write']);
+    platform.setFailingStorageOperations([]);
+
+    // #when
+    const written = platform.storage.setItem('key', 'value');
+
+    // #then
+    expect(written).toEqual({ ok: true, value: undefined });
   });
 });
 
