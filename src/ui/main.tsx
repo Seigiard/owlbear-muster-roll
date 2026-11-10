@@ -1,10 +1,12 @@
 import { useStore } from '@nanostores/react';
-import { useMemo, useState } from 'react';
+import { nanoid } from 'nanoid';
+import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { decodePreset, type Preset } from '@/core/preset';
 import { hasLiveSheet, presetDataSchema, type VersionedRecord } from '@/core/records';
+import { liveSheets, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
 import type { Notice } from '@/core/ui-messages';
 import type { PlayerRole } from '@/core/visibility';
@@ -16,6 +18,7 @@ import type { BannerMessage } from '@/ui/primitives/banner';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
 import { SettingsView } from '@/ui/settings/settings-view';
+import { CharacterHeader } from '@/ui/sheet/character-header';
 import { WindowShell, type ShellLayout } from '@/ui/shell/window-shell';
 import { followTheme } from '@/ui/theme';
 
@@ -29,6 +32,9 @@ const NPC_TAB = 'npc';
 const SETTINGS_TAB = 'settings';
 
 type PresetState = 'unknown' | 'absent' | 'present';
+
+// The command id ties a rejection to the creation, so a refused sheet stops waiting for its tab.
+type CreatedTab = { tab: string; commandId: string };
 
 type WindowRootProps = {
   role: PlayerRole;
@@ -73,19 +79,66 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
   const notices = useStore(projection.$notices);
   const loaded = useStore(projection.$loaded);
   const records = useStore(projection.$records);
+  const rejection = useStore(projection.$rejection);
   const presetData = presetDataOf(records);
   const preset = useMemo(() => decodedPreset(presetData), [presetData]);
+  const characters = useMemo(() => liveSheets(records.values(), 'pc'), [records]);
   const presetState: PresetState = !loaded ? 'unknown' : preset === null ? 'absent' : 'present';
   const [seenPresetState, setSeenPresetState] = useState(presetState);
   const [selectedTab, setSelectedTab] = useState(NPC_TAB);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // A sheet this window created, until its record arrives and its tab can open.
+  const [createdTab, setCreatedTab] = useState<CreatedTab | null>(null);
+  const [focusNameOf, setFocusNameOf] = useState<string | null>(null);
+  const characterTabs = characters.map((sheet) => sheetKey(sheet.sheetId));
+  const firstTab = characterTabs[0] ?? NPC_TAB;
+
+  const clearNameFocus = useCallback(() => {
+    setFocusNameOf(null);
+  }, []);
+
+  let shownTab = selectedTab;
 
   if (presetState !== seenPresetState) {
     setSeenPresetState(presetState);
 
-    // The arrival of a first preset selects Settings, so the GM sees the result.
     if (seenPresetState === 'absent' && presetState === 'present') {
-      setSelectedTab(SETTINGS_TAB);
+      // The arrival of a first preset selects Settings, so the GM sees the result.
+      shownTab = SETTINGS_TAB;
+    } else if (presetState === 'present') {
+      shownTab = firstTab;
+    }
+  }
+
+  if (createdTab !== null && createdTab.commandId === rejection?.id) {
+    setCreatedTab(null);
+  } else if (createdTab !== null && characterTabs.includes(createdTab.tab)) {
+    setCreatedTab(null);
+    setFocusNameOf(createdTab.tab);
+    shownTab = createdTab.tab;
+  }
+
+  // A selected sheet that disappears hands the selection to the first tab.
+  if (shownTab !== NPC_TAB && shownTab !== SETTINGS_TAB && !characterTabs.includes(shownTab)) {
+    shownTab = firstTab;
+  }
+
+  if (shownTab !== selectedTab) {
+    setSelectedTab(shownTab);
+  }
+
+  function addCharacter(): void {
+    const sheetId = nanoid();
+
+    const sent = sendCommand({
+      type: 'sheet-create',
+      sheetId,
+      kind: 'pc',
+      name: copy.newCharacter,
+    });
+
+    if (sent.ok) {
+      setCreatedTab({ tab: sheetKey(sheetId), commandId: sent.value });
     }
   }
 
@@ -130,10 +183,38 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
 
     return {
       kind: 'tabs',
-      selectedTab,
+      selectedTab: shownTab,
       onSelectTab: setSelectedTab,
-      tabs: [
-        // Temporary until Story 1.6 gives the NPC tab its content.
+      // Temporary until Story 1.8 lays out the sheet: a character tab holds its header only.
+      scrollingTabs: characters.map((sheet) => {
+        const id = sheetKey(sheet.sheetId);
+
+        return {
+          id,
+          label: sheet.name,
+          content: (
+            <CharacterHeader
+              key={id}
+              sheetId={sheet.sheetId}
+              name={sheet.name}
+              sendCommand={sendCommand}
+              store={projection}
+              focusName={focusNameOf === id}
+              onNameFocused={clearNameFocus}
+            />
+          ),
+        };
+      }),
+      add:
+        presetState === 'present'
+          ? {
+              label: copy.addSign,
+              accessibleName: copy.command.addCharacter,
+              onPress: addCharacter,
+            }
+          : undefined,
+      pinnedTabs: [
+        // Temporary until Story 1.11 gives the NPC tab its content.
         { id: NPC_TAB, label: copy.place.npc, content: loading },
         {
           id: SETTINGS_TAB,

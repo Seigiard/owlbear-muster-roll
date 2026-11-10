@@ -12,7 +12,13 @@ export const copy = {
     unlinkSheet: 'Отвязать лист',
     openSheet: 'Открыть лист',
     cancel: 'Отменить',
+    addCharacter: 'Добавить персонажа',
   },
+  label: {
+    sheetName: 'Имя персонажа',
+  },
+  newCharacter: 'Новый персонаж',
+  addSign: '+',
   place: {
     settings: 'Настройки',
     access: 'Доступ',

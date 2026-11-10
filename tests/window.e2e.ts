@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import { cssValue, LIGHT_THEME, renderedColor, setTheme, tokenColor } from './support/colors';
 import type { Rgb } from './support/colors';
@@ -102,7 +102,10 @@ test('the shell uses the DESIGN.md radii and content padding', async ({ page }) 
     cssValue(page.getByRole('tab', { name: 'NPC' }), 'border-top-left-radius'),
     cssValue(page.getByRole('tab', { name: 'NPC' }), 'border-bottom-left-radius'),
     cssValue(page.getByRole('tabpanel'), 'padding-top'),
-    cssValue(page.getByRole('tablist'), 'column-gap'),
+    gapBetween(
+      page.getByRole('tab', { name: 'NPC' }),
+      page.getByRole('tab', { name: 'Настройки' }),
+    ),
   ]);
 
   // #then
@@ -324,6 +327,12 @@ test('the theme mode is on the root element when main is first inserted', async 
   // #then
   await expect(page.locator('html')).toHaveAttribute('data-mode-at-first-main', 'DARK');
 });
+
+async function gapBetween(left: Locator, right: Locator): Promise<string> {
+  const [leftBox, rightBox] = await Promise.all([left.boundingBox(), right.boundingBox()]);
+
+  return `${(rightBox?.x ?? 0) - ((leftBox?.x ?? 0) + (leftBox?.width ?? 0))}px`;
+}
 
 async function openWindow(page: Page): Promise<void> {
   await page.goto('/index.html');

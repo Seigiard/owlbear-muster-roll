@@ -10,7 +10,7 @@ import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { encodePreset, parsePresetFile, type Preset } from '@/core/preset';
 import { presetDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
 import type { Timing } from '@/core/timing';
-import { UI_CHANNEL } from '@/core/ui-messages';
+import { UI_CHANNEL, type Command } from '@/core/ui-messages';
 import { createMemoryBus, createMockPlatform, type MockPlatform } from '@/platform/current';
 import type { PlayerRole, SendResult } from '@/platform/ports';
 import { createSendQueue } from '@/platform/send-queue';
@@ -57,6 +57,8 @@ type Rig = {
 };
 
 type WindowView = { client: ReplicaClient; store: ProjectionStore };
+
+type Aftermath = { records: VersionedRecord[]; deltas: number };
 
 const cleanups: (() => void)[] = [];
 
@@ -192,6 +194,23 @@ async function openAndLoad(rig: Rig): Promise<WindowView> {
   return view;
 }
 
+async function rejectionOf(view: WindowView, command: Command): Promise<string | undefined> {
+  const sent = view.client.sendCommand(command);
+
+  if (!sent.ok) {
+    throw new Error(`the window refused the command before sending it: ${sent.error}`);
+  }
+
+  await waitUntil(() => view.store.$rejection.get()?.id === sent.value);
+
+  return view.store.$rejection.get()?.reason;
+}
+
+// What a rejected command must leave: the window's records and no delta at all.
+function unchanged(rig: Rig, view: WindowView): Aftermath {
+  return { records: recordsOf(view.store), deltas: deltas(rig).length };
+}
+
 describe('GM start', () => {
   test('puts every persisted record of the current generation in the replica', async () => {
     // #given
@@ -250,12 +269,12 @@ describe('corrupt stored record', () => {
     const rig = createRig();
 
     seed(rig, 'sheet:bad', '{not json');
-    await startEngine(rig, ids('engine', 'bad'));
+    await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Новый' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'bad', kind: 'pc', name: 'Новый' });
     await waitUntil(() => deltas(rig).length === 1);
     await pause(5);
 
@@ -305,7 +324,7 @@ describe('player start', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Брок' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
     await waitUntil(() => recordsOf(view.store).length === 1);
 
     // #then
@@ -329,7 +348,7 @@ describe('open window', () => {
     await waitUntil(() => recordsOf(view.store).length === 1);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', kind: 'npc', name: 'Скелет' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'skel', kind: 'npc', name: 'Скелет' });
     await waitUntil(() => recordsOf(view.store).length === 2);
 
     // #then
@@ -714,17 +733,13 @@ describe('command', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', kind: 'npc', name: 'Скелет' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'skel', kind: 'npc', name: 'Скелет' });
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
-    expect({
-      kinds: deltas(rig)[0]?.records?.map((record) => [record.d, record.c, record.a]),
-      key: deltas(rig)[0]?.records?.[0]?.k.startsWith('sheet:'),
-    }).toEqual({
-      kinds: [[{ kind: 'npc', name: 'Скелет', order: 0 }, 1, 'mock-connection']],
-      key: true,
-    });
+    expect(deltas(rig)[0]?.records).toEqual([
+      { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'mock-connection' },
+    ]);
   });
 
   test('gives each new sheet of a kind the next order', async () => {
@@ -736,9 +751,9 @@ describe('command', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Брок' });
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Лиза' });
-    view.client.sendCommand({ type: 'sheet-create', kind: 'npc', name: 'Скелет' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'b', kind: 'pc', name: 'Брок' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'l', kind: 'pc', name: 'Лиза' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 's', kind: 'npc', name: 'Скелет' });
     await waitUntil(() => deltas(rig).length === 3);
 
     // #then
@@ -753,12 +768,12 @@ describe('command', () => {
     // #given
     const rig = createRig();
 
-    await startEngine(rig, ids('engine', 'made'));
+    await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Брок' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'made', kind: 'pc', name: 'Брок' });
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
@@ -788,7 +803,7 @@ describe('command', () => {
       await post(rig, {
         t: 'command',
         id: 'whole',
-        command: { type: 'sheet-create', kind: 'pc', name: 'x', ...extra },
+        command: { type: 'sheet-create', sheetId: 'whole', kind: 'pc', name: 'x', ...extra },
       });
       await pause(10);
 
@@ -811,7 +826,7 @@ describe('command', () => {
     const message = {
       t: 'command',
       id: 'once',
-      command: { type: 'sheet-create', kind: 'pc', name: 'x' },
+      command: { type: 'sheet-create', sheetId: 'once', kind: 'pc', name: 'x' },
     };
 
     // #when
@@ -834,7 +849,7 @@ describe('command', () => {
 
     const view = await openAndLoad(rig);
 
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'x' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'x', kind: 'pc', name: 'x' });
     await waitUntil(() => deltas(rig).length === 1);
 
     const before = rig.wire.length;
@@ -857,7 +872,7 @@ describe('window lifecycle', () => {
 
     const first = await openAndLoad(rig);
 
-    first.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Брок' });
+    first.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
     await waitUntil(() => recordsOf(first.store).length === 1);
     first.client.stop();
 
@@ -874,7 +889,7 @@ describe('window lifecycle', () => {
     const engine = await startEngine(rig);
     const first = await openAndLoad(rig);
 
-    first.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Брок' });
+    first.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
     await waitUntil(() => recordsOf(first.store).length === 1);
     engine.stop();
     first.client.stop();
@@ -894,7 +909,7 @@ describe('window lifecycle', () => {
     const engine = await startEngine(rig, ids('engine-1'));
     const view = await openAndLoad(rig);
 
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'До' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'before', kind: 'pc', name: 'До' });
     await waitUntil(() => recordsOf(view.store).length === 1);
     engine.stop();
 
@@ -903,7 +918,7 @@ describe('window lifecycle', () => {
     const requestsBefore = requests(rig).length;
 
     // #when: the restarted engine counts from 1 again, so its delta must not look old.
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'После' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'after', kind: 'pc', name: 'После' });
     await waitUntil(() => requests(rig).length > requestsBefore);
     await waitUntil(() => recordsOf(view.store).length === 2);
 
@@ -924,7 +939,7 @@ describe('send queue through the engine', () => {
     rig.platform.failNextSends([{ kind: 'rate-limited' }, { kind: 'rate-limited' }]);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Брок' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
     await waitUntil(() => recordsOf(view.store).length === 1);
 
     // #then
@@ -933,34 +948,6 @@ describe('send queue through the engine', () => {
 });
 
 describe('record too large', () => {
-  test('rejects a command whose record cannot fit one message and applies nothing', async () => {
-    // #given
-    const rig = createRig();
-
-    await startEngine(rig);
-
-    const view = await openAndLoad(rig);
-    const longName = 'ы'.repeat(7300);
-
-    // #when
-    const sent = view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: longName });
-
-    await waitUntil(() => view.store.$rejection.get() !== null);
-
-    // #then
-    expect({
-      rejection: view.store.$rejection.get(),
-      records: recordsOf(view.store),
-      deltas: deltas(rig).length,
-      stored: rig.platform.storage.keys(),
-    }).toEqual({
-      rejection: { t: 'command-rejected', id: sent.ok ? sent.value : '', reason: 'too-large' },
-      records: [],
-      deltas: 0,
-      stored: { ok: true, value: [] },
-    });
-  });
-
   test('refuses at the window a command that cannot fit one message and sends nothing', async () => {
     // #given
     const rig = createRig();
@@ -973,6 +960,7 @@ describe('record too large', () => {
     // #when
     const sent = view.client.sendCommand({
       type: 'sheet-create',
+      sheetId: 'long',
       kind: 'pc',
       name: 'ы'.repeat(8000),
     });
@@ -985,6 +973,156 @@ describe('record too large', () => {
       newMessages: 0,
     });
   });
+});
+
+describe('sheet-create', () => {
+  test('stores the name without its surrounding spaces under the key of the sent id', async () => {
+    // #given
+    const rig = createRig();
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    view.client.sendCommand({
+      type: 'sheet-create',
+      sheetId: 'b-1_X',
+      kind: 'pc',
+      name: '  Брок ',
+    });
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect(rig.platform.storage.getItem(`${STORAGE_PREFIX}sheet:b-1_X`)).toEqual({
+      ok: true,
+      value:
+        '{"k":"sheet:b-1_X","d":{"kind":"pc","name":"Брок","order":0},"c":1,"a":"mock-connection"}',
+    });
+  });
+
+  test('rejects an id whose sheet exists and leaves that sheet as it was', async () => {
+    // #given
+    const rig = createRig();
+
+    seed(rig, 'sheet:taken', JSON.stringify(sheet('taken', 'Брок')));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, {
+      type: 'sheet-create',
+      sheetId: 'taken',
+      kind: 'pc',
+      name: 'Лиза',
+    });
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'sheet-exists',
+      unchanged: { records: [sheet('taken', 'Брок')], deltas: 0 },
+    });
+  });
+
+  test('rejects the id of a deleted sheet, so a tombstone never comes back', async () => {
+    // #given
+    const rig = createRig();
+    const tombstone: VersionedRecord = { k: 'sheet:gone', d: null, c: 2, a: 'other' };
+
+    seed(rig, 'sheet:gone', JSON.stringify(tombstone));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, {
+      type: 'sheet-create',
+      sheetId: 'gone',
+      kind: 'pc',
+      name: 'Брок',
+    });
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'sheet-exists',
+      unchanged: { records: [tombstone], deltas: 0 },
+    });
+  });
+
+  test.each([
+    ['empty', ''],
+    ['holding a colon', 'a:b'],
+    ['holding a space', 'a b'],
+    ['holding a letter outside the nanoid alphabet', 'лист'],
+    ['longer than 64 characters', 'a'.repeat(65)],
+  ])('rejects an id that is %s and stores nothing', async (_name, sheetId) => {
+    // #given
+    const rig = createRig();
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, {
+      type: 'sheet-create',
+      sheetId,
+      kind: 'pc',
+      name: 'Брок',
+    });
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'invalid-sheet-id',
+      unchanged: { records: [], deltas: 0 },
+    });
+  });
+
+  test.each([
+    ['empty', ''],
+    ['only spaces', ' \t '],
+    ['101 characters', 'ы'.repeat(101)],
+  ])('rejects a name that is %s and stores nothing', async (_name, name) => {
+    // #given
+    const rig = createRig();
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, {
+      type: 'sheet-create',
+      sheetId: 'brok',
+      kind: 'pc',
+      name,
+    });
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'invalid-name',
+      unchanged: { records: [], deltas: 0 },
+    });
+  });
+
+  test('keeps applying commands after a rejection', async () => {
+    // #given
+    const rig = createRig();
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    await rejectionOf(view, { type: 'sheet-create', sheetId: 'a:b', kind: 'pc', name: 'Брок' });
+
+    // #when
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect(namesOf(view.store)).toEqual(['Брок']);
+  });
 
   test('does not show another window a rejection it did not cause', async () => {
     // #given
@@ -996,11 +1134,136 @@ describe('record too large', () => {
     const other = await openAndLoad(rig);
 
     // #when
-    sender.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'ы'.repeat(7300) });
-    await waitUntil(() => sender.store.$rejection.get() !== null);
+    await rejectionOf(sender, { type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: ' ' });
 
     // #then
     expect(other.store.$rejection.get()).toBeNull();
+  });
+});
+
+describe('sheet-rename', () => {
+  test('changes the name, keeps the kind and the order, and persists it', async () => {
+    // #given
+    const rig = createRig();
+
+    seed(
+      rig,
+      'sheet:brok',
+      JSON.stringify({ k: 'sheet:brok', d: { kind: 'npc', name: 'Брок', order: 4 }, c: 3, a: 'z' }),
+    );
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    view.client.sendCommand({ type: 'sheet-rename', sheetId: 'brok', name: '  Лиза ' });
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect({
+      window: recordsOf(view.store),
+      stored: rig.platform.storage.getItem(`${STORAGE_PREFIX}sheet:brok`),
+    }).toEqual({
+      window: [
+        { k: 'sheet:brok', d: { kind: 'npc', name: 'Лиза', order: 4 }, c: 4, a: 'mock-connection' },
+      ],
+      stored: {
+        ok: true,
+        value:
+          '{"k":"sheet:brok","d":{"kind":"npc","name":"Лиза","order":4},"c":4,"a":"mock-connection"}',
+      },
+    });
+  });
+
+  test('rejects a sheet that does not exist and stores nothing', async () => {
+    // #given
+    const rig = createRig();
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, {
+      type: 'sheet-rename',
+      sheetId: 'nobody',
+      name: 'Брок',
+    });
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'unknown-sheet',
+      unchanged: { records: [], deltas: 0 },
+    });
+  });
+
+  test('rejects an id outside the nanoid alphabet before it looks for the sheet', async () => {
+    // #given
+    const rig = createRig();
+
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, {
+      type: 'sheet-rename',
+      sheetId: 'a:b',
+      name: 'Брок',
+    });
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'invalid-sheet-id',
+      unchanged: { records: [], deltas: 0 },
+    });
+  });
+
+  test('rejects a deleted sheet and keeps its tombstone', async () => {
+    // #given
+    const rig = createRig();
+    const tombstone: VersionedRecord = { k: 'sheet:gone', d: null, c: 2, a: 'other' };
+
+    seed(rig, 'sheet:gone', JSON.stringify(tombstone));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, {
+      type: 'sheet-rename',
+      sheetId: 'gone',
+      name: 'Брок',
+    });
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'deleted-sheet',
+      unchanged: { records: [tombstone], deltas: 0 },
+    });
+  });
+
+  test.each([
+    ['empty', ''],
+    ['only spaces', '   '],
+    ['101 characters', 'ы'.repeat(101)],
+  ])('rejects a name that is %s and keeps the old one', async (_name, name) => {
+    // #given
+    const rig = createRig();
+
+    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok', 'Брок')));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, { type: 'sheet-rename', sheetId: 'brok', name });
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'invalid-name',
+      unchanged: { records: [sheet('brok', 'Брок')], deltas: 0 },
+    });
   });
 });
 
@@ -1016,7 +1279,7 @@ describe('write failure', () => {
     rig.platform.setFailingStorageOperations(['write']);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Брок' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
     await waitUntil(() => recordsOf(view.store).length === 1);
 
     // #then
@@ -1030,24 +1293,24 @@ describe('write failure', () => {
     // #given
     const rig = createRig();
     silenceErrors();
-    await startEngine(rig, ids('engine', 'flaky', 'flaky'));
+    await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     rig.platform.setFailingStorageOperations(['write']);
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Первая' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'flaky', kind: 'pc', name: 'Первая' });
     await waitUntil(() => view.store.$notices.get().length === 1);
     rig.platform.setFailingStorageOperations([]);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Вторая' });
+    view.client.sendCommand({ type: 'sheet-rename', sheetId: 'flaky', name: 'Вторая' });
     await waitUntil(() => view.store.$notices.get().length === 0);
 
     // #then
     expect(rig.platform.storage.getItem(`${STORAGE_PREFIX}sheet:flaky`)).toEqual({
       ok: true,
       value:
-        '{"k":"sheet:flaky","d":{"kind":"pc","name":"Вторая","order":1},"c":2,"a":"mock-connection"}',
+        '{"k":"sheet:flaky","d":{"kind":"pc","name":"Вторая","order":0},"c":2,"a":"mock-connection"}',
     });
   });
 
@@ -1056,17 +1319,17 @@ describe('write failure', () => {
     const rig = createRig();
     silenceErrors();
     seed(rig, 'sheet:bad', '{not json');
-    await startEngine(rig, ids('engine', 'flaky', 'flaky'));
+    await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     rig.platform.setFailingStorageOperations(['write']);
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Первая' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'flaky', kind: 'pc', name: 'Первая' });
     await waitUntil(() => recordsOf(view.store).length === 1);
     rig.platform.setFailingStorageOperations([]);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Вторая' });
+    view.client.sendCommand({ type: 'sheet-rename', sheetId: 'flaky', name: 'Вторая' });
     await waitUntil(() => deltas(rig).length === 2);
     await pause(5);
 
@@ -1094,7 +1357,7 @@ describe('write failure', () => {
       rig.platform.setFailingStorageOperations([]);
 
       // #when
-      view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Брок' });
+      view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
       await waitUntil(() => deltas(rig).length === 1);
       await pause(5);
 
@@ -1285,7 +1548,7 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', kind: 'pc', name: 'Брок' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
 
     const upload = view.client.sendCommand({
       type: 'preset-upload',

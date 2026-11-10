@@ -11,7 +11,7 @@ import {
   type WindowMessage,
 } from './ui-messages';
 
-const SHEET_CREATE: Command = { type: 'sheet-create', kind: 'pc', name: 'Брок' };
+const SHEET_CREATE: Command = { type: 'sheet-create', sheetId: 's1', kind: 'pc', name: 'Брок' };
 
 describe('UI_CHANNEL', () => {
   test('is the channel of AD-10', () => {
@@ -65,6 +65,38 @@ describe('parseWindowMessage', () => {
   ])('refuses a command message holding %s beside its intent', (_field, extra) => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command: SHEET_CREATE, ...extra });
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+  });
+
+  test('accepts a sheet-rename command', () => {
+    // #given
+    const message: WindowMessage = {
+      t: 'command',
+      id: 'c1',
+      command: { type: 'sheet-rename', sheetId: 's1', name: 'Лиза' },
+    };
+
+    // #when
+    const parsed = parseWindowMessage(message);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: message });
+  });
+
+  test.each<[string, JsonValue]>([
+    ['a create with no sheetId', { type: 'sheet-create', kind: 'pc', name: 'Брок' }],
+    ['a rename with no sheetId', { type: 'sheet-rename', name: 'Брок' }],
+    ['a rename with no name', { type: 'sheet-rename', sheetId: 's1' }],
+    [
+      'a rename that also holds a kind',
+      { type: 'sheet-rename', sheetId: 's1', name: 'x', kind: 'pc' },
+    ],
+    ['a rename holding d', { type: 'sheet-rename', sheetId: 's1', name: 'x', d: null }],
+  ])('refuses %s', (_name, command) => {
+    // #when
+    const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
 
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
@@ -128,16 +160,22 @@ describe('parseWindowMessage', () => {
 });
 
 describe('parseEngineMessage', () => {
-  test.each(['too-large', 'invalid-preset', 'sheets-exist'])(
-    'accepts a rejection for the reason %s',
-    (reason) => {
-      // #when
-      const parsed = parseEngineMessage({ t: 'command-rejected', id: 'c1', reason });
+  test.each([
+    'too-large',
+    'invalid-preset',
+    'sheets-exist',
+    'invalid-sheet-id',
+    'sheet-exists',
+    'unknown-sheet',
+    'deleted-sheet',
+    'invalid-name',
+  ])('accepts a rejection for the reason %s', (reason) => {
+    // #when
+    const parsed = parseEngineMessage({ t: 'command-rejected', id: 'c1', reason });
 
-      // #then
-      expect(parsed).toEqual({ ok: true, value: { t: 'command-rejected', id: 'c1', reason } });
-    },
-  );
+    // #then
+    expect(parsed).toEqual({ ok: true, value: { t: 'command-rejected', id: 'c1', reason } });
+  });
 
   test('refuses a rejection for an unknown reason', () => {
     // #when

@@ -4,8 +4,14 @@ import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { jsonByteLength, recordFitsOneMessage, splitBatch } from '@/core/message-size';
 import { mergeRecords } from '@/core/merge';
 import { decodePreset, encodePreset } from '@/core/preset';
-import { hasLiveSheet, sheetDataSchema, type VersionedRecord } from '@/core/records';
+import {
+  hasLiveSheet,
+  sheetDataSchema,
+  type SheetData,
+  type VersionedRecord,
+} from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
+import { parseSheetName, sheetIdSchema, sheetKey } from '@/core/sheets';
 import {
   parseWindowMessage,
   UI_CHANNEL,
@@ -179,17 +185,85 @@ export async function startReplicaEngine(
   function composeSheetCreate(
     command: Extract<Command, { type: 'sheet-create' }>,
   ): Result<VersionedRecord, RejectionReason> {
-    const k = `sheet:${newId()}`;
-    const { c, a } = minter.mint(k, replica.get(k)?.c ?? 0);
+    if (!sheetIdSchema.safeParse(command.sheetId).success) {
+      return err('invalid-sheet-id');
+    }
 
-    const record: VersionedRecord = {
-      k,
-      d: { kind: command.kind, name: command.name, order: nextOrder(command.kind) },
-      c,
-      a,
-    };
+    const k = sheetKey(command.sheetId);
+
+    // A tombstone counts too: a deleted sheet's id must never come back.
+    if (replica.has(k)) {
+      return err('sheet-exists');
+    }
+
+    const name = parseSheetName(command.name);
+
+    if (!name.ok) {
+      return err('invalid-name');
+    }
+
+    return mintedSheet(k, 0, {
+      kind: command.kind,
+      name: name.value,
+      order: nextOrder(command.kind),
+    });
+  }
+
+  function composeSheetRename(
+    command: Extract<Command, { type: 'sheet-rename' }>,
+  ): Result<VersionedRecord, RejectionReason> {
+    if (!sheetIdSchema.safeParse(command.sheetId).success) {
+      return err('invalid-sheet-id');
+    }
+
+    const k = sheetKey(command.sheetId);
+    const current = replica.get(k);
+
+    if (current === undefined) {
+      return err('unknown-sheet');
+    }
+
+    if (current.d === null) {
+      return err('deleted-sheet');
+    }
+
+    const sheet = sheetDataSchema.safeParse(current.d);
+
+    if (!sheet.success) {
+      return err('unknown-sheet');
+    }
+
+    const name = parseSheetName(command.name);
+
+    if (!name.ok) {
+      return err('invalid-name');
+    }
+
+    return mintedSheet(k, current.c, { ...sheet.data, name: name.value });
+  }
+
+  function mintedSheet(
+    k: string,
+    highestKnownCounter: number,
+    d: SheetData,
+  ): Result<VersionedRecord, RejectionReason> {
+    const { c, a } = minter.mint(k, highestKnownCounter);
+    const record: VersionedRecord = { k, d, c, a };
 
     return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+  }
+
+  function compose(command: Command): Result<VersionedRecord, RejectionReason> {
+    switch (command.type) {
+      case 'sheet-create':
+        return composeSheetCreate(command);
+      case 'sheet-rename':
+        return composeSheetRename(command);
+      case 'preset-upload':
+        return composePresetUpload(command);
+      default:
+        return unknownCommand(command);
+    }
   }
 
   function composePresetUpload(
@@ -242,10 +316,7 @@ export async function startReplicaEngine(
 
     recentCommandIds.add(message.id);
 
-    const command = message.command;
-
-    const composed =
-      command.type === 'sheet-create' ? composeSheetCreate(command) : composePresetUpload(command);
+    const composed = compose(message.command);
 
     if (!composed.ok) {
       send({ t: 'command-rejected', id: message.id, reason: composed.error }).catch((error) => {
@@ -276,6 +347,11 @@ export async function startReplicaEngine(
   });
 
   return { stop: unsubscribe };
+}
+
+// `tsc` fails here when a command type has no composer above.
+function unknownCommand(command: never): never {
+  throw new Error(`Muster Roll has no composer for the command ${JSON.stringify(command)}`);
 }
 
 function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedReplica {

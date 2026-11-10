@@ -5,14 +5,17 @@ import { Banner } from '@/ui/primitives/banner';
 import type { BannerMessage } from '@/ui/primitives/banner';
 
 import { TabBar, ToggleBar } from './tab-bar';
-import type { ShellTab, ShellToggle } from './tab-bar';
+import type { ShellAction, ShellTab, ShellToggle } from './tab-bar';
 
 const CONTENT_CLASS = 'min-h-[0] flex-1 overflow-auto p-3 -outline-offset-2';
 
 export type ShellLayout =
   | {
       kind: 'tabs';
-      tabs: readonly ShellTab[];
+      // Character tabs scroll. Pinned tabs stay at the right, and "+" sits between the two.
+      scrollingTabs: readonly ShellTab[];
+      pinnedTabs: readonly ShellTab[];
+      add?: ShellAction;
       selectedTab: string;
       onSelectTab: (id: string) => void;
     }
@@ -32,9 +35,13 @@ export function WindowShell({ layout, banner }: WindowShellProps): ReactNode {
             layout.onSelectTab(String(key));
           }}
         >
-          <TabBar tabs={layout.tabs} />
+          <TabBar
+            scrollingTabs={layout.scrollingTabs}
+            pinnedTabs={layout.pinnedTabs}
+            add={layout.add}
+          />
           <Banner message={banner} />
-          {layout.tabs.map((tab) => (
+          {[...layout.scrollingTabs, ...layout.pinnedTabs].map((tab) => (
             <TabPanel key={tab.id} id={tab.id} className={CONTENT_CLASS}>
               {tab.content}
             </TabPanel>

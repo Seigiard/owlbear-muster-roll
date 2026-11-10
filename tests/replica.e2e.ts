@@ -128,7 +128,16 @@ test('a whole record in a command has no effect', async ({ page, context }) => {
   await postMessage(page, {
     t: 'command',
     id: 'whole',
-    command: { type: 'sheet-create', kind: 'pc', name: 'x', k: 'sheet:z', d: null, c: 9, a: 'x' },
+    command: {
+      type: 'sheet-create',
+      sheetId: 'z',
+      kind: 'pc',
+      name: 'x',
+      k: 'sheet:z',
+      d: null,
+      c: 9,
+      a: 'x',
+    },
   });
   await page.waitForTimeout(200);
 
@@ -307,7 +316,8 @@ async function sendCommand(page: Page, id: string, name: string): Promise<void> 
   await postMessage(page, {
     t: 'command',
     id,
-    command: { type: 'sheet-create', kind: 'pc', name },
+    // The command id doubles as the sheet id, so each command makes its own sheet.
+    command: { type: 'sheet-create', sheetId: id, kind: 'pc', name },
   });
 }
 

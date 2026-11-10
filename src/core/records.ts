@@ -52,6 +52,8 @@ export const recordSchema = z.union([
 
 export type VersionedRecord = z.infer<typeof recordSchema>;
 
+export type SheetData = z.infer<typeof sheetDataSchema>;
+
 export type RecordFailure = 'invalid-record';
 
 export function parseRecord(candidate: JsonValue): Result<VersionedRecord, RecordFailure> {
