@@ -1,10 +1,11 @@
 ---
 id: TASK-4
 title: 1.2 See a Window That Belongs to Owlbear
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-10T15:37:00Z'
-updated_date: '2026-11-10T15:38:00Z'
+updated_date: '2026-11-10T16:42:00Z'
 labels:
   - epic-1
 milestone: m-0
@@ -36,12 +37,31 @@ Story 1.2 of `_bmad-output/planning-artifacts/epics.md`. Other stories are named
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 **Given** the `DESIGN.md` tokens **When** the theme builds **Then** Tailwind exposes all colors, typography styles, radii and spacing steps (UX-DR1) **And** the UI uses the system font only, no shadows inside the window, no color coding for game concepts, and no icon where a word fits except the gear (UX-DR4)
-- [ ] #2 **Given** a window is open **When** `OBR.theme` changes **Then** every token updates by the `DESIGN.md` runtime table with no reload, including the `color-mix` tokens (UX-DR2, NFR14) **And** hex values of theme-mapped tokens apply only in tests and mocks, and warning and danger tokens are fixed hex values in production
-- [ ] #3 **Given** the Owlbear light theme **When** a warning or danger pair renders **Then** it uses the `-light` tokens, and text contrast is at least 4.5:1 in both themes (UX-DR3, UX-DR36)
+- [x] #1 **Given** the `DESIGN.md` tokens **When** the theme builds **Then** Tailwind exposes all colors, typography styles, radii and spacing steps (UX-DR1) **And** the UI uses the system font only, no shadows inside the window, no color coding for game concepts, and no icon where a word fits except the gear (UX-DR4)
+- [x] #2 **Given** a window is open **When** `OBR.theme` changes **Then** every token updates by the `DESIGN.md` runtime table with no reload, including the `color-mix` tokens (UX-DR2, NFR14) **And** hex values of theme-mapped tokens apply only in tests and mocks, and warning and danger tokens are fixed hex values in production
+- [x] #3 **Given** the Owlbear light theme **When** a warning or danger pair renders **Then** it uses the `-light` tokens, and text contrast is at least 4.5:1 in both themes (UX-DR3, UX-DR36)
 - [ ] #4 **Given** the window shell **When** it renders **Then** it holds the tab bar, an optional banner and one scrolling content area with padding `spacing-3` (UX-DR5) **And** gaps use `spacing-1` inside a row, `spacing-2` between controls and `spacing-4` between sections (UX-DR5) **And** tabs use `md` on the top corners, the window `lg`, chips `full` and buttons `sm` (UX-DR4) **And** the owner confirms or adjusts the 720 by 600 px window size in a live room (human gate, UX-DR7, NFR15)
-- [ ] #5 **Given** the shared Button, Chip and Field primitives, which later stories use **When** one has keyboard focus **Then** a 2 px outline in `focus` shows, and the control's touch target is at least 32 px high (UX-DR36)
-- [ ] #6 **Given** a disabled primitive **When** it renders **Then** it shows at 50% opacity with a text reason near it (UX-DR34)
-- [ ] #7 **Given** a primitive **When** the GM uses touch or a mouse **Then** tap and click act the same, and the primitive has no hover-only or drag behavior (UX-DR34)
-- [ ] #8 **Given** interface strings **When** a developer adds a string from the `EXPERIENCE.md` Voice and Tone table **Then** it comes from one copy catalog that holds the exact Russian text (UX-DR33) **And** on any conflict with `mockups/shell.html`, `EXPERIENCE.md` and `DESIGN.md` win (UX-DR37)
+- [x] #5 **Given** the shared Button, Chip and Field primitives, which later stories use **When** one has keyboard focus **Then** a 2 px outline in `focus` shows, and the control's touch target is at least 32 px high (UX-DR36)
+- [x] #6 **Given** a disabled primitive **When** it renders **Then** it shows at 50% opacity with a text reason near it (UX-DR34)
+- [x] #7 **Given** a primitive **When** the GM uses touch or a mouse **Then** tap and click act the same, and the primitive has no hover-only or drag behavior (UX-DR34)
+- [x] #8 **Given** interface strings **When** a developer adds a string from the `EXPERIENCE.md` Voice and Tone table **Then** it comes from one copy catalog that holds the exact Russian text (UX-DR33) **And** on any conflict with `mockups/shell.html`, `EXPERIENCE.md` and `DESIGN.md` win (UX-DR37)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add DESIGN.md tokens to Tailwind with no theme-mapped hex in production.
+2. Map OBR.theme at runtime and follow its changes.
+3. Build the window shell, Button, Chip, Field and Banner primitives, and the copy catalog.
+4. Verify with bun test, Playwright and the build test.
+5. Owner confirms the window size in a live room.
+Spec: _bmad-output/implementation-artifacts/spec-1-2-window-that-belongs-to-owlbear.md
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented the spec: tokens, runtime theme, shell, Button, Chip, Field, Banner and the copy catalog. lint, typecheck, bun test (57) and Playwright (36) pass. Open: the owner must confirm the 720 by 600 px window size in a live room (AC 4).
+
+Review: 24 triaged findings in the spec. Confirmed defects and test gaps patched; 2 items deferred. Verified on the mock adapter: lint with no errors, typecheck, bun test 58 pass, Playwright 48 pass, build. AC 4 waits for the owner to confirm the window size in a live room. The owner's live check also covers theme mapping in both real Owlbear themes.
+<!-- SECTION:NOTES:END -->

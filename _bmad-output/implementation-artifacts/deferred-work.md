@@ -13,3 +13,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-1-load-the-empty-extension.md`
   summary: Add an automated check of the SDK import boundary.
   evidence: The rule was verified by hand, and no test observes `.oxlintrc.json`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-window-that-belongs-to-owlbear.md`
+  summary: Give WindowShell per-tab content and controlled tab selection.
+  evidence: All panels share one `children`, which is enough for the loading text only. Stories 1.5 and 1.11 give tabs content.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-window-that-belongs-to-owlbear.md`
+  summary: Give the TabList an accessible name from the copy catalog.
+  evidence: No string exists in `EXPERIENCE.md`. Story 1.6 builds the real tab bar.
