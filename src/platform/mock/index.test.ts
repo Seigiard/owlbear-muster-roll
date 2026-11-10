@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import type { JsonObject, JsonValue } from '@/core/json';
 import { platform as currentPlatform } from '@/platform/current';
 
+import { LIGHT_THEME } from '../../../tests/support/colors';
 import { createMockPlatform } from './index';
 
 describe('mock broadcast', () => {
@@ -155,6 +156,44 @@ describe('mock storage', () => {
 
     // #then
     expect(platform.storage.getItem('key')).toBeNull();
+  });
+});
+
+describe('mock theme', () => {
+  test('tells listeners about a theme change and returns it on the next read', async () => {
+    // #given
+    const platform = createMockPlatform();
+    const seen: string[] = [];
+
+    platform.theme.onChange((theme) => {
+      seen.push(theme.mode);
+    });
+
+    // #when
+    platform.setTheme(LIGHT_THEME);
+
+    // #then
+    expect({ seen, read: (await platform.theme.getTheme()).mode }).toEqual({
+      seen: ['LIGHT'],
+      read: 'LIGHT',
+    });
+  });
+
+  test('stops calling a removed theme listener', () => {
+    // #given
+    const platform = createMockPlatform();
+    const seen: string[] = [];
+
+    const unsubscribe = platform.theme.onChange((theme) => {
+      seen.push(theme.mode);
+    });
+
+    // #when
+    unsubscribe();
+    platform.setTheme(LIGHT_THEME);
+
+    // #then
+    expect(seen).toEqual([]);
   });
 });
 

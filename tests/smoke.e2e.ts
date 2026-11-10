@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-test('the window renders an empty root', async ({ page }) => {
+test('the window renders the shell root as the child of #root', async ({ page }) => {
   // #given
   const errors = collectPageErrors(page);
 

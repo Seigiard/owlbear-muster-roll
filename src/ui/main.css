@@ -1,1 +1,79 @@
 @import 'tailwindcss' source('..');
+
+@theme static {
+  --*: initial;
+
+  --color-surface: var(--mr-surface, Canvas);
+  --color-surface-bar: var(--mr-surface-bar, Canvas);
+  --color-surface-tab: var(--mr-surface-tab, Canvas);
+  --color-surface-stripe: var(--mr-surface-stripe, Canvas);
+  --color-text: var(--mr-text, CanvasText);
+  --color-text-muted: var(--mr-text-muted, CanvasText);
+  --color-accent: var(--mr-accent, Highlight);
+  --color-accent-contrast: var(--mr-accent-contrast, HighlightText);
+  --color-line: var(--mr-line, CanvasText);
+  --color-line-strong: var(--mr-line-strong, CanvasText);
+  --color-focus: var(--mr-focus, Highlight);
+
+  --color-warning-surface: #4a3a1e;
+  --color-warning-text: #ffd894;
+  --color-danger-surface: #4f2b26;
+  --color-danger-text: #ffb4a8;
+  --color-warning-surface-light: #fff1d6;
+  --color-warning-text-light: #6b4700;
+  --color-danger-surface-light: #fde3df;
+  --color-danger-text-light: #8a2318;
+
+  --font-system: system-ui, sans-serif;
+  --default-font-family: var(--font-system);
+
+  --text-body: 14px;
+  --text-body--line-height: 1.4;
+  --text-body--font-weight: 400;
+  --text-label-sm: 12px;
+  --text-label-sm--line-height: 1.4;
+  --text-label-sm--font-weight: 400;
+  --text-section-heading: 14px;
+  --text-section-heading--line-height: 1.4;
+  --text-section-heading--font-weight: 600;
+  --text-sheet-title: 16px;
+  --text-sheet-title--line-height: 1.3;
+  --text-sheet-title--font-weight: 600;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+}
+
+@layer base {
+  :root[data-theme-mode='LIGHT'] {
+    --color-warning-surface: var(--color-warning-surface-light);
+    --color-warning-text: var(--color-warning-text-light);
+    --color-danger-surface: var(--color-danger-surface-light);
+    --color-danger-text: var(--color-danger-text-light);
+  }
+
+  /* On main, not :root: an iframe whose root scheme differs from Owlbear's gets an opaque canvas. */
+  :root[data-theme-mode='DARK'] main {
+    color-scheme: dark;
+  }
+
+  :root[data-theme-mode='LIGHT'] main {
+    color-scheme: light;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 1px;
+  }
+}
+
+@utility touch-target {
+  min-height: 32px;
+}

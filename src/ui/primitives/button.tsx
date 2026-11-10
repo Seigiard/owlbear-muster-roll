@@ -1,0 +1,55 @@
+import { useId } from 'react';
+import type { ReactNode } from 'react';
+import { Button as AriaButton } from 'react-aria-components';
+
+const VARIANT_CLASS = {
+  primary: 'bg-accent text-accent-contrast',
+  secondary: 'border border-line text-text',
+} as const;
+
+export type PressableProps = {
+  children: ReactNode;
+  onPress?: () => void;
+  // A control is disabled only through its reason, so no disabled control can lack one.
+  disabledReason?: string;
+};
+
+type ButtonProps = PressableProps & { variant?: keyof typeof VARIANT_CLASS };
+
+export function Button({ variant = 'secondary', ...pressable }: ButtonProps): ReactNode {
+  return <Pressable className={`rounded-sm px-3 ${VARIANT_CLASS[variant]}`} {...pressable} />;
+}
+
+export function Pressable({
+  className,
+  children,
+  onPress,
+  disabledReason,
+}: PressableProps & { className: string }): ReactNode {
+  const reasonId = useId();
+  const isDisabled = disabledReason !== undefined;
+
+  const button = (
+    <AriaButton
+      className={`touch-target inline-flex items-center justify-center data-disabled:opacity-50 ${className}`}
+      isDisabled={isDisabled}
+      onPress={onPress}
+      aria-describedby={isDisabled ? reasonId : undefined}
+    >
+      {children}
+    </AriaButton>
+  );
+
+  if (!isDisabled) {
+    return button;
+  }
+
+  return (
+    <span className="inline-flex flex-col items-start gap-1">
+      {button}
+      <span id={reasonId} className="text-label-sm text-text-muted">
+        {disabledReason}
+      </span>
+    </span>
+  );
+}

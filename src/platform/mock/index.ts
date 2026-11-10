@@ -6,6 +6,9 @@ const MOCK_PLAYER_ID = 'mock-player';
 const MOCK_CONNECTION_ID = 'mock-connection';
 const MOCK_PLAYER_NAME = 'Mock GM';
 const MOCK_NOTIFICATION_ID = 'mock-notification';
+const THEME_READ_FAILS_PARAM = 'mock-theme-read-fails';
+const THEME_READ_SLOW_PARAM = 'mock-theme-read-slow';
+const THEME_READ_SLOW_MS = 200;
 
 const unsubscribeNothing: Unsubscribe = () => undefined;
 
@@ -20,13 +23,30 @@ type BroadcastListener = (event: BroadcastEvent) => void;
 
 type MetadataListener = (metadata: JsonObject) => void;
 
-export const platform: Platform = createMockPlatform();
+type ThemeListener = (theme: Theme) => void;
 
-export function createMockPlatform(): Platform {
+export type MockPlatform = Platform & { setTheme: (theme: Theme) => void };
+
+declare global {
+  interface Window {
+    // Playwright reaches the mock through this. The mock never enters a production build.
+    setMockTheme: (theme: Theme) => void;
+  }
+}
+
+const mockPlatform = createMockPlatform();
+
+export const platform: Platform = mockPlatform;
+
+window.setMockTheme = mockPlatform.setTheme;
+
+export function createMockPlatform(): MockPlatform {
   const broadcastListeners = new Map<string, Set<BroadcastListener>>();
   const metadataListeners = new Set<MetadataListener>();
+  const themeListeners = new Set<ThemeListener>();
   const stored = new Map<string, string>();
   let metadata: JsonObject = {};
+  let currentTheme = MOCK_THEME;
 
   return {
     onReady: (callback) => {
@@ -119,8 +139,38 @@ export function createMockPlatform(): Platform {
       show: () => Promise.resolve(MOCK_NOTIFICATION_ID),
     },
     theme: {
-      getTheme: () => Promise.resolve(MOCK_THEME),
-      onChange: () => unsubscribeNothing,
+      getTheme: () => {
+        const params = new URLSearchParams(window.location.search);
+
+        if (params.has(THEME_READ_FAILS_PARAM)) {
+          return Promise.reject(new Error('mock theme read failed'));
+        }
+
+        // The real read crosses frames, so it resolves after React could commit.
+        if (params.has(THEME_READ_SLOW_PARAM)) {
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              resolve(currentTheme);
+            }, THEME_READ_SLOW_MS);
+          });
+        }
+
+        return Promise.resolve(currentTheme);
+      },
+      onChange: (callback) => {
+        themeListeners.add(callback);
+
+        return () => {
+          themeListeners.delete(callback);
+        };
+      },
+    },
+    setTheme: (theme) => {
+      currentTheme = theme;
+
+      for (const listener of themeListeners) {
+        listener(theme);
+      }
     },
   };
 }
