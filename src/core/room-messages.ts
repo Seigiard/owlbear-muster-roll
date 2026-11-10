@@ -63,9 +63,41 @@ const commitSchema = z.strictObject({
   records: z.array(recordSchema).min(1),
 });
 
-const roomMessageSchema = z.discriminatedUnion('t', [commitSchema]);
+// AD-7: a client's catch-up nonce `r`, a nanoid.
+const nonceSchema = z.string().min(1).max(64);
+
+const stateRequestSchema = z.strictObject({
+  v: z.literal(FORMAT_VERSION),
+  g: generationSchema,
+  t: z.literal('state-request'),
+  r: nonceSchema,
+});
+
+// Message `i` of the `n` one responder sends for `r`. `records` is a JSON array of complete records,
+// deflated and base64-encoded; `decodeStateRecords` reads it.
+const stateSchema = z
+  .strictObject({
+    v: z.literal(FORMAT_VERSION),
+    g: generationSchema,
+    t: z.literal('state'),
+    r: nonceSchema,
+    i: z.number().int().positive(),
+    n: z.number().int().positive(),
+    records: z.base64().min(1),
+  })
+  .refine((message) => message.i <= message.n);
+
+const roomMessageSchema = z.discriminatedUnion('t', [
+  commitSchema,
+  stateRequestSchema,
+  stateSchema,
+]);
 
 export type CommitMessage = z.infer<typeof commitSchema>;
+
+export type StateRequestMessage = z.infer<typeof stateRequestSchema>;
+
+export type StateMessage = z.infer<typeof stateSchema>;
 
 export type RoomMessage = z.infer<typeof roomMessageSchema>;
 
@@ -119,4 +151,8 @@ export function admitRoomMessage(
 // The envelope of a commit with no records, measured by the size splitter.
 export function commitEnvelope(generation: Generation): CommitMessage {
   return { v: FORMAT_VERSION, g: generation, t: 'commit', records: [] };
+}
+
+export function stateRequestMessage(generation: Generation, r: string): StateRequestMessage {
+  return { v: FORMAT_VERSION, g: generation, t: 'state-request', r };
 }

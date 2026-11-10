@@ -1,10 +1,14 @@
 import OBR from '@owlbear-rodeo/sdk';
 
 import type { JsonObject, JsonValue } from '@/core/json';
-import type { PartyMember, Platform } from '@/platform/ports';
+import { TIMING, type Timing } from '@/core/timing';
+import type { PartyMember, Platform, PlayerRole } from '@/platform/ports';
 
 import { createBrowserStorage } from './browser-storage';
 import { toSendResult } from './send-result';
+
+// A production build reads only `TIMING`.
+export const timing: Timing = TIMING;
 
 export const platform: Platform = {
   onReady: (callback) => {
@@ -53,6 +57,17 @@ export const platform: Platform = {
     getConnectionId: () => OBR.player.getConnectionId(),
     getName: () => OBR.player.getName(),
     getRole: () => OBR.player.getRole(),
+    onRoleChange: (callback) => {
+      let lastRole: PlayerRole | null = null;
+
+      // A player change fires on selection and other changes too, so only a new role calls back.
+      return OBR.player.onChange((player) => {
+        if (player.role !== lastRole) {
+          lastRole = player.role;
+          callback();
+        }
+      });
+    },
   },
   storage: createBrowserStorage(() => localStorage),
   contextMenu: {

@@ -3,13 +3,10 @@ import { z } from 'zod';
 import type { JsonValue } from '@/core/json';
 import type { BroadcastEvent, PartyMember, Unsubscribe } from '@/platform/ports';
 
+import { PARTY_CHANNEL_PREFIX, PARTY_STORAGE_PREFIX } from './client-params';
 import { createMemoryBus, type LocalBus } from './local-bus';
 
 const REMOTE_CHANNEL_PREFIX = 'muster-roll-mock-remote:';
-const PARTY_CHANNEL_PREFIX = 'muster-roll-mock-party:';
-
-// Starts with `mock-`, so the default storage namespace never lists it.
-const PARTY_STORAGE_PREFIX = 'mock-party:';
 
 const remotePostSchema = z.object({
   channel: z.string(),

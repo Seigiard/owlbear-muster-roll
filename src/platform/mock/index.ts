@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
+import { TIMING, type Timing } from '@/core/timing';
 import type {
   PartyMember,
   Platform,
@@ -11,6 +12,7 @@ import type {
 } from '@/platform/ports';
 
 import {
+  CATCH_UP_TIMEOUT_PARAM,
   CLIENT_PARAM,
   DEVICE_PARAM,
   deviceStoragePrefix,
@@ -66,7 +68,8 @@ export type MockClient = {
 
 export type MockPlatform = Platform & {
   setTheme: (theme: Theme) => void;
-  setRole: (role: PlayerRole) => void;
+  // `rejoin: false` changes only the player's own role, as Owlbear does, with no party change.
+  setRole: (role: PlayerRole, options?: { rejoin: boolean }) => void;
   setFailingStorageOperations: (operations: StorageOperation[]) => void;
   failNextSends: (failures: SendFailure[]) => void;
   // Adds this client to the room's party, as Owlbear lists a connected client. One page per client
@@ -101,6 +104,9 @@ if (window.location.pathname.endsWith('/background.html')) {
 
 export const platform: Platform = mockPlatform;
 
+// The background's timing: `TIMING`, with the catch-up timeout a test page names in its URL.
+export const timing: Timing = timingFromPageUrl();
+
 window.setMockTheme = mockPlatform.setTheme;
 
 window.mockPlatform = mockPlatform;
@@ -112,6 +118,7 @@ export function createMockPlatform(
 ): MockPlatform {
   const metadataListeners = new Set<MetadataListener>();
   const themeListeners = new Set<ThemeListener>();
+  const roleListeners = new Set<() => void>();
   const sendFailures: SendFailure[] = [];
   const { room, connectionId, playerId, name } = client;
   let role: PlayerRole = client.role;
@@ -215,6 +222,13 @@ export function createMockPlatform(
       getConnectionId: () => Promise.resolve(connectionId),
       getName: () => Promise.resolve(name),
       getRole: () => Promise.resolve(role),
+      onRoleChange: (callback) => {
+        roleListeners.add(callback);
+
+        return () => {
+          roleListeners.delete(callback);
+        };
+      },
     },
     storage: {
       getItem: (key) => attemptStorage('read', () => backing.get(key)),
@@ -278,11 +292,15 @@ export function createMockPlatform(
         listener(theme);
       }
     },
-    setRole: (next) => {
+    setRole: (next, options = { rejoin: true }) => {
       role = next;
 
-      if (joined) {
+      if (joined && options.rejoin) {
         joinParty();
+      }
+
+      for (const listener of roleListeners) {
+        listener();
       }
     },
     setFailingStorageOperations: (operations) => {
@@ -368,5 +386,18 @@ function clientFromPageUrl(): MockClient {
     playerId: params.get(PLAYER_PARAM) ?? MOCK_PLAYER_ID,
     name: params.get(NAME_PARAM) ?? MOCK_PLAYER_NAME,
     role,
+  };
+}
+
+function timingFromPageUrl(): Timing {
+  const params = new URLSearchParams(window.location.search);
+
+  // An empty value counts as absent, as `Number('')` would read it as 0.
+  const text = params.get(CATCH_UP_TIMEOUT_PARAM) ?? '';
+  const value = text === '' ? Number.NaN : Number(text);
+
+  return {
+    ...TIMING,
+    catchUpTimeoutMs: Number.isFinite(value) && value >= 0 ? value : TIMING.catchUpTimeoutMs,
   };
 }

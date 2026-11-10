@@ -3,13 +3,14 @@ import type { ReactNode } from 'react';
 
 import type { Preset } from '@/core/preset';
 import { copy } from '@/ui/copy';
-import { PresetDownload, PresetUpload } from '@/ui/preset-actions';
+import { PresetDownload, PresetUpload, uploadDisabledReason } from '@/ui/preset-actions';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
 type SettingsViewProps = {
   preset: Preset | null;
   sheetsExist: boolean;
+  catchingUp: boolean;
   sendCommand: ReplicaClient['sendCommand'];
   store: Pick<ProjectionStore, '$rejections'>;
 };
@@ -19,6 +20,7 @@ type SettingsViewProps = {
 export function SettingsView({
   preset,
   sheetsExist,
+  catchingUp,
   sendCommand,
   store,
 }: SettingsViewProps): ReactNode {
@@ -34,9 +36,9 @@ export function SettingsView({
           <PresetUpload
             sendCommand={sendCommand}
             store={store}
-            disabledReason={sheetsExist ? copy.presetLocked : undefined}
+            disabledReason={uploadDisabledReason(catchingUp, sheetsExist)}
           />
-          <PresetDownload preset={preset} />
+          <PresetDownload preset={preset} catchingUp={catchingUp} />
         </div>
       </section>
     </div>

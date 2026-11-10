@@ -10,12 +10,15 @@ import { SYNC_CHANNEL } from '@/core/room-messages';
 // The side-effect-free part of the mock: its URL params and naming rules, never the platform.
 // oxlint-disable-next-line no-restricted-imports
 import {
+  CATCH_UP_TIMEOUT_PARAM,
   CLIENT_PARAM,
   DEVICE_PARAM,
   deviceStoragePrefix,
   MOCK_ROOM_ID,
   mockConnectionId,
   NAME_PARAM,
+  PARTY_CHANNEL_PREFIX,
+  PARTY_STORAGE_PREFIX,
   PLAYER_PARAM,
   ROLE_PARAM,
 } from '@/platform/mock/client-params';
@@ -59,6 +62,8 @@ export type ClientParams = {
   role?: 'GM' | 'PLAYER';
   name?: string;
   device?: string;
+  // The background's catch-up timeout, shorter or longer than the 4 s of `TIMING`.
+  catchUpTimeoutMs?: number;
 };
 
 // One client: its background page and one window, which share a connection id.
@@ -225,6 +230,28 @@ export async function postRemote(
   );
 }
 
+// Lists a connection in the room's party with no page behind it, so it never answers. A GM listed
+// this way keeps every other GM client waiting for an answer until its catch-up times out.
+export async function addPartyMember(
+  page: Page,
+  connectionId: string,
+  role: 'GM' | 'PLAYER',
+): Promise<void> {
+  await page.evaluate(
+    ([key, channel, member]) => {
+      const party: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
+
+      localStorage.setItem(key, JSON.stringify([...(Array.isArray(party) ? party : []), member]));
+      new BroadcastChannel(channel).postMessage('changed');
+    },
+    [
+      `${PARTY_STORAGE_PREFIX}${MOCK_ROOM_ID}`,
+      `${PARTY_CHANNEL_PREFIX}${MOCK_ROOM_ID}`,
+      { id: connectionId, connectionId, name: connectionId, role },
+    ] as const,
+  );
+}
+
 export async function storedData(page: Page, key: string): Promise<JsonValue> {
   const text = await page.evaluate(
     (storageKey) => localStorage.getItem(storageKey),
@@ -324,6 +351,7 @@ function clientQuery(params: ClientParams): string {
     [ROLE_PARAM, params.role],
     [NAME_PARAM, params.name],
     [DEVICE_PARAM, params.device],
+    [CATCH_UP_TIMEOUT_PARAM, params.catchUpTimeoutMs?.toString()],
   ] as const) {
     if (value !== undefined) {
       query.set(name, value);

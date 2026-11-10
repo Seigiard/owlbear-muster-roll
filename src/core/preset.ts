@@ -1,6 +1,6 @@
-import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
 import { z } from 'zod';
 
+import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 import { isFieldId } from '@/core/field-id';
 import { FORMAT_VERSION } from '@/core/format-version';
 import { parseFormula } from '@/core/formula';
@@ -8,9 +8,6 @@ import { err, ok, type Result } from '@/core/result';
 
 // Refused before parsing, so a huge file cannot hang the window.
 export const PRESET_FILE_BYTE_LIMIT = 1024 * 1024;
-
-// Keeps String.fromCharCode under the engine's argument limit.
-const BASE64_CHUNK_BYTES = 0x8000;
 
 const encoder = new TextEncoder();
 
@@ -129,19 +126,13 @@ export function parsePresetFile(text: string): Result<Preset, PresetFailure> {
 
 // The `preset` record data: the preset JSON, deflated and base64-encoded.
 export function encodePreset(preset: Preset): string {
-  return toBase64(deflateSync(strToU8(JSON.stringify(preset))));
+  return deflateToBase64(JSON.stringify(preset));
 }
 
 export function decodePreset(data: string): Result<Preset, PresetFailure> {
-  let text: string;
+  const text = inflateFromBase64(data, PRESET_FILE_BYTE_LIMIT);
 
-  try {
-    text = strFromU8(inflateSync(fromBase64(data)));
-  } catch {
-    return err({ code: 'invalid-structure' });
-  }
-
-  return parsePresetFile(text);
+  return text.ok ? parsePresetFile(text.value) : err({ code: 'invalid-structure' });
 }
 
 // The downloaded file: structure only, at the current `v`.
@@ -300,20 +291,6 @@ function shortDetail(text: string): string {
   return characters.length > DETAIL_MAX_CHARACTERS
     ? `${characters.slice(0, DETAIL_MAX_CHARACTERS).join('')}…`
     : text;
-}
-
-function toBase64(bytes: Uint8Array): string {
-  let binary = '';
-
-  for (let start = 0; start < bytes.length; start += BASE64_CHUNK_BYTES) {
-    binary += String.fromCharCode(...bytes.subarray(start, start + BASE64_CHUNK_BYTES));
-  }
-
-  return btoa(binary);
-}
-
-function fromBase64(text: string): Uint8Array {
-  return Uint8Array.from(atob(text), (character) => character.charCodeAt(0));
 }
 
 function hasField(row: readonly PresetCell[], id: string): boolean {

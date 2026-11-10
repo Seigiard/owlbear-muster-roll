@@ -1,0 +1,333 @@
+import { expect, test } from '@playwright/test';
+import type { BrowserContext, Locator, Page } from '@playwright/test';
+
+import { UI_CHANNEL } from '@/core/ui-messages';
+
+import {
+  addPartyMember,
+  connectionIdOf,
+  deviceKeys,
+  openClientBackground,
+  openClientWindow,
+  record,
+  seedStorage,
+  storedData,
+  STORAGE_PREFIX,
+  type ClientParams,
+  type RoomClient,
+  type StoredRecord,
+} from './support/room';
+
+const LOADING = 'Загрузка…';
+const ADD = 'Добавить персонажа';
+const GEAR = '⚙︎';
+const SETTINGS = 'Настройки';
+const LOAD_PRESET = 'Загрузить пресет';
+const DOWNLOAD_PRESET = 'Скачать пресет';
+const NEW_CHARACTER = 'Новый персонаж';
+
+type Return = 'online' | 'resume' | 'visibilitychange';
+
+type ProjectionRead = { state: string; keys: string[] };
+
+// A GM listed in the party with no page behind it: it never answers a request.
+const SILENT_GM = 'mock-connection-silent';
+
+const PRESET = {
+  v: 1,
+  character: {
+    sections: [
+      {
+        rows: [
+          [
+            { kind: 'text', text: 'Сила' },
+            { kind: 'field', type: 'number', id: 'str' },
+          ],
+        ],
+      },
+    ],
+  },
+  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+};
+
+const PRESET_TEXT = JSON.stringify(PRESET);
+
+const RECORDS: StoredRecord[] = [
+  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
+  record('row:brok:str', { str: 14 }),
+];
+
+test.beforeEach(async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 600 });
+});
+
+test('a GM on a new device gets the sheets a live GM holds and saves them', async ({ context }) => {
+  // #given
+  const a = await openClient(context, { client: 'a', device: 'a' }, RECORDS);
+
+  await expect(a.window.getByRole('button', { name: ADD })).toBeVisible();
+
+  // #when
+  const b = await openClient(context, { client: 'b', device: 'b' }, null);
+
+  // #then
+  await expect(b.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
+  await expect(strength(b.window)).toHaveValue('14');
+  expect((await deviceKeys(b.window, 'b')).sort()).toEqual(
+    [
+      `${STORAGE_PREFIX}preset`,
+      `${STORAGE_PREFIX}row:brok:str`,
+      `${STORAGE_PREFIX}sheet:brok`,
+    ].sort(),
+  );
+});
+
+test('until its first catch-up ends, a window shows the known tabs and the loading text, then the sheets', async ({
+  context,
+}) => {
+  // #given: another GM is listed and never answers, so catch-up ends on its timeout.
+  const params: ClientParams = { client: 'b', catchUpTimeoutMs: 2500 };
+  const window = await openClientWindow(context, params);
+
+  await seedStorage(window, RECORDS, PRESET_TEXT);
+  await addPartyMember(window, SILENT_GM, 'GM');
+
+  // #when
+  await openClientBackground(context, params);
+
+  // #then
+  await expect(window.getByRole('tab')).toHaveText(['Брок', 'NPC', GEAR]);
+  await expect(window.getByRole('tabpanel')).toHaveText(LOADING);
+  await expect(window.getByRole('button', { name: ADD })).toHaveCount(0);
+  await expect(window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible({
+    timeout: 6000,
+  });
+  await expect(strength(window)).toHaveValue('14');
+});
+
+test('the no-preset state shows only after the first catch-up ends', async ({ context }) => {
+  // #given
+  const params: ClientParams = { client: 'b', catchUpTimeoutMs: 2500 };
+  const window = await openClientWindow(context, params);
+
+  await addPartyMember(window, SILENT_GM, 'GM');
+
+  // #when
+  await openClientBackground(context, params);
+
+  // #then
+  await expect(window.getByText(LOADING)).toBeVisible();
+  await expect(window.getByRole('button', { name: LOAD_PRESET })).toHaveCount(0);
+  await expect(window.getByRole('button', { name: LOAD_PRESET })).toBeEnabled({ timeout: 6000 });
+});
+
+test('a GM edit and a new character made during catch-up show at once and are saved on exit', async ({
+  context,
+}) => {
+  // #given
+  const client = await openClient(context, { catchUpTimeoutMs: 8000 }, RECORDS);
+
+  await expect(client.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
+  await returnWithSilentGm(client, 'online');
+  // The download locks only during catch-up, so this proves the edit below is made in it. The
+  // upload is no proof here, as a sheet locks it too.
+  await client.window.getByRole('tab', { name: SETTINGS }).click();
+  await expect(client.window.getByRole('button', { name: DOWNLOAD_PRESET })).toBeDisabled();
+  await client.window.getByRole('tab', { name: 'Брок' }).click();
+
+  // #when
+  await strength(client.window).fill('16');
+  await strength(client.window).press('Enter');
+  await expect(strength(client.window)).toHaveValue('16');
+  // A live client saves within a few send spacings, so a value still unsaved after this pause
+  // waits in the pending queue.
+  await client.window.waitForTimeout(500);
+
+  const savedDuringCatchUp = await storedData(client.window, 'row:brok:str');
+
+  await client.window.getByRole('button', { name: ADD }).click();
+
+  // #then
+  await expect(
+    client.window.getByRole('tab', { name: NEW_CHARACTER, selected: true }),
+  ).toBeVisible();
+  await expect(client.window.getByRole('textbox', { name: 'Имя персонажа' })).toBeFocused();
+  expect(savedDuringCatchUp).toEqual({ str: 14 });
+  await expect
+    .poll(() => storedData(client.window, 'row:brok:str'), { timeout: 12_000 })
+    .toEqual({
+      str: 16,
+    });
+  await expect.poll(() => newSheetsStored(client.window)).toBe(1);
+});
+
+test('during catch-up Settings disables the preset upload and download with the loading text', async ({
+  context,
+}) => {
+  // #given: no sheets, so only catch-up can lock the upload.
+  const client = await openClient(context, { catchUpTimeoutMs: 2500 }, []);
+
+  await client.window.getByRole('tab', { name: SETTINGS }).click();
+  await expect(uploadButton(client.window)).toBeEnabled();
+
+  // #when
+  await returnWithSilentGm(client, 'resume');
+
+  // #then
+  const settings = client.window.getByRole('tabpanel');
+
+  await expect(uploadButton(client.window)).toBeDisabled();
+  await expect(client.window.getByRole('button', { name: DOWNLOAD_PRESET })).toBeDisabled();
+  await expect(settings.getByText(LOADING)).toHaveCount(2);
+  await expect(uploadButton(client.window)).toBeEnabled({ timeout: 6000 });
+  await expect(client.window.getByRole('button', { name: DOWNLOAD_PRESET })).toBeEnabled();
+});
+
+test('a page that becomes visible again catches up, and the upload waits for it', async ({
+  context,
+}) => {
+  // #given
+  const client = await openClient(context, { catchUpTimeoutMs: 2500 }, []);
+
+  await client.window.getByRole('tab', { name: SETTINGS }).click();
+  await expect(uploadButton(client.window)).toBeEnabled();
+
+  // #when
+  await returnWithSilentGm(client, 'visibilitychange');
+
+  // #then
+  await expect(uploadButton(client.window)).toBeDisabled();
+  await expect(uploadButton(client.window)).toBeEnabled({ timeout: 6000 });
+});
+
+test('a player stays on the loading text after its catch-up ends', async ({ context }) => {
+  // #given
+  const gm = await openClient(context, { client: 'a', device: 'a' }, RECORDS);
+
+  await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
+
+  // #when
+  const player = await openClient(
+    context,
+    { client: 'p', role: 'PLAYER', player: 'lisa', device: 'p' },
+    null,
+  );
+
+  // #then
+  await expect
+    .poll(() => projectionRead(player.window))
+    .toEqual({ state: 'live', keys: expect.arrayContaining(['preset', 'sheet:brok']) });
+  await expect(player.window.getByText(LOADING)).toBeVisible();
+  await expect(player.window.getByRole('tab')).toHaveCount(0);
+  expect(await deviceKeys(player.window, 'p')).toEqual([]);
+});
+
+test('a player made GM gets the GM view without reopening the window', async ({ context }) => {
+  // #given
+  const gm = await openClient(context, { client: 'a', device: 'a' }, RECORDS);
+
+  await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
+
+  const player = await openClient(
+    context,
+    { client: 'p', role: 'PLAYER', player: 'lisa', device: 'p' },
+    null,
+  );
+
+  await expect(player.window.getByText(LOADING)).toBeVisible();
+
+  // #when: the role belongs to the background, which owns the replica.
+  await player.background.evaluate(() => {
+    window.mockPlatform.setRole('GM');
+  });
+
+  // #then
+  await expect(player.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
+  await expect(player.window.getByRole('button', { name: ADD })).toBeVisible();
+});
+
+// Opens one client. `records` seeds its device with the preset first; `null` seeds nothing.
+async function openClient(
+  context: BrowserContext,
+  params: ClientParams,
+  records: readonly StoredRecord[] | null,
+): Promise<RoomClient> {
+  const window = await openClientWindow(context, params);
+
+  if (records !== null) {
+    await seedStorage(window, records, PRESET_TEXT, params.device);
+  }
+
+  const background = await openClientBackground(context, params);
+
+  return { window, background, connectionId: connectionIdOf(params) };
+}
+
+// A GM that never answers joins, and the page comes back, so the client waits for the timeout.
+async function returnWithSilentGm(client: RoomClient, event: Return): Promise<void> {
+  // The mock party read goes to the shared storage, so the background sees the GM at once.
+  await addPartyMember(client.window, SILENT_GM, 'GM');
+  await client.background.evaluate((name) => {
+    if (name === 'online') {
+      window.dispatchEvent(new Event('online'));
+    } else if (name === 'resume') {
+      document.dispatchEvent(new Event('resume'));
+    } else {
+      // A background page is never shown, so the test says it is visible.
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }
+  }, event);
+}
+
+// The engine's own answer to a projection request: its sync state and the keys of its records.
+async function projectionRead(page: Page): Promise<ProjectionRead> {
+  return page.evaluate(
+    (channel) =>
+      new Promise<ProjectionRead>((resolve) => {
+        const nonce = `read-${Date.now()}`;
+        const keys: string[] = [];
+
+        const stop = window.mockPlatform.broadcast.onMessage(channel, (event) => {
+          const message = Object(event.data);
+
+          if (message.t !== 'projection' || message.nonce !== nonce) {
+            return;
+          }
+
+          keys.push(...message.records.map((one: { k: string }) => one.k));
+
+          if (message.i === message.n) {
+            stop();
+            resolve({ state: String(message.sync.state), keys });
+          }
+        });
+
+        void window.mockPlatform.broadcast.sendMessage(
+          channel,
+          { t: 'projection-request', nonce },
+          { destination: 'LOCAL' },
+        );
+      }),
+    UI_CHANNEL,
+  );
+}
+
+function strength(page: Page): Locator {
+  return page.getByRole('tabpanel').getByRole('textbox', { name: 'Сила', exact: true });
+}
+
+function uploadButton(page: Page): Locator {
+  return page.getByRole('button', { name: LOAD_PRESET });
+}
+
+async function newSheetsStored(page: Page): Promise<number> {
+  return page.evaluate(
+    ([prefix, name]) =>
+      Object.keys(localStorage).filter(
+        (key) =>
+          key.startsWith(`${prefix}sheet:`) && (localStorage.getItem(key) ?? '').includes(name),
+      ).length,
+    [STORAGE_PREFIX, NEW_CHARACTER] as const,
+  );
+}

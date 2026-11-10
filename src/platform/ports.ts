@@ -49,6 +49,8 @@ export type PlayerPort = {
   getConnectionId: () => Promise<string>;
   getName: () => Promise<string>;
   getRole: () => Promise<PlayerRole>;
+  // Fires when this client's own role may have changed. The caller reads the role again.
+  onRoleChange: (callback: () => void) => Unsubscribe;
 };
 
 export type StorageOperation = 'read' | 'write' | 'remove' | 'list';

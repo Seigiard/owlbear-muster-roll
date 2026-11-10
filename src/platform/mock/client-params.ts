@@ -16,6 +16,16 @@ export const NAME_PARAM = 'mock-name';
 
 export const DEVICE_PARAM = 'mock-device';
 
+// A shorter catch-up timeout for tests, in milliseconds. A production build reads only `TIMING`.
+export const CATCH_UP_TIMEOUT_PARAM = 'mock-catch-up-timeout-ms';
+
+// The party of a mock room lives in localStorage under this prefix and the room id, and a
+// BroadcastChannel of this prefix and the room id tells the other pages it changed. It starts with
+// `mock-`, so the default storage namespace never lists it.
+export const PARTY_STORAGE_PREFIX = 'mock-party:';
+
+export const PARTY_CHANNEL_PREFIX = 'muster-roll-mock-party:';
+
 // Keys of a non-default device live under this prefix, and the default device lists no key that
 // starts with `mock-`.
 const DEVICE_STORAGE_PREFIX = 'mock-device:';

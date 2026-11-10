@@ -28,6 +28,9 @@ const TIMING: Timing = {
   projectionRequestRepeatMs: 25,
   projectionIncompleteTimeoutMs: 80,
   fieldSavePauseMs: 1,
+  catchUpTimeoutMs: 200,
+  stateAnswerDelayMinMs: 0,
+  stateAnswerDelayMaxMs: 5,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -144,6 +147,7 @@ async function startClient(
   const engine = await startReplicaEngine(
     platform,
     createSendQueue(platform.broadcast, TIMING, options.wait),
+    { timing: TIMING },
   );
 
   // The window is a page of the same client, so it has the same connection id and joins no party.
@@ -176,13 +180,15 @@ async function startClient(
   );
 
   cleanups.push(engine.stop, window.stop);
-  await waitUntil(() => store.$loaded.get());
+  // A client catches up on start, and an edit made before that ends would wait in the queue.
+  await waitUntil(() => store.$loaded.get() && store.$sync.get().state === 'live');
 
   return { connectionId, platform, backing, store, window, deltas: () => deltas, deltaKeys };
 }
 
-// A connection that is in the room and not in the party: it hears every REMOTE message.
-function listen(room: MockRoom): Listener {
+// A connection that is in the room and not in the party: it hears every REMOTE message of the
+// given types.
+function listen(room: MockRoom, types: readonly string[] = ['commit']): Listener {
   const observer = createMockPlatform(createMemoryBus(), createBacking(), {
     room,
     connectionId: 'observer',
@@ -195,7 +201,9 @@ function listen(room: MockRoom): Listener {
 
   cleanups.push(
     observer.broadcast.onMessage(SYNC_CHANNEL, (event) => {
-      heard.push({ from: event.connectionId, data: event.data });
+      if (types.includes(String(Object(event.data).t))) {
+        heard.push({ from: event.connectionId, data: event.data });
+      }
     }),
   );
 
@@ -284,8 +292,10 @@ describe('GM edit goes out', () => {
         playerId: 'probe',
         name: 'probe',
         role: 'PLAYER',
-      }).broadcast.onMessage(SYNC_CHANNEL, () => {
-        storedWhenSent.push(stored(gmA, 'row:brok:str'));
+      }).broadcast.onMessage(SYNC_CHANNEL, (event) => {
+        if (Object(event.data).t === 'commit') {
+          storedWhenSent.push(stored(gmA, 'row:brok:str'));
+        }
       }),
     );
 

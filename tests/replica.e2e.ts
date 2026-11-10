@@ -244,11 +244,22 @@ test('the banner goes when the notices clear', async ({ page }) => {
     n: 1,
     records: [],
     notices: ['local-save-failed'],
+    pending: [],
+    sync: { state: 'live', firstCatchUpDone: true, role: 'GM' },
   });
   await expect(page.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
 
   // #when
-  await postMessage(page, { t: 'delta', engine: 'stub', seq: 1, records: [], notices: [] });
+  await postMessage(page, {
+    t: 'delta',
+    engine: 'stub',
+    seq: 1,
+    records: [],
+    pending: [],
+    withdrawn: [],
+    notices: [],
+    sync: { state: 'live', firstCatchUpDone: true, role: 'GM' },
+  });
 
   // #then
   await expect(page.getByRole('status')).toBeEmpty();

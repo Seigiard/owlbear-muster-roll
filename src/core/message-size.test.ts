@@ -2,6 +2,24 @@ import { describe, expect, test } from 'bun:test';
 
 import { fitsOneMessage, jsonByteLength, recordFitsOneMessage, splitBatch } from './message-size';
 
+// Printable ASCII with no JSON escapes, picked at random, so deflate saves little and base64 adds a
+// third.
+const ALPHABET = Array.from({ length: 94 }, (_, index) => String.fromCharCode(0x21 + index))
+  .filter((character) => character !== '"' && character !== '\\')
+  .join('');
+
+function noise(length: number, seed: number): string {
+  let state = seed;
+  let text = '';
+
+  for (let index = 0; index < length; index += 1) {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    text += ALPHABET[(state >>> 16) % ALPHABET.length];
+  }
+
+  return text;
+}
+
 describe('jsonByteLength', () => {
   test('counts UTF-8 bytes, not characters', () => {
     // #when
@@ -53,6 +71,19 @@ describe('recordFitsOneMessage', () => {
 
     // #then
     expect(fits).toBe(false);
+  });
+
+  test('refuses random text that fits as JSON but not one state message after deflate', () => {
+    // #given two records of one JSON size: random text and text that deflates well
+    const random = { k: 'link:t', d: noise(13500, 7), c: 1, a: 'conn' };
+    const plain = { k: 'link:t', d: 'x'.repeat(13500), c: 1, a: 'conn' };
+
+    // #when
+    const fits = [recordFitsOneMessage(random), recordFitsOneMessage(plain)];
+
+    // #then
+    expect(jsonByteLength(random)).toBe(jsonByteLength(plain));
+    expect(fits).toEqual([false, true]);
   });
 });
 

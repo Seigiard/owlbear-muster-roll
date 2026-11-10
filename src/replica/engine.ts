@@ -1,35 +1,22 @@
 import { nanoid } from 'nanoid';
 
 import { createBoundedIdSet } from '@/core/bounded-id-set';
-import {
-  acceptedFieldValue,
-  findPatchField,
-  isRepeatSectionId,
-  patchedRecord,
-  patchedRecordFits,
-  patchRecordKey,
-} from '@/core/field-patch';
 import { jsonByteLength, recordFitsOneMessage, splitBatch } from '@/core/message-size';
-import { mergeRecords } from '@/core/merge';
-import { decodePreset, encodePreset, type Preset, type PresetTemplate } from '@/core/preset';
-import {
-  hasLiveSheet,
-  presetDataSchema,
-  repDataSchema,
-  repKeyPrefix,
-  sheetDataSchema,
-  type SheetData,
-  type VersionedRecord,
-} from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
+import type { VersionedRecord } from '@/core/records';
 import {
   admitRoomMessage,
   generationRelation,
   parseRoomMessage,
+  stateRequestMessage,
   SYNC_CHANNEL,
+  type GenerationRelation,
   type RoomMessage,
+  type StateMessage,
 } from '@/core/room-messages';
-import { isSheetDependent, parseSheetName, sheetIdSchema, sheetKey } from '@/core/sheets';
+import { decodeStateRecords, stateAnswer } from '@/core/state-records';
+import { INITIAL_GENERATION, type Generation } from '@/core/storage-key';
+import { TIMING, type Timing } from '@/core/timing';
 import {
   parseWindowMessage,
   UI_CHANNEL,
@@ -40,20 +27,27 @@ import {
   type Notice,
   type ProjectionMessage,
   type RejectionReason,
+  type SyncState,
 } from '@/core/ui-messages';
-import { INITIAL_GENERATION, type Generation } from '@/core/storage-key';
 import { visibleRecords, type PlayerRole } from '@/core/visibility';
-import type { BroadcastEvent, BroadcastOptions, Platform } from '@/platform/ports';
+import type { BroadcastEvent, BroadcastOptions, PartyMember, Platform } from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
 import { createCommitOutbox } from '@/replica/commit-outbox';
+import { createComposers, type ComposeContext } from '@/replica/composers';
 import { createPartyRoster } from '@/replica/party-roster';
+import { createPendingQueue, type PendingEntry } from '@/replica/pending-queue';
 import { createRecordStore, type RecordStore } from '@/replica/record-store';
 import { createVersionMinter } from '@/replica/version-minter';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
 
+const REMOTE: BroadcastOptions = { destination: 'REMOTE' };
+
 // Enough for any burst of echoes, small enough to keep nothing forever.
 const RECENT_COMMAND_ID_LIMIT = 256;
+
+// Far more catch-up nonces than a room sends while one answer is on its way.
+const RECENT_NONCE_LIMIT = 256;
 
 // Sits in the problem set, and no write clears it: a reload has to read the storage again.
 const UNREADABLE_STORAGE_MARK = '(unreadable)';
@@ -63,18 +57,29 @@ export type ReplicaEnginePlatform = Pick<
   'broadcast' | 'metadata' | 'party' | 'player' | 'storage'
 >;
 
+export type CatchUpTiming = Pick<
+  Timing,
+  'catchUpTimeoutMs' | 'stateAnswerDelayMinMs' | 'stateAnswerDelayMaxMs'
+>;
+
+// Tests inject the timing, the ids and the random answer delay.
+export type ReplicaEngineOptions = {
+  timing?: CatchUpTiming;
+  newId?: () => string;
+  random?: () => number;
+};
+
 export type ReplicaEngine = {
   stop: () => void;
   // Sends every waiting message at once, held commits included, for a page that is about to close.
   flushNow: () => void;
+  // AD-7: the page became visible, resumed, or came back online.
+  catchUp: () => void;
 };
 
 type Persistence = { store: RecordStore; generation: Generation };
 
 type Persisted = { record: VersionedRecord; saved: boolean };
-
-// The preset decoded from the `d` it came from, so a run of patches decodes it once.
-type DecodedPreset = { d: string; preset: Preset | null };
 
 type LoadedReplica = {
   records: VersionedRecord[];
@@ -82,32 +87,73 @@ type LoadedReplica = {
   persistence: Persistence | null;
 };
 
+// The messages one responder has sent for this client's own `r`, by `i`.
+type AnswerParts = { n: number; parts: Set<number> };
+
+type CatchUpTrigger = 'start' | 'return' | 'role' | 'generation';
+
+// The engine's own catch-up state. Windows get it with the engine's role.
+type CatchUpState = Pick<SyncState, 'state' | 'firstCatchUpDone'>;
+
+// A delta or projection part: records of the replica, or records of the pending view.
+type Part = { records: VersionedRecord[]; pending: VersionedRecord[] };
+
+type PendingChanges = { records: VersionedRecord[]; withdrawn: string[] };
+
 export async function startReplicaEngine(
   platform: ReplicaEnginePlatform,
   sendQueue: SendQueue,
-  newId: () => string = nanoid,
+  options: ReplicaEngineOptions = {},
 ): Promise<ReplicaEngine> {
-  const [role, connectionId] = await Promise.all([
+  const timing = options.timing ?? TIMING;
+  const newId = options.newId ?? nanoid;
+  const random = options.random ?? Math.random;
+
+  const [startRole, connectionId] = await Promise.all([
     platform.player.getRole(),
     platform.player.getConnectionId(),
   ]);
 
-  const loaded = loadReplica(platform, role);
+  const loaded = loadReplica(platform, startRole);
   const replica = new Map<string, VersionedRecord>();
   const problemKeys = loaded.problemKeys;
   const engineId = newId();
   const minter = createVersionMinter(connectionId);
+  const composers = createComposers(connectionId);
   const recentCommandIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
   const answeringNonces = new Set<string>();
-  // A player client has no room copy yet (Story 2.5), so it stays at the initial generation.
-  const ownGeneration = loaded.persistence?.generation ?? INITIAL_GENERATION;
+  const pending = createPendingQueue();
+  // AD-5: re-read on every party change, and a change enters catch-up.
+  let role = startRole;
+  let persistence = loaded.persistence;
+  // A player client has no room copy yet (Story 2.5). It takes a higher generation from a `state`
+  // that answers its own request.
+  let ownGeneration = persistence?.generation ?? INITIAL_GENERATION;
+  let highestSeenGeneration = ownGeneration;
   const outbox = createCommitOutbox(sendQueue, () => ownGeneration);
   const roster = createPartyRoster(platform.party);
   let sequence = 0;
-  let decodedPreset: DecodedPreset | null = null;
   // AD-12: once a newer build has spoken in the room, the banner stays until a reload.
   let newerVersionSeen = false;
   let stopped = false;
+  // AD-7 catch-up. `ownNonce` is set only while catching up.
+  let sync: CatchUpState = { state: 'catching-up', firstCatchUpDone: false };
+  let ownNonce: string | null = null;
+  let answers = new Map<string, AnswerParts>();
+  // True once any `state` for `ownNonce` arrived, so a re-entry need not ask again.
+  let answerSeen = false;
+  let catchUpTimer: ReturnType<typeof setTimeout> | undefined;
+  // AD-11: a client that became GM persists every held record when its catch-up ends.
+  let persistAllOnExit = false;
+  // The pending view by key, as the windows last got it.
+  let shownPending = new Map<string, VersionedRecord>();
+  // Answers waiting for their random delay, by the asker's `r`.
+  const answerTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  // Every `r` this client has seen an answer to, or answered itself, since its last request.
+  const answeredNonces = createBoundedIdSet(RECENT_NONCE_LIMIT);
+  let roleReads = 0;
+  // A window ignores deltas until its first projection, so none is worth sending before one.
+  let projectionSent = false;
 
   for (const record of loaded.records) {
     merge(record);
@@ -136,6 +182,12 @@ export async function startReplicaEngine(
     return sendQueue.enqueue(UI_CHANNEL, message, LOCAL);
   }
 
+  function reject(id: string, reason: RejectionReason): void {
+    send({ t: 'command-rejected', id, reason }).catch((error) => {
+      console.error('Muster Roll could not reject a command', error);
+    });
+  }
+
   function sendProjection(nonce: string): void {
     // A window repeats its request until the first part arrives, so one already answered
     // and still in the queue must not be answered twice.
@@ -144,31 +196,36 @@ export async function startReplicaEngine(
     }
 
     const records = visibleRecords(role, [...replica.values()]);
-    const notices = currentNotices();
+    const shownRecords = sync.state === 'live' ? [] : [...shownPending.values()];
+    const pendingRecords = visibleRecords(role, shownRecords);
+    const largestCount = records.length + pendingRecords.length + 1;
 
     const envelope: ProjectionMessage = {
       t: 'projection',
       nonce,
       engine: engineId,
       seq: sequence,
-      i: Math.max(records.length, 1),
-      n: Math.max(records.length, 1),
+      i: largestCount,
+      n: largestCount,
       records: [],
-      notices,
+      pending: [],
+      notices: currentNotices(),
+      sync: { ...sync, role },
     };
 
-    const split = splitBatch(records, jsonByteLength(envelope));
+    const parts = splitParts(records, pendingRecords, jsonByteLength(envelope));
 
-    if (!split.ok) {
-      console.error('Muster Roll could not split a projection', split.error);
+    if (parts === null) {
+      console.error('Muster Roll could not split a projection');
 
       return;
     }
 
     answeringNonces.add(nonce);
+    projectionSent = true;
 
-    const sends = split.value.map((part, index) =>
-      send({ ...envelope, i: index + 1, n: split.value.length, records: part }),
+    const sends = parts.map((part, index) =>
+      send({ ...envelope, i: index + 1, n: parts.length, ...part }),
     );
 
     Promise.all(sends)
@@ -180,40 +237,44 @@ export async function startReplicaEngine(
       });
   }
 
-  function emitDelta(records: VersionedRecord[]): void {
+  function emitDelta(records: readonly VersionedRecord[]): void {
     const visible = visibleRecords(role, records);
-    const notices = currentNotices();
+    const changes = pendingViewChanges();
+    const pendingRecords = visibleRecords(role, changes.records);
 
     const envelope: DeltaMessage = {
       t: 'delta',
       engine: engineId,
-      seq: sequence + Math.max(visible.length, 1),
+      seq: sequence + visible.length + pendingRecords.length + 1,
       records: [],
-      notices,
+      pending: [],
+      withdrawn: changes.withdrawn,
+      notices: currentNotices(),
+      sync: { ...sync, role },
     };
 
-    const split = splitBatch(visible, jsonByteLength(envelope));
+    const parts = splitParts(visible, pendingRecords, jsonByteLength(envelope));
 
-    if (!split.ok) {
-      console.error('Muster Roll could not split a delta', split.error);
+    if (parts === null) {
+      console.error('Muster Roll could not split a delta');
 
       return;
     }
 
-    for (const part of split.value) {
+    for (const part of parts) {
       sequence += 1;
-      send({ ...envelope, seq: sequence, records: part }).catch((error) => {
+      send({ ...envelope, seq: sequence, ...part }).catch((error) => {
         console.error('Muster Roll could not send a delta', error);
       });
     }
   }
 
   function persist(record: VersionedRecord): Persisted {
-    if (loaded.persistence === null) {
+    if (persistence === null) {
       return { record, saved: true };
     }
 
-    const { store, generation } = loaded.persistence;
+    const { store, generation } = persistence;
     const written = store.write(generation, record);
 
     if (written.ok) {
@@ -228,338 +289,47 @@ export async function startReplicaEngine(
     return { record, saved: false };
   }
 
-  function composeSheetCreate(
-    command: Extract<Command, { type: 'sheet-create' }>,
-  ): Result<VersionedRecord, RejectionReason> {
-    if (!sheetIdSchema.safeParse(command.sheetId).success) {
-      return err('invalid-sheet-id');
-    }
-
-    const k = sheetKey(command.sheetId);
-
-    // A tombstone counts too: a deleted sheet's id must never come back.
-    if (replica.has(k)) {
-      return err('sheet-exists');
-    }
-
-    const name = parseSheetName(command.name);
-
-    if (!name.ok) {
-      return err('invalid-name');
-    }
-
-    return mintedSheet(k, 0, {
-      kind: command.kind,
-      name: name.value,
-      order: nextOrder(command.kind),
-    });
+  function liveContext(): ComposeContext {
+    return { records: replica, mint: minter.mint };
   }
 
-  function composeSheetRename(
-    command: Extract<Command, { type: 'sheet-rename' }>,
-  ): Result<VersionedRecord, RejectionReason> {
-    const current = liveSheetRecord(command.sheetId);
-
-    if (!current.ok) {
-      return current;
-    }
-
-    const sheet = sheetDataSchema.safeParse(current.value.d);
-
-    if (!sheet.success) {
-      return err('unknown-sheet');
-    }
-
-    const name = parseSheetName(command.name);
-
-    if (!name.ok) {
-      return err('invalid-name');
-    }
-
-    return mintedSheet(current.value.k, current.value.c, { ...sheet.data, name: name.value });
+  // Mints nothing: a version of the pending view never reaches the room or the storage.
+  function dryContext(records: ReadonlyMap<string, VersionedRecord>): ComposeContext {
+    return {
+      records,
+      mint: (_key, highestKnownCounter): Version => ({
+        c: highestKnownCounter + 1,
+        a: connectionId,
+      }),
+    };
   }
 
-  // The sheet and every record that depends on it go in one batch. Storage gets the whole batch
-  // before any send, and the sheet tombstone goes last, so a write that fails part way leaves a live
-  // sheet the GM can delete again. The kind is not checked: an NPC goes the same way.
-  function composeSheetDelete(
-    command: Extract<Command, { type: 'sheet-delete' }>,
-  ): Result<VersionedRecord[], RejectionReason> {
-    const current = liveSheetRecord(command.sheetId);
+  // A batch is saved in order and stops at its first failed write. The failed record and the ones
+  // after it are not applied, so a retry of the command reaches them again. A single record keeps
+  // its value after a failed write, and the notice asks the GM for a snapshot.
+  function apply(records: readonly VersionedRecord[]): VersionedRecord[] {
+    const isBatch = records.length > 1;
+    const applied: VersionedRecord[] = [];
 
-    if (!current.ok) {
-      return current;
-    }
+    for (const record of records) {
+      const persisted = persist(record);
 
-    const doomed: VersionedRecord[] = [];
-
-    for (const [key, record] of replica) {
-      // A tombstone already says deleted, and writing it again would only add a version.
-      if (record.d !== null && isSheetDependent(key, record, command.sheetId)) {
-        doomed.push(record);
+      if (!persisted.saved && isBatch) {
+        break;
       }
+
+      applied.push(merge(persisted.record));
     }
 
-    doomed.push(current.value);
-
-    return ok(doomed.map((record) => tombstone(record)));
+    return applied;
   }
 
-  function liveSheetRecord(sheetId: string): Result<VersionedRecord, RejectionReason> {
-    if (!sheetIdSchema.safeParse(sheetId).success) {
-      return err('invalid-sheet-id');
+  // AD-4: a GM edit goes to the room after it is merged, persisted and shown. A GM whose storage
+  // could not be read minted without the saved state, so its records stay in this client.
+  function sendCommits(applied: readonly VersionedRecord[]): void {
+    if (persistence !== null) {
+      outbox.add(applied);
     }
-
-    const current = replica.get(sheetKey(sheetId));
-
-    if (current === undefined) {
-      return err('unknown-sheet');
-    }
-
-    return current.d === null ? err('deleted-sheet') : ok(current);
-  }
-
-  function tombstone(record: VersionedRecord): VersionedRecord {
-    const { c, a } = minter.mint(record.k, record.c);
-
-    return { ...record, d: null, c, a };
-  }
-
-  function mintedSheet(
-    k: string,
-    highestKnownCounter: number,
-    d: SheetData,
-  ): Result<VersionedRecord, RejectionReason> {
-    const { c, a } = minter.mint(k, highestKnownCounter);
-    const record: VersionedRecord = { k, d, c, a };
-
-    return recordFitsOneMessage(record) ? ok(record) : err('too-large');
-  }
-
-  function compose(command: Command): Result<VersionedRecord[], RejectionReason> {
-    switch (command.type) {
-      case 'sheet-create':
-        return listOf(composeSheetCreate(command));
-      case 'sheet-rename':
-        return listOf(composeSheetRename(command));
-      case 'sheet-delete':
-        return composeSheetDelete(command);
-      case 'preset-upload':
-        return listOf(composePresetUpload(command));
-      case 'field-patch':
-        return listOf(composeFieldPatch(command));
-      case 'repeat-row-add':
-        return listOf(composeRepeatRowAdd(command));
-      case 'repeat-row-delete':
-        return listOf(composeRepeatRowDelete(command));
-      default:
-        return unknownCommand(command);
-    }
-  }
-
-  function composePresetUpload(
-    command: Extract<Command, { type: 'preset-upload' }>,
-  ): Result<VersionedRecord, RejectionReason> {
-    const preset = decodePreset(command.data);
-
-    if (!preset.ok) {
-      return err('invalid-preset');
-    }
-
-    // Composed from the validated preset, so the record never holds what the window sent as is.
-    const d = encodePreset(preset.value);
-
-    // Measured at the largest counter a version can reach, so the check needs no mint.
-    if (!recordFitsOneMessage({ k: 'preset', d, c: Number.MAX_SAFE_INTEGER, a: connectionId })) {
-      return err('too-large');
-    }
-
-    // Temporary until Story 5.1 brings the AD-14 diff: a preset change must not orphan values.
-    if (hasLiveSheet(replica.values())) {
-      return err('sheets-exist');
-    }
-
-    const { c, a } = minter.mint('preset', replica.get('preset')?.c ?? 0);
-
-    return ok({ k: 'preset', d, c, a });
-  }
-
-  // The field must be in the targeted row of the sheet's own template, and the value of its type.
-  // The patch merges into the record as it is now, so a field another window just saved stays.
-  function composeFieldPatch(
-    command: Extract<Command, { type: 'field-patch' }>,
-  ): Result<VersionedRecord, RejectionReason> {
-    const template = sheetTemplate(command.sheetId, 'unknown-field');
-
-    if (!template.ok) {
-      return template;
-    }
-
-    const field = findPatchField(template.value, command.target, command.fieldId);
-
-    if (field === null) {
-      return err('unknown-field');
-    }
-
-    const value = acceptedFieldValue(field, command.value);
-
-    if (!value.ok) {
-      return value;
-    }
-
-    const existing = replica.get(patchRecordKey(command.sheetId, command.target));
-
-    const patched = patchedRecord(
-      command.sheetId,
-      command.target,
-      existing,
-      command.fieldId,
-      value.value,
-    );
-
-    if (!patched.ok) {
-      return patched;
-    }
-
-    if (!patchedRecordFits(patched.value)) {
-      return err('too-large');
-    }
-
-    const { c, a } = minter.mint(patched.value.k, existing?.c ?? 0);
-
-    return ok({ ...patched.value, c, a });
-  }
-
-  // A new row goes after every row this sheet has in the section. The id is the window's, so a
-  // tombstone's id counts as taken: a deleted row must never come back.
-  function composeRepeatRowAdd(
-    command: Extract<Command, { type: 'repeat-row-add' }>,
-  ): Result<VersionedRecord, RejectionReason> {
-    const section = repeatSection(command);
-
-    if (!section.ok) {
-      return section;
-    }
-
-    if (!sheetIdSchema.safeParse(command.instanceId).success) {
-      return err('invalid-instance-id');
-    }
-
-    const k = repKey(command);
-
-    if (replica.has(k)) {
-      return err('instance-exists');
-    }
-
-    const { c, a } = minter.mint(k, 0);
-    const record: VersionedRecord = { k, d: { order: nextRowOrder(command), cells: {} }, c, a };
-
-    return recordFitsOneMessage(record) ? ok(record) : err('too-large');
-  }
-
-  function composeRepeatRowDelete(
-    command: Extract<Command, { type: 'repeat-row-delete' }>,
-  ): Result<VersionedRecord, RejectionReason> {
-    const section = repeatSection(command);
-
-    if (!section.ok) {
-      return section;
-    }
-
-    const current = replica.get(repKey(command));
-
-    return current === undefined || current.d === null
-      ? err('unknown-instance')
-      : ok(tombstone(current));
-  }
-
-  // The sheet must be live and the section a repeat section of the sheet's own template.
-  function repeatSection(command: {
-    sheetId: string;
-    sectionId: string;
-  }): Result<null, RejectionReason> {
-    const template = sheetTemplate(command.sheetId, 'unknown-section');
-
-    if (!template.ok) {
-      return template;
-    }
-
-    return isRepeatSectionId(template.value, command.sectionId) ? ok(null) : err('unknown-section');
-  }
-
-  // `noPreset` names the rejection for a sheet whose template cannot be known yet.
-  function sheetTemplate(
-    sheetId: string,
-    noPreset: RejectionReason,
-  ): Result<PresetTemplate, RejectionReason> {
-    const current = liveSheetRecord(sheetId);
-
-    if (!current.ok) {
-      return current;
-    }
-
-    const sheet = sheetDataSchema.safeParse(current.value.d);
-    const preset = currentPreset();
-
-    if (!sheet.success) {
-      return err('unknown-sheet');
-    }
-
-    if (preset === null) {
-      return err(noPreset);
-    }
-
-    return ok(sheet.data.kind === 'pc' ? preset.character : preset.npc);
-  }
-
-  // A tombstone holds no order, so only live rows count.
-  function nextRowOrder(command: { sheetId: string; sectionId: string }): number {
-    const prefix = repKeyPrefix(command.sheetId, command.sectionId);
-    let highest = -1;
-
-    for (const record of replica.values()) {
-      if (record.k.startsWith(prefix)) {
-        const row = repDataSchema.safeParse(record.d);
-
-        if (row.success) {
-          highest = Math.max(highest, row.data.order);
-        }
-      }
-    }
-
-    return highest + 1;
-  }
-
-  function currentPreset(): Preset | null {
-    const data = presetDataSchema.safeParse(replica.get('preset')?.d);
-
-    if (!data.success) {
-      return null;
-    }
-
-    if (decodedPreset?.d !== data.data) {
-      const decoded = decodePreset(data.data);
-
-      decodedPreset = { d: data.data, preset: decoded.ok ? decoded.value : null };
-    }
-
-    return decodedPreset.preset;
-  }
-
-  function nextOrder(kind: 'pc' | 'npc'): number {
-    let highest = -1;
-
-    for (const record of replica.values()) {
-      if (record.k.startsWith('sheet:')) {
-        const sheet = sheetDataSchema.safeParse(record.d);
-
-        if (sheet.success && sheet.data.kind === kind) {
-          highest = Math.max(highest, sheet.data.order);
-        }
-      }
-    }
-
-    return highest + 1;
   }
 
   function handleCommand(message: CommandMessage): void {
@@ -570,46 +340,308 @@ export async function startReplicaEngine(
     recentCommandIds.add(message.id);
 
     // Every command writes. A player's own record would beat later GM edits of its key in merge.
-    const composed: Result<VersionedRecord[], RejectionReason> =
-      role === 'GM' ? compose(message.command) : err('not-allowed');
-
-    if (!composed.ok) {
-      send({ t: 'command-rejected', id: message.id, reason: composed.error }).catch((error) => {
-        console.error('Muster Roll could not reject a command', error);
-      });
+    if (role !== 'GM') {
+      reject(message.id, 'not-allowed');
 
       return;
     }
 
-    // A batch is saved in order and stops at its first failed write. The failed record and the
-    // ones after it are not applied, so a retry of the command reaches them again. A single record
-    // keeps its value after a failed write, and the notice asks the GM for a snapshot.
-    const isBatch = composed.value.length > 1;
-    const applied: VersionedRecord[] = [];
+    if (sync.state === 'catching-up') {
+      queueIntent(message.id, message.command);
 
-    for (const record of composed.value) {
-      const persisted = persist(record);
-
-      if (!persisted.saved && isBatch) {
-        break;
-      }
-
-      applied.push(merge(persisted.record));
+      return;
     }
+
+    const composed = composers.compose(liveContext(), message.command);
+
+    if (!composed.ok) {
+      reject(message.id, composed.error);
+
+      return;
+    }
+
+    const applied = apply(composed.value);
 
     // Sent even when empty, so the window still learns of the notice.
     emitDelta(applied);
+    sendCommits(applied);
+  }
 
-    // AD-4: a GM edit goes to the room after it is merged and persisted. A GM whose storage could
-    // not be read minted without the saved state, so its records stay in this client.
-    if (loaded.persistence !== null) {
-      outbox.add(applied);
+  // AD-7: an intent made during catch-up waits and takes `c` on exit. It is checked now against the
+  // pending view, so a refusal comes at once.
+  function queueIntent(id: string, command: Command): void {
+    if (command.type === 'preset-upload') {
+      reject(id, 'catching-up');
+
+      return;
+    }
+
+    const dry = composers.compose(dryContext(pendingView()), command);
+
+    if (!dry.ok) {
+      reject(id, dry.error);
+
+      return;
+    }
+
+    pending.add(id, command);
+    emitDelta([]);
+  }
+
+  // The replica with every pending intent applied by the same composers, minting nothing.
+  function pendingView(): Map<string, VersionedRecord> {
+    const view = new Map(replica);
+    const context = dryContext(view);
+
+    for (const entry of pending.entries()) {
+      for (const record of composedEntry(context, entry)) {
+        view.set(record.k, record);
+      }
+    }
+
+    return view;
+  }
+
+  function composedEntry(context: ComposeContext, entry: PendingEntry): VersionedRecord[] {
+    if (entry.kind === 'intent') {
+      const composed = composers.compose(context, entry.command);
+
+      return composed.ok ? composed.value : [];
+    }
+
+    const { record } = composers.composePatches(context, entry.patches);
+
+    return record === null ? [] : [record];
+  }
+
+  // The pending view records the windows do not have yet, and the keys the view no longer
+  // changes, which the windows withdraw so the replica's record shows again. In `live` the
+  // windows drop the whole view.
+  function pendingViewChanges(): PendingChanges {
+    if (sync.state === 'live') {
+      shownPending = new Map();
+
+      return { records: [], withdrawn: [] };
+    }
+
+    const next = new Map<string, VersionedRecord>();
+    const records: VersionedRecord[] = [];
+
+    for (const [key, record] of pendingView()) {
+      if (record !== replica.get(key)) {
+        const shown = shownPending.get(key);
+
+        next.set(key, record);
+
+        if (shown === undefined || JSON.stringify(shown) !== JSON.stringify(record)) {
+          records.push(record);
+        }
+      }
+    }
+
+    const withdrawn = [...shownPending.keys()].filter((key) => !next.has(key));
+
+    shownPending = next;
+
+    return { records, withdrawn };
+  }
+
+  // AD-7 replay: every pending intent runs for real in arrival order. A refusal now goes to the
+  // window with the command id it came with.
+  function replayPending(): VersionedRecord[] {
+    const applied: VersionedRecord[] = [];
+
+    for (const entry of pending.takeAll()) {
+      const ids = entry.kind === 'intent' ? [entry.id] : entry.patches.map((patch) => patch.id);
+
+      if (role !== 'GM') {
+        for (const id of ids) {
+          reject(id, 'not-allowed');
+        }
+      } else if (entry.kind === 'intent') {
+        const composed = composers.compose(liveContext(), entry.command);
+
+        if (composed.ok) {
+          applied.push(...apply(composed.value));
+        } else {
+          reject(entry.id, composed.error);
+        }
+      } else {
+        const { record, refusals } = composers.composePatches(liveContext(), entry.patches);
+
+        for (const refusal of refusals) {
+          reject(refusal.id, refusal.reason);
+        }
+
+        if (record !== null) {
+          applied.push(...apply([record]));
+        }
+      }
+    }
+
+    return applied;
+  }
+
+  // A GM client merges what it and the other tabs of its browser saved. A player persists nothing.
+  function mergePersisted(): VersionedRecord[] {
+    if (persistence === null || role !== 'GM') {
+      return [];
+    }
+
+    const load = persistence.store.loadGeneration(persistence.generation);
+
+    if (!load.ok) {
+      console.error('Muster Roll could not read the saved records', load.error);
+
+      return [];
+    }
+
+    for (const key of load.value.corruptKeys) {
+      problemKeys.add(key);
+    }
+
+    const changed: VersionedRecord[] = [];
+
+    for (const record of load.value.records) {
+      // A record too large for a message could never reach a window, so it counts as corrupt.
+      if (!recordFitsOneMessage(record)) {
+        problemKeys.add(record.k);
+        continue;
+      }
+
+      const before = replica.get(record.k);
+      const winner = merge(record);
+
+      if (winner !== before) {
+        changed.push(winner);
+      }
+    }
+
+    return changed;
+  }
+
+  // AD-7 entry. A start, a role change and a higher generation always ask with a new `r` and drop
+  // the answers to the old one. A return while catching up keeps `r`, and asks again only when
+  // nothing has answered it yet. Resolves once a GM client knows whether it is alone.
+  function enterCatchUp(trigger: CatchUpTrigger): Promise<void> {
+    if (stopped) {
+      return Promise.resolve();
+    }
+
+    const keepsNonce = trigger === 'return' && sync.state === 'catching-up' && ownNonce !== null;
+    const changed = trigger === 'start' ? [] : mergePersisted();
+
+    // Story 2.5 merges the room copy here, after the persisted records and before the request.
+
+    if (keepsNonce && ownNonce !== null) {
+      if (changed.length > 0) {
+        emitDelta(changed);
+      }
+
+      // The timeout keeps running from the first request, so returns cannot put the exit off.
+      if (!answerSeen) {
+        requestState(ownNonce);
+      }
+
+      return role === 'GM' ? leaveIfAlone(ownNonce) : Promise.resolve();
+    }
+
+    const nonce = newId();
+
+    sync = { state: 'catching-up', firstCatchUpDone: sync.firstCatchUpDone };
+    ownNonce = nonce;
+    answers = new Map();
+    answerSeen = false;
+
+    if (trigger !== 'start') {
+      emitDelta(changed);
+    }
+
+    requestState(nonce);
+    armCatchUpTimeout();
+
+    return role === 'GM' ? leaveIfAlone(nonce) : Promise.resolve();
+  }
+
+  function requestState(nonce: string): void {
+    sendQueue
+      .enqueue(SYNC_CHANNEL, stateRequestMessage(ownGeneration, nonce), REMOTE)
+      .catch((error) => {
+        console.error('Muster Roll could not ask for the room state', error);
+      });
+  }
+
+  function armCatchUpTimeout(): void {
+    clearTimeout(catchUpTimer);
+
+    const nonce = ownNonce;
+
+    catchUpTimer = setTimeout(() => {
+      if (!stopped && sync.state === 'catching-up' && ownNonce === nonce) {
+        leaveCatchUp();
+      }
+    }, timing.catchUpTimeoutMs);
+  }
+
+  // AD-7: a GM client whose confirmed party read shows no other GM connection has nobody to wait
+  // for. A failed read proves nothing, so the client waits for answers or the timeout.
+  async function leaveIfAlone(nonce: string): Promise<void> {
+    let players: PartyMember[];
+
+    try {
+      players = await platform.party.getPlayers();
+    } catch (error) {
+      console.error('Muster Roll could not read the party', error);
+
+      return;
+    }
+
+    if (stopped || sync.state !== 'catching-up' || ownNonce !== nonce || role !== 'GM') {
+      return;
+    }
+
+    if (!players.some((player) => player.role === 'GM')) {
+      leaveCatchUp();
     }
   }
 
+  function leaveCatchUp(): void {
+    clearTimeout(catchUpTimer);
+    sync = { state: 'live', firstCatchUpDone: true };
+    ownNonce = null;
+    answers = new Map();
+    shownPending = new Map();
+
+    const changed: VersionedRecord[] = [];
+
+    if (persistAllOnExit) {
+      persistAllOnExit = false;
+
+      for (const record of replica.values()) {
+        // The store can hold a newer record from another tab of this browser.
+        const winner = merge(persist(record).record);
+
+        if (winner !== record) {
+          changed.push(winner);
+        }
+      }
+    }
+
+    const replayed = replayPending();
+
+    changed.push(...replayed);
+
+    // Sent in `live`, so the windows drop the pending view in the same step.
+    if (projectionSent || changed.length > 0) {
+      emitDelta(changed);
+    }
+
+    sendCommits(replayed);
+  }
+
   // A GM client persists each record that changes its replica. A player client persists nothing.
-  // A remote commit is never sent on again.
-  function receiveCommit(records: readonly VersionedRecord[]): void {
+  // A remote record is never sent on again.
+  function receiveRecords(records: readonly VersionedRecord[]): void {
     const noticesBefore = currentNotices().join();
     const changed: VersionedRecord[] = [];
 
@@ -635,6 +667,170 @@ export async function startReplicaEngine(
     }
   }
 
+  // AD-7 answer: a GM client that is live and can vouch for its records answers after a random
+  // delay, unless an answer to `r` shows up first.
+  function receiveStateRequest(r: string): void {
+    // A request again for one `r` means the asker got no complete answer, so earlier answers no
+    // longer count.
+    answeredNonces.delete(r);
+
+    if (!canAnswer() || answerTimers.has(r)) {
+      return;
+    }
+
+    const span = Math.max(0, timing.stateAnswerDelayMaxMs - timing.stateAnswerDelayMinMs);
+    const delay = timing.stateAnswerDelayMinMs + random() * span;
+
+    answerTimers.set(
+      r,
+      setTimeout(() => {
+        answerTimers.delete(r);
+        answerState(r);
+      }, delay),
+    );
+  }
+
+  // A GM whose storage could not be read keeps its records to itself, as with commits.
+  function canAnswer(): boolean {
+    return role === 'GM' && persistence !== null && sync.state === 'live';
+  }
+
+  function answerState(r: string): void {
+    if (stopped || !canAnswer() || answeredNonces.has(r)) {
+      return;
+    }
+
+    answeredNonces.add(r);
+
+    const answer = stateAnswer(ownGeneration, r, [...replica.values()]);
+
+    for (const key of answer.skipped) {
+      console.error('Muster Roll left out a record too large for one state message', key);
+    }
+
+    for (const message of answer.messages) {
+      sendQueue.enqueue(SYNC_CHANNEL, message, REMOTE).catch((error) => {
+        console.error('Muster Roll could not send the room state', error);
+      });
+    }
+  }
+
+  function receiveState(message: StateMessage, sender: string, relation: GenerationRelation): void {
+    const records = decodeStateRecords(message.records);
+
+    if (!records.ok) {
+      console.error('Muster Roll dropped a state message it could not read');
+
+      return;
+    }
+
+    if (relation === 'higher') {
+      // A GM client keeps its generation until Epic 5 brings full adoption.
+      if (!adoptsGeneration(message)) {
+        return;
+      }
+
+      ownGeneration = message.g;
+      highestSeenGeneration = higherGeneration(highestSeenGeneration, message.g);
+    } else {
+      // Only a readable answer of this generation makes this client's own answer needless.
+      answeredNonces.add(message.r);
+      clearTimeout(answerTimers.get(message.r));
+      answerTimers.delete(message.r);
+    }
+
+    if (message.r === ownNonce) {
+      answerSeen = true;
+    }
+
+    // Every `state` merges whenever it arrives, in any state.
+    receiveRecords(records.value);
+    countAnswerPart(message, sender);
+  }
+
+  // A partial answer counts as no answer: only all `n` messages of one responder end catch-up.
+  function countAnswerPart(message: StateMessage, sender: string): void {
+    if (sync.state !== 'catching-up' || message.r !== ownNonce) {
+      return;
+    }
+
+    const held = answers.get(sender);
+    const answer = held?.n === message.n ? held : { n: message.n, parts: new Set<number>() };
+
+    answer.parts.add(message.i);
+    answers.set(sender, answer);
+
+    if (answer.parts.size === answer.n) {
+      leaveCatchUp();
+    }
+  }
+
+  // A player holds no persisted data, so it takes the generation of the answer to its own request.
+  function adoptsGeneration(message: RoomMessage): boolean {
+    return (
+      message.t === 'state' &&
+      role !== 'GM' &&
+      sync.state === 'catching-up' &&
+      message.r === ownNonce
+    );
+  }
+
+  function noteHigherGeneration(generation: Generation): void {
+    if (compareGenerations(generation, highestSeenGeneration) <= 0) {
+      return;
+    }
+
+    highestSeenGeneration = generation;
+    void enterCatchUp('generation');
+  }
+
+  async function rereadRole(): Promise<void> {
+    roleReads += 1;
+
+    const read = roleReads;
+    let next: PlayerRole;
+
+    try {
+      next = await platform.player.getRole();
+    } catch (error) {
+      console.error('Muster Roll could not read its role', error);
+
+      return;
+    }
+
+    if (stopped || read !== roleReads || next === role) {
+      return;
+    }
+
+    changeRole(next);
+  }
+
+  function changeRole(next: PlayerRole): void {
+    role = next;
+    persistAllOnExit = false;
+    persistence = null;
+
+    if (next === 'GM') {
+      // As at start: the highest generation of this client and of what the storage holds.
+      const store = createRecordStore(platform.storage, platform.metadata.getRoomId());
+      const stored = store.readHighestGeneration();
+      const generation = stored.ok ? higherGeneration(ownGeneration, stored.value) : ownGeneration;
+      const probe = stored.ok ? store.loadGeneration(generation) : stored;
+
+      if (probe.ok) {
+        ownGeneration = generation;
+        highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
+        persistence = { store, generation };
+        persistAllOnExit = true;
+      } else {
+        console.error('Muster Roll could not read the saved records', probe.error);
+        problemKeys.add(UNREADABLE_STORAGE_MARK);
+      }
+    }
+
+    void enterCatchUp('role');
+  }
+
   function raiseNewerVersion(): void {
     if (newerVersionSeen) {
       return;
@@ -656,23 +852,44 @@ export async function startReplicaEngine(
       return;
     }
 
+    const message = parsed.value;
     const sender = await roster.senderOf(event.connectionId);
-    const relation = generationRelation(parsed.value.g, ownGeneration);
 
-    if (stopped || !admitRoomMessage(parsed.value.t, sender?.role ?? null, relation)) {
+    if (stopped) {
       return;
     }
 
-    dispatchRoomMessage(parsed.value);
+    const relation = generationRelation(message.g, ownGeneration);
+
+    // AD-7: a GM that speaks from a higher generation sends this client back to catch-up.
+    if (relation === 'higher' && sender?.role === 'GM' && !adoptsGeneration(message)) {
+      noteHigherGeneration(message.g);
+    }
+
+    if (!admitRoomMessage(message.t, sender?.role ?? null, relation)) {
+      return;
+    }
+
+    dispatchRoomMessage(message, event.connectionId, relation);
   }
 
-  function dispatchRoomMessage(message: RoomMessage): void {
+  function dispatchRoomMessage(
+    message: RoomMessage,
+    sender: string,
+    relation: GenerationRelation,
+  ): void {
     switch (message.t) {
       case 'commit':
-        receiveCommit(message.records);
+        receiveRecords(message.records);
+        break;
+      case 'state-request':
+        receiveStateRequest(message.r);
+        break;
+      case 'state':
+        receiveState(message, sender, relation);
         break;
       default:
-        unknownRoomMessage(message.t);
+        unknownRoomMessage(message);
     }
   }
 
@@ -702,39 +919,76 @@ export async function startReplicaEngine(
     }
   });
 
+  const unsubscribeParty = platform.party.onChange(() => {
+    void rereadRole();
+  });
+
+  const unsubscribeRole = platform.player.onRoleChange(() => {
+    void rereadRole();
+  });
+
+  // Not awaited: a party read that never ends must not hold back the engine and its page handlers.
+  void enterCatchUp('start');
+
   return {
     stop: () => {
       stopped = true;
+      clearTimeout(catchUpTimer);
+
+      for (const timer of answerTimers.values()) {
+        clearTimeout(timer);
+      }
+
+      answerTimers.clear();
       unsubscribeUi();
       unsubscribeRoom();
+      unsubscribeParty();
+      unsubscribeRole();
       roster.stop();
       outbox.stop();
     },
     flushNow: () => {
+      // A closing page cannot wait for catch-up, so the intents it holds apply and go out now.
+      if (sync.state === 'catching-up' && pending.entries().length > 0) {
+        leaveCatchUp();
+      }
+
       outbox.flush();
       sendQueue.flushNow();
+    },
+    catchUp: () => {
+      void enterCatchUp('return');
     },
   };
 }
 
-function repKey(command: { sheetId: string; sectionId: string; instanceId: string }): string {
-  const { sheetId, sectionId, instanceId } = command;
+// Records first, then the pending view, each split under the message limit. `null` when a record
+// cannot fit one message.
+function splitParts(
+  records: readonly VersionedRecord[],
+  pendingView: readonly VersionedRecord[],
+  envelopeBytes: number,
+): Part[] | null {
+  const recordParts = splitBatch(records, envelopeBytes);
+  const pendingParts = pendingView.length === 0 ? null : splitBatch(pendingView, envelopeBytes);
 
-  return patchRecordKey(sheetId, { kind: 'rep', sectionId, instanceId });
+  if (!recordParts.ok || (pendingParts !== null && !pendingParts.ok)) {
+    return null;
+  }
+
+  return [
+    ...recordParts.value.map((part) => ({ records: part, pending: [] })),
+    ...(pendingParts?.value ?? []).map((part) => ({ records: [], pending: part })),
+  ];
 }
 
-function listOf<Value, Failure>(result: Result<Value, Failure>): Result<Value[], Failure> {
-  return result.ok ? ok([result.value]) : result;
-}
-
-// `tsc` fails here when a command type has no composer above.
-function unknownCommand(command: never): never {
-  throw new Error(`Muster Roll has no composer for the command ${JSON.stringify(command)}`);
+function higherGeneration(first: Generation, second: Generation): Generation {
+  return compareGenerations(first, second) >= 0 ? first : second;
 }
 
 // `tsc` fails here when a parsed room message has no handler above.
-function unknownRoomMessage(t: never): never {
-  throw new Error(`Muster Roll has no handler for the room message ${String(t)}`);
+function unknownRoomMessage(message: never): never {
+  throw new Error(`Muster Roll has no handler for the room message ${JSON.stringify(message)}`);
 }
 
 function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedReplica {

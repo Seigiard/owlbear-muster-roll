@@ -12,4 +12,13 @@ describe('timing constants', () => {
     // #then
     expect(TIMING.fieldSavePauseMs).toBe(800);
   });
+
+  test('starts catch-up at a 4 s timeout and an answer delay of 20 to 300 ms, as the 2.2 spec says', () => {
+    // #then
+    expect([
+      TIMING.catchUpTimeoutMs,
+      TIMING.stateAnswerDelayMinMs,
+      TIMING.stateAnswerDelayMaxMs,
+    ]).toEqual([4000, 20, 300]);
+  });
 });

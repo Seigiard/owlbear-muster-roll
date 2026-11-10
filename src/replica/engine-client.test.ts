@@ -26,6 +26,9 @@ const TIMING: Timing = {
   projectionRequestRepeatMs: 25,
   projectionIncompleteTimeoutMs: 80,
   fieldSavePauseMs: 1,
+  catchUpTimeoutMs: 200,
+  stateAnswerDelayMinMs: 0,
+  stateAnswerDelayMaxMs: 0,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -36,6 +39,7 @@ const EXAMPLE_PRESET_TEXT = readFileSync(
 );
 
 const LOCAL = { destination: 'LOCAL' } as const;
+const LIVE_SYNC = { state: 'live', firstCatchUpDone: true, role: 'GM' } as const;
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 
@@ -102,7 +106,7 @@ async function startEngine(rig: Rig, newId?: () => string): Promise<ReplicaEngin
   const engine = await startReplicaEngine(
     rig.platform,
     createSendQueue(rig.platform.broadcast, TIMING),
-    newId,
+    { timing: TIMING, newId },
   );
 
   cleanups.push(engine.stop);
@@ -407,6 +411,8 @@ describe('open window', () => {
       n: 1,
       records: [sheet('x')],
       notices: [],
+      pending: [],
+      sync: LIVE_SYNC,
     });
 
     // #then
@@ -466,6 +472,8 @@ describe('open window', () => {
       n: 2,
       records: [sheet('x')],
       notices: [],
+      pending: [],
+      sync: LIVE_SYNC,
     });
 
     // #when
@@ -482,7 +490,16 @@ describe('open window', () => {
     openWindow(rig, ids('slow'));
     await waitUntil(() => requests(rig).length >= 1);
 
-    const part = { t: 'projection', nonce: 'slow', engine: 'e', seq: 0, n: 3, notices: [] };
+    const part = {
+      t: 'projection',
+      nonce: 'slow',
+      engine: 'e',
+      seq: 0,
+      n: 3,
+      notices: [],
+      pending: [],
+      sync: LIVE_SYNC,
+    };
 
     // #when: the parts arrive 60 ms apart, each inside the 80 ms timeout.
     await post(rig, { ...part, i: 1, records: [sheet('a')] });
@@ -559,7 +576,16 @@ describe('repeated requests', () => {
 });
 
 describe('split projection', () => {
-  const part = { t: 'projection', nonce: 'split', engine: 'e', seq: 5, n: 2, notices: [] };
+  const part = {
+    t: 'projection',
+    nonce: 'split',
+    engine: 'e',
+    seq: 5,
+    n: 2,
+    notices: [],
+    pending: [],
+    sync: LIVE_SYNC,
+  };
 
   test('buffers deltas until the set is complete and applies them in order', async () => {
     // #given
@@ -568,7 +594,16 @@ describe('split projection', () => {
 
     // #when
     await post(rig, { ...part, i: 1, records: [sheet('a')] });
-    await post(rig, { t: 'delta', engine: 'e', seq: 6, records: [sheet('b')], notices: [] });
+    await post(rig, {
+      t: 'delta',
+      engine: 'e',
+      seq: 6,
+      records: [sheet('b')],
+      notices: [],
+      pending: [],
+      withdrawn: [],
+      sync: LIVE_SYNC,
+    });
 
     const whileIncomplete = recordsOf(view.store);
 
@@ -587,7 +622,16 @@ describe('split projection', () => {
     const view = await openSplitWindow(rig);
 
     await post(rig, { ...part, i: 1, records: [sheet('a')] });
-    await post(rig, { t: 'delta', engine: 'e', seq: 5, records: [sheet('old')], notices: [] });
+    await post(rig, {
+      t: 'delta',
+      engine: 'e',
+      seq: 5,
+      records: [sheet('old')],
+      notices: [],
+      pending: [],
+      withdrawn: [],
+      sync: LIVE_SYNC,
+    });
 
     // #when
     await post(rig, { ...part, i: 2, records: [sheet('c')] });
@@ -616,7 +660,16 @@ describe('split projection', () => {
 
     await waitUntil(() => requests(rig).length >= 1);
     await post(rig, { ...part, i: 1, records: [sheet('a')] });
-    await post(rig, { t: 'delta', engine: 'e', seq: 7, records: [sheet('gap')], notices: [] });
+    await post(rig, {
+      t: 'delta',
+      engine: 'e',
+      seq: 7,
+      records: [sheet('gap')],
+      notices: [],
+      pending: [],
+      withdrawn: [],
+      sync: LIVE_SYNC,
+    });
 
     // #when
     await post(rig, { ...part, i: 2, records: [sheet('c')] });
@@ -711,10 +764,21 @@ describe('sequence gap', () => {
       n: 1,
       records: [],
       notices: [],
+      pending: [],
+      sync: LIVE_SYNC,
     });
 
     // #when
-    await post(rig, { t: 'delta', engine: 'e', seq: 5, records: [], notices: [] });
+    await post(rig, {
+      t: 'delta',
+      engine: 'e',
+      seq: 5,
+      records: [],
+      notices: [],
+      pending: [],
+      withdrawn: [],
+      sync: LIVE_SYNC,
+    });
     await waitUntil(() => requests(rig).at(-1)?.nonce === 'after-gap');
 
     // #then
@@ -737,12 +801,23 @@ describe('sequence gap', () => {
       n: 1,
       records: [sheet('kept')],
       notices: [],
+      pending: [],
+      sync: LIVE_SYNC,
     });
 
     const requestsAfterLoad = requests(rig).length;
 
     // #when
-    await post(rig, { t: 'delta', engine: 'e', seq: 3, records: [sheet('dup')], notices: [] });
+    await post(rig, {
+      t: 'delta',
+      engine: 'e',
+      seq: 3,
+      records: [sheet('dup')],
+      notices: [],
+      pending: [],
+      withdrawn: [],
+      sync: LIVE_SYNC,
+    });
     await pause(TIMING.projectionRequestRepeatMs * 4);
 
     // #then

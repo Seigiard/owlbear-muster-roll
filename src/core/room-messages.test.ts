@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { JsonValue } from '@/core/json';
+import { encodeStateRecords } from '@/core/state-records';
 import {
   admitRoomMessage,
   generationRelation,
   parseRoomMessage,
+  stateRequestMessage,
   type GenerationRelation,
   type RoomMessageType,
   type SenderRole,
@@ -68,6 +70,19 @@ function commit(overrides: { [key: string]: JsonValue } = {}): JsonValue {
   return { v: 1, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], ...overrides };
 }
 
+function state(overrides: { [key: string]: JsonValue } = {}): JsonValue {
+  return {
+    v: 1,
+    g: { n: 0, a: '' },
+    t: 'state',
+    r: 'r1',
+    i: 1,
+    n: 1,
+    records: encodeStateRecords([RECORD]),
+    ...overrides,
+  };
+}
+
 describe('admitRoomMessage', () => {
   test.each(CASES)('%s from %s with a %s generation follows the AD-5 table', (t, sender, rel) => {
     // #when
@@ -88,6 +103,28 @@ describe('parseRoomMessage', () => {
       ok: true,
       value: { v: 1, g: { n: 0, a: '' }, t: 'commit', records: [RECORD] },
     });
+  });
+
+  test('reads a state-request and a state part', () => {
+    // #given
+    const request = { v: 1, g: { n: 2, a: 'x' }, t: 'state-request', r: 'r1' };
+
+    // #when
+    const parsed = [parseRoomMessage(request), parseRoomMessage(state({ i: 2, n: 3 }))];
+
+    // #then
+    expect(parsed).toMatchObject([
+      { ok: true, value: request },
+      { ok: true, value: { t: 'state', r: 'r1', i: 2, n: 3 } },
+    ]);
+  });
+
+  test('builds a state-request that parses back as itself', () => {
+    // #when
+    const request = stateRequestMessage({ n: 0, a: '' }, 'nonce-1');
+
+    // #then
+    expect(parseRoomMessage(request)).toEqual({ ok: true, value: request });
   });
 
   test('reports a higher v before it looks at the rest of the message', () => {
@@ -115,6 +152,18 @@ describe('parseRoomMessage', () => {
     ['no generation', { v: 1, t: 'commit', records: [RECORD] }],
     ['an extra key', commit({ extra: true })],
     ['a type with no schema yet', commit({ t: 'ping' })],
+    ['a state-request with no nonce', { v: 1, g: { n: 0, a: '' }, t: 'state-request' }],
+    [
+      'a state-request with an empty nonce',
+      { v: 1, g: { n: 0, a: '' }, t: 'state-request', r: '' },
+    ],
+    ['a state part numbered above its total', state({ i: 3, n: 2 })],
+    ['a state part numbered 0', state({ i: 0 })],
+    ['a state whose records are not base64', state({ records: 'not base64!' })],
+    [
+      'a state with no nonce',
+      { v: 1, g: { n: 0, a: '' }, t: 'state', i: 1, n: 1, records: encodeStateRecords([RECORD]) },
+    ],
     ['an unknown type', commit({ t: 'shout' })],
   ])('drops a message with the right v and %s', (_name, candidate) => {
     // #when

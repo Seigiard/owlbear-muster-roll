@@ -1,3 +1,4 @@
+import { deflateToBase64 } from '@/core/deflate';
 import type { JsonValue } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
@@ -19,8 +20,12 @@ export function fitsOneMessage(message: JsonValue): boolean {
   return jsonByteLength(message) < MESSAGE_BYTE_LIMIT;
 }
 
+// A record must fit one message both as JSON (commit, projection) and alone after deflate and
+// base64 (`state`), or an answer would have to leave it out.
 export function recordFitsOneMessage(record: VersionedRecord): boolean {
-  return jsonByteLength(record) + RECORD_ENVELOPE_RESERVE_BYTES < MESSAGE_BYTE_LIMIT;
+  const limit = MESSAGE_BYTE_LIMIT - RECORD_ENVELOPE_RESERVE_BYTES;
+
+  return jsonByteLength(record) < limit && deflateToBase64(JSON.stringify([record])).length < limit;
 }
 
 // `envelopeBytes` is the size of the whole message with an empty item array. The caller measures

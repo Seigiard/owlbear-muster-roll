@@ -9,8 +9,11 @@ import {
   UI_CHANNEL,
   type Command,
   type EngineMessage,
+  type SyncState,
   type WindowMessage,
 } from './ui-messages';
+
+const LIVE: SyncState = { state: 'live', firstCatchUpDone: true, role: 'GM' };
 
 const SHEET_CREATE: Command = { type: 'sheet-create', sheetId: 's1', kind: 'pc', name: 'Брок' };
 
@@ -292,7 +295,9 @@ describe('parseEngineMessage', () => {
     i: 1,
     n: 2,
     records: [{ k: 'link:t', d: 's', c: 1, a: 'conn' }],
+    pending: [{ k: 'link:u', d: 's', c: 2, a: 'conn' }],
     notices: ['local-save-failed'],
+    sync: { state: 'catching-up', firstCatchUpDone: false, role: 'GM' },
   };
 
   test('accepts a projection part', () => {
@@ -322,9 +327,35 @@ describe('parseEngineMessage', () => {
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
 
+  test('accepts the catching-up rejection and refuses a part with no sync state', () => {
+    // #given
+    const { sync: _sync, ...withoutSync } = PROJECTION;
+
+    // #when
+    const parsed = [
+      parseEngineMessage({ t: 'command-rejected', id: 'c1', reason: 'catching-up' }).ok,
+      parseEngineMessage(withoutSync).ok,
+      parseEngineMessage({ ...PROJECTION, sync: { ...LIVE, state: 'paused' } }).ok,
+      parseEngineMessage({ ...PROJECTION, sync: { ...LIVE, role: 'OWNER' } }).ok,
+    ];
+
+    // #then
+    expect(parsed).toEqual([true, false, false, false]);
+  });
+
   test('accepts a delta and a rejected command', () => {
     // #given
-    const delta: EngineMessage = { t: 'delta', engine: 'e1', seq: 5, records: [], notices: [] };
+    const delta: EngineMessage = {
+      t: 'delta',
+      engine: 'e1',
+      seq: 5,
+      records: [],
+      pending: [],
+      withdrawn: [],
+      notices: [],
+      sync: LIVE,
+    };
+
     const rejected: EngineMessage = { t: 'command-rejected', id: 'c1', reason: 'too-large' };
 
     // #when
@@ -344,7 +375,10 @@ describe('parseEngineMessage', () => {
       engine: 'e1',
       seq: 6,
       records: [],
+      pending: [],
+      withdrawn: [],
       notices: ['local-save-failed', 'new-version'],
+      sync: LIVE,
     };
 
     // #when

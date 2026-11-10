@@ -17,6 +17,9 @@ const TIMING: Timing = {
   projectionRequestRepeatMs: 1,
   projectionIncompleteTimeoutMs: 1,
   fieldSavePauseMs: 1,
+  catchUpTimeoutMs: 4000,
+  stateAnswerDelayMinMs: 20,
+  stateAnswerDelayMaxMs: 300,
 };
 
 const GENERATION = { n: 0, a: '' };

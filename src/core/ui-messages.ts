@@ -14,6 +14,14 @@ const sequenceSchema = z.number().int().nonnegative();
 // `new-version` stays until a reload: a newer build is in the room (AD-12).
 export const noticeSchema = z.enum(['local-save-failed', 'new-version']);
 
+// AD-7: `catching-up` or `live`, and whether the first catch-up since the engine started has ended.
+export const syncSchema = z.strictObject({
+  state: z.enum(['catching-up', 'live']),
+  firstCatchUpDone: z.boolean(),
+  // The engine's role, re-read on every party change, so a window follows a promotion.
+  role: z.enum(['GM', 'PLAYER']),
+});
+
 const projectionRequestSchema = z.strictObject({
   t: z.literal('projection-request'),
   nonce: idSchema,
@@ -28,7 +36,11 @@ const projectionSchema = z
     i: z.number().int().positive(),
     n: z.number().int().positive(),
     records: z.array(recordSchema),
+    // The pending view: records as the GM's queued intents would leave them. They stand in for the
+    // records of their keys until catch-up ends.
+    pending: z.array(recordSchema),
     notices: z.array(noticeSchema),
+    sync: syncSchema,
   })
   .refine((part) => part.i <= part.n);
 
@@ -37,7 +49,12 @@ const deltaSchema = z.strictObject({
   engine: idSchema,
   seq: sequenceSchema,
   records: z.array(recordSchema),
+  // Changed records of the pending view. A delta in `live` carries none and drops the view.
+  pending: z.array(recordSchema),
+  // Keys the pending view no longer changes: the window shows the replica's record for them again.
+  withdrawn: z.array(z.string()),
   notices: z.array(noticeSchema),
+  sync: syncSchema,
 });
 
 // A command is an intent. Strict objects refuse any message that also carries k, d, c or a.
@@ -132,6 +149,8 @@ const commandRejectedSchema = z.strictObject({
     'instance-exists',
     // A player client edits nothing until Epic 3 brings `propose`.
     'not-allowed',
+    // AD-14: a preset upload waits until catch-up ends.
+    'catching-up',
   ]),
 });
 
@@ -144,6 +163,8 @@ const engineMessageSchema = z.discriminatedUnion('t', [
 ]);
 
 export type Notice = z.infer<typeof noticeSchema>;
+
+export type SyncState = z.infer<typeof syncSchema>;
 
 export type Command = z.infer<typeof commandIntentSchema>;
 

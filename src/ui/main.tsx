@@ -13,7 +13,7 @@ import type { PlayerRole } from '@/core/visibility';
 import { platform } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { copy } from '@/ui/copy';
-import { PresetUpload } from '@/ui/preset-actions';
+import { PresetUpload, uploadDisabledReason } from '@/ui/preset-actions';
 import type { BannerMessage } from '@/ui/primitives/banner';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
@@ -57,7 +57,8 @@ type FocusAfterLoss =
   | { kind: 'actions'; sheet: string; tab: string | null };
 
 type WindowRootProps = {
-  role: PlayerRole;
+  // The window's own read, shown until the first projection brings the engine's role.
+  initialRole: PlayerRole;
   store: ProjectionStore;
   sendCommand: ReplicaClient['sendCommand'];
 };
@@ -78,7 +79,7 @@ platform.onReady(() => {
 
 async function start(): Promise<void> {
   try {
-    const [role] = await Promise.all([
+    const [initialRole] = await Promise.all([
       platform.player.getRole(),
       followTheme(platform.theme, document.documentElement),
     ]);
@@ -97,22 +98,31 @@ async function start(): Promise<void> {
       pageHideFlushes.flushAll();
     });
 
-    root.render(<WindowRoot role={role} store={store} sendCommand={client.sendCommand} />);
+    root.render(
+      <WindowRoot initialRole={initialRole} store={store} sendCommand={client.sendCommand} />,
+    );
   } catch (error) {
     console.error('Muster Roll could not render its window', error);
   }
 }
 
-function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): ReactNode {
+function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootProps): ReactNode {
   const notices = useStore(projection.$notices);
   const loaded = useStore(projection.$loaded);
+  const sync = useStore(projection.$sync);
+  // The engine re-reads the role on every party change, so the window follows it.
+  const role = loaded ? sync.role : initialRole;
   const records = useStore(projection.$records);
   const rejections = useStore(projection.$rejections);
   const presetData = presetDataOf(records);
   const preset = useMemo(() => decodedPreset(presetData), [presetData]);
   const characters = useMemo(() => liveSheets(records.values(), 'pc'), [records]);
   const npcs = useMemo(() => liveSheets(records.values(), 'npc'), [records]);
-  const presetState: PresetState = !loaded ? 'unknown' : preset === null ? 'absent' : 'present';
+  // AD-7: until the first catch-up ends, no data counts as the room's. The tab bar shows what is
+  // known and every panel says "Загрузка…", so no empty or no-preset state shows too early.
+  const ready = loaded && sync.firstCatchUpDone;
+  const catchingUp = sync.state === 'catching-up';
+  const presetState: PresetState = !ready ? 'unknown' : preset === null ? 'absent' : 'present';
   // Starts unseen, as a projection can land before the first render, and a preset that came with
   // it must still select the first tab.
   const [seenPresetState, setSeenPresetState] = useState<PresetState>('unknown');
@@ -347,6 +357,7 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
     <SettingsView
       preset={preset}
       sheetsExist={sheetsExist}
+      catchingUp={catchingUp}
       sendCommand={sendCommand}
       store={projection}
     />
@@ -373,7 +384,7 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
           <PresetUpload
             sendCommand={sendCommand}
             store={projection}
-            disabledReason={sheetsExist ? copy.presetLocked : undefined}
+            disabledReason={uploadDisabledReason(catchingUp, sheetsExist)}
           />
         ),
       };
@@ -389,7 +400,9 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
         return {
           id,
           label: sheet.name,
-          content: (
+          content: !ready ? (
+            loading
+          ) : (
             <>
               {confirmationFor(sheet)}
               <SheetHeader
@@ -433,7 +446,7 @@ function WindowRoot({ role, store: projection, sendCommand }: WindowRootProps): 
           id: NPC_TAB,
           label: copy.place.npc,
           content:
-            preset === null ? (
+            preset === null || !ready ? (
               loading
             ) : (
               <NpcTab

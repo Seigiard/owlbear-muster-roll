@@ -77,7 +77,25 @@ export function PresetUpload({ sendCommand, store, disabledReason }: PresetUploa
   );
 }
 
-export function PresetDownload({ preset }: { preset: Preset | null }): ReactNode {
+// UX-DR30: during catch-up the upload waits, and the replica refuses it as well.
+export function uploadDisabledReason(
+  catchingUp: boolean,
+  sheetsExist: boolean,
+): string | undefined {
+  if (catchingUp) {
+    return copy.loading;
+  }
+
+  return sheetsExist ? copy.presetLocked : undefined;
+}
+
+type PresetDownloadProps = { preset: Preset | null; catchingUp: boolean };
+
+export function PresetDownload({ preset, catchingUp }: PresetDownloadProps): ReactNode {
+  if (catchingUp) {
+    return <Button disabledReason={copy.loading}>{copy.command.downloadPreset}</Button>;
+  }
+
   if (preset === null) {
     return <Button disabledReason={copy.presetRequired}>{copy.command.downloadPreset}</Button>;
   }

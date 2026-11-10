@@ -132,11 +132,16 @@ export function startReplicaClient(
   }
 
   function completeAssembly(complete: Assembly, lastPart: ProjectionMessage): void {
-    const records = Array.from({ length: complete.n }, (_unused, index) => {
-      return complete.parts.get(index + 1)?.records ?? [];
-    }).flat();
+    const parts = Array.from({ length: complete.n }, (_unused, index) =>
+      complete.parts.get(index + 1),
+    );
 
-    store.replaceAll(records, lastPart.notices);
+    store.replaceAll(
+      parts.flatMap((part) => part?.records ?? []),
+      parts.flatMap((part) => part?.pending ?? []),
+      lastPart.notices,
+      lastPart.sync,
+    );
     liveEngine = complete.engine;
     lastSeq = complete.seq;
     phase = 'live';
@@ -174,7 +179,7 @@ export function startReplicaClient(
     }
 
     lastSeq = delta.seq;
-    store.applyDelta(delta.records, delta.notices);
+    store.applyDelta(delta.records, delta.pending, delta.withdrawn, delta.notices, delta.sync);
   }
 
   function handleMessage(message: EngineMessage): void {
