@@ -1,10 +1,11 @@
 ---
 id: TASK-8
 title: 1.6 Create and Name Characters
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@claude'
 created_date: '2026-11-10T15:37:00Z'
-updated_date: '2026-11-10T15:38:00Z'
+updated_date: '2026-11-10T19:00:00Z'
 labels:
   - epic-1
 milestone: m-0
@@ -36,9 +37,34 @@ Story 1.6 of `_bmad-output/planning-artifacts/epics.md`. Other stories are named
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 **Given** a loaded preset **When** the GM presses "+" **Then** a sheet named "Новый персонаж" is created with a nanoid `sheetId`, an `order` and `kind: "pc"`, its tab opens and the name has focus (UX-DR11, FR17)
-- [ ] #2 **Given** a character header on a GM client **When** the GM clicks the name, changes it and leaves the field **Then** the tab and header show the new name, and it stays after a reload (UX-DR10) **And** the name renders in `sheet-title` with a bottom rule in `line`
-- [ ] #3 **Given** an empty, whitespace-only or too long name, where too long means over 100 characters, a named constant **When** the GM leaves the name field **Then** an empty or whitespace-only name returns the old name with nothing saved, and a too long name shows "Слишком длинно" and is not saved
-- [ ] #4 **Given** more character tabs than fit **When** the GM scrolls horizontally or with a vertical mouse wheel **Then** the tabs scroll, and the gear stays pinned at the right (UX-DR8) **And** "+" follows the last character, scrolls with the tabs and is a button outside the tab list **And** tabs sort by `(order, sheetId)`, the same on every client and reload
-- [ ] #5 **Given** focus in the tab list **When** the GM presses arrow keys **Then** focus moves between tabs through react-aria tabs (UX-DR36)
+- [x] #1 **Given** a loaded preset **When** the GM presses "+" **Then** a sheet named "Новый персонаж" is created with a nanoid `sheetId`, an `order` and `kind: "pc"`, its tab opens and the name has focus (UX-DR11, FR17)
+- [x] #2 **Given** a character header on a GM client **When** the GM clicks the name, changes it and leaves the field **Then** the tab and header show the new name, and it stays after a reload (UX-DR10) **And** the name renders in `sheet-title` with a bottom rule in `line`
+- [x] #3 **Given** an empty, whitespace-only or too long name, where too long means over 100 characters, a named constant **When** the GM leaves the name field **Then** an empty or whitespace-only name returns the old name with nothing saved, and a too long name shows "Слишком длинно" and is not saved
+- [x] #4 **Given** more character tabs than fit **When** the GM scrolls horizontally or with a vertical mouse wheel **Then** the tabs scroll, and the gear stays pinned at the right (UX-DR8) **And** "+" follows the last character, scrolls with the tabs and is a button outside the tab list **And** tabs sort by `(order, sheetId)`, the same on every client and reload
+- [x] #5 **Given** focus in the tab list **When** the GM presses arrow keys **Then** focus moves between tabs through react-aria tabs (UX-DR36)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add sheet name rules and tab order to core.
+2. Give sheet-create a client sheetId and add sheet-rename to the engine.
+3. Build the scrolling tab bar with "+" and pinned NPC and gear.
+4. Build the character header with rename in place.
+5. Verify with unit tests, engine integration tests and Playwright with real pages.
+Spec: _bmad-output/implementation-artifacts/spec-1-6-create-and-name-characters.md
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented per spec-1-6: core/sheets.ts (SHEET_NAME_MAX_LENGTH, parseSheetName, sortSheets, liveSheets, sheetIdSchema); sheet-create carries a window nanoid sheetId; new sheet-rename; engine rejects invalid-sheet-id, sheet-exists (tombstone included), unknown-sheet, deleted-sheet, invalid-name. Tab bar: one TabList (display: contents) in a horizontal scroller, '+' outside it via CSS order, NPC and gear sticky with offsets set by a ResizeObserver (React Aria renders Tabs children twice, so pinning reads no component state). CharacterHeader renames in place (blur/Enter save, Escape revert, blank revert, >100 shows 'Слишком длинно'). Verified: oxfmt, lint, typecheck, bun test 547 pass, Playwright 113 pass, vite build.
+
+All five criteria verified on the mock adapter with real background and window pages in Playwright, including pixel and line wheel modes. Not yet observed in a live Owlbear room.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The GM can create characters with "+" and rename them in the header. sheet-create now carries a client nanoid sheetId; sheet-rename is new; both validate the name (trimmed, not blank, at most 100 code points). Character tabs sort by (order, sheetId), scroll sideways with any wheel, and keep NPC and the gear pinned; "+" follows the last character outside the tab list. Verified on the mock adapter: lint, typecheck, unit tests, Playwright, build. Not yet observed in a live Owlbear room. Two follow-ups are in deferred-work.md.
+<!-- SECTION:FINAL_SUMMARY:END -->

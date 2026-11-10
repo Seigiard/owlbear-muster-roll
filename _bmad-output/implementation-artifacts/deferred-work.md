@@ -49,3 +49,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-load-and-download-a-preset.md`
   summary: Cap `columns` in the preset schema.
   evidence: A huge value passes upload and would make a huge grid. Story 1.8 renders the grid.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-6-create-and-name-characters.md`
+  summary: Apply the sheet name rule to records read from storage and from other clients.
+  evidence: `sheetDataSchema.name` is a plain string; only the engine's commands check length and blankness. Room sync brings foreign records.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-6-create-and-name-characters.md`
+  summary: Test that a disappearing selected tab hands the selection to the first tab.
+  evidence: The branch exists in `main.tsx`, but nothing can remove a sheet until Story 1.11.
