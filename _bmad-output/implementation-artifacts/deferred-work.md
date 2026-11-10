@@ -37,3 +37,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-own-the-replica-in-the-background.md`
   summary: Test that projection assembly refuses parts of another answer.
   evidence: No test delivers a part from another engine or sequence into an open assembly.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-load-and-download-a-preset.md`
+  summary: Show a stored preset that does not decode as unreadable, not as absent.
+  evidence: A record from a newer build would show the upload screen and invite an overwrite. Room sync brings such records.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-load-and-download-a-preset.md`
+  summary: Bound the inflated size in `decodePreset`.
+  evidence: About 15 KB of base64 can inflate to megabytes. Today only the client's own window sends it; room sync brings foreign records.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-load-and-download-a-preset.md`
+  summary: Show a result under the button after a preset replace.
+  evidence: A replace with no sheets changes nothing visible. The AD-14 diff story owns the result text.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-load-and-download-a-preset.md`
+  summary: Cap `columns` in the preset schema.
+  evidence: A huge value passes upload and would make a huge grid. Story 1.8 renders the grid.
