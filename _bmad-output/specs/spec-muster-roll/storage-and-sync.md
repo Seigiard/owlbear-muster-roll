@@ -46,8 +46,8 @@ Russian text and the preset add more. These measurements predate the typed-field
 
 ## Untested or undocumented
 
-- The sync scheme has not run in Owlbear.
-- How long `background_url` stays alive is not tested.
+- The sync scheme has not run in Owlbear. Experiment: two GM tabs and a player edit at once, and all clients must end with the same data.
+- How long the `background_url` page stays alive is not tested. Experiment: keep the room open with the GM's extension window closed and the tab in the background, and check that player edits still reach the GM. If the page stops, those edits are lost.
 - Player id, write rights bind to it. The docs do not say how long it lasts. Experiment: does a guest keep the id after a reload and in another browser, and does a logged-in player keep it for the long term? The result decides whether a right can bind to a guest, or only to a logged-in player.
 - The docs do not say what happens past 16kB of room metadata. Experiment: write past the limit and observe.
 
