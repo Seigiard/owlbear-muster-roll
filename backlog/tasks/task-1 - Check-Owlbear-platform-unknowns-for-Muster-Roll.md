@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-10T05:34:00Z'
-updated_date: '2026-11-10T07:57:00Z'
+updated_date: '2026-11-10T08:44:00Z'
 labels: []
 dependencies: []
 documentation:
@@ -47,4 +47,6 @@ The Muster Roll POC has no server: it relies on broadcast between clients, a bac
 Probe extension is on branch prototype/owlbear-probe, in prototypes/owlbear-probe, with run steps in its README. Its logic passed against a mock SDK, and the manifest served through a tunnel with CORS. It has not run in a live Owlbear room, so no acceptance criterion is met yet.
 
 First live run, player client data, one GM and one guest. Sync: 50 of 50 edits each way, none out of order, same fingerprint; two GM tabs not tested yet. Player id: the guest in Chrome kept its id through a page reload, across 104 minutes; the GM id was the same in Firefox and Chrome. Hidden player tab: background timer gaps of 59 s and 49 s, no page restart. Ping ran with the GM tab visible and the window open (18 of 18 acks, 0 hidden, 0 closed), so background survival on the GM side is not tested. Metadata limit not run. No acceptance criterion is met yet.
+
+Second live run, GM client data. Metadata limit is answered: 16000 bytes stored, 16050 dropped, the write still resolves as success, peers see no change, earlier data stays. Guest id stayed the same across reloads, a rename and about 2.5 hours; the player list showed the guest as not signed in. The first three-client sync round ended too early because a hidden tab sends slowly; the probe now waits, so that round must run again. Hidden GM tab test and guest in another browser are still open.
 <!-- SECTION:NOTES:END -->

@@ -65,7 +65,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 
 - No own server in v1. Live exchange needs a GM online.
 - Full data lives in the GM's browser. Room metadata holds only a compressed snapshot, and only when it fits.
-- Room metadata is under 16kB in total and is shared with other extensions. The extension checks free space before it writes.
+- Room metadata is under 16kB in total and is shared with other extensions. The extension checks free space before it writes, because Owlbear reports success for a write past the limit and drops it.
 - Broadcast messages are limited to 16KB.
 - Formulas run through a small parser, never `eval`, because presets are shared files.
 - Values are stored apart from the template, by field id.
@@ -108,4 +108,3 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - Does the sync scheme work in a live Owlbear room, with two GM tabs and a player editing at once? Needs an experiment.
 - Does the `background_url` page stay alive while the room is open, including with the GM's extension window closed and the tab in the background? If it stops, player edits do not reach the GM. Needs an experiment.
 - Does a guest keep the player id after a reload and in another browser, and does a logged-in player keep it for the long term? Write rights bind to that id, and the docs do not say. Needs an experiment with guests and logged-in players.
-- What does Owlbear do past 16kB of room metadata? The docs do not say. Needs an experiment.
