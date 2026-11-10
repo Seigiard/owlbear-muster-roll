@@ -36,12 +36,12 @@ Example: `1d20 <= str - 2*str_tired`.
 
 ## Preset changes
 
-The GM downloads the JSON file, edits it and uploads it. The upload shows a short notice that the format changed.
+The GM downloads the JSON file, edits it and uploads it. An upload that removes fields with values asks for one confirmation for the whole upload: the data will be lost. Any other upload shows a short notice that the format changed.
 
 | Change in the file | Effect on all sheets |
 | --- | --- |
 | Add a field | The field is empty |
-| Remove a field | Its values are erased |
+| Remove a field | Its values are erased after the confirmation |
 | Rename a field (same id) | Keeps its values |
 
 A formula that refers to a removed field shows the error above.

@@ -48,8 +48,8 @@ Russian text and the preset add more. These measurements predate the typed-field
 
 - The sync scheme has not run in Owlbear.
 - How long `background_url` stays alive is not tested.
-- The docs do not say whether a guest keeps the player id in another browser. Write rights bind to that id.
-- The docs do not say what happens past 16kB of room metadata.
+- Player id, write rights bind to it. The docs do not say how long it lasts. Experiment: does a guest keep the id after a reload and in another browser, and does a logged-in player keep it for the long term? The result decides whether a right can bind to a guest, or only to a logged-in player.
+- The docs do not say what happens past 16kB of room metadata. Experiment: write past the limit and observe.
 
 ## Accepted losses
 

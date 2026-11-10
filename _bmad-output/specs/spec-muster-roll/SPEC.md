@@ -40,7 +40,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **success:** A formula with an empty, non-numeric or removed field shows an error. No roll and no broadcast occur.
 - **CAP-8**
   - **intent:** The GM can change the preset by uploading a JSON file after sheets exist, and the change applies to all sheets.
-  - **success:** A new field is empty on all sheets. The values of a removed field are erased on all sheets. A rename keeps the values. The upload shows a short notice that the format changed.
+  - **success:** A new field is empty on all sheets. A rename keeps the values. When an upload removes fields that hold values, one confirmation for the whole upload warns that the data will be lost, and the values are then erased on all sheets. Any other upload shows a short notice that the format changed.
 - **CAP-9**
   - **intent:** Room data stays after a reload and after re-entry to the room.
   - **success:** A GM reload keeps all data. The snapshot is written when it fits. When it does not fit, it is skipped and the GM sees a notice. Room metadata never goes past the limit.
@@ -105,5 +105,5 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 ## Open Questions
 
 - Does the sync scheme work in a live Owlbear room, and how long does `background_url` stay alive? Neither is tested.
-- Does a guest keep the player id in another browser? Write rights bind to that id, and the docs do not say.
-- What does Owlbear do past 16kB of room metadata? The docs do not say.
+- Does a guest keep the player id after a reload and in another browser, and does a logged-in player keep it for the long term? Write rights bind to that id, and the docs do not say. Needs an experiment with guests and logged-in players.
+- What does Owlbear do past 16kB of room metadata? The docs do not say. Needs an experiment.
