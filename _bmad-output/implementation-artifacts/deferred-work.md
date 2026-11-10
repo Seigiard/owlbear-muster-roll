@@ -61,3 +61,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-11-keep-npcs-on-their-own-tab.md`
   summary: No test proves NPC delete focus skips a next neighbour deleted in another window before the tombstone lands.
   evidence: Replacing the `find(... npcSheets.includes ...)` with `neighbours[0]` keeps all focus tests green.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-see-edits-from-other-gm-tabs-live.md`
+  summary: No test proves the banner shows local-save-failed above new-version when both are active.
+  evidence: Swapping the two branches of `bannerFor` keeps every test green. Story 2.5 owns the multi-notice banner.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-see-edits-from-other-gm-tabs-live.md`
+  summary: A player client keeps INITIAL_GENERATION, so once the room generation moves past it, the gate drops every GM commit at that player.
+  evidence: `src/replica/engine.ts` sets the player's generation only at start. Stories 2.2 and 2.5 must take it from the room copy and from `state`.
