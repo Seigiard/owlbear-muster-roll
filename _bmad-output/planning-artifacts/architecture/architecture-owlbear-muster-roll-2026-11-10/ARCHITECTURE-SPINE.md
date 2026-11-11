@@ -7,8 +7,8 @@ paradigm: 'Replicated state (state-based LWW CRDT per record) over a functional 
 scope: 'The Muster Roll v1 Owlbear Rodeo extension, with no own server'
 status: final
 created: '2026-11-10'
-updated: '2026-11-11'
-binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-17, CAP-18, CAP-19, CAP-29, CAP-30, CAP-31]
+updated: '2026-11-12'
+binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-17, CAP-18, CAP-19, CAP-29, CAP-30, CAP-31, CAP-32]
 sources:
   - ../../../specs/spec-muster-roll/SPEC.md
   - ../../../specs/spec-muster-roll/preset-format.md
@@ -30,7 +30,7 @@ Code is a functional core with ports and adapters:
 | --- | --- | --- |
 | Core | `src/core` | Records, merge, access check, visibility, preset schema, formula parser, snapshot codec. Pure, with no DOM or SDK |
 | Replica | `src/replica` | The engine in the background page. Owns the replica, protocol, catch-up and snapshot timing |
-| Platform | `src/platform` | Ports for broadcast, metadata, party, player, storage, context menu, popover, action, notification and theme. The Owlbear adapter and the test mock |
+| Platform | `src/platform` | Ports for broadcast, metadata, party, player, map selection, storage, context menu, popover, action, notification, scene and theme. The Owlbear adapter and the test mock |
 | UI | `src/ui` | React views and nanostores. A projection of the replica |
 
 ```mermaid
@@ -312,6 +312,7 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 | CAP-29 | core, ui | AD-2, AD-18 |
 | CAP-30 | core, replica, ui | AD-2, AD-10, AD-19 |
 | CAP-31 | replica, ui | AD-9, AD-11, AD-12 |
+| CAP-32 | ui, platform | AD-19, Visibility convention, SDK boundary. The map selection is this client's own state: the window reads and writes it through its port, and it never enters records, messages or storage |
 
 CAP-16 is retired. CAP-20 to CAP-28 belong to the v2 builder, which this spine does not cover yet.
 

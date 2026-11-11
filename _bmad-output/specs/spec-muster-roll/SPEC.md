@@ -114,6 +114,9 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - **CAP-31**
   - **intent:** The GM can wipe all room data.
   - **success:** After one confirmation, the preset, every sheet, the room copy and the GM's local copy are gone on every client. This also works in a room whose data has an older format.
+- **CAP-32**
+  - **intent:** Token selection follows the token link both ways: a token selected on the map marks its sheet or repeat block in the window, and a GM selects the linked tokens of a sheet or repeat block from the window.
+  - **success:** A selected linked token marks the tab of its sheet and, for a repeat block, that repeat block, and the window does not switch tabs. Several selected tokens mark every target, and a cleared selection clears the marks. A GM selects all linked tokens of a sheet or repeat block on the open scene with one action, and the same action deselects them. Players see marks for their own selection on sheets they can see and do not select from the window.
 
 ## Constraints
 
@@ -173,6 +176,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - The interface text is Russian in v1.
 - The interface follows the live Owlbear theme, and no separate palette exists.
 - The builder interface text is Russian, like the extension and the refusal messages it reuses.
+- Selecting from the window adds to the map selection. A linked token that is not on the open scene is skipped with no error, and the action shows only while at least one linked token is on the open scene.
 - The changed-id warning compares ids with the file the builder opened. A preset started blank or from an example shows no such warning.
 
 ## Open Questions

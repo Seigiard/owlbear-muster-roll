@@ -3,7 +3,7 @@ name: Muster Roll
 description: Plain, dense sheets inside an Owlbear Rodeo window. Colours come from the live Owlbear theme; the hex values are fallbacks for tests and mocks.
 status: final
 created: 2026-11-10
-updated: 2026-11-11
+updated: 2026-11-12
 sources:
   - ../../../specs/spec-muster-roll/SPEC.md
   - ../../../specs/spec-muster-roll/preset-format.md
@@ -146,6 +146,8 @@ Tabs use `{rounded.md}` on the top corners. The window uses `{rounded.lg}`. Chip
 | Status banner | `{components.banner-warning}` or `{components.banner-danger}`, full window width |
 | Access panel, duplicate count, Confirmation | Inline block on `{colors.surface-bar}` with a `{colors.line}` border and `{rounded.md}` |
 | Repeat block | The block's rows, then its controls in `{typography.label-sm}`. Blocks are separated by a `{colors.line}` rule |
+| Selection mark | On a tab, a 6 px `{colors.accent}` dot with `{rounded.full}` after the name and its mark. On a repeat block, a 3 px `{colors.accent}` bar on its left edge. The tab bar has no room for a word, and the accessible name carries it |
+| Map toggle | "Выделить на карте" as `{components.button-secondary}`. Pressed: `{colors.accent}` border and text |
 | Settings actions | First action `{components.button-primary}`, the others `{components.button-secondary}` |
 | Focus | 2 px outline in `{colors.focus}` on every control. Never removed |
 | Disabled | Control at 50% opacity, with a text reason near it |
