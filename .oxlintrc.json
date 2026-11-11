@@ -62,6 +62,9 @@
         ]
       }
     ],
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-new-func": "error",
     "oxc/no-accumulating-spread": "error",
     "anti-slop/no-array-filter-map": "error",
     "anti-slop/no-reduce-accumulator-copy": "error",
