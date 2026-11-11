@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 
-import { UI_CHANNEL } from '@/core/ui-messages';
-
 import {
   addPartyMember,
   connectionIdOf,
@@ -11,16 +9,17 @@ import {
   openClientWindow,
   record,
   seedStorage,
+  syncRead,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
 } from './support/room';
 
-const LOADING = 'Загрузка…';
 const NO_GM = 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.';
 const READ_ONLY = 'Только чтение';
 const NO_PRESET = 'ГМ ещё не настроил листы.';
 const NO_CHARACTERS = 'ГМ ещё не создал персонажей.';
+const NO_GM_NO_DATA = 'ГМ ещё не заходил. Листов пока нет.';
 const ADD = 'Добавить персонажа';
 const ADD_NPC = 'Добавить NPC';
 const ADD_ROW = 'Добавить строку';
@@ -213,7 +212,7 @@ test('a player whose GM answered with no preset sees that the GM has not set up 
   await expect(player.window.getByRole('main')).toHaveText(NO_PRESET);
 });
 
-test('a player with no preset and no answer keeps the loading text after its catch-up ends', async ({
+test('a player with no answer and no room copy sees that no GM has been in the room after its catch-up ends', async ({
   context,
 }) => {
   // #given
@@ -226,9 +225,9 @@ test('a player with no preset and no answer keeps the loading text after its cat
   await openClientBackground(context, params);
   await expect.poll(() => syncRead(window)).toEqual({ state: 'live', answered: false });
 
-  // #then: the panel keeps loading, and the banner says that no GM answers (Story 2.4).
+  // #then: Story 2.6 names the case, and the banner says that no GM answers (Story 2.4).
   await expect(window.getByRole('status')).toHaveText(NO_GM);
-  await expect(window.getByRole('main').getByText(LOADING, { exact: true })).toBeVisible();
+  await expect(window.getByRole('main').getByText(NO_GM_NO_DATA, { exact: true })).toBeVisible();
   await expect(window.getByText(NO_PRESET)).toHaveCount(0);
   await expect(window.getByText(NO_CHARACTERS)).toHaveCount(0);
 });
@@ -482,36 +481,5 @@ async function focusableInside(panel: Locator): Promise<string[]> {
         'a[href], button, input, select, textarea, [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
       ),
     ].map((found) => found.tagName),
-  );
-}
-
-// The engine's own answer to a projection request: its sync state.
-async function syncRead(page: Page): Promise<{ state: string; answered: boolean }> {
-  return page.evaluate(
-    (channel) =>
-      new Promise<{ state: string; answered: boolean }>((resolve) => {
-        const nonce = `read-${Date.now()}`;
-
-        const stop = window.mockPlatform.broadcast.onMessage(channel, (event) => {
-          const message = Object(event.data);
-
-          if (message.t !== 'projection' || message.nonce !== nonce || message.i !== message.n) {
-            return;
-          }
-
-          stop();
-          resolve({
-            state: String(message.sync.state),
-            answered: Boolean(message.sync.gmAnswered),
-          });
-        });
-
-        void window.mockPlatform.broadcast.sendMessage(
-          channel,
-          { t: 'projection-request', nonce },
-          { destination: 'LOCAL' },
-        );
-      }),
-    UI_CHANNEL,
   );
 }

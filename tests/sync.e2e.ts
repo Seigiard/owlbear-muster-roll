@@ -17,6 +17,7 @@ import {
   record,
   STORAGE_PREFIX,
   storedRecordSchema,
+  syncRead,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
@@ -142,9 +143,11 @@ test('edits to different rows made at once stay on both GM clients and in storag
 test('edits to one row made at once settle on the same record on both GM clients', async ({
   context,
 }) => {
-  // #given
+  // #given: a heard b open as a GM return and catches up until its own request times out, so
+  // both are live before they edit at once (Story 2.6).
   const [a, b] = await twoGms(context);
 
+  await expect.poll(() => syncRead(a.window), { timeout: 10_000 }).toMatchObject({ state: 'live' });
   await watchCommands(a.window);
   await watchCommands(b.window);
 

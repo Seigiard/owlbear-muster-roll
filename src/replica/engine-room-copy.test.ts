@@ -828,6 +828,7 @@ describe('room copy status in the projection', () => {
       state: 'none',
       usedBytes: 0,
       freeBytes: LIMIT - 1027,
+      outcome: 'none',
     });
   });
 
@@ -848,6 +849,8 @@ describe('room copy status in the projection', () => {
       state: 'saved',
       usedBytes: total - 2,
       freeBytes: LIMIT - total,
+      // The start catch-up found no copy; a write is not a catch-up read.
+      outcome: 'none',
     });
   });
 });
@@ -1043,7 +1046,7 @@ describe('review cases', () => {
     // #then
     // {"other.extension/data":"xxx…"} is 1000 bytes of x and 27 of JSON around them.
     expect({ status: roomCopyStatus(client), copy: roomCopyOf(room) }).toEqual({
-      status: { state: 'none', usedBytes: 0, freeBytes: LIMIT - 1027 },
+      status: { state: 'none', usedBytes: 0, freeBytes: LIMIT - 1027, outcome: 'none' },
       copy: null,
     });
   });

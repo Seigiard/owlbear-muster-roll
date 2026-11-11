@@ -50,6 +50,7 @@ const UNKNOWN_ROOM_COPY: RoomCopyStatus = {
   state: 'none',
   usedBytes: 0,
   freeBytes: ROOM_METADATA_BYTE_LIMIT,
+  outcome: null,
 };
 
 // The engine orders messages by sequence, so a window replaces records and never compares versions.

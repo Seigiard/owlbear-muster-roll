@@ -54,7 +54,7 @@ const LIVE_SYNC = {
 } as const;
 
 // What an engine that has read no room copy sends.
-const NO_ROOM_COPY = { state: 'none', usedBytes: 0, freeBytes: 15500 } as const;
+const NO_ROOM_COPY = { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null } as const;
 
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;

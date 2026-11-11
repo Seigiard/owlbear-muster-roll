@@ -350,6 +350,37 @@ export async function afterSettling(page: Page): Promise<{ commands: string[]; s
   return { commands: seen.map((command) => command.type), stored: keyed(stored) };
 }
 
+// The engine's own answer to a projection request: its sync state.
+export async function syncRead(page: Page): Promise<{ state: string; answered: boolean }> {
+  return page.evaluate(
+    (channel) =>
+      new Promise<{ state: string; answered: boolean }>((resolve) => {
+        const nonce = `read-${Date.now()}`;
+
+        const stop = window.mockPlatform.broadcast.onMessage(channel, (event) => {
+          const message = Object(event.data);
+
+          if (message.t !== 'projection' || message.nonce !== nonce || message.i !== message.n) {
+            return;
+          }
+
+          stop();
+          resolve({
+            state: String(message.sync.state),
+            answered: Boolean(message.sync.gmAnswered),
+          });
+        });
+
+        void window.mockPlatform.broadcast.sendMessage(
+          channel,
+          { t: 'projection-request', nonce },
+          { destination: 'LOCAL' },
+        );
+      }),
+    CHANNEL,
+  );
+}
+
 function clientQuery(params: ClientParams): string {
   const query = new URLSearchParams();
 

@@ -45,6 +45,7 @@ import {
   type Notice,
   type ProjectionMessage,
   type RejectionReason,
+  type RoomCopyOutcome,
   type RoomCopyStatus,
   type SyncState,
 } from '@/core/ui-messages';
@@ -117,7 +118,8 @@ type LoadedReplica = {
 // The messages one responder has sent for this client's own `r`, by `i`.
 type AnswerParts = { n: number; parts: Set<number> };
 
-type CatchUpTrigger = 'start' | 'return' | 'role' | 'generation' | 'drift';
+// `gm-return`: a GM-origin message after `gmLink` was offline, while live (Story 2.6).
+type CatchUpTrigger = 'start' | 'return' | 'role' | 'generation' | 'drift' | 'gm-return';
 
 // The engine's own catch-up state. Windows get it with `gmLink` and the engine's role.
 type CatchUpState = Omit<SyncState, 'role' | 'gmLink'>;
@@ -232,6 +234,8 @@ export async function startReplicaEngine(
   let roomCopyExists = false;
   let roomCopyUsed = 0;
   let roomCopyFree = ROOM_METADATA_BYTE_LIMIT;
+  // What the last catch-up found in the room copy. A player with no GM answer shows data by it.
+  let roomCopyOutcome: RoomCopyOutcome = null;
   // A write was skipped or stopped, or triggered during catch-up, so catch-up's end schedules one.
   let roomCopyOwed = false;
   let roomCopyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -773,10 +777,19 @@ export async function startReplicaEngine(
       return;
     }
 
+    const before = roomCopySignature();
+
+    mergeReadRoomCopy(metadata);
+    // The windows learn the outcome even when nothing else they show changed.
+    emitRoomCopyChange(before);
+  }
+
+  function mergeReadRoomCopy(metadata: JsonObject): void {
     const read = readSnapshot(metadata);
 
     if (!read.ok) {
       console.error('Muster Roll could not read the room copy', read.error);
+      roomCopyOutcome = read.error === 'newer-version' ? 'newer' : 'unreadable';
       unreadableRoomCopy(metadata, read.error);
 
       return;
@@ -785,6 +798,7 @@ export async function startReplicaEngine(
     const copy = read.value;
 
     if (copy === null) {
+      roomCopyOutcome = 'none';
       noteRoomCopy(metadata, false);
 
       return;
@@ -800,11 +814,15 @@ export async function startReplicaEngine(
 
     const sameGeneration = compareGenerations(copy.g, ownGeneration) === 0;
 
-    noteRoomCopy(metadata, sameGeneration);
+    // Set before the records merge, so the delta that brings them carries it: a window never sees
+    // `read` without the records read.
+    roomCopyOutcome = sameGeneration ? 'read' : 'none';
 
     if (sameGeneration) {
       receiveRecords(copy.records);
     }
+
+    noteRoomCopy(metadata, sameGeneration);
   }
 
   // Only a client that holds no record comes here, so nothing of the old generation is left to
@@ -986,7 +1004,7 @@ export async function startReplicaEngine(
   }
 
   // A GM raises the not-saved notice for a copy it cannot read; a newer build's copy also raises
-  // the new-version notice. A player shows nothing here (Story 2.6).
+  // the new-version notice. A player shows the catch-up outcome instead (Story 2.6).
   function unreadableRoomCopy(metadata: JsonObject, failure: SnapshotFailure): void {
     if (failure === 'newer-version') {
       raiseNewerVersion();
@@ -1045,7 +1063,7 @@ export async function startReplicaEngine(
   function roomCopyStatus(): RoomCopyStatus {
     const state = roomCopyNotSaved ? 'failed' : roomCopyExists ? 'saved' : 'none';
 
-    return { state, usedBytes: roomCopyUsed, freeBytes: roomCopyFree };
+    return { state, usedBytes: roomCopyUsed, freeBytes: roomCopyFree, outcome: roomCopyOutcome };
   }
 
   function requestState(nonce: string): void {
@@ -1204,11 +1222,14 @@ export async function startReplicaEngine(
   }
 
   // A GM whose storage could not be read keeps its records to itself, as with commits.
-  // A catch-up for drift only pulls state, so a GM in one still answers. Two GMs that drift from each
-  // other would otherwise both wait and time out, again and again.
+  // A catch-up for drift or for a GM's return only pulls state, from a client that was live, so a GM
+  // in one still answers. Two GMs that drift from each other would otherwise both wait and time out,
+  // again and again, and a GM that hears a new GM tab would keep that tab waiting.
   function canAnswer(): boolean {
     return (
-      role === 'GM' && persistence !== null && (sync.state === 'live' || catchUpTrigger === 'drift')
+      role === 'GM' &&
+      persistence !== null &&
+      (sync.state === 'live' || catchUpTrigger === 'drift' || catchUpTrigger === 'gm-return')
     );
   }
 
@@ -1433,14 +1454,22 @@ export async function startReplicaEngine(
     return timing.gmLinkTimeoutMs / 2 + (random() * timing.gmLinkTimeoutMs) / 4;
   }
 
+  // Story 2.6: a GM that speaks after `gmLink` was offline may hold newer data than this client,
+  // so a live client catches up with a new `r`. A GM client does too, to keep one rule. The first
+  // `online` during the start catch-up needs none: that catch-up asks already.
   function setGmLink(next: GmLink): void {
     if (stopped || gmLink === next) {
       return;
     }
 
+    const returned = next === 'online' && sync.state === 'live';
+
     gmLink = next;
 
-    if (projectionSent) {
+    if (returned) {
+      // Its entry sends the delta that carries the new link.
+      void enterCatchUp('gm-return');
+    } else if (projectionSent) {
       emitDelta([]);
     }
   }

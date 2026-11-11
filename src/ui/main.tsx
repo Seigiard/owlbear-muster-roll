@@ -130,6 +130,9 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
   // known and every panel says "Загрузка…", so no empty or no-preset state shows too early.
   const ready = loaded && sync.firstCatchUpDone;
   const catchingUp = sync.state === 'catching-up';
+  // A player's data source: a GM client that answered, or a room copy of this generation that a
+  // catch-up read with no GM (Story 2.6).
+  const dataSourceKnown = sync.gmAnswered || roomCopy.outcome === 'read';
   const presetState: PresetState = !ready ? 'unknown' : preset === null ? 'absent' : 'present';
   // Starts unseen, as a projection can land before the first render, and a preset that came with
   // it must still select the first tab.
@@ -521,13 +524,32 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
     };
   })();
 
-  // UX-DR10, UX-DR27: character tabs only, each read-only. Both empty-state texts need a GM client
-  // that answered; with no answer the window keeps loading until Story 2.6.
+  // UX-DR10, UX-DR27: character tabs only, each read-only. Both empty-state texts need a data
+  // source, `dataSourceKnown`.
+  //
+  // Story 2.6: with no data source and no GM, the room copy's outcome says why. A copy of a newer
+  // build keeps loading, as its banner already asks for a reload.
+  function noSourceContent(): ReactNode {
+    if (!ready || sync.gmLink !== 'offline') {
+      return loading;
+    }
+
+    if (roomCopy.outcome === 'none') {
+      return <p>{copy.playerNoGmNoData}</p>;
+    }
+
+    if (roomCopy.outcome === 'unreadable') {
+      return <p>{copy.roomCopyUnreadable}</p>;
+    }
+
+    return loading;
+  }
+
   function playerLayout(): ShellLayout {
     if (ready && preset === null) {
       return {
         kind: 'plain',
-        content: sync.gmAnswered ? <p>{copy.playerNoPreset}</p> : loading,
+        content: dataSourceKnown ? <p>{copy.playerNoPreset}</p> : noSourceContent(),
       };
     }
 
@@ -535,7 +557,7 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
     if (characters.length === 0) {
       return {
         kind: 'plain',
-        content: ready && sync.gmAnswered ? <p>{copy.playerNoCharacters}</p> : loading,
+        content: ready && dataSourceKnown ? <p>{copy.playerNoCharacters}</p> : noSourceContent(),
       };
     }
 

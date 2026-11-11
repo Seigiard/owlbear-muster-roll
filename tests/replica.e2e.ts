@@ -252,7 +252,7 @@ test('the banner goes when the notices clear', async ({ page }) => {
       gmLink: 'offline',
       role: 'GM',
     },
-    roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500 },
+    roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null },
   });
   await expect(page.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
 
@@ -272,7 +272,7 @@ test('the banner goes when the notices clear', async ({ page }) => {
       gmLink: 'offline',
       role: 'GM',
     },
-    roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500 },
+    roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null },
   });
 
   // #then

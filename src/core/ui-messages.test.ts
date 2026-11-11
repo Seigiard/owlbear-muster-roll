@@ -22,7 +22,7 @@ const LIVE: SyncState = {
   role: 'GM',
 };
 
-const NO_COPY: RoomCopyStatus = { state: 'none', usedBytes: 0, freeBytes: 15500 };
+const NO_COPY: RoomCopyStatus = { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null };
 
 const SHEET_CREATE: Command = { type: 'sheet-create', sheetId: 's1', kind: 'pc', name: 'Брок' };
 
@@ -423,7 +423,7 @@ describe('parseEngineMessage', () => {
       withdrawn: [],
       notices: ['room-copy-not-saved'],
       sync: LIVE,
-      roomCopy: { state: 'failed', usedBytes: 4200, freeBytes: 0 },
+      roomCopy: { state: 'failed', usedBytes: 4200, freeBytes: 0, outcome: null },
     };
 
     // #when
@@ -446,5 +446,22 @@ describe('parseEngineMessage', () => {
 
     // #then
     expect(parsed).toEqual([false, false, false]);
+  });
+
+  test('carries every room copy outcome a player reads, and refuses an unknown or a missing one', () => {
+    // #given
+    const { outcome: _outcome, ...withoutOutcome } = NO_COPY;
+    const outcomes = [null, 'read', 'none', 'unreadable', 'newer', 'stale'] as const;
+
+    // #when
+    const parsed = [
+      ...outcomes.map(
+        (outcome) => parseEngineMessage({ ...PROJECTION, roomCopy: { ...NO_COPY, outcome } }).ok,
+      ),
+      parseEngineMessage({ ...PROJECTION, roomCopy: withoutOutcome }).ok,
+    ];
+
+    // #then
+    expect(parsed).toEqual([true, true, true, true, true, false, false]);
   });
 });

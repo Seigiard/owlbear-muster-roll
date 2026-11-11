@@ -428,10 +428,12 @@ describe('two GM clients', () => {
   });
 
   test('settle on the record with the higher (c, a) when both edit one row at once', async () => {
-    // #given
+    // #given: gm-a hears gm-b as a GM return and catches up; both are live before they edit.
     const room = createMemoryRoom();
     const gmA = await startClient(room, 'gm-a');
     const gmB = await startClient(room, 'gm-b');
+
+    await waitUntil(() => gmA.store.$sync.get().state === 'live');
 
     // #when
     send(gmA, patch(ROW_STR, 'str', 12));
@@ -827,6 +829,8 @@ describe('player client', () => {
     await startClient(room, 'gm-a');
     wire.post('gm-a', commit([PRESET_RECORD, BROK]));
     await waitUntil(() => shown(player, BROK.k) !== undefined);
+    // The player heard gm-a as a GM return and caught up; its end sends a delta of its own.
+    await waitUntil(() => player.store.$sync.get().state === 'live');
 
     const before = [...player.store.$records.get().values()];
     const deltasBefore = player.deltas();

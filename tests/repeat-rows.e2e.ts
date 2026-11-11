@@ -184,7 +184,7 @@ test('a row that arrives after the GM moved to another field leaves the focus in
       gmLink: 'offline',
       role: 'GM',
     },
-    roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500 },
+    roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null },
   });
   await expect(attackFields(page)).toHaveCount(3);
 
@@ -218,7 +218,7 @@ test('a delete that lands after the GM moved to another field leaves the focus i
       gmLink: 'offline',
       role: 'GM',
     },
-    roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500 },
+    roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null },
   });
   await expect(attackFields(page)).toHaveCount(1);
 

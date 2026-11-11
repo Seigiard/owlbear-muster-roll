@@ -15,13 +15,20 @@ const sequenceSchema = z.number().int().nonnegative();
 // `room-copy-not-saved` stays until the next verified room copy write (AD-8).
 export const noticeSchema = z.enum(['local-save-failed', 'room-copy-not-saved', 'new-version']);
 
+// What the last catch-up found in the room copy: `read` a copy of this client's generation, merged;
+// `none` no copy, or one of another generation; `unreadable` a copy that does not decode; `newer` a
+// copy of a newer build, left unread (AD-12). `null` until a catch-up has read the room metadata.
+export const roomCopyOutcomeSchema = z.enum(['read', 'none', 'unreadable', 'newer']).nullable();
+
 // AD-8, for Settings: `saved` once a readable room copy of this generation was read or verified,
 // `failed` while the not-saved notice is active, otherwise `none`. `usedBytes` is the room copy's
-// share of the room metadata JSON, `freeBytes` the limit less all room metadata.
+// share of the room metadata JSON, `freeBytes` the limit less all room metadata. A player with no
+// GM answer reads its data source from `outcome`.
 export const roomCopySchema = z.strictObject({
   state: z.enum(['saved', 'none', 'failed']),
   usedBytes: z.number().int().nonnegative(),
   freeBytes: z.number().int().nonnegative(),
+  outcome: roomCopyOutcomeSchema,
 });
 
 // AD-7: `catching-up` or `live`, and whether the first catch-up since the engine started has ended.
@@ -189,6 +196,8 @@ export type SyncState = z.infer<typeof syncSchema>;
 export type GmLink = SyncState['gmLink'];
 
 export type RoomCopyStatus = z.infer<typeof roomCopySchema>;
+
+export type RoomCopyOutcome = z.infer<typeof roomCopyOutcomeSchema>;
 
 export type Command = z.infer<typeof commandIntentSchema>;
 
