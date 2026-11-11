@@ -3,8 +3,15 @@ import { z } from 'zod';
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 import { FORMAT_VERSION } from '@/core/format-version';
 import type { JsonValue } from '@/core/json';
+import { blockIndex, linkDataOf, liveLinkTarget } from '@/core/link-target';
 import { recordFitsOneMessage } from '@/core/message-size';
-import { PRESET_FILE_BYTE_LIMIT, type Preset, type PresetFieldCell } from '@/core/preset';
+import {
+  PRESET_FILE_BYTE_LIMIT,
+  templateById,
+  type Preset,
+  type PresetFieldCell,
+  type Template,
+} from '@/core/preset';
 import {
   erasedDigest,
   holdsValue,
@@ -13,10 +20,10 @@ import {
   templateScopes,
   type TemplateScopes,
 } from '@/core/preset-migrate';
-import { recordSchema, type FieldValues, type VersionedRecord } from '@/core/records';
+import { recordSchema, repKey, type FieldValues, type VersionedRecord } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
+import { isSheetSet } from '@/core/sheets';
 import { snapshotFileSchema, SNAPSHOT_FILE_TYPE, type SnapshotFile } from '@/core/snapshot-file';
-import { parseSheetName } from '@/core/sheets';
 
 // The same byte limit as a preset file.
 export const SNAPSHOT_FILE_BYTE_LIMIT = PRESET_FILE_BYTE_LIMIT;
@@ -32,13 +39,18 @@ export type SnapshotFileFailure =
   | 'not-snapshot'
   | 'invalid-structure';
 
-// AD-9: the records an import writes, all at `c: 1`, and the values of the file the current preset
-// has no place for: their count, and a hash of them, so a confirmation answers only for what it
-// showed.
-export type SnapshotImport = { records: VersionedRecord[]; count: number; digest: string };
+// AD-9: the records an import writes, all at `c: 1`, the values and the sheets of the file the
+// current preset has no place for, as `count` and `sheets`, and a hash of both, so a confirmation
+// answers only for what it showed.
+export type SnapshotImport = {
+  records: VersionedRecord[];
+  count: number;
+  sheets: number;
+  digest: string;
+};
 
-// `too-large`: a record that cannot fit one message. `invalid-structure`: a sheet name the sheet
-// name rules refuse, or a record no record schema takes.
+// `too-large`: a record that cannot fit one message. `invalid-structure`: a record no record schema
+// takes.
 export type SnapshotImportFailure = 'too-large' | 'invalid-structure';
 
 // The room's preset as the import reads it: decoded, and as the `preset` record holds it.
@@ -94,7 +106,7 @@ export function parseSnapshotFile(text: string): Result<SnapshotFile, SnapshotFi
     return err('newer-version');
   }
 
-  // No migration exists yet, so a lower `v` is refused. The first format change adds the registry.
+  // No migration from an older format exists, so a version 1 snapshot is refused.
   if (version.data < FORMAT_VERSION) {
     return err('unsupported-version');
   }
@@ -137,13 +149,17 @@ type FileRepeatRow = SnapshotSheet['repeats'][string][number];
 // the keys the file names.
 type Dropped = string[];
 
-// AD-9: one pass over the file with the current preset. Every sheet keeps its id, kind, name and
-// order. A value goes by field id into the template of its sheet's kind: a non-repeat value into
-// the non-repeat row that holds its id now, a repeat row into the repeat section of its file
-// section, with its `instanceId` and `order`. A value whose id the template does not have in that
-// scope, or whose type is not its field's, is dropped and counted. The output holds the current
-// `preset`, every `link:` of the file, and no `acl:` or `plink:` record, so every player is read-only
-// and no character has an owner. Every record is at `c: 1` by `author`.
+// AD-9, AD-18: one pass over the file with the current preset. A file sheet goes to the template
+// that owns it: a sheet with `set` to that sheet set, when its id is no template id; a sheet with
+// no `set` to the single sheet its id names. Any other sheet is dropped with its links, and it and
+// every value it holds are counted. A kept sheet keeps its id, and a sheet of a sheet set its
+// `order`. A value goes by field id into its template: a non-repeat value into the non-repeat row
+// that holds its id now, a repeat block into the repeat section of its file section, with its
+// `instanceId` and `order`. A value whose id the template does not have in that scope, or whose
+// type is not its field's, is dropped and counted. The output holds the current `preset`, every
+// `link:` of a kept sheet that is live over the output (AD-19), and no `acl:` or `plink:` record,
+// so every player is read-only and no sheet has an owner. An inert link is dropped uncounted. Every
+// record is at `c: 1` by `author`.
 export function importSnapshot(
   file: SnapshotFile,
   current: CurrentPreset,
@@ -151,11 +167,8 @@ export function importSnapshot(
 ): Result<SnapshotImport, SnapshotImportFailure> {
   const records: Candidate[] = [];
   const dropped: Dropped = [];
-
-  const scopes = {
-    pc: templateScopes(current.preset.character),
-    npc: templateScopes(current.preset.npc),
-  };
+  const kept = new Set<string>();
+  let droppedSheets = 0;
 
   const add = (k: string, d: JsonValue): void => {
     records.push({ k, d, c: 1, a: author });
@@ -164,26 +177,69 @@ export function importSnapshot(
   add('preset', current.data);
 
   for (const sheet of file.sheets) {
-    const name = parseSheetName(sheet.name);
+    const template = fileSheetTemplate(sheet, current.preset);
 
-    if (!name.ok) {
-      return err('invalid-structure');
+    if (template === null) {
+      droppedSheets += 1;
+      dropped.push(`sheet:${sheet.id}\u0000`);
+      dropSheetValues(sheet, dropped);
+      continue;
     }
 
-    add(`sheet:${sheet.id}`, { kind: sheet.kind, name: name.value, order: sheet.order });
+    kept.add(sheet.id);
 
-    for (const [k, d] of sheetValues(sheet, scopes[sheet.kind], dropped)) {
+    if (sheet.set !== undefined) {
+      add(`sheet:${sheet.id}`, { set: sheet.set, order: sheet.order ?? 0 });
+    }
+
+    for (const [k, d] of sheetValues(sheet, templateScopes(template), dropped)) {
       add(k, d);
     }
   }
 
-  for (const link of file.links) {
-    add(`link:${link.tokenId}`, link.sheetId);
+  const parsed = parsedRecords(records);
+
+  if (!parsed.ok) {
+    return parsed;
   }
 
+  const placed = new Map(parsed.value.map((record) => [record.k, record]));
+  const blocks = blockIndex(placed.values());
+  const links: Candidate[] = [];
+
+  for (const link of file.links) {
+    const target = { sheetId: link.sheetId, instanceId: link.instanceId ?? null };
+
+    if (kept.has(link.sheetId) && liveLinkTarget(placed, current.preset, target, blocks) !== null) {
+      links.push({ k: `link:${link.tokenId}`, d: linkDataOf(target), c: 1, a: author });
+    }
+  }
+
+  const parsedLinks = parsedRecords(links);
+
+  if (!parsedLinks.ok) {
+    return parsedLinks;
+  }
+
+  const output = [...parsed.value, ...parsedLinks.value];
+
+  output.sort((left, right) => compareCodeUnits(left.k, right.k));
+
+  return ok({
+    records: output,
+    count: dropped.length - droppedSheets,
+    sheets: droppedSheets,
+    digest: erasedDigest(dropped),
+  });
+}
+
+// Every candidate through the record schema, each within one message.
+function parsedRecords(
+  candidates: readonly Candidate[],
+): Result<VersionedRecord[], SnapshotImportFailure> {
   const parsed: VersionedRecord[] = [];
 
-  for (const record of records) {
+  for (const record of candidates) {
     const valid = recordSchema.safeParse(record);
 
     if (!valid.success) {
@@ -197,9 +253,34 @@ export function importSnapshot(
     parsed.push(valid.data);
   }
 
-  parsed.sort((left, right) => compareCodeUnits(left.k, right.k));
+  return ok(parsed);
+}
 
-  return ok({ records: parsed, count: dropped.length, digest: erasedDigest(dropped) });
+// AD-18: a sheet with `set` belongs to that sheet set, unless its id is a template id. A sheet with
+// no `set` is the single sheet its id names.
+function fileSheetTemplate(sheet: SnapshotSheet, preset: Preset): Template | null {
+  if (sheet.set === undefined) {
+    const single = templateById(preset, sheet.id);
+
+    return single !== null && !isSheetSet(single) ? single : null;
+  }
+
+  const set = templateById(preset, sheet.set);
+
+  return set !== null && isSheetSet(set) && templateById(preset, sheet.id) === null ? set : null;
+}
+
+// Every value of a dropped sheet, counted under the keys the file names.
+function dropSheetValues(sheet: SnapshotSheet, dropped: Dropped): void {
+  for (const [rowId, values] of sortedEntries(sheet.rows)) {
+    dropAll(dropped, `row:${sheet.id}:${rowId}`, values);
+  }
+
+  for (const [sectionId, blocks] of sortedEntries(sheet.repeats)) {
+    for (const block of blocks) {
+      dropAll(dropped, repKey(sheet.id, sectionId, block.instanceId), block.cells);
+    }
+  }
 }
 
 // The `row:` and `rep:` records of one sheet of the file, as the current template places them.
@@ -263,8 +344,8 @@ type SectionMove = { sectionId: string; target: string | null; rows: readonly Fi
 // Every file section goes to one current section, or to none. The file sections of one current
 // section keep their order: the one with the section's own id first, then the others by id. The
 // first keeps its `order`, and each next one shifts so its lowest `order` comes after the highest
-// so far. A repeat row whose `instanceId` an earlier section took in the same current section is
-// dropped with all its values.
+// so far. A repeat block whose `instanceId` an earlier one of the sheet took is dropped with all
+// its values.
 function repeatValues(
   sheet: SnapshotSheet,
   scopes: TemplateScopes,
@@ -279,6 +360,8 @@ function repeatValues(
   }));
 
   const targets = [...scopes.sections.keys()];
+  // AD-2: an instance id is unique in its sheet, across sections.
+  const claimed = new Set<string>();
 
   for (const move of moves) {
     if (move.target === null) {
@@ -295,7 +378,6 @@ function repeatValues(
       .filter((move) => move.target === target)
       .sort((left, right) => rankOf(left, target) - rankOf(right, target));
 
-    const claimed = new Set<string>();
     let highest = -Infinity;
 
     for (const group of groups) {
@@ -360,10 +442,6 @@ function dropAll(dropped: Dropped, key: string, cells: FieldValues): void {
   for (const fieldId of Object.keys(cells)) {
     dropped.push(`${key}\u0000${fieldId}`);
   }
-}
-
-function repKey(sheetId: string, sectionId: string, instanceId: string): string {
-  return `rep:${sheetId}:${sectionId}:${instanceId}`;
 }
 
 function sortedValues(values: FieldValues): FieldValues {

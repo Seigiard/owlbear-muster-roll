@@ -15,13 +15,22 @@ const sequenceSchema = z.number().int().nonnegative();
 
 // `new-version` stays until a reload: a newer build is in the room (AD-12).
 // `room-copy-not-saved` stays until the next verified room copy write (AD-8).
-export const noticeSchema = z.enum(['local-save-failed', 'room-copy-not-saved', 'new-version']);
+// `room-copy-older-format` is a GM's: the room copy is of an older format, and it stays until a
+// wipe replaces the copy (AD-12, CAP-31).
+export const noticeSchema = z.enum([
+  'local-save-failed',
+  'room-copy-not-saved',
+  'room-copy-older-format',
+  'new-version',
+]);
 
 // What the last catch-up found in the room copy: `read` a copy of this client's generation, merged;
 // `none` no copy; `unreadable` a copy that does not decode, one of another generation, or a failed
-// read with no outcome known yet; `newer` a copy of a newer build, left unread (AD-12). `null`
-// until a catch-up has read the room metadata.
-export const roomCopyOutcomeSchema = z.enum(['read', 'none', 'unreadable', 'newer']).nullable();
+// read with no outcome known yet; `newer` a copy of a newer build, left unread; `older` a copy of
+// an older format, left unread (AD-12). `null` until a catch-up has read the room metadata.
+export const roomCopyOutcomeSchema = z
+  .enum(['read', 'none', 'unreadable', 'newer', 'older'])
+  .nullable();
 
 // AD-8, for Settings: `saved` once a readable room copy of this generation was read or verified,
 // `failed` while the not-saved notice is active, otherwise `none`. `usedBytes` is the room copy's
@@ -106,42 +115,40 @@ const deltaSchema = z.strictObject({
   party: partySchema,
 });
 
-// A command is an intent. Strict objects refuse any message that also carries k, d, c or a.
-// The id and the name are checked by the engine, so a bad one gets a rejection, not silence.
-// The window picks the sheetId, so it can select the new tab when the delta arrives.
+// A command is an intent. Strict objects refuse any message that also carries k, d, c or a. The ids
+// are checked by the engine, so a bad one gets a rejection, not silence. The window picks the
+// sheetId, so it can select the new tab when the delta arrives. A new sheet has an empty name: a
+// rename is a field patch of the name field.
 const sheetCreateSchema = z.strictObject({
   type: z.literal('sheet-create'),
   sheetId: z.string(),
-  kind: z.enum(['pc', 'npc']),
-  name: z.string(),
+  set: z.string(),
 });
 
-const sheetRenameSchema = z.strictObject({
-  type: z.literal('sheet-rename'),
-  sheetId: z.string(),
-  name: z.string(),
-});
-
-// Names no kind: the engine deletes a character and an NPC alike.
+// A sheet of a sheet set. A single sheet is never deleted.
 const sheetDeleteSchema = z.strictObject({
   type: z.literal('sheet-delete'),
   sheetId: z.string(),
 });
 
-// AD-2: the engine picks the new ids and the names, so the command carries only the source and the
-// count. The count is any number, so the engine rejects a bad one instead of the schema dropping it.
-const sheetDuplicateSchema = z.strictObject({
-  type: z.literal('sheet-duplicate'),
+// CAP-30: the engine picks the new ids and the numbered first field values, so the command carries
+// only the source repeat block and the count. The count is any number, so the engine rejects a bad
+// one instead of the schema dropping it.
+const repeatBlockDuplicateSchema = z.strictObject({
+  type: z.literal('repeat-block-duplicate'),
   sheetId: z.string(),
+  sectionId: z.string(),
+  instanceId: z.string(),
   count: z.number(),
 });
 
-// FR18: a token links to one sheet, so a new link replaces the token's old one. The engine checks
-// the token id and that the sheet is live.
+// AD-19: a token links to one sheet, or with `instanceId` to one repeat block of it, so a new link
+// replaces the token's old one. The engine checks the token id and that the target is live.
 const linkSetSchema = z.strictObject({
   type: z.literal('link-set'),
   tokenId: z.string(),
   sheetId: z.string(),
+  instanceId: z.string().nullable(),
 });
 
 // Tombstones the token's link. The sheet and the token stay.
@@ -150,9 +157,9 @@ const linkClearSchema = z.strictObject({
   tokenId: z.string(),
 });
 
-// FR3: turns one player's write access to one character on or off. `name` is the player's name as
-// the GM's window knows it, kept in the record as the last known name. The engine checks the ids
-// and that the sheet is a live character.
+// FR3: turns one player's write access to one sheet of a sheet set on or off. `name` is the
+// player's name as the GM's window knows it, kept in the record as the last known name. The engine
+// checks the ids and that the sheet is a live sheet of a sheet set.
 const aclSetSchema = z.strictObject({
   type: z.literal('acl-set'),
   sheetId: z.string(),
@@ -161,9 +168,9 @@ const aclSetSchema = z.strictObject({
   on: z.boolean(),
 });
 
-// FR19: picks the one owner of a character, or none with `playerId: null`. `name` is the player's
-// name as the GM's window knows it, kept in `plink:` and in a new `acl:` as the last known name. The
-// engine checks the ids and that the sheet is a live character.
+// FR19: picks the one owner of a sheet of a sheet set, or none with `playerId: null`. `name` is the
+// player's name as the GM's window knows it, kept in `plink:` and in a new `acl:` as the last known
+// name. The engine checks the ids and that the sheet is a live sheet of a sheet set.
 const ownerSetSchema = z.strictObject({
   type: z.literal('owner-set'),
   sheetId: z.string(),
@@ -175,22 +182,25 @@ const ownerSetSchema = z.strictObject({
 // JSON can still fit once deflated. The engine decodes and validates it again.
 const presetDataSchema = z.base64().min(1);
 
-// AD-14: a hash of the erased (key, field id) pairs, from `preset-diff-result`.
+// AD-14: a hash of the erased (key, field id) pairs and the deleted sheets, from
+// `preset-diff-result`.
 const erasedDigestSchema = z.string().regex(/^[0-9a-f]{8}$/);
 
-// AD-14: the count of stored values the upload erases, as the GM confirmed it, or 0 when the diff
-// found none, and the digest of those values. The engine runs the diff again and refuses with
-// `count-changed` when its own count is above 0 and the count or the digest differs.
+// AD-14: the count of stored values the upload erases and of the sheets it deletes, as the GM
+// confirmed them, or 0 when the diff found none, and the digest of both. The engine runs the diff
+// again and refuses with `count-changed` when its own counts are not both 0 and a count or the
+// digest differs.
 const presetUploadSchema = z.strictObject({
   type: z.literal('preset-upload'),
   data: presetDataSchema,
   expectedCount: z.number().int().nonnegative(),
+  expectedSheets: z.number().int().nonnegative(),
   expectedDigest: erasedDigestSchema,
 });
 
-// AD-9: the snapshot file, deflated and base64-encoded, and the digest of the values it drops, as
-// the GM confirmed it from `snapshot-check-result`. The engine runs the import again and refuses
-// with `count-changed` when its own digest differs.
+// AD-9: the snapshot file, deflated and base64-encoded, and the digest of the values and sheets it
+// drops, as the GM confirmed it from `snapshot-check-result`. The engine runs the import again and
+// refuses with `count-changed` when its own digest differs.
 const snapshotImportSchema = z.strictObject({
   type: z.literal('snapshot-import'),
   data: presetDataSchema,
@@ -207,27 +217,31 @@ const fieldPatchSchema = z.strictObject({
   value: z.json(),
 });
 
-// The window picks the instanceId, so it can focus the new row when the delta arrives. The engine
-// composes the order and the empty cells.
-const repeatRowAddSchema = z.strictObject({
-  type: z.literal('repeat-row-add'),
+// The window picks the instanceId, so it can focus the new repeat block when the delta arrives. The
+// engine composes the order and the empty cells.
+const repeatBlockAddSchema = z.strictObject({
+  type: z.literal('repeat-block-add'),
   sheetId: z.string(),
   sectionId: z.string(),
   instanceId: z.string(),
 });
 
-const repeatRowDeleteSchema = z.strictObject({
-  type: z.literal('repeat-row-delete'),
+// AD-19: the engine also removes the token links of the repeat block.
+const repeatBlockDeleteSchema = z.strictObject({
+  type: z.literal('repeat-block-delete'),
   sheetId: z.string(),
   sectionId: z.string(),
   instanceId: z.string(),
 });
+
+// AD-9, CAP-31: erases all room data in a new generation. The window asks its one confirmation
+// first, so the command carries nothing more.
+const wipeSchema = z.strictObject({ type: z.literal('wipe') });
 
 const commandIntentSchema = z.discriminatedUnion('type', [
   sheetCreateSchema,
-  sheetRenameSchema,
   sheetDeleteSchema,
-  sheetDuplicateSchema,
+  repeatBlockDuplicateSchema,
   linkSetSchema,
   linkClearSchema,
   aclSetSchema,
@@ -235,8 +249,9 @@ const commandIntentSchema = z.discriminatedUnion('type', [
   presetUploadSchema,
   snapshotImportSchema,
   fieldPatchSchema,
-  repeatRowAddSchema,
-  repeatRowDeleteSchema,
+  repeatBlockAddSchema,
+  repeatBlockDeleteSchema,
+  wipeSchema,
 ]);
 
 const commandSchema = z.strictObject({
@@ -263,11 +278,13 @@ const snapshotCheckSchema = z.strictObject({
   data: presetDataSchema,
 });
 
-// The answer to `snapshot-check`: the count of values the import would drop, and their digest.
+// The answer to `snapshot-check`: the count of values and of sheets the import would drop, and
+// their digest.
 const snapshotCheckResultSchema = z.strictObject({
   t: z.literal('snapshot-check-result'),
   id: idSchema,
   count: countSchema,
+  sheets: countSchema,
   digest: erasedDigestSchema,
 });
 
@@ -277,19 +294,29 @@ const snapshotImportedSchema = z.strictObject({
   id: idSchema,
 });
 
-// The answer to `preset-diff`: the count of stored values the upload would erase, and their digest.
+// A `wipe` erased the room's data.
+const wipedSchema = z.strictObject({
+  t: z.literal('wiped'),
+  id: idSchema,
+});
+
+// The answer to `preset-diff`: the count of stored values the upload would erase and of sheets it
+// would delete, and their digest.
 const presetDiffResultSchema = z.strictObject({
   t: z.literal('preset-diff-result'),
   id: idSchema,
   count: countSchema,
+  sheets: countSchema,
   digest: erasedDigestSchema,
 });
 
-// A `preset-upload` wrote its whole batch. `count` is the number of stored values it erased.
+// A `preset-upload` wrote its whole batch. `count` is the number of stored values it erased and
+// `sheets` the number of sheets it deleted.
 const presetUploadedSchema = z.strictObject({
   t: z.literal('preset-uploaded'),
   id: idSchema,
   count: countSchema,
+  sheets: countSchema,
 });
 
 const plainRejectionSchema = z.strictObject({
@@ -306,7 +333,8 @@ const plainRejectionSchema = z.strictObject({
     'sheet-exists',
     'unknown-sheet',
     'deleted-sheet',
-    'invalid-name',
+    // AD-18: a `sheet-create` whose `set` names no sheet set of the preset.
+    'unknown-template',
     'unknown-field',
     'invalid-value',
     'unknown-instance',
@@ -316,19 +344,19 @@ const plainRejectionSchema = z.strictObject({
     'instance-exists',
     // A duplicate count outside 1 to 50, or not whole.
     'invalid-count',
-    // Only an NPC is duplicated.
-    'not-npc',
     // A token id no `link:` key can hold.
     'invalid-token-id',
     // A `link-clear` for a token with no link.
     'unknown-link',
+    // AD-19: a link target whose template or repeat section is not linkable.
+    'not-linkable',
     // A player id no `acl:` or `plink:` key can hold.
     'invalid-player-id',
-    // Access and an owner are given on a character only, never on an NPC.
-    'not-character',
-    // A player's write that is not a field or repeat row edit of a character it has access to.
+    // Delete, access and an owner are for a sheet of a sheet set only, never a single sheet.
+    'not-sheet-set',
+    // A player's write that is not a field or repeat block edit of a sheet it may edit.
     'not-allowed',
-    // AD-14: a preset upload waits until catch-up ends.
+    // AD-14: a preset upload, an import or a wipe waits until catch-up ends.
     'catching-up',
     // AD-9: the snapshot file does not parse, or a sheet of it breaks a rule.
     'invalid-snapshot',
@@ -341,13 +369,14 @@ const plainRejectionSchema = z.strictObject({
   ]),
 });
 
-// AD-14: the replica changed since the diff, and the upload would erase other values: `count` of
-// them, with `digest` for the next confirmation.
+// AD-14: the replica changed since the diff, and the upload would erase other values or delete
+// other sheets: `count` and `sheets` of them, with `digest` for the next confirmation.
 const countChangedSchema = z.strictObject({
   t: z.literal('command-rejected'),
   id: idSchema,
   reason: z.literal('count-changed'),
   count: countSchema,
+  sheets: countSchema,
   digest: erasedDigestSchema,
 });
 
@@ -385,12 +414,14 @@ const rollOutcomeSchema = z.strictObject({
   ]),
 });
 
-// FR14: "Открыть лист" asks a window to show a sheet. The engine holds the request and sends it
-// again after each projection until a window acknowledges its id. A new press replaces it.
+// FR14: "Открыть лист" asks a window to show a sheet, and with `instanceId` to scroll to that
+// repeat block of it. The engine holds the request and sends it again after each projection until a
+// window acknowledges its id. A new press replaces it.
 const openSheetSchema = z.strictObject({
   t: z.literal('open-sheet'),
   id: idSchema,
   sheetId: idSchema,
+  instanceId: idSchema.nullable(),
 });
 
 // The window took the request: it selected the sheet's tab, or found no tab to select.
@@ -418,6 +449,7 @@ const engineMessageSchema = z.discriminatedUnion('t', [
   presetUploadedSchema,
   snapshotCheckResultSchema,
   snapshotImportedSchema,
+  wipedSchema,
 ]);
 
 export type Notice = z.infer<typeof noticeSchema>;
@@ -455,6 +487,8 @@ export type SnapshotImportedMessage = z.infer<typeof snapshotImportedSchema>;
 
 // What the engine answered to a window's snapshot check or import, by its id.
 export type SnapshotResultMessage = SnapshotCheckResultMessage | SnapshotImportedMessage;
+
+export type WipedMessage = z.infer<typeof wipedSchema>;
 
 export type RejectionReason = CommandRejectedMessage['reason'];
 

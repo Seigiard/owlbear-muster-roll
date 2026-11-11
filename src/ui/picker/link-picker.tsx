@@ -3,10 +3,19 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Button as AriaButton, Checkbox } from 'react-aria-components';
 
-import type { SheetSummary } from '@/core/sheets';
+import { linkTargetKey, linkTargetOf, sameLinkTarget, type LinkTarget } from '@/core/link-target';
+import { decodePreset, repeatSectionId, type Preset } from '@/core/preset';
+import { presetDataSchema } from '@/core/records';
+import { sectionTitle } from '@/core/sheet-values';
 import { LINK_PICKER_TIMING, type LinkPickerTiming } from '@/core/timing';
-import { linkedSheetIds, linkKey, pickerOrder, tokenIdSchema } from '@/core/token-links';
-import { visibleRecordMap, visibleSheets } from '@/core/visibility';
+import {
+  linkKey,
+  pickerGroups,
+  tokenIdSchema,
+  type PickerGroup,
+  type PickerTarget,
+} from '@/core/token-links';
+import { visibleRecordMap } from '@/core/visibility';
 import type { NotificationPort, ScenePort } from '@/platform/ports';
 import { copy } from '@/ui/copy';
 import type { ProjectionStore } from '@/ui/projection-store';
@@ -27,7 +36,7 @@ type LinkPickerProps = {
 
 // The sent pick. The command id ties a rejection to it. `label` is the text to set under the token
 // once the link is in, or `null` to leave the label as it is.
-type Sent = { commandId: string; sheetId: string; label: string | null };
+type Sent = { commandId: string; target: LinkTarget; label: string | null };
 
 // The token's label as the picker read it when it opened. `unlabelable` is an item that is missing
 // or has no label text, so no write could succeed. `unreadable` is a read that failed or got no
@@ -38,9 +47,10 @@ type CurrentLabel =
   | { state: 'unlabelable' }
   | { state: 'unreadable' };
 
-// UX-DR22: the sheets a token can link to, characters first, then NPCs, and in each group the
-// sheets with no token first. A pick stays on screen until its link is in the replica, so a refused
-// one, such as for a sheet deleted meanwhile, shows a message here instead of closing the picker.
+// UX-DR22: the targets a token can link to, in groups in preset order: one per linkable sheet set
+// or single sheet, and one per linkable repeat section. In each group the targets with no token
+// come first. A pick stays on screen until its link is in the replica, so a refused one, such as
+// for a sheet deleted meanwhile, shows a message here instead of closing the picker.
 export function LinkPicker({
   tokenId,
   store,
@@ -69,14 +79,15 @@ export function LinkPicker({
   const validToken = tokenIdSchema.safeParse(tokenId).success;
   // Only a GM links tokens, so only a GM reads the label, and only once the room is loaded.
   const mayReadLabel = validToken && loaded && sync.firstCatchUpDone && sync.role === 'GM';
-  const records = useMemo(() => visibleRecordMap(sync.role, allRecords), [sync.role, allRecords]);
+  const presetData = presetDataSchema.safeParse(allRecords.get('preset')?.d).data ?? null;
+  const preset = useMemo(() => decodedPreset(presetData), [presetData]);
 
-  const { characters, npcs } = useMemo(
-    () => pickerOrder(visibleSheets(sync.role, records.values()), records),
-    [sync.role, records],
+  const records = useMemo(
+    () => visibleRecordMap(sync.role, preset, allRecords),
+    [sync.role, preset, allRecords],
   );
 
-  const linked = useMemo(() => linkedSheetIds(records), [records]);
+  const groups = useMemo(() => pickerGroups(records, preset), [records, preset]);
 
   if (sent !== null && rejections.has(sent.commandId)) {
     setSent(null);
@@ -84,7 +95,10 @@ export function LinkPicker({
   }
 
   // A pending view can still be refused when catch-up ends, so only the replica counts.
-  const arrived = sent !== null && replica.get(linkKey(tokenId))?.d === sent.sheetId;
+  const arrivedTarget = linkTargetOf(replica.get(linkKey(tokenId))?.d ?? null);
+
+  const arrived =
+    sent !== null && arrivedTarget !== null && sameLinkTarget(arrivedTarget, sent.target);
 
   useEffect(() => {
     role.current = sync.role;
@@ -173,18 +187,29 @@ export function LinkPicker({
     };
   }, [sent, arrived, timing]);
 
-  function pick(sheet: SheetSummary): void {
+  function pick(choice: PickerTarget): void {
     if (sent !== null) {
       return;
     }
 
-    const result = sendCommand({ type: 'link-set', tokenId, sheetId: sheet.sheetId });
+    const { target } = choice;
+
+    const result = sendCommand({
+      type: 'link-set',
+      tokenId,
+      sheetId: target.sheetId,
+      instanceId: target.instanceId,
+    });
+
+    // The offered label is the target's name: a sheet's, or a repeat block's first field. An empty
+    // name sets none.
+    const name = choice.blockName ?? choice.sheetName;
 
     if (result.ok) {
       setSent({
         commandId: result.value,
-        sheetId: sheet.sheetId,
-        label: labelWanted ? sheet.name : null,
+        target,
+        label: labelWanted && name !== '' ? name : null,
       });
       setFailed(false);
     } else {
@@ -192,27 +217,31 @@ export function LinkPicker({
     }
   }
 
-  function list(sheets: readonly SheetSummary[]): ReactNode {
+  function list(group: PickerGroup): ReactNode {
     return (
       <ul className="flex flex-col gap-1">
-        {sheets.map((sheet) => (
-          <li key={sheet.sheetId}>
+        {group.targets.map((choice) => (
+          <li key={linkTargetKey(choice.target)}>
             <AriaButton
               isDisabled={sent !== null || currentLabel.state === 'reading'}
               onPress={() => {
-                pick(sheet);
+                pick(choice);
               }}
+              aria-label={targetAccessibleName(choice)}
               className="touch-target flex w-full items-center gap-2 rounded-sm px-3 text-left text-text data-disabled:opacity-50 data-hovered:bg-surface-tab data-pressed:bg-surface-tab"
             >
-              <span className="min-w-[0] flex-1 [overflow-wrap:anywhere]">{sheet.name}</span>
-              {linked.has(sheet.sheetId) ? (
-                <>
-                  {/* Keeps the name and the status apart in the accessible name. */}
-                  <span className="sr-only">, </span>
-                  <span className="shrink-0 text-label-sm text-text-muted">
-                    {copy.status.tokenLinked}
+              <span className="min-w-[0] flex-1 [overflow-wrap:anywhere]">
+                {shownName(choice.blockName ?? choice.sheetName)}
+                {choice.blockName === null ? null : (
+                  <span className="ml-2 text-label-sm text-text-muted">
+                    {shownName(choice.sheetName)}
                   </span>
-                </>
+                )}
+              </span>
+              {choice.linked ? (
+                <span className="shrink-0 text-label-sm text-text-muted">
+                  {copy.status.tokenLinked}
+                </span>
               ) : null}
             </AriaButton>
           </li>
@@ -285,20 +314,27 @@ export function LinkPicker({
       return null;
     }
 
-    if (characters.length === 0 && npcs.length === 0) {
+    if (groups.length === 0) {
       return <p>{copy.noSheetsToLink}</p>;
     }
 
     return (
       <div aria-busy={sent !== null} className="flex flex-col gap-2">
         {labelOffer()}
-        {list(characters)}
-        {npcs.length === 0 ? null : (
-          <section aria-label={copy.place.npc} className="flex flex-col gap-1">
-            <h2 className="px-3 text-label-sm text-text-muted">{copy.place.npc}</h2>
-            {list(npcs)}
-          </section>
-        )}
+        {groups.map((group) => {
+          const heading = groupHeading(group);
+
+          return (
+            <section
+              key={`${group.template.id}:${group.section === null ? '' : (repeatSectionId(group.section) ?? '')}`}
+              aria-label={heading}
+              className="flex flex-col gap-1"
+            >
+              <h2 className="px-3 text-label-sm text-text-muted">{heading}</h2>
+              {list(group)}
+            </section>
+          );
+        })}
       </div>
     );
   }
@@ -311,6 +347,42 @@ export function LinkPicker({
       </p>
     </main>
   );
+}
+
+// A sheet set or a single sheet groups by its `title`, a repeat section by its own title, and an
+// untitled one by its template's.
+function groupHeading(group: PickerGroup): string {
+  return group.section === null
+    ? group.template.title
+    : (sectionTitle(group.section) ?? group.template.title);
+}
+
+// The visible parts joined by commas, so a screen reader does not run them together. Built here,
+// as the computed name of separate spans adds a space before each comma.
+export function targetAccessibleName(choice: PickerTarget): string {
+  return [
+    shownName(choice.blockName ?? choice.sheetName),
+    choice.blockName === null ? null : shownName(choice.sheetName),
+    choice.linked ? copy.status.tokenLinked : null,
+  ]
+    .filter((part) => part !== null)
+    .join(', ');
+}
+
+// The one fallback label of an empty name.
+function shownName(name: string): string {
+  return name === '' ? copy.unnamed : name;
+}
+
+// The engine validates before it stores, so a preset that does not decode counts as none.
+function decodedPreset(data: string | null): Preset | null {
+  if (data === null) {
+    return null;
+  }
+
+  const decoded = decodePreset(data);
+
+  return decoded.ok ? decoded.value : null;
 }
 
 // Rejects when `work` has not settled after `ms`, so a port call that never answers cannot hold the

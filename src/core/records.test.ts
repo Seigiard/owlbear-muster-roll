@@ -1,17 +1,18 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { JsonObject, JsonValue } from '@/core/json';
-import { parseRecord, parseStoredRecord } from '@/core/records';
+import { parseRecord, parseRepKey, parseStoredRecord, repKey } from '@/core/records';
 
 const VALID_FORMS: [string, JsonValue][] = [
   ['preset', 'eJyrVgIAAS8Arg=='],
-  ['sheet:s1', { kind: 'pc', name: 'Ada', order: 1 }],
-  ['sheet:s2', { kind: 'npc', name: 'Orc', order: 2.5 }],
+  ['sheet:s1', { set: 'pc', order: 1 }],
+  ['sheet:s2', { set: 'crew_2', order: 2.5 }],
   ['row:s1:str', { str: 3, note: 'x', tired: false }],
   ['row:s1:empty', {}],
   ['rep:s1:item:i1', { order: 1, cells: { item: 'rope', qty: 2 } }],
   ['acl:s1:p1', { name: 'Bob' }],
-  ['link:t1', 's1'],
+  ['link:t1', { s: 's1' }],
+  ['link:t2', { s: 's1', i: 'i1' }],
   ['plink:s1:p1', { name: 'Bob' }],
 ];
 
@@ -53,11 +54,15 @@ const INVALID_DATA: [string, JsonValue][] = [
   ['preset', ''],
   ['preset', 'not base64!'],
   ['preset', { z: 1 }],
-  ['sheet:s', { kind: 'monster', name: 'x', order: 1 }],
-  ['sheet:s', { kind: 'pc', name: 'x' }],
-  ['sheet:s', { kind: 'pc', name: 5, order: 1 }],
-  ['sheet:s', { kind: 'pc', name: 'x', order: '1' }],
-  ['sheet:s', { kind: 'pc', name: 'x', order: 1, extra: true }],
+  ['sheet:s', { kind: 'pc', name: 'x', order: 1 }],
+  ['sheet:s', { set: 'pc' }],
+  ['sheet:s', { set: 5, order: 1 }],
+  ['sheet:s', { set: '1pc', order: 1 }],
+  ['sheet:s', { set: 'd20', order: 1 }],
+  ['sheet:s', { set: 'constructor', order: 1 }],
+  ['sheet:s', { set: 'a'.repeat(65), order: 1 }],
+  ['sheet:s', { set: 'pc', order: '1' }],
+  ['sheet:s', { set: 'pc', order: 1, name: 'x' }],
   ['sheet:s', 's'],
   ['row:s:r', 's'],
   ['row:s:r', [1]],
@@ -70,9 +75,15 @@ const INVALID_DATA: [string, JsonValue][] = [
   ['acl:s:p', { name: 5 }],
   ['acl:s:p', { name: 'x', extra: 1 }],
   ['link:t', 5],
-  ['link:t', ''],
-  ['link:t', 'a:b'],
-  ['link:t', '__proto__'],
+  ['link:t', 's'],
+  ['link:t', {}],
+  ['link:t', { s: '' }],
+  ['link:t', { s: 'a:b' }],
+  ['link:t', { s: '__proto__' }],
+  ['link:t', { s: 's', i: '' }],
+  ['link:t', { s: 's', i: 'a:b' }],
+  ['link:t', { i: 'i' }],
+  ['link:t', { s: 's', section: 'sec' }],
   ['link:t', { sheetId: 's' }],
   ['plink:s:p', {}],
   ['plink:s:p', { name: 'x', extra: 1 }],
@@ -202,13 +213,13 @@ describe('parseRecord refuses', () => {
 describe('parseStoredRecord', () => {
   test('parses a valid record filed under its own key', () => {
     // #given
-    const text = '{"k":"link:t","d":"s","c":3,"a":"conn"}';
+    const text = '{"k":"link:t","d":{"s":"s"},"c":3,"a":"conn"}';
 
     // #when
     const parsed = parseStoredRecord(text, 'link:t');
 
     // #then
-    expect(parsed).toEqual({ ok: true, value: { k: 'link:t', d: 's', c: 3, a: 'conn' } });
+    expect(parsed).toEqual({ ok: true, value: { k: 'link:t', d: { s: 's' }, c: 3, a: 'conn' } });
   });
 
   test('refuses text that is not JSON without throwing', () => {
@@ -221,7 +232,7 @@ describe('parseStoredRecord', () => {
 
   test('refuses valid JSON that is not a record', () => {
     // #when
-    const parsed = parseStoredRecord('{"k":"link:t","d":"s","c":0,"a":"conn"}', 'link:t');
+    const parsed = parseStoredRecord('{"k":"link:t","d":{"s":"s"},"c":0,"a":"conn"}', 'link:t');
 
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
@@ -229,10 +240,46 @@ describe('parseStoredRecord', () => {
 
   test('refuses a valid record filed under another key', () => {
     // #when
-    const parsed = parseStoredRecord('{"k":"link:t","d":"s","c":3,"a":"conn"}', 'link:other');
+    const parsed = parseStoredRecord('{"k":"link:t","d":{"s":"s"},"c":3,"a":"conn"}', 'link:other');
 
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+  });
+});
+
+describe('repKey', () => {
+  test('names one repeat block as rep:{sheetId}:{sectionId}:{instanceId}', () => {
+    // #when
+    const key = repKey('s1', 'attack', 'i1');
+
+    // #then
+    expect(key).toBe('rep:s1:attack:i1');
+  });
+});
+
+describe('parseRepKey', () => {
+  test('reads the sheet, section and instance ids of a rep: key', () => {
+    // #when
+    const parts = parseRepKey('rep:s1:attack:i1');
+
+    // #then
+    expect(parts).toEqual({ sheetId: 's1', sectionId: 'attack', instanceId: 'i1' });
+  });
+
+  test.each([
+    'row:s1:attack',
+    'rep:s1:attack',
+    'rep:s1:attack:',
+    'rep::attack:i1',
+    'rep:s1::i1',
+    'rep:s1:attack:i1:x',
+    'link:t1',
+  ])('refuses the key %j', (key) => {
+    // #when
+    const parts = parseRepKey(key);
+
+    // #then
+    expect(parts).toBeNull();
   });
 });
 

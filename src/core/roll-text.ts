@@ -11,14 +11,18 @@ export type RollCopy = {
   roll: (roller: string, sheet: string, cell: string, result: string) => string;
   rollSuccess: string;
   rollFailure: string;
+  // The one fallback label of an empty sheet name.
+  unnamed: string;
 };
 
 // "{roller}: {sheet}, {cell} — {result}". `{result}` is the rolled number, and for a comparison
-// also its outcome, as "7, успех".
+// also its outcome, as "7, успех". A sheet whose name field is empty is sent as "" and shows the
+// fallback label.
 export function rollNotificationText(
   roll: Pick<RollMessage, 'roller' | 'sheetName' | 'cell' | 'result'>,
   text: RollCopy,
 ): string {
+  const sheet = roll.sheetName.trim() === '' ? text.unnamed : roll.sheetName;
   const number = formatRollNumber(roll.result.roll);
   const { outcome } = roll.result;
 
@@ -27,7 +31,7 @@ export function rollNotificationText(
       ? number
       : `${number}, ${outcome === 'success' ? text.rollSuccess : text.rollFailure}`;
 
-  return text.roll(roll.roller, roll.sheetName, roll.cell, result);
+  return text.roll(roll.roller, sheet, roll.cell, result);
 }
 
 export function formatRollNumber(value: number): string {

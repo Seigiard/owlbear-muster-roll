@@ -9,8 +9,11 @@ import {
   encodePreset,
   firstFieldId,
   parsePresetFile,
+  repeatSectionId,
+  sectionFields,
   type Preset,
   type PresetSection,
+  type Template,
 } from './preset';
 import {
   encodeSnapshot,
@@ -20,19 +23,23 @@ import {
   type SnapshotValue,
 } from './snapshot';
 
-// AD-8 and NFR16: the TASK-18 AC 12 measurement. It prints the size of a full party's room copy, to
-// be copied into the task notes. TASK-37 shortened new ids to keep 1500 bytes of margin, and this
-// test enforces that margin: a failure here needs an owner decision, as TASK-34 was. Rooms built
-// before TASK-37 keep their 21-character ids and so their thin margin; the test prints that size
-// too, for comparison, and asserts nothing about it.
+// AD-8 and NFR16: the TASK-41 worst case. It prints the size of a full room copy, to be copied into
+// the task notes, and enforces the 1500 bytes of margin TASK-37 set: a failure here needs an owner
+// decision, as TASK-34 was. A v1 room copy is wiped, not read, so no v2 room holds the 21-character
+// ids made before TASK-37.
 
-// The larger Story 1.11 fixture.
+// The larger Story 1.11 fixture: a linkable sheet set `pc`, the linkable NPC single sheet `npc` and
+// three other single sheets.
 const FIXTURE_PATH = join(import.meta.dir, '../../tests/fixtures/presets/d20.json');
 
 const CHARACTER_COUNT = 6;
-const NPC_COUNT = 60;
 const CHARACTER_ATTACKS = 4;
-const NPC_ATTACKS = 2;
+
+// The repeat blocks of the NPC single sheet, each linked to its own token.
+const NPC_COUNT = 60;
+
+// The repeat blocks of each other single sheet's repeat section.
+const SINGLE_SHEET_BLOCKS = 4;
 const NANOID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-';
 
 // GM connection ids, the record authors. Owlbear makes them, so TASK-37 leaves their length as is.
@@ -40,9 +47,6 @@ const CONNECTION_ID_LENGTH = 21;
 
 // TASK-37 AC 3: the margin the room copy must keep, written out by hand.
 const REQUIRED_MARGIN = 1500;
-
-// The nanoid default length, which every new id had before TASK-37.
-const OLD_ID_LENGTH = 21;
 
 const CLASSES = ['Следопыт', 'Волшебница', 'Паладин', 'Плут', 'Жрица', 'Варвар'];
 const HEROES = ['Брок Железнобокий', 'Лиза Ветреная', 'Агнесса', 'Мирон Тень', 'Дарья', 'Гром'];
@@ -52,23 +56,17 @@ const MONSTERS = ['Гоблин-лучник', 'Скелет-воин', 'Орк-
 
 const ATTACKS = ['Длинный меч', 'Короткий лук', 'Кинжал с ядом', 'Огненный снаряд', 'Укус'];
 
-describe('room copy size of the AC 12 party', () => {
-  test('a party of 6 characters and 60 NPCs with Russian text encodes, reads back whole and leaves the margin', () => {
+describe('room copy size of the TASK-41 worst case', () => {
+  test('6 sheets of a sheet set, 60 linked NPC blocks and 3 other single sheets with Russian text encode, read back whole and leave the margin', () => {
     // #given
-    const preset = loadPreset();
-    const records = party(preset, SHEET_ID_LENGTH, INSTANCE_ID_LENGTH);
-    const oldRecords = party(preset, OLD_ID_LENGTH, OLD_ID_LENGTH);
+    const records = room(loadPreset());
 
     // #when
     const encoded = encodedCopy(records);
     const bytes = copyBytes(encoded);
     const margin = ROOM_METADATA_BYTE_LIMIT - bytes;
-    const oldBytes = copyBytes(encodedCopy(oldRecords));
 
     console.log(`snapshot bytes: ${bytes}, margin: ${margin}`);
-    console.log(
-      `with ids made before TASK-37: snapshot bytes: ${oldBytes}, margin: ${ROOM_METADATA_BYTE_LIMIT - oldBytes}`,
-    );
 
     const readBack = readSnapshot({ [SNAPSHOT_KEY]: encoded });
 
@@ -82,7 +80,7 @@ function encodedCopy(records: readonly VersionedRecord[]): SnapshotValue {
   const encoded = encodeSnapshot({ n: 0, a: '' }, records);
 
   if (!encoded.ok) {
-    throw new Error(`the party did not encode: ${encoded.error}`);
+    throw new Error(`the room did not encode: ${encoded.error}`);
   }
 
   return encoded.value;
@@ -103,103 +101,144 @@ function loadPreset(): Preset {
   return parsed.value;
 }
 
-// Real ids as the extension makes them: nanoid sheet and instance ids of the given lengths, Owlbear
-// UUIDs for players and tokens and two GM connections as authors. A seeded random keeps the number
+// The tools that make one room's records with real ids: nanoid sheet and instance ids, Owlbear
+// UUIDs for players and tokens, and two GM connections as authors. A seeded random keeps the number
 // reproducible.
-function party(preset: Preset, sheetIdLength: number, instanceIdLength: number): VersionedRecord[] {
+type Maker = {
+  random: () => number;
+  author: () => string;
+  counter: () => number;
+  instanceId: () => string;
+};
+
+// Every template of the preset filled: each sheet set with its sheets, each single sheet once. A
+// linkable template links a token to each sheet, a linkable repeat section to each block, and each
+// sheet of a sheet set has one player's `acl:` and `plink:`.
+function room(preset: Preset): VersionedRecord[] {
   const random = seeded(18);
   const gms = [nanoid(random, CONNECTION_ID_LENGTH), nanoid(random, CONNECTION_ID_LENGTH)];
-  const author = (): string => gms[Math.floor(random() * gms.length)] ?? '';
-  const counter = (): number => 1 + Math.floor(random() * 40);
-  const records: VersionedRecord[] = [{ k: 'preset', d: encodePreset(preset), c: 1, a: author() }];
 
-  for (let index = 0; index < CHARACTER_COUNT + NPC_COUNT; index += 1) {
-    const isPc = index < CHARACTER_COUNT;
-    const sheetId = nanoid(random, sheetIdLength);
-    const name = isPc ? at(HEROES, index) : `${at(MONSTERS, index)} ${index - CHARACTER_COUNT + 1}`;
-    const sections = isPc ? preset.character.sections : preset.npc.sections;
+  const maker: Maker = {
+    random,
+    author: () => gms[Math.floor(random() * gms.length)] ?? '',
+    counter: () => 1 + Math.floor(random() * 40),
+    instanceId: () => nanoid(random, INSTANCE_ID_LENGTH),
+  };
 
-    const values = (fieldId: string, type: string): FieldValue =>
-      fieldValue(random, fieldId, type, index);
+  const records: VersionedRecord[] = [
+    { k: 'preset', d: encodePreset(preset), c: 1, a: maker.author() },
+  ];
 
-    records.push({
-      k: `sheet:${sheetId}`,
-      d: { kind: isPc ? 'pc' : 'npc', name, order: index },
-      c: counter(),
-      a: author(),
-    });
-
-    for (const section of sections) {
-      records.push(
-        ...sectionRecords(
-          section,
-          sheetId,
-          isPc ? CHARACTER_ATTACKS : NPC_ATTACKS,
-          values,
-          () => nanoid(random, instanceIdLength),
-          counter,
-          author,
-        ),
-      );
+  for (const template of preset.templates) {
+    if (template.kind === 'single') {
+      records.push(...sheetRecords(template, template.id, 0, maker));
+      continue;
     }
 
-    records.push({ k: `link:${uuid(random)}`, d: sheetId, c: 1, a: author() });
-
-    if (isPc) {
+    for (let index = 0; index < CHARACTER_COUNT; index += 1) {
+      const sheetId = nanoid(random, SHEET_ID_LENGTH);
       const playerId = uuid(random);
+      const player = { name: at(PLAYERS, index) };
 
-      records.push({
-        k: `acl:${sheetId}:${playerId}`,
-        d: { name: at(PLAYERS, index) },
-        c: 1,
-        a: author(),
-      });
-      records.push({
-        k: `plink:${sheetId}:${playerId}`,
-        d: { name: at(PLAYERS, index) },
-        c: 1,
-        a: author(),
-      });
+      records.push(
+        { k: `sheet:${sheetId}`, d: { set: template.id, order: index }, c: 1, a: maker.author() },
+        ...sheetRecords(template, sheetId, index, maker),
+        { k: `acl:${sheetId}:${playerId}`, d: player, c: 1, a: maker.author() },
+        { k: `plink:${sheetId}:${playerId}`, d: player, c: 1, a: maker.author() },
+      );
     }
   }
 
   return records;
 }
 
-function sectionRecords(
-  section: PresetSection,
+// One sheet's `row:` and `rep:` records, and its token links.
+function sheetRecords(
+  template: Template,
   sheetId: string,
-  repeatCount: number,
-  values: (fieldId: string, type: string) => FieldValue,
-  newInstanceId: () => string,
-  counter: () => number,
-  author: () => string,
+  index: number,
+  maker: Maker,
 ): VersionedRecord[] {
   const records: VersionedRecord[] = [];
 
-  for (const row of section.rows) {
-    const rowId = firstFieldId(row);
+  if (template.tokens === true) {
+    records.push(linkRecord(maker, { s: sheetId }));
+  }
 
-    if (rowId === null) {
+  for (const section of template.sections) {
+    const sectionId = repeatSectionId(section);
+
+    if (sectionId === null) {
+      records.push(...plainRows(section, sheetId, index, maker));
       continue;
     }
 
-    const cells = Object.fromEntries(
-      row.flatMap((cell) => (cell.kind === 'field' ? [[cell.id, values(cell.id, cell.type)]] : [])),
-    );
+    for (let order = 0; order < blockCount(template); order += 1) {
+      const instanceId = maker.instanceId();
+      const cells = fieldValues(section, maker, template.kind === 'set' ? index : order);
 
-    if (section.repeat === true) {
-      for (let order = 0; order < repeatCount; order += 1) {
-        const k = `rep:${sheetId}:${rowId}:${newInstanceId()}`;
+      records.push({
+        k: `rep:${sheetId}:${sectionId}:${instanceId}`,
+        d: { order, cells },
+        c: maker.counter(),
+        a: maker.author(),
+      });
 
-        records.push({ k, d: { order, cells }, c: counter(), a: author() });
+      if (section.tokens === true) {
+        records.push(linkRecord(maker, { s: sheetId, i: instanceId }));
       }
-    } else {
-      records.push({ k: `row:${sheetId}:${rowId}`, d: cells, c: counter(), a: author() });
     }
   }
 
   return records;
+}
+
+function plainRows(
+  section: PresetSection,
+  sheetId: string,
+  index: number,
+  maker: Maker,
+): VersionedRecord[] {
+  return section.rows.flatMap((row): VersionedRecord[] => {
+    const rowId = firstFieldId(row);
+
+    return rowId === null
+      ? []
+      : [
+          {
+            k: `row:${sheetId}:${rowId}`,
+            d: fieldValues({ rows: [row] }, maker, index),
+            c: maker.counter(),
+            a: maker.author(),
+          },
+        ];
+  });
+}
+
+function blockCount(template: Template): number {
+  if (template.kind === 'set') {
+    return CHARACTER_ATTACKS;
+  }
+
+  return template.id === 'npc' ? NPC_COUNT : SINGLE_SHEET_BLOCKS;
+}
+
+function linkRecord(maker: Maker, d: { s: string; i?: string }): VersionedRecord {
+  return { k: `link:${uuid(maker.random)}`, d, c: 1, a: maker.author() };
+}
+
+// A value for every field of a section's rows, which is one repeat block's cells.
+function fieldValues(
+  section: PresetSection,
+  maker: Maker,
+  index: number,
+): Record<string, FieldValue> {
+  return Object.fromEntries(
+    sectionFields(section).map((field) => [
+      field.id,
+      fieldValue(maker.random, field.id, field.type, index),
+    ]),
+  );
 }
 
 function fieldValue(
@@ -214,6 +253,14 @@ function fieldValue(
 
   if (type === 'number') {
     return Math.floor(random() * 30) - 5;
+  }
+
+  if (fieldId === 'name') {
+    return at(HEROES, index);
+  }
+
+  if (fieldId === 'npc_name') {
+    return `${at(MONSTERS, index)} ${index + 1}`;
   }
 
   return fieldId === 'class'
@@ -235,7 +282,7 @@ function uuid(random: () => number): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-// mulberry32: a small seeded generator, so every run builds the same party.
+// mulberry32: a small seeded generator, so every run builds the same room.
 function seeded(seed: number): () => number {
   let state = seed;
 

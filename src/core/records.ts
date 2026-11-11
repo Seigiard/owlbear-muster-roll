@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { isTemplateId } from '@/core/field-id';
 import type { JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
 
@@ -44,18 +45,24 @@ export const fieldValuesSchema = dictionaryOf(z.string().min(1), fieldValueSchem
 
 export const presetDataSchema = z.base64().min(1);
 
-export const sheetDataSchema = z.strictObject({
-  kind: z.enum(['pc', 'npc']),
-  name: z.string(),
-  order: z.number(),
-});
+// A template id of the preset, as `set` names one.
+export const templateIdSchema = z.string().refine(isTemplateId);
+
+// AD-2: a sheet of a sheet set. `set` names its sheet set. Its name is the value of the sheet set's
+// name field, kept in a `row:` record, never here. A single sheet has no `sheet:` record.
+export const sheetDataSchema = z.strictObject({ set: templateIdSchema, order: z.number() });
 
 export const repDataSchema = z.strictObject({ order: z.number(), cells: fieldValuesSchema });
 
 // `acl:` and `plink:` hold the player's last known name.
 export const playerDataSchema = z.strictObject({ name: z.string() });
 
-export const linkDataSchema = keySegmentSchema;
+// AD-19: a token links to the sheet `s`, or with `i` to its repeat block of that instance id. The
+// repeat block's section is read from its `rep:` key, as an instance id is unique in its sheet.
+export const linkDataSchema = z.strictObject({
+  s: keySegmentSchema,
+  i: keySegmentSchema.optional(),
+});
 
 export const recordSchema = z.union([
   versionedRecordOf(presetKeySchema, presetDataSchema),
@@ -76,6 +83,8 @@ export type FieldValue = z.infer<typeof fieldValueSchema>;
 export type FieldValues = z.infer<typeof fieldValuesSchema>;
 
 export type RepData = z.infer<typeof repDataSchema>;
+
+export type LinkData = z.infer<typeof linkDataSchema>;
 
 export type RecordFailure = 'invalid-record';
 
@@ -106,10 +115,36 @@ export function rowKey(sheetId: string, rowId: string): string {
   return `row:${sheetId}:${rowId}`;
 }
 
-// The key prefix of every row one sheet has in one repeat section. It ends with ":", so a sheet "a"
-// never reads the rows of a sheet "ab".
+// The key prefix of every repeat block one sheet has in one repeat section. It ends with ":", so a
+// sheet "a" never reads the repeat blocks of a sheet "ab".
 export function repKeyPrefix(sheetId: string, sectionId: string): string {
   return `rep:${sheetId}:${sectionId}:`;
+}
+
+export function repKey(sheetId: string, sectionId: string, instanceId: string): string {
+  return `${repKeyPrefix(sheetId, sectionId)}${instanceId}`;
+}
+
+export type RepKeyParts = { sheetId: string; sectionId: string; instanceId: string };
+
+// The ids a `rep:` key names, or `null` for a key of another form.
+export function parseRepKey(key: string): RepKeyParts | null {
+  const [form, sheetId, sectionId, instanceId, ...rest] = key.split(':');
+
+  if (
+    form !== 'rep' ||
+    sheetId === undefined ||
+    sheetId === '' ||
+    sectionId === undefined ||
+    sectionId === '' ||
+    instanceId === undefined ||
+    instanceId === '' ||
+    rest.length > 0
+  ) {
+    return null;
+  }
+
+  return { sheetId, sectionId, instanceId };
 }
 
 // The key prefix of every `plink:` of one sheet. It ends with ":", so a sheet "a" never reads the

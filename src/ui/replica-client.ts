@@ -227,7 +227,15 @@ export function startReplicaClient(
       // Only a window that holds the records can find the sheet. The engine sends the request
       // again after the projection this window waits for.
       if (phase === 'live') {
-        store.setOpenRequest({ id: message.id, sheetId: message.sheetId });
+        store.setOpenRequest({
+          id: message.id,
+          sheetId: message.sheetId,
+          instanceId: message.instanceId,
+        });
+      }
+    } else if (message.t === 'wiped') {
+      if (ownCommandIds.has(message.id)) {
+        store.setWipeResult(message);
       }
     } else if (phase === 'live') {
       applyLiveDelta(message);

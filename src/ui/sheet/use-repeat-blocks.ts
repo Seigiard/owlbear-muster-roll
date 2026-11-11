@@ -6,36 +6,36 @@ import { newInstanceId } from '@/core/ids';
 
 import { useFieldEditing } from './use-field-edit';
 
-// The value control of a field. A row's "Удалить" comes after its cells, so the first match is the
-// row's first field.
+// The value control of a field. A repeat block's controls are buttons, so the first match is the
+// repeat block's first field.
 const FIELD_SELECTOR = 'input, textarea';
 
-export type RepeatRows = {
+export type RepeatBlockControls = {
   addButton: RefObject<HTMLButtonElement | null>;
-  rowElement: (instanceId: string) => RefCallback<HTMLElement>;
+  blockElement: (instanceId: string) => RefCallback<HTMLElement>;
   deleteButton: (instanceId: string) => RefCallback<HTMLButtonElement>;
   add: () => void;
   remove: (instanceId: string) => void;
 };
 
 // A sent add or delete, until its delta moves the focus or a rejection ends the wait. `next` is the
-// row after the deleted one when "Удалить" was pressed.
+// repeat block after the deleted one when "Удалить" was pressed.
 type FocusWait =
   | { kind: 'added'; instanceId: string; commandId: string }
   | { kind: 'deleted'; instanceId: string; next: string | null; commandId: string };
 
-// The add and delete controls of one repeat section of one sheet. The window picks the new row's
-// id, so it knows which row to focus when the delta brings it.
-export function useRepeatRows(
+// The add and delete controls of one repeat section of one sheet. The window picks the new repeat
+// block's id, so it knows which repeat block to focus when the delta brings it.
+export function useRepeatBlocks(
   sheetId: string,
   sectionId: string,
   instanceIds: readonly string[],
-): RepeatRows {
+): RepeatBlockControls {
   const editing = useFieldEditing();
   const rejections = useStore(editing.$rejections);
   const [wait, setWait] = useState<FocusWait | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
-  const rowElements = useRef(new Map<string, HTMLElement>());
+  const blockElements = useRef(new Map<string, HTMLElement>());
   const deleteButtons = useRef(new Map<string, HTMLButtonElement>());
 
   useEffect(() => {
@@ -54,9 +54,9 @@ export function useRepeatRows(
     if (wait.kind === 'added' && present) {
       setWait(null);
 
-      // The GM may have moved on while the row was on its way. Then the focus stays there.
+      // The GM may have moved on while the repeat block was on its way. Then the focus stays there.
       if (isFocusFree(addButton.current)) {
-        rowElements.current
+        blockElements.current
           .get(wait.instanceId)
           ?.querySelector<HTMLElement>(FIELD_SELECTOR)
           ?.focus();
@@ -64,7 +64,7 @@ export function useRepeatRows(
     } else if (wait.kind === 'deleted' && !present) {
       setWait(null);
 
-      // The pressed "Удалить" left with its row, so the focus fell to the page body.
+      // The pressed "Удалить" left with its repeat block, so the focus fell to the page body.
       if (isFocusFree(null)) {
         const next = wait.next === null ? undefined : deleteButtons.current.get(wait.next);
 
@@ -75,15 +75,15 @@ export function useRepeatRows(
 
   return {
     addButton,
-    rowElement: (instanceId) => (element) => {
+    blockElement: (instanceId) => (element) => {
       if (element === null) {
         return undefined;
       }
 
-      rowElements.current.set(instanceId, element);
+      blockElements.current.set(instanceId, element);
 
       return () => {
-        rowElements.current.delete(instanceId);
+        blockElements.current.delete(instanceId);
       };
     },
     deleteButton: (instanceId) => (element) => {
@@ -98,11 +98,16 @@ export function useRepeatRows(
       };
     },
     add: () => {
-      // The engine refuses an id this repeat section of this sheet already holds, deleted rows
-      // included, so a collision writes over nothing.
+      // The engine refuses an id this sheet already holds, deleted repeat blocks included, so a
+      // collision writes over nothing.
       const instanceId = newInstanceId();
 
-      const sent = editing.sendCommand({ type: 'repeat-row-add', sheetId, sectionId, instanceId });
+      const sent = editing.sendCommand({
+        type: 'repeat-block-add',
+        sheetId,
+        sectionId,
+        instanceId,
+      });
 
       if (sent.ok) {
         setWait({ kind: 'added', instanceId, commandId: sent.value });
@@ -110,7 +115,7 @@ export function useRepeatRows(
     },
     remove: (instanceId) => {
       const sent = editing.sendCommand({
-        type: 'repeat-row-delete',
+        type: 'repeat-block-delete',
         sheetId,
         sectionId,
         instanceId,

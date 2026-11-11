@@ -5,10 +5,12 @@ import type { JsonValue } from '@/core/json';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 
 import {
+  ADD,
   addPartyMember,
   connectionIdOf,
   openClientBackground,
   openClientWindow,
+  pcSheet,
   postRemote,
   record,
   seedStorage,
@@ -23,9 +25,8 @@ const PENDING = 'Ожидает';
 const DENIED = 'Нет прав на правку';
 const NO_GM = 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.';
 const READ_ONLY = 'Только чтение';
-const ADD = 'Добавить персонажа';
-const ADD_ROW = 'Добавить строку';
-const DELETE_FIRST_ROW = 'Удалить строку 1';
+const ADD_ROW = 'Добавить в «Атаки»';
+const DELETE_FIRST_ROW = 'Удалить блок 1';
 const GENERATION = { n: 0, a: '' };
 
 // The 3.4 spec's delay before "Ожидает" shows for an unanswered edit.
@@ -52,40 +53,76 @@ const PLAYER: ClientParams = {
 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 1,
-  character: {
-    sections: [
-      {
-        title: 'Основное',
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'text', text: 'Ловкость' },
-            { kind: 'field', type: 'number', id: 'dex' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
           ],
-        ],
-      },
-      {
-        title: 'Атаки',
-        repeat: true,
-        rows: [
-          [
-            { kind: 'text', text: 'Атака' },
-            { kind: 'field', type: 'text', id: 'attack' },
-            { kind: 'text', text: 'Маг' },
-            { kind: 'field', type: 'check', id: 'magic' },
+        },
+        {
+          title: 'Основное',
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'text', text: 'Ловкость' },
+              { kind: 'field', type: 'number', id: 'dex' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+        },
+        {
+          title: 'Атаки',
+          repeat: true,
+          rows: [
+            [
+              { kind: 'text', text: 'Атака' },
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'text', text: 'Маг' },
+              { kind: 'field', type: 'check', id: 'magic' },
+            ],
+          ],
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+    {
+      id: 'loot',
+      kind: 'single',
+      title: 'Добыча',
+      players: 'edit',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Золото' },
+              { kind: 'field', type: 'number', id: 'gold' },
+            ],
+          ],
+        },
+      ],
+    },
+  ],
 });
 
 // Лиза may edit Брок.
 const RECORDS: StoredRecord[] = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
+  ...pcSheet('brok', 'Брок', 0),
   record('acl:brok:lisa', { name: 'Лиза' }),
   record('row:brok:str', { str: 14, dex: 12 }),
   record('rep:brok:attack:i1', { order: 0, cells: { attack: 'Меч' } }),
@@ -188,6 +225,35 @@ test("a GM's commit takes the mark away with no message", async ({ context }) =>
   await expect(mark(player.window)).toHaveCount(0);
   await expect(strength(player.window)).toHaveValue('16');
   await expect(strength(player.window)).toHaveAccessibleDescription('');
+  expect(await notifications(player)).toEqual([]);
+});
+
+test('an edit of a player-editable single sheet shows "Ожидает" after the delay, and the GM\'s commit takes it away', async ({
+  context,
+}) => {
+  // #given
+  const { gm, player } = await openWithSilentGm(context);
+
+  await player.window.getByRole('tab', { name: 'Добыча' }).click();
+
+  // #when
+  await gold(player.window).fill('30');
+  await gold(player.window).press('Enter');
+
+  // #then
+  await expect.poll(() => proposedKeys(gm.window)).toEqual(['row:loot:gold']);
+  await expect(player.window.getByRole('tabpanel').getByText(READ_ONLY)).toHaveCount(0);
+  await expect(mark(player.window)).toBeVisible({ timeout: MARK_DELAY_MS * 3 });
+  await expect(gold(player.window)).toHaveValue('30');
+  await expect(gold(player.window)).toHaveAccessibleDescription(PENDING);
+
+  // #when
+  await commitProposal(gm, 'row:loot:gold');
+
+  // #then
+  await expect(mark(player.window)).toHaveCount(0);
+  await expect(gold(player.window)).toHaveValue('30');
+  await expect(gold(player.window)).toHaveAccessibleDescription('');
   expect(await notifications(player)).toEqual([]);
 });
 
@@ -325,7 +391,7 @@ test('a revoke while an edit waits makes the sheet read-only at once, returns th
 
   // #when
   await postRemote(gm.window, gm.connectionId, {
-    v: 1,
+    v: 2,
     g: GENERATION,
     t: 'commit',
     records: [{ k: 'acl:brok:lisa', d: null, c: 2, a: gm.connectionId }],
@@ -451,7 +517,7 @@ async function commitProposal(gm: RoomClient, prefix: string): Promise<void> {
   const proposal = await newestProposal(gm.window, prefix);
 
   await postRemote(gm.window, gm.connectionId, {
-    v: 1,
+    v: 2,
     g: GENERATION,
     t: 'commit',
     records: [proposal],
@@ -463,7 +529,7 @@ async function rejectProposal(gm: RoomClient, prefix: string): Promise<void> {
   const proposal = await newestProposal(gm.window, prefix);
 
   await postRemote(gm.window, gm.connectionId, {
-    v: 1,
+    v: 2,
     g: GENERATION,
     t: 'reject',
     k: proposal.k,
@@ -483,6 +549,10 @@ function mark(page: Page): Locator {
 
 function strength(page: Page): Locator {
   return page.getByRole('tabpanel').getByRole('textbox', { name: 'Сила', exact: true });
+}
+
+function gold(page: Page): Locator {
+  return page.getByRole('tabpanel').getByRole('textbox', { name: 'Золото', exact: true });
 }
 
 function dexterity(page: Page): Locator {

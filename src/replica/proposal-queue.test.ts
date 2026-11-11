@@ -1,7 +1,7 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
 import type { Version } from '@/core/merge';
-import type { PresetTemplate } from '@/core/preset';
+import type { TemplateLayout } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import {
   combinePatches,
@@ -113,6 +113,29 @@ describe('proposal queue', () => {
 
     // #then
     expect(delays).toEqual([2000, 4000, 8000, 16000, 30000, 30000, 30000]);
+  });
+
+  test('a held version sends nothing at once and goes out on the running backoff', () => {
+    // #given
+    const rig = createRig();
+
+    rig.queue.put(entry('row:brok:str', 1));
+    sendAll(rig);
+    fireResend(rig);
+    sendAll(rig);
+
+    // #when
+    rig.queue.hold(entry('row:brok:str', 2));
+
+    const atOnce = sendAll(rig);
+    const delay = fireResend(rig);
+
+    // #then
+    expect({ atOnce, delay, resent: sendAll(rig) }).toEqual({
+      atOnce: [],
+      delay: 4000,
+      resent: [{ k: 'row:brok:str', d: { str: 2 }, c: 2, a: 'p-conn' }],
+    });
   });
 
   test('a newer version starts the backoff again at 2000 ms', () => {
@@ -418,7 +441,7 @@ describe('proposedRecord', () => {
 });
 
 describe('strippedPatch', () => {
-  const TEMPLATE: PresetTemplate = {
+  const TEMPLATE: TemplateLayout = {
     sections: [
       {
         rows: [

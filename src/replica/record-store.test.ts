@@ -6,10 +6,10 @@ import type { StorageFailure, StorageOperation, StoragePort } from '@/platform/p
 import { createRecordStore } from '@/replica/record-store';
 
 const GENERATION = { n: 2, a: 'x' };
-const STORAGE_KEY = 'mr1:r:2:x:link:t';
+const STORAGE_KEY = 'mr2:r:2:x:link:t';
 
-function link(c: number, d = 's1'): VersionedRecord {
-  return { k: 'link:t', d, c, a: 'conn' };
+function link(c: number, s = 's1'): VersionedRecord {
+  return { k: 'link:t', d: { s }, c, a: 'conn' };
 }
 
 type FakeStorage = {
@@ -70,7 +70,7 @@ describe('record store write', () => {
 
     // #then
     expect([...storage.entries]).toEqual([
-      [STORAGE_KEY, '{"k":"link:t","d":"s1","c":1,"a":"conn"}'],
+      [STORAGE_KEY, '{"k":"link:t","d":{"s":"s1"},"c":1,"a":"conn"}'],
     ]);
   });
 
@@ -78,7 +78,7 @@ describe('record store write', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":"old","c":3,"a":"conn"}');
+    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":{"s":"old"},"c":3,"a":"conn"}');
 
     // #when
     const written = createRecordStore(storage.port, 'r').write(GENERATION, link(4, 'new'));
@@ -86,7 +86,7 @@ describe('record store write', () => {
     // #then
     expect({ written, stored: storage.entries.get(STORAGE_KEY) }).toEqual({
       written: ok(link(4, 'new')),
-      stored: '{"k":"link:t","d":"new","c":4,"a":"conn"}',
+      stored: '{"k":"link:t","d":{"s":"new"},"c":4,"a":"conn"}',
     });
   });
 
@@ -104,7 +104,7 @@ describe('record store write', () => {
     // #then
     expect({ written, stored: storage.entries.get(STORAGE_KEY) }).toEqual({
       written: ok(link(5, 'fresh')),
-      stored: '{"k":"link:t","d":"fresh","c":5,"a":"conn"}',
+      stored: '{"k":"link:t","d":{"s":"fresh"},"c":5,"a":"conn"}',
     });
   });
 
@@ -179,8 +179,8 @@ describe('record store write', () => {
 
   test.each([
     ['text that is not JSON', '{not json'],
-    ['JSON that is not a record', '{"k":"link:t","d":"s","c":0,"a":"conn"}'],
-    ['a record of another key', '{"k":"link:other","d":"s","c":99,"a":"conn"}'],
+    ['JSON that is not a record', '{"k":"link:t","d":{"s":"s"},"c":0,"a":"conn"}'],
+    ['a record of another key', '{"k":"link:other","d":{"s":"s"},"c":99,"a":"conn"}'],
   ])('writes the incoming record over %s', (_name, corrupt) => {
     // #given
     const storage = createFakeStorage();
@@ -191,7 +191,7 @@ describe('record store write', () => {
     createRecordStore(storage.port, 'r').write(GENERATION, link(1));
 
     // #then
-    expect(storage.entries.get(STORAGE_KEY)).toBe('{"k":"link:t","d":"s1","c":1,"a":"conn"}');
+    expect(storage.entries.get(STORAGE_KEY)).toBe('{"k":"link:t","d":{"s":"s1"},"c":1,"a":"conn"}');
   });
 
   test('returns a failure when the write fails', () => {
@@ -243,10 +243,10 @@ describe('record store loadGeneration', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set('mr1:r:2:x:link:t', '{"k":"link:t","d":"mine","c":1,"a":"conn"}');
-    storage.entries.set('mr1:r:1:x:link:t', '{"k":"link:t","d":"older","c":1,"a":"conn"}');
-    storage.entries.set('mr1:r:2:y:link:t', '{"k":"link:t","d":"author","c":1,"a":"conn"}');
-    storage.entries.set('mr1:other:2:x:link:t', '{"k":"link:t","d":"room","c":1,"a":"conn"}');
+    storage.entries.set('mr2:r:2:x:link:t', '{"k":"link:t","d":{"s":"mine"},"c":1,"a":"conn"}');
+    storage.entries.set('mr2:r:1:x:link:t', '{"k":"link:t","d":{"s":"older"},"c":1,"a":"conn"}');
+    storage.entries.set('mr2:r:2:y:link:t', '{"k":"link:t","d":{"s":"author"},"c":1,"a":"conn"}');
+    storage.entries.set('mr2:other:2:x:link:t', '{"k":"link:t","d":{"s":"room"},"c":1,"a":"conn"}');
     storage.entries.set('unrelated', 'value');
 
     // #when
@@ -254,7 +254,7 @@ describe('record store loadGeneration', () => {
 
     // #then
     expect(loaded).toEqual(
-      ok({ records: [{ k: 'link:t', d: 'mine', c: 1, a: 'conn' }], corruptKeys: [] }),
+      ok({ records: [{ k: 'link:t', d: { s: 'mine' }, c: 1, a: 'conn' }], corruptKeys: [] }),
     );
   });
 
@@ -277,8 +277,8 @@ describe('record store loadGeneration', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set('mr1:r:2:x:link:bad', '{not json');
-    storage.entries.set('mr1:r:2:x:link:t', '{"k":"link:t","d":"s1","c":1,"a":"conn"}');
+    storage.entries.set('mr2:r:2:x:link:bad', '{not json');
+    storage.entries.set('mr2:r:2:x:link:t', '{"k":"link:t","d":{"s":"s1"},"c":1,"a":"conn"}');
 
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
@@ -291,7 +291,7 @@ describe('record store loadGeneration', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set('mr1:r:1:x:link:bad', '{not json');
+    storage.entries.set('mr2:r:1:x:link:bad', '{not json');
 
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
@@ -304,7 +304,7 @@ describe('record store loadGeneration', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set(STORAGE_KEY, '{"k":"link:other","d":"s","c":9,"a":"conn"}');
+    storage.entries.set(STORAGE_KEY, '{"k":"link:other","d":{"s":"s"},"c":9,"a":"conn"}');
 
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
@@ -330,7 +330,7 @@ describe('record store loadGeneration', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":"s1","c":1,"a":"conn"}');
+    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":{"s":"s1"},"c":1,"a":"conn"}');
     storage.failing.add('read');
 
     // #when
@@ -346,7 +346,7 @@ describe('record store readHighestGeneration', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set('mr1:other:5:x:link:t', '{"k":"link:t","d":"s","c":1,"a":"conn"}');
+    storage.entries.set('mr2:other:5:x:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
 
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
@@ -359,9 +359,9 @@ describe('record store readHighestGeneration', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set('mr1:r:1:b:link:t', '{"k":"link:t","d":"s","c":1,"a":"conn"}');
-    storage.entries.set('mr1:r:2:a:link:t', '{"k":"link:t","d":"s","c":1,"a":"conn"}');
-    storage.entries.set('mr1:other:9:z:link:t', '{"k":"link:t","d":"s","c":1,"a":"conn"}');
+    storage.entries.set('mr2:r:1:b:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
+    storage.entries.set('mr2:r:2:a:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
+    storage.entries.set('mr2:other:9:z:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
 
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
@@ -374,8 +374,8 @@ describe('record store readHighestGeneration', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set('mr1:r:2:b:link:t', '{"k":"link:t","d":"s","c":1,"a":"conn"}');
-    storage.entries.set('mr1:r:2:a:link:t', '{"k":"link:t","d":"s","c":1,"a":"conn"}');
+    storage.entries.set('mr2:r:2:b:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
+    storage.entries.set('mr2:r:2:a:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
 
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
@@ -388,8 +388,8 @@ describe('record store readHighestGeneration', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set('mr1:r:1:a:link:t', '{"k":"link:t","d":"s","c":1,"a":"conn"}');
-    storage.entries.set('mr1:r:7:a:link:t', '{"k":"link:t","d":null,"c":6,"a":"conn"}');
+    storage.entries.set('mr2:r:1:a:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
+    storage.entries.set('mr2:r:7:a:link:t', '{"k":"link:t","d":null,"c":6,"a":"conn"}');
 
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
@@ -402,8 +402,8 @@ describe('record store readHighestGeneration', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set('mr1:r:1:a:link:t', '{"k":"link:t","d":"s","c":1,"a":"conn"}');
-    storage.entries.set('mr1:r:7:a:link:t', '{not json');
+    storage.entries.set('mr2:r:1:a:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
+    storage.entries.set('mr2:r:7:a:link:t', '{not json');
 
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
@@ -429,7 +429,7 @@ describe('record store readHighestGeneration', () => {
     // #given
     const storage = createFakeStorage();
 
-    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":"s1","c":1,"a":"conn"}');
+    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":{"s":"s1"},"c":1,"a":"conn"}');
     storage.failing.add('read');
 
     // #when
@@ -441,15 +441,15 @@ describe('record store readHighestGeneration', () => {
 });
 
 describe('record store generations', () => {
-  const RECORD = '{"k":"link:t","d":"s","c":1,"a":"conn"}';
+  const RECORD = '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}';
 
   test('does not read a generation with the incomplete marker as the highest', () => {
     // #given
     const storage = createFakeStorage();
     const store = createRecordStore(storage.port, 'r');
 
-    storage.entries.set('mr1:r:1:a:link:t', RECORD);
-    storage.entries.set('mr1:r:2:b:link:t', RECORD);
+    storage.entries.set('mr2:r:1:a:link:t', RECORD);
+    storage.entries.set('mr2:r:2:b:link:t', RECORD);
     store.markIncomplete({ n: 2, a: 'b' });
 
     // #when
@@ -464,7 +464,7 @@ describe('record store generations', () => {
     const storage = createFakeStorage();
     const store = createRecordStore(storage.port, 'r');
 
-    storage.entries.set('mr1:r:2:b:link:t', RECORD);
+    storage.entries.set('mr2:r:2:b:link:t', RECORD);
     store.markIncomplete({ n: 2, a: 'b' });
 
     // #when
@@ -474,7 +474,7 @@ describe('record store generations', () => {
     expect({
       generation: store.readHighestGeneration(),
       keys: [...storage.entries.keys()],
-    }).toEqual({ generation: ok({ n: 2, a: 'b' }), keys: ['mr1:r:2:b:link:t'] });
+    }).toEqual({ generation: ok({ n: 2, a: 'b' }), keys: ['mr2:r:2:b:link:t'] });
   });
 
   test('removes every key of an incomplete generation of this room, and nothing else', () => {
@@ -482,10 +482,10 @@ describe('record store generations', () => {
     const storage = createFakeStorage();
     const store = createRecordStore(storage.port, 'r');
 
-    storage.entries.set('mr1:r:1:a:link:t', RECORD);
-    storage.entries.set('mr1:r:2:b:link:t', RECORD);
-    storage.entries.set('mr1:other:2:b:link:t', RECORD);
-    storage.entries.set('mr1:other:2:b:#incomplete', '1');
+    storage.entries.set('mr2:r:1:a:link:t', RECORD);
+    storage.entries.set('mr2:r:2:b:link:t', RECORD);
+    storage.entries.set('mr2:other:2:b:link:t', RECORD);
+    storage.entries.set('mr2:other:2:b:#incomplete', '1');
     store.markIncomplete({ n: 2, a: 'b' });
 
     // #when
@@ -493,9 +493,9 @@ describe('record store generations', () => {
 
     // #then
     expect([...storage.entries.keys()].sort()).toEqual([
-      'mr1:other:2:b:#incomplete',
-      'mr1:other:2:b:link:t',
-      'mr1:r:1:a:link:t',
+      'mr2:other:2:b:#incomplete',
+      'mr2:other:2:b:link:t',
+      'mr2:r:1:a:link:t',
     ]);
   });
 
@@ -504,17 +504,87 @@ describe('record store generations', () => {
     const storage = createFakeStorage();
     const store = createRecordStore(storage.port, 'r');
 
-    storage.entries.set('mr1:r:0::link:t', RECORD);
-    storage.entries.set('mr1:r:1:a:link:t', RECORD);
-    storage.entries.set('mr1:r:1:a:#incomplete', '1');
-    storage.entries.set('mr1:r:2:b:link:t', RECORD);
-    storage.entries.set('mr1:other:0::link:t', RECORD);
+    storage.entries.set('mr2:r:0::link:t', RECORD);
+    storage.entries.set('mr2:r:1:a:link:t', RECORD);
+    storage.entries.set('mr2:r:1:a:#incomplete', '1');
+    storage.entries.set('mr2:r:2:b:link:t', RECORD);
+    storage.entries.set('mr2:other:0::link:t', RECORD);
 
     // #when
     store.removeGenerationsBelow({ n: 2, a: 'b' });
 
     // #then
-    expect([...storage.entries.keys()].sort()).toEqual(['mr1:other:0::link:t', 'mr1:r:2:b:link:t']);
+    expect([...storage.entries.keys()].sort()).toEqual(['mr2:other:0::link:t', 'mr2:r:2:b:link:t']);
+  });
+
+  test('reads a generation kept by its marker as the highest, also with no record', () => {
+    // #given
+    const storage = createFakeStorage();
+    const store = createRecordStore(storage.port, 'r');
+
+    storage.entries.set('mr2:r:1:a:link:t', RECORD);
+    store.markGeneration({ n: 3, a: 'w' });
+
+    // #when
+    const generation = store.readHighestGeneration();
+
+    // #then
+    expect({ generation, keys: [...storage.entries.keys()].sort() }).toEqual({
+      generation: ok({ n: 3, a: 'w' }),
+      keys: ['mr2:r:1:a:link:t', 'mr2:r:3:w:#generation'],
+    });
+  });
+
+  test('does not read a kept generation that is still incomplete', () => {
+    // #given
+    const storage = createFakeStorage();
+    const store = createRecordStore(storage.port, 'r');
+
+    storage.entries.set('mr2:r:1:a:link:t', RECORD);
+    store.markIncomplete({ n: 3, a: 'w' });
+    store.markGeneration({ n: 3, a: 'w' });
+
+    // #when
+    const generation = store.readHighestGeneration();
+
+    // #then
+    expect(generation).toEqual(ok({ n: 1, a: 'a' }));
+  });
+
+  test('removes the generation markers of the generations below one', () => {
+    // #given
+    const storage = createFakeStorage();
+    const store = createRecordStore(storage.port, 'r');
+
+    store.markGeneration({ n: 1, a: 'a' });
+    store.markGeneration({ n: 2, a: 'b' });
+
+    // #when
+    store.removeGenerationsBelow({ n: 2, a: 'b' });
+
+    // #then
+    expect([...storage.entries.keys()]).toEqual(['mr2:r:2:b:#generation']);
+  });
+
+  test('removes the keys of this room in an older format, and nothing else', () => {
+    // #given
+    const storage = createFakeStorage();
+    const store = createRecordStore(storage.port, 'r');
+
+    storage.entries.set('mr1:r:0::sheet:liza', '{"k":"sheet:liza"}');
+    storage.entries.set('mr1:r:2:b:#incomplete', '1');
+    storage.entries.set('mr1:other:0::sheet:liza', '{"k":"sheet:liza"}');
+    storage.entries.set('mr2:r:1:a:link:t', RECORD);
+    storage.entries.set('unrelated', 'value');
+
+    // #when
+    const removed = store.removeOlderFormats();
+
+    // #then
+    expect({ removed, keys: [...storage.entries.keys()].sort() }).toEqual({
+      removed: ok(undefined),
+      keys: ['mr1:other:0::sheet:liza', 'mr2:r:1:a:link:t', 'unrelated'],
+    });
   });
 
   test('removes one generation with its marker', () => {
@@ -522,14 +592,14 @@ describe('record store generations', () => {
     const storage = createFakeStorage();
     const store = createRecordStore(storage.port, 'r');
 
-    storage.entries.set('mr1:r:0::link:t', RECORD);
-    storage.entries.set('mr1:r:2:b:link:t', RECORD);
+    storage.entries.set('mr2:r:0::link:t', RECORD);
+    storage.entries.set('mr2:r:2:b:link:t', RECORD);
     store.markIncomplete({ n: 2, a: 'b' });
 
     // #when
     store.removeGeneration({ n: 2, a: 'b' });
 
     // #then
-    expect([...storage.entries.keys()]).toEqual(['mr1:r:0::link:t']);
+    expect([...storage.entries.keys()]).toEqual(['mr2:r:0::link:t']);
   });
 });

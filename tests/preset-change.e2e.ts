@@ -7,11 +7,14 @@ import type { JsonValue } from '@/core/json';
 
 import {
   ABSENT,
+  ADD,
   addPartyMember,
   connectionIdOf,
   openClientBackground,
   openClientWindow,
+  pcSheet,
   record,
+  repRecord,
   seedStorage,
   storedData,
   STORAGE_PREFIX,
@@ -20,7 +23,6 @@ import {
   type StoredRecord,
 } from './support/room';
 
-const ADD = 'Добавить персонажа';
 const UPLOAD = 'Загрузить пресет';
 const CANCEL = 'Отменить';
 const SETTINGS = 'Настройки';
@@ -51,15 +53,40 @@ const ATTACKS = {
   rows: [labelled('Атака', number('bonus'))],
 };
 
-const NPC = { sections: [{ rows: [labelled('Хиты', number('hp'))] }] };
+const NAME = { rows: [labelled('Имя', { kind: 'field', type: 'text', id: 'name' })] };
 
-function presetText(rows: JsonValue[][]): string {
+const NPC = {
+  id: 'npc',
+  kind: 'single',
+  title: 'NPC',
+  sections: [{ rows: [labelled('Хиты', number('hp'))] }],
+};
+
+function presetText(rows: JsonValue[][], more: readonly JsonValue[] = []): string {
   return JSON.stringify({
-    v: 1,
-    character: { sections: [{ title: 'Основное', rows }, ATTACKS] },
-    npc: NPC,
+    v: 2,
+    templates: [
+      {
+        id: 'pc',
+        kind: 'set',
+        title: 'Персонажи',
+        nameField: 'name',
+        sections: [NAME, { title: 'Основное', rows }, ATTACKS],
+      },
+      NPC,
+      ...more,
+    ],
   });
 }
+
+// A second sheet set, "Экипаж", which an upload of BEFORE drops.
+const CREW = {
+  id: 'crew',
+  kind: 'set',
+  title: 'Экипаж',
+  nameField: 'name',
+  sections: [NAME],
+};
 
 const BEFORE = presetText([
   labelled('Сила', number('str'), { kind: 'dice', formula: '1d1 + str' }),
@@ -90,12 +117,68 @@ const RELABELLED = presetText([
 // `false` holds a value, so the two removed fields hold two values. The player may edit "Брок", so
 // its window shows the values in fields too.
 const RECORDS: StoredRecord[] = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
+  ...pcSheet('brok', 'Брок', 0),
   record('acl:brok:lisa', { name: 'Лиза' }),
   record('row:brok:str', { str: 14 }),
   record('row:brok:dex', { dex: 3 }),
   record('row:brok:tired', { tired: false }),
   record('rep:brok:bonus:i1', { order: 0, cells: { bonus: 2 } }),
+];
+
+const GEAR = '⚙︎';
+
+const WITH_CREW = presetText(
+  [
+    labelled('Сила', number('str'), { kind: 'dice', formula: '1d1 + str' }),
+    labelled('Ловкость', number('dex')),
+    labelled('Усталость', { kind: 'field', type: 'check', id: 'tired' }),
+  ],
+  [CREW],
+);
+
+// Three sheets of "Экипаж", each holding only its name.
+const CREW_SHEETS: StoredRecord[] = [
+  record('sheet:ivan', { set: 'crew', order: 0 }),
+  record('row:ivan:name', { name: 'Иван' }),
+  record('sheet:petr', { set: 'crew', order: 1 }),
+  record('row:petr:name', { name: 'Пётр' }),
+  record('sheet:yana', { set: 'crew', order: 2 }),
+  record('row:yana:name', { name: 'Яна' }),
+];
+
+const LOOT_ITEMS = {
+  title: 'Вещи',
+  repeat: true,
+  rows: [[{ kind: 'field', type: 'text', id: 'loot_item' }]],
+};
+
+// A linkable single sheet "Добыча" whose repeat section is linkable too, or no longer.
+function lootPreset(sectionTokens: boolean): string {
+  return presetText(
+    [labelled('Сила', number('str'))],
+    [
+      {
+        id: 'loot',
+        kind: 'single',
+        title: 'Добыча',
+        tokens: true,
+        sections: [sectionTokens ? { ...LOOT_ITEMS, tokens: true } : LOOT_ITEMS],
+      },
+    ],
+  );
+}
+
+const WITH_TOKENS = lootPreset(true);
+
+const WITHOUT_TOKENS = lootPreset(false);
+
+// t-gob links a repeat block of "Добыча", t-chest the whole sheet.
+const TOKEN_RECORDS: StoredRecord[] = [
+  ...pcSheet('brok', 'Брок', 0),
+  record('row:brok:str', { str: 14 }),
+  repRecord('loot', 'loot_item', 'i1', 0, { loot_item: 'Меч' }),
+  record('link:t-gob', { s: 'loot', i: 'i1' }),
+  record('link:t-chest', { s: 'loot' }),
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -307,10 +390,100 @@ test('a catch-up closes an open confirmation and writes nothing', async ({ conte
   }).toEqual({ preset: JSON.parse(BEFORE), tired: { tired: false } });
 });
 
-async function openGm(context: BrowserContext): Promise<RoomClient> {
+test('an upload that drops a sheet set with three sheets names the deleted sheets, and "Отменить" keeps them', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context, [...RECORDS, ...CREW_SHEETS], WITH_CREW);
+
+  await openSettings(gm.window);
+
+  // #when
+  await uploadFile(gm.window, BEFORE);
+
+  // #then: each sheet's name is a value of its name field, so the three names are erased too.
+  await expect(block(gm.window)).toHaveAccessibleName(
+    'Значения удалённых полей будут стёрты: 3. Листы будут удалены: 3. Загрузить пресет?',
+  );
+  await expect(block(gm.window).getByRole('button', { name: CANCEL })).toBeFocused();
+
+  // #when
+  await block(gm.window).getByRole('button', { name: CANCEL }).click();
+
+  // #then
+  await expect(block(gm.window)).toHaveCount(0);
+  expect({
+    preset: await storedPreset(gm.window),
+    tabs: await gm.window.getByRole('tab').allTextContents(),
+    sheet: await storedData(gm.window, 'sheet:ivan'),
+  }).toEqual({
+    preset: JSON.parse(WITH_CREW),
+    tabs: ['Брок', 'NPC', 'Иван', 'Пётр', 'Яна', GEAR],
+    sheet: { set: 'crew', order: 0 },
+  });
+});
+
+test('a confirmed upload that drops a sheet set deletes its sheets on every client', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context, [...RECORDS, ...CREW_SHEETS], WITH_CREW);
+  const player = await openPlayer(context);
+
+  await expect(player.window.getByRole('tab', { name: 'Яна' })).toBeVisible();
+  await openSettings(gm.window);
+  await uploadFile(gm.window, BEFORE);
+
+  // #when
+  await block(gm.window).getByRole('button', { name: UPLOAD }).click();
+
+  // #then
+  await expect(block(gm.window)).toHaveCount(0);
+  await expect(gm.window.getByRole('tab')).toHaveText(['Брок', 'NPC', GEAR]);
+  await expect(player.window.getByRole('tab')).toHaveText(['Брок', 'NPC']);
+  expect(
+    await Promise.all(
+      ['sheet:ivan', 'row:ivan:name', 'sheet:petr', 'sheet:yana', 'row:yana:name'].map((key) =>
+        storedData(gm.window, key),
+      ),
+    ),
+  ).toEqual([null, null, null, null, null]);
+});
+
+test("an upload that drops a section's tokens removes the links to its repeat blocks without counting them", async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context, TOKEN_RECORDS, WITH_TOKENS);
+
+  await openSettings(gm.window);
+
+  // #when
+  await uploadFile(gm.window, WITHOUT_TOKENS);
+
+  // #then
+  await expect(underUpload(gm.window)).toHaveText(CHANGED);
+  await expect(block(gm.window)).toHaveCount(0);
+  await expect.poll(() => storedData(gm.window, 'link:t-gob')).toBeNull();
+  expect({
+    preset: await storedPreset(gm.window),
+    block: await storedData(gm.window, 'rep:loot:loot_item:i1'),
+    sheetLink: await storedData(gm.window, 'link:t-chest'),
+  }).toEqual({
+    preset: JSON.parse(WITHOUT_TOKENS),
+    block: { order: 0, cells: { loot_item: 'Меч' } },
+    sheetLink: { s: 'loot' },
+  });
+});
+
+async function openGm(
+  context: BrowserContext,
+  records: readonly StoredRecord[] = RECORDS,
+  preset = BEFORE,
+): Promise<RoomClient> {
   const window = await openClientWindow(context, GM);
 
-  await seedStorage(window, RECORDS, BEFORE);
+  await seedStorage(window, records, preset);
 
   const background = await openClientBackground(context, GM);
 
@@ -400,7 +573,7 @@ async function storedPreset(page: Page): Promise<JsonValue> {
 async function keysOutside(page: Page, prefix: string): Promise<string[]> {
   return page.evaluate(
     (kept) =>
-      Object.keys(localStorage).filter((key) => key.startsWith('mr1:') && !key.startsWith(kept)),
+      Object.keys(localStorage).filter((key) => key.startsWith('mr2:') && !key.startsWith(kept)),
     prefix,
   );
 }

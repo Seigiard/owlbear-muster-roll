@@ -2,19 +2,14 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { TabPanel, Tabs } from 'react-aria-components';
 
-import {
-  parsePresetFile,
-  windowSizeOf,
-  type Preset,
-  type PresetTemplate,
-  type WindowSize,
-} from '@/core/preset';
-import type { SheetData, VersionedRecord } from '@/core/records';
+import { parsePresetFile, windowSizeOf, type Preset, type WindowSize } from '@/core/preset';
+import type { VersionedRecord } from '@/core/records';
+import { sheetName, sheetPolicy } from '@/core/sheets';
 import { copy } from '@/ui/copy';
 import { presetFailureMessage } from '@/ui/preset-errors';
 import type { DiceRolling } from '@/ui/sheet/dice-button';
-import { ReadOnlySheetHeader } from '@/ui/sheet/sheet-header';
 import { SheetBody } from '@/ui/sheet/sheet-body';
+import { SheetHeader } from '@/ui/sheet/sheet-header';
 import { TabBar, type ShellTab } from '@/ui/shell/tab-bar';
 import { CONTENT_CLASS } from '@/ui/shell/window-shell';
 import { applyTheme } from '@/ui/theme';
@@ -164,66 +159,52 @@ function PresetView({
 }
 
 function PresetFrames({ preset, address }: { preset: Preset; address: PreviewAddress }): ReactNode {
-  const sheets = useMemo(() => previewSheets(preset, address.content), [preset, address.content]);
+  const preview = useMemo(() => previewSheets(preset, address.content), [preset, address.content]);
   const size = windowSizeOf(preset);
 
   return (
     <div className="flex flex-wrap items-start gap-4">
-      <SheetFrame
-        title="Character sheet"
-        kind="pc"
-        size={size}
-        sheet={sheets.character}
-        template={preset.character}
-        records={sheets.records}
-        rolling={stubRolling}
-      />
-      <SheetFrame
-        title="NPC sheet"
-        kind="npc"
-        size={size}
-        sheet={sheets.npc}
-        template={preset.npc}
-        records={sheets.records}
-        rolling={stubRolling}
-      />
+      {preview.sheets.map((sheet) => (
+        <SheetFrame
+          key={sheet.template.id}
+          preset={preset}
+          size={size}
+          sheet={sheet}
+          records={preview.records}
+          rolling={stubRolling}
+        />
+      ))}
     </div>
   );
 }
 
 type SheetFrameProps = {
-  title: string;
-  kind: SheetData['kind'];
+  preset: Preset;
   size: WindowSize;
   sheet: PreviewSheet;
-  template: PresetTemplate;
   records: ReadonlyMap<string, VersionedRecord>;
   rolling: DiceRolling;
 };
 
-// The window at the preset's window size, laid out as `WindowShell` lays out its tabs: the tab bar
-// with the sheet's one tab, then the content area that scrolls inside. A character has a tab of its
-// own name; NPCs share the pinned NPC tab. The read-only view a player gets: no edit inputs and no
-// row controls.
-function SheetFrame({
-  title,
-  kind,
-  size,
-  sheet,
-  template,
-  records,
-  rolling,
-}: SheetFrameProps): ReactNode {
+// One frame per template: the window at the preset's window size, laid out as `WindowShell` lays
+// out its tabs, with the tab bar holding the sheet's tab, then the content area that scrolls
+// inside. The read-only view a player gets: no edit inputs and no repeat block controls, and the
+// status a player with no write access sees. A hidden template is drawn too, with no status, as no
+// player sees it.
+function SheetFrame({ preset, size, sheet, records, rolling }: SheetFrameProps): ReactNode {
+  const policy = sheetPolicy(sheet.template, sheet.sheetId);
+  const name = sheetName(records, preset, sheet.sheetId) ?? '';
+
   const tab: ShellTab = {
     id: sheet.sheetId,
-    label: kind === 'pc' ? sheet.name : copy.place.npc,
+    label: name === '' ? copy.unnamed : name,
     content: null,
   };
 
   return (
     <figure className="flex shrink-0 flex-col gap-1">
       <figcaption className="text-label-sm text-text-muted">
-        {title}, {size.width} × {size.height} px
+        {sheet.template.title}, {size.width} × {size.height} px
       </figcaption>
       <div
         className="flex flex-col overflow-hidden rounded-lg bg-surface text-body text-text"
@@ -231,18 +212,23 @@ function SheetFrame({
         data-preview-frame
       >
         <Tabs className="flex min-h-[0] flex-1 flex-col" selectedKey={tab.id}>
-          <TabBar
-            scrollingTabs={kind === 'pc' ? [tab] : []}
-            pinnedTabs={kind === 'pc' ? [] : [tab]}
-          />
+          <TabBar items={[{ kind: 'tab', tab }]} pinnedTabs={[]} />
           <TabPanel id={tab.id} className={CONTENT_CLASS}>
-            <ReadOnlySheetHeader
-              name={sheet.name}
-              canEdit={false}
-              variant={kind === 'pc' ? 'character' : 'npc'}
+            <SheetHeader
+              sheetId={sheet.sheetId}
+              name={name}
+              nameField={policy.nameField}
+              records={records}
+              editing={null}
+              status={
+                policy.hidden ? null : policy.write === 'players-edit' ? 'can-edit' : 'read-only'
+              }
+              gm={null}
+              focusName={false}
+              onNameFocused={noop}
             />
             <SheetBody
-              template={template}
+              template={sheet.template}
               sheetId={sheet.sheetId}
               records={records}
               editing={null}
@@ -254,6 +240,10 @@ function SheetFrame({
       </div>
     </figure>
   );
+}
+
+function noop(): void {
+  // The preview focuses no name.
 }
 
 // The list loads once, and again on each change the dev server reports. An older answer that lands

@@ -55,7 +55,7 @@ const SHORT_PAUSE: Partial<Timing> = { snapshotPauseMs: 60, snapshotJitterMs: 0 
 const KEY = 'app.muster-roll/snapshot';
 const LIMIT = 15500;
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 const INITIAL: Generation = { n: 0, a: '' };
@@ -64,14 +64,35 @@ const GHOST = 'ghost-gm';
 const ROW_STR = { kind: 'row', rowId: 'str' } as const;
 
 const PRESET: Preset = {
-  v: 1,
-  character: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'name' }],
+            [{ kind: 'field', type: 'number', id: 'str' }],
+          ],
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+  ],
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
-const BROK = sheet('brok', 'Брок');
-const MIRA = sheet('mira', 'Мира');
+const BROK = sheet('brok');
+const MIRA = sheet('mira', 1);
 const GONE: VersionedRecord = { k: 'link:token-1', d: null, c: 4, a: 'seed' };
 const ACL: VersionedRecord = { k: 'acl:brok:p1', d: { name: 'Лиза' }, c: 2, a: 'seed' };
 
@@ -117,12 +138,12 @@ afterEach(() => {
   }
 });
 
-function sheet(id: string, name: string, c = 1, a = 'seed'): VersionedRecord {
-  return { k: `sheet:${id}`, d: { kind: 'pc', name, order: 0 }, c, a };
+function sheet(id: string, order = 0, c = 1, a = 'seed'): VersionedRecord {
+  return { k: `sheet:${id}`, d: { set: 'pc', order }, c, a };
 }
 
 // The stored room copy as the spec describes it, built by hand with fflate.
-function copyValue(g: Generation, records: readonly VersionedRecord[], v = 1): JsonObject {
+function copyValue(g: Generation, records: readonly VersionedRecord[], v = 2): JsonObject {
   const deflated = deflateSync(strToU8(JSON.stringify({ g, records })));
 
   return { v, data: Buffer.from(deflated).toString('base64') };
@@ -365,7 +386,7 @@ describe('writer triggers', () => {
     expect({ beforePause, copy: roomCopyOf(room) }).toEqual({
       beforePause: null,
       copy: {
-        v: 1,
+        v: 2,
         g: INITIAL,
         records: [
           ACL,
@@ -475,7 +496,7 @@ describe('writer read and merge', () => {
 
     // #then
     expect({ copy: roomCopyOf(room), mira: shown(client, MIRA.k) ?? null }).toEqual({
-      copy: { v: 1, g: HIGHER, records: [PRESET_RECORD, BROK] },
+      copy: { v: 2, g: HIGHER, records: [PRESET_RECORD, BROK] },
       mira: null,
     });
   });
@@ -503,8 +524,8 @@ describe('writer read and merge', () => {
   });
 
   test.each<[string, JsonValue, Notice[]]>([
-    ['a higher v', { v: 2, data: 'from a newer build' }, ['room-copy-not-saved', 'new-version']],
-    ['data that does not decode', { v: 1, data: 'bm90IGRlZmxhdGU=' }, ['room-copy-not-saved']],
+    ['a higher v', { v: 3, data: 'from a newer build' }, ['room-copy-not-saved', 'new-version']],
+    ['data that does not decode', { v: 2, data: 'bm90IGRlZmxhdGU=' }, ['room-copy-not-saved']],
   ])(
     'a copy with %s stops the write, keeps the copy and raises its notices',
     async (_name, value, expectedNotices) => {
@@ -528,6 +549,72 @@ describe('writer read and merge', () => {
       }).toEqual({ copy: value, status: 'failed', notices: expectedNotices });
     },
   );
+});
+
+// AD-12, CAP-31: no migration reads a copy of an older format. Only a wipe or an import replaces
+// it.
+describe('a room copy of an older format', () => {
+  test('a GM that reads it at catch-up shows the older-format notice and outcome older, and its writes never replace it', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = openRoom();
+    const gate = createGate();
+    const older = copyValue(INITIAL, [MIRA], 1);
+
+    room.room.setMetadata({ [KEY]: older });
+
+    const client = await startClient(room, 'gm-a', {
+      platform: gated(gate),
+      timing: SHORT_PAUSE,
+      untilLive: true,
+    });
+
+    // #when: an edit after the pause and a hidden page each try a write.
+    send(client, setStr(14));
+    client.engine.pageHidden();
+    await waitUntil(() => shown(client, 'row:brok:str') !== undefined);
+    await pause(150);
+
+    // #then
+    expect({
+      writes: gate.writes,
+      copy: room.room.getMetadata()[KEY],
+      notices: notices(client),
+      status: roomCopyStatus(client),
+      mira: shown(client, MIRA.k) ?? null,
+    }).toEqual({
+      writes: 0,
+      copy: older,
+      notices: ['room-copy-older-format'],
+      status: expect.objectContaining({ state: 'none', outcome: 'older' }),
+      mira: null,
+    });
+  });
+
+  test('a player with no GM gets outcome older and no older-format notice', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = openRoom();
+
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 1) });
+
+    // #when
+    const client = await startClient(room, 'player-p', {
+      role: 'PLAYER',
+      seeded: [],
+      timing: { catchUpTimeoutMs: 100 },
+      untilLive: true,
+    });
+
+    // #then
+    expect({
+      outcome: roomCopyStatus(client).outcome,
+      notices: notices(client),
+      brok: shown(client, BROK.k) ?? null,
+    }).toEqual({ outcome: 'older', notices: [], brok: null });
+  });
 });
 
 describe('size check', () => {
@@ -938,7 +1025,7 @@ describe('review cases', () => {
     const client = await startClient(room, 'gm-a', { seeded: [], untilLive: true });
 
     // #then
-    expect(client.backing.get('mr1:mock-room:1:importer:sheet:brok')).toBe(JSON.stringify(BROK));
+    expect(client.backing.get('mr2:mock-room:1:importer:sheet:brok')).toBe(JSON.stringify(BROK));
   });
 
   test('a demotion clears the not-saved notice', async () => {
@@ -977,16 +1064,10 @@ describe('review cases', () => {
     expect(roomCopyStatus(client).state).toBe('failed');
   });
 
-  test('a player with no GM reads the characters from the copy, and no NPC reaches its window', async () => {
+  test('a player with no GM reads the sheet set from the copy, and no value of a GM-only single sheet reaches its window', async () => {
     // #given
     const room = openRoom();
-
-    const goblin: VersionedRecord = {
-      k: 'sheet:gob',
-      d: { kind: 'npc', name: 'Гоблин', order: 1 },
-      c: 1,
-      a: 'seed',
-    };
+    const goblin: VersionedRecord = { k: 'row:npc:hp', d: { hp: 7 }, c: 1, a: 'seed' };
 
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK, goblin]) });
 
@@ -1042,7 +1123,7 @@ describe('review cases', () => {
 
     const room = openRoom();
 
-    room.room.setMetadata({ [KEY]: { v: 1, data: 'bm90IGRlZmxhdGU=' } });
+    room.room.setMetadata({ [KEY]: { v: 2, data: 'bm90IGRlZmxhdGU=' } });
 
     // #when
     const client = await startClient(room, 'gm-a', { untilLive: true });
@@ -1096,8 +1177,8 @@ describe('ids made before TASK-37', () => {
     const sheetId = 'V1StGXR8_Z5jdHi6B-myT';
     const repKey = `rep:${sheetId}:attack:Uakgb_J5m9g-0JDMbcJqL`;
     const rowKey = `row:${sheetId}:str`;
-    const storedSheet = sheet(sheetId, 'Брок');
-    const copiedSheet = sheet(sheetId, 'Брок Железнобокий', 4, 'other');
+    const storedSheet = sheet(sheetId);
+    const copiedSheet = sheet(sheetId, 1, 4, 'other');
     const storedRep: VersionedRecord = { k: repKey, d: { order: 0, cells: {} }, c: 3, a: 'seed' };
     const copiedRep: VersionedRecord = { k: repKey, d: { order: 5, cells: {} }, c: 2, a: 'other' };
     const storedRow: VersionedRecord = { k: rowKey, d: { str: 5 }, c: 2, a: 'seed' };

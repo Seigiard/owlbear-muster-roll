@@ -3,14 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { canEdit, ownedFirst, ownedSheetIds } from '@/core/access';
 import { newSheetId } from '@/core/ids';
-import { decodePreset, type Preset } from '@/core/preset';
+import { decodePreset, type Preset, type SheetSetTemplate } from '@/core/preset';
 import { presetDataSchema, type VersionedRecord } from '@/core/records';
-import { sheetKey, type SheetSummary } from '@/core/sheets';
+import { isSheetSet, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
-import { linkedSheetIds } from '@/core/token-links';
-import { visibleRecordMap, visibleSheets, type PlayerRole } from '@/core/visibility';
+import { linkedTargetKeys } from '@/core/token-links';
+import { visibleRecordMap, type PlayerRole } from '@/core/visibility';
 import { platform } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { bannerFor } from '@/ui/banner-message';
@@ -20,15 +19,16 @@ import { PresetUpload, uploadDisabledReason } from '@/ui/preset-actions';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
 import { SettingsView } from '@/ui/settings/settings-view';
-import { ReadOnlySheetHeader, SheetHeader } from '@/ui/sheet/sheet-header';
 import { DeleteConfirmation } from '@/ui/sheet/delete-confirmation';
 import type { DiceRolling } from '@/ui/sheet/dice-button';
 import { createLocalFieldValues } from '@/ui/sheet/local-field-values';
-import { NpcTab } from '@/ui/sheet/npc-tab';
 import { sheetPendingOf, type SheetPending } from '@/ui/sheet/pending-mark';
+import type { BlockTools } from '@/ui/sheet/preset-section';
 import { SheetBody } from '@/ui/sheet/sheet-body';
+import { SheetHeader } from '@/ui/sheet/sheet-header';
 import { createFieldFlushes, type FieldEditing } from '@/ui/sheet/use-field-edit';
-import { focusTab, revealTab } from '@/ui/shell/tab-bar';
+import { playerMayEdit, sheetTabs, tabEntries, type SheetTab } from '@/ui/sheet-tabs';
+import { focusTab, revealTab, type ShellBarItem } from '@/ui/shell/tab-bar';
 import { WindowShell, type ShellLayout } from '@/ui/shell/window-shell';
 import { followTheme } from '@/ui/theme';
 
@@ -37,33 +37,30 @@ import './main.css';
 // U+FE0E keeps the gear a text glyph, because some platforms would draw a color emoji.
 const GEAR = '⚙︎';
 
-const NPC_TAB = 'npc';
-
 const SETTINGS_TAB = 'settings';
 
 type PresetState = 'unknown' | 'absent' | 'present';
 
-// A sheet is named by its record key. The command id ties a rejection to the creation, so a
-// refused sheet stops waiting for its tab.
+// A sheet is named by its tab id, the `sheet:` key form of its id. The command id ties a rejection
+// to the creation, so a refused sheet stops waiting for its tab.
 type CreatedSheet = { sheet: string; commandId: string };
 
-// `neighbours` is `null` for a character. For an NPC it holds the NPC after it, then the one
-// before it, which take the focus when its block goes.
-type DeleteAsk = { sheet: string; request: number; neighbours: readonly string[] | null };
+type DeleteAsk = { sheet: string; request: number };
 
 // The command id ties a rejection to the deletion, so a refused one stops waiting.
-type DeletingSheet = { sheet: string; commandId: string; neighbours: readonly string[] | null };
+type DeletingSheet = { sheet: string; commandId: string };
 
-// A sheet "Открыть лист" selected, by its record key, and the tab that shows it. Its tab, or its
-// NPC block, scrolls into view once, and takes the focus when the focus was in the window.
-type Reveal = { sheet: string; tab: string; focus: boolean };
+// FR14: the tab "Открыть лист" selected. It scrolls into view in the bar once, and takes the focus
+// when the focus was in the window and no repeat block takes it.
+type TabReveal = { tab: string; focus: boolean };
 
-// Where the focus goes once the control that held it is gone: the selected tab, the first of
-// `neighbours` still listed or else "Добавить NPC", or the "⋯" of a sheet whose deletion failed.
-type FocusAfterLoss =
-  | { kind: 'tab' }
-  | { kind: 'npc'; neighbours: readonly string[] }
-  | { kind: 'actions'; sheet: string; tab: string | null };
+// FR14: the repeat block "Открыть лист" asked for, on the tab of `sheet`. Its sheet's body scrolls
+// it into view once.
+type BlockRevealRequest = { sheet: string; instanceId: string; focus: boolean };
+
+// Where the focus goes once the control that held it is gone: the selected tab, or the "⋯" of a
+// sheet whose deletion failed.
+type FocusAfterLoss = { kind: 'tab' } | { kind: 'actions'; sheet: string; tab: string | null };
 
 type WindowRootProps = {
   // The window's own read, shown until the first projection brings the engine's role.
@@ -161,39 +158,37 @@ function WindowRoot({
   const role = loaded ? sync.role : initialRole;
   const isGm = role === 'GM';
   const allRecords = useStore(projection.$records);
-  // Every view reads the records and the sheets through visibility, so no view filters by kind or
-  // role on its own.
-  const records = useMemo(() => visibleRecordMap(role, allRecords), [role, allRecords]);
+  const presetData = presetDataOf(allRecords);
+  const preset = useMemo(() => decodedPreset(presetData), [presetData]);
+
+  // Every view reads the records and the sheets through visibility, so no view filters by template
+  // or role on its own.
+  const records = useMemo(
+    () => visibleRecordMap(role, preset, allRecords),
+    [role, preset, allRecords],
+  );
+
   const rejections = useStore(projection.$rejections);
   const pendingEntries = useStore(projection.$pending);
   const marked = useStore(marks.$marked);
-
   const openRequest = useStore(projection.$openRequest);
-  const presetData = presetDataOf(records);
-  const preset = useMemo(() => decodedPreset(presetData), [presetData]);
 
-  // FR19, UX-DR8: a player's own characters come first and carry the mark "вы". A GM owns none.
-  const { characters, npcs, owned } = useMemo(() => {
-    const visible = visibleSheets(role, records.values());
+  // UX: tabs in preset order, each sheet set's "+" after its last sheet for the GM, and a player's
+  // own sheets first, marked "вы" (FR19).
+  const entries = useMemo(
+    () => tabEntries(role, preset, records, playerId),
+    [role, preset, records, playerId],
+  );
 
-    const ownedIds =
-      role === 'GM' ? new Set<string>() : ownedSheetIds(visible.characters, records, playerId);
+  const tabs = useMemo(() => sheetTabs(entries), [entries]);
+  const tabIds = tabs.map((tab) => tab.id);
 
-    return {
-      characters: ownedFirst(visible.characters, ownedIds),
-      npcs: visible.npcs,
-      owned: ownedIds,
-    };
-  }, [role, records, playerId]);
-
-  // UX-DR28: each character gets only its own waiting edits and marks.
+  // UX-DR28: each sheet gets only its own waiting edits and marks.
   const pendingBySheet = useMemo(() => {
     const pending: SheetPending = { entries: pendingEntries, marked };
 
-    return new Map(
-      characters.map((sheet) => [sheet.sheetId, sheetPendingOf(pending, sheet.sheetId)]),
-    );
-  }, [pendingEntries, marked, characters]);
+    return new Map(tabs.map((tab) => [tab.sheetId, sheetPendingOf(pending, tab.sheetId)]));
+  }, [pendingEntries, marked, tabs]);
 
   // AD-7: until the first catch-up ends, no data counts as the room's. The tab bar shows what is
   // known and every panel says "Загрузка…", so no empty or no-preset state shows too early.
@@ -206,7 +201,7 @@ function WindowRoot({
   // Starts unseen, as a projection can land before the first render, and a preset that came with
   // it must still select the first tab.
   const [seenPresetState, setSeenPresetState] = useState<PresetState>('unknown');
-  const [selectedTab, setSelectedTab] = useState(NPC_TAB);
+  const [selectedTab, setSelectedTab] = useState(SETTINGS_TAB);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // A sheet this window created, until its record arrives and its tab can open.
   const [created, setCreated] = useState<CreatedSheet | null>(null);
@@ -215,18 +210,16 @@ function WindowRoot({
   // nothing.
   const [deleteAsk, setDeleteAsk] = useState<DeleteAsk | null>(null);
   const [focusActionsOf, setFocusActionsOf] = useState<string | null>(null);
-  const [focusAddNpc, setFocusAddNpc] = useState(false);
   // A sheet this window has confirmed the deletion of, until it is gone or the deletion fails.
   const [deleting, setDeleting] = useState<DeletingSheet | null>(null);
   const [focusAfterLoss, setFocusAfterLoss] = useState<FocusAfterLoss | null>(null);
   // The id of the last open request this window took, so it takes each one once.
   const [takenOpen, setTakenOpen] = useState<string | null>(null);
-  const [reveal, setReveal] = useState<Reveal | null>(null);
-  // The token status reads `link:` records only, never the scene (FR18).
-  const linkedSheets = useMemo(() => linkedSheetIds(records), [records]);
-  const characterTabs = characters.map((sheet) => sheetKey(sheet.sheetId));
-  // Kept stable between renders, as the focus effect reads it.
-  const npcSheets = useMemo(() => npcs.map((sheet) => sheetKey(sheet.sheetId)), [npcs]);
+  const [tabReveal, setTabReveal] = useState<TabReveal | null>(null);
+  const [blockReveal, setBlockReveal] = useState<BlockRevealRequest | null>(null);
+  // The token status reads `link:` records only, never the scene (FR18), and AD-19 drops an inert
+  // link.
+  const linkedTargets = useMemo(() => linkedTargetKeys(records, preset), [records, preset]);
 
   const editing = useMemo<FieldEditing>(
     () => ({
@@ -253,9 +246,14 @@ function WindowRoot({
     [requestRoll, projection],
   );
 
-  const firstTab = characterTabs[0] ?? NPC_TAB;
-  // A player has character tabs only (UX-DR8).
-  const pinnedTabIds = isGm ? [NPC_TAB, SETTINGS_TAB] : [];
+  const blockTools = useMemo<BlockTools>(
+    () => ({ sendCommand, store: projection, linkedTargets }),
+    [sendCommand, projection, linkedTargets],
+  );
+
+  // A GM with no sheet tab lands on Settings. A player with none has no tab bar.
+  const firstTab = tabIds[0] ?? SETTINGS_TAB;
+  const pinnedTabIds = isGm ? [SETTINGS_TAB] : [];
 
   const clearNameFocus = useCallback(() => {
     setFocusNameOf(null);
@@ -265,34 +263,14 @@ function WindowRoot({
     setFocusActionsOf(null);
   }, []);
 
-  const clearAddNpcFocus = useCallback(() => {
-    setFocusAddNpc(false);
+  const clearBlockReveal = useCallback(() => {
+    setBlockReveal(null);
   }, []);
 
-  const clearReveal = useCallback(() => {
-    setReveal(null);
-  }, []);
-
-  // The tab that shows a sheet, or `null` for a sheet that is not listed.
+  // The tab that shows a sheet, or `null` for a sheet that is not listed. Every sheet has its own
+  // tab.
   function tabOf(sheet: string): string | null {
-    if (characterTabs.includes(sheet)) {
-      return sheet;
-    }
-
-    return npcSheets.includes(sheet) ? NPC_TAB : null;
-  }
-
-  // The NPC after `sheet`, then the one before it, or `null` for a sheet that is not a listed NPC.
-  function npcNeighbours(sheet: string): readonly string[] | null {
-    const index = npcSheets.indexOf(sheet);
-
-    if (index === -1) {
-      return null;
-    }
-
-    return [npcSheets[index + 1], npcSheets[index - 1]].filter(
-      (neighbour) => neighbour !== undefined,
-    );
+    return tabIds.includes(sheet) ? sheet : null;
   }
 
   let shownTab = selectedTab;
@@ -319,58 +297,52 @@ function WindowRoot({
       created !== null ||
       deleting !== null ||
       focusNameOf !== null ||
-      focusActionsOf !== null ||
-      focusAddNpc)
+      focusActionsOf !== null)
   ) {
     setSettingsOpen(false);
     setCreated(null);
     setDeleting(null);
     setFocusNameOf(null);
     setFocusActionsOf(null);
-    setFocusAddNpc(false);
   }
 
-  const createdTab = awaitedCreate === null ? null : tabOf(awaitedCreate.sheet);
-  // The sheet whose name field takes the focus, as this render leaves it.
+  // The sheet whose name takes the focus, as this render leaves it.
   let nameFocus = focusNameOf;
 
   if (awaitedCreate !== null && rejections.has(awaitedCreate.commandId)) {
     setCreated(null);
-  } else if (awaitedCreate !== null && createdTab !== null) {
+  } else if (awaitedCreate !== null && tabOf(awaitedCreate.sheet) !== null) {
+    // UX: a new sheet's tab opens and its name takes the focus.
     setCreated(null);
-
-    // A character's tab opens. An NPC lands on its own tab and pulls no GM back to it.
-    if (createdTab !== NPC_TAB) {
-      shownTab = createdTab;
-    }
-
-    if (shownTab === createdTab) {
-      setFocusNameOf(awaitedCreate.sheet);
-      nameFocus = awaitedCreate.sheet;
-    }
+    shownTab = awaitedCreate.sheet;
+    setFocusNameOf(awaitedCreate.sheet);
+    nameFocus = awaitedCreate.sheet;
   }
 
   // FR14: "Открыть лист" selects the sheet's tab once the room's data is in, so the first tab of a
-  // window that has just opened does not take the selection back. The engine sends only a sheet this
-  // role sees. One this window does not list, as after a change on the way, selects nothing, and is
-  // still taken, so no other window gets it.
+  // window that has just opened does not take the selection back. The engine sends only a target
+  // this role sees. One this window does not list, as after a change on the way, selects nothing,
+  // and is still taken, so no other window gets it.
   if (ready && openRequest !== null && openRequest.id !== takenOpen) {
     const sheet = sheetKey(openRequest.sheetId);
     const tab = tabOf(sheet);
+    const focus = focusInWindow();
 
     setTakenOpen(openRequest.id);
 
     if (tab !== null) {
       shownTab = tab;
 
-      // The NPC tab mounts its blocks only with a preset, so with none no block waits to scroll and
-      // a later visit does not scroll to it.
-      if (preset !== null) {
-        setReveal({ sheet, tab, focus: focusInWindow() });
-      }
+      // A repeat block takes the focus itself, once its sheet's body has it. With no preset no
+      // body mounts, so no repeat block waits to scroll and a later visit does not scroll to it.
+      const block =
+        openRequest.instanceId === null || preset === null ? null : openRequest.instanceId;
 
-      // A name field on another tab would take the focus away from the opened sheet.
-      if (nameFocus !== null && tabOf(nameFocus) !== tab) {
+      setTabReveal({ tab, focus: focus && block === null });
+      setBlockReveal(block === null ? null : { sheet, instanceId: block, focus });
+
+      // A name on another tab would take the focus away from the opened sheet.
+      if (nameFocus !== null && nameFocus !== tab) {
         setFocusNameOf(null);
       }
     }
@@ -378,7 +350,7 @@ function WindowRoot({
 
   // A selected sheet that disappears, or a tab the role does not have, hands the selection to the
   // first tab (UX-DR9).
-  if (!characterTabs.includes(shownTab) && !pinnedTabIds.includes(shownTab)) {
+  if (!tabIds.includes(shownTab) && !pinnedTabIds.includes(shownTab)) {
     shownTab = firstTab;
   }
 
@@ -386,26 +358,22 @@ function WindowRoot({
     setSelectedTab(shownTab);
   }
 
+  // A repeat block waits for its own tab only, so a later visit does not scroll to it.
+  if (blockReveal !== null && blockReveal.sheet !== shownTab) {
+    setBlockReveal(null);
+  }
+
   // Another tab, a sheet deleted elsewhere, or a role that cannot delete closes the confirmation
   // for good, so returning to the tab does not bring it back.
   if (deleteAsk !== null && (!isGm || tabOf(deleteAsk.sheet) !== shownTab)) {
     setDeleteAsk(null);
-
-    // An NPC deleted elsewhere takes "Отменить" with it, on a tab that stays open.
-    if (isGm && deleteAsk.neighbours !== null && tabOf(deleteAsk.sheet) === null) {
-      setFocusAfterLoss({ kind: 'npc', neighbours: deleteAsk.neighbours });
-    }
   }
 
-  // The pressed "Удалить" is gone with its block. A refused deletion leaves the sheet, so the
-  // focus goes back to its "⋯".
+  // The pressed "Удалить" is gone with its tab. A refused deletion leaves the sheet, so the focus
+  // goes back to its "⋯".
   if (awaitedDelete !== null && tabOf(awaitedDelete.sheet) === null) {
     setDeleting(null);
-    setFocusAfterLoss(
-      awaitedDelete.neighbours === null
-        ? { kind: 'tab' }
-        : { kind: 'npc', neighbours: awaitedDelete.neighbours },
-    );
+    setFocusAfterLoss({ kind: 'tab' });
   } else if (awaitedDelete !== null && rejections.has(awaitedDelete.commandId)) {
     setDeleting(null);
     setFocusAfterLoss({
@@ -430,20 +398,10 @@ function WindowRoot({
 
     if (focusAfterLoss.kind === 'tab') {
       focusTab(shownTab);
-    } else if (focusAfterLoss.kind === 'actions') {
-      if (focusAfterLoss.tab === shownTab) {
-        setFocusActionsOf(focusAfterLoss.sheet);
-      }
-    } else if (shownTab === NPC_TAB) {
-      const neighbour = focusAfterLoss.neighbours.find((sheet) => npcSheets.includes(sheet));
-
-      if (neighbour === undefined) {
-        setFocusAddNpc(true);
-      } else {
-        setFocusActionsOf(neighbour);
-      }
+    } else if (focusAfterLoss.tab === shownTab) {
+      setFocusActionsOf(focusAfterLoss.sheet);
     }
-  }, [focusAfterLoss, shownTab, npcSheets]);
+  }, [focusAfterLoss, shownTab]);
 
   // Taken: the engine drops the request, so a reload or another window does not open it again.
   useEffect(() => {
@@ -452,27 +410,24 @@ function WindowRoot({
     }
   }, [takenOpen, acknowledgeOpen]);
 
-  // A character's tab scrolls into view in the bar. The NPC tab is pinned and always in view, so
-  // the NPC tab scrolls its block instead.
+  // An opened sheet's tab scrolls into view in the bar.
   useEffect(() => {
-    if (reveal === null || reveal.tab === NPC_TAB) {
+    if (tabReveal === null) {
       return;
     }
 
-    setReveal(null);
-    revealTab(reveal.tab);
+    setTabReveal(null);
+    revealTab(tabReveal.tab);
 
     // The tab switched under the focus, so the focus follows it and the tab is announced.
-    if (reveal.focus) {
-      focusTab(reveal.tab, { preventScroll: true });
+    if (tabReveal.focus) {
+      focusTab(tabReveal.tab, { preventScroll: true });
     }
-  }, [reveal]);
+  }, [tabReveal]);
 
   function askDelete(sheet: string): void {
-    const neighbours = npcNeighbours(sheet);
-
     // A new request remounts the block, so a repeated "Удалить" takes the focus again.
-    setDeleteAsk((current) => ({ sheet, request: (current?.request ?? 0) + 1, neighbours }));
+    setDeleteAsk((current) => ({ sheet, request: (current?.request ?? 0) + 1 }));
   }
 
   function cancelDelete(sheet: string): void {
@@ -480,64 +435,181 @@ function WindowRoot({
     setFocusActionsOf(sheet);
   }
 
-  function confirmDelete(sheet: SheetSummary): void {
-    const key = sheetKey(sheet.sheetId);
-
-    // Closed at once, so a second press on the same block sends no second command.
+  function confirmDelete(tab: SheetTab): void {
+    // Closed at once, so a second press sends no second command.
     setDeleteAsk(null);
 
-    const sent = sendCommand({ type: 'sheet-delete', sheetId: sheet.sheetId });
+    const sent = sendCommand({ type: 'sheet-delete', sheetId: tab.sheetId });
 
     if (sent.ok) {
-      setDeleting({ sheet: key, commandId: sent.value, neighbours: npcNeighbours(key) });
+      setDeleting({ sheet: tab.id, commandId: sent.value });
     } else {
-      setFocusActionsOf(key);
+      setFocusActionsOf(tab.id);
     }
   }
 
-  function addSheet(kind: SheetSummary['kind']): void {
-    // The engine refuses an id that the room holds as a sheet, deleted ones included, or that a live
-    // record such as an orphan row names, so a collision takes over nothing.
+  // CAP-17: a new sheet of the sheet set, with an empty name.
+  function addSheet(set: SheetSetTemplate): void {
+    // The engine refuses an id that the room holds as a sheet, deleted ones included, that a live
+    // record such as an orphan row names, or that is a template id, so a collision takes over
+    // nothing.
     const sheetId = newSheetId();
 
     // The GM has moved on from the open confirmation.
     setDeleteAsk(null);
 
-    const sent = sendCommand({
-      type: 'sheet-create',
-      sheetId,
-      kind,
-      name: kind === 'pc' ? copy.newCharacter : copy.newNpc,
-    });
+    const sent = sendCommand({ type: 'sheet-create', sheetId, set: set.id });
 
     if (sent.ok) {
       setCreated({ sheet: sheetKey(sheetId), commandId: sent.value });
     }
   }
 
-  // The open confirmation, when it asks about `sheet`.
-  function confirmationFor(sheet: SheetSummary | undefined): ReactNode {
-    if (sheet === undefined || deleteAsk?.sheet !== sheetKey(sheet.sheetId)) {
+  // The open confirmation, when it asks about `tab`.
+  function confirmationFor(tab: SheetTab): ReactNode {
+    if (deleteAsk?.sheet !== tab.id) {
       return null;
     }
-
-    const asked = deleteAsk.sheet;
 
     return (
       <DeleteConfirmation
         key={deleteAsk.request}
-        name={sheet.name}
+        name={tab.name === '' ? copy.unnamed : tab.name}
         onConfirm={() => {
-          confirmDelete(sheet);
+          confirmDelete(tab);
         }}
         onCancel={() => {
-          cancelDelete(asked);
+          cancelDelete(tab.id);
         }}
       />
     );
   }
 
   const loading = <p>{copy.loading}</p>;
+
+  // A GM edits every sheet. A sheet of a sheet set has the access panel when its template is
+  // visible, and "Удалить". A linkable template shows its token status.
+  function gmSheetContent(tab: SheetTab): ReactNode {
+    const { policy } = tab;
+    const ofSet = isSheetSet(policy.template);
+
+    return (
+      <>
+        {confirmationFor(tab)}
+        <SheetHeader
+          key={tab.id}
+          sheetId={tab.sheetId}
+          name={tab.name}
+          nameField={policy.nameField}
+          records={records}
+          editing={editing}
+          status={null}
+          gm={{
+            playerId,
+            access: ofSet && !policy.hidden,
+            tokenLinked: policy.linkable ? linkedTargets.has(tab.sheetId) : null,
+            onDelete: ofSet
+              ? () => {
+                  askDelete(tab.id);
+                }
+              : null,
+            focusActions: focusActionsOf === tab.id,
+            onActionsFocused: clearActionsFocus,
+            sendCommand,
+            store: projection,
+          }}
+          focusName={focusNameOf === tab.id}
+          onNameFocused={clearNameFocus}
+        />
+        <SheetBody
+          template={policy.template}
+          sheetId={tab.sheetId}
+          records={records}
+          editing={editing}
+          rolling={rolling}
+          pending={null}
+          blockTools={blockTools}
+          reveal={blockReveal?.sheet === tab.id ? blockReveal : null}
+          onRevealed={clearBlockReveal}
+        />
+      </>
+    );
+  }
+
+  // FR3: a live `acl:`, or a player-editable single sheet, makes the fields editable and shows the
+  // repeat block controls. Each edit waits for a GM client's check (AD-4), and the pending view
+  // shows it meanwhile.
+  function playerSheetContent(tab: SheetTab): ReactNode {
+    const mayEdit = playerMayEdit(tab.policy, records, playerId);
+
+    return (
+      <>
+        <SheetHeader
+          sheetId={tab.sheetId}
+          name={tab.name}
+          nameField={tab.policy.nameField}
+          records={records}
+          editing={mayEdit ? editing : null}
+          status={mayEdit ? 'can-edit' : 'read-only'}
+          gm={null}
+          focusName={false}
+          onNameFocused={clearNameFocus}
+        />
+        <SheetBody
+          template={tab.policy.template}
+          sheetId={tab.sheetId}
+          records={records}
+          editing={mayEdit ? editing : null}
+          rolling={rolling}
+          pending={pendingBySheet.get(tab.sheetId) ?? null}
+          reveal={blockReveal?.sheet === tab.id ? blockReveal : null}
+          onRevealed={clearBlockReveal}
+        />
+      </>
+    );
+  }
+
+  // One item per entry, in the entries' order. A sheet set's "+" shows only once the first catch-up
+  // has ended with a preset, so the loading bar holds the known tabs and no command.
+  function barItems(content: (tab: SheetTab) => ReactNode): ShellBarItem[] {
+    return entries.flatMap((entry): ShellBarItem[] => {
+      if (entry.kind === 'add') {
+        if (presetState !== 'present') {
+          return [];
+        }
+
+        const { set } = entry;
+
+        return [
+          {
+            kind: 'action',
+            id: `add:${set.id}`,
+            action: {
+              label: copy.addSign,
+              accessibleName: copy.label.addToSet(set.title),
+              onPress: () => {
+                addSheet(set);
+              },
+            },
+          },
+        ];
+      }
+
+      const { tab } = entry;
+
+      return [
+        {
+          kind: 'tab',
+          tab: {
+            id: tab.id,
+            label: tab.name === '' ? copy.unnamed : tab.name,
+            mark: tab.owned ? copy.ownMark : undefined,
+            content: !ready || preset === null ? loading : content(tab),
+          },
+        },
+      ];
+    });
+  }
 
   const settings = (
     <SettingsView
@@ -581,95 +653,8 @@ function WindowRoot({
       kind: 'tabs',
       selectedTab: shownTab,
       onSelectTab: setSelectedTab,
-      scrollingTabs: characters.map((sheet) => {
-        const id = sheetKey(sheet.sheetId);
-
-        return {
-          id,
-          label: sheet.name,
-          content: !ready ? (
-            loading
-          ) : (
-            <>
-              {confirmationFor(sheet)}
-              <SheetHeader
-                key={id}
-                kind="pc"
-                playerId={playerId}
-                sheetId={sheet.sheetId}
-                name={sheet.name}
-                tokenLinked={linkedSheets.has(sheet.sheetId)}
-                sendCommand={sendCommand}
-                store={projection}
-                focusName={focusNameOf === id}
-                onNameFocused={clearNameFocus}
-                onDelete={() => {
-                  askDelete(id);
-                }}
-                focusActions={focusActionsOf === id}
-                onActionsFocused={clearActionsFocus}
-              />
-              {preset === null ? null : (
-                <SheetBody
-                  template={preset.character}
-                  sheetId={sheet.sheetId}
-                  records={records}
-                  editing={editing}
-                  rolling={rolling}
-                  pending={null}
-                />
-              )}
-            </>
-          ),
-        };
-      }),
-      add:
-        presetState === 'present'
-          ? {
-              label: copy.addSign,
-              accessibleName: copy.command.addCharacter,
-              onPress: () => {
-                addSheet('pc');
-              },
-            }
-          : undefined,
+      items: barItems(gmSheetContent),
       pinnedTabs: [
-        {
-          id: NPC_TAB,
-          label: copy.place.npc,
-          content:
-            preset === null || !ready ? (
-              loading
-            ) : (
-              <NpcTab
-                npcs={npcs}
-                template={preset.npc}
-                records={records}
-                linkedSheets={linkedSheets}
-                editing={editing}
-                rolling={rolling}
-                sendCommand={sendCommand}
-                store={projection}
-                confirmation={confirmationFor(
-                  npcs.find((npc) => sheetKey(npc.sheetId) === deleteAsk?.sheet),
-                )}
-                onAdd={() => {
-                  addSheet('npc');
-                }}
-                onDelete={(npc) => {
-                  askDelete(sheetKey(npc.sheetId));
-                }}
-                focusNameOf={focusNameOf}
-                onNameFocused={clearNameFocus}
-                focusActionsOf={focusActionsOf}
-                onActionsFocused={clearActionsFocus}
-                focusAdd={focusAddNpc}
-                onAddFocused={clearAddNpcFocus}
-                reveal={reveal?.tab === NPC_TAB ? reveal : null}
-                onRevealed={clearReveal}
-              />
-            ),
-        },
         {
           id: SETTINGS_TAB,
           label: GEAR,
@@ -680,11 +665,12 @@ function WindowRoot({
     };
   })();
 
-  // UX-DR10, UX-DR27: character tabs only, each read-only unless the player has access. Both
+  // UX-DR10, UX-DR27: the visible tabs, each read-only unless the player may edit it. Both
   // empty-state texts need a data source, `dataSourceKnown`.
   //
   // Story 2.6: with no data source and no GM, the room copy's outcome says why. A copy of a newer
-  // build keeps loading, as its banner already asks for a reload.
+  // build keeps loading, as its banner already asks for a reload. A copy of an older format is one
+  // this build does not read (AD-12).
   function noSourceContent(): ReactNode {
     if (!ready || sync.gmLink !== 'offline') {
       return loading;
@@ -694,7 +680,7 @@ function WindowRoot({
       return <p>{copy.playerNoGmNoData}</p>;
     }
 
-    if (roomCopy.outcome === 'unreadable') {
+    if (roomCopy.outcome === 'unreadable' || roomCopy.outcome === 'older') {
       return <p>{copy.roomCopyUnreadable}</p>;
     }
 
@@ -709,11 +695,11 @@ function WindowRoot({
       };
     }
 
-    // A preset from a partial answer proves no GM said there are no characters.
-    if (characters.length === 0) {
+    // A preset from a partial answer proves no GM said there are no sheets.
+    if (tabs.length === 0) {
       return {
         kind: 'plain',
-        content: ready && dataSourceKnown ? <p>{copy.playerNoCharacters}</p> : noSourceContent(),
+        content: ready && dataSourceKnown ? <p>{copy.playerNoSheets}</p> : noSourceContent(),
       };
     }
 
@@ -721,33 +707,7 @@ function WindowRoot({
       kind: 'tabs',
       selectedTab: shownTab,
       onSelectTab: setSelectedTab,
-      scrollingTabs: characters.map((sheet) => {
-        // FR3: a live `acl:` makes the fields editable and shows the repeat row controls. Each
-        // edit waits for a GM client's check (AD-4), and the pending view shows it meanwhile.
-        const mayEdit = canEdit(records, sheet.sheetId, playerId);
-
-        return {
-          id: sheetKey(sheet.sheetId),
-          label: sheet.name,
-          mark: owned.has(sheet.sheetId) ? copy.ownMark : undefined,
-          content:
-            !ready || preset === null ? (
-              loading
-            ) : (
-              <>
-                <ReadOnlySheetHeader name={sheet.name} canEdit={mayEdit} />
-                <SheetBody
-                  template={preset.character}
-                  sheetId={sheet.sheetId}
-                  records={records}
-                  editing={mayEdit ? editing : null}
-                  rolling={rolling}
-                  pending={pendingBySheet.get(sheet.sheetId) ?? null}
-                />
-              </>
-            ),
-        };
-      }),
+      items: barItems(playerSheetContent),
       pinnedTabs: [],
     };
   }

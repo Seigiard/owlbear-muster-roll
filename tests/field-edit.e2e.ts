@@ -6,8 +6,10 @@ import type { JsonValue } from '@/core/json';
 
 import {
   ABSENT,
+  ADD,
   openBackground,
   openRoom,
+  pcSheet,
   record,
   STORAGE_PREFIX,
   storedData,
@@ -15,7 +17,6 @@ import {
 } from './support/room';
 
 const CHANNEL = 'app.muster-roll/ui';
-const ADD = 'Добавить персонажа';
 const BAD_NUMBER = 'Нужно число';
 const TOO_LONG = 'Слишком длинно';
 
@@ -26,65 +27,74 @@ const PAST_PAUSE_MS = 1300;
 const WITHIN_PAUSE_MS = 300;
 
 const PRESET = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        title: 'Сетка',
-        columns: 3,
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'check', id: 'str_tired' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          title: 'Сетка',
+          columns: 3,
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'check', id: 'str_tired' },
+            ],
+            [
+              { kind: 'text', text: 'Ловкость' },
+              { kind: 'field', type: 'number', id: 'dex' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Ловкость' },
-            { kind: 'field', type: 'number', id: 'dex' },
+        },
+        {
+          title: 'Строки',
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
+            [
+              { kind: 'text', text: 'Заметки' },
+              { kind: 'field', type: 'text', id: 'notes' },
+            ],
+            [
+              { kind: 'text', text: 'Девиз' },
+              { kind: 'field', type: 'text', id: 'motto' },
+            ],
           ],
-        ],
-      },
-      {
-        title: 'Строки',
-        rows: [
-          [
-            { kind: 'text', text: 'Заметки' },
-            { kind: 'field', type: 'text', id: 'notes' },
+        },
+        {
+          title: 'Атаки',
+          columns: 2,
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Девиз' },
-            { kind: 'field', type: 'text', id: 'motto' },
+        },
+        {
+          title: 'Отметки',
+          rows: [
+            [
+              { kind: 'text', text: 'Отдых' },
+              { kind: 'field', type: 'check', id: 'rested' },
+            ],
           ],
-        ],
-      },
-      {
-        title: 'Атаки',
-        columns: 2,
-        repeat: true,
-        rows: [
-          [
-            { kind: 'field', type: 'text', id: 'attack' },
-            { kind: 'field', type: 'number', id: 'bonus' },
-          ],
-        ],
-      },
-      {
-        title: 'Отметки',
-        rows: [
-          [
-            { kind: 'text', text: 'Отдых' },
-            { kind: 'field', type: 'check', id: 'rested' },
-          ],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+        },
+      ],
+    },
+  ],
 } as const;
 
 const RECORDS = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
-  record('sheet:liza', { kind: 'pc', name: 'Лиза', order: 1 }),
+  ...pcSheet('brok', 'Брок', 0),
+  ...pcSheet('liza', 'Лиза', 1),
   record('row:brok:str', { str: 14, str_tired: true }),
   record('row:brok:notes', { notes: 'Первая' }),
   record('rep:brok:attack:i1', { order: 1, cells: { attack: 'Меч', bonus: 3 } }),
@@ -390,7 +400,7 @@ test('a saved value stays after a reload', async ({ page, context }) => {
   await expect(field(page, 'Ловкость')).toHaveValue('1.5');
 });
 
-test('a field of a repeat instance saves into that instance', async ({ page, context }) => {
+test('a field of a repeat block saves into that repeat block', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
 
@@ -605,7 +615,7 @@ test('passing through a number field that holds a string or an exponent form cha
   }).toEqual({ messages: 0, str: 'много', dex: '1e+21', sent: 0 });
 });
 
-test('Tab goes through the tab bar, the header, then every field and row control in preset order', async ({
+test('Tab goes through the tab bar, the header, then every field and repeat block control in preset order', async ({
   page,
   context,
 }) => {
@@ -616,7 +626,7 @@ test('Tab goes through the tab bar, the header, then every field and row control
   const reached: string[] = [];
 
   // #when
-  for (let press = 0; press < 15; press += 1) {
+  for (let press = 0; press < 17; press += 1) {
     // Each step reads the focus the previous key left.
     // oxlint-disable-next-line no-await-in-loop
     reached.push(await focusedControl(page));
@@ -627,19 +637,21 @@ test('Tab goes through the tab bar, the header, then every field and row control
   // #then
   expect(reached).toEqual([
     'tab Брок',
-    'button Добавить персонажа',
-    'textbox Имя персонажа',
+    'button Добавить: Персонажи',
+    'textbox Имя листа',
     'button Доступ',
     'button Действия с листом',
     'textbox Сила',
     'checkbox Сила',
     'textbox Ловкость',
+    'textbox Имя',
     'textbox Заметки',
     'textbox Девиз',
     'textbox attack',
     'textbox bonus',
-    'button Удалить строку 1',
-    'button Добавить строку',
+    'button Дублировать блок 1…',
+    'button Удалить блок 1',
+    'button Добавить в «Атаки»',
     'checkbox Отдых',
   ]);
 });

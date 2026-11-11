@@ -66,7 +66,7 @@ Short and literal. Commands are perfective verbs. Places are nouns. Statuses are
 | Room copy unreadable | "Копия в комнате не читается. Дождитесь ГМ." |
 | Room copy of an older format, GM | "Копия в комнате из старой версии. Очистите всё в настройках." |
 | New version | "Вышла новая версия. Перезагрузите страницу." |
-| Preset upload loses data | One message from the parts that apply: "Значения удалённых полей будут стёрты: {count}." "single sheets будут удалены: {sheets}." then "Загрузить пресет?" |
+| Preset upload loses data | One message from the parts that apply: "Значения удалённых полей будут стёрты: {count}." "Листы будут удалены: {sheets}." then "Загрузить пресет?" |
 | Preset upload removes nothing | "Формат листов изменён." |
 | Snapshot import | "Все данные комнаты будут заменены. Игроки потеряют привязки и права. Загрузить снимок?" |
 | Snapshot import drops data | Add to the import message the parts that apply: "Не войдут значения удалённых полей: {count}." "Не войдут листы: {sheets}." |

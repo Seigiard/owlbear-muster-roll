@@ -1,196 +1,297 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { Preset, Template } from '@/core/preset';
+import type { JsonValue } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
 
 import {
   rollShownTo,
-  sheetKindShownTo,
+  sheetShownTo,
+  templateShownTo,
+  visibleRecordMap,
   visibleRecords,
   visibleSheets,
   type PlayerRole,
 } from './visibility';
 
-const PRESET: VersionedRecord = { k: 'preset', d: 'eJw=', c: 1, a: 'conn' };
-
-const BROK: VersionedRecord = {
-  k: 'sheet:brok',
-  d: { kind: 'pc', name: 'Брок', order: 1 },
-  c: 1,
-  a: 'conn',
+const PC: Template = {
+  id: 'pc',
+  kind: 'set',
+  title: 'Персонажи',
+  nameField: 'name',
+  tokens: true,
+  sections: [
+    { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+    { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] },
+  ],
 };
 
-const LIZA: VersionedRecord = {
-  k: 'sheet:liza',
-  d: { kind: 'pc', name: 'Лиза', order: 0 },
-  c: 1,
-  a: 'conn',
+// A hidden single sheet with a linkable repeat section.
+const NPC: Template = {
+  id: 'npc',
+  kind: 'single',
+  title: 'НПС',
+  visibility: 'gm',
+  sections: [
+    { rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] },
+    { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'npc_name' }]] },
+  ],
 };
 
-const BROK_ROW: VersionedRecord = { k: 'row:brok:str', d: { str: 14 }, c: 1, a: 'conn' };
-
-const BROK_REP: VersionedRecord = {
-  k: 'rep:brok:attack:i1',
-  d: { order: 0, cells: {} },
-  c: 1,
-  a: 'conn',
+const INVENTORY: Template = {
+  id: 'inventory',
+  kind: 'single',
+  title: 'Инвентарь',
+  players: 'edit',
+  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'items' }]] }],
 };
 
-const BROK_LINK: VersionedRecord = { k: 'link:token-1', d: 'brok', c: 1, a: 'conn' };
-
-const SKELETON: VersionedRecord = {
-  k: 'sheet:skel',
-  d: { kind: 'npc', name: 'Скелет', order: 0 },
-  c: 1,
-  a: 'conn',
+const VILLAINS: Template = {
+  id: 'villains',
+  kind: 'set',
+  title: 'Злодеи',
+  nameField: 'villain',
+  visibility: 'gm',
+  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }],
 };
 
-const SKELETON_ROW: VersionedRecord = { k: 'row:skel:hp', d: { hp: 7 }, c: 1, a: 'conn' };
+const PRESET: Preset = { v: 2, templates: [PC, NPC, INVENTORY, VILLAINS] };
 
-const SKELETON_REP: VersionedRecord = {
-  k: 'rep:skel:attack:i1',
-  d: { order: 0, cells: {} },
-  c: 1,
-  a: 'conn',
-};
+function record(k: string, d: JsonValue): VersionedRecord {
+  // SAFETY: some cases build a record no schema takes on purpose, so the code under test meets it.
+  return { k, d, c: 1, a: 'conn' } as VersionedRecord;
+}
 
-const SKELETON_LINK: VersionedRecord = { k: 'link:token-2', d: 'skel', c: 1, a: 'conn' };
+const PRESET_RECORD = record('preset', 'eJw=');
+const BROK = record('sheet:brok', { set: 'pc', order: 1 });
+const LIZA = record('sheet:liza', { set: 'pc', order: 0 });
+const BROK_ROW = record('row:brok:name', { name: 'Брок' });
+const BROK_REP = record('rep:brok:attack:i1', { order: 0, cells: {} });
+const BROK_ACL = record('acl:brok:p1', { name: 'Оля' });
+const BROK_LINK = record('link:token-1', { s: 'brok' });
+const NPC_ROW = record('row:npc:hp', { hp: 7 });
+const NPC_REP = record('rep:npc:npc_name:s1', { order: 0, cells: { npc_name: 'Скелет' } });
+const NPC_LINK = record('link:token-2', { s: 'npc', i: 's1' });
+const INVENTORY_ROW = record('row:inventory:items', { items: 'Верёвка' });
+const BOSS = record('sheet:boss', { set: 'villains', order: 0 });
+const BOSS_ROW = record('row:boss:villain', { villain: 'Лич' });
 
-// A character whose id starts with the NPC's, so a prefix match would wrongly hide its row.
-const SKELETONS: VersionedRecord = {
-  k: 'sheet:skeleton',
-  d: { kind: 'pc', name: 'Скелетон', order: 2 },
-  c: 1,
-  a: 'conn',
-};
+// A link to a repeat block of a section with no tokens, so it is inert.
+const INERT_LINK = record('link:token-3', { s: 'brok', i: 'i1' });
 
-const SKELETONS_ROW: VersionedRecord = { k: 'row:skeleton:hp', d: { hp: 3 }, c: 1, a: 'conn' };
+// A sheet whose set names no template, so it resolves to none.
+const STRAY = record('sheet:stray', { set: 'gone', order: 0 });
+const STRAY_ROW = record('row:stray:name', { name: 'Никто' });
+
+// A sheet whose id starts with the single sheet's, so a prefix match would wrongly hide its row.
+const NPCX = record('sheet:npcx', { set: 'pc', order: 2 });
+const NPCX_ROW = record('row:npcx:name', { name: 'Скелетон' });
 
 const ROOM: VersionedRecord[] = [
-  PRESET,
+  PRESET_RECORD,
   BROK,
   LIZA,
   BROK_ROW,
   BROK_REP,
+  BROK_ACL,
   BROK_LINK,
-  SKELETON,
-  SKELETON_ROW,
-  SKELETON_REP,
-  SKELETON_LINK,
-  SKELETONS,
-  SKELETONS_ROW,
+  NPC_ROW,
+  NPC_REP,
+  NPC_LINK,
+  INVENTORY_ROW,
+  BOSS,
+  BOSS_ROW,
+  INERT_LINK,
+  STRAY,
+  STRAY_ROW,
+  NPCX,
+  NPCX_ROW,
 ];
+
+const KNOWN: ReadonlyMap<string, VersionedRecord> = new Map(ROOM.map((entry) => [entry.k, entry]));
+
+describe('templateShownTo', () => {
+  test.each<[PlayerRole, Template, boolean]>([
+    ['GM', PC, true],
+    ['GM', NPC, true],
+    ['PLAYER', PC, true],
+    ['PLAYER', INVENTORY, true],
+    ['PLAYER', NPC, false],
+    ['PLAYER', VILLAINS, false],
+  ])('a %s client sees the template: %#', (role, template, shown) => {
+    // #then
+    expect(templateShownTo(role, template)).toBe(shown);
+  });
+});
+
+describe('sheetShownTo', () => {
+  test.each<[string, PlayerRole, boolean]>([
+    ['brok', 'GM', true],
+    ['brok', 'PLAYER', true],
+    ['inventory', 'PLAYER', true],
+    ['npc', 'GM', true],
+    ['npc', 'PLAYER', false],
+    ['boss', 'PLAYER', false],
+    ['stray', 'GM', false],
+    ['gone', 'GM', false],
+  ])('the sheet %s is shown to a %s client: %p', (sheetId, role, shown) => {
+    // #then
+    expect(sheetShownTo(KNOWN, PRESET, sheetId, role)).toBe(shown);
+  });
+});
 
 describe('visibleRecords', () => {
   test('passes every record through for a GM', () => {
     // #when
-    const visible = visibleRecords('GM', ROOM);
+    const visible = visibleRecords('GM', PRESET, ROOM);
 
     // #then
     expect(visible).toEqual(ROOM);
   });
 
-  test('drops NPC sheets and their rows, repeat rows and links for a player, and keeps the rest', () => {
+  test('keeps for a player the sheets of visible templates with their dependents and live links to them', () => {
     // #when
-    const visible = visibleRecords('PLAYER', ROOM);
+    const visible = visibleRecords('PLAYER', PRESET, ROOM);
 
     // #then
     expect(visible).toEqual([
-      PRESET,
+      PRESET_RECORD,
       BROK,
       LIZA,
       BROK_ROW,
       BROK_REP,
+      BROK_ACL,
       BROK_LINK,
-      SKELETONS,
-      SKELETONS_ROW,
+      INVENTORY_ROW,
+      NPCX,
+      NPCX_ROW,
     ]);
+  });
+
+  test('keeps only the preset record for a player with no decoded preset', () => {
+    // #when
+    const visible = visibleRecords('PLAYER', null, ROOM);
+
+    // #then
+    expect(visible).toEqual([PRESET_RECORD]);
   });
 
   test('judges a record that comes without its sheet by the known records', () => {
     // #when
-    const visible = visibleRecords('PLAYER', [SKELETON_ROW, BROK_ROW], ROOM);
+    const visible = visibleRecords('PLAYER', PRESET, [NPC_ROW, BOSS_ROW, BROK_ROW], KNOWN);
 
     // #then
     expect(visible).toEqual([BROK_ROW]);
   });
 
-  test('keeps a sheet tombstone, and hides dependents whose sheet is not a live character', () => {
+  test('hides a row that comes before its sheet record', () => {
+    // #when
+    const visible = visibleRecords('PLAYER', PRESET, [BROK_ROW]);
+
+    // #then
+    expect(visible).toEqual([]);
+  });
+
+  test('keeps a sheet tombstone, and hides the dependents of a sheet that is not live', () => {
     // #given
-    const sheetTombstone: VersionedRecord = { ...SKELETON, d: null, c: 2 };
+    const sheetTombstone: VersionedRecord = { ...BOSS, d: null, c: 2 };
 
     const records: VersionedRecord[] = [
       sheetTombstone,
-      { ...SKELETON_LINK, d: null, c: 2 },
-      { k: 'row:ghost:hp', d: { hp: 1 }, c: 1, a: 'conn' },
+      { ...BROK_LINK, d: null, c: 2 },
+      record('row:ghost:name', { name: 'Призрак' }),
     ];
 
     // #when
-    const visible = visibleRecords('PLAYER', records);
+    const visible = visibleRecords('PLAYER', PRESET, records);
 
     // #then
     expect(visible).toEqual([sheetTombstone]);
   });
 
-  test('hides a link once it points to an NPC', () => {
+  test('hides a link once it points to a hidden single sheet', () => {
     // #given
-    const repointed: VersionedRecord = { ...BROK_LINK, d: 'skel', c: 2 };
+    const repointed: VersionedRecord = { ...BROK_LINK, d: { s: 'npc', i: 's1' }, c: 2 };
 
     // #when
-    const visible = visibleRecords('PLAYER', [repointed], ROOM);
+    const visible = visibleRecords('PLAYER', PRESET, [repointed], KNOWN);
 
     // #then
     expect(visible).toEqual([]);
   });
 });
 
-describe('visibleSheets', () => {
-  test('lists characters in (order, sheetId) order and NPCs for a GM', () => {
-    // #when
-    const sheets = visibleSheets('GM', ROOM);
-
+describe('visibleRecordMap', () => {
+  test('gives a GM its map as it is', () => {
     // #then
-    expect({
-      characters: sheets.characters.map((sheet) => sheet.sheetId),
-      npcs: sheets.npcs.map((sheet) => sheet.sheetId),
-    }).toEqual({ characters: ['liza', 'brok', 'skeleton'], npcs: ['skel'] });
+    expect(visibleRecordMap('GM', PRESET, KNOWN)).toBe(KNOWN);
   });
 
-  test('lists characters and no NPC for a player', () => {
+  test('gives a player only the records it sees', () => {
     // #when
-    const sheets = visibleSheets('PLAYER', ROOM);
+    const visible = visibleRecordMap('PLAYER', PRESET, KNOWN);
 
     // #then
-    expect({
-      characters: sheets.characters.map((sheet) => sheet.sheetId),
-      npcs: sheets.npcs,
-    }).toEqual({ characters: ['liza', 'brok', 'skeleton'], npcs: [] });
+    expect([...visible.keys()]).toEqual([
+      'preset',
+      'sheet:brok',
+      'sheet:liza',
+      'row:brok:name',
+      'rep:brok:attack:i1',
+      'acl:brok:p1',
+      'link:token-1',
+      'row:inventory:items',
+      'sheet:npcx',
+      'row:npcx:name',
+    ]);
   });
 });
 
-describe('sheetKindShownTo', () => {
-  test.each<[PlayerRole, 'pc' | 'npc', boolean]>([
-    ['GM', 'pc', true],
-    ['GM', 'npc', true],
-    ['PLAYER', 'pc', true],
-    ['PLAYER', 'npc', false],
-  ])('a %s client sees a %s sheet: %p', (role, kind, shown) => {
+describe('visibleSheets', () => {
+  test('lists every template for a GM in preset order, a sheet set with its sheets in (order, sheetId) order', () => {
     // #when
-    const result = sheetKindShownTo(role, kind);
+    const sheets = visibleSheets('GM', PRESET, KNOWN);
 
     // #then
-    expect(result).toBe(shown);
+    expect(sheets).toEqual([
+      {
+        kind: 'set',
+        template: PC,
+        sheets: [
+          { sheetId: 'liza', set: 'pc', order: 0 },
+          { sheetId: 'brok', set: 'pc', order: 1 },
+          { sheetId: 'npcx', set: 'pc', order: 2 },
+        ],
+      },
+      { kind: 'single', template: NPC },
+      { kind: 'single', template: INVENTORY },
+      { kind: 'set', template: VILLAINS, sheets: [{ sheetId: 'boss', set: 'villains', order: 0 }] },
+    ]);
+  });
+
+  test('lists no hidden template for a player', () => {
+    // #when
+    const sheets = visibleSheets('PLAYER', PRESET, KNOWN);
+
+    // #then
+    expect(sheets.map((entry) => entry.template.id)).toEqual(['pc', 'inventory']);
+  });
+
+  test('lists nothing with no decoded preset', () => {
+    // #then
+    expect(visibleSheets('GM', null, KNOWN)).toEqual([]);
   });
 });
 
 describe('rollShownTo', () => {
-  test.each<[PlayerRole, 'pc' | 'npc', boolean]>([
-    ['GM', 'pc', true],
-    ['GM', 'npc', true],
-    ['PLAYER', 'pc', true],
-    ['PLAYER', 'npc', false],
-  ])('a %s client shows a roll of a %s sheet: %p', (role, kind, shown) => {
+  test.each<[PlayerRole, boolean, boolean]>([
+    ['GM', false, true],
+    ['GM', true, true],
+    ['PLAYER', false, true],
+    ['PLAYER', true, false],
+  ])('a %s client shows a roll with hidden %p: %p', (role, hidden, shown) => {
     // #when
-    const result = rollShownTo(role, kind);
+    const result = rollShownTo(role, hidden);
 
     // #then
     expect(result).toBe(shown);

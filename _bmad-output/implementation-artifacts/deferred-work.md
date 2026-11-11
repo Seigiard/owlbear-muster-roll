@@ -145,3 +145,12 @@
 - d100 rolls locally, because dicex reports only the tens die. Supporting it needs dicex to report the combined value.
 - The client follows dicex shapes read from source; a live-room roll with the fork confirms them.
 - dicex gains a GM access permission (owner decision 2026-11-11); the client should ask for access up front and read `permitted` from the readiness reply once the fork ships it.
+
+## From spec-task-41 (sheet sets and single sheets)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-41-sheet-sets-and-single-sheets.md`
+  summary: Each sheet set's "+" sits after all tabs in the DOM and only CSS `order` places it after its set, so keyboard and screen-reader order differ from the visual order.
+  evidence: ARIA does not allow a button inside a tablist; each "+" names its set ("Добавить: {title}"). Matching the orders needs a different tab bar widget.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-41-sheet-sets-and-single-sheets.md`
+  summary: A live `sheet:` whose `set` names no sheet set of the preset (a create racing an upload) is never tombstoned or counted.
+  evidence: `presetDiff` walks only the old preset's templates; the race needs a sheet-create to reach a GM after an upload that removed its set.

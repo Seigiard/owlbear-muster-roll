@@ -3,15 +3,17 @@ import { z } from 'zod';
 import type { JsonValue } from '@/core/json';
 import { recordFitsOneMessage } from '@/core/message-size';
 import {
-  firstFieldId,
-  type PresetCell,
+  plainRow,
+  repeatSectionById,
+  sectionFields,
   type PresetFieldCell,
-  type PresetTemplate,
+  type TemplateLayout,
 } from '@/core/preset';
 import {
   fieldValuesSchema,
   repDataSchema,
-  repKeyPrefix,
+  repKey,
+  rowKey,
   type FieldValue,
   type VersionedRecord,
 } from '@/core/records';
@@ -19,7 +21,8 @@ import { err, ok, type Result } from '@/core/result';
 
 const targetIdSchema = z.string().min(1).max(64);
 
-// A patch lands in the record of one preset row, or of one repeat instance.
+// A patch lands in the record of one preset row, or of one repeat block, which holds the fields of
+// every row of its section.
 export const fieldPatchTargetSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('row'), rowId: targetIdSchema }),
   z.strictObject({
@@ -53,37 +56,36 @@ export type FieldPatchFailure = 'unknown-instance' | 'unchanged';
 
 export function patchRecordKey(sheetId: string, target: FieldPatchTarget): string {
   return target.kind === 'row'
-    ? `row:${sheetId}:${target.rowId}`
-    : `${repKeyPrefix(sheetId, target.sectionId)}${target.instanceId}`;
+    ? rowKey(sheetId, target.rowId)
+    : repKey(sheetId, target.sectionId, target.instanceId);
 }
 
-// The field with this id in the targeted row: a plain row whose first field names it, or the
-// template row of the repeat section it names. A field of another row does not count.
+// The field with this id in the target: the plain row whose first field is `rowId`, or any row of
+// the repeat section `sectionId` names. A field of another row or section does not count.
 export function findPatchField(
-  template: PresetTemplate,
+  layout: TemplateLayout,
   target: FieldPatchTarget,
   fieldId: string,
 ): PresetFieldCell | null {
-  const row = targetRow(template, target);
-  const field = row?.find((cell) => cell.kind === 'field' && cell.id === fieldId);
-
-  return field?.kind === 'field' ? field : null;
+  return targetFields(layout, target)?.find((field) => field.id === fieldId) ?? null;
 }
 
-// The fields of the targeted row: a plain row whose first field is `rowId`, or the template row of
-// the repeat section it names. `null` when the template has no such row.
+// The fields of the target: a plain row whose first field is `rowId`, or every row of the repeat
+// section `sectionId` names, as one repeat block holds them. `null` when the template has no such
+// row or section.
 export function targetFields(
-  template: PresetTemplate,
+  layout: TemplateLayout,
   target: { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string },
 ): PresetFieldCell[] | null {
-  const row = targetRow(template, target);
+  if (target.kind === 'rep') {
+    const section = repeatSectionById(layout, target.sectionId);
+
+    return section === null ? null : sectionFields(section);
+  }
+
+  const row = plainRow(layout, target.rowId);
 
   return row === null ? null : row.filter((cell) => cell.kind === 'field');
-}
-
-// A repeat section is named by the id of its template row's first field.
-export function isRepeatSectionId(template: PresetTemplate, sectionId: string): boolean {
-  return targetRow(template, { kind: 'rep', sectionId }) !== null;
 }
 
 // `number` takes a finite number, `text` a non-empty string and `check` a boolean. Any type may
@@ -101,8 +103,8 @@ export function acceptedFieldValue(
   return parsed.success ? ok(parsed.data) : err('invalid-value');
 }
 
-// The record data after the patch, merged into what the record holds now. An absent or deleted
-// row record starts empty. A repeat instance must be live, because only Story 1.10 adds one. A patch
+// The record data after the patch, merged into what the record holds now. An absent or deleted row
+// record starts empty. A repeat block must be live, because only an add command makes one. A patch
 // that changes nothing is refused, so no version is minted for it.
 export function patchedRecord(
   sheetId: string,
@@ -120,15 +122,15 @@ export function patchedRecord(
     return cells === null ? err('unchanged') : ok({ k, d: cells });
   }
 
-  const instance = repDataSchema.safeParse(current?.d);
+  const block = repDataSchema.safeParse(current?.d);
 
-  if (!instance.success) {
+  if (!block.success) {
     return err('unknown-instance');
   }
 
-  const cells = withValue(instance.data.cells, fieldId, value);
+  const cells = withValue(block.data.cells, fieldId, value);
 
-  return cells === null ? err('unchanged') : ok({ k, d: { ...instance.data, cells } });
+  return cells === null ? err('unchanged') : ok({ k, d: { ...block.data, cells } });
 }
 
 // Measured at the largest version the record can reach, so a patch that passes here still fits
@@ -166,23 +168,4 @@ function withValue(
   }
 
   return next;
-}
-
-function targetRow(
-  template: PresetTemplate,
-  target: { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string },
-): readonly PresetCell[] | null {
-  const id = target.kind === 'row' ? target.rowId : target.sectionId;
-
-  for (const section of template.sections) {
-    if ((section.repeat === true) === (target.kind === 'rep')) {
-      const row = section.rows.find((cells) => firstFieldId(cells) === id);
-
-      if (row !== undefined) {
-        return row;
-      }
-    }
-  }
-
-  return null;
 }

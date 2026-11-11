@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
-import { recordSchema, type VersionedRecord } from '@/core/records';
+import { recordSchema, type LinkData, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import { UI_CHANNEL, type Command } from '@/core/ui-messages';
@@ -46,7 +46,7 @@ const TIMING: Timing = {
   snapshotImportTimeoutMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 
@@ -64,20 +64,43 @@ const MENU_COPY = {
   unlinkFailed: 'Не удалось отвязать лист. Попробуйте ещё раз.',
 };
 
+// "pc" links whole sheets, and "npc" links its repeat blocks.
 const PRESET: Preset = {
-  v: 1,
-  character: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      tokens: true,
+      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'mob' }]] },
+      ],
+    },
+  ],
 };
+
+// The link data of "Брок" and of the NPC "Скелет".
+const BROK: LinkData = { s: 'brok' };
+const SKEL: LinkData = { s: 'npc', i: 'sk1' };
 
 // "Брок" has the tokens t1 and t2, "Скелет" has t3.
 const SEEDED: readonly VersionedRecord[] = [
   { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
-  { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 1, a: 'seed' },
-  { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'seed' },
-  { k: 'link:t1', d: 'brok', c: 1, a: 'seed' },
-  { k: 'link:t2', d: 'brok', c: 1, a: 'seed' },
-  { k: 'link:t3', d: 'skel', c: 1, a: 'seed' },
+  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
+  { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
+  { k: 'rep:npc:mob:sk1', d: { order: 0, cells: { mob: 'Скелет' } }, c: 1, a: 'seed' },
+  { k: 'link:t1', d: BROK, c: 1, a: 'seed' },
+  { k: 'link:t2', d: BROK, c: 1, a: 'seed' },
+  { k: 'link:t3', d: SKEL, c: 1, a: 'seed' },
 ];
 
 type Client = {
@@ -135,7 +158,7 @@ describe('a token deleted from the open scene', () => {
       sent: [tombstone],
       stored: tombstone,
       shown: tombstone,
-      others: ['brok', 'skel'],
+      others: [BROK, SKEL],
       unlinkFilter: [
         { key: 'id', value: 't2', coordinator: '||' },
         { key: 'id', value: 't3' },
@@ -161,7 +184,7 @@ describe('a token deleted from the open scene', () => {
         ['link:t1', null],
         ['link:t3', null],
       ],
-      kept: 'brok',
+      kept: BROK,
     });
   });
 
@@ -178,7 +201,7 @@ describe('a token deleted from the open scene', () => {
     expect({
       sent: committed(room, 'gm-a'),
       links: ['t1', 't2', 't3'].map((tokenId) => stored(client, `link:${tokenId}`)?.d),
-    }).toEqual({ sent: [], links: ['brok', 'brok', 'skel'] });
+    }).toEqual({ sent: [], links: [BROK, BROK, SKEL] });
   });
 
   test('keeps every link when the scene changes to another one and back', async () => {
@@ -205,7 +228,7 @@ describe('a token deleted from the open scene', () => {
     expect({
       sent: committed(room, 'gm-a'),
       links: ['t1', 't2', 't3'].map((tokenId) => stored(client, `link:${tokenId}`)?.d),
-    }).toEqual({ sent: [], links: ['brok', 'brok', 'skel'] });
+    }).toEqual({ sent: [], links: [BROK, BROK, SKEL] });
   });
 
   test('removes nothing while the scene is not ready, and counts removals once a ready list is seen', async () => {
@@ -229,7 +252,7 @@ describe('a token deleted from the open scene', () => {
       whileLoading,
       sent: committed(room, 'gm-a').map((record) => record.k),
       t1: stored(client, 'link:t1')?.d,
-    }).toEqual({ whileLoading: [], sent: ['link:t2'], t1: 'brok' });
+    }).toEqual({ whileLoading: [], sent: ['link:t2'], t1: BROK });
   });
 
   test('leaves the link removed when the token comes back, as with an Owlbear undo', async () => {
@@ -257,7 +280,7 @@ describe('a token deleted from the open scene', () => {
     const gm = await startClient(room, 'gm-a');
     const player = await startClient(room, 'player-a', { role: 'PLAYER' });
 
-    await waitUntil(() => shown(player, 'link:t1')?.d === 'brok');
+    await waitUntil(() => sameData(shown(player, 'link:t1'), BROK));
     gm.stop();
 
     // #when
@@ -269,7 +292,7 @@ describe('a token deleted from the open scene', () => {
       sceneCalls: player.sceneCalls(),
       sent: room.heard.filter((message) => message.from === 'player-a' && isEdit(message.data)),
       link: shown(player, 'link:t1')?.d,
-    }).toEqual({ sceneCalls: 0, sent: [], link: 'brok' });
+    }).toEqual({ sceneCalls: 0, sent: [], link: BROK });
   });
 
   test('starts to watch when a player becomes GM, with no removal from before', async () => {
@@ -293,7 +316,7 @@ describe('a token deleted from the open scene', () => {
       beforeRemoval,
       sent: committed(room, 'client-a').map((record) => record.k),
       t1: stored(client, 'link:t1')?.d,
-    }).toEqual({ beforeRemoval: [], sent: ['link:t2'], t1: 'brok' });
+    }).toEqual({ beforeRemoval: [], sent: ['link:t2'], t1: BROK });
   });
 });
 
@@ -330,7 +353,7 @@ describe('the watch', () => {
       callsAsPlayer,
       sent: room.heard.filter((message) => message.from === 'gm-a' && isEdit(message.data)),
       links: [stored(client, 'link:t1')?.d, stored(client, 'link:t2')?.d],
-    }).toEqual({ callsAsPlayer: 0, sent: [], links: ['brok', 'brok'] });
+    }).toEqual({ callsAsPlayer: 0, sent: [], links: [BROK, BROK] });
   });
 
   test('stops with the engine', async () => {
@@ -369,8 +392,8 @@ describe('during catch-up', () => {
 
     // #when
     client.platform.removeSceneItems(['t1']);
-    post(room, GHOST, commit([{ k: 'link:t1', d: 'brok', c: 1, a: 'seed' }]));
-    await waitUntil(() => stored(client, 'link:t1')?.d === 'brok');
+    post(room, GHOST, commit([{ k: 'link:t1', d: BROK, c: 1, a: 'seed' }]));
+    await waitUntil(() => sameData(stored(client, 'link:t1'), BROK));
     await pause(SETTLE_MS);
 
     const during = { state: client.store.$sync.get().state, sent: committed(room, 'gm-a') };
@@ -385,7 +408,7 @@ describe('during catch-up', () => {
     }).toEqual({
       during: { state: 'catching-up', sent: [] },
       sent: [['link:t1', null]],
-      kept: 'brok',
+      kept: BROK,
     });
   });
 
@@ -432,7 +455,7 @@ describe('two GM clients', () => {
     await waitUntil(() => stored(second, 'link:t1')?.d === null);
 
     // #when
-    send(second, { type: 'link-set', tokenId: 't1', sheetId: 'skel' });
+    send(second, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
     await waitUntil(() => stored(second, 'link:t1')?.c === 4);
 
     // #then
@@ -460,14 +483,14 @@ describe('two GM clients', () => {
     await pause(SETTLE_MS);
 
     // #when
-    send(second, { type: 'link-set', tokenId: 't1', sheetId: 'skel' });
-    await waitUntil(() => stored(first, 'link:t1')?.d === 'skel');
+    send(second, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
+    await waitUntil(() => sameData(stored(first, 'link:t1'), SKEL));
     await pause(SETTLE_MS);
 
     // #then
     expect({ first: stored(first, 'link:t1')?.d, second: stored(second, 'link:t1')?.d }).toEqual({
-      first: 'skel',
-      second: 'skel',
+      first: SKEL,
+      second: SKEL,
     });
   });
 
@@ -625,7 +648,7 @@ function post(room: Room, from: string, data: JsonValue): void {
 }
 
 function commit(records: VersionedRecord[]): JsonValue {
-  return { v: 1, g: INITIAL, t: 'commit', records };
+  return { v: 2, g: INITIAL, t: 'commit', records };
 }
 
 function send(client: Client, command: Command): void {
@@ -686,6 +709,11 @@ function pause(milliseconds: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, milliseconds);
   });
+}
+
+// Records hold their data as JSON, so two equal links are two objects.
+function sameData(record: VersionedRecord | null | undefined, d: JsonValue): boolean {
+  return JSON.stringify(record?.d) === JSON.stringify(d);
 }
 
 function shown(client: Client, key: string): VersionedRecord | undefined {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { randomFaces } from '@/core/formula-evaluate';
-import type { PresetTemplate } from '@/core/preset';
+import type { TemplateLayout } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 
 import { rollDiceCell, type DicePlace, type ShownValue } from './dice-roll';
@@ -9,7 +9,7 @@ import { rollDiceCell, type DicePlace, type ShownValue } from './dice-roll';
 // Every 1d20 shows 7: floor(0.3 * 20) + 1.
 const SEVEN = (): number => 0.3;
 
-const TEMPLATE: PresetTemplate = {
+const TEMPLATE: TemplateLayout = {
   sections: [
     {
       rows: [
@@ -44,12 +44,33 @@ const TEMPLATE: PresetTemplate = {
         ],
       ],
     },
+    {
+      repeat: true,
+      rows: [
+        [
+          { kind: 'text', text: 'Заклинание' },
+          { kind: 'field', type: 'text', id: 'spell' },
+          { kind: 'field', type: 'number', id: 'power' },
+        ],
+        [
+          { kind: 'text', text: 'Дальность' },
+          { kind: 'field', type: 'number', id: 'range' },
+          { kind: 'dice', formula: '1d20 + power + range' },
+        ],
+      ],
+    },
   ],
 };
 
 const ROWS: VersionedRecord[] = [
   { k: 'row:brok:str', d: { str: 14, str_tired: true }, c: 1, a: 'gm' },
   { k: 'rep:brok:attack:i1', d: { order: 0, cells: { attack: 'Меч', bonus: 3 } }, c: 1, a: 'gm' },
+  {
+    k: 'rep:brok:spell:s1',
+    d: { order: 0, cells: { spell: 'Искра', power: 2, range: 4 } },
+    c: 1,
+    a: 'gm',
+  },
 ];
 
 const RECORDS: ReadonlyMap<string, VersionedRecord> = new Map(
@@ -59,6 +80,8 @@ const RECORDS: ReadonlyMap<string, VersionedRecord> = new Map(
 const STRENGTH: DicePlace = { sectionIndex: 0, rowIndex: 0, cellIndex: 3, instanceId: null };
 
 const ATTACK: DicePlace = { sectionIndex: 1, rowIndex: 0, cellIndex: 3, instanceId: 'i1' };
+
+const SPELL_RANGE: DicePlace = { sectionIndex: 2, rowIndex: 1, cellIndex: 2, instanceId: 's1' };
 
 function roll(place: DicePlace, shown: [string, ShownValue][] = []) {
   return rollDiceCell(TEMPLATE, RECORDS, 'brok', place, new Map(shown), randomFaces(SEVEN));
@@ -101,6 +124,20 @@ describe('rollDiceCell', () => {
     });
   });
 
+  test('rolls a dice cell in the second row of a repeat block from the fields of its whole block', () => {
+    // #when
+    const rolled = roll(SPELL_RANGE);
+
+    // #then
+    expect(rolled).toEqual({
+      ok: true,
+      value: {
+        cell: 'Дальность',
+        result: { roll: 13, faces: [7], target: null, targetFaces: [], outcome: null },
+      },
+    });
+  });
+
   test.each<[string, DicePlace, [string, ShownValue][], string]>([
     ['a field shown in an input error', STRENGTH, [['str', { kind: 'error' }]], 'Сила'],
     ['a field shown empty', STRENGTH, [['str', { kind: 'text', text: '' }]], 'Сила'],
@@ -121,6 +158,12 @@ describe('rollDiceCell', () => {
       ATTACK,
       [['str', { kind: 'error' }]],
       'Сила',
+    ],
+    [
+      'a field of the first row of the block, by its label in that row',
+      SPELL_RANGE,
+      [['power', { kind: 'error' }]],
+      'Заклинание',
     ],
     [
       'an id that only a repeat row holds, by the id',

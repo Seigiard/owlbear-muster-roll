@@ -53,16 +53,37 @@ const INITIAL: Generation = { n: 0, a: '' };
 const GHOST = 'ghost-gm';
 
 const PRESET: Preset = {
-  v: 1,
-  character: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'name' }],
+            [{ kind: 'field', type: 'number', id: 'str' }],
+          ],
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+  ],
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
 
 const BROK: VersionedRecord = {
   k: 'sheet:brok',
-  d: { kind: 'pc', name: 'Брок', order: 0 },
+  d: { set: 'pc', order: 0 },
   c: 1,
   a: 'seed',
 };
@@ -74,7 +95,7 @@ const OTHER_DIGEST = 12345;
 
 const LIZA: VersionedRecord = {
   k: 'sheet:liza',
-  d: { kind: 'pc', name: 'Лиза', order: 1 },
+  d: { set: 'pc', order: 1 },
   c: 1,
   a: 'seed',
 };
@@ -186,7 +207,7 @@ async function startClient(
 
   for (const record of options.seeded ?? [PRESET_RECORD, BROK]) {
     backing.set(
-      `mr1:mock-room:${generation.n}:${generation.a}:${record.k}`,
+      `mr2:mock-room:${generation.n}:${generation.a}:${record.k}`,
       JSON.stringify(record),
     );
   }
@@ -271,19 +292,19 @@ function lastRequest(room: Room, from: string): string {
 }
 
 function alive(digest: number, g: Generation = INITIAL): JsonValue {
-  return { v: 1, g, t: 'alive', digest };
+  return { v: 2, g, t: 'alive', digest };
 }
 
 function ping(g: Generation = INITIAL): JsonValue {
-  return { v: 1, g, t: 'ping' };
+  return { v: 2, g, t: 'ping' };
 }
 
 function commit(records: VersionedRecord[], g: Generation = INITIAL): JsonValue {
-  return { v: 1, g, t: 'commit', records };
+  return { v: 2, g, t: 'commit', records };
 }
 
 function stateMessage(r: string, records: readonly VersionedRecord[]): JsonValue {
-  return { v: 1, g: INITIAL, t: 'state', r, i: 1, n: 1, records: encodeStateRecords(records) };
+  return { v: 2, g: INITIAL, t: 'state', r, i: 1, n: 1, records: encodeStateRecords(records) };
 }
 
 // A GM client that is live and alone, then hears from a GM that only the test speaks for.

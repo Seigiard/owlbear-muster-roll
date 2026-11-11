@@ -54,7 +54,7 @@ const TIMING: Timing = {
 // The key of the 2.5 spec, written out by hand.
 const KEY = 'app.muster-roll/snapshot';
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 const INITIAL: Generation = { n: 0, a: '' };
@@ -62,22 +62,40 @@ const GHOST = 'ghost-gm';
 const PLAYER = 'player-p';
 
 const PRESET: Preset = {
-  v: 1,
-  character: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'name' }],
+            [{ kind: 'field', type: 'number', id: 'str' }],
+          ],
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+  ],
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
-const BROK = sheet('brok', 'Брок');
-const MIRA = sheet('mira', 'Мира');
+const BROK = sheet('brok');
+const BROK_NAME = nameRow('brok', 'Брок');
+const MIRA = sheet('mira');
 const BROK_STR: VersionedRecord = { k: 'row:brok:str', d: { str: 12 }, c: 1, a: 'seed' };
 
-const GOBLIN: VersionedRecord = {
-  k: 'sheet:gob',
-  d: { kind: 'npc', name: 'Гоблин', order: 1 },
-  c: 1,
-  a: 'seed',
-};
+// A row of the hidden single sheet "npc", whose sheet id is its template id.
+const GOBLIN_HP: VersionedRecord = { k: 'row:npc:hp', d: { hp: 7 }, c: 1, a: 'seed' };
 
 type ClientOptions = {
   role?: PlayerRole;
@@ -112,12 +130,16 @@ afterEach(() => {
   }
 });
 
-function sheet(id: string, name: string, c = 1, a = 'seed'): VersionedRecord {
-  return { k: `sheet:${id}`, d: { kind: 'pc', name, order: 0 }, c, a };
+function sheet(id: string): VersionedRecord {
+  return { k: `sheet:${id}`, d: { set: 'pc', order: 0 }, c: 1, a: 'seed' };
+}
+
+function nameRow(id: string, name: string, c = 1, a = 'seed'): VersionedRecord {
+  return { k: `row:${id}:name`, d: { name }, c, a };
 }
 
 // The stored room copy as the 2.5 spec describes it, built by hand with fflate.
-function copyValue(g: Generation, records: readonly VersionedRecord[], v = 1): JsonObject {
+function copyValue(g: Generation, records: readonly VersionedRecord[], v = 2): JsonObject {
   const deflated = deflateSync(strToU8(JSON.stringify({ g, records })));
 
   return { v, data: Buffer.from(deflated).toString('base64') };
@@ -280,15 +302,15 @@ function lastRequest(room: Room, from: string): string {
 }
 
 function stateMessage(r: string, records: readonly VersionedRecord[]): JsonValue {
-  return { v: 1, g: INITIAL, t: 'state', r, i: 1, n: 1, records: encodeStateRecords(records) };
+  return { v: 2, g: INITIAL, t: 'state', r, i: 1, n: 1, records: encodeStateRecords(records) };
 }
 
 function commit(records: readonly VersionedRecord[]): JsonValue {
-  return { v: 1, g: INITIAL, t: 'commit', records: [...records] };
+  return { v: 2, g: INITIAL, t: 'commit', records: [...records] };
 }
 
 function ping(): JsonValue {
-  return { v: 1, g: INITIAL, t: 'ping' };
+  return { v: 2, g: INITIAL, t: 'ping' };
 }
 
 // What a player alone in the room shows once its start catch-up timed out.
@@ -300,11 +322,13 @@ const ALONE: Omit<SyncState, 'role'> = {
 };
 
 describe('a player alone reads the room copy', () => {
-  test('a readable copy: every character, no NPC, outcome read, still no GM', async () => {
+  test('a readable copy: every visible sheet, no record of a hidden single sheet, outcome read, still no GM', async () => {
     // #given
     const room = openRoom();
 
-    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK, BROK_STR, GOBLIN]) });
+    room.room.setMetadata({
+      [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK, BROK_NAME, BROK_STR, GOBLIN_HP]),
+    });
 
     // #when
     const player = await playerAlone(room);
@@ -312,18 +336,18 @@ describe('a player alone reads the room copy', () => {
     // #then
     expect({ keys: keysOf(player), outcome: roomCopy(player).outcome, sync: sync(player) }).toEqual(
       {
-        keys: ['preset', 'row:brok:str', 'sheet:brok'],
+        keys: ['preset', 'row:brok:name', 'row:brok:str', 'sheet:brok'],
         outcome: 'read',
         sync: { ...ALONE, role: 'PLAYER' },
       },
     );
   });
 
-  test('a readable copy with a preset and no character: outcome read, the preset only', async () => {
+  test('a readable copy with a preset and no visible sheet: outcome read, the preset only', async () => {
     // #given
     const room = openRoom();
 
-    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, GOBLIN]) });
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, GOBLIN_HP]) });
 
     // #when
     const player = await playerAlone(room);
@@ -373,7 +397,7 @@ describe('a player alone reads the room copy', () => {
 
     const room = openRoom();
 
-    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 2) });
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 3) });
 
     // #when
     const player = await playerAlone(room);
@@ -386,13 +410,32 @@ describe('a player alone reads the room copy', () => {
     }).toEqual({ keys: [], outcome: 'newer', notices: ['new-version'] });
   });
 
+  test('a copy of an older format: outcome older, no notice for a player, nothing read', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = openRoom();
+
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 1) });
+
+    // #when
+    const player = await playerAlone(room);
+
+    // #then
+    expect({
+      keys: keysOf(player),
+      outcome: roomCopy(player).outcome,
+      notices: player.store.$notices.get(),
+    }).toEqual({ keys: [], outcome: 'older', notices: [] });
+  });
+
   test('a copy that does not decode: outcome unreadable, no notice for a player', async () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
     const room = openRoom();
 
-    room.room.setMetadata({ [KEY]: { v: 1, data: 'bm90IGRlZmxhdGU=' } });
+    room.room.setMetadata({ [KEY]: { v: 2, data: 'bm90IGRlZmxhdGU=' } });
 
     // #when
     const player = await playerAlone(room);
@@ -464,7 +507,7 @@ describe('a GM returns', () => {
     await waitUntil(() => requestsOf(room, PLAYER).length === 2);
 
     const during = sync(player);
-    const renamed = sheet('brok', 'Брок Смелый', 2, GHOST);
+    const renamed = nameRow('brok', 'Брок Смелый', 2, GHOST);
 
     room.post(GHOST, stateMessage(lastRequest(room, PLAYER), [PRESET_RECORD, renamed, MIRA]));
     await waitUntil(() => sync(player).gmAnswered);
@@ -481,7 +524,7 @@ describe('a GM returns', () => {
       during: { state: 'catching-up', gmLink: 'online' },
       after: { ...ALONE, gmAnswered: true, gmLink: 'online', role: 'PLAYER' },
       brok: renamed,
-      keys: ['preset', 'sheet:brok', 'sheet:mira'],
+      keys: ['preset', 'row:brok:name', 'sheet:brok', 'sheet:mira'],
     });
   });
 
@@ -565,10 +608,10 @@ describe('a GM returns', () => {
     joinAs(room, GHOST, 'GM');
 
     // #when
-    const renamed = sheet('brok', 'Брок Смелый', 2, 'gm-a');
+    const renamed = nameRow('brok', 'Брок Смелый', 2, 'gm-a');
 
     await startClient(room, 'gm-a', {
-      seeded: [PRESET_RECORD, renamed, MIRA],
+      seeded: [PRESET_RECORD, BROK, renamed, MIRA],
       timing: { catchUpTimeoutMs: 200 },
     });
 
@@ -576,7 +619,7 @@ describe('a GM returns', () => {
 
     // #then
     expect({ keys: keysOf(player), brok: player.store.$records.get().get(renamed.k) }).toEqual({
-      keys: ['preset', 'sheet:brok', 'sheet:mira'],
+      keys: ['preset', 'row:brok:name', 'sheet:brok', 'sheet:mira'],
       brok: renamed,
     });
   });
@@ -589,10 +632,10 @@ describe('a GM returns', () => {
     joinAs(room, GHOST, 'GM');
 
     // #when
-    const renamed = sheet('brok', 'Брок Смелый', 2, 'gm-a');
+    const renamed = nameRow('brok', 'Брок Смелый', 2, 'gm-a');
 
     await startClient(room, 'gm-a', {
-      seeded: [PRESET_RECORD, renamed, MIRA],
+      seeded: [PRESET_RECORD, BROK, renamed, MIRA],
       timing: { catchUpTimeoutMs: 200 },
     });
 
@@ -605,7 +648,7 @@ describe('a GM returns', () => {
       brok: player.store.$records.get().get(renamed.k),
       sync: sync(player),
     }).toEqual({
-      keys: ['preset', 'sheet:brok', 'sheet:mira'],
+      keys: ['preset', 'row:brok:name', 'sheet:brok', 'sheet:mira'],
       brok: renamed,
       sync: { ...ALONE, gmAnswered: true, gmLink: 'online', role: 'PLAYER' },
     });
@@ -619,7 +662,7 @@ describe('a GM returns', () => {
     joinAs(room, GHOST, 'GM');
 
     // #when: the ghost asks for state, as a GM tab that just opened does.
-    room.post(GHOST, { v: 1, g: INITIAL, t: 'state-request', r: 'ghost-r' });
+    room.post(GHOST, { v: 2, g: INITIAL, t: 'state-request', r: 'ghost-r' });
     await waitUntil(() =>
       room.heard.some(
         (message) =>
@@ -711,7 +754,7 @@ describe('outcomes with nothing to read', () => {
   });
 
   test('a player that holds records adopts a copy of a higher generation in place of them', async () => {
-    // #given: the player holds a record of its own generation from a GM commit.
+    // #given: the player holds records of its own generation from a GM commit.
     const room = openRoom();
 
     joinAs(room, GHOST, 'GM');
@@ -723,7 +766,7 @@ describe('outcomes with nothing to read', () => {
     });
 
     expect(sync(player).state).toBe('catching-up');
-    room.post(GHOST, commit([BROK]));
+    room.post(GHOST, commit([PRESET_RECORD, BROK]));
     await waitUntil(() => player.store.$records.get().has(BROK.k));
     await waitUntil(() => sync(player).state === 'live');
     room.room.setMetadata({ [KEY]: copyValue({ n: 1, a: 'importer' }, [PRESET_RECORD, MIRA]) });

@@ -49,37 +49,69 @@ const TIMING: Timing = {
   snapshotImportTimeoutMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 const INITIAL: Generation = { n: 0, a: '' };
 const ROW_STR = { kind: 'row', rowId: 'str' } as const;
 const ROW_NOTES = { kind: 'row', rowId: 'notes' } as const;
+const ROW_NAME = { kind: 'row', rowId: 'name' } as const;
 const GHOST = 'ghost-gm';
 const ASKER = 'asker';
 
+// "pc" is the visible sheet set, "npc" a hidden single sheet and "mon" a hidden sheet set.
 const PRESET: Preset = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'check', id: 'str_tired' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      tokens: true,
+      sections: [
+        {
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'name' }],
+            [
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'check', id: 'str_tired' },
+            ],
+            [{ kind: 'field', type: 'text', id: 'notes' }],
           ],
-          [{ kind: 'field', type: 'text', id: 'notes' }],
-        ],
-      },
-      { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+        },
+        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      tokens: true,
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+    {
+      id: 'mon',
+      kind: 'set',
+      title: 'Монстры',
+      nameField: 'title',
+      visibility: 'gm',
+      sections: [
+        {
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'title' }],
+            [{ kind: 'field', type: 'number', id: 'mhp' }],
+          ],
+        },
+      ],
+    },
+  ],
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
 
-const BROK = sheet('brok', 'Брок');
+const BROK = sheet('brok');
 
 const LIVE: SyncState = {
   state: 'live',
@@ -127,8 +159,8 @@ afterEach(() => {
   }
 });
 
-function sheet(id: string, name: string, c = 1, a = 'seed'): VersionedRecord {
-  return { k: `sheet:${id}`, d: { kind: 'pc', name, order: 0 }, c, a };
+function sheet(id: string, c = 1, a = 'seed'): VersionedRecord {
+  return { k: `sheet:${id}`, d: { set: 'pc', order: 0 }, c, a };
 }
 
 function createBacking(): MockStorageBacking {
@@ -307,11 +339,11 @@ function stateMessage(
   n = 1,
   g: Generation = INITIAL,
 ): JsonValue {
-  return { v: 1, g, t: 'state', r, i, n, records: encodeStateRecords(records) };
+  return { v: 2, g, t: 'state', r, i, n, records: encodeStateRecords(records) };
 }
 
 function commit(records: VersionedRecord[], g: Generation = INITIAL): JsonValue {
-  return { v: 1, g, t: 'commit', records };
+  return { v: 2, g, t: 'commit', records };
 }
 
 // A GM client in `catching-up` after its first catch-up: it was alone, then a GM that never answers
@@ -357,7 +389,7 @@ describe('start', () => {
         role: 'GM',
       },
       brok: BROK,
-      request: [{ v: 1, g: INITIAL, t: 'state-request', r: lastRequest(room, 'gm-b') }],
+      request: [{ v: 2, g: INITIAL, t: 'state-request', r: lastRequest(room, 'gm-b') }],
     });
   });
 
@@ -411,7 +443,7 @@ describe('start', () => {
   test('a late GM client gets the records of a live GM client and persists them', async () => {
     // #given
     const room = openRoom();
-    const liza = sheet('liza', 'Лиза', 3, 'gm-a');
+    const liza = sheet('liza', 3, 'gm-a');
 
     await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, BROK, liza], untilLive: true });
 
@@ -444,7 +476,7 @@ describe('answer', () => {
     // #when
     const asked = Date.now();
 
-    room.post(ASKER, { v: 1, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await waitUntil(() => heardOf(room, 'gm-a', 'state').length > 0);
 
     // #then
@@ -474,7 +506,7 @@ describe('answer', () => {
     joinAs(room, GHOST, 'GM');
 
     // #when
-    room.post(ASKER, { v: 1, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
     room.post(GHOST, stateMessage('r-asker', [BROK]));
     await pause(200);
 
@@ -492,7 +524,7 @@ describe('answer', () => {
     const client = await startClient(room, 'gm-b');
 
     // #when
-    room.post(ASKER, { v: 1, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await pause(100);
 
     // #then
@@ -510,7 +542,7 @@ describe('answer', () => {
     await startClient(room, 'player-p', { role: 'PLAYER', seeded: [], untilLive: true });
 
     // #when
-    room.post(ASKER, { v: 1, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await pause(100);
 
     // #then
@@ -533,7 +565,7 @@ describe('answer', () => {
     joinAs(room, ASKER, 'PLAYER');
 
     // #when
-    room.post(ASKER, { v: 1, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await pause(100);
 
     // #then
@@ -555,9 +587,9 @@ describe('answer', () => {
     joinAs(room, GHOST, 'GM');
 
     // #when
-    room.post(ASKER, { v: 1, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
     room.post(GHOST, {
-      v: 1,
+      v: 2,
       g: INITIAL,
       t: 'state',
       r: 'r-asker',
@@ -577,11 +609,11 @@ describe('answer', () => {
 
     await startClient(room, 'gm-a', { untilLive: true });
     joinAs(room, ASKER, 'PLAYER');
-    room.post(ASKER, { v: 1, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await waitUntil(() => heardOf(room, 'gm-a', 'state').length === 1);
 
     // #when
-    room.post(ASKER, { v: 1, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await waitUntil(() => heardOf(room, 'gm-a', 'state').length === 2);
 
     // #then
@@ -602,8 +634,8 @@ describe('exit', () => {
 
     const client = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 1500 } });
     const r = lastRequest(room, 'gm-b');
-    const liza = sheet('liza', 'Лиза', 1, GHOST);
-    const nika = sheet('nika', 'Ника', 1, 'ghost-gm-2');
+    const liza = sheet('liza', 1, GHOST);
+    const nika = sheet('nika', 1, 'ghost-gm-2');
 
     // #when
     room.post(GHOST, stateMessage(r, [liza], 1, 2));
@@ -651,7 +683,7 @@ describe('exit', () => {
 
     joinAs(room, GHOST, 'GM');
 
-    const liza = sheet('liza', 'Лиза', 1, GHOST);
+    const liza = sheet('liza', 1, GHOST);
 
     // #when
     room.post(GHOST, stateMessage('someone-elses-nonce', [liza], 1, 3));
@@ -702,7 +734,7 @@ describe('re-entry', () => {
     // #when
     client.engine.catchUp();
     await waitUntil(() => requestsOf(room, 'gm-a').length === asked + 1);
-    room.post(GHOST, stateMessage(r, [sheet('liza', 'Лиза', 1, GHOST)], 1, 2));
+    room.post(GHOST, stateMessage(r, [sheet('liza', 1, GHOST)], 1, 2));
     await waitUntil(() => shown(client, 'sheet:liza') !== undefined);
     client.engine.catchUp();
     await pause(50);
@@ -788,8 +820,8 @@ describe('re-entry', () => {
     const higher = { n: 1, a: 'imp' };
 
     // #when
-    room.post(GHOST, commit([sheet('liza', 'Лиза', 1, GHOST)], higher));
-    room.post(GHOST, commit([sheet('nika', 'Ника', 1, GHOST)], higher));
+    room.post(GHOST, commit([sheet('liza', 1, GHOST)], higher));
+    room.post(GHOST, commit([sheet('nika', 1, GHOST)], higher));
     await waitUntil(() => requestsOf(room, 'gm-b').length === 2);
     await pause(50);
 
@@ -858,18 +890,24 @@ describe('pending queue', () => {
     ]);
   });
 
-  test('a create shows its sheet at once, and create, rename, patch and row add replay in order', async () => {
+  test('a create shows its sheet at once, and create, rename, patch and block add replay in order', async () => {
     // #given
     const room = openRoom();
     const client = await catchingUpAgain(room, 'gm-a');
 
     // #when
-    send(client, { type: 'sheet-create', sheetId: 'liza', kind: 'pc', name: 'Лиза' });
+    send(client, { type: 'sheet-create', sheetId: 'liza', set: 'pc' });
     await waitUntil(() => shown(client, 'sheet:liza') !== undefined);
 
     const createdAtOnce = shown(client, 'sheet:liza')?.d;
 
-    send(client, { type: 'sheet-rename', sheetId: 'liza', name: 'Лиза Смелая' });
+    send(client, {
+      type: 'field-patch',
+      sheetId: 'liza',
+      target: ROW_NAME,
+      fieldId: 'name',
+      value: 'Лиза Смелая',
+    });
     send(client, {
       type: 'field-patch',
       sheetId: 'liza',
@@ -878,7 +916,7 @@ describe('pending queue', () => {
       value: 'Лучница',
     });
     send(client, {
-      type: 'repeat-row-add',
+      type: 'repeat-block-add',
       sheetId: 'liza',
       sectionId: 'attack',
       instanceId: 'i1',
@@ -899,16 +937,19 @@ describe('pending queue', () => {
     expect({
       createdAtOnce,
       sheet: stored(client, 'sheet:liza')?.d,
+      name: stored(client, 'row:liza:name')?.d,
       notes: stored(client, 'row:liza:notes')?.d,
-      row: stored(client, 'rep:liza:attack:i1')?.d,
+      block: stored(client, 'rep:liza:attack:i1')?.d,
       keys,
     }).toEqual({
-      createdAtOnce: { kind: 'pc', name: 'Лиза', order: 1 },
-      sheet: { kind: 'pc', name: 'Лиза Смелая', order: 1 },
+      createdAtOnce: { set: 'pc', order: 1 },
+      sheet: { set: 'pc', order: 1 },
+      name: { name: 'Лиза Смелая' },
       notes: { notes: 'Лучница' },
-      row: { order: 0, cells: {} },
+      block: { order: 0, cells: {} },
       keys: [
-        ['sheet:liza', 2],
+        ['sheet:liza', 1],
+        ['row:liza:name', 1],
         ['row:liza:notes', 1],
         ['rep:liza:attack:i1', 1],
       ],
@@ -927,6 +968,7 @@ describe('pending queue', () => {
       type: 'preset-upload',
       data: encodePreset(PRESET),
       expectedCount: 0,
+      expectedSheets: 0,
       expectedDigest: '811c9dc5',
     });
 
@@ -1021,12 +1063,7 @@ describe('pending queue', () => {
     const client = await catchingUpAgain(room, 'gm-a');
     const edit = send(client, patch(ROW_STR, 'str', 12));
 
-    const create = send(client, {
-      type: 'sheet-create',
-      sheetId: 'liza',
-      kind: 'pc',
-      name: 'Лиза',
-    });
+    const create = send(client, { type: 'sheet-create', sheetId: 'liza', set: 'pc' });
 
     await waitUntil(() => shown(client, 'sheet:liza') !== undefined);
 
@@ -1107,7 +1144,7 @@ describe('role and generation', () => {
     // #given
     const room = openRoom();
     const higher = { n: 2, a: 'imp' };
-    const liza = sheet('liza', 'Лиза');
+    const liza = sheet('liza');
 
     joinAs(room, GHOST, 'GM');
 
@@ -1118,7 +1155,7 @@ describe('role and generation', () => {
       untilLive: true,
     });
 
-    client.backing.set(`mr1:mock-room:2:imp:${liza.k}`, JSON.stringify(liza));
+    client.backing.set(`mr2:mock-room:2:imp:${liza.k}`, JSON.stringify(liza));
 
     // #when
     client.platform.setRole('GM');
@@ -1147,9 +1184,12 @@ describe('role and generation', () => {
     });
 
     // #when
-    room.post(GHOST, stateMessage(lastRequest(room, 'player-p'), [BROK], 1, 1, higher));
+    room.post(
+      GHOST,
+      stateMessage(lastRequest(room, 'player-p'), [PRESET_RECORD, BROK], 1, 1, higher),
+    );
     await waitUntil(() => sync(client).state === 'live');
-    room.post(GHOST, commit([sheet('liza', 'Лиза', 1, GHOST)], higher));
+    room.post(GHOST, commit([sheet('liza', 1, GHOST)], higher));
     await waitUntil(() => shown(client, 'sheet:liza') !== undefined);
 
     // #then
@@ -1163,7 +1203,7 @@ describe('role and generation', () => {
     // #given
     const room = openRoom();
     const higher = { n: 1, a: 'x' };
-    const liza = sheet('liza', 'Лиза');
+    const liza = sheet('liza');
 
     joinAs(room, GHOST, 'GM');
 
@@ -1173,12 +1213,17 @@ describe('role and generation', () => {
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), [liza], 1, 1, higher));
     await waitUntil(() => sync(client).state === 'live');
 
-    // #then: the old generation's records are gone from the replica and the storage.
+    // #then: the old generation's records are gone from the replica and the storage, and the new
+    // generation keeps its marker.
     expect({
       liza: shown(client, liza.k),
       brok: shown(client, BROK.k) ?? null,
       stored: client.backing.keys().sort(),
-    }).toEqual({ liza, brok: null, stored: ['mr1:mock-room:1:x:sheet:liza'] });
+    }).toEqual({
+      liza,
+      brok: null,
+      stored: ['mr2:mock-room:1:x:#generation', 'mr2:mock-room:1:x:sheet:liza'],
+    });
   });
 });
 
@@ -1209,17 +1254,21 @@ test('a complete answer ends the first catch-up, and the window learns it', asyn
 });
 
 describe('player visibility', () => {
-  const skeleton: VersionedRecord = {
-    k: 'sheet:skel',
-    d: { kind: 'npc', name: 'Скелет', order: 0 },
-    c: 1,
-    a: 'seed',
-  };
-
-  const skeletonHp: VersionedRecord = { k: 'row:skel:hp', d: { hp: 7 }, c: 1, a: 'seed' };
+  // A row of the hidden single sheet "npc", whose sheet id is its template id.
+  const skeletonHp: VersionedRecord = { k: 'row:npc:hp', d: { hp: 7 }, c: 1, a: 'seed' };
   const brokStr: VersionedRecord = { k: 'row:brok:str', d: { str: 14 }, c: 1, a: 'seed' };
 
-  // A player that a GM answered with a character and an NPC.
+  // A sheet of the hidden sheet set "mon", with its name row.
+  const goblin: VersionedRecord = { k: 'sheet:gob', d: { set: 'mon', order: 0 }, c: 1, a: GHOST };
+
+  const goblinName: VersionedRecord = {
+    k: 'row:gob:title',
+    d: { title: 'Гоблин' },
+    c: 1,
+    a: GHOST,
+  };
+
+  // A player that a GM answered with a sheet of the visible sheet set and the hidden single sheet.
   async function answeredPlayer(room: Room, catchUpTimeoutMs = 1500): Promise<Client> {
     joinAs(room, GHOST, 'GM');
 
@@ -1231,20 +1280,14 @@ describe('player visibility', () => {
 
     room.post(
       GHOST,
-      stateMessage(lastRequest(room, 'player-p'), [
-        PRESET_RECORD,
-        BROK,
-        brokStr,
-        skeleton,
-        skeletonHp,
-      ]),
+      stateMessage(lastRequest(room, 'player-p'), [PRESET_RECORD, BROK, brokStr, skeletonHp]),
     );
     await waitUntil(() => sync(client).state === 'live');
 
     return client;
   }
 
-  test('a player window gets the preset and the characters with their rows, and no NPC', async () => {
+  test('a player window gets the preset and the visible sheets with their rows, and no hidden sheet', async () => {
     // #given
     const room = openRoom();
 
@@ -1261,22 +1304,14 @@ describe('player visibility', () => {
     });
   });
 
-  test('an NPC a GM creates never reaches a player window', async () => {
+  test('a sheet a GM creates in a hidden sheet set, and a hidden single sheet edit, never reach a player window', async () => {
     // #given
     const room = openRoom();
     const client = await answeredPlayer(room);
-
-    const goblin: VersionedRecord = {
-      k: 'sheet:gob',
-      d: { kind: 'npc', name: 'Гоблин', order: 1 },
-      c: 1,
-      a: GHOST,
-    };
-
     const edited: VersionedRecord = { ...brokStr, d: { str: 16 }, c: 2, a: GHOST };
 
-    // #when: the edit after the NPC shows that the NPC commit was handled.
-    room.post(GHOST, commit([goblin, { k: 'row:gob:hp', d: { hp: 5 }, c: 1, a: GHOST }]));
+    // #when: the edit after the hidden ones shows that their commits were handled.
+    room.post(GHOST, commit([goblin, goblinName]));
     room.post(GHOST, commit([{ ...skeletonHp, d: { hp: 3 }, c: 2, a: GHOST }]));
     room.post(GHOST, commit([edited]));
     await waitUntil(() => shown(client, brokStr.k)?.c === 2);
@@ -1289,44 +1324,41 @@ describe('player visibility', () => {
     ]);
   });
 
-  test('a GM made a player gets a fresh projection with no NPC in it', async () => {
+  test('a GM made a player gets a fresh projection with no hidden sheet in it', async () => {
     // #given
     const room = openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [PRESET_RECORD, BROK, skeleton, skeletonHp],
+      seeded: [PRESET_RECORD, BROK, skeletonHp, goblin, goblinName],
       untilLive: true,
     });
 
-    const before = shown(client, skeleton.k);
+    const before = [shown(client, skeletonHp.k), shown(client, goblin.k)];
 
     // #when
     client.platform.setRole('PLAYER');
     await waitUntil(
-      () => sync(client).role === 'PLAYER' && shown(client, skeleton.k) === undefined,
+      () => sync(client).role === 'PLAYER' && shown(client, skeletonHp.k) === undefined,
     );
 
     // #then
     expect({
       before,
       keys: [...client.store.$records.get().keys()].sort(),
-    }).toEqual({ before: skeleton, keys: ['preset', 'sheet:brok'] });
+    }).toEqual({ before: [skeletonHp, goblin], keys: ['preset', 'sheet:brok'] });
   });
 
-  test('a player made GM gets a fresh projection with the NPCs in it', async () => {
+  test('a player made GM gets a fresh projection with the hidden sheets in it', async () => {
     // #given
     const room = openRoom();
     const client = await answeredPlayer(room);
 
     // #when
     client.platform.setRole('GM');
-    await waitUntil(() => sync(client).role === 'GM' && shown(client, skeleton.k) !== undefined);
+    await waitUntil(() => sync(client).role === 'GM' && shown(client, skeletonHp.k) !== undefined);
 
     // #then
-    expect([shown(client, skeleton.k), shown(client, skeletonHp.k)]).toEqual([
-      skeleton,
-      skeletonHp,
-    ]);
+    expect(shown(client, skeletonHp.k)).toEqual(skeletonHp);
   });
 
   test('a catch-up that ends by timeout leaves gmAnswered false', async () => {
@@ -1347,7 +1379,7 @@ describe('player visibility', () => {
     expect(sync(client)).toEqual({ ...LIVE, role: 'PLAYER' });
   });
 
-  test('a two-part answer with rows before their sheets shows the character rows and no NPC record', async () => {
+  test('a two-part answer with rows before their sheets shows the visible rows and no hidden record', async () => {
     // #given
     const room = openRoom();
 
@@ -1360,11 +1392,11 @@ describe('player visibility', () => {
     });
 
     const r = lastRequest(room, 'player-p');
-    const skeletonLink: VersionedRecord = { k: 'link:token-2', d: 'skel', c: 1, a: 'seed' };
+    const skeletonLink: VersionedRecord = { k: 'link:token-2', d: { s: 'npc' }, c: 1, a: 'seed' };
 
     // #when: the first part holds the rows, the second their sheets.
-    room.post(GHOST, stateMessage(r, [skeletonHp, skeletonLink, brokStr], 1, 2));
-    room.post(GHOST, stateMessage(r, [PRESET_RECORD, skeleton, BROK], 2, 2));
+    room.post(GHOST, stateMessage(r, [skeletonHp, skeletonLink, goblinName, brokStr], 1, 2));
+    room.post(GHOST, stateMessage(r, [PRESET_RECORD, goblin, BROK], 2, 2));
     await waitUntil(() => sync(client).state === 'live');
     await waitUntil(() => shown(client, brokStr.k) !== undefined);
 
@@ -1376,7 +1408,7 @@ describe('player visibility', () => {
     ]);
   });
 
-  test('a link that a GM points from a character to an NPC leaves the player window', async () => {
+  test('a link that a GM points from a visible sheet to a hidden one leaves the player window', async () => {
     // #given
     const room = openRoom();
 
@@ -1388,16 +1420,16 @@ describe('player visibility', () => {
       timing: { catchUpTimeoutMs: 1500 },
     });
 
-    const link: VersionedRecord = { k: 'link:token-1', d: 'brok', c: 1, a: 'seed' };
+    const link: VersionedRecord = { k: 'link:token-1', d: { s: 'brok' }, c: 1, a: 'seed' };
 
     room.post(
       GHOST,
-      stateMessage(lastRequest(room, 'player-p'), [PRESET_RECORD, BROK, brokStr, skeleton, link]),
+      stateMessage(lastRequest(room, 'player-p'), [PRESET_RECORD, BROK, brokStr, skeletonHp, link]),
     );
     await waitUntil(() => shown(client, link.k) !== undefined);
 
     // #when: the edit after the link shows that the link commit was handled.
-    room.post(GHOST, commit([{ ...link, d: 'skel', c: 2, a: GHOST }]));
+    room.post(GHOST, commit([{ ...link, d: { s: 'npc' }, c: 2, a: GHOST }]));
     room.post(GHOST, commit([{ ...brokStr, d: { str: 16 }, c: 2, a: GHOST }]));
     await waitUntil(() => shown(client, brokStr.k)?.c === 2);
 

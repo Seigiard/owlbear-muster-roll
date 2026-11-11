@@ -1,29 +1,79 @@
-import { sheetDataSchema, type SheetData, type VersionedRecord } from '@/core/records';
-import { dependentSheetId, isDependentKey, liveSheets, type SheetSummary } from '@/core/sheets';
+import { blockIndex, linkTargetOf, liveLinkTarget } from '@/core/link-target';
+import type { Preset, SheetSetTemplate, SingleSheetTemplate, Template } from '@/core/preset';
+import type { VersionedRecord } from '@/core/records';
+import {
+  dependentSheetId,
+  isDependentKey,
+  isSheetSet,
+  liveSheets,
+  resolveSheet,
+  type SheetSummary,
+} from '@/core/sheets';
 
 export type PlayerRole = 'GM' | 'PLAYER';
 
-export type VisibleSheets = { characters: SheetSummary[]; npcs: SheetSummary[] };
+// One template as the tab bar lists it: a sheet set with its live sheets, or a single sheet, whose
+// sheet id is its template id.
+export type VisibleTemplate =
+  | { kind: 'set'; template: SheetSetTemplate; sheets: SheetSummary[] }
+  | { kind: 'single'; template: SingleSheetTemplate };
 
-// FR2: a GM sees every record. A player sees the preset, every character and the records that
-// depend on one, and no NPC. Hiding is at the interface only: a player client still holds and
-// merges NPC records. A dependent record shows only while `known` holds its sheet as a live
-// character, so a row that comes before its sheet, or a link that points to an NPC, stays hidden.
-// A sheet tombstone stays: its kind cannot be told, and it shows nothing by itself.
+// The templates a role sees, in preset order.
+export type VisibleSheets = VisibleTemplate[];
+
+// CAP-2: a GM sees every template, a player only those with `visibility` other than "gm".
+export function templateShownTo(role: PlayerRole, template: Template): boolean {
+  return role === 'GM' || template.visibility !== 'gm';
+}
+
+// True while a template owns `sheetId` and this role sees that template.
+export function sheetShownTo(
+  records: ReadonlyMap<string, VersionedRecord>,
+  preset: Preset | null,
+  sheetId: string,
+  role: PlayerRole,
+): boolean {
+  const policy = resolveSheet(records, preset, sheetId);
+
+  return policy !== null && templateShownTo(role, policy.template);
+}
+
+// The Visibility convention: a GM sees every record. A player sees the preset, the sheets of
+// visible templates with their dependents, and live links to them. With no decoded preset a player
+// sees only the `preset` record. Hiding is at the interface only: a player client still holds and
+// merges hidden records. Each record is judged against `known`, so a row that comes before its
+// sheet, or a link to a hidden sheet, stays hidden. A sheet tombstone stays: its sheet set cannot
+// be told, and it shows nothing by itself.
 export function visibleRecords(
   role: PlayerRole,
+  preset: Preset | null,
   records: readonly VersionedRecord[],
-  known: Iterable<VersionedRecord> = records,
+  known: ReadonlyMap<string, VersionedRecord> = new Map(
+    records.map((record) => [record.k, record]),
+  ),
 ): VersionedRecord[] {
   if (role === 'GM') {
     return [...records];
   }
 
-  const characterIds = new Set(liveSheets(known, 'pc').map((sheet) => sheet.sheetId));
+  if (preset === null) {
+    return records.filter((record) => record.k === 'preset');
+  }
+
+  const blocks = blockIndex(known.values());
 
   return records.filter((record) => {
     if (record.k.startsWith('sheet:')) {
-      return sheetDataSchema.safeParse(record.d).data?.kind !== 'npc';
+      return (
+        record.d === null || sheetShownTo(known, preset, record.k.slice('sheet:'.length), role)
+      );
+    }
+
+    if (record.k.startsWith('link:')) {
+      const target = linkTargetOf(record.d);
+      const live = target === null ? null : liveLinkTarget(known, preset, target, blocks);
+
+      return live !== null && templateShownTo(role, live.policy.template);
     }
 
     if (!isDependentKey(record.k)) {
@@ -32,35 +82,51 @@ export function visibleRecords(
 
     const sheetId = dependentSheetId(record.k, record);
 
-    return sheetId !== null && characterIds.has(sheetId);
+    return sheetId !== null && sheetShownTo(known, preset, sheetId, role);
   });
 }
 
 // The window's records as a role sees them. A GM sees every record, so its map comes back as is.
 export function visibleRecordMap(
   role: PlayerRole,
+  preset: Preset | null,
   records: ReadonlyMap<string, VersionedRecord>,
 ): ReadonlyMap<string, VersionedRecord> {
   if (role === 'GM') {
     return records;
   }
 
-  return new Map(visibleRecords(role, [...records.values()]).map((record) => [record.k, record]));
+  return new Map(
+    visibleRecords(role, preset, [...records.values()], records).map((record) => [
+      record.k,
+      record,
+    ]),
+  );
 }
 
-// The only way a view lists sheets, so no view filters by kind or role on its own.
-export function visibleSheets(role: PlayerRole, records: Iterable<VersionedRecord>): VisibleSheets {
-  const visible = visibleRecords(role, [...records]);
+// The only way a view lists sheets, so no view filters by template or role on its own. Templates
+// come in preset order, and a sheet set's sheets by `(order, sheetId)`.
+export function visibleSheets(
+  role: PlayerRole,
+  preset: Preset | null,
+  records: ReadonlyMap<string, VersionedRecord>,
+): VisibleSheets {
+  if (preset === null) {
+    return [];
+  }
 
-  return { characters: liveSheets(visible, 'pc'), npcs: liveSheets(visible, 'npc') };
+  return preset.templates.flatMap((template): VisibleTemplate[] => {
+    if (!templateShownTo(role, template)) {
+      return [];
+    }
+
+    return isSheetSet(template)
+      ? [{ kind: 'set', template, sheets: liveSheets(records.values(), preset, template.id) }]
+      : [{ kind: 'single', template }];
+  });
 }
 
-// FR2: a GM sees a sheet of either kind, a player only a character.
-export function sheetKindShownTo(role: PlayerRole, kind: SheetData['kind']): boolean {
-  return role === 'GM' || kind === 'pc';
-}
-
-// AD-13: a player shows only a character's roll. It still receives an NPC's, as it holds NPCs.
-export function rollShownTo(role: PlayerRole, kind: SheetData['kind']): boolean {
-  return sheetKindShownTo(role, kind);
+// AD-13: a player shows only a roll from a visible sheet. It still receives a hidden one.
+export function rollShownTo(role: PlayerRole, hidden: boolean): boolean {
+  return role === 'GM' || !hidden;
 }

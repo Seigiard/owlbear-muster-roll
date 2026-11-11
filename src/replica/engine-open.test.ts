@@ -44,7 +44,7 @@ const TIMING: Timing = {
   snapshotImportTimeoutMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 
@@ -61,20 +61,51 @@ const MENU_COPY = {
 };
 
 const PRESET: Preset = {
-  v: 1,
-  character: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      tokens: true,
+      sections: [
+        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+        { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          repeat: true,
+          tokens: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'foe' },
+              { kind: 'field', type: 'number', id: 'hp' },
+            ],
+          ],
+        },
+      ],
+    },
+  ],
 };
 
-// "Брок" is a character, "Скелет" an NPC, "Лиза" was deleted. t-pc, t-npc and t-gone link to them.
+// "Брок" is a sheet of the "pc" set, "Скелет" a repeat block of the GM-only single sheet "npc",
+// "Лиза" was deleted. t-pc, t-npc and t-gone link to them.
 const ROOM: readonly VersionedRecord[] = [
   { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
-  { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 1, a: 'seed' },
-  { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'seed' },
+  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
+  { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
+  { k: 'rep:npc:foe:skel', d: { order: 0, cells: { foe: 'Скелет', hp: 7 } }, c: 1, a: 'seed' },
   { k: 'sheet:liza', d: null, c: 2, a: 'seed' },
-  { k: 'link:t-pc', d: 'brok', c: 1, a: 'seed' },
-  { k: 'link:t-npc', d: 'skel', c: 1, a: 'seed' },
-  { k: 'link:t-gone', d: 'liza', c: 1, a: 'seed' },
+  { k: 'link:t-pc', d: { s: 'brok' }, c: 1, a: 'seed' },
+  { k: 'link:t-npc', d: { s: 'npc', i: 'skel' }, c: 1, a: 'seed' },
+  { k: 'link:t-gone', d: { s: 'liza' }, c: 1, a: 'seed' },
 ];
 
 // One client's background, with no window until a test opens one. `requests` holds every open
@@ -112,8 +143,8 @@ describe('open from token', () => {
     // #then
     expect({
       actionOpens: background.platform.actionOpens(),
-      sheet: window.store.$openRequest.get()?.sheetId,
-    }).toEqual({ actionOpens: 1, sheet: 'brok' });
+      target: target(background, window),
+    }).toEqual({ actionOpens: 1, target: { sheetId: 'brok', instanceId: null } });
   });
 
   test('with the window open, a press reaches it at once', async () => {
@@ -126,7 +157,7 @@ describe('open from token', () => {
     await waitUntil(() => window.store.$openRequest.get() !== null);
 
     // #then
-    expect(window.store.$openRequest.get()?.sheetId).toBe('skel');
+    expect(target(background, window)).toEqual({ sheetId: 'npc', instanceId: 'skel' });
   });
 
   test('a player press on a character token reaches the window', async () => {
@@ -141,8 +172,8 @@ describe('open from token', () => {
     // #then
     expect({
       actionOpens: background.platform.actionOpens(),
-      sheet: window.store.$openRequest.get()?.sheetId,
-    }).toEqual({ actionOpens: 1, sheet: 'brok' });
+      target: target(background, window),
+    }).toEqual({ actionOpens: 1, target: { sheetId: 'brok', instanceId: null } });
   });
 
   for (const [role, tokenId] of [
@@ -231,9 +262,9 @@ describe('open from token', () => {
 
     // #then
     expect({
-      shown: window.store.$openRequest.get()?.sheetId,
+      shown: target(background, window),
       actionOpens: background.platform.actionOpens(),
-    }).toEqual({ shown: 'skel', actionOpens: 2 });
+    }).toEqual({ shown: { sheetId: 'npc', instanceId: 'skel' }, actionOpens: 2 });
   });
 
   test('an acknowledgement of a replaced request leaves the newer one held', async () => {
@@ -255,7 +286,7 @@ describe('open from token', () => {
     await waitUntil(() => second.store.$openRequest.get() !== null);
 
     // #then
-    expect(second.store.$openRequest.get()?.sheetId).toBe('skel');
+    expect(target(background, second)).toEqual({ sheetId: 'npc', instanceId: 'skel' });
   });
 
   test('a request no window took within its lifetime is dropped', async () => {
@@ -336,6 +367,37 @@ describe('open from token', () => {
     }).toEqual({ sentAfter: [], shown: null });
   });
 
+  test('a request whose repeat block is deleted before delivery is discarded', async () => {
+    // #given
+    const background = await startBackground('GM');
+
+    click(background, 't-npc');
+
+    // The press itself goes out once, to whatever window is open.
+    await waitUntil(() => background.requests.length === 1);
+
+    const sent = background.requests.length;
+
+    // #when
+    command(background, {
+      type: 'repeat-block-delete',
+      sheetId: 'npc',
+      sectionId: 'foe',
+      instanceId: 'skel',
+    });
+    await pause(SETTLE_MS);
+
+    const window = await openWindow(background);
+
+    await pause(SETTLE_MS);
+
+    // #then
+    expect({
+      sentAfter: background.requests.slice(sent),
+      shown: window.store.$openRequest.get(),
+    }).toEqual({ sentAfter: [], shown: null });
+  });
+
   test('a GM request for an NPC is discarded when the GM becomes a player before delivery', async () => {
     // #given
     const background = await startBackground('GM');
@@ -399,7 +461,11 @@ async function startBackground(
       const message = Object(event.data);
 
       if (message.t === 'open-sheet') {
-        requests.push({ id: String(message.id), sheetId: String(message.sheetId) });
+        requests.push({
+          id: String(message.id),
+          sheetId: String(message.sheetId),
+          instanceId: message.instanceId === null ? null : String(message.instanceId),
+        });
       }
     }),
   );
@@ -456,6 +522,16 @@ async function openWindow(background: Background): Promise<Window> {
   await waitUntil(() => store.$loaded.get());
 
   return { store, client };
+}
+
+// The sheet and repeat block the engine sent in the request the window holds.
+function target(background: Background, window: Window): Omit<OpenSheetRequest, 'id'> | null {
+  const id = window.store.$openRequest.get()?.id;
+  const request = background.requests.find((one) => one.id === id);
+
+  return request === undefined
+    ? null
+    : { sheetId: request.sheetId, instanceId: request.instanceId };
 }
 
 function click(background: Background, tokenId: string): void {

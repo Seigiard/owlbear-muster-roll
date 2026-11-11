@@ -47,7 +47,7 @@ const TIMING: Timing = {
   snapshotImportTimeoutMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 const GHOST = 'ghost-gm';
@@ -59,63 +59,84 @@ const GHOST_NAME = 'Призрак';
 const SEVEN = (): number => 0.3;
 
 const PRESET: Preset = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'check', id: 'str_tired' },
-            { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'check', id: 'str_tired' },
+              { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
+            ],
+            [
+              { kind: 'text', text: 'Ловкость' },
+              { kind: 'field', type: 'number', id: 'dex' },
+              { kind: 'dice', formula: '1d20 + dex' },
+            ],
+            [
+              { kind: 'text', text: 'Деление' },
+              { kind: 'dice', formula: 'str / (str - str)' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Ловкость' },
-            { kind: 'field', type: 'number', id: 'dex' },
-            { kind: 'dice', formula: '1d20 + dex' },
+        },
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'text', text: 'Атака' },
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+              { kind: 'dice', formula: '1d20 + bonus' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Деление' },
-            { kind: 'dice', formula: 'str / (str - str)' },
+        },
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
           ],
-        ],
-      },
-      {
-        repeat: true,
-        rows: [
-          [
-            { kind: 'text', text: 'Атака' },
-            { kind: 'field', type: 'text', id: 'attack' },
-            { kind: 'field', type: 'number', id: 'bonus' },
-            { kind: 'dice', formula: '1d20 + bonus' },
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Хиты' },
+              { kind: 'field', type: 'number', id: 'hp' },
+              { kind: 'dice', formula: '1d20 + hp' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Хиты' },
-            { kind: 'field', type: 'number', id: 'hp' },
-            { kind: 'dice', formula: '1d20 + hp' },
-          ],
-        ],
-      },
-    ],
-  },
+        },
+      ],
+    },
+  ],
 };
 
+// "Брок" and the unnamed "liza" are sheets of the "pc" set; "npc" is the GM-only single sheet.
 const SEEDED: VersionedRecord[] = [
   { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
-  { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 1, a: 'seed' },
+  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
+  { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
   { k: 'row:brok:str', d: { str: 14, str_tired: true }, c: 1, a: 'seed' },
   { k: 'rep:brok:attack:i1', d: { order: 0, cells: { attack: 'Меч', bonus: 3 } }, c: 1, a: 'seed' },
-  { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'seed' },
-  { k: 'row:skel:hp', d: { hp: 5 }, c: 1, a: 'seed' },
+  { k: 'sheet:liza', d: { set: 'pc', order: 1 }, c: 1, a: 'seed' },
+  { k: 'row:liza:str', d: { str: 14, str_tired: true }, c: 1, a: 'seed' },
+  { k: 'row:npc:hp', d: { hp: 5 }, c: 1, a: 'seed' },
 ];
 
 const STRENGTH: RollRequest = {
@@ -140,8 +161,10 @@ const ATTACK: RollRequest = {
   shown: {},
 };
 
+const UNNAMED_STRENGTH: RollRequest = { ...STRENGTH, sheetId: 'liza' };
+
 const HIT_POINTS: RollRequest = {
-  sheetId: 'skel',
+  sheetId: 'npc',
   place: { sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: null },
   shown: {},
 };
@@ -311,14 +334,14 @@ function joinGhost(room: Room, role: PlayerRole): void {
 }
 
 // A roll as the room carries it, with the roller name its sender wrote in.
-function rollFrom(id: string, sheetName: string, kind = 'pc', roller = GHOST_NAME): JsonValue {
+function rollFrom(id: string, sheetName: string, hidden = false, roller = GHOST_NAME): JsonValue {
   return {
-    v: 1,
+    v: 2,
     g: { n: 0, a: '' },
     t: 'roll',
     id,
     sheetId: 'brok',
-    kind,
+    hidden,
     roller,
     sheetName,
     cell: 'Сила',
@@ -350,12 +373,12 @@ describe('a roll', () => {
         {
           from: 'gm-a',
           data: {
-            v: 1,
+            v: 2,
             g: { n: 0, a: '' },
             t: 'roll',
             id: expect.any(String),
             sheetId: 'brok',
-            kind: 'pc',
+            hidden: false,
             roller: 'Мастер',
             sheetName: 'Брок',
             cell: 'Сила',
@@ -385,7 +408,7 @@ describe('a roll', () => {
     });
   });
 
-  test('of a repeat row reads its own instance and is named by the row', async () => {
+  test('of a repeat block reads its own instance and is named by the row', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
@@ -397,27 +420,60 @@ describe('a roll', () => {
     expect(shown(gm)).toEqual(['Мастер: Брок, Атака — 10']);
   });
 
-  test('of an NPC shows on GM clients only, though the player receives it', async () => {
+  test('of a hidden single sheet goes out hidden, named by its title, and shows on GM clients only, though the player receives it', async () => {
     // #given
     const room = openRoom();
     const gmA = await startClient(room, 'gm-a', { name: 'Мастер' });
     const gmB = await startClient(room, 'gm-b');
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
 
-    // #when: the character roll after it is handled after it on every client.
+    // #when: the sheet set roll after it is handled after it on every client.
     await roll(gmA, HIT_POINTS);
     await roll(gmA, STRENGTH);
     await waitUntil(() => shown(player).length === 1 && shown(gmB).length === 2);
 
     // #then
-    expect([gmA, gmB, player].map(shown)).toEqual([
-      ['Мастер: Скелет, Хиты — 12', STRENGTH_TEXT],
-      ['Мастер: Скелет, Хиты — 12', STRENGTH_TEXT],
-      [STRENGTH_TEXT],
-    ]);
+    expect({
+      sent: room.rolls.map((one) => {
+        const data = Object(one.data);
+
+        return { sheetId: data.sheetId, hidden: data.hidden, sheetName: data.sheetName };
+      }),
+      shown: [gmA, gmB, player].map(shown),
+    }).toEqual({
+      sent: [
+        { sheetId: 'npc', hidden: true, sheetName: 'NPC' },
+        { sheetId: 'brok', hidden: false, sheetName: 'Брок' },
+      ],
+      shown: [
+        ['Мастер: NPC, Хиты — 12', STRENGTH_TEXT],
+        ['Мастер: NPC, Хиты — 12', STRENGTH_TEXT],
+        [STRENGTH_TEXT],
+      ],
+    });
   });
 
-  test('of an NPC requested by a player is refused, and nothing is sent or shown', async () => {
+  test('of a sheet with an empty name field goes out with an empty name and shows the fallback label', async () => {
+    // #given
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
+    const other = await startClient(room, 'gm-b');
+
+    // #when
+    await roll(gm, UNNAMED_STRENGTH);
+    await waitUntil(() => shown(other).length === 1);
+
+    // #then
+    expect({
+      sheetName: Object(room.rolls[0]?.data).sheetName,
+      shown: [gm, other].map(shown),
+    }).toEqual({
+      sheetName: '',
+      shown: [['Мастер: Без имени, Сила — 7, успех'], ['Мастер: Без имени, Сила — 7, успех']],
+    });
+  });
+
+  test('of a hidden single sheet requested by a player is refused, and nothing is sent or shown', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a');
@@ -479,7 +535,7 @@ describe('a roll', () => {
     expect(shown(gm)).toEqual(['Призрак: Маркер, Сила — 3']);
   });
 
-  test('of an NPC from a player is dropped, as a player cannot see one', async () => {
+  test('marked hidden from a player is dropped as forged, as a player cannot see a hidden sheet', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a');
@@ -487,7 +543,7 @@ describe('a roll', () => {
     joinGhost(room, 'PLAYER');
 
     // #when: the marker after it is handled after it.
-    room.post(GHOST, rollFrom('forged', 'Скелет', 'npc'));
+    room.post(GHOST, rollFrom('forged', 'NPC', true));
     room.post(GHOST, rollFrom('marker', 'Маркер'));
     await waitUntil(() => shown(gm).length === 1);
 
@@ -503,7 +559,7 @@ describe('a roll', () => {
     joinGhost(room, 'PLAYER');
 
     // #when
-    room.post(GHOST, rollFrom('named', 'Брок', 'pc', 'Мастер'));
+    room.post(GHOST, rollFrom('named', 'Брок', false, 'Мастер'));
     await waitUntil(() => shown(gm).length === 1);
 
     // #then

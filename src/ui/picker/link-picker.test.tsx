@@ -2,6 +2,9 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
+import { FORMAT_VERSION } from '@/core/format-version';
+import { linkDataOf, type LinkTarget } from '@/core/link-target';
+import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { ok } from '@/core/result';
 import type { LinkPickerTiming } from '@/core/timing';
@@ -24,10 +27,52 @@ const GM_LIVE: SyncState = {
   role: 'GM',
 };
 
+// A linkable sheet set, and a single sheet whose linkable repeat section holds the NPCs.
+const PRESET: Preset = {
+  v: FORMAT_VERSION,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      tokens: true,
+      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          title: 'Противники',
+          repeat: true,
+          tokens: true,
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'npc_name' }],
+            [{ kind: 'field', type: 'number', id: 'hp' }],
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 const SHEETS: readonly VersionedRecord[] = [
-  { k: 'sheet:arag', d: { kind: 'pc', name: 'Арагорн', order: 0 }, c: 1, a: 'seed' },
-  { k: 'sheet:gob', d: { kind: 'npc', name: 'Гоблин', order: 0 }, c: 1, a: 'seed' },
+  { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
+  { k: 'sheet:arag', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
+  { k: 'row:arag:name', d: { name: 'Арагорн' }, c: 1, a: 'seed' },
+  { k: 'rep:npc:npc_name:gob', d: { order: 0, cells: { npc_name: 'Гоблин' } }, c: 1, a: 'seed' },
 ];
+
+// The targets a test picks: the sheet "Арагорн", and the repeat block "Гоблин" of the NPC sheet.
+const TARGETS = {
+  arag: { sheetId: 'arag', instanceId: null },
+  gob: { sheetId: 'npc', instanceId: 'gob' },
+} as const satisfies Record<string, LinkTarget>;
+
+type TargetName = keyof typeof TARGETS;
 
 // What the picker did, in order, with what the test did between: the picked link arriving.
 type Step =
@@ -66,6 +111,50 @@ afterEach(() => {
   }
 
   document.body.innerHTML = '';
+});
+
+describe('link picker targets', () => {
+  test('lists one group per linkable template and repeat section, in preset order, each target named with no space before a comma', async () => {
+    // #given
+    const picker = await openPicker({ read: { label: '' } });
+
+    // #then
+    expect(groupsOf(picker)).toEqual([
+      { heading: 'Персонажи', targets: ['Арагорн'] },
+      { heading: 'Противники', targets: ['Гоблин, NPC'] },
+    ]);
+  });
+
+  test('lists the targets with no token first in each group', async () => {
+    // #given
+    const picker = await openPicker({
+      read: { label: '' },
+      records: [
+        { k: 'rep:npc:npc_name:orc', d: { order: 1, cells: { npc_name: 'Орк' } }, c: 1, a: 'seed' },
+        { k: 'link:t9', d: { s: 'npc', i: 'gob' }, c: 1, a: 'seed' },
+      ],
+    });
+
+    // #then
+    expect(groupsOf(picker)[1]).toEqual({
+      heading: 'Противники',
+      targets: ['Орк, NPC', 'Гоблин, NPC, Токен привязан'],
+    });
+  });
+
+  test('says to create a sheet when no target is linkable', async () => {
+    // #given
+    const picker = await openPicker({
+      read: { label: '' },
+      records: [
+        { k: 'sheet:arag', d: null, c: 2, a: 'seed' },
+        { k: 'rep:npc:npc_name:gob', d: null, c: 2, a: 'seed' },
+      ],
+    });
+
+    // #then
+    expect(picker.container.querySelector('main p')?.textContent).toBe('Сначала создайте лист');
+  });
 });
 
 describe('link picker label offer', () => {
@@ -306,7 +395,7 @@ describe('link picker label offer', () => {
     // #when
     await act(async () => {
       picker.store.applyDelta(
-        [{ k: `link:${TOKEN}`, d: 'gob', c: 2, a: 'gm-b' }],
+        [{ k: `link:${TOKEN}`, d: linkDataOf(TARGETS.gob), c: 2, a: 'gm-b' }],
         [],
         [],
         [],
@@ -331,10 +420,16 @@ describe('link picker label offer', () => {
     // #when
     await act(async () => {
       picker.steps.push({ kind: 'arrived' });
-      picker.store.applyDelta([{ k: `link:${TOKEN}`, d: 'arag', c: 1, a: 'gm' }], [], [], [], {
-        ...GM_LIVE,
-        role: 'PLAYER',
-      });
+      picker.store.applyDelta(
+        [{ k: `link:${TOKEN}`, d: { s: 'arag' }, c: 1, a: 'gm' }],
+        [],
+        [],
+        [],
+        {
+          ...GM_LIVE,
+          role: 'PLAYER',
+        },
+      );
     });
     await settle();
 
@@ -378,7 +473,7 @@ describe('link picker label offer', () => {
     // #when
     await act(async () => {
       picker.store.applyDelta(
-        [{ k: 'sheet:arag', d: { kind: 'pc', name: 'Странник', order: 0 }, c: 2, a: 'gm' }],
+        [{ k: 'row:arag:name', d: { name: 'Странник' }, c: 2, a: 'gm' }],
         [],
         [],
         [],
@@ -428,6 +523,8 @@ type OfferView = { checked: boolean; disabled: boolean; hint: string | null };
 
 type PickerOptions = {
   read: LabelAnswer;
+  // Records over the seeded ones.
+  records?: readonly VersionedRecord[];
   write?: PortAnswer;
   notify?: PortAnswer;
   close?: Exclude<PortAnswer, 'hangs'>;
@@ -444,7 +541,7 @@ async function openPicker(options: PickerOptions): Promise<Harness> {
 
   document.body.append(container);
   mounted.push(root);
-  store.replaceAll(SHEETS, [], [], options.sync ?? GM_LIVE);
+  store.replaceAll([...SHEETS, ...(options.records ?? [])], [], [], options.sync ?? GM_LIVE);
 
   const scene = {
     getItemLabel: (itemId: string): Promise<string | null> => {
@@ -518,16 +615,16 @@ function never<Value>(): Promise<Value> {
   return new Promise<Value>(() => undefined);
 }
 
-function linkSet(sheetId: string): Command {
-  return { type: 'link-set', tokenId: TOKEN, sheetId };
+function linkSet(name: TargetName): Command {
+  return { type: 'link-set', tokenId: TOKEN, ...TARGETS[name] };
 }
 
 // The link of the last pick arrives in the replica, as the engine's delta brings it.
-async function arrive(picker: Harness, sheetId: string): Promise<void> {
+async function arrive(picker: Harness, name: TargetName): Promise<void> {
   await act(async () => {
     picker.steps.push({ kind: 'arrived' });
     picker.store.applyDelta(
-      [{ k: `link:${TOKEN}`, d: sheetId, c: 1, a: 'gm' }],
+      [{ k: `link:${TOKEN}`, d: linkDataOf(TARGETS[name]), c: 1, a: 'gm' }],
       [],
       [],
       [],
@@ -608,6 +705,17 @@ function offer(picker: Harness): OfferView {
     disabled: box.disabled,
     hint: hint?.textContent ?? null,
   };
+}
+
+// Each group's heading and the accessible names of its targets. A target's `aria-label` overrides
+// the name its text would give, so it is the name a screen reader reads.
+function groupsOf(picker: Harness): { heading: string; targets: (string | null)[] }[] {
+  return [...picker.container.querySelectorAll('section')].map((section) => ({
+    heading: section.getAttribute('aria-label') ?? '',
+    targets: [...section.querySelectorAll('button')].map((button) =>
+      button.getAttribute('aria-label'),
+    ),
+  }));
 }
 
 // Lets the port promises and the effects they start run to the end.

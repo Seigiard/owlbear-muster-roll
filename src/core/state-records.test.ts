@@ -10,7 +10,7 @@ const GENERATION = { n: 3, a: 'imp' };
 
 const BROK: VersionedRecord = {
   k: 'sheet:brok',
-  d: { kind: 'pc', name: 'Брок', order: 0 },
+  d: { set: 'pc', order: 0 },
   c: 2,
   a: 'gm-a',
 };
@@ -72,7 +72,7 @@ describe('stateAnswer', () => {
       skipped: answer.skipped,
     }).toEqual({
       messages: [
-        { v: 1, g: GENERATION, t: 'state', r: 'r1', i: 1, n: 1, records: { ok: true, value: [] } },
+        { v: 2, g: GENERATION, t: 'state', r: 'r1', i: 1, n: 1, records: { ok: true, value: [] } },
       ],
       skipped: [],
     });

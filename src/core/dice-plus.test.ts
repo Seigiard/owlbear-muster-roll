@@ -76,9 +76,12 @@ describe('dicePlusDice', () => {
 });
 
 describe('dicePlusTarget', () => {
-  test('shows a character roll to everyone and an NPC roll to GM clients only', () => {
+  test('shows a roll of a visible sheet to everyone and of a hidden sheet to GM clients only', () => {
+    // #when
+    const targets = [dicePlusTarget(false), dicePlusTarget(true)];
+
     // #then
-    expect([dicePlusTarget('pc'), dicePlusTarget('npc')]).toEqual(['everyone', 'gm_only']);
+    expect(targets).toEqual(['everyone', 'gm_only']);
   });
 });
 

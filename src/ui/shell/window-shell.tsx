@@ -4,8 +4,8 @@ import { TabPanel, Tabs } from 'react-aria-components';
 import { Banner } from '@/ui/primitives/banner';
 import type { BannerMessage } from '@/ui/primitives/banner';
 
-import { TabBar, ToggleBar } from './tab-bar';
-import type { ShellAction, ShellTab, ShellToggle } from './tab-bar';
+import { itemTabs, TabBar, ToggleBar } from './tab-bar';
+import type { ShellBarItem, ShellTab, ShellToggle } from './tab-bar';
 
 // The preset preview (TASK-40) lays out its frames with this too, so they match the window.
 export const CONTENT_CLASS = 'min-h-[0] flex-1 overflow-auto p-3 -outline-offset-2';
@@ -13,10 +13,10 @@ export const CONTENT_CLASS = 'min-h-[0] flex-1 overflow-auto p-3 -outline-offset
 export type ShellLayout =
   | {
       kind: 'tabs';
-      // Character tabs scroll. Pinned tabs stay at the right, and "+" sits between the two.
-      scrollingTabs: readonly ShellTab[];
+      // UX: one scrolling row of tabs in preset order, each sheet set's "+" after its last tab.
+      // Pinned tabs, the gear, stay at the right.
+      items: readonly ShellBarItem[];
       pinnedTabs: readonly ShellTab[];
-      add?: ShellAction;
       selectedTab: string;
       onSelectTab: (id: string) => void;
     }
@@ -36,13 +36,9 @@ export function WindowShell({ layout, banner }: WindowShellProps): ReactNode {
             layout.onSelectTab(String(key));
           }}
         >
-          <TabBar
-            scrollingTabs={layout.scrollingTabs}
-            pinnedTabs={layout.pinnedTabs}
-            add={layout.add}
-          />
+          <TabBar items={layout.items} pinnedTabs={layout.pinnedTabs} />
           <Banner message={banner} />
-          {[...layout.scrollingTabs, ...layout.pinnedTabs].map((tab) => (
+          {[...itemTabs(layout.items), ...layout.pinnedTabs].map((tab) => (
             <TabPanel key={tab.id} id={tab.id} className={CONTENT_CLASS}>
               {tab.content}
             </TabPanel>

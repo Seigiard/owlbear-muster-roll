@@ -1,5 +1,6 @@
+import { useContext, useEffect } from 'react';
 import type { ReactNode, WheelEvent as ReactWheelEvent } from 'react';
-import { Button, Tab, TabList, ToggleButton } from 'react-aria-components';
+import { Button, Tab, TabList, TabListStateContext, ToggleButton } from 'react-aria-components';
 
 import { revealElement } from '@/ui/reveal';
 
@@ -13,19 +14,19 @@ const TAB_CLASS =
 
 const SELECTABLE_CLASS = 'data-selected:bg-surface data-selected:text-accent';
 
-// A long name is cut with an ellipsis. The text in the DOM stays whole, so the accessible name still
-// holds the whole name.
+// A long name is cut with an ellipsis. The text in the DOM stays whole, so the accessible name
+// still holds the whole name.
 const SCROLLING_TAB_CLASS = `${TAB_CLASS} ${SELECTABLE_CLASS} max-w-[160px]`;
 
-// Pinned tabs sit after "+" and stick to the right edge. The pseudo-element fills the gap before
-// each one with the bar color, so a tab scrolled under them never shows through the gap.
-const PINNED_TAB_CLASS = `${TAB_CLASS} ${SELECTABLE_CLASS} sticky order-2 before:absolute before:inset-y-0 before:-left-2 before:w-2 before:bg-surface-bar`;
+// Pinned tabs come after every other item and stick to the right edge. The pseudo-element fills the
+// gap before each one with the bar color, so a tab scrolled under them never shows through the gap.
+const PINNED_TAB_CLASS = `${TAB_CLASS} ${SELECTABLE_CLASS} sticky before:absolute before:inset-y-0 before:-left-2 before:w-2 before:bg-surface-bar`;
 
 // The window's line height, for a wheel that reports lines instead of pixels.
 const WHEEL_LINE_PX = 20;
 
-// `mark` shows after the label and is never cut, such as "вы" on a player's own character. The tab
-// bar then names the tab "{label}, {mark}", so the name does not run the two words together.
+// `mark` shows after the label and is never cut, such as "вы" on a player's own sheet. The tab bar
+// then names the tab "{label}, {mark}", so the name does not run the two words together.
 export type ShellTab = {
   id: string;
   label: string;
@@ -43,34 +44,56 @@ export type ShellToggle = {
 
 export type ShellAction = { label: string; accessibleName: string; onPress: () => void };
 
+// One item of the scrolling row, in the order it shows: a tab, or a button such as a sheet set's
+// "+", which sits after that sheet set's last tab.
+export type ShellBarItem =
+  | { kind: 'tab'; tab: ShellTab }
+  | { kind: 'action'; id: string; action: ShellAction };
+
 type TabBarProps = {
-  scrollingTabs: readonly ShellTab[];
+  items: readonly ShellBarItem[];
   pinnedTabs: readonly ShellTab[];
-  add?: ShellAction;
 };
 
-// One tab list holds every tab, so the arrow keys cross from the characters to NPC and the gear.
-// It renders as `display: contents`, so its tabs and "+" share one scrolling row while "+" stays
-// outside the list.
-export function TabBar({ scrollingTabs, pinnedTabs, add }: TabBarProps): ReactNode {
+// The tabs of a bar's items, in their order.
+export function itemTabs(items: readonly ShellBarItem[]): ShellTab[] {
+  return items.flatMap((item) => (item.kind === 'tab' ? [item.tab] : []));
+}
+
+// One tab list holds every tab, so the arrow keys cross every tab and the gear. It renders as
+// `display: contents`, so its tabs and the buttons share one scrolling row while each button stays
+// outside the list. The flex `order` of each item puts a button after the tabs it follows, and the
+// pinned tabs after everything.
+export function TabBar({ items, pinnedTabs }: TabBarProps): ReactNode {
+  useTabKeyEntersAtSelection();
+
   return (
     <div className="bg-surface-bar px-2 pt-2">
       <div data-tab-scroller className={SCROLLER_CLASS} onWheel={scrollSideways}>
         <TabList className="contents">
-          {scrollingTabs.map((tab) => (
-            <Tab
-              key={tab.id}
-              id={tab.id}
-              aria-label={tab.mark === undefined ? tab.accessibleName : `${tab.label}, ${tab.mark}`}
-              ref={revealIfSelected}
-              className={SCROLLING_TAB_CLASS}
-            >
-              <span className="min-w-[0] truncate">{tab.label}</span>
-              {tab.mark === undefined ? null : (
-                <span className="ml-1 shrink-0 text-label-sm text-text-muted">{tab.mark}</span>
-              )}
-            </Tab>
-          ))}
+          {items.map((item, index) =>
+            item.kind === 'tab' ? (
+              <Tab
+                key={item.tab.id}
+                id={item.tab.id}
+                aria-label={
+                  item.tab.mark === undefined
+                    ? item.tab.accessibleName
+                    : `${item.tab.label}, ${item.tab.mark}`
+                }
+                ref={revealIfSelected}
+                className={SCROLLING_TAB_CLASS}
+                style={{ order: index }}
+              >
+                <span className="min-w-[0] truncate">{item.tab.label}</span>
+                {item.tab.mark === undefined ? null : (
+                  <span className="ml-1 shrink-0 text-label-sm text-text-muted">
+                    {item.tab.mark}
+                  </span>
+                )}
+              </Tab>
+            ) : null,
+          )}
           {pinnedTabs.map((tab, index) => (
             <Tab
               key={tab.id}
@@ -79,23 +102,53 @@ export function TabBar({ scrollingTabs, pinnedTabs, add }: TabBarProps): ReactNo
               ref={watchPinned}
               data-pinned
               className={index === 0 ? `${PINNED_TAB_CLASS} ml-auto` : PINNED_TAB_CLASS}
+              style={{ order: items.length + index }}
             >
               {tab.label}
             </Tab>
           ))}
         </TabList>
-        {add === undefined ? null : (
-          <Button
-            aria-label={add.accessibleName}
-            onPress={add.onPress}
-            className={`${TAB_CLASS} order-1`}
-          >
-            {add.label}
-          </Button>
+        {items.map((item, index) =>
+          item.kind === 'action' ? (
+            <Button
+              key={item.id}
+              aria-label={item.action.accessibleName}
+              onPress={item.action.onPress}
+              className={TAB_CLASS}
+              style={{ order: index }}
+            >
+              {item.action.label}
+            </Button>
+          ) : null,
         )}
       </div>
     </div>
   );
+}
+
+// The Tab key enters a tab list at its focused key. React Aria moves that key to the selected tab
+// only in the commit the selection changes, and skips a tab that is not in the collection yet. A
+// tab mounts a commit after its selection, as the first tab does when the preset arrives, so the
+// key would stay on the tab selected before, such as the gear.
+function useTabKeyEntersAtSelection(): void {
+  const state = useContext(TabListStateContext);
+
+  useEffect(() => {
+    if (state === null) {
+      return;
+    }
+
+    const { selectedKey, selectionManager, collection } = state;
+
+    if (
+      !selectionManager.isFocused &&
+      selectedKey !== null &&
+      selectionManager.focusedKey !== selectedKey &&
+      collection.getItem(selectedKey) !== null
+    ) {
+      selectionManager.setFocusedKey(selectedKey);
+    }
+  });
 }
 
 // React Aria marks each tab with its key, and the app gives a tab no id of its own in the DOM.
@@ -178,7 +231,7 @@ function watchPinned(element: HTMLElement | null): (() => void) | undefined {
   };
 }
 
-// A tab that mounts already selected is the one "+" has just created, so it scrolls into view.
+// A tab that mounts already selected is the one a "+" has just created, so it scrolls into view.
 // React Aria adds a tab in a later commit than the one that selects it, so an effect would miss it.
 function revealIfSelected(element: HTMLElement | null): void {
   if (element?.getAttribute('aria-selected') === 'true') {

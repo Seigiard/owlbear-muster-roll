@@ -5,17 +5,20 @@ import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
 
 type SnapshotConfirmationProps = {
+  // The values and the sheets of the file the current preset has no place for.
   count: number;
+  sheets: number;
   onConfirm: () => void;
   onCancel: () => void;
 };
 
 // FR13, UX-DR25: one block for the whole import, at the top of the content area, as the delete
-// block is. The values the current preset has no place for are named only when there are some. The
-// focus starts on "Отменить", and the caller remounts the block to move it there again for a new
-// count.
+// block is. The values and the sheets the current preset has no place for are named only when there
+// are some. The focus starts on "Отменить", and the caller remounts the block to move it there
+// again for a new count.
 export function SnapshotConfirmation({
   count,
+  sheets,
   onConfirm,
   onCancel,
 }: SnapshotConfirmationProps): ReactNode {
@@ -28,10 +31,7 @@ export function SnapshotConfirmation({
     }
   }
 
-  const text =
-    count > 0
-      ? `${copy.snapshotImport} ${copy.snapshotImportDropsValues(count)}`
-      : copy.snapshotImport;
+  const text = snapshotConfirmationText(count, sheets);
 
   return (
     <div
@@ -53,4 +53,15 @@ export function SnapshotConfirmation({
       </div>
     </div>
   );
+}
+
+// CAP-13: the import message, then the parts that apply.
+export function snapshotConfirmationText(count: number, sheets: number): string {
+  return [
+    copy.snapshotImport,
+    count > 0 ? copy.snapshotImportDropsValues(count) : null,
+    sheets > 0 ? copy.snapshotImportDropsSheets(sheets) : null,
+  ]
+    .filter((part) => part !== null)
+    .join(' ');
 }

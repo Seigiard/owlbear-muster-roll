@@ -1,6 +1,102 @@
 import { describe, expect, test } from 'bun:test';
 
-import { duplicateNames, isDuplicateCount, parseDuplicateCount } from './npc-duplicate';
+import type { PresetSection } from '@/core/preset';
+
+import {
+  duplicateBlockCells,
+  duplicateNames,
+  isDuplicateCount,
+  parseDuplicateCount,
+} from './repeat-block-duplicate';
+
+// A two-row NPC repeat block whose first field is the text name.
+const NPC_SECTION: PresetSection = {
+  repeat: true,
+  rows: [
+    [
+      { kind: 'field', type: 'text', id: 'npc_name' },
+      { kind: 'field', type: 'number', id: 'hp' },
+    ],
+    [{ kind: 'field', type: 'check', id: 'elite' }],
+  ],
+};
+
+// A repeat section whose first field is a number, so nothing is numbered.
+const NUMBER_FIRST_SECTION: PresetSection = {
+  repeat: true,
+  rows: [
+    [
+      { kind: 'field', type: 'number', id: 'qty' },
+      { kind: 'field', type: 'text', id: 'item' },
+    ],
+  ],
+};
+
+describe('duplicateBlockCells', () => {
+  test('CAP-30: nine duplicates of "Скелет 1" number the first field 2 to 10 and copy the rest', () => {
+    // #given
+    const source = { npc_name: 'Скелет 1', hp: 7, elite: false };
+
+    // #when
+    const cells = duplicateBlockCells(NPC_SECTION, source, [source], 9);
+
+    // #then
+    expect(cells).toEqual({
+      ok: true,
+      value: [
+        { npc_name: 'Скелет 2', hp: 7, elite: false },
+        { npc_name: 'Скелет 3', hp: 7, elite: false },
+        { npc_name: 'Скелет 4', hp: 7, elite: false },
+        { npc_name: 'Скелет 5', hp: 7, elite: false },
+        { npc_name: 'Скелет 6', hp: 7, elite: false },
+        { npc_name: 'Скелет 7', hp: 7, elite: false },
+        { npc_name: 'Скелет 8', hp: 7, elite: false },
+        { npc_name: 'Скелет 9', hp: 7, elite: false },
+        { npc_name: 'Скелет 10', hp: 7, elite: false },
+      ],
+    });
+  });
+
+  test('numbers after the highest number among the repeat blocks of the section', () => {
+    // #given
+    const source = { npc_name: 'Скелет 1' };
+    const siblings = [source, { npc_name: 'Скелет 4' }, { hp: 3 }];
+
+    // #when
+    const cells = duplicateBlockCells(NPC_SECTION, source, siblings, 1);
+
+    // #then
+    expect(cells).toEqual({ ok: true, value: [{ npc_name: 'Скелет 5' }] });
+  });
+
+  test('copies the values as they are when the first field is empty', () => {
+    // #given
+    const source = { hp: 4 };
+
+    // #when
+    const cells = duplicateBlockCells(NPC_SECTION, source, [source], 2);
+
+    // #then
+    expect(cells).toEqual({ ok: true, value: [{ hp: 4 }, { hp: 4 }] });
+  });
+
+  test('copies the values as they are when the first field is not a text field', () => {
+    // #given
+    const source = { qty: 2, item: 'Верёвка 1' };
+
+    // #when
+    const cells = duplicateBlockCells(NUMBER_FIRST_SECTION, source, [source], 2);
+
+    // #then
+    expect(cells).toEqual({
+      ok: true,
+      value: [
+        { qty: 2, item: 'Верёвка 1' },
+        { qty: 2, item: 'Верёвка 1' },
+      ],
+    });
+  });
+});
 
 describe('duplicateNames', () => {
   test('continues a numbered source with no namesakes from its own number', () => {
@@ -24,7 +120,7 @@ describe('duplicateNames', () => {
     });
   });
 
-  test('continues from the highest number among NPCs of the same base', () => {
+  test('continues from the highest number among repeat blocks of the same base', () => {
     // #when
     const names = duplicateNames('Скелет 1', ['Скелет 1', 'Скелет 7', 'Гоблин 12'], 2);
 
@@ -118,7 +214,7 @@ describe('duplicateNames', () => {
     expect(names).toEqual({ ok: true, value: ['Скелет 6'] });
   });
 
-  test('skips a number whose shortened name an NPC already has, so a second duplicate repeats none', () => {
+  test('skips a number whose shortened name a repeat block already has, so a second duplicate repeats none', () => {
     // #given: 98 letters, a space and "9" make 100 characters, and a first duplicate made "… 10".
     const source = `${'Щ'.repeat(98)} 9`;
 

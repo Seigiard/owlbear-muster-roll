@@ -29,7 +29,7 @@ const EXAMPLE: JsonValue = z.json().parse(JSON.parse(EXAMPLE_PRESET_TEXT));
 
 const SAVED_SHEET = JSON.stringify({
   k: 'sheet:saved',
-  d: { kind: 'pc', name: 'Брок', order: 0 },
+  d: { set: 'pc', order: 0 },
   c: 1,
   a: 'mock-connection',
 });
@@ -46,10 +46,64 @@ const BAD_FILES: readonly (readonly [string, string, string])[] = [
     'недопустимый id поля «__proto__»',
   ],
   [
-    'a repeat with two rows',
-    fileText({ repeat: true, rows: [[field('a')], [field('b')]] }),
-    'в повторяемой секции нужна одна строка хотя бы с одним полем',
+    'a repeat section whose rows hold no field',
+    fileText({ repeat: true, rows: [[{ kind: 'text', text: 'Вещь' }], []] }),
+    'в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем',
   ],
+  [
+    'two repeat sections that start with one id',
+    templatesText([
+      setTemplate('pc', [
+        { repeat: true, rows: [[field('a')]] },
+        { repeat: true, rows: [[field('a')]] },
+      ]),
+    ]),
+    'две повторяемые секции с id «a»',
+  ],
+  [
+    'a nameField that names a number field',
+    templatesText([{ ...setTemplate('pc', [{ rows: [[field('level')]] }]), nameField: 'level' }]),
+    'в наборе «pc» нет текстового поля «level» вне повторяемых секций',
+  ],
+  [
+    'a nameField that names a field of a repeat section',
+    templatesText([
+      {
+        id: 'pc',
+        kind: 'set',
+        title: 'Персонажи',
+        nameField: 'attack',
+        sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] }],
+      },
+    ]),
+    'в наборе «pc» нет текстового поля «attack» вне повторяемых секций',
+  ],
+  [
+    'a template id that breaks the id rules',
+    templatesText([singleTemplate('d20')]),
+    'недопустимый id листа «d20»',
+  ],
+  [
+    'two templates with one id',
+    templatesText([singleTemplate('notes'), singleTemplate('notes')]),
+    'лист «notes» повторяется',
+  ],
+  [
+    'nameField on a single sheet',
+    templatesText([{ ...singleTemplate('notes'), nameField: 'name' }]),
+    'неверная структура',
+  ],
+  [
+    'players on a sheet set',
+    templatesText([{ ...setTemplate('pc', []), players: 'edit' }]),
+    'неверная структура',
+  ],
+  [
+    'tokens on a section that is not a repeat section',
+    fileText({ tokens: true, rows: [[field('a')]] }),
+    'неверная структура',
+  ],
+  ['an empty template list', templatesText([]), 'неверная структура'],
   [
     'a row wider than its columns',
     fileText({ columns: 1, rows: [[field('a'), field('b')]] }),
@@ -62,12 +116,12 @@ const BAD_FILES: readonly (readonly [string, string, string])[] = [
   ],
   [
     'an absent v',
-    JSON.stringify({ character: { sections: [] }, npc: { sections: [] } }),
+    JSON.stringify({ templates: [singleTemplate('notes')] }),
     'неподдерживаемая версия формата',
   ],
   [
-    'a lower v',
-    JSON.stringify({ v: 0, character: { sections: [] }, npc: { sections: [] } }),
+    'a version 1 preset with character and npc',
+    JSON.stringify({ v: 1, character: { sections: [] }, npc: { sections: [] } }),
     'неподдерживаемая версия формата',
   ],
   ['a file over 1 MiB', ' '.repeat(1024 * 1024 + 1), 'файл слишком большой'],
@@ -246,7 +300,7 @@ test('a file from a newer version asks for a reload and changes nothing', async 
   await watchWire(page);
 
   // #when
-  await uploadFile(page, JSON.stringify({ v: 2, anything: [] }));
+  await uploadFile(page, JSON.stringify({ v: 3, anything: [] }));
 
   // #then
   await expect(page.getByText('Файл из более новой версии. Перезагрузите страницу.')).toBeVisible();
@@ -416,8 +470,27 @@ function field(id: string): JsonValue {
   return { kind: 'field', type: 'number', id };
 }
 
+// A sheet set "pc" named by a text field "name", with `section` after the name's section.
 function fileText(section: JsonValue): string {
-  return JSON.stringify({ v: 1, character: { sections: [section] }, npc: { sections: [] } });
+  return templatesText([setTemplate('pc', [section])]);
+}
+
+function templatesText(templates: readonly JsonValue[]): string {
+  return JSON.stringify({ v: 2, templates });
+}
+
+function setTemplate(id: string, sections: readonly JsonValue[]) {
+  return {
+    id,
+    kind: 'set',
+    title: 'Персонажи',
+    nameField: 'name',
+    sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, ...sections],
+  };
+}
+
+function singleTemplate(id: string) {
+  return { id, kind: 'single', title: 'Заметки', sections: [] };
 }
 
 function randomLabel(length: number): string {
@@ -482,7 +555,7 @@ async function seedStorage(page: Page, key: string, value: string): Promise<void
 }
 
 async function storedKeys(page: Page): Promise<string[]> {
-  return page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('mr1:')));
+  return page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('mr2:')));
 }
 
 async function storedPreset(page: Page): Promise<JsonValue> {

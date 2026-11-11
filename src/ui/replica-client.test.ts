@@ -55,7 +55,12 @@ const PROJECTION: EngineMessage = {
   party: [],
 };
 
-const OPEN: EngineMessage = { t: 'open-sheet', id: 'open-1', sheetId: 'brok' };
+const OPEN: EngineMessage = {
+  t: 'open-sheet',
+  id: 'open-1',
+  sheetId: 'npc',
+  instanceId: 'skeleton-1',
+};
 
 const cleanups: (() => void)[] = [];
 
@@ -93,7 +98,40 @@ describe('replica client open requests', () => {
     // #then
     expect({ before, after: store.$openRequest.get() }).toEqual({
       before: null,
-      after: { id: 'open-1', sheetId: 'brok' },
+      after: { id: 'open-1', sheetId: 'npc', instanceId: 'skeleton-1' },
+    });
+  });
+});
+
+describe('replica client wipe answers', () => {
+  test("a window takes the answer to its own wipe, and not another window's", () => {
+    // #given
+    const bus = createMemoryBus();
+    const engine = createMockPlatform(bus).broadcast;
+    const store = createProjectionStore();
+    // The first id names the projection request the window sends on start.
+    const ids = [NONCE, 'wipe-own'];
+
+    const client = startReplicaClient(
+      createMockPlatform(bus).broadcast,
+      createSendQueue(engine, TIMING),
+      store,
+      TIMING,
+      () => ids.shift() ?? NONCE,
+    );
+
+    cleanups.push(client.stop);
+
+    const sent = client.sendCommand({ type: 'wipe' });
+
+    // #when
+    void engine.sendMessage(UI_CHANNEL, { t: 'wiped', id: 'wipe-other' }, { destination: 'LOCAL' });
+    void engine.sendMessage(UI_CHANNEL, { t: 'wiped', id: 'wipe-own' }, { destination: 'LOCAL' });
+
+    // #then
+    expect({ sent, results: [...store.$wipeResults.get()] }).toEqual({
+      sent: { ok: true, value: 'wipe-own' },
+      results: [['wipe-own', { t: 'wiped', id: 'wipe-own' }]],
     });
   });
 });

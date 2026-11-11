@@ -73,6 +73,10 @@ export const TIMING: Timing = {
 // An access change with no answer this long shows that it failed, so the panel never waits forever.
 export const ACCESS_CHANGE_TIMEOUT_MS = 5000;
 
+// CAP-31: a window gives up on a wipe with no answer after this long. As long as the snapshot
+// import wait, as a wipe also writes the room copy before it answers.
+export const WIPE_TIMEOUT_MS = 60000;
+
 // A browser may read a download's object URL after the click returns, so it lives this long.
 export const DOWNLOAD_URL_LIFETIME_MS = 30000;
 

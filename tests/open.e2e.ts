@@ -4,10 +4,13 @@ import type { Locator, Page } from '@playwright/test';
 import type { ContextMenuIconFilter } from '@/platform/ports';
 
 import {
+  ADD,
+  npcBlock,
   openBackground,
   openClientBackground,
   openClientWindow,
   openRoom,
+  pcSheet,
   record,
   seedStorage,
   syncRead,
@@ -19,7 +22,7 @@ const LINK_ITEM = 'app.muster-roll/link-sheet';
 const UNLINK_ITEM = 'app.muster-roll/unlink-sheet';
 const OPEN_ITEM = 'app.muster-roll/open-sheet';
 const OPEN_SHEET = 'Открыть лист';
-const ADD = 'Добавить персонажа';
+const SHEET_NAME = 'Имя листа';
 const UI_CHANNEL = 'app.muster-roll/ui';
 
 const CHARACTERS = [
@@ -37,17 +40,19 @@ const CHARACTERS = [
 
 const NPCS = ['Гоблин 1', 'Гоблин 2', 'Гоблин 3', 'Гоблин 4', 'Гоблин 5', 'Гоблин 6', 'Дракон'];
 
-// Ten characters, so the last tab starts out of the bar's view, and seven NPCs, so the last block
-// starts below the panel's fold. t-first links the first character, t-last the last one, t-npc the
-// last NPC; t-gone points to a deleted sheet.
+// Ten characters, so the last tab starts out of the bar's view, and seven NPC repeat blocks of the
+// hidden single sheet "NPC", so the last one starts below the panel's fold. t-first links the first
+// character, t-last the last one, t-npc the last NPC's repeat block, t-chest the visible single
+// sheet "Инвентарь"; t-gone points to a deleted sheet.
 const ROOM: readonly StoredRecord[] = [
-  ...CHARACTERS.map((name, order) => pc(`pc${order}`, name, order)),
-  ...NPCS.map((name, order) => npc(`npc${order}`, name, order)),
+  ...CHARACTERS.flatMap((name, order) => pcSheet(`pc${order}`, name, order)),
+  ...NPCS.map((name, order) => npcBlock(`npc${order}`, name, order)),
   record('sheet:gone', null, 2),
-  record('link:t-first', 'pc0'),
-  record('link:t-last', `pc${CHARACTERS.length - 1}`),
-  record('link:t-npc', `npc${NPCS.length - 1}`),
-  record('link:t-gone', 'gone'),
+  record('link:t-first', { s: 'pc0' }),
+  record('link:t-last', { s: `pc${CHARACTERS.length - 1}` }),
+  record('link:t-npc', { s: 'npc', i: `npc${NPCS.length - 1}` }),
+  record('link:t-chest', { s: 'inventory' }),
+  record('link:t-gone', { s: 'gone' }),
 ];
 
 const LAYER = { key: 'layer', value: 'CHARACTER' };
@@ -70,7 +75,8 @@ test('a GM menu on a linked token has "Открыть лист" and "Отвяз�
   // #when
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
 
-  // #then: one item, a GM icon on every live-linked token and a player icon on characters only.
+  // #then: one item, a GM icon on every live-linked token and a player icon on the tokens of
+  // visible templates only.
   expect(await openIcons(background)).toEqual([
     {
       label: OPEN_SHEET,
@@ -79,6 +85,7 @@ test('a GM menu on a linked token has "Открыть лист" and "Отвяз�
         roles: ['GM'],
         every: [LAYER],
         some: [
+          { key: 'id', value: 't-chest', coordinator: '||' },
           { key: 'id', value: 't-first', coordinator: '||' },
           { key: 'id', value: 't-last', coordinator: '||' },
           { key: 'id', value: 't-npc' },
@@ -92,6 +99,7 @@ test('a GM menu on a linked token has "Открыть лист" and "Отвяз�
         roles: ['PLAYER'],
         every: [LAYER],
         some: [
+          { key: 'id', value: 't-chest', coordinator: '||' },
           { key: 'id', value: 't-first', coordinator: '||' },
           { key: 'id', value: 't-last' },
         ],
@@ -117,12 +125,34 @@ test('a GM opens a character from its token: the window selects its tab and scro
   // #then
   await expect(target).toHaveAttribute('aria-selected', 'true');
   await expect(target).toBeInViewport();
-  await expect(
-    page.getByRole('tabpanel').getByRole('textbox', { name: 'Имя персонажа' }),
-  ).toHaveValue('Ярослава');
+  await expect(page.getByRole('tabpanel').getByRole('textbox', { name: SHEET_NAME })).toHaveValue(
+    'Ярослава',
+  );
 });
 
-test('a GM opens an NPC from its token: the NPC tab opens and the block scrolls into view', async ({
+test('a GM opens a single sheet from its token: the window selects its tab', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+
+  // #when
+  await clickOpen(background, 't-chest');
+
+  // #then
+  await expect(page.getByRole('tab', { name: 'Инвентарь' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.getByRole('tabpanel').getByRole('heading', { level: 1 })).toHaveText(
+    'Инвентарь',
+  );
+});
+
+test('a GM opens an NPC repeat block from its token: the NPC tab opens and the block scrolls into view', async ({
   page,
   context,
 }) => {
@@ -136,8 +166,8 @@ test('a GM opens an NPC from its token: the NPC tab opens and the block scrolls 
 
   // #then
   await expect(page.getByRole('tab', { name: 'NPC' })).toHaveAttribute('aria-selected', 'true');
-  await expect(npcBlock(page, 'Дракон')).toBeInViewport();
-  await expect(npcBlock(page, 'Гоблин 1')).not.toBeInViewport();
+  await expect(repeatBlock(page, 'Дракон')).toBeInViewport();
+  await expect(repeatBlock(page, 'Гоблин 1')).not.toBeInViewport();
 });
 
 test('with reduced motion the open scrolls too', async ({ page, context }) => {
@@ -152,7 +182,7 @@ test('with reduced motion the open scrolls too', async ({ page, context }) => {
   await clickOpen(background, 't-npc');
 
   // #then
-  await expect(npcBlock(page, 'Дракон')).toBeInViewport();
+  await expect(repeatBlock(page, 'Дракон')).toBeInViewport();
 });
 
 test('with the window closed, the action window opens on the sheet once, and a reload does not open it again', async ({
@@ -192,7 +222,7 @@ test('with the window closed, the action window opens on the sheet once, and a r
   await expect(target).toHaveAttribute('aria-selected', 'false');
 });
 
-test('a player opens a character from its token, and gets no item on an NPC or an unlinked token', async ({
+test('a player opens a character from its token, and gets no item on a hidden NPC or an unlinked token', async ({
   context,
 }) => {
   // #given
@@ -217,7 +247,8 @@ test('a player opens a character from its token, and gets no item on an NPC or a
   // #when
   await clickOpen(background, 't-last');
 
-  // #then: the player icon names character tokens only, and the GM icon is Owlbear's to hide.
+  // #then: the player icon names the tokens of visible templates only, and the GM icon is
+  // Owlbear's to hide.
   await expect(target).toHaveAttribute('aria-selected', 'true');
   await expect(target).toBeInViewport();
   expect(
@@ -226,9 +257,53 @@ test('a player opens a character from its token, and gets no item on an NPC or a
       ids: icon.filter?.some?.map((filter) => filter.value),
     })),
   ).toEqual([
-    { roles: ['GM'], ids: ['t-first', 't-last', 't-npc'] },
-    { roles: ['PLAYER'], ids: ['t-first', 't-last'] },
+    { roles: ['GM'], ids: ['t-chest', 't-first', 't-last', 't-npc'] },
+    { roles: ['PLAYER'], ids: ['t-chest', 't-first', 't-last'] },
   ]);
+});
+
+test('a player opens the visible single sheet "Инвентарь" from its token', async ({ context }) => {
+  // #given
+  const gmWindow = await openClientWindow(context, GM);
+
+  await seedStorage(gmWindow, ROOM, undefined, GM.device);
+  await openClientBackground(context, GM);
+  await expect(gmWindow.getByRole('button', { name: ADD })).toBeVisible();
+
+  const sheets = await openClientWindow(context, PLAYER);
+  const background = await openClientBackground(context, PLAYER);
+
+  await waitForMenu(background, [OPEN_ITEM]);
+  await expect(sheets.getByRole('tab', { name: 'Аня' })).toHaveAttribute('aria-selected', 'true');
+
+  // #when
+  await clickOpen(background, 't-chest');
+
+  // #then
+  await expect(sheets.getByRole('tab', { name: 'Инвентарь' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+});
+
+test('a GM on the NPC tab who opens another repeat block from its token scrolls to it', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+  await page.getByRole('tab', { name: 'NPC' }).click();
+  await expect(repeatBlock(page, 'Гоблин 1')).toBeInViewport();
+  await expect(repeatBlock(page, 'Дракон')).not.toBeInViewport();
+
+  // #when
+  await clickOpen(background, 't-npc');
+
+  // #then
+  await expect(repeatBlock(page, 'Дракон')).toBeInViewport();
+  await expect(repeatBlock(page, 'Дракон')).toBeFocused();
 });
 
 test('a player press that races onto an NPC token opens nothing', async ({ context }) => {
@@ -264,7 +339,7 @@ test('with the focus in the window, the opened tab takes it', async ({ page, con
   const background = await openRoom(page, context, ROOM);
 
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
-  await page.getByRole('textbox', { name: 'Имя персонажа' }).focus();
+  await page.getByRole('textbox', { name: SHEET_NAME }).focus();
 
   // #when
   await clickOpen(background, 't-last');
@@ -273,18 +348,21 @@ test('with the focus in the window, the opened tab takes it', async ({ page, con
   await expect(page.getByRole('tab', { name: 'Ярослава' })).toBeFocused();
 });
 
-test('with the focus in the window, an opened NPC block takes it', async ({ page, context }) => {
+test('with the focus in the window, an opened NPC repeat block takes it', async ({
+  page,
+  context,
+}) => {
   // #given
   const background = await openRoom(page, context, ROOM);
 
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
-  await page.getByRole('textbox', { name: 'Имя персонажа' }).focus();
+  await page.getByRole('textbox', { name: SHEET_NAME }).focus();
 
   // #when
   await clickOpen(background, 't-npc');
 
   // #then
-  await expect(npcBlock(page, 'Дракон')).toBeFocused();
+  await expect(repeatBlock(page, 'Дракон')).toBeFocused();
 });
 
 test('with the focus outside the window, an open leaves it alone', async ({ page, context }) => {
@@ -329,7 +407,7 @@ test('a request for a sheet the window does not list is acknowledged and selects
   await page.evaluate((channel) => {
     void window.mockPlatform.broadcast.sendMessage(
       channel,
-      { t: 'open-sheet', id: 'stray', sheetId: 'nobody' },
+      { t: 'open-sheet', id: 'stray', sheetId: 'nobody', instanceId: null },
       { destination: 'LOCAL' },
     );
   }, UI_CHANNEL);
@@ -338,14 +416,6 @@ test('a request for a sheet the window does not list is acknowledged and selects
   expect(await acknowledged).toBe(true);
   await expect(page.getByRole('tab', { name: 'Аня' })).toHaveAttribute('aria-selected', 'true');
 });
-
-function pc(id: string, name: string, order: number): StoredRecord {
-  return record(`sheet:${id}`, { kind: 'pc', name, order });
-}
-
-function npc(id: string, name: string, order: number): StoredRecord {
-  return record(`sheet:${id}`, { kind: 'npc', name, order });
-}
 
 async function waitForMenu(background: Page, ids: readonly string[]): Promise<void> {
   await expect
@@ -379,9 +449,7 @@ function openIcons(
   );
 }
 
-function npcBlock(page: Page, name: string): Locator {
-  return page
-    .getByRole('tabpanel')
-    .getByRole('listitem')
-    .getByRole('region', { name, exact: true });
+// A repeat block is a group named by its first field.
+function repeatBlock(page: Page, name: string): Locator {
+  return page.getByRole('tabpanel').getByRole('group', { name, exact: true });
 }

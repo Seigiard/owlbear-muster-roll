@@ -6,27 +6,34 @@ import type { JsonValue } from '@/core/json';
 
 import { cssValue, renderedColor } from './support/colors';
 import {
+  ABSENT,
+  ADD,
   openBackground,
   openRoom,
-  sheetRecord,
+  sheetRecords,
   STORAGE_PREFIX,
+  storedData,
   type SeededSheet,
 } from './support/room';
 
 const CHANNEL = 'app.muster-roll/ui';
-const ADD = 'Добавить персонажа';
-const NAME_FIELD = 'Имя персонажа';
-const NEW_CHARACTER = 'Новый персонаж';
+const NAME_FIELD = 'Имя листа';
+const UNNAMED = 'Без имени';
 const TOO_LONG = 'Слишком длинно';
 const SETTINGS = 'Настройки';
 const GEAR = '⚙︎';
 const LINE: readonly [number, number, number] = [85, 85, 85];
 const LINE_STRONG: readonly [number, number, number] = [136, 136, 136];
 
+// A value whose `row:` record cannot fit one message, as `field-edit.e2e.ts` measures it.
+const TOO_LONG_NAME = 'ы'.repeat(7400);
+
 const storedSheetSchema = z.object({
   k: z.string(),
-  d: z.object({ kind: z.string(), name: z.string(), order: z.number() }),
+  d: z.object({ set: z.string(), order: z.number() }),
 });
+
+const storedNameSchema = z.object({ d: z.object({ name: z.string().optional() }) });
 
 const sentCommandSchema = z.object({
   t: z.literal('command'),
@@ -44,7 +51,7 @@ type Delta = z.infer<typeof deltaSchema>;
 
 type Saved = { commands: number; names: string[] };
 
-type PinnedBoxes = { npcX: number; gearX: number; gearRight: number; gap: number };
+type PinnedBoxes = { gearX: number; gearRight: number; npcX: number };
 
 declare global {
   interface Window {
@@ -57,7 +64,7 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
 });
 
-test('with a preset and no sheet the bar shows "+", NPC and the gear', async ({
+test('with a preset and no sheet the bar shows the single sheets, the gear and "+" of the sheet set', async ({
   page,
   context,
 }) => {
@@ -65,11 +72,14 @@ test('with a preset and no sheet the bar shows "+", NPC and the gear', async ({
   await openWithSheets(page, context);
 
   // #then
-  await expect(page.getByRole('tab')).toHaveText(['NPC', GEAR]);
+  await expect(page.getByRole('tab')).toHaveText(['NPC', 'Инвентарь', GEAR]);
   await expect(page.getByRole('button', { name: ADD })).toHaveText('+');
 });
 
-test('"+" creates a character, selects its tab and focuses its name', async ({ page, context }) => {
+test('"+" creates a sheet with an empty name, selects its tab "Без имени" and focuses its name', async ({
+  page,
+  context,
+}) => {
   // #given
   await openWithSheets(page, context);
 
@@ -77,23 +87,24 @@ test('"+" creates a character, selects its tab and focuses its name', async ({ p
   await page.getByRole('button', { name: ADD }).click();
 
   // #then
-  await expect(page.getByRole('tab', { name: NEW_CHARACTER })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(page.getByRole('tab', { name: UNNAMED })).toHaveAttribute('aria-selected', 'true');
   await expect(nameField(page)).toBeFocused();
-  await expect(nameField(page)).toHaveValue(NEW_CHARACTER);
+  await expect(nameField(page)).toHaveValue('');
+  await expect(nameField(page)).toHaveAttribute('placeholder', UNNAMED);
 
   const [stored] = await storedSheets(page);
+  const sheetId = stored?.k.slice('sheet:'.length) ?? '';
 
   expect({
     // TASK-37: a new sheet id is 12 characters of the URL-safe nanoid alphabet.
     key: /^sheet:[A-Za-z0-9_-]{12}$/.test(stored?.k ?? ''),
     data: stored?.d,
-  }).toEqual({ key: true, data: { kind: 'pc', name: NEW_CHARACTER, order: 0 } });
+    // AD-2: the name lives in the name field's row, and an empty name has no value.
+    name: await storedData(page, `row:${sheetId}:name`),
+  }).toEqual({ key: true, data: { set: 'pc', order: 0 }, name: ABSENT });
 });
 
-test('a new character gets the next order and its tab goes after the others', async ({
+test('a new sheet gets the next order and its tab goes after the others of its sheet set', async ({
   page,
   context,
 }) => {
@@ -102,16 +113,16 @@ test('a new character gets the next order and its tab goes after the others', as
 
   // #when
   await page.getByRole('button', { name: ADD }).click();
-  await expect(page.getByRole('tab', { name: NEW_CHARACTER })).toBeVisible();
+  await expect(page.getByRole('tab', { name: UNNAMED })).toBeVisible();
 
   // #then
-  await expect(page.getByRole('tab')).toHaveText(['Брок', NEW_CHARACTER, 'NPC', GEAR]);
+  await expect(page.getByRole('tab')).toHaveText(['Брок', UNNAMED, 'NPC', 'Инвентарь', GEAR]);
   const created = (await storedSheets(page)).find((sheet) => sheet.k !== 'sheet:brok');
 
   expect(created?.d.order).toBe(4);
 });
 
-test('a name changed and left shows in the tab and the header and stays after a reload', async ({
+test('a name changed and left shows in the tab, the header and the name field, and stays after a reload', async ({
   page,
   context,
 }) => {
@@ -127,7 +138,22 @@ test('a name changed and left shows in the tab and the header and stays after a 
   // #then
   await expect(page.getByRole('tab', { name: 'Лиза' })).toHaveAttribute('aria-selected', 'true');
   await expect(nameField(page)).toHaveValue('Лиза');
-  expect(await storedNames(page)).toEqual(['Лиза']);
+  await expect(sheetNameField(page)).toHaveValue('Лиза');
+  expect(await storedData(page, 'row:brok:name')).toEqual({ name: 'Лиза' });
+});
+
+test('the name field in the sheet renames the tab and the header', async ({ page, context }) => {
+  // #given
+  await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
+
+  // #when
+  await sheetNameField(page).fill('Лиза');
+  await page.keyboard.press('Tab');
+
+  // #then
+  await expect(page.getByRole('tab', { name: 'Лиза' })).toHaveAttribute('aria-selected', 'true');
+  await expect(nameField(page)).toHaveValue('Лиза');
+  await expect.poll(() => storedNames(page)).toEqual(['Лиза']);
 });
 
 test('Enter saves the name as leaving the field does', async ({ page, context }) => {
@@ -158,39 +184,26 @@ test('Escape returns the old name and saves nothing', async ({ page, context }) 
   expect(await savedAfterSettling(page)).toEqual({ commands: 0, names: ['Брок'] });
 });
 
-for (const [label, typed] of [
-  ['an empty name', ''],
-  ['a name of spaces only', '   '],
-] as const) {
-  test(`${label} returns the old name and saves nothing`, async ({ page, context }) => {
-    // #given
-    await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
-    await watchWire(page);
-
-    // #when
-    await nameField(page).fill(typed);
-    await page.keyboard.press('Tab');
-
-    // #then
-    await expect(nameField(page)).toHaveValue('Брок');
-    expect(await savedAfterSettling(page)).toEqual({ commands: 0, names: ['Брок'] });
-  });
-}
-
-test('the spaces around a name are not saved', async ({ page, context }) => {
+test('an emptied name is cleared, and the tab and the header show "Без имени"', async ({
+  page,
+  context,
+}) => {
   // #given
-  await openWithSheets(page, context, [{ id: 'brok', name: 'Лиза', order: 0 }]);
+  await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
 
   // #when
-  await nameField(page).fill('  Брок ');
+  await nameField(page).fill('');
   await page.keyboard.press('Tab');
 
   // #then
-  await expect.poll(() => storedNames(page)).toEqual(['Брок']);
-  await expect(nameField(page)).toHaveValue('Брок');
+  await expect(page.getByRole('tab', { name: UNNAMED })).toHaveAttribute('aria-selected', 'true');
+  await expect(nameField(page)).toHaveValue('');
+  await expect(nameField(page)).toHaveAttribute('placeholder', UNNAMED);
+  // AD-2: an emptied record keeps a non-null `d`.
+  await expect.poll(() => storedData(page, 'row:brok:name')).toEqual({});
 });
 
-test('a name over 100 characters shows the message, stays in the field and is not saved', async ({
+test('a name too long for its record shows the message under the field, stays and is not saved', async ({
   page,
   context,
 }) => {
@@ -198,17 +211,17 @@ test('a name over 100 characters shows the message, stays in the field and is no
   await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
   await watchWire(page);
 
-  const tooLong = 'ы'.repeat(101);
-
   // #when
-  await nameField(page).fill(` ${tooLong} `);
+  await nameField(page).fill(TOO_LONG_NAME);
   await page.keyboard.press('Tab');
 
   // #then
   await expect(nameField(page)).toHaveAccessibleDescription(TOO_LONG);
   await expect(nameField(page)).toHaveAttribute('aria-invalid', 'true');
-  await expect(nameField(page)).toHaveValue(` ${tooLong} `);
-  expect(await savedAfterSettling(page)).toEqual({ commands: 0, names: ['Брок'] });
+  expect({
+    kept: (await nameField(page).inputValue()) === TOO_LONG_NAME,
+    saved: await savedAfterSettling(page),
+  }).toEqual({ kept: true, saved: { commands: 0, names: ['Брок'] } });
 });
 
 test('the too long message sits under the field and goes with the next valid save', async ({
@@ -217,7 +230,7 @@ test('the too long message sits under the field and goes with the next valid sav
 }) => {
   // #given
   await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
-  await nameField(page).fill('ы'.repeat(101));
+  await nameField(page).fill(TOO_LONG_NAME);
   await page.keyboard.press('Tab');
 
   const field = await nameField(page).boundingBox();
@@ -230,10 +243,8 @@ test('the too long message sits under the field and goes with the next valid sav
   // #then
   await expect(page.getByText(TOO_LONG)).toHaveCount(0);
   await expect(nameField(page)).not.toHaveAttribute('aria-invalid', 'true');
-  expect({
-    below: (message?.y ?? 0) >= (field?.y ?? 0) + (field?.height ?? 0),
-    saved: await storedNames(page),
-  }).toEqual({ below: true, saved: ['ы'.repeat(100)] });
+  await expect.poll(() => storedNames(page)).toEqual(['ы'.repeat(100)]);
+  expect((message?.y ?? 0) >= (field?.y ?? 0) + (field?.height ?? 0)).toBe(true);
 });
 
 test('leaving the field with the same name sends no command', async ({ page, context }) => {
@@ -242,7 +253,7 @@ test('leaving the field with the same name sends no command', async ({ page, con
   await watchWire(page);
 
   // #when
-  await nameField(page).fill(' Брок');
+  await nameField(page).fill('Брок');
   await page.keyboard.press('Tab');
 
   // #then
@@ -291,10 +302,10 @@ test('a rename back to the shown name while the first is on its way still goes o
   await nameField(page).fill('Брок');
   await page.keyboard.press('Tab');
 
-  // #then
+  // #then: a rename is a field patch of the name field (AD-10).
   await expect
     .poll(async () => (await sentCommands(page)).map((sent) => sent.command.type))
-    .toEqual(['sheet-rename', 'sheet-rename']);
+    .toEqual(['field-patch', 'field-patch']);
 });
 
 test('a refused creation does not take the selection when its record shows up later', async ({
@@ -325,7 +336,7 @@ test('a refused creation does not take the selection when its record shows up la
     records: [
       {
         k: `sheet:${create?.command.sheetId ?? ''}`,
-        d: { kind: 'pc', name: NEW_CHARACTER, order: 1 },
+        d: { set: 'pc', order: 1 },
         c: 1,
         a: 'other-connection',
       },
@@ -344,7 +355,7 @@ test('a refused creation does not take the selection when its record shows up la
   });
 
   // #then
-  await expect(page.getByRole('tab', { name: NEW_CHARACTER })).toBeVisible();
+  await expect(page.getByRole('tab', { name: UNNAMED })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Лиза' })).toHaveAttribute('aria-selected', 'true');
 });
 
@@ -367,12 +378,12 @@ test('tabs sort by order, then by sheetId in code unit order, the same after a r
 
   // #then
   expect({ before, after: await page.getByRole('tab').allTextContents() }).toEqual({
-    before: ['Зет', 'А', 'Бэ', 'NPC', GEAR],
-    after: ['Зет', 'А', 'Бэ', 'NPC', GEAR],
+    before: ['Зет', 'А', 'Бэ', 'NPC', 'Инвентарь', GEAR],
+    after: ['Зет', 'А', 'Бэ', 'NPC', 'Инвентарь', GEAR],
   });
 });
 
-test('after the projection the first character tab is selected', async ({ page, context }) => {
+test('after the projection the first tab is selected', async ({ page, context }) => {
   // #when
   await openWithSheets(page, context, [
     { id: 'b', name: 'Бэ', order: 1 },
@@ -383,7 +394,7 @@ test('after the projection the first character tab is selected', async ({ page, 
   await expect(page.getByRole('tab', { name: 'Зет' })).toHaveAttribute('aria-selected', 'true');
 });
 
-test('a window opened while the background runs selects the first character tab', async ({
+test('a window opened while the background runs selects the first tab', async ({
   page,
   context,
 }) => {
@@ -414,6 +425,7 @@ test('the tab list holds only tabs and "+" is a named button outside it', async 
     - tablist:
       - tab "Брок" [selected]
       - tab "NPC"
+      - tab "Инвентарь"
       - tab "${SETTINGS}"
   `);
   expect({
@@ -422,10 +434,10 @@ test('the tab list holds only tabs and "+" is a named button outside it', async 
       .evaluate((list) => [...list.children].map((child) => child.getAttribute('role'))),
     addInList: await page.getByRole('tablist').getByRole('button').count(),
     add: await page.getByRole('button', { name: ADD }).count(),
-  }).toEqual({ children: ['tab', 'tab', 'tab'], addInList: 0, add: 1 });
+  }).toEqual({ children: ['tab', 'tab', 'tab', 'tab'], addInList: 0, add: 1 });
 });
 
-test('arrow keys move focus through every tab, NPC and the gear included', async ({
+test('arrow keys move focus through every tab, the single sheets and the gear included', async ({
   page,
   context,
 }) => {
@@ -439,7 +451,7 @@ test('arrow keys move focus through every tab, NPC and the gear included', async
   const focused: string[] = [];
 
   // #when
-  for (let step = 0; step < 4; step += 1) {
+  for (let step = 0; step < 5; step += 1) {
     // Each step reads the focus the previous key left.
     // oxlint-disable-next-line no-await-in-loop
     focused.push(await focusedText(page));
@@ -448,7 +460,7 @@ test('arrow keys move focus through every tab, NPC and the gear included', async
   }
 
   // #then
-  expect(focused).toEqual(['Брок', 'Лиза', 'NPC', GEAR]);
+  expect(focused).toEqual(['Брок', 'Лиза', 'NPC', 'Инвентарь', GEAR]);
 });
 
 test('the header shows the name in sheet-title over a bottom rule in line', async ({
@@ -506,7 +518,7 @@ test('a long name is cut with an ellipsis and stays whole as the accessible name
   }).toEqual({ width: 160, overflow: 'ellipsis', cut: true });
 });
 
-test.describe('with more characters than fit', () => {
+test.describe('with more sheets than fit', () => {
   const many: SeededSheet[] = Array.from({ length: 12 }, (_unused, index) => ({
     id: `s${String(index).padStart(2, '0')}`,
     name: `Персонаж ${index + 1}`,
@@ -552,7 +564,7 @@ test.describe('with more characters than fit', () => {
     await expect.poll(() => scrollLeftOf(page)).toBe(90);
   });
 
-  test('NPC and the gear stay at the right while the tabs scroll under them', async ({
+  test('only the gear stays at the right, and the single sheet tabs scroll with the rest', async ({
     page,
     context,
   }) => {
@@ -565,19 +577,24 @@ test.describe('with more characters than fit', () => {
     await scrollBarTo(page, 150);
 
     // #then
+    const after = await pinnedBoxes(page);
+
     expect({
-      after: await pinnedBoxes(page),
-      gearRight: before.gearRight,
-      gap: before.gap,
+      gearX: after.gearX,
+      gearRight: after.gearRight,
+      npcMoved: before.npcX - after.npcX,
     }).toEqual({
-      after: before,
+      gearX: before.gearX,
       // The bar has 8 px of padding inside the 600 px window.
       gearRight: 592,
-      gap: 8,
+      npcMoved: 150,
     });
   });
 
-  test('"+" follows the last character and scrolls with the tabs', async ({ page, context }) => {
+  test('"+" follows the last sheet of its set and scrolls with the tabs', async ({
+    page,
+    context,
+  }) => {
     // #given
     await openWithSheets(page, context, many);
 
@@ -597,7 +614,7 @@ test.describe('with more characters than fit', () => {
     }).toEqual({ moved: 100, gap: 8 });
   });
 
-  test('at the end of the scroll "+" is clear of NPC', async ({ page, context }) => {
+  test('at the end of the scroll the last tab is clear of the gear', async ({ page, context }) => {
     // #given
     await openWithSheets(page, context, many);
 
@@ -605,13 +622,17 @@ test.describe('with more characters than fit', () => {
     await scrollBarTo(page, 100_000);
 
     // #then
-    const add = await page.getByRole('button', { name: ADD }).boundingBox();
-    const npc = await page.getByRole('tab', { name: 'NPC' }).boundingBox();
+    const last = await page.getByRole('tab', { name: 'Инвентарь' }).boundingBox();
+    const gear = await page.getByRole('tab', { name: SETTINGS }).boundingBox();
 
-    expect((npc?.x ?? 0) - ((add?.x ?? 0) + (add?.width ?? 0))).toBe(8);
+    // A fractional scroll offset leaves a fraction of a pixel.
+    expect(Math.round((gear?.x ?? 0) - ((last?.x ?? 0) + (last?.width ?? 0)))).toBe(8);
   });
 
-  test('"+" opens the new tab at the end and scrolls it into view', async ({ page, context }) => {
+  test('"+" opens the new tab after the last sheet and scrolls it into view', async ({
+    page,
+    context,
+  }) => {
     // #given
     await openWithSheets(page, context, many);
 
@@ -620,16 +641,21 @@ test.describe('with more characters than fit', () => {
     await page.getByRole('button', { name: ADD }).click();
 
     // #then
-    await expect(page.getByRole('tab', { name: NEW_CHARACTER })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expect(page.getByRole('tab', { name: UNNAMED })).toHaveAttribute('aria-selected', 'true');
     await expect(nameField(page)).toBeFocused();
 
-    const created = await page.getByRole('tab', { name: NEW_CHARACTER }).boundingBox();
-    const npc = await page.getByRole('tab', { name: 'NPC' }).boundingBox();
+    const created = await page.getByRole('tab', { name: UNNAMED }).boundingBox();
+    const gear = await page.getByRole('tab', { name: SETTINGS }).boundingBox();
 
-    expect((created?.x ?? 0) + (created?.width ?? 0)).toBeLessThanOrEqual(npc?.x ?? 0);
+    expect({
+      tabs: (await page.getByRole('tab').allTextContents()).slice(-4),
+      clearOfGear: (created?.x ?? 0) + (created?.width ?? 0) <= (gear?.x ?? 0),
+      inView: (created?.x ?? -1) >= 0,
+    }).toEqual({
+      tabs: [UNNAMED, 'NPC', 'Инвентарь', GEAR],
+      clearOfGear: true,
+      inView: true,
+    });
   });
 });
 
@@ -637,12 +663,20 @@ function nameField(page: Page): Locator {
   return page.getByRole('textbox', { name: NAME_FIELD });
 }
 
+// The name field `name` of the example preset, in the sheet's own section "Персонаж".
+function sheetNameField(page: Page): Locator {
+  return page
+    .getByRole('tabpanel')
+    .getByRole('region', { name: 'Персонаж' })
+    .getByRole('textbox', { name: 'Имя', exact: true });
+}
+
 function openWithSheets(
   page: Page,
   context: BrowserContext,
   sheets: readonly SeededSheet[] = [],
 ): Promise<Page> {
-  return openRoom(page, context, sheets.map(sheetRecord));
+  return openRoom(page, context, sheets.flatMap(sheetRecords));
 }
 
 async function reloadRoom(page: Page, context: BrowserContext, background: Page): Promise<void> {
@@ -652,20 +686,29 @@ async function reloadRoom(page: Page, context: BrowserContext, background: Page)
   await expect(page.getByRole('button', { name: ADD })).toBeVisible();
 }
 
-async function storedSheets(page: Page): Promise<StoredSheet[]> {
-  const texts = await page.evaluate(
-    (prefix) =>
+async function storedTexts(page: Page, form: string): Promise<string[]> {
+  return page.evaluate(
+    ([prefix, start]) =>
       Object.keys(localStorage)
-        .filter((key) => key.startsWith(`${prefix}sheet:`))
+        .filter((key) => key.startsWith(`${prefix}${start}`))
         .map((key) => localStorage.getItem(key) ?? 'null'),
-    STORAGE_PREFIX,
+    [STORAGE_PREFIX, form] as const,
   );
-
-  return texts.map((text) => storedSheetSchema.parse(JSON.parse(text)));
 }
 
+async function storedSheets(page: Page): Promise<StoredSheet[]> {
+  return (await storedTexts(page, 'sheet:')).map((text) =>
+    storedSheetSchema.parse(JSON.parse(text)),
+  );
+}
+
+// The stored values of every name field `name`, which the example preset keeps in `row:{id}:name`.
 async function storedNames(page: Page): Promise<string[]> {
-  return (await storedSheets(page)).map((sheet) => sheet.d.name);
+  const texts = await storedTexts(page, 'row:');
+
+  return texts
+    .map((text) => storedNameSchema.parse(JSON.parse(text)).d.name)
+    .filter((name) => name !== undefined);
 }
 
 async function watchWire(page: Page): Promise<void> {
@@ -734,7 +777,7 @@ async function focusedText(page: Page): Promise<string> {
 }
 
 function barScroller(page: Page): Locator {
-  return page.getByRole('tablist').locator('..');
+  return page.locator('[data-tab-scroller]');
 }
 
 async function scrollLeftOf(page: Page): Promise<number> {
@@ -752,9 +795,8 @@ async function pinnedBoxes(page: Page): Promise<PinnedBoxes> {
   const gear = await page.getByRole('tab', { name: SETTINGS }).boundingBox();
 
   return {
-    npcX: npc?.x ?? 0,
     gearX: gear?.x ?? 0,
     gearRight: (gear?.x ?? 0) + (gear?.width ?? 0),
-    gap: (gear?.x ?? 0) - ((npc?.x ?? 0) + (npc?.width ?? 0)),
+    npcX: npc?.x ?? 0,
   };
 }

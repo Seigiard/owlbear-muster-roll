@@ -1,7 +1,7 @@
 import { acceptedFieldValue, targetFields } from '@/core/field-patch';
 import { sameJson } from '@/core/json';
 import type { Version } from '@/core/merge';
-import type { PresetTemplate } from '@/core/preset';
+import type { TemplateLayout } from '@/core/preset';
 import { keptValues, type PresetMoves } from '@/core/preset-migrate';
 import {
   fieldValuesSchema,
@@ -16,8 +16,8 @@ import { sameEditId, type EditId } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 
 // What a player's edit of one key does, kept so it can be applied again to a newer record. `fields`
-// sets or clears (`null`) field values of a row or a repeat row. `add` is a new repeat row with its
-// order and cells. `remove` is a repeat row's removal, `d: null`.
+// sets or clears (`null`) field values of a row or a repeat block. `add` is a new repeat block with
+// its order and cells. `remove` is a repeat block's removal, `d: null`.
 export type ProposalPatch =
   | { kind: 'fields'; values: Readonly<Record<string, FieldValue | null>> }
   | { kind: 'add'; d: RepData }
@@ -33,8 +33,9 @@ export type ProposalEntry = {
   sent: boolean;
 };
 
-// `gone`: an edit of a repeat row that is removed or unknown. `unchanged`: the record already holds
-// what the patch sets. `too-large`: the record would not fit one message, so no GM could answer it.
+// `gone`: an edit of a repeat block that is removed or unknown. `unchanged`: the record already
+// holds what the patch sets. `too-large`: the record would not fit one message, so no GM could
+// answer it.
 export type ProposalFailure = 'gone' | 'unchanged' | 'too-large';
 
 export type ProposalQueueOptions = {
@@ -53,6 +54,8 @@ export type ProposalQueue = {
   // Adds or replaces the entry of its key. A minted one is sent at once, and resent with a backoff
   // that starts again.
   put: (entry: ProposalEntry) => void;
+  // Replaces the entry of its key and sends it on the running backoff, not at once.
+  hold: (entry: ProposalEntry) => void;
   drop: (key: string) => void;
   clear: () => void;
   // The entry whose newest version is this `(k, c, a)`.
@@ -157,6 +160,15 @@ export function createProposalQueue(options: ProposalQueueOptions): ProposalQueu
         propose(entry.k);
       }
     },
+    hold: (entry) => {
+      entries.set(entry.k, entry);
+
+      if (entry.record === null) {
+        stopResend(entry.k);
+      } else if (!resends.has(entry.k)) {
+        armResend(entry.k, timing.proposeResendStartMs);
+      }
+    },
     drop: (key) => {
       entries.delete(key);
       queued.delete(key);
@@ -208,8 +220,8 @@ export function combinePatches(older: ProposalPatch, newer: ProposalPatch): Prop
 // AD-4: the record the patch makes of `base`, the newest record of its key that the player knows,
 // with a version from `mint`, which runs only on success. A patch that changes nothing fails with
 // `unchanged` unless `force` is set: a version of the entry already went out, and the base's data
-// must still win over it. An edit of a removed repeat row fails with `gone`, and the removal of one
-// with `unchanged`.
+// must still win over it. An edit of a removed repeat block fails with `gone`, and the removal of
+// one with `unchanged`.
 export function proposedRecord(
   key: string,
   patch: ProposalPatch,
@@ -257,13 +269,13 @@ export function proposedRecord(
     : ok({ k: key, d: after, ...mint() });
 }
 
-// AD-14: the patch with only the fields the template has in the row of `key`, each value of its
-// field's type or a clear. The same patch when nothing goes, and `null` when nothing is left: a
-// row or repeat section the template no longer has, or field values that all went.
+// AD-14: the patch with only the fields the template has in the row or repeat block of `key`, each
+// value of its field's type or a clear. The same patch when nothing goes, and `null` when nothing
+// is left: a row or repeat section the template no longer has, or field values that all went.
 export function strippedPatch(
   key: string,
   patch: ProposalPatch,
-  template: PresetTemplate,
+  template: TemplateLayout,
 ): ProposalPatch | null {
   const [form, , id = ''] = key.split(':');
 
@@ -301,9 +313,9 @@ export function strippedPatch(
     : { kind: 'fields', values: Object.fromEntries(entries) };
 }
 
-// AD-14: the patch of `key` under the keys a new preset gives it. A row's field values go to the new
-// rows that hold their ids, so one patch can split; a value with no new row goes. A repeat row's
-// patch, a removal too, goes to the new section of its section. Empty when nothing maps.
+// AD-14: the patch of `key` under the keys a new preset gives it. A row's field values go to the
+// new rows that hold their ids, so one patch can split; a value with no new row goes. A repeat
+// block's patch, a removal too, goes to the new section of its section. Empty when nothing maps.
 export function movedPatches(
   key: string,
   patch: ProposalPatch,

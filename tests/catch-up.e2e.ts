@@ -2,15 +2,17 @@ import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 
 import {
+  ADD,
   addPartyMember,
   connectionIdOf,
   deviceKeys,
   openClientBackground,
   openClientWindow,
+  pcSheet,
   record,
   seedStorage,
-  storedData,
   STORAGE_PREFIX,
+  storedData,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
@@ -18,14 +20,15 @@ import {
 
 const LOADING = 'Загрузка…';
 const READ_ONLY = 'Только чтение';
-const ADD = 'Добавить персонажа';
 const GEAR = '⚙︎';
 const SETTINGS = 'Настройки';
 const LOAD_PRESET = 'Загрузить пресет';
 const DOWNLOAD_PRESET = 'Скачать пресет';
 const DOWNLOAD_SNAPSHOT = 'Скачать снимок';
 const LOAD_SNAPSHOT = 'Загрузить снимок';
-const NEW_CHARACTER = 'Новый персонаж';
+
+// The tab of a new sheet, whose name field is still empty.
+const UNNAMED = 'Без имени';
 
 type Return = 'online' | 'resume' | 'visibilitychange';
 
@@ -33,26 +36,46 @@ type Return = 'online' | 'resume' | 'visibilitychange';
 const SILENT_GM = 'mock-connection-silent';
 
 const PRESET = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+        },
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+            ],
+          ],
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+  ],
 };
 
 const PRESET_TEXT = JSON.stringify(PRESET);
 
 const RECORDS: StoredRecord[] = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
+  ...pcSheet('brok', 'Брок', 0),
   record('row:brok:str', { str: 14 }),
 ];
 
@@ -75,6 +98,7 @@ test('a GM on a new device gets the sheets a live GM holds and saves them', asyn
   expect((await deviceKeys(b.window, 'b')).sort()).toEqual(
     [
       `${STORAGE_PREFIX}preset`,
+      `${STORAGE_PREFIX}row:brok:name`,
       `${STORAGE_PREFIX}row:brok:str`,
       `${STORAGE_PREFIX}sheet:brok`,
     ].sort(),
@@ -120,7 +144,7 @@ test('the no-preset state shows only after the first catch-up ends', async ({ co
   await expect(window.getByRole('button', { name: LOAD_PRESET })).toBeEnabled({ timeout: 6000 });
 });
 
-test('a GM edit and a new character made during catch-up show at once and are saved on exit', async ({
+test('a GM edit and a new sheet made during catch-up show at once and are saved on exit', async ({
   context,
 }) => {
   // #given
@@ -147,10 +171,8 @@ test('a GM edit and a new character made during catch-up show at once and are sa
   await client.window.getByRole('button', { name: ADD }).click();
 
   // #then
-  await expect(
-    client.window.getByRole('tab', { name: NEW_CHARACTER, selected: true }),
-  ).toBeVisible();
-  await expect(client.window.getByRole('textbox', { name: 'Имя персонажа' })).toBeFocused();
+  await expect(client.window.getByRole('tab', { name: UNNAMED, selected: true })).toBeVisible();
+  await expect(client.window.getByRole('textbox', { name: 'Имя листа' })).toBeFocused();
   expect(savedDuringCatchUp).toEqual({ str: 14 });
   await expect
     .poll(() => storedData(client.window, 'row:brok:str'), { timeout: 12_000 })
@@ -296,11 +318,10 @@ function snapshotButton(page: Page, name: string): Locator {
 
 async function newSheetsStored(page: Page): Promise<number> {
   return page.evaluate(
-    ([prefix, name]) =>
+    (prefix) =>
       Object.keys(localStorage).filter(
-        (key) =>
-          key.startsWith(`${prefix}sheet:`) && (localStorage.getItem(key) ?? '').includes(name),
+        (key) => key.startsWith(`${prefix}sheet:`) && key !== `${prefix}sheet:brok`,
       ).length,
-    [STORAGE_PREFIX, NEW_CHARACTER] as const,
+    STORAGE_PREFIX,
   );
 }

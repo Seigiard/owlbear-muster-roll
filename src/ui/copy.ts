@@ -9,8 +9,9 @@ export const copy = {
     downloadPreset: 'Скачать пресет',
     loadSnapshot: 'Загрузить снимок',
     downloadSnapshot: 'Скачать снимок',
-    addNpc: 'Добавить NPC',
-    addRow: 'Добавить строку',
+    wipe: 'Очистить всё',
+    // Adds a repeat block at the end of its section.
+    add: 'Добавить',
     duplicate: 'Дублировать…',
     // Confirms the count of the inline duplicate block: the menu's verb with no ellipsis, as no
     // further step follows.
@@ -20,42 +21,45 @@ export const copy = {
     unlinkSheet: 'Отвязать лист',
     openSheet: 'Открыть лист',
     cancel: 'Отменить',
-    addCharacter: 'Добавить персонажа',
   },
   label: {
-    sheetName: 'Имя персонажа',
-    npcName: 'Имя NPC',
+    // The accessible name of a sheet set's "+", by the sheet set's `title`.
+    addToSet: (title: string): string => `Добавить: ${title}`,
+    // The accessible name of a repeat section's "Добавить", by the section's title.
+    addToSection: (title: string): string => `Добавить в «${title}»`,
+    // The name in the header of a sheet of a sheet set, which edits its name field.
+    sheetName: 'Имя листа',
     sheetActions: 'Действия с листом',
     // The range is in the label, so sight and assistive tech both get it.
     duplicateCount: 'Количество копий (1–50)',
-    // The accessible name of a repeat row's "Удалить", with the row's position from 1.
-    deleteRow: (n: number): string => `Удалить строку ${n}`,
+    // The accessible names of a repeat block's "Удалить" and "Дублировать…", with the repeat
+    // block's position in its section from 1.
+    deleteBlock: (n: number): string => `Удалить блок ${n}`,
+    duplicateBlock: (n: number): string => `Дублировать блок ${n}…`,
     // The accessible name of a read-only check mark: its field's label and its state.
     checked: (name: string): string => `${name}: отмечено`,
     unchecked: (name: string): string => `${name}: не отмечено`,
-    // The checkbox of one player's row in the access panel (UX-DR12), and its accessible name, which
-    // says whose it is.
+    // The checkbox of one player's row in the access panel (UX-DR12), and its accessible name,
+    // which says whose it is.
     mayEdit: 'Может править',
     mayEditFor: (name: string): string => `${name}: может править`,
-    // The radio group of the access panel that picks the one owner of a character, and its option
-    // for no owner (UX-DR12).
-    owner: 'Его персонаж',
+    // The radio group of the access panel that picks the one owner of a sheet of a sheet set, and
+    // its option for no owner (UX-DR12).
+    owner: 'Его лист',
     noOwner: 'Никто',
   },
-  // After the name on the tab of a character the player owns (UX-DR8).
+  // After the name on the tab of a sheet the player owns (UX-DR8).
   ownMark: 'вы',
-  newCharacter: 'Новый персонаж',
-  newNpc: 'Новый NPC',
   addSign: '+',
   place: {
     settings: 'Настройки',
     access: 'Доступ',
-    npc: 'NPC',
   },
   section: {
     preset: 'Пресет',
     snapshot: 'Снимок',
     roomCopy: 'Копия в комнате',
+    wipe: 'Очистка',
   },
   status: {
     pending: 'Ожидает',
@@ -66,24 +70,39 @@ export const copy = {
   },
   loading: 'Загрузка…',
   playerNoPreset: 'ГМ ещё не настроил листы.',
-  playerNoCharacters: 'ГМ ещё не создал персонажей.',
+  playerNoSheets: 'ГМ ещё не создал листы.',
   playerNoGmNoData: 'ГМ ещё не заходил. Листов пока нет.',
   noGm: 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.',
   roomCopyNotSaved: 'Копия в комнате не сохранена. Игра идёт дальше, но скачайте снимок.',
   localSaveFailed: 'Не удалось сохранить в браузере. Скачайте снимок.',
   roomCopyUnreadable: 'Копия в комнате не читается. Дождитесь ГМ.',
+  // AD-12, CAP-31: a GM's banner while the room copy is of an older format.
+  roomCopyOlderFormat: 'Копия в комнате из старой версии. Очистите всё в настройках.',
   // Settings, "Копия в комнате". Sizes come in kB, as `kilobytes` writes them.
   roomCopySaved: (used: string, free: string): string =>
     `Сохранена. Занято ${used} кБ, свободно ${free} кБ.`,
   roomCopyNone: (free: string): string => `Не сохранена. Свободно ${free} кБ.`,
   newVersion: 'Вышла новая версия. Перезагрузите страницу.',
-  presetUploadRemovesValues: (count: number): string =>
-    `Значения удалённых полей будут стёрты: ${count}. Загрузить пресет?`,
+  // AD-14: the parts of the one upload confirmation, each shown when it applies, then the question.
+  presetUploadErasesValues: (count: number): string =>
+    `Значения удалённых полей будут стёрты: ${count}.`,
+  presetUploadDeletesSheets: (sheets: number): string => `Листы будут удалены: ${sheets}.`,
+  presetUploadQuestion: 'Загрузить пресет?',
   presetUploadRemovesNothing: 'Формат листов изменён.',
   snapshotImport:
     'Все данные комнаты будут заменены. Игроки потеряют привязки и права. Загрузить снимок?',
   snapshotImportDropsValues: (count: number): string =>
     `Не войдут значения удалённых полей: ${count}.`,
+  snapshotImportDropsSheets: (sheets: number): string => `Не войдут листы: ${sheets}.`,
+  // AD-9, CAP-31: the one confirmation of a wipe.
+  wipeConfirmation:
+    'Будут удалены пресет, все листы, копия в комнате и копия в этом браузере. Игроки потеряют привязки и права. Очистить всё?',
+  // A wipe that was refused, could not be sent, or got no answer. It follows the
+  // `snapshotImportFailed` pattern.
+  wipeFailed: 'Не удалось очистить. Попробуйте ещё раз.',
+  wipeNotAllowed: 'Очищать может только мастер.',
+  // AD-9: a snapshot import runs on the GM client, and nothing writes until it ends.
+  wipeAfterImport: 'Идёт загрузка снимка. Очистить можно после неё.',
   deleteConfirmation: (name: string): string => `Удалить «${name}»? Это нельзя отменить.`,
   badFormula: (field: string): string => `Нельзя бросить: поле «${field}» пустое или не число`,
   badFormulaResult: 'Нельзя бросить: формула не дала числа',
@@ -96,9 +115,13 @@ export const copy = {
     notJson: 'это не JSON',
     invalidStructure: 'неверная структура',
     unsupportedVersion: 'неподдерживаемая версия формата',
+    invalidTemplateId: (id: string): string => `недопустимый id листа «${id}»`,
+    duplicateTemplate: (id: string): string => `лист «${id}» повторяется`,
+    badNameField: (id: string, field: string): string =>
+      `в наборе «${id}» нет текстового поля «${field}» вне повторяемых секций`,
     invalidFieldId: (id: string): string => `недопустимый id поля «${id}»`,
     duplicateFieldId: (id: string): string => `поле «${id}» повторяется`,
-    badRepeat: 'в повторяемой секции нужна одна строка хотя бы с одним полем',
+    badRepeat: 'в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем',
     duplicateSection: (id: string): string => `две повторяемые секции с id «${id}»`,
     rowTooWide: 'в строке больше ячеек, чем колонок',
     badFormula: (formula: string): string => `ошибка в формуле «${formula}»`,
@@ -113,7 +136,8 @@ export const copy = {
   presetUnreadable: 'Сохранённый пресет не читается. Обновите расширение.',
   presetWriteFailed: 'Не удалось сохранить пресет. Попробуйте ещё раз.',
   presetNotAllowed: 'Загружать пресет может только мастер.',
-  // AD-9: an import that saved nothing, or got no answer. It follows the `presetWriteFailed` pattern.
+  // AD-9: an import that saved nothing, or got no answer. It follows the `presetWriteFailed`
+  // pattern.
   snapshotImportFailed: 'Не удалось загрузить снимок. Попробуйте ещё раз.',
   // An import whose answer never came may still have replaced the room, so the GM looks first.
   snapshotImportNoAnswer: 'Ответ не пришёл. Проверьте листы, прежде чем загружать снова.',
@@ -124,17 +148,20 @@ export const copy = {
     `${roller}: ${sheet}, ${cell} — ${result}`,
   rollSuccess: 'успех',
   rollFailure: 'провал',
+  // The one fallback label of an empty sheet name, wherever a name shows.
+  unnamed: 'Без имени',
   rollFailed: 'Бросок не удался. Попробуйте ещё раз.',
   // Under a dice button while its roll waits, as for the dice extension's dice (TASK-36).
   rolling: 'Бросаем…',
   // Instead of `rolling` while the dice extension waits for the GM to allow Muster Roll (TASK-36).
   rollWaitingForGm: 'Ждём разрешения ГМ…',
   duplicateFailed: 'Не удалось дублировать. Попробуйте ещё раз.',
-  // The link picker with no sheet to list (UX-DR22).
+  // The link picker with no target to list (UX-DR22).
   noSheetsToLink: 'Сначала создайте лист',
-  // Under the link picker's list when the link was not saved, such as for a sheet deleted meanwhile.
+  // Under the link picker's list when the link was not saved, such as for a sheet deleted
+  // meanwhile.
   linkFailed: 'Не удалось привязать. Попробуйте ещё раз.',
-  // The link picker's offer to set the label under the token to the picked sheet's name, and the
+  // The link picker's offer to set the label under the token to the picked target's name, and the
   // hint under it with the label the token has now.
   linkLabel: 'Подписать токен именем листа',
   linkLabelNow: (label: string): string => `Сейчас: «${label}»`,

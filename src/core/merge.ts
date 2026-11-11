@@ -45,10 +45,10 @@ export function mergeRecords(left: VersionedRecord, right: VersionedRecord): Ver
   return JSON.stringify(left.d) >= JSON.stringify(right.d) ? left : right;
 }
 
-// FR19: a character has at most one owner. Two GM clients can pick owners at once and leave two live
-// `plink:` records of one sheet, so every client takes the live one with the highest `(c, a)` as
-// the only owner, and the higher key on an equal `(c, a)`. Returns its player id, or `null` with no
-// live `plink:` of the sheet.
+// FR19: a sheet of a sheet set has at most one owner. Two GM clients can pick owners at once and
+// leave two live `plink:` records of one sheet, so every client takes the live one with the highest
+// `(c, a)` as the only owner, and the higher key on an equal `(c, a)`. Returns its player id, or
+// `null` with no live `plink:` of the sheet.
 export function ownerOf(records: Iterable<VersionedRecord>, sheetId: string): string | null {
   const prefix = plinkPrefix(sheetId);
   let owner: Owner | null = null;

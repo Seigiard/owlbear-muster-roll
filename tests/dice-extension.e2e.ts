@@ -5,6 +5,7 @@ import {
   connectionIdOf,
   openClientBackground,
   openClientWindow,
+  pcSheet,
   record,
   seedStorage,
   type ClientParams,
@@ -22,33 +23,46 @@ const PLAYER: ClientParams = {
   name: 'Лиза',
 };
 
+// A visible sheet set and a hidden single sheet "NPC", both with a dice cell.
 const PRESET = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Удар' },
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'dice', formula: '1d20 + str' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'name' }],
+            [
+              { kind: 'text', text: 'Удар' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'dice', formula: '1d20 + str' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Хиты' },
-            { kind: 'field', type: 'number', id: 'hp' },
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Укус' },
+              { kind: 'field', type: 'number', id: 'bite' },
+              { kind: 'dice', formula: '1d20 + bite' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
+        },
+      ],
+    },
+  ],
 };
 
 test.beforeEach(async ({ page }) => {
@@ -75,6 +89,33 @@ test("a roll with a dice extension shows the extension's face on every client", 
       (window.mockDiceExtension?.requests() ?? []).map((request) => request.diceNotation),
     ),
   }).toEqual({ shown: ['Мастер: Брок, Удар — 31'], notations: ['1d20'] });
+});
+
+test('the dice extension shows a visible roll to everyone and a hidden one to GMs only', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context);
+  const player = await openPlayer(context);
+
+  await expect(player.window.getByRole('button', { name: 'Удар' })).toBeVisible();
+  await diceButton(gm.window).click();
+  await expect.poll(() => shownNotifications(gm)).toEqual(['Мастер: Брок, Удар — 31']);
+
+  // #when
+  await gm.window.getByRole('tab', { name: 'NPC' }).click();
+  await gm.window.getByRole('tabpanel').getByRole('button', { name: 'Укус', exact: true }).click();
+
+  // #then: 17 + bite 2 shows on the GM only, and the visible roll before it reached the player.
+  await expect
+    .poll(() => shownNotifications(gm))
+    .toEqual(['Мастер: Брок, Удар — 31', 'Мастер: NPC, Укус — 19']);
+  expect({
+    targets: await gm.background.evaluate(() =>
+      (window.mockDiceExtension?.requests() ?? []).map((request) => request.rollTarget),
+    ),
+    player: await shownNotifications(player),
+  }).toEqual({ targets: ['everyone', 'gm_only'], player: ['Мастер: Брок, Удар — 31'] });
 });
 
 test('a dice button says it is rolling while it waits for the dice', async ({ context }) => {
@@ -125,8 +166,9 @@ async function openGm(context: BrowserContext, params: ClientParams = GM): Promi
   await seedStorage(
     window,
     [
-      record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
+      ...pcSheet('brok', 'Брок', 0),
       record('row:brok:str', { str: 14 }),
+      record('row:npc:bite', { bite: 2 }),
     ],
     JSON.stringify(PRESET),
     params.device,

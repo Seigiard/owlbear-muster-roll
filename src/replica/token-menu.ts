@@ -1,3 +1,4 @@
+import type { Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import {
   LINK_PICKER_POPOVER_ID,
@@ -47,9 +48,13 @@ export type TokenMenuActions = {
 };
 
 export type TokenMenu = {
-  // Builds the items from these records and this role, and re-creates only those whose filter
-  // changed.
-  update: (records: ReadonlyMap<string, VersionedRecord>, role: PlayerRole) => void;
+  // Builds the items from these records, the preset they hold, decoded, and this role, and
+  // re-creates only those whose filter changed.
+  update: (
+    records: ReadonlyMap<string, VersionedRecord>,
+    preset: Preset | null,
+    role: PlayerRole,
+  ) => void;
   stop: () => void;
 };
 
@@ -131,13 +136,13 @@ export function createTokenMenu(
   }
 
   return {
-    update: (records, role) => {
+    update: (records, preset, role) => {
       if (stopped) {
         return;
       }
 
       const entries = new Map(
-        tokenMenuEntries(records, role).map((entry) => [entry.action, entry]),
+        tokenMenuEntries(records, preset, role).map((entry) => [entry.action, entry]),
       );
 
       for (const action of ACTIONS) {

@@ -8,6 +8,7 @@ import type { JsonValue } from '@/core/json';
 
 import { cssValue, renderedColor } from './support/colors';
 import {
+  ADD,
   addPartyMember,
   afterSettling,
   connectionIdOf,
@@ -15,7 +16,9 @@ import {
   openBackground,
   openClientBackground,
   openClientWindow,
+  npcBlock,
   openRoom,
+  pcSheet,
   record,
   seedStorage,
   storedRecords,
@@ -33,7 +36,6 @@ const UPLOAD = 'Загрузить снимок';
 const LOAD_PRESET = 'Загрузить пресет';
 const PRESET_REQUIRED = 'Сначала загрузите пресет.';
 const CANCEL = 'Отменить';
-const ADD = 'Добавить персонажа';
 const DATA_REPLACED = 'Данные комнаты заменены';
 
 const ASK =
@@ -43,7 +45,9 @@ const ASK_DROPS_ONE = `${ASK} Не войдут значения удалённ�
 const NOT_SNAPSHOT = 'Файл не подошёл: это не снимок. Ничего не изменено.';
 const NOT_JSON = 'Файл не подошёл: это не JSON. Ничего не изменено.';
 const NEWER = 'Файл из более новой версии. Перезагрузите страницу.';
-const MOCK_ROOM = 'mr1:mock-room:';
+const ASK_DROPS_SHEETS = `${ASK} Не войдут значения удалённых полей: 1. Не войдут листы: 2.`;
+const UNSUPPORTED = 'Файл не подошёл: неподдерживаемая версия формата. Ничего не изменено.';
+const MOCK_ROOM = 'mr2:mock-room:';
 const FIRST_GENERATION = `${MOCK_ROOM}0::`;
 const SILENT_GM = 'silent-gm';
 const OPEN_ITEM = 'app.muster-roll/open-sheet';
@@ -52,28 +56,30 @@ const ACCENT: readonly [number, number, number] = [217, 179, 108];
 // Midday, so no time zone of the test machine moves it to another date.
 const FIXED_NOW = new Date(2026, 0, 5, 12, 0).getTime();
 
+// Two sheets of "Персонажи" and one NPC, a repeat block of the single sheet "NPC". t1 links a sheet
+// and t3 the NPC's repeat block.
 const RECORDS: StoredRecord[] = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 1 }),
-  record('sheet:anya', { kind: 'pc', name: 'Аня', order: 0 }),
-  record('sheet:skel', { kind: 'npc', name: 'Скелет', order: 0 }),
+  ...pcSheet('brok', 'Брок', 1),
+  ...pcSheet('anya', 'Аня', 0),
+  npcBlock('skel', 'Скелет', 0, { hp: 7 }),
   record('row:brok:class', { class: 'Воин', level: 3 }),
   record('rep:brok:attack:i2', { order: 1, cells: { attack: 'Топор', bonus: 2 } }),
   record('rep:brok:attack:i1', { order: 0, cells: { attack: 'Меч' } }),
-  record('row:skel:hp', { hp: 7 }),
   record('acl:brok:lisa', { name: 'Лиза' }),
   record('plink:brok:lisa', { name: 'Лиза' }),
-  record('link:t1', 'brok'),
+  record('link:t1', { s: 'brok' }),
+  record('link:t3', { s: 'npc', i: 'skel' }),
   // A deleted sheet with a live row left behind, and a link to it.
   record('sheet:gone', null, 2),
   record('row:gone:class', { class: 'Лучник' }),
-  record('link:t2', 'gone'),
+  record('link:t2', { s: 'gone' }),
 ];
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
 });
 
-test('Settings lists Пресет, Снимок, Копия в комнате, with the primary download first under Снимок', async ({
+test('Settings lists Пресет, Снимок, Копия в комнате, Очистка, with the primary download first under Снимок', async ({
   page,
   context,
 }) => {
@@ -90,6 +96,7 @@ test('Settings lists Пресет, Снимок, Копия в комнате, w
     'Пресет',
     SNAPSHOT,
     'Копия в комнате',
+    'Очистка',
   ]);
   await expect(section.getByRole('button')).toHaveText([DOWNLOAD, UPLOAD]);
   expect(
@@ -137,25 +144,18 @@ test('the downloaded snapshot holds the live sheets, their values and links, and
     commands: (await afterSettling(page)).commands,
   }).toEqual({
     name: 'muster-roll-snapshot-2026-01-05.json',
+    // The templates in preset order: the sheets of "Персонажи" by order, then each single sheet
+    // once, with values or none.
     file: {
-      v: 1,
+      v: 2,
       type: 'muster-roll/snapshot',
       sheets: [
-        { id: 'anya', kind: 'pc', name: 'Аня', order: 0, rows: {}, repeats: {} },
-        {
-          id: 'skel',
-          kind: 'npc',
-          name: 'Скелет',
-          order: 0,
-          rows: { hp: { hp: 7 } },
-          repeats: {},
-        },
+        { id: 'anya', set: 'pc', order: 0, rows: { name: { name: 'Аня' } }, repeats: {} },
         {
           id: 'brok',
-          kind: 'pc',
-          name: 'Брок',
+          set: 'pc',
           order: 1,
-          rows: { class: { class: 'Воин', level: 3 } },
+          rows: { class: { class: 'Воин', level: 3 }, name: { name: 'Брок' } },
           repeats: {
             attack: [
               { instanceId: 'i1', order: 0, cells: { attack: 'Меч' } },
@@ -163,8 +163,19 @@ test('the downloaded snapshot holds the live sheets, their values and links, and
             ],
           },
         },
+        {
+          id: 'npc',
+          rows: {},
+          repeats: {
+            npc_name: [{ instanceId: 'skel', order: 0, cells: { hp: 7, npc_name: 'Скелет' } }],
+          },
+        },
+        { id: 'inventory', rows: {}, repeats: {} },
       ],
-      links: [{ tokenId: 't1', sheetId: 'brok' }],
+      links: [
+        { tokenId: 't1', sheetId: 'brok' },
+        { tokenId: 't3', sheetId: 'npc', instanceId: 'skel' },
+      ],
     },
     commands: [],
   });
@@ -197,19 +208,34 @@ test('with no preset, both snapshot buttons are disabled with the preset-first r
 // The file of the 5.3 tests: one character the example preset places, and one value it has no
 // field for.
 const MIRA_FILE = {
-  v: 1,
+  v: 2,
   type: 'muster-roll/snapshot',
   sheets: [
     {
       id: 'mira',
-      kind: 'pc',
-      name: 'Мира',
+      set: 'pc',
       order: 0,
-      rows: { class: { class: 'Маг', level: 2, gone: 'x' } },
+      rows: { name: { name: 'Мира' }, class: { class: 'Маг', level: 2, gone: 'x' } },
       repeats: {},
     },
   ],
   links: [{ tokenId: 't9', sheetId: 'mira' }],
+};
+
+// MIRA_FILE with two sheets the example preset has no template for: a sheet of a sheet set
+// "ships" and a single sheet "journal", each with a link.
+const UNKNOWN_TEMPLATES_FILE = {
+  ...MIRA_FILE,
+  sheets: [
+    ...MIRA_FILE.sheets,
+    { id: 'ship', set: 'ships', order: 0, rows: {}, repeats: {} },
+    { id: 'journal', rows: {}, repeats: {} },
+  ],
+  links: [
+    { tokenId: 't9', sheetId: 'mira' },
+    { tokenId: 't-ship', sheetId: 'ship' },
+    { tokenId: 't-journal', sheetId: 'journal' },
+  ],
 };
 
 // Аня comes first, so opening Мира from its token changes the tab. `t-absent` is no token on the
@@ -217,7 +243,7 @@ const MIRA_FILE = {
 const LINKED_FILE = {
   ...MIRA_FILE,
   sheets: [
-    { id: 'anya', kind: 'pc', name: 'Аня', order: 0, rows: {}, repeats: {} },
+    { id: 'anya', set: 'pc', order: 0, rows: { name: { name: 'Аня' } }, repeats: {} },
     { ...MIRA_FILE.sheets[0], order: 1 },
   ],
   links: [
@@ -246,9 +272,11 @@ test('a file that is no snapshot, or not JSON, or newer, is refused under the bu
   await page.getByRole('tab', { name: SETTINGS }).click();
 
   const cases: [string, string][] = [
-    [JSON.stringify({ v: 1, character: { sections: [] }, npc: { sections: [] } }), NOT_SNAPSHOT],
+    [EXAMPLE_PRESET_TEXT, NOT_SNAPSHOT],
     ['{', NOT_JSON],
-    [JSON.stringify({ v: 2, type: 'muster-roll/snapshot' }), NEWER],
+    [JSON.stringify({ v: 3, type: 'muster-roll/snapshot' }), NEWER],
+    // AD-12: no migration from a version 1 file.
+    [JSON.stringify({ ...MIRA_FILE, v: 1 }), UNSUPPORTED],
   ];
 
   for (const [text, message] of cases) {
@@ -281,6 +309,34 @@ test('a snapshot asks once, with the dropped count, and its focus starts on "О�
   await expect(confirmation(page)).toHaveAccessibleName(ASK_DROPS_ONE);
   await expect(confirmation(page).getByRole('button')).toHaveText([UPLOAD, CANCEL]);
   await expect(confirmation(page).getByRole('button', { name: CANCEL })).toBeFocused();
+});
+
+test('a file sheet of a template the preset lacks is dropped, counted, and stays out with its links', async ({
+  page,
+  context,
+}) => {
+  // #given
+  await openRoom(page, context, RECORDS);
+  await page.getByRole('tab', { name: SETTINGS }).click();
+  await chooseSnapshot(page, JSON.stringify(UNKNOWN_TEMPLATES_FILE));
+  await expect(confirmation(page)).toHaveAccessibleName(ASK_DROPS_SHEETS);
+
+  // #when
+  await confirmation(page).getByRole('button', { name: UPLOAD }).click();
+
+  // #then
+  await expect(page.getByRole('tab', { name: 'Мира' })).toBeVisible();
+  await expect(page.getByRole('tab')).toHaveText(['Мира', 'NPC', 'Инвентарь', '⚙︎']);
+
+  // The old generation goes once the new one is complete, so only the import's keys stay.
+  await expect
+    .poll(async () =>
+      (await keysUnder(page, MOCK_ROOM))
+        .map((key) => key.slice(key.indexOf(':', key.indexOf(':', MOCK_ROOM.length) + 1) + 1))
+        .filter((key) => key.startsWith('link:') || key.startsWith('sheet:'))
+        .sort(),
+    )
+    .toEqual(['link:t9', 'sheet:mira']);
 });
 
 test('"Отменить" and Escape close the block and write nothing', async ({ page, context }) => {

@@ -59,7 +59,7 @@ describe('fitsOneMessage', () => {
 describe('recordFitsOneMessage', () => {
   test('accepts a small record', () => {
     // #when
-    const fits = recordFitsOneMessage({ k: 'link:t', d: 's', c: 1, a: 'conn' });
+    const fits = recordFitsOneMessage({ k: 'row:s:t', d: { t: 's' }, c: 1, a: 'conn' });
 
     // #then
     expect(fits).toBe(true);
@@ -67,7 +67,12 @@ describe('recordFitsOneMessage', () => {
 
   test('refuses a record that fits alone but leaves no room for its message', () => {
     // #when
-    const fits = recordFitsOneMessage({ k: 'link:t', d: 'x'.repeat(14900), c: 1, a: 'conn' });
+    const fits = recordFitsOneMessage({
+      k: 'row:s:t',
+      d: { t: 'x'.repeat(14900) },
+      c: 1,
+      a: 'conn',
+    });
 
     // #then
     expect(fits).toBe(false);
@@ -75,8 +80,8 @@ describe('recordFitsOneMessage', () => {
 
   test('refuses random text that fits as JSON but not one state message after deflate', () => {
     // #given two records of one JSON size: random text and text that deflates well
-    const random = { k: 'link:t', d: noise(13500, 7), c: 1, a: 'conn' };
-    const plain = { k: 'link:t', d: 'x'.repeat(13500), c: 1, a: 'conn' };
+    const random = { k: 'row:s:t', d: { t: noise(13500, 7) }, c: 1, a: 'conn' };
+    const plain = { k: 'row:s:t', d: { t: 'x'.repeat(13500) }, c: 1, a: 'conn' };
 
     // #when
     const fits = [recordFitsOneMessage(random), recordFitsOneMessage(plain)];

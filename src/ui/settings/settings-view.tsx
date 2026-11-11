@@ -10,6 +10,7 @@ import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 import { roomCopyText } from '@/ui/settings/room-copy-text';
 import { useSnapshotActions } from '@/ui/settings/snapshot-actions';
+import { useWipeActions } from '@/ui/settings/wipe-actions';
 
 type SettingsViewProps = {
   // The window's records, which "Скачать снимок" writes to the file.
@@ -18,12 +19,16 @@ type SettingsViewProps = {
   catchingUp: boolean;
   roomCopy: RoomCopyStatus;
   client: Pick<ReplicaClient, 'sendCommand' | 'requestPresetDiff' | 'requestSnapshotCheck'>;
-  store: Pick<ProjectionStore, '$rejections' | '$presetResults' | '$snapshotResults'>;
+  store: Pick<
+    ProjectionStore,
+    '$rejections' | '$presetResults' | '$snapshotResults' | '$wipeResults'
+  >;
 };
 
-// Sections come in the order Пресет, Снимок, Копия в комнате. In each section the first action is
-// the primary one: the upload under Пресет, the download under Снимок. A confirmation block comes
-// before every section, at the top of the content area, and closes when the GM leaves Settings.
+// Sections come in the order Пресет, Снимок, Копия в комнате, Очистка. In each section the first
+// action is the primary one: the upload under Пресет, the download under Снимок. A confirmation
+// block comes before every section, at the top of the content area, and closes when the GM leaves
+// Settings.
 export function SettingsView({
   records,
   preset,
@@ -35,6 +40,7 @@ export function SettingsView({
   const headingId = useId();
   const snapshotHeadingId = useId();
   const roomCopyHeadingId = useId();
+  const wipeHeadingId = useId();
 
   const { confirmation, upload } = usePresetUpload({
     client,
@@ -44,11 +50,13 @@ export function SettingsView({
   });
 
   const snapshot = useSnapshotActions({ records, preset, catchingUp, client, store });
+  const wipe = useWipeActions({ catchingUp, client, store });
 
   return (
     <div className="flex flex-col gap-4">
       {confirmation}
       {snapshot.confirmation}
+      {wipe.confirmation}
       <section aria-labelledby={headingId} className="flex flex-col gap-2">
         <h2 id={headingId} className="text-section-heading">
           {copy.section.preset}
@@ -69,6 +77,12 @@ export function SettingsView({
           {copy.section.roomCopy}
         </h2>
         <p>{roomCopyText(roomCopy)}</p>
+      </section>
+      <section aria-labelledby={wipeHeadingId} className="flex flex-col gap-2">
+        <h2 id={wipeHeadingId} className="text-section-heading">
+          {copy.section.wipe}
+        </h2>
+        <div className="flex flex-wrap items-start gap-2">{wipe.action}</div>
       </section>
     </div>
   );

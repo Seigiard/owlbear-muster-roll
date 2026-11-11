@@ -3,10 +3,13 @@ import type { BrowserContext, Locator, Page } from '@playwright/test';
 
 import { cssValue, renderedColor, tokenColor } from './support/colors';
 import {
+  ADD,
   addPartyMember,
   connectionIdOf,
   openClientBackground,
+  npcBlock,
   openClientWindow,
+  pcSheet,
   record,
   seedStorage,
   storedData,
@@ -29,8 +32,7 @@ const ACL_FAILED = 'Не удалось изменить доступ. Попр�
 
 const UI_CHANNEL = 'app.muster-roll/ui';
 
-const ADD = 'Добавить персонажа';
-const NAME_FIELD = 'Имя персонажа';
+const SHEET_NAME = 'Имя листа';
 
 // The GM keeps its records in this browser's shared storage, so `storedData` reads them. The player
 // has a device of its own and persists nothing.
@@ -44,37 +46,90 @@ const PLAYER: ClientParams = {
   device: 'p',
 };
 
+// A visible sheet set, the hidden single sheet NPC, a visible single sheet, and a hidden sheet set.
 const PRESET_TEXT = JSON.stringify({
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Хиты' },
-            { kind: 'field', type: 'number', id: 'hp' },
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          title: 'Противники',
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'npc_name' },
+              { kind: 'text', text: 'Хиты' },
+              { kind: 'field', type: 'number', id: 'hp' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
+        },
+      ],
+    },
+    {
+      id: 'inventory',
+      kind: 'single',
+      title: 'Инвентарь',
+      players: 'edit',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Золото' },
+              { kind: 'field', type: 'number', id: 'gold' },
+            ],
+          ],
+        },
+      ],
+    },
+    {
+      id: 'agents',
+      kind: 'set',
+      title: 'Агенты',
+      nameField: 'agent',
+      visibility: 'gm',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Агент' },
+              { kind: 'field', type: 'text', id: 'agent' },
+            ],
+          ],
+        },
+      ],
+    },
+  ],
 });
 
 const RECORDS: StoredRecord[] = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
-  record('sheet:skel', { kind: 'npc', name: 'Скелет', order: 0 }),
+  ...pcSheet('brok', 'Брок', 0),
+  npcBlock('skel', 'Скелет', 0),
+  record('sheet:spy', { set: 'agents', order: 0 }),
+  record('row:spy:agent', { agent: 'Шпион' }),
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -240,23 +295,37 @@ test('"Может править" writes acl: at once and the player header turn
   await expect.poll(() => storedData(gm.window, 'acl:brok:lisa')).toBeNull();
 });
 
-test('a player sees no "Доступ" chip and no panel, and an NPC block has no chip', async ({
-  context,
-}) => {
+test('a player sees no "Доступ" chip and no panel', async ({ context }) => {
   // #given
-  const gm = await openGm(context, RECORDS);
-  const player = await openClient(context, PLAYER, null);
+  await openGm(context, RECORDS);
 
   // #when
-  await gm.window.getByRole('tab', { name: 'NPC' }).click();
+  const player = await openClient(context, PLAYER, null);
 
   // #then
-  await expect(gm.window.getByRole('textbox', { name: 'Имя NPC' })).toHaveValue('Скелет');
-  await expect(accessChip(gm.window)).toHaveCount(0);
   await expect(playerHeader(player.window).getByText(READ_ONLY, { exact: true })).toBeVisible();
   await expect(accessChip(player.window)).toHaveCount(0);
   await expect(accessPanel(player.window)).toHaveCount(0);
 });
+
+for (const tab of ['NPC', 'Инвентарь', 'Шпион']) {
+  test(`the GM gets no "Доступ" chip on ${tab}, as only a visible sheet set has one`, async ({
+    context,
+  }) => {
+    // #given
+    const gm = await openGm(context, RECORDS);
+
+    await expect(accessChip(gm.window)).toHaveCount(1);
+
+    // #when
+    await gm.window.getByRole('tab', { name: tab }).click();
+
+    // #then
+    await expect(gm.window.getByRole('tab', { name: tab, selected: true })).toBeVisible();
+    await expect(gm.window.getByRole('tabpanel').locator('header')).toBeVisible();
+    await expect(accessChip(gm.window)).toHaveCount(0);
+  });
+}
 
 test('a sheet delete tombstones its acl: records', async ({ context }) => {
   // #given
@@ -268,7 +337,7 @@ test('a sheet delete tombstones its acl: records', async ({ context }) => {
   await gm.window.getByRole('button', { name: 'Удалить', exact: true }).click();
 
   // #then
-  await expect(gm.window.getByRole('textbox', { name: NAME_FIELD })).toHaveCount(0);
+  await expect(gm.window.getByRole('textbox', { name: SHEET_NAME })).toHaveCount(0);
   await expect.poll(() => storedData(gm.window, 'acl:brok:vova')).toBeNull();
 });
 

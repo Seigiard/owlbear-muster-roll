@@ -17,7 +17,7 @@ import {
   type ProposalContext,
   type ProposalSender,
 } from '@/core/access';
-import type { Preset } from '@/core/preset';
+import type { Preset, Template } from '@/core/preset';
 import { playerIdSchema, recordKeySchema, type VersionedRecord } from '@/core/records';
 
 // The GM's own player id, which never gets a row.
@@ -343,7 +343,7 @@ describe('ownedFirst', () => {
     { sheetId: 'a', order: 2 },
   ];
 
-  test('puts an owned character first, then the rest by (order, sheetId)', () => {
+  test('puts an owned sheet first, then the rest by (order, sheetId)', () => {
     // #when
     const sheets = ownedFirst(SHEETS, new Set(['a']));
 
@@ -351,7 +351,7 @@ describe('ownedFirst', () => {
     expect(sheets.map((sheet) => sheet.sheetId)).toEqual(['a', 'b', 'c', 'd']);
   });
 
-  test('puts several owned characters first by (order, sheetId), then the rest the same way', () => {
+  test('puts several owned sheets first by (order, sheetId), then the rest the same way', () => {
     // #when
     const sheets = ownedFirst(SHEETS, new Set(['a', 'd', 'c']));
 
@@ -378,32 +378,75 @@ describe('plinkKey', () => {
   });
 });
 
-// A character has a plain row "str" with a note and a check, and a repeat section "item".
+// The sheet set "pc" has a plain row "str" with a note and a check, and a two-row repeat section
+// "item", whose one repeat block holds `item`, `qty` and `weight`.
+const PC: Template = {
+  id: 'pc',
+  kind: 'set',
+  title: 'Персонажи',
+  nameField: 'note',
+  sections: [
+    {
+      rows: [
+        [
+          { kind: 'field', type: 'number', id: 'str' },
+          { kind: 'field', type: 'text', id: 'note' },
+          { kind: 'field', type: 'check', id: 'tired' },
+        ],
+      ],
+    },
+    {
+      repeat: true,
+      rows: [
+        [
+          { kind: 'field', type: 'text', id: 'item' },
+          { kind: 'field', type: 'number', id: 'qty' },
+        ],
+        [{ kind: 'field', type: 'number', id: 'weight' }],
+      ],
+    },
+  ],
+};
+
 const PROPOSAL_PRESET: Preset = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'text', id: 'note' },
-            { kind: 'field', type: 'check', id: 'tired' },
-          ],
-        ],
-      },
-      {
-        repeat: true,
-        rows: [
-          [
-            { kind: 'field', type: 'text', id: 'item' },
-            { kind: 'field', type: 'number', id: 'qty' },
-          ],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
+  v: 2,
+  templates: [
+    PC,
+    // Hidden, so its `players: "edit"` lets no player edit it.
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'НПС',
+      visibility: 'gm',
+      players: 'edit',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }],
+    },
+    {
+      id: 'inventory',
+      kind: 'single',
+      title: 'Инвентарь',
+      players: 'edit',
+      sections: [
+        { rows: [[{ kind: 'field', type: 'text', id: 'items' }]] },
+        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'gear' }]] },
+        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'tool' }]] },
+      ],
+    },
+    {
+      id: 'journal',
+      kind: 'single',
+      title: 'Журнал',
+      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }],
+    },
+    {
+      id: 'villains',
+      kind: 'set',
+      title: 'Злодеи',
+      nameField: 'villain',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }],
+    },
+  ],
 };
 
 const STR_ROW: VersionedRecord = { k: 'row:brok:str', d: { str: 5 }, c: 3, a: 'gm-a' };
@@ -417,7 +460,7 @@ const LIVE_ITEM: VersionedRecord = {
 
 const REMOVED_ITEM: VersionedRecord = { k: 'rep:brok:item:r2', d: null, c: 4, a: 'gm-a' };
 
-// A repeat row Оля's connection wrote, so a copy of it is her own record.
+// A repeat block Оля's connection wrote, so a copy of it is her own record.
 const OWN_ITEM: VersionedRecord = {
   k: 'rep:brok:item:r3',
   d: { order: 2, cells: { qty: 1 } },
@@ -425,22 +468,31 @@ const OWN_ITEM: VersionedRecord = {
   a: 'p-conn',
 };
 
-// "Брок" is a live character Оля may edit, "Скелет" an NPC she holds an `acl:` of, "Лиза" a deleted
-// character she held access to, and "Кира" a live character she has no access to.
+// "Брок" is a live sheet of a sheet set Оля may edit, "Лиза" a deleted one she held access to,
+// "Кира" a live one she has no access to, "Босс" a sheet of a hidden sheet set she holds an `acl:`
+// of, and "stray" a sheet record whose `set` is a single sheet. She also holds an `acl:` of the
+// single sheets "npc" and "journal", which a single sheet does not read. The single sheet
+// "inventory" holds the instance ids "t1", live, and "t2", removed, in its section "tool".
 const PROPOSAL_CONTEXT: ProposalContext = {
   preset: PROPOSAL_PRESET,
   records: byKey([
-    { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 1, a: 'gm-a' },
-    { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'gm-a' },
+    { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'gm-a' },
     { k: 'sheet:liza', d: null, c: 2, a: 'gm-a' },
-    { k: 'sheet:kira', d: { kind: 'pc', name: 'Кира', order: 1 }, c: 1, a: 'gm-a' },
+    { k: 'sheet:kira', d: { set: 'pc', order: 1 }, c: 1, a: 'gm-a' },
+    { k: 'sheet:boss', d: { set: 'villains', order: 0 }, c: 1, a: 'gm-a' },
+    { k: 'sheet:stray', d: { set: 'inventory', order: 0 }, c: 1, a: 'gm-a' },
     acl('brok', 'p-oly', 'Оля'),
-    acl('skel', 'p-oly', 'Оля'),
     acl('liza', 'p-oly', 'Оля'),
+    acl('boss', 'p-oly', 'Оля'),
+    acl('stray', 'p-oly', 'Оля'),
+    acl('npc', 'p-oly', 'Оля'),
+    acl('journal', 'p-oly', 'Оля'),
     STR_ROW,
     LIVE_ITEM,
     REMOVED_ITEM,
     OWN_ITEM,
+    { k: 'rep:inventory:tool:t1', d: { order: 0, cells: { tool: 'Кирка' } }, c: 1, a: 'gm-a' },
+    { k: 'rep:inventory:tool:t2', d: null, c: 2, a: 'gm-a' },
   ]),
 };
 
@@ -450,12 +502,19 @@ const OLY: ProposalSender = { playerId: 'p-oly', author: 'p-conn' };
 describe('checkProposal', () => {
   test.each<[string, VersionedRecord]>([
     ['a row edit with c above the current one', { ...STR_ROW, d: { str: 6 }, c: 4, a: 'p-conn' }],
-    ['a new repeat row', { k: 'rep:brok:item:r9', d: { order: 1, cells: {} }, c: 1, a: 'p-conn' }],
     [
-      'a repeat row edit with c above',
+      'a new repeat block',
+      { k: 'rep:brok:item:r9', d: { order: 1, cells: {} }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a repeat block edit with c above',
       { ...LIVE_ITEM, d: { order: 0, cells: { item: 'Лук', qty: 2 } }, c: 3, a: 'p-conn' },
     ],
-    ['a removal of a live repeat row with c above', { ...LIVE_ITEM, d: null, c: 3, a: 'p-conn' }],
+    [
+      'a field of the second row of a repeat block',
+      { ...LIVE_ITEM, d: { order: 0, cells: { item: 'Меч', weight: 3 } }, c: 3, a: 'p-conn' },
+    ],
+    ['a removal of a live repeat block with c above', { ...LIVE_ITEM, d: null, c: 3, a: 'p-conn' }],
     ['a record identical to the current one, which is its own', OWN_ITEM],
     [
       'a c exactly PROPOSE_C_MAX_STEP above the current one',
@@ -466,6 +525,14 @@ describe('checkProposal', () => {
       'every field type of the row with its own JSON type',
       { ...STR_ROW, d: { str: -1.5, note: 'устал', tired: false }, c: 9, a: 'p-conn' },
     ],
+    [
+      'an edit of a player-editable single sheet with no acl: of it',
+      { k: 'row:inventory:items', d: { items: 'Верёвка' }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a new repeat block of a player-editable single sheet',
+      { k: 'rep:inventory:gear:g1', d: { order: 0, cells: { gear: 'Фонарь' } }, c: 1, a: 'p-conn' },
+    ],
   ])('commits %s', (_name, record) => {
     // #when
     const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, record);
@@ -474,7 +541,7 @@ describe('checkProposal', () => {
     expect(verdict).toEqual({ kind: 'commit' });
   });
 
-  test('commits the existing tombstone for a removal of a removed repeat row, whatever its c', () => {
+  test('commits the existing tombstone for a removal of a removed repeat block, whatever its c', () => {
     // #when
     const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, {
       ...REMOVED_ITEM,
@@ -489,7 +556,17 @@ describe('checkProposal', () => {
   test.each<[string, VersionedRecord, VersionedRecord]>([
     ['an equal c with a higher author', { ...STR_ROW, d: { str: 6 }, a: 'p-conn' }, STR_ROW],
     ['a lower c', { ...STR_ROW, d: { str: 6 }, c: 2, a: 'p-conn' }, STR_ROW],
-    ['a lower c on a live repeat row', { ...LIVE_ITEM, d: null, c: 1, a: 'p-conn' }, LIVE_ITEM],
+    ['a lower c on a live repeat block', { ...LIVE_ITEM, d: null, c: 1, a: 'p-conn' }, LIVE_ITEM],
+    [
+      'a field id absent from the row, even with c above',
+      { ...STR_ROW, d: { qty: 1 }, c: 4, a: 'p-conn' },
+      STR_ROW,
+    ],
+    [
+      'a field id of another row in a repeat block, even with c above',
+      { ...LIVE_ITEM, d: { order: 0, cells: { str: 1 } }, c: 3, a: 'p-conn' },
+      LIVE_ITEM,
+    ],
   ])('answers stale with the current record for %s', (_name, record, current) => {
     // #when
     const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, record);
@@ -500,10 +577,25 @@ describe('checkProposal', () => {
 
   test.each<[string, VersionedRecord]>([
     ['a tombstoned sheet', { k: 'row:liza:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
-    ['an NPC sheet', { k: 'row:skel:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
+    [
+      'a hidden single sheet, even player-editable',
+      { k: 'row:npc:str', d: { str: 1 }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a single sheet that is not player-editable, even with an acl: of it',
+      { k: 'row:journal:entry', d: { entry: 'День 1' }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a sheet of a hidden sheet set, even with an acl: of it',
+      { k: 'row:boss:villain', d: { villain: 'Лич' }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a sheet record whose set is a single sheet',
+      { k: 'row:stray:items', d: { items: 'Верёвка' }, c: 1, a: 'p-conn' },
+    ],
     ['a sheet with no record', { k: 'row:ghost:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
     [
-      'an edit of a tombstoned repeat row, even with c above',
+      'an edit of a tombstoned repeat block, even with c above',
       { ...REMOVED_ITEM, d: { order: 0, cells: {} }, c: 9, a: 'p-conn' },
     ],
     ['a row id the template does not have', { k: 'row:brok:note', d: {}, c: 1, a: 'p-conn' }],
@@ -511,23 +603,23 @@ describe('checkProposal', () => {
       'a section id the template does not have as a repeat section',
       { k: 'rep:brok:str:r9', d: { order: 0, cells: {} }, c: 1, a: 'p-conn' },
     ],
-    ['a field id absent from the row', { ...STR_ROW, d: { qty: 1 }, c: 4, a: 'p-conn' }],
     [
-      'a field id of another row in a repeat row',
-      { ...LIVE_ITEM, d: { order: 0, cells: { str: 1 } }, c: 3, a: 'p-conn' },
+      'the second field of a repeat section as its section id',
+      { k: 'rep:brok:weight:r9', d: { order: 0, cells: {} }, c: 1, a: 'p-conn' },
     ],
     ['a string in a number field', { ...STR_ROW, d: { str: '6' }, c: 4, a: 'p-conn' }],
     ['a number in a text field', { ...STR_ROW, d: { note: 6 }, c: 4, a: 'p-conn' }],
     ['a string in a check field', { ...STR_ROW, d: { tired: 'да' }, c: 4, a: 'p-conn' }],
+    [
+      'a wrong JSON type next to a field id absent from the row',
+      { ...STR_ROW, d: { qty: 1, str: '6' }, c: 4, a: 'p-conn' },
+    ],
     ['a removal of a plain row', { ...STR_ROW, d: null, c: 4, a: 'p-conn' }],
     ['a sheet with no access', { k: 'row:kira:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
-    [
-      'the GM key form sheet:',
-      { k: 'sheet:brok', d: { kind: 'pc', name: 'Я', order: 0 }, c: 2, a: 'p-conn' },
-    ],
+    ['the GM key form sheet:', { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 2, a: 'p-conn' }],
     ['the GM key form acl:', { k: 'acl:kira:p-oly', d: { name: 'Оля' }, c: 1, a: 'p-conn' }],
     ['the GM key form plink:', { k: 'plink:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'p-conn' }],
-    ['the GM key form link:', { k: 'link:token-1', d: 'brok', c: 1, a: 'p-conn' }],
+    ['the GM key form link:', { k: 'link:token-1', d: { s: 'brok' }, c: 1, a: 'p-conn' }],
     ['the GM key form preset', { k: 'preset', d: 'AAAA', c: 9, a: 'p-conn' }],
     ["an author that is not the sender's", { ...STR_ROW, d: { str: 6 }, c: 4, a: 'gm-a' }],
     ['a copy of a GM record', STR_ROW],
@@ -540,6 +632,22 @@ describe('checkProposal', () => {
       { k: 'rep:brok:item:r9', d: { order: 1, cells: {} }, c: 1 + PROPOSE_C_MAX_STEP, a: 'p-conn' },
     ],
     ['the largest safe c', { ...STR_ROW, d: { str: 6 }, c: Number.MAX_SAFE_INTEGER, a: 'p-conn' }],
+    [
+      'a new repeat block whose cells set a field its section does not have',
+      { k: 'rep:brok:item:r9', d: { order: 1, cells: { str: 1 } }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a new row record that sets a field its row does not have',
+      { k: 'row:inventory:items', d: { gear: 'Фонарь' }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a new repeat block whose instance id another section of the sheet holds live',
+      { k: 'rep:inventory:gear:t1', d: { order: 0, cells: { gear: 'Фонарь' } }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a new repeat block whose instance id another section of the sheet holds removed',
+      { k: 'rep:inventory:gear:t2', d: { order: 0, cells: { gear: 'Фонарь' } }, c: 1, a: 'p-conn' },
+    ],
   ])('denies %s', (_name, record) => {
     // #when
     const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, record);
@@ -624,7 +732,7 @@ describe('checkProposal over values an older preset left', () => {
     ],
     ['a clear of them', { ...LEGACY_ROW, d: { str: 5 }, c: 4, a: 'p-conn' }],
     [
-      'an edit of another cell of the repeat row, which keeps them',
+      'an edit of another cell of the repeat block, which keeps them',
       { ...LEGACY_ITEM, d: { order: 0, cells: { item: 'Лук', gone: true } }, c: 3, a: 'p-conn' },
     ],
   ])('commits %s', (_name, record) => {
@@ -635,18 +743,27 @@ describe('checkProposal over values an older preset left', () => {
     expect(verdict).toEqual({ kind: 'commit' });
   });
 
-  test.each<[string, VersionedRecord]>([
-    [
-      'a new value of a field the template lacks',
-      { ...LEGACY_ROW, d: { str: 5, old: 'y', note: 7 }, c: 4, a: 'p-conn' },
-    ],
-    [
-      'a new value of the wrong JSON type',
-      { ...LEGACY_ROW, d: { str: 5, old: 'x', note: 8 }, c: 4, a: 'p-conn' },
-    ],
-  ])('denies %s', (_name, record) => {
+  test('answers stale with the current record for a new value of a field the template lacks', () => {
     // #when
-    const verdict = checkProposal(context, OLY, record);
+    const verdict = checkProposal(context, OLY, {
+      ...LEGACY_ROW,
+      d: { str: 5, old: 'y', note: 7 },
+      c: 4,
+      a: 'p-conn',
+    });
+
+    // #then
+    expect(verdict).toEqual({ kind: 'stale', current: LEGACY_ROW });
+  });
+
+  test('denies a new value of the wrong JSON type', () => {
+    // #when
+    const verdict = checkProposal(context, OLY, {
+      ...LEGACY_ROW,
+      d: { str: 5, old: 'x', note: 8 },
+      c: 4,
+      a: 'p-conn',
+    });
 
     // #then
     expect(verdict).toEqual({ kind: 'denied' });

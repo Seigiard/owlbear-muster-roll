@@ -158,14 +158,17 @@ const rollSchema = z.strictObject({
   t: z.literal('roll'),
   id: z.string().min(1).max(64),
   sheetId: z.string().min(1).max(64),
-  kind: z.enum(['pc', 'npc']),
+  // AD-13: computed once from the sheet's template when the roller accepted the request. A player
+  // shows only `false`.
+  hidden: z.boolean(),
   roller: z.string(),
   sheetName: z.string(),
   cell: z.string(),
   result: rollResultSchema,
 });
 
-// AD-9: the importer's new generation. The data comes through catch-up or the room copy.
+// AD-9: the new generation of an import or a wipe. The data comes through catch-up or the room
+// copy.
 const resetSchema = z.strictObject({
   v: z.literal(FORMAT_VERSION),
   g: generationSchema,

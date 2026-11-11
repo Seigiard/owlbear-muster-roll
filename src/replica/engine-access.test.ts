@@ -48,23 +48,55 @@ const TIMING: Timing = {
   snapshotImportTimeoutMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 
 const PRESET: Preset = {
-  v: 1,
-  character: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'name' }],
+            [{ kind: 'field', type: 'number', id: 'str' }],
+          ],
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          repeat: true,
+          tokens: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'mob' },
+              { kind: 'field', type: 'number', id: 'hp' },
+            ],
+          ],
+        },
+      ],
+    },
+  ],
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
 
-// "Брок" is a live character, "Скелет" a live NPC, and "Лиза" was deleted.
+// "Брок" is a live sheet of the sheet set "pc", "npc" a single sheet, and "Лиза" was deleted.
 const BASE: readonly VersionedRecord[] = [
   PRESET_RECORD,
-  { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 1, a: 'seed' },
-  { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'seed' },
+  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
+  { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
   { k: 'sheet:liza', d: null, c: 2, a: 'seed' },
 ];
 
@@ -201,7 +233,7 @@ describe('acl-set', () => {
   }
 
   for (const [sheetId, playerId, reason] of [
-    ['skel', 'p-oly', 'not-character'],
+    ['npc', 'p-oly', 'not-sheet-set'],
     ['liza', 'p-oly', 'deleted-sheet'],
     ['nobody', 'p-oly', 'unknown-sheet'],
     ['bad:id', 'p-oly', 'invalid-sheet-id'],
@@ -460,8 +492,8 @@ describe('owner-set', () => {
   }
 
   for (const [sheetId, playerId, reason] of [
-    ['skel', 'p-oly', 'not-character'],
-    ['skel', null, 'not-character'],
+    ['npc', 'p-oly', 'not-sheet-set'],
+    ['npc', null, 'not-sheet-set'],
     ['liza', 'p-oly', 'deleted-sheet'],
     ['nobody', 'p-oly', 'unknown-sheet'],
     ['bad:id', 'p-oly', 'invalid-sheet-id'],

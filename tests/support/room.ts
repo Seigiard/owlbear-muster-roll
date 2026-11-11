@@ -30,14 +30,15 @@ import {
 } from '@/platform/mock/client-params';
 
 // The mock room's storage before any import: generation 0 with no author.
-export const STORAGE_PREFIX = `mr1:${MOCK_ROOM_ID}:0::`;
+export const STORAGE_PREFIX = `mr2:${MOCK_ROOM_ID}:0::`;
 
 export const EXAMPLE_PRESET_TEXT = readFileSync(
   new URL('../../docs/example-preset.json', import.meta.url),
   'utf8',
 );
 
-const ADD = 'Добавить персонажа';
+// The "+" of the example preset's sheet set "Персонажи", which shows once a GM window has a preset.
+export const ADD = 'Добавить: Персонажи';
 
 const CHANNEL = 'app.muster-roll/ui';
 
@@ -93,7 +94,9 @@ declare global {
 
 let probes = 0;
 
-export type SeededSheet = { id: string; name: string; order: number };
+// A sheet of a sheet set. `set` is the sheet set's template id, `pc` in the example preset, and
+// `name` is the value of its name field, `name` in every fixture.
+export type SeededSheet = { id: string; name: string; order: number; set?: string };
 
 // A seeded record has the author "seed". A tombstone is minted by the background, as the mock's
 // own connection.
@@ -101,8 +104,42 @@ export function record(k: string, d: JsonValue, c = 1): StoredRecord {
   return { k, d, c, a: d === null ? 'mock-connection' : 'seed' };
 }
 
+// AD-2: the `sheet:` record of a sheet of a sheet set. Its name lives in its name field's row.
 export function sheetRecord(sheet: SeededSheet): StoredRecord {
-  return record(`sheet:${sheet.id}`, { kind: 'pc', name: sheet.name, order: sheet.order });
+  return record(`sheet:${sheet.id}`, { set: sheet.set ?? 'pc', order: sheet.order });
+}
+
+// The `sheet:` record and the name field's `row:` record of a sheet, with no row for an empty name.
+export function sheetRecords(sheet: SeededSheet): StoredRecord[] {
+  return sheet.name === ''
+    ? [sheetRecord(sheet)]
+    : [sheetRecord(sheet), record(`row:${sheet.id}:name`, { name: sheet.name })];
+}
+
+// A sheet of the example preset's sheet set "Персонажи".
+export function pcSheet(id: string, name: string, order: number): StoredRecord[] {
+  return sheetRecords({ id, name, order });
+}
+
+// AD-2: one repeat block of a sheet, every field of every row of its section in `cells`.
+export function repRecord(
+  sheetId: string,
+  sectionId: string,
+  instanceId: string,
+  order: number,
+  cells: Record<string, JsonValue>,
+): StoredRecord {
+  return record(`rep:${sheetId}:${sectionId}:${instanceId}`, { order, cells });
+}
+
+// One NPC of the example preset: a repeat block of the single sheet "NPC", section "Противники".
+export function npcBlock(
+  instanceId: string,
+  name: string,
+  order: number,
+  cells: Record<string, JsonValue> = {},
+): StoredRecord {
+  return repRecord('npc', 'npc_name', instanceId, order, { npc_name: name, ...cells });
 }
 
 // The stored `preset` record for a preset file's text, as the background keeps it.

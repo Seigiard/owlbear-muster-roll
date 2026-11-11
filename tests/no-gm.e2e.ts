@@ -9,15 +9,17 @@ import { UI_CHANNEL } from '@/core/ui-messages';
 import {
   addPartyMember,
   connectionIdOf,
+  npcBlock,
   openClientBackground,
   openClientWindow,
+  pcSheet,
   postRemote,
   record,
   seedStorage,
+  watchCommands,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
-  watchCommands,
 } from './support/room';
 
 // The strings and the key of the 2.4, 2.5 and 2.6 specs, written out by hand.
@@ -28,7 +30,7 @@ const NEW_VERSION = 'Вышла новая версия. Перезагрузи�
 const NO_GM_NO_DATA = 'ГМ ещё не заходил. Листов пока нет.';
 const UNREADABLE = 'Копия в комнате не читается. Дождитесь ГМ.';
 const NO_PRESET = 'ГМ ещё не настроил листы.';
-const NO_CHARACTERS = 'ГМ ещё не создал персонажей.';
+const NO_SHEETS = 'ГМ ещё не создал листы.';
 const READ_ONLY = 'Только чтение';
 
 const GM: ClientParams = { client: 'a', device: 'a' };
@@ -49,20 +51,50 @@ const SILENT_GM = 'mock-connection-silent';
 const OBSERVER: ClientParams = { client: 'o', role: 'PLAYER', player: 'olga', device: 'o' };
 
 const PRESET = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+        },
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+            ],
+          ],
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'npc_name' },
+              { kind: 'field', type: 'number', id: 'hp' },
+            ],
+          ],
+        },
+      ],
+    },
+  ],
 };
 
 const PRESET_TEXT = JSON.stringify(PRESET);
@@ -73,11 +105,12 @@ const PRESET_RECORD = record(
   Buffer.from(deflateSync(strToU8(PRESET_TEXT))).toString('base64'),
 );
 
-const BROK = record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 });
-const MIRA = record('sheet:mira', { kind: 'pc', name: 'Мира', order: 1 });
-const GOBLIN = record('sheet:gob', { kind: 'npc', name: 'Гоблин', order: 2 });
+const BROK = pcSheet('brok', 'Брок', 0);
+const MIRA = pcSheet('mira', 'Мира', 1);
 const BROK_STR = record('row:brok:str', { str: 14 });
-const GOBLIN_HP = record('row:gob:hp', { hp: 7 });
+
+// An NPC: a repeat block of the hidden single sheet NPC.
+const GOBLIN = npcBlock('gob', 'Гоблин', 0, { hp: 7 });
 
 declare global {
   interface Window {
@@ -89,11 +122,11 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
 });
 
-test('a player alone reads every character from the room copy, read-only, with no NPC and the no-GM banner', async ({
+test('a player alone reads every visible sheet from the room copy, read-only, with no NPC and the no-GM banner', async ({
   context,
 }) => {
   // #given
-  const copy = copyValue([PRESET_RECORD, BROK, MIRA, GOBLIN, BROK_STR, GOBLIN_HP]);
+  const copy = copyValue([PRESET_RECORD, ...BROK, ...MIRA, GOBLIN, BROK_STR]);
 
   // #when
   const player = await openPlayerAlone(context, copy);
@@ -108,16 +141,14 @@ test('a player alone reads every character from the room copy, read-only, with n
   await expect(player.window.getByText('Гоблин')).toHaveCount(0);
 });
 
-test('a player alone with a room copy that holds a preset and no character sees that the GM has not made any', async ({
+test('a player alone with a room copy that holds a preset and only a hidden sheet sees that the GM has not made any', async ({
   context,
 }) => {
   // #when
   const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, GOBLIN]));
 
   // #then
-  await expect(
-    player.window.getByRole('main').getByText(NO_CHARACTERS, { exact: true }),
-  ).toBeVisible();
+  await expect(player.window.getByRole('main').getByText(NO_SHEETS, { exact: true })).toBeVisible();
   await expect(player.window.getByRole('status')).toHaveText(NO_GM);
 });
 
@@ -125,7 +156,7 @@ test('a player alone with a room copy that holds no preset sees that the GM has 
   context,
 }) => {
   // #when
-  const player = await openPlayerAlone(context, copyValue([BROK]));
+  const player = await openPlayerAlone(context, copyValue([...BROK]));
 
   // #then
   await expect(player.window.getByRole('main').getByText(NO_PRESET, { exact: true })).toBeVisible();
@@ -149,7 +180,7 @@ test('a room copy of a newer build is not read: the new-version banner shows and
   context,
 }) => {
   // #when
-  const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, BROK], 2));
+  const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, ...BROK], 3));
 
   // #then
   await expect(player.window.getByRole('status')).toHaveText(NEW_VERSION);
@@ -159,7 +190,7 @@ test('a room copy of a newer build is not read: the new-version banner shows and
 
 test('a room copy that does not decode says so, with the no-GM banner', async ({ context }) => {
   // #when
-  const player = await openPlayerAlone(context, { v: 1, data: 'bm90IGRlZmxhdGU=' });
+  const player = await openPlayerAlone(context, { v: 2, data: 'bm90IGRlZmxhdGU=' });
 
   // #then
   await expect(
@@ -175,7 +206,11 @@ test('a player alone sends no commit and no edit to the room', async ({ context 
 
   await watchRoom(observer);
 
-  const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, BROK, BROK_STR]), params);
+  const player = await openPlayerAlone(
+    context,
+    copyValue([PRESET_RECORD, ...BROK, BROK_STR]),
+    params,
+  );
 
   await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
   await watchCommands(player.window);
@@ -232,7 +267,7 @@ test('a player alone with no copy keeps loading once a GM speaks without answeri
   await addPartyMember(player.window, SILENT_GM, 'GM');
 
   // #when: a GM-origin message, and no complete state.
-  await postRemote(player.window, SILENT_GM, { v: 1, g: { n: 0, a: '' }, t: 'ping' });
+  await postRemote(player.window, SILENT_GM, { v: 2, g: { n: 0, a: '' }, t: 'ping' });
 
   // #then: a GM is online but has not said what the room holds.
   await expect(player.window.getByRole('status')).toBeEmpty();
@@ -244,7 +279,7 @@ test('when a GM joins and answers, the no-GM banner goes and the sheets show cur
   context,
 }) => {
   // #given: the copy is older than what the GM's own device holds.
-  const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, BROK, BROK_STR]));
+  const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, ...BROK, BROK_STR]));
 
   await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
 
@@ -253,7 +288,7 @@ test('when a GM joins and answers, the no-GM banner goes and the sheets show cur
 
   await seedStorage(
     gmWindow,
-    [BROK, MIRA, record('row:brok:str', { str: 18 }, 2)],
+    [...BROK, ...MIRA, record('row:brok:str', { str: 18 }, 2)],
     PRESET_TEXT,
     GM.device,
   );
@@ -276,7 +311,7 @@ test('a player alone with no copy reads the GM sheets once a GM joins', async ({
   // #when
   const gmWindow = await openClientWindow(context, GM);
 
-  await seedStorage(gmWindow, [BROK, BROK_STR], PRESET_TEXT, GM.device);
+  await seedStorage(gmWindow, [...BROK, BROK_STR], PRESET_TEXT, GM.device);
   await openClientBackground(context, GM);
 
   // #then
@@ -311,7 +346,7 @@ async function openPlayerAlone(
 }
 
 // The stored room copy as the 2.5 spec describes it, built by hand with fflate.
-function copyValue(records: readonly StoredRecord[], v = 1): JsonValue {
+function copyValue(records: readonly StoredRecord[], v = 2): JsonValue {
   const content = JSON.stringify({ g: { n: 0, a: '' }, records: sortedByKey(records) });
 
   return { v, data: Buffer.from(deflateSync(strToU8(content))).toString('base64') };

@@ -8,6 +8,7 @@ import {
   connectionIdOf,
   openClientBackground,
   openClientWindow,
+  pcSheet,
   record,
   seedStorage,
   type ClientParams,
@@ -28,24 +29,39 @@ const QUICK: Partial<ClientParams> = { snapshotPauseMs: 100, snapshotJitterMs: 0
 const NEVER: Partial<ClientParams> = { snapshotPauseMs: 600000, snapshotJitterMs: 0 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+  ],
 });
 
 const RECORDS: StoredRecord[] = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
+  ...pcSheet('brok', 'Брок', 0),
   record('row:brok:str', { str: 14 }),
 ];
 
@@ -88,7 +104,7 @@ test('a GM writes the room copy at once when its page becomes hidden', async ({ 
   // #then
   await expect
     .poll(() => roomCopyRecordKeys(a.window))
-    .toEqual(['preset', 'row:brok:str', 'sheet:brok']);
+    .toEqual(['preset', 'row:brok:name', 'row:brok:str', 'sheet:brok']);
 });
 
 test('Settings shows "Не сохранена" with the free size before any copy, and "Сохранена" with sizes after one', async ({
