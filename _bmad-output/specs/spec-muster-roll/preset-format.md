@@ -21,6 +21,22 @@ A preset is a JSON template with the shape section → rows → cells. It holds 
 
 Ids resolve inside the row first, then globally.
 
+## Window size
+
+A preset can set the size of the action window with an optional top-level key, after `v`:
+
+```json
+{ "v": 1, "window": { "width": 900, "height": 700 }, "character": { … }, "npc": { … } }
+```
+
+- `width` and `height` are integers in px. Width: 360 to 1440. Height: 360 to 1080. Both bounds are inclusive.
+- Both keys are necessary, and no other key is allowed in `window`.
+- A `window` that breaks one of these rules refuses the whole file. The message under the upload button names the allowed range, and nothing changes.
+- With no `window`, or with no preset in the room, the window is 600 by 600 px.
+- Every client applies the size of the room's preset, also before the window opens and while it is open. All clients get the same size.
+- A downloaded preset keeps its `window`.
+- An upload that changes only `window` erases no values and shows the short notice.
+
 ## Dice formulas
 
 Example: `1d20 <= str - 2*str_tired`.

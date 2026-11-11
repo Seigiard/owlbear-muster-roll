@@ -134,3 +134,8 @@
 
 - The OBR adapter's label read and write are tested only through pure helpers; a `mock.module('@owlbear-rodeo/sdk')` harness would pin the reject contract.
 - Owlbear's display of a label after `text.type` changes to `PLAIN` is unverified live. Owner check in a live room.
+
+## From spec-5-4 (TASK-33, window size)
+
+- Owlbear's resize of an open action window through `setWidth`/`setHeight` is unverified live. Owner check in a live room.
+- A test that an adopted generation resizes before its catch-up ends needs a long catch-up fixture.
