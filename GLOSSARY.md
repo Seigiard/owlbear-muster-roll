@@ -132,6 +132,14 @@ _Avoid_: draft edit, unsaved change, queued edit
 The bond between an Owlbear token and a sheet or a repeat block of a linkable template, so the token opens it. A token links to one sheet or repeat block, and each of those can have many tokens.
 _Avoid_: binding, attachment, token sheet
 
+**Map selection**:
+The tokens and other items one participant has selected on the Owlbear map. Each client has its own, and it never enters room data. A GM changes it from the window with «Выделить на карте».
+_Avoid_: highlight, focus, picked tokens
+
+**Selection mark**:
+The mark on a tab or a repeat block whose linked token is in this client's map selection: a dot on the tab, a bar on the repeat block.
+_Avoid_: highlight, badge, active mark
+
 ## Rolls
 
 **Roll**:
