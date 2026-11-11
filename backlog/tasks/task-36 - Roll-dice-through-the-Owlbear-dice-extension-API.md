@@ -4,6 +4,7 @@ title: Roll dice through the Owlbear dice extension API
 status: To Do
 assignee: []
 created_date: '2026-11-11T04:41:00Z'
+updated_date: '2026-11-11T12:17:00Z'
 labels:
   - v2
 dependencies: []
@@ -29,3 +30,13 @@ Owner request after the first live check of Story 4.2 (TASK-25): dice rolls shou
 - [ ] #4 When the dice extension is not installed in the room, a roll still works as in Story 4.2
 - [ ] #5 An NPC roll stays hidden from players
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Research 2026-11-11 (from source):
+- owlbear-rodeo/dice (GPL-3.0, no push since 2024-04-12): no API for other extensions; rolls only from its UI; values readable only from player metadata rodeo.owlbear.dice/*, not for hidden rolls; maintainers unlikely to accept PRs.
+- abottchen/dicex (GPL-3.0 fork, active 2026-07) implements the Dice+ broadcast protocol: dice-plus/isReady handshake; dice-plus/roll-request {rollId, playerId, playerName, rollTarget, diceNotation, showResults, timestamp, source}; result on {source}/roll-result with per-die values and kept flags; errors on {source}/roll-error. Only the addressed player's client rolls. Notation: NdM with d4-d100 standard sides, kh/kl/d, explode, +/- integer modifiers. Visibility: any target other than everyone is hidden; everyone is also hidden unless the source id is in a hardcoded allowlist (com.abottchen.obr-forge-helper), so Muster Roll would need a PR or its own fork for public rolls.
+- Dice+ (commercial, https://extensions.owlbear.rodeo/dice-plus, no public source) documents the same protocol with real gm_only, so one client covers both backends.
+Permalinks: dicex ef79a207 src/plugin/dicePlusProtocol.ts, dicePlusBackgroundListeners.ts, dicePlusResultReporter.ts; official ccc32bec src/plugin/DiceRollSync.tsx.
+<!-- SECTION:NOTES:END -->
