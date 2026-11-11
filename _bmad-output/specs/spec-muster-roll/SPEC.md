@@ -50,10 +50,10 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **success:** A new field is empty on all sheets. A rename keeps the values. When an upload removes fields that hold values, one confirmation for the whole upload warns that the data will be lost, and the values are then erased on all sheets. Any other upload shows a short notice that the format changed.
 - **CAP-9**
   - **intent:** Room data stays after a reload and after re-entry to the room.
-  - **success:** A GM reload keeps all data. The snapshot is written when it fits. When it does not fit, it is skipped and the GM sees a notice. Room metadata never goes past the limit.
+  - **success:** A GM reload keeps all data. The room copy is written when it fits. When it does not fit, it is skipped and the GM sees a notice. Room metadata never goes past the limit.
 - **CAP-10**
-  - **intent:** Players can read the last snapshot when no GM is online.
-  - **success:** With no GM online and a snapshot present, a player sees the characters from it. No live edit is exchanged.
+  - **intent:** Players can read the last room copy when no GM is online.
+  - **success:** With no GM online and a room copy present, a player sees the characters from it. No live edit is exchanged.
 - **CAP-11**
   - **intent:** Edits sync live between GM tabs, GM devices and players.
   - **success:** Edits to different rows from two GM tabs both stay. Two edits of one row settle on the latest version on all clients.
@@ -61,7 +61,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **intent:** The GM can export and import the preset as a JSON file.
   - **success:** The file holds no values. Import into another room gives the same structure.
 - **CAP-13**
-  - **intent:** The GM can export and import a room snapshot as a JSON file.
+  - **intent:** The GM can export and import a snapshot of the room as a JSON file.
   - **success:** The file holds values and token links. Import replaces all room data after confirmation. Values of field ids not in the current preset are dropped, and the GM sees their count. Import restores a token link where the token exists. Import resets player links and write rights to read.
 - **CAP-14**
   - **intent:** A user can open a linked sheet from its token.
@@ -112,7 +112,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 ## Constraints
 
 - No own server in v1. Live exchange needs a GM online. A hidden GM tab in Chrome stopped receiving edits after about 13 minutes, so a GM counts as online only when a GM client answers. A hidden tab that still answers counts as online, and a frozen one does not.
-- Full data lives in the GM's browser. Room metadata holds only a compressed snapshot, and only when it fits.
+- Full data lives in the GM's browser. Room metadata holds only the room copy, compressed, and only when it fits.
 - Room metadata is under 16kB in total and is shared with other extensions. The extension checks free space before it writes, because Owlbear reports success for a write past the limit and drops it.
 - Broadcast messages are limited to 16KB.
 - Formulas run through a small parser, never `eval`, because presets are shared files.
@@ -141,8 +141,8 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - Merging two simultaneous edits of one row. Only the latest stays.
 - Merging an imported snapshot into room data.
 - Player edits while no GM client responds, in v1. A server in v2 changes this.
-- Hiding NPC data from a modified client. NPC sheets and NPC rolls are hidden in the interface only, and any client can read the room snapshot.
-- Protection of the local copy before v2, other than the room snapshot and manual export.
+- Hiding NPC data from a modified client. NPC sheets and NPC rolls are hidden in the interface only, and any client can read the room copy.
+- Protection of the local copy before v2, other than the room copy and manual export.
 
 ## Success signal
 
@@ -155,9 +155,9 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - Players read the full sheets of all characters, not only names.
 - "Globally" in id resolution means inside the same character's sheet, never across characters.
 - An unchecked check counts as 0 and is not an empty field.
-- A `text` cell is fixed label text from the preset, with no id and no stored value.
+- A label (a `text` cell in the file) is fixed text from the preset, with no id and no stored value.
 - Write access to a character includes adding and removing its `repeat` rows.
-- A joining client gets current data from an online GM client, otherwise from the last snapshot.
+- A joining client gets current data from an online GM client, otherwise from the last room copy.
 - The interface text is Russian in v1.
 - The interface follows the live Owlbear theme, and no separate palette exists.
 - The builder interface text is Russian, like the extension and the refusal messages it reuses.
