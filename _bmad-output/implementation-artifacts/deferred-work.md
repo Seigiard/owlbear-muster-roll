@@ -129,3 +129,8 @@
 - An undo of a token delete does not restore its link. A GM links it again.
 - A deleted linked token still leaves one `link:` tombstone in the room copy. Orphan `link:` records from before TASK-39 stay until a compaction exists.
 - Deleting N linked tokens sends N `link-clear` commits, not one batch.
+
+## From spec-4-7 (TASK-35, token label)
+
+- The OBR adapter's label read and write are tested only through pure helpers; a `mock.module('@owlbear-rodeo/sdk')` harness would pin the reject contract.
+- Owlbear's display of a label after `text.type` changes to `PLAIN` is unverified live. Owner check in a live room.
