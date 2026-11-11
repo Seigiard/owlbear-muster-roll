@@ -1,11 +1,16 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 
+import { SYNC_CHANNEL } from '@/core/room-messages';
+import type { JsonValue } from '@/core/json';
+
 import {
+  ADD,
   addPartyMember,
   connectionIdOf,
   openClientBackground,
   openClientWindow,
+  pcSheet,
   postRemote,
   record,
   seedStorage,
@@ -16,9 +21,19 @@ import {
   type StoredRecord,
 } from './support/room';
 
-const ADD = 'Добавить персонажа';
-const ADD_ROW = 'Добавить строку';
+const ADD_ATTACK = 'Добавить в «Атаки»';
 const DENIED = 'Нет прав на правку';
+const CAN_EDIT = 'Можно править';
+const READ_ONLY = 'Только чтение';
+const SHEET_NAME = 'Имя листа';
+
+type HeardMessage = { from: string; t: string; k: string; c: number; reason: string };
+
+declare global {
+  interface Window {
+    heardRemote: { from: string; data: JsonValue }[];
+  }
+}
 
 // The GM keeps its records in this browser's shared storage, so `storedData` reads them. The player
 // has a device of its own and persists nothing.
@@ -32,51 +47,85 @@ const PLAYER: ClientParams = {
   device: 'p',
 };
 
+// A sheet set, a player-editable single sheet and a single sheet players only read.
 const PRESET_TEXT = JSON.stringify({
-  v: 1,
-  character: {
-    sections: [
-      {
-        title: 'Основное',
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          title: 'Основное',
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+            ],
           ],
-        ],
-      },
-      {
-        title: 'Атаки',
-        repeat: true,
-        rows: [
-          [
-            { kind: 'text', text: 'Атака' },
-            { kind: 'field', type: 'text', id: 'attack' },
+        },
+        {
+          title: 'Атаки',
+          repeat: true,
+          rows: [
+            [
+              { kind: 'text', text: 'Атака' },
+              { kind: 'field', type: 'text', id: 'attack' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Хиты' },
-            { kind: 'field', type: 'number', id: 'hp' },
+        },
+      ],
+    },
+    {
+      id: 'inventory',
+      kind: 'single',
+      title: 'Инвентарь',
+      players: 'edit',
+      sections: [
+        {
+          title: 'Деньги',
+          rows: [
+            [
+              { kind: 'text', text: 'Золото' },
+              { kind: 'field', type: 'number', id: 'gold' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
+        },
+      ],
+    },
+    {
+      id: 'journal',
+      kind: 'single',
+      title: 'Журнал',
+      sections: [
+        {
+          title: 'Записи',
+          rows: [
+            [
+              { kind: 'text', text: 'Запись' },
+              { kind: 'field', type: 'text', id: 'entry' },
+            ],
+          ],
+        },
+      ],
+    },
+  ],
 });
 
 // Лиза may edit Брок.
 const RECORDS: StoredRecord[] = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
+  ...pcSheet('brok', 'Брок', 0),
   record('acl:brok:lisa', { name: 'Лиза' }),
   record('row:brok:str', { str: 14 }),
   record('rep:brok:attack:i1', { order: 0, cells: { attack: 'Меч' } }),
+  record('row:inventory:gold', { gold: 3 }),
+  record('row:journal:entry', { entry: 'Начало' }),
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -113,9 +162,9 @@ test('a player adds a repeat row and removes another, and the GM stores both', a
   await expect(attacks.getByRole('textbox', { name: 'Атака', exact: true })).toHaveValue('Меч');
 
   // #when
-  await attacks.getByRole('button', { name: ADD_ROW, exact: true }).click();
+  await attacks.getByRole('button', { name: ADD_ATTACK, exact: true }).click();
   await expect(attacks.getByRole('textbox', { name: 'Атака', exact: true })).toHaveCount(2);
-  await attacks.getByRole('button', { name: 'Удалить строку 1', exact: true }).click();
+  await attacks.getByRole('button', { name: 'Удалить блок 1', exact: true }).click();
 
   // #then
   await expect.poll(() => storedData(gm.window, 'rep:brok:attack:i1')).toBeNull();
@@ -146,7 +195,7 @@ test('a denied edit puts the value back and says "Нет прав на прав�
 
   // #when: the seeded record has c 1, so the proposal has c 2.
   await postRemote(gm.window, gm.connectionId, {
-    v: 1,
+    v: 2,
     g: { n: 0, a: '' },
     t: 'reject',
     k: 'row:brok:str',
@@ -160,6 +209,91 @@ test('a denied edit puts the value back and says "Нет прав на прав�
   await expect
     .poll(() => player.background.evaluate(() => window.mockPlatform.shownNotifications()))
     .toEqual([DENIED]);
+});
+
+test('a player edit of a player-editable single sheet is committed by a GM client and reaches the GM window', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context);
+  const player = await openClient(context, PLAYER, null);
+
+  await gm.window.getByRole('tab', { name: 'Инвентарь' }).click();
+  await player.window.getByRole('tab', { name: 'Инвентарь' }).click();
+  await expect(player.window.getByRole('tabpanel').getByText(CAN_EDIT)).toBeVisible();
+
+  // #when
+  await gold(player.window).fill('5');
+  await gold(player.window).press('Enter');
+
+  // #then
+  await expect.poll(() => storedData(gm.window, 'row:inventory:gold')).toEqual({ gold: 5 });
+  await expect(gold(gm.window)).toHaveValue('5');
+  await expect(gold(player.window)).toHaveValue('5');
+});
+
+test('a single sheet with no players: edit is read-only for a player, and a forged edit of it is denied', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context);
+  const player = await openClient(context, PLAYER, null);
+  const panel = player.window.getByRole('tabpanel');
+
+  await player.window.getByRole('tab', { name: 'Журнал' }).click();
+  await expect(panel.getByRole('group', { name: 'Запись' })).toHaveText('Начало');
+
+  const readOnly = {
+    status: await panel.getByText(READ_ONLY).count(),
+    fields: await panel.getByRole('textbox').count(),
+  };
+
+  await listenRemote(player.window);
+
+  // #when: a modified client proposes the record anyway.
+  await postRemote(player.window, player.connectionId, {
+    v: 2,
+    g: { n: 0, a: '' },
+    t: 'propose',
+    records: [{ k: 'row:journal:entry', d: { entry: 'Подделка' }, c: 2, a: player.connectionId }],
+  });
+
+  // #then
+  await expect
+    .poll(async () => (await heardRemote(player.window)).filter((one) => one.t === 'reject'))
+    .toEqual([
+      {
+        from: gm.connectionId,
+        t: 'reject',
+        k: 'row:journal:entry',
+        c: 2,
+        reason: 'denied',
+      },
+    ]);
+  expect({ readOnly, stored: await storedData(gm.window, 'row:journal:entry') }).toEqual({
+    readOnly: { status: 1, fields: 0 },
+    stored: { entry: 'Начало' },
+  });
+});
+
+test("a player with write access renames the sheet from its header, and the GM commits the name field's row", async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context);
+  const player = await openClient(context, PLAYER, null);
+  const name = player.window.getByRole('textbox', { name: SHEET_NAME });
+
+  await expect(name).toHaveValue('Брок');
+
+  // #when
+  await name.fill('Брок Смелый');
+  await name.press('Enter');
+
+  // #then
+  await expect.poll(() => storedData(gm.window, 'row:brok:name')).toEqual({ name: 'Брок Смелый' });
+  await expect(gm.window.getByRole('tab', { name: 'Брок Смелый' })).toBeVisible();
+  await expect(player.window.getByRole('tab', { name: 'Брок Смелый' })).toBeVisible();
 });
 
 async function openGm(context: BrowserContext): Promise<RoomClient> {
@@ -189,4 +323,34 @@ async function openClient(
 
 function strength(page: Page): Locator {
   return page.getByRole('tabpanel').getByRole('textbox', { name: 'Сила', exact: true });
+}
+
+function gold(page: Page): Locator {
+  return page.getByRole('tabpanel').getByRole('textbox', { name: 'Золото', exact: true });
+}
+
+// Collects the room messages this page hears, with the sender and the fields a reject echoes.
+async function listenRemote(page: Page): Promise<void> {
+  await page.evaluate((channel) => {
+    window.heardRemote = [];
+    window.mockPlatform.broadcast.onMessage(channel, (event) => {
+      window.heardRemote.push({ from: event.connectionId, data: event.data });
+    });
+  }, SYNC_CHANNEL);
+}
+
+async function heardRemote(page: Page): Promise<HeardMessage[]> {
+  const heard = await page.evaluate(() => window.heardRemote);
+
+  return heard.map(({ from, data }) => {
+    const message = Object(data);
+
+    return {
+      from,
+      t: String(message.t),
+      k: String(message.k),
+      c: Number(message.c),
+      reason: String(message.reason),
+    };
+  });
 }

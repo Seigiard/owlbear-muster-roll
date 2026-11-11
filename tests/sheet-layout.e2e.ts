@@ -8,104 +8,118 @@ const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 const SECTION_GAP = 16;
 const LONG_VALUE = 'Ш'.repeat(120);
 
-// Every cell kind and layout the matrix of the 1.8 spec names, in the width order it lists.
+// Every cell kind and layout the matrix of the 1.8 spec names, in the width order it lists. The
+// sheet set names each sheet by `motto`, so the layout needs no field of its own for the name.
 const PRESET = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        title: 'Сетка',
-        width: '1/3',
-        columns: 3,
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'check', id: 'str_tired' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'motto',
+      sections: [
+        {
+          title: 'Сетка',
+          width: '1/3',
+          columns: 3,
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'check', id: 'str_tired' },
+            ],
+            [
+              { kind: 'text', text: 'Ловкость' },
+              { kind: 'field', type: 'number', id: 'dex' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Ловкость' },
-            { kind: 'field', type: 'number', id: 'dex' },
+        },
+        {
+          title: 'Строки',
+          width: '1/3',
+          rows: [
+            [
+              { kind: 'text', text: 'Хиты сейчас' },
+              { kind: 'field', type: 'number', id: 'hp' },
+              { kind: 'text', text: 'из максимума' },
+              { kind: 'field', type: 'number', id: 'hp_max' },
+            ],
+            [{ kind: 'field', type: 'text', id: 'motto' }],
+            [
+              { kind: 'text', text: 'Удача' },
+              { kind: 'dice', formula: '2d6' },
+            ],
+            [{ kind: 'dice', formula: '1d20+str' }],
           ],
-        ],
-      },
-      {
-        title: 'Строки',
-        width: '1/3',
-        rows: [
-          [
-            { kind: 'text', text: 'Хиты сейчас' },
-            { kind: 'field', type: 'number', id: 'hp' },
-            { kind: 'text', text: 'из максимума' },
-            { kind: 'field', type: 'number', id: 'hp_max' },
+        },
+        {
+          title: 'Широкая',
+          width: '1/3',
+          columns: 2,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'wide_a' },
+              { kind: 'field', type: 'text', id: 'wide_b' },
+            ],
           ],
-          [{ kind: 'field', type: 'text', id: 'motto' }],
-          [
-            { kind: 'text', text: 'Удача' },
-            { kind: 'dice', formula: '2d6' },
+        },
+        {
+          title: 'Атаки',
+          width: '1/2',
+          columns: 2,
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+            ],
           ],
-          [{ kind: 'dice', formula: '1d20+str' }],
-        ],
-      },
-      {
-        title: 'Широкая',
-        width: '1/3',
-        columns: 2,
-        rows: [
-          [
-            { kind: 'field', type: 'text', id: 'wide_a' },
-            { kind: 'field', type: 'text', id: 'wide_b' },
+        },
+        {
+          width: 'full',
+          rows: [
+            [
+              { kind: 'text', text: 'Заметки' },
+              { kind: 'field', type: 'text', id: 'notes' },
+            ],
           ],
-        ],
-      },
-      {
-        title: 'Атаки',
-        width: '1/2',
-        columns: 2,
-        repeat: true,
-        rows: [
-          [
-            { kind: 'field', type: 'text', id: 'attack' },
-            { kind: 'field', type: 'number', id: 'bonus' },
+        },
+        {
+          title: 'Отметки',
+          rows: [
+            [
+              { kind: 'text', text: 'Отдых' },
+              { kind: 'field', type: 'check', id: 'rested' },
+            ],
           ],
-        ],
-      },
-      {
-        width: 'full',
-        rows: [
-          [
-            { kind: 'text', text: 'Заметки' },
-            { kind: 'field', type: 'text', id: 'notes' },
-          ],
-        ],
-      },
-      {
-        title: 'Отметки',
-        rows: [
-          [
-            { kind: 'text', text: 'Отдых' },
-            { kind: 'field', type: 'check', id: 'rested' },
-          ],
-        ],
-      },
-      {
-        title: 'Пусто',
-        repeat: true,
-        rows: [[{ kind: 'field', type: 'text', id: 'item' }]],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+        },
+        {
+          title: 'Пусто',
+          repeat: true,
+          rows: [[{ kind: 'field', type: 'text', id: 'item' }]],
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+  ],
 } as const;
 
 type Box = { x: number; y: number; width: number; height: number };
 
 const RECORDS = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
-  record('sheet:liza', { kind: 'pc', name: 'Лиза', order: 1 }),
+  record('sheet:brok', { set: 'pc', order: 0 }),
+  record('sheet:liza', { set: 'pc', order: 1 }),
   record('row:brok:str', { str: 14, str_tired: true }),
   record('row:brok:hp', { hp: 7, hp_max: 12 }),
-  record('row:brok:motto', { motto: 'Вперёд' }),
+  record('row:brok:motto', { motto: 'Брок' }),
+  record('row:liza:motto', { motto: 'Лиза' }),
   record('row:brok:wide_a', { wide_a: LONG_VALUE, wide_b: LONG_VALUE }),
   record('row:brok:notes', { notes: 'Первая\nВторая' }),
   record('rep:brok:attack:i2', { order: 2, cells: { attack: 'Лук' } }),
@@ -234,9 +248,7 @@ test('stored text, number and check values show in their fields', async ({ page,
   // #then
   await expect(grid.getByRole('textbox', { name: 'Сила' })).toHaveValue('14');
   await expect(grid.getByRole('checkbox', { name: 'Сила' })).toBeChecked();
-  await expect(region(page, 'Строки').getByRole('textbox', { name: 'motto' })).toHaveValue(
-    'Вперёд',
-  );
+  await expect(region(page, 'Строки').getByRole('textbox', { name: 'motto' })).toHaveValue('Брок');
 });
 
 test('a text value keeps its line breaks', async ({ page, context }) => {
@@ -269,7 +281,7 @@ test('a dice cell is a button labelled by the preceding text cell, otherwise by 
   // #then
   await expect(rows.nth(0)).toHaveText('Хиты сейчасиз максимума');
   expect(await valuesOf(rows.nth(0).getByRole('textbox'))).toEqual(['7', '12']);
-  expect(await valuesOf(rows.nth(1).getByRole('textbox'))).toEqual(['Вперёд']);
+  expect(await valuesOf(rows.nth(1).getByRole('textbox'))).toEqual(['Брок']);
   await expect(rows.nth(2)).toHaveText('УдачаУдача');
   await expect(rows.nth(2).getByRole('button')).toHaveText(['Удача']);
   await expect(rows.nth(3).getByRole('button')).toHaveText(['1d20+str']);
@@ -342,10 +354,10 @@ test('rows 2 and 4 of a section use surface-stripe, rows 1 and 3 do not', async 
   }).toEqual({ first: TRANSPARENT, second: stripe, third: TRANSPARENT, fourth: stripe });
 });
 
-test('repeat instances stripe the same way', async ({ page, context }) => {
-  // #given
+test('repeat blocks stripe the same way, each block as one', async ({ page, context }) => {
+  // #given: all rows of a repeat section form one repeat block (CAP-5), so the block stripes.
   await openSheet(page, context);
-  const rows = rowsOf(region(page, 'Атаки'));
+  const rows = region(page, 'Атаки').locator('[data-repeat-block]');
 
   // #then
   expect({

@@ -3,6 +3,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import { cssValue, LIGHT_THEME, renderedColor, setTheme, tokenColor } from './support/colors';
 import type { Rgb } from './support/colors';
+import { openRoom } from './support/room';
 
 const DARK_TOKENS: ReadonlyMap<string, Rgb> = new Map<string, Rgb>([
   ['--color-surface', [51, 51, 51]],
@@ -73,12 +74,12 @@ test('a theme change does not reload the window', async ({ page }) => {
   );
 });
 
-test('the shell shows the NPC tab, the gear and the loading text', async ({ page }) => {
+test('before any data the shell shows only the gear and the loading text', async ({ page }) => {
   // #when
   await openWindow(page);
 
-  // #then
-  await expect(page.getByRole('tab')).toHaveText(['NPC', '⚙︎']);
+  // #then: no tab is fixed in code, so with no preset known only the gear shows.
+  await expect(page.getByRole('tab')).toHaveText(['⚙︎']);
   await expect(page.getByRole('tab', { name: 'Настройки' })).toHaveCount(1);
   await expect(page.getByRole('tabpanel')).toHaveText('Загрузка…');
 });
@@ -92,9 +93,9 @@ test('the window has no visible banner while nothing is wrong', async ({ page })
   await expect(page.getByRole('status')).toHaveJSProperty('offsetHeight', 0);
 });
 
-test('the shell uses the DESIGN.md radii and content padding', async ({ page }) => {
+test('the shell uses the DESIGN.md radii and content padding', async ({ page, context }) => {
   // #given
-  await openWindow(page);
+  await openRoom(page, context);
 
   // #when
   const layout = await Promise.all([
@@ -104,7 +105,7 @@ test('the shell uses the DESIGN.md radii and content padding', async ({ page }) 
     cssValue(page.getByRole('tabpanel'), 'padding-top'),
     gapBetween(
       page.getByRole('tab', { name: 'NPC' }),
-      page.getByRole('tab', { name: 'Настройки' }),
+      page.getByRole('tab', { name: 'Инвентарь' }),
     ),
   ]);
 
@@ -146,9 +147,12 @@ test('the content area is the only part of the window that scrolls', async ({ pa
   ).toEqual({ contentScrolls: true, pageScrolls: false });
 });
 
-test('the selected tab takes the active colors and joins the content area', async ({ page }) => {
-  // #given
-  await openWindow(page);
+test('the selected tab takes the active colors and joins the content area', async ({
+  page,
+  context,
+}) => {
+  // #given: NPC is the first tab of the example preset with no sheet.
+  await openRoom(page, context);
 
   const tab = page.getByRole('tab', { name: 'NPC' });
 
@@ -162,9 +166,9 @@ test('the selected tab takes the active colors and joins the content area', asyn
   ]);
 });
 
-test('an unselected tab takes the tab colors', async ({ page }) => {
+test('an unselected tab takes the tab colors', async ({ page, context }) => {
   // #given
-  await openWindow(page);
+  await openRoom(page, context);
 
   const gear = page.getByRole('tab', { name: 'Настройки' });
 
@@ -181,16 +185,16 @@ test('an unselected tab takes the tab colors', async ({ page }) => {
   ]);
 });
 
-test('arrow keys move the selection between tabs', async ({ page }) => {
+test('arrow keys move the selection between tabs', async ({ page, context }) => {
   // #given
-  await openWindow(page);
+  await openRoom(page, context);
   await page.getByRole('tab', { name: 'NPC' }).click();
 
   // #when
   await page.keyboard.press('ArrowRight');
 
   // #then
-  await expect(page.getByRole('tab', { name: 'Настройки' })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Инвентарь' })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -224,7 +228,7 @@ test('a failed theme read keeps the outline on a focused tab and an opaque windo
   await page.goto('/index.html?mock-theme-read-fails');
   await expect(page.getByRole('tabpanel')).toBeVisible();
 
-  const tab = page.getByRole('tab', { name: 'NPC' });
+  const tab = page.getByRole('tab', { name: 'Настройки' });
 
   // #when
   await page.keyboard.press('Tab');
@@ -263,9 +267,9 @@ test('color-scheme follows the theme on main and leaves the iframe root alone', 
   ]).toEqual(['dark', 'light', 'normal']);
 });
 
-test('a focused tab shows a 2 px solid outline in the focus color', async ({ page }) => {
-  // #given
-  await openWindow(page);
+test('a focused tab shows a 2 px solid outline in the focus color', async ({ page, context }) => {
+  // #given: the first tab is selected only once the preset arrives, and Tab still enters there.
+  await openRoom(page, context);
 
   const tab = page.getByRole('tab', { name: 'NPC' });
 
@@ -281,9 +285,9 @@ test('a focused tab shows a 2 px solid outline in the focus color', async ({ pag
   }).toEqual({ focused: true, style: 'solid', width: '2px', color: [217, 179, 108] });
 });
 
-test('a tab is at least 32 px high', async ({ page }) => {
+test('a tab is at least 32 px high', async ({ page, context }) => {
   // #given
-  await openWindow(page);
+  await openRoom(page, context);
 
   // #when
   const box = await page.getByRole('tab', { name: 'NPC' }).boundingBox();

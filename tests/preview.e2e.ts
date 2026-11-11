@@ -27,11 +27,12 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
 });
 
-// The d20 fixture with its first character section renamed, and with `window` when one is given.
+// The d20 fixture with the first section of its sheet set renamed, and with `window` when one is
+// given.
 function launchText(title: string, window?: { width: number; height: number }): string {
   const preset = JSON.parse(D20_TEXT);
 
-  preset.character.sections[0].title = title;
+  preset.templates[0].sections[0].title = title;
 
   const file = window === undefined ? preset : { v: preset.v, window, ...preset };
 
@@ -52,12 +53,18 @@ function frame(page: Page, title: string): Locator {
     .locator('[data-preview-frame]');
 }
 
+// The frame of the d20 sheet set "Персонажи".
 function characterFrame(page: Page): Locator {
-  return frame(page, 'Character sheet');
+  return frame(page, 'Персонажи');
 }
 
+// The frame of the d20 single sheet "NPC", which is hidden from players.
 function npcFrame(page: Page): Locator {
-  return frame(page, 'NPC sheet');
+  return frame(page, 'NPC');
+}
+
+function inventoryFrame(page: Page): Locator {
+  return frame(page, 'Инвентарь');
 }
 
 async function frameSize(locator: Locator): Promise<{ width: number; height: number }> {
@@ -91,10 +98,21 @@ test('lists the launch file first, marked, then the repository presets, and show
 
   await expect(presetSelect(page)).toHaveValue(PREVIEW_LAUNCH_FILE);
   await expect(characterFrame(page).getByText('Launch section')).toBeVisible();
-  await expect(npcFrame(page).getByRole('heading', { name: 'Sample NPC' })).toBeVisible();
-  await expect(characterFrame(page).getByRole('tab', { name: 'Sample character' })).toBeVisible();
+  // One frame per template in preset order, the hidden "NPC" and "Заметки ГМ" included.
+  await expect(page.locator('figcaption')).toHaveText([
+    'Персонажи, 600 × 600 px',
+    'NPC, 600 × 600 px',
+    'Инвентарь, 600 × 600 px',
+    'Журнал, 600 × 600 px',
+    'Заметки ГМ, 600 × 600 px',
+  ]);
+  // A sample sheet of a sheet set is named by its name field, which shows its label "Имя". A single
+  // sheet is named by its title.
+  await expect(characterFrame(page).getByRole('tab', { name: 'Имя' })).toBeVisible();
   await expect(npcFrame(page).getByRole('tab', { name: 'NPC' })).toBeVisible();
+  await expect(npcFrame(page).getByRole('heading', { name: 'NPC', level: 1 })).toBeVisible();
   await expect(characterFrame(page).getByText(copy.status.readOnly)).toBeVisible();
+  await expect(inventoryFrame(page).getByText(copy.status.canEdit)).toBeVisible();
   await expect(npcFrame(page).getByText(copy.status.readOnly)).toHaveCount(0);
 });
 
@@ -180,7 +198,7 @@ test('draws again on each save, shows the upload message for a bad file and reco
   await expect(page.locator('html')).toHaveAttribute('data-preview-mark', 'kept');
 });
 
-test('frames both sheets at the window size of the preset, and at 600 by 600 without one', async ({
+test('frames every template at the window size of the preset, and at 600 by 600 without one', async ({
   page,
 }) => {
   // #given
@@ -193,7 +211,7 @@ test('frames both sheets at the window size of the preset, and at 600 by 600 wit
   await expect(characterFrame(page).getByText('Wide window')).toBeVisible();
   expect(await frameSize(characterFrame(page))).toEqual({ width: 900, height: 700 });
   expect(await frameSize(npcFrame(page))).toEqual({ width: 900, height: 700 });
-  await expect(page.getByText('Character sheet, 900 × 700 px')).toBeVisible();
+  await expect(page.getByText('Персонажи, 900 × 700 px')).toBeVisible();
 
   // #when
   await presetSelect(page).selectOption(D20);
@@ -220,9 +238,7 @@ test('shows two rows per repeat section with sample values, and none when empty'
 
   // #then
   await expect(attackRolls).toHaveCount(0);
-  await expect(
-    characterFrame(page).getByRole('heading', { name: 'Sample character' }),
-  ).toBeVisible();
+  await expect(characterFrame(page).getByRole('tab', { name: 'Без имени' })).toBeVisible();
 });
 
 test('a dice press settles at once and shows no message', async ({ page }) => {

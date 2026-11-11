@@ -5,68 +5,97 @@ import { z } from 'zod';
 import type { JsonValue } from '@/core/json';
 
 import {
+  ADD,
   openBackground,
   openRoom,
+  pcSheet,
   record,
   storedData,
   storedRecords,
   type StoredRecord,
 } from './support/room';
 
-const ADD_CHARACTER = 'Добавить персонажа';
-const ADD_ROW = 'Добавить строку';
 const CHANNEL = 'app.muster-roll/ui';
 const BAD_NUMBER = 'Нужно число';
 
 // TASK-37: a new instance id is 8 characters of the URL-safe nanoid alphabet.
 const NANOID_PATTERN = /^[A-Za-z0-9_-]{8}$/;
 
-// One repeat section on a grid wider than its row, and one that flows inline and opens with a label.
+// One repeat section on a grid wider than its row, one that flows inline and opens with a label,
+// and one whose two rows hold five fields.
 const PRESET = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        title: 'Сетка',
-        columns: 2,
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          title: 'Сетка',
+          columns: 2,
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+            ],
           ],
-        ],
-      },
-      {
-        title: 'Атаки',
-        columns: 3,
-        repeat: true,
-        rows: [
-          [
-            { kind: 'field', type: 'text', id: 'attack' },
-            { kind: 'field', type: 'number', id: 'bonus' },
+        },
+        {
+          title: 'Атаки',
+          columns: 3,
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+            ],
           ],
-        ],
-      },
-      {
-        title: 'Вещи',
-        repeat: true,
-        rows: [
-          [
-            { kind: 'text', text: 'Вещь' },
-            { kind: 'field', type: 'text', id: 'item' },
+        },
+        {
+          title: 'Вещи',
+          repeat: true,
+          rows: [
+            [
+              { kind: 'text', text: 'Вещь' },
+              { kind: 'field', type: 'text', id: 'item' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+        },
+        {
+          title: 'Заклинания',
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'spell' },
+              { kind: 'text', text: 'Круг' },
+              { kind: 'field', type: 'number', id: 'circle' },
+            ],
+            [
+              { kind: 'text', text: 'Цена' },
+              { kind: 'field', type: 'number', id: 'cost' },
+              { kind: 'field', type: 'check', id: 'prepared' },
+              { kind: 'text', text: 'Заметка' },
+              { kind: 'field', type: 'text', id: 'note' },
+            ],
+          ],
+        },
+      ],
+    },
+  ],
 } as const;
 
-const ATTACK_COLUMNS = PRESET.character.sections[1].columns;
+// The columns of "Атаки" in PRESET.
+const ATTACK_COLUMNS = 3;
 
 const RECORDS = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
-  record('sheet:liza', { kind: 'pc', name: 'Лиза', order: 1 }),
+  ...pcSheet('brok', 'Брок', 0),
+  ...pcSheet('liza', 'Лиза', 1),
   record('rep:brok:attack:i1', { order: 1, cells: { attack: 'Меч', bonus: 3 } }),
   record('rep:brok:attack:i2', { order: 2, cells: { attack: 'Лук' } }),
   record('rep:liza:attack:x', { order: 0, cells: { attack: 'Чужой' } }),
@@ -74,9 +103,9 @@ const RECORDS = [
 
 const deltaSchema = z.object({ t: z.literal('delta'), engine: z.string(), seq: z.number() });
 
-const rowAddSchema = z.object({
+const blockAddSchema = z.object({
   t: z.literal('command'),
-  command: z.object({ type: z.literal('repeat-row-add'), instanceId: z.string() }),
+  command: z.object({ type: z.literal('repeat-block-add'), instanceId: z.string() }),
 });
 
 declare global {
@@ -89,7 +118,7 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 800 });
 });
 
-test('"Добавить строку" adds a last row with a nanoid id, an order above the highest and no values, and focuses its first field', async ({
+test('"Добавить" adds a last repeat block with a nanoid id, an order above the highest and no values, and focuses its first field', async ({
   page,
   context,
 }) => {
@@ -101,7 +130,7 @@ test('"Добавить строку" adds a last row with a nanoid id, an order
   await expect(attackFields(page)).toHaveCount(3);
 
   // #then
-  const added = await addedRows(page, 'rep:brok:attack:');
+  const added = await addedBlocks(page, 'rep:brok:attack:');
 
   expect({
     ids: added.map((one) => NANOID_PATTERN.test(one.id)),
@@ -116,7 +145,7 @@ test('"Добавить строку" adds a last row with a nanoid id, an order
   });
 });
 
-test('a new row focuses its first field when the row opens with a label', async ({
+test('a new repeat block focuses its first field when its row opens with a label', async ({
   page,
   context,
 }) => {
@@ -130,7 +159,10 @@ test('a new row focuses its first field when the row opens with a label', async 
   await expect(region(page, 'Вещи').getByRole('textbox', { name: 'Вещь' })).toBeFocused();
 });
 
-test('rows added to one character leave the other with its own rows', async ({ page, context }) => {
+test('repeat blocks added to one sheet leave the other sheet with its own repeat blocks', async ({
+  page,
+  context,
+}) => {
   // #given
   await openSheet(page, context);
   await addButton(page, 'Атаки').click();
@@ -147,7 +179,7 @@ test('rows added to one character leave the other with its own rows', async ({ p
   }).toEqual({ shown: ['Чужой'], stored: ['rep:liza:attack:x'] });
 });
 
-test('a row that arrives after the GM moved to another field leaves the focus in that field', async ({
+test('a repeat block that arrives after the GM moved to another field leaves the focus in that field', async ({
   page,
   context,
 }) => {
@@ -155,9 +187,9 @@ test('a row that arrives after the GM moved to another field leaves the focus in
   const { engine, seq } = await answerOnlyFromTest(page, context);
 
   await addButton(page, 'Атаки').click();
-  await expect.poll(async () => (await sentRowAdds(page)).length).toBe(1);
+  await expect.poll(async () => (await sentBlockAdds(page)).length).toBe(1);
 
-  const [instanceId] = await sentRowAdds(page);
+  const [instanceId] = await sentBlockAdds(page);
 
   await strField(page).click();
 
@@ -185,6 +217,7 @@ test('a row that arrives after the GM moved to another field leaves the focus in
       role: 'GM',
     },
     roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null },
+    party: [],
   });
   await expect(attackFields(page)).toHaveCount(3);
 
@@ -219,6 +252,7 @@ test('a delete that lands after the GM moved to another field leaves the focus i
       role: 'GM',
     },
     roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null },
+    party: [],
   });
   await expect(attackFields(page)).toHaveCount(1);
 
@@ -226,7 +260,7 @@ test('a delete that lands after the GM moved to another field leaves the focus i
   await expect(strField(page)).toBeFocused();
 });
 
-test('"Удалить" tombstones the row, removes it and moves the focus to the next row\'s "Удалить"', async ({
+test('"Удалить" tombstones the repeat block, removes it and moves the focus to the next repeat block\'s "Удалить"', async ({
   page,
   context,
 }) => {
@@ -241,12 +275,12 @@ test('"Удалить" tombstones the row, removes it and moves the focus to the
   await expect(attackFields(page)).toHaveCount(1);
   expect({
     shown: await valuesOf(attackFields(page)),
-    focusedRow: await focusedRowValue(page),
-  }).toEqual({ shown: ['Лук'], focusedRow: 'Лук' });
+    focusedBlock: await focusedBlockValue(page),
+  }).toEqual({ shown: ['Лук'], focusedBlock: 'Лук' });
   await expect(deleteButton(page, 1)).toBeFocused();
 });
 
-test('deleting the last row moves the focus to "Добавить строку"', async ({ page, context }) => {
+test('deleting the last repeat block moves the focus to "Добавить"', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
 
@@ -258,7 +292,7 @@ test('deleting the last row moves the focus to "Добавить строку"',
   await expect(addButton(page, 'Атаки')).toBeFocused();
 });
 
-test('each "Удалить" shows the command and is named by its row position from 1', async ({
+test('each "Удалить" shows the command and is named by its repeat block position from 1', async ({
   page,
   context,
 }) => {
@@ -269,12 +303,12 @@ test('each "Удалить" shows the command and is named by its row position f
   await expect(deleteButton(page, 1)).toHaveText('Удалить');
   await expect(deleteButton(page, 2)).toHaveText('Удалить');
   expect(await deleteButtonNames(region(page, 'Атаки'))).toEqual([
-    'Удалить строку 1',
-    'Удалить строку 2',
+    'Удалить блок 1',
+    'Удалить блок 2',
   ]);
 });
 
-test('a field of an added row saves into its cells, keeps the order, and a cleared field has no key', async ({
+test('a field of an added repeat block saves into its cells, keeps the order, and a cleared field has no key', async ({
   page,
   context,
 }) => {
@@ -283,7 +317,7 @@ test('a field of an added row saves into its cells, keeps the order, and a clear
   await addButton(page, 'Атаки').click();
   await expect(attackFields(page)).toHaveCount(3);
 
-  const [added] = await addedRows(page, 'rep:brok:attack:');
+  const [added] = await addedBlocks(page, 'rep:brok:attack:');
   const key = `rep:brok:attack:${added?.id ?? ''}`;
   const bonus = region(page, 'Атаки').getByRole('textbox', { name: 'bonus' }).nth(2);
 
@@ -301,7 +335,46 @@ test('a field of an added row saves into its cells, keeps the order, and a clear
   await expect.poll(() => storedData(page, key)).toEqual({ order: 3, cells: { attack: 'Топор' } });
 });
 
-test('a bad number in a repeat row shows the message and is not saved', async ({
+test('the two rows of a repeat section form one repeat block whose five values land in one rep record', async ({
+  page,
+  context,
+}) => {
+  // #given
+  await openSheet(page, context);
+  await addButton(page, 'Заклинания').click();
+
+  const block = region(page, 'Заклинания').getByRole('group');
+
+  await expect(block.getByRole('textbox', { name: 'spell', exact: true })).toBeFocused();
+
+  // #when
+  await block.getByRole('textbox', { name: 'spell', exact: true }).fill('Щит');
+  await block.getByRole('textbox', { name: 'Круг', exact: true }).fill('1');
+  await block.getByRole('textbox', { name: 'Цена', exact: true }).fill('5');
+  await block.getByRole('checkbox', { name: 'Цена' }).click();
+  await block.getByRole('textbox', { name: 'Заметка', exact: true }).fill('бонус к КД');
+  await page.keyboard.press('Tab');
+
+  // #then: one record, keyed by the section's first field id, holds the values of both rows.
+  await expect
+    .poll(async () => (await addedBlocks(page, 'rep:brok:spell:')).map((one) => one.d))
+    .toEqual([
+      { order: 0, cells: { spell: 'Щит', circle: 1, cost: 5, prepared: true, note: 'бонус к КД' } },
+    ]);
+  expect({
+    keys: (await storedRecords(page, 'rep:brok:'))
+      .map((one) => one.k)
+      .filter((key) => !key.startsWith('rep:brok:attack:')),
+    rows: await block.locator('[data-row]').count(),
+    deletes: await deleteButtonNames(region(page, 'Заклинания')),
+  }).toEqual({
+    keys: [`rep:brok:spell:${(await addedBlocks(page, 'rep:brok:spell:'))[0]?.id ?? ''}`],
+    rows: 2,
+    deletes: ['Удалить блок 1'],
+  });
+});
+
+test('a bad number in a repeat block shows the message and is not saved', async ({
   page,
   context,
 }) => {
@@ -321,7 +394,10 @@ test('a bad number in a repeat row shows the message and is not saved', async ({
   });
 });
 
-test('two rows with one order show by id, the same after a reload', async ({ page, context }) => {
+test('two repeat blocks with one order show by id, the same after a reload', async ({
+  page,
+  context,
+}) => {
   // #given
   const background = await openSheet(page, context, [
     record('rep:brok:attack:b', { order: 5, cells: { attack: 'Б' } }),
@@ -340,7 +416,7 @@ test('two rows with one order show by id, the same after a reload', async ({ pag
   });
 });
 
-test('after adds and deletes a reload shows the same rows', async ({ page, context }) => {
+test('after adds and deletes a reload shows the same repeat blocks', async ({ page, context }) => {
   // #given
   const background = await openSheet(page, context);
 
@@ -352,7 +428,7 @@ test('after adds and deletes a reload shows the same rows', async ({ page, conte
   await expect(attackFields(page)).toHaveCount(2);
   await expect.poll(() => storedData(page, 'rep:brok:attack:i1')).toBeNull();
   await expect
-    .poll(async () => (await addedRows(page, 'rep:brok:attack:')).map((one) => one.d))
+    .poll(async () => (await addedBlocks(page, 'rep:brok:attack:')).map((one) => one.d))
     .toEqual([{ order: 3, cells: { attack: 'Топор' } }]);
 
   // #when
@@ -362,7 +438,7 @@ test('after adds and deletes a reload shows the same rows', async ({ page, conte
   expect(await valuesOf(attackFields(page))).toEqual(['Лук', 'Топор']);
 });
 
-test('in a section with columns every "Удалить" sits in one track after the grid, and "Добавить строку" sits under the rows', async ({
+test('in a section with columns every repeat block\'s controls sit in one track after the grid, and "Добавить" sits under the repeat blocks', async ({
   page,
   context,
 }) => {
@@ -375,7 +451,8 @@ test('in a section with columns every "Удалить" sits in one track after t
     .locator('[data-row]')
     .first()
     .evaluate((row, columns) => {
-      const grid = row.parentElement;
+      // Each repeat block is a subgrid of the section's one grid.
+      const grid = row.parentElement?.parentElement ?? null;
 
       if (grid === null) {
         return { tracks: 0, offsets: [] };
@@ -389,8 +466,8 @@ test('in a section with columns every "Удалить" sits in one track after t
 
       return {
         tracks: tracks.length,
-        offsets: [...grid.querySelectorAll('button')].map((button) =>
-          Math.round(button.getBoundingClientRect().left - extraTrackStart),
+        offsets: [...grid.querySelectorAll('[data-row-control]')].map(
+          (slot) => Math.round(slot.getBoundingClientRect().left - extraTrackStart) + 0,
         ),
       };
     }, ATTACK_COLUMNS);
@@ -406,7 +483,10 @@ test('in a section with columns every "Удалить" sits in one track after t
   });
 });
 
-test('in a section with no columns "Удалить" ends its row', async ({ page, context }) => {
+test('in a section with no columns the repeat block controls end its row, "Удалить" last', async ({
+  page,
+  context,
+}) => {
   // #given
   await openSheet(page, context, [
     record('rep:brok:item:v1', { order: 0, cells: { item: 'Верёвка' } }),
@@ -421,7 +501,7 @@ test('in a section with no columns "Удалить" ends its row', async ({ page
   );
 
   // #then
-  expect(order).toEqual(['Вещь', 'Удалить строку 1']);
+  expect(order).toEqual(['Вещь', 'Дублировать блок 1…', 'Удалить блок 1']);
 });
 
 function strField(page: Page): Locator {
@@ -437,27 +517,30 @@ function attackFields(page: Page): Locator {
 }
 
 function addButton(page: Page, section: string): Locator {
-  return region(page, section).getByRole('button', { name: ADD_ROW, exact: true });
+  return region(page, section).getByRole('button', {
+    name: `Добавить в «${section}»`,
+    exact: true,
+  });
 }
 
 function deleteButton(page: Page, position: number): Locator {
   return region(page, 'Атаки').getByRole('button', {
-    name: `Удалить строку ${position}`,
+    name: `Удалить блок ${position}`,
     exact: true,
   });
 }
 
 function deleteButtonNames(section: Locator): Promise<string[]> {
   return section
-    .getByRole('button', { name: /^Удалить строку/ })
+    .getByRole('button', { name: /^Удалить блок/ })
     .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label') ?? ''));
 }
 
-// The attack value of the row that holds the focused control.
-function focusedRowValue(page: Page): Promise<string> {
+// The attack value of the repeat block that holds the focused control.
+function focusedBlockValue(page: Page): Promise<string> {
   return page.evaluate(() => {
-    const row = document.activeElement?.closest('[data-row]');
-    const value = row?.querySelector('textarea');
+    const block = document.activeElement?.closest('[data-repeat-block]');
+    const value = block?.querySelector('textarea');
 
     return value?.value ?? '';
   });
@@ -490,8 +573,8 @@ async function box(
   return found;
 }
 
-// The stored rows under `prefix` that were not seeded, with the id the window gave each.
-async function addedRows(page: Page, prefix: string): Promise<{ id: string; d: JsonValue }[]> {
+// The stored repeat blocks under `prefix` that were not seeded, with the id the window gave each.
+async function addedBlocks(page: Page, prefix: string): Promise<{ id: string; d: JsonValue }[]> {
   const seeded = new Set<string>(RECORDS.map((one) => one.k));
 
   return (await storedRecords(page, prefix))
@@ -546,9 +629,9 @@ function deltas(page: Page): Promise<z.infer<typeof deltaSchema>[]> {
   return wireMessages(page, deltaSchema);
 }
 
-// The instance ids of the row adds this window sent.
-async function sentRowAdds(page: Page): Promise<string[]> {
-  return (await wireMessages(page, rowAddSchema)).map((sent) => sent.command.instanceId);
+// The instance ids of the repeat block adds this window sent.
+async function sentBlockAdds(page: Page): Promise<string[]> {
+  return (await wireMessages(page, blockAddSchema)).map((sent) => sent.command.instanceId);
 }
 
 async function postToWindow(page: Page, message: JsonValue): Promise<void> {
@@ -566,7 +649,7 @@ async function reload(page: Page, context: BrowserContext, background: Page): Pr
   await background.close();
   await page.reload();
   await openBackground(context);
-  await expect(page.getByRole('button', { name: ADD_CHARACTER })).toBeVisible();
+  await expect(page.getByRole('button', { name: ADD })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
 }
 

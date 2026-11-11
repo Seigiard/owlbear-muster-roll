@@ -3,10 +3,12 @@ import type { BrowserContext, Locator, Page } from '@playwright/test';
 
 import {
   ABSENT,
+  ADD,
   addPartyMember,
   connectionIdOf,
   openClientBackground,
   openClientWindow,
+  pcSheet,
   record,
   seedStorage,
   storedData,
@@ -17,11 +19,10 @@ import {
 } from './support/room';
 
 const ACCESS = 'Доступ';
-const OWNER = 'Его персонаж';
+const OWNER = 'Его лист';
 const NOBODY = 'Никто';
 const CAN_EDIT = 'Можно править';
 const READ_ONLY = 'Только чтение';
-const ADD = 'Добавить персонажа';
 const ACL_FAILED = 'Не удалось изменить доступ. Попробуйте ещё раз.';
 
 const GM: ClientParams = { client: 'a', name: 'Мастер' };
@@ -50,45 +51,76 @@ const OTHER_PLAYER: ClientParams = {
   device: 'q',
 };
 
+// A sheet set, the hidden single sheet NPC and a visible single sheet, so a player's tab bar holds
+// both sheets of a sheet set and a single sheet.
 const PRESET_TEXT = JSON.stringify({
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Хиты' },
-            { kind: 'field', type: 'number', id: 'hp' },
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Хиты' },
+              { kind: 'field', type: 'number', id: 'hp' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
+        },
+      ],
+    },
+    {
+      id: 'inventory',
+      kind: 'single',
+      title: 'Инвентарь',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Золото' },
+              { kind: 'field', type: 'number', id: 'gold' },
+            ],
+          ],
+        },
+      ],
+    },
+  ],
 });
 
 const RECORDS: StoredRecord[] = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
-  record('sheet:kira', { kind: 'pc', name: 'Кира', order: 1 }),
-  record('sheet:yarl', { kind: 'pc', name: 'Ярл', order: 2 }),
+  ...pcSheet('brok', 'Брок', 0),
+  ...pcSheet('kira', 'Кира', 1),
+  ...pcSheet('yarl', 'Ярл', 2),
 ];
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
 });
 
-test('the panel has one radio group "Его персонаж" with "Никто" and one option per row', async ({
+test('the panel has one radio group "Его лист" with "Никто" and one option per row', async ({
   context,
 }) => {
   // #given: Гена holds an owner link and is not in the room.
@@ -287,7 +319,9 @@ test('a sheet delete tombstones its plink: records', async ({ context }) => {
   await expect.poll(() => storedData(gm.window, 'plink:brok:vova')).toBeNull();
 });
 
-test('the owner sees the owned character first, marked "вы", and selected', async ({ context }) => {
+test('the owner sees the owned sheet first, before the other sheets and the single sheets, marked "вы", and selected', async ({
+  context,
+}) => {
   // #given
   await openGm(context, [...RECORDS, record('plink:yarl:lisa', { name: 'Лиза' })]);
 
@@ -295,17 +329,17 @@ test('the owner sees the owned character first, marked "вы", and selected', as
   const player = await openClient(context, PLAYER, null);
 
   // #then
-  await expectTabNames(player.window, ['Ярл, вы', 'Брок', 'Кира']);
+  await expectTabNames(player.window, ['Ярл, вы', 'Брок', 'Кира', 'Инвентарь']);
   await expect(ownTab(player.window, 'Ярл')).toHaveAttribute('aria-selected', 'true');
 });
 
-test('a player who owns several characters sees them first by (order, sheetId)', async ({
+test('a player who owns several sheets sees them first by (order, sheetId)', async ({
   context,
 }) => {
   // #given: Кира and Ярл are Лиза's; Ярл and Аня share an order and break the tie by id.
   await openGm(context, [
     ...RECORDS,
-    record('sheet:anya', { kind: 'pc', name: 'Аня', order: 2 }),
+    ...pcSheet('anya', 'Аня', 2),
     record('plink:yarl:lisa', { name: 'Лиза' }),
     record('plink:anya:lisa', { name: 'Лиза' }),
   ]);
@@ -314,18 +348,18 @@ test('a player who owns several characters sees them first by (order, sheetId)',
   const player = await openClient(context, PLAYER, null);
 
   // #then
-  await expectTabNames(player.window, ['Аня, вы', 'Ярл, вы', 'Брок', 'Кира']);
+  await expectTabNames(player.window, ['Аня, вы', 'Ярл, вы', 'Брок', 'Кира', 'Инвентарь']);
   await expect(ownTab(player.window, 'Аня')).toBeVisible();
   await expect(ownTab(player.window, 'Ярл')).toBeVisible();
 });
 
-test("a pick in the GM's panel moves the character to the front of the player's tab bar", async ({
+test("a pick in the GM's panel moves the sheet to the front of the player's tab bar", async ({
   context,
 }) => {
   // #given
   const gm = await openGm(context, RECORDS);
   const player = await openClient(context, PLAYER, null);
-  await expectTabNames(player.window, ['Брок', 'Кира', 'Ярл']);
+  await expectTabNames(player.window, ['Брок', 'Кира', 'Ярл', 'Инвентарь']);
   await gm.window.getByRole('tab', { name: 'Кира' }).click();
   await accessChip(gm.window).click();
 
@@ -333,7 +367,7 @@ test("a pick in the GM's panel moves the character to the front of the player's 
   await ownerRadio(gm.window, 'Лиза').check();
 
   // #then
-  await expectTabNames(player.window, ['Кира, вы', 'Брок', 'Ярл']);
+  await expectTabNames(player.window, ['Кира, вы', 'Брок', 'Ярл', 'Инвентарь']);
   await expect(ownTab(player.window, 'Кира')).toBeVisible();
 });
 
@@ -475,7 +509,7 @@ test('a GM window keeps its order and shows no "вы" for a plink: of the GM\'s 
 
   // #then
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
-  await expectTabNames(gm.window, ['Брок', 'Кира', 'Ярл', 'NPC', 'Настройки']);
+  await expectTabNames(gm.window, ['Брок', 'Кира', 'Ярл', 'NPC', 'Инвентарь', 'Настройки']);
 });
 
 async function openGm(

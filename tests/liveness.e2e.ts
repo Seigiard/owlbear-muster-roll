@@ -4,11 +4,12 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { UI_CHANNEL } from '@/core/ui-messages';
 
 import {
+  ADD,
   connectionIdOf,
   openClientBackground,
   openClientWindow,
+  pcSheet,
   postRemote,
-  record,
   seedStorage,
   STORAGE_PREFIX,
   type ClientParams,
@@ -19,7 +20,6 @@ import {
 const NO_GM = 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.';
 const LOCAL_SAVE_FAILED = 'Не удалось сохранить в браузере. Скачайте снимок.';
 const NEW_VERSION = 'Вышла новая версия. Перезагрузите страницу.';
-const ADD = 'Добавить персонажа';
 
 // Short enough to watch the link go offline and come back within one test.
 const GM_LINK_TIMEOUT_MS = 1000;
@@ -35,23 +35,43 @@ const PLAYER: ClientParams = {
 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+        },
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+            ],
+          ],
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+  ],
 });
 
-const RECORDS: StoredRecord[] = [record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 })];
+const RECORDS: StoredRecord[] = [...pcSheet('brok', 'Брок', 0)];
 
 type SyncRead = { state: string; firstCatchUpDone: boolean; gmLink: string; role: string };
 
@@ -143,7 +163,7 @@ test('a new version shows over the no-GM banner', async ({ context }) => {
   await expect(player.window.getByRole('status')).toHaveText(NO_GM);
 
   // #when
-  await postRemote(player.window, 'mock-connection-newer', { v: 2, t: 'ping' });
+  await postRemote(player.window, 'mock-connection-newer', { v: 3, t: 'ping' });
 
   // #then
   await expect(player.window.getByRole('status')).toHaveText(NEW_VERSION);

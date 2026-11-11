@@ -4,10 +4,24 @@ import type { Page } from '@playwright/test';
 import type { JsonValue } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
 
-import { openBackground, STORAGE_PREFIX } from './support/room';
+import { openBackground, presetRecord, STORAGE_PREFIX } from './support/room';
 
 const CHANNEL = 'app.muster-roll/ui';
 const LOCAL_SAVE_FAILED = 'Не удалось сохранить в браузере. Скачайте снимок.';
+
+// One sheet set, so a `sheet-create` names a sheet set the engine knows.
+const PRESET_TEXT = JSON.stringify({
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+    },
+  ],
+});
 
 type Projection = { records: VersionedRecord[]; notices: string[] };
 
@@ -78,30 +92,32 @@ test('a corrupt stored record is skipped and shows the banner', async ({ page, c
 test('a player client refuses a command and persists nothing', async ({ page, context }) => {
   // #given
   await page.goto('/index.html');
+  await seedPreset(page);
   await openBackground(context, '/background.html?mock-role=PLAYER');
   await requestProjection(page, 'player-ready');
   await startRecordingWire(page);
 
   // #when
-  await sendCommand(page, 'player-command', 'Брок');
+  await sendCommand(page, 'player-command');
   await expect.poll(() => recordedTypes(page)).toContain('command-rejected');
 
   // #then
   expect({
-    names: await projectedNames(page, 'player-check'),
+    sheets: await projectedSheets(page, 'player-check'),
     stored: await storedKeys(page),
-  }).toEqual({ names: [], stored: [] });
+  }).toEqual({ sheets: [], stored: [] });
 });
 
 test('a command becomes a record in storage and a delta on the wire', async ({ page, context }) => {
   // #given
   await page.goto('/index.html');
+  await seedPreset(page);
   await openBackground(context);
   await requestProjection(page, 'before-command');
   await startRecordingWire(page);
 
   // #when
-  await sendCommand(page, 'first-command', 'Брок');
+  await sendCommand(page, 'first-command');
   await expect.poll(() => recordedTypes(page)).toContain('delta');
 
   // #then
@@ -127,6 +143,7 @@ test('a window that loads before the background page still gets its projection',
 test('a whole record in a command has no effect', async ({ page, context }) => {
   // #given
   await page.goto('/index.html');
+  await seedPreset(page);
   await openBackground(context);
   await requestProjection(page, 'before-whole');
 
@@ -137,8 +154,7 @@ test('a whole record in a command has no effect', async ({ page, context }) => {
     command: {
       type: 'sheet-create',
       sheetId: 'z',
-      kind: 'pc',
-      name: 'x',
+      set: 'pc',
       k: 'sheet:z',
       d: null,
       c: 9,
@@ -148,31 +164,33 @@ test('a whole record in a command has no effect', async ({ page, context }) => {
   await page.waitForTimeout(200);
 
   // #then
-  expect(await requestProjection(page, 'after-whole')).toEqual({ records: [], notices: [] });
+  expect(await projectedSheets(page, 'after-whole')).toEqual([]);
 });
 
 test('a command delivered twice has one effect', async ({ page, context }) => {
   // #given
   await page.goto('/index.html');
+  await seedPreset(page);
   await openBackground(context);
   await requestProjection(page, 'before-echo');
 
   // #when
-  await sendCommand(page, 'echoed', 'Брок');
-  await sendCommand(page, 'echoed', 'Брок');
-  await expect.poll(() => projectedNames(page, 'echo-check')).toEqual(['Брок']);
+  await sendCommand(page, 'echoed');
+  await sendCommand(page, 'echoed');
+  await expect.poll(() => projectedSheets(page, 'echo-check')).toEqual(['sheet:echoed']);
   await page.waitForTimeout(200);
 
   // #then
-  expect(await projectedNames(page, 'echo-final')).toEqual(['Брок']);
+  expect(await projectedSheets(page, 'echo-final')).toEqual(['sheet:echoed']);
 });
 
 test('a window closed and opened again shows the same records', async ({ page, context }) => {
   // #given
   await page.goto('/index.html');
+  await seedPreset(page);
   await openBackground(context);
-  await sendCommand(page, 'reopen', 'Брок');
-  await expect.poll(() => projectedNames(page, 'reopen-check')).toEqual(['Брок']);
+  await sendCommand(page, 'reopen');
+  await expect.poll(() => projectedSheets(page, 'reopen-check')).toEqual(['sheet:reopen']);
   await page.close();
 
   // #when
@@ -181,7 +199,7 @@ test('a window closed and opened again shows the same records', async ({ page, c
   await reopened.goto('/index.html');
 
   // #then
-  expect(await projectedNames(reopened, 'reopen-final')).toEqual(['Брок']);
+  expect(await projectedSheets(reopened, 'reopen-final')).toEqual(['sheet:reopen']);
 });
 
 test('a background restart over the same storage shows the same records', async ({
@@ -190,17 +208,18 @@ test('a background restart over the same storage shows the same records', async 
 }) => {
   // #given
   await page.goto('/index.html');
+  await seedPreset(page);
 
   const background = await openBackground(context);
 
-  await sendCommand(page, 'restart', 'Брок');
-  await expect.poll(() => projectedNames(page, 'restart-check')).toEqual(['Брок']);
+  await sendCommand(page, 'restart');
+  await expect.poll(() => projectedSheets(page, 'restart-check')).toEqual(['sheet:restart']);
 
   // #when
   await background.reload();
 
   // #then
-  expect(await projectedNames(page, 'restart-final')).toEqual(['Брок']);
+  expect(await projectedSheets(page, 'restart-final')).toEqual(['sheet:restart']);
 });
 
 test('a failed write keeps the value and shows the banner at full width as a live region', async ({
@@ -209,6 +228,7 @@ test('a failed write keeps the value and shows the banner at full width as a liv
 }) => {
   // #given
   await page.goto('/index.html');
+  await seedPreset(page);
 
   const background = await openBackground(context);
 
@@ -218,14 +238,14 @@ test('a failed write keeps the value and shows the banner at full width as a liv
   });
 
   // #when
-  await sendCommand(page, 'failed-write', 'Брок');
+  await sendCommand(page, 'failed-write');
   await expect(page.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
 
   // #then
   expect({
-    names: await projectedNames(page, 'after-failure'),
+    sheets: await projectedSheets(page, 'after-failure'),
     width: (await page.getByRole('status').boundingBox())?.width,
-  }).toEqual({ names: ['Брок'], width: 600 });
+  }).toEqual({ sheets: ['sheet:failed-write'], width: 600 });
 });
 
 test('the banner goes when the notices clear', async ({ page }) => {
@@ -304,7 +324,7 @@ test('the window and background load with no console error', async ({ page, cont
 function sheet(id: string): VersionedRecord {
   return {
     k: `sheet:${id}`,
-    d: { kind: 'pc', name: id, order: 0 },
+    d: { set: 'pc', order: 0 },
     c: 1,
     a: 'mock-connection',
   };
@@ -319,8 +339,22 @@ async function seedStorage(page: Page, key: string, value: string): Promise<void
   );
 }
 
+// The stored `sheet:` keys, so the seeded preset and the generation marker do not count.
 async function storedKeys(page: Page): Promise<string[]> {
-  return page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('mr1:')));
+  return page.evaluate(
+    (prefix) => Object.keys(localStorage).filter((key) => key.startsWith(prefix)),
+    `${STORAGE_PREFIX}sheet:`,
+  );
+}
+
+// The preset in the storage of the default device, before its background starts.
+async function seedPreset(page: Page): Promise<void> {
+  await page.evaluate(
+    ([storageKey, text]) => {
+      localStorage.setItem(storageKey ?? '', text ?? '');
+    },
+    [`${STORAGE_PREFIX}preset`, presetRecord(PRESET_TEXT)],
+  );
 }
 
 async function postMessage(page: Page, message: JsonValue): Promise<void> {
@@ -335,12 +369,12 @@ async function postMessage(page: Page, message: JsonValue): Promise<void> {
   );
 }
 
-async function sendCommand(page: Page, id: string, name: string): Promise<void> {
+async function sendCommand(page: Page, id: string): Promise<void> {
   await postMessage(page, {
     t: 'command',
     id,
     // The command id doubles as the sheet id, so each command makes its own sheet.
-    command: { type: 'sheet-create', sheetId: id, kind: 'pc', name },
+    command: { type: 'sheet-create', sheetId: id, set: 'pc' },
   });
 }
 
@@ -390,18 +424,15 @@ async function requestProjection(page: Page, nonce: string): Promise<Projection>
 
 let projectionCounter = 0;
 
-async function projectedNames(page: Page, nonce: string): Promise<string[]> {
+// The keys of the live `sheet:` records in the projection.
+async function projectedSheets(page: Page, nonce: string): Promise<string[]> {
   projectionCounter += 1;
 
   const projection = await requestProjection(page, `${nonce}-${projectionCounter}`);
 
-  return projection.records.map((record) => {
-    const data = record.d;
-
-    return data !== null && !Array.isArray(data) && Object.hasOwn(Object(data), 'name')
-      ? String(Object(data).name)
-      : '';
-  });
+  return projection.records
+    .filter((record) => record.k.startsWith('sheet:') && record.d !== null)
+    .map((record) => record.k);
 }
 
 async function startRecordingWire(page: Page): Promise<void> {

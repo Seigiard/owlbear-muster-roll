@@ -5,8 +5,10 @@ import {
   addPartyMember,
   connectionIdOf,
   deviceKeys,
+  npcBlock,
   openClientBackground,
   openClientWindow,
+  pcSheet,
   record,
   seedStorage,
   syncRead,
@@ -18,11 +20,10 @@ import {
 const NO_GM = 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.';
 const READ_ONLY = 'Только чтение';
 const NO_PRESET = 'ГМ ещё не настроил листы.';
-const NO_CHARACTERS = 'ГМ ещё не создал персонажей.';
+const NO_SHEETS = 'ГМ ещё не создал листы.';
 const NO_GM_NO_DATA = 'ГМ ещё не заходил. Листов пока нет.';
-const ADD = 'Добавить персонажа';
-const ADD_NPC = 'Добавить NPC';
-const ADD_ROW = 'Добавить строку';
+const ADD = 'Добавить: Персонажи';
+const ADD_NPC = 'Добавить в «Противники»';
 const SETTINGS = 'Настройки';
 const ACTIONS = 'Действия с листом';
 const LOAD_PRESET = 'Загрузить пресет';
@@ -34,71 +35,88 @@ const GM: ClientParams = { client: 'a', device: 'a' };
 
 const PLAYER: ClientParams = { client: 'p', role: 'PLAYER', player: 'lisa', device: 'p' };
 
+// A sheet set "Персонажи" and a hidden single sheet "NPC", whose NPCs are repeat blocks.
 const PRESET = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        title: 'Основное',
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          title: 'Основное',
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+            ],
+            [
+              { kind: 'text', text: 'Устал' },
+              { kind: 'field', type: 'check', id: 'tired' },
+            ],
+            [
+              { kind: 'text', text: 'Отдохнул' },
+              { kind: 'field', type: 'check', id: 'rested' },
+            ],
+            [
+              { kind: 'text', text: 'Заметки' },
+              { kind: 'field', type: 'text', id: 'notes' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Устал' },
-            { kind: 'field', type: 'check', id: 'tired' },
+        },
+        {
+          title: 'Атаки',
+          repeat: true,
+          rows: [
+            [
+              { kind: 'text', text: 'Атака' },
+              { kind: 'field', type: 'text', id: 'attack' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Отдохнул' },
-            { kind: 'field', type: 'check', id: 'rested' },
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          title: 'Противники',
+          repeat: true,
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'npc_name' }],
+            [
+              { kind: 'text', text: 'Хиты' },
+              { kind: 'field', type: 'number', id: 'hp' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Заметки' },
-            { kind: 'field', type: 'text', id: 'notes' },
-          ],
-        ],
-      },
-      {
-        title: 'Атаки',
-        repeat: true,
-        rows: [
-          [
-            { kind: 'text', text: 'Атака' },
-            { kind: 'field', type: 'text', id: 'attack' },
-          ],
-        ],
-      },
-    ],
-  },
-  npc: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Хиты' },
-            { kind: 'field', type: 'number', id: 'hp' },
-          ],
-        ],
-      },
-    ],
-  },
+        },
+      ],
+    },
+  ],
 };
 
 const PRESET_TEXT = JSON.stringify(PRESET);
 
 // Анна sorts last by its order. Брок and Лиза share an order, so the sheet id decides.
 const RECORDS: StoredRecord[] = [
-  record('sheet:liza', { kind: 'pc', name: 'Лиза', order: 0 }),
-  record('sheet:anna', { kind: 'pc', name: 'Анна', order: 1 }),
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
+  ...pcSheet('liza', 'Лиза', 0),
+  ...pcSheet('anna', 'Анна', 1),
+  ...pcSheet('brok', 'Брок', 0),
   record('row:brok:str', { str: 14 }),
   record('row:brok:tired', { tired: true }),
   record('row:brok:notes', { notes: 'Храбрый' }),
   record('rep:brok:attack:i1', { order: 0, cells: { attack: 'Меч' } }),
   record('rep:brok:attack:i2', { order: 1, cells: { attack: 'Лук' } }),
-  record('sheet:skel', { kind: 'npc', name: 'Скелет', order: 0 }),
-  record('row:skel:hp', { hp: 7 }),
+  npcBlock('skel', 'Скелет', 0, { hp: 7 }),
 ];
 
 const CHARACTER_TABS = ['Брок', 'Лиза', 'Анна'];
@@ -107,7 +125,7 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
 });
 
-test('a player sees a tab for every character in order, each with its full sheet, and no NPC, gear or "+"', async ({
+test('a player sees a tab for every character in order, each with its full sheet, and no hidden NPC tab, gear or "+"', async ({
   context,
 }) => {
   // #given
@@ -182,7 +200,7 @@ test('player values are text that takes no focus, and a check shows its state wi
   expect(await focusableInside(panel)).toEqual([]);
 });
 
-test('player repeat rows show with no "Добавить строку" and no "Удалить"', async ({ context }) => {
+test('player repeat blocks show with no "Добавить" and no "Удалить"', async ({ context }) => {
   // #given
   await openGm(context, RECORDS);
 
@@ -193,7 +211,7 @@ test('player repeat rows show with no "Добавить строку" and no "У
   // #then
   // A row's text joins its cells with no separator.
   await expect(attacks.locator('[data-row]')).toHaveText(['АтакаМеч', 'АтакаЛук']);
-  await expect(player.window.getByRole('button', { name: ADD_ROW })).toHaveCount(0);
+  await expect(player.window.getByRole('button', { name: /Добавить/ })).toHaveCount(0);
   await expect(player.window.getByRole('button', { name: /Удалить/ })).toHaveCount(0);
 });
 
@@ -229,10 +247,10 @@ test('a player with no answer and no room copy sees that no GM has been in the r
   await expect(window.getByRole('status')).toHaveText(NO_GM);
   await expect(window.getByRole('main').getByText(NO_GM_NO_DATA, { exact: true })).toBeVisible();
   await expect(window.getByText(NO_PRESET)).toHaveCount(0);
-  await expect(window.getByText(NO_CHARACTERS)).toHaveCount(0);
+  await expect(window.getByText(NO_SHEETS)).toHaveCount(0);
 });
 
-test('a player in a room with a preset and no character sees that the GM has not made any', async ({
+test('a player in a room with a preset and no visible sheet sees that the GM has not made any', async ({
   context,
 }) => {
   // #given
@@ -242,7 +260,7 @@ test('a player in a room with a preset and no character sees that the GM has not
   const player = await openClient(context, PLAYER, null);
 
   // #then
-  await expect(player.window.getByRole('main')).toHaveText(NO_CHARACTERS);
+  await expect(player.window.getByRole('main')).toHaveText(NO_SHEETS);
 });
 
 test('a GM edit of a character updates the player view in place', async ({ context }) => {
@@ -262,7 +280,9 @@ test('a GM edit of a character updates the player view in place', async ({ conte
   await expect(playerPanel.getByText('14', { exact: true })).toHaveCount(0);
 });
 
-test('an NPC the GM creates changes nothing in the player window', async ({ context }) => {
+test('an NPC the GM adds to the hidden NPC sheet changes nothing in the player window', async ({
+  context,
+}) => {
   // #given
   const gm = await openGm(context, RECORDS);
   const player = await openClient(context, PLAYER, null);
@@ -272,7 +292,9 @@ test('an NPC the GM creates changes nothing in the player window', async ({ cont
   // #when
   await gm.window.getByRole('tab', { name: 'NPC' }).click();
   await gm.window.getByRole('button', { name: ADD_NPC }).click();
-  await expect(gm.window.getByRole('textbox', { name: 'Имя NPC' })).toHaveCount(2);
+  await expect(npcNames(gm.window)).toHaveCount(2);
+  await npcNames(gm.window).last().fill('Орк');
+  await npcNames(gm.window).last().press('Enter');
   // An edit made after the NPC reaches the player only after the NPC's records did.
   await gm.window.getByRole('tab', { name: 'Брок' }).click();
   await strength(gm.window).fill('16');
@@ -281,7 +303,7 @@ test('an NPC the GM creates changes nothing in the player window', async ({ cont
 
   // #then
   await expect(player.window.getByRole('tab')).toHaveText(CHARACTER_TABS);
-  await expect(player.window.getByText('Новый NPC')).toHaveCount(0);
+  await expect(player.window.getByText('Орк')).toHaveCount(0);
 });
 
 test('a GM rename and then deletion of the character a player has open reach the player', async ({
@@ -296,7 +318,7 @@ test('a GM rename and then deletion of the character a player has open reach the
   await gm.window.getByRole('tab', { name: 'Лиза' }).click();
 
   // #when
-  const name = gm.window.getByRole('textbox', { name: 'Имя персонажа' });
+  const name = gm.window.getByRole('textbox', { name: 'Имя листа' });
 
   await name.fill('Лиза Смелая');
   await name.press('Enter');
@@ -368,28 +390,7 @@ test('a GM in Settings made a player lands on the first character tab', async ({
   await expect(gm.window.getByRole('tab', { name: SETTINGS })).toHaveCount(0);
 });
 
-test('a GM with a confirmation open made a player sees it close', async ({ context }) => {
-  // #given
-  const gm = await openGm(context, RECORDS);
-
-  await gm.window.getByRole('tab', { name: 'NPC' }).click();
-  await gm.window.getByRole('button', { name: ACTIONS }).click();
-  await gm.window.getByRole('menuitem', { name: 'Удалить' }).click();
-  await expect(confirmation(gm.window, 'Скелет')).toBeVisible();
-
-  // #when
-  await setRole(gm, 'PLAYER');
-
-  // #then: closed for good, so a promotion back does not bring it back.
-  await expect(gm.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
-  await expect(confirmation(gm.window, 'Скелет')).toHaveCount(0);
-  await setRole(gm, 'GM');
-  await gm.window.getByRole('tab', { name: 'NPC' }).click();
-  await expect(gm.window.getByRole('button', { name: ADD_NPC })).toBeVisible();
-  await expect(confirmation(gm.window, 'Скелет')).toHaveCount(0);
-});
-
-test('a GM with a character confirmation open made a player sees it close on the same tab', async ({
+test('a GM with a delete confirmation open made a player sees it close on the same tab', async ({
   context,
 }) => {
   // #given
@@ -426,7 +427,7 @@ test('a player made GM gets the NPC tab, the gear and "+"', async ({ context }) 
   await expect(player.window.getByRole('tab')).toHaveText([...CHARACTER_TABS, 'NPC', '⚙︎']);
   await expect(player.window.getByRole('button', { name: ADD })).toBeVisible();
   await player.window.getByRole('tab', { name: 'NPC' }).click();
-  await expect(player.window.getByRole('textbox', { name: 'Имя NPC' })).toHaveValue('Скелет');
+  await expect(npcNames(player.window)).toHaveValue('Скелет');
 });
 
 // A live GM whose device holds the preset and `records`.
@@ -463,6 +464,11 @@ async function setRole(client: RoomClient, role: 'GM' | 'PLAYER'): Promise<void>
   await client.background.evaluate((next) => {
     window.mockPlatform.setRole(next);
   }, role);
+}
+
+// The first field of an NPC repeat block has no label before it, so its id names it.
+function npcNames(page: Page): Locator {
+  return page.getByRole('tabpanel').getByRole('textbox', { name: 'npc_name' });
 }
 
 function strength(page: Page): Locator {

@@ -5,10 +5,12 @@ import type { JsonValue } from '@/core/json';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 
 import {
+  ADD,
   addPartyMember,
   connectionIdOf,
   openClientBackground,
   openClientWindow,
+  pcSheet,
   postRemote,
   record,
   seedStorage,
@@ -23,9 +25,8 @@ const PENDING = 'Ожидает';
 const DENIED = 'Нет прав на правку';
 const NO_GM = 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.';
 const READ_ONLY = 'Только чтение';
-const ADD = 'Добавить персонажа';
-const ADD_ROW = 'Добавить строку';
-const DELETE_FIRST_ROW = 'Удалить строку 1';
+const ADD_ROW = 'Добавить в «Атаки»';
+const DELETE_FIRST_ROW = 'Удалить блок 1';
 const GENERATION = { n: 0, a: '' };
 
 // The 3.4 spec's delay before "Ожидает" shows for an unanswered edit.
@@ -52,40 +53,60 @@ const PLAYER: ClientParams = {
 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 1,
-  character: {
-    sections: [
-      {
-        title: 'Основное',
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'text', text: 'Ловкость' },
-            { kind: 'field', type: 'number', id: 'dex' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
           ],
-        ],
-      },
-      {
-        title: 'Атаки',
-        repeat: true,
-        rows: [
-          [
-            { kind: 'text', text: 'Атака' },
-            { kind: 'field', type: 'text', id: 'attack' },
-            { kind: 'text', text: 'Маг' },
-            { kind: 'field', type: 'check', id: 'magic' },
+        },
+        {
+          title: 'Основное',
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'text', text: 'Ловкость' },
+              { kind: 'field', type: 'number', id: 'dex' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+        },
+        {
+          title: 'Атаки',
+          repeat: true,
+          rows: [
+            [
+              { kind: 'text', text: 'Атака' },
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'text', text: 'Маг' },
+              { kind: 'field', type: 'check', id: 'magic' },
+            ],
+          ],
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+  ],
 });
 
 // Лиза may edit Брок.
 const RECORDS: StoredRecord[] = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
+  ...pcSheet('brok', 'Брок', 0),
   record('acl:brok:lisa', { name: 'Лиза' }),
   record('row:brok:str', { str: 14, dex: 12 }),
   record('rep:brok:attack:i1', { order: 0, cells: { attack: 'Меч' } }),
@@ -325,7 +346,7 @@ test('a revoke while an edit waits makes the sheet read-only at once, returns th
 
   // #when
   await postRemote(gm.window, gm.connectionId, {
-    v: 1,
+    v: 2,
     g: GENERATION,
     t: 'commit',
     records: [{ k: 'acl:brok:lisa', d: null, c: 2, a: gm.connectionId }],
@@ -451,7 +472,7 @@ async function commitProposal(gm: RoomClient, prefix: string): Promise<void> {
   const proposal = await newestProposal(gm.window, prefix);
 
   await postRemote(gm.window, gm.connectionId, {
-    v: 1,
+    v: 2,
     g: GENERATION,
     t: 'commit',
     records: [proposal],
@@ -463,7 +484,7 @@ async function rejectProposal(gm: RoomClient, prefix: string): Promise<void> {
   const proposal = await newestProposal(gm.window, prefix);
 
   await postRemote(gm.window, gm.connectionId, {
-    v: 1,
+    v: 2,
     g: GENERATION,
     t: 'reject',
     k: proposal.k,

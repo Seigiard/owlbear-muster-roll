@@ -1,18 +1,22 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 
+import type { JsonValue } from '@/core/json';
+
 import {
+  ADD,
   connectionIdOf,
+  npcBlock,
   openClientBackground,
   openClientWindow,
+  pcSheet,
+  postRemote,
   record,
   seedStorage,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
 } from './support/room';
-
-const ADD = 'Добавить персонажа';
 
 const BAD_NUMBER = 'Нужно число';
 
@@ -28,73 +32,105 @@ const PLAYER: ClientParams = {
   name: 'Лиза',
 };
 
-// Every `1d1` shows 1, so each roll has one known result.
+// Every `1d1` shows 1, so each roll has one known result. "Персонажи" and "Журнал" are visible,
+// "NPC" is hidden, and its NPCs are repeat blocks.
 const PRESET = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        title: 'Основное',
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'check', id: 'tired' },
-            { kind: 'dice', formula: '1d1 + str - 2*tired' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          title: 'Основное',
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'check', id: 'tired' },
+              { kind: 'dice', formula: '1d1 + str - 2*tired' },
+            ],
+            [
+              { kind: 'text', text: 'Ловкость' },
+              { kind: 'field', type: 'number', id: 'dex' },
+              { kind: 'dice', formula: '1d1 + dex' },
+            ],
+            [
+              { kind: 'text', text: 'Деление' },
+              { kind: 'dice', formula: 'str / (str - str)' },
+            ],
+            [
+              { kind: 'text', text: 'Удача' },
+              { kind: 'dice', formula: '1d1 > str' },
+            ],
+            [
+              { kind: 'text', text: 'Монета' },
+              { kind: 'dice', formula: '1d1' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Ловкость' },
-            { kind: 'field', type: 'number', id: 'dex' },
-            { kind: 'dice', formula: '1d1 + dex' },
+        },
+        {
+          title: 'Атаки',
+          repeat: true,
+          rows: [
+            [
+              { kind: 'text', text: 'Атака' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+              { kind: 'dice', formula: '1d1 + bonus' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Деление' },
-            { kind: 'dice', formula: 'str / (str - str)' },
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          title: 'Противники',
+          repeat: true,
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'npc_name' }],
+            [
+              { kind: 'text', text: 'Хиты' },
+              { kind: 'field', type: 'number', id: 'hp' },
+              { kind: 'dice', formula: '1d1 + hp' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Удача' },
-            { kind: 'dice', formula: '1d1 > str' },
+        },
+      ],
+    },
+    {
+      id: 'journal',
+      kind: 'single',
+      title: 'Журнал',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Погода' },
+              { kind: 'dice', formula: '1d1 + 1' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Монета' },
-            { kind: 'dice', formula: '1d1' },
-          ],
-        ],
-      },
-      {
-        title: 'Атаки',
-        repeat: true,
-        rows: [
-          [
-            { kind: 'text', text: 'Атака' },
-            { kind: 'field', type: 'number', id: 'bonus' },
-            { kind: 'dice', formula: '1d1 + bonus' },
-          ],
-        ],
-      },
-    ],
-  },
-  npc: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Хиты' },
-            { kind: 'field', type: 'number', id: 'hp' },
-            { kind: 'dice', formula: '1d1 + hp' },
-          ],
-        ],
-      },
-    ],
-  },
+        },
+      ],
+    },
+  ],
 };
 
 const RECORDS: StoredRecord[] = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
+  ...pcSheet('brok', 'Брок', 0),
   record('row:brok:str', { str: 14, tired: true }),
   record('rep:brok:bonus:i1', { order: 0, cells: { bonus: 3 } }),
-  record('sheet:skel', { kind: 'npc', name: 'Скелет', order: 0 }),
-  record('row:skel:hp', { hp: 7 }),
+  npcBlock('skel', 'Скелет', 0, { hp: 7 }),
 ];
 
 // 1 + 14 - 2 for "Сила", and 1 > 14 fails for "Удача".
@@ -141,7 +177,9 @@ test('a player rolls a character it cannot edit, and the GM sees the roll', asyn
   expect(await shownNotifications(player)).toEqual(['Лиза: Брок, Сила — 13']);
 });
 
-test('an NPC roll shows on the GM and not on a player', async ({ context }) => {
+test('a roll from the hidden NPC sheet shows on the GM and not on a player', async ({
+  context,
+}) => {
   // #given
   const gm = await openGm(context);
   const player = await openPlayer(context);
@@ -156,7 +194,39 @@ test('an NPC roll shows on the GM and not on a player', async ({ context }) => {
 
   // #then
   await expect.poll(() => shownNotifications(player)).toEqual([GM_STRENGTH]);
-  expect(await shownNotifications(gm)).toEqual(['Мастер: Скелет, Хиты — 8', GM_STRENGTH]);
+  expect(await shownNotifications(gm)).toEqual(['Мастер: NPC, Хиты — 8', GM_STRENGTH]);
+});
+
+test('a player rolls the visible single sheet "Журнал", and the GM sees the roll', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context);
+  const player = await openPlayer(context);
+
+  await player.window.getByRole('tab', { name: 'Журнал' }).click();
+
+  // #when
+  await diceButton(player.window, 'Погода').click();
+
+  // #then
+  await expect.poll(() => shownNotifications(gm)).toEqual(['Лиза: Журнал, Погода — 2']);
+  expect(await shownNotifications(player)).toEqual(['Лиза: Журнал, Погода — 2']);
+});
+
+test("a GM client drops a player's roll marked hidden as forged", async ({ context }) => {
+  // #given
+  const gm = await openGm(context);
+  const player = await openPlayer(context);
+
+  await expect(player.window.getByRole('button', { name: 'Сила' })).toBeVisible();
+
+  // #when: the forged roll goes first, so a real one after it proves it had its turn.
+  await postRemote(gm.window, player.connectionId, forgedRoll('forged', true));
+  await diceButton(player.window, 'Монета').click();
+
+  // #then
+  await expect.poll(() => shownNotifications(gm)).toEqual(['Лиза: Брок, Монета — 1']);
 });
 
 test('an empty referenced field shows the field error under the button and sends nothing', async ({
@@ -291,6 +361,22 @@ async function openGm(context: BrowserContext): Promise<RoomClient> {
   await expect(diceButton(window, 'Сила')).toBeVisible();
 
   return { window, background, connectionId: connectionIdOf(GM) };
+}
+
+// A roll as a player's client would send it, with `hidden` as given.
+function forgedRoll(id: string, hidden: boolean): JsonValue {
+  return {
+    v: 2,
+    g: { n: 0, a: '' },
+    t: 'roll',
+    id,
+    sheetId: 'npc',
+    hidden,
+    roller: 'Лиза',
+    sheetName: 'NPC',
+    cell: 'Хиты',
+    result: { roll: 8, faces: [1], target: null, targetFaces: [], outcome: null },
+  };
 }
 
 async function openPlayer(context: BrowserContext): Promise<RoomClient> {

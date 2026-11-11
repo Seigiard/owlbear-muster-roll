@@ -7,68 +7,95 @@ import { SYNC_CHANNEL } from '@/core/room-messages';
 import { UI_CHANNEL } from '@/core/ui-messages';
 
 import {
+  ADD,
   afterSettling,
   connectionIdOf,
   deviceKeys,
   openClientBackground,
   openClientWindow,
   openGmClients,
+  pcSheet,
   postRemote,
   record,
+  sheetRecords,
   STORAGE_PREFIX,
   storedRecordSchema,
+  watchCommands,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
-  watchCommands,
 } from './support/room';
 
 const NEW_VERSION = 'Вышла новая версия. Перезагрузите страницу.';
 const ACTIONS = 'Действия с листом';
 const DELETE = 'Удалить';
+const UNNAMED = 'Без имени';
+const SHEET_NAME = 'Имя листа';
+const ADD_ENEMY = 'Добавить в «Противники»';
 const GM_A: ClientParams = { client: 'a' };
 const GM_B: ClientParams = { client: 'b' };
 const PLAYER: ClientParams = { client: 'p', role: 'PLAYER', player: 'lisa', device: 'p' };
 const INITIAL = { n: 0, a: '' };
 
 const PRESET = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        title: 'Сетка',
-        columns: 3,
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'check', id: 'str_tired' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Ловкость' },
-            { kind: 'field', type: 'number', id: 'dex' },
+        },
+        {
+          title: 'Сетка',
+          columns: 3,
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'check', id: 'str_tired' },
+            ],
+            [
+              { kind: 'text', text: 'Ловкость' },
+              { kind: 'field', type: 'number', id: 'dex' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Хиты' },
-            { kind: 'field', type: 'number', id: 'hp' },
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          title: 'Противники',
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'npc_name' },
+              { kind: 'text', text: 'Хиты' },
+              { kind: 'field', type: 'number', id: 'hp' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
+        },
+      ],
+    },
+  ],
 };
 
 const RECORDS: StoredRecord[] = [
-  record('sheet:brok', { kind: 'pc', name: 'Брок', order: 0 }),
-  record('sheet:liza', { kind: 'pc', name: 'Лиза', order: 1 }),
+  ...pcSheet('brok', 'Брок', 0),
+  ...pcSheet('liza', 'Лиза', 1),
   record('row:brok:str', { str: 14 }),
 ];
 
@@ -104,7 +131,7 @@ test('a GM edit goes out as one commit and updates a field in place on the other
   expect({ heard: await heardRemote(b.window), stored: await stored(a.window, written.k) }).toEqual(
     {
       heard: [
-        { from: a.connectionId, data: { v: 1, g: INITIAL, t: 'commit', records: [written] } },
+        { from: a.connectionId, data: { v: 2, g: INITIAL, t: 'commit', records: [written] } },
       ],
       stored: written,
     },
@@ -172,22 +199,25 @@ test('a sheet created, renamed and deleted on one GM client shows on the other',
   // #given
   const [a, b] = await twoGms(context);
 
-  // #when: a character is created and named.
-  await a.window.getByRole('button', { name: 'Добавить персонажа' }).click();
-  await expect(b.window.getByRole('tab', { name: 'Новый персонаж' })).toBeVisible();
-  await a.window.getByRole('textbox', { name: 'Имя персонажа' }).fill('Гимли');
-  await a.window.getByRole('textbox', { name: 'Имя персонажа' }).press('Enter');
+  // #when: a sheet is created and named.
+  await a.window.getByRole('button', { name: ADD }).click();
+  await expect(b.window.getByRole('tab', { name: UNNAMED })).toBeVisible();
+  await a.window.getByRole('textbox', { name: SHEET_NAME }).fill('Гимли');
+  await a.window.getByRole('textbox', { name: SHEET_NAME }).press('Enter');
 
   // #then
   await expect(b.window.getByRole('tab')).toHaveText(['Брок', 'Лиза', 'Гимли', 'NPC', '⚙︎']);
 
-  // #when: an NPC is created.
+  // #when: an NPC repeat block is added and named.
   await a.window.getByRole('tab', { name: 'NPC' }).click();
-  await a.window.getByRole('button', { name: 'Добавить NPC' }).click();
+  await a.window.getByRole('button', { name: ADD_ENEMY }).click();
+  await a.window.getByRole('textbox', { name: 'npc_name' }).fill('Гоблин');
+  await a.window.getByRole('textbox', { name: 'npc_name' }).press('Enter');
   await b.window.getByRole('tab', { name: 'NPC' }).click();
 
   // #then
-  await expect(b.window.getByRole('textbox', { name: 'Имя NPC' })).toHaveValue('Новый NPC');
+  await expect(b.window.getByRole('group', { name: 'Гоблин' })).toBeVisible();
+  await expect(b.window.getByRole('textbox', { name: 'npc_name' })).toHaveValue('Гоблин');
 
   // #when: the character is deleted.
   await a.window.getByRole('tab', { name: 'Гимли' }).click();
@@ -246,7 +276,7 @@ test('a commit from a connection the party does not know is dropped', async ({ c
   const [a, b] = await twoGms(context);
 
   // #when
-  await postRemote(a.window, 'stranger', commit([sheet('stranger', 'Чужой')]));
+  await postRemote(a.window, 'stranger', commit(sheet('stranger', 'Чужой')));
   await afterMarker(a, b);
 
   // #then
@@ -261,7 +291,7 @@ test('a commit from a known player is dropped', async ({ context }) => {
   await openClientBackground(context, PLAYER);
 
   // #when
-  await postRemote(a.window, connectionIdOf(PLAYER), commit([sheet('player', 'От игрока')]));
+  await postRemote(a.window, connectionIdOf(PLAYER), commit(sheet('player', 'От игрока')));
   await afterMarker(a, b);
 
   // #then
@@ -273,7 +303,7 @@ test('a commit of another generation is dropped', async ({ context }) => {
   const [a, b] = await twoGms(context);
 
   // #when
-  await postRemote(a.window, a.connectionId, commit([sheet('later', 'Позже')], { n: 1, a: 'x' }));
+  await postRemote(a.window, a.connectionId, commit(sheet('later', 'Позже'), { n: 1, a: 'x' }));
   await afterMarker(a, b);
 
   // #then
@@ -285,7 +315,7 @@ test('a message with a lower v is dropped and shows no banner', async ({ context
   const [a, b] = await twoGms(context);
 
   // #when
-  await postRemote(a.window, a.connectionId, { ...commit([sheet('old', 'Старый')]), v: 0 });
+  await postRemote(a.window, a.connectionId, { ...commit(sheet('old', 'Старый')), v: 0 });
   await afterMarker(a, b);
 
   // #then
@@ -300,7 +330,7 @@ test('a message with a higher v is dropped and shows the new-version banner', as
   const [a, b] = await twoGms(context);
 
   // #when
-  await postRemote(a.window, a.connectionId, { v: 2, t: 'commit', unread: 'a newer field' });
+  await postRemote(a.window, a.connectionId, { v: 3, t: 'commit', unread: 'a newer field' });
 
   // #then
   await expect(b.window.getByRole('status')).toHaveText(NEW_VERSION);
@@ -321,7 +351,7 @@ test('a player client merges a GM commit and persists nothing', async ({ context
   }
 
   // #when
-  await a.window.getByRole('button', { name: 'Добавить персонажа' }).click();
+  await a.window.getByRole('button', { name: ADD }).click();
 
   // #then
   await expect.poll(() => heardKeys(playerWindow)).toContainEqual(expect.stringMatching(/^sheet:/));
@@ -355,20 +385,21 @@ async function deleteShownSheet(page: Page): Promise<void> {
   await confirmation(page).getByRole('button', { name: DELETE }).click();
 }
 
-function sheet(id: string, name: string): StoredRecord {
-  return record(`sheet:${id}`, { kind: 'pc', name, order: 5 });
+// A sheet of the sheet set and its name, as a GM commits them.
+function sheet(id: string, name: string): StoredRecord[] {
+  return sheetRecords({ id, name, order: 5 });
 }
 
 type RawCommit = { v: number; g: { n: number; a: string }; t: string; records: StoredRecord[] };
 
 function commit(records: StoredRecord[], g = INITIAL): RawCommit {
-  return { v: 1, g, t: 'commit', records };
+  return { v: 2, g, t: 'commit', records };
 }
 
 // A valid commit from a known GM, after the message under test. Room messages are handled in
 // arrival order, so once the marker shows, the message before it has been handled too.
 async function afterMarker(from: RoomClient, to: RoomClient): Promise<void> {
-  await postRemote(from.window, from.connectionId, commit([sheet('marker', 'Метка')]));
+  await postRemote(from.window, from.connectionId, commit(sheet('marker', 'Метка')));
   await expect(to.window.getByRole('tab', { name: 'Метка' })).toBeVisible();
 }
 
