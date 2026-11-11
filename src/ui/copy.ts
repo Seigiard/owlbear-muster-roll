@@ -123,6 +123,13 @@ export const copy = {
   noSheetsToLink: 'Сначала создайте лист',
   // Under the link picker's list when the link was not saved, such as for a sheet deleted meanwhile.
   linkFailed: 'Не удалось привязать. Попробуйте ещё раз.',
+  // The link picker's offer to set the label under the token to the picked sheet's name, and the
+  // hint under it with the label the token has now.
+  linkLabel: 'Подписать токен именем листа',
+  linkLabelNow: (label: string): string => `Сейчас: «${label}»`,
+  linkLabelNone: 'Сейчас подписи нет',
+  // An Owlbear notification when the link was saved but the label could not be set.
+  linkLabelFailed: 'Не удалось подписать токен',
   // An Owlbear notification when the engine refused "Отвязать лист".
   unlinkFailed: 'Не удалось отвязать лист. Попробуйте ещё раз.',
   editDenied: 'Нет прав на правку',

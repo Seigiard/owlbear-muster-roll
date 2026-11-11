@@ -85,6 +85,9 @@ export type MockClient = {
 // One context menu port call, in the order this page made it.
 export type ContextMenuCall = { kind: 'create' | 'remove'; id: string };
 
+// One scene label call, read or write, in the order this page made it.
+export type SceneLabelCall = { kind: 'read' | 'write'; itemId: string };
+
 export type MockPlatform = Platform & {
   setTheme: (theme: Theme) => void;
   // `rejoin: false` changes only the player's own role, as Owlbear does, with no party change.
@@ -122,6 +125,16 @@ export type MockPlatform = Platform & {
   removeSceneItems: (itemIds: string[]) => void;
   // Replaces the whole item list, as another scene's items would, in one change.
   setSceneItems: (itemIds: string[]) => void;
+  // Sets the label of an item in the scene, as the GM would type it in Owlbear, in one item change.
+  // `null` makes the item one with no label text, as a shape. Does nothing for an item the scene
+  // does not hold.
+  setSceneItemLabel: (itemId: string, label: string | null) => void;
+  // The label Owlbear would show under an item: "" for none, `null` for an item not in the scene or
+  // with no label text.
+  sceneItemLabel: (itemId: string) => string | null;
+  sceneLabelCalls: () => SceneLabelCall[];
+  // The next call of each listed kind rejects and changes nothing, one per entry.
+  failNextSceneLabelCalls: (kinds: SceneLabelCall['kind'][]) => void;
 };
 
 declare global {
@@ -170,6 +183,8 @@ export function createMockPlatform(
   const menuFailures: ContextMenuCall['kind'][] = [];
   const opened: Popover[] = [];
   const closed: string[] = [];
+  const labelCalls: SceneLabelCall[] = [];
+  const labelFailures: SceneLabelCall['kind'][] = [];
   let actionOpens = 0;
   let actionOpenFails = false;
   const { room, connectionId, playerId, name } = client;
@@ -201,6 +216,18 @@ export function createMockPlatform(
     return true;
   }
 
+  function takeLabelFailure(kind: SceneLabelCall['kind']): boolean {
+    const index = labelFailures.indexOf(kind);
+
+    if (index === -1) {
+      return false;
+    }
+
+    labelFailures.splice(index, 1);
+
+    return true;
+  }
+
   function joinParty(): void {
     joined = true;
     room.join({ id: playerId, connectionId, name, role });
@@ -213,6 +240,22 @@ export function createMockPlatform(
 
   function changeScene(kind: MockSceneChange, change: (scene: MockScene) => MockScene): void {
     room.setScene(change(room.getScene()), kind);
+  }
+
+  function readLabel(itemId: string): string | null {
+    const scene = room.getScene();
+    const label = scene.labels[itemId];
+
+    if (!scene.itemIds.includes(itemId)) {
+      return null;
+    }
+
+    return label === undefined ? '' : label;
+  }
+
+  // An update of one item, which Owlbear reports as an item list.
+  function labelItem(itemId: string, label: string | null): void {
+    changeScene('items', (scene) => ({ ...scene, labels: { ...scene.labels, [itemId]: label } }));
   }
 
   return {
@@ -364,6 +407,35 @@ export function createMockPlatform(
             callback(scene.itemIds);
           }
         }),
+      getItemLabel: (itemId) => {
+        labelCalls.push({ kind: 'read', itemId });
+
+        if (takeLabelFailure('read')) {
+          return Promise.reject(new Error('mock scene label read failed'));
+        }
+
+        return Promise.resolve(readLabel(itemId));
+      },
+      setItemLabel: (itemId, label) => {
+        labelCalls.push({ kind: 'write', itemId });
+
+        if (takeLabelFailure('write')) {
+          return Promise.reject(new Error('mock scene label write failed'));
+        }
+
+        // As the adapter: only a GM sets a label, and only on an item with label text.
+        if (role !== 'GM') {
+          return Promise.reject(new Error('Only a GM sets a token label'));
+        }
+
+        if (readLabel(itemId) === null) {
+          return Promise.reject(new Error(`mock scene has no labelled item ${itemId}`));
+        }
+
+        labelItem(itemId, label);
+
+        return Promise.resolve();
+      },
     },
     theme: {
       getTheme: () => {
@@ -464,6 +536,16 @@ export function createMockPlatform(
     },
     setSceneItems: (itemIds) => {
       changeScene('items', (scene) => ({ ...scene, itemIds: [...itemIds] }));
+    },
+    setSceneItemLabel: (itemId, label) => {
+      if (room.getScene().itemIds.includes(itemId)) {
+        labelItem(itemId, label);
+      }
+    },
+    sceneItemLabel: readLabel,
+    sceneLabelCalls: () => [...labelCalls],
+    failNextSceneLabelCalls: (kinds) => {
+      labelFailures.push(...kinds);
     },
   };
 }

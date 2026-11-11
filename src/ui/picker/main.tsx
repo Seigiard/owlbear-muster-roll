@@ -47,6 +47,8 @@ async function start(): Promise<void> {
         tokenId={tokenId}
         store={store}
         sendCommand={client.sendCommand}
+        scene={platform.scene}
+        notification={platform.notification}
         onLinked={closePicker}
       />,
     );

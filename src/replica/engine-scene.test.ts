@@ -543,6 +543,16 @@ async function startClient(
 
       return scene.onItemsChange(callback);
     },
+    getItemLabel: (itemId) => {
+      sceneCalls += 1;
+
+      return scene.getItemLabel(itemId);
+    },
+    setItemLabel: (itemId, label) => {
+      sceneCalls += 1;
+
+      return scene.setItemLabel(itemId, label);
+    },
   };
 
   // A player reads none of it until it becomes GM.
@@ -597,7 +607,7 @@ function openRoom(itemIds: string[], ready = true): Room {
   const room = createMemoryRoom();
   const heard: Heard[] = [];
 
-  room.setScene({ ready, itemIds }, 'items');
+  room.setScene({ ready, itemIds, labels: {} }, 'items');
   room.onRemote(SYNC_CHANNEL, 'observer', (event) => {
     heard.push({ from: event.connectionId, data: event.data });
   });

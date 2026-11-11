@@ -784,7 +784,7 @@ describe('import', () => {
     const room = openRoom();
     const { gate, opened } = createWriteGate();
 
-    room.room.setScene({ ready: true, itemIds: ['t1', 'map'] }, 'items');
+    room.room.setScene({ ready: true, itemIds: ['t1', 'map'], labels: {} }, 'items');
 
     const gm = await startClient(room, 'gm-a', {
       untilLive: true,

@@ -383,7 +383,8 @@ export async function syncRead(page: Page): Promise<{ state: string; answered: b
   );
 }
 
-function clientQuery(params: ClientParams): string {
+// The mock's URL params of a client as a query string, "" for the default client.
+export function clientQuery(params: ClientParams): string {
   const query = new URLSearchParams();
 
   for (const [name, value] of [

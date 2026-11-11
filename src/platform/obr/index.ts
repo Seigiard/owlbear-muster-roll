@@ -5,6 +5,7 @@ import { TIMING, type Timing } from '@/core/timing';
 import type { PartyMember, Platform, PlayerRole } from '@/platform/ports';
 
 import { createBrowserStorage } from './browser-storage';
+import { itemLabel, writeItemLabel } from './item-label';
 import { toSendResult } from './send-result';
 
 // A production build reads only `TIMING`.
@@ -96,6 +97,29 @@ export const platform: Platform = {
       OBR.scene.items.onChange((items) => {
         callback(items.map((item) => item.id));
       }),
+    getItemLabel: async (itemId) => itemLabel(await OBR.scene.items.getItems([itemId]), itemId),
+    setItemLabel: async (itemId, label) => {
+      // Only a GM labels tokens through Muster Roll.
+      if ((await OBR.player.getRole()) !== 'GM') {
+        throw new Error('Only a GM sets a token label');
+      }
+
+      // The SDK runs the draft update here, before it resolves. A draft update cannot reject, so an
+      // item that is missing, or has no label text, by then rejects after it.
+      let written = false;
+
+      await OBR.scene.items.updateItems([itemId], (drafts) => {
+        for (const draft of drafts) {
+          if (draft.id === itemId && writeItemLabel(draft, label)) {
+            written = true;
+          }
+        }
+      });
+
+      if (!written) {
+        throw new Error(`Owlbear item ${itemId} is missing or has no label`);
+      }
+    },
   },
   theme: {
     getTheme: () => OBR.theme.getTheme(),

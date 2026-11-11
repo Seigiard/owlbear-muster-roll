@@ -78,3 +78,19 @@ export const DOWNLOAD_URL_LIFETIME_MS = 30000;
 
 // A scene read that failed is tried again after this long, while the scene stays as it was.
 export const SCENE_READ_RETRY_MS = 500;
+
+// The link picker's waits. A pick with neither its link nor a rejection by `pickTimeoutMs` counts
+// as failed. A token label read with no answer by `labelReadTimeoutMs` counts as unreadable, so a
+// hung read never blocks linking. A label write, or its failure notification, with no answer by
+// `labelWriteTimeoutMs` counts as failed, so the picker still closes.
+export type LinkPickerTiming = {
+  pickTimeoutMs: number;
+  labelReadTimeoutMs: number;
+  labelWriteTimeoutMs: number;
+};
+
+export const LINK_PICKER_TIMING: LinkPickerTiming = {
+  pickTimeoutMs: 5000,
+  labelReadTimeoutMs: 2000,
+  labelWriteTimeoutMs: 5000,
+};

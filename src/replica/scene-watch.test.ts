@@ -310,6 +310,9 @@ function createFakeScene(itemIds: string[]): FakeScene {
           itemListeners.delete(callback);
         };
       },
+      // The watch never reads or sets a label.
+      getItemLabel: () => Promise.reject(new Error('the scene watch read a label')),
+      setItemLabel: () => Promise.reject(new Error('the scene watch set a label')),
     },
     emitItems: (next) => {
       for (const listener of itemListeners) {

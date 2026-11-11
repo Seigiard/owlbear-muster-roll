@@ -124,8 +124,8 @@ export type NotificationPort = {
   show: (message: string, variant?: NotificationVariant) => Promise<string>;
 };
 
-// The scene the room has open, as item ids only. Owlbear reports the scene not ready while no scene
-// is open and while it changes to another one.
+// The scene the room has open: its item ids, and the label of one item. Owlbear reports the scene
+// not ready while no scene is open and while it changes to another one.
 export type ScenePort = {
   isReady: () => Promise<boolean>;
   onReadyChange: (callback: (ready: boolean) => void) => Unsubscribe;
@@ -133,6 +133,13 @@ export type ScenePort = {
   // Every item id of the scene after each item update. Owlbear calls back on any update, a drag
   // included, so the same list can come again and again.
   onItemsChange: (callback: (itemIds: string[]) => void) => Unsubscribe;
+  // The text label Owlbear shows under one item: "" for an item with an empty label, `null` for an
+  // item that is missing or has no label text. Only the link picker of a GM client calls the label
+  // methods.
+  getItemLabel: (itemId: string) => Promise<string | null>;
+  // Sets the label of one item and keeps every other field of it. Rejects for an item that is
+  // missing or has no label text.
+  setItemLabel: (itemId: string, label: string) => Promise<void>;
 };
 
 export type Theme = {

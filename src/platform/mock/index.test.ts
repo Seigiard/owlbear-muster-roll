@@ -584,6 +584,127 @@ describe('mock scene', () => {
   });
 });
 
+describe('mock scene labels', () => {
+  test('reads "" for an item with no label, the label once set, and null for an item not in the scene or with no label text', async () => {
+    // #given
+    const platform = createMockPlatform();
+
+    platform.addSceneItems(['t1', 't2', 'circle']);
+    platform.setSceneItemLabel('t2', 'Гоблин 2');
+    platform.setSceneItemLabel('circle', null);
+    platform.setSceneItemLabel('absent', 'Призрак');
+
+    // #when
+    const read = {
+      t1: await platform.scene.getItemLabel('t1'),
+      t2: await platform.scene.getItemLabel('t2'),
+      circle: await platform.scene.getItemLabel('circle'),
+      absent: await platform.scene.getItemLabel('absent'),
+      hook: platform.sceneItemLabel('absent'),
+    };
+
+    // #then
+    expect(read).toEqual({ t1: '', t2: 'Гоблин 2', circle: null, absent: null, hook: null });
+  });
+
+  test('a label write shows to every client of the room as one item change, the list unchanged', async () => {
+    // #given
+    const room = createMemoryRoom();
+    const writer = client(room, 'a', 'GM');
+    const reader = client(room, 'b', 'GM');
+    const heard: string[][] = [];
+
+    writer.addSceneItems(['t1', 'map']);
+    reader.scene.onItemsChange((itemIds) => {
+      heard.push(itemIds);
+    });
+
+    // #when
+    await writer.scene.setItemLabel('t1', 'Арагорн');
+
+    // #then
+    expect({
+      heard,
+      label: reader.sceneItemLabel('t1'),
+      other: reader.sceneItemLabel('map'),
+    }).toEqual({ heard: [['t1', 'map']], label: 'Арагорн', other: '' });
+  });
+
+  test.each<[string, string, PlayerRole, string | null]>([
+    ['an item not in the scene', 'absent', 'GM', null],
+    ['an item with no label text', 'circle', 'GM', null],
+    ['a player client', 't1', 'PLAYER', 'Гоблин'],
+  ])('a label write to %s rejects and changes nothing', async (_name, itemId, role, label) => {
+    // #given
+    const room = createMemoryRoom();
+    const platform = client(room, 'a', role);
+
+    platform.addSceneItems(['t1', 'circle']);
+    platform.setSceneItemLabel('t1', 'Гоблин');
+    platform.setSceneItemLabel('circle', null);
+
+    // #when
+    const [write] = await Promise.allSettled([platform.scene.setItemLabel(itemId, 'Арагорн')]);
+
+    // #then
+    expect({ write: write?.status, label: platform.sceneItemLabel(itemId) }).toEqual({
+      write: 'rejected',
+      label,
+    });
+  });
+
+  test('an item keeps its label when it leaves the scene and comes back', () => {
+    // #given
+    const platform = createMockPlatform();
+
+    platform.addSceneItems(['t1', 't2']);
+    platform.setSceneItemLabel('t1', 'Арагорн');
+    platform.setSceneItemLabel('t2', 'Гоблин');
+
+    // #when: t1 leaves and comes back; t2 leaves with another list and comes back.
+    platform.removeSceneItems(['t1']);
+    platform.addSceneItems(['t1']);
+    platform.setSceneItems(['t1']);
+    platform.addSceneItems(['t2']);
+
+    // #then
+    expect({ t1: platform.sceneItemLabel('t1'), t2: platform.sceneItemLabel('t2') }).toEqual({
+      t1: 'Арагорн',
+      t2: 'Гоблин',
+    });
+  });
+
+  test('records each label call, and fails only the listed next calls', async () => {
+    // #given
+    const platform = createMockPlatform();
+
+    platform.addSceneItems(['t1']);
+    platform.failNextSceneLabelCalls(['read', 'write']);
+
+    // #when
+    const outcomes = await Promise.allSettled([
+      platform.scene.getItemLabel('t1'),
+      platform.scene.setItemLabel('t1', 'Арагорн'),
+      platform.scene.getItemLabel('t1'),
+    ]);
+
+    // #then
+    expect({
+      outcomes: outcomes.map((outcome) => outcome.status),
+      calls: platform.sceneLabelCalls(),
+      label: platform.sceneItemLabel('t1'),
+    }).toEqual({
+      outcomes: ['rejected', 'rejected', 'fulfilled'],
+      calls: [
+        { kind: 'read', itemId: 't1' },
+        { kind: 'write', itemId: 't1' },
+        { kind: 'read', itemId: 't1' },
+      ],
+      label: '',
+    });
+  });
+});
+
 describe('mock page room scene', () => {
   test('another page hears every step in order, even when it reads them after the last one', async () => {
     // #given
@@ -596,9 +717,9 @@ describe('mock page room scene', () => {
     });
 
     // #when: three steps before the first message can arrive.
-    writer.setScene({ ready: false, itemIds: [] }, 'ready');
-    writer.setScene({ ready: false, itemIds: ['b1'] }, 'items');
-    writer.setScene({ ready: true, itemIds: ['b1'] }, 'ready');
+    writer.setScene({ ready: false, itemIds: [], labels: {} }, 'ready');
+    writer.setScene({ ready: false, itemIds: ['b1'], labels: {} }, 'items');
+    writer.setScene({ ready: true, itemIds: ['b1'], labels: { b1: 'Гоблин' } }, 'ready');
     await waitFor(() => heard.length === 3);
 
     // #then
@@ -606,7 +727,7 @@ describe('mock page room scene', () => {
 
     expect({ heard, read }).toEqual({
       heard: ['ready false ', 'items false b1', 'ready true b1'],
-      read: { ready: true, itemIds: ['b1'] },
+      read: { ready: true, itemIds: ['b1'], labels: { b1: 'Гоблин' } },
     });
   });
 });

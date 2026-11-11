@@ -32,13 +32,17 @@ const partySchema = z.array(
 
 const metadataSchema = z.record(z.string(), z.json());
 
-const sceneSchema = z.object({ ready: z.boolean(), itemIds: z.array(z.string()) });
+const sceneSchema = z.object({
+  ready: z.boolean(),
+  itemIds: z.array(z.string()),
+  labels: z.record(z.string(), z.string().nullable()),
+});
 
 const sceneChangeSchema = z.object({ kind: z.enum(['ready', 'items']), scene: sceneSchema });
 
 // A room opens with a ready scene that holds no item, so a test that never touches the scene sees
 // no removal.
-const INITIAL_SCENE: MockScene = { ready: true, itemIds: [] };
+const INITIAL_SCENE: MockScene = { ready: true, itemIds: [], labels: {} };
 
 // Owlbear keeps 16 kB of room metadata. It reports success for a write past that and drops it.
 const METADATA_BYTE_LIMIT = 16 * 1024;
@@ -47,8 +51,15 @@ type RemoteListener = (event: BroadcastEvent) => void;
 
 type MetadataListener = (metadata: JsonObject) => void;
 
-// The scene the room has open: whether it is ready, and its item ids in order.
-export type MockScene = { ready: boolean; itemIds: string[] };
+// The scene the room has open: whether it is ready, its item ids in order, and the text label of
+// each item that has one. An item with no entry has an empty label, and one with `null` has no label
+// text, as a shape. A label lives in its item, so an item that leaves the scene and comes back, as
+// on a scene switch or an undo, keeps it.
+export type MockScene = {
+  ready: boolean;
+  itemIds: string[];
+  labels: Record<string, string | null>;
+};
 
 // What Owlbear reports about one change: readiness, or the item list. It reports both even when
 // they did not change.

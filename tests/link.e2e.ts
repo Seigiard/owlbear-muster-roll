@@ -3,7 +3,18 @@ import type { BrowserContext, Locator, Page } from '@playwright/test';
 
 import type { Popover } from '@/platform/ports';
 
-import { ABSENT, openRoom, record, storedData, type StoredRecord } from './support/room';
+import {
+  ABSENT,
+  clientQuery,
+  openClientBackground,
+  openClientWindow,
+  openRoom,
+  record,
+  seedStorage,
+  storedData,
+  type ClientParams,
+  type StoredRecord,
+} from './support/room';
 
 const LINK_ITEM = 'app.muster-roll/link-sheet';
 const UNLINK_ITEM = 'app.muster-roll/unlink-sheet';
@@ -14,6 +25,10 @@ const NO_TOKEN = 'Нет токена';
 const NO_SHEETS = 'Сначала создайте лист';
 const LINK_FAILED = 'Не удалось привязать. Попробуйте ещё раз.';
 const UI_CHANNEL = 'app.muster-roll/ui';
+const LABEL_OFFER = 'Подписать токен именем листа';
+const NO_LABEL = 'Сейчас подписи нет';
+const LABEL_FAILED = 'Не удалось подписать токен';
+const ADD = 'Добавить персонажа';
 
 // Two characters and two NPCs. "Аня" and "Гоблин" each have a token; t-gone points to a deleted
 // sheet, so it counts as no link.
@@ -240,6 +255,141 @@ test('a scene change keeps the links of the scene left behind', async ({ page, c
   }).toEqual({ anya: 'anya', goblin: null });
 });
 
+test('a pick on a token with no label, the offer checked, labels the token with the sheet name', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  await changeScene(background, [{ add: ['tok-new', 'map'] }]);
+
+  const picker = await openPicker(context, 'tok-new');
+  const offer = picker.getByRole('checkbox', { name: LABEL_OFFER });
+
+  await expect(offer).toBeChecked();
+  await expect(offer).toHaveAccessibleDescription(NO_LABEL);
+
+  // #when
+  await picker.getByRole('button', { name: 'Брок' }).click();
+  await expect.poll(() => closedPopovers(picker)).toEqual([PICKER_POPOVER]);
+
+  // #then
+  expect({
+    link: await storedData(page, 'link:tok-new'),
+    label: await sceneLabel(background, 'tok-new'),
+    other: await sceneLabel(background, 'map'),
+  }).toEqual({ link: 'brok', label: 'Брок', other: '' });
+});
+
+test('a token with a label shows it in the offer, unchecked, and a pick keeps it', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  await changeScene(background, [{ add: ['tok-new'] }]);
+  await background.evaluate(() => {
+    window.mockPlatform.setSceneItemLabel('tok-new', 'Гоблин 2');
+  });
+
+  const picker = await openPicker(context, 'tok-new');
+  const offer = picker.getByRole('checkbox', { name: LABEL_OFFER });
+
+  await expect(offer).not.toBeChecked();
+  await expect(offer).toHaveAccessibleDescription('Сейчас: «Гоблин 2»');
+
+  // #when
+  await picker.getByRole('button', { name: 'Брок' }).click();
+  await expect.poll(() => closedPopovers(picker)).toEqual([PICKER_POPOVER]);
+
+  // #then
+  expect({
+    link: await storedData(page, 'link:tok-new'),
+    label: await sceneLabel(background, 'tok-new'),
+  }).toEqual({ link: 'brok', label: 'Гоблин 2' });
+});
+
+test('a failed label write keeps the link, shows an Owlbear notification, and closes the picker', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  await changeScene(background, [{ add: ['tok-new'] }]);
+
+  const picker = await openPicker(context, 'tok-new');
+
+  await expect(picker.getByRole('checkbox', { name: LABEL_OFFER })).toBeChecked();
+  await picker.evaluate(() => {
+    window.mockPlatform.failNextSceneLabelCalls(['write']);
+  });
+
+  // #when
+  await picker.getByRole('button', { name: 'Брок' }).click();
+  await expect.poll(() => closedPopovers(picker)).toEqual([PICKER_POPOVER]);
+
+  // #then
+  expect({
+    link: await storedData(page, 'link:tok-new'),
+    label: await sceneLabel(background, 'tok-new'),
+    notifications: await picker.evaluate(() => window.mockPlatform.shownNotifications()),
+  }).toEqual({ link: 'brok', label: '', notifications: [LABEL_FAILED] });
+});
+
+test('"Отвязать лист" leaves the token label as it is', async ({ page, context }) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+  await changeScene(background, [{ add: ['t-anya'] }]);
+  await background.evaluate(() => {
+    window.mockPlatform.setSceneItemLabel('t-anya', 'Аня');
+  });
+
+  // #when
+  await clickMenuItem(background, UNLINK_ITEM, 't-anya');
+  await expect(headerOf(page).getByText(NO_TOKEN)).toBeVisible();
+
+  // #then
+  expect({
+    link: await storedData(page, 'link:t-anya'),
+    label: await sceneLabel(background, 't-anya'),
+    calls: await background.evaluate(() => window.mockPlatform.sceneLabelCalls()),
+  }).toEqual({ link: null, label: 'Аня', calls: [] });
+});
+
+test('a player picker reads and writes no label and shows no offer', async ({ context }) => {
+  // #given
+  const gm: ClientParams = { client: 'a', device: 'a' };
+  const player: ClientParams = { client: 'p', role: 'PLAYER', player: 'lisa', device: 'p' };
+  const gmWindow = await openClientWindow(context, gm);
+
+  await seedStorage(gmWindow, ROOM, undefined, gm.device);
+
+  const gmBackground = await openClientBackground(context, gm);
+
+  await expect(gmWindow.getByRole('button', { name: ADD })).toBeVisible();
+  await changeScene(gmBackground, [{ add: ['tok-new'] }]);
+
+  const playerBackground = await openClientBackground(context, player);
+
+  await waitForMenu(playerBackground, [OPEN_ITEM]);
+
+  // #when
+  const picker = await openPicker(context, 'tok-new', { client: player });
+
+  // #then
+  expect({
+    offers: await picker.getByRole('checkbox').count(),
+    sheets: await picker.getByRole('button').count(),
+    calls: await picker.evaluate(() => window.mockPlatform.sceneLabelCalls()),
+    label: await sceneLabel(gmBackground, 'tok-new'),
+  }).toEqual({ offers: 0, sheets: 0, calls: [], label: '' });
+});
+
 function pc(id: string, name: string, order: number): StoredRecord {
   return record(`sheet:${id}`, { kind: 'pc', name, order });
 }
@@ -267,10 +417,11 @@ const DROP_DELTAS = `
 `;
 
 // The picker as Owlbear would load it in the popover the background opened.
+// A client's picker carries its mock params, so it talks to that client's background.
 async function openPicker(
   context: BrowserContext,
   tokenId: string,
-  options: { dropDeltas?: boolean } = {},
+  options: { dropDeltas?: boolean; client?: ClientParams } = {},
 ): Promise<Page> {
   const picker = await context.newPage();
 
@@ -278,7 +429,10 @@ async function openPicker(
     await picker.addInitScript({ content: DROP_DELTAS });
   }
 
-  await picker.goto(`/picker.html?token=${encodeURIComponent(tokenId)}`);
+  const query = new URLSearchParams(clientQuery(options.client ?? {}));
+
+  query.set('token', tokenId);
+  await picker.goto(`/picker.html?${query.toString()}`);
   await expect(picker.locator('main')).toBeVisible();
   await expect(picker.getByText('Загрузка…')).toHaveCount(0);
 
@@ -325,6 +479,11 @@ async function clickMenuItem(background: Page, id: string, tokenId: string): Pro
   );
 
   expect(clicked).toBe(true);
+}
+
+// The label the room's scene shows under an item, `null` for an item not in the scene.
+function sceneLabel(page: Page, itemId: string): Promise<string | null> {
+  return page.evaluate((id) => window.mockPlatform.sceneItemLabel(id), itemId);
 }
 
 function openedPopovers(page: Page): Promise<Popover[]> {
