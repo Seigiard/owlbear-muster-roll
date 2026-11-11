@@ -88,3 +88,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-3-duplicate-an-npc.md`
   summary: The duplicate block closes when any new NPC appears, so another GM adding an NPC at that moment closes it before the copies arrive.
   evidence: `sheet-header.tsx` treats any new NPC key as acceptance of its command.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-4-link-a-token-to-a-sheet.md`
+  summary: `link:` records of tokens removed from the scene are never cleaned up, so menu filters and re-creations grow over a campaign.
+  evidence: v1 reads `link:` records only and never the scene; a removed token cannot be clicked to unlink.
