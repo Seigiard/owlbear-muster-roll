@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 
 import { deflateSync, strToU8 } from 'fflate';
 
@@ -14,6 +14,7 @@ import {
   createMemoryBus,
   createMemoryRoom,
   createMockPlatform,
+  type MockPlatform,
   type MockRoom,
   type MockStorageBacking,
 } from '@/platform/current';
@@ -74,6 +75,7 @@ type ClientOptions = {
   seeded?: readonly VersionedRecord[];
   timing?: Partial<Timing>;
   untilLive?: boolean;
+  platform?: (platform: MockPlatform) => MockPlatform;
 };
 
 type Client = {
@@ -94,6 +96,8 @@ type Room = {
 const cleanups: (() => void)[] = [];
 
 afterEach(() => {
+  mock.restore();
+
   for (const cleanup of cleanups.splice(0)) {
     cleanup();
   }
@@ -174,13 +178,14 @@ async function startClient(
     role: options.role ?? 'GM',
   };
 
-  const platform = createMockPlatform(bus, backing, identity);
+  const created = createMockPlatform(bus, backing, identity);
+  const platform = options.platform?.(created) ?? created;
 
   for (const record of options.seeded ?? [PRESET_RECORD, BROK]) {
     backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
   }
 
-  platform.joinParty();
+  created.joinParty();
 
   const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
     timing: { ...TIMING, ...options.timing },
@@ -471,7 +476,7 @@ describe('a GM returns', () => {
     });
   });
 
-  test('a GM that speaks again after the link went offline starts another catch-up', async () => {
+  test('a GM that speaks again after the link went offline starts another catch-up with a new r', async () => {
     // #given: the ghost was heard during the start catch-up, then went quiet past the timeout.
     const room = openRoom();
 
@@ -483,23 +488,27 @@ describe('a GM returns', () => {
       timing: { catchUpTimeoutMs: 100, gmLinkTimeoutMs: 150 },
     });
 
+    expect(sync(player).state).toBe('catching-up');
     room.post(GHOST, ping());
     await waitUntil(() => sync(player).gmLink === 'online');
     await waitUntil(() => sync(player).state === 'live');
     await waitUntil(() => sync(player).gmLink === 'offline');
 
-    const before = requestsOf(room, PLAYER).length;
+    const before = requestsOf(room, PLAYER);
 
     // #when
     room.post(GHOST, commit([BROK]));
-    await waitUntil(() => requestsOf(room, PLAYER).length === before + 1);
+    await waitUntil(() => requestsOf(room, PLAYER).length === before.length + 1);
 
     // #then
-    expect({ before, state: sync(player).state }).toEqual({ before: 1, state: 'catching-up' });
+    expect({
+      fresh: !before.includes(lastRequest(room, PLAYER)),
+      state: sync(player).state,
+    }).toEqual({ fresh: true, state: 'catching-up' });
   });
 
-  test('the first online during the start catch-up starts no second one', async () => {
-    // #given
+  test('a GM heard during the start catch-up is asked again with the same r, and no new one', async () => {
+    // #given: the start request went out before any GM was there.
     const room = openRoom();
 
     joinAs(room, GHOST, 'GM');
@@ -510,22 +519,90 @@ describe('a GM returns', () => {
       timing: { catchUpTimeoutMs: 400 },
     });
 
+    await waitUntil(() => requestsOf(room, PLAYER).length === 1);
+    expect(sync(player).state).toBe('catching-up');
+
     // #when
     room.post(GHOST, commit([PRESET_RECORD]));
-    await waitUntil(() => sync(player).gmLink === 'online');
+    await waitUntil(() => requestsOf(room, PLAYER).length === 2);
     room.post(GHOST, stateMessage(lastRequest(room, PLAYER), [PRESET_RECORD, BROK]));
     await waitUntil(() => sync(player).state === 'live');
-    // A second request would go out at once.
+    // A third request would go out at once.
     await pause(50);
 
     // #then
-    expect({ requests: requestsOf(room, PLAYER).length, sync: sync(player) }).toEqual({
-      requests: 1,
+    expect({
+      nonces: new Set(requestsOf(room, PLAYER)).size,
+      requests: requestsOf(room, PLAYER).length,
+      sync: sync(player),
+    }).toEqual({
+      nonces: 1,
+      requests: 2,
       sync: { ...ALONE, gmAnswered: true, gmLink: 'online', role: 'PLAYER' },
     });
   });
 
-  test('a GM client gets the same trigger and still answers a new GM tab while it catches up', async () => {
+  test('a GM joining during a player start catch-up answers it once its own catch-up ends', async () => {
+    // #given: the player asks with nobody there, and a silent GM keeps the joining GM catching up.
+    const room = openRoom();
+
+    const player = await startClient(room, PLAYER, {
+      role: 'PLAYER',
+      seeded: [],
+      timing: { catchUpTimeoutMs: 1500 },
+    });
+
+    await waitUntil(() => requestsOf(room, PLAYER).length === 1);
+    joinAs(room, GHOST, 'GM');
+
+    // #when
+    const renamed = sheet('brok', 'Брок Смелый', 2, 'gm-a');
+
+    await startClient(room, 'gm-a', {
+      seeded: [PRESET_RECORD, renamed, MIRA],
+      timing: { catchUpTimeoutMs: 200 },
+    });
+
+    await waitUntil(() => sync(player).gmAnswered);
+
+    // #then
+    expect({ keys: keysOf(player), brok: player.store.$records.get().get(renamed.k) }).toEqual({
+      keys: ['preset', 'sheet:brok', 'sheet:mira'],
+      brok: renamed,
+    });
+  });
+
+  test('a player gm-return request that reaches a GM still in its start catch-up is answered once that ends', async () => {
+    // #given: the player is live with no GM, and a silent GM keeps the joining GM catching up.
+    const room = openRoom();
+    const player = await playerAlone(room, { catchUpTimeoutMs: 1500 });
+
+    joinAs(room, GHOST, 'GM');
+
+    // #when
+    const renamed = sheet('brok', 'Брок Смелый', 2, 'gm-a');
+
+    await startClient(room, 'gm-a', {
+      seeded: [PRESET_RECORD, renamed, MIRA],
+      timing: { catchUpTimeoutMs: 200 },
+    });
+
+    await waitUntil(() => requestsOf(room, PLAYER).length === 2);
+    await waitUntil(() => sync(player).gmAnswered);
+
+    // #then
+    expect({
+      keys: keysOf(player),
+      brok: player.store.$records.get().get(renamed.k),
+      sync: sync(player),
+    }).toEqual({
+      keys: ['preset', 'sheet:brok', 'sheet:mira'],
+      brok: renamed,
+      sync: { ...ALONE, gmAnswered: true, gmLink: 'online', role: 'PLAYER' },
+    });
+  });
+
+  test('a live GM that hears a new GM tab stays live and asks for nothing', async () => {
     // #given: gm-a is live and alone.
     const room = openRoom();
     const gmA = await startClient(room, 'gm-a', { untilLive: true });
@@ -534,10 +611,6 @@ describe('a GM returns', () => {
 
     // #when: the ghost asks for state, as a GM tab that just opened does.
     room.post(GHOST, { v: 1, g: INITIAL, t: 'state-request', r: 'ghost-r' });
-    await waitUntil(() => requestsOf(room, 'gm-a').length === 2);
-
-    const during = sync(gmA).state;
-
     await waitUntil(() =>
       room.heard.some(
         (message) =>
@@ -548,7 +621,10 @@ describe('a GM returns', () => {
     );
 
     // #then
-    expect(during).toBe('catching-up');
+    expect({ requests: requestsOf(room, 'gm-a').length, sync: sync(gmA) }).toEqual({
+      requests: 1,
+      sync: { ...ALONE, gmLink: 'online', role: 'GM' },
+    });
   });
 
   test('a GM-origin message while the link is online starts no catch-up', async () => {
@@ -557,8 +633,13 @@ describe('a GM returns', () => {
 
     joinAs(room, GHOST, 'GM');
 
-    const player = await startClient(room, PLAYER, { role: 'PLAYER', seeded: [] });
+    const player = await startClient(room, PLAYER, {
+      role: 'PLAYER',
+      seeded: [],
+      timing: { catchUpTimeoutMs: 400 },
+    });
 
+    await waitUntil(() => requestsOf(room, PLAYER).length === 1);
     room.post(GHOST, stateMessage(lastRequest(room, PLAYER), [PRESET_RECORD]));
     await waitUntil(() => sync(player).state === 'live');
 
@@ -572,5 +653,77 @@ describe('a GM returns', () => {
       requests: 1,
       state: 'live',
     });
+  });
+
+  test('a complete answer after the timeout from a GM not heard before counts, and starts no catch-up', async () => {
+    // #given
+    const room = openRoom();
+
+    joinAs(room, GHOST, 'GM');
+
+    const player = await playerAlone(room);
+
+    // #when
+    room.post(GHOST, stateMessage(lastRequest(room, PLAYER), [PRESET_RECORD]));
+    await waitUntil(() => sync(player).gmAnswered);
+    await pause(50);
+
+    // #then
+    expect({ requests: requestsOf(room, PLAYER).length, sync: sync(player) }).toEqual({
+      requests: 1,
+      sync: { ...ALONE, gmAnswered: true, gmLink: 'online', role: 'PLAYER' },
+    });
+  });
+});
+
+describe('outcomes with nothing to read', () => {
+  test('a failed metadata read with no outcome yet shows the copy as unreadable', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = openRoom();
+
+    // #when
+    const player = await startClient(room, PLAYER, {
+      role: 'PLAYER',
+      seeded: [],
+      untilLive: true,
+      platform: (platform) => ({
+        ...platform,
+        metadata: {
+          ...platform.metadata,
+          getMetadata: () => Promise.reject(new Error('metadata read failed')),
+        },
+      }),
+    });
+
+    // #then
+    expect(roomCopy(player).outcome).toBe('unreadable');
+  });
+
+  test('a copy of another generation that the player cannot take is unreadable', async () => {
+    // #given: the player holds a record of its own generation from a GM commit.
+    const room = openRoom();
+
+    joinAs(room, GHOST, 'GM');
+
+    const player = await startClient(room, PLAYER, {
+      role: 'PLAYER',
+      seeded: [],
+      timing: { catchUpTimeoutMs: 200 },
+    });
+
+    expect(sync(player).state).toBe('catching-up');
+    room.post(GHOST, commit([BROK]));
+    await waitUntil(() => player.store.$records.get().has(BROK.k));
+    await waitUntil(() => sync(player).state === 'live');
+    room.room.setMetadata({ [KEY]: copyValue({ n: 1, a: 'importer' }, [PRESET_RECORD, MIRA]) });
+
+    // #when
+    player.engine.catchUp();
+    await waitUntil(() => roomCopy(player).outcome === 'unreadable');
+
+    // #then
+    expect(keysOf(player)).toEqual(['sheet:brok']);
   });
 });

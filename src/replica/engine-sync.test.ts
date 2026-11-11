@@ -428,12 +428,10 @@ describe('two GM clients', () => {
   });
 
   test('settle on the record with the higher (c, a) when both edit one row at once', async () => {
-    // #given: gm-a hears gm-b as a GM return and catches up; both are live before they edit.
+    // #given
     const room = createMemoryRoom();
     const gmA = await startClient(room, 'gm-a');
     const gmB = await startClient(room, 'gm-b');
-
-    await waitUntil(() => gmA.store.$sync.get().state === 'live');
 
     // #when
     send(gmA, patch(ROW_STR, 'str', 12));

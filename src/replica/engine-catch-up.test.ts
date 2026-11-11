@@ -305,10 +305,6 @@ function commit(records: VersionedRecord[], g: Generation = INITIAL): JsonValue 
   return { v: 1, g, t: 'commit', records };
 }
 
-function ping(g: Generation = INITIAL): JsonValue {
-  return { v: 1, g, t: 'ping' };
-}
-
 // A GM client in `catching-up` after its first catch-up: it was alone, then a GM that never answers
 // joined, and the page came back.
 async function catchingUpAgain(room: Room, connectionId: string): Promise<Client> {
@@ -652,17 +648,12 @@ describe('exit', () => {
     room.post(GHOST, stateMessage('someone-elses-nonce', [liza], 1, 3));
     await waitUntil(() => shown(client, liza.k) !== undefined);
 
-    // #then: the ghost is the first GM this client hears while live, so it catches up again (2.6),
-    // and the state merges all the same.
+    // #then
     expect({
       shown: shown(client, liza.k),
       stored: stored(client, liza.k),
       sync: sync(client),
-    }).toEqual({
-      shown: liza,
-      stored: liza,
-      sync: { ...LIVE, state: 'catching-up', gmLink: 'online' },
-    });
+    }).toEqual({ shown: liza, stored: liza, sync: { ...LIVE, gmLink: 'online' } });
   });
 });
 
@@ -1446,7 +1437,7 @@ describe('player visibility', () => {
   });
 
   test('a complete answer that comes after the timeout sets gmAnswered', async () => {
-    // #given: the ghost was heard during the start catch-up, so its late answer is no GM return.
+    // #given
     const room = openRoom();
 
     joinAs(room, GHOST, 'GM');
@@ -1454,12 +1445,9 @@ describe('player visibility', () => {
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
       seeded: [],
-      timing: { catchUpTimeoutMs: 200 },
+      timing: { catchUpTimeoutMs: 100 },
+      untilLive: true,
     });
-
-    room.post(GHOST, ping());
-    await waitUntil(() => sync(client).gmLink === 'online');
-    await waitUntil(() => sync(client).state === 'live');
 
     const before = sync(client).gmAnswered;
 

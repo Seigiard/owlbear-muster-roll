@@ -273,38 +273,20 @@ function commit(records: VersionedRecord[], g: Generation = INITIAL): JsonValue 
   return { v: 1, g, t: 'commit', records };
 }
 
-function stateMessage(
-  r: string,
-  records: readonly VersionedRecord[],
-  g: Generation = INITIAL,
-): JsonValue {
-  return { v: 1, g, t: 'state', r, i: 1, n: 1, records: encodeStateRecords(records) };
+function stateMessage(r: string, records: readonly VersionedRecord[]): JsonValue {
+  return { v: 1, g: INITIAL, t: 'state', r, i: 1, n: 1, records: encodeStateRecords(records) };
 }
 
-// A live client that hears a GM only the test speaks for. The ghost answers the start catch-up in
-// full, so its later messages are no GM return (Story 2.6), and its answer carries no digest to
-// ignore. Under DRIFT_TIMING the ghost must then speak at least every 200 ms to stay online.
-async function liveWithGhost(
-  room: Room,
-  connectionId: string,
-  options: ClientOptions = {},
-): Promise<Client> {
-  joinAs(room, GHOST, 'GM');
-
-  const client = await startClient(room, connectionId, {
-    ...options,
-    timing: { ...DRIFT_TIMING, ...options.timing },
+// A GM client that is live and alone, then hears from a GM that only the test speaks for.
+async function liveGmWithGhost(room: Room, timing: Partial<Timing> = {}): Promise<Client> {
+  const client = await startClient(room, 'gm-b', {
+    untilLive: true,
+    timing: { ...DRIFT_TIMING, ...timing },
   });
 
-  await waitUntil(() => requestsOf(room, connectionId).length === 1);
-  room.post(GHOST, stateMessage(lastRequest(room, connectionId), [], options.generation));
-  await waitUntil(() => syncState(client) === 'live');
+  joinAs(room, GHOST, 'GM');
 
   return client;
-}
-
-async function liveGmWithGhost(room: Room, timing: Partial<Timing> = {}): Promise<Client> {
-  return liveWithGhost(room, 'gm-b', { timing });
 }
 
 // Messages are handled in order, and a live GM answers a ping at once, so once its answer is heard
@@ -683,8 +665,7 @@ describe('drift', () => {
   test('differences do not carry across a catch-up', async () => {
     // #given
     const room = openRoom();
-    // Past one counting window, and short of the GM link timeout.
-    const client = await liveGmWithGhost(room, { catchUpTimeoutMs: 120 });
+    const client = await liveGmWithGhost(room, { catchUpTimeoutMs: 150 });
 
     room.post(GHOST, alive(OTHER_DIGEST));
     await settled(room, client);
@@ -707,7 +688,13 @@ describe('drift', () => {
     const room = openRoom();
     const generation = { n: 1, a: 'x' };
 
-    const client = await liveWithGhost(room, 'gm-b', { generation });
+    const client = await startClient(room, 'gm-b', {
+      untilLive: true,
+      generation,
+      timing: DRIFT_TIMING,
+    });
+
+    joinAs(room, GHOST, 'GM');
 
     // #when
     room.post(GHOST, alive(OTHER_DIGEST, INITIAL));
@@ -786,19 +773,16 @@ describe('drift', () => {
   });
 
   test('a complete answer that comes late, while live, starts no ignore', async () => {
-    // #given: the ghost was heard during the start catch-up, so its later messages are no GM
-    // return; the catch-up timed out, and the ghost has said its digest once.
+    // #given: the start catch-up timed out, and the ghost has said its digest once.
     const room = openRoom();
 
     joinAs(room, GHOST, 'GM');
 
     const client = await startClient(room, 'gm-b', {
+      untilLive: true,
       timing: { ...DRIFT_TIMING, catchUpTimeoutMs: 100 },
     });
 
-    room.post(GHOST, ping());
-    await waitUntil(() => gmLink(client) === 'online');
-    await waitUntil(() => syncState(client) === 'live');
     room.post(GHOST, alive(OTHER_DIGEST));
 
     // #when
@@ -812,9 +796,20 @@ describe('drift', () => {
   });
 
   test('a player compares digests too', async () => {
-    // #given
+    // #given: the ghost answers the start catch-up, so its later messages are no GM return.
     const room = openRoom();
-    const client = await liveWithGhost(room, 'player-p', { role: 'PLAYER', seeded: [] });
+
+    joinAs(room, GHOST, 'GM');
+
+    const client = await startClient(room, 'player-p', {
+      role: 'PLAYER',
+      seeded: [],
+      timing: DRIFT_TIMING,
+    });
+
+    await waitUntil(() => requestsOf(room, 'player-p').length === 1);
+    room.post(GHOST, stateMessage(lastRequest(room, 'player-p'), []));
+    await waitUntil(() => syncState(client) === 'live');
 
     // #when
     await differTwice(room, GHOST, OTHER_DIGEST);

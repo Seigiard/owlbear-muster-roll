@@ -16,8 +16,9 @@ const sequenceSchema = z.number().int().nonnegative();
 export const noticeSchema = z.enum(['local-save-failed', 'room-copy-not-saved', 'new-version']);
 
 // What the last catch-up found in the room copy: `read` a copy of this client's generation, merged;
-// `none` no copy, or one of another generation; `unreadable` a copy that does not decode; `newer` a
-// copy of a newer build, left unread (AD-12). `null` until a catch-up has read the room metadata.
+// `none` no copy; `unreadable` a copy that does not decode, one of another generation, or a failed
+// read with no outcome known yet; `newer` a copy of a newer build, left unread (AD-12). `null`
+// until a catch-up has read the room metadata.
 export const roomCopyOutcomeSchema = z.enum(['read', 'none', 'unreadable', 'newer']).nullable();
 
 // AD-8, for Settings: `saved` once a readable room copy of this generation was read or verified,
@@ -28,7 +29,8 @@ export const roomCopySchema = z.strictObject({
   state: z.enum(['saved', 'none', 'failed']),
   usedBytes: z.number().int().nonnegative(),
   freeBytes: z.number().int().nonnegative(),
-  outcome: roomCopyOutcomeSchema,
+  // A window and a background of adjacent builds still parse each other's parts.
+  outcome: roomCopyOutcomeSchema.default(null),
 });
 
 // AD-7: `catching-up` or `live`, and whether the first catch-up since the engine started has ended.

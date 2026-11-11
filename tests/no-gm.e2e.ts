@@ -4,16 +4,20 @@ import { deflateSync, strToU8 } from 'fflate';
 
 import type { JsonValue } from '@/core/json';
 import { SYNC_CHANNEL } from '@/core/room-messages';
+import { UI_CHANNEL } from '@/core/ui-messages';
 
 import {
+  addPartyMember,
   connectionIdOf,
   openClientBackground,
   openClientWindow,
+  postRemote,
   record,
   seedStorage,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
+  watchCommands,
 } from './support/room';
 
 // The strings and the key of the 2.4, 2.5 and 2.6 specs, written out by hand.
@@ -37,6 +41,9 @@ const PLAYER: ClientParams = {
   device: 'p',
   catchUpTimeoutMs: 500,
 };
+
+// A GM listed in the party with no page behind it: the test speaks for it.
+const SILENT_GM = 'mock-connection-silent';
 
 // Watches the room and sends nothing.
 const OBSERVER: ClientParams = { client: 'o', role: 'PLAYER', player: 'olga', device: 'o' };
@@ -162,17 +169,45 @@ test('a room copy that does not decode says so, with the no-GM banner', async ({
 });
 
 test('a player alone sends no commit and no edit to the room', async ({ context }) => {
-  // #given
+  // #given: pings every 500 to 750 ms.
+  const params: ClientParams = { ...PLAYER, gmLinkTimeoutMs: 1000 };
   const observer = await openClientWindow(context, OBSERVER);
 
   await watchRoom(observer);
 
-  // #when
-  const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, BROK, BROK_STR]));
+  const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, BROK, BROK_STR]), params);
 
   await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
-  await player.window.keyboard.press('Tab');
-  await player.window.keyboard.type('20');
+  await watchCommands(player.window);
+
+  // #when: a field edit goes the way a window sends one, and is refused.
+  await player.window.evaluate((channel) => {
+    void window.mockPlatform.broadcast.sendMessage(
+      channel,
+      {
+        t: 'command',
+        id: 'player-edit',
+        command: {
+          type: 'field-patch',
+          sheetId: 'brok',
+          target: { kind: 'row', rowId: 'str' },
+          fieldId: 'str',
+          value: 20,
+        },
+      },
+      { destination: 'LOCAL' },
+    );
+  }, UI_CHANNEL);
+  await expect
+    .poll(() => player.window.evaluate(() => window.rejectedCommandIds))
+    .toContain('player-edit');
+
+  // A ping heard after the refusal shows the room has had time to hear anything else.
+  const pingsBefore = await heardCount(observer, connectionIdOf(PLAYER), 'ping');
+
+  await expect
+    .poll(() => heardCount(observer, connectionIdOf(PLAYER), 'ping'), { timeout: 3000 })
+    .toBeGreaterThan(pingsBefore);
 
   // #then
   const types = await observer.evaluate(() => window.roomTypes);
@@ -181,10 +216,28 @@ test('a player alone sends no commit and no edit to the room', async ({ context 
     types.filter((one) => one.from === connectionIdOf(PLAYER)).map((one) => one.t),
   );
 
-  // Nothing but the catch-up request and pings, and the value stays the copy's.
-  expect([...fromPlayer].every((t) => t === 'state-request' || t === 'ping')).toBe(true);
-  expect(fromPlayer.has('state-request')).toBe(true);
+  expect([...fromPlayer].sort()).toEqual(['ping', 'state-request']);
   await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
+});
+
+test('a player alone with no copy keeps loading once a GM speaks without answering', async ({
+  context,
+}) => {
+  // #given
+  const player = await openPlayerAlone(context, null);
+
+  await expect(
+    player.window.getByRole('main').getByText(NO_GM_NO_DATA, { exact: true }),
+  ).toBeVisible();
+  await addPartyMember(player.window, SILENT_GM, 'GM');
+
+  // #when: a GM-origin message, and no complete state.
+  await postRemote(player.window, SILENT_GM, { v: 1, g: { n: 0, a: '' }, t: 'ping' });
+
+  // #then: a GM is online but has not said what the room holds.
+  await expect(player.window.getByRole('status')).toBeEmpty();
+  await expect(player.window.getByRole('main').getByText(LOADING, { exact: true })).toBeVisible();
+  await expect(player.window.getByText(NO_GM_NO_DATA)).toHaveCount(0);
 });
 
 test('when a GM joins and answers, the no-GM banner goes and the sheets show current data', async ({
@@ -237,8 +290,9 @@ test('a player alone with no copy reads the GM sheets once a GM joins', async ({
 async function openPlayerAlone(
   context: BrowserContext,
   copy: JsonValue | null,
+  params: ClientParams = PLAYER,
 ): Promise<RoomClient> {
-  const page = await openClientWindow(context, PLAYER);
+  const page = await openClientWindow(context, params);
 
   if (copy !== null) {
     await page.evaluate(
@@ -249,11 +303,11 @@ async function openPlayerAlone(
     );
   }
 
-  const background = await openClientBackground(context, PLAYER);
+  const background = await openClientBackground(context, params);
 
   await expect(page.getByRole('status')).not.toBeEmpty();
 
-  return { window: page, background, connectionId: connectionIdOf(PLAYER) };
+  return { window: page, background, connectionId: connectionIdOf(params) };
 }
 
 // The stored room copy as the 2.5 spec describes it, built by hand with fflate.
@@ -269,6 +323,13 @@ function sortedByKey(records: readonly StoredRecord[]): StoredRecord[] {
 
 function panel(page: Page): Locator {
   return page.getByRole('tabpanel');
+}
+
+// How many room messages of type `t` this page has heard from `from`.
+async function heardCount(page: Page, from: string, t: string): Promise<number> {
+  const types = await page.evaluate(() => window.roomTypes);
+
+  return types.filter((one) => one.from === from && one.t === t).length;
 }
 
 // Collects the sender and type of every room message this page hears.

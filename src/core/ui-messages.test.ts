@@ -448,20 +448,22 @@ describe('parseEngineMessage', () => {
     expect(parsed).toEqual([false, false, false]);
   });
 
-  test('carries every room copy outcome a player reads, and refuses an unknown or a missing one', () => {
+  test('carries every room copy outcome a player reads, refuses an unknown one, and reads a missing one as null', () => {
     // #given
     const { outcome: _outcome, ...withoutOutcome } = NO_COPY;
     const outcomes = [null, 'read', 'none', 'unreadable', 'newer', 'stale'] as const;
 
     // #when
-    const parsed = [
-      ...outcomes.map(
-        (outcome) => parseEngineMessage({ ...PROJECTION, roomCopy: { ...NO_COPY, outcome } }).ok,
-      ),
-      parseEngineMessage({ ...PROJECTION, roomCopy: withoutOutcome }).ok,
-    ];
+    const parsed = outcomes.map(
+      (outcome) => parseEngineMessage({ ...PROJECTION, roomCopy: { ...NO_COPY, outcome } }).ok,
+    );
+
+    const older = parseEngineMessage({ ...PROJECTION, roomCopy: withoutOutcome });
 
     // #then
-    expect(parsed).toEqual([true, true, true, true, true, false, false]);
+    expect({
+      parsed,
+      older: older.ok && older.value.t === 'projection' ? older.value.roomCopy : null,
+    }).toEqual({ parsed: [true, true, true, true, true, false], older: NO_COPY });
   });
 });

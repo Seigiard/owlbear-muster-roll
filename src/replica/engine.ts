@@ -118,8 +118,9 @@ type LoadedReplica = {
 // The messages one responder has sent for this client's own `r`, by `i`.
 type AnswerParts = { n: number; parts: Set<number> };
 
-// `gm-return`: a GM-origin message after `gmLink` was offline, while live (Story 2.6).
-type CatchUpTrigger = 'start' | 'return' | 'role' | 'generation' | 'drift' | 'gm-return';
+// `page-return`: the page became visible, resumed or came back online. `gm-return`: a player heard
+// a GM-origin message after `gmLink` was offline, while live (Story 2.6).
+type CatchUpTrigger = 'start' | 'page-return' | 'role' | 'generation' | 'drift' | 'gm-return';
 
 // The engine's own catch-up state. Windows get it with `gmLink` and the engine's role.
 type CatchUpState = Omit<SyncState, 'role' | 'gmLink'>;
@@ -205,6 +206,15 @@ export async function startReplicaEngine(
   const answerTimers = new Map<string, ReturnType<typeof setTimeout>>();
   // Every `r` this client has seen an answer to, or answered itself, since its last request.
   const answeredNonces = createBoundedIdSet(RECENT_NONCE_LIMIT);
+  // Requests a GM client heard while it could not answer, oldest first. It answers the ones still
+  // unanswered when its catch-up ends, as nobody asks again: a player whose request reached a GM
+  // tab that was opening would otherwise never get its state.
+  const heldRequests = new Set<string>();
+  // The `r` of the last `state-request` sent, so a GM that comes online can be asked again.
+  let sentNonce: string | null = null;
+  // A player's `gm-return` request waits a random part of the answer delay, so players that heard
+  // one GM do not ask in one burst.
+  let requestTimer: ReturnType<typeof setTimeout> | undefined;
   let roleReads = 0;
   // A window ignores deltas until its first projection, so none is worth sending before one.
   let projectionSent = false;
@@ -706,7 +716,9 @@ export async function startReplicaEngine(
       return Promise.resolve();
     }
 
-    const keepsNonce = trigger === 'return' && sync.state === 'catching-up' && ownNonce !== null;
+    const keepsNonce =
+      trigger === 'page-return' && sync.state === 'catching-up' && ownNonce !== null;
+
     const changed = trigger === 'start' ? [] : mergePersisted();
 
     if (keepsNonce && ownNonce !== null) {
@@ -761,7 +773,7 @@ export async function startReplicaEngine(
     }
 
     if (fresh || !answerSeen) {
-      requestState(nonce);
+      ask(nonce);
     }
 
     if (role === 'GM') {
@@ -773,11 +785,15 @@ export async function startReplicaEngine(
   // the copy's higher generation, as at start it takes the highest one it knows. A lower one, or a
   // higher one over held records, is left alone. `null` is a failed read, which proves nothing.
   function mergeRoomCopy(metadata: JsonObject | null): void {
+    const before = roomCopySignature();
+
     if (metadata === null) {
+      // A player alone would load forever with no outcome; a known one stays.
+      roomCopyOutcome ??= 'unreadable';
+      emitRoomCopyChange(before);
+
       return;
     }
-
-    const before = roomCopySignature();
 
     mergeReadRoomCopy(metadata);
     // The windows learn the outcome even when nothing else they show changed.
@@ -816,7 +832,8 @@ export async function startReplicaEngine(
 
     // Set before the records merge, so the delta that brings them carries it: a window never sees
     // `read` without the records read.
-    roomCopyOutcome = sameGeneration ? 'read' : 'none';
+    // A copy of another generation is there but cannot be read as this client's data.
+    roomCopyOutcome = sameGeneration ? 'read' : 'unreadable';
 
     if (sameGeneration) {
       receiveRecords(copy.records);
@@ -1066,7 +1083,25 @@ export async function startReplicaEngine(
     return { state, usedBytes: roomCopyUsed, freeBytes: roomCopyFree, outcome: roomCopyOutcome };
   }
 
+  // Story 2.6: every player heard the same GM, so a `gm-return` request waits a random part of the
+  // answer delay.
+  function ask(nonce: string): void {
+    if (catchUpTrigger !== 'gm-return') {
+      requestState(nonce);
+
+      return;
+    }
+
+    clearTimeout(requestTimer);
+    requestTimer = setTimeout(() => {
+      if (!stopped && ownNonce === nonce) {
+        requestState(nonce);
+      }
+    }, random() * timing.stateAnswerDelayMaxMs);
+  }
+
   function requestState(nonce: string): void {
+    sentNonce = nonce;
     sendQueue
       .enqueue(SYNC_CHANNEL, stateRequestMessage(ownGeneration, nonce), REMOTE)
       .catch((error) => {
@@ -1161,6 +1196,7 @@ export async function startReplicaEngine(
     }
 
     sendCommits(replayed);
+    answerHeldRequests();
 
     // AD-8: a write owed from before, or the edits that waited, go into the room copy now.
     if (roomCopyOwed || replayed.length > 0) {
@@ -1205,6 +1241,42 @@ export async function startReplicaEngine(
     // longer count.
     answeredNonces.delete(r);
 
+    if (role === 'GM' && !canAnswer()) {
+      holdRequest(r);
+
+      return;
+    }
+
+    scheduleAnswer(r);
+  }
+
+  function holdRequest(r: string): void {
+    heldRequests.delete(r);
+    heldRequests.add(r);
+
+    for (const oldest of heldRequests) {
+      if (heldRequests.size <= RECENT_NONCE_LIMIT) {
+        break;
+      }
+
+      heldRequests.delete(oldest);
+    }
+  }
+
+  // Through the same delay and suppression as a fresh request: an answer seen meanwhile wins.
+  function answerHeldRequests(): void {
+    const held = [...heldRequests];
+
+    heldRequests.clear();
+
+    for (const r of held) {
+      if (!answeredNonces.has(r)) {
+        scheduleAnswer(r);
+      }
+    }
+  }
+
+  function scheduleAnswer(r: string): void {
     if (!canAnswer() || answerTimers.has(r)) {
       return;
     }
@@ -1222,14 +1294,11 @@ export async function startReplicaEngine(
   }
 
   // A GM whose storage could not be read keeps its records to itself, as with commits.
-  // A catch-up for drift or for a GM's return only pulls state, from a client that was live, so a GM
-  // in one still answers. Two GMs that drift from each other would otherwise both wait and time out,
-  // again and again, and a GM that hears a new GM tab would keep that tab waiting.
+  // A catch-up for drift only pulls state, so a GM in one still answers. Two GMs that drift from each
+  // other would otherwise both wait and time out, again and again.
   function canAnswer(): boolean {
     return (
-      role === 'GM' &&
-      persistence !== null &&
-      (sync.state === 'live' || catchUpTrigger === 'drift' || catchUpTrigger === 'gm-return')
+      role === 'GM' && persistence !== null && (sync.state === 'live' || catchUpTrigger === 'drift')
     );
   }
 
@@ -1416,9 +1485,11 @@ export async function startReplicaEngine(
   }
 
   // AD-6: a GM-origin message puts off both the ping and the offline mark by the whole timeout.
-  function hearGm(): void {
+  // `answersOwn` is a `state` for this client's last `r`: it counts as an answer, so it starts no
+  // GM-return catch-up, which would drop that `r`.
+  function hearGm(answersOwn: boolean): void {
     watchGmSilence();
-    setGmLink('online');
+    setGmLink('online', answersOwn);
   }
 
   function watchGmSilence(): void {
@@ -1431,7 +1502,7 @@ export async function startReplicaEngine(
 
     pingTimer = setTimeout(pingWhileSilent, pingDelay());
     gmSilenceTimer = setTimeout(() => {
-      setGmLink('offline');
+      setGmLink('offline', false);
     }, timing.gmLinkTimeoutMs);
   }
 
@@ -1454,22 +1525,36 @@ export async function startReplicaEngine(
     return timing.gmLinkTimeoutMs / 2 + (random() * timing.gmLinkTimeoutMs) / 4;
   }
 
-  // Story 2.6: a GM that speaks after `gmLink` was offline may hold newer data than this client,
-  // so a live client catches up with a new `r`. A GM client does too, to keep one rule. The first
-  // `online` during the start catch-up needs none: that catch-up asks already.
-  function setGmLink(next: GmLink): void {
+  // Story 2.6: a GM that speaks after `gmLink` was offline may hold newer data than a player, so a
+  // live player catches up with a new `r`. A GM client does not: it would wait out the timeout with
+  // its edits pending whenever another GM tab opens. A client still catching up asks again with the
+  // same `r` if nothing answered it, as its request may have gone out before that GM was there.
+  function setGmLink(next: GmLink, answersOwn: boolean): void {
     if (stopped || gmLink === next) {
       return;
     }
 
-    const returned = next === 'online' && sync.state === 'live';
-
     gmLink = next;
 
-    if (returned) {
+    if (next === 'online' && !answersOwn && role !== 'GM' && sync.state === 'live') {
       // Its entry sends the delta that carries the new link.
       void enterCatchUp('gm-return');
-    } else if (projectionSent) {
+
+      return;
+    }
+
+    if (
+      next === 'online' &&
+      !answersOwn &&
+      sync.state === 'catching-up' &&
+      ownNonce !== null &&
+      sentNonce === ownNonce &&
+      !answerSeen
+    ) {
+      requestState(ownNonce);
+    }
+
+    if (projectionSent) {
       emitDelta([]);
     }
   }
@@ -1578,7 +1663,7 @@ export async function startReplicaEngine(
 
     // AD-6: any admitted message from a GM sender shows that a GM client answers.
     if (sender?.role === 'GM') {
-      hearGm();
+      hearGm(message.t === 'state' && message.r === lastNonce);
     }
 
     dispatchRoomMessage(message, event.connectionId, relation);
@@ -1664,6 +1749,7 @@ export async function startReplicaEngine(
       stopped = true;
       clearTimeout(catchUpTimer);
       clearTimeout(roomCopyTimer);
+      clearTimeout(requestTimer);
       clearTimeout(pingTimer);
       clearTimeout(gmSilenceTimer);
 
@@ -1691,7 +1777,7 @@ export async function startReplicaEngine(
     },
     catchUp: () => {
       pageChanges += 1;
-      void enterCatchUp('return');
+      void enterCatchUp('page-return');
     },
     pageHidden: () => {
       pageChanges += 1;
