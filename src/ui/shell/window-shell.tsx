@@ -7,7 +7,8 @@ import type { BannerMessage } from '@/ui/primitives/banner';
 import { TabBar, ToggleBar } from './tab-bar';
 import type { ShellAction, ShellTab, ShellToggle } from './tab-bar';
 
-const CONTENT_CLASS = 'min-h-[0] flex-1 overflow-auto p-3 -outline-offset-2';
+// The preset preview (TASK-40) lays out its frames with this too, so they match the window.
+export const CONTENT_CLASS = 'min-h-[0] flex-1 overflow-auto p-3 -outline-offset-2';
 
 export type ShellLayout =
   | {

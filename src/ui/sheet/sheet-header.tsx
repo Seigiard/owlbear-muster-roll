@@ -279,22 +279,28 @@ export function SheetHeader({
 }
 
 // A player's header: the name as text, with no rename and no "⋯", and the status beside it. The
-// status says whether a live `acl:` record gives this player write access (UX-DR10).
+// status says whether a live `acl:` record gives this player write access (UX-DR10). The `npc` look
+// is the NPC tab's header, as the preset preview draws it (TASK-40); a player sees no NPC, so it
+// shows no status.
 export function ReadOnlySheetHeader({
   name,
   canEdit,
+  variant = 'character',
 }: {
   name: string;
   canEdit: boolean;
+  variant?: 'character' | 'npc';
 }): ReactNode {
-  const look = VARIANT.character;
+  const look = VARIANT[variant];
 
   return (
     <header className={`flex items-baseline gap-2 ${look.header}`}>
       <h1 className={`min-w-[0] px-1 text-text [overflow-wrap:anywhere] ${look.name}`}>{name}</h1>
-      <span className="shrink-0 text-label-sm text-text-muted">
-        {canEdit ? copy.status.canEdit : copy.status.readOnly}
-      </span>
+      {variant === 'npc' ? null : (
+        <span className="shrink-0 text-label-sm text-text-muted">
+          {canEdit ? copy.status.canEdit : copy.status.readOnly}
+        </span>
+      )}
     </header>
   );
 }

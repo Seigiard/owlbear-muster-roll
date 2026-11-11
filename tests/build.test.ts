@@ -155,6 +155,18 @@ describe('default-mode vite build', () => {
     expect(leaking).toEqual([]);
   });
 
+  test('ships no part of the dev-only preset preview', () => {
+    // #when
+    const leaking = outputFiles(outDir).filter(
+      (path) =>
+        path.endsWith('preview.html') ||
+        readFileSync(join(outDir, path), 'utf8').includes('__muster-roll-preview'),
+    );
+
+    // #then
+    expect(leaking).toEqual([]);
+  });
+
   test('ships no hex value of a theme-mapped token', () => {
     // #when
     const leaking = scriptsAndStyles(outDir).flatMap((name) =>

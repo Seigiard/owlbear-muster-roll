@@ -9,11 +9,12 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["bun", "vite/client"],
     "paths": {
       "@/platform/current": ["./src/platform/mock/index.ts"],
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "tests", "*.ts"]
+  "include": ["src", "tests", "scripts", "*.ts"]
 }

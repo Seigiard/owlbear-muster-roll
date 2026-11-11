@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite --mode mock",
+    "preview": "bun scripts/preview.ts",
     "build": "vite build",
     "lint": "oxlint --type-aware",
     "format": "oxfmt --ignore-path .gitignore .",

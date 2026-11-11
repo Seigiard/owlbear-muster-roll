@@ -131,6 +131,20 @@ A refused file changes nothing. The message under the button names the first pro
 
 While sheets exist, "Загрузить пресет" is disabled with "Удалите листы, чтобы заменить пресет.".
 
+## Preview a preset
+
+To see a preset while you edit it, with no Owlbear room, run:
+
+```
+bun run preview [path/to/preset.json]
+```
+
+The command starts the dev server in the mock mode and opens `/preview.html`. The page lists `docs/example-preset.json`, `tests/fixtures/presets/*.json` and `presets/*.json`. Only the `.json` files right in each folder are listed, not those in subfolders. A path given to the command can be anywhere on disk. It joins the list, is marked "(launch file)", and opens first. A relative path is read from the repository root. A path with no file stops the command with an error.
+
+The page draws a character sheet and an NPC sheet read-only, as a player sees them, each in a frame of the preset's window size. Each frame shows the window's tab bar with the sheet's tab, so the sheet gets the same room as in the window. "Sample values" fills every field and gives each repeat section two rows; off, the sheets are empty, as just after they are added. "Light theme" switches from Owlbear's dark theme. The page address keeps the chosen file and both switches. The address names a launch file by its absolute path, so a link to it works only on the same machine.
+
+Each save of a listed file draws the page again. A file that fails the checks shows the same message as an upload, and the next good save draws the sheets again. Dice buttons do not roll. The page never writes to a file.
+
 ## Annotated example
 
 This walks through `docs/example-preset.json`.
