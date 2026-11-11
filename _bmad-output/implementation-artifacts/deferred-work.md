@@ -73,3 +73,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-5-save-a-room-copy-that-survives-the-gms-browser.md`
   summary: Room metadata is writable by any party member, so a player can write a forged room copy that GM clients merge as authoritative records (security review finding). Owner decision: accept the table-trust model, or design provenance for the copy.
   evidence: `src/replica/engine.ts` merges `copy.records` of the same generation during catch-up and before a write. Owlbear room metadata has no writer identity; a signing key cannot be shared between GM devices without a server.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-6-read-characters-with-no-gm-online.md`
+  summary: No test proves a window never receives room-copy outcome `read` before the copy's records.
+  evidence: Putting `noteRoomCopy` before `receiveRecords` in `mergeReadRoomCopy` keeps every test green; the gap lasts between two back-to-back deltas.
