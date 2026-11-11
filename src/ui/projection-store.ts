@@ -18,10 +18,11 @@ import type {
   RoomCopyStatus,
   SnapshotResultMessage,
   SyncState,
+  WipedMessage,
 } from '@/core/ui-messages';
 
-// What a player's edit that waits for a GM's check does to its key (AD-4): a new repeat row, a
-// change of field values, or a repeat row's removal.
+// What a player's edit that waits for a GM's check does to its key (AD-4): a new repeat block, a
+// change of field values, or a repeat block's removal.
 export type PendingKind = 'add' | 'edit' | 'remove';
 
 export type PendingEntry = {
@@ -32,7 +33,8 @@ export type PendingEntry = {
   fields: ReadonlyMap<string, FieldValue | null>;
   // The record the window shows for the key: the newest version of the edit.
   record: VersionedRecord;
-  // The record the engine has applied, which a removed row keeps showing until a GM answers.
+  // The record the engine has applied, which a removed repeat block keeps showing until a GM
+  // answers.
   applied: VersionedRecord | undefined;
 };
 
@@ -53,13 +55,15 @@ export type ProjectionStore = {
   $presetResults: ReadableAtom<ReadonlyMap<string, PresetResultMessage>>;
   // AD-9: recent answers to this window's snapshot checks and imports, by their id.
   $snapshotResults: ReadableAtom<ReadonlyMap<string, SnapshotResultMessage>>;
+  // AD-9, CAP-31: recent answers to this window's wipes, by their id.
+  $wipeResults: ReadableAtom<ReadonlyMap<string, WipedMessage>>;
   // False until the first full projection, so an empty room is not mistaken for one still loading.
   $loaded: ReadableAtom<boolean>;
   $sync: ReadableAtom<SyncState>;
   // AD-8: the room copy as Settings shows it.
   $roomCopy: ReadableAtom<RoomCopyStatus>;
-  // FR14: the last sheet "Открыть лист" asked this window to show, or `null` before any. The window
-  // tells a new request from one it has taken by its id.
+  // FR14: the last sheet or repeat block "Открыть лист" asked this window to show, or `null` before
+  // any. The window tells a new request from one it has taken by its id.
   $openRequest: ReadableAtom<OpenSheetRequest | null>;
   // UX-DR12: the party as the engine last read it, for a GM's access panel. A player's is empty.
   $party: ReadableAtom<readonly PartyEntry[]>;
@@ -80,6 +84,7 @@ export type ProjectionStore = {
   setRollOutcome: (outcome: RollOutcomeMessage) => void;
   setPresetResult: (result: PresetResultMessage) => void;
   setSnapshotResult: (result: SnapshotResultMessage) => void;
+  setWipeResult: (result: WipedMessage) => void;
   setRoomCopy: (roomCopy: RoomCopyStatus) => void;
   setOpenRequest: (request: OpenSheetRequest) => void;
   setParty: (party: readonly PartyEntry[]) => void;
@@ -116,6 +121,7 @@ export function createProjectionStore(): ProjectionStore {
   const $rollOutcomes = atom<ReadonlyMap<string, RollOutcomeMessage>>(new Map());
   const $presetResults = atom<ReadonlyMap<string, PresetResultMessage>>(new Map());
   const $snapshotResults = atom<ReadonlyMap<string, SnapshotResultMessage>>(new Map());
+  const $wipeResults = atom<ReadonlyMap<string, WipedMessage>>(new Map());
   const $loaded = atom(false);
   const $sync = atom<SyncState>(UNKNOWN_SYNC);
   const $roomCopy = atom<RoomCopyStatus>(UNKNOWN_ROOM_COPY);
@@ -147,6 +153,7 @@ export function createProjectionStore(): ProjectionStore {
     $rollOutcomes,
     $presetResults,
     $snapshotResults,
+    $wipeResults,
     $loaded,
     $sync,
     $roomCopy,
@@ -188,6 +195,9 @@ export function createProjectionStore(): ProjectionStore {
     },
     setSnapshotResult: (result) => {
       $snapshotResults.set(withRecent($snapshotResults.get(), result.id, result));
+    },
+    setWipeResult: (result) => {
+      $wipeResults.set(withRecent($wipeResults.get(), result.id, result));
     },
     setRoomCopy: (roomCopy) => {
       $roomCopy.set(roomCopy);

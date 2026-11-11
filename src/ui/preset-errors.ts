@@ -48,6 +48,12 @@ function badFileReason(failure: Exclude<PresetFailure, { code: 'newer-version' }
       return reason.unsupportedVersion;
     case 'invalid-structure':
       return reason.invalidStructure;
+    case 'invalid-template-id':
+      return reason.invalidTemplateId(failure.detail);
+    case 'duplicate-template':
+      return reason.duplicateTemplate(failure.detail);
+    case 'bad-name-field':
+      return reason.badNameField(failure.detail, failure.field);
     case 'invalid-id':
       return reason.invalidFieldId(failure.detail);
     case 'duplicate-id':

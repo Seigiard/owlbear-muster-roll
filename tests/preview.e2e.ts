@@ -93,7 +93,7 @@ test('lists the launch file first, marked, then the repository presets, and show
   await expect(characterFrame(page).getByText('Launch section')).toBeVisible();
   await expect(npcFrame(page).getByRole('heading', { name: 'Sample NPC' })).toBeVisible();
   await expect(characterFrame(page).getByRole('tab', { name: 'Sample character' })).toBeVisible();
-  await expect(npcFrame(page).getByRole('tab', { name: copy.place.npc })).toBeVisible();
+  await expect(npcFrame(page).getByRole('tab', { name: 'NPC' })).toBeVisible();
   await expect(characterFrame(page).getByText(copy.status.readOnly)).toBeVisible();
   await expect(npcFrame(page).getByText(copy.status.readOnly)).toHaveCount(0);
 });

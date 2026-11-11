@@ -3,16 +3,19 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { FieldError, Input, Label, TextField } from 'react-aria-components';
 
-import { DUPLICATE_COUNT_MIN, parseDuplicateCount } from '@/core/npc-duplicate';
 import type { VersionedRecord } from '@/core/records';
-import { liveSheets, sheetKey } from '@/core/sheets';
+import { DUPLICATE_COUNT_MIN, parseDuplicateCount } from '@/core/repeat-block-duplicate';
+import { repeatBlocks } from '@/core/sheet-values';
 import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
 type DuplicateCountProps = {
+  // The repeat block to duplicate.
   sheetId: string;
+  sectionId: string;
+  instanceId: string;
   sendCommand: ReplicaClient['sendCommand'];
   store: Pick<ProjectionStore, '$rejections' | '$records'>;
   // Grows each time the GM picks "Дублировать…", so the field takes the focus again.
@@ -22,16 +25,19 @@ type DuplicateCountProps = {
   onCancel: () => void;
 };
 
-// A sent command, with the NPCs that were there when it went, so a new one shows it took effect.
-type Sent = { commandId: string; npcSheets: ReadonlySet<string> };
+// A sent command, with the section's repeat blocks that were there when it went, so a new one
+// shows it took effect.
+type Sent = { commandId: string; blocks: ReadonlySet<string> };
 
 type Problem = 'invalid' | 'failed' | null;
 
-// UX-DR20: the count of copies, asked inline in the NPC block, never in a browser dialog. A bad
-// count stays in the field with its message, and nothing is sent. A sent count keeps the block open
-// until the copies arrive, so a failure can still show under the field.
+// CAP-30, UX-DR20: the count of copies, asked inline under the repeat block, never in a browser
+// dialog. A bad count stays in the field with its message, and nothing is sent. A sent count keeps
+// the block open until the copies arrive, so a failure can still show under the field.
 export function DuplicateCount({
   sheetId,
+  sectionId,
+  instanceId,
   sendCommand,
   store,
   focusRequest,
@@ -51,7 +57,7 @@ export function DuplicateCount({
     setProblem('failed');
   }
 
-  const arrived = sent !== null && hasNewNpc(records, sent.npcSheets);
+  const arrived = sent !== null && hasNewBlock(blockIds(records, sheetId, sectionId), sent.blocks);
 
   useEffect(() => {
     if (arrived) {
@@ -76,10 +82,16 @@ export function DuplicateCount({
       return;
     }
 
-    const result = sendCommand({ type: 'sheet-duplicate', sheetId, count: count.value });
+    const result = sendCommand({
+      type: 'repeat-block-duplicate',
+      sheetId,
+      sectionId,
+      instanceId,
+      count: count.value,
+    });
 
     if (result.ok) {
-      setSent({ commandId: result.value, npcSheets: npcSheetKeys(records) });
+      setSent({ commandId: result.value, blocks: blockIds(records, sheetId, sectionId) });
       setProblem(null);
     } else {
       setProblem('failed');
@@ -141,13 +153,14 @@ export function DuplicateCount({
   );
 }
 
-function npcSheetKeys(records: ReadonlyMap<string, VersionedRecord>): ReadonlySet<string> {
-  return new Set(liveSheets(records.values(), 'npc').map((sheet) => sheetKey(sheet.sheetId)));
+function blockIds(
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  sectionId: string,
+): ReadonlySet<string> {
+  return new Set(repeatBlocks(records, sheetId, sectionId).map((block) => block.instanceId));
 }
 
-function hasNewNpc(
-  records: ReadonlyMap<string, VersionedRecord>,
-  before: ReadonlySet<string>,
-): boolean {
-  return [...npcSheetKeys(records)].some((key) => !before.has(key));
+function hasNewBlock(now: ReadonlySet<string>, before: ReadonlySet<string>): boolean {
+  return [...now].some((id) => !before.has(id));
 }

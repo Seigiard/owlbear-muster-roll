@@ -55,7 +55,12 @@ const PROJECTION: EngineMessage = {
   party: [],
 };
 
-const OPEN: EngineMessage = { t: 'open-sheet', id: 'open-1', sheetId: 'brok' };
+const OPEN: EngineMessage = {
+  t: 'open-sheet',
+  id: 'open-1',
+  sheetId: 'npc',
+  instanceId: 'skeleton-1',
+};
 
 const cleanups: (() => void)[] = [];
 
@@ -93,7 +98,7 @@ describe('replica client open requests', () => {
     // #then
     expect({ before, after: store.$openRequest.get() }).toEqual({
       before: null,
-      after: { id: 'open-1', sheetId: 'brok' },
+      after: { id: 'open-1', sheetId: 'npc', instanceId: 'skeleton-1' },
     });
   });
 });

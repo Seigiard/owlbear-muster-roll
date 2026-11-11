@@ -83,7 +83,7 @@ function Primitives(): ReactNode {
     <WindowShell
       layout={{
         kind: 'tabs',
-        scrollingTabs: [],
+        items: [],
         pinnedTabs: [{ id: 'fixture', label: 'Fixture', content }],
         selectedTab: 'fixture',
         onSelectTab: () => undefined,

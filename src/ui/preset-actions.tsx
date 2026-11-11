@@ -31,17 +31,22 @@ type UploadMessage = { text: string; tone: 'error' | 'result' };
 
 // AD-14, kept in this window only, so a window that closes forgets it and writes nothing. The new
 // preset's data stays here while the GM decides; other windows see nothing until the batch commits.
-// `diffing` waits for the count, `asking` shows the block, `uploading` waits for the batch. `ask`
+// `diffing` waits for the counts, `asking` shows the block, `uploading` waits for the batch. `ask`
 // counts the questions, so a new count remounts the block and its focus goes to "Отменить" again.
-// `digest` names the values the GM was asked about, so the upload erases only those.
+// `loss` names the values and the sheets the GM was asked about, so the upload erases only those.
 type UploadState =
   | { phase: 'idle'; message: UploadMessage | null; ask: number }
   | { phase: 'diffing'; data: string; requestId: string; ask: number }
-  | { phase: 'asking'; data: string; count: number; digest: string; ask: number }
+  | { phase: 'asking'; data: string; loss: Loss; ask: number }
   | { phase: 'uploading'; data: string; commandId: string; ask: number };
+
+// AD-14: the stored values an upload erases and the sheets it deletes, and their digest.
+type Loss = { count: number; sheets: number; digest: string };
 
 // What an answer to a request leads to: a new state, or an upload to send.
 type Settled = UploadState | { phase: 'send'; data: string; digest: string; ask: number };
+
+const NO_LOSS = { count: 0, sheets: 0 } as const;
 
 type PresetUploadOptions = {
   client: Pick<ReplicaClient, 'sendCommand' | 'requestPresetDiff'>;
@@ -58,9 +63,9 @@ type PresetUploadParts = {
 };
 
 // FR8, AD-14: a file goes through the window's checks, then the replica counts the stored values
-// it would erase. With none it is uploaded at once. With some, one block asks first. On confirm the
-// replica counts again: a new count above 0 asks again, and a count of 0 takes the path that erases
-// nothing. "Формат листов изменён." shows after either upload. Catch-up closes the block, and
+// it would erase and the sheets it would delete. With none it is uploaded at once. With some, one
+// block asks first. On confirm the replica counts again: new counts above 0 ask again, and counts of
+// 0 take the path that erases nothing. "Формат листов изменён." shows after either upload. Catch-up closes the block, and
 // nothing is written. While a request waits the button waits too; with no answer in time it
 // gives up, and a late answer is ignored.
 export function usePresetUpload({
@@ -85,8 +90,19 @@ export function usePresetUpload({
   }
 
   const upload = useCallback(
-    (data: string, expectedCount: number, expectedDigest: string, ask: number): UploadState => {
-      const sent = sendCommand({ type: 'preset-upload', data, expectedCount, expectedDigest });
+    (
+      data: string,
+      expected: { count: number; sheets: number },
+      expectedDigest: string,
+      ask: number,
+    ): UploadState => {
+      const sent = sendCommand({
+        type: 'preset-upload',
+        data,
+        expectedCount: expected.count,
+        expectedSheets: expected.sheets,
+        expectedDigest,
+      });
 
       return sent.ok
         ? { phase: 'uploading', data, commandId: sent.value, ask }
@@ -114,7 +130,7 @@ export function usePresetUpload({
     }
 
     settledIds.current.add(id);
-    setState(next.phase === 'send' ? upload(next.data, 0, next.digest, next.ask) : next);
+    setState(next.phase === 'send' ? upload(next.data, NO_LOSS, next.digest, next.ask) : next);
   }, [state, rejections, results, upload]);
 
   useEffect(() => {
@@ -175,10 +191,11 @@ export function usePresetUpload({
     state.phase === 'asking' ? (
       <PresetConfirmation
         key={state.ask}
-        count={state.count}
+        count={state.loss.count}
+        sheets={state.loss.sheets}
         onConfirm={() => {
           refocus.current = true;
-          setState(upload(state.data, state.count, state.digest, state.ask));
+          setState(upload(state.data, state.loss, state.loss.digest, state.ask));
           backToButton();
         }}
         onCancel={() => {
@@ -311,8 +328,7 @@ function settled(
     return {
       phase: 'asking',
       data: state.data,
-      count: rejection.count,
-      digest: rejection.digest,
+      loss: { count: rejection.count, sheets: rejection.sheets, digest: rejection.digest },
       ask: state.ask + 1,
     };
   }
@@ -324,13 +340,12 @@ function settled(
   }
 
   if (result?.t === 'preset-diff-result' && state.phase === 'diffing') {
-    return result.count === 0
+    return result.count === 0 && result.sheets === 0
       ? { phase: 'send', data: state.data, digest: result.digest, ask: state.ask }
       : {
           phase: 'asking',
           data: state.data,
-          count: result.count,
-          digest: result.digest,
+          loss: { count: result.count, sheets: result.sheets, digest: result.digest },
           ask: state.ask + 1,
         };
   }

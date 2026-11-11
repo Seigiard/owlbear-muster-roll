@@ -345,6 +345,8 @@ describe('a wipe', () => {
     const answer = await wipe(gm);
 
     await waitUntil(() => heardOf(room, 'gm-a', 'reset').length === 1);
+    // The window asks for the new engine's projection, which reaches it after the answer.
+    await waitUntil(() => shownKeys(gm).length === 0);
 
     // #then
     expect({

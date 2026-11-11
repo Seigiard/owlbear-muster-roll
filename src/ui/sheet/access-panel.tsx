@@ -46,14 +46,14 @@ type PanelAction =
   | { t: 'settled'; answered: ReadonlySet<string>; refused: ReadonlySet<string> }
   | { t: 'timed-out'; commandId: string };
 
-// One option of the radio group "Его персонаж".
+// One option of the radio group "Его лист".
 type OwnerOption = { playerId: string | null; label: string };
 
 const INITIAL_STATE: PanelState = { acl: new Map(), owner: null, failed: false };
 
-// UX-DR12: inline under the character header. The radio group "Его персонаж" with "Никто" and one
-// option per player, then one row per player id with "Может править". A change goes at once. The
-// guest note always shows.
+// UX-DR12: inline under the header of a sheet of a sheet set. The radio group "Его лист" with
+// "Никто" and one option per player, then one row per player id with "Может править". A change goes
+// at once. The guest note always shows.
 export function AccessPanel({
   id,
   sheetId,
@@ -324,7 +324,7 @@ type OwnerGroupProps = {
   onPick: (playerId: string | null) => void;
 };
 
-// FR19: one radio group "Его персонаж". The arrow keys, "Home" and "End" move the focus only, so
+// FR19: one radio group "Его лист". The arrow keys, "Home" and "End" move the focus only, so
 // passing a player picks nothing. "Space", "Enter" or a click picks the focused option. One option
 // takes the Tab key: the focused one, else the checked one.
 function OwnerGroup({ options, checked, onPick }: OwnerGroupProps): ReactNode {

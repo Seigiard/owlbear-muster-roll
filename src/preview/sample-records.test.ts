@@ -3,101 +3,111 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { FORMAT_VERSION } from '@/core/format-version';
-import { parsePresetFile, type Preset, type PresetTemplate } from '@/core/preset';
-import { recordSchema, sheetDataSchema, type VersionedRecord } from '@/core/records';
-import { repeatInstances, rowValues } from '@/core/sheet-values';
+import { parsePresetFile, type Preset } from '@/core/preset';
+import { recordSchema, type VersionedRecord } from '@/core/records';
+import { repeatBlocks, rowValues } from '@/core/sheet-values';
+import { sheetName } from '@/core/sheets';
 
-import { PREVIEW_CHARACTER, PREVIEW_NPC, previewSheets } from './sample-records';
+import { previewSheets } from './sample-records';
 
 const REPOSITORY_ROOT = join(import.meta.dir, '../..');
 
-const CHARACTER: PresetTemplate = {
-  sections: [
+// A sheet set first, then a hidden single sheet whose repeat section spans two rows.
+const PRESET: Preset = {
+  v: FORMAT_VERSION,
+  templates: [
     {
-      title: 'Stats',
-      rows: [
-        [
-          { kind: 'text', text: 'Name' },
-          { kind: 'field', type: 'text', id: 'name' },
-        ],
-        [
-          { kind: 'text', text: 'Strength' },
-          { kind: 'field', type: 'number', id: 'str' },
-          { kind: 'field', type: 'check', id: 'str_tired' },
-          { kind: 'dice', formula: '1d20 <= str' },
-        ],
-        [
-          { kind: 'text', text: 'Dexterity' },
-          { kind: 'field', type: 'number', id: 'dex' },
-          { kind: 'field', type: 'check', id: 'dex_tired' },
-        ],
-        [{ kind: 'dice', formula: '1d6' }],
-        [
-          { kind: 'text', text: '  ' },
-          { kind: 'field', type: 'text', id: 'motto' },
-        ],
+      id: 'pc',
+      kind: 'set',
+      title: 'Characters',
+      nameField: 'name',
+      sections: [
+        {
+          title: 'Stats',
+          rows: [
+            [
+              { kind: 'text', text: 'Name' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
+            [
+              { kind: 'text', text: 'Strength' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'check', id: 'str_tired' },
+              { kind: 'dice', formula: '1d20 <= str' },
+            ],
+            [
+              { kind: 'text', text: 'Dexterity' },
+              { kind: 'field', type: 'number', id: 'dex' },
+              { kind: 'field', type: 'check', id: 'dex_tired' },
+            ],
+            [{ kind: 'dice', formula: '1d6' }],
+            [
+              { kind: 'text', text: '  ' },
+              { kind: 'field', type: 'text', id: 'motto' },
+            ],
+          ],
+        },
       ],
     },
     {
-      title: 'Attacks',
-      repeat: true,
-      rows: [
-        [
-          { kind: 'text', text: 'Attack' },
-          { kind: 'field', type: 'text', id: 'attack' },
-          { kind: 'field', type: 'number', id: 'bonus' },
-          { kind: 'dice', formula: '1d20 + bonus' },
-        ],
+      id: 'npc',
+      kind: 'single',
+      title: 'NPCs',
+      visibility: 'gm',
+      sections: [
+        {
+          title: 'Foes',
+          repeat: true,
+          rows: [
+            [
+              { kind: 'text', text: 'Foe' },
+              { kind: 'field', type: 'text', id: 'foe' },
+            ],
+            [
+              { kind: 'field', type: 'number', id: 'hp' },
+              { kind: 'dice', formula: '1d20 + hp' },
+            ],
+          ],
+        },
       ],
     },
   ],
 };
 
-const NPC: PresetTemplate = {
-  sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
-};
-
-const PRESET: Preset = { v: FORMAT_VERSION, character: CHARACTER, npc: NPC };
-
 describe('previewSheets with sample content', () => {
-  test('names one character sheet and one NPC sheet', () => {
+  test('makes one sheet per template, in preset order: a preview sheet for a set, the template id for a single sheet', () => {
     // #when
-    const { records } = previewSheets(PRESET, 'sample');
+    const { records, sheets } = previewSheets(PRESET, 'sample');
 
     // #then
-    expect(records.get(`sheet:${PREVIEW_CHARACTER.sheetId}`)?.d).toEqual({
-      kind: 'pc',
-      name: PREVIEW_CHARACTER.name,
-      order: 1,
-    });
-
-    expect(records.get(`sheet:${PREVIEW_NPC.sheetId}`)?.d).toEqual({
-      kind: 'npc',
-      name: PREVIEW_NPC.name,
-      order: 1,
+    expect({
+      sheets: sheets.map((sheet) => [sheet.template.id, sheet.sheetId]),
+      setSheet: records.get('sheet:preview-1')?.d,
+      singleSheet: records.get('sheet:npc'),
+    }).toEqual({
+      sheets: [
+        ['pc', 'preview-1'],
+        ['npc', 'npc'],
+      ],
+      setSheet: { set: 'pc', order: 1 },
+      singleSheet: undefined,
     });
   });
 
-  test('gives every field a value of its type', () => {
+  test('gives every field a value of its type, so the sheet of the set has a name', () => {
     // #when
     const { records } = previewSheets(PRESET, 'sample');
 
-    const character = PREVIEW_CHARACTER.sheetId;
-
     // #then
-    expect(Object.fromEntries(rowValues(records, character, 'name'))).toEqual({ name: 'Name' });
-
-    expect(Object.fromEntries(rowValues(records, character, 'str'))).toEqual({
-      str: 10,
-      str_tired: true,
+    expect({
+      name: sheetName(records, PRESET, 'preview-1'),
+      str: Object.fromEntries(rowValues(records, 'preview-1', 'str')),
+      dex: Object.fromEntries(rowValues(records, 'preview-1', 'dex')),
+    }).toEqual({
+      name: 'Name',
+      str: { str: 10, str_tired: true },
+      dex: { dex: 11, dex_tired: false },
     });
-
-    expect(Object.fromEntries(rowValues(records, character, 'dex'))).toEqual({
-      dex: 11,
-      dex_tired: false,
-    });
-
-    expect(Object.fromEntries(rowValues(records, PREVIEW_NPC.sheetId, 'hp'))).toEqual({ hp: 10 });
   });
 
   test('gives a text field with no visible label its id, so no value is empty', () => {
@@ -105,19 +115,21 @@ describe('previewSheets with sample content', () => {
     const { records } = previewSheets(PRESET, 'sample');
 
     // #then
-    expect(rowValues(records, PREVIEW_CHARACTER.sheetId, 'motto').get('motto')).toBe('motto');
+    expect(rowValues(records, 'preview-1', 'motto').get('motto')).toBe('motto');
   });
 
-  test('gives a repeat section two rows with values of their own', () => {
+  test('gives a repeat section two repeat blocks, each with every field of the section', () => {
     // #when
     const { records } = previewSheets(PRESET, 'sample');
 
-    const instances = repeatInstances(records, PREVIEW_CHARACTER.sheetId, 'attack');
+    const blocks = repeatBlocks(records, 'npc', 'foe');
 
     // #then
-    expect(instances.map((instance) => Object.fromEntries(instance.values))).toEqual([
-      { attack: 'Attack 1', bonus: 12 },
-      { attack: 'Attack 2', bonus: 13 },
+    expect(
+      blocks.map((block) => ({ id: block.instanceId, values: Object.fromEntries(block.values) })),
+    ).toEqual([
+      { id: 'sample-1', values: { foe: 'Foe 1', hp: 10 } },
+      { id: 'sample-2', values: { foe: 'Foe 2', hp: 11 } },
     ]);
   });
 
@@ -128,15 +140,13 @@ describe('previewSheets with sample content', () => {
     // #then
     expect([...records.keys()].sort()).toEqual(
       [
-        'sheet:preview-character',
-        'sheet:preview-npc',
-        'row:preview-character:name',
-        'row:preview-character:str',
-        'row:preview-character:dex',
-        'row:preview-character:motto',
-        'rep:preview-character:attack:sample-1',
-        'rep:preview-character:attack:sample-2',
-        'row:preview-npc:hp',
+        'sheet:preview-1',
+        'row:preview-1:name',
+        'row:preview-1:str',
+        'row:preview-1:dex',
+        'row:preview-1:motto',
+        'rep:npc:foe:sample-1',
+        'rep:npc:foe:sample-2',
       ].sort(),
     );
   });
@@ -152,21 +162,16 @@ describe('previewSheets with sample content', () => {
 });
 
 describe('previewSheets with empty content', () => {
-  test('keeps the two named sheets and makes no value record', () => {
+  test('keeps only the sheet of the set, with no name, and no value or repeat block', () => {
     // #when
     const { records } = previewSheets(PRESET, 'empty');
 
     // #then
-    expect([...records.keys()].sort()).toEqual(['sheet:preview-character', 'sheet:preview-npc']);
-    expect(sheetDataSchema.parse(records.get('sheet:preview-npc')?.d).name).toBe(PREVIEW_NPC.name);
-  });
-
-  test('shows a repeat section with no rows, as in a new sheet', () => {
-    // #when
-    const { records } = previewSheets(PRESET, 'empty');
-
-    // #then
-    expect(repeatInstances(records, PREVIEW_CHARACTER.sheetId, 'attack')).toEqual([]);
+    expect({
+      keys: [...records.keys()],
+      name: sheetName(records, PRESET, 'preview-1'),
+      blocks: repeatBlocks(records, 'npc', 'foe'),
+    }).toEqual({ keys: ['sheet:preview-1'], name: '', blocks: [] });
   });
 });
 

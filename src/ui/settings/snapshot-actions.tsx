@@ -27,12 +27,12 @@ const ACCEPTED_FILE_TYPES = ['.json', 'application/json'];
 // AD-9, kept in this window only, so a window that closes, or a GM who leaves Settings, forgets it
 // and writes nothing. `checking` waits for the count, `asking` shows the block, `importing` waits
 // for the import. `ask` counts the questions, so a new count remounts the block and its focus goes
-// to "Отменить" again. `digest` names the values the GM was told about, so the import drops only
-// those.
+// to "Отменить" again. `digest` names the values and the sheets the GM was told about, so the
+// import drops only those.
 type ImportState =
   | { phase: 'idle'; message: string | null; ask: number }
   | { phase: 'checking'; data: string; requestId: string; ask: number }
-  | { phase: 'asking'; data: string; count: number; digest: string; ask: number }
+  | { phase: 'asking'; data: string; count: number; sheets: number; digest: string; ask: number }
   | { phase: 'importing'; data: string; commandId: string; ask: number };
 
 type SnapshotActionsOptions = {
@@ -52,8 +52,8 @@ type SnapshotActionsParts = {
 
 // FR13, UX-DR23, UX-DR25, UX-DR30: "Скачать снимок" writes the file from the records this window
 // holds and sends nothing to the replica. "Загрузить снимок" checks the file in the window, then
-// the replica counts the values the current preset would drop, and one block asks before anything
-// is written. On confirm the replica counts again, and a different count asks again. Cancel,
+// the replica counts the values and the sheets the current preset would drop, and one block asks
+// before anything is written. On confirm the replica counts again, and a different count asks again. Cancel,
 // Escape, leaving Settings, closing the window and the start of catch-up close the block, and
 // nothing is written. Both buttons wait during catch-up and need a preset.
 export function useSnapshotActions({
@@ -188,6 +188,7 @@ export function useSnapshotActions({
       <SnapshotConfirmation
         key={state.ask}
         count={state.count}
+        sheets={state.sheets}
         onConfirm={() => {
           refocus.current = true;
           setState(startImport(state.data, state.digest, state.ask));
@@ -201,6 +202,8 @@ export function useSnapshotActions({
     ) : null;
 
   const reason = snapshotDisabledReason(preset, catchingUp);
+  // The download needs the preset, and its reason says so.
+  const downloadPreset = reason === undefined ? preset : null;
   const importReason = reason ?? (waitingId === null ? undefined : copy.loading);
   const buttonEnabled = importReason === undefined;
 
@@ -234,9 +237,13 @@ export function useSnapshotActions({
           variant="primary"
           disabledReason={reason}
           onPress={() => {
+            if (downloadPreset === null) {
+              return;
+            }
+
             downloadJsonFile(
               snapshotFileName(new Date()),
-              formatSnapshotFile(encodeSnapshotFile(records)),
+              formatSnapshotFile(encodeSnapshotFile(records, downloadPreset)),
             );
           }}
         >
@@ -320,6 +327,7 @@ function settled(
       phase: 'asking',
       data: state.data,
       count: rejection.count,
+      sheets: rejection.sheets,
       digest: rejection.digest,
       ask: state.ask + 1,
     };
@@ -334,6 +342,7 @@ function settled(
       phase: 'asking',
       data: state.data,
       count: result.count,
+      sheets: result.sheets,
       digest: result.digest,
       ask: state.ask + 1,
     };

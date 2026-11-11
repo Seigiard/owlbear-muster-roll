@@ -1,18 +1,23 @@
 import { useStore } from '@nanostores/react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 
-import { firstFieldId, type PresetTemplate } from '@/core/preset';
+import { firstFieldId, repeatSectionId, type TemplateLayout } from '@/core/preset';
 import { repKeyPrefix, rowKey, type VersionedRecord } from '@/core/records';
+import { revealElement } from '@/ui/reveal';
 
 import { DiceSheetContext, type DiceRolling, type DiceSheet } from './dice-button';
 import { withRemovedRows, type SheetPending } from './pending-mark';
-import { SheetSection } from './preset-section';
+import { SheetSection, type BlockTools } from './preset-section';
 import { FieldEditingContext, type FieldEditing } from './use-field-edit';
 
+// FR14: the repeat block "Открыть лист" asked for. It scrolls into view once, and takes the focus
+// when `focus` is set.
+export type BlockReveal = { instanceId: string; focus: boolean };
+
 type SheetBodyProps = {
-  // The character template or the NPC template, by the sheet's kind.
-  template: PresetTemplate;
+  // The sheet's template, as `core/sheets` resolves it.
+  template: TemplateLayout;
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
   // `null` shows every value read-only, with no row controls: a player with no access to the sheet.
@@ -21,6 +26,10 @@ type SheetBodyProps = {
   rolling: DiceRolling;
   // A player's edits that wait for a GM (UX-DR28). `null` for a GM, whose edits never wait.
   pending: SheetPending | null;
+  // The GM's controls on each repeat block, `null` for a player and the preview.
+  blockTools?: BlockTools | null;
+  reveal?: BlockReveal | null;
+  onRevealed?: () => void;
 };
 
 // The container query measures the content area, so a narrow window stacks every section.
@@ -31,7 +40,11 @@ export function SheetBody({
   editing,
   rolling,
   pending,
+  blockTools = null,
+  reveal = null,
+  onRevealed,
 }: SheetBodyProps): ReactNode {
+  const body = useRef<HTMLDivElement>(null);
   const shownRecords = useMemo(() => withRemovedRows(records, pending), [records, pending]);
   const localChanges = useStore(rolling.localValues.$changes).get(sheetId) ?? 0;
 
@@ -45,11 +58,32 @@ export function SheetBody({
     [rolling, valuesSignature],
   );
 
+  // Runs when the body mounts too, so a request that selected this sheet's tab finds its repeat
+  // block. A repeat block that is gone shows nothing, and the request still ends.
+  useEffect(() => {
+    if (reveal === null) {
+      return;
+    }
+
+    const block = body.current?.querySelector<HTMLElement>(
+      `[data-repeat-block="${CSS.escape(reveal.instanceId)}"]`,
+    );
+
+    revealElement(block);
+
+    // The tab switched under the focus, so the focus goes to the repeat block, which names itself.
+    if (reveal.focus) {
+      block?.focus({ preventScroll: true });
+    }
+
+    onRevealed?.();
+  }, [reveal, onRevealed]);
+
   return (
     <FieldEditingContext value={editing}>
       <DiceSheetContext value={diceSheet}>
         <div className="@container">
-          <div className="flex flex-wrap gap-4" data-sheet-body>
+          <div ref={body} className="flex flex-wrap gap-4" data-sheet-body>
             {template.sections.map((section, index) => (
               <SheetSection
                 key={index}
@@ -59,6 +93,7 @@ export function SheetBody({
                 records={shownRecords}
                 readOnly={editing === null}
                 pending={pending}
+                blockTools={blockTools}
               />
             ))}
           </div>
@@ -71,7 +106,7 @@ export function SheetBody({
 // The versions of the sheet's `row:` and `rep:` records, and the count of local changes to the
 // values its fields show, so it changes with any value of the sheet and with no other record.
 function sheetValuesSignature(
-  template: PresetTemplate,
+  template: TemplateLayout,
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
   localChanges: number,
@@ -80,16 +115,20 @@ function sheetValuesSignature(
   const repeatPrefixes: string[] = [];
 
   for (const section of template.sections) {
+    const sectionId = repeatSectionId(section);
+
+    if (section.repeat === true) {
+      if (sectionId !== null) {
+        repeatPrefixes.push(repKeyPrefix(sheetId, sectionId));
+      }
+
+      continue;
+    }
+
     for (const row of section.rows) {
       const id = firstFieldId(row);
 
-      if (id === null) {
-        continue;
-      }
-
-      if (section.repeat === true) {
-        repeatPrefixes.push(repKeyPrefix(sheetId, id));
-      } else {
+      if (id !== null) {
         const record = records.get(rowKey(sheetId, id));
 
         versions.push(record === undefined ? '' : versionOf(record));
