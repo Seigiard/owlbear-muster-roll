@@ -104,3 +104,9 @@
 
 - No test covers the save-on-disable flush of a focused field in a row whose removal becomes pending, or the disabled dice button in that row.
 - The row slot live region also announces the delayed mark of a new row; check with a screen reader in a live room.
+
+## From spec-5-1-change-the-preset-over-existing-sheets (TASK-29)
+
+- A second GM client still on the old preset can write an old key after the upload; incoming commits are not stripped.
+- No test covers a merged row over the message limit (`too-large`), or the 15 s window timeout.
+- The confirmation shows only the count, not which fields lose values.
