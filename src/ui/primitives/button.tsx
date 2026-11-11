@@ -7,6 +7,11 @@ const VARIANT_CLASS = {
   secondary: 'border border-line text-text',
 } as const;
 
+const BASE_CLASS = 'touch-target inline-flex items-center justify-center';
+
+// The look of a secondary button, for a control that is not a `Button`, such as a toggle.
+export const SECONDARY_BUTTON_CLASS = `${BASE_CLASS} rounded-sm px-3 ${VARIANT_CLASS.secondary}`;
+
 export type PressableProps = {
   children: ReactNode;
   onPress?: () => void;
@@ -51,7 +56,7 @@ export function Pressable({
     <AriaButton
       ref={ref}
       aria-label={accessibleName}
-      className={`touch-target inline-flex items-center justify-center data-disabled:opacity-50 ${className}`}
+      className={`${BASE_CLASS} data-disabled:opacity-50 ${className}`}
       isDisabled={isDisabled}
       onPress={onPress}
       autoFocus={autoFocus}

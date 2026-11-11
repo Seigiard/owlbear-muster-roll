@@ -2,6 +2,7 @@ import { useContext, useEffect } from 'react';
 import type { ReactNode, WheelEvent as ReactWheelEvent } from 'react';
 import { Button, Tab, TabList, TabListStateContext, ToggleButton } from 'react-aria-components';
 
+import { copy } from '@/ui/copy';
 import { revealElement } from '@/ui/reveal';
 
 const BAR_CLASS = 'flex justify-end gap-2 bg-surface-bar px-2 pt-2';
@@ -27,10 +28,12 @@ const WHEEL_LINE_PX = 20;
 
 // `mark` shows after the label and is never cut, such as "вы" on a player's own sheet. The tab bar
 // then names the tab "{label}, {mark}", so the name does not run the two words together.
+// `selectedOnMap` shows a dot after both, and the name says it (CAP-32).
 export type ShellTab = {
   id: string;
   label: string;
   mark?: string;
+  selectedOnMap?: boolean;
   accessibleName?: string;
   content: ReactNode;
 };
@@ -76,11 +79,7 @@ export function TabBar({ items, pinnedTabs }: TabBarProps): ReactNode {
               <Tab
                 key={item.tab.id}
                 id={item.tab.id}
-                aria-label={
-                  item.tab.mark === undefined
-                    ? item.tab.accessibleName
-                    : `${item.tab.label}, ${item.tab.mark}`
-                }
+                aria-label={tabName(item.tab)}
                 ref={revealIfSelected}
                 className={SCROLLING_TAB_CLASS}
                 style={{ order: index }}
@@ -91,6 +90,13 @@ export function TabBar({ items, pinnedTabs }: TabBarProps): ReactNode {
                     {item.tab.mark}
                   </span>
                 )}
+                {item.tab.selectedOnMap === true ? (
+                  <span
+                    aria-hidden
+                    data-map-mark
+                    className="ml-1 size-[6px] shrink-0 rounded-full border-3 border-accent"
+                  />
+                ) : null}
               </Tab>
             ) : null,
           )}
@@ -124,6 +130,18 @@ export function TabBar({ items, pinnedTabs }: TabBarProps): ReactNode {
       </div>
     </div>
   );
+}
+
+// The text and the mark of a tab, as one name with the words apart. A tab with neither takes its
+// own accessible name, or its text.
+function tabName(tab: ShellTab): string | undefined {
+  const named = tab.mark === undefined ? tab.label : `${tab.label}, ${tab.mark}`;
+
+  if (tab.selectedOnMap === true) {
+    return copy.label.selectedOnMap(named);
+  }
+
+  return tab.mark === undefined ? tab.accessibleName : named;
 }
 
 // The Tab key enters a tab list at its focused key. React Aria moves that key to the selected tab

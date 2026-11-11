@@ -20,6 +20,7 @@ const SAMPLES: ReadonlyMap<string, string> = new Map([
   ['sheet', 'Брок'],
   ['cell', 'Атака'],
   ['result', '15'],
+  ['n', '3'],
 ]);
 
 const CATALOG_BY_JOB: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
@@ -37,6 +38,7 @@ const CATALOG_BY_JOB: ReadonlyMap<string, readonly string[]> = new Map<string, r
       copy.command.linkSheet,
       copy.command.unlinkSheet,
       copy.command.openSheet,
+      copy.command.selectOnMap,
       copy.command.cancel,
     ],
   ],
@@ -52,6 +54,8 @@ const CATALOG_BY_JOB: ReadonlyMap<string, readonly string[]> = new Map<string, r
       copy.status.noToken,
     ],
   ],
+  ['Selection mark, in an accessible name only', [copy.label.selectedOnMap('Скелет 1')]],
+  ["Select a repeat block's tokens", [copy.command.selectOnMap, copy.label.selectBlockOnMap(3)]],
   ['Empty sheet name', [copy.unnamed]],
   ['Loading', [copy.loading]],
   ['No GM', [copy.noGm]],

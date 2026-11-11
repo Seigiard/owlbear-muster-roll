@@ -453,3 +453,31 @@ export function clientQuery(params: ClientParams): string {
 
   return text === '' ? '' : `?${text}`;
 }
+
+// CAP-32: replaces one client's map selection, as a click or a drag on the map would. `page` is any
+// page of that client, as its pages share the selection.
+export async function selectOnMap(page: Page, itemIds: readonly string[]): Promise<void> {
+  await page.evaluate(
+    (ids) => {
+      window.mockPlatform.setMapSelection(ids);
+    },
+    [...itemIds],
+  );
+}
+
+// The map selection of the client `page` belongs to, sorted.
+export async function mapSelection(page: Page): Promise<string[]> {
+  const itemIds = await page.evaluate(() => window.mockPlatform.selection.getSelection());
+
+  return [...itemIds].sort();
+}
+
+// Puts items on the room's open scene, which every client shares.
+export async function putOnScene(page: Page, itemIds: readonly string[]): Promise<void> {
+  await page.evaluate(
+    (ids) => {
+      window.mockPlatform.addSceneItems(ids);
+    },
+    [...itemIds],
+  );
+}

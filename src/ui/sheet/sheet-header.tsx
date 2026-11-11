@@ -10,6 +10,7 @@ import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
 import { AccessPanel } from './access-panel';
+import { MapToggle } from './map-toggle';
 import { FieldEditingContext, useTextFieldEdit, type FieldEditing } from './use-field-edit';
 
 const DELETE_ACTION = 'delete';
@@ -134,6 +135,7 @@ export function SheetHeader({
             <Chip>{gm.tokenLinked ? copy.status.tokenLinked : copy.status.noToken}</Chip>
           </span>
         )}
+        {gm?.tokenLinked === true ? <MapToggle target={{ sheetId, instanceId: null }} /> : null}
         {gm === null || gm.onDelete === null ? null : (
           <SheetActions actionsRef={actionsRef} onDelete={gm.onDelete} />
         )}

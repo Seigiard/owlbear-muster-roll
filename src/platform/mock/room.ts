@@ -10,6 +10,8 @@ import {
   PARTY_STORAGE_PREFIX,
   SCENE_CHANNEL_PREFIX,
   SCENE_STORAGE_PREFIX,
+  SELECTION_CHANNEL_PREFIX,
+  SELECTION_STORAGE_PREFIX,
 } from './client-params';
 import { createMemoryBus, type LocalBus } from './local-bus';
 
@@ -40,6 +42,10 @@ const sceneSchema = z.object({
 
 const sceneChangeSchema = z.object({ kind: z.enum(['ready', 'items']), scene: sceneSchema });
 
+const selectionSchema = z.array(z.string());
+
+const selectionChangeSchema = z.object({ connectionId: z.string(), itemIds: selectionSchema });
+
 // A room opens with a ready scene that holds no item, so a test that never touches the scene sees
 // no removal.
 const INITIAL_SCENE: MockScene = { ready: true, itemIds: [], labels: {} };
@@ -67,7 +73,10 @@ export type MockSceneChange = 'ready' | 'items';
 
 type SceneListener = (scene: MockScene, change: MockSceneChange) => void;
 
-// What every client of one room shares: REMOTE delivery, the party and the room metadata.
+type SelectionListener = (itemIds: string[]) => void;
+
+// What every client of one room shares: REMOTE delivery, the party, the room metadata and the scene,
+// and each client's own map selection, which only that client's pages read and change.
 export type MockRoom = {
   // Reaches every client but the one with this connection id, as Owlbear never echoes REMOTE.
   postRemote: (channel: string, data: JsonValue, connectionId: string) => void;
@@ -86,6 +95,12 @@ export type MockRoom = {
   // Every client's listeners hear the change, the writer's own included, in the order it was made.
   setScene: (scene: MockScene, change: MockSceneChange) => void;
   onSceneChange: (listener: SceneListener) => Unsubscribe;
+  // The map selection of one client, which only that client's pages read and change. A client that
+  // never selected anything has an empty one.
+  getSelection: (connectionId: string) => string[];
+  // Every listener of that client hears the change, the writer's own page included.
+  setSelection: (connectionId: string, itemIds: string[]) => void;
+  onSelectionChange: (connectionId: string, listener: SelectionListener) => Unsubscribe;
 };
 
 // Several clients in one process, as unit tests build them.
@@ -94,6 +109,8 @@ export function createMemoryRoom(): MockRoom {
   const partyListeners = new Set<() => void>();
   const metadataListeners = new Set<MetadataListener>();
   const sceneListeners = new Set<SceneListener>();
+  const selections = new Map<string, string[]>();
+  const selectionListeners = new Map<string, Set<SelectionListener>>();
   let members: PartyMember[] = [];
   let metadata: JsonObject = {};
   let scene: MockScene = structuredClone(INITIAL_SCENE);
@@ -143,6 +160,16 @@ export function createMemoryRoom(): MockRoom {
       }
     },
     onSceneChange: (listener) => subscribe(sceneListeners, listener),
+    getSelection: (connectionId) => [...(selections.get(connectionId) ?? [])],
+    setSelection: (connectionId, itemIds) => {
+      selections.set(connectionId, [...itemIds]);
+
+      for (const listener of selectionListeners.get(connectionId) ?? []) {
+        listener([...itemIds]);
+      }
+    },
+    onSelectionChange: (connectionId, listener) =>
+      subscribe(listenersOf(selectionListeners, connectionId), listener),
   };
 }
 
@@ -156,6 +183,7 @@ export function createPageRoom(roomId: string): MockRoom {
   const partyListeners = new Set<() => void>();
   const metadataListeners = new Set<MetadataListener>();
   const sceneListeners = new Set<SceneListener>();
+  const selectionListeners = new Map<string, Set<SelectionListener>>();
   const partyKey = `${PARTY_STORAGE_PREFIX}${roomId}`;
   const metadataKey = `${METADATA_STORAGE_PREFIX}${roomId}`;
   const sceneKey = `${SCENE_STORAGE_PREFIX}${roomId}`;
@@ -163,6 +191,7 @@ export function createPageRoom(roomId: string): MockRoom {
   let partyChannel: BroadcastChannel | null = null;
   let metadataChannel: BroadcastChannel | null = null;
   let sceneChannel: BroadcastChannel | null = null;
+  let selectionChannel: BroadcastChannel | null = null;
 
   function sharedRemote(): BroadcastChannel {
     if (remoteChannel === null) {
@@ -270,6 +299,43 @@ export function createPageRoom(roomId: string): MockRoom {
     }
   }
 
+  function selectionKey(connectionId: string): string {
+    return `${SELECTION_STORAGE_PREFIX}${roomId}:${connectionId}`;
+  }
+
+  function sharedSelection(): BroadcastChannel {
+    if (selectionChannel === null) {
+      selectionChannel = new BroadcastChannel(`${SELECTION_CHANNEL_PREFIX}${roomId}`);
+      selectionChannel.addEventListener('message', (event: MessageEvent) => {
+        const parsed = selectionChangeSchema.safeParse(event.data);
+
+        if (parsed.success) {
+          notifySelection(parsed.data.connectionId, parsed.data.itemIds);
+        }
+      });
+    }
+
+    return selectionChannel;
+  }
+
+  function notifySelection(connectionId: string, itemIds: string[]): void {
+    for (const listener of selectionListeners.get(connectionId) ?? []) {
+      listener([...itemIds]);
+    }
+  }
+
+  function readSelection(connectionId: string): string[] {
+    try {
+      const parsed = selectionSchema.safeParse(
+        JSON.parse(localStorage.getItem(selectionKey(connectionId)) ?? '[]'),
+      );
+
+      return parsed.success ? parsed.data : [];
+    } catch {
+      return [];
+    }
+  }
+
   return {
     postRemote: (channel, data, connectionId) => {
       remote.post(channel, data, connectionId);
@@ -328,6 +394,17 @@ export function createPageRoom(roomId: string): MockRoom {
 
       return subscribe(sceneListeners, listener);
     },
+    getSelection: readSelection,
+    setSelection: (connectionId, itemIds) => {
+      localStorage.setItem(selectionKey(connectionId), JSON.stringify(itemIds));
+      sharedSelection().postMessage({ connectionId, itemIds });
+      notifySelection(connectionId, itemIds);
+    },
+    onSelectionChange: (connectionId, listener) => {
+      sharedSelection();
+
+      return subscribe(listenersOf(selectionListeners, connectionId), listener);
+    },
   };
 }
 
@@ -361,6 +438,23 @@ function onRemoteFrom(
 
 function withoutConnection(members: readonly PartyMember[], connectionId: string): PartyMember[] {
   return members.filter((member) => member.connectionId !== connectionId);
+}
+
+function listenersOf<Listener>(
+  listeners: Map<string, Set<Listener>>,
+  connectionId: string,
+): Set<Listener> {
+  const existing = listeners.get(connectionId);
+
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const created = new Set<Listener>();
+
+  listeners.set(connectionId, created);
+
+  return created;
 }
 
 function subscribe<Listener>(listeners: Set<Listener>, listener: Listener): Unsubscribe {

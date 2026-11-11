@@ -53,6 +53,19 @@ export type PlayerPort = {
   onRoleChange: (callback: () => void) => Unsubscribe;
 };
 
+// CAP-32: this client's own selection on the map, as item ids. Owlbear keeps one per player
+// connection, and every page of the client shares it.
+export type SelectionPort = {
+  getSelection: () => Promise<string[]>;
+  // Calls back with the whole selection after it changes. The first call can repeat the selection
+  // a read has already returned, so a caller compares before it acts.
+  onChange: (callback: (itemIds: string[]) => void) => Unsubscribe;
+  // Adds the items to the selection and keeps what is selected already. An empty list does nothing.
+  select: (itemIds: string[]) => Promise<void>;
+  // Takes the items out of the selection and keeps the rest. An empty list does nothing.
+  deselect: (itemIds: string[]) => Promise<void>;
+};
+
 export type StorageOperation = 'read' | 'write' | 'remove' | 'list';
 
 export type StorageFailure = { operation: StorageOperation; reason: string };
@@ -164,6 +177,7 @@ export type Platform = {
   metadata: MetadataPort;
   party: PartyPort;
   player: PlayerPort;
+  selection: SelectionPort;
   storage: StoragePort;
   contextMenu: ContextMenuPort;
   popover: PopoverPort;
