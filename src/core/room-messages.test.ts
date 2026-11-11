@@ -8,6 +8,8 @@ import {
   generationRelation,
   parseRoomMessage,
   pingMessage,
+  proposeMessage,
+  rejectMessage,
   rollMessage,
   stateRequestMessage,
   type GenerationRelation,
@@ -74,6 +76,25 @@ function commit(overrides: { [key: string]: JsonValue } = {}): JsonValue {
   return { v: 1, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], ...overrides };
 }
 
+const ROW = { k: 'row:brok:str', d: { str: 5 }, c: 2, a: 'p-conn' };
+
+function propose(overrides: { [key: string]: JsonValue } = {}): JsonValue {
+  return { v: 1, g: { n: 0, a: '' }, t: 'propose', records: [ROW], ...overrides };
+}
+
+function reject(overrides: { [key: string]: JsonValue } = {}): JsonValue {
+  return {
+    v: 1,
+    g: { n: 0, a: '' },
+    t: 'reject',
+    k: ROW.k,
+    c: 2,
+    a: 'p-conn',
+    reason: 'denied',
+    ...overrides,
+  };
+}
+
 const ROLL: RollMessage = {
   v: 1,
   g: { n: 0, a: '' },
@@ -115,15 +136,64 @@ describe('admitRoomMessage', () => {
 });
 
 describe('parseRoomMessage', () => {
-  test('reads a valid commit', () => {
+  test('reads a valid commit with no acks as one with none', () => {
     // #when
     const parsed = parseRoomMessage(commit());
 
     // #then
     expect(parsed).toEqual({
       ok: true,
-      value: { v: 1, g: { n: 0, a: '' }, t: 'commit', records: [RECORD] },
+      value: { v: 1, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], acks: [] },
     });
+  });
+
+  test('reads a commit that echoes the (k, c, a) of the proposals it answers', () => {
+    // #given
+    const acks = [{ k: 'row:brok:str', c: 4, a: 'p-conn' }];
+
+    // #when
+    const parsed = parseRoomMessage(commit({ acks }));
+
+    // #then
+    expect(parsed).toEqual({
+      ok: true,
+      value: { v: 1, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], acks },
+    });
+  });
+
+  test('builds a propose of one record that parses back as itself', () => {
+    // #given
+    const built = proposeMessage({ n: 1, a: 'x' }, ROW);
+
+    // #when
+    const parsed = parseRoomMessage(built);
+
+    // #then
+    expect(parsed).toEqual({
+      ok: true,
+      value: { v: 1, g: { n: 1, a: 'x' }, t: 'propose', records: [ROW] },
+    });
+  });
+
+  test('builds a denied reject with no record and a stale one with the current record', () => {
+    // #given
+    const edit = { k: ROW.k, c: 2, a: 'p-conn' };
+    const current = { ...ROW, c: 5, a: 'gm-a' };
+
+    // #when
+    const parsed = [
+      parseRoomMessage(rejectMessage({ n: 0, a: '' }, edit, { reason: 'denied' })),
+      parseRoomMessage(rejectMessage({ n: 0, a: '' }, edit, { reason: 'stale', current })),
+    ];
+
+    // #then
+    expect(parsed).toEqual([
+      { ok: true, value: { v: 1, g: { n: 0, a: '' }, t: 'reject', ...edit, reason: 'denied' } },
+      {
+        ok: true,
+        value: { v: 1, g: { n: 0, a: '' }, t: 'reject', ...edit, reason: 'stale', current },
+      },
+    ]);
   });
 
   test('reads a state-request and a state part', () => {
@@ -262,6 +332,19 @@ describe('parseRoomMessage', () => {
       { v: 1, g: { n: 0, a: '' }, t: 'state', i: 1, n: 1, records: encodeStateRecords([RECORD]) },
     ],
     ['an unknown type', commit({ t: 'shout' })],
+    ['an ack with c 0', commit({ acks: [{ k: 'row:brok:str', c: 0, a: 'p' }] })],
+    ['an ack with no author', commit({ acks: [{ k: 'row:brok:str', c: 1, a: '' }] })],
+    ['a propose of no record', propose({ records: [] })],
+    ['a propose of two records', propose({ records: [ROW, ROW] })],
+    ['a propose with acks', propose({ acks: [] })],
+    ['a stale reject with no current record', reject({ reason: 'stale' })],
+    [
+      'a stale reject whose current record is of another key',
+      reject({ reason: 'stale', current: RECORD }),
+    ],
+    ['a denied reject that carries a record', reject({ current: ROW })],
+    ['a reject of an unknown reason', reject({ reason: 'busy' })],
+    ['a reject with c 0', reject({ c: 0 })],
   ])('drops a message with the right v and %s', (_name, candidate) => {
     // #when
     const parsed = parseRoomMessage(candidate);

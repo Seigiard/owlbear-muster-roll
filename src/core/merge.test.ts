@@ -8,6 +8,7 @@ import {
   nextCounter,
   ownerOf,
   ownersBySheet,
+  sameRecord,
   type Ordering,
 } from '@/core/merge';
 import type { VersionedRecord } from '@/core/records';
@@ -171,6 +172,33 @@ describe('compareGenerations', () => {
 
     // #then
     expect(ordering).toBe(expected);
+  });
+});
+
+describe('sameRecord', () => {
+  const ITEM: VersionedRecord = {
+    k: 'rep:brok:item:r1',
+    d: { order: 0, cells: { item: 'Меч', qty: 2 } },
+    c: 3,
+    a: 'p',
+  };
+
+  test.each<[string, VersionedRecord, boolean]>([
+    [
+      'the same content in another key order',
+      { ...ITEM, d: { cells: { qty: 2, item: 'Меч' }, order: 0 } },
+      true,
+    ],
+    ['another cell value', { ...ITEM, d: { order: 0, cells: { item: 'Меч', qty: 3 } } }, false],
+    ['one cell fewer', { ...ITEM, d: { order: 0, cells: { item: 'Меч' } } }, false],
+    ['a tombstone', { ...ITEM, d: null }, false],
+    ['another author', { ...ITEM, a: 'q' }, false],
+  ])('%s gives %p', (_name, other, expected) => {
+    // #when
+    const same = sameRecord(ITEM, other);
+
+    // #then
+    expect(same).toBe(expected);
   });
 });
 

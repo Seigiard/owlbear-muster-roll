@@ -41,6 +41,9 @@ const TIMING: Timing = {
   snapshotPauseMs: 60000,
   snapshotJitterMs: 0,
   openRequestTtlMs: 15000,
+  proposeResendStartMs: 2000,
+  proposeResendMaxMs: 30000,
+  editDeniedQuietMs: 2000,
 };
 
 // The key of the 2.5 spec, written out by hand.

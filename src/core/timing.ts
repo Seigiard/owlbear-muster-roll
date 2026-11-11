@@ -12,6 +12,9 @@ export type Timing = {
   readonly snapshotPauseMs: number;
   readonly snapshotJitterMs: number;
   readonly openRequestTtlMs: number;
+  readonly proposeResendStartMs: number;
+  readonly proposeResendMaxMs: number;
+  readonly editDeniedQuietMs: number;
 };
 
 export const TIMING: Timing = {
@@ -40,6 +43,13 @@ export const TIMING: Timing = {
   // FR14: a sheet "Открыть лист" asked for waits this long for a window. A window opened by hand
   // later shows its own first tab.
   openRequestTtlMs: 15000,
+  // AD-4: a player resends a `propose` with no answer after this long, then after twice as long
+  // each time, up to the max. A `stale` answer starts the wait again.
+  proposeResendStartMs: 2000,
+  proposeResendMaxMs: 30000,
+  // UX-DR29: "Нет прав на правку" shows once for `denied` answers within this long of the last one
+  // shown, so one revoke that refuses several pending keys shows one notification.
+  editDeniedQuietMs: 2000,
 };
 
 // An access change with no answer this long shows that it failed, so the panel never waits forever.

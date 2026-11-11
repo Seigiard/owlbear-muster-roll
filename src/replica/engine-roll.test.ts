@@ -37,6 +37,9 @@ const TIMING: Timing = {
   snapshotPauseMs: 60000,
   snapshotJitterMs: 0,
   openRequestTtlMs: 15000,
+  proposeResendStartMs: 2000,
+  proposeResendMaxMs: 30000,
+  editDeniedQuietMs: 2000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -631,6 +634,49 @@ describe('the value a roll uses', () => {
       outcome: { code: 'rolled' },
       shown: ['Мастер: Брок, Сила — 7, провал'],
       state: 'catching-up',
+    });
+  });
+});
+
+describe("the value a player's roll uses", () => {
+  test('is its edit still waiting for a GM client', async () => {
+    // #given: the player may edit "Брок", and then no GM client answers.
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
+    const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
+
+    gm.window.sendCommand({
+      type: 'acl-set',
+      sheetId: 'brok',
+      playerId: 'player',
+      name: 'Лиза',
+      on: true,
+    });
+
+    await waitUntil(() => player.store.$records.get().get('acl:brok:player')?.d != null);
+    gm.engine.stop();
+
+    // #when: str 4 makes the target 2.
+    player.window.sendCommand({
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'row', rowId: 'str' },
+      fieldId: 'str',
+      value: 4,
+    });
+
+    await waitUntil(
+      () =>
+        JSON.stringify(player.store.$records.get().get('row:brok:str')?.d) ===
+        '{"str":4,"str_tired":true}',
+    );
+
+    const outcome = await roll(player, STRENGTH);
+
+    // #then
+    expect({ outcome, shown: shown(player) }).toEqual({
+      outcome: { code: 'rolled' },
+      shown: ['Лиза: Брок, Сила — 7, провал'],
     });
   });
 });

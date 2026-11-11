@@ -1,8 +1,8 @@
 import { platform, timing } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { startReplicaEngine } from '@/replica/engine';
-// The roll strings and the token menu labels, the only text the background shows. The engine
-// takes them as options.
+// The roll strings, the token menu labels and "Нет прав на правку", the only text the background
+// shows. The engine takes them as options.
 import { copy } from '@/ui/copy';
 
 platform.onReady(() => {
@@ -20,6 +20,7 @@ async function start(): Promise<void> {
         openSheet: copy.command.openSheet,
         unlinkFailed: copy.unlinkFailed,
       },
+      editDenied: copy.editDenied,
     });
 
     // A closing tab still sends its held commits.

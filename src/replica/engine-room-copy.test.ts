@@ -38,6 +38,9 @@ const TIMING: Timing = {
   snapshotPauseMs: 60000,
   snapshotJitterMs: 0,
   openRequestTtlMs: 15000,
+  proposeResendStartMs: 2000,
+  proposeResendMaxMs: 30000,
+  editDeniedQuietMs: 2000,
 };
 
 // Short enough to see the write, long enough to see that nothing was written before it.

@@ -114,9 +114,8 @@ export function createProjectionStore(): ProjectionStore {
     $party,
     replaceAll: (records, pending, notices, sync) => {
       replica = new Map(records.map((record) => [record.k, record]));
-      // A live engine has no pending view.
-      pendingView =
-        sync.state === 'live' ? new Map() : new Map(pending.map((record) => [record.k, record]));
+      // A live GM engine sends none. A player's holds its edits that wait for a GM (AD-4).
+      pendingView = new Map(pending.map((record) => [record.k, record]));
       show(notices, sync);
       $loaded.set(true);
     },
@@ -131,13 +130,9 @@ export function createProjectionStore(): ProjectionStore {
         replica.set(record.k, record);
       }
 
-      // The engine drops its pending view when catch-up ends, and so does the window.
-      if (sync.state === 'live') {
-        pendingView = new Map();
-      } else {
-        for (const record of pending) {
-          pendingView.set(record.k, record);
-        }
+      // The engine withdraws each key that leaves its pending view, when catch-up ends too.
+      for (const record of pending) {
+        pendingView.set(record.k, record);
       }
 
       show(notices, sync);

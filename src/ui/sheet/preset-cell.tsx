@@ -52,7 +52,7 @@ const READ_ONLY_CHECK_CLASS =
 
 const CHECK_MARK = '✓';
 
-// Every value is editable in place, with no edit mode. For a player every value is text.
+// Every value is editable in place, with no edit mode. A read-only value is text.
 export function SheetCell({
   cell,
   before,

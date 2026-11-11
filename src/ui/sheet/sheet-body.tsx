@@ -14,7 +14,7 @@ type SheetBodyProps = {
   template: PresetTemplate;
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
-  // `null` shows every value read-only, with no row controls: a player edits nothing until Epic 3.
+  // `null` shows every value read-only, with no row controls: a player with no access to the sheet.
   editing: FieldEditing | null;
   // Anyone who sees a sheet rolls its dice, so a read-only sheet has this too.
   rolling: DiceRolling;

@@ -36,6 +36,9 @@ const TIMING: Timing = {
   snapshotPauseMs: 60000,
   snapshotJitterMs: 0,
   openRequestTtlMs: 15000,
+  proposeResendStartMs: 2000,
+  proposeResendMaxMs: 30000,
+  editDeniedQuietMs: 2000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';

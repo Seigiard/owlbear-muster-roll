@@ -70,6 +70,17 @@ export function findPatchField(
   return field?.kind === 'field' ? field : null;
 }
 
+// The fields of the targeted row: a plain row whose first field is `rowId`, or the template row of
+// the repeat section it names. `null` when the template has no such row.
+export function targetFields(
+  template: PresetTemplate,
+  target: { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string },
+): PresetFieldCell[] | null {
+  const row = targetRow(template, target);
+
+  return row === null ? null : row.filter((cell) => cell.kind === 'field');
+}
+
 // A repeat section is named by the id of its template row's first field.
 export function isRepeatSectionId(template: PresetTemplate, sectionId: string): boolean {
   return targetRow(template, { kind: 'rep', sectionId }) !== null;

@@ -1,11 +1,17 @@
-import { ownersBySheet } from '@/core/merge';
+import { acceptedFieldValue, targetFields } from '@/core/field-patch';
+import { counterAbove, ownersBySheet, sameRecord } from '@/core/merge';
+import type { Preset, PresetFieldCell } from '@/core/preset';
 import {
+  fieldValuesSchema,
   playerDataSchema,
   playerIdSchema,
   plinkPrefix,
+  repDataSchema,
+  sheetDataSchema,
+  type FieldValues,
   type VersionedRecord,
 } from '@/core/records';
-import { SHEET_NAME_MAX_LENGTH, sortSheets, type SheetSummary } from '@/core/sheets';
+import { SHEET_NAME_MAX_LENGTH, sheetKey, sortSheets, type SheetSummary } from '@/core/sheets';
 import type { PlayerRole } from '@/core/visibility';
 
 // One party member as the access panel needs it.
@@ -90,6 +96,97 @@ export function canEdit(
   const record = records.get(aclKey(sheetId, playerId));
 
   return record !== undefined && record.d !== null;
+}
+
+// AD-4: the most a proposal's `c` may run ahead of the current record's. A higher one would leave
+// the key with a counter no later mint can pass within the safe integers.
+export const PROPOSE_C_MAX_STEP = 1_000_000;
+
+// The proposer as the gate knows it: its player id, and `author`, the `a` its connection mints with.
+export type ProposalSender = { playerId: string; author: string };
+
+// What a proposal is checked against: the GM client's records and the preset they hold, decoded.
+export type ProposalContext = {
+  records: ReadonlyMap<string, VersionedRecord>;
+  preset: Preset | null;
+};
+
+// AD-4: what a GM client does with a player's proposal. `commit` merges the proposed record
+// unchanged and commits it. `commit-existing` commits `record`, the GM's own, in its place. Both
+// echo the proposer's `(k, c, a)`. `stale` answers with `current`.
+export type ProposalVerdict =
+  | { kind: 'commit' }
+  | { kind: 'commit-existing'; record: VersionedRecord }
+  | { kind: 'denied' }
+  | { kind: 'stale'; current: VersionedRecord };
+
+// Where a player's record lands: a plain row or a repeat instance of one sheet.
+type ProposalPlace = {
+  sheetId: string;
+  target: { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string };
+};
+
+// FR3, AD-4: the checks of a player's record that read no version. The key is a `row:` or `rep:` of
+// a live character, in the character template of the current preset; every field value the record
+// sets or changes against the current record of its key is a field of that row, with the field's
+// JSON type, so a value an older preset left keeps no edit of its row out; the player holds a live
+// `acl:` of the sheet; and `d: null` is a repeat row's removal only. The GM client runs it on a
+// proposal, and the player's own client before it queues an edit.
+export function proposalAllowed(
+  context: ProposalContext,
+  playerId: string,
+  record: VersionedRecord,
+): boolean {
+  const place = proposalPlace(record.k);
+
+  if (place === null || context.preset === null) {
+    return false;
+  }
+
+  const sheet = sheetDataSchema.safeParse(context.records.get(sheetKey(place.sheetId))?.d);
+
+  if (!sheet.success || sheet.data.kind !== 'pc') {
+    return false;
+  }
+
+  const fields = targetFields(context.preset.character, place.target);
+
+  return (
+    fields !== null &&
+    dataFitsRow(fields, place.target.kind, record.d, context.records.get(record.k)?.d ?? null) &&
+    canEdit(context.records, place.sheetId, playerId)
+  );
+}
+
+// AD-4, in this order: the checks of `proposalAllowed`, an `a` that is the sender's own and a `c`
+// at most `PROPOSE_C_MAX_STEP` above the current one; a record identical to the current one is
+// committed; a removal of a removed repeat row commits the existing tombstone; an edit of a removed
+// repeat row is denied; then a `c` above the current one is committed and any other is stale. So an
+// identical proposal from a player with no access is denied. The proposed `d` is never rewritten.
+export function checkProposal(
+  context: ProposalContext,
+  sender: ProposalSender,
+  record: VersionedRecord,
+): ProposalVerdict {
+  const current = context.records.get(record.k);
+
+  if (
+    record.a !== sender.author ||
+    record.c > (current?.c ?? 0) + PROPOSE_C_MAX_STEP ||
+    !proposalAllowed(context, sender.playerId, record)
+  ) {
+    return { kind: 'denied' };
+  }
+
+  if (current === undefined || sameRecord(record, current)) {
+    return { kind: 'commit' };
+  }
+
+  if (record.k.startsWith('rep:') && current.d === null) {
+    return record.d === null ? { kind: 'commit-existing', record: current } : { kind: 'denied' };
+  }
+
+  return counterAbove(record, current) ? { kind: 'commit' } : { kind: 'stale', current };
 }
 
 // The party as a window gets it: one entry per valid player id, a GM when any of its connections
@@ -203,6 +300,66 @@ function heldRight(record: VersionedRecord, sheetId: string): HeldRight | null {
   }
 
   return null;
+}
+
+// `row:{sheetId}:{rowId}` or `rep:{sheetId}:{sectionId}:{instanceId}`. Any other form is the GM's.
+function proposalPlace(key: string): ProposalPlace | null {
+  const [form, sheetId, id, instanceId, ...rest] = key.split(':');
+
+  if (sheetId === undefined || sheetId === '' || id === undefined || id === '' || rest.length > 0) {
+    return null;
+  }
+
+  if (form === 'row' && instanceId === undefined) {
+    return { sheetId, target: { kind: 'row', rowId: id } };
+  }
+
+  if (form === 'rep' && instanceId !== undefined && instanceId !== '') {
+    return { sheetId, target: { kind: 'rep', sectionId: id } };
+  }
+
+  return null;
+}
+
+// Every value that `d` sets or changes against `currentD` names a field of the row and has its JSON
+// type. Only a repeat row takes `d: null`.
+function dataFitsRow(
+  fields: readonly PresetFieldCell[],
+  kind: ProposalPlace['target']['kind'],
+  d: VersionedRecord['d'],
+  currentD: VersionedRecord['d'],
+): boolean {
+  if (d === null) {
+    return kind === 'rep';
+  }
+
+  const values = valuesOf(kind, d);
+
+  if (values === undefined) {
+    return false;
+  }
+
+  const before = valuesOf(kind, currentD) ?? {};
+
+  return Object.entries(values).every(([fieldId, value]) => {
+    if (Object.hasOwn(before, fieldId) && before[fieldId] === value) {
+      return true;
+    }
+
+    const field = fields.find((cell) => cell.id === fieldId);
+
+    return field !== undefined && acceptedFieldValue(field, value).ok;
+  });
+}
+
+// The field values of a row's `d`, or the cells of a repeat row's.
+function valuesOf(
+  kind: ProposalPlace['target']['kind'],
+  d: VersionedRecord['d'],
+): FieldValues | undefined {
+  return kind === 'row'
+    ? fieldValuesSchema.safeParse(d).data
+    : repDataSchema.safeParse(d).data?.cells;
 }
 
 function byName(first: AccessRow, second: AccessRow): number {

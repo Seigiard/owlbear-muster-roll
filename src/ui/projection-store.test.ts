@@ -122,18 +122,18 @@ describe('projection store', () => {
     });
   });
 
-  test('drops the pending view when a delta says catch-up ended', () => {
+  test('keeps a pending view record through a live delta until the engine withdraws its key', () => {
     // #given
     const store = createProjectionStore();
-    const created: VersionedRecord = { k: 'link:c', d: 's5', c: 1, a: 'conn' };
+    const proposed: VersionedRecord = { k: 'link:c', d: 's5', c: 1, a: 'conn' };
 
-    store.replaceAll([FIRST], [created], [], CATCHING_UP);
+    store.replaceAll([FIRST], [proposed], [], CATCHING_UP);
 
     // #when
     store.applyDelta([], [], [], [], LIVE);
 
     // #then
-    expect([...store.$records.get().values()]).toEqual([FIRST]);
+    expect([...store.$records.get().values()]).toEqual([FIRST, proposed]);
   });
 
   test('shows the replica record a delta brings again for a withdrawn pending key, or nothing', () => {
@@ -164,16 +164,22 @@ describe('projection store', () => {
     expect([...store.$records.get().values()]).toEqual([SECOND]);
   });
 
-  test('keeps no pending view from a projection of a live engine', () => {
+  test("shows a live player's pending edits from a projection over the replica", () => {
     // #given
     const store = createProjectionStore();
-    const created: VersionedRecord = { k: 'link:c', d: 's5', c: 1, a: 'conn' };
+    const proposed: VersionedRecord = { k: 'link:a', d: 's9', c: 2, a: 'conn' };
 
     // #when
-    store.replaceAll([FIRST], [created], [], LIVE);
+    store.replaceAll([FIRST, SECOND], [proposed], [], LIVE);
 
     // #then
-    expect([...store.$records.get().values()]).toEqual([FIRST]);
+    expect({
+      shown: [...store.$records.get().values()],
+      replica: store.$replica.get().get('link:a'),
+    }).toEqual({
+      shown: [proposed, SECOND],
+      replica: FIRST,
+    });
   });
 
   test('remembers each rejected command by its id, when two land before anyone reads them', () => {

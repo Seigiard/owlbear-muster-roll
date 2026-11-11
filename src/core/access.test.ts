@@ -4,14 +4,20 @@ import {
   accessRows,
   aclKey,
   canEdit,
+  checkProposal,
   ownedFirst,
   ownedSheetIds,
   PARTY_LIMIT,
   partyEntries,
   playerName,
   plinkKey,
+  PROPOSE_C_MAX_STEP,
+  proposalAllowed,
   type PartyEntry,
+  type ProposalContext,
+  type ProposalSender,
 } from '@/core/access';
+import type { Preset } from '@/core/preset';
 import { playerIdSchema, recordKeySchema, type VersionedRecord } from '@/core/records';
 
 // The GM's own player id, which never gets a row.
@@ -369,6 +375,291 @@ describe('plinkKey', () => {
 
     // #then
     expect(key).toBe('plink:brok:p-1');
+  });
+});
+
+// A character has a plain row "str" with a note and a check, and a repeat section "item".
+const PROPOSAL_PRESET: Preset = {
+  v: 1,
+  character: {
+    sections: [
+      {
+        rows: [
+          [
+            { kind: 'field', type: 'number', id: 'str' },
+            { kind: 'field', type: 'text', id: 'note' },
+            { kind: 'field', type: 'check', id: 'tired' },
+          ],
+        ],
+      },
+      {
+        repeat: true,
+        rows: [
+          [
+            { kind: 'field', type: 'text', id: 'item' },
+            { kind: 'field', type: 'number', id: 'qty' },
+          ],
+        ],
+      },
+    ],
+  },
+  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
+};
+
+const STR_ROW: VersionedRecord = { k: 'row:brok:str', d: { str: 5 }, c: 3, a: 'gm-a' };
+
+const LIVE_ITEM: VersionedRecord = {
+  k: 'rep:brok:item:r1',
+  d: { order: 0, cells: { item: 'Меч' } },
+  c: 2,
+  a: 'gm-a',
+};
+
+const REMOVED_ITEM: VersionedRecord = { k: 'rep:brok:item:r2', d: null, c: 4, a: 'gm-a' };
+
+// A repeat row Оля's connection wrote, so a copy of it is her own record.
+const OWN_ITEM: VersionedRecord = {
+  k: 'rep:brok:item:r3',
+  d: { order: 2, cells: { qty: 1 } },
+  c: 5,
+  a: 'p-conn',
+};
+
+// "Брок" is a live character Оля may edit, "Скелет" an NPC she holds an `acl:` of, "Лиза" a deleted
+// character she held access to, and "Кира" a live character she has no access to.
+const PROPOSAL_CONTEXT: ProposalContext = {
+  preset: PROPOSAL_PRESET,
+  records: byKey([
+    { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 1, a: 'gm-a' },
+    { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'gm-a' },
+    { k: 'sheet:liza', d: null, c: 2, a: 'gm-a' },
+    { k: 'sheet:kira', d: { kind: 'pc', name: 'Кира', order: 1 }, c: 1, a: 'gm-a' },
+    acl('brok', 'p-oly', 'Оля'),
+    acl('skel', 'p-oly', 'Оля'),
+    acl('liza', 'p-oly', 'Оля'),
+    STR_ROW,
+    LIVE_ITEM,
+    REMOVED_ITEM,
+    OWN_ITEM,
+  ]),
+};
+
+// Оля on the connection whose records carry `a: 'p-conn'`.
+const OLY: ProposalSender = { playerId: 'p-oly', author: 'p-conn' };
+
+describe('checkProposal', () => {
+  test.each<[string, VersionedRecord]>([
+    ['a row edit with c above the current one', { ...STR_ROW, d: { str: 6 }, c: 4, a: 'p-conn' }],
+    ['a new repeat row', { k: 'rep:brok:item:r9', d: { order: 1, cells: {} }, c: 1, a: 'p-conn' }],
+    [
+      'a repeat row edit with c above',
+      { ...LIVE_ITEM, d: { order: 0, cells: { item: 'Лук', qty: 2 } }, c: 3, a: 'p-conn' },
+    ],
+    ['a removal of a live repeat row with c above', { ...LIVE_ITEM, d: null, c: 3, a: 'p-conn' }],
+    ['a record identical to the current one, which is its own', OWN_ITEM],
+    [
+      'a c exactly PROPOSE_C_MAX_STEP above the current one',
+      { ...STR_ROW, d: { str: 6 }, c: 3 + PROPOSE_C_MAX_STEP, a: 'p-conn' },
+    ],
+    ['a clear of every value of a row', { ...STR_ROW, d: {}, c: 4, a: 'p-conn' }],
+    [
+      'every field type of the row with its own JSON type',
+      { ...STR_ROW, d: { str: -1.5, note: 'устал', tired: false }, c: 9, a: 'p-conn' },
+    ],
+  ])('commits %s', (_name, record) => {
+    // #when
+    const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, record);
+
+    // #then
+    expect(verdict).toEqual({ kind: 'commit' });
+  });
+
+  test('commits the existing tombstone for a removal of a removed repeat row, whatever its c', () => {
+    // #when
+    const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, {
+      ...REMOVED_ITEM,
+      c: 1,
+      a: 'p-conn',
+    });
+
+    // #then
+    expect(verdict).toEqual({ kind: 'commit-existing', record: REMOVED_ITEM });
+  });
+
+  test.each<[string, VersionedRecord, VersionedRecord]>([
+    ['an equal c with a higher author', { ...STR_ROW, d: { str: 6 }, a: 'p-conn' }, STR_ROW],
+    ['a lower c', { ...STR_ROW, d: { str: 6 }, c: 2, a: 'p-conn' }, STR_ROW],
+    ['a lower c on a live repeat row', { ...LIVE_ITEM, d: null, c: 1, a: 'p-conn' }, LIVE_ITEM],
+  ])('answers stale with the current record for %s', (_name, record, current) => {
+    // #when
+    const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, record);
+
+    // #then
+    expect(verdict).toEqual({ kind: 'stale', current });
+  });
+
+  test.each<[string, VersionedRecord]>([
+    ['a tombstoned sheet', { k: 'row:liza:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
+    ['an NPC sheet', { k: 'row:skel:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
+    ['a sheet with no record', { k: 'row:ghost:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
+    [
+      'an edit of a tombstoned repeat row, even with c above',
+      { ...REMOVED_ITEM, d: { order: 0, cells: {} }, c: 9, a: 'p-conn' },
+    ],
+    ['a row id the template does not have', { k: 'row:brok:note', d: {}, c: 1, a: 'p-conn' }],
+    [
+      'a section id the template does not have as a repeat section',
+      { k: 'rep:brok:str:r9', d: { order: 0, cells: {} }, c: 1, a: 'p-conn' },
+    ],
+    ['a field id absent from the row', { ...STR_ROW, d: { qty: 1 }, c: 4, a: 'p-conn' }],
+    [
+      'a field id of another row in a repeat row',
+      { ...LIVE_ITEM, d: { order: 0, cells: { str: 1 } }, c: 3, a: 'p-conn' },
+    ],
+    ['a string in a number field', { ...STR_ROW, d: { str: '6' }, c: 4, a: 'p-conn' }],
+    ['a number in a text field', { ...STR_ROW, d: { note: 6 }, c: 4, a: 'p-conn' }],
+    ['a string in a check field', { ...STR_ROW, d: { tired: 'да' }, c: 4, a: 'p-conn' }],
+    ['a removal of a plain row', { ...STR_ROW, d: null, c: 4, a: 'p-conn' }],
+    ['a sheet with no access', { k: 'row:kira:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
+    [
+      'the GM key form sheet:',
+      { k: 'sheet:brok', d: { kind: 'pc', name: 'Я', order: 0 }, c: 2, a: 'p-conn' },
+    ],
+    ['the GM key form acl:', { k: 'acl:kira:p-oly', d: { name: 'Оля' }, c: 1, a: 'p-conn' }],
+    ['the GM key form plink:', { k: 'plink:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'p-conn' }],
+    ['the GM key form link:', { k: 'link:token-1', d: 'brok', c: 1, a: 'p-conn' }],
+    ['the GM key form preset', { k: 'preset', d: 'AAAA', c: 9, a: 'p-conn' }],
+    ["an author that is not the sender's", { ...STR_ROW, d: { str: 6 }, c: 4, a: 'gm-a' }],
+    ['a copy of a GM record', STR_ROW],
+    [
+      'a c more than PROPOSE_C_MAX_STEP above the current one',
+      { ...STR_ROW, d: { str: 6 }, c: 4 + PROPOSE_C_MAX_STEP, a: 'p-conn' },
+    ],
+    [
+      'a c more than PROPOSE_C_MAX_STEP above none',
+      { k: 'rep:brok:item:r9', d: { order: 1, cells: {} }, c: 1 + PROPOSE_C_MAX_STEP, a: 'p-conn' },
+    ],
+    ['the largest safe c', { ...STR_ROW, d: { str: 6 }, c: Number.MAX_SAFE_INTEGER, a: 'p-conn' }],
+  ])('denies %s', (_name, record) => {
+    // #when
+    const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, record);
+
+    // #then
+    expect(verdict).toEqual({ kind: 'denied' });
+  });
+
+  test('denies a record identical to the current one from a player with no access', () => {
+    // #when
+    const verdict = checkProposal(
+      PROPOSAL_CONTEXT,
+      { playerId: 'p-gena', author: 'gm-a' },
+      STR_ROW,
+    );
+
+    // #then
+    expect(verdict).toEqual({ kind: 'denied' });
+  });
+
+  test('denies an access that was revoked', () => {
+    // #given
+    const records = new Map(PROPOSAL_CONTEXT.records);
+
+    records.set('acl:brok:p-oly', tombstone('acl:brok:p-oly'));
+
+    // #when
+    const verdict = checkProposal({ ...PROPOSAL_CONTEXT, records }, OLY, {
+      ...STR_ROW,
+      d: { str: 6 },
+      c: 4,
+      a: 'p-conn',
+    });
+
+    // #then
+    expect(verdict).toEqual({ kind: 'denied' });
+  });
+
+  test('denies every edit while the room holds no preset', () => {
+    // #when
+    const verdict = checkProposal({ ...PROPOSAL_CONTEXT, preset: null }, OLY, {
+      ...STR_ROW,
+      d: { str: 6 },
+      c: 4,
+      a: 'p-conn',
+    });
+
+    // #then
+    expect(verdict).toEqual({ kind: 'denied' });
+  });
+});
+
+describe('checkProposal over values an older preset left', () => {
+  // `old` is a field the template no longer has, and `note` holds a number in a text field.
+  const LEGACY_ROW: VersionedRecord = {
+    k: 'row:brok:str',
+    d: { str: 5, old: 'x', note: 7 },
+    c: 3,
+    a: 'gm-a',
+  };
+
+  const LEGACY_ITEM: VersionedRecord = {
+    k: 'rep:brok:item:r1',
+    d: { order: 0, cells: { item: 'Меч', gone: true } },
+    c: 2,
+    a: 'gm-a',
+  };
+
+  const context: ProposalContext = {
+    ...PROPOSAL_CONTEXT,
+    records: new Map([
+      ...PROPOSAL_CONTEXT.records,
+      [LEGACY_ROW.k, LEGACY_ROW],
+      [LEGACY_ITEM.k, LEGACY_ITEM],
+    ]),
+  };
+
+  test.each<[string, VersionedRecord]>([
+    [
+      'an edit of another field of the row, which keeps them',
+      { ...LEGACY_ROW, d: { str: 6, old: 'x', note: 7 }, c: 4, a: 'p-conn' },
+    ],
+    ['a clear of them', { ...LEGACY_ROW, d: { str: 5 }, c: 4, a: 'p-conn' }],
+    [
+      'an edit of another cell of the repeat row, which keeps them',
+      { ...LEGACY_ITEM, d: { order: 0, cells: { item: 'Лук', gone: true } }, c: 3, a: 'p-conn' },
+    ],
+  ])('commits %s', (_name, record) => {
+    // #when
+    const verdict = checkProposal(context, OLY, record);
+
+    // #then
+    expect(verdict).toEqual({ kind: 'commit' });
+  });
+
+  test.each<[string, VersionedRecord]>([
+    [
+      'a new value of a field the template lacks',
+      { ...LEGACY_ROW, d: { str: 5, old: 'y', note: 7 }, c: 4, a: 'p-conn' },
+    ],
+    [
+      'a new value of the wrong JSON type',
+      { ...LEGACY_ROW, d: { str: 5, old: 'x', note: 8 }, c: 4, a: 'p-conn' },
+    ],
+  ])('denies %s', (_name, record) => {
+    // #when
+    const verdict = checkProposal(context, OLY, record);
+
+    // #then
+    expect(verdict).toEqual({ kind: 'denied' });
+  });
+});
+
+describe('proposalAllowed', () => {
+  test('reads no version: a stale record of an allowed key passes', () => {
+    // #when
+    const allowed = proposalAllowed(PROPOSAL_CONTEXT, 'p-oly', { ...STR_ROW, c: 1, a: 'p-conn' });
+
+    // #then
+    expect(allowed).toBe(true);
   });
 });
 

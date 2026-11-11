@@ -643,8 +643,8 @@ function WindowRoot({
     };
   })();
 
-  // UX-DR10, UX-DR27: character tabs only, each read-only. Both empty-state texts need a data
-  // source, `dataSourceKnown`.
+  // UX-DR10, UX-DR27: character tabs only, each read-only unless the player has access. Both
+  // empty-state texts need a data source, `dataSourceKnown`.
   //
   // Story 2.6: with no data source and no GM, the room copy's outcome says why. A copy of a newer
   // build keeps loading, as its banner already asks for a reload.
@@ -684,29 +684,32 @@ function WindowRoot({
       kind: 'tabs',
       selectedTab: shownTab,
       onSelectTab: setSelectedTab,
-      scrollingTabs: characters.map((sheet) => ({
-        id: sheetKey(sheet.sheetId),
-        label: sheet.name,
-        mark: owned.has(sheet.sheetId) ? copy.ownMark : undefined,
-        content:
-          !ready || preset === null ? (
-            loading
-          ) : (
-            <>
-              <ReadOnlySheetHeader
-                name={sheet.name}
-                canEdit={canEdit(records, sheet.sheetId, playerId)}
-              />
-              <SheetBody
-                template={preset.character}
-                sheetId={sheet.sheetId}
-                records={records}
-                editing={null}
-                rolling={rolling}
-              />
-            </>
-          ),
-      })),
+      scrollingTabs: characters.map((sheet) => {
+        // FR3: a live `acl:` makes the fields editable and shows the repeat row controls. Each
+        // edit waits for a GM client's check (AD-4), and the pending view shows it meanwhile.
+        const mayEdit = canEdit(records, sheet.sheetId, playerId);
+
+        return {
+          id: sheetKey(sheet.sheetId),
+          label: sheet.name,
+          mark: owned.has(sheet.sheetId) ? copy.ownMark : undefined,
+          content:
+            !ready || preset === null ? (
+              loading
+            ) : (
+              <>
+                <ReadOnlySheetHeader name={sheet.name} canEdit={mayEdit} />
+                <SheetBody
+                  template={preset.character}
+                  sheetId={sheet.sheetId}
+                  records={records}
+                  editing={mayEdit ? editing : null}
+                  rolling={rolling}
+                />
+              </>
+            ),
+        };
+      }),
       pinnedTabs: [],
     };
   }

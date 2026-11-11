@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { FORMAT_VERSION } from '@/core/format-version';
 import type { JsonValue } from '@/core/json';
 import { compareGenerations } from '@/core/merge';
-import { recordSchema } from '@/core/records';
+import { recordSchema, type VersionedRecord } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 import { generationSchema, type Generation } from '@/core/storage-key';
 import type { PlayerRole } from '@/core/visibility';
@@ -56,12 +56,51 @@ const ADMISSION: AdmissionTable = {
 // Only `v` is read first, so a message shape of a newer build cannot break the version check.
 const envelopeSchema = z.looseObject({ v: z.number().int().nonnegative() });
 
+// AD-4: one player edit, named by its `(k, c, a)`. A GM's answer echoes it, so the player clears,
+// retries or drops exactly the entry it sent.
+const editIdSchema = z.strictObject({
+  k: z.string().min(1),
+  c: z.number().int().positive(),
+  a: z.string().min(1),
+});
+
+// `acks` echoes the `(k, c, a)` of every player proposal the commit answers, also when the batch
+// carries a newer record of that key. A commit of a GM's own edits has none. No format version
+// change: nothing is released yet, and an older commit with no `acks` reads as `[]`.
 const commitSchema = z.strictObject({
   v: z.literal(FORMAT_VERSION),
   g: generationSchema,
   t: z.literal('commit'),
   records: z.array(recordSchema).min(1),
+  acks: z.array(editIdSchema).default([]),
 });
+
+// AD-4: a player's edit of one record, sent until a GM client answers it. The player never merges
+// it itself.
+const proposeSchema = z.strictObject({
+  v: z.literal(FORMAT_VERSION),
+  g: generationSchema,
+  t: z.literal('propose'),
+  records: z.array(recordSchema).length(1),
+});
+
+// AD-4: a GM client refused a proposal, echoing its `(k, c, a)`. `denied`: the player has no right
+// to it. `stale`: its `c` is not above the GM's, and `current` is the GM's record of the key, which
+// the player applies its patch to.
+const rejectSchema = z
+  .strictObject({
+    v: z.literal(FORMAT_VERSION),
+    g: generationSchema,
+    t: z.literal('reject'),
+    k: z.string().min(1),
+    c: z.number().int().positive(),
+    a: z.string().min(1),
+    reason: z.enum(['denied', 'stale']),
+    current: recordSchema.optional(),
+  })
+  .refine((message) =>
+    message.reason === 'stale' ? message.current?.k === message.k : message.current === undefined,
+  );
 
 // AD-7: a client's catch-up nonce `r`, a nanoid.
 const nonceSchema = z.string().min(1).max(64);
@@ -128,6 +167,8 @@ const rollSchema = z.strictObject({
 
 const roomMessageSchema = z.discriminatedUnion('t', [
   commitSchema,
+  proposeSchema,
+  rejectSchema,
   stateRequestSchema,
   stateSchema,
   pingSchema,
@@ -136,6 +177,14 @@ const roomMessageSchema = z.discriminatedUnion('t', [
 ]);
 
 export type CommitMessage = z.infer<typeof commitSchema>;
+
+export type EditId = z.infer<typeof editIdSchema>;
+
+export type ProposeMessage = z.infer<typeof proposeSchema>;
+
+export type RejectMessage = z.infer<typeof rejectSchema>;
+
+export type RejectReason = RejectMessage['reason'];
 
 export type StateRequestMessage = z.infer<typeof stateRequestSchema>;
 
@@ -199,9 +248,36 @@ export function admitRoomMessage(
   return rule.generations.includes(relation);
 }
 
-// The envelope of a commit with no records, measured by the size splitter.
-export function commitEnvelope(generation: Generation): CommitMessage {
+// A commit as sent: `acks` goes only with a commit that answers proposals.
+export type CommitEnvelope = Omit<CommitMessage, 'acks'> & { acks?: EditId[] };
+
+// The envelope of a commit with no records and no acks, measured by the size splitter.
+export function commitEnvelope(generation: Generation): CommitEnvelope {
   return { v: FORMAT_VERSION, g: generation, t: 'commit', records: [] };
+}
+
+export function proposeMessage(generation: Generation, record: VersionedRecord): ProposeMessage {
+  return { v: FORMAT_VERSION, g: generation, t: 'propose', records: [record] };
+}
+
+// Why a GM client rejects a proposal: `stale` always carries the GM's current record, `denied` none.
+export type RejectAnswer = { reason: 'denied' } | { reason: 'stale'; current: VersionedRecord };
+
+export function rejectMessage(
+  generation: Generation,
+  edit: EditId,
+  answer: RejectAnswer,
+): RejectMessage {
+  return { v: FORMAT_VERSION, g: generation, t: 'reject', ...edit, ...answer };
+}
+
+// The `(k, c, a)` that names a record as an edit.
+export function editIdOf(record: Pick<VersionedRecord, 'k' | 'c' | 'a'>): EditId {
+  return { k: record.k, c: record.c, a: record.a };
+}
+
+export function sameEditId(first: EditId, second: EditId): boolean {
+  return first.k === second.k && first.c === second.c && first.a === second.a;
 }
 
 export function stateRequestMessage(generation: Generation, r: string): StateRequestMessage {

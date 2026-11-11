@@ -78,8 +78,9 @@ const projectionSchema = z
     i: z.number().int().positive(),
     n: z.number().int().positive(),
     records: z.array(recordSchema),
-    // The pending view: records as the GM's queued intents would leave them. They stand in for the
-    // records of their keys until catch-up ends.
+    // The pending view: records as the GM's queued intents would leave them, which stand in for
+    // the records of their keys until catch-up ends, and a player's edits waiting for a GM's check
+    // (AD-4), which stand in until answered.
     pending: z.array(recordSchema),
     notices: z.array(noticeSchema),
     sync: syncSchema,
@@ -93,10 +94,11 @@ const deltaSchema = z.strictObject({
   engine: idSchema,
   seq: sequenceSchema,
   records: z.array(recordSchema),
-  // Changed records of the pending view. A delta in `live` carries none and drops the view.
+  // Changed records of the pending view. A GM's in `live` carries none.
   pending: z.array(recordSchema),
   // Keys the window drops before it takes this delta's records: keys the pending view no longer
-  // changes, whose replica record the delta brings again, and keys the role no longer sees.
+  // changes, as when catch-up ends or a proposal is answered, whose replica record the delta brings
+  // again, and keys the role no longer sees.
   withdrawn: z.array(z.string()),
   notices: z.array(noticeSchema),
   sync: syncSchema,
@@ -254,7 +256,7 @@ const commandRejectedSchema = z.strictObject({
     'invalid-player-id',
     // Access and an owner are given on a character only, never on an NPC.
     'not-character',
-    // A player client edits nothing until Epic 3 brings `propose`.
+    // A player's write that is not a field or repeat row edit of a character it has access to.
     'not-allowed',
     // AD-14: a preset upload waits until catch-up ends.
     'catching-up',

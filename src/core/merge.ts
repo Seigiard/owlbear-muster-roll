@@ -1,3 +1,4 @@
+import { sameJson } from '@/core/json';
 import {
   playerDataSchema,
   playerIdSchema,
@@ -108,6 +109,20 @@ function laterOwner(
   }
 
   return { record, playerId };
+}
+
+// AD-4: a GM client merges a player's proposal only when its counter is above the current record's.
+// An equal counter with a higher author still counts as stale, so a player never wins a tie it
+// raced a GM edit into.
+export function counterAbove(proposed: Version, current: Version): boolean {
+  return proposed.c > current.c;
+}
+
+// One `(k, c, a)` with one `d`: what a GM client already holds.
+export function sameRecord(first: VersionedRecord, second: VersionedRecord): boolean {
+  return (
+    first.k === second.k && compareVersions(first, second) === 0 && sameJson(first.d, second.d)
+  );
 }
 
 export function nextCounter(highestKnown: number, lastMinted: number): number {

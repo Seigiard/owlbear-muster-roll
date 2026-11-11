@@ -25,6 +25,9 @@ const TIMING: Timing = {
   snapshotPauseMs: 60000,
   snapshotJitterMs: 0,
   openRequestTtlMs: 15000,
+  proposeResendStartMs: 2000,
+  proposeResendMaxMs: 30000,
+  editDeniedQuietMs: 2000,
 };
 
 const GENERATION = { n: 0, a: '' };
@@ -163,6 +166,128 @@ describe('commit outbox', () => {
 
     // #then
     expect(rig.sent.map((one) => one.data)).toEqual(['first']);
+  });
+
+  test("a newer GM record of a proposed key still carries the player's (k, c, a) in its commit", async () => {
+    // #given
+    const rig = createRig();
+    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const proposed: VersionedRecord = { k: 'row:brok:str', d: { str: 7 }, c: 4, a: 'p-conn' };
+    const ack = { k: proposed.k, c: 4, a: 'p-conn' };
+
+    await holdQueue(rig);
+
+    // #when
+    outbox.add([proposed], [ack]);
+    outbox.add([row('str', 5)]);
+    await drained(rig);
+
+    // #then
+    expect(rig.sent.slice(1)).toEqual([
+      {
+        ...commit([row('str', 5)]),
+        data: { v: 1, g: GENERATION, t: 'commit', records: [row('str', 5)], acks: [ack] },
+      },
+    ]);
+  });
+
+  test('echoes one proposal answered twice before the commit goes out once', async () => {
+    // #given
+    const rig = createRig();
+    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const proposed: VersionedRecord = { k: 'row:brok:str', d: { str: 7 }, c: 4, a: 'p-conn' };
+    const ack = { k: proposed.k, c: 4, a: 'p-conn' };
+
+    await holdQueue(rig);
+
+    // #when
+    outbox.add([proposed], [ack]);
+    outbox.add([proposed], [ack]);
+    await drained(rig);
+
+    // #then
+    expect(rig.sent.slice(1).map((one) => Object(one.data).acks)).toEqual([[ack]]);
+  });
+
+  test("keeps one ack per author of a key, that author's newest", async () => {
+    // #given
+    const rig = createRig();
+    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const record: VersionedRecord = { k: 'row:brok:str', d: { str: 7 }, c: 9, a: 'gm-a' };
+
+    await holdQueue(rig);
+
+    // #when
+    outbox.add([record], [{ k: record.k, c: 4, a: 'p-oly' }]);
+    outbox.add([record], [{ k: record.k, c: 6, a: 'p-oly' }]);
+    outbox.add([record], [{ k: record.k, c: 5, a: 'p-oly' }]);
+    outbox.add([record], [{ k: record.k, c: 2, a: 'p-gena' }]);
+    await drained(rig);
+
+    // #then
+    expect(rig.sent.slice(1).map((one) => Object(one.data).acks)).toEqual([
+      [
+        { k: record.k, c: 6, a: 'p-oly' },
+        { k: record.k, c: 2, a: 'p-gena' },
+      ],
+    ]);
+  });
+
+  test('sends a record again with the acks that did not fit one message with it', async () => {
+    // #given: the record is about 13000 bytes and each ack about 640, so two acks fit with it.
+    const rig = createRig();
+    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const record = row('big', 1, 'x'.repeat(13000));
+
+    const acks = [0, 1, 2, 3, 4].map((index) => ({
+      k: record.k,
+      c: 1,
+      a: `p${index}${'-'.repeat(600)}`,
+    }));
+
+    await holdQueue(rig);
+
+    // #when
+    outbox.add([record], acks);
+    await drained(rig);
+
+    // #then
+    const sent = rig.sent.slice(1).map((one) => Object(one.data));
+
+    expect({
+      records: sent.map((data) => data.records),
+      acks: sent.map((data) => data.acks),
+      fit: rig.sent.every((one) => jsonByteLength(one.data) < MESSAGE_BYTE_LIMIT),
+    }).toEqual({
+      records: [[record], [record], [record]],
+      acks: [acks.slice(0, 2), acks.slice(2, 4), acks.slice(4)],
+      fit: true,
+    });
+  });
+
+  test('puts each ack in the part that carries the record of its key', async () => {
+    // #given: each record is about 4000 bytes, so the five need two messages.
+    const rig = createRig();
+    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+    const records = ['a', 'b', 'c', 'd', 'e'].map((id) => row(id, 1, 'ы'.repeat(2000)));
+    const lastAck = { k: 'row:brok:e', c: 1, a: 'gm-a' };
+
+    await holdQueue(rig);
+
+    // #when
+    outbox.add(records, [lastAck]);
+    await drained(rig);
+
+    // #then
+    expect(
+      rig.sent.slice(1).map((one) => ({
+        keys: Object(one.data).records.map((record: VersionedRecord) => record.k),
+        acks: Object(one.data).acks,
+      })),
+    ).toEqual([
+      { keys: ['row:brok:a', 'row:brok:b', 'row:brok:c'], acks: undefined },
+      { keys: ['row:brok:d', 'row:brok:e'], acks: [lastAck] },
+    ]);
   });
 
   test('flush hands every held record to the queue, so its flushNow sends them at once', async () => {
