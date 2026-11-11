@@ -2,6 +2,7 @@ import OBR from '@owlbear-rodeo/sdk';
 
 import type { JsonObject, JsonValue } from '@/core/json';
 import { TIMING, type Timing } from '@/core/timing';
+import { sameItemIds } from '@/core/token-selection';
 import type { PartyMember, Platform, PlayerRole } from '@/platform/ports';
 
 import { createBrowserStorage } from './browser-storage';
@@ -68,6 +69,35 @@ export const platform: Platform = {
           callback();
         }
       });
+    },
+  },
+  selection: {
+    getSelection: async () => (await OBR.player.getSelection()) ?? [],
+    onChange: (callback) => {
+      let last: string[] | null = null;
+
+      // A player change fires on role, name and other changes too, so only a new selection calls
+      // back. Owlbear reports no selection as `undefined`.
+      return OBR.player.onChange((player) => {
+        const next = player.selection ?? [];
+
+        if (last === null || !sameItemIds(last, next)) {
+          last = [...next];
+          callback([...next]);
+        }
+      });
+    },
+    // `replace: false` adds to what the player has selected, as simple-hp-tracker does.
+    select: async (itemIds) => {
+      if (itemIds.length > 0) {
+        await OBR.player.select(itemIds, false);
+      }
+    },
+    // No list would deselect every item, so an empty one sends nothing.
+    deselect: async (itemIds) => {
+      if (itemIds.length > 0) {
+        await OBR.player.deselect(itemIds);
+      }
     },
   },
   storage: createBrowserStorage(() => localStorage),

@@ -2,6 +2,7 @@ import type { JsonValue } from '@/core/json';
 import type { WindowSize } from '@/core/preset';
 import { err, ok, type Result } from '@/core/result';
 import { TIMING, type Timing } from '@/core/timing';
+import { sameItemIds } from '@/core/token-selection';
 import type {
   ContextMenuItem,
   PartyMember,
@@ -160,6 +161,12 @@ export type MockPlatform = Platform & {
   sceneLabelCalls: () => SceneLabelCall[];
   // The next call of each listed kind rejects and changes nothing, one per entry.
   failNextSceneLabelCalls: (kinds: SceneLabelCall['kind'][]) => void;
+  // Replaces this client's map selection, as a click or a drag on the map would. The selection port
+  // keeps whatever ids it is given, items absent from the scene included, so a test sees what the
+  // window asked for.
+  setMapSelection: (itemIds: string[]) => void;
+  // The next selection port write rejects and changes nothing.
+  failNextSelectionWrite: () => void;
 };
 
 declare global {
@@ -229,6 +236,7 @@ export function createMockPlatform(
   let actionOpenFails = false;
   const actionSizes: WindowSizeCall[] = [];
   let actionSizeFails = false;
+  let selectionWriteFails = false;
   const { room, connectionId, playerId, name } = client;
   let role: PlayerRole = client.role;
   let joined = false;
@@ -293,6 +301,18 @@ export function createMockPlatform(
     }
 
     return label === undefined ? '' : label;
+  }
+
+  function writeSelection(change: (selected: string[]) => string[]): Promise<void> {
+    if (selectionWriteFails) {
+      selectionWriteFails = false;
+
+      return Promise.reject(new Error('mock selection write failed'));
+    }
+
+    room.setSelection(connectionId, change(room.getSelection(connectionId)));
+
+    return Promise.resolve();
   }
 
   // An update of one item, which Owlbear reports as an item list.
@@ -361,6 +381,28 @@ export function createMockPlatform(
           roleListeners.delete(callback);
         };
       },
+    },
+    selection: {
+      getSelection: () => Promise.resolve(room.getSelection(connectionId)),
+      // As the adapter: a change that leaves the same ids calls nothing back.
+      onChange: (callback) => {
+        let last = room.getSelection(connectionId);
+
+        return room.onSelectionChange(connectionId, (itemIds) => {
+          if (!sameItemIds(last, itemIds)) {
+            last = itemIds;
+            callback(itemIds);
+          }
+        });
+      },
+      select: (itemIds) =>
+        itemIds.length === 0
+          ? Promise.resolve()
+          : writeSelection((selected) => [...new Set([...selected, ...itemIds])]),
+      deselect: (itemIds) =>
+        itemIds.length === 0
+          ? Promise.resolve()
+          : writeSelection((selected) => selected.filter((id) => !itemIds.includes(id))),
     },
     storage: {
       getItem: (key) => attemptStorage('read', () => backing.get(key)),
@@ -600,6 +642,12 @@ export function createMockPlatform(
       }
     },
     sceneItemLabel: readLabel,
+    setMapSelection: (itemIds) => {
+      room.setSelection(connectionId, [...itemIds]);
+    },
+    failNextSelectionWrite: () => {
+      selectionWriteFails = true;
+    },
     sceneLabelCalls: () => [...labelCalls],
     failNextSceneLabelCalls: (kinds) => {
       labelFailures.push(...kinds);

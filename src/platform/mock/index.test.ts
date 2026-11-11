@@ -522,6 +522,80 @@ describe('mock readiness', () => {
   });
 });
 
+describe('mock map selection', () => {
+  test("adds and removes items as Owlbear's select with no replace and deselect do, for every page of the client only", async () => {
+    // #given: client A has a background and a window, client B one page.
+    const room = createMemoryRoom();
+    const busA = createMemoryBus();
+    const windowA = client(room, 'a', 'GM', busA);
+    const backgroundA = client(room, 'a', 'GM', busA);
+    const pageB = client(room, 'b', 'GM', createMemoryBus());
+    const heard: string[][] = [];
+
+    windowA.setMapSelection(['tree']);
+    backgroundA.selection.onChange((itemIds) => {
+      heard.push(itemIds);
+    });
+
+    // #when
+    await windowA.selection.select(['t1', 't2', 'tree']);
+    await windowA.selection.deselect(['t1', 'missing']);
+
+    // #then
+    expect({
+      a: await backgroundA.selection.getSelection(),
+      b: await pageB.selection.getSelection(),
+      heard,
+    }).toEqual({
+      a: ['tree', 't2'],
+      b: [],
+      heard: [
+        ['tree', 't1', 't2'],
+        ['tree', 't2'],
+      ],
+    });
+  });
+
+  test('an empty list and a selection of the same ids call nothing back', async () => {
+    // #given
+    const platform = createMockPlatform();
+    const heard: string[][] = [];
+
+    platform.setMapSelection(['t1']);
+    platform.selection.onChange((itemIds) => {
+      heard.push(itemIds);
+    });
+
+    // #when
+    await platform.selection.select([]);
+    await platform.selection.deselect([]);
+    await platform.selection.select(['t1']);
+
+    // #then
+    expect(heard).toEqual([]);
+  });
+
+  test('a failed write rejects and leaves the selection as it was', async () => {
+    // #given
+    const platform = createMockPlatform();
+
+    platform.setMapSelection(['t1']);
+    platform.failNextSelectionWrite();
+
+    // #when
+    const outcome = await platform.selection.deselect(['t1']).then(
+      () => 'resolved',
+      () => 'rejected',
+    );
+
+    // #then
+    expect({ outcome, selection: await platform.selection.getSelection() }).toEqual({
+      outcome: 'rejected',
+      selection: ['t1'],
+    });
+  });
+});
+
 describe('mock scene', () => {
   test('opens ready with no item', async () => {
     // #given

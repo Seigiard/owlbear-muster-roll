@@ -41,6 +41,13 @@ export const SCENE_STORAGE_PREFIX = 'mock-scene:';
 
 export const SCENE_CHANNEL_PREFIX = 'muster-roll-mock-scene:';
 
+// Each client's map selection, shared by its pages as Owlbear shares one player's selection, lives
+// in localStorage under this prefix, the room id and the connection id, as the scene does. A
+// BroadcastChannel of the channel prefix and the room id carries each change with its connection.
+export const SELECTION_STORAGE_PREFIX = 'mock-selection:';
+
+export const SELECTION_CHANNEL_PREFIX = 'muster-roll-mock-selection:';
+
 // The background page of a client with this param runs a fake dice extension that answers every
 // die with the listed faces, comma-separated, as `startFakeDiceExtension` does.
 export const DICE_FACES_PARAM = 'mock-dice-faces';
