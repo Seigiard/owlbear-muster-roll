@@ -2,7 +2,7 @@
 title: 'TASK-41 Let a Preset Define Any Number of Sheet Sets and Single Sheets'
 type: 'feature'
 created: '2026-11-11'
-status: 'draft'
+status: 'ready-for-dev'
 baseline_commit: ''
 route: 'dispatch'
 review_loop_iteration: 0
@@ -22,12 +22,12 @@ context:
 
 **Problem:** A preset holds exactly two templates, `character` and `npc`, NPCs are a fixed special case, and the GM types each tab name by hand. A second system with a shared inventory or a spell list cannot be described. Backlog task: TASK-41; its six acceptance criteria apply in full.
 
-**Approach:** Format v2: a preset is `sheets: Entry[]`, each a sheet set (`kind: "set"`) or a single sheet (`kind: "single"`) with its own sections, exactly as `docs/preset-format.md` now documents it. Every rule that branched on `pc`/`npc` reads the sheet's entry instead (AD-18). NPC becomes an ordinary single sheet; token links and duplicates move to repeat blocks (AD-19, CAP-30). v1 data is refused, and "Очистить всё" clears a room (CAP-31). The owner chose the whole scope as one task.
+**Approach:** Format v2 (`docs/adr/0001-presets-are-lists-of-sheet-sets-and-single-sheets.md`): a preset is `templates: Template[]`, each a sheet set (`kind: "set"`) or a single sheet (`kind: "single"`) with its own sections, exactly as `docs/preset-format.md` now documents it. Every rule that branched on `pc`/`npc` reads the sheet's template instead (AD-18). NPC becomes an ordinary single sheet; token links and duplicates move to repeat blocks (AD-19, CAP-30). v1 data is refused, and a wipe («Очистить всё») clears a room (CAP-31). The owner chose the whole scope as one task.
 
 ## Boundaries & Constraints
 
 **Always:**
-- Owner decisions (SPEC.md, memlog of 2026-11-11): sheet set and single sheet names; `visibility: "gm"` hides a template (interface, rolls, player token menu); `players: "edit"` only on a single sheet; a sheet set keeps the access panel and owner; `nameField` required on a sheet set, a non-repeat `text` field, editable by anyone with write access, header name edits it, empty shows "Без имени"; `tokens` on a sheet set, a single sheet or a `repeat` section; all rows of a repeat section form one block; upload rule «в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем»; "Дублировать…" on any repeat block (GM only); one scrolling tab list in preset order, gear pinned, a "+" per sheet set after its last sheet, a player's own sheets first; an upload that removes a template deletes its sheets and its one confirmation names values and sheets; snapshot import drops sheets of unknown templates and counts them; no migration from v1; GM-only "Очистить всё" in Settings.
+- Owner decisions (SPEC.md, memlog of 2026-11-11): sheet set and single sheet names; `visibility: "gm"` hides a template (interface, rolls, player token menu); `players: "edit"` only on a single sheet; a sheet set keeps the access panel and owner; `nameField` required on a sheet set, a non-repeat `text` field, editable by anyone with write access, header name edits it, empty shows "Без имени"; `tokens` on a sheet set, a single sheet or a `repeat` section; all rows of a repeat section form one repeat block; upload rule «в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем»; "Дублировать…" on any repeat block (GM only); one scrolling tab list in preset order, gear pinned, a "+" per sheet set after its last sheet, a player's own sheets first; an upload that removes a template deletes its sheets and its one confirmation names values and sheets; snapshot import drops sheets of unknown templates and counts them; no migration from v1; GM-only "Очистить всё" in Settings.
 - Records and rules exactly as ARCHITECTURE-SPINE AD-2, AD-4, AD-9 (wipe), AD-11 (`mr2`), AD-12 (`v: 2`), AD-13 (`hidden`), AD-14, AD-18, AD-19 and the Visibility and Sheet names conventions.
 - Copy exactly as EXPERIENCE.md Voice and Tone; new copy lives in `src/ui/copy.ts`.
 - New refusal reasons exactly as the "Refused files" table of `docs/preset-format.md`.
@@ -50,8 +50,8 @@ context:
 | Hidden single sheet roll | Player-visible? no; GM rolls on NPC | Only GM clients show it; dice extension `gm_only` | N/A |
 | Player edits single sheet | `players: "edit"` | Committed by a GM client | Without it: `denied` |
 | Upload drops a sheet set | 3 sheets of it exist | Confirmation names deleted sheets 3 and erased values | Cancel changes nothing |
-| Upload drops section `tokens` | Blocks have links | Links tombstoned, not counted | N/A |
-| Block removed | Block has 2 token links | Both links tombstoned by the GM client | Player removal: GM committer tombstones |
+| Upload drops section `tokens` | Repeat blocks have links | Links tombstoned, not counted | N/A |
+| Repeat block removed | It has 2 token links | Both links tombstoned by the GM client | Player removal: GM committer tombstones |
 | Duplicate a repeat block ×9 | First field "Скелет 1" | Repeat blocks "Скелет 2".."Скелет 10" at section end, no links | Count outside 1-50: "Нужно число от 1 до 50" |
 | Snapshot import | File sheet of an unknown template | Dropped, counted in "Не войдут листы" | N/A |
 | v1 room copy | Room metadata copy `v: 1` | GM banner names "Очистить всё"; player "не читается"; no automatic overwrite | N/A |
