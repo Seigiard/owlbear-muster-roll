@@ -122,7 +122,7 @@ System font only, because a window loads inside Owlbear and must render at once.
 
 ## Layout & Spacing
 
-The window has the tab bar, an optional banner and one scrolling content area with padding of `{spacing.3}`. Sections are blocks that take the preset's section width and wrap as whole blocks. Below 480 px each section takes the full width. Inside a `columns` section, the rows always share one grid. If the grid does not fit, the section scrolls horizontally. Gaps use `{spacing.1}` inside a row, `{spacing.2}` between controls and `{spacing.4}` between sections.
+The window has the tab bar, an optional banner and one scrolling content area with padding of `{spacing.3}`. Sections take the preset's section width and wrap as whole sections. Below 480 px each section takes the full width. Inside a `columns` section, the rows always share one grid. If the grid does not fit, the section scrolls horizontally. Gaps use `{spacing.1}` inside a row, `{spacing.2}` between controls and `{spacing.4}` between sections.
 
 ## Elevation & Depth
 
@@ -137,7 +137,7 @@ Tabs use `{rounded.md}` on the top corners. The window uses `{rounded.lg}`. Chip
 | Component | Visual rule |
 | --- | --- |
 | Tab bar | `{components.tab}` for each tab. The active tab uses `{components.tab-active}` and joins the content area |
-| Sheet header | Name or Лист title in `{typography.sheet-title}`, chips after it, `⋯` at the end, bottom rule in `{colors.line}` |
+| Sheet header | Name or single sheet title in `{typography.sheet-title}`, chips after it, `⋯` at the end, bottom rule in `{colors.line}` |
 | Field value | Arrangement comes from the preset. Even preset rows use `{colors.surface-stripe}`. An editable value has a dotted underline in `{colors.line-strong}` |
 | Pending mark | Text "Ожидает" in `{typography.label-sm}`, as the warning surface and text pair, after the value |
 | Section | `{typography.section-heading}` in `{colors.accent}`, with a left rule in `{colors.line}` |

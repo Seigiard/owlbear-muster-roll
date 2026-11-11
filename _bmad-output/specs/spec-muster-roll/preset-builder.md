@@ -28,7 +28,7 @@ The extension settings have a button that opens the builder in a new tab. Exchan
 
 - Rewrites the id in every formula that resolves to that field, by whole word: `str` does not touch `str_tired`.
 - Says how many formulas changed.
-- Scopes follow the parser (`resolveFieldReference`): an entry's non-repeat fields are one scope, and each `repeat` block is its own. Each Набор and Лист is separate.
+- Scopes follow the parser (`resolveFieldReference`): a template's fields outside repeat sections are one scope, and each repeat section is its own. Each template is separate.
 - In a preset opened from a file, a changed id warns that the field's stored values in the room will be erased, because an upload erases values of removed ids (CAP-8).
 
 ## Draft, undo, validation
@@ -43,8 +43,8 @@ The extension settings have a button that opens the builder in a new tab. Exchan
 
 The whole format of `docs/preset-format.md`:
 
-- every Набор and Лист with its properties;
-- section `title`, `width`, `columns`, `repeat` and `tokens`;
+- every sheet set and single sheet with its properties;
+- section `title`, `width`, `columns`, `repeat` and linkable;
 - every cell kind;
 - `window`.
 
