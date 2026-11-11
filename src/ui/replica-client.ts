@@ -11,6 +11,7 @@ import {
   type DeltaMessage,
   type EngineMessage,
   type ProjectionMessage,
+  type RollRequestMessage,
   type WindowMessage,
 } from '@/core/ui-messages';
 import type { BroadcastOptions, BroadcastPort } from '@/platform/ports';
@@ -20,6 +21,8 @@ import type { ProjectionStore } from '@/ui/projection-store';
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
 
 const OWN_COMMAND_ID_LIMIT = 256;
+
+const OWN_ROLL_ID_LIMIT = 256;
 
 type Phase = 'requesting' | 'assembling' | 'live';
 
@@ -35,8 +38,13 @@ export type CommandFailure = 'too-large';
 // `urgent` skips the spacing queue, for a window that is closing.
 export type SendCommandOptions = { urgent?: boolean };
 
+// A roll request as a view makes it. The client adds the id.
+export type RollRequest = Omit<RollRequestMessage, 't' | 'id'>;
+
 export type ReplicaClient = {
   sendCommand: (command: Command, options?: SendCommandOptions) => Result<string, CommandFailure>;
+  // Through the same queue as commands, so a field patch sent before it reaches the engine first.
+  requestRoll: (request: RollRequest) => Result<string, CommandFailure>;
   // Sends every waiting message at once, for a window that is closing.
   flushNow: () => void;
   stop: () => void;
@@ -50,6 +58,7 @@ export function startReplicaClient(
   newId: () => string = nanoid,
 ): ReplicaClient {
   const ownCommandIds = createBoundedIdSet(OWN_COMMAND_ID_LIMIT);
+  const ownRollIds = createBoundedIdSet(OWN_ROLL_ID_LIMIT);
   let phase: Phase = 'requesting';
   let nonce = newId();
   let queuedNonce: string | null = null;
@@ -191,6 +200,10 @@ export function startReplicaClient(
       if (ownCommandIds.has(message.id)) {
         store.setRejection(message);
       }
+    } else if (message.t === 'roll-outcome') {
+      if (ownRollIds.has(message.id)) {
+        store.setRollOutcome(message);
+      }
     } else if (phase === 'live') {
       applyLiveDelta(message);
     } else if (phase === 'assembling') {
@@ -225,6 +238,21 @@ export function startReplicaClient(
 
       sent.catch((error) => {
         console.error('Muster Roll could not send a command', error);
+      });
+
+      return ok(id);
+    },
+    requestRoll: (roll) => {
+      const id = newId();
+      const message: WindowMessage = { t: 'roll-request', id, ...roll };
+
+      if (!fitsOneMessage(message)) {
+        return err('too-large');
+      }
+
+      ownRollIds.add(id);
+      send(message).catch((error) => {
+        console.error('Muster Roll could not request a roll', error);
       });
 
       return ok(id);

@@ -1,6 +1,7 @@
 import type { PartyMember, PartyPort, PlayerRole } from '@/platform/ports';
 
-export type RoomSender = { role: PlayerRole; playerId: string };
+// `name` is the player name the party lists for the connection.
+export type RoomSender = { role: PlayerRole; playerId: string; name: string };
 
 export type PartyRoster = {
   // The sender behind a connection id, or `null` when the party does not know it after one re-read.
@@ -19,7 +20,10 @@ export function createPartyRoster(party: PartyPort): PartyRoster {
 
   function replace(players: readonly PartyMember[]): void {
     members = new Map(
-      players.map((player) => [player.connectionId, { role: player.role, playerId: player.id }]),
+      players.map((player) => [
+        player.connectionId,
+        { role: player.role, playerId: player.id, name: player.name },
+      ]),
     );
   }
 

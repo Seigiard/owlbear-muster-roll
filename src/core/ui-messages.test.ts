@@ -9,6 +9,7 @@ import {
   UI_CHANNEL,
   type Command,
   type EngineMessage,
+  type RollOutcome,
   type RoomCopyStatus,
   type SyncState,
   type WindowMessage,
@@ -249,6 +250,61 @@ describe('parseWindowMessage', () => {
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
 
+  const ROLL_REQUEST = {
+    t: 'roll-request',
+    id: 'r1',
+    sheetId: 'brok',
+    place: { sectionIndex: 1, rowIndex: 0, cellIndex: 3, instanceId: 'i1' },
+    shown: { bonus: { kind: 'text', text: '5' }, str: { kind: 'error' } },
+  } satisfies WindowMessage;
+
+  test('accepts a roll request with the place of its cell and the shown values', () => {
+    // #when
+    const parsed = parseWindowMessage(ROLL_REQUEST);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: ROLL_REQUEST });
+  });
+
+  test.each<[string, JsonValue]>([
+    ['a record key', { ...ROLL_REQUEST, k: 'row:brok:str' }],
+    ['a negative cell index', { ...ROLL_REQUEST, place: { ...ROLL_REQUEST.place, cellIndex: -1 } }],
+    [
+      'a place with no instance',
+      { ...ROLL_REQUEST, place: { sectionIndex: 0, rowIndex: 0, cellIndex: 1 } },
+    ],
+    ['a shown value of an unknown kind', { ...ROLL_REQUEST, shown: { str: { kind: 'number' } } }],
+    [
+      'no shown values',
+      { t: 'roll-request', id: 'r1', sheetId: 'brok', place: ROLL_REQUEST.place },
+    ],
+    ['an empty sheet id', { ...ROLL_REQUEST, sheetId: '' }],
+    ['a sheet id longer than a roll takes', { ...ROLL_REQUEST, sheetId: 'x'.repeat(65) }],
+  ])('refuses a roll request with %s', (_name, message) => {
+    // #when
+    const parsed = parseWindowMessage(message);
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+  });
+
+  test('accepts a roll request on a sheet and an instance whose ids are as long as an id can be', () => {
+    // #given: a sheet or a repeat row id is at most 64 characters.
+    const longest = 'x'.repeat(64);
+
+    const message = {
+      ...ROLL_REQUEST,
+      sheetId: longest,
+      place: { ...ROLL_REQUEST.place, instanceId: longest },
+    } satisfies WindowMessage;
+
+    // #when
+    const parsed = parseWindowMessage(message);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: message });
+  });
+
   test('refuses a request without a nonce', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'projection-request' });
@@ -286,6 +342,31 @@ describe('parseEngineMessage', () => {
 
     // #then
     expect(parsed).toEqual({ ok: true, value: { t: 'command-rejected', id: 'c1', reason } });
+  });
+
+  test.each<[string, RollOutcome]>([
+    ['rolled', { code: 'rolled' }],
+    ['a field error with its field', { code: 'field', field: 'Сила' }],
+    ['an arithmetic error', { code: 'arithmetic' }],
+    ['a refusal', { code: 'refused' }],
+    ['a send that failed', { code: 'failed' }],
+  ])('accepts a roll outcome of %s', (_name, outcome) => {
+    // #given
+    const message: EngineMessage = { t: 'roll-outcome', id: 'r1', outcome };
+
+    // #when
+    const parsed = parseEngineMessage(message);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: message });
+  });
+
+  test('refuses a field error that names no field', () => {
+    // #when
+    const parsed = parseEngineMessage({ t: 'roll-outcome', id: 'r1', outcome: { code: 'field' } });
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
 
   test('refuses a rejection for an unknown reason', () => {

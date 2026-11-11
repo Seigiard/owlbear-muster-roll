@@ -5,6 +5,7 @@ import type { PresetCell, PresetFieldCell } from '@/core/preset';
 import { cellLabel, isChecked, valueText, type FieldValues } from '@/core/sheet-values';
 import { copy } from '@/ui/copy';
 
+import { DiceButton, type DiceRow } from './dice-button';
 import {
   useCheckFieldEdit,
   useTextFieldEdit,
@@ -20,6 +21,8 @@ type SheetCellProps = {
   // `null` for a row with no field, which has no record.
   place: FieldPlace | null;
   readOnly: boolean;
+  row: DiceRow;
+  cellIndex: number;
 };
 
 type FieldProps = {
@@ -50,10 +53,22 @@ const READ_ONLY_CHECK_CLASS =
 const CHECK_MARK = '✓';
 
 // Every value is editable in place, with no edit mode. For a player every value is text.
-export function SheetCell({ cell, before, values, place, readOnly }: SheetCellProps): ReactNode {
+export function SheetCell({
+  cell,
+  before,
+  values,
+  place,
+  readOnly,
+  row,
+  cellIndex,
+}: SheetCellProps): ReactNode {
   const label = cellLabel(cell, before);
 
-  // A dice cell is a static label until Epic 4 makes it roll.
+  // Anyone who sees a sheet rolls it, with or without write access.
+  if (cell.kind === 'dice') {
+    return <DiceButton label={label} row={row} cellIndex={cellIndex} />;
+  }
+
   if (cell.kind !== 'field' || place === null) {
     return <span>{label}</span>;
   }

@@ -66,6 +66,25 @@ afterEach(() => {
 });
 
 describe('send queue', () => {
+  test('reports a message given up on, one sent after a rate limit, and one sent', async () => {
+    // #given
+    const rig = createRig();
+    const queue = createSendQueue(rig, TIMING, rig.wait);
+
+    spyOn(console, 'error').mockImplementation(() => undefined);
+    rig.failures.push({ kind: 'failed', reason: 'down' }, { kind: 'rate-limited' });
+
+    // #when
+    const reports = await Promise.all([
+      queue.enqueueReported('ui', 1, LOCAL),
+      queue.enqueueReported('ui', 2, LOCAL),
+      queue.enqueueReported('ui', 3, LOCAL),
+    ]);
+
+    // #then: the first meets the failure, and the second waits out the rate limit.
+    expect({ reports, sent: rig.sent }).toEqual({ reports: [false, true, true], sent: [2, 3] });
+  });
+
   test('sends in order and spaces each send by the injected value', async () => {
     // #given
     const rig = createRig();

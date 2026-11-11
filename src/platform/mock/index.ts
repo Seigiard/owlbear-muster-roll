@@ -82,6 +82,8 @@ export type MockPlatform = Platform & {
   leaveParty: () => void;
   // Puts a REMOTE message on the room as if the given connection had sent it.
   sendRemoteAs: (connectionId: string, channel: string, data: JsonValue) => void;
+  // Every notification this page has shown, oldest first.
+  shownNotifications: () => string[];
 };
 
 declare global {
@@ -124,6 +126,7 @@ export function createMockPlatform(
   const themeListeners = new Set<ThemeListener>();
   const roleListeners = new Set<() => void>();
   const sendFailures: SendFailure[] = [];
+  const notifications: string[] = [];
   const { room, connectionId, playerId, name } = client;
   let role: PlayerRole = client.role;
   let joined = false;
@@ -239,7 +242,11 @@ export function createMockPlatform(
       open: () => Promise.resolve(),
     },
     notification: {
-      show: () => Promise.resolve(MOCK_NOTIFICATION_ID),
+      show: (message) => {
+        notifications.push(message);
+
+        return Promise.resolve(MOCK_NOTIFICATION_ID);
+      },
     },
     theme: {
       getTheme: () => {
@@ -300,6 +307,7 @@ export function createMockPlatform(
     sendRemoteAs: (sender, channel, data) => {
       room.postRemote(channel, data, sender);
     },
+    shownNotifications: () => [...notifications],
   };
 }
 

@@ -80,6 +80,11 @@ export function parseStoredRecord(
   }
 }
 
+// The key of one sheet's record of the plain row whose first field is `rowId`.
+export function rowKey(sheetId: string, rowId: string): string {
+  return `row:${sheetId}:${rowId}`;
+}
+
 // The key prefix of every row one sheet has in one repeat section. It ends with ":", so a sheet "a"
 // never reads the rows of a sheet "ab".
 export function repKeyPrefix(sheetId: string, sectionId: string): string {

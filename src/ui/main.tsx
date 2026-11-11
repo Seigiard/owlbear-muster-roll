@@ -19,6 +19,8 @@ import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
 import { SettingsView } from '@/ui/settings/settings-view';
 import { ReadOnlySheetHeader, SheetHeader } from '@/ui/sheet/sheet-header';
 import { DeleteConfirmation } from '@/ui/sheet/delete-confirmation';
+import type { DiceRolling } from '@/ui/sheet/dice-button';
+import { createLocalFieldValues } from '@/ui/sheet/local-field-values';
 import { NpcTab } from '@/ui/sheet/npc-tab';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { createFieldFlushes, type FieldEditing } from '@/ui/sheet/use-field-edit';
@@ -60,6 +62,7 @@ type WindowRootProps = {
   initialRole: PlayerRole;
   store: ProjectionStore;
   sendCommand: ReplicaClient['sendCommand'];
+  requestRoll: ReplicaClient['requestRoll'];
 };
 
 const container = document.getElementById('root');
@@ -71,6 +74,7 @@ if (container === null) {
 const root = createRoot(container);
 const store = createProjectionStore();
 const pageHideFlushes = createFieldFlushes();
+const localFieldValues = createLocalFieldValues();
 
 platform.onReady(() => {
   void start();
@@ -98,14 +102,24 @@ async function start(): Promise<void> {
     });
 
     root.render(
-      <WindowRoot initialRole={initialRole} store={store} sendCommand={client.sendCommand} />,
+      <WindowRoot
+        initialRole={initialRole}
+        store={store}
+        sendCommand={client.sendCommand}
+        requestRoll={client.requestRoll}
+      />,
     );
   } catch (error) {
     console.error('Muster Roll could not render its window', error);
   }
 }
 
-function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootProps): ReactNode {
+function WindowRoot({
+  initialRole,
+  store: projection,
+  sendCommand,
+  requestRoll,
+}: WindowRootProps): ReactNode {
   const notices = useStore(projection.$notices);
   const loaded = useStore(projection.$loaded);
   const sync = useStore(projection.$sync);
@@ -160,8 +174,18 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
       $rejections: projection.$rejections,
       pauseMs: TIMING.fieldSavePauseMs,
       pageHideFlushes,
+      localValues: localFieldValues,
     }),
     [sendCommand, projection],
+  );
+
+  const rolling = useMemo<DiceRolling>(
+    () => ({
+      requestRoll,
+      $rollOutcomes: projection.$rollOutcomes,
+      localValues: localFieldValues,
+    }),
+    [requestRoll, projection],
   );
 
   const firstTab = characterTabs[0] ?? NPC_TAB;
@@ -465,6 +489,7 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
                   sheetId={sheet.sheetId}
                   records={records}
                   editing={editing}
+                  rolling={rolling}
                 />
               )}
             </>
@@ -494,6 +519,7 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
                 template={preset.npc}
                 records={records}
                 editing={editing}
+                rolling={rolling}
                 sendCommand={sendCommand}
                 store={projection}
                 confirmation={confirmationFor(
@@ -579,6 +605,7 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
                 sheetId={sheet.sheetId}
                 records={records}
                 editing={null}
+                rolling={rolling}
               />
             </>
           ),

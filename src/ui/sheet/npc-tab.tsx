@@ -9,6 +9,7 @@ import { Button } from '@/ui/primitives/button';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
+import type { DiceRolling } from './dice-button';
 import { SheetHeader } from './sheet-header';
 import { SheetBody } from './sheet-body';
 import type { FieldEditing } from './use-field-edit';
@@ -18,6 +19,7 @@ type NpcTabProps = {
   template: PresetTemplate;
   records: ReadonlyMap<string, VersionedRecord>;
   editing: FieldEditing;
+  rolling: DiceRolling;
   sendCommand: ReplicaClient['sendCommand'];
   store: Pick<ProjectionStore, '$rejections'>;
   // The open delete confirmation for one of these NPCs, or `null`.
@@ -40,6 +42,7 @@ export function NpcTab({
   template,
   records,
   editing,
+  rolling,
   sendCommand,
   store,
   confirmation,
@@ -96,6 +99,7 @@ export function NpcTab({
                     sheetId={npc.sheetId}
                     records={records}
                     editing={editing}
+                    rolling={rolling}
                   />
                 </section>
               </li>

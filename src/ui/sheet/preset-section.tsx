@@ -8,6 +8,7 @@ import { repeatInstances, rowValues, sectionTitle, type FieldValues } from '@/co
 import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
 
+import type { DiceRow } from './dice-button';
 import { SheetCell } from './preset-cell';
 import type { FieldPlace } from './use-field-edit';
 import { useRepeatRows, type RepeatRows } from './use-repeat-rows';
@@ -29,6 +30,8 @@ const INDEX_KEY_PREFIX = '#';
 
 type SheetSectionProps = {
   section: PresetSection;
+  // The section's position in its template, which a roll request names.
+  sectionIndex: number;
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
   readOnly: boolean;
@@ -41,6 +44,7 @@ type SheetRow = {
   values: FieldValues;
   place: FieldPlace | null;
   instanceId: string | null;
+  dice: DiceRow;
 };
 
 type RowsProps = {
@@ -57,6 +61,7 @@ type SectionContentProps = Omit<SheetSectionProps, 'readOnly'> & {
 
 export function SheetSection({
   section,
+  sectionIndex,
   sheetId,
   records,
   readOnly,
@@ -72,10 +77,17 @@ export function SheetSection({
 
   const content =
     repeat === null ? (
-      <PlainContent section={section} sheetId={sheetId} records={records} readOnly={readOnly} />
+      <PlainContent
+        section={section}
+        sectionIndex={sectionIndex}
+        sheetId={sheetId}
+        records={records}
+        readOnly={readOnly}
+      />
     ) : readOnly ? (
       <ReadOnlyRepeatContent
         section={section}
+        sectionIndex={sectionIndex}
         sheetId={sheetId}
         records={records}
         sectionId={repeat.sectionId}
@@ -84,6 +96,7 @@ export function SheetSection({
     ) : (
       <RepeatContent
         section={section}
+        sectionIndex={sectionIndex}
         sheetId={sheetId}
         records={records}
         sectionId={repeat.sectionId}
@@ -118,8 +131,17 @@ function Body({ children }: { children: ReactNode }): ReactNode {
   );
 }
 
-function PlainContent({ section, sheetId, records, readOnly }: SheetSectionProps): ReactNode {
-  const rows = useMemo(() => plainRows(section, sheetId, records), [section, sheetId, records]);
+function PlainContent({
+  section,
+  sectionIndex,
+  sheetId,
+  records,
+  readOnly,
+}: SheetSectionProps): ReactNode {
+  const rows = useMemo(
+    () => plainRows(section, sectionIndex, sheetId, records),
+    [section, sectionIndex, sheetId, records],
+  );
 
   return (
     <Body>
@@ -131,14 +153,15 @@ function PlainContent({ section, sheetId, records, readOnly }: SheetSectionProps
 // A player's repeat section: the rows, with no "Удалить" and no "Добавить строку".
 function ReadOnlyRepeatContent({
   section,
+  sectionIndex,
   sheetId,
   records,
   sectionId,
   template,
 }: SectionContentProps): ReactNode {
   const rows = useMemo(
-    () => repeatRows(template, sectionId, sheetId, records),
-    [template, sectionId, sheetId, records],
+    () => repeatRows(template, sectionIndex, sectionId, sheetId, records),
+    [template, sectionIndex, sectionId, sheetId, records],
   );
 
   return (
@@ -152,14 +175,15 @@ function ReadOnlyRepeatContent({
 // "Удалить", and "Добавить строку" under them.
 function RepeatContent({
   section,
+  sectionIndex,
   sheetId,
   records,
   sectionId,
   template,
 }: SectionContentProps): ReactNode {
   const rows = useMemo(
-    () => repeatRows(template, sectionId, sheetId, records),
-    [template, sectionId, sheetId, records],
+    () => repeatRows(template, sectionIndex, sectionId, sheetId, records),
+    [template, sectionIndex, sectionId, sheetId, records],
   );
 
   const instanceIds = useMemo(() => rows.flatMap((row) => row.instanceId ?? []), [rows]);
@@ -275,6 +299,8 @@ function Cells({ row, readOnly }: { row: SheetRow; readOnly: boolean }): ReactNo
       values={row.values}
       place={row.place}
       readOnly={readOnly}
+      row={row.dice}
+      cellIndex={index}
     />
   ));
 }
@@ -293,39 +319,65 @@ function repeatTemplate(
 
 function plainRows(
   section: PresetSection,
+  sectionIndex: number,
   sheetId: string,
   records: ReadonlyMap<string, VersionedRecord>,
 ): SheetRow[] {
   return section.rows.map((cells, index) => {
     const rowId = firstFieldId(cells);
+    const target: FieldPatchTarget | null = rowId === null ? null : { kind: 'row', rowId };
 
     return {
       key: rowId ?? `${INDEX_KEY_PREFIX}${index}`,
       cells,
       values: rowValues(records, sheetId, rowId),
-      place: rowId === null ? null : placeOf(records, sheetId, { kind: 'row', rowId }),
+      place: target === null ? null : placeOf(records, sheetId, target),
       instanceId: null,
+      dice: {
+        sheetId,
+        sectionIndex,
+        rowIndex: index,
+        instanceId: null,
+        target,
+        fieldIds: fieldIdsOf(cells),
+      },
     };
   });
 }
 
+// A repeat section holds one template row, so every instance is row 0 of its section.
 function repeatRows(
   template: readonly PresetCell[],
+  sectionIndex: number,
   sectionId: string,
   sheetId: string,
   records: ReadonlyMap<string, VersionedRecord>,
 ): SheetRow[] {
-  return repeatInstances(records, sheetId, sectionId).map((instance) => ({
-    key: instance.instanceId,
-    cells: template,
-    values: instance.values,
-    place: placeOf(records, sheetId, {
-      kind: 'rep',
-      sectionId,
+  const fieldIds = fieldIdsOf(template);
+
+  return repeatInstances(records, sheetId, sectionId).map((instance) => {
+    const target: FieldPatchTarget = { kind: 'rep', sectionId, instanceId: instance.instanceId };
+
+    return {
+      key: instance.instanceId,
+      cells: template,
+      values: instance.values,
+      place: placeOf(records, sheetId, target),
       instanceId: instance.instanceId,
-    }),
-    instanceId: instance.instanceId,
-  }));
+      dice: {
+        sheetId,
+        sectionIndex,
+        rowIndex: 0,
+        instanceId: instance.instanceId,
+        target,
+        fieldIds,
+      },
+    };
+  });
+}
+
+function fieldIdsOf(cells: readonly PresetCell[]): ReadonlySet<string> {
+  return new Set(cells.flatMap((cell) => (cell.kind === 'field' ? [cell.id] : [])));
 }
 
 function placeOf(

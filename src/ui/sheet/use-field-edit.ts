@@ -17,6 +17,8 @@ import { isChecked, valueText } from '@/core/sheet-values';
 import type { CommandRejectedMessage } from '@/core/ui-messages';
 import type { ReplicaClient } from '@/ui/replica-client';
 
+import type { LocalFieldValues } from './local-field-values';
+
 export type FieldFlushes = {
   // Returns the function that takes the flush back out.
   register: (flush: () => void) => () => void;
@@ -30,6 +32,8 @@ export type FieldEditing = {
   pauseMs: number;
   // Run on `pagehide`, so a closing window still sends what was typed.
   pageHideFlushes: FieldFlushes;
+  // Read by a roll, which uses the value the window shows.
+  localValues: LocalFieldValues;
 };
 
 // Where a field's patch lands, and the record it lands in as this window sees it.
@@ -128,8 +132,14 @@ export function useTextFieldEdit(
   });
 
   function update(next: EditState): void {
+    const previous = stateRef.current;
+
     stateRef.current = next;
     setState(next);
+
+    if (shownLocallyChanged(previous, next)) {
+      latest.current.editing.localValues.changed(latest.current.place.sheetId);
+    }
   }
 
   // Shows the value as it is now and measures change from it.
@@ -257,6 +267,30 @@ export function useTextFieldEdit(
     // Registered once: `save` reads everything it needs through the refs.
   }, []);
 
+  // While a field holds a draft, it shows the draft and not the record: typing not sent yet, the
+  // text a focused field keeps, or an input error. A roll uses that value, so it reads it here.
+  useEffect(
+    () =>
+      latest.current.editing.localValues.register(() => {
+        const { draft, error } = stateRef.current;
+
+        if (draft === null) {
+          return null;
+        }
+
+        const current = latest.current;
+
+        return {
+          sheetId: current.place.sheetId,
+          target: current.place.target,
+          fieldId: current.fieldId,
+          shown: error === null ? { kind: 'text', text: draft.text } : { kind: 'error' },
+        };
+      }),
+    // Registered once, as above.
+    [],
+  );
+
   const refusedTooLong = shown.refused?.reason === 'too-large' ? shown.refused.held : null;
 
   // The background found the record too long, so the text comes back with the message, unless the
@@ -380,6 +414,16 @@ function useShownValue(
     refused: held !== null && rejection !== undefined ? { held, reason: rejection.reason } : null,
     hold: setHeld,
   };
+}
+
+// Typing, a revert, or an input error that comes or goes changes what the field shows. A focus or
+// a save that ends the draft does not: the field goes on showing the same value.
+function shownLocallyChanged(previous: EditState, next: EditState): boolean {
+  if (previous.error !== next.error) {
+    return true;
+  }
+
+  return previous.draft !== null && next.draft !== null && previous.draft.text !== next.draft.text;
 }
 
 // An empty text clears the field. A `text` value is stored as typed, line breaks included.

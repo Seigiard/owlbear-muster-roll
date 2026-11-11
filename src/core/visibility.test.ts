@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { VersionedRecord } from '@/core/records';
 
-import { visibleRecords, visibleSheets } from './visibility';
+import { rollShownTo, visibleRecords, visibleSheets, type PlayerRole } from './visibility';
 
 const PRESET: VersionedRecord = { k: 'preset', d: 'eJw=', c: 1, a: 'conn' };
 
@@ -158,5 +158,20 @@ describe('visibleSheets', () => {
       characters: sheets.characters.map((sheet) => sheet.sheetId),
       npcs: sheets.npcs,
     }).toEqual({ characters: ['liza', 'brok', 'skeleton'], npcs: [] });
+  });
+});
+
+describe('rollShownTo', () => {
+  test.each<[PlayerRole, 'pc' | 'npc', boolean]>([
+    ['GM', 'pc', true],
+    ['GM', 'npc', true],
+    ['PLAYER', 'pc', true],
+    ['PLAYER', 'npc', false],
+  ])('a %s client shows a roll of a %s sheet: %p', (role, kind, shown) => {
+    // #when
+    const result = rollShownTo(role, kind);
+
+    // #then
+    expect(result).toBe(shown);
   });
 });

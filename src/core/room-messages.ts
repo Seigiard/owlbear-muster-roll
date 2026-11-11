@@ -102,12 +102,37 @@ const aliveSchema = z.strictObject({
   digest: z.number().int().min(0).max(0xffffffff),
 });
 
+// zod's number refuses Infinity and NaN, so a received result is always a finite roll.
+const rollResultSchema = z.strictObject({
+  roll: z.number(),
+  faces: z.array(z.number().int().positive()),
+  target: z.number().nullable(),
+  targetFaces: z.array(z.number().int().positive()),
+  outcome: z.enum(['success', 'failure']).nullable(),
+});
+
+// AD-13: one roll, evaluated once by the roller. Receivers show the names as sent and never
+// recompute; `id` is a nanoid they deduplicate by.
+const rollSchema = z.strictObject({
+  v: z.literal(FORMAT_VERSION),
+  g: generationSchema,
+  t: z.literal('roll'),
+  id: z.string().min(1).max(64),
+  sheetId: z.string().min(1).max(64),
+  kind: z.enum(['pc', 'npc']),
+  roller: z.string(),
+  sheetName: z.string(),
+  cell: z.string(),
+  result: rollResultSchema,
+});
+
 const roomMessageSchema = z.discriminatedUnion('t', [
   commitSchema,
   stateRequestSchema,
   stateSchema,
   pingSchema,
   aliveSchema,
+  rollSchema,
 ]);
 
 export type CommitMessage = z.infer<typeof commitSchema>;
@@ -119,6 +144,11 @@ export type StateMessage = z.infer<typeof stateSchema>;
 export type PingMessage = z.infer<typeof pingSchema>;
 
 export type AliveMessage = z.infer<typeof aliveSchema>;
+
+export type RollMessage = z.infer<typeof rollSchema>;
+
+// What a roll carries apart from the envelope.
+export type RollContent = Omit<RollMessage, 'v' | 'g' | 't'>;
 
 export type RoomMessage = z.infer<typeof roomMessageSchema>;
 
@@ -180,6 +210,10 @@ export function stateRequestMessage(generation: Generation, r: string): StateReq
 
 export function pingMessage(generation: Generation): PingMessage {
   return { v: FORMAT_VERSION, g: generation, t: 'ping' };
+}
+
+export function rollMessage(generation: Generation, content: RollContent): RollMessage {
+  return { v: FORMAT_VERSION, g: generation, t: 'roll', ...content };
 }
 
 export function aliveMessage(generation: Generation, digest: number): AliveMessage {

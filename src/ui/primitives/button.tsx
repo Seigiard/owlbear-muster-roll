@@ -15,6 +15,8 @@ export type PressableProps = {
   autoFocus?: boolean;
   // Replaces the visible text as the name, for a control that repeats and must say which one it is.
   accessibleName?: string;
+  // The id of a message about this control, for an enabled one. A disabled one names its reason.
+  describedBy?: string;
   ref?: Ref<HTMLButtonElement>;
 };
 
@@ -31,6 +33,7 @@ export function Pressable({
   disabledReason,
   autoFocus,
   accessibleName,
+  describedBy,
   ref,
 }: PressableProps & { className: string }): ReactNode {
   const reasonId = useId();
@@ -44,7 +47,7 @@ export function Pressable({
       isDisabled={isDisabled}
       onPress={onPress}
       autoFocus={autoFocus}
-      aria-describedby={isDisabled ? reasonId : undefined}
+      aria-describedby={isDisabled ? reasonId : describedBy}
     >
       {children}
     </AriaButton>

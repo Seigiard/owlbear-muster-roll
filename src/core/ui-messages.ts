@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { dicePlaceSchema, shownValueSchema } from '@/core/dice-roll';
 import { fieldPatchTargetSchema } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
 import { recordSchema } from '@/core/records';
@@ -183,12 +184,44 @@ const commandRejectedSchema = z.strictObject({
   ]),
 });
 
-const windowMessageSchema = z.discriminatedUnion('t', [projectionRequestSchema, commandSchema]);
+// AD-13: a roll is no command, as it writes nothing, so a player and a client in catch-up roll too.
+// `shown` holds what the window shows in the fields it holds locally, by field id: unsent text, or
+// an input error. The engine overlays it on the records and its own pending edits.
+const rollRequestSchema = z.strictObject({
+  t: z.literal('roll-request'),
+  id: idSchema,
+  // The bounds of a roll's `sheetId`, so every request that rolls makes a roll a room accepts.
+  sheetId: idSchema,
+  place: dicePlaceSchema,
+  shown: z.record(z.string(), shownValueSchema),
+});
+
+// `rolled` went out to the room. `field` and `arithmetic` name what is wrong with the formula.
+// `refused` is a place with no dice cell, or a sheet this client cannot roll. `failed` is a roll the
+// engine could not send.
+const rollOutcomeSchema = z.strictObject({
+  t: z.literal('roll-outcome'),
+  id: idSchema,
+  outcome: z.discriminatedUnion('code', [
+    z.strictObject({ code: z.literal('rolled') }),
+    z.strictObject({ code: z.literal('field'), field: z.string() }),
+    z.strictObject({ code: z.literal('arithmetic') }),
+    z.strictObject({ code: z.literal('refused') }),
+    z.strictObject({ code: z.literal('failed') }),
+  ]),
+});
+
+const windowMessageSchema = z.discriminatedUnion('t', [
+  projectionRequestSchema,
+  commandSchema,
+  rollRequestSchema,
+]);
 
 const engineMessageSchema = z.discriminatedUnion('t', [
   projectionSchema,
   deltaSchema,
   commandRejectedSchema,
+  rollOutcomeSchema,
 ]);
 
 export type Notice = z.infer<typeof noticeSchema>;
@@ -210,6 +243,12 @@ export type CommandRejectedMessage = z.infer<typeof commandRejectedSchema>;
 export type RejectionReason = CommandRejectedMessage['reason'];
 
 export type ProjectionRequestMessage = z.infer<typeof projectionRequestSchema>;
+
+export type RollRequestMessage = z.infer<typeof rollRequestSchema>;
+
+export type RollOutcomeMessage = z.infer<typeof rollOutcomeSchema>;
+
+export type RollOutcome = RollOutcomeMessage['outcome'];
 
 export type ProjectionMessage = z.infer<typeof projectionSchema>;
 

@@ -90,6 +90,7 @@ export const copy = {
     `${roller}: ${sheet}, ${cell} — ${result}`,
   rollSuccess: 'успех',
   rollFailure: 'провал',
+  rollFailed: 'Бросок не удался. Попробуйте ещё раз.',
   editDenied: 'Нет прав на правку',
   dataReplaced: 'Данные комнаты заменены',
   guestNote: 'Гость привязан к своему браузеру. Из другого браузера доступ придётся выдать снова.',

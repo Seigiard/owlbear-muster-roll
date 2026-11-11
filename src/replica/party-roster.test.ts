@@ -92,7 +92,7 @@ describe('party roster', () => {
 
     // #then
     expect({ sender, extraReads: party.reads - readsBefore }).toEqual({
-      sender: { role: 'GM', playerId: 'owner' },
+      sender: { role: 'GM', playerId: 'owner', name: 'gm-b' },
       extraReads: 0,
     });
   });
@@ -112,7 +112,7 @@ describe('party roster', () => {
 
     // #then
     expect({ sender, extraReads: party.reads - readsBefore }).toEqual({
-      sender: { role: 'PLAYER', playerId: 'lisa' },
+      sender: { role: 'PLAYER', playerId: 'lisa', name: 'late' },
       extraReads: 1,
     });
   });
@@ -149,7 +149,7 @@ describe('party roster', () => {
     // #then
     expect({ left: await roster.senderOf('gm-b'), joined: await roster.senderOf('gm-c') }).toEqual({
       left: null,
-      joined: { role: 'GM', playerId: 'player' },
+      joined: { role: 'GM', playerId: 'player', name: 'gm-c' },
     });
   });
 
@@ -164,7 +164,11 @@ describe('party roster', () => {
     party.change([member('gm-b', 'PLAYER')]);
 
     // #then
-    expect(await roster.senderOf('gm-b')).toEqual({ role: 'PLAYER', playerId: 'player' });
+    expect(await roster.senderOf('gm-b')).toEqual({
+      role: 'PLAYER',
+      playerId: 'player',
+      name: 'gm-b',
+    });
   });
 
   test('keeps a party change over a read that started before it', async () => {
@@ -182,7 +186,11 @@ describe('party roster', () => {
     await settled();
 
     // #then
-    expect(await roster.senderOf('gm-b')).toEqual({ role: 'PLAYER', playerId: 'player' });
+    expect(await roster.senderOf('gm-b')).toEqual({
+      role: 'PLAYER',
+      playerId: 'player',
+      name: 'gm-b',
+    });
   });
 
   test('applies a read that started after the last party change', async () => {
@@ -198,7 +206,7 @@ describe('party roster', () => {
     const sender = await roster.senderOf('late');
 
     // #then
-    expect(sender).toEqual({ role: 'GM', playerId: 'player' });
+    expect(sender).toEqual({ role: 'GM', playerId: 'player', name: 'late' });
   });
 
   test('shares one read among misses that come while it is on its way', async () => {
@@ -224,7 +232,11 @@ describe('party roster', () => {
 
     // #then
     expect({ senders: await senders, extraReads: party.reads - readsBefore }).toEqual({
-      senders: [{ role: 'GM', playerId: 'player' }, { role: 'GM', playerId: 'player' }, null],
+      senders: [
+        { role: 'GM', playerId: 'player', name: 'late' },
+        { role: 'GM', playerId: 'player', name: 'late' },
+        null,
+      ],
       extraReads: 1,
     });
   });

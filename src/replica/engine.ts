@@ -1,24 +1,37 @@
 import { nanoid } from 'nanoid';
 
 import { createBoundedIdSet } from '@/core/bounded-id-set';
+import { rollDiceCell } from '@/core/dice-roll';
 import { recordDigest } from '@/core/digest';
 import type { JsonObject } from '@/core/json';
-import { jsonByteLength, recordFitsOneMessage, splitBatch } from '@/core/message-size';
+import {
+  fitsOneMessage,
+  jsonByteLength,
+  recordFitsOneMessage,
+  splitBatch,
+} from '@/core/message-size';
 import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
-import type { VersionedRecord } from '@/core/records';
+import { decodePreset, type Preset } from '@/core/preset';
+import { presetDataSchema, sheetDataSchema, type VersionedRecord } from '@/core/records';
+import { err, ok, type Result } from '@/core/result';
+import { rollNotificationText, type RollCopy } from '@/core/roll-text';
 import {
   admitRoomMessage,
   aliveMessage,
   generationRelation,
   parseRoomMessage,
   pingMessage,
+  rollMessage,
   stateRequestMessage,
   SYNC_CHANNEL,
   type AliveMessage,
   type GenerationRelation,
+  type RollContent,
+  type RollMessage,
   type RoomMessage,
   type StateMessage,
 } from '@/core/room-messages';
+import { sheetKey } from '@/core/sheets';
 import {
   encodeSnapshot,
   readBackHolds,
@@ -45,16 +58,18 @@ import {
   type Notice,
   type ProjectionMessage,
   type RejectionReason,
+  type RollOutcome,
+  type RollRequestMessage,
   type RoomCopyOutcome,
   type RoomCopyStatus,
   type SyncState,
 } from '@/core/ui-messages';
-import { visibleRecords, type PlayerRole } from '@/core/visibility';
+import { rollShownTo, visibleRecords, type PlayerRole } from '@/core/visibility';
 import type { BroadcastEvent, BroadcastOptions, PartyMember, Platform } from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
 import { createCommitOutbox } from '@/replica/commit-outbox';
 import { createComposers, type ComposeContext } from '@/replica/composers';
-import { createPartyRoster } from '@/replica/party-roster';
+import { createPartyRoster, type RoomSender } from '@/replica/party-roster';
 import { createPendingQueue, type PendingEntry } from '@/replica/pending-queue';
 import { createRecordStore, type RecordStore } from '@/replica/record-store';
 import { createVersionMinter } from '@/replica/version-minter';
@@ -69,12 +84,15 @@ const RECENT_COMMAND_ID_LIMIT = 256;
 // Far more catch-up nonces than a room sends while one answer is on its way.
 const RECENT_NONCE_LIMIT = 256;
 
+// Far more rolls than reach a client while one of them can still arrive twice.
+const RECENT_ROLL_ID_LIMIT = 256;
+
 // Sits in the problem set, and no write clears it: a reload has to read the storage again.
 const UNREADABLE_STORAGE_MARK = '(unreadable)';
 
 export type ReplicaEnginePlatform = Pick<
   Platform,
-  'broadcast' | 'metadata' | 'party' | 'player' | 'storage'
+  'broadcast' | 'metadata' | 'notification' | 'party' | 'player' | 'storage'
 >;
 
 export type EngineTiming = Pick<
@@ -87,11 +105,14 @@ export type EngineTiming = Pick<
   | 'snapshotJitterMs'
 >;
 
-// Tests inject the timing, the ids and the random answer delay and room copy jitter.
+// Tests inject the timing, the ids, and the random source of the answer delay, the room copy
+// jitter and the dice.
 export type ReplicaEngineOptions = {
   timing?: EngineTiming;
   newId?: () => string;
   random?: () => number;
+  // The copy catalog's roll strings. The background page passes them; with none, no roll shows.
+  rollCopy?: RollCopy;
 };
 
 export type ReplicaEngine = {
@@ -143,6 +164,15 @@ type PendingChanges = { records: VersionedRecord[]; withdrawn: string[] };
 // What one delta carries: replica records, pending view records, and keys the windows drop.
 type DeltaContent = Part & { withdrawn: string[] };
 
+// A roll evaluated in this client, before it has an id and the roller's name.
+type EvaluatedRoll = Omit<RollContent, 'id' | 'roller'>;
+
+// Who a shown roll came from: this client, or a party member the gate admitted.
+type RollSender = Pick<RoomSender, 'role' | 'name'>;
+
+// The decoded preset, kept while the `preset` record keeps its version.
+type DecodedPreset = { c: number; a: string; preset: Preset };
+
 export async function startReplicaEngine(
   platform: ReplicaEnginePlatform,
   sendQueue: SendQueue,
@@ -167,6 +197,10 @@ export async function startReplicaEngine(
   const minter = createVersionMinter(connectionId);
   const composers = createComposers(connectionId);
   const recentCommandIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
+  // AD-13: every roll this client has shown or dropped, its own included.
+  const recentRollIds = createBoundedIdSet(RECENT_ROLL_ID_LIMIT);
+  const recentRollRequestIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
+  let decodedPreset: DecodedPreset | null = null;
   const answeringNonces = new Set<string>();
   const pending = createPendingQueue();
   // AD-5: re-read on every party change, and a change enters catch-up.
@@ -553,6 +587,168 @@ export async function startReplicaEngine(
     if (applied.length > 0) {
       scheduleRoomCopy();
     }
+  }
+
+  // AD-13: the roller's replica evaluates once, from the values its windows show: the replica with
+  // its pending edits, and the window's own unsent text and input errors over them. A roll writes
+  // nothing, so a player and a client in catch-up roll too.
+  function handleRollRequest(message: RollRequestMessage): void {
+    if (recentRollRequestIds.has(message.id)) {
+      return;
+    }
+
+    recentRollRequestIds.add(message.id);
+
+    const evaluated = evaluateRoll(message);
+
+    if (evaluated.ok) {
+      void sendRoll(message.id, evaluated.value);
+    } else {
+      replyRoll(message.id, evaluated.error);
+    }
+  }
+
+  function evaluateRoll(message: RollRequestMessage): Result<EvaluatedRoll, RollOutcome> {
+    const view = pendingView();
+    const sheet = sheetDataSchema.safeParse(view.get(sheetKey(message.sheetId))?.d);
+
+    // A player never rolls an NPC, as it never sees one.
+    if (!sheet.success || !rollShownTo(role, sheet.data.kind)) {
+      return err({ code: 'refused' });
+    }
+
+    const preset = presetOf(view.get('preset'));
+
+    if (preset === null) {
+      return err({ code: 'refused' });
+    }
+
+    const { kind, name } = sheet.data;
+
+    const rolled = rollDiceCell(
+      kind === 'pc' ? preset.character : preset.npc,
+      view,
+      message.sheetId,
+      message.place,
+      new Map(Object.entries(message.shown)),
+      random,
+    );
+
+    if (!rolled.ok) {
+      return err(rolled.error.code === 'not-dice' ? { code: 'refused' } : rolled.error);
+    }
+
+    return ok({
+      sheetId: message.sheetId,
+      kind,
+      sheetName: name,
+      cell: rolled.value.cell,
+      result: rolled.value.result,
+    });
+  }
+
+  // Decoded again only when the record's version changes, not on every press.
+  function presetOf(record: VersionedRecord | undefined): Preset | null {
+    if (record === undefined) {
+      return null;
+    }
+
+    if (decodedPreset?.c === record.c && decodedPreset.a === record.a) {
+      return decodedPreset.preset;
+    }
+
+    const data = presetDataSchema.safeParse(record.d);
+    const decoded = data.success ? decodePreset(data.data) : null;
+
+    if (decoded === null || !decoded.ok) {
+      return null;
+    }
+
+    decodedPreset = { c: record.c, a: record.a, preset: decoded.value };
+
+    return decoded.value;
+  }
+
+  // The roller's name is read at roll time. `REMOTE` does not echo to the sender, so this client
+  // shows its own roll through the same id check as a received one, once the room has it.
+  async function sendRoll(requestId: string, evaluated: EvaluatedRoll): Promise<void> {
+    let roller: string;
+
+    try {
+      roller = await platform.player.getName();
+    } catch (error) {
+      console.error('Muster Roll could not read the player name for a roll', error);
+      replyRoll(requestId, { code: 'failed' });
+
+      return;
+    }
+
+    if (stopped) {
+      return;
+    }
+
+    // The role can change while the name is read.
+    if (!rollShownTo(role, evaluated.kind)) {
+      replyRoll(requestId, { code: 'refused' });
+
+      return;
+    }
+
+    const message = rollMessage(ownGeneration, { id: newId(), roller, ...evaluated });
+
+    // A roll a receiver would drop, or one too large to send, never goes out.
+    if (!parseRoomMessage(message).ok || !fitsOneMessage(message)) {
+      console.error('Muster Roll built a roll the room would not take');
+      replyRoll(requestId, { code: 'failed' });
+
+      return;
+    }
+
+    const sent = await sendQueue.enqueueReported(SYNC_CHANNEL, message, REMOTE);
+
+    if (stopped) {
+      return;
+    }
+
+    if (!sent) {
+      replyRoll(requestId, { code: 'failed' });
+
+      return;
+    }
+
+    receiveRoll(message, { role, name: roller });
+    replyRoll(requestId, { code: 'rolled' });
+  }
+
+  function replyRoll(id: string, outcome: RollOutcome): void {
+    send({ t: 'roll-outcome', id, outcome }).catch((error) => {
+      console.error('Muster Roll could not answer a roll request', error);
+    });
+  }
+
+  // AD-13: a roll shows once per id, and a player shows only a character's. Only this background
+  // page shows it, so it shows with the window closed. It never enters the replica. A player
+  // cannot see an NPC, so an NPC roll from a player is forged, and the name shown is the one the
+  // party lists for the sender.
+  function receiveRoll(message: RollMessage, sender: RollSender): void {
+    if (recentRollIds.has(message.id)) {
+      return;
+    }
+
+    recentRollIds.add(message.id);
+
+    const forged = sender.role !== 'GM' && message.kind === 'npc';
+
+    if (forged || !rollShownTo(role, message.kind) || options.rollCopy === undefined) {
+      return;
+    }
+
+    const roller = sender.name === '' ? message.roller : sender.name;
+    const text = rollNotificationText({ ...message, roller }, options.rollCopy);
+
+    platform.notification.show(text).catch((error) => {
+      console.error('Muster Roll could not show a roll', error);
+    });
   }
 
   // AD-7: an intent made during catch-up waits and takes `c` on exit. It is checked now against the
@@ -1666,12 +1862,14 @@ export async function startReplicaEngine(
       hearGm(message.t === 'state' && message.r === lastNonce);
     }
 
-    dispatchRoomMessage(message, event.connectionId, relation);
+    dispatchRoomMessage(message, event.connectionId, sender, relation);
   }
 
+  // `member` is the party member behind `sender`, which the gate requires for every admitted type.
   function dispatchRoomMessage(
     message: RoomMessage,
     sender: string,
+    member: RoomSender | null,
     relation: GenerationRelation,
   ): void {
     switch (message.t) {
@@ -1694,6 +1892,12 @@ export async function startReplicaEngine(
         break;
       case 'alive':
         receiveAlive(message, sender, relation);
+        break;
+      case 'roll':
+        if (member !== null) {
+          receiveRoll(message, member);
+        }
+
         break;
       default:
         unknownRoomMessage(message);
@@ -1721,6 +1925,8 @@ export async function startReplicaEngine(
 
     if (parsed.value.t === 'projection-request') {
       sendProjection(parsed.value.nonce);
+    } else if (parsed.value.t === 'roll-request') {
+      handleRollRequest(parsed.value);
     } else {
       handleCommand(parsed.value);
     }

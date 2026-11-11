@@ -1,4 +1,4 @@
-import { sheetDataSchema, type VersionedRecord } from '@/core/records';
+import { sheetDataSchema, type SheetData, type VersionedRecord } from '@/core/records';
 import { dependentSheetId, isDependentKey, liveSheets, type SheetSummary } from '@/core/sheets';
 
 export type PlayerRole = 'GM' | 'PLAYER';
@@ -53,4 +53,9 @@ export function visibleSheets(role: PlayerRole, records: Iterable<VersionedRecor
   const visible = visibleRecords(role, [...records]);
 
   return { characters: liveSheets(visible, 'pc'), npcs: liveSheets(visible, 'npc') };
+}
+
+// AD-13: a player shows only a character's roll. It still receives an NPC's, as it holds NPCs.
+export function rollShownTo(role: PlayerRole, kind: SheetData['kind']): boolean {
+  return role === 'GM' || kind === 'pc';
 }

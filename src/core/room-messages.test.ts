@@ -8,8 +8,10 @@ import {
   generationRelation,
   parseRoomMessage,
   pingMessage,
+  rollMessage,
   stateRequestMessage,
   type GenerationRelation,
+  type RollMessage,
   type RoomMessageType,
   type SenderRole,
 } from '@/core/room-messages';
@@ -70,6 +72,23 @@ const RECORD = { k: 'sheet:a', d: { kind: 'pc', name: 'Брок', order: 0 }, c:
 
 function commit(overrides: { [key: string]: JsonValue } = {}): JsonValue {
   return { v: 1, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], ...overrides };
+}
+
+const ROLL: RollMessage = {
+  v: 1,
+  g: { n: 0, a: '' },
+  t: 'roll',
+  id: 'r1',
+  sheetId: 'brok',
+  kind: 'pc',
+  roller: 'Лиза',
+  sheetName: 'Брок',
+  cell: 'Сила',
+  result: { roll: 7, faces: [7], target: 12, targetFaces: [], outcome: 'success' },
+};
+
+function roll(overrides: { [key: string]: JsonValue } = {}): JsonValue {
+  return { ...ROLL, ...overrides };
 }
 
 function state(overrides: { [key: string]: JsonValue } = {}): JsonValue {
@@ -155,6 +174,36 @@ describe('parseRoomMessage', () => {
     ]);
   });
 
+  test('reads a roll with its sheet, names, cell and result', () => {
+    // #when
+    const parsed = parseRoomMessage(ROLL);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: ROLL });
+  });
+
+  test('builds a roll that parses back as itself', () => {
+    // #given
+    const built = rollMessage(
+      { n: 2, a: 'gm' },
+      {
+        id: 'r2',
+        sheetId: 'skel',
+        kind: 'npc',
+        roller: 'Мастер',
+        sheetName: 'Скелет',
+        cell: '2d6',
+        result: { roll: 2.5, faces: [2, 3], target: null, targetFaces: [], outcome: null },
+      },
+    );
+
+    // #when
+    const parsed = parseRoomMessage(built);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: built });
+  });
+
   test('reports a higher v before it looks at the rest of the message', () => {
     // #when
     const parsed = parseRoomMessage({ v: 2, t: 'something-new', anything: [1, 2] });
@@ -179,7 +228,19 @@ describe('parseRoomMessage', () => {
     ['no records', commit({ records: [] })],
     ['no generation', { v: 1, t: 'commit', records: [RECORD] }],
     ['an extra key', commit({ extra: true })],
-    ['a type with no schema yet', commit({ t: 'roll' })],
+    ['a roll with the shape of a commit', commit({ t: 'roll' })],
+    ['a roll with no id', roll({ id: '' })],
+    ['a roll of an unknown kind', roll({ kind: 'token' })],
+    ['a roll with no result', roll({ result: null })],
+    [
+      'a roll whose face is 0',
+      roll({ result: { roll: 0, faces: [0], target: null, targetFaces: [], outcome: null } }),
+    ],
+    [
+      'a roll with an unknown outcome',
+      roll({ result: { roll: 7, faces: [7], target: 12, targetFaces: [], outcome: 'maybe' } }),
+    ],
+    ['a roll with an extra key', roll({ records: [] })],
     ['a ping with an extra key', commit({ t: 'ping' })],
     ['an alive with no digest', { v: 1, g: { n: 0, a: '' }, t: 'alive' }],
     ['an alive with a negative digest', { v: 1, g: { n: 0, a: '' }, t: 'alive', digest: -1 }],

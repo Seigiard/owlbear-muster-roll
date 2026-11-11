@@ -258,7 +258,7 @@ test('a field with no value shows an empty value area', async ({ page, context }
   await expect(region(page, 'Отметки').getByRole('checkbox', { name: 'Отдых' })).not.toBeChecked();
 });
 
-test('a dice cell shows the preceding text cell, otherwise its formula, as static text', async ({
+test('a dice cell is a button labelled by the preceding text cell, otherwise by its formula', async ({
   page,
   context,
 }) => {
@@ -271,8 +271,8 @@ test('a dice cell shows the preceding text cell, otherwise its formula, as stati
   expect(await valuesOf(rows.nth(0).getByRole('textbox'))).toEqual(['7', '12']);
   expect(await valuesOf(rows.nth(1).getByRole('textbox'))).toEqual(['Вперёд']);
   await expect(rows.nth(2)).toHaveText('УдачаУдача');
-  await expect(rows.nth(3)).toHaveText('1d20+str');
-  await expect(rows.nth(2).getByRole('button')).toHaveCount(0);
+  await expect(rows.nth(2).getByRole('button')).toHaveText(['Удача']);
+  await expect(rows.nth(3).getByRole('button')).toHaveText(['1d20+str']);
 });
 
 test('a field is named by the preceding text cell, otherwise by its id', async ({
