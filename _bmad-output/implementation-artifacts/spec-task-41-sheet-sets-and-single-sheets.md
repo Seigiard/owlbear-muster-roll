@@ -2,8 +2,8 @@
 title: 'TASK-41 Let a Preset Define Any Number of Sheet Sets and Single Sheets'
 type: 'feature'
 created: '2026-11-11'
-status: 'ready-for-dev'
-baseline_commit: ''
+status: 'done'
+baseline_commit: '27c002a'
 route: 'dispatch'
 review_loop_iteration: 0
 context:
@@ -94,11 +94,11 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/core/**` -- v2 preset, records, template lookup, names, visibility, access, migrate, snapshot file/import, messages, token links, duplicate numbering, storage key, unit tests -- the contract every other layer reads.
-- [ ] `src/replica/**` -- composers and engine on the template model, wipe, link cleanup on repeat block removal, older-format notice, tests -- AD-4, AD-9, AD-13, AD-14, AD-19.
-- [ ] `src/ui/**`, `src/preview/**` -- tab bar, headers, repeat block controls, picker, settings, copy, preview, tests -- EXPERIENCE.md.
-- [ ] `tests/fixtures/presets/*.json`, `tests/**/*.e2e.ts`, `tests/support/*` -- v2 fixtures and e2e coverage of AC 1-5.
-- [ ] `src/core/snapshot-size.test.ts` -- re-measure the worst case.
+- [x] `src/core/**` -- v2 preset, records, template lookup, names, visibility, access, migrate, snapshot file/import, messages, token links, duplicate numbering, storage key, unit tests -- the contract every other layer reads.
+- [x] `src/replica/**` -- composers and engine on the template model, wipe, link cleanup on repeat block removal, older-format notice, tests -- AD-4, AD-9, AD-13, AD-14, AD-19.
+- [x] `src/ui/**`, `src/preview/**` -- tab bar, headers, repeat block controls, picker, settings, copy, preview, tests -- EXPERIENCE.md.
+- [x] `tests/fixtures/presets/*.json`, `tests/**/*.e2e.ts`, `tests/support/*` -- v2 fixtures and e2e coverage of AC 1-5.
+- [x] `src/core/snapshot-size.test.ts` -- re-measure the worst case.
 
 **Acceptance Criteria:**
 - Given `tests/fixtures/presets/d6-pool.json` with Инвентарь and Список заклинаний, when uploaded, then each single sheet shows as one tab and the sheet set gets "+", with no code change for that system.
@@ -112,6 +112,47 @@ context:
 ## Spec Change Log
 
 ## Review Triage Log
+
+Round 1 (review_loop_iteration 0). Layers: blind hunter, edge-case hunter and verification gap, each run twice (core+replica+platform diff; ui+preview diff).
+
+| # | Source | Finding | Verdict | Evidence | Route |
+| --- | --- | --- | --- | --- | --- |
+| 1 | gap-core | Upload that deletes only empty sheets (count 0, sheets ≥1) is not pinned | medium | Gate at `composers.ts:172` checks `sheets`, no test has count 0 with sheets ≥1 | patch (test) |
+| 2 | gap-core, blind-core | New key with a field absent from the template answers `denied`, untested | low | `access.ts:170` denies: no current record exists to answer `stale` with; AD-4 stale needs one. Behaviour kept, test added | patch (test) |
+| 3 | blind-core, edge-core ×2 | GM commit does not enforce AD-2 instance id uniqueness for a player's new `rep:`; a shared id makes block removal tombstone the other block's links | medium | `checkProposal` checks only the key; `composeRepeatBlockAdd` checks ids on the composing client only | patch |
+| 4 | blind-core, edge-core | Snapshot import writes `link:` records that are inert on arrival | low | `snapshot-import.ts:198` keeps links of kept sheets without checking the block or `tokens`; such a link can revive when a later preset makes its target linkable | patch |
+| 5 | blind-core, edge-core | Sheet name has no length cap after `parseSheetName` went; a long name rides every roll and shows in full | low | `sheetName` returns the raw field; text fields have no length cap | patch (clip to 100 code points) |
+| 6 | blind-core | `SHEET_NAME_MAX_LENGTH` now caps duplicate values and player names | low | Name misleads; used by `repeat-block-duplicate.ts` and `access.ts` | patch (rename/split) |
+| 7 | blind-core | Importing GM keeps older-format keys while adopting GMs drop them | low | `replaceGeneration(…, false)` skips `removeOlderFormats` | patch |
+| 8 | blind-core | Dead exports `IncompleteMarker`, `isRepeatSectionId` | low | No caller outside own test | patch |
+| 9 | blind-core, blind-ui | Comment lines past 100 columns after the rename | low | oxfmt does not reflow comments | patch |
+| 10 | edge-core | `stale` on an unknown changed field may loop re-proposals while presets differ | maybe-false | Depends on whether the player's rebase strips ids absent from its template and keeps its backoff | patch (verify; strip on rebase if it loops) |
+| 11 | blind-core, edge-core | Orphan `sheet:` after a create races an upload; new template id equal to a live sheet id | low | Needs a create racing an upload, or an 8-char nanoid equal to an author-chosen template id; fix adds diff branches | reject (rare, fix adds complexity) |
+| 12 | blind-core | `receiveRoll` trusts `hidden: false` from a modified player | false | SPEC non-goal: hiding from a modified client; hidden is interface only | reject |
+| 13 | blind-core | `noteRoomCopy` and `visibleRecords` redo per-call work | low | Performance only on small replicas; no named harm | reject |
+| 14 | blind-core | Redundant `persistence` and live-sheet checks | low | No divergence shown | reject |
+| 15 | edge-core | `link:` `i` outside the sheet id schema opens nothing | low | Needs a hand-made file; failure is silent no-op | reject |
+| 16 | edge-core | Single sheet edit before the preset decodes gets `unknown-sheet`, not `no-preset` | low | Wrong reason text only, before preset load | reject |
+| 17 | blind-ui | "+" buttons follow all tabs in DOM; only CSS `order` places them | low | ARIA forbids a button inside a tablist; each "+" names its set ("Добавить: {title}"); reordering needs a different widget | reject (recorded in deferred-work) |
+| 18 | blind-ui | Focus after a delete goes to the first tab, not a neighbour | low | No UX rule for neighbour focus on sheets of a set; old behaviour for characters was the same | reject |
+| 19 | blind-ui | Header name input shows no "Ожидает" and has its own draft beside the body field | low | Body field of the same value shows the mark; drafts race only with typing in both within one pause | reject |
+| 20 | blind-ui | `linkLabel` says "именем листа" for a repeat block; `noSheetsToLink` with no linkable target | low / false | "Сначала создайте лист" is the EXPERIENCE text for no target; label wording is owner copy | reject |
+| 21 | blind-ui | Snapshot confirmation puts the question mid-text | false | EXPERIENCE: "Add to the import message the parts that apply" after the question | reject |
+| 22 | blind-ui | Wipe timeout reuses `snapshotImportTimeoutMs` | low | Couples two commands | patch |
+| 23 | blind-ui, edge-ui | Wipe rejection: `catching-up` text stays red, `importing` shows the snapshot text | low | `wipeRejectionText` maps reasons to shared copy, message not cleared when the state ends | patch |
+| 24 | blind-ui | Several confirmation blocks can be open at once | low | Pre-existing for preset and snapshot | reject |
+| 25 | blind-ui, edge-ui | Untitled repeat sections give identical "Добавить" names; picker heading fallback | low | `accessibleName` is only set with a title | patch |
+| 26 | blind-ui | Block buttons named by position | low | Matches EXPERIENCE; first field may be empty | reject |
+| 27 | blind-ui, edge-ui | Duplicate closes as done when anyone adds a block in that section | medium | `duplicate-count.tsx:60` counts any new instance id; a later rejection is then lost | patch |
+| 28 | blind-ui | `decodedPreset` repeated in two windows | low | No divergence shown | reject |
+| 29 | blind-ui | Dead `blockTools` prop on `PlainContent` | low | Unused | patch |
+| 30 | blind-ui | `useTabKeyEntersAtSelection` effect has no deps | low | Covered by the window e2e that failed without it | reject |
+| 31 | edge-ui | Open names a block gone before mount; focused duplicate input or delete confirm unmounts by a remote change | low | Remote races during an open dialog; focus falls to body, no data loss | reject |
+| 32 | edge-ui | Leaving Settings mid-wipe re-enables the button | low | Second wipe gets a rejection text, nothing breaks | reject |
+| 33 | gap-ui | Successful wipe reaching the button is untested (no-preset room) | medium | No test reads `$wipeResults`; e2e wipe unmounts Settings | patch (tests) |
+| 34 | gap-ui | `wipeRejectionText` untested | low | No table test | patch (test) |
+| 35 | gap-ui | "Ожидает" on a player-editable single sheet untested | medium | `pending.e2e.ts` has no `players: "edit"` template | patch (test) |
+| 36 | coordinator | Picker accessible name "Скелет , NPC" has a space before the comma | low | sr-only span is positioned, so name computation adds spaces | patch |
 
 ## Verification
 
