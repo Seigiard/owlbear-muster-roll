@@ -57,7 +57,8 @@ export type PlayerPort = {
 // connection, and every page of the client shares it.
 export type SelectionPort = {
   getSelection: () => Promise<string[]>;
-  // Calls back with the whole selection each time it changes, and only then.
+  // Calls back with the whole selection after it changes. The first call can repeat the selection
+  // a read has already returned, so a caller compares before it acts.
   onChange: (callback: (itemIds: string[]) => void) => Unsubscribe;
   // Adds the items to the selection and keeps what is selected already. An empty list does nothing.
   select: (itemIds: string[]) => Promise<void>;

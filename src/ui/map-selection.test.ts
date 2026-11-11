@@ -70,6 +70,35 @@ describe('watchMapSelection', () => {
     expect(watch.$sceneItems.get()).toBe(before);
   });
 
+  test('a selection change heard before the first read lands wins over that read', async () => {
+    // #given
+    const platform = createMockPlatform();
+    const watch = watchMapSelection(platform.selection, platform.scene);
+
+    // #when: the first read is still on its way.
+    platform.setMapSelection(['t1']);
+    await settle();
+
+    // #then
+    expect([...watch.$selection.get()]).toEqual(['t1']);
+  });
+
+  test('a scene that closes before the first readiness read lands keeps no items', async () => {
+    // #given
+    const platform = createMockPlatform();
+
+    platform.addSceneItems(['t1']);
+
+    const watch = watchMapSelection(platform.selection, platform.scene);
+
+    // #when: the first read is still on its way.
+    platform.setSceneReady(false);
+    await settle();
+
+    // #then
+    expect([...watch.$sceneItems.get()]).toEqual([]);
+  });
+
   test('stops following once stopped', async () => {
     // #given
     const platform = createMockPlatform();
@@ -86,7 +115,8 @@ describe('watchMapSelection', () => {
   });
 });
 
-// The mock answers reads with resolved promises, so two turns of the queue land them.
+// The mock answers reads with resolved promises, and a scene read waits for the readiness read, so
+// three turns of the queue land them.
 async function settle(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();

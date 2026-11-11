@@ -5,6 +5,7 @@ import { ToggleButton } from 'react-aria-components';
 import type { LinkTarget } from '@/core/link-target';
 import type { SelectionStep } from '@/core/token-selection';
 import { copy } from '@/ui/copy';
+import { SECONDARY_BUTTON_CLASS } from '@/ui/primitives/button';
 
 // CAP-32: what the sheets know of this client's map selection. `marked` holds the `linkTargetKey`
 // of every target a selected token links to. `selector` is the GM's: the step one press of
@@ -46,7 +47,7 @@ export function MapToggle({ target, accessibleName }: MapToggleProps): ReactNode
       onChange={() => {
         selector.take(step);
       }}
-      className="touch-target inline-flex shrink-0 items-center justify-center rounded-sm border border-line px-3 text-text data-selected:border-accent data-selected:text-accent"
+      className={`${SECONDARY_BUTTON_CLASS} shrink-0 data-selected:border-accent data-selected:text-accent`}
     >
       {copy.command.selectOnMap}
     </ToggleButton>

@@ -40,7 +40,9 @@ const ROW_CLASS = 'touch-target items-center gap-x-2 px-1';
 const STRIPE_CLASS = 'bg-surface-stripe';
 
 // CAP-32: a repeat block whose linked token is selected on the map, as a bar on its left edge.
-const MAP_MARK_CLASS = 'shadow-[inset_3px_0_0_var(--color-accent)]';
+// Forced colors drop shadows, so there it is an outline.
+const MAP_MARK_CLASS =
+  'shadow-[inset_3px_0_0_var(--color-accent)] forced-colors:outline-3 forced-colors:outline-solid forced-colors:-outline-offset-3';
 
 // UX-DR28: a removed repeat block's cells dim, and its control slot, which holds the mark, does
 // not. Written out whole, so Tailwind finds the class.
@@ -531,10 +533,14 @@ function BlockSlot({
         <Chip>{linked ? copy.status.tokenLinked : copy.status.noToken}</Chip>
       )}
       {linked === true ? (
-        <MapToggle
-          target={{ sheetId, instanceId }}
-          accessibleName={copy.label.selectBlockOnMap(index + 1)}
-        />
+        // The toggle comes and goes with the open scene, which is no news to announce, so it sits out
+        // of the slot's live region. The wrapper mounts with the token status, as a link does.
+        <span aria-live="off" className="contents">
+          <MapToggle
+            target={{ sheetId, instanceId }}
+            accessibleName={copy.label.selectBlockOnMap(index + 1)}
+          />
+        </span>
       ) : null}
       {tools === null || block.pending.removed ? null : (
         <Button

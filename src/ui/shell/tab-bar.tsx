@@ -94,7 +94,7 @@ export function TabBar({ items, pinnedTabs }: TabBarProps): ReactNode {
                   <span
                     aria-hidden
                     data-map-mark
-                    className="ml-1 size-[6px] shrink-0 rounded-full bg-accent"
+                    className="ml-1 size-[6px] shrink-0 rounded-full border-3 border-accent"
                   />
                 ) : null}
               </Tab>

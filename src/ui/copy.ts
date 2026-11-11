@@ -42,7 +42,7 @@ export const copy = {
     selectBlockOnMap: (n: number): string => `Выделить блок ${n} на карте`,
     // CAP-32: the accessible name of a tab or a repeat block whose linked token is selected on the
     // map. The mark itself is a dot or a bar, so the word lives in the name only.
-    selectedOnMap: (name: string): string => `${name}, выделен на карте`,
+    selectedOnMap: (name: string): string => `${name}, токен выделен`,
     // The accessible name of a read-only check mark: its field's label and its state.
     checked: (name: string): string => `${name}: отмечено`,
     unchecked: (name: string): string => `${name}: не отмечено`,

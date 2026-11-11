@@ -75,7 +75,8 @@ type SceneListener = (scene: MockScene, change: MockSceneChange) => void;
 
 type SelectionListener = (itemIds: string[]) => void;
 
-// What every client of one room shares: REMOTE delivery, the party and the room metadata.
+// What every client of one room shares: REMOTE delivery, the party, the room metadata and the scene,
+// and each client's own map selection, which only that client's pages read and change.
 export type MockRoom = {
   // Reaches every client but the one with this connection id, as Owlbear never echoes REMOTE.
   postRemote: (channel: string, data: JsonValue, connectionId: string) => void;
