@@ -250,7 +250,12 @@ test('the nine copies are new sheet, row and rep records at c: 1 under new nanoi
   const sheetIds = [...new Set(added.map((one) => one.k.split(':')[1] ?? ''))];
 
   expect({
-    nanoids: sheetIds.map((id) => /^[A-Za-z0-9_-]{21}$/.test(id)),
+    // TASK-37: 12-character sheet ids and 8-character instance ids of the URL-safe alphabet.
+    nanoids: sheetIds.map((id) => /^[A-Za-z0-9_-]{12}$/.test(id)),
+    wrongLengthInstanceIds: added
+      .filter((one) => one.k.startsWith('rep:'))
+      .map((one) => one.k.split(':')[3] ?? '')
+      .filter((id) => !/^[A-Za-z0-9_-]{8}$/.test(id)),
     versions: [...new Set(added.map((one) => one.c))],
     links: Object.keys(stored).filter((key) => key.startsWith('link:')),
     copies: sheetIds
@@ -267,6 +272,7 @@ test('the nine copies are new sheet, row and rep records at c: 1 under new nanoi
     source: SKELETON.map((one) => stored[one.k]),
   }).toEqual({
     nanoids: Array.from({ length: 9 }, () => true),
+    wrongLengthInstanceIds: [],
     versions: [1],
     links: ['link:token1'],
     copies: Array.from({ length: 9 }, (_unused, index) => ({

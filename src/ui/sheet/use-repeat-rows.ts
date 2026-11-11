@@ -1,7 +1,8 @@
 import { useStore } from '@nanostores/react';
-import { nanoid } from 'nanoid';
 import { useEffect, useRef, useState } from 'react';
 import type { RefCallback, RefObject } from 'react';
+
+import { newInstanceId } from '@/core/ids';
 
 import { useFieldEditing } from './use-field-edit';
 
@@ -97,7 +98,9 @@ export function useRepeatRows(
       };
     },
     add: () => {
-      const instanceId = nanoid();
+      // The engine refuses an id this repeat section of this sheet already holds, deleted rows
+      // included, so a collision writes over nothing.
+      const instanceId = newInstanceId();
 
       const sent = editing.sendCommand({ type: 'repeat-row-add', sheetId, sectionId, instanceId });
 

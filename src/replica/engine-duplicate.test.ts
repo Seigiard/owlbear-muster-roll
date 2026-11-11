@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
+import type { RecordIdKind } from '@/core/ids';
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
@@ -109,7 +110,7 @@ type Room = { room: MockRoom; heard: Heard[]; post: (from: string, data: JsonVal
 
 type ClientOptions = {
   role?: PlayerRole;
-  newId?: () => string;
+  newRecordId?: (kind: RecordIdKind) => string;
   seeded?: readonly VersionedRecord[];
   // Stored records that fail the record schema, so the engine skips them at start.
   corrupt?: readonly JsonValue[];
@@ -366,7 +367,7 @@ describe('sheet-duplicate', () => {
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...base(), npc('gob', 'Гоблин', 4)],
-      newId: () => 'gob',
+      newRecordId: () => 'gob',
     });
 
     const before = storedKeys(client);
@@ -382,6 +383,158 @@ describe('sheet-duplicate', () => {
       stored: before,
     });
   });
+
+  test('gives every copy a 12-character sheet id and 8-character instance ids of the URL-safe alphabet', async () => {
+    // #given
+    const room = openRoom();
+    const client = await startClient(room, 'gm-a');
+
+    // #when
+    send(client, duplicate('skel', 3));
+    await waitUntil(() => newSheetKeys(client).length === 3);
+
+    // #then: TASK-37 AC 1, the lengths written out by hand.
+    const added = addedRecords(client);
+
+    expect({
+      sheetIds: added.map(sheetIdOf).filter((id) => !/^[A-Za-z0-9_-]{12}$/.test(id)),
+      instanceIds: added
+        .filter((one) => one.k.startsWith('rep:'))
+        .map(lastKeySegment)
+        .filter((id) => !/^[A-Za-z0-9_-]{8}$/.test(id)),
+      reps: added.filter((one) => one.k.startsWith('rep:')).length,
+    }).toEqual({ sheetIds: [], instanceIds: [], reps: 6 });
+  });
+
+  test('draws a taken sheet id again and writes the copy under the next free one', async () => {
+    // #given: the first sheet id drawn is the id of a live NPC.
+    const room = openRoom();
+    const sheetIds = ['gob', 'fresh'];
+
+    const client = await startClient(room, 'gm-a', {
+      seeded: [...base(), npc('gob', 'Гоблин', 4)],
+      newRecordId: (kind) => (kind === 'sheet' ? (sheetIds.shift() ?? 'spent') : newInstance()),
+    });
+
+    // #when
+    send(client, duplicate('skel', 1));
+    await waitUntil(() => newSheetKeys(client).length === 1);
+
+    // #then
+    expect({ sheets: newSheetKeys(client), gob: stored(client, 'sheet:gob') }).toEqual({
+      sheets: ['sheet:fresh'],
+      gob: npc('gob', 'Гоблин', 4),
+    });
+  });
+
+  test('refuses two copies of an NPC with no values when every draw gives one sheet id', async () => {
+    // #given: no record holds the id, so only the first copy of this batch takes it.
+    const room = openRoom();
+
+    const client = await startClient(room, 'gm-a', {
+      seeded: [PRESET_RECORD, npc('bare', 'Зомби', 0)],
+      newRecordId: () => 'twin',
+    });
+
+    const before = storedKeys(client);
+
+    // #when
+    const id = send(client, duplicate('bare', 2));
+
+    await waitUntil(() => rejection(client, id) !== undefined);
+
+    // #then
+    expect({ reason: rejection(client, id), stored: storedKeys(client) }).toEqual({
+      reason: 'sheet-exists',
+      stored: before,
+    });
+  });
+
+  test('refuses a copy whose two repeat rows draw one instance id every time and writes nothing', async () => {
+    // #given
+    const room = openRoom();
+
+    const client = await startClient(room, 'gm-a', {
+      newRecordId: (kind) => (kind === 'sheet' ? 'copy' : 'same'),
+    });
+
+    const before = storedKeys(client);
+
+    // #when
+    const id = send(client, duplicate('skel', 1));
+
+    await waitUntil(() => rejection(client, id) !== undefined);
+
+    // #then
+    expect({ reason: rejection(client, id), stored: storedKeys(client) }).toEqual({
+      reason: 'instance-exists',
+      stored: before,
+    });
+  });
+
+  test('refuses an instance id whose rep: key under the new sheet id is a tombstone', async () => {
+    // #given: an NPC with one repeat row, and a deleted row under the drawn sheet id. A tombstone
+    // takes no sheet over, so only the instance check can find it.
+    const room = openRoom();
+    const dead: VersionedRecord = { k: 'rep:fresh:attack:dead', d: null, c: 4, a: 'seed' };
+
+    const row: VersionedRecord = {
+      k: 'rep:solo:attack:a1',
+      d: { order: 0, cells: {} },
+      c: 1,
+      a: 'seed',
+    };
+
+    const client = await startClient(room, 'gm-a', {
+      seeded: [PRESET_RECORD, npc('solo', 'Упырь', 0), row, dead],
+      newRecordId: (kind) => (kind === 'sheet' ? 'fresh' : 'dead'),
+    });
+
+    const before = storedKeys(client);
+
+    // #when
+    const id = send(client, duplicate('solo', 1));
+
+    await waitUntil(() => rejection(client, id) !== undefined);
+
+    // #then
+    expect({
+      reason: rejection(client, id),
+      stored: storedKeys(client),
+      dead: stored(client, dead.k),
+    }).toEqual({ reason: 'instance-exists', stored: before, dead });
+  });
+
+  test.each<[string, VersionedRecord]>([
+    ['a row the source also has', { k: 'row:lone:ac', d: { ac: 9 }, c: 6, a: 'seed' }],
+    ['a row the source lacks', { k: 'row:lone:other', d: { other: 1 }, c: 6, a: 'seed' }],
+    ['a repeat row', { k: 'rep:lone:attack:zz', d: { order: 0, cells: {} }, c: 6, a: 'seed' }],
+  ])(
+    'refuses a sheet id that only an orphan holds, %s, and writes nothing',
+    async (_name, orphan) => {
+      // #given: a record whose sheet record never arrived, as a write that failed part way leaves it.
+      const room = openRoom();
+
+      const client = await startClient(room, 'gm-a', {
+        seeded: [...base(), orphan],
+        newRecordId: (kind) => (kind === 'sheet' ? 'lone' : newInstance()),
+      });
+
+      const before = storedKeys(client);
+
+      // #when
+      const id = send(client, duplicate('skel', 1));
+
+      await waitUntil(() => rejection(client, id) !== undefined);
+
+      // #then
+      expect({
+        reason: rejection(client, id),
+        stored: storedKeys(client),
+        orphan: stored(client, orphan.k),
+      }).toEqual({ reason: 'sheet-exists', stored: before, orphan });
+    },
+  );
 
   test('sends fifty copies through the send queue to another GM client whole', async () => {
     // #given
@@ -491,6 +644,31 @@ describe('sheet-duplicate', () => {
       after: { keys: during.keys, stored: during.keys.map(() => 1) },
     });
   });
+
+  test('during catch-up the copies take 12-character sheet ids and 8-character instance ids', async () => {
+    // #given: a GM that never answers holds this client in catch-up.
+    const room = openRoom();
+
+    joinAs(room, GHOST, 'GM');
+
+    const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 1500 } });
+
+    // #when
+    send(client, duplicate('skel', 2));
+    await waitUntil(() => newSheetKeys(client).length === 2);
+
+    // #then: TASK-37 AC 1, the lengths written out by hand.
+    const added = addedRecords(client);
+
+    expect({
+      sheetIds: added.map(sheetIdOf).filter((id) => !/^[A-Za-z0-9_-]{12}$/.test(id)),
+      instanceIds: added
+        .filter((one) => one.k.startsWith('rep:'))
+        .map(lastKeySegment)
+        .filter((id) => !/^[A-Za-z0-9_-]{8}$/.test(id)),
+      reps: added.filter((one) => one.k.startsWith('rep:')).length,
+    }).toEqual({ sheetIds: [], instanceIds: [], reps: 4 });
+  });
 });
 
 function npc(id: string, name: string, order: number, c = 1): VersionedRecord {
@@ -503,6 +681,15 @@ function pc(id: string, name: string, order: number): VersionedRecord {
 
 function base(): VersionedRecord[] {
   return [PRESET_RECORD, ...SOURCE];
+}
+
+// Distinct instance ids, for a test that fixes only the sheet ids.
+let instanceCount = 0;
+
+function newInstance(): string {
+  instanceCount += 1;
+
+  return `inst${String(instanceCount)}`;
 }
 
 function duplicate(sheetId: string, count: number): Command {
@@ -586,7 +773,7 @@ async function startClient(
 
   const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
     timing: { ...TIMING, ...options.timing },
-    newId: options.newId,
+    newRecordId: options.newRecordId,
   });
 
   const store = createProjectionStore();

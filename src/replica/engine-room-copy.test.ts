@@ -1071,3 +1071,45 @@ describe('review cases', () => {
     ]);
   });
 });
+
+// TASK-37 AC 2: records stored before new ids got shorter, under 21-character nanoid ids.
+describe('ids made before TASK-37', () => {
+  test('records under 21-character ids load, merge, sync, take an edit and reach the room copy', async () => {
+    // #given: the room copy and the writer's storage hold competing versions of two old-id keys.
+    const room = openRoom();
+    const sheetId = 'V1StGXR8_Z5jdHi6B-myT';
+    const repKey = `rep:${sheetId}:attack:Uakgb_J5m9g-0JDMbcJqL`;
+    const rowKey = `row:${sheetId}:str`;
+    const storedSheet = sheet(sheetId, 'Брок');
+    const copiedSheet = sheet(sheetId, 'Брок Железнобокий', 4, 'other');
+    const storedRep: VersionedRecord = { k: repKey, d: { order: 0, cells: {} }, c: 3, a: 'seed' };
+    const copiedRep: VersionedRecord = { k: repKey, d: { order: 5, cells: {} }, c: 2, a: 'other' };
+    const storedRow: VersionedRecord = { k: rowKey, d: { str: 5 }, c: 2, a: 'seed' };
+
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [copiedSheet, copiedRep]) });
+
+    const writer = await startClient(room, 'gm-a', {
+      seeded: [PRESET_RECORD, storedSheet, storedRep, storedRow],
+      untilLive: true,
+    });
+
+    const newDevice = await startClient(room, 'gm-b', { seeded: [], untilLive: true });
+
+    // #when
+    send(newDevice, { type: 'field-patch', sheetId, target: ROW_STR, fieldId: 'str', value: 12 });
+    await waitUntil(() => shown(writer, rowKey)?.c === 3);
+    writer.engine.pageHidden();
+    await waitUntil(() => JSON.stringify(roomCopyOf(room)).includes('"str":12'));
+
+    // #then: the higher version of each key wins, and the edit raises the row's counter.
+    const editedRow: VersionedRecord = { k: rowKey, d: { str: 12 }, c: 3, a: 'gm-b' };
+
+    expect({
+      synced: [shown(newDevice, copiedSheet.k), shown(newDevice, repKey), shown(newDevice, rowKey)],
+      copy: roomCopyOf(room)?.records,
+    }).toEqual({
+      synced: [copiedSheet, storedRep, editedRow],
+      copy: [PRESET_RECORD, storedRep, editedRow, copiedSheet],
+    });
+  });
+});

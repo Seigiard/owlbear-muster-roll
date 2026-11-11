@@ -7,6 +7,7 @@ import {
   patchRecordKey,
   type PatchedRecord,
 } from '@/core/field-patch';
+import type { RecordIdKind } from '@/core/ids';
 import { recordFitsOneMessage } from '@/core/message-size';
 import type { Version } from '@/core/merge';
 import { duplicateNames, isDuplicateCount } from '@/core/npc-duplicate';
@@ -26,6 +27,7 @@ import {
 } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 import {
+  dependentSheetId,
   isSheetDependent,
   liveSheets,
   parseSheetName,
@@ -44,14 +46,18 @@ export type FieldPatchCommand = Extract<Command, { type: 'field-patch' }>;
 
 // The records a command is composed over, and how a new version is minted. The engine composes over
 // its replica with its minter. The pending view composes over the replica with the queued intents
-// applied, and mints nothing. `newId` gives the ids a command makes itself, such as an NPC copy's,
-// each named by its role in the command. The pending view composes a queued command many times, so
-// one role must get one id each time, whatever records come or go in between.
+// applied, and mints nothing. `newRecordId` gives the ids a command makes itself, such as an NPC
+// copy's, of a kind and each named by its role in the command. The pending view composes a queued
+// command many times, so one role must get one id each time, whatever records come or go in between.
 export type ComposeContext = {
   records: ReadonlyMap<string, VersionedRecord>;
   mint: (key: string, highestKnownCounter: number) => Version;
-  newId: (role: string) => string;
+  newRecordId: (kind: RecordIdKind, role: string) => string;
 };
+
+// TASK-37: new ids are short, so a drawn id can collide. A command that draws its own ids draws a
+// colliding one again this many times before it refuses.
+const MAX_ID_REDRAWS = 5;
 
 // A field patch of a combined pending entry, with the command id a refusal names.
 export type IdentifiedPatch = { id: string; command: FieldPatchCommand };
@@ -349,8 +355,9 @@ function composeSheetCreate(
 
   const k = sheetKey(command.sheetId);
 
-  // A tombstone counts too: a deleted sheet's id must never come back.
-  if (context.records.has(k)) {
+  // A tombstone counts too: a deleted sheet's id must never come back. A live record that names the
+  // id, such as an orphan row, counts too, or the new sheet would take it over.
+  if (context.records.has(k) || liveDependentSheetIds(context).has(command.sheetId)) {
     return err('sheet-exists');
   }
 
@@ -424,7 +431,11 @@ function composeSheetDelete(
 
 // AD-2: each copy is new `row:`, `rep:` and `sheet:` records at `c: 1` under new ids, with no
 // `link:`, `acl:` or `plink:`. Only live records are copied. Each copy's sheet goes after its rows,
-// so a write that fails part way leaves no half-visible copy: rows with no sheet show nowhere.
+// so a write that fails part way leaves no half-visible copy: rows with no sheet show nowhere. A new
+// id is short (TASK-37), so it can collide. A sheet id is taken when the room holds its sheet key, a
+// live record names it (such as an orphan row the copy would take over), a key the copy writes is
+// already a tombstone, or another copy of this batch has it. An instance id is taken when its `rep:`
+// key is held, tombstones included. A taken id is drawn again; one still taken refuses the command.
 function composeSheetDuplicate(
   context: ComposeContext,
   command: Extract<Command, { type: 'sheet-duplicate' }>,
@@ -459,28 +470,53 @@ function composeSheetDuplicate(
   const firstOrder = nextOrder(context, 'npc');
   const values = copiedValues(context, command.sheetId);
   const copies: VersionedRecord[] = [];
+  const written = new Set<string>();
+  const liveDependents = liveDependentSheetIds(context);
+  const isTaken = (key: string): boolean => context.records.has(key) || written.has(key);
+
+  const isFreeSheetId = (sheetId: string): boolean =>
+    !isTaken(sheetKey(sheetId)) &&
+    !liveDependents.has(sheetId) &&
+    values.every((value) => value.kind !== 'row' || !isTaken(rowKey(sheetId, value.rowId)));
 
   for (const [index, name] of names.value.entries()) {
-    const sheetId = context.newId(`sheet:${index}`);
+    const sheetId = drawFreeId(context, 'sheet', `sheet:${index}`, isFreeSheetId);
 
-    if (context.records.has(sheetKey(sheetId))) {
+    if (sheetId === null) {
       return err('sheet-exists');
     }
 
+    const k = sheetKey(sheetId);
+
+    written.add(k);
+
     for (const value of values) {
       if (value.kind === 'row') {
-        const k = rowKey(sheetId, value.rowId);
+        const rowK = rowKey(sheetId, value.rowId);
 
-        copies.push({ k, d: value.d, ...context.mint(k, 0) });
+        copies.push({ k: rowK, d: value.d, ...context.mint(rowK, 0) });
       } else {
+        const prefix = repKeyPrefix(sheetId, value.sectionId);
         const role = `rep:${index}:${value.sectionId}:${value.instanceId}`;
-        const k = `${repKeyPrefix(sheetId, value.sectionId)}${context.newId(role)}`;
 
-        copies.push({ k, d: value.d, ...context.mint(k, 0) });
+        const instanceId = drawFreeId(
+          context,
+          'instance',
+          role,
+          (id) => !isTaken(`${prefix}${id}`),
+        );
+
+        if (instanceId === null) {
+          return err('instance-exists');
+        }
+
+        const repK = `${prefix}${instanceId}`;
+
+        written.add(repK);
+        copies.push({ k: repK, d: value.d, ...context.mint(repK, 0) });
       }
     }
 
-    const k = sheetKey(sheetId);
     const d: SheetData = { kind: 'npc', name, order: firstOrder + index };
 
     copies.push({ k, d, ...context.mint(k, 0) });
@@ -559,6 +595,42 @@ function copiedValues(context: ComposeContext, sheetId: string): CopiedValue[] {
   }
 
   return values;
+}
+
+// The first free id of a role, drawn again at most `MAX_ID_REDRAWS` times, or `null`. Each redraw is
+// a role of its own, so the pending view and the replay draw the same ids while the same ids
+// collide.
+function drawFreeId(
+  context: ComposeContext,
+  kind: RecordIdKind,
+  role: string,
+  isFree: (id: string) => boolean,
+): string | null {
+  for (let draw = 0; draw <= MAX_ID_REDRAWS; draw += 1) {
+    const id = context.newRecordId(kind, draw === 0 ? role : `${role}:redraw:${draw}`);
+
+    if (isFree(id)) {
+      return id;
+    }
+  }
+
+  return null;
+}
+
+// The sheet ids that live dependent records name: `row:`, `rep:`, `acl:`, `plink:` and `link:`.
+// A tombstone takes nothing over, so it does not count here.
+function liveDependentSheetIds(context: ComposeContext): Set<string> {
+  const sheetIds = new Set<string>();
+
+  for (const [key, record] of context.records) {
+    const sheetId = record.d === null ? null : dependentSheetId(key, record);
+
+    if (sheetId !== null) {
+      sheetIds.add(sheetId);
+    }
+  }
+
+  return sheetIds;
 }
 
 function liveSheetRecord(

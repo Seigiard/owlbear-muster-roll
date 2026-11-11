@@ -18,8 +18,8 @@ const ADD_ROW = 'Добавить строку';
 const CHANNEL = 'app.muster-roll/ui';
 const BAD_NUMBER = 'Нужно число';
 
-// The nanoid default: 21 characters of its URL-safe alphabet.
-const NANOID_PATTERN = /^[A-Za-z0-9_-]{21}$/;
+// TASK-37: a new instance id is 8 characters of the URL-safe nanoid alphabet.
+const NANOID_PATTERN = /^[A-Za-z0-9_-]{8}$/;
 
 // One repeat section on a grid wider than its row, and one that flows inline and opens with a label.
 const PRESET = {

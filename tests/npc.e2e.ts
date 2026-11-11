@@ -145,7 +145,8 @@ test('"Добавить NPC" creates "Новый NPC" with kind npc and the next
   expect({
     blocks: await blockNames(page),
     shownName: await npcNames(page).nth(1).inputValue(),
-    key: created.map((one) => /^sheet:[A-Za-z0-9_-]{21}$/.test(one.k)),
+    // TASK-37: a new sheet id is 12 characters of the URL-safe nanoid alphabet.
+    key: created.map((one) => /^sheet:[A-Za-z0-9_-]{12}$/.test(one.k)),
     data: created.map((one) => one.d),
     tabs: await page.getByRole('tab').allTextContents(),
     selected: await page.getByRole('tab', { selected: true }).textContent(),

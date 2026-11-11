@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { rollDiceCell } from '@/core/dice-roll';
 import { recordDigest } from '@/core/digest';
+import { newRecordId, type RecordIdKind } from '@/core/ids';
 import type { JsonObject } from '@/core/json';
 import {
   fitsOneMessage,
@@ -118,10 +119,12 @@ export type EngineTiming = Pick<
 >;
 
 // Tests inject the timing, the ids, and the random source of the answer delay, the room copy
-// jitter and the dice.
+// jitter and the dice. `newId` makes the engine's own ids, such as nonces; `newRecordId` makes the
+// sheet and instance ids of the records a command makes, such as an NPC copy's.
 export type ReplicaEngineOptions = {
   timing?: EngineTiming;
   newId?: () => string;
+  newRecordId?: (kind: RecordIdKind) => string;
   random?: () => number;
   // The copy catalog's roll strings. The background page passes them; with none, no roll shows.
   rollCopy?: RollCopy;
@@ -195,6 +198,7 @@ export async function startReplicaEngine(
 ): Promise<ReplicaEngine> {
   const timing = options.timing ?? TIMING;
   const newId = options.newId ?? nanoid;
+  const newRecordIdOf = options.newRecordId ?? newRecordId;
   const random = options.random ?? Math.random;
 
   const [startRole, connectionId] = await Promise.all([
@@ -625,7 +629,7 @@ export async function startReplicaEngine(
   }
 
   function liveContext(): ComposeContext {
-    return { records: replica, mint: minter.mint, newId: () => newId() };
+    return { records: replica, mint: minter.mint, newRecordId: newRecordIdOf };
   }
 
   // Mints nothing: a version of the pending view never reaches the room or the storage.
@@ -636,15 +640,15 @@ export async function startReplicaEngine(
         c: highestKnownCounter + 1,
         a: connectionId,
       }),
-      newId: () => newId(),
+      newRecordId: newRecordIdOf,
     };
   }
 
   // A pending intent composes again for every pending view and once more on replay. One role of
   // one command gets one id each time, so the view keeps its keys and the replay writes the keys
   // the windows already show, even when records arrive in between.
-  function pendingIdsOf(commandId: string): (role: string) => string {
-    return (role) => {
+  function pendingIdsOf(commandId: string): ComposeContext['newRecordId'] {
+    return (kind, role) => {
       let ids = pendingIds.get(commandId);
 
       if (ids === undefined) {
@@ -652,7 +656,7 @@ export async function startReplicaEngine(
         pendingIds.set(commandId, ids);
       }
 
-      const id = ids.get(role) ?? newId();
+      const id = ids.get(role) ?? newRecordIdOf(kind);
 
       ids.set(role, id);
 
@@ -901,7 +905,7 @@ export async function startReplicaEngine(
     }
 
     const dry = composers.compose(
-      { ...dryContext(pendingView()), newId: pendingIdsOf(id) },
+      { ...dryContext(pendingView()), newRecordId: pendingIdsOf(id) },
       command,
     );
 
@@ -933,7 +937,7 @@ export async function startReplicaEngine(
   function composedEntry(context: ComposeContext, entry: PendingEntry): VersionedRecord[] {
     if (entry.kind === 'intent') {
       const composed = composers.compose(
-        { ...context, newId: pendingIdsOf(entry.id) },
+        { ...context, newRecordId: pendingIdsOf(entry.id) },
         entry.command,
       );
 
@@ -991,7 +995,7 @@ export async function startReplicaEngine(
         }
       } else if (entry.kind === 'intent') {
         const composed = composers.compose(
-          { ...liveContext(), newId: pendingIdsOf(entry.id) },
+          { ...liveContext(), newRecordId: pendingIdsOf(entry.id) },
           entry.command,
         );
 

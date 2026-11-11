@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import type { FieldValue, VersionedRecord } from '@/core/records';
 
+import { INSTANCE_ID_LENGTH, SHEET_ID_LENGTH } from './ids';
 import {
   encodePreset,
   firstFieldId,
@@ -11,11 +12,19 @@ import {
   type Preset,
   type PresetSection,
 } from './preset';
-import { encodeSnapshot, readSnapshot, ROOM_METADATA_BYTE_LIMIT, SNAPSHOT_KEY } from './snapshot';
+import {
+  encodeSnapshot,
+  readSnapshot,
+  ROOM_METADATA_BYTE_LIMIT,
+  SNAPSHOT_KEY,
+  type SnapshotValue,
+} from './snapshot';
 
 // AD-8 and NFR16: the TASK-18 AC 12 measurement. It prints the size of a full party's room copy, to
-// be copied into the task notes, and asserts nothing about the limit: over it, or under 1500 bytes
-// of margin, is a human gate.
+// be copied into the task notes. TASK-37 shortened new ids to keep 1500 bytes of margin, and this
+// test enforces that margin: a failure here needs an owner decision, as TASK-34 was. Rooms built
+// before TASK-37 keep their 21-character ids and so their thin margin; the test prints that size
+// too, for comparison, and asserts nothing about it.
 
 // The larger Story 1.11 fixture.
 const FIXTURE_PATH = join(import.meta.dir, '../../tests/fixtures/presets/d20.json');
@@ -26,6 +35,15 @@ const CHARACTER_ATTACKS = 4;
 const NPC_ATTACKS = 2;
 const NANOID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-';
 
+// GM connection ids, the record authors. Owlbear makes them, so TASK-37 leaves their length as is.
+const CONNECTION_ID_LENGTH = 21;
+
+// TASK-37 AC 3: the margin the room copy must keep, written out by hand.
+const REQUIRED_MARGIN = 1500;
+
+// The nanoid default length, which every new id had before TASK-37.
+const OLD_ID_LENGTH = 21;
+
 const CLASSES = ['Следопыт', 'Волшебница', 'Паладин', 'Плут', 'Жрица', 'Варвар'];
 const HEROES = ['Брок Железнобокий', 'Лиза Ветреная', 'Агнесса', 'Мирон Тень', 'Дарья', 'Гром'];
 const PLAYERS = ['Андрей', 'Лиза', 'Катя', 'Миша', 'Даша', 'Гоша'];
@@ -35,31 +53,45 @@ const MONSTERS = ['Гоблин-лучник', 'Скелет-воин', 'Орк-
 const ATTACKS = ['Длинный меч', 'Короткий лук', 'Кинжал с ядом', 'Огненный снаряд', 'Укус'];
 
 describe('room copy size of the AC 12 party', () => {
-  test('a party of 6 characters and 60 NPCs with Russian text encodes and reads back whole', () => {
+  test('a party of 6 characters and 60 NPCs with Russian text encodes, reads back whole and leaves the margin', () => {
     // #given
     const preset = loadPreset();
-    const records = party(preset);
+    const records = party(preset, SHEET_ID_LENGTH, INSTANCE_ID_LENGTH);
+    const oldRecords = party(preset, OLD_ID_LENGTH, OLD_ID_LENGTH);
 
     // #when
-    const encoded = encodeSnapshot({ n: 0, a: '' }, records);
+    const encoded = encodedCopy(records);
+    const bytes = copyBytes(encoded);
+    const margin = ROOM_METADATA_BYTE_LIMIT - bytes;
+    const oldBytes = copyBytes(encodedCopy(oldRecords));
 
-    if (!encoded.ok) {
-      throw new Error(`the party did not encode: ${encoded.error}`);
-    }
+    console.log(`snapshot bytes: ${bytes}, margin: ${margin}`);
+    console.log(
+      `with ids made before TASK-37: snapshot bytes: ${oldBytes}, margin: ${ROOM_METADATA_BYTE_LIMIT - oldBytes}`,
+    );
 
-    // The bytes the copy adds to room metadata on its own: its key, its value and the braces.
-    const bytes = new TextEncoder().encode(
-      JSON.stringify({ [SNAPSHOT_KEY]: encoded.value }),
-    ).length;
-
-    console.log(`snapshot bytes: ${bytes}, margin: ${ROOM_METADATA_BYTE_LIMIT - bytes}`);
-
-    const readBack = readSnapshot({ [SNAPSHOT_KEY]: encoded.value });
+    const readBack = readSnapshot({ [SNAPSHOT_KEY]: encoded });
 
     // #then
     expect(readBack.ok ? readBack.value?.records.length : null).toBe(records.length);
+    expect(margin).toBeGreaterThanOrEqual(REQUIRED_MARGIN);
   });
 });
+
+function encodedCopy(records: readonly VersionedRecord[]): SnapshotValue {
+  const encoded = encodeSnapshot({ n: 0, a: '' }, records);
+
+  if (!encoded.ok) {
+    throw new Error(`the party did not encode: ${encoded.error}`);
+  }
+
+  return encoded.value;
+}
+
+// The bytes the copy adds to room metadata on its own: its key, its value and the braces.
+function copyBytes(encoded: SnapshotValue): number {
+  return new TextEncoder().encode(JSON.stringify({ [SNAPSHOT_KEY]: encoded })).length;
+}
 
 function loadPreset(): Preset {
   const parsed = parsePresetFile(readFileSync(FIXTURE_PATH, 'utf8'));
@@ -71,18 +103,19 @@ function loadPreset(): Preset {
   return parsed.value;
 }
 
-// Real ids as the extension makes them: nanoid sheet and instance ids, Owlbear UUIDs for players
-// and tokens and two GM connections as authors. A seeded random keeps the number reproducible.
-function party(preset: Preset): VersionedRecord[] {
+// Real ids as the extension makes them: nanoid sheet and instance ids of the given lengths, Owlbear
+// UUIDs for players and tokens and two GM connections as authors. A seeded random keeps the number
+// reproducible.
+function party(preset: Preset, sheetIdLength: number, instanceIdLength: number): VersionedRecord[] {
   const random = seeded(18);
-  const gms = [nanoid(random), nanoid(random)];
+  const gms = [nanoid(random, CONNECTION_ID_LENGTH), nanoid(random, CONNECTION_ID_LENGTH)];
   const author = (): string => gms[Math.floor(random() * gms.length)] ?? '';
   const counter = (): number => 1 + Math.floor(random() * 40);
   const records: VersionedRecord[] = [{ k: 'preset', d: encodePreset(preset), c: 1, a: author() }];
 
   for (let index = 0; index < CHARACTER_COUNT + NPC_COUNT; index += 1) {
     const isPc = index < CHARACTER_COUNT;
-    const sheetId = nanoid(random);
+    const sheetId = nanoid(random, sheetIdLength);
     const name = isPc ? at(HEROES, index) : `${at(MONSTERS, index)} ${index - CHARACTER_COUNT + 1}`;
     const sections = isPc ? preset.character.sections : preset.npc.sections;
 
@@ -103,7 +136,7 @@ function party(preset: Preset): VersionedRecord[] {
           sheetId,
           isPc ? CHARACTER_ATTACKS : NPC_ATTACKS,
           values,
-          random,
+          () => nanoid(random, instanceIdLength),
           counter,
           author,
         ),
@@ -138,7 +171,7 @@ function sectionRecords(
   sheetId: string,
   repeatCount: number,
   values: (fieldId: string, type: string) => FieldValue,
-  random: () => number,
+  newInstanceId: () => string,
   counter: () => number,
   author: () => string,
 ): VersionedRecord[] {
@@ -157,7 +190,7 @@ function sectionRecords(
 
     if (section.repeat === true) {
       for (let order = 0; order < repeatCount; order += 1) {
-        const k = `rep:${sheetId}:${rowId}:${nanoid(random)}`;
+        const k = `rep:${sheetId}:${rowId}:${newInstanceId()}`;
 
         records.push({ k, d: { order, cells }, c: counter(), a: author() });
       }
@@ -192,8 +225,8 @@ function at(list: readonly string[], index: number): string {
   return list[index % list.length] ?? '';
 }
 
-function nanoid(random: () => number): string {
-  return Array.from({ length: 21 }, () => NANOID_ALPHABET[Math.floor(random() * 64)]).join('');
+function nanoid(random: () => number, length: number): string {
+  return Array.from({ length }, () => NANOID_ALPHABET[Math.floor(random() * 64)]).join('');
 }
 
 function uuid(random: () => number): string {

@@ -87,7 +87,8 @@ test('"+" creates a character, selects its tab and focuses its name', async ({ p
   const [stored] = await storedSheets(page);
 
   expect({
-    key: /^sheet:[A-Za-z0-9_-]{21}$/.test(stored?.k ?? ''),
+    // TASK-37: a new sheet id is 12 characters of the URL-safe nanoid alphabet.
+    key: /^sheet:[A-Za-z0-9_-]{12}$/.test(stored?.k ?? ''),
     data: stored?.d,
   }).toEqual({ key: true, data: { kind: 'pc', name: NEW_CHARACTER, order: 0 } });
 });

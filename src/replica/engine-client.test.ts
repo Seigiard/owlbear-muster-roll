@@ -1160,6 +1160,31 @@ describe('sheet-create', () => {
     });
   });
 
+  test('rejects an id that only a live orphan row names, so the new sheet does not take it over', async () => {
+    // #given: a row whose sheet record never arrived, as a write that failed part way leaves it.
+    const rig = createRig();
+    const orphan: VersionedRecord = { k: 'row:lone:str', d: { str: 9 }, c: 3, a: 'other' };
+
+    seed(rig, orphan.k, JSON.stringify(orphan));
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, {
+      type: 'sheet-create',
+      sheetId: 'lone',
+      kind: 'pc',
+      name: 'Брок',
+    });
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'sheet-exists',
+      unchanged: { records: [orphan], deltas: 0 },
+    });
+  });
+
   test('rejects the id of a deleted sheet, so a tombstone never comes back', async () => {
     // #given
     const rig = createRig();

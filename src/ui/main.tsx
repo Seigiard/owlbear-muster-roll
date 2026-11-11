@@ -1,9 +1,9 @@
 import { useStore } from '@nanostores/react';
-import { nanoid } from 'nanoid';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { newSheetId } from '@/core/ids';
 import { decodePreset, type Preset } from '@/core/preset';
 import { hasLiveSheet, presetDataSchema, type VersionedRecord } from '@/core/records';
 import { sheetKey, type SheetSummary } from '@/core/sheets';
@@ -445,7 +445,9 @@ function WindowRoot({
   }
 
   function addSheet(kind: SheetSummary['kind']): void {
-    const sheetId = nanoid();
+    // The engine refuses an id that the room holds as a sheet, deleted ones included, or that a live
+    // record such as an orphan row names, so a collision takes over nothing.
+    const sheetId = newSheetId();
 
     // The GM has moved on from the open confirmation.
     setDeleteAsk(null);
