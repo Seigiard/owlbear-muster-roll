@@ -115,3 +115,9 @@
 
 - No feedback after "Скачать снимок"; the Owlbear iframe may block downloads. Check in the live room (TASK-32).
 - A value still in its typing pause is not in the downloaded file.
+
+## From spec-5-3-replace-the-room-from-a-snapshot (TASK-31)
+
+- Any participant can write a higher-generation room copy and replace the room for every client. Accepted by the owner for home use; revisit for public tables.
+- A generation that never completes (importer gone, copy did not fit) keeps every client in catch-up until a GM of that generation answers.
+- The late `snapshot-imported` after the 60 s window timeout has no test; the mock has no scene, so an inert link to an absent token is checked only as no error.
