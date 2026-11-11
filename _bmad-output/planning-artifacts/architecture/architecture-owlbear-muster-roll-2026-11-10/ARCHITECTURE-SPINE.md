@@ -7,8 +7,8 @@ paradigm: 'Replicated state (state-based LWW CRDT per record) over a functional 
 scope: 'The Muster Roll v1 Owlbear Rodeo extension, with no own server'
 status: final
 created: '2026-11-10'
-updated: '2026-11-10'
-binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-16, CAP-17, CAP-18, CAP-19]
+updated: '2026-11-11'
+binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-17, CAP-18, CAP-19, CAP-29, CAP-30, CAP-31]
 sources:
   - ../../../specs/spec-muster-roll/SPEC.md
   - ../../../specs/spec-muster-roll/preset-format.md
@@ -54,26 +54,29 @@ graph TD
 
 ### AD-2 — The record is the unit of replication
 
-- **Binds:** CAP-1, CAP-3, CAP-5, CAP-8, CAP-11, CAP-13, CAP-14
+- **Binds:** CAP-1, CAP-3, CAP-5, CAP-8, CAP-11, CAP-13, CAP-14, CAP-17, CAP-18, CAP-29, CAP-30
 - **Prevents:** Two units replicating at different granularity, inventing clashing keys, or typing values differently.
 - **Rule:** A record is `{ k, d, c, a }`: key, data, counter, author connection id. `d: null` is a tombstone, kept until the generation changes. The whole `d` is replaced on merge. These are the only keys:
 
 | Key | Data | Who may write |
 | --- | --- | --- |
 | `preset` | The preset JSON, deflated and base64-encoded | GM |
-| `sheet:{sheetId}` | `{ kind: "pc" \| "npc", name, order }` | GM |
-| `row:{sheetId}:{rowId}` | `{ fieldId: value }` for all fields of one preset row | GM, or a player with access to a `pc` sheet |
-| `rep:{sheetId}:{sectionId}:{instanceId}` | `{ order, cells: { fieldId: value } }` for one repeat row | GM, or a player with access to a `pc` sheet |
-| `acl:{sheetId}:{playerId}` | `{ name }`, the last known player name | GM |
-| `link:{tokenId}` | `sheetId` | GM |
-| `plink:{sheetId}:{playerId}` | `{ name }`, the last known player name | GM |
+| `sheet:{sheetId}` | `{ set, order }` for a sheet of a sheet set. `set` is a sheet set id of the preset | GM |
+| `row:{sheetId}:{rowId}` | `{ fieldId: value }` for all fields of one preset row | GM, or a player as AD-4 allows |
+| `rep:{sheetId}:{sectionId}:{instanceId}` | `{ order, cells: { fieldId: value } }` for one repeat block: every field of every row of the section | GM, or a player as AD-4 allows |
+| `acl:{sheetId}:{playerId}` | `{ name }`, the last known player name. Sheets of a sheet set only | GM |
+| `link:{tokenId}` | `{ s: sheetId }` for a sheet, or `{ s: sheetId, i: instanceId }` for a repeat block (AD-19). The repeat block's section is read from its `rep:` key | GM |
+| `plink:{sheetId}:{playerId}` | `{ name }`, the last known player name. Sheets of a sheet set only | GM |
 
-- `rowId` is the id of the first `field` in that preset row. `sectionId` is the same for the template row of a `repeat` section. Preset files carry no row or section ids. Rows with no field have no record.
-- Within one non-repeat scope a field id is unique, and the preset schema refuses a duplicate.
+- A single sheet has no `sheet:` record. Its `sheetId` is its template id. A new `sheetId` of a sheet set equal to a template id is refused at create.
+- `rowId` is the id of the first `field` in that preset row. `sectionId` is the id of the first `field` of a `repeat` section in row order. Preset files carry no row or section ids. Rows with no field have no record.
+- Within one non-repeat scope, and within one repeat block, a field id is unique, and the preset schema refuses a duplicate.
 - A value is a JSON number for `number`, a string for `text`, a boolean for `check`. An empty field has no key.
-- `sheetId` and `instanceId` are client-generated nanoids. Field ids come from the preset. `order` is a number, with ties broken by id.
-- Deleting a sheet tombstones its `row:`, `rep:`, `acl:`, `link:` and `plink:` records in one batch.
-- Copying an NPC writes new `sheet:`, `row:` and `rep:` records under a new `sheetId`, at `c: 1`. A copy gets no `link:` record.
+- The name of a sheet of a sheet set is not stored in `sheet:`. It is the value of its name field, in that field's `row:` record.
+- An emptied record keeps a non-null `d`: `{}` for `row:`, `{ order, cells: {} }` for `rep:`. Only a repeat block removal, a sheet delete, an upload that removes the row or section, and a generation change write `d: null`. A player sends `d: null` only for a `rep:` key.
+- The `sheetId` of a sheet of a sheet set, and every `instanceId`, are client-generated nanoids. An `instanceId` is unique within its sheet, across sections. A pass that moves a `rep:` record to a new section keeps its `instanceId`. An import drops a second repeat block with one `instanceId` in one sheet. Field and template ids come from the preset. `order` is a number, with ties broken by id.
+- Deleting a sheet of a sheet set tombstones its `row:`, `rep:`, `acl:`, `link:` and `plink:` records in one batch.
+- Duplicating a repeat block writes new `rep:` records of the same sheet and section at `c: 1`, after the section's last repeat block. A copy gets no `link:` record.
 
 ### AD-3 — One merge, ordered by counter [ADOPTED]
 
@@ -86,7 +89,7 @@ graph TD
 - **Binds:** CAP-3, CAP-15
 - **Prevents:** Unchecked player edits, lost fast edits, and two GM clients producing different records from one edit.
 - **Rule, player:** A player never merges its own edit. `src/replica` owns the pending queue and exposes it in the projection. The queue has at most one entry per key, holding a field patch. A newer edit updates the entry and raises `c`. For each key, only the newest version of its entry is sent, as `propose`, and it is resent with backoff until answered. An edit is identified by `(k, c, a)`.
-- **Rule, GM client:** A GM client validates only when it is not `catching-up`. An unknown sender never reaches `core/access`, because the AD-5 gate drops it. `core/access` refuses a tombstoned or `npc` sheet, a key outside the current preset, and any key form that AD-2 reserves for the GM.
+- **Rule, GM client:** A GM client validates only when it is not `catching-up`. An unknown sender never reaches `core/access`, because the AD-5 gate drops it. `core/access` passes a `row:` or `rep:` record only on a sheet of a visible template (AD-18), and judges only the field values that differ from the current record: each must be a field of the template with its type. A proposal that carries another field id absent from the template gets `reject stale` with the current record, not `denied`. A sheet of a sheet set must be live and hold a live `acl:` of the player. A single sheet must be player-editable (`players: edit`). It refuses any key form that AD-2 reserves for the GM.
   - On pass with `c` above the current `c`, or with a record identical to the current one, it merges the record with `c` and `a` unchanged and broadcasts `commit`, echoing `(k, c, a)`.
   - On a refused access it sends `reject` with reason `denied`. The player drops the entry and shows a notice.
   - On a low `c` it sends `reject` with reason `stale` and the current record. The player applies its patch to that record, takes `c` + 1 and proposes again.
@@ -153,8 +156,12 @@ A message with a higher generation also starts AD-9 adoption.
 
 - **Binds:** CAP-13
 - **Prevents:** A stale tab bringing replaced rows back through merge, and an import erasing the only data.
-- **Rule, value:** A room has a generation `{ n, a }`, ordered like a version. Before the first import it is `{ n: 0, a: "" }`. On start a client takes the highest generation among its persisted records and the snapshot. Only a snapshot import changes it.
-- **Rule, import:** `core/snapshot` takes the file and the current preset and returns records at `c: 1` and a dropped-value count. The output carries the current `preset`, all `link:` records from the file, and no `acl:` or `plink:` record. A link to an absent token is inert. Nothing is written before the confirmation. The importer persists the new generation, writes the snapshot, and only then broadcasts `reset`. If the snapshot does not fit or fails read-back, the import still finishes, the not-saved notice shows, and the old-generation copy is removed from the room.
+- **Rule, value:** A room has a generation `{ n, a }`, ordered like a version. Before the first import it is `{ n: 0, a: "" }`. On start a client takes the highest generation among its persisted records and the snapshot. Only a snapshot import or a wipe changes it.
+- **Rule, wipe (CAP-31):** A wipe («Очистить всё») is a GM generation change with no records, no `preset` included. Nothing is written before the confirmation. The wiping GM writes the empty room copy, then broadcasts `reset`, and deletes this room's local keys of every storage format. Other clients adopt it as an import, and a GM client that adopts also deletes this room's keys of older storage formats.
+- **Rule, replacing the room copy:** An import or a wipe writes over a copy of a lower generation, an unreadable copy or an older-format copy. It never writes over a copy of a higher generation or a newer `v`: it stops with the newer-version notice. A routine AD-8 write never replaces an unreadable or older-format copy.
+- **Rule, minting:** A generation change is composed only by a GM client that is not `catching-up`. It takes `n` = 1 + the highest `n` this client has persisted, read in a room copy or seen in any message. A GM device that was offline during the change and holds a higher generation wins on its return, which is an accepted loss.
+- **Rule, empty generation:** A GM client persists its generation under a marker key as well as in record keys, so a generation with no records, as after a wipe, survives a reload.
+- **Rule, import:** When the import's own copy does not fit, a readable copy of a lower generation is removed from the room, and a copy this build cannot read stays. `core/snapshot` takes the file and the current preset and returns records at `c: 1`, a dropped-value count and a dropped-sheet count. A file sheet whose template the preset lacks, or a single sheet sheet whose id is not its template id, is dropped with its links. The output carries the current `preset`, all `link:` records from the file, and no `acl:` or `plink:` record. A link to an absent token is inert. Nothing is written before the confirmation. The importer persists the new generation, writes the snapshot, and only then broadcasts `reset`. If the snapshot does not fit or fails read-back, the import still finishes, the not-saved notice shows, and the old-generation copy is removed from the room.
 - **Rule, adoption:** A client that sees a higher generation drops its pending queue with a notice and runs catch-up. It keeps its old copy until the new generation is complete, then deletes it.
 - **Scope:** The room snapshot in metadata and the export file are two formats. Only the metadata one holds `acl:`, `plink:`, tombstones and versions.
 
@@ -163,14 +170,14 @@ A message with a higher generation also starts AD-9 adoption.
 - **Binds:** CAP-1, CAP-6, CAP-9, CAP-15
 - **Prevents:** Sync logic in windows that close, two owners of one copy, and whole-row writes from a stale view.
 - **Rule:** Only `src/replica`, in the background page, mutates the replica, composes `d`, mints `c` or calls room broadcast and metadata. Windows and the background talk on channel `app.muster-roll/ui` with destination `LOCAL`, under schemas in `core`. Handlers tolerate an echo of their own message.
-  - Commands are intents, such as a field patch, a repeat row change, a sheet create, rename or delete, an NPC copy, an access or token link change, a roll request, an upload, an import, or opening a tab. A command never carries a whole record.
+  - Commands are intents, such as a field patch, a repeat block change, a sheet create (naming a sheet set id) or delete, a duplicate, an access or token link change, a roll request, an upload, an import, a wipe, or opening a tab. A rename is a field patch of the name field. A command never carries a whole record.
   - A window opens by sending `projection-request` and gets a full projection, then deltas. The projection holds records through `core/visibility`, the pending queue, `gmLink`, notices and rolls.
 
 ### AD-11 — One localStorage key per record [ADOPTED]
 
 - **Binds:** CAP-1, CAP-9
 - **Prevents:** Two tabs of one browser overwriting each other's whole copy, rooms mixing data, and a build unable to read the only full copy.
-- **Rule:** A GM client persists a record under `mr1:{roomId}:{n}:{a}:{k}`, where `n` and `a` are the generation and `1` is the format version. A write reads that key, merges and sets it in one synchronous step. This guards against stale tabs, not against a race inside one millisecond. Merge on load repairs that case. A failed write raises a notice. Player clients do not persist.
+- **Rule:** A GM client persists a record under `mr2:{roomId}:{n}:{a}:{k}`, where `n` and `a` are the generation and `2` is the format version. A client reads only keys of the current format, and of a lower one only through a migration in `core`. No migration from `mr1` exists. A write reads that key, merges and sets it in one synchronous step. This guards against stale tabs, not against a race inside one millisecond. Merge on load repairs that case. A failed write raises a notice. Player clients do not persist.
 
 ### AD-12 — One wire protocol, paced and under the limit
 
@@ -179,19 +186,19 @@ A message with a higher generation also starts AD-9 adoption.
 - **Rule, envelope:** Room traffic uses `{ v, g, t, ... }`. `t` is one of `commit`, `propose`, `reject`, `ping`, `alive`, `state-request`, `state`, `reset`, `roll`. `core` owns the zod schemas, and every inbound message, snapshot and file is parsed through them.
 - **Rule, size:** One function splits batches so that each message on either channel is under 15000 UTF-8 bytes of JSON. A record that cannot fit one message is refused at input with an error.
 - **Rule, pacing:** Every send on both channels goes through one serial queue with spacing between sends. A closing window's last field patch goes ahead of the queue. `RateLimitHit` is waited out with backoff. Pending `commit` batches are coalesced by key.
-- **Rule, versions:** `v` changes with any change to a message, snapshot or stored record format. A message with another `v` is dropped, and a higher one makes the UI ask for a reload. A snapshot or file with a higher `v` is neither read nor overwritten. A lower one is read only through a migration in `core`.
+- **Rule, versions:** `v` changes with any change to a message, snapshot or stored record format. The current `v` is 2. A message with another `v` is dropped, and a higher one makes the UI ask for a reload. A snapshot or file with a higher `v` is neither read nor overwritten. A lower one is read only through a migration in `core`. No migration from `v: 1` exists: a v1 file is refused. Reading a room copy tells three failures apart: newer version, older version and unreadable. An older-version copy is not read, raises the GM's "older format" notice, and is replaced only as AD-9 allows, in practice by a wipe.
 
 ### AD-13 — Rolls are events, not state
 
 - **Binds:** CAP-6, CAP-7
-- **Prevents:** A roll made twice, an NPC roll shown to a player, or a roll persisted through the replica.
-- **Rule:** A window sends a roll request. The roller's `replica` evaluates the formula once with `core/formula` and sends one `roll` with `{ id, sheetId, kind, roller, sheetName, cell, result }`. Receivers do not recompute and deduplicate by `id`. The names in the message are shown. Each client shows a result through the notification port, so it appears with the window closed. A player shows only `kind: "pc"`. Rolls never enter records, storage or snapshots. No message is sent when evaluation fails.
+- **Prevents:** A roll made twice, a hidden sheet's roll shown to a player, or a roll persisted through the replica.
+- **Rule:** A window sends a roll request. The roller's `replica` evaluates the formula once with `core/formula` and sends one `roll` with `{ id, sheetId, hidden, roller, sheetName, cell, result }`. `hidden` is computed once, from the sheet's template, when the replica accepts the roll request (AD-18). Every output of that roll, the `roll` message and the dice-extension target (`everyone` or `gm_only`), uses that value. Receivers do not recompute and deduplicate by `id`. The names in the message are shown. Each client shows a result through the notification port, so it appears with the window closed. A player shows only `hidden: false`, and a GM client treats a player's `hidden: true` roll as forged. Rolls never enter records, storage or snapshots. No message is sent when evaluation fails.
 
 ### AD-14 — A preset upload rewrites values in one pass
 
 - **Binds:** CAP-4, CAP-8, CAP-12
 - **Prevents:** Values lost on a moved field, erased values returning, and two diffs of one upload.
-- **Rule:** Preset upload and preset import are the same path, and neither changes the generation. In `replica`, not while `catching-up`, one `core/preset` diff runs over the full replica. It returns removed field ids that hold a value. A key present with `false` holds a value. A field moved across a `repeat` boundary counts as removed. If any exist, the UI asks one confirmation, otherwise it shows the short notice. The diff runs again only when the replica changed before the confirm press. The batch then writes `preset`, moves values by field id to the row that now holds them, strips removed ids, and tombstones records of rows that no longer exist. New-key rows go first, then `preset`, then the tombstones of old keys and stripped rows. Every later write that mints a new `c` strips field ids absent from the template of the record's sheet kind. If the uploader closes mid-batch, an erased value can return only when the same field id is added again, which is an accepted loss.
+- **Rule:** Preset upload and preset import are the same path, and neither changes the generation. In `replica`, not while `catching-up`, one `core/preset` diff runs over the full replica, template by template. A template is matched by its `id` and `kind`. The diff returns removed field ids that hold a value and the count of deleted sheets. A key present with `false` holds a value. A field moved across a `repeat` boundary counts as removed. A template that is gone, or changed in `id` or `kind`, deletes its sheets: a sheet set's `sheet:` records with all their dependents, a single sheet's `row:`, `rep:` and `link:` records. Deleted sheets are the sheets of such templates and such single sheets that hold a value. If any value or sheet is lost, the UI asks one confirmation, otherwise it shows the short notice. The diff runs again only when the replica changed before the confirm press. The batch then writes `preset`, moves values by field id to the row that now holds them, strips removed ids, and tombstones records of rows that no longer exist. New-key rows go first, then `preset`, then the tombstones of old keys, deleted sheets, stripped rows and links whose target AD-19 no longer allows. Link tombstones are not counted. Every later write that mints a new `c` strips field ids absent from the template of the record's sheet. If the uploader closes mid-batch, an erased value can return only when the same field id is added again, which is an accepted loss.
 
 ### AD-17 — The production origin is permanent
 
@@ -199,12 +206,25 @@ A message with a higher generation also starts AD-9 adoption.
 - **Prevents:** A URL change orphaning the only full copy of each GM's data, and Owlbear failing to load the extension.
 - **Rule:** The production URL is `https://musterroll.2249364.xyz/`. It does not change after the first real session, because the origin scopes `localStorage`. Deployment is a manual `wrangler deploy` of Workers static assets. `public/_headers` sends `Access-Control-Allow-Origin` for `https://www.owlbear.rodeo`, and no-cache for HTML and `manifest.json`. Assets are content-hashed. A release passes one check in a live room, because the mock proves app logic only. A rollback may not cross a `v` change.
 
+### AD-18 — One template owns every sheet
+
+- **Binds:** CAP-2, CAP-3, CAP-4, CAP-6, CAP-17, CAP-29
+- **Prevents:** Views, access checks and rolls choosing different templates, names or rules for one sheet.
+- **Rule:** A sheet's template is found by one function in `core`: a live `sheet:` record's `set` names a sheet set, and a `sheetId` equal to a single sheet id names that single sheet. Template ids are unique in a preset. A `sheetId` equal to any template id is that template's single sheet or nothing: a `sheet:` record with such an id, or whose `set` names no template of kind `set`, resolves to no template, and an import drops such a sheet and counts it. A sheet whose template is absent is not shown and takes no edit. The resolver returns the sheet's policy: template, visibility, write rule (per-player write access, player-editable, or none), name source and linkable (`tokens`). Only the resolver reads a template's `kind`. No record, message or view carries a sheet kind.
+
+### AD-19 — A token link targets a sheet or a repeat block
+
+- **Binds:** CAP-14, CAP-18, CAP-30
+- **Prevents:** Two clients disagreeing on whether a token opens a removed repeat block, or a link surviving where the preset no longer allows it.
+- **Rule:** A link is live only while its sheet is live, its repeat block is live when it names one, and the template (for a sheet link) or the repeat section (for a repeat block link) is linkable (`tokens`). Any other link is inert: every view and the token menu treat it as no link. Only the GM composes `link:`, and the composer refuses a target that is not live. The GM client that composes a repeat block removal, or commits a player's repeat block removal, tombstones the live links to that repeat block in the next batch.
+
 ## Consistency Conventions
 
 | Concern | Convention |
 | --- | --- |
 | SDK boundary | Only `src/platform/obr` imports `@owlbear-rodeo/sdk`. A lint rule enforces this. Tests use the mock adapter of the same ports |
-| Visibility | Views get sheets only through `core/visibility`, which takes the role. Players hold NPC records too, and hiding is at the interface only |
+| Visibility | Views get sheets only through `core/visibility`, which takes the role and the decoded preset. A player sees the preset, the sheets of visible templates with their dependents, and live links to them. With no decoded preset a player sees only the `preset` record. Players hold hidden records too, and hiding is at the interface only |
+| Sheet names | Only `core` names a sheet: a sheet of a sheet set by its name field value, a single sheet by its `title`, and an empty name by one fallback label. Tabs, headers, roll messages, token labels and the link picker read that function. A repeat block is named by its first field's value, with the same fallback |
 | Formulas | Only the parser in `core/formula`. Never `eval` or `new Function` |
 | Errors | `core` returns results and does not throw for expected failures. `replica` reports them through notices |
 | Edit granularity | A field sends on blur or after a typing pause, never per keystroke |
@@ -272,11 +292,11 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 | Capability | Lives in | Governed by |
 | --- | --- | --- |
 | CAP-1 | replica, ui | AD-1, AD-2, AD-7, AD-10, AD-11, AD-17 |
-| CAP-2 | core/visibility | AD-5, Visibility convention |
-| CAP-3 | core/access, replica | AD-2, AD-4, AD-5 |
-| CAP-4 | core/preset, ui | AD-12, AD-14 |
+| CAP-2 | core/visibility | AD-5, AD-18, Visibility convention |
+| CAP-3 | core/access, replica | AD-2, AD-4, AD-5, AD-18 |
+| CAP-4 | core/preset, ui | AD-12, AD-14, AD-18 |
 | CAP-5 | core/preset, ui | AD-2 |
-| CAP-6 | core/formula, replica | AD-5, AD-10, AD-12, AD-13 |
+| CAP-6 | core/formula, replica | AD-5, AD-10, AD-12, AD-13, AD-18 |
 | CAP-7 | core/formula | AD-13 |
 | CAP-8 | core/preset, replica | AD-14 |
 | CAP-9 | replica | AD-5, AD-7, AD-8, AD-10, AD-11, AD-17 |
@@ -284,12 +304,16 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 | CAP-11 | core/merge, replica | AD-1, AD-2, AD-3, AD-7, AD-12 |
 | CAP-12 | core/preset, ui | AD-14 |
 | CAP-13 | core/snapshot, replica | AD-2, AD-9 |
-| CAP-14 | ui, platform | AD-2, Visibility convention |
+| CAP-14 | ui, platform | AD-2, AD-19, Visibility convention |
 | CAP-15 | replica, ui | AD-4, AD-6, AD-10, AD-12 |
-| CAP-16 | core, replica, ui | AD-2, AD-10 |
-| CAP-17 | core, replica, ui | AD-2, AD-5, AD-10 |
-| CAP-18 | replica, ui, platform | AD-2, AD-5, AD-10 |
+| CAP-17 | core, replica, ui | AD-2, AD-5, AD-10, AD-18, Sheet names convention |
+| CAP-18 | replica, ui, platform | AD-2, AD-5, AD-10, AD-19 |
 | CAP-19 | core/access, replica, ui | AD-2, AD-5, AD-10 |
+| CAP-29 | core, ui | AD-2, AD-18 |
+| CAP-30 | core, replica, ui | AD-2, AD-10, AD-19 |
+| CAP-31 | replica, ui | AD-9, AD-11, AD-12 |
+
+CAP-16 is retired. CAP-20 to CAP-28 belong to the v2 builder, which this spine does not cover yet.
 
 ## Deferred
 
@@ -297,7 +321,8 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 | --- | --- | --- |
 | Timeout, pause and delay values | One owner each | First live-room test |
 | Send spacing | One owner. Start at 50 ms, under the measured limit of about 25 messages per second per connection | If a live session gets `RateLimitHit` |
-| Preset JSON keys beyond those in `preset-format.md` | One schema in `core/preset` owns them | First preset |
+| Preset JSON keys beyond those in `preset-format.md` | One schema in `core/preset` owns them, and `docs/preset-format.md` documents them | First preset |
+| Room copy margin on the sheet set and single sheet format | Re-measured by `snapshot-size.test.ts` on the new worst case, under the 1500-byte gate of TASK-34 | TASK-41 build |
 | Snapshot byte layout, such as an author table | One codec in `core/snapshot`, under the AD-12 version rule | When size pressure appears |
 | Removing tombstones inside a generation | Only needed if a room runs out of space | First real-format size measurement |
 | Deleting data of old rooms from `localStorage` | Quota is about 5 MB and failure raises a notice | First quota notice |
