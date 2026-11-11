@@ -2,14 +2,18 @@ import { useId } from 'react';
 import type { ReactNode } from 'react';
 
 import type { Preset } from '@/core/preset';
+import type { VersionedRecord } from '@/core/records';
 import type { RoomCopyStatus } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { PresetDownload, uploadDisabledReason, usePresetUpload } from '@/ui/preset-actions';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 import { roomCopyText } from '@/ui/settings/room-copy-text';
+import { SnapshotActions } from '@/ui/settings/snapshot-actions';
 
 type SettingsViewProps = {
+  // The window's records, which "Скачать снимок" writes to the file.
+  records: ReadonlyMap<string, VersionedRecord>;
   preset: Preset | null;
   catchingUp: boolean;
   roomCopy: RoomCopyStatus;
@@ -17,10 +21,11 @@ type SettingsViewProps = {
   store: Pick<ProjectionStore, '$rejections' | '$presetResults'>;
 };
 
-// Sections come in the order Пресет, Снимок, Копия в комнате. Story 5.2 adds Снимок.
-// In each section the upload action comes first and is the primary one. A confirmation block
-// comes before every section, at the top of the content area.
+// Sections come in the order Пресет, Снимок, Копия в комнате. In each section the first action is
+// the primary one: the upload under Пресет, the download under Снимок. A confirmation block comes
+// before every section, at the top of the content area.
 export function SettingsView({
+  records,
   preset,
   catchingUp,
   roomCopy,
@@ -28,6 +33,7 @@ export function SettingsView({
   store,
 }: SettingsViewProps): ReactNode {
   const headingId = useId();
+  const snapshotHeadingId = useId();
   const roomCopyHeadingId = useId();
 
   const { confirmation, upload } = usePresetUpload({
@@ -47,6 +53,14 @@ export function SettingsView({
         <div className="flex flex-wrap items-start gap-2">
           {upload}
           <PresetDownload preset={preset} catchingUp={catchingUp} />
+        </div>
+      </section>
+      <section aria-labelledby={snapshotHeadingId} className="flex flex-col gap-2">
+        <h2 id={snapshotHeadingId} className="text-section-heading">
+          {copy.section.snapshot}
+        </h2>
+        <div className="flex flex-wrap items-start gap-2">
+          <SnapshotActions records={records} preset={preset} catchingUp={catchingUp} />
         </div>
       </section>
       <section aria-labelledby={roomCopyHeadingId} className="flex flex-col gap-2">

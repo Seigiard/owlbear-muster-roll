@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { JsonValue } from '@/core/json';
+import type { JsonObject, JsonValue } from '@/core/json';
 import { parseRecord, parseStoredRecord } from '@/core/records';
 
 const VALID_FORMS: [string, JsonValue][] = [
@@ -38,6 +38,14 @@ const INVALID_KEYS = [
   'plink:s:p:x',
   'constructor:x',
   '__proto__:x',
+  'sheet:__proto__',
+  'row:__proto__:r',
+  'row:s:__proto__',
+  'rep:s:__proto__:i',
+  'rep:s:sec:__proto__',
+  'acl:s:__proto__',
+  'link:__proto__',
+  'plink:__proto__:p',
 ];
 
 const INVALID_DATA: [string, JsonValue][] = [
@@ -64,6 +72,7 @@ const INVALID_DATA: [string, JsonValue][] = [
   ['link:t', 5],
   ['link:t', ''],
   ['link:t', 'a:b'],
+  ['link:t', '__proto__'],
   ['link:t', { sheetId: 's' }],
   ['plink:s:p', {}],
   ['plink:s:p', { name: 'x', extra: 1 }],
@@ -152,6 +161,17 @@ describe('parseRecord refuses', () => {
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
 
+  test.each<[string, JsonValue]>([
+    ['row:s:r', ownProtoKey(1)],
+    ['rep:s:sec:i', { order: 0, cells: ownProtoKey(1) }],
+  ])('for the key %s a field id __proto__', (k, d) => {
+    // #when
+    const parsed = parseRecord({ k, d, c: 1, a: 'conn' });
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+  });
+
   test.each([[0], [-1], [1.5], ['1'], [null], [2 ** 53]])('the counter %j', (c) => {
     // #when
     const parsed = parseRecord({ k: 'preset', d: null, c, a: 'conn' });
@@ -215,3 +235,17 @@ describe('parseStoredRecord', () => {
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
 });
+
+// An object with an own `__proto__` key, as JSON.parse makes one from a message or stored text.
+function ownProtoKey(value: JsonValue): JsonObject {
+  const object: JsonObject = {};
+
+  Object.defineProperty(object, '__proto__', {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+
+  return object;
+}

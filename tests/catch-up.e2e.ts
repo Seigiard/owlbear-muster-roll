@@ -23,6 +23,8 @@ const GEAR = '⚙︎';
 const SETTINGS = 'Настройки';
 const LOAD_PRESET = 'Загрузить пресет';
 const DOWNLOAD_PRESET = 'Скачать пресет';
+const DOWNLOAD_SNAPSHOT = 'Скачать снимок';
+const LOAD_SNAPSHOT = 'Загрузить снимок';
 const NEW_CHARACTER = 'Новый персонаж';
 
 type Return = 'online' | 'resume' | 'visibilitychange';
@@ -171,13 +173,37 @@ test('during catch-up Settings disables the preset upload and download with the 
   await returnWithSilentGm(client, 'resume');
 
   // #then
-  const settings = client.window.getByRole('tabpanel');
+  const presetSection = client.window.getByRole('region', { name: 'Пресет' });
 
   await expect(uploadButton(client.window)).toBeDisabled();
   await expect(client.window.getByRole('button', { name: DOWNLOAD_PRESET })).toBeDisabled();
-  await expect(settings.getByText(LOADING)).toHaveCount(2);
+  await expect(presetSection.getByText(LOADING)).toHaveCount(2);
   await expect(uploadButton(client.window)).toBeEnabled({ timeout: 6000 });
   await expect(client.window.getByRole('button', { name: DOWNLOAD_PRESET })).toBeEnabled();
+});
+
+test('during catch-up Settings disables the snapshot download and upload with the loading text', async ({
+  context,
+}) => {
+  // #given: a preset, so only catch-up can lock the download.
+  const client = await openClient(context, { catchUpTimeoutMs: 2500 }, []);
+
+  await client.window.getByRole('tab', { name: SETTINGS }).click();
+  await expect(snapshotButton(client.window, DOWNLOAD_SNAPSHOT)).toBeEnabled();
+
+  // #when
+  await returnWithSilentGm(client, 'resume');
+
+  // #then
+  await expect(snapshotButton(client.window, DOWNLOAD_SNAPSHOT)).toBeDisabled();
+  await expect(snapshotButton(client.window, DOWNLOAD_SNAPSHOT)).toHaveAccessibleDescription(
+    LOADING,
+  );
+  await expect(snapshotButton(client.window, LOAD_SNAPSHOT)).toBeDisabled();
+  await expect(snapshotButton(client.window, LOAD_SNAPSHOT)).toHaveAccessibleDescription(LOADING);
+  await expect(snapshotButton(client.window, DOWNLOAD_SNAPSHOT)).toBeEnabled({ timeout: 6000 });
+  await expect(snapshotButton(client.window, DOWNLOAD_SNAPSHOT)).toHaveAccessibleDescription('');
+  await expect(snapshotButton(client.window, LOAD_SNAPSHOT)).toHaveCount(0);
 });
 
 test('a page that becomes visible again catches up, and the upload waits for it', async ({
@@ -261,6 +287,10 @@ function strength(page: Page): Locator {
 
 function uploadButton(page: Page): Locator {
   return page.getByRole('button', { name: LOAD_PRESET });
+}
+
+function snapshotButton(page: Page, name: string): Locator {
+  return page.getByRole('region', { name: 'Снимок' }).getByRole('button', { name });
 }
 
 async function newSheetsStored(page: Page): Promise<number> {

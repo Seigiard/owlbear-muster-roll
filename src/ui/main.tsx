@@ -538,6 +538,7 @@ function WindowRoot({
 
   const settings = (
     <SettingsView
+      records={records}
       preset={preset}
       catchingUp={catchingUp}
       roomCopy={roomCopy}

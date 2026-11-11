@@ -49,6 +49,7 @@ export const copy = {
   },
   section: {
     preset: 'Пресет',
+    snapshot: 'Снимок',
     roomCopy: 'Копия в комнате',
   },
   status: {
