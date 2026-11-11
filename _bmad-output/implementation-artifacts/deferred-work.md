@@ -99,3 +99,8 @@
 - Pending entries wait up to `proposeResendMaxMs` (30 s) after a GM leaves catch-up when `gmLink` does not change.
 - The engine test `TIMING` literal is copied in about 14 files; a shared fixture would remove the copies.
 - The `gone` race in `handlePlayerCommand` (a row removed by a not-yet-shown commit) has no test.
+
+## From spec-3-4-see-when-an-edit-is-waiting-for-a-gm (TASK-23)
+
+- No test covers the save-on-disable flush of a focused field in a row whose removal becomes pending, or the disabled dice button in that row.
+- The row slot live region also announces the delayed mark of a new row; check with a screen reader in a live room.
