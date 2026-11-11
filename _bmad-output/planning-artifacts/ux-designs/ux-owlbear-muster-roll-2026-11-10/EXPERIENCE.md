@@ -2,7 +2,7 @@
 name: Muster Roll
 status: final
 created: 2026-11-10
-updated: 2026-11-11
+updated: 2026-11-12
 sources:
   - ../../../specs/spec-muster-roll/SPEC.md
   - ../../../specs/spec-muster-roll/preset-format.md
@@ -54,10 +54,12 @@ Short and literal. Commands are perfective verbs. Places are nouns. Statuses are
 
 | Job | Copy |
 | --- | --- |
-| Command | "Загрузить пресет", "Скачать пресет", "Загрузить снимок", "Скачать снимок", "Очистить всё", "Добавить", "Дублировать…", "Удалить", "Привязать лист…", "Отвязать лист", "Открыть лист", "Отменить" |
+| Command | "Загрузить пресет", "Скачать пресет", "Загрузить снимок", "Скачать снимок", "Очистить всё", "Добавить", "Дублировать…", "Удалить", "Привязать лист…", "Отвязать лист", "Открыть лист", "Выделить на карте", "Отменить" |
 | Add a sheet of a sheet set | "+" with the accessible name "Добавить: {title}" |
 | Place | "Настройки", "Доступ" |
 | Status | "Ожидает", "Только чтение", "Можно править", "Токен привязан", "Нет токена" |
+| Selection mark, in an accessible name only | "{name}, выделен на карте" |
+| Select a repeat block's tokens | "Выделить на карте" with the accessible name "Выделить блок {n} на карте", where `{n}` is the repeat block's position in its section from 1 |
 | Empty sheet name | "Без имени" |
 | Loading | "Загрузка…" |
 | No GM | "Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку." |
@@ -91,20 +93,21 @@ A sheet's name is the value of its sheet set's name field, a single sheet's name
 
 | Component | Use | Behavioral rules |
 | --- | --- | --- |
-| Tab bar | All surfaces | One list of tabs in preset order, scrolling horizontally when it overflows, also with a vertical mouse wheel. Each sheet set shows its sheets in their order, followed by its "+" for the GM. Each single sheet shows one tab named by its `title`. Only the gear is pinned at the right, for the GM. A player sees only visible templates, and the player's own sheets come first, marked "вы". A token opening a tab scrolls it into view. "+" is a button outside the tab list |
-| sheet of a sheet set header | sheet of a sheet set tab | Name: click to edit, for anyone who may edit the sheet. It edits the same value as the name field in the sheet. GM: "Доступ" chip on a visible sheet set, token status when the sheet set sets `tokens`, "⋯" with "Удалить". Player: "Можно править" or "Только чтение" |
-| single sheet header | single sheet tab | Title, not editable. GM: token status when the single sheet sets `tokens`. Player: "Можно править" with `players: edit`, otherwise "Только чтение". No "Удалить" |
+| Tab bar | All surfaces | One list of tabs in preset order, scrolling horizontally when it overflows, also with a vertical mouse wheel. Each sheet set shows its sheets in their order, followed by its "+" for the GM. Each single sheet shows one tab named by its `title`. Only the gear is pinned at the right, for the GM. A player sees only visible templates, and the player's own sheets come first, marked "вы". A token opening a tab scrolls it into view. "+" is a button outside the tab list. A tab whose sheet, or a repeat block of it, has a linked token in this client's map selection shows the selection mark, and the window does not switch tabs (CAP-32) |
+| sheet of a sheet set header | sheet of a sheet set tab | Name: click to edit, for anyone who may edit the sheet. It edits the same value as the name field in the sheet. GM: "Доступ" chip on a visible sheet set, token status when the sheet set sets `tokens`, "Выделить на карте" while a linked token is on the open scene, "⋯" with "Удалить". Player: "Можно править" or "Только чтение" |
+| single sheet header | single sheet tab | Title, not editable. GM: token status when the single sheet sets `tokens`, "Выделить на карте" while a linked token is on the open scene. Player: "Можно править" with `players: edit`, otherwise "Только чтение". No "Удалить" |
 | New sheet | "+" | Creates a sheet of that sheet set with an empty name, opens its tab and focuses the name. The tab shows "Без имени" until a name is typed |
 | Access panel | Visible sheet of a sheet set | Opens inline under the header. One row per player id, GMs excluded, from players in the room and players who already hold rights, by last known name. A radio group "Его лист" with a "Никто" option, and a checkbox "Может править" per player. Choosing an owner also turns editing on, and the GM can turn it off. Changing or clearing the owner does not change the previous owner's editing. Changes apply at once. With no players: "Пока никого нет". Shows the guest note |
 | Preset cell | Sheets | `text` renders its label. `field` renders its value. `dice` renders a dice button. A field's accessible name is the nearest preceding `text` cell in its row, otherwise its id |
 | Field value | Sheets | Click to edit in place, with no edit mode. A `check` toggles and saves on one click. A `text` or `number` field saves on blur or after a typing pause. A blur with no change sends nothing. A bad number or too long a value stays in the field with an error under it and is not saved. Empty values show an empty editable area. Read-only values take no focus |
-| Repeat block | Sheets | A repeat block holds every row of its section. "Добавить", under the section, adds a repeat block at the end; the section title says what is added. Its accessible name names the section: «Добавить в «{section title}»», for example «Добавить в «Атаки»». Each repeat block has "Удалить". Both show only with edit rights. GM: "Дублировать…" on each repeat block, and token status on each repeat block when the section sets `tokens` |
+| Repeat block | Sheets | A repeat block holds every row of its section. "Добавить", under the section, adds a repeat block at the end; the section title says what is added. Its accessible name names the section: «Добавить в «{section title}»», for example «Добавить в «Атаки»». Each repeat block has "Удалить". Both show only with edit rights. GM: "Дублировать…" on each repeat block, and token status on each repeat block when the section sets `tokens`, with "Выделить на карте" while a linked token of that repeat block is on the open scene. A repeat block with a linked token in this client's map selection shows the selection mark, for players too |
 | Duplicate | Repeat block | Inline number from 1 to 50, default 1. When the repeat block's first field is a `text` field with a value, a copy's value is that value without its trailing number plus the highest existing number in the section + 1. Other values are copied as is. Copies have no token. They appear at the end of the section |
 | Dice cell | Sheets | Rolls on click. A bad formula shows its message under the cell and sends nothing. The message clears on the next roll or field change |
 | Roll result | Global | Owlbear notification, so it shows when the window is closed. A roll from a hidden sheet shows only on GM clients |
 | Token menu | Owlbear | GM on a token with no link: "Привязать лист…". GM on a linked token: "Открыть лист" and "Отвязать лист". Player: "Открыть лист" only on tokens linked to a visible sheet or a repeat block of one. One token links to one sheet or repeat block. One target can have many tokens. The token status in the window is read-only |
 | Link picker | Token menu | Small Owlbear popover. Groups in preset order, one per sheet set, single sheet or `repeat` section that sets `tokens`. A sheet set lists its sheets, a single sheet lists itself, and a section lists its repeat blocks by sheet name and the repeat block's first field. In each group, targets with no token come first. With no target: "Сначала создайте лист". Linking offers the target's name as the token label (a repeat block's first field) |
 | Settings | Gear | Sections in this order: Пресет, Снимок, Копия в комнате, Очистка. Results and file errors appear under the button that caused them. "Копия в комнате" shows "Сохранена" and the used and available size, "Не сохранена" with no room copy yet, or the not-saved message. With no preset, "Скачать пресет", "Скачать снимок" and "Загрузить снимок" are disabled with "Сначала загрузите пресет." "Очистить всё" is enabled with or without a preset |
+| Map selection | Tab bar, repeat block, GM header | CAP-32. Marks follow this client's own map selection through live token links of the sheets this role sees, and clear when the selection clears. "Выделить на карте" is a toggle button, GM only, pressed while every linked token of its sheet or repeat block on the open scene is selected. Pressing it adds those tokens to the map selection, or removes them when it is pressed. Tokens on other scenes are skipped. It never switches tabs or scrolls |
 | Status banner | Under tab bar | One banner, only when something is wrong. Priority: local save failed, room copy not saved, room copy of an older format, new version, no GM |
 | Confirmation | Upload, import, delete, wipe | One inline block for the whole action, at the top of the content area. Focus moves to "Отменить". Never one per field |
 
@@ -161,12 +164,12 @@ The window opens at 600 by 600 px, confirmed by the owner in a live room, unless
 
 Failure path: a file that fails validation shows the bad file message under the button, and nothing changes. Oleg can also press "Скачать пресет" to reuse it in another room.
 
-### Oleg runs a fight with ten skeletons (CAP-6, CAP-7, CAP-14, CAP-18, CAP-30)
+### Oleg runs a fight with ten skeletons (CAP-6, CAP-7, CAP-14, CAP-18, CAP-30, CAP-32)
 
 1. Oleg opens the NPC tab. Its "Противники" section is a linkable repeat section. He presses "Добавить" under it and types "Скелет 1" in the repeat block's first field.
 2. He picks "Дублировать…" on that repeat block and enters 9.
 3. He links each skeleton token to its repeat block through "Привязать лист…".
-4. In the fight he opens "Открыть лист" on a skeleton token and lands on that skeleton's repeat block.
+4. In the fight he opens "Открыть лист" on a skeleton token and lands on that skeleton's repeat block. When he clicks other skeletons on the map, their repeat blocks show the selection mark, and "Выделить на карте" on a repeat block finds its token on the map.
 5. **Climax:** he changes its hits and rolls its attack, and only GM clients see the result, because NPC is hidden.
 
 Failure path: if an attack formula uses an empty field, the bad formula message appears and nothing is sent.
