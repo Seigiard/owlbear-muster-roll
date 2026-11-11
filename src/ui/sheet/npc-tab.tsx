@@ -8,6 +8,7 @@ import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
+import { revealElement } from '@/ui/reveal';
 
 import type { DiceRolling } from './dice-button';
 import { SheetHeader } from './sheet-header';
@@ -36,6 +37,10 @@ type NpcTabProps = {
   // True when a deletion leaves no NPC, so the focus does not fall to the page body.
   focusAdd: boolean;
   onAddFocused: () => void;
+  // The NPC "Открыть лист" asked for, by its record key: its block scrolls into view once, and
+  // takes the focus when `focus` is set.
+  reveal: { sheet: string; focus: boolean } | null;
+  onRevealed: () => void;
 };
 
 // Every NPC on one page, each a block from the NPC template, in the order the sheets sort in.
@@ -57,8 +62,31 @@ export function NpcTab({
   onActionsFocused,
   focusAdd,
   onAddFocused,
+  reveal,
+  onRevealed,
 }: NpcTabProps): ReactNode {
   const addButton = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+
+  // Runs when the tab mounts too, so a request that selected this tab finds its block.
+  useEffect(() => {
+    if (reveal === null) {
+      return;
+    }
+
+    const block = list.current?.querySelector<HTMLElement>(
+      `[data-sheet="${CSS.escape(reveal.sheet)}"]`,
+    );
+
+    revealElement(block);
+
+    // The tab switched under the focus, so the focus goes to the block, which names the NPC.
+    if (reveal.focus) {
+      block?.focus({ preventScroll: true });
+    }
+
+    onRevealed();
+  }, [reveal, onRevealed]);
 
   useEffect(() => {
     if (focusAdd) {
@@ -76,13 +104,13 @@ export function NpcTab({
         </Button>
       </div>
       {npcs.length === 0 ? null : (
-        <ul className="flex flex-col gap-4">
+        <ul ref={list} className="flex flex-col gap-4">
           {npcs.map((npc) => {
             const key = sheetKey(npc.sheetId);
 
             return (
               <li key={key}>
-                <section aria-label={npc.name}>
+                <section aria-label={npc.name} data-sheet={key} tabIndex={-1}>
                   <SheetHeader
                     variant="npc"
                     sheetId={npc.sheetId}

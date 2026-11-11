@@ -31,4 +31,9 @@ describe('timing constants', () => {
     // #then
     expect([TIMING.snapshotPauseMs, TIMING.snapshotJitterMs]).toEqual([3000, 2000]);
   });
+
+  test('holds a sheet opened from a token for a window 15 s', () => {
+    // #then
+    expect(TIMING.openRequestTtlMs).toBe(15000);
+  });
 });

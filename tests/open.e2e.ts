@@ -1,0 +1,387 @@
+import { expect, test } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+
+import type { ContextMenuIconFilter } from '@/platform/ports';
+
+import {
+  openBackground,
+  openClientBackground,
+  openClientWindow,
+  openRoom,
+  record,
+  seedStorage,
+  syncRead,
+  type ClientParams,
+  type StoredRecord,
+} from './support/room';
+
+const LINK_ITEM = 'app.muster-roll/link-sheet';
+const UNLINK_ITEM = 'app.muster-roll/unlink-sheet';
+const OPEN_ITEM = 'app.muster-roll/open-sheet';
+const OPEN_SHEET = 'Открыть лист';
+const ADD = 'Добавить персонажа';
+const UI_CHANNEL = 'app.muster-roll/ui';
+
+const CHARACTERS = [
+  'Аня',
+  'Брок',
+  'Вера',
+  'Глеб',
+  'Дарья',
+  'Евгений',
+  'Жанна',
+  'Захар',
+  'Ирина',
+  'Ярослава',
+];
+
+const NPCS = ['Гоблин 1', 'Гоблин 2', 'Гоблин 3', 'Гоблин 4', 'Гоблин 5', 'Гоблин 6', 'Дракон'];
+
+// Ten characters, so the last tab starts out of the bar's view, and seven NPCs, so the last block
+// starts below the panel's fold. t-first links the first character, t-last the last one, t-npc the
+// last NPC; t-gone points to a deleted sheet.
+const ROOM: readonly StoredRecord[] = [
+  ...CHARACTERS.map((name, order) => pc(`pc${order}`, name, order)),
+  ...NPCS.map((name, order) => npc(`npc${order}`, name, order)),
+  record('sheet:gone', null, 2),
+  record('link:t-first', 'pc0'),
+  record('link:t-last', `pc${CHARACTERS.length - 1}`),
+  record('link:t-npc', `npc${NPCS.length - 1}`),
+  record('link:t-gone', 'gone'),
+];
+
+const LAYER = { key: 'layer', value: 'CHARACTER' };
+
+const GM: ClientParams = { client: 'a', device: 'a' };
+
+const PLAYER: ClientParams = { client: 'p', role: 'PLAYER', player: 'lisa', device: 'p' };
+
+test.beforeEach(async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 400 });
+});
+
+test('a GM menu on a linked token has "Открыть лист" and "Отвязать лист", and no dangling link opens', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  // #when
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+
+  // #then: one item, a GM icon on every live-linked token and a player icon on characters only.
+  expect(await openIcons(background)).toEqual([
+    {
+      label: OPEN_SHEET,
+      filter: {
+        max: 1,
+        roles: ['GM'],
+        every: [LAYER],
+        some: [
+          { key: 'id', value: 't-first', coordinator: '||' },
+          { key: 'id', value: 't-last', coordinator: '||' },
+          { key: 'id', value: 't-npc' },
+        ],
+      },
+    },
+    {
+      label: OPEN_SHEET,
+      filter: {
+        max: 1,
+        roles: ['PLAYER'],
+        every: [LAYER],
+        some: [
+          { key: 'id', value: 't-first', coordinator: '||' },
+          { key: 'id', value: 't-last' },
+        ],
+      },
+    },
+  ]);
+});
+
+test('a GM opens a character from its token: the window selects its tab and scrolls it into view', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+  const target = page.getByRole('tab', { name: 'Ярослава' });
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+  await expect(target).not.toBeInViewport();
+
+  // #when
+  await clickOpen(background, 't-last');
+
+  // #then
+  await expect(target).toHaveAttribute('aria-selected', 'true');
+  await expect(target).toBeInViewport();
+  await expect(
+    page.getByRole('tabpanel').getByRole('textbox', { name: 'Имя персонажа' }),
+  ).toHaveValue('Ярослава');
+});
+
+test('a GM opens an NPC from its token: the NPC tab opens and the block scrolls into view', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+
+  // #when
+  await clickOpen(background, 't-npc');
+
+  // #then
+  await expect(page.getByRole('tab', { name: 'NPC' })).toHaveAttribute('aria-selected', 'true');
+  await expect(npcBlock(page, 'Дракон')).toBeInViewport();
+  await expect(npcBlock(page, 'Гоблин 1')).not.toBeInViewport();
+});
+
+test('with reduced motion the open scrolls too', async ({ page, context }) => {
+  // #given
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
+  const background = await openRoom(page, context, ROOM);
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+
+  // #when
+  await clickOpen(background, 't-npc');
+
+  // #then
+  await expect(npcBlock(page, 'Дракон')).toBeInViewport();
+});
+
+test('with the window closed, the action window opens on the sheet once, and a reload does not open it again', async ({
+  page,
+  context,
+}) => {
+  // #given: the storage is seeded from a window that then closes.
+  await page.goto('/index.html');
+  await seedStorage(page, ROOM);
+  await page.close();
+
+  const background = await openBackground(context);
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+
+  // #when
+  await clickOpen(background, 't-last');
+
+  const sheets = await context.newPage();
+
+  await sheets.setViewportSize({ width: 600, height: 400 });
+  await sheets.goto('/index.html');
+
+  // #then
+  const target = sheets.getByRole('tab', { name: 'Ярослава' });
+
+  await expect(target).toHaveAttribute('aria-selected', 'true');
+  await expect(target).toBeInViewport();
+  expect(await background.evaluate(() => window.mockPlatform.actionOpens())).toBe(1);
+
+  await sheets.reload();
+  await expect(sheets.getByRole('button', { name: ADD })).toBeVisible();
+  // One more projection: an open request the engine still held would reach the window before it.
+  await syncRead(sheets);
+  await sheets.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  await expect(sheets.getByRole('tab', { name: 'Аня' })).toHaveAttribute('aria-selected', 'true');
+  await expect(target).toHaveAttribute('aria-selected', 'false');
+});
+
+test('a player opens a character from its token, and gets no item on an NPC or an unlinked token', async ({
+  context,
+}) => {
+  // #given
+  const gmWindow = await openClientWindow(context, GM);
+
+  await seedStorage(gmWindow, ROOM, undefined, GM.device);
+  await openClientBackground(context, GM);
+  await expect(gmWindow.getByRole('button', { name: ADD })).toBeVisible();
+
+  const sheets = await openClientWindow(context, PLAYER);
+
+  await sheets.setViewportSize({ width: 600, height: 400 });
+
+  const background = await openClientBackground(context, PLAYER);
+
+  await waitForMenu(background, [OPEN_ITEM]);
+
+  const target = sheets.getByRole('tab', { name: 'Ярослава' });
+
+  await expect(sheets.getByRole('tab', { name: 'Аня' })).toHaveAttribute('aria-selected', 'true');
+
+  // #when
+  await clickOpen(background, 't-last');
+
+  // #then: the player icon names character tokens only, and the GM icon is Owlbear's to hide.
+  await expect(target).toHaveAttribute('aria-selected', 'true');
+  await expect(target).toBeInViewport();
+  expect(
+    (await openIcons(background)).map((icon) => ({
+      roles: icon.filter?.roles,
+      ids: icon.filter?.some?.map((filter) => filter.value),
+    })),
+  ).toEqual([
+    { roles: ['GM'], ids: ['t-first', 't-last', 't-npc'] },
+    { roles: ['PLAYER'], ids: ['t-first', 't-last'] },
+  ]);
+});
+
+test('a player press that races onto an NPC token opens nothing', async ({ context }) => {
+  // #given
+  const gmWindow = await openClientWindow(context, GM);
+
+  await seedStorage(gmWindow, ROOM, undefined, GM.device);
+  await openClientBackground(context, GM);
+  await expect(gmWindow.getByRole('button', { name: ADD })).toBeVisible();
+
+  const sheets = await openClientWindow(context, PLAYER);
+  const background = await openClientBackground(context, PLAYER);
+
+  await waitForMenu(background, [OPEN_ITEM]);
+
+  await expect(sheets.getByRole('tab', { name: 'Аня' })).toHaveAttribute('aria-selected', 'true');
+
+  // #when
+  await clickOpen(background, 't-npc');
+  await clickOpen(background, 't-last');
+
+  // #then: only the second press reaches the window, and the NPC never shows.
+  await expect(sheets.getByRole('tab', { name: 'Ярослава' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  expect(await background.evaluate(() => window.mockPlatform.actionOpens())).toBe(1);
+  await expect(sheets.getByText('Дракон')).toHaveCount(0);
+});
+
+test('with the focus in the window, the opened tab takes it', async ({ page, context }) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+  await page.getByRole('textbox', { name: 'Имя персонажа' }).focus();
+
+  // #when
+  await clickOpen(background, 't-last');
+
+  // #then
+  await expect(page.getByRole('tab', { name: 'Ярослава' })).toBeFocused();
+});
+
+test('with the focus in the window, an opened NPC block takes it', async ({ page, context }) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+  await page.getByRole('textbox', { name: 'Имя персонажа' }).focus();
+
+  // #when
+  await clickOpen(background, 't-npc');
+
+  // #then
+  await expect(npcBlock(page, 'Дракон')).toBeFocused();
+});
+
+test('with the focus outside the window, an open leaves it alone', async ({ page, context }) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+
+  // #when
+  await clickOpen(background, 't-last');
+  await expect(page.getByRole('tab', { name: 'Ярослава' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+
+  // #then
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+});
+
+test('a request for a sheet the window does not list is acknowledged and selects nothing', async ({
+  page,
+  context,
+}) => {
+  // #given
+  await openRoom(page, context, ROOM);
+
+  const acknowledged = page.evaluate(
+    (channel) =>
+      new Promise<boolean>((resolve) => {
+        window.mockPlatform.broadcast.onMessage(channel, (event) => {
+          const message = Object(event.data);
+
+          if (message.t === 'open-sheet-ack' && message.id === 'stray') {
+            resolve(true);
+          }
+        });
+      }),
+    UI_CHANNEL,
+  );
+
+  // #when: as an engine would send it, for a sheet deleted on the way.
+  await page.evaluate((channel) => {
+    void window.mockPlatform.broadcast.sendMessage(
+      channel,
+      { t: 'open-sheet', id: 'stray', sheetId: 'nobody' },
+      { destination: 'LOCAL' },
+    );
+  }, UI_CHANNEL);
+
+  // #then
+  expect(await acknowledged).toBe(true);
+  await expect(page.getByRole('tab', { name: 'Аня' })).toHaveAttribute('aria-selected', 'true');
+});
+
+function pc(id: string, name: string, order: number): StoredRecord {
+  return record(`sheet:${id}`, { kind: 'pc', name, order });
+}
+
+function npc(id: string, name: string, order: number): StoredRecord {
+  return record(`sheet:${id}`, { kind: 'npc', name, order });
+}
+
+async function waitForMenu(background: Page, ids: readonly string[]): Promise<void> {
+  await expect
+    .poll(() =>
+      background.evaluate(() => window.mockPlatform.contextMenuItems().map((item) => item.id)),
+    )
+    .toEqual(ids);
+}
+
+async function clickOpen(background: Page, tokenId: string): Promise<void> {
+  const clicked = await background.evaluate(
+    ([item, token]) => window.mockPlatform.clickContextMenuItem(item, [token]),
+    [OPEN_ITEM, tokenId] as const,
+  );
+
+  expect(clicked).toBe(true);
+}
+
+// The icons of "Открыть лист" as Owlbear gets them. The mock does not apply filters, so a test
+// reads them as data.
+function openIcons(
+  background: Page,
+): Promise<{ label: string; filter: ContextMenuIconFilter | undefined }[]> {
+  return background.evaluate(
+    (id) =>
+      window.mockPlatform
+        .contextMenuItems()
+        .find((item) => item.id === id)
+        ?.icons.map((icon) => ({ label: icon.label, filter: icon.filter })) ?? [],
+    OPEN_ITEM,
+  );
+}
+
+function npcBlock(page: Page, name: string): Locator {
+  return page
+    .getByRole('tabpanel')
+    .getByRole('listitem')
+    .getByRole('region', { name, exact: true });
+}

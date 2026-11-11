@@ -305,6 +305,22 @@ describe('parseWindowMessage', () => {
     expect(parsed).toEqual({ ok: true, value: message });
   });
 
+  test('accepts an open-sheet acknowledgement and refuses one with a sheet or no id', () => {
+    // #when
+    const parsed = [
+      parseWindowMessage({ t: 'open-sheet-ack', id: 'o1' }),
+      parseWindowMessage({ t: 'open-sheet-ack', id: 'o1', sheetId: 'brok' }),
+      parseWindowMessage({ t: 'open-sheet-ack' }),
+    ];
+
+    // #then
+    expect(parsed).toEqual([
+      { ok: true, value: { t: 'open-sheet-ack', id: 'o1' } },
+      { ok: false, error: 'invalid-message' },
+      { ok: false, error: 'invalid-message' },
+    ]);
+  });
+
   test('refuses a request without a nonce', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'projection-request' });
@@ -359,6 +375,25 @@ describe('parseEngineMessage', () => {
 
     // #then
     expect(parsed).toEqual({ ok: true, value: message });
+  });
+
+  test('accepts an open-sheet request and refuses one with no sheet or an empty one', () => {
+    // #given
+    const message: EngineMessage = { t: 'open-sheet', id: 'o1', sheetId: 'brok' };
+
+    // #when
+    const parsed = [
+      parseEngineMessage(message),
+      parseEngineMessage({ t: 'open-sheet', id: 'o1' }),
+      parseEngineMessage({ t: 'open-sheet', id: 'o1', sheetId: '' }),
+    ];
+
+    // #then
+    expect(parsed).toEqual([
+      { ok: true, value: message },
+      { ok: false, error: 'invalid-message' },
+      { ok: false, error: 'invalid-message' },
+    ]);
   });
 
   test('refuses a field error that names no field', () => {

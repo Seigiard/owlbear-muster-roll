@@ -17,6 +17,7 @@ async function start(): Promise<void> {
       menuCopy: {
         linkSheet: copy.command.linkSheet,
         unlinkSheet: copy.command.unlinkSheet,
+        openSheet: copy.command.openSheet,
         unlinkFailed: copy.unlinkFailed,
       },
     });

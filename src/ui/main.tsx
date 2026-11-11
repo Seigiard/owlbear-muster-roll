@@ -25,7 +25,7 @@ import { createLocalFieldValues } from '@/ui/sheet/local-field-values';
 import { NpcTab } from '@/ui/sheet/npc-tab';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { createFieldFlushes, type FieldEditing } from '@/ui/sheet/use-field-edit';
-import { focusTab } from '@/ui/shell/tab-bar';
+import { focusTab, revealTab } from '@/ui/shell/tab-bar';
 import { WindowShell, type ShellLayout } from '@/ui/shell/window-shell';
 import { followTheme } from '@/ui/theme';
 
@@ -51,6 +51,10 @@ type DeleteAsk = { sheet: string; request: number; neighbours: readonly string[]
 // The command id ties a rejection to the deletion, so a refused one stops waiting.
 type DeletingSheet = { sheet: string; commandId: string; neighbours: readonly string[] | null };
 
+// A sheet "Открыть лист" selected, by its record key, and the tab that shows it. Its tab, or its
+// NPC block, scrolls into view once, and takes the focus when the focus was in the window.
+type Reveal = { sheet: string; tab: string; focus: boolean };
+
 // Where the focus goes once the control that held it is gone: the selected tab, the first of
 // `neighbours` still listed or else "Добавить NPC", or the "⋯" of a sheet whose deletion failed.
 type FocusAfterLoss =
@@ -64,6 +68,7 @@ type WindowRootProps = {
   store: ProjectionStore;
   sendCommand: ReplicaClient['sendCommand'];
   requestRoll: ReplicaClient['requestRoll'];
+  acknowledgeOpen: ReplicaClient['acknowledgeOpen'];
 };
 
 const container = document.getElementById('root');
@@ -108,6 +113,7 @@ async function start(): Promise<void> {
         store={store}
         sendCommand={client.sendCommand}
         requestRoll={client.requestRoll}
+        acknowledgeOpen={client.acknowledgeOpen}
       />,
     );
   } catch (error) {
@@ -120,6 +126,7 @@ function WindowRoot({
   store: projection,
   sendCommand,
   requestRoll,
+  acknowledgeOpen,
 }: WindowRootProps): ReactNode {
   const notices = useStore(projection.$notices);
   const loaded = useStore(projection.$loaded);
@@ -133,6 +140,7 @@ function WindowRoot({
   // role on its own.
   const records = useMemo(() => visibleRecordMap(role, allRecords), [role, allRecords]);
   const rejections = useStore(projection.$rejections);
+  const openRequest = useStore(projection.$openRequest);
   const presetData = presetDataOf(records);
   const preset = useMemo(() => decodedPreset(presetData), [presetData]);
 
@@ -165,6 +173,9 @@ function WindowRoot({
   // A sheet this window has confirmed the deletion of, until it is gone or the deletion fails.
   const [deleting, setDeleting] = useState<DeletingSheet | null>(null);
   const [focusAfterLoss, setFocusAfterLoss] = useState<FocusAfterLoss | null>(null);
+  // The id of the last open request this window took, so it takes each one once.
+  const [takenOpen, setTakenOpen] = useState<string | null>(null);
+  const [reveal, setReveal] = useState<Reveal | null>(null);
   // The token status reads `link:` records only, never the scene (FR18).
   const linkedSheets = useMemo(() => linkedSheetIds(records), [records]);
   const characterTabs = characters.map((sheet) => sheetKey(sheet.sheetId));
@@ -205,6 +216,10 @@ function WindowRoot({
 
   const clearAddNpcFocus = useCallback(() => {
     setFocusAddNpc(false);
+  }, []);
+
+  const clearReveal = useCallback(() => {
+    setReveal(null);
   }, []);
 
   // The tab that shows a sheet, or `null` for a sheet that is not listed.
@@ -265,6 +280,8 @@ function WindowRoot({
   }
 
   const createdTab = awaitedCreate === null ? null : tabOf(awaitedCreate.sheet);
+  // The sheet whose name field takes the focus, as this render leaves it.
+  let nameFocus = focusNameOf;
 
   if (awaitedCreate !== null && rejections.has(awaitedCreate.commandId)) {
     setCreated(null);
@@ -278,6 +295,33 @@ function WindowRoot({
 
     if (shownTab === createdTab) {
       setFocusNameOf(awaitedCreate.sheet);
+      nameFocus = awaitedCreate.sheet;
+    }
+  }
+
+  // FR14: "Открыть лист" selects the sheet's tab once the room's data is in, so the first tab of a
+  // window that has just opened does not take the selection back. The engine sends only a sheet this
+  // role sees. One this window does not list, as after a change on the way, selects nothing, and is
+  // still taken, so no other window gets it.
+  if (ready && openRequest !== null && openRequest.id !== takenOpen) {
+    const sheet = sheetKey(openRequest.sheetId);
+    const tab = tabOf(sheet);
+
+    setTakenOpen(openRequest.id);
+
+    if (tab !== null) {
+      shownTab = tab;
+
+      // The NPC tab mounts its blocks only with a preset, so with none no block waits to scroll and
+      // a later visit does not scroll to it.
+      if (preset !== null) {
+        setReveal({ sheet, tab, focus: focusInWindow() });
+      }
+
+      // A name field on another tab would take the focus away from the opened sheet.
+      if (nameFocus !== null && tabOf(nameFocus) !== tab) {
+        setFocusNameOf(null);
+      }
     }
   }
 
@@ -349,6 +393,29 @@ function WindowRoot({
       }
     }
   }, [focusAfterLoss, shownTab, npcSheets]);
+
+  // Taken: the engine drops the request, so a reload or another window does not open it again.
+  useEffect(() => {
+    if (takenOpen !== null) {
+      acknowledgeOpen(takenOpen);
+    }
+  }, [takenOpen, acknowledgeOpen]);
+
+  // A character's tab scrolls into view in the bar. The NPC tab is pinned and always in view, so
+  // the NPC tab scrolls its block instead.
+  useEffect(() => {
+    if (reveal === null || reveal.tab === NPC_TAB) {
+      return;
+    }
+
+    setReveal(null);
+    revealTab(reveal.tab);
+
+    // The tab switched under the focus, so the focus follows it and the tab is announced.
+    if (reveal.focus) {
+      focusTab(reveal.tab, { preventScroll: true });
+    }
+  }, [reveal]);
 
   function askDelete(sheet: string): void {
     const neighbours = npcNeighbours(sheet);
@@ -542,6 +609,8 @@ function WindowRoot({
                 onActionsFocused={clearActionsFocus}
                 focusAdd={focusAddNpc}
                 onAddFocused={clearAddNpcFocus}
+                reveal={reveal?.tab === NPC_TAB ? reveal : null}
+                onRevealed={clearReveal}
               />
             ),
         },
@@ -620,6 +689,13 @@ function WindowRoot({
   }
 
   return <WindowShell layout={layout} banner={bannerFor(notices, sync)} />;
+}
+
+// True when the focus is on a control of this window, not on its body or outside it.
+function focusInWindow(): boolean {
+  const active = document.activeElement;
+
+  return active !== null && active !== document.body && active !== document.documentElement;
 }
 
 function presetDataOf(records: ReadonlyMap<string, VersionedRecord>): string | null {

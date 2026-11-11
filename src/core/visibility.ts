@@ -55,7 +55,12 @@ export function visibleSheets(role: PlayerRole, records: Iterable<VersionedRecor
   return { characters: liveSheets(visible, 'pc'), npcs: liveSheets(visible, 'npc') };
 }
 
+// FR2: a GM sees a sheet of either kind, a player only a character.
+export function sheetKindShownTo(role: PlayerRole, kind: SheetData['kind']): boolean {
+  return role === 'GM' || kind === 'pc';
+}
+
 // AD-13: a player shows only a character's roll. It still receives an NPC's, as it holds NPCs.
 export function rollShownTo(role: PlayerRole, kind: SheetData['kind']): boolean {
-  return role === 'GM' || kind === 'pc';
+  return sheetKindShownTo(role, kind);
 }

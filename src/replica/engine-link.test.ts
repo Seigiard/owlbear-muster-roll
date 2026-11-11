@@ -35,6 +35,7 @@ const TIMING: Timing = {
   // Far past any test, so no room copy is written unless a test asks for one.
   snapshotPauseMs: 60000,
   snapshotJitterMs: 0,
+  openRequestTtlMs: 15000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -43,11 +44,13 @@ const POLL_MS = 2;
 const GHOST = 'ghost-gm';
 const LINK_ITEM = 'app.muster-roll/link-sheet';
 const UNLINK_ITEM = 'app.muster-roll/unlink-sheet';
+const OPEN_ITEM = 'app.muster-roll/open-sheet';
 const UNLINK_FAILED = 'Не удалось отвязать лист. Попробуйте ещё раз.';
 
 const MENU_COPY = {
   linkSheet: 'Привязать лист…',
   unlinkSheet: 'Отвязать лист',
+  openSheet: 'Открыть лист',
   unlinkFailed: UNLINK_FAILED,
 };
 
@@ -256,7 +259,7 @@ describe('token menu', () => {
     ]);
   });
 
-  test('keeps a linked token out of "Привязать лист…" and shows "Отвязать лист" only on it', async () => {
+  test('keeps a linked token out of "Привязать лист…" and shows "Открыть лист" and "Отвязать лист" only on it', async () => {
     // #given
     const room = openRoom();
 
@@ -279,6 +282,29 @@ describe('token menu', () => {
                 { key: 'layer', value: 'CHARACTER' },
                 { key: 'id', value: 't1', operator: '!=' },
               ],
+            },
+          },
+        ],
+      },
+      {
+        id: OPEN_ITEM,
+        icons: [
+          {
+            label: 'Открыть лист',
+            filter: {
+              max: 1,
+              roles: ['GM'],
+              every: [{ key: 'layer', value: 'CHARACTER' }],
+              some: [{ key: 'id', value: 't1' }],
+            },
+          },
+          {
+            label: 'Открыть лист',
+            filter: {
+              max: 1,
+              roles: ['PLAYER'],
+              every: [{ key: 'layer', value: 'CHARACTER' }],
+              some: [{ key: 'id', value: 't1' }],
             },
           },
         ],
@@ -315,7 +341,7 @@ describe('token menu', () => {
     ]);
   });
 
-  test('re-creates both items when a link is written', async () => {
+  test('re-creates every item when a link is written', async () => {
     // #given
     const room = openRoom();
     const client = await startClient(room, 'gm-a');
@@ -323,11 +349,12 @@ describe('token menu', () => {
 
     // #when
     send(client, { type: 'link-set', tokenId: 't1', sheetId: 'skel' });
-    await waitUntil(() => client.platform.contextMenuCalls().length === before + 2);
+    await waitUntil(() => client.platform.contextMenuCalls().length === before + 3);
 
     // #then
     expect(client.platform.contextMenuCalls().slice(before)).toEqual([
       { kind: 'create', id: LINK_ITEM },
+      { kind: 'create', id: OPEN_ITEM },
       { kind: 'create', id: UNLINK_ITEM },
     ]);
   });
@@ -384,7 +411,7 @@ describe('token menu', () => {
 
     // #when
     send(other, { type: 'link-set', tokenId: 't9', sheetId: 'brok' });
-    await waitUntil(() => menuOf(client).length === 2);
+    await waitUntil(() => menuOf(client).length === 3);
 
     // #then
     expect(menuOf(client).map((item) => item.icons[0]?.filter)).toEqual([
@@ -402,10 +429,16 @@ describe('token menu', () => {
         every: [{ key: 'layer', value: 'CHARACTER' }],
         some: [{ key: 'id', value: 't9' }],
       },
+      {
+        max: 1,
+        roles: ['GM'],
+        every: [{ key: 'layer', value: 'CHARACTER' }],
+        some: [{ key: 'id', value: 't9' }],
+      },
     ]);
   });
 
-  test('gives a player no item', async () => {
+  test('gives a player with no link no item', async () => {
     // #given
     const room = openRoom();
 
@@ -416,7 +449,7 @@ describe('token menu', () => {
     expect(client.platform.contextMenuCalls()).toEqual([]);
   });
 
-  test('removes every item when the GM becomes a player', async () => {
+  test('removes the GM items when the GM becomes a player, and keeps "Открыть лист"', async () => {
     // #given
     const room = openRoom();
 
@@ -424,15 +457,23 @@ describe('token menu', () => {
       seeded: [...BASE, { k: 'link:t1', d: 'brok', c: 1, a: 'seed' }],
     });
 
+    await waitUntil(() => menuOf(client).length === 3);
+
     // #when
     client.platform.setRole('PLAYER');
-    await waitUntil(() => client.platform.contextMenuItems().length === 0);
+    await waitUntil(() => client.platform.contextMenuItems().length === 1);
 
     // #then
-    expect(client.platform.contextMenuCalls().slice(-2)).toEqual([
-      { kind: 'remove', id: LINK_ITEM },
-      { kind: 'remove', id: UNLINK_ITEM },
-    ]);
+    expect({
+      calls: client.platform.contextMenuCalls().slice(-2),
+      menu: menuOf(client).map((item) => item.id),
+    }).toEqual({
+      calls: [
+        { kind: 'remove', id: LINK_ITEM },
+        { kind: 'remove', id: UNLINK_ITEM },
+      ],
+      menu: [OPEN_ITEM],
+    });
   });
 
   test('makes no item before the first catch-up ends, and makes them when it ends', async () => {
@@ -506,7 +547,7 @@ describe('token menu', () => {
       seeded: [...BASE, { k: 'link:t1', d: 'brok', c: 1, a: 'seed' }],
     });
 
-    await waitUntil(() => menuOf(client).length === 2);
+    await waitUntil(() => menuOf(client).length === 3);
 
     // #when
     client.platform.clickContextMenuItem(UNLINK_ITEM, ['t2']);
@@ -544,7 +585,7 @@ describe('token menu', () => {
       seeded: [...BASE, { k: 'link:t1', d: 'brok', c: 1, a: 'seed' }],
     });
 
-    await waitUntil(() => menuOf(client).length === 2);
+    await waitUntil(() => menuOf(client).length === 3);
     client.platform.failNextContextMenuCalls(['remove']);
     send(client, { type: 'link-clear', tokenId: 't1' });
     await waitUntil(() => itemOf(client, LINK_ITEM)?.icons[0]?.filter?.every?.length === 1);
@@ -560,7 +601,7 @@ describe('token menu', () => {
 
     // #then
     expect({ failed, after: menuOf(client).map((item) => item.id) }).toEqual({
-      failed: [LINK_ITEM, UNLINK_ITEM],
+      failed: [LINK_ITEM, OPEN_ITEM],
       after: [LINK_ITEM],
     });
   });
@@ -573,15 +614,16 @@ describe('token menu', () => {
       seeded: [...BASE, { k: 'link:t1', d: 'brok', c: 1, a: 'seed' }],
     });
 
-    await waitUntil(() => menuOf(client).length === 2);
+    await waitUntil(() => menuOf(client).length === 3);
 
     // #when
     client.stop();
     await waitUntil(() => menuOf(client).length === 0);
 
     // #then
-    expect(client.platform.contextMenuCalls().slice(-2)).toEqual([
+    expect(client.platform.contextMenuCalls().slice(-3)).toEqual([
       { kind: 'remove', id: LINK_ITEM },
+      { kind: 'remove', id: OPEN_ITEM },
       { kind: 'remove', id: UNLINK_ITEM },
     ]);
   });
@@ -612,13 +654,16 @@ describe('token menu', () => {
     // #when
     client.platform.clickContextMenuItem(LINK_ITEM, ['t2', 't3']);
     client.platform.clickContextMenuItem(UNLINK_ITEM, ['t1', 't2']);
+    client.platform.clickContextMenuItem(OPEN_ITEM, ['t1', 't2']);
     await pause(20);
 
     // #then
     expect({
       popovers: client.platform.openedPopovers(),
       link: stored(client, 'link:t1')?.d,
-    }).toEqual({ popovers: [], link: 'brok' });
+      actionOpens: client.platform.actionOpens(),
+      openRequest: client.store.$openRequest.get(),
+    }).toEqual({ popovers: [], link: 'brok', actionOpens: 0, openRequest: null });
   });
 });
 

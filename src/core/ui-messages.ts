@@ -244,10 +244,25 @@ const rollOutcomeSchema = z.strictObject({
   ]),
 });
 
+// FR14: "Открыть лист" asks a window to show a sheet. The engine holds the request and sends it
+// again after each projection until a window acknowledges its id. A new press replaces it.
+const openSheetSchema = z.strictObject({
+  t: z.literal('open-sheet'),
+  id: idSchema,
+  sheetId: idSchema,
+});
+
+// The window took the request: it selected the sheet's tab, or found no tab to select.
+const openSheetAckSchema = z.strictObject({
+  t: z.literal('open-sheet-ack'),
+  id: idSchema,
+});
+
 const windowMessageSchema = z.discriminatedUnion('t', [
   projectionRequestSchema,
   commandSchema,
   rollRequestSchema,
+  openSheetAckSchema,
 ]);
 
 const engineMessageSchema = z.discriminatedUnion('t', [
@@ -255,6 +270,7 @@ const engineMessageSchema = z.discriminatedUnion('t', [
   deltaSchema,
   commandRejectedSchema,
   rollOutcomeSchema,
+  openSheetSchema,
 ]);
 
 export type Notice = z.infer<typeof noticeSchema>;
@@ -282,6 +298,13 @@ export type RollRequestMessage = z.infer<typeof rollRequestSchema>;
 export type RollOutcomeMessage = z.infer<typeof rollOutcomeSchema>;
 
 export type RollOutcome = RollOutcomeMessage['outcome'];
+
+export type OpenSheetMessage = z.infer<typeof openSheetSchema>;
+
+// An open request as the engine holds it and a window keeps it.
+export type OpenSheetRequest = Omit<OpenSheetMessage, 't'>;
+
+export type OpenSheetAckMessage = z.infer<typeof openSheetAckSchema>;
 
 export type ProjectionMessage = z.infer<typeof projectionSchema>;
 

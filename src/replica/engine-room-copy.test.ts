@@ -37,6 +37,7 @@ const TIMING: Timing = {
   // Far past any test: a test that wants the pause names a short one.
   snapshotPauseMs: 60000,
   snapshotJitterMs: 0,
+  openRequestTtlMs: 15000,
 };
 
 // Short enough to see the write, long enough to see that nothing was written before it.

@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
-import { linkDataSchema, sheetDataSchema, type VersionedRecord } from '@/core/records';
-import { sheetKey, type SheetSummary } from '@/core/sheets';
-import type { PlayerRole, VisibleSheets } from '@/core/visibility';
+import { sheetDataSchema, type VersionedRecord } from '@/core/records';
+import { sheetIdSchema, sheetKey, type SheetSummary } from '@/core/sheets';
+import { sheetKindShownTo, type PlayerRole, type VisibleSheets } from '@/core/visibility';
 
 // The layer Owlbear puts tokens on.
 const TOKEN_LAYER = 'CHARACTER';
@@ -34,9 +34,13 @@ export type TokenMenuFilter = {
   some?: TokenMenuKeyFilter[];
 };
 
-export type TokenMenuAction = 'link' | 'unlink';
+export type TokenMenuAction = 'link' | 'unlink' | 'open';
 
-export type TokenMenuEntry = { action: TokenMenuAction; filter: TokenMenuFilter };
+// One filter per icon of the item, in the order Owlbear tries them.
+export type TokenMenuEntry = { action: TokenMenuAction; filters: TokenMenuFilter[] };
+
+// The icons of "Открыть лист", GM first. Owlbear shows the first icon whose filter matches.
+const OPEN_ROLES: readonly PlayerRole[] = ['GM', 'PLAYER'];
 
 export function linkKey(tokenId: string): string {
   return `link:${tokenId}`;
@@ -59,7 +63,9 @@ export function liveLinks(records: ReadonlyMap<string, VersionedRecord>): Map<st
     }
 
     const tokenId = tokenIdSchema.safeParse(key.slice('link:'.length));
-    const sheetId = linkDataSchema.safeParse(record.d);
+    // Stricter than the `link:` data schema: a sheet id no command could write would make an open
+    // request no window takes.
+    const sheetId = sheetIdSchema.safeParse(record.d);
 
     // A token id no command could write never reaches a menu filter.
     if (tokenId.success && sheetId.success && isLiveSheet(records, sheetId.data)) {
@@ -90,54 +96,112 @@ export function pickerOrder(
 }
 
 // AD-2 and UX-DR21: Owlbear filters match item keys only and do not change, so the menu is built
-// from the live links of the moment. Both items apply to one token of the character layer and to a
-// GM only. "Привязать лист…" shows on a token no live link names. "Отвязать лист" shows only on a
-// token a live link names, so with no link it has no entry: a filter cannot match an empty set.
-// Token ids are sorted, so the same links always give the same filters.
+// from the records of the moment. Every item applies to one token of the character layer. A GM gets
+// "Привязать лист…" on a token no live link names, and "Отвязать лист" only on a token a live link
+// names, so with no link that item has no entry: a filter cannot match an empty set. "Открыть
+// лист" shows on the tokens whose sheet the viewer's role may see. Token ids are sorted, so the same
+// records always give the same filters.
 export function tokenMenuEntries(
-  links: ReadonlyMap<string, string>,
+  records: ReadonlyMap<string, VersionedRecord>,
   role: PlayerRole,
 ): TokenMenuEntry[] {
-  if (role !== 'GM') {
-    return [];
+  const links = liveLinks(records);
+  const [link, unlink] = role === 'GM' ? linkEntries(links) : [];
+  const open = openEntry(records, links);
+
+  // The harmless "Открыть лист" comes before the destructive "Отвязать лист".
+  return [link, open, unlink].filter((entry) => entry !== undefined && entry !== null);
+}
+
+// The sheet a token's live link names, when this role may see it, or `null`. A player opens only a
+// character (FR14).
+export function openTarget(
+  records: ReadonlyMap<string, VersionedRecord>,
+  tokenId: string,
+  role: PlayerRole,
+): string | null {
+  if (!tokenIdSchema.safeParse(tokenId).success) {
+    return null;
   }
 
+  const sheetId = sheetIdSchema.safeParse(records.get(linkKey(tokenId))?.d);
+
+  return sheetId.success && liveSheetShownTo(records, sheetId.data, role) ? sheetId.data : null;
+}
+
+// True while `sheetId` names a live sheet this role may see, as `core/visibility` judges it.
+export function liveSheetShownTo(
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  role: PlayerRole,
+): boolean {
+  const sheet = sheetDataSchema.safeParse(records.get(sheetKey(sheetId))?.d);
+
+  return sheet.success && sheetKindShownTo(role, sheet.data.kind);
+}
+
+function linkEntries(links: ReadonlyMap<string, string>): TokenMenuEntry[] {
   const tokenIds = [...links.keys()].sort();
 
   const link: TokenMenuEntry = {
     action: 'link',
-    filter: {
-      max: 1,
-      roles: ['GM'],
-      every: [
-        { key: 'layer', value: TOKEN_LAYER },
-        ...tokenIds.map((id): TokenMenuKeyFilter => ({ key: 'id', value: id, operator: '!=' })),
-      ],
-    },
+    filters: [
+      {
+        max: 1,
+        roles: ['GM'],
+        every: [
+          onTokenLayer(),
+          ...tokenIds.map((id): TokenMenuKeyFilter => ({ key: 'id', value: id, operator: '!=' })),
+        ],
+      },
+    ],
   };
 
   if (tokenIds.length === 0) {
     return [link];
   }
 
-  // The layer check sits in `every` and the ids in `some`, each list joined by one coordinator
-  // only, so no precedence between "&&" and "||" decides the match. With `max: 1` both lists judge
-  // the same one token.
   const unlink: TokenMenuEntry = {
     action: 'unlink',
-    filter: {
-      max: 1,
-      roles: ['GM'],
-      every: [{ key: 'layer', value: TOKEN_LAYER }],
-      some: tokenIds.map((id, index): TokenMenuKeyFilter =>
-        index === tokenIds.length - 1
-          ? { key: 'id', value: id }
-          : { key: 'id', value: id, coordinator: '||' },
-      ),
-    },
+    filters: [{ max: 1, roles: ['GM'], every: [onTokenLayer()], some: anyOf(tokenIds) }],
   };
 
   return [link, unlink];
+}
+
+// One item with an icon per role. The GM icon names every token with a live link, the player icon
+// only the tokens whose live link names a character. An icon with no token is left out, and an
+// item with no icon has no entry.
+function openEntry(
+  records: ReadonlyMap<string, VersionedRecord>,
+  links: ReadonlyMap<string, string>,
+): TokenMenuEntry | null {
+  const filters = OPEN_ROLES.flatMap((role): TokenMenuFilter[] => {
+    const tokenIds = [...links]
+      .flatMap(([tokenId, sheetId]) => (liveSheetShownTo(records, sheetId, role) ? [tokenId] : []))
+      .sort();
+
+    return tokenIds.length === 0
+      ? []
+      : [{ max: 1, roles: [role], every: [onTokenLayer()], some: anyOf(tokenIds) }];
+  });
+
+  return filters.length === 0 ? null : { action: 'open', filters };
+}
+
+function onTokenLayer(): TokenMenuKeyFilter {
+  return { key: 'layer', value: TOKEN_LAYER };
+}
+
+// The layer check sits in `every` and the ids in `some`, each list joined by one coordinator only,
+// so no precedence between "&&" and "||" decides the match. With `max: 1` both lists judge the
+// same one token.
+function anyOf(tokenIds: readonly string[]): TokenMenuKeyFilter[] {
+  return tokenIds.map((id, index): TokenMenuKeyFilter =>
+    index === tokenIds.length - 1
+      ? { key: 'id', value: id }
+      : { key: 'id', value: id, coordinator: '||' },
+  );
 }
 
 function isLiveSheet(records: ReadonlyMap<string, VersionedRecord>, sheetId: string): boolean {

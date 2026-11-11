@@ -7,6 +7,7 @@ import { ABSENT, openRoom, record, storedData, type StoredRecord } from './suppo
 
 const LINK_ITEM = 'app.muster-roll/link-sheet';
 const UNLINK_ITEM = 'app.muster-roll/unlink-sheet';
+const OPEN_ITEM = 'app.muster-roll/open-sheet';
 const PICKER_POPOVER = 'app.muster-roll/link-picker';
 const TOKEN_LINKED = 'Токен привязан';
 const NO_TOKEN = 'Нет токена';
@@ -38,7 +39,7 @@ test('"Привязать лист…" opens the picker in a small popover for t
   // #given
   const background = await openRoom(page, context, ROOM);
 
-  await waitForMenu(background, [LINK_ITEM, UNLINK_ITEM]);
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
 
   // #when
   await clickMenuItem(background, LINK_ITEM, 'tok-new');
@@ -132,7 +133,7 @@ test('"Отвязать лист" tombstones the link and the header shows "Не
   // #given
   const background = await openRoom(page, context, ROOM);
 
-  await waitForMenu(background, [LINK_ITEM, UNLINK_ITEM]);
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
   await expect(headerOf(page).getByText(TOKEN_LINKED)).toBeVisible();
 
   // #when

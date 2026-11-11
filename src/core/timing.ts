@@ -11,6 +11,7 @@ export type Timing = {
   readonly gmLinkTimeoutMs: number;
   readonly snapshotPauseMs: number;
   readonly snapshotJitterMs: number;
+  readonly openRequestTtlMs: number;
 };
 
 export const TIMING: Timing = {
@@ -36,6 +37,9 @@ export const TIMING: Timing = {
   // jitter, so GM clients that saw one edit do not write together.
   snapshotPauseMs: 3000,
   snapshotJitterMs: 2000,
+  // FR14: a sheet "Открыть лист" asked for waits this long for a window. A window opened by hand
+  // later shows its own first tab.
+  openRequestTtlMs: 15000,
 };
 
 // A browser may read a download's object URL after the click returns, so it lives this long.

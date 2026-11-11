@@ -45,6 +45,9 @@ export type ReplicaClient = {
   sendCommand: (command: Command, options?: SendCommandOptions) => Result<string, CommandFailure>;
   // Through the same queue as commands, so a field patch sent before it reaches the engine first.
   requestRoll: (request: RollRequest) => Result<string, CommandFailure>;
+  // FR14: tells the engine this window took the open request with this id, so no window gets it
+  // again.
+  acknowledgeOpen: (id: string) => void;
   // Sends every waiting message at once, for a window that is closing.
   flushNow: () => void;
   stop: () => void;
@@ -204,6 +207,12 @@ export function startReplicaClient(
       if (ownRollIds.has(message.id)) {
         store.setRollOutcome(message);
       }
+    } else if (message.t === 'open-sheet') {
+      // Only a window that holds the records can find the sheet. The engine sends the request
+      // again after the projection this window waits for.
+      if (phase === 'live') {
+        store.setOpenRequest({ id: message.id, sheetId: message.sheetId });
+      }
     } else if (phase === 'live') {
       applyLiveDelta(message);
     } else if (phase === 'assembling') {
@@ -256,6 +265,11 @@ export function startReplicaClient(
       });
 
       return ok(id);
+    },
+    acknowledgeOpen: (id) => {
+      send({ t: 'open-sheet-ack', id }).catch((error) => {
+        console.error('Muster Roll could not acknowledge an open request', error);
+      });
     },
     flushNow: sendQueue.flushNow,
     stop: () => {

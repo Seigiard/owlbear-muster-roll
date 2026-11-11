@@ -1,6 +1,8 @@
 import type { ReactNode, WheelEvent as ReactWheelEvent } from 'react';
 import { Button, Tab, TabList, ToggleButton } from 'react-aria-components';
 
+import { revealElement } from '@/ui/reveal';
+
 const BAR_CLASS = 'flex justify-end gap-2 bg-surface-bar px-2 pt-2';
 
 const SCROLLER_CLASS =
@@ -85,8 +87,17 @@ export function TabBar({ scrollingTabs, pinnedTabs, add }: TabBarProps): ReactNo
 }
 
 // React Aria marks each tab with its key, and the app gives a tab no id of its own in the DOM.
-export function focusTab(id: string): void {
-  document.querySelector<HTMLElement>(`[role="tab"][data-key="${CSS.escape(id)}"]`)?.focus();
+export function focusTab(id: string, options?: FocusOptions): void {
+  tabElement(id)?.focus(options);
+}
+
+// Scrolls a tab of the bar into view, as for a sheet opened from its token.
+export function revealTab(id: string): void {
+  revealElement(tabElement(id));
+}
+
+function tabElement(id: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`[role="tab"][data-key="${CSS.escape(id)}"]`);
 }
 
 // A tab bar with one tab could never switch away, so a lone gear is a toggle button instead.

@@ -104,6 +104,10 @@ export type MockPlatform = Platform & {
   clickContextMenuItem: (id: string, itemIds: string[]) => boolean;
   openedPopovers: () => Popover[];
   closedPopovers: () => string[];
+  // How many times this page asked Owlbear to open the action window.
+  actionOpens: () => number;
+  // The next request to open the action window rejects, as Owlbear can refuse one.
+  failNextActionOpen: () => void;
 };
 
 declare global {
@@ -152,6 +156,8 @@ export function createMockPlatform(
   const menuFailures: ContextMenuCall['kind'][] = [];
   const opened: Popover[] = [];
   const closed: string[] = [];
+  let actionOpens = 0;
+  let actionOpenFails = false;
   const { room, connectionId, playerId, name } = client;
   let role: PlayerRole = client.role;
   let joined = false;
@@ -303,8 +309,19 @@ export function createMockPlatform(
         return Promise.resolve();
       },
     },
+    // A test opens the window page itself, as Owlbear would load it.
     action: {
-      open: () => Promise.resolve(),
+      open: () => {
+        actionOpens += 1;
+
+        if (actionOpenFails) {
+          actionOpenFails = false;
+
+          return Promise.reject(new Error('mock action open failed'));
+        }
+
+        return Promise.resolve();
+      },
     },
     notification: {
       show: (message) => {
@@ -391,6 +408,10 @@ export function createMockPlatform(
     },
     openedPopovers: () => [...opened],
     closedPopovers: () => [...closed],
+    actionOpens: () => actionOpens,
+    failNextActionOpen: () => {
+      actionOpenFails = true;
+    },
   };
 }
 

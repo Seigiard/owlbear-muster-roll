@@ -24,6 +24,7 @@ const TIMING: Timing = {
   // Far past any test, so no room copy is written unless a test asks for one.
   snapshotPauseMs: 60000,
   snapshotJitterMs: 0,
+  openRequestTtlMs: 15000,
 };
 
 const GENERATION = { n: 0, a: '' };

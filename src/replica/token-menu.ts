@@ -2,7 +2,6 @@ import type { VersionedRecord } from '@/core/records';
 import {
   LINK_PICKER_POPOVER_ID,
   linkPickerUrl,
-  liveLinks,
   tokenMenuEntries,
   type TokenMenuAction,
   type TokenMenuEntry,
@@ -13,11 +12,19 @@ import type { ContextMenuContext, ContextMenuItem, Platform } from '@/platform/p
 export const TOKEN_MENU_IDS: Readonly<Record<TokenMenuAction, string>> = {
   link: 'app.muster-roll/link-sheet',
   unlink: 'app.muster-roll/unlink-sheet',
+  open: 'app.muster-roll/open-sheet',
 };
 
-const ACTIONS: readonly TokenMenuAction[] = ['link', 'unlink'];
+// Created in this order: the harmless "Открыть лист" before the destructive "Отвязать лист".
+const ACTIONS: readonly TokenMenuAction[] = ['link', 'open', 'unlink'];
 
 const MENU_ICON = '/icon.svg';
+
+const LABELS: Readonly<Record<TokenMenuAction, (copy: TokenMenuCopy) => string>> = {
+  link: (copy) => copy.linkSheet,
+  unlink: (copy) => copy.unlinkSheet,
+  open: (copy) => copy.openSheet,
+};
 
 // UX-DR22: a small popover, room for a few sheet names.
 const PICKER_WIDTH = 280;
@@ -26,7 +33,18 @@ const PICKER_HEIGHT = 360;
 
 // The catalog's item labels, and the notice for an unlink the engine refused. The background page
 // passes them, as it does the roll strings.
-export type TokenMenuCopy = { linkSheet: string; unlinkSheet: string; unlinkFailed: string };
+export type TokenMenuCopy = {
+  linkSheet: string;
+  unlinkSheet: string;
+  openSheet: string;
+  unlinkFailed: string;
+};
+
+// What a click on "Отвязать лист" or "Открыть лист" does with its one token. The engine owns both.
+export type TokenMenuActions = {
+  unlink: (tokenId: string) => void;
+  open: (tokenId: string) => void;
+};
 
 export type TokenMenu = {
   // Builds the items from these records and this role, and re-creates only those whose filter
@@ -38,11 +56,11 @@ export type TokenMenu = {
 type TokenMenuPorts = Pick<Platform, 'contextMenu' | 'popover'>;
 
 // AD-10: only the background page owns the token menu. Owlbear filters do not change once an item
-// is created, so the items are re-created from the current links and role when either changes.
+// is created, so the items are re-created from the current records and role when either changes.
 export function createTokenMenu(
   ports: TokenMenuPorts,
   copy: TokenMenuCopy,
-  unlink: (tokenId: string) => void,
+  actions: TokenMenuActions,
 ): TokenMenu {
   // The filter each item was last created with, as JSON, by action.
   const created = new Map<TokenMenuAction, string>();
@@ -78,11 +96,11 @@ export function createTokenMenu(
   }
 
   function itemOf(entry: TokenMenuEntry): ContextMenuItem {
-    const label = entry.action === 'link' ? copy.linkSheet : copy.unlinkSheet;
+    const label = LABELS[entry.action](copy);
 
     return {
       id: TOKEN_MENU_IDS[entry.action],
-      icons: [{ icon: MENU_ICON, label, filter: entry.filter }],
+      icons: entry.filters.map((filter) => ({ icon: MENU_ICON, label, filter })),
       onClick: (context, elementId) => {
         const tokenId = onlyItemId(context);
 
@@ -90,8 +108,8 @@ export function createTokenMenu(
           return;
         }
 
-        if (entry.action === 'unlink') {
-          unlink(tokenId);
+        if (entry.action !== 'link') {
+          actions[entry.action](tokenId);
 
           return;
         }
@@ -119,12 +137,12 @@ export function createTokenMenu(
       }
 
       const entries = new Map(
-        tokenMenuEntries(liveLinks(records), role).map((entry) => [entry.action, entry]),
+        tokenMenuEntries(records, role).map((entry) => [entry.action, entry]),
       );
 
       for (const action of ACTIONS) {
         const entry = entries.get(action);
-        const signature = entry === undefined ? undefined : JSON.stringify(entry.filter);
+        const signature = entry === undefined ? undefined : JSON.stringify(entry.filters);
 
         if (signature === created.get(action) && !stale.has(action)) {
           continue;

@@ -5,9 +5,12 @@ import {
   linkedSheetIds,
   linkPickerUrl,
   liveLinks,
+  openTarget,
   pickerOrder,
   tokenIdSchema,
   tokenMenuEntries,
+  type TokenMenuFilter,
+  type TokenMenuKeyFilter,
 } from '@/core/token-links';
 import { visibleSheets } from '@/core/visibility';
 
@@ -46,6 +49,17 @@ describe('liveLinks', () => {
 
     // #then
     expect([...links]).toEqual([['t1', 'brok']]);
+  });
+
+  test('counts no link to a sheet id no command could write, even with a live sheet under it', () => {
+    // #given: "a b" passes the `link:` data schema but not the sheet id schema.
+    const records = byKey([sheet('a b', 'pc', 'Аня', 0), link('t1', 'a b')]);
+
+    // #when
+    const found = { links: [...liveLinks(records)], target: openTarget(records, 't1', 'GM') };
+
+    // #then
+    expect(found).toEqual({ links: [], target: null });
   });
 
   test('counts no link for a tombstone, a deleted sheet or a sheet it does not hold', () => {
@@ -139,62 +153,153 @@ describe('pickerOrder', () => {
 describe('tokenMenuEntries', () => {
   test('gives a GM with no link only "link", on one token of the character layer', () => {
     // #when
-    const entries = tokenMenuEntries(new Map(), 'GM');
+    const entries = tokenMenuEntries(byKey([sheet('brok', 'pc', 'Брок', 0)]), 'GM');
 
     // #then
+    expect(entries).toEqual([{ action: 'link', filters: [{ ...GM_ONE_TOKEN, every: [LAYER] }] }]);
+  });
+
+  test('keeps linked tokens out of "link", lists them in the GM "open" icon and in "unlink", sorted by id', () => {
+    // #given: t2 names a character, t1 an NPC.
+    const records = byKey([
+      sheet('brok', 'pc', 'Брок', 0),
+      sheet('skel', 'npc', 'Скелет', 0),
+      link('t2', 'brok'),
+      link('t1', 'skel'),
+    ]);
+
+    // #when
+    const entries = tokenMenuEntries(records, 'GM');
+
+    // #then
+    const both: TokenMenuKeyFilter[] = [
+      { key: 'id', value: 't1', coordinator: '||' },
+      { key: 'id', value: 't2' },
+    ];
+
     expect(entries).toEqual([
       {
         action: 'link',
-        filter: { max: 1, roles: ['GM'], every: [{ key: 'layer', value: 'CHARACTER' }] },
+        filters: [
+          {
+            ...GM_ONE_TOKEN,
+            every: [
+              LAYER,
+              { key: 'id', value: 't1', operator: '!=' },
+              { key: 'id', value: 't2', operator: '!=' },
+            ],
+          },
+        ],
       },
+      {
+        action: 'open',
+        filters: [
+          { ...GM_ONE_TOKEN, every: [LAYER], some: both },
+          { ...PLAYER_ONE_TOKEN, every: [LAYER], some: [{ key: 'id', value: 't2' }] },
+        ],
+      },
+      { action: 'unlink', filters: [{ ...GM_ONE_TOKEN, every: [LAYER], some: both }] },
     ]);
   });
 
-  test('keeps linked tokens out of "link" and lists them in "unlink" `some` with "||", sorted by id', () => {
+  test('gives a player only "open", on tokens linked to a character', () => {
     // #given
-    const links = new Map([
-      ['t2', 'brok'],
-      ['t1', 'skel'],
+    const records = byKey([
+      sheet('brok', 'pc', 'Брок', 0),
+      sheet('skel', 'npc', 'Скелет', 0),
+      link('t1', 'brok'),
+      link('t2', 'skel'),
     ]);
 
     // #when
-    const entries = tokenMenuEntries(links, 'GM');
+    const entries = tokenMenuEntries(records, 'PLAYER');
 
     // #then
     expect(entries).toEqual([
       {
-        action: 'link',
-        filter: {
-          max: 1,
-          roles: ['GM'],
-          every: [
-            { key: 'layer', value: 'CHARACTER' },
-            { key: 'id', value: 't1', operator: '!=' },
-            { key: 'id', value: 't2', operator: '!=' },
-          ],
-        },
-      },
-      {
-        action: 'unlink',
-        filter: {
-          max: 1,
-          roles: ['GM'],
-          every: [{ key: 'layer', value: 'CHARACTER' }],
-          some: [
-            { key: 'id', value: 't1', coordinator: '||' },
-            { key: 'id', value: 't2' },
-          ],
-        },
+        action: 'open',
+        filters: [
+          {
+            ...GM_ONE_TOKEN,
+            every: [LAYER],
+            some: [
+              { key: 'id', value: 't1', coordinator: '||' },
+              { key: 'id', value: 't2' },
+            ],
+          },
+          { ...PLAYER_ONE_TOKEN, every: [LAYER], some: [{ key: 'id', value: 't1' }] },
+        ],
       },
     ]);
   });
 
-  test('gives a player no entry, linked tokens or not', () => {
+  test('leaves the player icon out when every link names an NPC', () => {
+    // #given
+    const records = byKey([sheet('skel', 'npc', 'Скелет', 0), link('t1', 'skel')]);
+
     // #when
-    const entries = tokenMenuEntries(new Map([['t1', 'brok']]), 'PLAYER');
+    const open = tokenMenuEntries(records, 'GM').find((entry) => entry.action === 'open');
 
     // #then
-    expect(entries).toEqual([]);
+    expect(open?.filters).toEqual([
+      { ...GM_ONE_TOKEN, every: [LAYER], some: [{ key: 'id', value: 't1' }] },
+    ]);
+  });
+
+  test('gives a player whose links name no live character only the GM icon, which Owlbear hides from it', () => {
+    // #given
+    const records = byKey([
+      sheet('skel', 'npc', 'Скелет', 0),
+      { k: 'sheet:gone', d: null, c: 2, a: 'gm' },
+      link('t1', 'skel'),
+      link('t2', 'gone'),
+    ]);
+
+    // #when
+    const entries = tokenMenuEntries(records, 'PLAYER');
+
+    // #then: Owlbear never shows the GM icon to a player.
+    expect(entries.map((entry) => entry.filters.map((filter) => filter.roles))).toEqual([[['GM']]]);
+  });
+
+  test('makes no "open" entry for a dangling link', () => {
+    // #given
+    const records = byKey([{ k: 'sheet:gone', d: null, c: 2, a: 'gm' }, link('t1', 'gone')]);
+
+    // #when
+    const entries = [...tokenMenuEntries(records, 'GM'), ...tokenMenuEntries(records, 'PLAYER')];
+
+    // #then
+    expect(entries.map((entry) => entry.action)).toEqual(['link']);
+  });
+});
+
+describe('openTarget', () => {
+  const records = byKey([
+    sheet('brok', 'pc', 'Брок', 0),
+    sheet('skel', 'npc', 'Скелет', 0),
+    { k: 'sheet:gone', d: null, c: 2, a: 'gm' },
+    link('t-pc', 'brok'),
+    link('t-npc', 'skel'),
+    link('t-gone', 'gone'),
+    { k: 'link:t-cleared', d: null, c: 2, a: 'gm' },
+  ]);
+
+  test.each<[string, 'GM' | 'PLAYER', string | null]>([
+    ['t-pc', 'GM', 'brok'],
+    ['t-pc', 'PLAYER', 'brok'],
+    ['t-npc', 'GM', 'skel'],
+    ['t-npc', 'PLAYER', null],
+    ['t-gone', 'GM', null],
+    ['t-cleared', 'GM', null],
+    ['t-none', 'GM', null],
+    ['a:b', 'GM', null],
+  ])('token %s for a %s opens %p', (tokenId, role, expected) => {
+    // #when
+    const target = openTarget(records, tokenId, role);
+
+    // #then
+    expect(target).toBe(expected);
   });
 });
 
@@ -220,6 +325,12 @@ describe('linkPickerUrl', () => {
     expect(url).toBe('/picker.html?token=a%2Fb%26c');
   });
 });
+
+const LAYER = { key: 'layer', value: 'CHARACTER' };
+
+const GM_ONE_TOKEN: Pick<TokenMenuFilter, 'max' | 'roles'> = { max: 1, roles: ['GM'] };
+
+const PLAYER_ONE_TOKEN: Pick<TokenMenuFilter, 'max' | 'roles'> = { max: 1, roles: ['PLAYER'] };
 
 function sheet(id: string, kind: 'pc' | 'npc', name: string, order: number): VersionedRecord {
   return { k: `sheet:${id}`, d: { kind, name, order }, c: 1, a: 'gm' };

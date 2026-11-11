@@ -5,6 +5,7 @@ import { ROOM_METADATA_BYTE_LIMIT } from '@/core/snapshot';
 import type {
   CommandRejectedMessage,
   Notice,
+  OpenSheetRequest,
   RollOutcomeMessage,
   RoomCopyStatus,
   SyncState,
@@ -25,6 +26,9 @@ export type ProjectionStore = {
   $sync: ReadableAtom<SyncState>;
   // AD-8: the room copy as Settings shows it.
   $roomCopy: ReadableAtom<RoomCopyStatus>;
+  // FR14: the last sheet "Открыть лист" asked this window to show, or `null` before any. The window
+  // tells a new request from one it has taken by its id.
+  $openRequest: ReadableAtom<OpenSheetRequest | null>;
   replaceAll: (
     records: readonly VersionedRecord[],
     pending: readonly VersionedRecord[],
@@ -41,6 +45,7 @@ export type ProjectionStore = {
   setRejection: (rejection: CommandRejectedMessage) => void;
   setRollOutcome: (outcome: RollOutcomeMessage) => void;
   setRoomCopy: (roomCopy: RoomCopyStatus) => void;
+  setOpenRequest: (request: OpenSheetRequest) => void;
 };
 
 // Far more than the commands or rolls one window has on their way at once.
@@ -74,6 +79,7 @@ export function createProjectionStore(): ProjectionStore {
   const $loaded = atom(false);
   const $sync = atom<SyncState>(UNKNOWN_SYNC);
   const $roomCopy = atom<RoomCopyStatus>(UNKNOWN_ROOM_COPY);
+  const $openRequest = atom<OpenSheetRequest | null>(null);
   let replica = new Map<string, VersionedRecord>();
   let pendingView = new Map<string, VersionedRecord>();
 
@@ -99,6 +105,7 @@ export function createProjectionStore(): ProjectionStore {
     $loaded,
     $sync,
     $roomCopy,
+    $openRequest,
     replaceAll: (records, pending, notices, sync) => {
       replica = new Map(records.map((record) => [record.k, record]));
       // A live engine has no pending view.
@@ -137,6 +144,9 @@ export function createProjectionStore(): ProjectionStore {
     },
     setRoomCopy: (roomCopy) => {
       $roomCopy.set(roomCopy);
+    },
+    setOpenRequest: (request) => {
+      $openRequest.set(request);
     },
   };
 }

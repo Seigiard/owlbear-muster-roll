@@ -32,6 +32,7 @@ import {
   type StateMessage,
 } from '@/core/room-messages';
 import { sheetKey } from '@/core/sheets';
+import { liveSheetShownTo, openTarget } from '@/core/token-links';
 import {
   encodeSnapshot,
   readBackHolds,
@@ -56,6 +57,7 @@ import {
   type EngineMessage,
   type GmLink,
   type Notice,
+  type OpenSheetRequest,
   type ProjectionMessage,
   type RejectionReason,
   type RollOutcome,
@@ -93,6 +95,7 @@ const UNREADABLE_STORAGE_MARK = '(unreadable)';
 
 export type ReplicaEnginePlatform = Pick<
   Platform,
+  | 'action'
   | 'broadcast'
   | 'contextMenu'
   | 'metadata'
@@ -111,6 +114,7 @@ export type EngineTiming = Pick<
   | 'gmLinkTimeoutMs'
   | 'snapshotPauseMs'
   | 'snapshotJitterMs'
+  | 'openRequestTtlMs'
 >;
 
 // Tests inject the timing, the ids, and the random source of the answer delay, the room copy
@@ -239,12 +243,22 @@ export async function startReplicaEngine(
   const tokenMenu =
     options.menuCopy === undefined
       ? null
-      : createTokenMenu(platform, options.menuCopy, (tokenId) => {
-          const id = newId();
+      : createTokenMenu(platform, options.menuCopy, {
+          unlink: (tokenId) => {
+            const id = newId();
 
-          menuCommandIds.add(id);
-          handleCommand({ t: 'command', id, command: { type: 'link-clear', tokenId } });
+            menuCommandIds.add(id);
+            handleCommand({ t: 'command', id, command: { type: 'link-clear', tokenId } });
+          },
+          open: openFromToken,
         });
+
+  // FR14: the sheet "Открыть лист" asked for, until a window acknowledges it. A newer press
+  // replaces it. It is dropped once this role cannot see the sheet, the sheet is gone, Owlbear
+  // refuses to open the window, or it outlives its lifetime.
+  let heldOpen: OpenSheetRequest | null = null;
+  // Read against the clock, not a timer, as a hidden tab's timers may not run.
+  let heldOpenUntil = 0;
 
   // AD-7 catch-up. `ownNonce` is set only while catching up.
   let sync: CatchUpState = {
@@ -415,6 +429,65 @@ export async function startReplicaEngine(
       .catch((error) => {
         console.error('Muster Roll could not send a projection', error);
       });
+
+    // A window that just connected may be the one Owlbear opened for the request. It goes after the
+    // projection in the same queue, so the window holds the sheet when the request arrives.
+    deliverOpen();
+  }
+
+  // UX-DR21: a press on a token whose sheet this role cannot see opens nothing. Owlbear's filter
+  // already hides such an item, but a press can race a link or role change.
+  function openFromToken(tokenId: string): void {
+    if (stopped) {
+      return;
+    }
+
+    const sheetId = openTarget(replica, tokenId, role);
+
+    if (sheetId === null) {
+      return;
+    }
+
+    const id = newId();
+
+    heldOpen = { id, sheetId };
+    heldOpenUntil = Date.now() + timing.openRequestTtlMs;
+    // No window opens for it, so a window opened by hand later does not jump to it.
+    platform.action.open().catch((error) => {
+      console.error('Muster Roll could not open its window', error);
+      dropOpen(id);
+    });
+    // An open window takes it at once. A closed one asks for a projection when it opens.
+    deliverOpen();
+  }
+
+  // Sent to every window. The first to acknowledge it ends the request, so a window that reloads or
+  // connects later never gets it again.
+  function deliverOpen(): void {
+    dropStaleOpen();
+
+    if (heldOpen === null) {
+      return;
+    }
+
+    send({ t: 'open-sheet', ...heldOpen }).catch((error) => {
+      console.error('Muster Roll could not ask a window to open a sheet', error);
+    });
+  }
+
+  function dropStaleOpen(): void {
+    if (
+      heldOpen !== null &&
+      (Date.now() >= heldOpenUntil || !liveSheetShownTo(replica, heldOpen.sheetId, role))
+    ) {
+      heldOpen = null;
+    }
+  }
+
+  function dropOpen(id: string): void {
+    if (heldOpen?.id === id) {
+      heldOpen = null;
+    }
   }
 
   // The records as the windows show them: the replica, with the pending view over it. A sheet's
@@ -2015,6 +2088,8 @@ export async function startReplicaEngine(
       sendProjection(parsed.value.nonce);
     } else if (parsed.value.t === 'roll-request') {
       handleRollRequest(parsed.value);
+    } else if (parsed.value.t === 'open-sheet-ack') {
+      dropOpen(parsed.value.id);
     } else {
       handleCommand(parsed.value);
     }
