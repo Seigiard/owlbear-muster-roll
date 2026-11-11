@@ -56,7 +56,7 @@ Deflate plus base64, on synthetic data with English notes.
 | 6 PC + 30 NPC | 8.5kB | 10.5kB |
 | 6 PC + 60 NPC | 13kB | 16.7kB |
 
-Russian text and the preset add more. These measurements predate the typed-field format, so measure again on the real format. A preset with several sheet sets and single sheets makes the stored preset larger, and NPCs as repeat blocks of one single sheet need no sheet record each, so the worst case is measured again on the sheet set and single sheet format.
+Russian text and the preset add more. These measurements predate the typed-field format, so measure again on the real format. Measured again on the sheet set and single sheet format (TASK-41, `src/core/snapshot-size.test.ts`): `tests/fixtures/presets/d20.json` with 6 sheets of a sheet set, a linkable NPC single sheet with 60 repeat blocks and links, and 3 other single sheets gives a room copy of 9270 bytes, a margin of 6230 bytes over the 1500-byte gate.
 
 ## Accepted losses
 
