@@ -4,6 +4,7 @@ title: Build presets without writing JSON by hand
 status: To Do
 assignee: []
 created_date: '2026-11-11T11:15:00Z'
+updated_date: '2026-11-11T19:53:00Z'
 labels:
   - v2
 dependencies: []
@@ -22,3 +23,9 @@ Today a GM describes a sheet only by writing preset JSON by hand, which needs kn
 - [ ] #2 A GM can open the room's current preset, change it and load it through the same path as a preset upload
 - [ ] #3 The result passes the same checks as an uploaded preset file and downloads as a preset file
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Forge session 2026-11-11 hardened the builder's shape: _bmad-output/forge/preset-builder/forged-idea.md. Next: bmad-spec update of SPEC.md, then bmad-ux.
+<!-- SECTION:NOTES:END -->
