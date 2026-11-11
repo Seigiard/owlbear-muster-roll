@@ -7,6 +7,9 @@ export const copy = {
     addNpc: 'Добавить NPC',
     addRow: 'Добавить строку',
     duplicate: 'Дублировать…',
+    // Confirms the count of the inline duplicate block: the menu's verb with no ellipsis, as no
+    // further step follows.
+    confirmDuplicate: 'Дублировать',
     delete: 'Удалить',
     linkSheet: 'Привязать лист…',
     unlinkSheet: 'Отвязать лист',
@@ -18,6 +21,8 @@ export const copy = {
     sheetName: 'Имя персонажа',
     npcName: 'Имя NPC',
     sheetActions: 'Действия с листом',
+    // The range is in the label, so sight and assistive tech both get it.
+    duplicateCount: 'Количество копий (1–50)',
     // The accessible name of a repeat row's "Удалить", with the row's position from 1.
     deleteRow: (n: number): string => `Удалить строку ${n}`,
     // The accessible name of a read-only check mark: its field's label and its state.
@@ -91,6 +96,7 @@ export const copy = {
   rollSuccess: 'успех',
   rollFailure: 'провал',
   rollFailed: 'Бросок не удался. Попробуйте ещё раз.',
+  duplicateFailed: 'Не удалось дублировать. Попробуйте ещё раз.',
   editDenied: 'Нет прав на правку',
   dataReplaced: 'Данные комнаты заменены',
   guestNote: 'Гость привязан к своему браузеру. Из другого браузера доступ придётся выдать снова.',

@@ -9,28 +9,47 @@ import {
 } from '@/core/field-patch';
 import { recordFitsOneMessage } from '@/core/message-size';
 import type { Version } from '@/core/merge';
+import { duplicateNames, isDuplicateCount } from '@/core/npc-duplicate';
 import { decodePreset, encodePreset, type Preset, type PresetTemplate } from '@/core/preset';
 import {
+  fieldValuesSchema,
   hasLiveSheet,
   presetDataSchema,
   repDataSchema,
   repKeyPrefix,
+  rowKey,
   sheetDataSchema,
+  type FieldValues,
+  type RepData,
   type SheetData,
   type VersionedRecord,
 } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
-import { isSheetDependent, parseSheetName, sheetIdSchema, sheetKey } from '@/core/sheets';
+import {
+  isSheetDependent,
+  liveSheets,
+  parseSheetName,
+  sheetIdSchema,
+  sheetKey,
+} from '@/core/sheets';
 import type { Command, RejectionReason } from '@/core/ui-messages';
+
+// One live value record of a duplicated sheet, with the key parts a copy keeps.
+type CopiedValue =
+  | { kind: 'row'; rowId: string; d: FieldValues }
+  | { kind: 'rep'; sectionId: string; instanceId: string; d: RepData };
 
 export type FieldPatchCommand = Extract<Command, { type: 'field-patch' }>;
 
 // The records a command is composed over, and how a new version is minted. The engine composes over
 // its replica with its minter. The pending view composes over the replica with the queued intents
-// applied, and mints nothing.
+// applied, and mints nothing. `newId` gives the ids a command makes itself, such as an NPC copy's,
+// each named by its role in the command. The pending view composes a queued command many times, so
+// one role must get one id each time, whatever records come or go in between.
 export type ComposeContext = {
   records: ReadonlyMap<string, VersionedRecord>;
   mint: (key: string, highestKnownCounter: number) => Version;
+  newId: (role: string) => string;
 };
 
 // A field patch of a combined pending entry, with the command id a refusal names.
@@ -297,6 +316,8 @@ export function createComposers(connectionId: string): Composers {
           return listOf(composeSheetRename(context, command));
         case 'sheet-delete':
           return composeSheetDelete(context, command);
+        case 'sheet-duplicate':
+          return composeSheetDuplicate(context, command);
         case 'preset-upload':
           return listOf(composePresetUpload(context, command));
         case 'field-patch':
@@ -394,6 +415,105 @@ function composeSheetDelete(
   doomed.push(current.value);
 
   return ok(doomed.map((record) => tombstone(context, record)));
+}
+
+// AD-2: each copy is new `row:`, `rep:` and `sheet:` records at `c: 1` under new ids, with no
+// `link:`, `acl:` or `plink:`. Only live records are copied. Each copy's sheet goes after its rows,
+// so a write that fails part way leaves no half-visible copy: rows with no sheet show nowhere.
+function composeSheetDuplicate(
+  context: ComposeContext,
+  command: Extract<Command, { type: 'sheet-duplicate' }>,
+): Result<VersionedRecord[], RejectionReason> {
+  if (!isDuplicateCount(command.count)) {
+    return err('invalid-count');
+  }
+
+  const current = liveSheetRecord(context, command.sheetId);
+
+  if (!current.ok) {
+    return current;
+  }
+
+  const source = sheetDataSchema.safeParse(current.value.d);
+
+  if (!source.success) {
+    return err('unknown-sheet');
+  }
+
+  if (source.data.kind !== 'npc') {
+    return err('not-npc');
+  }
+
+  const npcNames = liveSheets(context.records.values(), 'npc').map((npc) => npc.name);
+  const names = duplicateNames(source.data.name, npcNames, command.count);
+
+  if (!names.ok) {
+    return err('invalid-name');
+  }
+
+  const firstOrder = nextOrder(context, 'npc');
+  const values = copiedValues(context, command.sheetId);
+  const copies: VersionedRecord[] = [];
+
+  for (const [index, name] of names.value.entries()) {
+    const sheetId = context.newId(`sheet:${index}`);
+
+    if (context.records.has(sheetKey(sheetId))) {
+      return err('sheet-exists');
+    }
+
+    for (const value of values) {
+      if (value.kind === 'row') {
+        const k = rowKey(sheetId, value.rowId);
+
+        copies.push({ k, d: value.d, ...context.mint(k, 0) });
+      } else {
+        const role = `rep:${index}:${value.sectionId}:${value.instanceId}`;
+        const k = `${repKeyPrefix(sheetId, value.sectionId)}${context.newId(role)}`;
+
+        copies.push({ k, d: value.d, ...context.mint(k, 0) });
+      }
+    }
+
+    const k = sheetKey(sheetId);
+    const d: SheetData = { kind: 'npc', name, order: firstOrder + index };
+
+    copies.push({ k, d, ...context.mint(k, 0) });
+  }
+
+  return copies.every(recordFitsOneMessage) ? ok(copies) : err('too-large');
+}
+
+// The live `row:` and `rep:` records of one sheet, by key, so copies list them in one order.
+function copiedValues(context: ComposeContext, sheetId: string): CopiedValue[] {
+  const rowPrefix = `row:${sheetId}:`;
+  const repPrefix = `rep:${sheetId}:`;
+  const values: CopiedValue[] = [];
+
+  const keys = [...context.records.keys()]
+    .filter((key) => key.startsWith(rowPrefix) || key.startsWith(repPrefix))
+    .sort();
+
+  for (const key of keys) {
+    const d = context.records.get(key)?.d;
+
+    if (key.startsWith(rowPrefix)) {
+      const row = fieldValuesSchema.safeParse(d);
+
+      if (row.success) {
+        values.push({ kind: 'row', rowId: key.slice(rowPrefix.length), d: row.data });
+      }
+    } else if (key.startsWith(repPrefix)) {
+      const rep = repDataSchema.safeParse(d);
+      const [sectionId, instanceId] = key.slice(repPrefix.length).split(':');
+
+      if (rep.success && sectionId !== undefined && instanceId !== undefined) {
+        values.push({ kind: 'rep', sectionId, instanceId, d: rep.data });
+      }
+    }
+  }
+
+  return values;
 }
 
 function liveSheetRecord(

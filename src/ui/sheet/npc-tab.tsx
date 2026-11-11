@@ -21,7 +21,7 @@ type NpcTabProps = {
   editing: FieldEditing;
   rolling: DiceRolling;
   sendCommand: ReplicaClient['sendCommand'];
-  store: Pick<ProjectionStore, '$rejections'>;
+  store: Pick<ProjectionStore, '$rejections' | '$records'>;
   // The open delete confirmation for one of these NPCs, or `null`.
   confirmation: ReactNode;
   onAdd: () => void;

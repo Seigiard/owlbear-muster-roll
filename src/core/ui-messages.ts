@@ -109,6 +109,14 @@ const sheetDeleteSchema = z.strictObject({
   sheetId: z.string(),
 });
 
+// AD-2: the engine picks the new ids and the names, so the command carries only the source and the
+// count. The count is any number, so the engine rejects a bad one instead of the schema dropping it.
+const sheetDuplicateSchema = z.strictObject({
+  type: z.literal('sheet-duplicate'),
+  sheetId: z.string(),
+  count: z.number(),
+});
+
 // The window sends the deflated data, not the JSON, because a preset over the message limit as
 // JSON can still fit once deflated. The engine decodes and validates it again.
 const presetUploadSchema = z.strictObject({
@@ -146,6 +154,7 @@ const commandIntentSchema = z.discriminatedUnion('type', [
   sheetCreateSchema,
   sheetRenameSchema,
   sheetDeleteSchema,
+  sheetDuplicateSchema,
   presetUploadSchema,
   fieldPatchSchema,
   repeatRowAddSchema,
@@ -177,6 +186,10 @@ const commandRejectedSchema = z.strictObject({
     'unknown-section',
     'invalid-instance-id',
     'instance-exists',
+    // A duplicate count outside 1 to 50, or not whole.
+    'invalid-count',
+    // Only an NPC is duplicated.
+    'not-npc',
     // A player client edits nothing until Epic 3 brings `propose`.
     'not-allowed',
     // AD-14: a preset upload waits until catch-up ends.

@@ -203,6 +203,9 @@ export async function startReplicaEngine(
   let decodedPreset: DecodedPreset | null = null;
   const answeringNonces = new Set<string>();
   const pending = createPendingQueue();
+  // The ids each pending intent has made so far, by command id and then by role, until the queue
+  // is replayed.
+  const pendingIds = new Map<string, Map<string, string>>();
   // AD-5: re-read on every party change, and a change enters catch-up.
   let role = startRole;
   let persistence = loaded.persistence;
@@ -508,7 +511,7 @@ export async function startReplicaEngine(
   }
 
   function liveContext(): ComposeContext {
-    return { records: replica, mint: minter.mint };
+    return { records: replica, mint: minter.mint, newId: () => newId() };
   }
 
   // Mints nothing: a version of the pending view never reaches the room or the storage.
@@ -519,6 +522,27 @@ export async function startReplicaEngine(
         c: highestKnownCounter + 1,
         a: connectionId,
       }),
+      newId: () => newId(),
+    };
+  }
+
+  // A pending intent composes again for every pending view and once more on replay. One role of
+  // one command gets one id each time, so the view keeps its keys and the replay writes the keys
+  // the windows already show, even when records arrive in between.
+  function pendingIdsOf(commandId: string): (role: string) => string {
+    return (role) => {
+      let ids = pendingIds.get(commandId);
+
+      if (ids === undefined) {
+        ids = new Map();
+        pendingIds.set(commandId, ids);
+      }
+
+      const id = ids.get(role) ?? newId();
+
+      ids.set(role, id);
+
+      return id;
     };
   }
 
@@ -760,9 +784,13 @@ export async function startReplicaEngine(
       return;
     }
 
-    const dry = composers.compose(dryContext(pendingView()), command);
+    const dry = composers.compose(
+      { ...dryContext(pendingView()), newId: pendingIdsOf(id) },
+      command,
+    );
 
     if (!dry.ok) {
+      pendingIds.delete(id);
       reject(id, dry.error);
 
       return;
@@ -788,7 +816,10 @@ export async function startReplicaEngine(
 
   function composedEntry(context: ComposeContext, entry: PendingEntry): VersionedRecord[] {
     if (entry.kind === 'intent') {
-      const composed = composers.compose(context, entry.command);
+      const composed = composers.compose(
+        { ...context, newId: pendingIdsOf(entry.id) },
+        entry.command,
+      );
 
       return composed.ok ? composed.value : [];
     }
@@ -843,7 +874,10 @@ export async function startReplicaEngine(
           reject(id, 'not-allowed');
         }
       } else if (entry.kind === 'intent') {
-        const composed = composers.compose(liveContext(), entry.command);
+        const composed = composers.compose(
+          { ...liveContext(), newId: pendingIdsOf(entry.id) },
+          entry.command,
+        );
 
         if (composed.ok) {
           applied.push(...apply(composed.value));
@@ -862,6 +896,8 @@ export async function startReplicaEngine(
         }
       }
     }
+
+    pendingIds.clear();
 
     return applied;
   }

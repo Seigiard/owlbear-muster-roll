@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import {
   Button as AriaButton,
@@ -17,13 +17,15 @@ import { copy } from '@/ui/copy';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
+import { DuplicateCount } from './duplicate-count';
+
 type SheetHeaderProps = {
   // `character` heads a character's tab. `npc` heads one NPC's block on the NPC tab.
   variant?: 'character' | 'npc';
   sheetId: string;
   name: string;
   sendCommand: ReplicaClient['sendCommand'];
-  store: Pick<ProjectionStore, '$rejections'>;
+  store: Pick<ProjectionStore, '$rejections' | '$records'>;
   // True for a sheet this window has just created, so the GM can type its name at once.
   focusName: boolean;
   onNameFocused: () => void;
@@ -43,6 +45,8 @@ type NameEdit = { typed: string | null; sent: SentName | null; tooLong: boolean 
 const NO_EDIT: NameEdit = { typed: null, sent: null, tooLong: false };
 
 const DELETE_ACTION = 'delete';
+
+const DUPLICATE_ACTION = 'duplicate';
 
 const MORE = '⋯';
 
@@ -75,7 +79,11 @@ export function SheetHeader({
   const actionsRef = useRef<HTMLButtonElement>(null);
   const rejections = useStore(store.$rejections);
   const [edit, setEdit] = useState<NameEdit>(NO_EDIT);
+  // `null` while the duplicate block is closed, else how many times "Дублировать…" was picked.
+  const [duplicateAsk, setDuplicateAsk] = useState<number | null>(null);
   const look = VARIANT[variant];
+  // Only an NPC is duplicated (UX-DR19).
+  const canDuplicate = variant === 'npc';
 
   // Only the projection bringing back the last sent name ends the wait. An earlier rename that
   // lands first must not show while the last one is still on its way.
@@ -132,6 +140,12 @@ export function SheetHeader({
     });
   }
 
+  // The block closes and the focus goes back to "⋯", where the GM asked from.
+  const closeDuplicate = useCallback(() => {
+    setDuplicateAsk(null);
+    actionsRef.current?.focus();
+  }, []);
+
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
     if (event.key === 'Enter') {
       save();
@@ -141,47 +155,75 @@ export function SheetHeader({
   }
 
   return (
-    <header className={`flex items-start gap-2 ${look.header}`}>
-      <TextField
-        className="flex min-w-[0] flex-1 flex-col gap-1"
-        aria-label={look.label}
-        value={edit.typed ?? shownName}
-        isInvalid={edit.tooLong}
-        onChange={(typed) => {
-          setEdit((current) => ({ ...current, typed }));
-        }}
-        onBlur={save}
-      >
-        <Input
-          ref={inputRef}
-          onKeyDown={handleKeyDown}
-          className={`touch-target w-full border-b border-dotted border-line-strong bg-transparent px-1 text-text ${look.name}`}
-        />
-        <FieldError className="text-label-sm text-danger-text">{copy.valueTooLong}</FieldError>
-      </TextField>
-      <MenuTrigger>
-        <AriaButton
-          ref={actionsRef}
-          aria-label={copy.label.sheetActions}
-          className="touch-target inline-flex shrink-0 items-center justify-center rounded-sm px-3 text-text"
+    <>
+      <header className={`flex items-start gap-2 ${look.header}`}>
+        <TextField
+          className="flex min-w-[0] flex-1 flex-col gap-1"
+          aria-label={look.label}
+          value={edit.typed ?? shownName}
+          isInvalid={edit.tooLong}
+          onChange={(typed) => {
+            setEdit((current) => ({ ...current, typed }));
+          }}
+          onBlur={save}
         >
-          {MORE}
-        </AriaButton>
-        <Popover
-          placement="bottom end"
-          className="rounded-md border border-line bg-surface-bar p-1 text-body text-text"
-        >
-          <Menu onAction={onDelete}>
-            <MenuItem
-              id={DELETE_ACTION}
-              className="touch-target flex cursor-default items-center rounded-sm px-3 data-focused:bg-surface-tab"
+          <Input
+            ref={inputRef}
+            onKeyDown={handleKeyDown}
+            className={`touch-target w-full border-b border-dotted border-line-strong bg-transparent px-1 text-text ${look.name}`}
+          />
+          <FieldError className="text-label-sm text-danger-text">{copy.valueTooLong}</FieldError>
+        </TextField>
+        <MenuTrigger>
+          <AriaButton
+            ref={actionsRef}
+            aria-label={copy.label.sheetActions}
+            className="touch-target inline-flex shrink-0 items-center justify-center rounded-sm px-3 text-text"
+          >
+            {MORE}
+          </AriaButton>
+          <Popover
+            placement="bottom end"
+            className="rounded-md border border-line bg-surface-bar p-1 text-body text-text"
+          >
+            <Menu
+              onAction={(action) => {
+                if (action === DUPLICATE_ACTION) {
+                  setDuplicateAsk((asked) => (asked ?? 0) + 1);
+                } else if (action === DELETE_ACTION) {
+                  onDelete();
+                }
+              }}
             >
-              {copy.command.delete}
-            </MenuItem>
-          </Menu>
-        </Popover>
-      </MenuTrigger>
-    </header>
+              {canDuplicate ? (
+                <MenuItem
+                  id={DUPLICATE_ACTION}
+                  className="touch-target flex cursor-default items-center rounded-sm px-3 data-focused:bg-surface-tab"
+                >
+                  {copy.command.duplicate}
+                </MenuItem>
+              ) : null}
+              <MenuItem
+                id={DELETE_ACTION}
+                className="touch-target flex cursor-default items-center rounded-sm px-3 data-focused:bg-surface-tab"
+              >
+                {copy.command.delete}
+              </MenuItem>
+            </Menu>
+          </Popover>
+        </MenuTrigger>
+      </header>
+      {canDuplicate && duplicateAsk !== null ? (
+        <DuplicateCount
+          sheetId={sheetId}
+          sendCommand={sendCommand}
+          store={store}
+          focusRequest={duplicateAsk}
+          onDone={closeDuplicate}
+          onCancel={closeDuplicate}
+        />
+      ) : null}
+    </>
   );
 }
 

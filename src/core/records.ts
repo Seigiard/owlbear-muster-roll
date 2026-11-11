@@ -56,6 +56,10 @@ export type SheetData = z.infer<typeof sheetDataSchema>;
 
 export type FieldValue = z.infer<typeof fieldValueSchema>;
 
+export type FieldValues = z.infer<typeof fieldValuesSchema>;
+
+export type RepData = z.infer<typeof repDataSchema>;
+
 export type RecordFailure = 'invalid-record';
 
 export function parseRecord(candidate: JsonValue): Result<VersionedRecord, RecordFailure> {
