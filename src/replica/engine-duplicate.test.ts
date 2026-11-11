@@ -3,7 +3,7 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { RecordIdKind } from '@/core/ids';
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
-import { recordSchema, type VersionedRecord } from '@/core/records';
+import { recordSchema, type FieldValues, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import { encodeStateRecords } from '@/core/state-records';
 import type { Timing } from '@/core/timing';
@@ -47,60 +47,84 @@ const TIMING: Timing = {
   snapshotImportTimeoutMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 const GHOST = 'ghost-gm';
 
+// "npc" holds the NPCs as repeat blocks of two rows, and a repeat section whose first field is a
+// number. "pc" is a sheet set with a repeat section of its own, and "camp" a single sheet every
+// player edits.
 const PRESET: Preset = {
-  v: 1,
-  character: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
-  npc: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'field', type: 'number', id: 'ac' },
-            { kind: 'field', type: 'number', id: 'hp' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+            ],
           ],
-          [{ kind: 'field', type: 'check', id: 'elite' }],
-        ],
-      },
-      {
-        repeat: true,
-        rows: [
-          [
-            { kind: 'field', type: 'text', id: 'attack' },
-            { kind: 'field', type: 'number', id: 'bonus' },
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        { rows: [[{ kind: 'field', type: 'text', id: 'notes' }]] },
+        {
+          repeat: true,
+          tokens: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'mob' },
+              { kind: 'field', type: 'number', id: 'hp' },
+            ],
+            [
+              { kind: 'field', type: 'check', id: 'elite' },
+              { kind: 'field', type: 'text', id: 'tactics' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
+        },
+        { repeat: true, rows: [[{ kind: 'field', type: 'number', id: 'gold' }]] },
+      ],
+    },
+    {
+      id: 'camp',
+      kind: 'single',
+      title: 'Лагерь',
+      players: 'edit',
+      sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'cart' }]] }],
+    },
+  ],
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
 
-// "Скелет 1" with values in two rows, two live repeat rows, a deleted one, and every record form
-// a copy must not take: a token link, access and a player link.
+// The NPC "Скелет 1" with a token link, another NPC at order 4, a removed one, a block of another
+// section at order 9 the NPC order must not follow, a sheet of the sheet set with a repeat block,
+// and a repeat block of the sheet every player edits.
 const SOURCE: readonly VersionedRecord[] = [
-  npc('skel', 'Скелет 1', 0, 3),
-  { k: 'row:skel:ac', d: { ac: 13, hp: 7 }, c: 4, a: 'seed' },
-  { k: 'row:skel:elite', d: { elite: true }, c: 2, a: 'seed' },
-  { k: 'rep:skel:attack:i1', d: { order: 0, cells: { attack: 'Меч', bonus: 2 } }, c: 5, a: 'seed' },
-  { k: 'rep:skel:attack:i2', d: { order: 1, cells: { attack: 'Лук' } }, c: 1, a: 'seed' },
-  { k: 'rep:skel:attack:i0', d: null, c: 2, a: 'seed' },
-  { k: 'link:token1', d: 'skel', c: 1, a: 'seed' },
-  { k: 'acl:skel:p1', d: { name: 'Оля' }, c: 1, a: 'seed' },
-  { k: 'plink:skel:p1', d: { name: 'Оля' }, c: 1, a: 'seed' },
-];
-
-// What every copy of SOURCE holds, by key form, with the copy's ids taken out.
-const COPIED_VALUES: Copy['values'] = [
-  { form: 'rep:attack', d: { order: 0, cells: { attack: 'Меч', bonus: 2 } } },
-  { form: 'rep:attack', d: { order: 1, cells: { attack: 'Лук' } } },
-  { form: 'row:ac', d: { ac: 13, hp: 7 } },
-  { form: 'row:elite', d: { elite: true } },
+  block('npc', 'mob', 'sk1', 0, { mob: 'Скелет 1', hp: 7, elite: true }, 3),
+  block('npc', 'mob', 'gob', 4, { mob: 'Гоблин', hp: 5 }),
+  { k: 'rep:npc:mob:dead', d: null, c: 2, a: 'seed' },
+  block('npc', 'gold', 'g1', 9, { gold: 30 }),
+  { k: 'link:token1', d: { s: 'npc', i: 'sk1' }, c: 1, a: 'seed' },
+  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
+  { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
+  block('brok', 'attack', 'a1', 0, { attack: 'Меч', bonus: 2 }),
+  block('camp', 'cart', 'c1', 0, { cart: 'Телега' }),
 ];
 
 type Client = {
@@ -125,8 +149,8 @@ type ClientOptions = {
   timing?: Partial<Timing>;
 };
 
-// One copy as the test reads it: its sheet data and its value records, keys and versions aside.
-type Copy = { sheet: JsonValue; values: { form: string; d: JsonValue }[] };
+// One copy as the test reads it: its section and data, its instance id and version aside.
+type Copy = { section: string; d: JsonValue };
 
 const cleanups: (() => void)[] = [];
 
@@ -138,68 +162,61 @@ afterEach(() => {
   }
 });
 
-describe('sheet-duplicate', () => {
-  test('writes nine copies of "Скелет 1", "Скелет 2" to "Скелет 10", after the last NPC, with its live rows and repeat rows', async () => {
-    // #given: another NPC at order 4, and a character at order 9 the NPC order must not follow.
+describe('repeat-block-duplicate', () => {
+  test('writes nine copies of "Скелет 1", "Скелет 2" to "Скелет 10", after the last repeat block of its section, with its values', async () => {
+    // #given
     const room = openRoom();
-
-    const client = await startClient(room, 'gm-a', {
-      seeded: [...base(), npc('gob', 'Гоблин', 4), pc('brok', 'Брок', 9)],
-    });
+    const client = await startClient(room, 'gm-a');
 
     // #when
-    send(client, duplicate('skel', 9));
-    await waitUntil(() => newSheetKeys(client).length === 9);
+    send(client, duplicate('npc', 'mob', 'sk1', 9));
+    await waitUntil(() => addedRecords(client).length === 9);
 
     // #then
     expect(copiesOf(client)).toEqual(
       Array.from({ length: 9 }, (_unused, index) => ({
-        sheet: { kind: 'npc', name: `Скелет ${index + 2}`, order: index + 5 },
-        values: COPIED_VALUES,
+        section: 'mob',
+        d: { order: index + 5, cells: { mob: `Скелет ${index + 2}`, hp: 7, elite: true } },
       })),
     );
   });
 
-  test('puts every copy under its own new sheet and instance ids, at c: 1 by this connection, with no link, acl or plink', async () => {
+  test('puts every copy under a new 8-character instance id of the same sheet and section, at c: 1 by this connection, with no link', async () => {
     // #given
     const room = openRoom();
     const client = await startClient(room, 'gm-a');
 
     // #when
-    send(client, duplicate('skel', 2));
-    await waitUntil(() => newSheetKeys(client).length === 2);
+    send(client, duplicate('npc', 'mob', 'sk1', 3));
+    await waitUntil(() => addedRecords(client).length === 3);
 
-    // #then
+    // #then: TASK-37 AC 1, the length written out by hand.
     const added = addedRecords(client);
-    const instanceIds = added.filter((one) => one.k.startsWith('rep:')).map(lastKeySegment);
+    const instanceIds = added.map(lastKeySegment);
 
     expect({
-      count: added.length,
+      prefixes: [...new Set(added.map((one) => one.k.split(':').slice(0, 3).join(':')))],
       versions: [...new Set(added.map((one) => `${one.c}/${one.a}`))],
-      forms: [...new Set(added.map((one) => one.k.split(':')[0] ?? ''))].sort((first, second) =>
-        first < second ? -1 : 1,
-      ),
-      sheetIds: new Set(added.map(sheetIdOf)).size,
       instanceIds: new Set(instanceIds).size,
-      reusedInstanceIds: instanceIds.filter((id) => ['i0', 'i1', 'i2'].includes(id)),
+      malformed: instanceIds.filter((id) => !/^[A-Za-z0-9_-]{8}$/.test(id)),
+      links: [...shownRecords(client).keys()].filter((key) => key.startsWith('link:')),
     }).toEqual({
-      count: 10,
+      prefixes: ['rep:npc:mob'],
       versions: ['1/gm-a'],
-      forms: ['rep', 'row', 'sheet'],
-      sheetIds: 2,
-      instanceIds: 4,
-      reusedInstanceIds: [],
+      instanceIds: 3,
+      malformed: [],
+      links: ['link:token1'],
     });
   });
 
-  test('leaves the source and its link, acl and plink records as they were', async () => {
+  test('leaves the source repeat block and its link as they were', async () => {
     // #given
     const room = openRoom();
     const client = await startClient(room, 'gm-a');
 
     // #when
-    send(client, duplicate('skel', 3));
-    await waitUntil(() => newSheetKeys(client).length === 3);
+    send(client, duplicate('npc', 'mob', 'sk1', 3));
+    await waitUntil(() => addedRecords(client).length === 3);
 
     // #then
     expect(SOURCE.map((one) => stored(client, one.k))).toEqual([...SOURCE]);
@@ -212,8 +229,8 @@ describe('sheet-duplicate', () => {
     const second = await startClient(room, 'gm-b');
 
     // #when
-    send(first, duplicate('skel', 2));
-    await waitUntil(() => newSheetKeys(second).length === 2);
+    send(first, duplicate('npc', 'mob', 'sk1', 2));
+    await waitUntil(() => addedRecords(second).length === 2);
 
     // #then
     const keys = addedRecords(first).map((one) => one.k);
@@ -230,49 +247,78 @@ describe('sheet-duplicate', () => {
   test('numbers copies of an unnumbered source from 1 and leaves its name', async () => {
     // #given
     const room = openRoom();
-
-    const client = await startClient(room, 'gm-a', {
-      seeded: [PRESET_RECORD, npc('skel', 'Скелет', 0)],
-    });
+    const source = block('npc', 'mob', 'sk1', 0, { mob: 'Скелет' });
+    const client = await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, source] });
 
     // #when
-    send(client, duplicate('skel', 2));
-    await waitUntil(() => newSheetKeys(client).length === 2);
+    send(client, duplicate('npc', 'mob', 'sk1', 2));
+    await waitUntil(() => addedRecords(client).length === 2);
 
     // #then
-    expect({
-      names: copiesOf(client).map((copy) => Object(copy.sheet).name),
-      source: shown(client, 'sheet:skel')?.d,
-    }).toEqual({
+    expect({ names: namesOf(client), source: shown(client, source.k) }).toEqual({
       names: ['Скелет 1', 'Скелет 2'],
-      source: { kind: 'npc', name: 'Скелет', order: 0 },
+      source,
     });
   });
 
-  test('numbers after the highest live NPC of the same base only', async () => {
-    // #given: a higher NPC, and higher numbers on a character, a deleted NPC and another base.
+  test('numbers after the highest live repeat block of the same base in the same section of the same sheet', async () => {
+    // #given: a higher namesake, and higher numbers on a removed block, another base and another
+    // sheet.
     const room = openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [
         PRESET_RECORD,
-        npc('skel', 'Скелет 1', 0),
-        npc('high', 'Скелет 7', 1),
-        pc('char', 'Скелет 20', 2),
-        { k: 'sheet:gone', d: null, c: 2, a: 'seed' },
-        npc('archer', 'Скелет-лучник 30', 3),
+        block('npc', 'mob', 'sk1', 0, { mob: 'Скелет 1' }),
+        block('npc', 'mob', 'high', 1, { mob: 'Скелет 7' }),
+        { k: 'rep:npc:mob:gone', d: null, c: 2, a: 'seed' },
+        block('npc', 'mob', 'archer', 2, { mob: 'Скелет-лучник 30' }),
+        { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
+        block('brok', 'attack', 'a1', 0, { attack: 'Скелет 20' }),
       ],
     });
 
     // #when
-    send(client, duplicate('skel', 2));
-    await waitUntil(() => newSheetKeys(client).length === 2);
+    send(client, duplicate('npc', 'mob', 'sk1', 2));
+    await waitUntil(() => addedRecords(client).length === 2);
 
     // #then
-    expect(copiesOf(client).map((copy) => Object(copy.sheet).name)).toEqual([
-      'Скелет 8',
-      'Скелет 9',
+    expect(namesOf(client)).toEqual(['Скелет 8', 'Скелет 9']);
+  });
+
+  test('copies a repeat block whose first field is not text with its values as they are', async () => {
+    // #given
+    const room = openRoom();
+    const client = await startClient(room, 'gm-a');
+
+    // #when
+    send(client, duplicate('npc', 'gold', 'g1', 2));
+    await waitUntil(() => addedRecords(client).length === 2);
+
+    // #then
+    expect(copiesOf(client)).toEqual([
+      { section: 'gold', d: { order: 10, cells: { gold: 30 } } },
+      { section: 'gold', d: { order: 11, cells: { gold: 30 } } },
     ]);
+  });
+
+  test('duplicates a repeat block of a sheet of a sheet set', async () => {
+    // #given
+    const room = openRoom();
+    const client = await startClient(room, 'gm-a');
+
+    // #when
+    send(client, duplicate('brok', 'attack', 'a1', 1));
+    await waitUntil(() => addedRecords(client).length === 1);
+
+    // #then
+    expect({
+      sheet: addedRecords(client).map((one) => one.k.split(':')[1]),
+      copies: copiesOf(client),
+    }).toEqual({
+      sheet: ['brok'],
+      copies: [{ section: 'attack', d: { order: 1, cells: { attack: 'Меч 1', bonus: 2 } } }],
+    });
   });
 
   test('an edit of one copy changes no other copy and not the source', async () => {
@@ -280,65 +326,53 @@ describe('sheet-duplicate', () => {
     const room = openRoom();
     const client = await startClient(room, 'gm-a');
 
-    send(client, duplicate('skel', 2));
-    await waitUntil(() => newSheetKeys(client).length === 2);
+    send(client, duplicate('npc', 'mob', 'sk1', 2));
+    await waitUntil(() => addedRecords(client).length === 2);
 
-    const [edited, other] = sheetIdsByOrder(client);
-    const editedRep = repKeysOf(client, edited)[0] ?? '';
+    const [edited = '', other = ''] = addedRecords(client)
+      .sort((first, second) => Object(first.d).order - Object(second.d).order)
+      .map((one) => one.k);
 
     // #when
     send(client, {
       type: 'field-patch',
-      sheetId: edited ?? '',
-      target: { kind: 'row', rowId: 'ac' },
+      sheetId: 'npc',
+      target: { kind: 'rep', sectionId: 'mob', instanceId: lastKeySegment({ k: edited }) },
       fieldId: 'hp',
       value: 1,
     });
-    send(client, {
-      type: 'field-patch',
-      sheetId: edited ?? '',
-      target: { kind: 'rep', sectionId: 'attack', instanceId: lastKeySegment({ k: editedRep }) },
-      fieldId: 'attack',
-      value: 'Топор',
-    });
-    await waitUntil(() => Object(shown(client, editedRep)?.d).cells?.attack === 'Топор');
-    await waitUntil(() => Object(shown(client, `row:${edited}:ac`)?.d).hp === 1);
+    await waitUntil(() => Object(shown(client, edited)?.d).cells?.hp === 1);
 
     // #then
-    const rowsOf = (sheetId: string | undefined): JsonValue[] =>
-      [`row:${sheetId}:ac`, ...repKeysOf(client, sheetId)].map(
-        (key) => shown(client, key)?.d ?? null,
-      );
-
-    expect({ edited: rowsOf(edited), other: rowsOf(other), source: rowsOf('skel') }).toEqual({
-      edited: [
-        { ac: 13, hp: 1 },
-        { order: 0, cells: { attack: 'Топор', bonus: 2 } },
-        { order: 1, cells: { attack: 'Лук' } },
-      ],
-      other: [
-        { ac: 13, hp: 7 },
-        { order: 0, cells: { attack: 'Меч', bonus: 2 } },
-        { order: 1, cells: { attack: 'Лук' } },
-      ],
-      source: [
-        { ac: 13, hp: 7 },
-        { order: 0, cells: { attack: 'Меч', bonus: 2 } },
-        { order: 1, cells: { attack: 'Лук' } },
-      ],
-    });
+    expect([edited, other, 'rep:npc:mob:sk1'].map((key) => shown(client, key)?.d)).toEqual([
+      { order: 5, cells: { mob: 'Скелет 2', hp: 1, elite: true } },
+      { order: 6, cells: { mob: 'Скелет 3', hp: 7, elite: true } },
+      { order: 0, cells: { mob: 'Скелет 1', hp: 7, elite: true } },
+    ]);
   });
 
   test.each([
-    ['a count of 0', duplicate('skel', 0), 'invalid-count'],
-    ['a count of 51', duplicate('skel', 51), 'invalid-count'],
-    ['a fractional count', duplicate('skel', 2.5), 'invalid-count'],
-    ['a character', duplicate('brok', 1), 'not-npc'],
-    ['a deleted NPC', duplicate('gone', 1), 'deleted-sheet'],
-    ['a sheet that does not exist', duplicate('nobody', 1), 'unknown-sheet'],
-    ['an id outside the nanoid alphabet', duplicate('a:b', 1), 'invalid-sheet-id'],
-    ['a sheet record that fails its schema', duplicate('bad', 1), 'unknown-sheet'],
-    ['a name whose number cannot fit the name limit', duplicate('long', 1), 'invalid-name'],
+    ['a count of 0', duplicate('npc', 'mob', 'sk1', 0), 'invalid-count'],
+    ['a count of 51', duplicate('npc', 'mob', 'sk1', 51), 'invalid-count'],
+    ['a fractional count', duplicate('npc', 'mob', 'sk1', 2.5), 'invalid-count'],
+    ['a removed repeat block', duplicate('npc', 'mob', 'dead', 1), 'unknown-instance'],
+    [
+      'a repeat block that does not exist',
+      duplicate('npc', 'mob', 'nobody', 1),
+      'unknown-instance',
+    ],
+    ['a repeat block of another section', duplicate('npc', 'mob', 'g1', 1), 'unknown-instance'],
+    ['a section that does not repeat', duplicate('npc', 'notes', 'sk1', 1), 'unknown-section'],
+    ['a section the template lacks', duplicate('npc', 'nope', 'sk1', 1), 'unknown-section'],
+    ['a deleted sheet', duplicate('gone', 'attack', 'a1', 1), 'deleted-sheet'],
+    ['a sheet that does not exist', duplicate('nobody', 'attack', 'a1', 1), 'unknown-sheet'],
+    ['an id outside the nanoid alphabet', duplicate('a:b', 'attack', 'a1', 1), 'invalid-sheet-id'],
+    ['a sheet record that fails its schema', duplicate('bad', 'attack', 'a1', 1), 'unknown-sheet'],
+    [
+      'a name whose number cannot fit the name limit',
+      duplicate('npc', 'mob', 'long', 1),
+      'invalid-value',
+    ],
   ])('rejects %s and writes nothing', async (_name, command, reason) => {
     // #given
     const room = openRoom();
@@ -346,12 +380,11 @@ describe('sheet-duplicate', () => {
     const client = await startClient(room, 'gm-a', {
       seeded: [
         ...base(),
-        pc('brok', 'Брок', 0),
         { k: 'sheet:gone', d: null, c: 2, a: 'seed' },
-        // A name past the limit, as a record holds any name: its next number has 101 digits.
-        npc('long', `Скелет ${'9'.repeat(100)}`, 9),
+        // A value past the limit, as a record holds any value: its next number has 101 digits.
+        block('npc', 'mob', 'long', 9, { mob: `Скелет ${'9'.repeat(100)}` }),
       ],
-      corrupt: [{ k: 'sheet:bad', d: { kind: 'npc', name: 'Битый' }, c: 1, a: 'seed' }],
+      corrupt: [{ k: 'sheet:bad', d: { kind: 'pc', name: 'Битый' }, c: 1, a: 'seed' }],
     });
 
     const before = storedKeys(client);
@@ -369,107 +402,40 @@ describe('sheet-duplicate', () => {
     }).toEqual({ reason, stored: before, commits: [] });
   });
 
-  test('rejects a new sheet id that is already taken and writes nothing', async () => {
-    // #given: every id the engine makes is the id of a live NPC.
-    const room = openRoom();
+  test.each<[string, VersionedRecord]>([
+    ['a removed repeat block of the section', { k: 'rep:npc:mob:dead', d: null, c: 2, a: 'seed' }],
+    ['a repeat block of another section of the sheet', block('npc', 'gold', 'g1', 9, { gold: 30 })],
+  ])(
+    'draws an instance id that %s holds again and writes the copy under the next free one',
+    async (_name, taken) => {
+      // #given: AD-2, an instance id is unique in its sheet across sections, tombstones included.
+      const room = openRoom();
+      const ids = [lastKeySegment(taken), 'fresh'];
 
-    const client = await startClient(room, 'gm-a', {
-      seeded: [...base(), npc('gob', 'Гоблин', 4)],
-      newRecordId: () => 'gob',
-    });
+      const client = await startClient(room, 'gm-a', {
+        newRecordId: () => ids.shift() ?? 'spent',
+      });
 
-    const before = storedKeys(client);
+      // #when
+      send(client, duplicate('npc', 'mob', 'sk1', 1));
+      await waitUntil(() => addedRecords(client).length === 1);
 
-    // #when
-    const id = send(client, duplicate('skel', 1));
+      // #then
+      expect({ keys: newKeys(client), taken: stored(client, taken.k) }).toEqual({
+        keys: ['rep:npc:mob:fresh'],
+        taken,
+      });
+    },
+  );
 
-    await waitUntil(() => rejection(client, id) !== undefined);
-
-    // #then
-    expect({ reason: rejection(client, id), stored: storedKeys(client) }).toEqual({
-      reason: 'sheet-exists',
-      stored: before,
-    });
-  });
-
-  test('gives every copy a 12-character sheet id and 8-character instance ids of the URL-safe alphabet', async () => {
-    // #given
-    const room = openRoom();
-    const client = await startClient(room, 'gm-a');
-
-    // #when
-    send(client, duplicate('skel', 3));
-    await waitUntil(() => newSheetKeys(client).length === 3);
-
-    // #then: TASK-37 AC 1, the lengths written out by hand.
-    const added = addedRecords(client);
-
-    expect({
-      sheetIds: added.map(sheetIdOf).filter((id) => !/^[A-Za-z0-9_-]{12}$/.test(id)),
-      instanceIds: added
-        .filter((one) => one.k.startsWith('rep:'))
-        .map(lastKeySegment)
-        .filter((id) => !/^[A-Za-z0-9_-]{8}$/.test(id)),
-      reps: added.filter((one) => one.k.startsWith('rep:')).length,
-    }).toEqual({ sheetIds: [], instanceIds: [], reps: 6 });
-  });
-
-  test('draws a taken sheet id again and writes the copy under the next free one', async () => {
-    // #given: the first sheet id drawn is the id of a live NPC.
-    const room = openRoom();
-    const sheetIds = ['gob', 'fresh'];
-
-    const client = await startClient(room, 'gm-a', {
-      seeded: [...base(), npc('gob', 'Гоблин', 4)],
-      newRecordId: (kind) => (kind === 'sheet' ? (sheetIds.shift() ?? 'spent') : newInstance()),
-    });
-
-    // #when
-    send(client, duplicate('skel', 1));
-    await waitUntil(() => newSheetKeys(client).length === 1);
-
-    // #then
-    expect({ sheets: newSheetKeys(client), gob: stored(client, 'sheet:gob') }).toEqual({
-      sheets: ['sheet:fresh'],
-      gob: npc('gob', 'Гоблин', 4),
-    });
-  });
-
-  test('refuses two copies of an NPC with no values when every draw gives one sheet id', async () => {
+  test('refuses two copies when every draw gives one instance id and writes nothing', async () => {
     // #given: no record holds the id, so only the first copy of this batch takes it.
     const room = openRoom();
-
-    const client = await startClient(room, 'gm-a', {
-      seeded: [PRESET_RECORD, npc('bare', 'Зомби', 0)],
-      newRecordId: () => 'twin',
-    });
-
+    const client = await startClient(room, 'gm-a', { newRecordId: () => 'twin' });
     const before = storedKeys(client);
 
     // #when
-    const id = send(client, duplicate('bare', 2));
-
-    await waitUntil(() => rejection(client, id) !== undefined);
-
-    // #then
-    expect({ reason: rejection(client, id), stored: storedKeys(client) }).toEqual({
-      reason: 'sheet-exists',
-      stored: before,
-    });
-  });
-
-  test('refuses a copy whose two repeat rows draw one instance id every time and writes nothing', async () => {
-    // #given
-    const room = openRoom();
-
-    const client = await startClient(room, 'gm-a', {
-      newRecordId: (kind) => (kind === 'sheet' ? 'copy' : 'same'),
-    });
-
-    const before = storedKeys(client);
-
-    // #when
-    const id = send(client, duplicate('skel', 1));
+    const id = send(client, duplicate('npc', 'mob', 'sk1', 2));
 
     await waitUntil(() => rejection(client, id) !== undefined);
 
@@ -480,79 +446,16 @@ describe('sheet-duplicate', () => {
     });
   });
 
-  test('refuses an instance id whose rep: key under the new sheet id is a tombstone', async () => {
-    // #given: an NPC with one repeat row, and a deleted row under the drawn sheet id. A tombstone
-    // takes no sheet over, so only the instance check can find it.
-    const room = openRoom();
-    const dead: VersionedRecord = { k: 'rep:fresh:attack:dead', d: null, c: 4, a: 'seed' };
-
-    const row: VersionedRecord = {
-      k: 'rep:solo:attack:a1',
-      d: { order: 0, cells: {} },
-      c: 1,
-      a: 'seed',
-    };
-
-    const client = await startClient(room, 'gm-a', {
-      seeded: [PRESET_RECORD, npc('solo', 'Упырь', 0), row, dead],
-      newRecordId: (kind) => (kind === 'sheet' ? 'fresh' : 'dead'),
-    });
-
-    const before = storedKeys(client);
-
-    // #when
-    const id = send(client, duplicate('solo', 1));
-
-    await waitUntil(() => rejection(client, id) !== undefined);
-
-    // #then
-    expect({
-      reason: rejection(client, id),
-      stored: storedKeys(client),
-      dead: stored(client, dead.k),
-    }).toEqual({ reason: 'instance-exists', stored: before, dead });
-  });
-
-  test.each<[string, VersionedRecord]>([
-    ['a row the source also has', { k: 'row:lone:ac', d: { ac: 9 }, c: 6, a: 'seed' }],
-    ['a row the source lacks', { k: 'row:lone:other', d: { other: 1 }, c: 6, a: 'seed' }],
-    ['a repeat row', { k: 'rep:lone:attack:zz', d: { order: 0, cells: {} }, c: 6, a: 'seed' }],
-  ])(
-    'refuses a sheet id that only an orphan holds, %s, and writes nothing',
-    async (_name, orphan) => {
-      // #given: a record whose sheet record never arrived, as a write that failed part way leaves it.
-      const room = openRoom();
-
-      const client = await startClient(room, 'gm-a', {
-        seeded: [...base(), orphan],
-        newRecordId: (kind) => (kind === 'sheet' ? 'lone' : newInstance()),
-      });
-
-      const before = storedKeys(client);
-
-      // #when
-      const id = send(client, duplicate('skel', 1));
-
-      await waitUntil(() => rejection(client, id) !== undefined);
-
-      // #then
-      expect({
-        reason: rejection(client, id),
-        stored: storedKeys(client),
-        orphan: stored(client, orphan.k),
-      }).toEqual({ reason: 'sheet-exists', stored: before, orphan });
-    },
-  );
-
   test('sends fifty copies through the send queue to another GM client whole', async () => {
-    // #given
+    // #given: copies too large together for one message.
     const room = openRoom();
-    const first = await startClient(room, 'gm-a');
-    const second = await startClient(room, 'gm-b');
+    const seeded = [PRESET_RECORD, block('npc', 'mob', 'sk1', 0, { tactics: 'х'.repeat(1000) })];
+    const first = await startClient(room, 'gm-a', { seeded });
+    const second = await startClient(room, 'gm-b', { seeded });
 
     // #when
-    send(first, duplicate('skel', 50));
-    await waitUntil(() => addedRecords(second).length === 250);
+    send(first, duplicate('npc', 'mob', 'sk1', 50));
+    await waitUntil(() => addedRecords(second).length === 50);
 
     // #then
     expect({
@@ -561,25 +464,24 @@ describe('sheet-duplicate', () => {
     }).toEqual({ commits: true, second: addedRecords(first) });
   });
 
-  test('a player client is refused as not allowed and writes nothing', async () => {
+  test('a player client is refused as not allowed, also on a sheet every player edits, and writes nothing', async () => {
     // #given
     const room = openRoom();
-
     const client = await startClient(room, 'player-a', { role: 'PLAYER' });
 
     // #when
-    const id = send(client, duplicate('skel', 2));
+    const id = send(client, duplicate('camp', 'cart', 'c1', 2));
 
     await waitUntil(() => rejection(client, id) !== undefined);
 
     // #then
-    expect({ reason: rejection(client, id), sheets: newSheetKeys(client) }).toEqual({
+    expect({ reason: rejection(client, id), added: newKeys(client) }).toEqual({
       reason: 'not-allowed',
-      sheets: [],
+      added: [],
     });
   });
 
-  test('a source repeat row that arrives during catch-up leaves the copies under the sheet keys shown', async () => {
+  test('a namesake that arrives during catch-up numbers the copies after it on exit, under the keys shown', async () => {
     // #given
     const room = openRoom();
 
@@ -587,17 +489,11 @@ describe('sheet-duplicate', () => {
 
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 1500 } });
 
-    send(client, duplicate('skel', 2));
-    await waitUntil(() => newSheetKeys(client).length === 2);
+    send(client, duplicate('npc', 'mob', 'sk1', 2));
+    await waitUntil(() => addedRecords(client).length === 2);
 
-    const shownKeys = newSheetKeys(client);
-
-    const arrived: VersionedRecord = {
-      k: 'rep:skel:attack:i9',
-      d: { order: 2, cells: { attack: 'Копьё' } },
-      c: 1,
-      a: GHOST,
-    };
+    const shownKeys = newKeys(client);
+    const arrived = block('npc', 'mob', 'i9', 7, { mob: 'Скелет 5' }, 1, GHOST);
 
     // #when
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-a'), [arrived]));
@@ -606,10 +502,17 @@ describe('sheet-duplicate', () => {
 
     // #then
     expect({
-      sheets: newSheetKeys(client),
-      stored: shownKeys.map((key) => stored(client, key) !== null),
-      rows: sheetIdsByOrder(client).map((sheetId) => repKeysOf(client, sheetId).length),
-    }).toEqual({ sheets: shownKeys, stored: [true, true], rows: [3, 3] });
+      keys: newKeys(client).filter((key) => key !== arrived.k),
+      stored: shownKeys.map((key) => stored(client, key)?.c),
+      copies: shownKeys.map((key) => shown(client, key)?.d).sort(byOrder),
+    }).toEqual({
+      keys: shownKeys,
+      stored: [1, 1],
+      copies: [
+        { order: 8, cells: { mob: 'Скелет 6', hp: 7, elite: true } },
+        { order: 9, cells: { mob: 'Скелет 7', hp: 7, elite: true } },
+      ],
+    });
   });
 
   test('during catch-up the copies show at once, wait unsaved, and are written under the same keys on exit', async () => {
@@ -621,12 +524,12 @@ describe('sheet-duplicate', () => {
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 1500 } });
 
     // #when
-    send(client, duplicate('skel', 2));
-    await waitUntil(() => newSheetKeys(client).length === 2);
+    send(client, duplicate('npc', 'mob', 'sk1', 2));
+    await waitUntil(() => addedRecords(client).length === 2);
 
     const during = {
       keys: newKeys(client),
-      names: copiesOf(client).map((copy) => Object(copy.sheet).name),
+      names: namesOf(client),
       stored: newKeys(client).map((key) => stored(client, key)),
       commits: heardOf(room, 'gm-a', 'commit').length,
     };
@@ -653,7 +556,7 @@ describe('sheet-duplicate', () => {
     });
   });
 
-  test('during catch-up the copies take 12-character sheet ids and 8-character instance ids', async () => {
+  test('during catch-up the copies take 8-character instance ids', async () => {
     // #given: a GM that never answers holds this client in catch-up.
     const room = openRoom();
 
@@ -662,46 +565,36 @@ describe('sheet-duplicate', () => {
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 1500 } });
 
     // #when
-    send(client, duplicate('skel', 2));
-    await waitUntil(() => newSheetKeys(client).length === 2);
+    send(client, duplicate('npc', 'mob', 'sk1', 2));
+    await waitUntil(() => addedRecords(client).length === 2);
 
-    // #then: TASK-37 AC 1, the lengths written out by hand.
-    const added = addedRecords(client);
-
-    expect({
-      sheetIds: added.map(sheetIdOf).filter((id) => !/^[A-Za-z0-9_-]{12}$/.test(id)),
-      instanceIds: added
-        .filter((one) => one.k.startsWith('rep:'))
+    // #then: TASK-37 AC 1, the length written out by hand.
+    expect(
+      addedRecords(client)
         .map(lastKeySegment)
         .filter((id) => !/^[A-Za-z0-9_-]{8}$/.test(id)),
-      reps: added.filter((one) => one.k.startsWith('rep:')).length,
-    }).toEqual({ sheetIds: [], instanceIds: [], reps: 4 });
+    ).toEqual([]);
   });
 });
 
-function npc(id: string, name: string, order: number, c = 1): VersionedRecord {
-  return { k: `sheet:${id}`, d: { kind: 'npc', name, order }, c, a: 'seed' };
-}
-
-function pc(id: string, name: string, order: number): VersionedRecord {
-  return { k: `sheet:${id}`, d: { kind: 'pc', name, order }, c: 1, a: 'seed' };
+function block(
+  sheetId: string,
+  sectionId: string,
+  instanceId: string,
+  order: number,
+  cells: FieldValues,
+  c = 1,
+  a = 'seed',
+): VersionedRecord {
+  return { k: `rep:${sheetId}:${sectionId}:${instanceId}`, d: { order, cells }, c, a };
 }
 
 function base(): VersionedRecord[] {
   return [PRESET_RECORD, ...SOURCE];
 }
 
-// Distinct instance ids, for a test that fixes only the sheet ids.
-let instanceCount = 0;
-
-function newInstance(): string {
-  instanceCount += 1;
-
-  return `inst${String(instanceCount)}`;
-}
-
-function duplicate(sheetId: string, count: number): Command {
-  return { type: 'sheet-duplicate', sheetId, count };
+function duplicate(sheetId: string, sectionId: string, instanceId: string, count: number): Command {
+  return { type: 'repeat-block-duplicate', sheetId, sectionId, instanceId, count };
 }
 
 function createBacking(): MockStorageBacking {
@@ -850,10 +743,10 @@ function storedKeys(client: Client): string[] {
   return client.backing.keys().sort();
 }
 
-// Shown records the test did not seed: the copies.
+// Shown repeat blocks the test did not seed: the copies.
 function addedRecords(client: Client): VersionedRecord[] {
   return [...shownRecords(client).values()]
-    .filter((one) => !client.seeded.has(one.k))
+    .filter((one) => one.k.startsWith('rep:') && !client.seeded.has(one.k))
     .sort((first, second) => (first.k < second.k ? -1 : 1));
 }
 
@@ -861,49 +754,20 @@ function newKeys(client: Client): string[] {
   return addedRecords(client).map((one) => one.k);
 }
 
-function newSheetKeys(client: Client): string[] {
-  return newKeys(client).filter((key) => key.startsWith('sheet:'));
-}
-
-// The copies' sheet ids in their NPC order.
-function sheetIdsByOrder(client: Client): string[] {
-  return addedRecords(client)
-    .filter((one) => one.k.startsWith('sheet:'))
-    .sort((first, second) => Object(first.d).order - Object(second.d).order)
-    .map(sheetIdOf);
-}
-
-// One copy's repeat row keys, in their row order.
-function repKeysOf(client: Client, sheetId: string | undefined): string[] {
-  return [...shownRecords(client).values()]
-    .filter((one) => one.k.startsWith(`rep:${sheetId}:`) && one.d !== null)
-    .sort((first, second) => Object(first.d).order - Object(second.d).order)
-    .map((one) => one.k);
-}
-
+// The copies in their order.
 function copiesOf(client: Client): Copy[] {
-  return sheetIdsByOrder(client).map((sheetId) => ({
-    sheet: shown(client, `sheet:${sheetId}`)?.d ?? null,
-    values: addedRecords(client)
-      .filter((one) => sheetIdOf(one) === sheetId && !one.k.startsWith('sheet:'))
-      .map((one) => ({ form: formOf(one.k), d: one.d }))
-      .sort((first, second) =>
-        `${first.form}${JSON.stringify(first.d)}` < `${second.form}${JSON.stringify(second.d)}`
-          ? -1
-          : 1,
-      ),
-  }));
+  return addedRecords(client)
+    .map((one) => ({ section: one.k.split(':')[2] ?? '', d: one.d }))
+    .sort((first, second) => byOrder(first.d, second.d));
 }
 
-// `row:{rowId}` or `rep:{sectionId}`: a value key with its sheet and instance ids taken out.
-function formOf(key: string): string {
-  const [form = '', , part = ''] = key.split(':');
-
-  return `${form}:${part}`;
+// The first field values of the NPC copies, in their order.
+function namesOf(client: Client): string[] {
+  return copiesOf(client).map((copy) => String(Object(copy.d).cells?.mob));
 }
 
-function sheetIdOf(record: Pick<VersionedRecord, 'k'>): string {
-  return record.k.split(':')[1] ?? '';
+function byOrder(first: JsonValue | undefined, second: JsonValue | undefined): number {
+  return Object(first).order - Object(second).order;
 }
 
 function lastKeySegment(record: Pick<VersionedRecord, 'k'>): string {
@@ -930,7 +794,7 @@ function lastRequest(room: Room, from: string): string {
 
 function stateMessage(r: string, records: readonly VersionedRecord[]): JsonValue {
   return {
-    v: 1,
+    v: 2,
     g: { n: 0, a: '' },
     t: 'state',
     r,

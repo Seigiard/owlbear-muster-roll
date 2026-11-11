@@ -47,35 +47,49 @@ const TIMING: Timing = {
   snapshotImportTimeoutMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 const INITIAL = { n: 0, a: '' };
 const ROW_STR = { kind: 'row', rowId: 'str' } as const;
 const ROW_NOTES = { kind: 'row', rowId: 'notes' } as const;
+const ROW_NAME = { kind: 'row', rowId: 'name' } as const;
 
-// A plain row with a number and a check, and a text row of its own.
+// A sheet set with a name row, a plain row with a number and a check, and a text row of its own.
 const PRESET: Preset = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'check', id: 'str_tired' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'name' }],
+            [
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'check', id: 'str_tired' },
+            ],
+            [{ kind: 'field', type: 'text', id: 'notes' }],
           ],
-          [{ kind: 'field', type: 'text', id: 'notes' }],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+  ],
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
 
-const BROK: VersionedRecord = sheet('brok', 'Брок');
+const BROK: VersionedRecord = sheet('brok');
 
 type ClientOptions = {
   role?: PlayerRole;
@@ -113,8 +127,8 @@ afterEach(() => {
   }
 });
 
-function sheet(id: string, name: string, c = 1, a = 'seed'): VersionedRecord {
-  return { k: `sheet:${id}`, d: { kind: 'pc', name, order: 0 }, c, a };
+function sheet(id: string, c = 1, a = 'seed'): VersionedRecord {
+  return { k: `sheet:${id}`, d: { set: 'pc', order: 0 }, c, a };
 }
 
 function createBacking(): MockStorageBacking {
@@ -255,6 +269,17 @@ function patch(target: typeof ROW_STR | typeof ROW_NOTES, fieldId: string, value
   return { type: 'field-patch', sheetId: 'brok', target, fieldId, value } satisfies Command;
 }
 
+// A rename is a patch of the sheet set's name field.
+function rename(sheetId: string, name: string) {
+  return {
+    type: 'field-patch',
+    sheetId,
+    target: ROW_NAME,
+    fieldId: 'name',
+    value: name,
+  } satisfies Command;
+}
+
 function shown(client: Client, key: string): VersionedRecord | undefined {
   return client.store.$records.get().get(key);
 }
@@ -269,7 +294,7 @@ function storedKeys(client: Client): string[] {
   return client.backing.keys();
 }
 
-function commit(records: VersionedRecord[], g = INITIAL, v = 1): JsonValue {
+function commit(records: VersionedRecord[], g = INITIAL, v = 2): JsonValue {
   return { v, g, t: 'commit', records };
 }
 
@@ -281,7 +306,7 @@ async function afterMarker(
   from: string,
   client: Client,
 ): Promise<void> {
-  const marker = sheet('marker', 'Метка', 1, from);
+  const marker = sheet('marker', 1, from);
 
   post(from, commit([marker]));
   await waitUntil(() => shown(client, marker.k) !== undefined);
@@ -488,29 +513,24 @@ describe('two GM clients', () => {
     const gmB = await startClient(room, 'gm-b');
 
     // #when
-    send(gmA, { type: 'sheet-create', sheetId: 'lisa', kind: 'pc', name: 'Лиза' });
+    send(gmA, { type: 'sheet-create', sheetId: 'lisa', set: 'pc' });
     await waitUntil(() => shown(gmB, 'sheet:lisa') !== undefined);
 
     const created = shown(gmB, 'sheet:lisa');
 
-    send(gmA, { type: 'sheet-rename', sheetId: 'lisa', name: 'Лиза Смелая' });
-    await waitUntil(() => shown(gmB, 'sheet:lisa')?.c === 2);
+    send(gmA, rename('lisa', 'Лиза Смелая'));
+    await waitUntil(() => shown(gmB, 'row:lisa:name') !== undefined);
 
-    const renamed = shown(gmB, 'sheet:lisa');
+    const renamed = shown(gmB, 'row:lisa:name');
 
     send(gmA, { type: 'sheet-delete', sheetId: 'lisa' });
-    await waitUntil(() => shown(gmB, 'sheet:lisa')?.c === 3);
+    await waitUntil(() => shown(gmB, 'sheet:lisa')?.c === 2);
 
     // #then
     expect({ created, renamed, deleted: shown(gmB, 'sheet:lisa') }).toEqual({
-      created: { k: 'sheet:lisa', d: { kind: 'pc', name: 'Лиза', order: 1 }, c: 1, a: 'gm-a' },
-      renamed: {
-        k: 'sheet:lisa',
-        d: { kind: 'pc', name: 'Лиза Смелая', order: 1 },
-        c: 2,
-        a: 'gm-a',
-      },
-      deleted: { k: 'sheet:lisa', d: null, c: 3, a: 'gm-a' },
+      created: { k: 'sheet:lisa', d: { set: 'pc', order: 1 }, c: 1, a: 'gm-a' },
+      renamed: { k: 'row:lisa:name', d: { name: 'Лиза Смелая' }, c: 1, a: 'gm-a' },
+      deleted: { k: 'sheet:lisa', d: null, c: 2, a: 'gm-a' },
     });
   });
 
@@ -566,8 +586,8 @@ describe('gate', () => {
     ]);
 
     // #when
-    wire.post('late', commit([sheet('first', 'Первый', 1, 'late')]));
-    wire.post('gm-b', commit([sheet('second', 'Второй', 1, 'gm-b')]));
+    wire.post('late', commit([sheet('first', 1, 'late')]));
+    wire.post('gm-b', commit([sheet('second', 1, 'gm-b')]));
     await waitUntil(() => shown(gm, 'sheet:second') !== undefined);
     await waitUntil(() => shown(gm, 'sheet:first') !== undefined);
 
@@ -589,7 +609,7 @@ describe('gate', () => {
     const reads = spyOn(gm.platform.party, 'getPlayers');
 
     // #when
-    wire.post('stranger', commit([sheet('lisa', 'Лиза', 1, 'stranger')]));
+    wire.post('stranger', commit([sheet('lisa', 1, 'stranger')]));
     await afterMarker(wire.post, 'gm-b', gm);
 
     // #then
@@ -609,7 +629,7 @@ describe('gate', () => {
     await startClient(room, 'player-p', { role: 'PLAYER', playerId: 'lisa' });
 
     // #when
-    wire.post('player-p', commit([sheet('lisa', 'Лиза', 1, 'player-p')]));
+    wire.post('player-p', commit([sheet('lisa', 1, 'player-p')]));
     await afterMarker(wire.post, 'gm-b', gm);
 
     // #then
@@ -621,7 +641,7 @@ describe('gate', () => {
 
   test.each([
     ['higher', { n: 1, a: 'x' }, ''],
-    ['lower', INITIAL, 'mr1:mock-room:1:x:'],
+    ['lower', INITIAL, 'mr2:mock-room:1:x:'],
   ])('drops a GM commit of a %s generation', async (_name, g, ownPrefix) => {
     // #given: a GM whose storage is at generation 1 has that generation as its own.
     const room = createMemoryRoom();
@@ -634,8 +654,8 @@ describe('gate', () => {
     const ownGeneration = ownPrefix === '' ? INITIAL : { n: 1, a: 'x' };
 
     // #when
-    wire.post('gm-b', commit([sheet('lisa', 'Лиза', 1, 'gm-b')], g));
-    wire.post('gm-b', commit([sheet('marker', 'Метка', 1, 'gm-b')], ownGeneration));
+    wire.post('gm-b', commit([sheet('lisa', 1, 'gm-b')], g));
+    wire.post('gm-b', commit([sheet('marker', 1, 'gm-b')], ownGeneration));
     await waitUntil(() => shown(gm, 'sheet:marker') !== undefined);
 
     // #then
@@ -654,7 +674,7 @@ describe('gate', () => {
     await startClient(room, 'gm-b');
 
     // #when
-    wire.post('gm-b', commit([sheet('lisa', 'Лиза', 1, 'gm-b')], INITIAL, 0));
+    wire.post('gm-b', commit([sheet('lisa', 1, 'gm-b')], INITIAL, 1));
     await afterMarker(wire.post, 'gm-b', gm);
 
     // #then
@@ -673,7 +693,7 @@ describe('gate', () => {
     await startClient(room, 'gm-b');
 
     // #when
-    wire.post('gm-b', { v: 2, t: 'commit', unread: 'a field of a newer build' });
+    wire.post('gm-b', { v: 3, t: 'commit', unread: 'a field of a newer build' });
     await waitUntil(() => gm.store.$notices.get().includes('new-version'));
     await afterMarker(wire.post, 'gm-b', gm);
 
@@ -689,9 +709,9 @@ describe('gate', () => {
   });
 
   test.each<[string, JsonValue]>([
-    ['a record that fails its schema', commit([{ ...sheet('lisa', 'Лиза'), c: 0 }])],
-    ['an unknown type', { v: 1, g: INITIAL, t: 'shout', records: [] }],
-    ['a type with no handler yet', { v: 1, g: INITIAL, t: 'ping' }],
+    ['a record that fails its schema', commit([{ ...sheet('lisa'), c: 0 }])],
+    ['an unknown type', { v: 2, g: INITIAL, t: 'shout', records: [] }],
+    ['a type with no handler yet', { v: 2, g: INITIAL, t: 'ping' }],
     ['no envelope at all', 'commit'],
   ])('drops a message with the right v and %s, and throws nothing', async (_name, message) => {
     // #given
@@ -726,7 +746,7 @@ describe('remote record', () => {
     gm.platform.setFailingStorageOperations(['write']);
 
     // #when
-    wire.post('gm-b', commit([sheet('lisa', 'Лиза', 1, 'gm-b')]));
+    wire.post('gm-b', commit([sheet('lisa', 1, 'gm-b')]));
     await waitUntil(() => shown(gm, 'sheet:lisa') !== undefined);
 
     // #then
@@ -735,7 +755,7 @@ describe('remote record', () => {
       stored: stored(gm, 'sheet:lisa'),
       notices: gm.store.$notices.get(),
     }).toEqual({
-      shown: sheet('lisa', 'Лиза', 1, 'gm-b'),
+      shown: sheet('lisa', 1, 'gm-b'),
       stored: null,
       notices: ['local-save-failed'],
     });
@@ -745,7 +765,7 @@ describe('remote record', () => {
     // #given: the GM holds Брок at c 5.
     const room = createMemoryRoom();
     const wire = listen(room);
-    const local = sheet('brok', 'Брок', 5, 'seed');
+    const local = sheet('brok', 5, 'seed');
     const gm = await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, local] });
 
     await startClient(room, 'gm-b');
@@ -754,7 +774,7 @@ describe('remote record', () => {
     const deltasBefore = gm.deltas();
 
     // #when
-    wire.post('gm-b', commit([sheet('brok', 'Старый', 2, 'gm-b')]));
+    wire.post('gm-b', commit([sheet('brok', 2, 'gm-b')]));
     await afterMarker(wire.post, 'gm-b', gm);
 
     // #then: only the marker made a delta and a write.
@@ -776,13 +796,21 @@ describe('GM whose storage could not be read', () => {
 
     const gm = await startClient(room, 'gm-a', { failingStorage: ['list'], seeded: [] });
 
-    // #when
-    send(gm, { type: 'sheet-create', sheetId: 'lisa', kind: 'pc', name: 'Лиза' });
+    // #when: a new sheet needs a preset, and the GM holds none.
+    send(gm, {
+      type: 'preset-upload',
+      data: encodePreset(PRESET),
+      expectedCount: 0,
+      expectedSheets: 0,
+      expectedDigest: '811c9dc5',
+    });
+    await waitUntil(() => shown(gm, 'preset') !== undefined);
+    send(gm, { type: 'sheet-create', sheetId: 'lisa', set: 'pc' });
     await waitUntil(() => shown(gm, 'sheet:lisa') !== undefined);
 
     // A commit would sit in the queue ahead of the rename's delta.
-    send(gm, { type: 'sheet-rename', sheetId: 'lisa', name: 'Лиза Смелая' });
-    await waitUntil(() => shown(gm, 'sheet:lisa')?.c === 2);
+    send(gm, rename('lisa', 'Лиза Смелая'));
+    await waitUntil(() => shown(gm, 'row:lisa:name') !== undefined);
 
     // #then
     expect(wire.heard).toEqual([]);
@@ -807,7 +835,7 @@ describe('remote record too large for one message', () => {
     await startClient(room, 'gm-b');
 
     // #when
-    wire.post('gm-b', commit([huge, sheet('lisa', 'Лиза', 1, 'gm-b')]));
+    wire.post('gm-b', commit([huge, sheet('lisa', 1, 'gm-b')]));
     await waitUntil(() => shown(gm, 'sheet:lisa') !== undefined);
 
     // #then
@@ -820,18 +848,27 @@ describe('remote record too large for one message', () => {
 
 describe('player client', () => {
   test.each<Command>([
-    { type: 'sheet-create', sheetId: 'lisa', kind: 'pc', name: 'Лиза' },
-    { type: 'sheet-rename', sheetId: 'brok', name: 'Брок Смелый' },
+    { type: 'sheet-create', sheetId: 'lisa', set: 'pc' },
+    rename('brok', 'Брок Смелый'),
     { type: 'sheet-delete', sheetId: 'brok' },
     {
       type: 'preset-upload',
       data: encodePreset(PRESET),
       expectedCount: 0,
+      expectedSheets: 0,
       expectedDigest: '811c9dc5',
     },
     patch(ROW_STR, 'str', 12),
-    { type: 'repeat-row-add', sheetId: 'brok', sectionId: 'attack', instanceId: 'i1' },
-    { type: 'repeat-row-delete', sheetId: 'brok', sectionId: 'attack', instanceId: 'i1' },
+    { type: 'repeat-block-add', sheetId: 'brok', sectionId: 'attack', instanceId: 'i1' },
+    { type: 'repeat-block-delete', sheetId: 'brok', sectionId: 'attack', instanceId: 'i1' },
+    {
+      type: 'repeat-block-duplicate',
+      sheetId: 'brok',
+      sectionId: 'attack',
+      instanceId: 'i1',
+      count: 1,
+    },
+    { type: 'wipe' },
   ])('refuses %o as not allowed and changes nothing', async (command) => {
     // #given: the player holds Брок and the preset from a GM commit.
     const room = createMemoryRoom();
@@ -867,13 +904,13 @@ describe('player client', () => {
     const player = await startClient(room, 'player-p', { role: 'PLAYER', seeded: [] });
 
     // #when
-    send(gm, { type: 'sheet-create', sheetId: 'lisa', kind: 'pc', name: 'Лиза' });
+    send(gm, { type: 'sheet-create', sheetId: 'lisa', set: 'pc' });
 
     // #then
     await waitUntil(() => shown(player, 'sheet:lisa') !== undefined);
 
     expect({ shown: shown(player, 'sheet:lisa'), stored: storedKeys(player) }).toEqual({
-      shown: { k: 'sheet:lisa', d: { kind: 'pc', name: 'Лиза', order: 1 }, c: 1, a: 'gm-a' },
+      shown: { k: 'sheet:lisa', d: { set: 'pc', order: 1 }, c: 1, a: 'gm-a' },
       stored: [],
     });
   });

@@ -67,7 +67,7 @@ const DICE_TIMING: DiceExtensionTiming = {
   accessWaitMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 
@@ -75,100 +75,112 @@ const POLL_MS = 2;
 const LOCAL_RANDOM = (): number => 0.3;
 
 const PRESET: Preset = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'check', id: 'str_tired' },
-            { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'check', id: 'str_tired' },
+              { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
+            ],
+            [
+              { kind: 'text', text: 'Ловкость' },
+              { kind: 'field', type: 'number', id: 'dex' },
+              { kind: 'dice', formula: '1d20 + dex' },
+            ],
+            [
+              { kind: 'text', text: 'Удар' },
+              { kind: 'dice', formula: '1d20 + str' },
+            ],
+            [
+              { kind: 'text', text: 'Залп' },
+              { kind: 'dice', formula: '2d6 + 1d8 - 1d4' },
+            ],
+            [
+              { kind: 'text', text: 'Число' },
+              { kind: 'dice', formula: 'str + 2' },
+            ],
+            [
+              { kind: 'text', text: 'Тройка' },
+              { kind: 'dice', formula: '1d3 + str' },
+            ],
+            [
+              { kind: 'text', text: 'Тысяча' },
+              { kind: 'dice', formula: '1d1000' },
+            ],
+            [
+              { kind: 'text', text: 'Тридцать' },
+              { kind: 'dice', formula: '30d6' },
+            ],
+            [
+              { kind: 'text', text: 'Шестьдесят' },
+              { kind: 'dice', formula: '20d6 + 20d6 + 20d6' },
+            ],
+            [
+              { kind: 'text', text: 'Кости' },
+              { kind: 'dice', formula: '1d20 + 1d4' },
+            ],
+            [
+              { kind: 'text', text: 'Смесь' },
+              { kind: 'dice', formula: '2d6 + 1d8 - 1d6' },
+            ],
+            [
+              { kind: 'text', text: 'Десятка' },
+              { kind: 'dice', formula: '1d10' },
+            ],
+            [
+              { kind: 'text', text: 'Сотня' },
+              { kind: 'dice', formula: '1d100' },
+            ],
+            [
+              { kind: 'text', text: 'Деление' },
+              { kind: 'dice', formula: '10 / (1d6 - 3)' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Ловкость' },
-            { kind: 'field', type: 'number', id: 'dex' },
-            { kind: 'dice', formula: '1d20 + dex' },
+        },
+        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Хиты' },
+              { kind: 'field', type: 'number', id: 'hp' },
+              { kind: 'dice', formula: '1d20 + hp' },
+            ],
           ],
-          [
-            { kind: 'text', text: 'Удар' },
-            { kind: 'dice', formula: '1d20 + str' },
-          ],
-          [
-            { kind: 'text', text: 'Залп' },
-            { kind: 'dice', formula: '2d6 + 1d8 - 1d4' },
-          ],
-          [
-            { kind: 'text', text: 'Число' },
-            { kind: 'dice', formula: 'str + 2' },
-          ],
-          [
-            { kind: 'text', text: 'Тройка' },
-            { kind: 'dice', formula: '1d3 + str' },
-          ],
-          [
-            { kind: 'text', text: 'Тысяча' },
-            { kind: 'dice', formula: '1d1000' },
-          ],
-          [
-            { kind: 'text', text: 'Тридцать' },
-            { kind: 'dice', formula: '30d6' },
-          ],
-          [
-            { kind: 'text', text: 'Шестьдесят' },
-            { kind: 'dice', formula: '20d6 + 20d6 + 20d6' },
-          ],
-          [
-            { kind: 'text', text: 'Кости' },
-            { kind: 'dice', formula: '1d20 + 1d4' },
-          ],
-          [
-            { kind: 'text', text: 'Смесь' },
-            { kind: 'dice', formula: '2d6 + 1d8 - 1d6' },
-          ],
-          [
-            { kind: 'text', text: 'Десятка' },
-            { kind: 'dice', formula: '1d10' },
-          ],
-          [
-            { kind: 'text', text: 'Сотня' },
-            { kind: 'dice', formula: '1d100' },
-          ],
-          [
-            { kind: 'text', text: 'Деление' },
-            { kind: 'dice', formula: '10 / (1d6 - 3)' },
-          ],
-        ],
-      },
-    ],
-  },
-  npc: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'text', text: 'Хиты' },
-            { kind: 'field', type: 'number', id: 'hp' },
-            { kind: 'dice', formula: '1d20 + hp' },
-          ],
-        ],
-      },
-    ],
-  },
+        },
+      ],
+    },
+  ],
 };
 
 // `dex` is empty, so "Ловкость" gives the field error.
 const SEEDED: VersionedRecord[] = [
   { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
-  { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 1, a: 'seed' },
+  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
+  { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
   { k: 'row:brok:str', d: { str: 14, str_tired: true }, c: 1, a: 'seed' },
-  { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'seed' },
-  { k: 'row:skel:hp', d: { hp: 5 }, c: 1, a: 'seed' },
+  { k: 'row:npc:hp', d: { hp: 5 }, c: 1, a: 'seed' },
 ];
 
+// A roll of the GM-only single sheet "npc".
 const HIT_POINTS: RollRequest = {
-  sheetId: 'skel',
+  sheetId: 'npc',
   place: { sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: null },
   shown: {},
 };
@@ -496,7 +508,7 @@ describe('a roll with a dice extension in the client', () => {
     });
   });
 
-  test('of an NPC shows the dice to GM clients only, and the notification on GM clients only', async () => {
+  test('of a hidden single sheet shows the dice to GM clients only, and the notification on GM clients only', async () => {
     // #given
     const room = openRoom();
 
@@ -507,7 +519,7 @@ describe('a roll with a dice extension in the client', () => {
 
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
 
-    // #when: the character roll after it reaches the player after it.
+    // #when: the sheet set roll after it reaches the player after it.
     await roll(gm, HIT_POINTS);
     await roll(gm, STRIKE);
     await waitUntil(() => shown(player).length === 1);
@@ -518,10 +530,7 @@ describe('a roll with a dice extension in the client', () => {
       shown: [gm, player].map(shown),
     }).toEqual({
       targets: ['gm_only', 'everyone'],
-      shown: [
-        ['Мастер: Скелет, Хиты — 22', 'Мастер: Брок, Удар — 31'],
-        ['Мастер: Брок, Удар — 31'],
-      ],
+      shown: [['Мастер: NPC, Хиты — 22', 'Мастер: Брок, Удар — 31'], ['Мастер: Брок, Удар — 31']],
     });
   });
 

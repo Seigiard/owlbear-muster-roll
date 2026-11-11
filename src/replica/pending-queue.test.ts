@@ -11,8 +11,8 @@ function patch(target: typeof ROW_STR | typeof ROW_NOTES, fieldId: string, value
   return { type: 'field-patch', sheetId: 'brok', target, fieldId, value } satisfies Command;
 }
 
-const CREATE: Command = { type: 'sheet-create', sheetId: 'liza', kind: 'pc', name: 'Лиза' };
-const RENAME: Command = { type: 'sheet-rename', sheetId: 'liza', name: 'Лиза Смелая' };
+const CREATE: Command = { type: 'sheet-create', sheetId: 'liza', set: 'pc' };
+const DELETE: Command = { type: 'sheet-delete', sheetId: 'liza' };
 
 describe('pending queue', () => {
   test('holds one entry per record key, and two fields of one row apply together', () => {
@@ -45,7 +45,7 @@ describe('pending queue', () => {
     queue.add('c2', CREATE);
     queue.add('c3', patch(ROW_NOTES, 'notes', 'Хромает'));
     queue.add('c4', patch(ROW_STR, 'str', 14));
-    queue.add('c5', RENAME);
+    queue.add('c5', DELETE);
 
     // #then
     expect(queue.entries()).toEqual([
@@ -60,7 +60,7 @@ describe('pending queue', () => {
         key: 'row:brok:notes',
         patches: [{ id: 'c3', command: patch(ROW_NOTES, 'notes', 'Хромает') }],
       },
-      { kind: 'intent', id: 'c5', command: RENAME },
+      { kind: 'intent', id: 'c5', command: DELETE },
     ]);
   });
 
@@ -69,7 +69,7 @@ describe('pending queue', () => {
     const queue = createPendingQueue();
 
     queue.add('c1', CREATE);
-    queue.add('c2', RENAME);
+    queue.add('c2', DELETE);
 
     // #when
     const taken = queue.takeAll();

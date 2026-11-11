@@ -2,18 +2,23 @@ import { aclKey, playerName, plinkKey } from '@/core/access';
 import {
   acceptedFieldValue,
   findPatchField,
-  isRepeatSectionId,
   patchedRecord,
   patchedRecordFits,
   patchRecordKey,
-  targetFields,
   type PatchedRecord,
 } from '@/core/field-patch';
 import type { RecordIdKind } from '@/core/ids';
+import { linkDataOf, linkTargetOf, liveLinkTarget } from '@/core/link-target';
 import { recordFitsOneMessage } from '@/core/message-size';
 import type { Version } from '@/core/merge';
-import { duplicateNames, isDuplicateCount } from '@/core/npc-duplicate';
-import { decodePreset, encodePreset, type Preset, type PresetTemplate } from '@/core/preset';
+import {
+  decodePreset,
+  encodePreset,
+  repeatSectionById,
+  templateById,
+  type Preset,
+  type PresetSection,
+} from '@/core/preset';
 import {
   presetDiff,
   stripToTemplate,
@@ -21,45 +26,42 @@ import {
   type PresetMigration,
 } from '@/core/preset-migrate';
 import {
-  fieldValuesSchema,
+  parseRepKey,
   playerDataSchema,
   playerIdSchema,
   plinkPrefix,
   presetDataSchema,
   repDataSchema,
+  repKey,
   repKeyPrefix,
-  rowKey,
   sheetDataSchema,
   type FieldValues,
-  type RepData,
   type SheetData,
   type VersionedRecord,
 } from '@/core/records';
+import { duplicateBlockCells, isDuplicateCount } from '@/core/repeat-block-duplicate';
 import { err, ok, type Result } from '@/core/result';
 import {
   dependentSheetId,
   isSheetDependent,
-  liveSheets,
-  parseSheetName,
+  isSheetSet,
+  resolveSheet,
   sheetIdSchema,
   sheetKey,
+  type SheetPolicy,
 } from '@/core/sheets';
 import { linkKey, tokenIdSchema } from '@/core/token-links';
 import type { Command, RejectionReason } from '@/core/ui-messages';
-
-// One live value record of a duplicated sheet, with the key parts a copy keeps.
-type CopiedValue =
-  | { kind: 'row'; rowId: string; d: FieldValues }
-  | { kind: 'rep'; sectionId: string; instanceId: string; d: RepData };
 
 export type FieldPatchCommand = Extract<Command, { type: 'field-patch' }>;
 
 // The records a command is composed over, and how a new version is minted. The engine composes over
 // its replica with its minter. The pending view composes over the replica with the queued intents
-// applied, and mints nothing. `newRecordId` gives the ids a command makes itself, such as an NPC
-// copy's, of a kind and each named by its role in the command. The pending view composes a queued
-// command many times, so one role must get one id each time, whatever records come or go in between.
-// `isGmPlayer` is true for a player id the party lists as a GM, and for this client's own one.
+// applied, and mints nothing. `newRecordId` gives the ids a command makes itself, such as a
+// duplicate's, of a kind and each named by its role in the command. The pending view composes a
+// queued command many times, so one role must get one id each time, whatever records come or go in
+// between. `isGmPlayer` is true for a player id the party lists as a GM, and for this client's own
+// one.
 export type ComposeContext = {
   records: ReadonlyMap<string, VersionedRecord>;
   mint: (key: string, highestKnownCounter: number) => Version;
@@ -79,15 +81,18 @@ export type PatchRefusal = { id: string; reason: RejectionReason };
 // `record` is `null` when the patches change nothing together.
 export type ComposedPatches = { record: VersionedRecord | null; refusals: PatchRefusal[] };
 
-// AD-14: the records of one preset upload, in the groups they are written and sent in, and the
-// number of stored values they erase.
-export type PresetUploadBatch = { groups: VersionedRecord[][]; count: number };
+// AD-14: what one preset upload erases: the stored values and the sheets it deletes, and their
+// digest.
+export type PresetUploadLoss = { count: number; sheets: number; digest: string };
 
-// `count` is the new count, with `count-changed` only.
-// `changed` goes with `count-changed` only: the new count and digest.
+// AD-14: the records of one preset upload, in the groups they are written and sent in, and the
+// number of stored values they erase and of sheets they delete.
+export type PresetUploadBatch = { groups: VersionedRecord[][]; count: number; sheets: number };
+
+// `changed` goes with `count-changed` only: the new counts and digest.
 export type PresetUploadRefusal = {
   reason: RejectionReason;
-  changed?: { count: number; digest: string };
+  changed?: PresetUploadLoss;
 };
 
 type PlannedUpload = { d: string; migration: PresetMigration };
@@ -103,12 +108,12 @@ export type Composers = {
     context: ComposeContext,
     command: Extract<Command, { type: 'preset-upload' }>,
   ) => Result<PresetUploadBatch, PresetUploadRefusal>;
-  // AD-14: how many stored values the preset in `data` would erase, and their digest. It mints
-  // nothing.
+  // AD-14: how many stored values the preset in `data` would erase and how many sheets it would
+  // delete, and their digest. It mints nothing.
   presetDiffResult: (
     context: ComposeContext,
     data: string,
-  ) => Result<{ count: number; digest: string }, RejectionReason>;
+  ) => Result<PresetUploadLoss, RejectionReason>;
 };
 
 // The preset decoded from the `d` it came from, so a run of patches decodes it once.
@@ -148,9 +153,9 @@ export function createComposers(connectionId: string): Composers {
   }
 
   // AD-14: three groups in send order: rows under new keys and rows that gain values, then
-  // `preset`, then tombstones of old keys and stripped rows. A count above 0 that is not the one
-  // the GM confirmed, or that erases other values than the confirmed diff, is refused with the
-  // new count. A new count of 0 erases nothing, so it applies.
+  // `preset`, then tombstones of old keys, deleted sheets, stripped rows and inert links. An upload
+  // that erases values or deletes sheets other than the ones the GM confirmed is refused with the
+  // new counts. One that erases nothing and deletes nothing applies.
   function composePresetUpload(
     context: ComposeContext,
     command: Extract<Command, { type: 'preset-upload' }>,
@@ -164,13 +169,12 @@ export function createComposers(connectionId: string): Composers {
     const { d, migration } = planned.value;
 
     if (
-      migration.count > 0 &&
-      (migration.count !== command.expectedCount || migration.digest !== command.expectedDigest)
+      (migration.count > 0 || migration.sheets > 0) &&
+      (migration.count !== command.expectedCount ||
+        migration.sheets !== command.expectedSheets ||
+        migration.digest !== command.expectedDigest)
     ) {
-      return err({
-        reason: 'count-changed',
-        changed: { count: migration.count, digest: migration.digest },
-      });
+      return err({ reason: 'count-changed', changed: lossOf(migration) });
     }
 
     const minted = (write: PlannedWrite): VersionedRecord => ({
@@ -185,24 +189,80 @@ export function createComposers(connectionId: string): Composers {
     ];
 
     return groups.every((group) => group.every(recordFitsOneMessage))
-      ? ok({ groups, count: migration.count })
+      ? ok({ groups, count: migration.count, sheets: migration.sheets })
       : err({ reason: 'too-large' });
   }
 
-  // The field must be in the targeted row of the sheet's own template, and the value of its type.
-  // The patch merges into `current`, so a field another window just saved stays.
+  // AD-18: the policy of a sheet a template owns. A single sheet's id is its template id. Any other
+  // sheet needs a live `sheet:` record. `noPreset` names the rejection for a sheet whose template
+  // cannot be known yet.
+  function sheetPolicyOf(
+    context: ComposeContext,
+    sheetId: string,
+    noPreset: RejectionReason,
+  ): Result<SheetPolicy, RejectionReason> {
+    if (!sheetIdSchema.safeParse(sheetId).success) {
+      return err('invalid-sheet-id');
+    }
+
+    const preset = currentPreset(context);
+
+    if (preset === null || templateById(preset, sheetId) === null) {
+      const current = liveSheetRecord(context, sheetId);
+
+      if (!current.ok) {
+        return current;
+      }
+
+      if (preset === null) {
+        return err(noPreset);
+      }
+    }
+
+    const policy = resolveSheet(context.records, preset, sheetId);
+
+    return policy === null ? err('unknown-sheet') : ok(policy);
+  }
+
+  // A sheet of a sheet set: never a single sheet. With no preset, a live `sheet:` record says so,
+  // as only a sheet of a sheet set has one.
+  function sheetOfSet(context: ComposeContext, sheetId: string): Result<null, RejectionReason> {
+    if (!sheetIdSchema.safeParse(sheetId).success) {
+      return err('invalid-sheet-id');
+    }
+
+    const preset = currentPreset(context);
+
+    if (preset !== null && templateById(preset, sheetId) !== null) {
+      return err('not-sheet-set');
+    }
+
+    const current = liveSheetRecord(context, sheetId);
+
+    if (!current.ok) {
+      return current;
+    }
+
+    return preset === null || resolveSheet(context.records, preset, sheetId) !== null
+      ? ok(null)
+      : err('unknown-sheet');
+  }
+
+  // The field must be in the targeted row or repeat block of the sheet's own template, and the
+  // value of its type. The patch merges into `current`, so a field another window just saved stays.
   function patchOnto(
     context: ComposeContext,
     command: FieldPatchCommand,
     current: VersionedRecord | undefined,
   ): Result<PatchedRecord, RejectionReason> {
-    const template = sheetTemplate(context, command.sheetId, 'unknown-field');
+    const policy = sheetPolicyOf(context, command.sheetId, 'unknown-field');
 
-    if (!template.ok) {
-      return template;
+    if (!policy.ok) {
+      return policy;
     }
 
-    const field = findPatchField(template.value, command.target, command.fieldId);
+    const { template } = policy.value;
+    const field = findPatchField(template, command.target, command.fieldId);
 
     if (field === null) {
       return err('unknown-field');
@@ -226,8 +286,8 @@ export function createComposers(connectionId: string): Composers {
       return patched;
     }
 
-    // AD-14: a new version keeps no value the template no longer has in this row.
-    const stripped = stripToTemplate(patched.value, template.value);
+    // AD-14: a new version keeps no value the template no longer has in this row or repeat block.
+    const stripped = stripToTemplate(patched.value, template);
 
     return patchedRecordFits(stripped) ? ok(stripped) : err('too-large');
   }
@@ -289,13 +349,14 @@ export function createComposers(connectionId: string): Composers {
     return { record: { ...working, c, a }, refusals };
   }
 
-  // A new row goes after every row this sheet has in the section. The id is the window's, so a
-  // tombstone's id counts as taken: a deleted row must never come back.
-  function composeRepeatRowAdd(
+  // A new repeat block goes after every repeat block this sheet has in the section. The id is the
+  // window's. AD-2: an instance id is unique in its sheet, across sections, and a tombstone's id
+  // counts as taken, so a removed repeat block never comes back.
+  function composeRepeatBlockAdd(
     context: ComposeContext,
-    command: Extract<Command, { type: 'repeat-row-add' }>,
+    command: Extract<Command, { type: 'repeat-block-add' }>,
   ): Result<VersionedRecord, RejectionReason> {
-    const section = repeatSection(context, command);
+    const section = repeatSectionOf(context, command);
 
     if (!section.ok) {
       return section;
@@ -305,17 +366,16 @@ export function createComposers(connectionId: string): Composers {
       return err('invalid-instance-id');
     }
 
-    const k = repKey(command);
-
-    if (context.records.has(k)) {
+    if (sheetInstanceIds(context, command.sheetId).has(command.instanceId)) {
       return err('instance-exists');
     }
 
+    const k = repKey(command.sheetId, command.sectionId, command.instanceId);
     const { c, a } = context.mint(k, 0);
 
     const record: VersionedRecord = {
       k,
-      d: { order: nextRowOrder(context, command), cells: {} },
+      d: { order: nextBlockOrder(context, command), cells: {} },
       c,
       a,
     };
@@ -323,61 +383,321 @@ export function createComposers(connectionId: string): Composers {
     return recordFitsOneMessage(record) ? ok(record) : err('too-large');
   }
 
-  function composeRepeatRowDelete(
+  // AD-19: the repeat block's tombstone, then the tombstones of the links to it.
+  function composeRepeatBlockDelete(
     context: ComposeContext,
-    command: Extract<Command, { type: 'repeat-row-delete' }>,
-  ): Result<VersionedRecord, RejectionReason> {
-    const section = repeatSection(context, command);
+    command: Extract<Command, { type: 'repeat-block-delete' }>,
+  ): Result<VersionedRecord[], RejectionReason> {
+    const section = repeatSectionOf(context, command);
 
     if (!section.ok) {
       return section;
     }
 
-    const current = context.records.get(repKey(command));
+    const current = context.records.get(
+      repKey(command.sheetId, command.sectionId, command.instanceId),
+    );
 
-    return current === undefined || current.d === null
-      ? err('unknown-instance')
-      : ok(tombstone(context, current));
-  }
-
-  // The sheet must be live and the section a repeat section of the sheet's own template.
-  function repeatSection(
-    context: ComposeContext,
-    command: { sheetId: string; sectionId: string },
-  ): Result<null, RejectionReason> {
-    const template = sheetTemplate(context, command.sheetId, 'unknown-section');
-
-    if (!template.ok) {
-      return template;
+    if (current === undefined || current.d === null) {
+      return err('unknown-instance');
     }
 
-    return isRepeatSectionId(template.value, command.sectionId) ? ok(null) : err('unknown-section');
+    return ok([
+      tombstone(context, current),
+      ...blockLinkTombstones(context, command.sheetId, command.instanceId),
+    ]);
   }
 
-  // `noPreset` names the rejection for a sheet whose template cannot be known yet.
-  function sheetTemplate(
+  // CAP-30: `count` new repeat blocks of the same sheet and section after its last one, at `c: 1`,
+  // each with the source's values and, when its first field is a `text` field with a value, the
+  // next number in it. A copy gets no link. A new instance id is short (TASK-37), so it can collide:
+  // one the sheet already holds, a tombstone included, or one of this batch is drawn again, and one
+  // still taken refuses the command.
+  function composeRepeatBlockDuplicate(
     context: ComposeContext,
-    sheetId: string,
-    noPreset: RejectionReason,
-  ): Result<PresetTemplate, RejectionReason> {
-    const current = liveSheetRecord(context, sheetId);
+    command: Extract<Command, { type: 'repeat-block-duplicate' }>,
+  ): Result<VersionedRecord[], RejectionReason> {
+    if (!isDuplicateCount(command.count)) {
+      return err('invalid-count');
+    }
+
+    const section = repeatSectionOf(context, command);
+
+    if (!section.ok) {
+      return section;
+    }
+
+    const { policy } = section.value;
+
+    const source = repDataSchema.safeParse(
+      context.records.get(repKey(command.sheetId, command.sectionId, command.instanceId))?.d,
+    );
+
+    if (!source.success) {
+      return err('unknown-instance');
+    }
+
+    const siblings = sectionBlocks(context, command);
+
+    const cells = duplicateBlockCells(
+      section.value.section,
+      source.data.cells,
+      siblings.map((block) => block.cells),
+      command.count,
+    );
+
+    if (!cells.ok) {
+      return err('invalid-value');
+    }
+
+    const firstOrder = nextBlockOrder(context, command);
+    const taken = sheetInstanceIds(context, command.sheetId);
+    const copies: VersionedRecord[] = [];
+
+    for (const [index, values] of cells.value.entries()) {
+      const instanceId = drawFreeId(context, 'instance', `block:${index}`, (id) => !taken.has(id));
+
+      if (instanceId === null) {
+        return err('instance-exists');
+      }
+
+      taken.add(instanceId);
+
+      const k = repKey(command.sheetId, command.sectionId, instanceId);
+      const d = { order: firstOrder + index, cells: values };
+      // AD-14: a copy holds only the fields the template has in the section.
+      const stripped = stripToTemplate({ k, d }, policy.template);
+
+      copies.push({ k, d: stripped.d, ...context.mint(k, 0) });
+    }
+
+    return copies.every(recordFitsOneMessage) ? ok(copies) : err('too-large');
+  }
+
+  // The sheet must be a sheet a template owns, and the section a repeat section of that template.
+  function repeatSectionOf(
+    context: ComposeContext,
+    command: { sheetId: string; sectionId: string },
+  ): Result<{ policy: SheetPolicy; section: PresetSection }, RejectionReason> {
+    const policy = sheetPolicyOf(context, command.sheetId, 'unknown-section');
+
+    if (!policy.ok) {
+      return policy;
+    }
+
+    const section = repeatSectionById(policy.value.template, command.sectionId);
+
+    return section === null ? err('unknown-section') : ok({ policy: policy.value, section });
+  }
+
+  // AD-18: a new sheet of the sheet set `set`, after its last sheet. Its name field is empty, so
+  // it shows the fallback name until someone types one.
+  function composeSheetCreate(
+    context: ComposeContext,
+    command: Extract<Command, { type: 'sheet-create' }>,
+  ): Result<VersionedRecord, RejectionReason> {
+    if (!sheetIdSchema.safeParse(command.sheetId).success) {
+      return err('invalid-sheet-id');
+    }
+
+    const preset = currentPreset(context);
+    const set = preset === null ? null : templateById(preset, command.set);
+
+    if (preset === null || set === null || !isSheetSet(set)) {
+      return err('unknown-template');
+    }
+
+    const k = sheetKey(command.sheetId);
+
+    // A template id names that template's single sheet or nothing, so no sheet set takes it. A
+    // tombstone counts too: a deleted sheet's id must never come back. A live record that names the
+    // id, such as an orphan row, counts too, or the new sheet would take it over.
+    if (
+      templateById(preset, command.sheetId) !== null ||
+      context.records.has(k) ||
+      liveDependentSheetIds(context).has(command.sheetId)
+    ) {
+      return err('sheet-exists');
+    }
+
+    return mintedSheet(context, k, 0, { set: set.id, order: nextOrder(context, set.id) });
+  }
+
+  // A sheet of a sheet set and every record that depends on it go in one batch. Storage gets the
+  // whole batch before any send, and the sheet tombstone goes last, so a write that fails part way
+  // leaves a live sheet the GM can delete again. A single sheet is never deleted.
+  function composeSheetDelete(
+    context: ComposeContext,
+    command: Extract<Command, { type: 'sheet-delete' }>,
+  ): Result<VersionedRecord[], RejectionReason> {
+    const sheet = sheetOfSet(context, command.sheetId);
+
+    if (!sheet.ok) {
+      return sheet;
+    }
+
+    const current = liveSheetRecord(context, command.sheetId);
 
     if (!current.ok) {
       return current;
     }
 
-    const sheet = sheetDataSchema.safeParse(current.value.d);
-    const preset = currentPreset(context);
+    const doomed: VersionedRecord[] = [];
 
-    if (!sheet.success) {
-      return err('unknown-sheet');
+    for (const [key, record] of context.records) {
+      // A tombstone already says deleted, and writing it again would only add a version.
+      if (record.d !== null && isSheetDependent(key, record, command.sheetId)) {
+        doomed.push(record);
+      }
     }
 
-    if (preset === null) {
-      return err(noPreset);
+    doomed.push(current.value);
+
+    return ok(doomed.map((record) => tombstone(context, record)));
+  }
+
+  // AD-19: a token links to one sheet or repeat block, so the new link replaces the old one. A
+  // target can have many tokens, so no other link changes. A target that is not live, or whose
+  // template or repeat section is not linkable, is refused.
+  function composeLinkSet(
+    context: ComposeContext,
+    command: Extract<Command, { type: 'link-set' }>,
+  ): Result<VersionedRecord, RejectionReason> {
+    if (!tokenIdSchema.safeParse(command.tokenId).success) {
+      return err('invalid-token-id');
     }
 
-    return ok(sheet.data.kind === 'pc' ? preset.character : preset.npc);
+    const policy = sheetPolicyOf(context, command.sheetId, 'not-linkable');
+
+    if (!policy.ok) {
+      return policy;
+    }
+
+    const { instanceId } = command;
+
+    if (instanceId !== null) {
+      if (!sheetIdSchema.safeParse(instanceId).success) {
+        return err('invalid-instance-id');
+      }
+
+      if (!liveInstanceIds(context, command.sheetId).has(instanceId)) {
+        return err('unknown-instance');
+      }
+    }
+
+    const target = { sheetId: command.sheetId, instanceId };
+
+    if (liveLinkTarget(context.records, currentPreset(context), target) === null) {
+      return err('not-linkable');
+    }
+
+    const k = linkKey(command.tokenId);
+    const { c, a } = context.mint(k, context.records.get(k)?.c ?? 0);
+    const record: VersionedRecord = { k, d: linkDataOf(target), c, a };
+
+    return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+  }
+
+  // FR3: access on is a live `acl:` record with the player's last known name, and off is its
+  // tombstone. Only a live sheet of a sheet set takes access. The name is trimmed and cut, and ""
+  // when no name is known. A change that leaves the record as it is refused, so a repeated press adds
+  // no version.
+  function composeAclSet(
+    context: ComposeContext,
+    command: Extract<Command, { type: 'acl-set' }>,
+  ): Result<VersionedRecord, RejectionReason> {
+    const sheet = sheetOfSet(context, command.sheetId);
+
+    if (!sheet.ok) {
+      return sheet;
+    }
+
+    if (!playerIdSchema.safeParse(command.playerId).success) {
+      return err('invalid-player-id');
+    }
+
+    const k = aclKey(command.sheetId, command.playerId);
+    const existing = context.records.get(k);
+
+    if (!command.on) {
+      return existing === undefined || existing.d === null
+        ? err('unchanged')
+        : ok(tombstone(context, existing));
+    }
+
+    const name = playerName(command.name);
+
+    if (playerDataSchema.safeParse(existing?.d).data?.name === name) {
+      return err('unchanged');
+    }
+
+    const { c, a } = context.mint(k, existing?.c ?? 0);
+    const record: VersionedRecord = { k, d: { name }, c, a };
+
+    return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+  }
+
+  // FR19: one batch. Picking a player writes their `acl:` when it is not live, so editing turns on,
+  // tombstones every other live `plink:` of the sheet, and writes their `plink:` when it is not live.
+  // A live `plink:` keeps its name. Their `plink:` goes last, so a write that fails part way never
+  // shows a new owner whose other records are missing. "Никто" (`playerId: null`) tombstones every
+  // live `plink:` of the sheet. No other `acl:` changes, so a previous owner keeps editing. A GM, this
+  // client's own player included, owns nothing. A batch that would change nothing is refused, so a
+  // repeated pick adds no version. Only a sheet of a sheet set has an owner.
+  function composeOwnerSet(
+    context: ComposeContext,
+    command: Extract<Command, { type: 'owner-set' }>,
+  ): Result<VersionedRecord[], RejectionReason> {
+    const sheet = sheetOfSet(context, command.sheetId);
+
+    if (!sheet.ok) {
+      return sheet;
+    }
+
+    const { playerId } = command;
+
+    if (
+      playerId !== null &&
+      (!playerIdSchema.safeParse(playerId).success || context.isGmPlayer(playerId))
+    ) {
+      return err('invalid-player-id');
+    }
+
+    const owner = playerId === null ? null : plinkKey(command.sheetId, playerId);
+    const prefix = plinkPrefix(command.sheetId);
+    const batch: VersionedRecord[] = [];
+
+    if (playerId !== null) {
+      const acl = context.records.get(aclKey(command.sheetId, playerId));
+
+      if (acl === undefined || acl.d === null) {
+        const k = aclKey(command.sheetId, playerId);
+
+        batch.push({ k, d: { name: playerName(command.name) }, ...context.mint(k, acl?.c ?? 0) });
+      }
+    }
+
+    for (const [key, record] of context.records) {
+      if (key.startsWith(prefix) && key !== owner && record.d !== null) {
+        batch.push(tombstone(context, record));
+      }
+    }
+
+    if (owner !== null) {
+      const existing = context.records.get(owner);
+
+      if (existing === undefined || existing.d === null) {
+        const d = { name: playerName(command.name) };
+
+        batch.push({ k: owner, d, ...context.mint(owner, existing?.c ?? 0) });
+      }
+    }
+
+    if (batch.length === 0) {
+      return err('unchanged');
+    }
+
+    return batch.every(recordFitsOneMessage) ? ok(batch) : err('too-large');
   }
 
   function currentPreset(context: ComposeContext): Preset | null {
@@ -401,12 +721,10 @@ export function createComposers(connectionId: string): Composers {
       switch (command.type) {
         case 'sheet-create':
           return listOf(composeSheetCreate(context, command));
-        case 'sheet-rename':
-          return listOf(composeSheetRename(context, command));
         case 'sheet-delete':
           return composeSheetDelete(context, command);
-        case 'sheet-duplicate':
-          return composeSheetDuplicate(context, command, currentPreset(context)?.npc ?? null);
+        case 'repeat-block-duplicate':
+          return composeRepeatBlockDuplicate(context, command);
         case 'link-set':
           return listOf(composeLinkSet(context, command));
         case 'link-clear':
@@ -419,16 +737,18 @@ export function createComposers(connectionId: string): Composers {
         // `composePresetUpload` only. A flat list here would lose the order.
         case 'preset-upload':
           return err('not-allowed');
-        // AD-9: an import replaces the generation, so the engine runs it on its own path.
+        // AD-9: an import and a wipe replace the generation, so the engine runs each on its own
+        // path.
         case 'snapshot-import':
+        case 'wipe':
           return err('not-allowed');
 
         case 'field-patch':
           return listOf(composeFieldPatch(context, command));
-        case 'repeat-row-add':
-          return listOf(composeRepeatRowAdd(context, command));
-        case 'repeat-row-delete':
-          return listOf(composeRepeatRowDelete(context, command));
+        case 'repeat-block-add':
+          return listOf(composeRepeatBlockAdd(context, command));
+        case 'repeat-block-delete':
+          return composeRepeatBlockDelete(context, command);
         default:
           return unknownCommand(command);
       }
@@ -438,217 +758,35 @@ export function createComposers(connectionId: string): Composers {
     presetDiffResult: (context, data) => {
       const planned = planPresetUpload(context, data);
 
-      if (!planned.ok) {
-        return planned;
-      }
-
-      return ok({ count: planned.value.migration.count, digest: planned.value.migration.digest });
+      return planned.ok ? ok(lossOf(planned.value.migration)) : planned;
     },
   };
 }
 
-function composeSheetCreate(
+// AD-19: the tombstones of every link that names the repeat block `instanceId` of the sheet. The GM
+// client that removes a repeat block, or commits a player's removal of one, writes them.
+export function blockLinkTombstones(
   context: ComposeContext,
-  command: Extract<Command, { type: 'sheet-create' }>,
-): Result<VersionedRecord, RejectionReason> {
-  if (!sheetIdSchema.safeParse(command.sheetId).success) {
-    return err('invalid-sheet-id');
-  }
-
-  const k = sheetKey(command.sheetId);
-
-  // A tombstone counts too: a deleted sheet's id must never come back. A live record that names the
-  // id, such as an orphan row, counts too, or the new sheet would take it over.
-  if (context.records.has(k) || liveDependentSheetIds(context).has(command.sheetId)) {
-    return err('sheet-exists');
-  }
-
-  const name = parseSheetName(command.name);
-
-  if (!name.ok) {
-    return err('invalid-name');
-  }
-
-  return mintedSheet(context, k, 0, {
-    kind: command.kind,
-    name: name.value,
-    order: nextOrder(context, command.kind),
-  });
-}
-
-function composeSheetRename(
-  context: ComposeContext,
-  command: Extract<Command, { type: 'sheet-rename' }>,
-): Result<VersionedRecord, RejectionReason> {
-  const current = liveSheetRecord(context, command.sheetId);
-
-  if (!current.ok) {
-    return current;
-  }
-
-  const sheet = sheetDataSchema.safeParse(current.value.d);
-
-  if (!sheet.success) {
-    return err('unknown-sheet');
-  }
-
-  const name = parseSheetName(command.name);
-
-  if (!name.ok) {
-    return err('invalid-name');
-  }
-
-  return mintedSheet(context, current.value.k, current.value.c, {
-    ...sheet.data,
-    name: name.value,
-  });
-}
-
-// The sheet and every record that depends on it go in one batch. Storage gets the whole batch
-// before any send, and the sheet tombstone goes last, so a write that fails part way leaves a live
-// sheet the GM can delete again. The kind is not checked: an NPC goes the same way.
-function composeSheetDelete(
-  context: ComposeContext,
-  command: Extract<Command, { type: 'sheet-delete' }>,
-): Result<VersionedRecord[], RejectionReason> {
-  const current = liveSheetRecord(context, command.sheetId);
-
-  if (!current.ok) {
-    return current;
-  }
-
+  sheetId: string,
+  instanceId: string,
+): VersionedRecord[] {
   const doomed: VersionedRecord[] = [];
 
   for (const [key, record] of context.records) {
-    // A tombstone already says deleted, and writing it again would only add a version.
-    if (record.d !== null && isSheetDependent(key, record, command.sheetId)) {
+    const target = key.startsWith('link:') ? linkTargetOf(record.d) : null;
+
+    if (target?.sheetId === sheetId && target.instanceId === instanceId) {
       doomed.push(record);
     }
   }
 
-  doomed.push(current.value);
-
-  return ok(doomed.map((record) => tombstone(context, record)));
+  return doomed
+    .sort((first, second) => (first.k < second.k ? -1 : first.k > second.k ? 1 : 0))
+    .map((record) => tombstone(context, record));
 }
 
-// AD-2: each copy is new `row:`, `rep:` and `sheet:` records at `c: 1` under new ids, with no
-// `link:`, `acl:` or `plink:`. Only live records are copied. Each copy's sheet goes after its rows,
-// so a write that fails part way leaves no half-visible copy: rows with no sheet show nowhere. A new
-// id is short (TASK-37), so it can collide. A sheet id is taken when the room holds its sheet key, a
-// live record names it (such as an orphan row the copy would take over), a key the copy writes is
-// already a tombstone, or another copy of this batch has it. An instance id is taken when its `rep:`
-// key is held, tombstones included. A taken id is drawn again; one still taken refuses the command.
-function composeSheetDuplicate(
-  context: ComposeContext,
-  command: Extract<Command, { type: 'sheet-duplicate' }>,
-  template: PresetTemplate | null,
-): Result<VersionedRecord[], RejectionReason> {
-  if (!isDuplicateCount(command.count)) {
-    return err('invalid-count');
-  }
-
-  const current = liveSheetRecord(context, command.sheetId);
-
-  if (!current.ok) {
-    return current;
-  }
-
-  const source = sheetDataSchema.safeParse(current.value.d);
-
-  if (!source.success) {
-    return err('unknown-sheet');
-  }
-
-  if (source.data.kind !== 'npc') {
-    return err('not-npc');
-  }
-
-  const npcNames = liveSheets(context.records.values(), 'npc').map((npc) => npc.name);
-  const names = duplicateNames(source.data.name, npcNames, command.count);
-
-  if (!names.ok) {
-    return err('invalid-name');
-  }
-
-  const firstOrder = nextOrder(context, 'npc');
-  const values = copiedValues(context, command.sheetId, template);
-  const copies: VersionedRecord[] = [];
-  const written = new Set<string>();
-  const liveDependents = liveDependentSheetIds(context);
-  const isTaken = (key: string): boolean => context.records.has(key) || written.has(key);
-
-  const isFreeSheetId = (sheetId: string): boolean =>
-    !isTaken(sheetKey(sheetId)) &&
-    !liveDependents.has(sheetId) &&
-    values.every((value) => value.kind !== 'row' || !isTaken(rowKey(sheetId, value.rowId)));
-
-  for (const [index, name] of names.value.entries()) {
-    const sheetId = drawFreeId(context, 'sheet', `sheet:${index}`, isFreeSheetId);
-
-    if (sheetId === null) {
-      return err('sheet-exists');
-    }
-
-    const k = sheetKey(sheetId);
-
-    written.add(k);
-
-    for (const value of values) {
-      if (value.kind === 'row') {
-        const rowK = rowKey(sheetId, value.rowId);
-
-        copies.push({ k: rowK, d: value.d, ...context.mint(rowK, 0) });
-      } else {
-        const prefix = repKeyPrefix(sheetId, value.sectionId);
-        const role = `rep:${index}:${value.sectionId}:${value.instanceId}`;
-
-        const instanceId = drawFreeId(
-          context,
-          'instance',
-          role,
-          (id) => !isTaken(`${prefix}${id}`),
-        );
-
-        if (instanceId === null) {
-          return err('instance-exists');
-        }
-
-        const repK = `${prefix}${instanceId}`;
-
-        written.add(repK);
-        copies.push({ k: repK, d: value.d, ...context.mint(repK, 0) });
-      }
-    }
-
-    const d: SheetData = { kind: 'npc', name, order: firstOrder + index };
-
-    copies.push({ k, d, ...context.mint(k, 0) });
-  }
-
-  return copies.every(recordFitsOneMessage) ? ok(copies) : err('too-large');
-}
-
-// FR18: a token holds one sheet, so the new link replaces the old one. A sheet can have many
-// tokens, so no other link changes. A link to a sheet that is not live is refused.
-function composeLinkSet(
-  context: ComposeContext,
-  command: Extract<Command, { type: 'link-set' }>,
-): Result<VersionedRecord, RejectionReason> {
-  if (!tokenIdSchema.safeParse(command.tokenId).success) {
-    return err('invalid-token-id');
-  }
-
-  const sheet = liveSheetRecord(context, command.sheetId);
-
-  if (!sheet.ok) {
-    return sheet;
-  }
-
-  const k = linkKey(command.tokenId);
-  const { c, a } = context.mint(k, context.records.get(k)?.c ?? 0);
-  const record: VersionedRecord = { k, d: command.sheetId, c, a };
-
-  return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+function lossOf(migration: PresetMigration): PresetUploadLoss {
+  return { count: migration.count, sheets: migration.sheets, digest: migration.digest };
 }
 
 // The link goes, and the sheet and the token stay. A link to a deleted sheet is still a record, so
@@ -668,190 +806,55 @@ function composeLinkClear(
     : ok(tombstone(context, current));
 }
 
-// FR3: access on is a live `acl:` record with the player's last known name, and off is its
-// tombstone. Only a live character takes access. The name is trimmed and cut as a sheet name is,
-// and "" when no name is known. A change that leaves the record as it is refused, so a repeated
-// press adds no version.
-function composeAclSet(
+// The repeat blocks one sheet has in one section, live ones only, with their data.
+function sectionBlocks(
   context: ComposeContext,
-  command: Extract<Command, { type: 'acl-set' }>,
-): Result<VersionedRecord, RejectionReason> {
-  const character = liveCharacter(context, command.sheetId);
+  command: { sheetId: string; sectionId: string },
+): { order: number; cells: FieldValues }[] {
+  const prefix = repKeyPrefix(command.sheetId, command.sectionId);
+  const blocks: { order: number; cells: FieldValues }[] = [];
 
-  if (!character.ok) {
-    return character;
-  }
+  for (const record of context.records.values()) {
+    if (record.k.startsWith(prefix)) {
+      const block = repDataSchema.safeParse(record.d);
 
-  if (!playerIdSchema.safeParse(command.playerId).success) {
-    return err('invalid-player-id');
-  }
-
-  const k = aclKey(command.sheetId, command.playerId);
-  const existing = context.records.get(k);
-
-  if (!command.on) {
-    return existing === undefined || existing.d === null
-      ? err('unchanged')
-      : ok(tombstone(context, existing));
-  }
-
-  const name = playerName(command.name);
-
-  if (playerDataSchema.safeParse(existing?.d).data?.name === name) {
-    return err('unchanged');
-  }
-
-  const { c, a } = context.mint(k, existing?.c ?? 0);
-  const record: VersionedRecord = { k, d: { name }, c, a };
-
-  return recordFitsOneMessage(record) ? ok(record) : err('too-large');
-}
-
-// FR19: one batch. Picking a player writes their `acl:` when it is not live, so editing turns on,
-// tombstones every other live `plink:` of the sheet, and writes their `plink:` when it is not live.
-// A live `plink:` keeps its name. Their `plink:` goes last, so a write that fails part way never
-// shows a new owner whose other records are missing. "Никто" (`playerId: null`) tombstones every
-// live `plink:` of the sheet. No other `acl:` changes, so a previous owner keeps editing. A GM, this
-// client's own player included, owns nothing. A batch that would change nothing is refused, so a
-// repeated pick adds no version.
-function composeOwnerSet(
-  context: ComposeContext,
-  command: Extract<Command, { type: 'owner-set' }>,
-): Result<VersionedRecord[], RejectionReason> {
-  const character = liveCharacter(context, command.sheetId);
-
-  if (!character.ok) {
-    return character;
-  }
-
-  const { playerId } = command;
-
-  if (
-    playerId !== null &&
-    (!playerIdSchema.safeParse(playerId).success || context.isGmPlayer(playerId))
-  ) {
-    return err('invalid-player-id');
-  }
-
-  const owner = playerId === null ? null : plinkKey(command.sheetId, playerId);
-  const prefix = plinkPrefix(command.sheetId);
-  const batch: VersionedRecord[] = [];
-
-  if (playerId !== null) {
-    const acl = context.records.get(aclKey(command.sheetId, playerId));
-
-    if (acl === undefined || acl.d === null) {
-      const k = aclKey(command.sheetId, playerId);
-
-      batch.push({ k, d: { name: playerName(command.name) }, ...context.mint(k, acl?.c ?? 0) });
+      if (block.success) {
+        blocks.push(block.data);
+      }
     }
   }
+
+  return blocks;
+}
+
+// AD-2: every instance id one sheet holds in any section, tombstones included.
+function sheetInstanceIds(context: ComposeContext, sheetId: string): Set<string> {
+  const ids = new Set<string>();
+
+  for (const key of context.records.keys()) {
+    const parts = parseRepKey(key);
+
+    if (parts?.sheetId === sheetId) {
+      ids.add(parts.instanceId);
+    }
+  }
+
+  return ids;
+}
+
+// The instance ids of the live repeat blocks of one sheet.
+function liveInstanceIds(context: ComposeContext, sheetId: string): Set<string> {
+  const ids = new Set<string>();
 
   for (const [key, record] of context.records) {
-    if (key.startsWith(prefix) && key !== owner && record.d !== null) {
-      batch.push(tombstone(context, record));
+    const parts = parseRepKey(key);
+
+    if (parts?.sheetId === sheetId && repDataSchema.safeParse(record.d).success) {
+      ids.add(parts.instanceId);
     }
   }
 
-  if (owner !== null) {
-    const existing = context.records.get(owner);
-
-    if (existing === undefined || existing.d === null) {
-      const d = { name: playerName(command.name) };
-
-      batch.push({ k: owner, d, ...context.mint(owner, existing?.c ?? 0) });
-    }
-  }
-
-  if (batch.length === 0) {
-    return err('unchanged');
-  }
-
-  return batch.every(recordFitsOneMessage) ? ok(batch) : err('too-large');
-}
-
-// A live sheet whose data says it is a character.
-function liveCharacter(
-  context: ComposeContext,
-  sheetId: string,
-): Result<VersionedRecord, RejectionReason> {
-  const current = liveSheetRecord(context, sheetId);
-
-  if (!current.ok) {
-    return current;
-  }
-
-  const sheet = sheetDataSchema.safeParse(current.value.d);
-
-  if (!sheet.success) {
-    return err('unknown-sheet');
-  }
-
-  return sheet.data.kind === 'pc' ? current : err('not-character');
-}
-
-// The live `row:` and `rep:` records of one sheet, by key, so copies list them in one order. AD-14:
-// with a preset, each copy holds only what the NPC template has, and a row it does not have is not
-// copied.
-function copiedValues(
-  context: ComposeContext,
-  sheetId: string,
-  template: PresetTemplate | null,
-): CopiedValue[] {
-  const rowPrefix = `row:${sheetId}:`;
-  const repPrefix = `rep:${sheetId}:`;
-  const values: CopiedValue[] = [];
-
-  const keys = [...context.records.keys()]
-    .filter((key) => key.startsWith(rowPrefix) || key.startsWith(repPrefix))
-    .sort();
-
-  for (const key of keys) {
-    const d = context.records.get(key)?.d;
-
-    if (key.startsWith(rowPrefix)) {
-      const rowId = key.slice(rowPrefix.length);
-      const row = fieldValuesSchema.safeParse(d);
-
-      if (row.success && inTemplate(template, { kind: 'row', rowId })) {
-        values.push({ kind: 'row', rowId, d: strippedData(template, key, row.data) });
-      }
-    } else if (key.startsWith(repPrefix)) {
-      const rep = repDataSchema.safeParse(d);
-      const [sectionId, instanceId] = key.slice(repPrefix.length).split(':');
-
-      if (
-        rep.success &&
-        sectionId !== undefined &&
-        instanceId !== undefined &&
-        inTemplate(template, { kind: 'rep', sectionId })
-      ) {
-        values.push({
-          kind: 'rep',
-          sectionId,
-          instanceId,
-          d: strippedData(template, key, rep.data),
-        });
-      }
-    }
-  }
-
-  return values;
-}
-
-function inTemplate(
-  template: PresetTemplate | null,
-  target: { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string },
-): boolean {
-  return template === null || targetFields(template, target) !== null;
-}
-
-function strippedData<Data extends FieldValues | RepData>(
-  template: PresetTemplate | null,
-  k: string,
-  d: Data,
-): Data {
-  return template === null ? d : stripToTemplate({ k, d }, template).d;
+  return ids;
 }
 
 // The first free id of a role, drawn again at most `MAX_ID_REDRAWS` times, or `null`. Each redraw is
@@ -925,47 +928,35 @@ function mintedSheet(
   return recordFitsOneMessage(record) ? ok(record) : err('too-large');
 }
 
-// A tombstone holds no order, so only live rows count.
-function nextRowOrder(
+// A tombstone holds no order, so only live repeat blocks count.
+function nextBlockOrder(
   context: ComposeContext,
   command: { sheetId: string; sectionId: string },
 ): number {
-  const prefix = repKeyPrefix(command.sheetId, command.sectionId);
   let highest = -1;
 
-  for (const record of context.records.values()) {
-    if (record.k.startsWith(prefix)) {
-      const row = repDataSchema.safeParse(record.d);
-
-      if (row.success) {
-        highest = Math.max(highest, row.data.order);
-      }
-    }
+  for (const block of sectionBlocks(context, command)) {
+    highest = Math.max(highest, block.order);
   }
 
   return highest + 1;
 }
 
-function nextOrder(context: ComposeContext, kind: 'pc' | 'npc'): number {
+// After the last sheet of the sheet set, by `order`.
+function nextOrder(context: ComposeContext, setId: string): number {
   let highest = -1;
 
   for (const record of context.records.values()) {
     if (record.k.startsWith('sheet:')) {
       const sheet = sheetDataSchema.safeParse(record.d);
 
-      if (sheet.success && sheet.data.kind === kind) {
+      if (sheet.success && sheet.data.set === setId) {
         highest = Math.max(highest, sheet.data.order);
       }
     }
   }
 
   return highest + 1;
-}
-
-function repKey(command: { sheetId: string; sectionId: string; instanceId: string }): string {
-  const { sheetId, sectionId, instanceId } = command;
-
-  return patchRecordKey(sheetId, { kind: 'rep', sectionId, instanceId });
 }
 
 function listOf<Value, Failure>(result: Result<Value, Failure>): Result<Value[], Failure> {

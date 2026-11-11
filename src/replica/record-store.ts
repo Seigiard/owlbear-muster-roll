@@ -8,8 +8,11 @@ import {
 import { err, ok, type Result } from '@/core/result';
 import {
   buildStorageKey,
+  generationMarkerKey,
   incompleteMarkerKey,
   INITIAL_GENERATION,
+  isOlderFormatRoomKey,
+  parseGenerationMarkerKey,
   parseIncompleteMarkerKey,
   parseStorageKey,
   type Generation,
@@ -27,23 +30,31 @@ export type RecordStore = {
     record: VersionedRecord,
   ) => Result<VersionedRecord, RecordStoreFailure>;
   loadGeneration: (generation: Generation) => Result<GenerationLoad, StorageFailure>;
-  // AD-9: the highest generation of this room with a stored record and no incomplete marker.
+  // AD-9: the highest generation of this room with a stored record or a generation marker, and no
+  // incomplete marker.
   readHighestGeneration: () => Result<Generation, StorageFailure>;
   // AD-9: set before the records of a new generation are written, and removed once the generation
   // is complete. A generation with the marker is not read at start.
   markIncomplete: (generation: Generation) => Result<void, StorageFailure | StorageKeyFailure>;
   markComplete: (generation: Generation) => Result<void, StorageFailure | StorageKeyFailure>;
-  // Removes every record and the marker of one generation of this room.
+  // AD-9: keeps the generation under a marker key as well as in record keys, so a generation with
+  // no records, as after a wipe, survives a reload.
+  markGeneration: (generation: Generation) => Result<void, StorageFailure | StorageKeyFailure>;
+  // Removes every record and the markers of one generation of this room.
   removeGeneration: (generation: Generation) => Result<void, StorageFailure>;
   // Removes every record and marker of this room's generations below `generation`.
   removeGenerationsBelow: (generation: Generation) => Result<void, StorageFailure>;
   // AD-9: removes every generation of this room that still has its incomplete marker: a write that
   // stopped part way, which must not be read as data.
   removeIncomplete: () => Result<void, StorageFailure>;
+  // AD-9, AD-11: removes every key of this room in a storage format older than the current one. A
+  // wipe and an adopting GM client do this, as no migration reads them.
+  removeOlderFormats: () => Result<void, StorageFailure>;
 };
 
-// The generation one storage key of this room belongs to, as a record or as a marker.
-type KeyGeneration = { generation: Generation; marker: boolean };
+// The generation one storage key of this room belongs to, as a record or as a marker. `marker`
+// names the marker kind, `null` for a record.
+type KeyGeneration = { generation: Generation; marker: 'incomplete' | 'generation' | null };
 
 export function createRecordStore(storage: StoragePort, roomId: string): RecordStore {
   return {
@@ -126,6 +137,18 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
       const incomplete = incompleteGenerations(keys.value);
 
       for (const storageKey of keys.value) {
+        const marker = parseGenerationMarkerKey(storageKey);
+
+        if (
+          marker.ok &&
+          marker.value.roomId === roomId &&
+          !incomplete.has(generationId(marker.value.generation)) &&
+          compareGenerations(marker.value.generation, highest) > 0
+        ) {
+          highest = marker.value.generation;
+          continue;
+        }
+
         const parts = parseStorageKey(storageKey);
 
         if (
@@ -158,6 +181,11 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
 
       return key.ok ? storage.removeItem(key.value) : key;
     },
+    markGeneration: (generation) => {
+      const key = generationMarkerKey(roomId, generation);
+
+      return key.ok ? storage.setItem(key.value, '1') : key;
+    },
     removeGeneration: (generation) =>
       removeWhere((found) => compareGenerations(found.generation, generation) === 0),
     removeGenerationsBelow: (generation) =>
@@ -173,6 +201,25 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
 
       return removeWhere((found) => incomplete.has(generationId(found.generation)));
     },
+    removeOlderFormats: () => {
+      const keys = storage.keys();
+
+      if (!keys.ok) {
+        return keys;
+      }
+
+      for (const storageKey of keys.value) {
+        if (isOlderFormatRoomKey(storageKey, roomId)) {
+          const removed = storage.removeItem(storageKey);
+
+          if (!removed.ok) {
+            return removed;
+          }
+        }
+      }
+
+      return ok(undefined);
+    },
   };
 
   function keyGeneration(storageKey: string): KeyGeneration | null {
@@ -180,14 +227,22 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
 
     if (record.ok) {
       return record.value.roomId === roomId
-        ? { generation: record.value.generation, marker: false }
+        ? { generation: record.value.generation, marker: null }
         : null;
     }
 
-    const marker = parseIncompleteMarkerKey(storageKey);
+    const incomplete = parseIncompleteMarkerKey(storageKey);
 
-    return marker.ok && marker.value.roomId === roomId
-      ? { generation: marker.value.generation, marker: true }
+    if (incomplete.ok) {
+      return incomplete.value.roomId === roomId
+        ? { generation: incomplete.value.generation, marker: 'incomplete' }
+        : null;
+    }
+
+    const kept = parseGenerationMarkerKey(storageKey);
+
+    return kept.ok && kept.value.roomId === roomId
+      ? { generation: kept.value.generation, marker: 'generation' }
       : null;
   }
 
@@ -197,7 +252,7 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
     for (const storageKey of storageKeys) {
       const parts = keyGeneration(storageKey);
 
-      if (parts?.marker === true) {
+      if (parts?.marker === 'incomplete') {
         found.add(generationId(parts.generation));
       }
     }
@@ -205,7 +260,8 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
     return found;
   }
 
-  // Records go first and the marker last, so a removal that stops part way still marks the rest.
+  // Records go first, then the generation marker, and the incomplete marker last, so a removal that
+  // stops part way still marks the rest.
   function removeWhere(matches: (found: KeyGeneration) => boolean): Result<void, StorageFailure> {
     const keys = storage.keys();
 
@@ -213,7 +269,8 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
       return keys;
     }
 
-    const markers: string[] = [];
+    const generationMarkers: string[] = [];
+    const incompleteMarkers: string[] = [];
 
     for (const storageKey of keys.value) {
       const found = keyGeneration(storageKey);
@@ -222,8 +279,13 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
         continue;
       }
 
-      if (found.marker) {
-        markers.push(storageKey);
+      if (found.marker === 'generation') {
+        generationMarkers.push(storageKey);
+        continue;
+      }
+
+      if (found.marker === 'incomplete') {
+        incompleteMarkers.push(storageKey);
         continue;
       }
 
@@ -234,7 +296,7 @@ export function createRecordStore(storage: StoragePort, roomId: string): RecordS
       }
     }
 
-    for (const storageKey of markers) {
+    for (const storageKey of [...generationMarkers, ...incompleteMarkers]) {
       const removed = storage.removeItem(storageKey);
 
       if (!removed.ok) {

@@ -23,13 +23,19 @@ import {
 import type { FieldPatchTarget } from '@/core/field-patch';
 import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
 import { listedFaces, randomFaces, type FaceSource } from '@/core/formula-evaluate';
-import { decodePreset, windowSizeOf, type Preset } from '@/core/preset';
-import { NOTHING_ERASED, presetMoves, stripToTemplate } from '@/core/preset-migrate';
+import { blockIndex, linkTargetKey, type LinkTarget } from '@/core/link-target';
+import { decodePreset, windowSizeOf, type Preset, type Template } from '@/core/preset';
+import {
+  NOTHING_ERASED,
+  presetMoves,
+  stripToTemplate,
+  type PresetMoves,
+} from '@/core/preset-migrate';
 import {
   fieldValuesSchema,
+  parseRepKey,
   presetDataSchema,
   repDataSchema,
-  sheetDataSchema,
   type FieldValue,
   type VersionedRecord,
 } from '@/core/records';
@@ -58,13 +64,13 @@ import {
   type RoomMessage,
   type StateMessage,
 } from '@/core/room-messages';
-import { sheetKey } from '@/core/sheets';
+import { dependentSheetId, resolveSheet, sheetName } from '@/core/sheets';
 import {
   decodeSnapshotFileData,
   importSnapshot,
   type SnapshotImport,
 } from '@/core/snapshot-import';
-import { liveSheetShownTo, openTarget, tokensToUnlink } from '@/core/token-links';
+import { openTarget, tokensToUnlink } from '@/core/token-links';
 import {
   encodeSnapshot,
   readBackHolds,
@@ -105,11 +111,16 @@ import {
   type SnapshotCheckMessage,
   type SyncState,
 } from '@/core/ui-messages';
-import { rollShownTo, visibleRecords, type PlayerRole } from '@/core/visibility';
+import { rollShownTo, sheetShownTo, visibleRecords, type PlayerRole } from '@/core/visibility';
 import type { BroadcastEvent, BroadcastOptions, PartyMember, Platform } from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
 import { createCommitOutbox } from '@/replica/commit-outbox';
-import { createComposers, type ComposeContext } from '@/replica/composers';
+import {
+  blockLinkTombstones,
+  createComposers,
+  type ComposeContext,
+  type PresetUploadLoss,
+} from '@/replica/composers';
 import { createDiceExtension } from '@/replica/dice-extension';
 import { createPartyRoster, type RoomSender } from '@/replica/party-roster';
 import { createPendingQueue, type PendingEntry } from '@/replica/pending-queue';
@@ -184,7 +195,7 @@ export type EngineTiming = Pick<
 
 // Tests inject the timing, the ids, and the random source of the answer delay, the room copy
 // jitter and the dice. `newId` makes the engine's own ids, such as nonces; `newRecordId` makes the
-// sheet and instance ids of the records a command makes, such as an NPC copy's.
+// sheet and instance ids of the records a command makes, such as a duplicate's.
 export type ReplicaEngineOptions = {
   timing?: EngineTiming;
   newId?: () => string;
@@ -258,7 +269,7 @@ type DeltaContent = Part & { withdrawn: string[] };
 type EvaluatedRoll = Omit<RollContent, 'id' | 'roller'>;
 
 // A dice cell of one sheet, read at the request, waiting for its faces.
-type PreparedRoll = Pick<EvaluatedRoll, 'sheetId' | 'kind' | 'sheetName'> & {
+type PreparedRoll = Pick<EvaluatedRoll, 'sheetId' | 'hidden' | 'sheetName'> & {
   dice: PreparedDiceRoll;
 };
 
@@ -271,7 +282,7 @@ type DecodedPreset = { c: number; a: string; preset: Preset };
 // The commands a player with access sends as proposals (AD-4).
 type PlayerEditCommand = Extract<
   Command,
-  { type: 'field-patch' | 'repeat-row-add' | 'repeat-row-delete' }
+  { type: 'field-patch' | 'repeat-block-add' | 'repeat-block-delete' }
 >;
 
 export async function startReplicaEngine(
@@ -468,6 +479,9 @@ export async function startReplicaEngine(
   let roomCopyFree = ROOM_METADATA_BYTE_LIMIT;
   // What the last catch-up found in the room copy. A player with no GM answer shows data by it.
   let roomCopyOutcome: RoomCopyOutcome = null;
+  // AD-12: the room copy last read is of an older format. A GM sees the notice until a wipe or an
+  // import replaces the copy, and no routine write replaces it meanwhile.
+  let roomCopyOlder = false;
   // A write was skipped or stopped, or triggered during catch-up, so catch-up's end schedules one.
   let roomCopyOwed = false;
   let roomCopyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -513,6 +527,10 @@ export async function startReplicaEngine(
       notices.push('room-copy-not-saved');
     }
 
+    if (roomCopyOlder && role === 'GM') {
+      notices.push('room-copy-older-format');
+    }
+
     if (newerVersionSeen) {
       notices.push('new-version');
     }
@@ -528,7 +546,7 @@ export async function startReplicaEngine(
   function reject(
     id: string,
     reason: RejectionReason,
-    changed: { count: number; digest: string } = { count: 0, digest: NOTHING_ERASED },
+    changed: PresetUploadLoss = { count: 0, sheets: 0, digest: NOTHING_ERASED },
   ): void {
     if (sceneCommandIds.has(id)) {
       return;
@@ -558,10 +576,11 @@ export async function startReplicaEngine(
     }
 
     const shownRecords = [...shownPending.values()];
-    // GM visibility is the identity, so a GM builds no view to judge kinds by.
-    const known = role === 'GM' ? [] : shownView();
-    const records = visibleRecords(role, [...replica.values()], known);
-    const pendingRecords = visibleRecords(role, shownRecords, known);
+    // GM visibility is the identity, so a GM builds no view to judge templates by.
+    const known = role === 'GM' ? replica : shownView();
+    const preset = presetOf(known.get('preset'));
+    const records = visibleRecords(role, preset, [...replica.values()], known);
+    const pendingRecords = visibleRecords(role, preset, shownRecords, known);
     const largestCount = records.length + pendingRecords.length + 1;
 
     const envelope: ProjectionMessage = {
@@ -608,22 +627,23 @@ export async function startReplicaEngine(
     deliverOpen();
   }
 
-  // UX-DR21: a press on a token whose sheet this role cannot see opens nothing. Owlbear's filter
-  // already hides such an item, but a press can race a link or role change.
+  // UX-DR21: a press on a token whose target this role cannot see opens nothing. Owlbear's filter
+  // already hides such an item, but a press can race a link or role change. A repeat block target
+  // opens its sheet scrolled to it (CAP-14).
   function openFromToken(tokenId: string): void {
     if (stopped) {
       return;
     }
 
-    const sheetId = openTarget(replica, tokenId, role);
+    const target = openTarget(replica, presetOf(replica.get('preset')), tokenId, role);
 
-    if (sheetId === null) {
+    if (target === null) {
       return;
     }
 
     const id = newId();
 
-    heldOpen = { id, sheetId };
+    heldOpen = { id, sheetId: target.sheetId, instanceId: target.instanceId };
     heldOpenUntil = Date.now() + timing.openRequestTtlMs;
     // No window opens for it, so a window opened by hand later does not jump to it.
     platform.action.open().catch((error) => {
@@ -649,12 +669,17 @@ export async function startReplicaEngine(
   }
 
   function dropStaleOpen(): void {
-    if (
-      heldOpen !== null &&
-      (Date.now() >= heldOpenUntil || !liveSheetShownTo(replica, heldOpen.sheetId, role))
-    ) {
+    if (heldOpen !== null && (Date.now() >= heldOpenUntil || !openTargetShown(heldOpen))) {
       heldOpen = null;
     }
+  }
+
+  // The sheet is one this role sees, and the repeat block, when the request names one, is live.
+  function openTargetShown(target: LinkTarget): boolean {
+    return (
+      sheetShownTo(replica, presetOf(replica.get('preset')), target.sheetId, role) &&
+      (target.instanceId === null || blockIndex(replica.values()).has(linkTargetKey(target)))
+    );
   }
 
   function dropOpen(id: string): void {
@@ -664,15 +689,16 @@ export async function startReplicaEngine(
   }
 
   // The records as the windows show them: the replica, with the pending view over it. A sheet's
-  // kind is read from here, so a row is judged by its sheet even when the sheet is not in the batch.
-  function shownView(): VersionedRecord[] {
+  // template is read from here, so a row is judged by its sheet even when the sheet is not in the
+  // batch.
+  function shownView(): Map<string, VersionedRecord> {
     const view = new Map(replica);
 
     for (const [key, record] of shownPending) {
       view.set(key, record);
     }
 
-    return [...view.values()];
+    return view;
   }
 
   function emitDelta(records: readonly VersionedRecord[]): void {
@@ -738,7 +764,7 @@ export async function startReplicaEngine(
   // in the menu when it applies. Records that change nothing leave the filters as they were.
   function refreshTokenMenu(): void {
     if (tokenMenu !== null && !stopped && sync.firstCatchUpDone) {
-      tokenMenu.update(replica, role);
+      tokenMenu.update(replica, presetOf(replica.get('preset')), role);
     }
   }
 
@@ -855,14 +881,18 @@ export async function startReplicaEngine(
     return { records: [...sent.values()], pending: changes.records, withdrawn: changes.withdrawn };
   }
 
-  // A record can become visible or stop being visible without changing itself: a character's rows
-  // when its sheet arrives, a link that now points to an NPC. So a player's delta compares the whole
-  // visible set with the one the windows hold.
+  // A record can become visible or stop being visible without changing itself: a sheet's rows when
+  // its sheet arrives, a link that now points to a hidden sheet, every sheet when the preset hides
+  // its template. So a player's delta compares the whole visible set with the one the windows hold.
   function playerDelta(records: readonly VersionedRecord[], changes: PendingChanges): DeltaContent {
     const known = shownView();
+    const preset = presetOf(known.get('preset'));
 
     const visibleNow = new Map(
-      visibleRecords(role, [...replica.values()], known).map((record) => [record.k, record]),
+      visibleRecords(role, preset, [...replica.values()], known).map((record) => [
+        record.k,
+        record,
+      ]),
     );
 
     const sent = new Map<string, VersionedRecord>();
@@ -890,7 +920,7 @@ export async function startReplicaEngine(
 
     return {
       records: [...sent.values()],
-      pending: visibleRecords(role, changes.records, known),
+      pending: visibleRecords(role, preset, changes.records, known),
       withdrawn: [...new Set([...changes.withdrawn, ...gone])],
     };
   }
@@ -920,8 +950,8 @@ export async function startReplicaEngine(
     return { records: replica, mint: minter.mint, newRecordId: newRecordIdOf, isGmPlayer };
   }
 
-  // FR19: a GM owns no character, so neither this client's player id nor one the party lists as a
-  // GM takes an owner link.
+  // FR19: a GM owns no sheet, so neither this client's player id nor one the party lists as a GM
+  // takes an owner link.
   function isGmPlayer(playerId: string): boolean {
     return (
       playerId === ownPlayerId ||
@@ -1006,7 +1036,7 @@ export async function startReplicaEngine(
 
   function runCommand(id: string, command: Command): void {
     // AD-4: a player never merges its own edit, which would beat later GM edits of its key. Its
-    // field and repeat row edits wait for a GM client's check. Nothing else is a player's to write.
+    // field and repeat block edits wait for a GM client's check. Nothing else is a player's to write.
     if (role !== 'GM') {
       handlePlayerCommand(id, command);
 
@@ -1034,6 +1064,12 @@ export async function startReplicaEngine(
 
     if (command.type === 'snapshot-import') {
       void importFromSnapshot(id, command);
+
+      return;
+    }
+
+    if (command.type === 'wipe') {
+      void wipeRoom(id);
 
       return;
     }
@@ -1140,7 +1176,12 @@ export async function startReplicaEngine(
       return;
     }
 
-    send({ t: 'preset-uploaded', id, count: batch.value.count }).catch((error) => {
+    send({
+      t: 'preset-uploaded',
+      id,
+      count: batch.value.count,
+      sheets: batch.value.sheets,
+    }).catch((error) => {
       console.error('Muster Roll could not report a preset upload', error);
     });
   }
@@ -1187,9 +1228,9 @@ export async function startReplicaEngine(
       return;
     }
 
-    const { count, digest } = planned.value;
+    const { count, sheets, digest } = planned.value;
 
-    send({ t: 'snapshot-check-result', id: message.id, count, digest }).catch((error) => {
+    send({ t: 'snapshot-check-result', id: message.id, count, sheets, digest }).catch((error) => {
       console.error('Muster Roll could not answer a snapshot check', error);
     });
   }
@@ -1252,12 +1293,58 @@ export async function startReplicaEngine(
       return;
     }
 
-    const { records, count, digest } = planned.value;
+    const { records, count, sheets, digest } = planned.value;
 
     if (digest !== command.expectedDigest) {
-      reject(id, 'count-changed', { count, digest });
+      reject(id, 'count-changed', { count, sheets, digest });
 
       return;
+    }
+
+    if (await replaceGeneration(id, records, false)) {
+      send({ t: 'snapshot-imported', id }).catch((error) => {
+        console.error('Muster Roll could not report a snapshot import', error);
+      });
+    }
+  }
+
+  // AD-9, CAP-31: a wipe is a generation change with no records, `preset` included. The window
+  // asked its one confirmation. It works in a room whose data has an older format too: the room copy
+  // of an older format is written over, and the local keys of every format go.
+  async function wipeRoom(id: string): Promise<void> {
+    if (importing) {
+      reject(id, 'importing');
+
+      return;
+    }
+
+    if (persistence === null) {
+      reject(id, 'write-failed');
+
+      return;
+    }
+
+    if (await replaceGeneration(id, [], true)) {
+      send({ t: 'wiped', id }).catch((error) => {
+        console.error('Muster Roll could not report a wipe', error);
+      });
+    }
+  }
+
+  // AD-9: the second half of an import, and all of a wipe. The client takes a generation above
+  // every one it knows, saves it, writes the room copy, and only then sends `reset`. A failed save
+  // stops before the copy and `reset`, and the part saved goes, so nothing changes. A copy that
+  // cannot be saved does not stop it. `wipe` also deletes this room's keys of older storage formats.
+  // True once the new generation is the room's.
+  async function replaceGeneration(
+    id: string,
+    records: readonly VersionedRecord[],
+    wipe: boolean,
+  ): Promise<boolean> {
+    if (persistence === null) {
+      reject(id, 'write-failed');
+
+      return false;
     }
 
     const generation: Generation = {
@@ -1268,7 +1355,7 @@ export async function startReplicaEngine(
     if (!generationSchema.safeParse(generation).success) {
       reject(id, 'write-failed');
 
-      return;
+      return false;
     }
 
     // The commits held so far belong to the old generation, so they go out under it.
@@ -1280,13 +1367,13 @@ export async function startReplicaEngine(
       const removed = store.removeGeneration(generation);
 
       if (!removed.ok) {
-        console.error('Muster Roll could not remove a part saved import', removed.error);
+        console.error('Muster Roll could not remove a part saved generation', removed.error);
       }
 
       emitDelta([]);
       reject(id, 'write-failed');
 
-      return;
+      return false;
     }
 
     importing = true;
@@ -1300,7 +1387,7 @@ export async function startReplicaEngine(
       await writeImportCopy(generation);
 
       if (stopped) {
-        return;
+        return false;
       }
 
       // Another import of a higher generation won while the copy was written: this one is
@@ -1308,7 +1395,7 @@ export async function startReplicaEngine(
       if (importSuperseded(generation)) {
         reject(id, 'data-replaced');
 
-        return;
+        return false;
       }
 
       sendQueue.enqueue(SYNC_CHANNEL, resetMessage(generation), REMOTE).catch((error) => {
@@ -1320,15 +1407,17 @@ export async function startReplicaEngine(
       if (!removed.ok) {
         console.error('Muster Roll could not remove the replaced records', removed.error);
       }
+
+      if (wipe) {
+        removeOlderFormats(store);
+      }
     } finally {
       importing = false;
       // Deletions that waited out the import, whether it finished, stopped or was replaced.
       clearDeletedLinks();
     }
 
-    send({ t: 'snapshot-imported', id }).catch((error) => {
-      console.error('Muster Roll could not report a snapshot import', error);
-    });
+    return true;
   }
 
   // True once this client stopped, or left the generation it imports for a higher one.
@@ -1336,9 +1425,10 @@ export async function startReplicaEngine(
     return stopped || adoptTarget !== null || compareGenerations(ownGeneration, generation) !== 0;
   }
 
-  // AD-9: the incomplete marker first, then every record, then the marker off. A failed write
-  // leaves the marker, so a start never reads the part that was written, and raises the
-  // local-save notice.
+  // AD-9: the incomplete marker first, then the generation marker and every record, then the
+  // incomplete marker off. A failed write leaves the incomplete marker, so a start never reads the
+  // part that was written, and raises the local-save notice. The generation marker keeps a
+  // generation with no records, as after a wipe.
   function saveGeneration(
     store: RecordStore,
     generation: Generation,
@@ -1348,6 +1438,15 @@ export async function startReplicaEngine(
 
     if (!marked.ok) {
       console.error('Muster Roll could not mark a new generation', marked.error);
+      problemKeys.add(GENERATION_SAVE_MARK);
+
+      return false;
+    }
+
+    const kept = store.markGeneration(generation);
+
+    if (!kept.ok) {
+      console.error('Muster Roll could not keep a new generation', kept.error);
       problemKeys.add(GENERATION_SAVE_MARK);
 
       return false;
@@ -1444,11 +1543,21 @@ export async function startReplicaEngine(
     }
   }
 
-  // The read-back metadata of a verified write, or `null`.
+  // The read-back metadata of a verified write, or `null`. AD-9: it writes over a copy of a lower
+  // generation, one that does not decode and one of an older format, never one of a newer build.
   async function importCopyVerified(generation: Generation): Promise<JsonObject | null> {
     const metadata = await readMetadata(platform);
 
     if (metadata === null || importSuperseded(generation)) {
+      return null;
+    }
+
+    const current = readSnapshot(metadata);
+
+    if (!current.ok && current.error === 'newer-version') {
+      console.error('Muster Roll could not replace the room copy of a newer build');
+      raiseNewerVersion();
+
       return null;
     }
 
@@ -1535,7 +1644,7 @@ export async function startReplicaEngine(
     noteRoomCopy(after, false, before);
   }
 
-  // AD-4: a player's edit of a field or a repeat row becomes the entry of its key in the proposal
+  // AD-4: a player's edit of a field or a repeat block becomes the entry of its key in the proposal
   // queue. It is checked now against what the windows show, with the checks a GM client runs that
   // read no version, so a refusal comes at once. Made during catch-up, it waits for its `c`.
   function handlePlayerCommand(id: string, command: Command): void {
@@ -1548,7 +1657,7 @@ export async function startReplicaEngine(
     const view = pendingView();
 
     // No access refuses before the field is checked, so a read-only sheet says why.
-    if (!canEdit(view, command.sheetId, ownPlayerId)) {
+    if (!playerMayEdit(view, command.sheetId)) {
       reject(id, 'not-allowed');
 
       return;
@@ -1637,12 +1746,24 @@ export async function startReplicaEngine(
     return recordFitsOneMessage(stripped) ? ok(stripped) : err('too-large');
   }
 
-  // AD-14: a player's version keeps no value the character template no longer has in its row, so a
-  // value an older preset left in the base never goes out with it.
-  function strippedProposal(record: VersionedRecord): VersionedRecord {
-    const preset = presetOf(replica.get('preset'));
+  // AD-4, AD-18: the sheet's template lets this player edit it: a sheet of a sheet set it holds a
+  // live `acl:` of, or a player-editable single sheet. A hidden template takes no player edit.
+  function playerMayEdit(view: ReadonlyMap<string, VersionedRecord>, sheetId: string): boolean {
+    const policy = resolveSheet(view, presetOf(view.get('preset')), sheetId);
 
-    return preset === null ? record : stripToTemplate(record, preset.character);
+    return (
+      policy !== null &&
+      (policy.write === 'players-edit' ||
+        (policy.write === 'per-player' && canEdit(view, sheetId, ownPlayerId)))
+    );
+  }
+
+  // AD-14: a player's version keeps no value the template of its sheet no longer has in its row or
+  // repeat block, so a value an older preset left in the base never goes out with it.
+  function strippedProposal(record: VersionedRecord): VersionedRecord {
+    const template = templateOfKey(replica, presetOf(replica.get('preset')), record.k);
+
+    return template === null ? record : stripToTemplate(record, template);
   }
 
   // AD-7: the edits made during catch-up take their `c` now, over the records it brought, and only
@@ -1723,12 +1844,14 @@ export async function startReplicaEngine(
         }
 
         outbox.add([winner], [edit]);
+        unlinkRemovedBlock(winner);
 
         break;
       }
 
       case 'commit-existing':
         outbox.add([verdict.record], [edit]);
+        unlinkRemovedBlock(verdict.record);
         break;
       case 'denied':
         sendRoom(rejectMessage(ownGeneration, edit, { reason: 'denied' }));
@@ -1749,6 +1872,24 @@ export async function startReplicaEngine(
 
       default:
         unknownVerdict(verdict);
+    }
+  }
+
+  // AD-19: the GM client that commits a player's removal of a repeat block tombstones the links to
+  // it in the next batch.
+  function unlinkRemovedBlock(record: VersionedRecord): void {
+    const parts = record.d === null ? parseRepKey(record.k) : null;
+
+    if (parts === null) {
+      return;
+    }
+
+    const applied = apply(blockLinkTombstones(liveContext(), parts.sheetId, parts.instanceId));
+
+    if (applied.length > 0) {
+      emitDelta(applied);
+      sendCommits(applied);
+      scheduleRoomCopy();
     }
   }
 
@@ -1872,25 +2013,19 @@ export async function startReplicaEngine(
     void rollWithDice(message.id, prepared.value, local.value);
   }
 
+  // AD-13, AD-18: `hidden` is computed once here, from the sheet's template, and every output of the
+  // roll uses it. A player never rolls a hidden sheet, as it never sees one.
   function prepareRoll(message: RollRequestMessage): Result<PreparedRoll, RollOutcome> {
     const view = pendingView();
-    const sheet = sheetDataSchema.safeParse(view.get(sheetKey(message.sheetId))?.d);
-
-    // A player never rolls an NPC, as it never sees one.
-    if (!sheet.success || !rollShownTo(role, sheet.data.kind)) {
-      return err({ code: 'refused' });
-    }
-
     const preset = presetOf(view.get('preset'));
+    const policy = resolveSheet(view, preset, message.sheetId);
 
-    if (preset === null) {
+    if (policy === null || !rollShownTo(role, policy.hidden)) {
       return err({ code: 'refused' });
     }
-
-    const { kind, name } = sheet.data;
 
     const dice = prepareDiceRoll(
-      kind === 'pc' ? preset.character : preset.npc,
+      policy.template,
       view,
       message.sheetId,
       message.place,
@@ -1901,7 +2036,13 @@ export async function startReplicaEngine(
       return err(rollFailure(dice.error));
     }
 
-    return ok({ sheetId: message.sheetId, kind, sheetName: name, dice: dice.value });
+    return ok({
+      sheetId: message.sheetId,
+      hidden: policy.hidden,
+      // "" for an empty name: every client shows the fallback label.
+      sheetName: sheetName(view, preset, message.sheetId) ?? '',
+      dice: dice.value,
+    });
   }
 
   // TASK-36: the faces come from the dice extension of this client when it is ready and can roll
@@ -1950,7 +2091,7 @@ export async function startReplicaEngine(
       readiness === 'absent' ||
       readiness === 'refused' ||
       stopped ||
-      !rollShownTo(role, prepared.kind)
+      !rollShownTo(role, prepared.hidden)
     ) {
       await sendRoll(requestId, local, roller);
 
@@ -1967,7 +2108,7 @@ export async function startReplicaEngine(
       notation: dice.notation,
       playerId: ownPlayerId,
       playerName: roller,
-      rollTarget: dicePlusTarget(prepared.kind),
+      rollTarget: dicePlusTarget(prepared.hidden),
     });
 
     // A stopped page sends nothing more, and its wait was no failure of the extension.
@@ -2052,7 +2193,7 @@ export async function startReplicaEngine(
     }
 
     // The role can change while the name is read or the dice roll.
-    if (!rollShownTo(role, evaluated.kind)) {
+    if (!rollShownTo(role, evaluated.hidden)) {
       replyRoll(requestId, { code: 'refused' });
 
       return;
@@ -2090,10 +2231,10 @@ export async function startReplicaEngine(
     });
   }
 
-  // AD-13: a roll shows once per id, and a player shows only a character's. Only this background
-  // page shows it, so it shows with the window closed. It never enters the replica. A player
-  // cannot see an NPC, so an NPC roll from a player is forged, and the name shown is the one the
-  // party lists for the sender.
+  // AD-13: a roll shows once per id, and a player shows only one with `hidden: false`. Only this
+  // background page shows it, so it shows with the window closed. It never enters the replica. A
+  // player cannot see a hidden sheet, so a hidden roll from a player is forged, and the name shown is
+  // the one the party lists for the sender.
   function receiveRoll(message: RollMessage, sender: RollSender): void {
     if (recentRollIds.has(message.id)) {
       return;
@@ -2101,9 +2242,9 @@ export async function startReplicaEngine(
 
     recentRollIds.add(message.id);
 
-    const forged = sender.role !== 'GM' && message.kind === 'npc';
+    const forged = sender.role !== 'GM' && message.hidden;
 
-    if (forged || !rollShownTo(role, message.kind) || options.rollCopy === undefined) {
+    if (forged || !rollShownTo(role, message.hidden) || options.rollCopy === undefined) {
       return;
     }
 
@@ -2118,7 +2259,11 @@ export async function startReplicaEngine(
   // AD-7: an intent made during catch-up waits and takes `c` on exit. It is checked now against the
   // pending view, so a refusal comes at once.
   function queueIntent(id: string, command: Command): void {
-    if (command.type === 'preset-upload' || command.type === 'snapshot-import') {
+    if (
+      command.type === 'preset-upload' ||
+      command.type === 'snapshot-import' ||
+      command.type === 'wipe'
+    ) {
       reject(id, 'catching-up');
 
       return;
@@ -2411,7 +2556,7 @@ export async function startReplicaEngine(
 
     if (!read.ok) {
       console.error('Muster Roll could not read the room copy', read.error);
-      roomCopyOutcome = read.error === 'newer-version' ? 'newer' : 'unreadable';
+      roomCopyOutcome = outcomeOf(read.error);
       unreadableRoomCopy(metadata, read.error);
 
       return;
@@ -2748,6 +2893,10 @@ export async function startReplicaEngine(
       if (!removed.ok) {
         console.error('Muster Roll could not remove the replaced records', removed.error);
       }
+
+      // AD-9: a GM client that adopts a new generation, as after a wipe, drops this room's keys of
+      // older storage formats too.
+      removeOlderFormats(store);
     }
 
     adoptTarget = null;
@@ -2765,13 +2914,14 @@ export async function startReplicaEngine(
   }
 
   // A GM raises the not-saved notice for a copy it cannot read; a newer build's copy also raises
-  // the new-version notice. A player shows the catch-up outcome instead (Story 2.6).
+  // the new-version notice. A copy of an older format raises the GM's older-format notice instead,
+  // as only a wipe replaces it (AD-12). A player shows the catch-up outcome instead (Story 2.6).
   function unreadableRoomCopy(metadata: JsonObject, failure: SnapshotFailure): void {
     if (failure === 'newer-version') {
       raiseNewerVersion();
     }
 
-    if (role === 'GM') {
+    if (role === 'GM' && failure !== 'older-version') {
       failRoomCopy(metadata);
     } else {
       noteRoomCopy(metadata, false);
@@ -2814,7 +2964,9 @@ export async function startReplicaEngine(
   // changed.
   function noteRoomCopy(metadata: JsonObject, exists: boolean, before = roomCopySignature()): void {
     const usage = roomCopyUsage(metadata);
+    const read = readSnapshot(metadata);
 
+    roomCopyOlder = !read.ok && read.error === 'older-version';
     roomCopyExists = exists;
     roomCopyUsed = usage.usedBytes;
     roomCopyFree = usage.freeBytes;
@@ -2957,6 +3109,17 @@ export async function startReplicaEngine(
     if (persistAllOnExit) {
       persistAllOnExit = false;
 
+      // AD-9: a generation past the first is kept apart from its records, so one with no records
+      // survives a reload too.
+      const kept =
+        persistence === null || persistence.generation.n === 0
+          ? undefined
+          : persistence.store.markGeneration(persistence.generation);
+
+      if (kept !== undefined && !kept.ok) {
+        console.error('Muster Roll could not keep its generation', kept.error);
+      }
+
       for (const record of replica.values()) {
         // The store can hold a newer record from another tab of this browser.
         const winner = merge(persist(record).record);
@@ -3035,12 +3198,13 @@ export async function startReplicaEngine(
   }
 
   // UX-DR29: once the records change, an entry the player may no longer make waits for no GM: its
-  // access was revoked, its sheet deleted or made an NPC, or the repeat row it edits removed. It is
+  // access was revoked, its sheet deleted or hidden, or the repeat block it edits removed. It is
   // checked against the replica after the whole batch, so a revoke and a re-grant in one batch drop
   // nothing. The values return in the same delta, and one notification covers every drop. A removal
-  // of a row that is gone already got what it asked for, so it drops with no notification.
-  // AD-14: after a preset change each entry first moves to the keys the new preset gives its
-  // values, as the GM's migration moves the rows: an entry with nothing that maps drops in silence.
+  // of a repeat block that is gone already got what it asked for, so it drops with no notification.
+  // AD-14: after a preset change each entry first moves to the keys the new form of its sheet's
+  // template gives its values, as the GM's migration moves the rows: an entry with nothing that maps
+  // drops in silence.
   function dropDisallowed(presetBefore: VersionedRecord | undefined): void {
     if (role === 'GM') {
       return;
@@ -3048,15 +3212,14 @@ export async function startReplicaEngine(
 
     const context = proposalContext(replica);
     const before = presetBefore === replica.get('preset') ? null : presetOf(presetBefore);
-
-    const moves =
-      before === null || context.preset === null
-        ? null
-        : presetMoves(before.character, context.preset.character);
-
     let denied = false;
 
     for (const found of proposals.entries()) {
+      const moves =
+        before === null || context.preset === null
+          ? null
+          : templateMoves(replica, before, context.preset, found.k);
+
       const parts = moves === null ? null : movedPatches(found.k, found.patch, moves);
 
       if (parts === null || (parts.length === 1 && parts[0]?.k === found.k)) {
@@ -3093,18 +3256,17 @@ export async function startReplicaEngine(
     }
   }
 
-  // AD-14: the entry loses the fields the current preset no longer has in its row, in silence. An
-  // entry with nothing left drops in silence too, and one that lost fields or moved goes out again,
-  // so the GM never answers its older version. True when a drop needs the denied notification.
+  // AD-14: the entry loses the fields its sheet's template no longer has in its row or repeat
+  // block, in silence. An entry with nothing left drops in silence too, and one that lost fields or
+  // moved goes out again, so the GM never answers its older version. True when a drop needs the
+  // denied notification.
   function recheckProposal(
     found: ProposalEntry,
     context: ProposalContext,
     moved: boolean,
   ): boolean {
-    const patch =
-      context.preset === null
-        ? found.patch
-        : strippedPatch(found.k, found.patch, context.preset.character);
+    const template = templateOfKey(replica, context.preset, found.k);
+    const patch = template === null ? found.patch : strippedPatch(found.k, found.patch, template);
 
     if (patch === null) {
       proposals.drop(found.k);
@@ -3808,6 +3970,54 @@ async function readMetadata(platform: ReplicaEnginePlatform): Promise<JsonObject
   }
 }
 
+// AD-9, AD-11: no migration reads an older storage format, so its keys of this room go.
+function removeOlderFormats(store: RecordStore): void {
+  const removed = store.removeOlderFormats();
+
+  if (!removed.ok) {
+    console.error('Muster Roll could not remove the records of an older format', removed.error);
+  }
+}
+
+// AD-14: where the values of a `row:` or `rep:` key go when its sheet's template changes from its
+// form in `before` to its form in `after`. A template matches by its `id` and `kind`. `null` when
+// either preset has no template for the sheet, or the template changed its `id` or `kind`.
+function templateMoves(
+  records: ReadonlyMap<string, VersionedRecord>,
+  before: Preset,
+  after: Preset,
+  key: string,
+): PresetMoves | null {
+  const old = templateOfKey(records, before, key);
+  const now = templateOfKey(records, after, key);
+
+  return old === null || now === null || old.id !== now.id || old.kind !== now.kind
+    ? null
+    : presetMoves(old, now);
+}
+
+// AD-12: what a room copy that cannot be read shows a player: a newer build's, an older format's,
+// or one that does not decode.
+function outcomeOf(failure: SnapshotFailure): RoomCopyOutcome {
+  if (failure === 'newer-version') {
+    return 'newer';
+  }
+
+  return failure === 'older-version' ? 'older' : 'unreadable';
+}
+
+// AD-18: the template of the sheet a `row:` or `rep:` key belongs to, or `null` when no template
+// owns that sheet.
+function templateOfKey(
+  records: ReadonlyMap<string, VersionedRecord>,
+  preset: Preset | null,
+  key: string,
+): Template | null {
+  const sheetId = dependentSheetId(key, { d: null });
+
+  return sheetId === null ? null : (resolveSheet(records, preset, sheetId)?.template ?? null);
+}
+
 function higherGeneration(first: Generation, second: Generation): Generation {
   return compareGenerations(first, second) >= 0 ? first : second;
 }
@@ -3815,32 +4025,32 @@ function higherGeneration(first: Generation, second: Generation): Generation {
 function isPlayerEdit(command: Command): command is PlayerEditCommand {
   return (
     command.type === 'field-patch' ||
-    command.type === 'repeat-row-add' ||
-    command.type === 'repeat-row-delete'
+    command.type === 'repeat-block-add' ||
+    command.type === 'repeat-block-delete'
   );
 }
 
 // The patch an edit makes, read from the record it composed: a field's value as the composer
-// accepted it, a new row with its order and cells, or a removal.
+// accepted it, a new repeat block with its order and cells, or a removal.
 function patchOf(command: PlayerEditCommand, record: VersionedRecord): ProposalPatch {
-  if (command.type === 'repeat-row-delete') {
+  if (command.type === 'repeat-block-delete') {
     return { kind: 'remove' };
   }
 
-  const repeatRow = record.k.startsWith('rep:') ? repDataSchema.parse(record.d) : null;
+  const block = record.k.startsWith('rep:') ? repDataSchema.parse(record.d) : null;
 
-  if (command.type === 'repeat-row-add' && repeatRow !== null) {
-    return { kind: 'add', d: repeatRow };
+  if (command.type === 'repeat-block-add' && block !== null) {
+    return { kind: 'add', d: block };
   }
 
-  const values = repeatRow === null ? fieldValuesSchema.parse(record.d) : repeatRow.cells;
+  const values = block === null ? fieldValuesSchema.parse(record.d) : block.cells;
   const fieldId = command.type === 'field-patch' ? command.fieldId : '';
 
   return { kind: 'fields', values: { [fieldId]: values[fieldId] ?? null } };
 }
 
-// The commands that make a player's entry again as a GM's own edit: a removal, or a new row and
-// then its cells, or the fields it sets and clears.
+// The commands that make a player's entry again as a GM's own edit: a removal, or a new repeat
+// block and then its cells, or the fields it sets and clears.
 function commandsOf(entry: ProposalEntry): PlayerEditCommand[] {
   const [form, sheetId = '', id = '', instanceId = ''] = entry.k.split(':');
 
@@ -3858,10 +4068,10 @@ function commandsOf(entry: ProposalEntry): PlayerEditCommand[] {
 
   switch (entry.patch.kind) {
     case 'remove':
-      return [{ type: 'repeat-row-delete', sheetId, sectionId: id, instanceId }];
+      return [{ type: 'repeat-block-delete', sheetId, sectionId: id, instanceId }];
     case 'add':
       return [
-        { type: 'repeat-row-add', sheetId, sectionId: id, instanceId },
+        { type: 'repeat-block-add', sheetId, sectionId: id, instanceId },
         ...fieldPatches(entry.patch.d.cells),
       ];
     case 'fields':
@@ -3963,7 +4173,7 @@ function evaluatedWith(
 
   return ok({
     sheetId: prepared.sheetId,
-    kind: prepared.kind,
+    hidden: prepared.hidden,
     sheetName: prepared.sheetName,
     cell: prepared.dice.cell,
     result: rolled.value,

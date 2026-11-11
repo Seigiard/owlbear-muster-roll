@@ -124,6 +124,8 @@ export const copy = {
     `${roller}: ${sheet}, ${cell} — ${result}`,
   rollSuccess: 'успех',
   rollFailure: 'провал',
+  // The one fallback label of an empty sheet name, wherever a name shows.
+  unnamed: 'Без имени',
   rollFailed: 'Бросок не удался. Попробуйте ещё раз.',
   // Under a dice button while its roll waits, as for the dice extension's dice (TASK-36).
   rolling: 'Бросаем…',

@@ -50,7 +50,7 @@ const TIMING: Timing = {
   snapshotImportTimeoutMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 const GENERATION = { n: 0, a: '' };
@@ -61,30 +61,63 @@ const PLAYER_SOCKET = 'p-socket';
 const S = PLAYER_SOCKET;
 const PLAYER_ID = 'player-a';
 
+// "pc" is a sheet set whose repeat blocks a token can link to. "npc" is a single sheet only GMs
+// see, "rules" one players see but do not edit, and "camp" one every player edits.
 const PRESET: Preset = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'text', id: 'note' },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'name' }],
+            [
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'text', id: 'note' },
+            ],
           ],
-        ],
-      },
-      {
-        repeat: true,
-        rows: [
-          [
-            { kind: 'field', type: 'text', id: 'item' },
-            { kind: 'field', type: 'number', id: 'qty' },
+        },
+        {
+          repeat: true,
+          tokens: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'item' },
+              { kind: 'field', type: 'number', id: 'qty' },
+            ],
           ],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      players: 'edit',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }],
+    },
+    {
+      id: 'rules',
+      kind: 'single',
+      title: 'Правила',
+      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'rule' }]] }],
+    },
+    {
+      id: 'camp',
+      kind: 'single',
+      title: 'Лагерь',
+      players: 'edit',
+      sections: [
+        { rows: [[{ kind: 'field', type: 'number', id: 'food' }]] },
+        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'cart' }]] },
+      ],
+    },
+  ],
 };
 
 const STR_ROW: VersionedRecord = { k: 'row:brok:str', d: { str: 10 }, c: 2, a: 'seed' };
@@ -98,12 +131,11 @@ const SWORD: VersionedRecord = {
 
 const REMOVED: VersionedRecord = { k: 'rep:brok:item:r2', d: null, c: 3, a: 'seed' };
 
-// "Брок" is a character "player-a" may edit, "Кира" one it may not, and "Скелет" an NPC.
+// "Брок" is a sheet "player-a" may edit, and "Кира" one it may not.
 const BASE: readonly VersionedRecord[] = [
   { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
-  { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 1, a: 'seed' },
-  { k: 'sheet:kira', d: { kind: 'pc', name: 'Кира', order: 1 }, c: 1, a: 'seed' },
-  { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'seed' },
+  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
+  { k: 'sheet:kira', d: { set: 'pc', order: 1 }, c: 1, a: 'seed' },
   { k: `acl:brok:${PLAYER_ID}`, d: { name: 'Оля' }, c: 1, a: 'seed' },
   STR_ROW,
   SWORD,
@@ -187,7 +219,7 @@ describe('a GM client answers a proposal', () => {
     });
   });
 
-  test("that removes a removed repeat row: commits the existing tombstone with the proposer's echo", async () => {
+  test("that removes a removed repeat block: commits the existing tombstone with the proposer's echo", async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a');
@@ -207,11 +239,15 @@ describe('a GM client answers a proposal', () => {
 
   test.each<[string, VersionedRecord]>([
     ['an edit of a sheet with no access', { k: 'row:kira:str', d: { str: 1 }, c: 1, a: S }],
-    ['an edit of an NPC', { k: 'row:skel:str', d: { str: 1 }, c: 1, a: S }],
-    ['an edit of a removed repeat row', { ...REMOVED, d: { order: 0, cells: {} }, c: 9, a: S }],
-    ['a field id absent from the row', { ...STR_ROW, d: { qty: 1 }, c: 3, a: S }],
+    // AD-4: `players: "edit"` gives no write on a sheet only GMs see.
+    ['an edit of a single sheet only GMs see', { k: 'row:npc:str', d: { str: 1 }, c: 1, a: S }],
+    [
+      'an edit of a single sheet no player edits',
+      { k: 'row:rules:rule', d: { rule: 'Я' }, c: 1, a: S },
+    ],
+    ['an edit of a removed repeat block', { ...REMOVED, d: { order: 0, cells: {} }, c: 9, a: S }],
     ['a value of another JSON type', { ...STR_ROW, d: { str: '11' }, c: 3, a: S }],
-    ['a GM key form', { k: 'link:token-1', d: 'brok', c: 1, a: S }],
+    ['a GM key form', { k: 'link:token-1', d: { s: 'brok' }, c: 1, a: S }],
     ['a removal of a plain row', { ...STR_ROW, d: null, c: 3, a: S }],
     ["an author that is not the sender's", { ...STR_ROW, d: { str: 11 }, c: 3, a: 'gm-b' }],
     ['a c far past the current one', { ...STR_ROW, d: { str: 11 }, c: 2_000_000, a: S }],
@@ -242,11 +278,85 @@ describe('a GM client answers a proposal', () => {
     });
   });
 
+  test('of a single sheet every player edits, from a player with no access: commits it', async () => {
+    // #given
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a');
+    const proposed: VersionedRecord = { k: 'row:camp:food', d: { food: 3 }, c: 1, a: S };
+
+    joinPlayerSocket(room);
+
+    // #when
+    propose(room, proposed);
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 1);
+
+    // #then
+    expect({ sent: heardOf(room, 'gm-a', 'commit'), stored: stored(gm, proposed.k) }).toEqual({
+      sent: [commit([proposed], [{ k: proposed.k, c: 1, a: S }])],
+      stored: proposed,
+    });
+  });
+
+  test('that removes a repeat block: tombstones the links to it too, and keeps other links', async () => {
+    // #given: AD-19, t1 and t2 link the sword and t3 links the sheet.
+    const room = openRoom();
+
+    const sheetLink: VersionedRecord = { k: 'link:t3', d: { s: 'brok' }, c: 1, a: 'seed' };
+
+    const links: VersionedRecord[] = [
+      { k: 'link:t1', d: { s: 'brok', i: 'r1' }, c: 2, a: 'seed' },
+      { k: 'link:t2', d: { s: 'brok', i: 'r1' }, c: 1, a: 'seed' },
+      sheetLink,
+    ];
+
+    const gm = await startClient(room, 'gm-a', { seeded: [...BASE, ...links] });
+    const removal: VersionedRecord = { ...SWORD, d: null, c: 2, a: S };
+
+    joinPlayerSocket(room);
+
+    // #when
+    propose(room, removal);
+    await waitUntil(() => committedRecords(room, 'gm-a').length === 3);
+
+    // #then
+    const tombstones: VersionedRecord[] = [
+      { k: 'link:t1', d: null, c: 3, a: 'gm-a' },
+      { k: 'link:t2', d: null, c: 2, a: 'gm-a' },
+    ];
+
+    expect({
+      sent: committedRecords(room, 'gm-a'),
+      stored: links.map((link) => stored(gm, link.k)),
+    }).toEqual({
+      sent: [removal, ...tombstones],
+      stored: [...tombstones, sheetLink],
+    });
+  });
+
   test('with a c not above the current one: rejects it as stale with the current record', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a');
     const proposed: VersionedRecord = { ...STR_ROW, d: { str: 11 }, c: 2, a: PLAYER_SOCKET };
+
+    joinPlayerSocket(room);
+
+    // #when
+    propose(room, proposed);
+    await waitUntil(() => heardOf(room, 'gm-a', 'reject').length === 1);
+
+    // #then
+    expect({ sent: heardOf(room, 'gm-a', 'reject'), stored: stored(gm, STR_ROW.k) }).toEqual({
+      sent: [{ ...reject(proposed, 'stale'), current: STR_ROW }],
+      stored: STR_ROW,
+    });
+  });
+
+  test('with a field id absent from the row: rejects it as stale with the current record', async () => {
+    // #given: AD-4, as a player whose preset is older sends it, so it applies its patch again.
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a');
+    const proposed: VersionedRecord = { ...STR_ROW, d: { qty: 1 }, c: 3, a: PLAYER_SOCKET };
 
     joinPlayerSocket(room);
 
@@ -390,7 +500,7 @@ describe('a GM client answers a proposal', () => {
     room.room.postRemote(
       SYNC_CHANNEL,
       {
-        v: 1,
+        v: 2,
         g: { n: 1, a: 'other' },
         t: 'propose',
         records: [{ ...STR_ROW, d: { str: 11 }, c: 3, a: PLAYER_SOCKET }],
@@ -445,7 +555,7 @@ describe("a player's edit", () => {
     }).toEqual({ sent: [proposed], shown: proposed, replica: STR_ROW, rejection: undefined });
   });
 
-  test('of a character with no access: refused as not-allowed and never proposed', async () => {
+  test('of a sheet of a sheet set with no access: refused as not-allowed and never proposed', async () => {
     // #given
     const { room, player } = await playerWithSilentGm();
 
@@ -467,8 +577,73 @@ describe("a player's edit", () => {
     });
   });
 
+  test('of a single sheet every player edits: proposed with no access', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm();
+
+    // #when
+    send(player, {
+      type: 'field-patch',
+      sheetId: 'camp',
+      target: { kind: 'row', rowId: 'food' },
+      fieldId: 'food',
+      value: 3,
+    });
+
+    await waitUntil(() => proposals(room).length === 1);
+
+    // #then
+    expect(proposals(room)).toEqual([{ k: 'row:camp:food', d: { food: 3 }, c: 1, a: PLAYER_ID }]);
+  });
+
   test.each<[string, Command]>([
-    ['a rename', { type: 'sheet-rename', sheetId: 'brok', name: 'Я' }],
+    [
+      'only GMs see',
+      {
+        type: 'field-patch',
+        sheetId: 'npc',
+        target: { kind: 'row', rowId: 'str' },
+        fieldId: 'str',
+        value: 1,
+      },
+    ],
+    [
+      'no player edits',
+      {
+        type: 'field-patch',
+        sheetId: 'rules',
+        target: { kind: 'row', rowId: 'rule' },
+        fieldId: 'rule',
+        value: 'Я',
+      },
+    ],
+  ])('of a single sheet %s: refused as not-allowed and never proposed', async (_name, command) => {
+    // #given
+    const { room, player } = await playerWithSilentGm();
+
+    // #when
+    const id = send(player, command);
+    await waitUntil(() => rejection(player, id) !== undefined);
+
+    // #then
+    expect({ reason: rejection(player, id), sent: proposals(room) }).toEqual({
+      reason: 'not-allowed',
+      sent: [],
+    });
+  });
+
+  test.each<[string, Command]>([
+    ['a sheet create', { type: 'sheet-create', sheetId: 'newone', set: 'pc' }],
+    [
+      'a duplicate',
+      {
+        type: 'repeat-block-duplicate',
+        sheetId: 'brok',
+        sectionId: 'item',
+        instanceId: 'r1',
+        count: 1,
+      },
+    ],
     ['an access change', { type: 'acl-set', sheetId: 'brok', playerId: 'x', name: '', on: true }],
     ['a sheet delete', { type: 'sheet-delete', sheetId: 'brok' }],
   ])('of another kind, %s: refused as not-allowed', async (_name, command) => {
@@ -784,12 +959,17 @@ describe("a player's edit", () => {
   });
 });
 
-describe("a player's repeat row", () => {
-  test('add: one entry holding order and cells, which a field edit of the row joins', async () => {
+describe("a player's repeat block", () => {
+  test('add: one entry holding order and cells, which a field edit of the repeat block joins', async () => {
     // #given
     const { room, player } = await playerWithSilentGm();
 
-    send(player, { type: 'repeat-row-add', sheetId: 'brok', sectionId: 'item', instanceId: 'r9' });
+    send(player, {
+      type: 'repeat-block-add',
+      sheetId: 'brok',
+      sectionId: 'item',
+      instanceId: 'r9',
+    });
     await waitUntil(() => proposals(room).length === 1);
 
     // #when
@@ -814,7 +994,12 @@ describe("a player's repeat row", () => {
     // #given
     const { room, player } = await playerWithSilentGm();
 
-    send(player, { type: 'repeat-row-add', sheetId: 'brok', sectionId: 'item', instanceId: 'r9' });
+    send(player, {
+      type: 'repeat-block-add',
+      sheetId: 'brok',
+      sectionId: 'item',
+      instanceId: 'r9',
+    });
     await waitUntil(() => proposals(room).length === 1);
 
     const current: VersionedRecord = {
@@ -842,7 +1027,7 @@ describe("a player's repeat row", () => {
     const { room, player } = await playerWithSilentGm();
 
     send(player, {
-      type: 'repeat-row-delete',
+      type: 'repeat-block-delete',
       sheetId: 'brok',
       sectionId: 'item',
       instanceId: 'r1',
@@ -1048,7 +1233,7 @@ describe("a player's entry over its lifetime", () => {
 
     // #when
     answer(room, {
-      v: 1,
+      v: 2,
       g: GENERATION,
       t: 'state',
       r,
@@ -1112,7 +1297,7 @@ describe("a player's entry over its lifetime", () => {
     }).toEqual({ pending: 0, notifications: [DENIED] });
   });
 
-  test('of a repeat row the GM removes: dropped with the notification', async () => {
+  test('of a repeat block the GM removes: dropped with the notification', async () => {
     // #given
     const { room, player } = await playerWithSilentGm({ editDeniedQuietMs: 0 });
 
@@ -1131,7 +1316,7 @@ describe("a player's entry over its lifetime", () => {
     }).toEqual({ shown: null, notifications: [DENIED] });
   });
 
-  test('removing a repeat row the GM removes too: dropped with no notification and never resent', async () => {
+  test('removing a repeat block the GM removes too: dropped with no notification and never resent', async () => {
     // #given: an entry with no answer is resent every 40 ms.
     const { room, player } = await playerWithSilentGm({
       editDeniedQuietMs: 0,
@@ -1140,7 +1325,7 @@ describe("a player's entry over its lifetime", () => {
     });
 
     send(player, {
-      type: 'repeat-row-delete',
+      type: 'repeat-block-delete',
       sheetId: 'brok',
       sectionId: 'item',
       instanceId: 'r1',
@@ -1203,7 +1388,7 @@ describe("a player's entry over its lifetime", () => {
 
     // #when
     answer(room, {
-      v: 1,
+      v: 2,
       g: { n: 1, a: 'gm-a' },
       t: 'state',
       r,
@@ -1255,7 +1440,7 @@ describe("a player's entry over its lifetime", () => {
     await waitUntil(() => player.store.$sync.get().gmLink === 'offline');
 
     // #when
-    answer(room, { v: 1, g: GENERATION, t: 'alive', digest: 0 });
+    answer(room, { v: 2, g: GENERATION, t: 'alive', digest: 0 });
     await waitUntil(() => proposals(room).length === 2);
 
     // #then
@@ -1290,7 +1475,12 @@ describe("a player's entry over its lifetime", () => {
 
     send(player, strEdit('str', 11));
     send(player, swordEdit(3));
-    send(player, { type: 'repeat-row-add', sheetId: 'brok', sectionId: 'item', instanceId: 'r9' });
+    send(player, {
+      type: 'repeat-block-add',
+      sheetId: 'brok',
+      sectionId: 'item',
+      instanceId: 'r9',
+    });
     await waitUntil(() => proposals(room).length === 3 && pendingKeys(player).length === 3);
 
     // #when
@@ -1331,7 +1521,7 @@ describe("a player's entry over its lifetime", () => {
 });
 
 describe('a player and a GM client together', () => {
-  test("apply a player's field edit, row add and row removal on both clients", async () => {
+  test("apply a player's field edit, repeat block add and repeat block removal on both clients", async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a');
@@ -1340,9 +1530,14 @@ describe('a player and a GM client together', () => {
 
     // #when
     send(player, strEdit('str', 11));
-    send(player, { type: 'repeat-row-add', sheetId: 'brok', sectionId: 'item', instanceId: 'r9' });
     send(player, {
-      type: 'repeat-row-delete',
+      type: 'repeat-block-add',
+      sheetId: 'brok',
+      sectionId: 'item',
+      instanceId: 'r9',
+    });
+    send(player, {
+      type: 'repeat-block-delete',
       sheetId: 'brok',
       sectionId: 'item',
       instanceId: 'r1',
@@ -1470,7 +1665,7 @@ function joinPlayerSocket(room: Room): void {
 function propose(room: Room, record: VersionedRecord, from = PLAYER_SOCKET): void {
   room.room.postRemote(
     SYNC_CHANNEL,
-    { v: 1, g: GENERATION, t: 'propose', records: [record] },
+    { v: 2, g: GENERATION, t: 'propose', records: [record] },
     from,
   );
 }
@@ -1485,12 +1680,12 @@ function commit(
   acks?: { k: string; c: number; a: string }[],
 ): JsonValue {
   return acks === undefined
-    ? { v: 1, g: GENERATION, t: 'commit', records }
-    : { v: 1, g: GENERATION, t: 'commit', records, acks };
+    ? { v: 2, g: GENERATION, t: 'commit', records }
+    : { v: 2, g: GENERATION, t: 'commit', records, acks };
 }
 
 function reject(edit: { k: string; c: number; a: string }, reason: 'denied' | 'stale') {
-  return { v: 1, g: GENERATION, t: 'reject', k: edit.k, c: edit.c, a: edit.a, reason };
+  return { v: 2, g: GENERATION, t: 'reject', k: edit.k, c: edit.c, a: edit.a, reason };
 }
 
 function strEdit(fieldId: string, value: JsonValue): Command {
@@ -1517,6 +1712,13 @@ function swordEdit(qty: number): Command {
 function heardOf(room: Room, from: string, t: string): JsonValue[] {
   return room.heard.flatMap((message) =>
     message.from === from && Object(message.data).t === t ? [message.data] : [],
+  );
+}
+
+// The records one client sent to the room in commits, in send order.
+function committedRecords(room: Room, from: string): VersionedRecord[] {
+  return heardOf(room, from, 'commit').flatMap((data) =>
+    recordSchema.array().parse(Object(data).records),
   );
 }
 

@@ -4,7 +4,7 @@ import { deflateSync, strToU8 } from 'fflate';
 
 import { deflateToBase64 } from '@/core/deflate';
 import type { JsonObject } from '@/core/json';
-import { encodePreset, type Preset } from '@/core/preset';
+import { encodePreset, type Preset, type PresetSection } from '@/core/preset';
 import { NOTHING_ERASED } from '@/core/preset-migrate';
 import type { VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
@@ -52,7 +52,7 @@ const TIMING: Timing = {
   snapshotImportTimeoutMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const SNAPSHOT_KEY = 'app.muster-roll/snapshot';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
@@ -62,10 +62,27 @@ const GENERATION: Generation = { n: 0, a: '' };
 const DEFAULT: WindowSizeCall = { width: 600, height: 600 };
 const WIDE: WindowSizeCall = { width: 900, height: 700 };
 
+const NAME_SECTION: PresetSection = { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] };
+const STR_SECTION: PresetSection = { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] };
+
 const PLAIN: Preset = {
-  v: 1,
-  character: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [NAME_SECTION, STR_SECTION],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+  ],
 };
 
 const SIZED: Preset = { ...PLAIN, window: WIDE };
@@ -73,7 +90,11 @@ const SIZED: Preset = { ...PLAIN, window: WIDE };
 // The same size as SIZED, and a new section title.
 const SIZED_RETITLED: Preset = {
   ...SIZED,
-  character: { sections: [{ title: 'Сила', rows: PLAIN.character.sections[0]?.rows ?? [] }] },
+  templates: SIZED.templates.map((template) =>
+    template.id === 'pc'
+      ? { ...template, sections: [NAME_SECTION, { ...STR_SECTION, title: 'Сила' }] }
+      : template,
+  ),
 };
 
 type Client = {
@@ -246,7 +267,7 @@ describe('the window size after a preset change', () => {
 
     const newer: VersionedRecord = {
       k: 'preset',
-      d: deflateToBase64(JSON.stringify({ v: 2, layout: 'unknown' })),
+      d: deflateToBase64(JSON.stringify({ v: 3, layout: 'unknown' })),
       c: 2,
       a: 'gm-x',
     };
@@ -254,7 +275,7 @@ describe('the window size after a preset change', () => {
     room.join({ id: 'gm-x', connectionId: 'gm-x', name: 'gm-x', role: 'GM' });
 
     // #when
-    room.postRemote(SYNC_CHANNEL, { v: 1, g: GENERATION, t: 'commit', records: [newer] }, 'gm-x');
+    room.postRemote(SYNC_CHANNEL, { v: 2, g: GENERATION, t: 'commit', records: [newer] }, 'gm-x');
     await waitUntil(() => gm.store.$records.get().get('preset')?.c === 2);
     await pause(20);
 
@@ -307,7 +328,7 @@ describe('the window size after a preset change', () => {
     ).length;
 
     // #when
-    send(gm, { type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
+    send(gm, { type: 'sheet-create', sheetId: 'brok', set: 'pc' });
     await waitUntil(() => gm.store.$records.get().has('sheet:brok'));
 
     // #then
@@ -386,6 +407,7 @@ function upload(preset: Preset): Command {
     type: 'preset-upload',
     data: encodePreset(preset),
     expectedCount: 0,
+    expectedSheets: 0,
     expectedDigest: NOTHING_ERASED,
   };
 }
@@ -393,7 +415,7 @@ function upload(preset: Preset): Command {
 function copyValue(g: Generation, records: readonly VersionedRecord[]): JsonObject {
   const deflated = deflateSync(strToU8(JSON.stringify({ g, records })));
 
-  return { v: 1, data: Buffer.from(deflated).toString('base64') };
+  return { v: 2, data: Buffer.from(deflated).toString('base64') };
 }
 
 function send(client: Client, command: Command): void {

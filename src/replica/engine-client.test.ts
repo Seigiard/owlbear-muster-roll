@@ -45,7 +45,37 @@ const TIMING: Timing = {
   snapshotImportTimeoutMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
+
+// Two sheet sets, so a new sheet's order counts only its own set, and a hidden single sheet.
+const PRESET: Preset = {
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+    },
+    {
+      id: 'ally',
+      kind: 'set',
+      title: 'Союзники',
+      nameField: 'name',
+      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'label' }]] }],
+    },
+  ],
+};
+
+const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'z' };
 
 const EXAMPLE_PRESET_TEXT = readFileSync(
   join(import.meta.dir, '../../docs/example-preset.json'),
@@ -182,8 +212,20 @@ function seed(rig: Rig, key: string, value: string): void {
   rig.platform.storage.setItem(`${STORAGE_PREFIX}${key}`, value);
 }
 
-function sheet(id: string, name = id, c = 1): VersionedRecord {
-  return { k: `sheet:${id}`, d: { kind: 'pc', name, order: 0 }, c, a: 'mock-connection' };
+function sheet(id: string, c = 1): VersionedRecord {
+  return { k: `sheet:${id}`, d: { set: 'pc', order: 0 }, c, a: 'mock-connection' };
+}
+
+// The name field row of a sheet. With no sheet beside it, it serves any test that needs a record
+// with a label of its own.
+function nameRow(id: string, name = id): VersionedRecord {
+  return { k: `row:${id}:name`, d: { name }, c: 1, a: 'mock-connection' };
+}
+
+function seedRecords(rig: Rig, ...records: VersionedRecord[]): void {
+  for (const record of records) {
+    seed(rig, record.k, JSON.stringify(record));
+  }
 }
 
 function byKey(records: readonly VersionedRecord[]): VersionedRecord[] {
@@ -211,14 +253,21 @@ function recordsOf(store: ProjectionStore): VersionedRecord[] {
   return [...store.$records.get().values()];
 }
 
+// The names the window holds, in the order its records arrived. Records with no name are skipped.
 function namesOf(store: ProjectionStore): string[] {
-  return recordsOf(store).map((record) => {
+  return recordsOf(store).flatMap((record) => {
     const data = record.d;
 
     return data !== null && !Array.isArray(data) && Object.hasOwn(Object(data), 'name')
-      ? String(Object(data).name)
-      : '';
+      ? [String(Object(data).name)]
+      : [];
   });
+}
+
+function keysOf(store: ProjectionStore): string[] {
+  return recordsOf(store)
+    .map((record) => record.k)
+    .sort();
 }
 
 function requests(rig: Rig): WireMessage[] {
@@ -264,7 +313,7 @@ function lastRejection(store: ProjectionStore): CommandRejectedMessage | null {
 
 // What a rejected command must leave: the window's records and no delta at all.
 function unchanged(rig: Rig, view: WindowView): Aftermath {
-  return { records: recordsOf(view.store), deltas: deltas(rig).length };
+  return { records: byKey(recordsOf(view.store)), deltas: deltas(rig).length };
 }
 
 describe('GM start', () => {
@@ -272,9 +321,8 @@ describe('GM start', () => {
     // #given
     const rig = createRig();
 
-    seed(rig, 'sheet:a', JSON.stringify(sheet('a', 'Брок')));
-    seed(rig, 'sheet:b', JSON.stringify(sheet('b', 'Лиза')));
-    rig.platform.storage.setItem('mr1:other-room:0::sheet:c', JSON.stringify(sheet('c', 'Чужой')));
+    seedRecords(rig, sheet('a'), nameRow('a', 'Брок'), sheet('b'), nameRow('b', 'Лиза'));
+    rig.platform.storage.setItem('mr2:other-room:0::sheet:c', JSON.stringify(sheet('c')));
 
     await startEngine(rig);
 
@@ -282,14 +330,19 @@ describe('GM start', () => {
     const view = await openAndLoad(rig);
 
     // #then
-    expect(namesOf(view.store)).toEqual(['Брок', 'Лиза']);
+    expect(byKey(recordsOf(view.store))).toEqual([
+      nameRow('a', 'Брок'),
+      nameRow('b', 'Лиза'),
+      sheet('a'),
+      sheet('b'),
+    ]);
   });
 
   test('loads only the highest generation', async () => {
     // #given
     const rig = createRig();
 
-    rig.platform.storage.setItem('mr1:mock-room:1:x:sheet:new', JSON.stringify(sheet('new')));
+    rig.platform.storage.setItem('mr2:mock-room:1:x:sheet:new', JSON.stringify(sheet('new')));
     seed(rig, 'sheet:old', JSON.stringify(sheet('old')));
     await startEngine(rig);
 
@@ -324,13 +377,14 @@ describe('corrupt stored record', () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     seed(rig, 'sheet:bad', '{not json');
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'bad', kind: 'pc', name: 'Новый' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'bad', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
     await pause(5);
 
@@ -342,8 +396,7 @@ describe('corrupt stored record', () => {
       notices: [],
       stored: {
         ok: true,
-        value:
-          '{"k":"sheet:bad","d":{"kind":"pc","name":"Новый","order":0},"c":1,"a":"mock-connection"}',
+        value: '{"k":"sheet:bad","d":{"set":"pc","order":0},"c":1,"a":"mock-connection"}',
       },
     });
   });
@@ -354,7 +407,7 @@ describe('stored record too large for one message', () => {
     // #given
     const rig = createRig();
 
-    seed(rig, 'sheet:big', JSON.stringify(sheet('big', 'x'.repeat(14900))));
+    seedRecords(rig, nameRow('big', 'x'.repeat(14900)));
     seed(rig, 'sheet:good', JSON.stringify(sheet('good')));
     await startEngine(rig);
 
@@ -380,12 +433,7 @@ describe('player start', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    const reason = await rejectionOf(view, {
-      type: 'sheet-create',
-      sheetId: 'brok',
-      kind: 'pc',
-      name: 'Брок',
-    });
+    const reason = await rejectionOf(view, { type: 'sheet-create', sheetId: 'brok', set: 'pc' });
 
     // #then
     expect({ reason, calls: setItem.mock.calls.length, records: recordsOf(view.store) }).toEqual({
@@ -401,16 +449,16 @@ describe('open window', () => {
     // #given
     const rig = createRig();
 
-    seed(rig, 'sheet:a', JSON.stringify(sheet('a')));
+    seedRecords(rig, PRESET_RECORD, sheet('a'));
     await startEngine(rig);
 
     const view = openWindow(rig, ids('nonce-1'));
 
-    await waitUntil(() => recordsOf(view.store).length === 1);
+    await waitUntil(() => recordsOf(view.store).length === 2);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'skel', kind: 'npc', name: 'Скелет' });
-    await waitUntil(() => recordsOf(view.store).length === 2);
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'b', set: 'pc' });
+    await waitUntil(() => recordsOf(view.store).length === 3);
 
     // #then
     expect({
@@ -434,7 +482,7 @@ describe('open window', () => {
       seq: 0,
       i: 1,
       n: 1,
-      records: [sheet('x')],
+      records: [nameRow('x')],
       notices: [],
       pending: [],
       sync: LIVE_SYNC,
@@ -450,7 +498,7 @@ describe('open window', () => {
     const rig = createRig();
     const view = openWindow(rig);
 
-    seed(rig, 'sheet:a', JSON.stringify(sheet('a')));
+    seedRecords(rig, sheet('a'));
     await waitUntil(() => requests(rig).length >= 3);
 
     // #when
@@ -496,7 +544,7 @@ describe('open window', () => {
       seq: 0,
       i: 1,
       n: 2,
-      records: [sheet('x')],
+      records: [nameRow('x')],
       notices: [],
       pending: [],
       sync: LIVE_SYNC,
@@ -530,9 +578,9 @@ describe('open window', () => {
     };
 
     // #when: the parts arrive 60 ms apart, each inside the 80 ms timeout.
-    await post(rig, { ...part, i: 1, records: [sheet('a')] });
+    await post(rig, { ...part, i: 1, records: [nameRow('a')] });
     await pause(60);
-    await post(rig, { ...part, i: 2, records: [sheet('b')] });
+    await post(rig, { ...part, i: 2, records: [nameRow('b')] });
     await pause(60);
 
     // #then
@@ -622,12 +670,12 @@ describe('split projection', () => {
     const view = await openSplitWindow(rig);
 
     // #when
-    await post(rig, { ...part, i: 1, records: [sheet('a')] });
+    await post(rig, { ...part, i: 1, records: [nameRow('a')] });
     await post(rig, {
       t: 'delta',
       engine: 'e',
       seq: 6,
-      records: [sheet('b')],
+      records: [nameRow('b')],
       notices: [],
       pending: [],
       withdrawn: [],
@@ -637,7 +685,7 @@ describe('split projection', () => {
 
     const whileIncomplete = recordsOf(view.store);
 
-    await post(rig, { ...part, i: 2, records: [sheet('c')] });
+    await post(rig, { ...part, i: 2, records: [nameRow('c')] });
 
     // #then
     expect({ whileIncomplete, names: namesOf(view.store) }).toEqual({
@@ -651,12 +699,12 @@ describe('split projection', () => {
     const rig = createRig();
     const view = await openSplitWindow(rig);
 
-    await post(rig, { ...part, i: 1, records: [sheet('a')] });
+    await post(rig, { ...part, i: 1, records: [nameRow('a')] });
     await post(rig, {
       t: 'delta',
       engine: 'e',
       seq: 5,
-      records: [sheet('old')],
+      records: [nameRow('old')],
       notices: [],
       pending: [],
       withdrawn: [],
@@ -665,7 +713,7 @@ describe('split projection', () => {
     });
 
     // #when
-    await post(rig, { ...part, i: 2, records: [sheet('c')] });
+    await post(rig, { ...part, i: 2, records: [nameRow('c')] });
 
     // #then
     expect(namesOf(view.store)).toEqual(['a', 'c']);
@@ -677,8 +725,8 @@ describe('split projection', () => {
     const view = await openSplitWindow(rig);
 
     // #when
-    await post(rig, { ...part, i: 2, records: [sheet('z')] });
-    await post(rig, { ...part, i: 1, records: [sheet('a')] });
+    await post(rig, { ...part, i: 2, records: [nameRow('z')] });
+    await post(rig, { ...part, i: 1, records: [nameRow('a')] });
 
     // #then
     expect(namesOf(view.store)).toEqual(['a', 'z']);
@@ -690,12 +738,12 @@ describe('split projection', () => {
     const view = openWindow(rig, ids('split', 'after-gap'));
 
     await waitUntil(() => requests(rig).length >= 1);
-    await post(rig, { ...part, i: 1, records: [sheet('a')] });
+    await post(rig, { ...part, i: 1, records: [nameRow('a')] });
     await post(rig, {
       t: 'delta',
       engine: 'e',
       seq: 7,
-      records: [sheet('gap')],
+      records: [nameRow('gap')],
       notices: [],
       pending: [],
       withdrawn: [],
@@ -704,7 +752,7 @@ describe('split projection', () => {
     });
 
     // #when
-    await post(rig, { ...part, i: 2, records: [sheet('c')] });
+    await post(rig, { ...part, i: 2, records: [nameRow('c')] });
     await waitUntil(() => requests(rig).at(-1)?.nonce === 'after-gap');
 
     // #then
@@ -714,10 +762,9 @@ describe('split projection', () => {
   test('counts the envelope, so records that nearly fill a part stay under 15000 bytes', async () => {
     // #given: two records of 7475 bytes, 14951 with their comma, so no envelope fits beside them.
     const rig = createRig();
-    const name = 'x'.repeat(7475 - jsonByteLength(sheet('a', '')));
+    const name = 'x'.repeat(7475 - jsonByteLength(nameRow('a', '')));
 
-    seed(rig, 'sheet:a', JSON.stringify(sheet('a', name)));
-    seed(rig, 'sheet:b', JSON.stringify(sheet('b', name)));
+    seedRecords(rig, nameRow('a', name), nameRow('b', name));
     await startEngine(rig);
 
     // #when
@@ -744,7 +791,7 @@ describe('split projection', () => {
     const rig = createRig();
 
     for (const id of ['a', 'b', 'c', 'd', 'e', 'f']) {
-      seed(rig, `sheet:${id}`, JSON.stringify(sheet(id, 'ы'.repeat(2000))));
+      seedRecords(rig, nameRow(id, 'ы'.repeat(2000)));
     }
 
     await startEngine(rig);
@@ -833,7 +880,7 @@ describe('sequence gap', () => {
       seq: 3,
       i: 1,
       n: 1,
-      records: [sheet('kept')],
+      records: [nameRow('kept')],
       notices: [],
       pending: [],
       sync: LIVE_SYNC,
@@ -847,7 +894,7 @@ describe('sequence gap', () => {
       t: 'delta',
       engine: 'e',
       seq: 3,
-      records: [sheet('dup')],
+      records: [nameRow('dup')],
       notices: [],
       pending: [],
       withdrawn: [],
@@ -871,39 +918,41 @@ describe('command', () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'skel', kind: 'npc', name: 'Скелет' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
     expect(deltas(rig)[0]?.records).toEqual([
-      { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'mock-connection' },
+      { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'mock-connection' },
     ]);
   });
 
-  test('gives each new sheet of a kind the next order', async () => {
+  test('gives each new sheet of a sheet set the next order of that set', async () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'b', kind: 'pc', name: 'Брок' });
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'l', kind: 'pc', name: 'Лиза' });
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 's', kind: 'npc', name: 'Скелет' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'b', set: 'pc' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'l', set: 'pc' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 's', set: 'ally' });
     await waitUntil(() => deltas(rig).length === 3);
 
     // #then
     expect(deltas(rig).map((message) => message.records?.[0]?.d)).toEqual([
-      { kind: 'pc', name: 'Брок', order: 0 },
-      { kind: 'pc', name: 'Лиза', order: 1 },
-      { kind: 'npc', name: 'Скелет', order: 0 },
+      { set: 'pc', order: 0 },
+      { set: 'pc', order: 1 },
+      { set: 'ally', order: 0 },
     ]);
   });
 
@@ -911,33 +960,34 @@ describe('command', () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'made', kind: 'pc', name: 'Брок' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'made', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
     expect(rig.platform.storage.getItem(`${STORAGE_PREFIX}sheet:made`)).toEqual({
       ok: true,
-      value:
-        '{"k":"sheet:made","d":{"kind":"pc","name":"Брок","order":0},"c":1,"a":"mock-connection"}',
+      value: '{"k":"sheet:made","d":{"set":"pc","order":0},"c":1,"a":"mock-connection"}',
     });
   });
 
   test.each([
     ['k', { k: 'sheet:z' }],
-    ['d', { d: { kind: 'pc', name: 'x', order: 0 } }],
+    ['d', { d: { set: 'pc', order: 0 } }],
     ['c', { c: 9 }],
     ['a', { a: 'conn' }],
   ])(
     'has no effect and does not throw when it holds a whole-record field %s',
     async (_f, extra) => {
-      // #given
+      // #given: a preset, so the command would create a sheet without the extra field.
       const rig = createRig();
 
+      seedRecords(rig, PRESET_RECORD);
       await startEngine(rig);
 
       const view = await openAndLoad(rig);
@@ -946,13 +996,13 @@ describe('command', () => {
       await post(rig, {
         t: 'command',
         id: 'whole',
-        command: { type: 'sheet-create', sheetId: 'whole', kind: 'pc', name: 'x', ...extra },
+        command: { type: 'sheet-create', sheetId: 'whole', set: 'pc', ...extra },
       });
       await pause(10);
 
       // #then
       expect({ records: recordsOf(view.store), deltas: deltas(rig).length }).toEqual({
-        records: [],
+        records: [PRESET_RECORD],
         deltas: 0,
       });
     },
@@ -962,6 +1012,7 @@ describe('command', () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
@@ -969,7 +1020,7 @@ describe('command', () => {
     const message = {
       t: 'command',
       id: 'once',
-      command: { type: 'sheet-create', sheetId: 'once', kind: 'pc', name: 'x' },
+      command: { type: 'sheet-create', sheetId: 'once', set: 'pc' },
     };
 
     // #when
@@ -978,8 +1029,8 @@ describe('command', () => {
     await pause(10);
 
     // #then
-    expect({ records: recordsOf(view.store).length, deltas: deltas(rig).length }).toEqual({
-      records: 1,
+    expect({ keys: keysOf(view.store), deltas: deltas(rig).length }).toEqual({
+      keys: ['preset', 'sheet:once'],
       deltas: 1,
     });
   });
@@ -988,11 +1039,12 @@ describe('command', () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'x', kind: 'pc', name: 'x' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'x', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
 
     const before = rig.wire.length;
@@ -1011,12 +1063,13 @@ describe('window lifecycle', () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const first = await openAndLoad(rig);
 
-    first.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
-    await waitUntil(() => recordsOf(first.store).length === 1);
+    first.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    await waitUntil(() => recordsOf(first.store).length === 2);
     first.client.stop();
 
     // #when
@@ -1029,11 +1082,14 @@ describe('window lifecycle', () => {
   test('shows the same records after the background restarts over the same storage', async () => {
     // #given
     const rig = createRig();
+
+    seedRecords(rig, PRESET_RECORD);
+
     const engine = await startEngine(rig);
     const first = await openAndLoad(rig);
 
-    first.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
-    await waitUntil(() => recordsOf(first.store).length === 1);
+    first.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    await waitUntil(() => recordsOf(first.store).length === 2);
     engine.stop();
     first.client.stop();
 
@@ -1049,11 +1105,14 @@ describe('window lifecycle', () => {
   test('re-requests a projection when a restarted engine starts sending deltas', async () => {
     // #given
     const rig = createRig();
+
+    seedRecords(rig, PRESET_RECORD);
+
     const engine = await startEngine(rig, ids('engine-1'));
     const view = await openAndLoad(rig);
 
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'before', kind: 'pc', name: 'До' });
-    await waitUntil(() => recordsOf(view.store).length === 1);
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'before', set: 'pc' });
+    await waitUntil(() => recordsOf(view.store).length === 2);
     engine.stop();
 
     await startEngine(rig, ids('engine-2'));
@@ -1061,12 +1120,12 @@ describe('window lifecycle', () => {
     const requestsBefore = requests(rig).length;
 
     // #when: the restarted engine counts from 1 again, so its delta must not look old.
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'after', kind: 'pc', name: 'После' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'after', set: 'pc' });
     await waitUntil(() => requests(rig).length > requestsBefore);
-    await waitUntil(() => recordsOf(view.store).length === 2);
+    await waitUntil(() => recordsOf(view.store).length === 3);
 
     // #then
-    expect(new Set(namesOf(view.store))).toEqual(new Set(['До', 'После']));
+    expect(keysOf(view.store)).toEqual(['preset', 'sheet:after', 'sheet:before']);
   });
 });
 
@@ -1075,6 +1134,7 @@ describe('send queue through the engine', () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
@@ -1082,11 +1142,11 @@ describe('send queue through the engine', () => {
     rig.platform.failNextSends([{ kind: 'rate-limited' }, { kind: 'rate-limited' }]);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
-    await waitUntil(() => recordsOf(view.store).length === 1);
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    await waitUntil(() => recordsOf(view.store).length === 2);
 
     // #then
-    expect(namesOf(view.store)).toEqual(['Брок']);
+    expect(view.store.$records.get().get('sheet:brok')?.d).toEqual({ set: 'pc', order: 0 });
   });
 });
 
@@ -1102,10 +1162,11 @@ describe('record too large', () => {
 
     // #when
     const sent = view.client.sendCommand({
-      type: 'sheet-create',
+      type: 'field-patch',
       sheetId: 'long',
-      kind: 'pc',
-      name: 'ы'.repeat(8000),
+      target: { kind: 'row', rowId: 'name' },
+      fieldId: 'name',
+      value: 'ы'.repeat(8000),
     });
 
     await pause(10);
@@ -1119,28 +1180,23 @@ describe('record too large', () => {
 });
 
 describe('sheet-create', () => {
-  test('stores the name without its surrounding spaces under the key of the sent id', async () => {
+  test('stores the sheet under the key of the sent id, in the sheet set it names', async () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({
-      type: 'sheet-create',
-      sheetId: 'b-1_X',
-      kind: 'pc',
-      name: '  Брок ',
-    });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'b-1_X', set: 'ally' });
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
     expect(rig.platform.storage.getItem(`${STORAGE_PREFIX}sheet:b-1_X`)).toEqual({
       ok: true,
-      value:
-        '{"k":"sheet:b-1_X","d":{"kind":"pc","name":"Брок","order":0},"c":1,"a":"mock-connection"}',
+      value: '{"k":"sheet:b-1_X","d":{"set":"ally","order":0},"c":1,"a":"mock-connection"}',
     });
   });
 
@@ -1148,7 +1204,7 @@ describe('sheet-create', () => {
     // #given
     const rig = createRig();
 
-    seed(rig, 'sheet:taken', JSON.stringify(sheet('taken', 'Брок')));
+    seedRecords(rig, PRESET_RECORD, sheet('taken'), nameRow('taken', 'Брок'));
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
@@ -1157,39 +1213,36 @@ describe('sheet-create', () => {
     const rejection = await rejectionOf(view, {
       type: 'sheet-create',
       sheetId: 'taken',
-      kind: 'pc',
-      name: 'Лиза',
+      set: 'ally',
     });
 
     // #then
     expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
       rejection: 'sheet-exists',
-      unchanged: { records: [sheet('taken', 'Брок')], deltas: 0 },
+      unchanged: {
+        records: byKey([PRESET_RECORD, sheet('taken'), nameRow('taken', 'Брок')]),
+        deltas: 0,
+      },
     });
   });
 
   test('rejects an id that only a live orphan row names, so the new sheet does not take it over', async () => {
     // #given: a row whose sheet record never arrived, as a write that failed part way leaves it.
     const rig = createRig();
-    const orphan: VersionedRecord = { k: 'row:lone:str', d: { str: 9 }, c: 3, a: 'other' };
+    const orphan: VersionedRecord = { k: 'row:lone:name', d: { name: 'Брок' }, c: 3, a: 'other' };
 
-    seed(rig, orphan.k, JSON.stringify(orphan));
+    seedRecords(rig, PRESET_RECORD, orphan);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    const rejection = await rejectionOf(view, {
-      type: 'sheet-create',
-      sheetId: 'lone',
-      kind: 'pc',
-      name: 'Брок',
-    });
+    const rejection = await rejectionOf(view, { type: 'sheet-create', sheetId: 'lone', set: 'pc' });
 
     // #then
     expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
       rejection: 'sheet-exists',
-      unchanged: { records: [orphan], deltas: 0 },
+      unchanged: { records: byKey([PRESET_RECORD, orphan]), deltas: 0 },
     });
   });
 
@@ -1198,23 +1251,41 @@ describe('sheet-create', () => {
     const rig = createRig();
     const tombstone: VersionedRecord = { k: 'sheet:gone', d: null, c: 2, a: 'other' };
 
-    seed(rig, 'sheet:gone', JSON.stringify(tombstone));
+    seedRecords(rig, PRESET_RECORD, tombstone);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    const rejection = await rejectionOf(view, {
-      type: 'sheet-create',
-      sheetId: 'gone',
-      kind: 'pc',
-      name: 'Брок',
-    });
+    const rejection = await rejectionOf(view, { type: 'sheet-create', sheetId: 'gone', set: 'pc' });
 
     // #then
     expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
       rejection: 'sheet-exists',
-      unchanged: { records: [tombstone], deltas: 0 },
+      unchanged: { records: byKey([PRESET_RECORD, tombstone]), deltas: 0 },
+    });
+  });
+
+  // AD-18: a sheet id equal to a template id is that template's single sheet or nothing.
+  test.each([
+    ['a single sheet', 'npc'],
+    ['a sheet set', 'ally'],
+  ])('rejects the id of %s, so no sheet of a set takes it', async (_name, sheetId) => {
+    // #given
+    const rig = createRig();
+
+    seedRecords(rig, PRESET_RECORD);
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const rejection = await rejectionOf(view, { type: 'sheet-create', sheetId, set: 'pc' });
+
+    // #then
+    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
+      rejection: 'sheet-exists',
+      unchanged: { records: [PRESET_RECORD], deltas: 0 },
     });
   });
 
@@ -1228,49 +1299,42 @@ describe('sheet-create', () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    const rejection = await rejectionOf(view, {
-      type: 'sheet-create',
-      sheetId,
-      kind: 'pc',
-      name: 'Брок',
-    });
+    const rejection = await rejectionOf(view, { type: 'sheet-create', sheetId, set: 'pc' });
 
     // #then
     expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
       rejection: 'invalid-sheet-id',
-      unchanged: { records: [], deltas: 0 },
+      unchanged: { records: [PRESET_RECORD], deltas: 0 },
     });
   });
 
-  test.each([
-    ['empty', ''],
-    ['only spaces', ' \t '],
-    ['101 characters', 'ы'.repeat(101)],
-  ])('rejects a name that is %s and stores nothing', async (_name, name) => {
+  // AD-18: only a sheet set of the preset takes new sheets.
+  test.each<[string, string, VersionedRecord[]]>([
+    ['a template the preset does not hold', 'ghost', [PRESET_RECORD]],
+    ['a single sheet', 'npc', [PRESET_RECORD]],
+    ['a sheet set while no preset is loaded', 'pc', []],
+  ])('rejects a set that names %s and stores nothing', async (_name, set, records) => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, ...records);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    const rejection = await rejectionOf(view, {
-      type: 'sheet-create',
-      sheetId: 'brok',
-      kind: 'pc',
-      name,
-    });
+    const rejection = await rejectionOf(view, { type: 'sheet-create', sheetId: 'brok', set });
 
     // #then
     expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
-      rejection: 'invalid-name',
-      unchanged: { records: [], deltas: 0 },
+      rejection: 'unknown-template',
+      unchanged: { records, deltas: 0 },
     });
   });
 
@@ -1278,160 +1342,36 @@ describe('sheet-create', () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
-    await rejectionOf(view, { type: 'sheet-create', sheetId: 'a:b', kind: 'pc', name: 'Брок' });
+    await rejectionOf(view, { type: 'sheet-create', sheetId: 'a:b', set: 'pc' });
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
-    expect(namesOf(view.store)).toEqual(['Брок']);
+    expect(keysOf(view.store)).toEqual(['preset', 'sheet:brok']);
   });
 
   test('does not show another window a rejection it did not cause', async () => {
     // #given
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const sender = await openAndLoad(rig);
     const other = await openAndLoad(rig);
 
     // #when
-    await rejectionOf(sender, { type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: ' ' });
+    await rejectionOf(sender, { type: 'sheet-create', sheetId: 'a:b', set: 'pc' });
 
     // #then
     expect(lastRejection(other.store)).toBeNull();
-  });
-});
-
-describe('sheet-rename', () => {
-  test('changes the name, keeps the kind and the order, and persists it', async () => {
-    // #given
-    const rig = createRig();
-
-    seed(
-      rig,
-      'sheet:brok',
-      JSON.stringify({ k: 'sheet:brok', d: { kind: 'npc', name: 'Брок', order: 4 }, c: 3, a: 'z' }),
-    );
-    await startEngine(rig);
-
-    const view = await openAndLoad(rig);
-
-    // #when
-    view.client.sendCommand({ type: 'sheet-rename', sheetId: 'brok', name: '  Лиза ' });
-    await waitUntil(() => deltas(rig).length === 1);
-
-    // #then
-    expect({
-      window: recordsOf(view.store),
-      stored: rig.platform.storage.getItem(`${STORAGE_PREFIX}sheet:brok`),
-    }).toEqual({
-      window: [
-        { k: 'sheet:brok', d: { kind: 'npc', name: 'Лиза', order: 4 }, c: 4, a: 'mock-connection' },
-      ],
-      stored: {
-        ok: true,
-        value:
-          '{"k":"sheet:brok","d":{"kind":"npc","name":"Лиза","order":4},"c":4,"a":"mock-connection"}',
-      },
-    });
-  });
-
-  test('rejects a sheet that does not exist and stores nothing', async () => {
-    // #given
-    const rig = createRig();
-
-    await startEngine(rig);
-
-    const view = await openAndLoad(rig);
-
-    // #when
-    const rejection = await rejectionOf(view, {
-      type: 'sheet-rename',
-      sheetId: 'nobody',
-      name: 'Брок',
-    });
-
-    // #then
-    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
-      rejection: 'unknown-sheet',
-      unchanged: { records: [], deltas: 0 },
-    });
-  });
-
-  test('rejects an id outside the nanoid alphabet before it looks for the sheet', async () => {
-    // #given
-    const rig = createRig();
-
-    await startEngine(rig);
-
-    const view = await openAndLoad(rig);
-
-    // #when
-    const rejection = await rejectionOf(view, {
-      type: 'sheet-rename',
-      sheetId: 'a:b',
-      name: 'Брок',
-    });
-
-    // #then
-    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
-      rejection: 'invalid-sheet-id',
-      unchanged: { records: [], deltas: 0 },
-    });
-  });
-
-  test('rejects a deleted sheet and keeps its tombstone', async () => {
-    // #given
-    const rig = createRig();
-    const tombstone: VersionedRecord = { k: 'sheet:gone', d: null, c: 2, a: 'other' };
-
-    seed(rig, 'sheet:gone', JSON.stringify(tombstone));
-    await startEngine(rig);
-
-    const view = await openAndLoad(rig);
-
-    // #when
-    const rejection = await rejectionOf(view, {
-      type: 'sheet-rename',
-      sheetId: 'gone',
-      name: 'Брок',
-    });
-
-    // #then
-    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
-      rejection: 'deleted-sheet',
-      unchanged: { records: [tombstone], deltas: 0 },
-    });
-  });
-
-  test.each([
-    ['empty', ''],
-    ['only spaces', '   '],
-    ['101 characters', 'ы'.repeat(101)],
-  ])('rejects a name that is %s and keeps the old one', async (_name, name) => {
-    // #given
-    const rig = createRig();
-
-    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok', 'Брок')));
-    await startEngine(rig);
-
-    const view = await openAndLoad(rig);
-
-    // #when
-    const rejection = await rejectionOf(view, { type: 'sheet-rename', sheetId: 'brok', name });
-
-    // #then
-    expect({ rejection, unchanged: unchanged(rig, view) }).toEqual({
-      rejection: 'invalid-name',
-      unchanged: { records: [sheet('brok', 'Брок')], deltas: 0 },
-    });
   });
 });
 
@@ -1441,22 +1381,24 @@ describe('sheet-delete', () => {
     const rig = createRig();
 
     const kept: VersionedRecord[] = [
-      { k: 'preset', d: 'AAAA', c: 1, a: 'z' },
-      { k: 'sheet:liza', d: { kind: 'npc', name: 'Лиза', order: 0 }, c: 1, a: 'z' },
+      PRESET_RECORD,
+      { k: 'sheet:liza', d: { set: 'pc', order: 1 }, c: 1, a: 'z' },
       { k: 'row:liza:str', d: { str: 9 }, c: 1, a: 'z' },
       { k: 'rep:liza:items:i2', d: { order: 0, cells: { item: 'Лук' } }, c: 1, a: 'z' },
       { k: 'acl:liza:p1', d: { name: 'Оля' }, c: 1, a: 'z' },
       { k: 'plink:liza:p1', d: { name: 'Оля' }, c: 1, a: 'z' },
-      { k: 'link:token2', d: 'liza', c: 1, a: 'z' },
+      { k: 'link:token2', d: { s: 'liza' }, c: 1, a: 'z' },
     ];
 
+    // Links to the sheet and to one of its repeat blocks both depend on it.
     const target: VersionedRecord[] = [
-      { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 3, a: 'z' },
+      { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 3, a: 'z' },
       { k: 'row:brok:str', d: { str: 3 }, c: 2, a: 'z' },
       { k: 'rep:brok:items:i1', d: { order: 0, cells: { item: 'Меч' } }, c: 1, a: 'z' },
       { k: 'acl:brok:p1', d: { name: 'Оля' }, c: 4, a: 'z' },
       { k: 'plink:brok:p1', d: { name: 'Оля' }, c: 1, a: 'z' },
-      { k: 'link:token1', d: 'brok', c: 5, a: 'z' },
+      { k: 'link:token1', d: { s: 'brok' }, c: 5, a: 'z' },
+      { k: 'link:token3', d: { s: 'brok', i: 'i1' }, c: 1, a: 'z' },
     ];
 
     for (const record of [...kept, ...target]) {
@@ -1476,6 +1418,7 @@ describe('sheet-delete', () => {
     const tombstones: VersionedRecord[] = [
       { k: 'acl:brok:p1', d: null, c: 5, a: 'mock-connection' },
       { k: 'link:token1', d: null, c: 6, a: 'mock-connection' },
+      { k: 'link:token3', d: null, c: 2, a: 'mock-connection' },
       { k: 'plink:brok:p1', d: null, c: 2, a: 'mock-connection' },
       { k: 'rep:brok:items:i1', d: null, c: 2, a: 'mock-connection' },
       { k: 'row:brok:str', d: null, c: 3, a: 'mock-connection' },
@@ -1498,8 +1441,7 @@ describe('sheet-delete', () => {
     const rig = createRig();
     const oldTombstone: VersionedRecord = { k: 'row:brok:old', d: null, c: 7, a: 'other' };
 
-    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok', 'Брок')));
-    seed(rig, 'row:brok:old', JSON.stringify(oldTombstone));
+    seedRecords(rig, sheet('brok'), oldTombstone);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
@@ -1522,8 +1464,7 @@ describe('sheet-delete', () => {
     // #given
     const rig = createRig();
 
-    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok', 'Брок')));
-    seed(rig, 'row:brok:str', JSON.stringify({ k: 'row:brok:str', d: { str: 3 }, c: 1, a: 'z' }));
+    seedRecords(rig, sheet('brok'), { k: 'row:brok:str', d: { str: 3 }, c: 1, a: 'z' });
 
     const engine = await startEngine(rig);
     const first = await openAndLoad(rig);
@@ -1545,45 +1486,23 @@ describe('sheet-delete', () => {
     ]);
   });
 
-  test('deletes an NPC the same way, as the command names no kind', async () => {
-    // #given
-    const rig = createRig();
-
-    const npc: VersionedRecord = {
-      k: 'sheet:skel',
-      d: { kind: 'npc', name: 'Скелет 1', order: 0 },
-      c: 1,
-      a: 'z',
-    };
-
-    seed(rig, 'sheet:skel', JSON.stringify(npc));
-    await startEngine(rig);
-
-    const view = await openAndLoad(rig);
-
-    // #when
-    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'skel' });
-    await waitUntil(() => deltas(rig).length === 1);
-
-    // #then
-    expect(recordsOf(view.store)).toEqual([
-      { k: 'sheet:skel', d: null, c: 2, a: 'mock-connection' },
-    ]);
-  });
-
   test.each([
     ['an id outside the nanoid alphabet', 'a:b', 'invalid-sheet-id'],
     ['an empty id', '', 'invalid-sheet-id'],
     ['a sheet that does not exist', 'nobody', 'unknown-sheet'],
     ['a sheet that is already deleted', 'gone', 'deleted-sheet'],
+    // A single sheet is never deleted, even one with values.
+    ['a single sheet', 'npc', 'not-sheet-set'],
   ])('rejects %s and changes nothing', async (_name, sheetId, reason) => {
-    // #given: a live sheet with a row, and a deleted one.
+    // #given: a live sheet with a row, a deleted one, and a single sheet with a repeat block.
     const rig = createRig();
 
     const seeded: VersionedRecord[] = [
-      sheet('brok', 'Брок'),
+      PRESET_RECORD,
+      sheet('brok'),
       { k: 'row:brok:str', d: { str: 3 }, c: 1, a: 'z' },
       { k: 'sheet:gone', d: null, c: 2, a: 'other' },
+      { k: 'rep:npc:label:s1', d: { order: 0, cells: { label: 'Скелет 1' } }, c: 1, a: 'z' },
     ];
 
     for (const record of seeded) {
@@ -1614,7 +1533,7 @@ describe('sheet-delete', () => {
     silenceErrors();
 
     for (const record of [
-      sheet('brok', 'Брок'),
+      sheet('brok'),
       { k: 'row:brok:str', d: { str: 3 }, c: 1, a: 'z' },
       { k: 'acl:brok:p1', d: { name: 'Оля' }, c: 1, a: 'z' },
     ]) {
@@ -1649,7 +1568,7 @@ describe('sheet-delete', () => {
       reloaded,
       stored: byKey(storedRecords(rig)).map((record) => [record.k, record.d]),
     }).toEqual({
-      reloaded: { kind: 'pc', name: 'Брок', order: 0 },
+      reloaded: { set: 'pc', order: 0 },
       stored: [
         ['acl:brok:p1', null],
         ['row:brok:str', null],
@@ -1663,7 +1582,7 @@ describe('sheet-delete', () => {
     const rig = createRig();
     const rowKeys = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => `row:brok:${'ы'.repeat(2000)}${id}`);
 
-    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok', 'Брок')));
+    seedRecords(rig, sheet('brok'));
 
     for (const k of rowKeys) {
       seed(rig, k, JSON.stringify({ k, d: { str: 3 }, c: 1, a: 'z' }));
@@ -1699,7 +1618,7 @@ describe('sheet-delete', () => {
     const rig = createRig();
 
     silenceErrors();
-    seed(rig, 'sheet:brok', JSON.stringify(sheet('brok', 'Брок')));
+    seedRecords(rig, sheet('brok'));
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
@@ -1724,6 +1643,7 @@ describe('write failure', () => {
     // #given
     const rig = createRig();
     silenceErrors();
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
@@ -1731,38 +1651,38 @@ describe('write failure', () => {
     rig.platform.setFailingStorageOperations(['write']);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
-    await waitUntil(() => recordsOf(view.store).length === 1);
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    await waitUntil(() => recordsOf(view.store).length === 2);
 
     // #then
-    expect({ names: namesOf(view.store), notices: view.store.$notices.get() }).toEqual({
-      names: ['Брок'],
-      notices: ['local-save-failed'],
-    });
+    expect({
+      sheet: view.store.$records.get().get('sheet:brok')?.d,
+      notices: view.store.$notices.get(),
+    }).toEqual({ sheet: { set: 'pc', order: 0 }, notices: ['local-save-failed'] });
   });
 
   test('clears the notice when the same key later writes', async () => {
     // #given
     const rig = createRig();
     silenceErrors();
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     rig.platform.setFailingStorageOperations(['write']);
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'flaky', kind: 'pc', name: 'Первая' });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'flaky', set: 'pc' });
     await waitUntil(() => view.store.$notices.get().length === 1);
     rig.platform.setFailingStorageOperations([]);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-rename', sheetId: 'flaky', name: 'Вторая' });
+    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'flaky' });
     await waitUntil(() => view.store.$notices.get().length === 0);
 
     // #then
     expect(rig.platform.storage.getItem(`${STORAGE_PREFIX}sheet:flaky`)).toEqual({
       ok: true,
-      value:
-        '{"k":"sheet:flaky","d":{"kind":"pc","name":"Вторая","order":0},"c":2,"a":"mock-connection"}',
+      value: '{"k":"sheet:flaky","d":null,"c":2,"a":"mock-connection"}',
     });
   });
 
@@ -1770,18 +1690,19 @@ describe('write failure', () => {
     // #given
     const rig = createRig();
     silenceErrors();
+    seedRecords(rig, PRESET_RECORD);
     seed(rig, 'sheet:bad', '{not json');
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     rig.platform.setFailingStorageOperations(['write']);
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'flaky', kind: 'pc', name: 'Первая' });
-    await waitUntil(() => recordsOf(view.store).length === 1);
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'flaky', set: 'pc' });
+    await waitUntil(() => recordsOf(view.store).length === 2);
     rig.platform.setFailingStorageOperations([]);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-rename', sheetId: 'flaky', name: 'Вторая' });
+    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'flaky' });
     await waitUntil(() => deltas(rig).length === 2);
     await pause(5);
 
@@ -1789,7 +1710,8 @@ describe('write failure', () => {
     expect(view.store.$notices.get()).toEqual(['local-save-failed']);
   });
 
-  // The failure ends before the command, or `store.write` would refuse on its own read.
+  // The failure ends before the command, or `store.write` would refuse on its own read. The
+  // command is a preset upload, as the failed read leaves no preset for a sheet to need.
   test.each(['read', 'list'] as const)(
     'keeps the notice and writes nothing after a %s failure at start',
     async (operation) => {
@@ -1797,7 +1719,7 @@ describe('write failure', () => {
       const rig = createRig();
 
       silenceErrors();
-      seed(rig, 'sheet:saved', JSON.stringify(sheet('saved')));
+      seedRecords(rig, PRESET_RECORD, sheet('saved'));
       rig.platform.setFailingStorageOperations([operation]);
 
       const setItem = spyOn(rig.platform.storage, 'setItem');
@@ -1809,7 +1731,7 @@ describe('write failure', () => {
       rig.platform.setFailingStorageOperations([]);
 
       // #when
-      view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
+      view.client.sendCommand(upload(PRESET));
       await waitUntil(() => deltas(rig).length === 1);
       await pause(5);
 
@@ -1832,12 +1754,7 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({
-      type: 'preset-upload',
-      data: encodePreset(examplePreset()),
-      expectedCount: 0,
-      expectedDigest: '811c9dc5',
-    });
+    view.client.sendCommand(upload(examplePreset()));
     await waitUntil(() => view.store.$records.get().has('preset'));
 
     // #then
@@ -1856,12 +1773,7 @@ describe('preset upload', () => {
     const engine = await startEngine(rig);
     const first = await openAndLoad(rig);
 
-    first.client.sendCommand({
-      type: 'preset-upload',
-      data: encodePreset(examplePreset()),
-      expectedCount: 0,
-      expectedDigest: '811c9dc5',
-    });
+    first.client.sendCommand(upload(examplePreset()));
     await waitUntil(() => first.store.$records.get().has('preset'));
     engine.stop();
     first.client.stop();
@@ -1884,31 +1796,16 @@ describe('preset upload', () => {
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
-    const replacement: Preset = { v: 1, character: { sections: [] }, npc: { sections: [] } };
 
-    view.client.sendCommand({
-      type: 'preset-upload',
-      data: encodePreset(examplePreset()),
-      expectedCount: 0,
-      expectedDigest: '811c9dc5',
-    });
+    view.client.sendCommand(upload(examplePreset()));
     await waitUntil(() => deltas(rig).length === 1);
 
     // #when
-    view.client.sendCommand({
-      type: 'preset-upload',
-      data: encodePreset(replacement),
-      expectedCount: 0,
-      expectedDigest: '811c9dc5',
-    });
+    view.client.sendCommand(upload(PRESET));
     await waitUntil(() => deltas(rig).length === 2);
 
     // #then
-    expect(storedPreset(rig)).toEqual({
-      c: 2,
-      a: 'mock-connection',
-      preset: { v: 1, character: { sections: [] }, npc: { sections: [] } },
-    });
+    expect(storedPreset(rig)).toEqual({ c: 2, a: 'mock-connection', preset: PRESET });
   });
 
   test.each([
@@ -1916,14 +1813,23 @@ describe('preset upload', () => {
     [
       'a preset that repeats an id, which the window would have refused',
       deflatedJson({
-        v: 1,
-        character: {
-          sections: [{ rows: [[numberField('str'), numberField('str')]] }],
-        },
-        npc: { sections: [] },
+        v: 2,
+        templates: [
+          {
+            id: 'pc',
+            kind: 'set',
+            title: 'Персонажи',
+            nameField: 'name',
+            sections: [{ rows: [[textField('name'), numberField('str'), numberField('str')]] }],
+          },
+        ],
       }),
     ],
-    ['a newer preset', deflatedJson({ v: 2, character: { sections: [] }, npc: { sections: [] } })],
+    [
+      'a preset of the older format',
+      deflatedJson({ v: 1, character: { sections: [] }, npc: { sections: [] } }),
+    ],
+    ['a newer preset', deflatedJson({ ...PRESET, v: 3 })],
   ])('validates again and rejects %s, storing nothing', async (_name, data) => {
     // #given
     const rig = createRig();
@@ -1933,12 +1839,7 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    const sent = view.client.sendCommand({
-      type: 'preset-upload',
-      data,
-      expectedCount: 0,
-      expectedDigest: '811c9dc5',
-    });
+    const sent = view.client.sendCommand({ ...upload(PRESET), data });
 
     await waitUntil(() => lastRejection(view.store) !== null);
 
@@ -1966,12 +1867,7 @@ describe('preset upload', () => {
     const data = incompressiblePresetData();
 
     // #when
-    const sent = view.client.sendCommand({
-      type: 'preset-upload',
-      data,
-      expectedCount: 0,
-      expectedDigest: '811c9dc5',
-    });
+    const sent = view.client.sendCommand({ ...upload(PRESET), data });
 
     await waitUntil(() => lastRejection(view.store) !== null);
 
@@ -1993,12 +1889,7 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({
-      type: 'preset-upload',
-      data: encodePreset(examplePreset()),
-      expectedCount: 0,
-      expectedDigest: '811c9dc5',
-    });
+    view.client.sendCommand(upload(examplePreset()));
     await waitUntil(() => view.store.$records.get().has('preset'));
 
     // #then
@@ -2018,12 +1909,7 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({
-      type: 'preset-upload',
-      data: encodePreset(examplePreset()),
-      expectedCount: 0,
-      expectedDigest: '811c9dc5',
-    });
+    view.client.sendCommand(upload(examplePreset()));
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
@@ -2031,21 +1917,17 @@ describe('preset upload', () => {
   });
 
   test('accepts an upload that a sheet-create reaches the replica before', async () => {
-    // #given
+    // #given: the example preset keeps the sheet set "pc", so the new empty sheet loses nothing.
     const rig = createRig();
 
+    seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
 
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
-    view.client.sendCommand({
-      type: 'preset-upload',
-      data: encodePreset(examplePreset()),
-      expectedCount: 0,
-      expectedDigest: '811c9dc5',
-    });
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    view.client.sendCommand(upload(examplePreset()));
     await waitUntil(() => view.store.$records.get().has('preset'));
 
     // #then
@@ -2060,33 +1942,47 @@ describe('field-patch', () => {
   const ROW_STR = { kind: 'row', rowId: 'str' } as const;
   const ATTACK_I1 = { kind: 'rep', sectionId: 'attack', instanceId: 'i1' } as const;
 
-  // A preset with a plain row, a text row and a repeat section, and an NPC template of its own.
+  // A sheet set with its name field, a plain row, a text row and a repeat section, and a single
+  // sheet with a template of its own.
   const PATCH_PRESET: Preset = {
-    v: 1,
-    character: {
-      sections: [
-        {
-          rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'str_tired' },
+    v: 2,
+    templates: [
+      {
+        id: 'pc',
+        kind: 'set',
+        title: 'Персонажи',
+        nameField: 'name',
+        sections: [
+          {
+            rows: [
+              [{ kind: 'field', type: 'text', id: 'name' }],
+              [
+                { kind: 'text', text: 'Сила' },
+                { kind: 'field', type: 'number', id: 'str' },
+                { kind: 'field', type: 'check', id: 'str_tired' },
+              ],
+              [{ kind: 'field', type: 'text', id: 'notes' }],
             ],
-            [{ kind: 'field', type: 'text', id: 'notes' }],
-          ],
-        },
-        {
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'field', type: 'number', id: 'bonus' },
+          },
+          {
+            repeat: true,
+            rows: [
+              [
+                { kind: 'field', type: 'text', id: 'attack' },
+                { kind: 'field', type: 'number', id: 'bonus' },
+              ],
             ],
-          ],
-        },
-      ],
-    },
-    npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+          },
+        ],
+      },
+      {
+        id: 'npc',
+        kind: 'single',
+        title: 'NPC',
+        visibility: 'gm',
+        sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      },
+    ],
   };
 
   async function patchRig(...records: VersionedRecord[]): Promise<{ rig: Rig; view: WindowView }> {
@@ -2098,10 +1994,7 @@ describe('field-patch', () => {
       JSON.stringify({ k: 'preset', d: encodePreset(PATCH_PRESET), c: 1, a: 'z' }),
     );
 
-    for (const record of [sheet('brok', 'Брок'), ...records]) {
-      seed(rig, record.k, JSON.stringify(record));
-    }
-
+    seedRecords(rig, sheet('brok'), ...records);
     await startEngine(rig);
 
     return { rig, view: await openAndLoad(rig) };
@@ -2222,21 +2115,41 @@ describe('field-patch', () => {
     });
   });
 
-  test('reads the NPC template for an NPC sheet', async () => {
+  // Sheet names convention: a sheet of a sheet set is renamed by a patch of its name field.
+  test('renames a sheet of a sheet set by a patch of its name field and persists it', async () => {
     // #given
     const { rig, view } = await patchRig({
-      k: 'sheet:goblin',
-      d: { kind: 'npc', name: 'Гоблин', order: 0 },
-      c: 1,
+      k: 'row:brok:name',
+      d: { name: 'Брок' },
+      c: 3,
       a: 'z',
     });
 
     // #when
-    view.client.sendCommand(patch({ kind: 'row', rowId: 'hp' }, 'hp', 7, 'goblin'));
+    view.client.sendCommand(patch({ kind: 'row', rowId: 'name' }, 'name', 'Лиза'));
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
-    expect(view.store.$records.get().get('row:goblin:hp')?.d).toEqual({ hp: 7 });
+    const expected = { k: 'row:brok:name', d: { name: 'Лиза' }, c: 4, a: 'mock-connection' };
+
+    expect({
+      window: view.store.$records.get().get('row:brok:name'),
+      stored: stored(rig, 'row:brok:name'),
+      sheet: view.store.$records.get().get('sheet:brok'),
+    }).toEqual({ window: expected, stored: expected, sheet: sheet('brok') });
+  });
+
+  // AD-18: a single sheet's id is its template id, and it has no `sheet:` record.
+  test("reads the single sheet's own template for a single sheet", async () => {
+    // #given
+    const { rig, view } = await patchRig();
+
+    // #when
+    view.client.sendCommand(patch({ kind: 'row', rowId: 'hp' }, 'hp', 7, 'npc'));
+    await waitUntil(() => deltas(rig).length === 1);
+
+    // #then
+    expect(view.store.$records.get().get('row:npc:hp')?.d).toEqual({ hp: 7 });
   });
 
   test.each<[string, string, Command, VersionedRecord[]]>([
@@ -2255,11 +2168,12 @@ describe('field-patch', () => {
     ],
     ['a field of another row', 'unknown-field', patch(ROW_STR, 'notes', 'x'), []],
     ['a field not in the preset', 'unknown-field', patch(ROW_STR, 'dex', 1), []],
+    ['a sheet set field on a single sheet', 'unknown-field', patch(ROW_STR, 'str', 1, 'npc'), []],
     [
-      'a character field on an NPC',
-      'unknown-field',
-      patch(ROW_STR, 'str', 1, 'goblin'),
-      [{ k: 'sheet:goblin', d: { kind: 'npc', name: 'Гоблин', order: 0 }, c: 1, a: 'z' }],
+      'a sheet whose sheet set the preset does not hold',
+      'unknown-sheet',
+      patch(ROW_STR, 'str', 1, 'ghost'),
+      [{ k: 'sheet:ghost', d: { set: 'gone', order: 0 }, c: 1, a: 'z' }],
     ],
     ['a string for a number field', 'invalid-value', patch(ROW_STR, 'str', '12'), []],
     ['a number for a check field', 'invalid-value', patch(ROW_STR, 'str_tired', 1), []],
@@ -2316,28 +2230,31 @@ describe('field-patch', () => {
 
     view.client.sendCommand(patch(ROW_STR, 'str', 1));
     view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
-    view.client.sendCommand({
-      type: 'preset-upload',
-      data: encodePreset({
-        v: 1,
-        character: {
-          sections: [
-            {
-              rows: [
-                [
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'number', id: 'dex' },
+    view.client.sendCommand(
+      upload({
+        v: 2,
+        templates: [
+          {
+            id: 'pc',
+            kind: 'set',
+            title: 'Персонажи',
+            nameField: 'name',
+            sections: [
+              {
+                rows: [
+                  [{ kind: 'field', type: 'text', id: 'name' }],
+                  [
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'number', id: 'dex' },
+                  ],
                 ],
-              ],
-            },
-          ],
-        },
-        npc: { sections: [] },
+              },
+            ],
+          },
+        ],
       }),
-      expectedCount: 0,
-      expectedDigest: '811c9dc5',
-    });
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'liza', kind: 'pc', name: 'Лиза' });
+    );
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'liza', set: 'pc' });
     await waitUntil(() => view.store.$records.get().has('sheet:liza'));
 
     // #when
@@ -2376,26 +2293,43 @@ describe('field-patch', () => {
   });
 });
 
-describe('repeat rows', () => {
-  // Two repeat sections, so a row of one never counts for the other, and an NPC template with none.
+describe('repeat blocks', () => {
+  // Two repeat sections, so a block of one never counts for the other, and a single sheet with none.
   const ROWS_PRESET: Preset = {
-    v: 1,
-    character: {
-      sections: [
-        { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] },
-        {
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'field', type: 'number', id: 'bonus' },
+    v: 2,
+    templates: [
+      {
+        id: 'pc',
+        kind: 'set',
+        title: 'Персонажи',
+        nameField: 'name',
+        sections: [
+          {
+            rows: [
+              [{ kind: 'field', type: 'text', id: 'name' }],
+              [{ kind: 'field', type: 'number', id: 'str' }],
             ],
-          ],
-        },
-        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
-      ],
-    },
-    npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+          },
+          {
+            repeat: true,
+            rows: [
+              [
+                { kind: 'field', type: 'text', id: 'attack' },
+                { kind: 'field', type: 'number', id: 'bonus' },
+              ],
+            ],
+          },
+          { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
+        ],
+      },
+      {
+        id: 'npc',
+        kind: 'single',
+        title: 'NPC',
+        visibility: 'gm',
+        sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      },
+    ],
   };
 
   async function rowsRig(
@@ -2409,9 +2343,7 @@ describe('repeat rows', () => {
       JSON.stringify({ k: 'preset', d: encodePreset(ROWS_PRESET), c: 1, a: 'z' }),
     );
 
-    for (const record of [sheet('brok', 'Брок'), sheet('liza', 'Лиза'), ...records]) {
-      seed(rig, record.k, JSON.stringify(record));
-    }
+    seedRecords(rig, sheet('brok'), sheet('liza'), ...records);
 
     const engine = await startEngine(rig);
 
@@ -2597,12 +2529,7 @@ describe('repeat rows', () => {
       [],
     ],
     ['an add to a section not in the preset', 'unknown-section', addRow('r1', 'brok', 'spell'), []],
-    [
-      'an add to a character section on an NPC',
-      'unknown-section',
-      addRow('r1', 'goblin'),
-      [{ k: 'sheet:goblin', d: { kind: 'npc', name: 'Гоблин', order: 0 }, c: 1, a: 'z' }],
-    ],
+    ['an add to a sheet set section on a single sheet', 'unknown-section', addRow('r1', 'npc'), []],
     [
       'an add with the id of a live row',
       'instance-exists',
@@ -2614,6 +2541,13 @@ describe('repeat rows', () => {
       'instance-exists',
       addRow('a'),
       [{ k: 'rep:brok:attack:a', d: null, c: 2, a: 'z' }],
+    ],
+    // AD-2: an instance id is unique within its sheet, across sections, so a link names one block.
+    [
+      'an add with the id of a block in another section of the sheet',
+      'instance-exists',
+      addRow('a'),
+      [rep('rep:brok:item:a', 0)],
     ],
     ['an add with an id outside the nanoid alphabet', 'invalid-instance-id', addRow('a:b'), []],
     ['an add with an empty id', 'invalid-instance-id', addRow(''), []],
@@ -2631,13 +2565,10 @@ describe('repeat rows', () => {
       [],
     ],
     [
-      'a delete in a character section on an NPC',
+      'a delete in a sheet set section on a single sheet',
       'unknown-section',
-      deleteRow('a', 'goblin'),
-      [
-        { k: 'sheet:goblin', d: { kind: 'npc', name: 'Гоблин', order: 0 }, c: 1, a: 'z' },
-        rep('rep:goblin:attack:a', 0),
-      ],
+      deleteRow('a', 'npc'),
+      [rep('rep:npc:attack:a', 0)],
     ],
     ['a delete in a plain row', 'unknown-section', deleteRow('a', 'brok', 'str'), []],
     ['a delete of an unknown row', 'unknown-instance', deleteRow('a'), []],
@@ -2662,7 +2593,7 @@ describe('repeat rows', () => {
   ])('rejects %s and changes nothing', async (_name, reason, command, records) => {
     // #given
     const { rig, view } = await rowsRig(...records);
-    const before = recordsOf(view.store);
+    const before = byKey(recordsOf(view.store));
 
     // #when
     const rejection = await rejectionOf(view, command);
@@ -2695,11 +2626,11 @@ describe('repeat rows', () => {
 });
 
 function addRow(instanceId: string, sheetId = 'brok', sectionId = 'attack'): Command {
-  return { type: 'repeat-row-add', sheetId, sectionId, instanceId };
+  return { type: 'repeat-block-add', sheetId, sectionId, instanceId };
 }
 
 function deleteRow(instanceId: string, sheetId = 'brok', sectionId = 'attack'): Command {
-  return { type: 'repeat-row-delete', sheetId, sectionId, instanceId };
+  return { type: 'repeat-block-delete', sheetId, sectionId, instanceId };
 }
 
 function rep(
@@ -2726,6 +2657,21 @@ function examplePreset(): Preset {
 
 function numberField(id: string): JsonValue {
   return { kind: 'field', type: 'number', id };
+}
+
+function textField(id: string): JsonValue {
+  return { kind: 'field', type: 'text', id };
+}
+
+// An upload the GM confirmed with nothing to erase: no value and no sheet lost.
+function upload(preset: Preset): Extract<Command, { type: 'preset-upload' }> {
+  return {
+    type: 'preset-upload',
+    data: encodePreset(preset),
+    expectedCount: 0,
+    expectedSheets: 0,
+    expectedDigest: '811c9dc5',
+  };
 }
 
 function deflatedJson(value: JsonValue): string {
@@ -2772,9 +2718,23 @@ function incompressiblePresetData(): string {
     label += Array.from({ length: 50 }, nextCharacter).join('');
 
     const data = encodePreset({
-      v: 1,
-      character: { sections: [{ rows: [[{ kind: 'text', text: label }]] }] },
-      npc: { sections: [] },
+      v: 2,
+      templates: [
+        {
+          id: 'pc',
+          kind: 'set',
+          title: 'Персонажи',
+          nameField: 'name',
+          sections: [
+            {
+              rows: [
+                [{ kind: 'text', text: label }],
+                [{ kind: 'field', type: 'text', id: 'name' }],
+              ],
+            },
+          ],
+        },
+      ],
     });
 
     // The command, with its envelope of about 85 bytes, still fits one message. The record, with

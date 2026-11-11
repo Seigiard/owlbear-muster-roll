@@ -3,7 +3,13 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { deflateToBase64 } from '@/core/deflate';
 import type { JsonValue } from '@/core/json';
 import { err } from '@/core/result';
-import { encodePreset, type Preset } from '@/core/preset';
+import {
+  encodePreset,
+  type Preset,
+  type PresetCell,
+  type PresetSection,
+  type Template,
+} from '@/core/preset';
 import { presetDiff } from '@/core/preset-migrate';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
@@ -50,46 +56,76 @@ const TIMING: Timing = {
   snapshotImportTimeoutMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const STORAGE_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 const GENERATION = { n: 0, a: '' };
 const DENIED = 'Нет прав на правку';
 const PLAYER_ID = 'player-a';
 
-const PRESET: Preset = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'text', id: 'note' },
-          ],
-        ],
-      },
-      {
-        repeat: true,
-        rows: [
-          [
-            { kind: 'field', type: 'text', id: 'item' },
-            { kind: 'field', type: 'number', id: 'qty' },
-          ],
-        ],
-      },
+const NAME_ROW: PresetCell[] = [{ kind: 'field', type: 'text', id: 'name' }];
+
+const ITEMS: PresetSection = {
+  repeat: true,
+  rows: [
+    [
+      { kind: 'field', type: 'text', id: 'item' },
+      { kind: 'field', type: 'number', id: 'qty' },
     ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
+  ],
 };
 
-// The row is named by `note` now, and the repeat section by `name`, which replaces `item`.
-const MOVED: Preset = {
-  ...PRESET,
-  character: {
-    sections: [
+// A GM-only single sheet whose repeat blocks a token can link to.
+const NPC: Template = {
+  id: 'npc',
+  kind: 'single',
+  title: 'NPC',
+  visibility: 'gm',
+  sections: [
+    {
+      repeat: true,
+      tokens: true,
+      rows: [
+        [
+          { kind: 'field', type: 'text', id: 'mob' },
+          { kind: 'field', type: 'number', id: 'hp' },
+        ],
+      ],
+    },
+  ],
+};
+
+function pcTemplate(sections: PresetSection[]): Template {
+  return { id: 'pc', kind: 'set', title: 'Персонажи', nameField: 'name', sections };
+}
+
+const PRESET: Preset = {
+  v: 2,
+  templates: [
+    pcTemplate([
       {
         rows: [
+          NAME_ROW,
+          [
+            { kind: 'field', type: 'number', id: 'str' },
+            { kind: 'field', type: 'text', id: 'note' },
+          ],
+        ],
+      },
+      ITEMS,
+    ]),
+    NPC,
+  ],
+};
+
+// The row of `str` is named by `note` now, and the repeat section by `label`, which replaces `item`.
+const MOVED: Preset = {
+  v: 2,
+  templates: [
+    pcTemplate([
+      {
+        rows: [
+          NAME_ROW,
           [
             { kind: 'field', type: 'text', id: 'note' },
             { kind: 'field', type: 'number', id: 'str' },
@@ -100,38 +136,56 @@ const MOVED: Preset = {
         repeat: true,
         rows: [
           [
-            { kind: 'field', type: 'text', id: 'name' },
+            { kind: 'field', type: 'text', id: 'label' },
             { kind: 'field', type: 'number', id: 'qty' },
           ],
         ],
       },
-    ],
-  },
+    ]),
+    NPC,
+  ],
 };
 
 // Only a label is new, so nothing moves or goes.
 const RELABELLED: Preset = {
-  ...PRESET,
-  character: {
-    sections: [
+  v: 2,
+  templates: [
+    pcTemplate([
       {
         title: 'Сила',
-        rows: PRESET.character.sections[0]?.rows ?? [],
+        rows: [
+          NAME_ROW,
+          [
+            { kind: 'field', type: 'number', id: 'str' },
+            { kind: 'field', type: 'text', id: 'note' },
+          ],
+        ],
       },
-      PRESET.character.sections[1] ?? { rows: [] },
-    ],
-  },
+      ITEMS,
+    ]),
+    NPC,
+  ],
 };
 
 // `note` goes from the row of `str`.
 const NO_NOTE: Preset = {
-  ...PRESET,
-  character: {
-    sections: [
-      { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] },
-      PRESET.character.sections[1] ?? { rows: [] },
-    ],
-  },
+  v: 2,
+  templates: [
+    pcTemplate([{ rows: [NAME_ROW, [{ kind: 'field', type: 'number', id: 'str' }]] }, ITEMS]),
+    NPC,
+  ],
+};
+
+// The sheet set goes, with every sheet of it.
+const NO_PC: Preset = { v: 2, templates: [NPC] };
+
+// The NPC repeat section is no longer linkable.
+const NO_TOKENS: Preset = {
+  v: 2,
+  templates: [
+    PRESET.templates[0] ?? NPC,
+    { ...NPC, sections: NPC.sections.map(({ tokens: _tokens, ...section }) => section) },
+  ],
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
@@ -146,8 +200,7 @@ const SWORD: VersionedRecord = {
 
 const BASE: readonly VersionedRecord[] = [
   PRESET_RECORD,
-  { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 1, a: 'seed' },
-  { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'seed' },
+  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
   { k: `acl:brok:${PLAYER_ID}`, d: { name: 'Оля' }, c: 1, a: 'seed' },
   STR_ROW,
   SWORD,
@@ -198,6 +251,7 @@ describe('a preset diff', () => {
         t: 'preset-diff-result',
         id,
         count: 1,
+        sheets: 0,
         digest: Object(uploadOf(MOVED, 1)).expectedDigest,
       },
       writes: 0,
@@ -246,7 +300,7 @@ describe('a preset diff', () => {
     // #given: a preset a newer build wrote.
     const newer: VersionedRecord = {
       k: 'preset',
-      d: deflateToBase64(JSON.stringify({ ...PRESET, v: 2 })),
+      d: deflateToBase64(JSON.stringify({ ...PRESET, v: 3 })),
       c: 1,
       a: 'seed',
     };
@@ -289,12 +343,12 @@ describe('a preset upload', () => {
       generations: heardOf(room, 'gm-a', 'commit').map((data) => Object(data).g),
       writes: gm.writes.slice(writesBefore),
       note: stored(gm, 'row:brok:note')?.d,
-      name: stored(gm, 'rep:brok:name:r1')?.d,
+      label: stored(gm, 'rep:brok:label:r1')?.d,
       gone: [stored(gm, STR_ROW.k)?.d, stored(gm, SWORD.k)?.d],
     }).toEqual({
-      result: { t: 'preset-uploaded', id, count: 1 },
+      result: { t: 'preset-uploaded', id, count: 1, sheets: 0 },
       commits: [
-        ['row:brok:note', 'rep:brok:name:r1'],
+        ['row:brok:note', 'rep:brok:label:r1'],
         ['preset'],
         ['row:brok:str', 'rep:brok:item:r1'],
       ],
@@ -302,13 +356,13 @@ describe('a preset upload', () => {
       generations: [GENERATION, GENERATION, GENERATION],
       writes: [
         `${STORAGE_PREFIX}row:brok:note`,
-        `${STORAGE_PREFIX}rep:brok:name:r1`,
+        `${STORAGE_PREFIX}rep:brok:label:r1`,
         `${STORAGE_PREFIX}preset`,
         `${STORAGE_PREFIX}row:brok:str`,
         `${STORAGE_PREFIX}rep:brok:item:r1`,
       ],
       note: { str: 10 },
-      name: { order: 0, cells: {} },
+      label: { order: 0, cells: {} },
       gone: [null, null],
     });
   });
@@ -319,12 +373,12 @@ describe('a preset upload', () => {
     const gm = await startClient(room, 'gm-a');
 
     // #when
-    send(gm, { type: 'sheet-rename', sheetId: 'brok', name: 'Брок Второй' });
+    send(gm, strEdit('str', 11));
     send(gm, uploadOf(RELABELLED, 0));
     await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 2);
 
     // #then
-    expect(heardOf(room, 'gm-a', 'commit').map(keysOf)).toEqual([['sheet:brok'], ['preset']]);
+    expect(heardOf(room, 'gm-a', 'commit').map(keysOf)).toEqual([[STR_ROW.k], ['preset']]);
   });
 
   test('refuses a count that changed, with the new count, and writes nothing', async () => {
@@ -348,6 +402,7 @@ describe('a preset upload', () => {
         id,
         reason: 'count-changed',
         count: 1,
+        sheets: 0,
         digest: digestOf(MOVED),
       },
       writes: 0,
@@ -374,6 +429,7 @@ describe('a preset upload', () => {
         id,
         reason: 'count-changed',
         count: 1,
+        sheets: 0,
         digest: digestOf(MOVED),
       },
       stored: PRESET_RECORD,
@@ -426,8 +482,137 @@ describe('a preset upload', () => {
 
     // #then
     expect({ result: result(gm, id), stored: stored(gm, 'preset')?.d }).toEqual({
-      result: { t: 'preset-uploaded', id, count: 0 },
+      result: { t: 'preset-uploaded', id, count: 0, sheets: 0 },
       stored: encodePreset(RELABELLED),
+    });
+  });
+});
+
+describe('a preset upload that removes a template', () => {
+  test('reports the sheets of the sheet set it deletes and, confirmed, tombstones each with its dependents', async () => {
+    // #given: three sheets of the set, with str 10, "Меч" and str 12 shown on them.
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      seeded: [
+        ...BASE,
+        { k: 'sheet:anya', d: { set: 'pc', order: 1 }, c: 1, a: 'seed' },
+        { k: 'row:anya:str', d: { str: 12 }, c: 1, a: 'seed' },
+        { k: 'sheet:mira', d: { set: 'pc', order: 2 }, c: 1, a: 'seed' },
+      ],
+    });
+
+    const diff = requestDiff(gm, NO_PC);
+
+    await waitUntil(() => result(gm, diff) !== undefined);
+
+    const found = Object(result(gm, diff));
+
+    // #when
+    const id = send(gm, {
+      type: 'preset-upload',
+      data: encodePreset(NO_PC),
+      expectedCount: found.count,
+      expectedSheets: found.sheets,
+      expectedDigest: found.digest,
+    });
+
+    await waitUntil(() => result(gm, id) !== undefined);
+
+    // #then
+    const gone = [
+      'sheet:brok',
+      'sheet:anya',
+      'sheet:mira',
+      STR_ROW.k,
+      SWORD.k,
+      'row:anya:str',
+      `acl:brok:${PLAYER_ID}`,
+    ];
+
+    expect({
+      diff: [found.count, found.sheets],
+      result: result(gm, id),
+      gone: gone.map((key) => stored(gm, key)?.d),
+    }).toEqual({
+      diff: [3, 3],
+      result: { t: 'preset-uploaded', id, count: 3, sheets: 3 },
+      gone: gone.map(() => null),
+    });
+  });
+
+  test('refuses with count-changed when a sheet was added since the diff', async () => {
+    // #given: the diff saw one sheet of the set to delete.
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a');
+    const diff = requestDiff(gm, NO_PC);
+
+    await waitUntil(() => result(gm, diff) !== undefined);
+
+    const found = Object(result(gm, diff));
+
+    send(gm, { type: 'sheet-create', sheetId: 'anya', set: 'pc' });
+    await waitUntil(() => shown(gm, 'sheet:anya') !== undefined);
+
+    // #when
+    const id = send(gm, {
+      type: 'preset-upload',
+      data: encodePreset(NO_PC),
+      expectedCount: found.count,
+      expectedSheets: found.sheets,
+      expectedDigest: found.digest,
+    });
+
+    await waitUntil(() => rejection(gm, id) !== undefined);
+
+    // #then: the new digest goes with the new counts, for the next confirmation.
+    expect({
+      diff: [found.count, found.sheets],
+      rejection: gm.store.$rejections.get().get(id),
+      stored: stored(gm, 'preset'),
+    }).toEqual({
+      diff: [2, 1],
+      rejection: {
+        t: 'command-rejected',
+        id,
+        reason: 'count-changed',
+        count: 2,
+        sheets: 2,
+        digest: expect.not.stringMatching(`^${found.digest}$`),
+      },
+      stored: PRESET_RECORD,
+    });
+  });
+
+  test('that makes a repeat section unlinkable tombstones its links with no count', async () => {
+    // #given: a token linked to a repeat block of the NPC single sheet.
+    const room = openRoom();
+
+    const block: VersionedRecord = {
+      k: 'rep:npc:mob:m1',
+      d: { order: 0, cells: { mob: 'Скелет', hp: 7 } },
+      c: 1,
+      a: 'seed',
+    };
+
+    const gm = await startClient(room, 'gm-a', {
+      seeded: [...BASE, block, { k: 'link:t1', d: { s: 'npc', i: 'm1' }, c: 1, a: 'seed' }],
+    });
+
+    // #when
+    const id = send(gm, uploadOf(NO_TOKENS, 0));
+
+    await waitUntil(() => result(gm, id) !== undefined);
+
+    // #then
+    expect({
+      result: result(gm, id),
+      link: stored(gm, 'link:t1')?.d,
+      block: stored(gm, block.k),
+    }).toEqual({
+      result: { t: 'preset-uploaded', id, count: 0, sheets: 0 },
+      link: null,
+      block,
     });
   });
 });
@@ -449,72 +634,26 @@ describe('a write after an upload', () => {
     expect(stored(gm, STR_ROW.k)?.d).toEqual({ str: 11 });
   });
 
-  test('of an NPC copy holds only what the NPC template has', async () => {
+  test('of a repeat block duplicate holds only the cells its repeat section has', async () => {
     // #given
     const room = openRoom();
 
     const gm = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'row:skel:str', d: { str: 5, gone: 2 }, c: 1, a: 'seed' }],
+      seeded: withRecord({ ...SWORD, d: { order: 0, cells: { item: 'Меч 1', qty: 2, gone: 3 } } }),
     });
 
     // #when
-    send(gm, { type: 'sheet-duplicate', sheetId: 'skel', count: 1 });
-    await waitUntil(() => copiedRows(gm).length === 1);
-
-    // #then
-    expect(copiedRows(gm)).toEqual([{ str: 5 }]);
-  });
-
-  test('of an NPC copy leaves out rows and sections the NPC template lacks', async () => {
-    // #given: the NPC template has the str row and a repeat section of item and qty.
-    const npcPreset: Preset = {
-      ...PRESET,
-      npc: {
-        sections: [
-          { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] },
-          PRESET.character.sections[1] ?? { rows: [] },
-        ],
-      },
-    };
-
-    const room = openRoom();
-
-    const gm = await startClient(room, 'gm-a', {
-      seeded: [
-        { ...PRESET_RECORD, d: encodePreset(npcPreset) },
-        ...BASE.slice(1),
-        { k: 'row:skel:str', d: { str: 5 }, c: 1, a: 'seed' },
-        { k: 'row:skel:gone', d: { gone: 1 }, c: 1, a: 'seed' },
-        { k: 'rep:skel:spell:x1', d: { order: 0, cells: { spell: 'Огонь' } }, c: 1, a: 'seed' },
-        {
-          k: 'rep:skel:item:y1',
-          d: { order: 0, cells: { item: 'Нож', extra: 3 } },
-          c: 1,
-          a: 'seed',
-        },
-      ],
+    send(gm, {
+      type: 'repeat-block-duplicate',
+      sheetId: 'brok',
+      sectionId: 'item',
+      instanceId: 'r1',
+      count: 1,
     });
-
-    const before = new Set(gm.backing.keys());
-
-    // #when
-    send(gm, { type: 'sheet-duplicate', sheetId: 'skel', count: 1 });
-    await waitUntil(() =>
-      gm.backing.keys().some((key) => !before.has(key) && key.includes(':rep:')),
-    );
+    await waitUntil(() => copiedBlocks(gm).length === 1);
 
     // #then
-    const copied = gm.backing
-      .keys()
-      .filter((key) => !before.has(key) && !key.includes(':sheet:'))
-      .sort()
-      .map((key) => recordSchema.parse(JSON.parse(gm.backing.get(key) ?? 'null')))
-      .map((record) => [record.k.split(':')[0], record.k.split(':')[2], record.d]);
-
-    expect(copied).toEqual([
-      ['rep', 'item', { order: 0, cells: { item: 'Нож' } }],
-      ['row', 'str', { str: 5 }],
-    ]);
+    expect(copiedBlocks(gm)).toEqual([{ item: 'Меч 2', qty: 2 }]);
   });
 
   test("of a player's proposal strips the values its row no longer has", async () => {
@@ -629,12 +768,12 @@ describe("a player's pending edit when the preset changes", () => {
     });
   });
 
-  test('of a repeat row removal: follows the row to its new section', async () => {
+  test('of a repeat block removal: follows the block to its new section', async () => {
     // #given
     const { room, player } = await playerWithSilentGm();
 
     send(player, {
-      type: 'repeat-row-delete',
+      type: 'repeat-block-delete',
       sheetId: 'brok',
       sectionId: 'item',
       instanceId: 'r1',
@@ -642,7 +781,7 @@ describe("a player's pending edit when the preset changes", () => {
     await waitUntil(() => proposals(room).length === 1);
 
     // #when
-    answer(room, commit([{ k: 'rep:brok:name:r1', d: { order: 0, cells: {} }, c: 1, a: 'gm-a' }]));
+    answer(room, commit([{ k: 'rep:brok:label:r1', d: { order: 0, cells: {} }, c: 1, a: 'gm-a' }]));
 
     answer(room, commit([{ k: 'preset', d: encodePreset(MOVED), c: 2, a: 'gm-a' }]));
     answer(room, commit([{ ...SWORD, d: null, c: 2, a: 'gm-a' }]));
@@ -653,7 +792,7 @@ describe("a player's pending edit when the preset changes", () => {
       newest: proposals(room)[1]?.k,
       data: proposals(room)[1]?.d,
       notifications: player.platform.shownNotifications(),
-    }).toEqual({ newest: 'rep:brok:name:r1', data: null, notifications: [] });
+    }).toEqual({ newest: 'rep:brok:label:r1', data: null, notifications: [] });
   });
 
   test('does not show the denied notification from a GM it reached', async () => {
@@ -764,13 +903,21 @@ function digestOf(preset: Preset): string {
   return presetDiff(new Map(BASE.map((record) => [record.k, record])), PRESET, preset).digest;
 }
 
-// An upload confirmed for `expectedCount` values, with the digest of what it erases from BASE.
+// An upload confirmed for `expectedCount` values and `expectedSheets` sheets, with the digest of
+// what it erases from BASE.
 function uploadOf(
   preset: Preset,
   expectedCount: number,
   expectedDigest = digestOf(preset),
+  expectedSheets = 0,
 ): Command {
-  return { type: 'preset-upload', data: encodePreset(preset), expectedCount, expectedDigest };
+  return {
+    type: 'preset-upload',
+    data: encodePreset(preset),
+    expectedCount,
+    expectedSheets,
+    expectedDigest,
+  };
 }
 
 function requestDiff(client: Client, preset: Preset): string {
@@ -789,11 +936,11 @@ function answer(room: Room, data: JsonValue): void {
 }
 
 function commit(records: VersionedRecord[]): JsonValue {
-  return { v: 1, g: GENERATION, t: 'commit', records };
+  return { v: 2, g: GENERATION, t: 'commit', records };
 }
 
 function reject(edit: { k: string; c: number; a: string }, reason: 'denied' | 'stale'): JsonValue {
-  return { v: 1, g: GENERATION, t: 'reject', k: edit.k, c: edit.c, a: edit.a, reason };
+  return { v: 2, g: GENERATION, t: 'reject', k: edit.k, c: edit.c, a: edit.a, reason };
 }
 
 function strEdit(fieldId: string, value: JsonValue): Command {
@@ -841,18 +988,17 @@ function pendingKeys(client: Client): string[] {
   return keys;
 }
 
-// The `row:` data of every NPC copy of "Скелет" the GM stored.
-function copiedRows(client: Client): JsonValue[] {
+// The cells of every repeat block of Брок's `item` section the GM stored but SWORD.
+function copiedBlocks(client: Client): JsonValue[] {
   return client.backing
     .keys()
     .filter(
       (key) =>
-        key.startsWith(`${STORAGE_PREFIX}row:`) &&
-        key.endsWith(':str') &&
-        key !== `${STORAGE_PREFIX}row:skel:str` &&
-        key !== `${STORAGE_PREFIX}${STR_ROW.k}`,
+        key.startsWith(`${STORAGE_PREFIX}rep:brok:item:`) && key !== `${STORAGE_PREFIX}${SWORD.k}`,
     )
-    .map((key) => recordSchema.parse(JSON.parse(client.backing.get(key) ?? 'null')).d);
+    .map(
+      (key) => Object(recordSchema.parse(JSON.parse(client.backing.get(key) ?? 'null')).d).cells,
+    );
 }
 
 async function waitUntil(condition: () => boolean): Promise<void> {

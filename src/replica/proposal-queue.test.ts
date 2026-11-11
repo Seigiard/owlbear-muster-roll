@@ -1,7 +1,7 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
 import type { Version } from '@/core/merge';
-import type { PresetTemplate } from '@/core/preset';
+import type { TemplateLayout } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import {
   combinePatches,
@@ -418,7 +418,7 @@ describe('proposedRecord', () => {
 });
 
 describe('strippedPatch', () => {
-  const TEMPLATE: PresetTemplate = {
+  const TEMPLATE: TemplateLayout = {
     sections: [
       {
         rows: [

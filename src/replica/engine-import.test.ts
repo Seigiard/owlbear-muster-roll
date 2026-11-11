@@ -54,49 +54,63 @@ const TIMING: Timing = {
 // The strings and keys of the 5.3 spec, written out by hand.
 const DATA_REPLACED = 'Данные комнаты заменены';
 const KEY = 'app.muster-roll/snapshot';
-const ROOM_PREFIX = 'mr1:mock-room:';
-const OLD_PREFIX = 'mr1:mock-room:0::';
+const ROOM_PREFIX = 'mr2:mock-room:';
+const OLD_PREFIX = 'mr2:mock-room:0::';
 const WAIT_LIMIT_MS = 3000;
 const POLL_MS = 2;
 const INITIAL: Generation = { n: 0, a: '' };
 const GHOST = 'ghost-gm';
 
 const PRESET: Preset = {
-  v: 1,
-  character: {
-    sections: [
-      {
-        rows: [
-          [{ kind: 'field', type: 'number', id: 'str' }],
-          [{ kind: 'field', type: 'text', id: 'notes' }],
-        ],
-      },
-    ],
-  },
-  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      tokens: true,
+      sections: [
+        {
+          rows: [
+            [{ kind: 'field', type: 'text', id: 'name' }],
+            [{ kind: 'field', type: 'number', id: 'str' }],
+            [{ kind: 'field', type: 'text', id: 'notes' }],
+          ],
+        },
+      ],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+    },
+  ],
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
-const BROK = sheet('brok', 'Брок');
+const BROK = sheet('brok');
 const BROK_STR: VersionedRecord = { k: 'row:brok:str', d: { str: 10 }, c: 3, a: 'seed' };
 const ACL: VersionedRecord = { k: 'acl:brok:player-p', d: { name: 'Лиза' }, c: 2, a: 'seed' };
 const PLINK: VersionedRecord = { k: 'plink:brok:player-p', d: { name: 'Лиза' }, c: 2, a: 'seed' };
 const OLD_ROOM: readonly VersionedRecord[] = [PRESET_RECORD, BROK, BROK_STR, ACL, PLINK];
 
-// One character, one NPC and a link, with one value the preset has no field for.
+// One sheet of the sheet set, the NPC single sheet and a link, with one value the preset has no
+// field for.
 const FILE: SnapshotFile = {
-  v: 1,
+  v: 2,
   type: 'muster-roll/snapshot',
   sheets: [
     {
       id: 'anya',
-      kind: 'pc',
-      name: 'Аня',
+      set: 'pc',
       order: 0,
-      rows: { str: { str: 12, notes: 'Смелая' }, old: { gone: 'x' } },
+      rows: { name: { name: 'Аня' }, str: { str: 12, notes: 'Смелая' }, old: { gone: 'x' } },
       repeats: {},
     },
-    { id: 'skel', kind: 'npc', name: 'Скелет', order: 0, rows: { hp: { hp: 7 } }, repeats: {} },
+    { id: 'npc', rows: { hp: { hp: 7 } }, repeats: {} },
   ],
   links: [{ tokenId: 't1', sheetId: 'anya' }],
 };
@@ -227,14 +241,14 @@ function failingNewGeneration(saved: number): (platform: MockPlatform) => MockPl
   });
 }
 
-function sheet(id: string, name: string, kind: 'pc' | 'npc' = 'pc'): VersionedRecord {
-  return { k: `sheet:${id}`, d: { kind, name, order: 0 }, c: 1, a: 'seed' };
+function sheet(id: string, order = 0): VersionedRecord {
+  return { k: `sheet:${id}`, d: { set: 'pc', order }, c: 1, a: 'seed' };
 }
 
-function copyValue(g: Generation, records: readonly VersionedRecord[]): JsonObject {
+function copyValue(g: Generation, records: readonly VersionedRecord[], v = 2): JsonObject {
   const deflated = deflateSync(strToU8(JSON.stringify({ g, records })));
 
-  return { v: 1, data: Buffer.from(deflated).toString('base64') };
+  return { v, data: Buffer.from(deflated).toString('base64') };
 }
 
 function roomCopyGeneration(room: Room): JsonValue {
@@ -400,9 +414,9 @@ async function check(client: Client, data = DATA): Promise<JsonValue> {
 }
 
 // The import's answer, or the reason it was refused, with the digest of a check first.
-async function importFile(client: Client, digest?: string): Promise<JsonValue> {
-  const expected = digest ?? String(Object(await check(client)).digest);
-  const id = send(client, { type: 'snapshot-import', data: DATA, expectedDigest: expected });
+async function importFile(client: Client, digest?: string, data = DATA): Promise<JsonValue> {
+  const expected = digest ?? String(Object(await check(client, data)).digest);
+  const id = send(client, { type: 'snapshot-import', data, expectedDigest: expected });
 
   await waitUntil(() => answerOf(client, id) !== null);
 
@@ -469,7 +483,7 @@ function stateMessage(
   i = 1,
   n = 1,
 ): JsonValue {
-  return { v: 1, g, t: 'state', r, i, n, records: encodeStateRecords(records) };
+  return { v: 2, g, t: 'state', r, i, n, records: encodeStateRecords(records) };
 }
 
 function newGenerationOf(connectionId: string): Generation {
@@ -504,6 +518,7 @@ describe('check', () => {
         t: 'snapshot-check-result',
         id: expect.any(String),
         count: 1,
+        sheets: 0,
         digest: expect.any(String),
       },
       keys: keysBefore,
@@ -542,6 +557,81 @@ describe('check', () => {
 });
 
 describe('import', () => {
+  test('drops a file sheet of no template of the preset with its values and counts it', async () => {
+    // #given: a sheet of a sheet set the preset does not have, holding one value.
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a', { untilLive: true });
+
+    const data = encodeSnapshotFileData({
+      ...FILE,
+      sheets: [
+        ...FILE.sheets,
+        { id: 'ghost', set: 'crew', order: 0, rows: { hp: { hp: 3 } }, repeats: {} },
+      ],
+    });
+
+    // #when
+    const checked = await check(gm, data);
+
+    await importFile(gm, String(Object(checked).digest), data);
+    await waitUntil(() => shown(gm, 'sheet:anya') !== undefined);
+
+    // #then: `gone` of Аня and `hp` of the dropped sheet.
+    expect({
+      counts: [Object(checked).count, Object(checked).sheets],
+      ghost: shownKeys(gm).filter((key) => key.includes('ghost')),
+    }).toEqual({ counts: [2, 1], ghost: [] });
+  });
+
+  test('does not write over a room copy of a newer build, and raises the new-version notice', async () => {
+    // #given: the copy appears after catch-up, so only the import reads it.
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const newer = { v: 3, data: 'from a newer build' };
+
+    room.room.setMetadata({ [KEY]: newer });
+
+    // #when
+    await importFile(gm);
+    await waitUntil(() => gm.store.$notices.get().includes('new-version'));
+
+    // #then
+    expect(room.room.getMetadata()[KEY]).toEqual(newer);
+  });
+
+  test('writes over a room copy of an older format, and the older-format notice goes', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = openRoom();
+
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [], 1) });
+
+    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const before = gm.store.$notices.get();
+
+    // #when
+    await importFile(gm);
+    await waitUntil(() => Object(room.room.getMetadata()[KEY]).v === 2);
+    // The delta with the notices reaches the window after the write.
+    await pause(30);
+
+    // #then
+    expect({
+      before,
+      v: Object(room.room.getMetadata()[KEY]).v,
+      copy: roomCopyGeneration(room),
+      notices: gm.store.$notices.get(),
+    }).toEqual({
+      before: ['room-copy-older-format'],
+      v: 2,
+      copy: newGenerationOf('gm-a'),
+      notices: [],
+    });
+  });
+
   test('saves the new generation, writes its room copy and only then sends reset', async () => {
     // #given
     const room = openRoom();
@@ -571,7 +661,7 @@ describe('import', () => {
       answer: 'snapshot-imported',
       events: ['copy', 'reset'],
       savedAtCopy: true,
-      reset: [{ v: 1, g: generation, t: 'reset' }],
+      reset: [{ v: 2, g: generation, t: 'reset' }],
       copy: generation,
     });
   });
@@ -595,15 +685,15 @@ describe('import', () => {
       keys: [
         'link:t1',
         'preset',
+        'row:anya:name',
         'row:anya:notes',
         'row:anya:str',
-        'row:skel:hp',
+        'row:npc:hp',
         'sheet:anya',
-        'sheet:skel',
       ],
       preset: importedRecord('gm-a', 'preset', PRESET_RECORD.d),
       str: importedRecord('gm-a', 'row:anya:str', { str: 12 }),
-      link: importedRecord('gm-a', 'link:t1', 'anya'),
+      link: importedRecord('gm-a', 'link:t1', { s: 'anya' }),
     });
   });
 
@@ -618,13 +708,14 @@ describe('import', () => {
 
     // #then
     expect(storedKeys(gm)).toEqual([
-      'mr1:mock-room:1:gm-a:link:t1',
-      'mr1:mock-room:1:gm-a:preset',
-      'mr1:mock-room:1:gm-a:row:anya:notes',
-      'mr1:mock-room:1:gm-a:row:anya:str',
-      'mr1:mock-room:1:gm-a:row:skel:hp',
-      'mr1:mock-room:1:gm-a:sheet:anya',
-      'mr1:mock-room:1:gm-a:sheet:skel',
+      'mr2:mock-room:1:gm-a:#generation',
+      'mr2:mock-room:1:gm-a:link:t1',
+      'mr2:mock-room:1:gm-a:preset',
+      'mr2:mock-room:1:gm-a:row:anya:name',
+      'mr2:mock-room:1:gm-a:row:anya:notes',
+      'mr2:mock-room:1:gm-a:row:anya:str',
+      'mr2:mock-room:1:gm-a:row:npc:hp',
+      'mr2:mock-room:1:gm-a:sheet:anya',
     ]);
   });
 
@@ -644,6 +735,7 @@ describe('import', () => {
         id: expect.any(String),
         reason: 'count-changed',
         count: 1,
+        sheets: 0,
         digest: String(Object(await check(gm)).digest),
       },
       keys: keysBefore,
@@ -704,11 +796,17 @@ describe('import', () => {
     await waitUntil(() => gm.store.$notices.get().length === 1);
 
     // #when
-    send(gm, { type: 'sheet-rename', sheetId: 'brok', name: 'Брок II' });
+    send(gm, {
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'row', rowId: 'str' },
+      fieldId: 'str',
+      value: 16,
+    });
 
     // #then
     await waitUntil(() => gm.store.$notices.get().length === 0);
-    expect(Object(stored(gm, `${OLD_PREFIX}${BROK.k}`)?.d).name).toBe('Брок II');
+    expect(Object(stored(gm, `${OLD_PREFIX}${BROK_STR.k}`)?.d).str).toBe(16);
   });
 
   test('an edit held in the outbox goes out under the old generation, before reset', async () => {
@@ -763,20 +861,26 @@ describe('import', () => {
     await waitUntil(() => gate.calls === 1);
 
     // #when
-    const rename = send(gm, { type: 'sheet-rename', sheetId: 'anya', name: 'Аня II' });
+    const edit = send(gm, {
+      type: 'field-patch',
+      sheetId: 'anya',
+      target: { kind: 'row', rowId: 'str' },
+      fieldId: 'str',
+      value: 5,
+    });
 
-    await waitUntil(() => answerOf(gm, rename) !== null);
+    await waitUntil(() => answerOf(gm, edit) !== null);
     gate.open();
     await waitUntil(() => answerOf(gm, imported) !== null);
 
     // #then
     expect({
-      rename: Object(answerOf(gm, rename)).reason,
+      edit: Object(answerOf(gm, edit)).reason,
       imported: Object(answerOf(gm, imported)).t,
       commits: heardOf(room, 'gm-a', 'commit').filter(
         (one) => JSON.stringify(Object(one).g) === JSON.stringify(newGenerationOf('gm-a')),
       ),
-    }).toEqual({ rename: 'importing', imported: 'snapshot-imported', commits: [] });
+    }).toEqual({ edit: 'importing', imported: 'snapshot-imported', commits: [] });
   });
 
   test('a linked token deleted from the scene during the import loses its link once the import ends', async () => {
@@ -813,7 +917,7 @@ describe('import', () => {
       stored: stored(gm, `${prefix}link:t1`),
       rejections: [...gm.store.$rejections.get().keys()],
     }).toEqual({
-      during: 'anya',
+      during: { s: 'anya' },
       stored: { k: 'link:t1', d: null, c: 2, a: 'gm-a' },
       rejections: [],
     });
@@ -823,7 +927,7 @@ describe('import', () => {
     // #given: this client missed the change event of that copy.
     const room = openRoom();
     const higher: Generation = { n: 5, a: 'zz' };
-    const mira = importedRecord('zz', 'sheet:mira', { kind: 'pc', name: 'Мира', order: 0 });
+    const mira = importedRecord('zz', 'sheet:mira', { set: 'pc', order: 0 });
 
     const gm = await startClient(room, 'gm-a', {
       untilLive: true,
@@ -1009,16 +1113,24 @@ describe('adoption', () => {
     joinAs(room, GHOST, 'GM');
 
     const gm = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 2000 } });
-    const intent = send(gm, { type: 'sheet-rename', sheetId: 'brok', name: 'Брок II' });
-    const generation = newGenerationOf(GHOST);
-    const anya = importedRecord(GHOST, 'sheet:anya', { kind: 'pc', name: 'Аня', order: 0 });
 
-    await waitUntil(() => Object(shown(gm, BROK.k)?.d).name === 'Брок II');
+    const intent = send(gm, {
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'row', rowId: 'str' },
+      fieldId: 'str',
+      value: 11,
+    });
+
+    const generation = newGenerationOf(GHOST);
+    const anya = importedRecord(GHOST, 'sheet:anya', { set: 'pc', order: 0 });
+
+    await waitUntil(() => Object(shown(gm, BROK_STR.k)?.d).str === 11);
 
     const asked = heardOf(room, 'gm-b', 'state-request').length;
 
     // #when
-    room.post(GHOST, { v: 1, g: generation, t: 'alive', digest: 1 });
+    room.post(GHOST, { v: 2, g: generation, t: 'alive', digest: 1 });
     await waitUntil(() => gm.store.$rejections.get().has(intent));
     await waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), [PRESET_RECORD, anya], generation));
@@ -1041,7 +1153,7 @@ describe('adoption', () => {
     const room = openRoom();
     const gm = await startClient(room, 'gm-b', { untilLive: true });
     const generation = newGenerationOf('gm-a');
-    const anya = importedRecord('gm-a', 'sheet:anya', { kind: 'pc', name: 'Аня', order: 0 });
+    const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
 
     // #when
     room.room.setMetadata({ [KEY]: copyValue(generation, [PRESET_RECORD, anya]) });
@@ -1055,7 +1167,11 @@ describe('adoption', () => {
       notified: gm.platform.shownNotifications(),
     }).toEqual({
       keys: ['preset', 'sheet:anya'],
-      stored: ['mr1:mock-room:1:gm-a:preset', 'mr1:mock-room:1:gm-a:sheet:anya'],
+      stored: [
+        'mr2:mock-room:1:gm-a:#generation',
+        'mr2:mock-room:1:gm-a:preset',
+        'mr2:mock-room:1:gm-a:sheet:anya',
+      ],
       notified: [DATA_REPLACED],
     });
   });
@@ -1079,13 +1195,13 @@ describe('adoption', () => {
     const asked = heardOf(room, 'gm-b', 'state-request').length;
 
     // #when
-    room.post(GHOST, { v: 1, g: newGenerationOf(GHOST), t: 'reset' });
+    room.post(GHOST, { v: 2, g: newGenerationOf(GHOST), t: 'reset' });
     await waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
 
     const started = Date.now();
 
-    room.post('asker', { v: 1, g: INITIAL, t: 'state-request', r: 'asker-r' });
-    room.post('asker', { v: 1, g: INITIAL, t: 'ping' });
+    room.post('asker', { v: 2, g: INITIAL, t: 'state-request', r: 'asker-r' });
+    room.post('asker', { v: 2, g: INITIAL, t: 'ping' });
     gm.engine.pageHidden();
     // Past the catch-up timeout, with requests again after 60, 120, 240 and 240 ms: the cap.
     await waitUntil(() => heardOf(room, 'gm-b', 'state-request').length === asked + 5);
@@ -1126,11 +1242,11 @@ describe('adoption', () => {
 
     const gm = await startClient(room, 'gm-b', { untilLive: true });
     const generation = newGenerationOf(GHOST);
-    const anya = importedRecord(GHOST, 'sheet:anya', { kind: 'pc', name: 'Аня', order: 0 });
+    const anya = importedRecord(GHOST, 'sheet:anya', { set: 'pc', order: 0 });
 
     const asked = heardOf(room, 'gm-b', 'state-request').length;
 
-    room.post(GHOST, { v: 1, g: generation, t: 'reset' });
+    room.post(GHOST, { v: 2, g: generation, t: 'reset' });
     await waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
 
     const r = lastRequest(room, 'gm-b');
@@ -1179,9 +1295,9 @@ describe('adoption', () => {
     await waitUntil(() => player.store.$pending.get().size === 1);
 
     // #when
-    room.post(GHOST, { v: 1, g: newGenerationOf(GHOST), t: 'reset' });
+    room.post(GHOST, { v: 2, g: newGenerationOf(GHOST), t: 'reset' });
     joinAs(room, GHOST, 'GM');
-    room.post(GHOST, { v: 1, g: newGenerationOf(GHOST), t: 'reset' });
+    room.post(GHOST, { v: 2, g: newGenerationOf(GHOST), t: 'reset' });
     await waitUntil(() => player.store.$pending.get().size === 0);
 
     // #then
@@ -1195,7 +1311,7 @@ describe('adoption guards', () => {
     const room = openRoom();
     const hold = createHold();
     const gm = await startClient(room, 'gm-b', { untilLive: true, hold });
-    const anya = importedRecord('gm-a', 'sheet:anya', { kind: 'pc', name: 'Аня', order: 0 });
+    const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
 
     hold.hold();
     send(gm, {
@@ -1272,15 +1388,15 @@ describe('adoption guards', () => {
 
     const gm = await startClient(room, 'gm-b', { untilLive: true });
     const generation = newGenerationOf(GHOST);
-    const anya = importedRecord(GHOST, 'sheet:anya', { kind: 'pc', name: 'Аня', order: 0 });
-    const mira = importedRecord(GHOST, 'sheet:mira', { kind: 'pc', name: 'Мира', order: 1 });
+    const anya = importedRecord(GHOST, 'sheet:anya', { set: 'pc', order: 0 });
+    const mira = importedRecord(GHOST, 'sheet:mira', { set: 'pc', order: 1 });
     const asked = heardOf(room, 'gm-b', 'state-request').length;
 
-    room.post(GHOST, { v: 1, g: generation, t: 'reset' });
+    room.post(GHOST, { v: 2, g: generation, t: 'reset' });
     await waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
 
     // #when
-    room.post(GHOST, { v: 1, g: generation, t: 'commit', records: [mira] });
+    room.post(GHOST, { v: 2, g: generation, t: 'commit', records: [mira] });
     await pause(20);
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), [PRESET_RECORD, anya], generation));
     await waitUntil(() => sync(gm).state === 'live');
@@ -1294,7 +1410,7 @@ describe('start', () => {
   test('a generation saved part way is not read and its keys go', async () => {
     // #given
     const room = openRoom();
-    const partial = 'mr1:mock-room:1:gm-x:';
+    const partial = 'mr2:mock-room:1:gm-x:';
 
     // #when
     const gm = await startClient(room, 'gm-a', {
@@ -1316,7 +1432,7 @@ describe('start', () => {
     // #given
     const room = openRoom();
     const generation = newGenerationOf('gm-a');
-    const anya = importedRecord('gm-a', 'sheet:anya', { kind: 'pc', name: 'Аня', order: 0 });
+    const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
 
     room.room.setMetadata({ [KEY]: copyValue(generation, [PRESET_RECORD, anya]) });
 
@@ -1333,8 +1449,8 @@ describe('start', () => {
   test('removes a generation below the highest one that a run left behind', async () => {
     // #given
     const room = openRoom();
-    const newer = 'mr1:mock-room:1:gm-a:';
-    const anya = importedRecord('gm-a', 'sheet:anya', { kind: 'pc', name: 'Аня', order: 0 });
+    const newer = 'mr2:mock-room:1:gm-a:';
+    const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
 
     // #when
     const gm = await startClient(room, 'gm-b', {
@@ -1349,8 +1465,8 @@ describe('start', () => {
   test('takes its stored generation when it is the highest', async () => {
     // #given
     const room = openRoom();
-    const newer = 'mr1:mock-room:2:gm-a:';
-    const anya = importedRecord('gm-a', 'sheet:anya', { kind: 'pc', name: 'Аня', order: 0 });
+    const newer = 'mr2:mock-room:2:gm-a:';
+    const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
 
     room.room.setMetadata({ [KEY]: copyValue(newGenerationOf('gm-a'), [PRESET_RECORD]) });
 
