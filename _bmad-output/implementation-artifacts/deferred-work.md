@@ -91,6 +91,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-4-link-a-token-to-a-sheet.md`
   summary: `link:` records of tokens removed from the scene are never cleaned up, so menu filters and re-creations grow over a campaign.
   evidence: v1 reads `link:` records only and never the scene; a removed token cannot be clicked to unlink.
+  status: resolved for new deletions by spec-4-6 (TASK-39); records from before it stay.
 
 ## From spec-3-3-apply-a-players-edit-after-a-gm-check (TASK-22)
 
@@ -121,3 +122,10 @@
 - Any participant can write a higher-generation room copy and replace the room for every client. Accepted by the owner for home use; revisit for public tables.
 - A generation that never completes (importer gone, copy did not fit) keeps every client in catch-up until a GM of that generation answers.
 - The late `snapshot-imported` after the 60 s window timeout has no test; the mock has no scene, so an inert link to an absent token is checked only as no error.
+
+## From spec-4-6 (TASK-39, token unlink)
+
+- The scene order of `onReadyChange` and item lists on a scene switch is verified only in the mock. Check in a live room: switch scenes with linked tokens; links must stay.
+- An undo of a token delete does not restore its link. A GM links it again.
+- A deleted linked token still leaves one `link:` tombstone in the room copy. Orphan `link:` records from before TASK-39 stay until a compaction exists.
+- Deleting N linked tokens sends N `link-clear` commits, not one batch.
