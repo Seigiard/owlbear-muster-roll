@@ -33,7 +33,7 @@ The extension settings have a button that opens the builder in a new tab. Exchan
 
 ## Draft, undo, validation
 
-- One draft, saved by itself in the builder page's browser storage, offered on the next visit. The page is a top-level tab, not the Owlbear iframe.
+- One draft, saved by itself in the builder page's browser storage. The builder opens straight into the editor: on the draft if one exists, otherwise on an empty preset. No draft prompt. The page is a top-level tab, not the Owlbear iframe.
 - Undo and redo for every edit.
 - A file that fails the preset checks does not open. It shows the upload's refusal message. Fixing broken JSON is not the builder's job.
 - Invalid states are allowed while editing. Each error shows at its tree item and its preview cell. A problem counter jumps to the first error.

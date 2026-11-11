@@ -98,7 +98,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **success:** Renaming `str` rewrites `str` by whole word in every formula that resolves to that field, leaves `str_tired` unchanged and says how many formulas changed. In a preset opened from a file, a changed id warns that the field's stored values in the room will be erased.
 - **CAP-26** (v2)
   - **intent:** The builder keeps one draft by itself.
-  - **success:** After the page is closed and opened again, the builder offers to continue the draft.
+  - **success:** After the page is closed and opened again, the builder opens straight into the editor on the draft, with no prompt. With no draft it opens on an empty preset.
 - **CAP-27** (v2)
   - **intent:** The GM can undo and redo every edit in the builder.
   - **success:** Each edit kind can be undone and then redone, and the preset returns to the same state each time.
@@ -144,7 +144,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - Duplicating a whole sheet of a sheet set. Only a repeat block is duplicated (CAP-30).
 - Migration of v1 presets, snapshots and rooms.
 - An in-extension preset editor and per-field confirmation of a preset upload. Presets are usually set before a game.
-- Past the POC: request-and-confirm write access, + and − buttons as a property of number fields, token-linked stats, guest "open this character", sending rolls to the Dice extension.
+- Past the POC: request-and-confirm write access, + and − buttons as a property of number fields, token-linked stats, guest "open this sheet".
 - In the builder: in-place editing on the sheet, a text markup in place of JSON, hidden field ids, blocking of edits that make the preset invalid, and repair of a file that fails the preset checks.
 - After v2: the settings button passes the room's preset to the builder in the URL fragment, and the builder writes to the room directly. Direct write waits for the v2 server.
 - Merging two simultaneous edits of one row. Only the latest stays.

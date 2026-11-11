@@ -71,7 +71,7 @@ Example: `1d20 <= str - 2*str_tired`.
 - A formula holds integer literals, field ids, `+ - * /`, parentheses, `floor()`, `ceil()`, `NdM` with literal `N` and `M`, and at most one comparison from `<= < >= >`.
 - Formulas run through a small parser, never `eval`.
 - Anyone who can see a sheet can roll its dice cells.
-- The extension rolls itself. A roll from a sheet players can see goes to everyone by broadcast, with the roller's name.
+- A roll uses the dice of a dice extension when one is in the room and a GM allows it. Otherwise the extension rolls itself. A roll from a sheet players can see goes to everyone by broadcast, with the roller's name.
 - A roll from a hidden sheet shows only on GM clients.
 - A formula runs only on a roll. Computed display fields are a non-goal.
 
