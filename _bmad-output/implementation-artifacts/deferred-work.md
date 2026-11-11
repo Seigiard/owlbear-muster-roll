@@ -85,3 +85,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-2-roll-a-dice-cell-and-show-the-result.md`
   summary: A player roll that uses the player's own pending edit is untested until Epic 3 adds player edits.
   evidence: Only the GM pending path exists now; `engine-roll.test.ts` covers it.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-3-duplicate-an-npc.md`
+  summary: The duplicate block closes when any new NPC appears, so another GM adding an NPC at that moment closes it before the copies arrive.
+  evidence: `sheet-header.tsx` treats any new NPC key as acceptance of its command.
