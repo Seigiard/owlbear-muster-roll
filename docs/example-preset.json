@@ -1,9 +1,9 @@
 {
   "v": 2,
-  "sheets": [
+  "templates": [
     {
       "id": "pc",
-      "kind": "many",
+      "kind": "set",
       "title": "Персонажи",
       "nameField": "name",
       "tokens": true,
@@ -96,7 +96,7 @@
     },
     {
       "id": "npc",
-      "kind": "one",
+      "kind": "single",
       "title": "NPC",
       "visibility": "gm",
       "sections": [
@@ -122,7 +122,7 @@
     },
     {
       "id": "inventory",
-      "kind": "one",
+      "kind": "single",
       "title": "Инвентарь",
       "players": "edit",
       "tokens": true,
