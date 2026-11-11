@@ -1,9 +1,11 @@
 ---
 id: TASK-41
 title: Let a preset define any number of sheet sets and single sheets
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-11T20:37:00Z'
+updated_date: '2026-11-11T20:40:00Z'
 labels:
   - v2
 dependencies: []
@@ -35,3 +37,18 @@ Owner decisions still open, to settle in the spec phase: who sees and who edits 
 - [ ] #5 Existing presets and rooms in the current format behave as the spec settles (converted, still accepted, or refused with a message)
 - [ ] #6 SPEC.md, preset-format.md, docs/preset-format.md, the architecture spine and EXPERIENCE.md describe the new model before the code lands
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Research the two-template model across spec, docs, architecture, UX and code; return an impact map and owner decision briefs (stop).
+2. After owner answers: bmad-spec update (SPEC.md, preset-format.md, memlog), bmad-architecture update, bmad-ux update for the extension window only (not the builder, TASK-38).
+3. Implementation spec in the TASK-40 pattern, build with tests, lint, typecheck, bun test, Playwright, reviews.
+4. Update docs/preset-format.md, docs/example-preset.json and tests/fixtures/presets/*.json to the new format.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Research done (step 1). Impact: ~98 files name the two-template model (70 of them tests). Format change bumps the shared FORMAT_VERSION (messages, room copy, stored records mr1, snapshot file, preset file). Room copy margin today 3286 bytes on the d20 worst case. Waiting for owner decisions: NPC model (Лист vs Набор on one page) with duplicates and token links; visibility per Набор/Лист; write access and owners for Листы; tab name field rules; old-format presets and rooms; tab bar order; upload that removes a Набор/Лист with sheets; token links to Листы.
+<!-- SECTION:NOTES:END -->
