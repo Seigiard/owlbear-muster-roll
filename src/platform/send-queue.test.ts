@@ -18,6 +18,9 @@ const TIMING: Timing = {
   stateAnswerDelayMinMs: 20,
   stateAnswerDelayMaxMs: 300,
   gmLinkTimeoutMs: 20000,
+  // Far past any test, so no room copy is written unless a test asks for one.
+  snapshotPauseMs: 60000,
+  snapshotJitterMs: 0,
 };
 
 const LOCAL = { destination: 'LOCAL' } as const;

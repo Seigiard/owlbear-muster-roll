@@ -34,6 +34,7 @@ export const copy = {
   },
   section: {
     preset: 'Пресет',
+    roomCopy: 'Копия в комнате',
   },
   status: {
     pending: 'Ожидает',
@@ -49,6 +50,10 @@ export const copy = {
   roomCopyNotSaved: 'Копия в комнате не сохранена. Игра идёт дальше, но скачайте снимок.',
   localSaveFailed: 'Не удалось сохранить в браузере. Скачайте снимок.',
   roomCopyUnreadable: 'Копия в комнате не читается. Дождитесь ГМ.',
+  // Settings, "Копия в комнате". Sizes come in kB, as `kilobytes` writes them.
+  roomCopySaved: (used: string, free: string): string =>
+    `Сохранена. Занято ${used} кБ, свободно ${free} кБ.`,
+  roomCopyNone: (free: string): string => `Не сохранена. Свободно ${free} кБ.`,
   newVersion: 'Вышла новая версия. Перезагрузите страницу.',
   presetUploadRemovesValues: (count: number): string =>
     `Значения удалённых полей будут стёрты: ${count}. Загрузить пресет?`,

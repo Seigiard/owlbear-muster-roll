@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from '@/core/json';
+import type { JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
 import { TIMING, type Timing } from '@/core/timing';
 import type {
@@ -23,6 +23,8 @@ import {
   NAME_PARAM,
   PLAYER_PARAM,
   ROLE_PARAM,
+  SNAPSHOT_JITTER_PARAM,
+  SNAPSHOT_PAUSE_PARAM,
 } from './client-params';
 import { createMemoryBus, createPageBus, type LocalBus } from './local-bus';
 import { createMemoryRoom, createPageRoom, type MockRoom } from './room';
@@ -48,8 +50,6 @@ const MOCK_THEME: Theme = {
   background: { default: '#2A2A2A', paper: '#333333' },
   text: { primary: '#DDDDDD', secondary: '#AAAAAA' },
 };
-
-type MetadataListener = (metadata: JsonObject) => void;
 
 type ThemeListener = (theme: Theme) => void;
 
@@ -108,8 +108,8 @@ if (window.location.pathname.endsWith('/background.html')) {
 
 export const platform: Platform = mockPlatform;
 
-// The background's timing: `TIMING`, with the catch-up and GM link timeouts a test page names in
-// its URL.
+// The background's timing: `TIMING`, with the catch-up and GM link timeouts and the room copy
+// pause a test page names in its URL.
 export const timing: Timing = timingFromPageUrl();
 
 window.setMockTheme = mockPlatform.setTheme;
@@ -121,7 +121,6 @@ export function createMockPlatform(
   backing: MockStorageBacking = createMemoryBacking(),
   client: MockClient = defaultClient(createMemoryRoom()),
 ): MockPlatform {
-  const metadataListeners = new Set<MetadataListener>();
   const themeListeners = new Set<ThemeListener>();
   const roleListeners = new Set<() => void>();
   const sendFailures: SendFailure[] = [];
@@ -129,7 +128,6 @@ export function createMockPlatform(
   let role: PlayerRole = client.role;
   let joined = false;
   let failingStorageOperations = new Set<StorageOperation>();
-  let metadata: JsonObject = {};
   let currentTheme = MOCK_THEME;
 
   function attemptStorage<Value>(
@@ -187,33 +185,13 @@ export function createMockPlatform(
     },
     metadata: {
       getRoomId: () => MOCK_ROOM_ID,
-      getMetadata: () => Promise.resolve(structuredClone(metadata)),
+      getMetadata: () => Promise.resolve(room.getMetadata()),
       setMetadata: (update) => {
-        const next: JsonObject = { ...metadata };
-
-        for (const [key, value] of Object.entries(update)) {
-          if (value === undefined) {
-            delete next[key];
-          } else {
-            next[key] = structuredClone(value);
-          }
-        }
-
-        metadata = next;
-
-        for (const listener of metadataListeners) {
-          listener(structuredClone(metadata));
-        }
+        room.setMetadata(update);
 
         return Promise.resolve();
       },
-      onMetadataChange: (callback) => {
-        metadataListeners.add(callback);
-
-        return () => {
-          metadataListeners.delete(callback);
-        };
-      },
+      onMetadataChange: (callback) => room.onMetadataChange(callback),
     },
     party: {
       getPlayers: () => Promise.resolve(others()),
@@ -401,6 +379,8 @@ function timingFromPageUrl(): Timing {
     ...TIMING,
     catchUpTimeoutMs: durationParam(params, CATCH_UP_TIMEOUT_PARAM) ?? TIMING.catchUpTimeoutMs,
     gmLinkTimeoutMs: gmLinkTimeoutParam(params) ?? TIMING.gmLinkTimeoutMs,
+    snapshotPauseMs: timerParam(params, SNAPSHOT_PAUSE_PARAM) ?? TIMING.snapshotPauseMs,
+    snapshotJitterMs: timerParam(params, SNAPSHOT_JITTER_PARAM) ?? TIMING.snapshotJitterMs,
   };
 }
 
@@ -409,6 +389,13 @@ function gmLinkTimeoutParam(params: URLSearchParams): number | null {
   const value = durationParam(params, GM_LINK_TIMEOUT_PARAM);
 
   return value !== null && value > 0 && value <= MAX_TIMER_DELAY_MS ? value : null;
+}
+
+// A value past the longest timer delay would fire at once.
+function timerParam(params: URLSearchParams, name: string): number | null {
+  const value = durationParam(params, name);
+
+  return value !== null && value <= MAX_TIMER_DELAY_MS ? value : null;
 }
 
 function durationParam(params: URLSearchParams, name: string): number | null {

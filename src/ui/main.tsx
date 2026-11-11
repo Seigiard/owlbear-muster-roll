@@ -109,6 +109,7 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
   const notices = useStore(projection.$notices);
   const loaded = useStore(projection.$loaded);
   const sync = useStore(projection.$sync);
+  const roomCopy = useStore(projection.$roomCopy);
   // The engine re-reads the role on every party change, so the window follows it.
   const role = loaded ? sync.role : initialRole;
   const isGm = role === 'GM';
@@ -394,6 +395,7 @@ function WindowRoot({ initialRole, store: projection, sendCommand }: WindowRootP
       preset={preset}
       sheetsExist={sheetsExist}
       catchingUp={catchingUp}
+      roomCopy={roomCopy}
       sendCommand={sendCommand}
       store={projection}
     />

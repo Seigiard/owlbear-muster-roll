@@ -26,4 +26,9 @@ describe('timing constants', () => {
     // #then
     expect(TIMING.gmLinkTimeoutMs).toBe(20000);
   });
+
+  test('starts the room copy pause at 3 s with 2 s of jitter, as the 2.5 spec says', () => {
+    // #then
+    expect([TIMING.snapshotPauseMs, TIMING.snapshotJitterMs]).toEqual([3000, 2000]);
+  });
 });

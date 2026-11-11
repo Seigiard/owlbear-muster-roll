@@ -313,6 +313,62 @@ describe('mock metadata', () => {
   });
 });
 
+describe('mock room metadata', () => {
+  test('drops a write past 16 kB in silence, as Owlbear does, and keeps what the room held', async () => {
+    // #given
+    const room = createMemoryRoom();
+    const writer = client(room, 'a', 'GM');
+    const heard: JsonObject[] = [];
+
+    await writer.metadata.setMetadata({ kept: 1 });
+    writer.metadata.onMetadataChange((metadata) => {
+      heard.push(metadata);
+    });
+
+    // #when
+    await writer.metadata.setMetadata({ big: 'x'.repeat(16 * 1024) });
+
+    // #then
+    expect({ read: await writer.metadata.getMetadata(), heard }).toEqual({
+      read: { kept: 1 },
+      heard: [],
+    });
+  });
+
+  test('one client reads what another client of the room wrote, and its listener hears it', async () => {
+    // #given
+    const room = createMemoryRoom();
+    const writer = client(room, 'a', 'GM');
+    const reader = client(room, 'b', 'PLAYER');
+    const heard: JsonObject[] = [];
+
+    reader.metadata.onMetadataChange((metadata) => {
+      heard.push(metadata);
+    });
+
+    // #when
+    await writer.metadata.setMetadata({ copy: { v: 1 } });
+
+    // #then
+    expect({ read: await reader.metadata.getMetadata(), heard }).toEqual({
+      read: { copy: { v: 1 } },
+      heard: [{ copy: { v: 1 } }],
+    });
+  });
+
+  test('a client of another room reads none of it', async () => {
+    // #given
+    const writer = client(createMemoryRoom(), 'a', 'GM');
+    const other = client(createMemoryRoom(), 'b', 'GM');
+
+    // #when
+    await writer.metadata.setMetadata({ copy: 1 });
+
+    // #then
+    expect(await other.metadata.getMetadata()).toEqual({});
+  });
+});
+
 describe('mock metadata isolation', () => {
   test('keeps nested values out of reach of writers, listeners and readers', async () => {
     // #given

@@ -16,10 +16,12 @@ async function start(): Promise<void> {
     window.addEventListener('pagehide', engine.flushNow);
 
     // AD-7: a page that becomes visible, resumes from a freeze or comes back online may have
-    // missed commits, so it catches up.
+    // missed commits, so it catches up. AD-8: a page that becomes hidden writes the room copy.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         engine.catchUp();
+      } else {
+        engine.pageHidden();
       }
     });
     document.addEventListener('resume', engine.catchUp);

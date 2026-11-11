@@ -9,6 +9,8 @@ export type Timing = {
   readonly stateAnswerDelayMinMs: number;
   readonly stateAnswerDelayMaxMs: number;
   readonly gmLinkTimeoutMs: number;
+  readonly snapshotPauseMs: number;
+  readonly snapshotJitterMs: number;
 };
 
 export const TIMING: Timing = {
@@ -30,6 +32,10 @@ export const TIMING: Timing = {
   // AD-6: a client that heard no GM client this long shows "no connection to GM", and it pings
   // after half of it.
   gmLinkTimeoutMs: 20000,
+  // AD-8: a GM client writes the room copy once edits pause this long, plus a random part of the
+  // jitter, so GM clients that saw one edit do not write together.
+  snapshotPauseMs: 3000,
+  snapshotJitterMs: 2000,
 };
 
 // A browser may read a download's object URL after the click returns, so it lives this long.

@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 
 import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { recordDigest } from '@/core/digest';
+import type { JsonObject } from '@/core/json';
 import { jsonByteLength, recordFitsOneMessage, splitBatch } from '@/core/message-size';
 import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
 import type { VersionedRecord } from '@/core/records';
@@ -18,6 +19,18 @@ import {
   type RoomMessage,
   type StateMessage,
 } from '@/core/room-messages';
+import {
+  encodeSnapshot,
+  readBackHolds,
+  readSnapshot,
+  ROOM_METADATA_BYTE_LIMIT,
+  roomCopyUsage,
+  roomMetadataBytes,
+  SNAPSHOT_KEY,
+  type Snapshot,
+  type SnapshotFailure,
+  type SnapshotValue,
+} from '@/core/snapshot';
 import { decodeStateRecords, stateAnswer } from '@/core/state-records';
 import { INITIAL_GENERATION, type Generation } from '@/core/storage-key';
 import { TIMING, type Timing } from '@/core/timing';
@@ -32,6 +45,7 @@ import {
   type Notice,
   type ProjectionMessage,
   type RejectionReason,
+  type RoomCopyStatus,
   type SyncState,
 } from '@/core/ui-messages';
 import { visibleRecords, type PlayerRole } from '@/core/visibility';
@@ -64,10 +78,15 @@ export type ReplicaEnginePlatform = Pick<
 
 export type EngineTiming = Pick<
   Timing,
-  'catchUpTimeoutMs' | 'stateAnswerDelayMinMs' | 'stateAnswerDelayMaxMs' | 'gmLinkTimeoutMs'
+  | 'catchUpTimeoutMs'
+  | 'stateAnswerDelayMinMs'
+  | 'stateAnswerDelayMaxMs'
+  | 'gmLinkTimeoutMs'
+  | 'snapshotPauseMs'
+  | 'snapshotJitterMs'
 >;
 
-// Tests inject the timing, the ids and the random answer delay.
+// Tests inject the timing, the ids and the random answer delay and room copy jitter.
 export type ReplicaEngineOptions = {
   timing?: EngineTiming;
   newId?: () => string;
@@ -80,6 +99,9 @@ export type ReplicaEngine = {
   flushNow: () => void;
   // AD-7: the page became visible, resumed, or came back online.
   catchUp: () => void;
+  // AD-8: the page became hidden, so a GM client writes the room copy at once. A hidden tab's
+  // timers may not run.
+  pageHidden: () => void;
 };
 
 type Persistence = { store: RecordStore; generation: Generation };
@@ -204,6 +226,22 @@ export async function startReplicaEngine(
   // A player's windows hold the replica records visible when they were last sent. Each delta sends
   // the records that became visible and withdraws the keys that no longer are.
   let sentVisible = new Set<string>();
+  // AD-8 room copy. The notice stays until the next verified write.
+  let roomCopyNotSaved = false;
+  // A readable room copy of this client's generation was last read or written.
+  let roomCopyExists = false;
+  let roomCopyUsed = 0;
+  let roomCopyFree = ROOM_METADATA_BYTE_LIMIT;
+  // A write was skipped or stopped, or triggered during catch-up, so catch-up's end schedules one.
+  let roomCopyOwed = false;
+  let roomCopyTimer: ReturnType<typeof setTimeout> | undefined;
+  // One write at a time, so an older copy never lands after a newer one. A trigger during a write
+  // runs it once more after.
+  let roomCopyWriting = false;
+  let roomCopyRerun = false;
+  // Counts `resume` and visibility changes. A write stops when one falls between its read and its
+  // write.
+  let pageChanges = 0;
 
   for (const record of loaded.records) {
     merge(record);
@@ -221,6 +259,10 @@ export async function startReplicaEngine(
 
   function currentNotices(): Notice[] {
     const notices: Notice[] = problemKeys.size === 0 ? [] : ['local-save-failed'];
+
+    if (roomCopyNotSaved) {
+      notices.push('room-copy-not-saved');
+    }
 
     if (newerVersionSeen) {
       notices.push('new-version');
@@ -264,6 +306,7 @@ export async function startReplicaEngine(
       pending: [],
       notices: currentNotices(),
       sync: { ...sync, gmLink, role },
+      roomCopy: roomCopyStatus(),
     };
 
     const parts = splitParts(records, pendingRecords, jsonByteLength(envelope));
@@ -316,6 +359,7 @@ export async function startReplicaEngine(
       withdrawn: content.withdrawn,
       notices: currentNotices(),
       sync: { ...sync, gmLink, role },
+      roomCopy: roomCopyStatus(),
     };
 
     const parts = splitParts(content.records, content.pending, jsonByteLength(envelope));
@@ -491,6 +535,10 @@ export async function startReplicaEngine(
     // Sent even when empty, so the window still learns of the notice.
     emitDelta(applied);
     sendCommits(applied);
+
+    if (applied.length > 0) {
+      scheduleRoomCopy();
+    }
   }
 
   // AD-7: an intent made during catch-up waits and takes `c` on exit. It is checked now against the
@@ -657,19 +705,13 @@ export async function startReplicaEngine(
     const keepsNonce = trigger === 'return' && sync.state === 'catching-up' && ownNonce !== null;
     const changed = trigger === 'start' ? [] : mergePersisted();
 
-    // Story 2.5 merges the room copy here, after the persisted records and before the request.
-
     if (keepsNonce && ownNonce !== null) {
       if (changed.length > 0) {
         emitDelta(changed);
       }
 
       // The timeout keeps running from the first request, so returns cannot put the exit off.
-      if (!answerSeen) {
-        requestState(ownNonce);
-      }
-
-      return role === 'GM' ? leaveIfAlone(ownNonce) : Promise.resolve();
+      return askAfterRoomCopy(ownNonce, false);
     }
 
     const nonce = newId();
@@ -691,10 +733,319 @@ export async function startReplicaEngine(
       emitDelta(changed);
     }
 
-    requestState(nonce);
+    // Armed before the room copy read, so a read that never ends cannot hold catch-up open.
     armCatchUpTimeout();
 
-    return role === 'GM' ? leaveIfAlone(nonce) : Promise.resolve();
+    return askAfterRoomCopy(nonce, true);
+  }
+
+  // AD-7: the room copy merges after the persisted records and before the request. An alone GM
+  // client so holds it before it leaves with no wait. `fresh` is a new `r`; a kept one is asked
+  // again only when nothing has answered it during the read either.
+  async function askAfterRoomCopy(nonce: string, fresh: boolean): Promise<void> {
+    const read = await readMetadata(platform);
+
+    if (stopped) {
+      return;
+    }
+
+    // Merge is idempotent, so a copy read while an answer ended catch-up still merges.
+    mergeRoomCopy(read);
+
+    if (ownNonce !== nonce) {
+      return;
+    }
+
+    if (fresh || !answerSeen) {
+      requestState(nonce);
+    }
+
+    if (role === 'GM') {
+      await leaveIfAlone(nonce);
+    }
+  }
+
+  // AD-7 and AD-9: a copy of this client's generation merges. A client that holds no record takes
+  // the copy's higher generation, as at start it takes the highest one it knows. A lower one, or a
+  // higher one over held records, is left alone. `null` is a failed read, which proves nothing.
+  function mergeRoomCopy(metadata: JsonObject | null): void {
+    if (metadata === null) {
+      return;
+    }
+
+    const read = readSnapshot(metadata);
+
+    if (!read.ok) {
+      console.error('Muster Roll could not read the room copy', read.error);
+      unreadableRoomCopy(metadata, read.error);
+
+      return;
+    }
+
+    const copy = read.value;
+
+    if (copy === null) {
+      noteRoomCopy(metadata, false);
+
+      return;
+    }
+
+    // A GM client that holds no record has nothing of its own generation to lose, so it takes the
+    // copy's, as AD-9 has every client take the highest generation it knows at start: a GM on a
+    // new device after an import loads that way. `receiveState` keeps a GM's generation, because a
+    // `state` can reach a GM that holds records, and full adoption with its pending queue is Epic 5.
+    if (compareGenerations(copy.g, ownGeneration) > 0 && replica.size === 0) {
+      adoptGeneration(copy.g);
+    }
+
+    const sameGeneration = compareGenerations(copy.g, ownGeneration) === 0;
+
+    noteRoomCopy(metadata, sameGeneration);
+
+    if (sameGeneration) {
+      receiveRecords(copy.records);
+    }
+  }
+
+  // Only a client that holds no record comes here, so nothing of the old generation is left to
+  // drop. A GM client persists under the new one from now on.
+  function adoptGeneration(generation: Generation): void {
+    ownGeneration = generation;
+    highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
+    forgetDigests();
+
+    if (persistence !== null) {
+      persistence = { ...persistence, generation };
+    }
+  }
+
+  // AD-8: the edits paused. Each edit puts the write off again by the whole pause.
+  function scheduleRoomCopy(): void {
+    clearTimeout(roomCopyTimer);
+
+    if (stopped || role !== 'GM') {
+      return;
+    }
+
+    const delay = timing.snapshotPauseMs + random() * timing.snapshotJitterMs;
+
+    roomCopyTimer = setTimeout(() => {
+      void writeRoomCopy();
+    }, delay);
+  }
+
+  // AD-8: only a live GM client that can vouch for its records writes, as only such a client
+  // answers a `state-request`. Checked again after every await.
+  function canWriteRoomCopy(): boolean {
+    return !stopped && role === 'GM' && persistence !== null && sync.state === 'live';
+  }
+
+  // AD-8: read, merge, encode, measure, write and read back. Any run that does not end in a
+  // verified write leaves the write owed, so catch-up's end or the next trigger tries again.
+  async function writeRoomCopy(): Promise<void> {
+    clearTimeout(roomCopyTimer);
+    roomCopyOwed = true;
+
+    if (roomCopyWriting) {
+      roomCopyRerun = true;
+
+      return;
+    }
+
+    if (!canWriteRoomCopy()) {
+      return;
+    }
+
+    roomCopyWriting = true;
+
+    try {
+      await runRoomCopyWrite();
+    } finally {
+      roomCopyWriting = false;
+    }
+
+    if (roomCopyRerun) {
+      roomCopyRerun = false;
+      await writeRoomCopy();
+    }
+  }
+
+  async function runRoomCopyWrite(): Promise<void> {
+    const changesAtRead = pageChanges;
+    const metadata = await readMetadata(platform);
+
+    // Step 2: a `resume` or a visibility change during the read stops the write.
+    if (!canWriteRoomCopy() || pageChanges !== changesAtRead) {
+      return;
+    }
+
+    if (metadata === null) {
+      failRoomCopy(null);
+
+      return;
+    }
+
+    const read = readSnapshot(metadata);
+
+    // Step 1: a copy this build cannot read is never overwritten.
+    if (!read.ok) {
+      console.error('Muster Roll could not read the room copy', read.error);
+      unreadableRoomCopy(metadata, read.error);
+
+      return;
+    }
+
+    const copy = read.value;
+
+    if (copy !== null) {
+      const relation = compareGenerations(copy.g, ownGeneration);
+
+      if (relation > 0) {
+        catchUpToCopyGeneration(copy.g);
+
+        return;
+      }
+
+      // A lower generation is not merged, and the write below replaces it.
+      if (relation === 0) {
+        receiveRecords(copy.records);
+      }
+    }
+
+    const written: Snapshot = { g: ownGeneration, records: [...replica.values()] };
+    const value = encodeSnapshot(written.g, written.records);
+
+    // Step 4: over the limit the previous copy stays.
+    if (!value.ok || roomMetadataBytes(metadata, value.value) > ROOM_METADATA_BYTE_LIMIT) {
+      failRoomCopy(metadata);
+
+      return;
+    }
+
+    await verifyRoomCopyWrite(written, value.value);
+  }
+
+  // Step 5: Owlbear reports success for a write it drops, so only the read-back counts.
+  async function verifyRoomCopyWrite(written: Snapshot, value: SnapshotValue): Promise<void> {
+    try {
+      await platform.metadata.setMetadata({ [SNAPSHOT_KEY]: value });
+    } catch (error) {
+      console.error('Muster Roll could not write the room copy', error);
+
+      if (canWriteRoomCopy()) {
+        failRoomCopy(null);
+      }
+
+      return;
+    }
+
+    if (!canWriteRoomCopy()) {
+      return;
+    }
+
+    const readBack = await readMetadata(platform);
+
+    if (!canWriteRoomCopy()) {
+      return;
+    }
+
+    if (readBack === null) {
+      failRoomCopy(null);
+
+      return;
+    }
+
+    const check = readSnapshot(readBack);
+
+    // A copy of a higher generation holds none of this client's records, so it is not saved.
+    if (check.ok && check.value !== null && compareGenerations(check.value.g, written.g) > 0) {
+      catchUpToCopyGeneration(check.value.g);
+
+      return;
+    }
+
+    if (!check.ok || !readBackHolds(written, check.value)) {
+      failRoomCopy(readBack);
+
+      return;
+    }
+
+    const before = roomCopySignature();
+
+    roomCopyOwed = false;
+    roomCopyNotSaved = false;
+    noteRoomCopy(readBack, true, before);
+  }
+
+  // AD-8 step 1: a copy of a higher generation is neither merged nor overwritten. Every sighting
+  // enters catch-up, also of a generation seen before, so the GM does not stay live skipping writes.
+  function catchUpToCopyGeneration(generation: Generation): void {
+    highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
+    forgetDigests();
+    void enterCatchUp('generation');
+  }
+
+  // A GM raises the not-saved notice for a copy it cannot read; a newer build's copy also raises
+  // the new-version notice. A player shows nothing here (Story 2.6).
+  function unreadableRoomCopy(metadata: JsonObject, failure: SnapshotFailure): void {
+    if (failure === 'newer-version') {
+      raiseNewerVersion();
+    }
+
+    if (role === 'GM') {
+      failRoomCopy(metadata);
+    } else {
+      noteRoomCopy(metadata, false);
+    }
+  }
+
+  // `null` keeps the sizes last read.
+  function failRoomCopy(metadata: JsonObject | null): void {
+    const before = roomCopySignature();
+
+    roomCopyNotSaved = true;
+    roomCopyOwed = true;
+
+    if (metadata === null) {
+      emitRoomCopyChange(before);
+    } else {
+      noteRoomCopy(metadata, roomCopyExists, before);
+    }
+  }
+
+  // Another GM's write or another extension's data changes what Settings shows. Nothing merges here.
+  function followMetadata(metadata: JsonObject): void {
+    const read = readSnapshot(metadata);
+    const copy = read.ok ? read.value : null;
+
+    noteRoomCopy(metadata, copy !== null && compareGenerations(copy.g, ownGeneration) === 0);
+  }
+
+  // Takes the sizes from the metadata just read, and tells the windows when anything they show
+  // changed.
+  function noteRoomCopy(metadata: JsonObject, exists: boolean, before = roomCopySignature()): void {
+    const usage = roomCopyUsage(metadata);
+
+    roomCopyExists = exists;
+    roomCopyUsed = usage.usedBytes;
+    roomCopyFree = usage.freeBytes;
+    emitRoomCopyChange(before);
+  }
+
+  function emitRoomCopyChange(before: string): void {
+    if (projectionSent && roomCopySignature() !== before) {
+      emitDelta([]);
+    }
+  }
+
+  function roomCopySignature(): string {
+    return JSON.stringify([roomCopyStatus(), currentNotices()]);
+  }
+
+  function roomCopyStatus(): RoomCopyStatus {
+    const state = roomCopyNotSaved ? 'failed' : roomCopyExists ? 'saved' : 'none';
+
+    return { state, usedBytes: roomCopyUsed, freeBytes: roomCopyFree };
   }
 
   function requestState(nonce: string): void {
@@ -792,11 +1143,16 @@ export async function startReplicaEngine(
     }
 
     sendCommits(replayed);
+
+    // AD-8: a write owed from before, or the edits that waited, go into the room copy now.
+    if (roomCopyOwed || replayed.length > 0) {
+      scheduleRoomCopy();
+    }
   }
 
   // A GM client persists each record that changes its replica. A player client persists nothing.
   // A remote record is never sent on again.
-  function receiveRecords(records: readonly VersionedRecord[]): void {
+  function receiveRecords(records: readonly VersionedRecord[]): VersionedRecord[] {
     const noticesBefore = currentNotices().join();
     const changed: VersionedRecord[] = [];
 
@@ -820,6 +1176,8 @@ export async function startReplicaEngine(
     if (changed.length > 0 || currentNotices().join() !== noticesBefore) {
       emitDelta(changed);
     }
+
+    return changed;
   }
 
   // AD-7 answer: a GM client that is live and can vouch for its records answers after a random
@@ -1010,6 +1368,10 @@ export async function startReplicaEngine(
     sequence = 0;
     persistAllOnExit = false;
     persistence = null;
+    // Only a GM client writes the room copy, so a demoted one drops what it owed and its notice.
+    clearTimeout(roomCopyTimer);
+    roomCopyOwed = false;
+    roomCopyNotSaved = false;
 
     if (next === 'GM') {
       // As at start: the highest generation of this client and of what the storage holds.
@@ -1200,7 +1562,12 @@ export async function startReplicaEngine(
   ): void {
     switch (message.t) {
       case 'commit':
-        receiveRecords(message.records);
+        // AD-8: another GM's edit changed the replica, so this GM writes too. The jitter keeps
+        // GM clients from writing together.
+        if (receiveRecords(message.records).length > 0) {
+          scheduleRoomCopy();
+        }
+
         break;
       case 'state-request':
         receiveStateRequest(message.r);
@@ -1254,14 +1621,20 @@ export async function startReplicaEngine(
     void rereadRole();
   });
 
-  // Not awaited: a party read that never ends must not hold back the engine and its page handlers.
-  void enterCatchUp('start');
+  const unsubscribeMetadata = platform.metadata.onMetadataChange(followMetadata);
+
+  const started = enterCatchUp('start');
+
   watchGmSilence();
+  // An alone GM is live when the engine resolves. A metadata or party read that never ends holds
+  // the engine back no longer than the catch-up timeout, which by then ended catch-up.
+  await settledWithin(started, timing.catchUpTimeoutMs);
 
   return {
     stop: () => {
       stopped = true;
       clearTimeout(catchUpTimer);
+      clearTimeout(roomCopyTimer);
       clearTimeout(pingTimer);
       clearTimeout(gmSilenceTimer);
 
@@ -1274,6 +1647,7 @@ export async function startReplicaEngine(
       unsubscribeRoom();
       unsubscribeParty();
       unsubscribeRole();
+      unsubscribeMetadata();
       roster.stop();
       outbox.stop();
     },
@@ -1287,7 +1661,12 @@ export async function startReplicaEngine(
       sendQueue.flushNow();
     },
     catchUp: () => {
+      pageChanges += 1;
       void enterCatchUp('return');
+    },
+    pageHidden: () => {
+      pageChanges += 1;
+      void writeRoomCopy();
     },
   };
 }
@@ -1310,6 +1689,34 @@ function splitParts(
     ...recordParts.value.map((part) => ({ records: part, pending: [] })),
     ...(pendingParts?.value ?? []).map((part) => ({ records: [], pending: part })),
   ];
+}
+
+// Resolves when `work` settles or after `milliseconds`, whichever comes first, and never rejects.
+async function settledWithin(work: Promise<void>, milliseconds: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, milliseconds);
+  });
+
+  try {
+    await Promise.race([work, deadline]);
+  } catch (error) {
+    console.error('Muster Roll could not start its catch-up', error);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// A failed read is logged and comes back as `null`, so a caller never waits on a rejection.
+async function readMetadata(platform: ReplicaEnginePlatform): Promise<JsonObject | null> {
+  try {
+    return await platform.metadata.getMetadata();
+  } catch (error) {
+    console.error('Muster Roll could not read the room metadata', error);
+
+    return null;
+  }
 }
 
 function higherGeneration(first: Generation, second: Generation): Generation {

@@ -1,7 +1,8 @@
 import { atom, type ReadableAtom } from 'nanostores';
 
 import type { VersionedRecord } from '@/core/records';
-import type { CommandRejectedMessage, Notice, SyncState } from '@/core/ui-messages';
+import { ROOM_METADATA_BYTE_LIMIT } from '@/core/snapshot';
+import type { CommandRejectedMessage, Notice, RoomCopyStatus, SyncState } from '@/core/ui-messages';
 
 export type ProjectionStore = {
   // The replica as the window shows it: the pending view stands in for the records of its keys.
@@ -12,6 +13,8 @@ export type ProjectionStore = {
   // False until the first full projection, so an empty room is not mistaken for one still loading.
   $loaded: ReadableAtom<boolean>;
   $sync: ReadableAtom<SyncState>;
+  // AD-8: the room copy as Settings shows it.
+  $roomCopy: ReadableAtom<RoomCopyStatus>;
   replaceAll: (
     records: readonly VersionedRecord[],
     pending: readonly VersionedRecord[],
@@ -26,6 +29,7 @@ export type ProjectionStore = {
     sync: SyncState,
   ) => void;
   setRejection: (rejection: CommandRejectedMessage) => void;
+  setRoomCopy: (roomCopy: RoomCopyStatus) => void;
 };
 
 // Far more than the commands one window has on their way at once.
@@ -41,6 +45,13 @@ const UNKNOWN_SYNC: SyncState = {
   role: 'PLAYER',
 };
 
+// Nothing read yet: no room copy, and all the room metadata space free.
+const UNKNOWN_ROOM_COPY: RoomCopyStatus = {
+  state: 'none',
+  usedBytes: 0,
+  freeBytes: ROOM_METADATA_BYTE_LIMIT,
+};
+
 // The engine orders messages by sequence, so a window replaces records and never compares versions.
 export function createProjectionStore(): ProjectionStore {
   const $records = atom<ReadonlyMap<string, VersionedRecord>>(new Map());
@@ -48,6 +59,7 @@ export function createProjectionStore(): ProjectionStore {
   const $rejections = atom<ReadonlyMap<string, CommandRejectedMessage>>(new Map());
   const $loaded = atom(false);
   const $sync = atom<SyncState>(UNKNOWN_SYNC);
+  const $roomCopy = atom<RoomCopyStatus>(UNKNOWN_ROOM_COPY);
   let replica = new Map<string, VersionedRecord>();
   let pendingView = new Map<string, VersionedRecord>();
 
@@ -69,6 +81,7 @@ export function createProjectionStore(): ProjectionStore {
     $rejections,
     $loaded,
     $sync,
+    $roomCopy,
     replaceAll: (records, pending, notices, sync) => {
       replica = new Map(records.map((record) => [record.k, record]));
       // A live engine has no pending view.
@@ -114,6 +127,9 @@ export function createProjectionStore(): ProjectionStore {
       }
 
       $rejections.set(next);
+    },
+    setRoomCopy: (roomCopy) => {
+      $roomCopy.set(roomCopy);
     },
   };
 }

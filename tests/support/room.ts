@@ -22,6 +22,8 @@ import {
   PARTY_STORAGE_PREFIX,
   PLAYER_PARAM,
   ROLE_PARAM,
+  SNAPSHOT_JITTER_PARAM,
+  SNAPSHOT_PAUSE_PARAM,
 } from '@/platform/mock/client-params';
 
 // The mock room's storage before any import: generation 0 with no author.
@@ -67,6 +69,9 @@ export type ClientParams = {
   catchUpTimeoutMs?: number;
   // The background's GM link timeout, shorter than the 20 s of `TIMING`.
   gmLinkTimeoutMs?: number;
+  // The background's room copy pause and jitter, shorter than the 3 s and 2 s of `TIMING`.
+  snapshotPauseMs?: number;
+  snapshotJitterMs?: number;
 };
 
 // One client: its background page and one window, which share a connection id.
@@ -356,6 +361,8 @@ function clientQuery(params: ClientParams): string {
     [DEVICE_PARAM, params.device],
     [CATCH_UP_TIMEOUT_PARAM, params.catchUpTimeoutMs?.toString()],
     [GM_LINK_TIMEOUT_PARAM, params.gmLinkTimeoutMs?.toString()],
+    [SNAPSHOT_PAUSE_PARAM, params.snapshotPauseMs?.toString()],
+    [SNAPSHOT_JITTER_PARAM, params.snapshotJitterMs?.toString()],
   ] as const) {
     if (value !== undefined) {
       query.set(name, value);

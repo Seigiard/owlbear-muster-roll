@@ -339,6 +339,7 @@ test('a refused creation does not take the selection when its record shows up la
       gmLink: 'offline',
       role: 'GM',
     },
+    roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500 },
   });
 
   // #then

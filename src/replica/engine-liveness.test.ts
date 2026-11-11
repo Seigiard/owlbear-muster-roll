@@ -33,6 +33,9 @@ const TIMING: Timing = {
   stateAnswerDelayMaxMs: 5,
   // Far past any test, so a test that is not about pings sees none.
   gmLinkTimeoutMs: 60000,
+  // Far past any test, so no room copy is written unless a test asks for one.
+  snapshotPauseMs: 60000,
+  snapshotJitterMs: 0,
 };
 
 const WAIT_LIMIT_MS = 3000;

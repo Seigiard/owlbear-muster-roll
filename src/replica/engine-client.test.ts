@@ -31,6 +31,9 @@ const TIMING: Timing = {
   stateAnswerDelayMaxMs: 0,
   // Far past any test, so no ping goes out unless a test asks for one.
   gmLinkTimeoutMs: 60000,
+  // Far past any test, so no room copy is written unless a test asks for one.
+  snapshotPauseMs: 60000,
+  snapshotJitterMs: 0,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -49,6 +52,9 @@ const LIVE_SYNC = {
   gmLink: 'offline',
   role: 'GM',
 } as const;
+
+// What an engine that has read no room copy sends.
+const NO_ROOM_COPY = { state: 'none', usedBytes: 0, freeBytes: 15500 } as const;
 
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
@@ -423,6 +429,7 @@ describe('open window', () => {
       notices: [],
       pending: [],
       sync: LIVE_SYNC,
+      roomCopy: NO_ROOM_COPY,
     });
 
     // #then
@@ -484,6 +491,7 @@ describe('open window', () => {
       notices: [],
       pending: [],
       sync: LIVE_SYNC,
+      roomCopy: NO_ROOM_COPY,
     });
 
     // #when
@@ -509,6 +517,7 @@ describe('open window', () => {
       notices: [],
       pending: [],
       sync: LIVE_SYNC,
+      roomCopy: NO_ROOM_COPY,
     };
 
     // #when: the parts arrive 60 ms apart, each inside the 80 ms timeout.
@@ -595,6 +604,7 @@ describe('split projection', () => {
     notices: [],
     pending: [],
     sync: LIVE_SYNC,
+    roomCopy: NO_ROOM_COPY,
   };
 
   test('buffers deltas until the set is complete and applies them in order', async () => {
@@ -613,6 +623,7 @@ describe('split projection', () => {
       pending: [],
       withdrawn: [],
       sync: LIVE_SYNC,
+      roomCopy: NO_ROOM_COPY,
     });
 
     const whileIncomplete = recordsOf(view.store);
@@ -641,6 +652,7 @@ describe('split projection', () => {
       pending: [],
       withdrawn: [],
       sync: LIVE_SYNC,
+      roomCopy: NO_ROOM_COPY,
     });
 
     // #when
@@ -679,6 +691,7 @@ describe('split projection', () => {
       pending: [],
       withdrawn: [],
       sync: LIVE_SYNC,
+      roomCopy: NO_ROOM_COPY,
     });
 
     // #when
@@ -776,6 +789,7 @@ describe('sequence gap', () => {
       notices: [],
       pending: [],
       sync: LIVE_SYNC,
+      roomCopy: NO_ROOM_COPY,
     });
 
     // #when
@@ -788,6 +802,7 @@ describe('sequence gap', () => {
       pending: [],
       withdrawn: [],
       sync: LIVE_SYNC,
+      roomCopy: NO_ROOM_COPY,
     });
     await waitUntil(() => requests(rig).at(-1)?.nonce === 'after-gap');
 
@@ -813,6 +828,7 @@ describe('sequence gap', () => {
       notices: [],
       pending: [],
       sync: LIVE_SYNC,
+      roomCopy: NO_ROOM_COPY,
     });
 
     const requestsAfterLoad = requests(rig).length;
@@ -827,6 +843,7 @@ describe('sequence gap', () => {
       pending: [],
       withdrawn: [],
       sync: LIVE_SYNC,
+      roomCopy: NO_ROOM_COPY,
     });
     await pause(TIMING.projectionRequestRepeatMs * 4);
 

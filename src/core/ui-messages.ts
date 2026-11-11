@@ -12,7 +12,17 @@ const idSchema = z.string().min(1).max(64);
 const sequenceSchema = z.number().int().nonnegative();
 
 // `new-version` stays until a reload: a newer build is in the room (AD-12).
-export const noticeSchema = z.enum(['local-save-failed', 'new-version']);
+// `room-copy-not-saved` stays until the next verified room copy write (AD-8).
+export const noticeSchema = z.enum(['local-save-failed', 'room-copy-not-saved', 'new-version']);
+
+// AD-8, for Settings: `saved` once a readable room copy of this generation was read or verified,
+// `failed` while the not-saved notice is active, otherwise `none`. `usedBytes` is the room copy's
+// share of the room metadata JSON, `freeBytes` the limit less all room metadata.
+export const roomCopySchema = z.strictObject({
+  state: z.enum(['saved', 'none', 'failed']),
+  usedBytes: z.number().int().nonnegative(),
+  freeBytes: z.number().int().nonnegative(),
+});
 
 // AD-7: `catching-up` or `live`, and whether the first catch-up since the engine started has ended.
 export const syncSchema = z.strictObject({
@@ -48,6 +58,7 @@ const projectionSchema = z
     pending: z.array(recordSchema),
     notices: z.array(noticeSchema),
     sync: syncSchema,
+    roomCopy: roomCopySchema,
   })
   .refine((part) => part.i <= part.n);
 
@@ -63,6 +74,7 @@ const deltaSchema = z.strictObject({
   withdrawn: z.array(z.string()),
   notices: z.array(noticeSchema),
   sync: syncSchema,
+  roomCopy: roomCopySchema,
 });
 
 // A command is an intent. Strict objects refuse any message that also carries k, d, c or a.
@@ -175,6 +187,8 @@ export type Notice = z.infer<typeof noticeSchema>;
 export type SyncState = z.infer<typeof syncSchema>;
 
 export type GmLink = SyncState['gmLink'];
+
+export type RoomCopyStatus = z.infer<typeof roomCopySchema>;
 
 export type Command = z.infer<typeof commandIntentSchema>;
 

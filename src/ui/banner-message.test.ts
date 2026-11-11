@@ -12,6 +12,7 @@ type BannerSync = Pick<SyncState, 'role' | 'firstCatchUpDone' | 'gmLink'>;
 const NO_GM = 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.';
 const LOCAL_SAVE_FAILED = 'Не удалось сохранить в браузере. Скачайте снимок.';
 const NEW_VERSION = 'Вышла новая версия. Перезагрузите страницу.';
+const ROOM_COPY_NOT_SAVED = 'Копия в комнате не сохранена. Игра идёт дальше, но скачайте снимок.';
 
 const PLAYER_OFFLINE: BannerSync = { role: 'PLAYER', firstCatchUpDone: true, gmLink: 'offline' };
 
@@ -43,6 +44,16 @@ describe('bannerFor', () => {
       { variant: 'danger', text: LOCAL_SAVE_FAILED },
     ],
     ['a new version over no GM', ['new-version'], { variant: 'warning', text: NEW_VERSION }],
+    [
+      'a failed local save over a room copy not saved',
+      ['room-copy-not-saved', 'local-save-failed'],
+      { variant: 'danger', text: LOCAL_SAVE_FAILED },
+    ],
+    [
+      'a room copy not saved over a new version and no GM',
+      ['new-version', 'room-copy-not-saved'],
+      { variant: 'danger', text: ROOM_COPY_NOT_SAVED },
+    ],
   ])('shows %s', (_name, notices, expected) => {
     // #when
     const banner = bannerFor(notices, PLAYER_OFFLINE);

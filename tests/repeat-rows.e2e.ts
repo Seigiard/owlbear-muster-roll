@@ -184,6 +184,7 @@ test('a row that arrives after the GM moved to another field leaves the focus in
       gmLink: 'offline',
       role: 'GM',
     },
+    roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500 },
   });
   await expect(attackFields(page)).toHaveCount(3);
 
@@ -217,6 +218,7 @@ test('a delete that lands after the GM moved to another field leaves the focus i
       gmLink: 'offline',
       role: 'GM',
     },
+    roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500 },
   });
   await expect(attackFields(page)).toHaveCount(1);
 
@@ -511,7 +513,8 @@ async function answerOnlyFromTest(
   await expect.poll(async () => (await deltas(page)).length).toBe(1);
   await background.close();
 
-  const [delta] = await deltas(page);
+  // A closing background writes the room copy and can send its status as one more delta.
+  const delta = (await deltas(page)).at(-1);
 
   return { engine: delta?.engine ?? '', seq: delta?.seq ?? 0 };
 }

@@ -9,6 +9,7 @@ import {
   UI_CHANNEL,
   type Command,
   type EngineMessage,
+  type RoomCopyStatus,
   type SyncState,
   type WindowMessage,
 } from './ui-messages';
@@ -20,6 +21,8 @@ const LIVE: SyncState = {
   gmLink: 'offline',
   role: 'GM',
 };
+
+const NO_COPY: RoomCopyStatus = { state: 'none', usedBytes: 0, freeBytes: 15500 };
 
 const SHEET_CREATE: Command = { type: 'sheet-create', sheetId: 's1', kind: 'pc', name: 'Брок' };
 
@@ -310,6 +313,7 @@ describe('parseEngineMessage', () => {
       gmLink: 'offline',
       role: 'GM',
     },
+    roomCopy: NO_COPY,
   };
 
   test('accepts a projection part', () => {
@@ -366,6 +370,7 @@ describe('parseEngineMessage', () => {
       withdrawn: [],
       notices: [],
       sync: LIVE,
+      roomCopy: NO_COPY,
     };
 
     const rejected: EngineMessage = { t: 'command-rejected', id: 'c1', reason: 'too-large' };
@@ -391,6 +396,7 @@ describe('parseEngineMessage', () => {
       withdrawn: [],
       notices: ['local-save-failed', 'new-version'],
       sync: LIVE,
+      roomCopy: NO_COPY,
     };
 
     // #when
@@ -404,5 +410,41 @@ describe('parseEngineMessage', () => {
       { ok: true, value: delta },
       { ok: false, error: 'invalid-message' },
     ]);
+  });
+
+  test('accepts a delta carrying the room-copy notice and a failed room copy', () => {
+    // #given
+    const delta: EngineMessage = {
+      t: 'delta',
+      engine: 'e1',
+      seq: 7,
+      records: [],
+      pending: [],
+      withdrawn: [],
+      notices: ['room-copy-not-saved'],
+      sync: LIVE,
+      roomCopy: { state: 'failed', usedBytes: 4200, freeBytes: 0 },
+    };
+
+    // #when
+    const parsed = parseEngineMessage(delta);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: delta });
+  });
+
+  test('refuses a part with no room copy status or with an unknown room copy state', () => {
+    // #given
+    const { roomCopy: _roomCopy, ...withoutRoomCopy } = PROJECTION;
+
+    // #when
+    const parsed = [
+      parseEngineMessage(withoutRoomCopy).ok,
+      parseEngineMessage({ ...PROJECTION, roomCopy: { ...NO_COPY, state: 'stale' } }).ok,
+      parseEngineMessage({ ...PROJECTION, roomCopy: { ...NO_COPY, freeBytes: -1 } }).ok,
+    ];
+
+    // #then
+    expect(parsed).toEqual([false, false, false]);
   });
 });

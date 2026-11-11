@@ -29,6 +29,17 @@ export const PARTY_STORAGE_PREFIX = 'mock-party:';
 
 export const PARTY_CHANNEL_PREFIX = 'muster-roll-mock-party:';
 
+// The room metadata of a mock room, shared by every client and device as Owlbear shares it, lives
+// in localStorage under this prefix and the room id. It starts with `mock-`, as the party does.
+export const METADATA_STORAGE_PREFIX = 'mock-metadata:';
+
+export const METADATA_CHANNEL_PREFIX = 'muster-roll-mock-metadata:';
+
+// A shorter room copy pause and jitter for tests, in milliseconds, as with the catch-up timeout.
+export const SNAPSHOT_PAUSE_PARAM = 'mock-snapshot-pause-ms';
+
+export const SNAPSHOT_JITTER_PARAM = 'mock-snapshot-jitter-ms';
+
 // Keys of a non-default device live under this prefix, and the default device lists no key that
 // starts with `mock-`.
 const DEVICE_STORAGE_PREFIX = 'mock-device:';
