@@ -4,10 +4,11 @@ title: Build presets without writing JSON by hand
 status: To Do
 assignee: []
 created_date: '2026-11-11T11:15:00Z'
-updated_date: '2026-11-11T19:53:00Z'
+updated_date: '2026-11-11T20:37:00Z'
 labels:
   - v2
-dependencies: []
+dependencies:
+  - TASK-41
 ordinal: 38000
 ---
 

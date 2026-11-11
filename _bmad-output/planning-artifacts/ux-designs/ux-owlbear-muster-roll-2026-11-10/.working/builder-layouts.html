@@ -1,0 +1,203 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Builder layouts</title><style>
+
+/* Tokens: DESIGN.md dark fallbacks (= src/preview/themes.ts dark). Only the arrangement differs between variants. */
+:root{--surface:#333;--bar:#2A2A2A;--tab:#3A3A3A;--stripe:#2D2D2D;--text:#DDD;--muted:#AAA;--accent:#D9B36C;--accent-c:#222;
+--line:#4A4A4A;--line-s:#888;--danger-s:#4F2B26;--danger-t:#FFB4A8}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:#1b1b1b;color:var(--text);font:14px/1.4 system-ui,sans-serif}
+h1{font-size:20px;margin:0 0 4px} h2{font-size:17px;margin:40px 0 4px;color:var(--accent)}
+p.note{color:var(--muted);max-width:900px;margin:0 0 12px}
+.frame{width:1280px;height:760px;border:1px solid #555;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;background:var(--bar)}
+.chrome{height:28px;background:#111;color:#888;font-size:12px;display:flex;align-items:center;padding:0 12px}
+.top{height:44px;display:flex;align-items:center;gap:12px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--bar)}
+.top .name{font-weight:600}.top .muted{color:var(--muted);font-size:12px}
+.sp{flex:1}
+.btn{border:1px solid var(--line);border-radius:4px;padding:3px 10px;color:var(--text);background:none;font:inherit}
+.btn.primary{background:var(--accent);color:var(--accent-c);border-color:var(--accent)}
+.btn.off{opacity:.5}
+.problems{background:var(--danger-s);color:var(--danger-t);border-radius:9999px;padding:2px 10px;font-size:12px}
+.body{flex:1;display:flex;min-height:0}
+.pane{min-height:0;overflow:hidden;border-right:1px solid var(--line);background:var(--surface)}
+.pane:last-child{border-right:0}
+.ptitle{font-size:12px;color:var(--muted);padding:8px 12px 4px;text-transform:uppercase;letter-spacing:.04em}
+.tree{padding:0 6px 8px;font-size:13px}
+.ti{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:4px;white-space:nowrap}
+.ti .k{color:var(--muted);font-size:11px;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.ti .id{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)}
+.ti.sel{background:var(--accent);color:var(--accent-c)}.ti.sel .k,.ti.sel .id{color:var(--accent-c);border-color:var(--accent-c)}
+.ti.err{color:var(--danger-t)}.ti .bang{margin-left:auto;background:var(--danger-s);color:var(--danger-t);border-radius:9999px;padding:0 6px;font-size:11px}
+.ti.add{color:var(--muted)}
+.l1{padding-left:6px}.l2{padding-left:20px}.l3{padding-left:34px}.l4{padding-left:48px}
+.form{padding:4px 12px 12px;display:flex;flex-direction:column;gap:10px}
+.form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.inp{border:1px solid var(--line);border-radius:4px;padding:5px 8px;color:var(--text);font-size:14px;background:var(--bar)}
+.inp.mono{font-family:ui-monospace,monospace}
+.hint{font-size:12px;color:var(--muted)}
+.seg{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden;font-size:13px}
+.seg span{flex:1;text-align:center;padding:4px}.seg .on{background:var(--tab);color:var(--accent)}
+.preview{flex:1;display:flex;flex-direction:column;align-items:center;background:var(--bar);overflow:hidden}
+.pv-bar{align-self:stretch;display:flex;gap:8px;align-items:center;padding:6px 12px;font-size:12px;color:var(--muted)}
+.win{width:600px;height:600px;flex:none;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface);transform-origin:top center}
+.tabs{display:flex;gap:4px;padding:6px 8px 0;background:var(--bar)}
+.tab{background:var(--tab);border-radius:6px 6px 0 0;padding:4px 12px;font-size:13px}.tab.on{background:var(--surface);color:var(--accent)}
+.sheet{padding:12px;display:flex;flex-wrap:wrap;gap:16px}
+.sec{border-left:1px solid var(--line);padding-left:8px}.sec.full{width:100%}.sec.half{width:calc(50% - 8px)}
+.sec h4{margin:0 0 4px;font-size:14px;color:var(--accent)}
+.grid{display:grid;gap:4px;align-items:center}
+.c{padding:2px 4px;border-radius:3px;min-height:24px;display:flex;align-items:center}
+.v{border-bottom:1px dotted var(--line-s);min-width:30px}
+.dice{border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:1px 6px;font-size:12px}
+.chk{width:14px;height:14px;border:1px solid var(--line-s);border-radius:3px}
+.c.sel{outline:2px solid var(--accent);outline-offset:1px}
+.c.err{outline:2px dashed var(--danger-t);outline-offset:1px}
+.inline-form{margin:2px 0 6px 34px;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bar);display:flex;flex-direction:column;gap:8px;white-space:normal}
+
+</style></head><body>
+<h1>Конструктор пресетов: варианты раскладки</h1>
+<p class="note">Одинаковое содержимое во всех вариантах: пресет d20, выбрано поле <code>str</code>, у кубика Ловкости ошибка в формуле (<code>dx</code>), поэтому «Скачать» выключена. Сравнивайте только расположение панелей. Верхняя панель, подписи и цвета — заглушки. Ширина кадра 1280 px, ноутбук.</p>
+<h2>A. Дерево · форма · превью</h2><p class="note">Три колонки слева направо: структура, свойства выбранного, результат. Форма всегда на виду рядом с деревом.</p>
+<div class="frame"><div class="chrome">musterroll.2249364.xyz/builder</div>
+<div class="top"><span class="name">d20</span><span class="muted">Черновик сохранён</span><span class="sp"></span>
+<button class="btn">↶</button><button class="btn">↷</button><span class="problems">1 проблема</span>
+<button class="btn">Открыть…</button><button class="btn primary off">Скачать</button></div><div class="body"><div class="pane" style="width:260px"><div class="ptitle">Структура</div><div class="tree">
+<div class="ti l1"><span class="k">окно</span>600 × 600</div>
+<div class="ti l1"><b>Персонаж</b></div>
+<div class="ti l2"><span class="k">секция</span>Персонаж</div>
+<div class="ti l2"><span class="k">секция</span>Характеристики <span class="id">1/2</span></div>
+<div class="ti l3"><span class="k">строка</span>Сила</div>
+<div class="ti l4"><span class="k">текст</span>Сила</div>
+<div class="ti l4 sel"><span class="k">поле</span>число <span class="id">str</span></div>
+<div class="ti l4"><span class="k">поле</span>флажок <span class="id">str_save</span></div>
+<div class="ti l4"><span class="k">кубик</span><span class="id">1d20+str</span></div>
+<div class="ti l3 err"><span class="k">строка</span>Ловкость<span class="bang">1</span></div>
+<div class="ti l4"><span class="k">текст</span>Ловкость</div>
+<div class="ti l4"><span class="k">поле</span>число <span class="id">dex</span></div>
+<div class="ti l4"><span class="k">поле</span>флажок <span class="id">dex_save</span></div>
+<div class="ti l4 err"><span class="k">кубик</span><span class="id">1d20+dx</span><span class="bang">!</span></div>
+<div class="ti l3 add">+ Добавить строку</div>
+<div class="ti l2"><span class="k">секция</span>Хиты <span class="id">1/2</span></div>
+<div class="ti l2 add">+ Добавить секцию</div>
+<div class="ti l1"><b>NPC</b></div>
+<div class="ti l2"><span class="k">секция</span>Бой</div>
+</div></div><div class="pane" style="width:300px"><div class="ptitle">Поле</div><div class="form"><label>Тип<div class="seg"><span>текст</span><span class="on">число</span><span>флажок</span></div></label>
+<label>Id — имя для формул<input class="inp mono" value="str"></label>
+<div class="hint">Встречается в 1 формуле. При переименовании формулы обновятся.</div></div></div><div class="preview"><div class="pv-bar">Превью · окно 600 × 600<span class="sp"></span><span>Персонаж</span>·<span>NPC</span></div>
+<div class="win"><div class="tabs"><span class="tab on">Новый персонаж</span><span class="tab">NPC</span></div>
+<div class="sheet">
+<div class="sec full"><h4>Персонаж</h4><div class="grid" style="grid-template-columns:auto 1fr auto 1fr"><span class="c">Класс</span><span class="c v">Воин</span><span class="c">Уровень</span><span class="c v">3</span></div></div>
+<div class="sec half"><h4>Характеристики</h4><div class="grid" style="grid-template-columns:auto 1fr auto auto">
+<span class="c">Сила</span><span class="c v sel">16</span><span class="c"><span class="chk"></span></span><span class="c"><span class="dice">Сила</span></span>
+<span class="c">Ловкость</span><span class="c v">12</span><span class="c"><span class="chk"></span></span><span class="c err"><span class="dice">Ловкость</span></span>
+</div></div>
+<div class="sec half"><h4>Хиты</h4><div class="grid" style="grid-template-columns:auto 1fr"><span class="c">Текущие</span><span class="c v">24</span><span class="c">Максимум</span><span class="c v">30</span></div></div>
+</div></div></div></div></div>
+<h2>B. Дерево над формой · превью</h2><p class="note">Две колонки. Слева дерево сверху и форма снизу, справа большое превью. Превью получает больше места, дерево — меньше высоты.</p>
+<div class="frame"><div class="chrome">musterroll.2249364.xyz/builder</div>
+<div class="top"><span class="name">d20</span><span class="muted">Черновик сохранён</span><span class="sp"></span>
+<button class="btn">↶</button><button class="btn">↷</button><span class="problems">1 проблема</span>
+<button class="btn">Открыть…</button><button class="btn primary off">Скачать</button></div><div class="body"><div class="pane" style="width:340px;display:flex;flex-direction:column"><div style="flex:1;overflow:hidden;border-bottom:1px solid var(--line)"><div class="ptitle">Структура</div><div class="tree">
+<div class="ti l1"><span class="k">окно</span>600 × 600</div>
+<div class="ti l1"><b>Персонаж</b></div>
+<div class="ti l2"><span class="k">секция</span>Персонаж</div>
+<div class="ti l2"><span class="k">секция</span>Характеристики <span class="id">1/2</span></div>
+<div class="ti l3"><span class="k">строка</span>Сила</div>
+<div class="ti l4"><span class="k">текст</span>Сила</div>
+<div class="ti l4 sel"><span class="k">поле</span>число <span class="id">str</span></div>
+<div class="ti l4"><span class="k">поле</span>флажок <span class="id">str_save</span></div>
+<div class="ti l4"><span class="k">кубик</span><span class="id">1d20+str</span></div>
+<div class="ti l3 err"><span class="k">строка</span>Ловкость<span class="bang">1</span></div>
+<div class="ti l4"><span class="k">текст</span>Ловкость</div>
+<div class="ti l4"><span class="k">поле</span>число <span class="id">dex</span></div>
+<div class="ti l4"><span class="k">поле</span>флажок <span class="id">dex_save</span></div>
+<div class="ti l4 err"><span class="k">кубик</span><span class="id">1d20+dx</span><span class="bang">!</span></div>
+<div class="ti l3 add">+ Добавить строку</div>
+<div class="ti l2"><span class="k">секция</span>Хиты <span class="id">1/2</span></div>
+<div class="ti l2 add">+ Добавить секцию</div>
+<div class="ti l1"><b>NPC</b></div>
+<div class="ti l2"><span class="k">секция</span>Бой</div>
+</div></div><div style="height:230px"><div class="ptitle">Поле</div><div class="form"><label>Тип<div class="seg"><span>текст</span><span class="on">число</span><span>флажок</span></div></label>
+<label>Id — имя для формул<input class="inp mono" value="str"></label>
+<div class="hint">Встречается в 1 формуле. При переименовании формулы обновятся.</div></div></div></div><div class="preview"><div class="pv-bar">Превью · окно 600 × 600<span class="sp"></span><span>Персонаж</span>·<span>NPC</span></div>
+<div class="win"><div class="tabs"><span class="tab on">Новый персонаж</span><span class="tab">NPC</span></div>
+<div class="sheet">
+<div class="sec full"><h4>Персонаж</h4><div class="grid" style="grid-template-columns:auto 1fr auto 1fr"><span class="c">Класс</span><span class="c v">Воин</span><span class="c">Уровень</span><span class="c v">3</span></div></div>
+<div class="sec half"><h4>Характеристики</h4><div class="grid" style="grid-template-columns:auto 1fr auto auto">
+<span class="c">Сила</span><span class="c v sel">16</span><span class="c"><span class="chk"></span></span><span class="c"><span class="dice">Сила</span></span>
+<span class="c">Ловкость</span><span class="c v">12</span><span class="c"><span class="chk"></span></span><span class="c err"><span class="dice">Ловкость</span></span>
+</div></div>
+<div class="sec half"><h4>Хиты</h4><div class="grid" style="grid-template-columns:auto 1fr"><span class="c">Текущие</span><span class="c v">24</span><span class="c">Максимум</span><span class="c v">30</span></div></div>
+</div></div></div></div></div>
+<h2>C. Дерево · превью · форма</h2><p class="note">Три колонки, превью в центре между структурой и свойствами. Похоже на Figma и Webflow: слева что есть, справа свойства выбранного.</p>
+<div class="frame"><div class="chrome">musterroll.2249364.xyz/builder</div>
+<div class="top"><span class="name">d20</span><span class="muted">Черновик сохранён</span><span class="sp"></span>
+<button class="btn">↶</button><button class="btn">↷</button><span class="problems">1 проблема</span>
+<button class="btn">Открыть…</button><button class="btn primary off">Скачать</button></div><div class="body"><div class="pane" style="width:260px"><div class="ptitle">Структура</div><div class="tree">
+<div class="ti l1"><span class="k">окно</span>600 × 600</div>
+<div class="ti l1"><b>Персонаж</b></div>
+<div class="ti l2"><span class="k">секция</span>Персонаж</div>
+<div class="ti l2"><span class="k">секция</span>Характеристики <span class="id">1/2</span></div>
+<div class="ti l3"><span class="k">строка</span>Сила</div>
+<div class="ti l4"><span class="k">текст</span>Сила</div>
+<div class="ti l4 sel"><span class="k">поле</span>число <span class="id">str</span></div>
+<div class="ti l4"><span class="k">поле</span>флажок <span class="id">str_save</span></div>
+<div class="ti l4"><span class="k">кубик</span><span class="id">1d20+str</span></div>
+<div class="ti l3 err"><span class="k">строка</span>Ловкость<span class="bang">1</span></div>
+<div class="ti l4"><span class="k">текст</span>Ловкость</div>
+<div class="ti l4"><span class="k">поле</span>число <span class="id">dex</span></div>
+<div class="ti l4"><span class="k">поле</span>флажок <span class="id">dex_save</span></div>
+<div class="ti l4 err"><span class="k">кубик</span><span class="id">1d20+dx</span><span class="bang">!</span></div>
+<div class="ti l3 add">+ Добавить строку</div>
+<div class="ti l2"><span class="k">секция</span>Хиты <span class="id">1/2</span></div>
+<div class="ti l2 add">+ Добавить секцию</div>
+<div class="ti l1"><b>NPC</b></div>
+<div class="ti l2"><span class="k">секция</span>Бой</div>
+</div></div><div class="preview"><div class="pv-bar">Превью · окно 600 × 600<span class="sp"></span><span>Персонаж</span>·<span>NPC</span></div>
+<div class="win"><div class="tabs"><span class="tab on">Новый персонаж</span><span class="tab">NPC</span></div>
+<div class="sheet">
+<div class="sec full"><h4>Персонаж</h4><div class="grid" style="grid-template-columns:auto 1fr auto 1fr"><span class="c">Класс</span><span class="c v">Воин</span><span class="c">Уровень</span><span class="c v">3</span></div></div>
+<div class="sec half"><h4>Характеристики</h4><div class="grid" style="grid-template-columns:auto 1fr auto auto">
+<span class="c">Сила</span><span class="c v sel">16</span><span class="c"><span class="chk"></span></span><span class="c"><span class="dice">Сила</span></span>
+<span class="c">Ловкость</span><span class="c v">12</span><span class="c"><span class="chk"></span></span><span class="c err"><span class="dice">Ловкость</span></span>
+</div></div>
+<div class="sec half"><h4>Хиты</h4><div class="grid" style="grid-template-columns:auto 1fr"><span class="c">Текущие</span><span class="c v">24</span><span class="c">Максимум</span><span class="c v">30</span></div></div>
+</div></div></div><div class="pane" style="width:300px;border-left:1px solid var(--line)"><div class="ptitle">Поле</div><div class="form"><label>Тип<div class="seg"><span>текст</span><span class="on">число</span><span>флажок</span></div></label>
+<label>Id — имя для формул<input class="inp mono" value="str"></label>
+<div class="hint">Встречается в 1 формуле. При переименовании формулы обновятся.</div></div></div></div></div>
+<h2>D. Форма внутри дерева · превью</h2><p class="note">Две колонки. Выбранный пункт дерева раскрывается в свою форму прямо на месте. Отдельной панели свойств нет.</p>
+<div class="frame"><div class="chrome">musterroll.2249364.xyz/builder</div>
+<div class="top"><span class="name">d20</span><span class="muted">Черновик сохранён</span><span class="sp"></span>
+<button class="btn">↶</button><button class="btn">↷</button><span class="problems">1 проблема</span>
+<button class="btn">Открыть…</button><button class="btn primary off">Скачать</button></div><div class="body"><div class="pane" style="width:380px"><div class="ptitle">Структура</div><div class="tree">
+<div class="ti l1"><span class="k">окно</span>600 × 600</div>
+<div class="ti l1"><b>Персонаж</b></div>
+<div class="ti l2"><span class="k">секция</span>Персонаж</div>
+<div class="ti l2"><span class="k">секция</span>Характеристики <span class="id">1/2</span></div>
+<div class="ti l3"><span class="k">строка</span>Сила</div>
+<div class="ti l4"><span class="k">текст</span>Сила</div>
+<div class="ti l4 sel"><span class="k">поле</span>число <span class="id">str</span></div>
+<div class="inline-form"><label>Тип<div class="seg"><span>текст</span><span class="on">число</span><span>флажок</span></div></label>
+<label>Id — имя для формул<input class="inp mono" value="str"></label>
+<div class="hint">Встречается в 1 формуле. При переименовании формулы обновятся.</div></div>
+<div class="ti l4"><span class="k">поле</span>флажок <span class="id">str_save</span></div>
+<div class="ti l4"><span class="k">кубик</span><span class="id">1d20+str</span></div>
+<div class="ti l3 err"><span class="k">строка</span>Ловкость<span class="bang">1</span></div>
+<div class="ti l4"><span class="k">текст</span>Ловкость</div>
+<div class="ti l4"><span class="k">поле</span>число <span class="id">dex</span></div>
+<div class="ti l4"><span class="k">поле</span>флажок <span class="id">dex_save</span></div>
+<div class="ti l4 err"><span class="k">кубик</span><span class="id">1d20+dx</span><span class="bang">!</span></div>
+<div class="ti l3 add">+ Добавить строку</div>
+<div class="ti l2"><span class="k">секция</span>Хиты <span class="id">1/2</span></div>
+<div class="ti l2 add">+ Добавить секцию</div>
+<div class="ti l1"><b>NPC</b></div>
+<div class="ti l2"><span class="k">секция</span>Бой</div>
+</div></div><div class="preview"><div class="pv-bar">Превью · окно 600 × 600<span class="sp"></span><span>Персонаж</span>·<span>NPC</span></div>
+<div class="win"><div class="tabs"><span class="tab on">Новый персонаж</span><span class="tab">NPC</span></div>
+<div class="sheet">
+<div class="sec full"><h4>Персонаж</h4><div class="grid" style="grid-template-columns:auto 1fr auto 1fr"><span class="c">Класс</span><span class="c v">Воин</span><span class="c">Уровень</span><span class="c v">3</span></div></div>
+<div class="sec half"><h4>Характеристики</h4><div class="grid" style="grid-template-columns:auto 1fr auto auto">
+<span class="c">Сила</span><span class="c v sel">16</span><span class="c"><span class="chk"></span></span><span class="c"><span class="dice">Сила</span></span>
+<span class="c">Ловкость</span><span class="c v">12</span><span class="c"><span class="chk"></span></span><span class="c err"><span class="dice">Ловкость</span></span>
+</div></div>
+<div class="sec half"><h4>Хиты</h4><div class="grid" style="grid-template-columns:auto 1fr"><span class="c">Текущие</span><span class="c v">24</span><span class="c">Максимум</span><span class="c v">30</span></div></div>
+</div></div></div></div></div>
+</body></html>
