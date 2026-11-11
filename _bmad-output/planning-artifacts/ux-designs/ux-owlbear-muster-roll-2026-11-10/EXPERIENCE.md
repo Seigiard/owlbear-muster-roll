@@ -54,7 +54,7 @@ Short and literal. Commands are perfective verbs. Places are nouns. Statuses are
 
 | Job | Copy |
 | --- | --- |
-| Command | "Загрузить пресет", "Скачать пресет", "Загрузить снимок", "Скачать снимок", "Очистить всё", "Добавить строку", "Дублировать…", "Удалить", "Привязать лист…", "Отвязать лист", "Открыть лист", "Отменить" |
+| Command | "Загрузить пресет", "Скачать пресет", "Загрузить снимок", "Скачать снимок", "Очистить всё", "Добавить", "Дублировать…", "Удалить", "Привязать лист…", "Отвязать лист", "Открыть лист", "Отменить" |
 | Add a sheet of a sheet set | "+" with the accessible name "Добавить: {title}" |
 | Place | "Настройки", "Доступ" |
 | Status | "Ожидает", "Только чтение", "Можно править", "Токен привязан", "Нет токена" |
@@ -98,7 +98,7 @@ A sheet's name is the value of its sheet set's name field, a single sheet's name
 | Access panel | Visible sheet of a sheet set | Opens inline under the header. One row per player id, GMs excluded, from players in the room and players who already hold rights, by last known name. A radio group "Его лист" with a "Никто" option, and a checkbox "Может править" per player. Choosing an owner also turns editing on, and the GM can turn it off. Changing or clearing the owner does not change the previous owner's editing. Changes apply at once. With no players: "Пока никого нет". Shows the guest note |
 | Preset cell | Sheets | `text` renders its label. `field` renders its value. `dice` renders a dice button. A field's accessible name is the nearest preceding `text` cell in its row, otherwise its id |
 | Field value | Sheets | Click to edit in place, with no edit mode. A `check` toggles and saves on one click. A `text` or `number` field saves on blur or after a typing pause. A blur with no change sends nothing. A bad number or too long a value stays in the field with an error under it and is not saved. Empty values show an empty editable area. Read-only values take no focus |
-| Repeat block | Sheets | A repeat block holds every row of its section. "Добавить строку" adds a repeat block at the end. Each repeat block has "Удалить". Both show only with edit rights. GM: "Дублировать…" on each repeat block, and token status on each repeat block when the section sets `tokens` |
+| Repeat block | Sheets | A repeat block holds every row of its section. "Добавить", under the section, adds a repeat block at the end; the section title says what is added. Its accessible name names the section: «Добавить в «{section title}»», for example «Добавить в «Атаки»». Each repeat block has "Удалить". Both show only with edit rights. GM: "Дублировать…" on each repeat block, and token status on each repeat block when the section sets `tokens` |
 | Duplicate | Repeat block | Inline number from 1 to 50, default 1. When the repeat block's first field is a `text` field with a value, a copy's value is that value without its trailing number plus the highest existing number in the section + 1. Other values are copied as is. Copies have no token. They appear at the end of the section |
 | Dice cell | Sheets | Rolls on click. A bad formula shows its message under the cell and sends nothing. The message clears on the next roll or field change |
 | Roll result | Global | Owlbear notification, so it shows when the window is closed. A roll from a hidden sheet shows only on GM clients |
@@ -163,7 +163,7 @@ Failure path: a file that fails validation shows the bad file message under the 
 
 ### Oleg runs a fight with ten skeletons (CAP-6, CAP-7, CAP-14, CAP-18, CAP-30)
 
-1. Oleg opens the NPC tab. Its "Противники" section is a linkable repeat section. He presses "Добавить строку" and types "Скелет 1" in the repeat block's first field.
+1. Oleg opens the NPC tab. Its "Противники" section is a linkable repeat section. He presses "Добавить" under it and types "Скелет 1" in the repeat block's first field.
 2. He picks "Дублировать…" on that repeat block and enters 9.
 3. He links each skeleton token to its repeat block through "Привязать лист…".
 4. In the fight he opens "Открыть лист" on a skeleton token and lands on that skeleton's repeat block.
