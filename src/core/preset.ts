@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
-import { isFieldId } from '@/core/field-id';
+import { isFieldId, isTemplateId } from '@/core/field-id';
 import { FORMAT_VERSION } from '@/core/format-version';
 import { parseFormula } from '@/core/formula';
 import { err, ok, type Result } from '@/core/result';
@@ -23,15 +23,44 @@ const diceCellSchema = z.strictObject({ kind: z.literal('dice'), formula: z.stri
 
 const cellSchema = z.discriminatedUnion('kind', [textCellSchema, fieldCellSchema, diceCellSchema]);
 
-const sectionSchema = z.strictObject({
-  title: z.string().optional(),
-  width: z.enum(['1/3', '1/2', 'full']).optional(),
-  columns: z.number().int().positive().optional(),
-  repeat: z.literal(true).optional(),
-  rows: z.array(z.array(cellSchema)),
+// A section links its repeat blocks to tokens only when it repeats.
+const sectionSchema = z
+  .strictObject({
+    title: z.string().optional(),
+    width: z.enum(['1/3', '1/2', 'full']).optional(),
+    columns: z.number().int().positive().optional(),
+    repeat: z.literal(true).optional(),
+    tokens: z.literal(true).optional(),
+    rows: z.array(z.array(cellSchema)),
+  })
+  .refine((section) => section.tokens === undefined || section.repeat === true);
+
+const visibilitySchema = z.enum(['all', 'gm']).optional();
+
+const sheetSetTemplateSchema = z.strictObject({
+  id: z.string(),
+  kind: z.literal('set'),
+  title: z.string(),
+  nameField: z.string(),
+  visibility: visibilitySchema,
+  tokens: z.literal(true).optional(),
+  sections: z.array(sectionSchema),
 });
 
-const templateSchema = z.strictObject({ sections: z.array(sectionSchema) });
+const singleSheetTemplateSchema = z.strictObject({
+  id: z.string(),
+  kind: z.literal('single'),
+  title: z.string(),
+  visibility: visibilitySchema,
+  players: z.literal('edit').optional(),
+  tokens: z.literal(true).optional(),
+  sections: z.array(sectionSchema),
+});
+
+const templateSchema = z.discriminatedUnion('kind', [
+  sheetSetTemplateSchema,
+  singleSheetTemplateSchema,
+]);
 
 // TASK-33: the action window size a preset may set, in px, inclusive. The lower bound keeps the
 // narrowest sheet layout usable; the upper bound keeps the window on a laptop screen.
@@ -48,8 +77,7 @@ const windowSchema = z.strictObject({
 const presetSchema = z.strictObject({
   v: z.literal(FORMAT_VERSION),
   window: windowSchema.optional(),
-  character: templateSchema,
-  npc: templateSchema,
+  templates: z.array(templateSchema).min(1),
 });
 
 const fileObjectSchema = z.looseObject({ v: z.unknown().optional() });
@@ -61,7 +89,15 @@ const DETAIL_MAX_CHARACTERS = 40;
 
 export type Preset = z.infer<typeof presetSchema>;
 
-export type PresetTemplate = z.infer<typeof templateSchema>;
+// A sheet set or a single sheet. `core/sheets` resolves a sheet to its template and reads `kind`.
+export type Template = z.infer<typeof templateSchema>;
+
+export type SheetSetTemplate = z.infer<typeof sheetSetTemplateSchema>;
+
+export type SingleSheetTemplate = z.infer<typeof singleSheetTemplateSchema>;
+
+// What lays a sheet out. A template is one, and so is any object with its sections.
+export type TemplateLayout = Pick<Template, 'sections'>;
 
 export type PresetSection = z.infer<typeof sectionSchema>;
 
@@ -78,9 +114,9 @@ export const DEFAULT_WINDOW_SIZE: WindowSize = { width: 600, height: 600 };
 // A row of a template by position, so a row with no field, as a dice row, can be named too.
 export type TemplateRowPlace = { sectionIndex: number; rowIndex: number };
 
-// `row`: the same row, and for a repeat row the same instance. `sheet`: the `row:` record of
-// `rowId` on the same sheet. The caller reads values only from the sheet the cell is on.
-export type FieldReference = { scope: 'row' } | { scope: 'sheet'; rowId: string };
+// `block`: the same repeat block. `sheet`: the `row:` record of `rowId` on the same sheet. The
+// caller reads values only from the sheet the cell is on.
+export type FieldReference = { scope: 'block' } | { scope: 'sheet'; rowId: string };
 
 export type PresetFailure =
   | { code: 'too-large' }
@@ -88,6 +124,9 @@ export type PresetFailure =
   | { code: 'newer-version' }
   | { code: 'unsupported-version' }
   | { code: 'invalid-structure' }
+  | { code: 'invalid-template-id'; detail: string }
+  | { code: 'duplicate-template'; detail: string }
+  | { code: 'bad-name-field'; detail: string; field: string }
   | { code: 'invalid-id'; detail: string }
   | { code: 'duplicate-id'; detail: string }
   | { code: 'bad-repeat' }
@@ -128,7 +167,7 @@ export function parsePresetFile(text: string): Result<Preset, PresetFailure> {
     return err({ code: 'newer-version' });
   }
 
-  // No migration exists yet, so a lower `v` is refused. The first format change adds the registry.
+  // No migration from an older format exists: a version 1 preset is rewritten by hand.
   if (version.data < FORMAT_VERSION) {
     return err({ code: 'unsupported-version' });
   }
@@ -144,7 +183,7 @@ export function parsePresetFile(text: string): Result<Preset, PresetFailure> {
     return err({ code: 'invalid-structure' });
   }
 
-  const failure = templateFailure(preset.data.character) ?? templateFailure(preset.data.npc);
+  const failure = presetRulesFailure(preset.data);
 
   return failure === null ? ok(preset.data) : err(failure);
 }
@@ -164,8 +203,8 @@ export function decodePreset(data: string): Result<Preset, PresetFailure> {
 export function formatPresetFile(preset: Preset): string {
   const file: Preset =
     preset.window === undefined
-      ? { v: FORMAT_VERSION, character: preset.character, npc: preset.npc }
-      : { v: FORMAT_VERSION, window: preset.window, character: preset.character, npc: preset.npc };
+      ? { v: FORMAT_VERSION, templates: preset.templates }
+      : { v: FORMAT_VERSION, window: preset.window, templates: preset.templates };
 
   return JSON.stringify(file, null, 2);
 }
@@ -175,8 +214,13 @@ export function windowSizeOf(preset: Preset | null): WindowSize {
   return preset?.window ?? DEFAULT_WINDOW_SIZE;
 }
 
-// The id of a row's first field. It names the row's `row:` record, and for a repeat row the
-// section's `rep:` records. A row with no field has no record.
+// Template ids are unique in a preset, so at most one template has the id.
+export function templateById(preset: Preset, id: string): Template | null {
+  return preset.templates.find((template) => template.id === id) ?? null;
+}
+
+// The id of a row's first field. It names the row's `row:` record. A row with no field has no
+// record.
 export function firstFieldId(row: readonly PresetCell[]): string | null {
   for (const cell of row) {
     if (cell.kind === 'field') {
@@ -187,40 +231,144 @@ export function firstFieldId(row: readonly PresetCell[]): string | null {
   return null;
 }
 
-// Where `id` resolves from a cell of the row at `from`: its own row first, then the template's
-// non-repeat scope. A field of a repeat section is reachable only from inside its own row, so an id
-// found only in another repeat section, or only in another template, resolves to `null`.
+// Every field of a section, in row order. For a repeat section, these are the fields of one
+// repeat block.
+export function sectionFields(section: PresetSection): PresetFieldCell[] {
+  return section.rows.flatMap((row) => row.filter((cell) => cell.kind === 'field'));
+}
+
+// The first field of a section in row order. Its id names a repeat section's `rep:` records, its
+// value names a repeat block, and a duplicate numbers it.
+export function sectionFirstField(section: PresetSection): PresetFieldCell | null {
+  return sectionFields(section)[0] ?? null;
+}
+
+// The id of a repeat section, `null` for a section that does not repeat.
+export function repeatSectionId(section: PresetSection): string | null {
+  return section.repeat === true ? (sectionFirstField(section)?.id ?? null) : null;
+}
+
+// The repeat section of a template that `sectionId` names.
+export function repeatSectionById(layout: TemplateLayout, sectionId: string): PresetSection | null {
+  return layout.sections.find((section) => repeatSectionId(section) === sectionId) ?? null;
+}
+
+// The non-repeat row whose first field is `rowId`, the row a `row:` record of that id holds.
+export function plainRow(layout: TemplateLayout, rowId: string): readonly PresetCell[] | null {
+  for (const section of layout.sections) {
+    if (section.repeat === true) {
+      continue;
+    }
+
+    const row = section.rows.find((cells) => firstFieldId(cells) === rowId);
+
+    if (row !== undefined) {
+      return row;
+    }
+  }
+
+  return null;
+}
+
+// The id of the non-repeat row that holds the field `fieldId`, which is the row's first field id.
+// Non-repeat field ids are unique in a template, so at most one row holds it.
+export function plainRowIdOf(layout: TemplateLayout, fieldId: string): string | null {
+  for (const section of layout.sections) {
+    if (section.repeat === true) {
+      continue;
+    }
+
+    const row = section.rows.find((cells) => hasField(cells, fieldId));
+
+    if (row !== undefined) {
+      return firstFieldId(row);
+    }
+  }
+
+  return null;
+}
+
+// Where `id` resolves from a cell of the row at `from`: the cell's own repeat block first, then
+// the template's non-repeat scope. A field of a repeat section is reachable only from inside its
+// own repeat block, so an id found only in another repeat section, or only in another template,
+// resolves to `null`.
 export function resolveFieldReference(
-  template: PresetTemplate,
+  layout: TemplateLayout,
   from: TemplateRowPlace,
   id: string,
 ): FieldReference | null {
-  const row = template.sections[from.sectionIndex]?.rows[from.rowIndex];
+  const section = layout.sections[from.sectionIndex];
 
-  if (row === undefined) {
+  if (section?.rows[from.rowIndex] === undefined) {
     return null;
   }
 
-  if (hasField(row, id)) {
-    return { scope: 'row' };
+  if (section.repeat === true && section.rows.some((row) => hasField(row, id))) {
+    return { scope: 'block' };
   }
 
-  const owner = template.sections
-    .filter((section) => section.repeat !== true)
-    .flatMap((section) => section.rows)
-    .find((other) => hasField(other, id));
-
-  const rowId = owner === undefined ? null : firstFieldId(owner);
+  const rowId = plainRowIdOf(layout, id);
 
   return rowId === null ? null : { scope: 'sheet', rowId };
 }
 
-// All non-repeat fields of one template are one scope, and each repeat row is its own.
-function templateFailure(template: PresetTemplate): PresetFailure | null {
+// Rules in list order: the template id, then its sections, then its name field. Each template is
+// a scope of its own, so one field id can occur in two templates.
+function presetRulesFailure(preset: Preset): PresetFailure | null {
+  const templateIds = new Set<string>();
+
+  for (const template of preset.templates) {
+    if (!isTemplateId(template.id)) {
+      return { code: 'invalid-template-id', detail: shortDetail(template.id) };
+    }
+
+    if (templateIds.has(template.id)) {
+      return { code: 'duplicate-template', detail: shortDetail(template.id) };
+    }
+
+    templateIds.add(template.id);
+
+    const failure = sectionsFailure(template) ?? nameFieldFailure(template);
+
+    if (failure !== null) {
+      return failure;
+    }
+  }
+
+  return null;
+}
+
+// A sheet set names each sheet by a `text` field outside its repeat sections.
+function nameFieldFailure(template: Template): PresetFailure | null {
+  if (template.kind !== 'set') {
+    return null;
+  }
+
+  const named = template.sections.some(
+    (section) =>
+      section.repeat !== true &&
+      section.rows.some((row) =>
+        row.some(
+          (cell) => cell.kind === 'field' && cell.id === template.nameField && cell.type === 'text',
+        ),
+      ),
+  );
+
+  return named
+    ? null
+    : {
+        code: 'bad-name-field',
+        detail: shortDetail(template.id),
+        field: shortDetail(template.nameField),
+      };
+}
+
+// All non-repeat fields of one template are one scope, and each repeat section is its own.
+function sectionsFailure(layout: TemplateLayout): PresetFailure | null {
   const templateScope = new Set<string>();
   const sectionIds = new Set<string>();
 
-  for (const section of template.sections) {
+  for (const section of layout.sections) {
     const failure =
       section.repeat === true
         ? repeatSectionFailure(section, sectionIds)
@@ -234,18 +382,18 @@ function templateFailure(template: PresetTemplate): PresetFailure | null {
   return null;
 }
 
+// All rows of a repeat section form one repeat block, so its fields share one scope.
 function repeatSectionFailure(
   section: PresetSection,
   sectionIds: Set<string>,
 ): PresetFailure | null {
-  const [row, ...others] = section.rows;
-  const sectionId = row === undefined ? null : firstFieldId(row);
+  const sectionId = repeatSectionId(section);
 
-  if (row === undefined || others.length > 0 || sectionId === null) {
+  if (sectionId === null) {
     return { code: 'bad-repeat' };
   }
 
-  const failure = rowFailure(section, row, new Set());
+  const failure = rowsFailure(section, new Set());
 
   if (failure !== null) {
     return failure;

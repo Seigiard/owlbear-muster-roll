@@ -6,7 +6,7 @@ import type { VersionedRecord } from '@/core/records';
 import {
   cellLabel,
   isChecked,
-  repeatInstances,
+  repeatBlocks,
   rowValues,
   sectionTitle,
   valueText,
@@ -25,8 +25,8 @@ function rep(key: string, order: number, cells: Record<string, string>): Version
   return { k: key, d: { order, cells }, c: 1, a: 'seed' };
 }
 
-function instanceIds(records: ReadonlyMap<string, VersionedRecord>): string[] {
-  return repeatInstances(records, 'brok', 'attack').map((instance) => instance.instanceId);
+function blockIds(records: ReadonlyMap<string, VersionedRecord>): string[] {
+  return repeatBlocks(records, 'brok', 'attack').map((block) => block.instanceId);
 }
 
 describe('rowValues', () => {
@@ -91,8 +91,8 @@ describe('rowValues', () => {
   });
 });
 
-describe('repeatInstances', () => {
-  test('orders instances by order, then by instance id in code units', () => {
+describe('repeatBlocks', () => {
+  test('orders repeat blocks by order, then by instance id in code units', () => {
     // #given
     const records = recordsOf(
       rep('rep:brok:attack:zed', 1, { attack: 'Лук' }),
@@ -102,27 +102,30 @@ describe('repeatInstances', () => {
     );
 
     // #when
-    const ids = instanceIds(records);
+    const ids = blockIds(records);
 
     // #then
     expect(ids).toEqual(['Z', 'zed', 'a', 'b']);
   });
 
-  test('carries the cell values of each instance', () => {
+  test('carries the order and the cell values of each repeat block', () => {
     // #given
     const records = recordsOf(rep('rep:brok:attack:i1', 0, { attack: 'Меч', bonus: 'x' }));
 
     // #when
-    const [instance] = repeatInstances(records, 'brok', 'attack');
+    const [block] = repeatBlocks(records, 'brok', 'attack');
 
     // #then
-    expect([...(instance?.values ?? [])]).toEqual([
-      ['attack', 'Меч'],
-      ['bonus', 'x'],
-    ]);
+    expect({ order: block?.order, values: [...(block?.values ?? [])] }).toEqual({
+      order: 0,
+      values: [
+        ['attack', 'Меч'],
+        ['bonus', 'x'],
+      ],
+    });
   });
 
-  test("leaves out another sheet's instances, including a sheet whose id starts with this one", () => {
+  test("leaves out another sheet's repeat blocks, including a sheet whose id starts with this one", () => {
     // #given
     const records = recordsOf(
       rep('rep:brok:attack:mine', 0, { attack: 'Меч' }),
@@ -131,13 +134,13 @@ describe('repeatInstances', () => {
     );
 
     // #when
-    const ids = instanceIds(records);
+    const ids = blockIds(records);
 
     // #then
     expect(ids).toEqual(['mine']);
   });
 
-  test("leaves out another section's instances, including a section whose id starts with this one", () => {
+  test("leaves out another section's repeat blocks, including a section whose id starts with this one", () => {
     // #given
     const records = recordsOf(
       rep('rep:brok:attack:mine', 0, { attack: 'Меч' }),
@@ -146,13 +149,13 @@ describe('repeatInstances', () => {
     );
 
     // #when
-    const ids = instanceIds(records);
+    const ids = blockIds(records);
 
     // #then
     expect(ids).toEqual(['mine']);
   });
 
-  test('leaves out a tombstoned instance', () => {
+  test('leaves out a tombstoned repeat block', () => {
     // #given
     const records = recordsOf(rep('rep:brok:attack:live', 0, { attack: 'Меч' }), {
       k: 'rep:brok:attack:gone',
@@ -162,7 +165,7 @@ describe('repeatInstances', () => {
     });
 
     // #when
-    const ids = instanceIds(records);
+    const ids = blockIds(records);
 
     // #then
     expect(ids).toEqual(['live']);

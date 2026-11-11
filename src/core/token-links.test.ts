@@ -1,12 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { VersionedRecord } from '@/core/records';
+import type { LinkTarget } from '@/core/link-target';
+import type { JsonValue } from '@/core/json';
+import type { FieldValue, VersionedRecord } from '@/core/records';
+import type { Preset, PresetSection, Template } from '@/core/preset';
 import {
-  linkedSheetIds,
+  linkedTargetKeys,
   linkPickerUrl,
   liveLinks,
   openTarget,
-  pickerOrder,
+  pickerGroups,
   removedItemIds,
   tokenIdSchema,
   tokenMenuEntries,
@@ -14,164 +17,297 @@ import {
   type TokenMenuFilter,
   type TokenMenuKeyFilter,
 } from '@/core/token-links';
-import { visibleSheets } from '@/core/visibility';
+
+// A two-row linkable repeat section: one repeat block spans both rows.
+const PET_SECTION: PresetSection = {
+  repeat: true,
+  tokens: true,
+  rows: [
+    [{ kind: 'field', type: 'text', id: 'pet' }],
+    [{ kind: 'field', type: 'number', id: 'pet_hp' }],
+  ],
+};
+
+const PC: Template = {
+  id: 'pc',
+  kind: 'set',
+  title: 'Персонажи',
+  nameField: 'name',
+  tokens: true,
+  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, PET_SECTION],
+};
+
+const NPC_SECTION: PresetSection = {
+  repeat: true,
+  tokens: true,
+  rows: [[{ kind: 'field', type: 'text', id: 'npc_name' }]],
+};
+
+// Hidden, and only its repeat blocks are linkable.
+const NPC: Template = {
+  id: 'npc',
+  kind: 'single',
+  title: 'НПС',
+  visibility: 'gm',
+  sections: [NPC_SECTION],
+};
+
+const INVENTORY: Template = {
+  id: 'inventory',
+  kind: 'single',
+  title: 'Инвентарь',
+  players: 'edit',
+  tokens: true,
+  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'items' }]] }],
+};
+
+// Nothing in it is linkable.
+const JOURNAL: Template = {
+  id: 'journal',
+  kind: 'single',
+  title: 'Журнал',
+  sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }],
+};
+
+const PRESET: Preset = { v: 2, templates: [PC, NPC, INVENTORY, JOURNAL] };
 
 describe('liveLinks', () => {
-  test('maps each token to the live sheet its link names, two tokens to one sheet included', () => {
+  test('maps each token to the live target its link names, two tokens to one sheet included', () => {
     // #given
     const records = byKey([
-      sheet('brok', 'pc', 'Брок', 0),
-      sheet('skel', 'npc', 'Скелет', 0),
+      ...pc('brok', 'Брок', 0),
+      block('npc', 'npc_name', 's1', 0, { npc_name: 'Скелет' }),
       link('t1', 'brok'),
       link('t2', 'brok'),
-      link('t3', 'skel'),
+      link('t3', 'npc', 's1'),
+      link('t4', 'inventory'),
     ]);
 
     // #when
-    const links = liveLinks(records);
+    const links = liveLinks(records, PRESET);
 
     // #then
-    expect([...links]).toEqual([
-      ['t1', 'brok'],
-      ['t2', 'brok'],
-      ['t3', 'skel'],
+    expect([...links].map(([tokenId, live]) => [tokenId, live.target])).toEqual([
+      ['t1', { sheetId: 'brok', instanceId: null }],
+      ['t2', { sheetId: 'brok', instanceId: null }],
+      ['t3', { sheetId: 'npc', instanceId: 's1' }],
+      ['t4', { sheetId: 'inventory', instanceId: null }],
     ]);
   });
 
   test('counts no link under a key whose token id no command could write', () => {
     // #given
-    const records = byKey([
-      sheet('brok', 'pc', 'Брок', 0),
-      link('a b', 'brok'),
-      link('t1', 'brok'),
-    ]);
+    const records = byKey([...pc('brok', 'Брок', 0), link('a b', 'brok'), link('t1', 'brok')]);
 
     // #when
-    const links = liveLinks(records);
+    const links = liveLinks(records, PRESET);
 
     // #then
-    expect([...links]).toEqual([['t1', 'brok']]);
+    expect([...links.keys()]).toEqual(['t1']);
   });
 
   test('counts no link to a sheet id no command could write, even with a live sheet under it', () => {
     // #given: "a b" passes the `link:` data schema but not the sheet id schema.
-    const records = byKey([sheet('a b', 'pc', 'Аня', 0), link('t1', 'a b')]);
+    const records = byKey([...pc('a b', 'Аня', 0), link('t1', 'a b')]);
 
     // #when
-    const found = { links: [...liveLinks(records)], target: openTarget(records, 't1', 'GM') };
+    const found = {
+      links: [...liveLinks(records, PRESET)],
+      target: openTarget(records, PRESET, 't1', 'GM'),
+    };
 
     // #then
     expect(found).toEqual({ links: [], target: null });
   });
 
-  test('counts no link for a tombstone, a deleted sheet or a sheet it does not hold', () => {
+  test('counts no inert link: a tombstone, a deleted or unknown sheet, a removed block, or a target with no tokens', () => {
     // #given
     const records = byKey([
-      sheet('brok', 'pc', 'Брок', 0),
-      { k: 'sheet:gone', d: null, c: 2, a: 'gm' },
-      { k: 'link:t1', d: null, c: 3, a: 'gm' },
+      ...pc('brok', 'Брок', 0),
+      record('sheet:gone', null),
+      record('rep:brok:pet:dead', null),
+      block('journal', 'entry', 'e1', 0, { entry: 'День 1' }),
+      record('link:t1', null),
       link('t2', 'gone'),
       link('t3', 'nobody'),
+      link('t4', 'brok', 'dead'),
+      link('t5', 'npc'),
+      link('t6', 'journal', 'e1'),
     ]);
 
     // #when
-    const links = liveLinks(records);
+    const links = liveLinks(records, PRESET);
 
     // #then
     expect([...links]).toEqual([]);
   });
+
+  test('counts no link with no decoded preset', () => {
+    // #given
+    const records = byKey([...pc('brok', 'Брок', 0), link('t1', 'brok')]);
+
+    // #then
+    expect(liveLinks(records, null).size).toBe(0);
+  });
 });
 
-describe('linkedSheetIds', () => {
-  test('names each sheet a live link points to once', () => {
+describe('linkedTargetKeys', () => {
+  test('names each target a live link points to once', () => {
     // #given
     const records = byKey([
-      sheet('brok', 'pc', 'Брок', 0),
-      sheet('liza', 'pc', 'Лиза', 1),
+      ...pc('brok', 'Брок', 0),
+      ...pc('liza', 'Лиза', 1),
+      block('brok', 'pet', 'wolf', 0, { pet: 'Волк' }),
       link('t1', 'brok'),
       link('t2', 'brok'),
+      link('t3', 'brok', 'wolf'),
     ]);
 
     // #when
-    const linked = linkedSheetIds(records);
+    const linked = linkedTargetKeys(records, PRESET);
 
     // #then
-    expect([...linked]).toEqual(['brok']);
+    expect([...linked]).toEqual(['brok', 'brok:wolf']);
   });
 });
 
-describe('pickerOrder', () => {
-  test('lists characters, then NPCs, each with the sheets with no token first in sheet order', () => {
+describe('pickerGroups', () => {
+  test('groups targets by template and linkable section in preset order, each with the targets with no token first', () => {
     // #given
     const records = byKey([
-      sheet('a', 'pc', 'Аня', 0),
-      sheet('b', 'pc', 'Брок', 1),
-      sheet('c', 'pc', 'Вера', 2),
-      sheet('d', 'npc', 'Гоблин', 0),
-      sheet('e', 'npc', 'Дракон', 1),
+      ...pc('a', 'Аня', 0),
+      ...pc('b', 'Брок', 1),
+      ...pc('c', 'Вера', 2),
+      block('b', 'pet', 'wolf', 0, { pet: 'Волк' }),
+      block('b', 'pet', 'cat', 1, { pet: 'Кот', pet_hp: 2 }),
+      block('a', 'pet', 'owl', 0, { pet: 'Сова' }),
+      block('npc', 'npc_name', 's1', 0, { npc_name: 'Гоблин' }),
+      block('npc', 'npc_name', 's2', 1, { npc_name: 'Дракон' }),
+      block('journal', 'entry', 'e1', 0, { entry: 'День 1' }),
       link('t1', 'a'),
-      link('t2', 'd'),
+      link('t2', 'npc', 's1'),
+      link('t3', 'b', 'cat'),
     ]);
 
     // #when
-    const order = pickerOrder(visibleSheets('GM', records.values()), records);
+    const groups = pickerGroups(records, PRESET);
 
     // #then
-    expect({
-      characters: order.characters.map((one) => one.name),
-      npcs: order.npcs.map((one) => one.name),
-    }).toEqual({ characters: ['Брок', 'Вера', 'Аня'], npcs: ['Дракон', 'Гоблин'] });
+    expect(groups).toEqual([
+      {
+        template: PC,
+        section: null,
+        targets: [
+          sheetTarget('b', 'Брок', false),
+          sheetTarget('c', 'Вера', false),
+          sheetTarget('a', 'Аня', true),
+        ],
+      },
+      {
+        template: PC,
+        section: PET_SECTION,
+        targets: [
+          blockTarget('a', 'owl', 'Аня', 'Сова', false),
+          blockTarget('b', 'wolf', 'Брок', 'Волк', false),
+          blockTarget('b', 'cat', 'Брок', 'Кот', true),
+        ],
+      },
+      {
+        template: NPC,
+        section: NPC_SECTION,
+        targets: [
+          blockTarget('npc', 's2', 'НПС', 'Дракон', false),
+          blockTarget('npc', 's1', 'НПС', 'Гоблин', true),
+        ],
+      },
+      {
+        template: INVENTORY,
+        section: null,
+        targets: [sheetTarget('inventory', 'Инвентарь', false)],
+      },
+    ]);
   });
 
-  test('keeps a sheet whose only link names a deleted sheet among the ones with no token', () => {
-    // #given: t1 once pointed to "gone"; "b" has a live link.
+  test('gives an empty sheet name and an empty block name as ""', () => {
+    // #given
     const records = byKey([
-      sheet('a', 'pc', 'Аня', 0),
-      sheet('b', 'pc', 'Брок', 1),
-      { k: 'sheet:gone', d: null, c: 2, a: 'gm' },
-      link('t1', 'gone'),
+      record('sheet:x', { set: 'pc', order: 0 }),
+      block('x', 'pet', 'p1', 0, { pet_hp: 3 }),
+    ]);
+
+    // #when
+    const groups = pickerGroups(records, PRESET);
+
+    // #then
+    expect(groups.slice(0, 2)).toEqual([
+      { template: PC, section: null, targets: [sheetTarget('x', '', false)] },
+      { template: PC, section: PET_SECTION, targets: [blockTarget('x', 'p1', '', '', false)] },
+    ]);
+  });
+
+  test('keeps a sheet whose only link is inert among the ones with no token', () => {
+    // #given: t1 names a removed repeat block of "a"; "b" has a live link.
+    const records = byKey([
+      ...pc('a', 'Аня', 0),
+      ...pc('b', 'Брок', 1),
+      record('rep:a:pet:dead', null),
+      link('t1', 'a', 'dead'),
       link('t2', 'b'),
     ]);
 
     // #when
-    const order = pickerOrder(visibleSheets('GM', records.values()), records);
+    const [characters] = pickerGroups(records, PRESET);
 
     // #then
-    expect(order.characters.map((one) => one.name)).toEqual(['Аня', 'Брок']);
+    expect(characters?.targets).toEqual([
+      sheetTarget('a', 'Аня', false),
+      sheetTarget('b', 'Брок', true),
+    ]);
   });
 
-  test('lists nothing for a room with no live sheet', () => {
+  test('leaves out a group with no target, so a room with no sheet of a sheet set lists only linkable single sheets', () => {
     // #given
-    const records = byKey([{ k: 'sheet:gone', d: null, c: 2, a: 'gm' }, link('t1', 'gone')]);
+    const records = byKey([record('sheet:gone', null), link('t1', 'gone')]);
 
     // #when
-    const order = pickerOrder(visibleSheets('GM', records.values()), records);
+    const groups = pickerGroups(records, PRESET);
 
     // #then
-    expect(order).toEqual({ characters: [], npcs: [] });
+    expect(groups).toEqual([
+      {
+        template: INVENTORY,
+        section: null,
+        targets: [sheetTarget('inventory', 'Инвентарь', false)],
+      },
+    ]);
+  });
+
+  test('lists nothing with no decoded preset', () => {
+    // #then
+    expect(pickerGroups(byKey([...pc('a', 'Аня', 0)]), null)).toEqual([]);
   });
 });
 
 describe('tokenMenuEntries', () => {
   test('gives a GM with no link only "link", on one token of the character layer', () => {
     // #when
-    const entries = tokenMenuEntries(byKey([sheet('brok', 'pc', 'Брок', 0)]), 'GM');
+    const entries = tokenMenuEntries(byKey([...pc('brok', 'Брок', 0)]), PRESET, 'GM');
 
     // #then
     expect(entries).toEqual([{ action: 'link', filters: [{ ...GM_ONE_TOKEN, every: [LAYER] }] }]);
   });
 
   test('keeps linked tokens out of "link", lists them in the GM "open" icon and in "unlink", sorted by id', () => {
-    // #given: t2 names a character, t1 an NPC.
+    // #given: t2 names a sheet of a visible sheet set, t1 a repeat block of a hidden single sheet.
     const records = byKey([
-      sheet('brok', 'pc', 'Брок', 0),
-      sheet('skel', 'npc', 'Скелет', 0),
+      ...pc('brok', 'Брок', 0),
+      block('npc', 'npc_name', 's1', 0, { npc_name: 'Скелет' }),
       link('t2', 'brok'),
-      link('t1', 'skel'),
+      link('t1', 'npc', 's1'),
     ]);
 
     // #when
-    const entries = tokenMenuEntries(records, 'GM');
+    const entries = tokenMenuEntries(records, PRESET, 'GM');
 
     // #then
     const both: TokenMenuKeyFilter[] = [
@@ -204,17 +340,17 @@ describe('tokenMenuEntries', () => {
     ]);
   });
 
-  test('gives a player only "open", on tokens linked to a character', () => {
+  test('gives a player only "open", on tokens linked to a target of a visible template', () => {
     // #given
     const records = byKey([
-      sheet('brok', 'pc', 'Брок', 0),
-      sheet('skel', 'npc', 'Скелет', 0),
+      ...pc('brok', 'Брок', 0),
+      block('npc', 'npc_name', 's1', 0, { npc_name: 'Скелет' }),
       link('t1', 'brok'),
-      link('t2', 'skel'),
+      link('t2', 'npc', 's1'),
     ]);
 
     // #when
-    const entries = tokenMenuEntries(records, 'PLAYER');
+    const entries = tokenMenuEntries(records, PRESET, 'PLAYER');
 
     // #then
     expect(entries).toEqual([
@@ -235,12 +371,15 @@ describe('tokenMenuEntries', () => {
     ]);
   });
 
-  test('leaves the player icon out when every link names an NPC', () => {
+  test('leaves the player icon out when every link names a hidden template', () => {
     // #given
-    const records = byKey([sheet('skel', 'npc', 'Скелет', 0), link('t1', 'skel')]);
+    const records = byKey([
+      block('npc', 'npc_name', 's1', 0, { npc_name: 'Скелет' }),
+      link('t1', 'npc', 's1'),
+    ]);
 
     // #when
-    const open = tokenMenuEntries(records, 'GM').find((entry) => entry.action === 'open');
+    const open = tokenMenuEntries(records, PRESET, 'GM').find((entry) => entry.action === 'open');
 
     // #then
     expect(open?.filters).toEqual([
@@ -248,60 +387,74 @@ describe('tokenMenuEntries', () => {
     ]);
   });
 
-  test('gives a player whose links name no live character only the GM icon, which Owlbear hides from it', () => {
+  test('gives a player whose links name no visible target only the GM icon, which Owlbear hides from it', () => {
     // #given
     const records = byKey([
-      sheet('skel', 'npc', 'Скелет', 0),
-      { k: 'sheet:gone', d: null, c: 2, a: 'gm' },
-      link('t1', 'skel'),
+      block('npc', 'npc_name', 's1', 0, { npc_name: 'Скелет' }),
+      record('sheet:gone', null),
+      link('t1', 'npc', 's1'),
       link('t2', 'gone'),
     ]);
 
     // #when
-    const entries = tokenMenuEntries(records, 'PLAYER');
+    const entries = tokenMenuEntries(records, PRESET, 'PLAYER');
 
     // #then: Owlbear never shows the GM icon to a player.
     expect(entries.map((entry) => entry.filters.map((filter) => filter.roles))).toEqual([[['GM']]]);
   });
 
-  test('makes no "open" entry for a dangling link', () => {
+  test('treats an inert link as no link: no "open" or "unlink", and its token can be linked again', () => {
     // #given
-    const records = byKey([{ k: 'sheet:gone', d: null, c: 2, a: 'gm' }, link('t1', 'gone')]);
+    const records = byKey([
+      ...pc('brok', 'Брок', 0),
+      record('sheet:gone', null),
+      record('rep:brok:pet:dead', null),
+      link('t1', 'gone'),
+      link('t2', 'brok', 'dead'),
+      link('t3', 'journal'),
+    ]);
 
     // #when
-    const entries = [...tokenMenuEntries(records, 'GM'), ...tokenMenuEntries(records, 'PLAYER')];
+    const entries = [
+      ...tokenMenuEntries(records, PRESET, 'GM'),
+      ...tokenMenuEntries(records, PRESET, 'PLAYER'),
+    ];
 
     // #then
-    expect(entries.map((entry) => entry.action)).toEqual(['link']);
+    expect(entries).toEqual([{ action: 'link', filters: [{ ...GM_ONE_TOKEN, every: [LAYER] }] }]);
   });
 });
 
 describe('openTarget', () => {
   const records = byKey([
-    sheet('brok', 'pc', 'Брок', 0),
-    sheet('skel', 'npc', 'Скелет', 0),
-    { k: 'sheet:gone', d: null, c: 2, a: 'gm' },
+    ...pc('brok', 'Брок', 0),
+    block('npc', 'npc_name', 's1', 0, { npc_name: 'Скелет' }),
+    record('sheet:gone', null),
     link('t-pc', 'brok'),
-    link('t-npc', 'skel'),
+    link('t-npc', 'npc', 's1'),
+    link('t-inventory', 'inventory'),
+    link('t-journal', 'journal'),
     link('t-gone', 'gone'),
-    { k: 'link:t-cleared', d: null, c: 2, a: 'gm' },
+    record('link:t-cleared', null),
   ]);
 
-  test.each<[string, 'GM' | 'PLAYER', string | null]>([
-    ['t-pc', 'GM', 'brok'],
-    ['t-pc', 'PLAYER', 'brok'],
-    ['t-npc', 'GM', 'skel'],
+  test.each<[string, 'GM' | 'PLAYER', LinkTarget | null]>([
+    ['t-pc', 'GM', { sheetId: 'brok', instanceId: null }],
+    ['t-pc', 'PLAYER', { sheetId: 'brok', instanceId: null }],
+    ['t-npc', 'GM', { sheetId: 'npc', instanceId: 's1' }],
     ['t-npc', 'PLAYER', null],
+    ['t-inventory', 'PLAYER', { sheetId: 'inventory', instanceId: null }],
+    ['t-journal', 'GM', null],
     ['t-gone', 'GM', null],
     ['t-cleared', 'GM', null],
     ['t-none', 'GM', null],
     ['a:b', 'GM', null],
-  ])('token %s for a %s opens %p', (tokenId, role, expected) => {
+  ])('token %s for a %s opens %j', (tokenId, role, expected) => {
     // #when
-    const target = openTarget(records, tokenId, role);
+    const target = openTarget(records, PRESET, tokenId, role);
 
     // #then
-    expect(target).toBe(expected);
+    expect(target).toEqual(expected);
   });
 });
 
@@ -348,12 +501,12 @@ describe('removedItemIds', () => {
 
 describe('tokensToUnlink', () => {
   const records = byKey([
-    sheet('brok', 'pc', 'Брок', 0),
-    sheet('skel', 'npc', 'Скелет', 0),
+    ...pc('brok', 'Брок', 0),
+    block('npc', 'npc_name', 's1', 0, { npc_name: 'Скелет' }),
     link('t1', 'brok'),
-    link('t2', 'skel'),
+    link('t2', 'npc', 's1'),
     link('t3', 'brok'),
-    { k: 'link:t-cleared', d: null, c: 2, a: 'gm' },
+    record('link:t-cleared', null),
     link('t-gone', 'deleted-sheet'),
   ]);
 
@@ -392,7 +545,7 @@ describe('tokensToUnlink', () => {
     expect(unlinked).toEqual([]);
   });
 
-  test('names a token whose link points to a deleted sheet, so no orphan record stays', () => {
+  test('names a token whose link is inert, so no orphan record stays', () => {
     // #when
     const unlinked = tokensToUnlink(['t-gone'], records);
 
@@ -407,14 +560,47 @@ const GM_ONE_TOKEN: Pick<TokenMenuFilter, 'max' | 'roles'> = { max: 1, roles: ['
 
 const PLAYER_ONE_TOKEN: Pick<TokenMenuFilter, 'max' | 'roles'> = { max: 1, roles: ['PLAYER'] };
 
-function sheet(id: string, kind: 'pc' | 'npc', name: string, order: number): VersionedRecord {
-  return { k: `sheet:${id}`, d: { kind, name, order }, c: 1, a: 'gm' };
+function record(k: string, d: JsonValue): VersionedRecord {
+  // SAFETY: some cases build a record no schema takes on purpose, so the code under test meets it.
+  return { k, d, c: 1, a: 'gm' } as VersionedRecord;
 }
 
-function link(tokenId: string, sheetId: string): VersionedRecord {
-  return { k: `link:${tokenId}`, d: sheetId, c: 1, a: 'gm' };
+// A sheet of the "pc" sheet set with its name field value.
+function pc(id: string, name: string, order: number): VersionedRecord[] {
+  return [record(`sheet:${id}`, { set: 'pc', order }), record(`row:${id}:name`, { name })];
+}
+
+function block(
+  sheetId: string,
+  sectionId: string,
+  instanceId: string,
+  order: number,
+  cells: Record<string, FieldValue>,
+): VersionedRecord {
+  return record(`rep:${sheetId}:${sectionId}:${instanceId}`, { order, cells });
+}
+
+function link(tokenId: string, sheetId: string, instanceId?: string): VersionedRecord {
+  return record(
+    `link:${tokenId}`,
+    instanceId === undefined ? { s: sheetId } : { s: sheetId, i: instanceId },
+  );
+}
+
+function sheetTarget(sheetId: string, sheetName: string, linked: boolean) {
+  return { target: { sheetId, instanceId: null }, sheetName, blockName: null, linked };
+}
+
+function blockTarget(
+  sheetId: string,
+  instanceId: string,
+  sheetName: string,
+  blockName: string,
+  linked: boolean,
+) {
+  return { target: { sheetId, instanceId }, sheetName, blockName, linked };
 }
 
 function byKey(records: readonly VersionedRecord[]): Map<string, VersionedRecord> {
-  return new Map(records.map((record) => [record.k, record]));
+  return new Map(records.map((entry) => [entry.k, entry]));
 }

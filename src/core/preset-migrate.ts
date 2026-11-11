@@ -1,81 +1,97 @@
 import { acceptedFieldValue, targetFields } from '@/core/field-patch';
 import { sameJson } from '@/core/json';
+import { blockIndex, linkTargetOf, liveLinkTarget } from '@/core/link-target';
 import {
   firstFieldId,
+  repeatSectionId,
+  sectionFields,
   type Preset,
   type PresetFieldCell,
-  type PresetTemplate,
+  type Template,
+  type TemplateLayout,
 } from '@/core/preset';
 import {
   fieldValuesSchema,
   repDataSchema,
-  sheetDataSchema,
   type FieldValue,
   type FieldValues,
   type RepData,
-  type SheetData,
   type VersionedRecord,
 } from '@/core/records';
-
-type SheetKind = SheetData['kind'];
+import { isSheetDependent, isSheetSet, sheetKey, templateSheetIds } from '@/core/sheets';
 
 // One write of the migration, before a version is minted: a `row:` with its values, or a `rep:`
-// with its data. `d: null` is a tombstone.
+// with its data. `d: null` is a tombstone, of any key form.
 export type PlannedWrite = { k: string; d: FieldValues | null } | { k: string; d: RepData | null };
 
-// AD-14: what one preset upload does to the values of every live sheet.
+// AD-14: what one preset upload does to the values and sheets of the room.
 export type PresetMigration = {
-  // The stored values the new preset erases, across all sheets.
+  // The stored values the new preset erases, across all sheets, those of deleted sheets included.
   count: number;
-  // A hash of the erased (key, field id) pairs. Two diffs with one count can erase different
-  // values; the upload checks this too, so a confirmation answers only for what it showed.
+  // The sheets the new preset deletes: every sheet of a removed sheet set, and every removed single
+  // sheet that holds a value.
+  sheets: number;
+  // A hash of the erased (key, field id) pairs and the deleted sheets. Two diffs with one count can
+  // erase different values; the upload checks this too, so a confirmation answers only for what it
+  // showed.
   digest: string;
-  // The field ids that held a value and lose it, per sheet kind, sorted.
-  removed: Readonly<Record<SheetKind, readonly string[]>>;
+  // The field ids that held a value and lose it, by template id, sorted. A template that loses no
+  // value has no entry.
+  removed: Readonly<Record<string, readonly string[]>>;
   // Written before `preset`: rows under new keys, and rows that gain values. A row that gains
   // values keeps its old ones here too, so the old preset still reads it.
   first: PlannedWrite[];
-  // Written after `preset`: tombstones of keys the new preset no longer has, and rows stripped to
-  // the new template.
+  // Written after `preset`: tombstones of keys the new preset no longer has, of deleted sheets with
+  // their dependents, rows stripped to the new template, and tombstones of links the new preset
+  // makes inert (AD-19), which are not counted.
   last: PlannedWrite[];
 };
 
 // The fields of a template by scope. A non-repeat field is found by id in any non-repeat row. A
-// repeat section is named by its sectionId and lists its fields in template order.
+// repeat section is named by its sectionId and lists the fields of all its rows in template order.
 export type TemplateScopes = {
   rows: Map<string, PresetFieldCell[]>;
   rowFields: Map<string, { rowId: string; field: PresetFieldCell }>;
   sections: Map<string, PresetFieldCell[]>;
 };
 
-// The two templates of one sheet kind, and where each old repeat section goes.
-type KindPlan = {
-  kind: SheetKind;
+// The old and new form of one template, and where each old repeat section goes.
+type TemplatePlan = {
+  templateId: string;
   before: TemplateScopes;
   after: TemplateScopes;
   sectionTargets: Map<string, string | null>;
 };
 
-type Tally = { count: number; removed: Record<SheetKind, Set<string>>; erased: string[] };
+type Tally = {
+  count: number;
+  sheets: number;
+  removed: Map<string, Set<string>>;
+  erased: string[];
+};
 
 // The digest of a diff that erases nothing.
 export const NOTHING_ERASED = erasedDigest([]);
 
 const EMPTY_MIGRATION: PresetMigration = {
   count: 0,
+  sheets: 0,
   digest: NOTHING_ERASED,
-  removed: { pc: [], npc: [] },
+  removed: {},
   first: [],
   last: [],
 };
 
-// AD-14: one pass over the full replica, each sheet against the template of its kind. A value is read only
-// where the old preset shows it: its field in the row of its record, with its type. Any other
-// stored value is no value and leaves without a count. A `row:` value survives when the new
-// template has its id in any non-repeat row with the same type, and moves to that row. A `rep:`
-// row moves to the new section of its old one with its `instanceId`, `order` and the values whose
-// id the new section has with the same type. A key present with `false` holds a value. With no old
-// preset nothing is read, so nothing moves or counts.
+// AD-14: one pass over the full replica, template by template. A template keeps its sheets when
+// the new preset has a template of the same `id` and `kind`, and each sheet is checked against the
+// old and new form of it. A value is read only where the old preset shows it: its field in the row
+// or repeat block of its record, with its type. Any other stored value is no value and leaves
+// without a count. A `row:` value survives when the new template has its id in any non-repeat row
+// with the same type, and moves to that row. A `rep:` repeat block moves to the new section of its
+// old one with its `instanceId`, `order` and the values whose id the new section has with the same
+// type. A key present with `false` holds a value. A template that is gone, or changed in `id` or
+// `kind`, deletes its sheets with every value they hold. With no old preset nothing is read, so
+// nothing moves or counts.
 export function presetDiff(
   records: ReadonlyMap<string, VersionedRecord>,
   oldPreset: Preset | null,
@@ -85,39 +101,52 @@ export function presetDiff(
     return EMPTY_MIGRATION;
   }
 
-  const kinds: Record<SheetKind, KindPlan> = {
-    pc: kindPlan('pc', oldPreset.character, newPreset.character),
-    npc: kindPlan('npc', oldPreset.npc, newPreset.npc),
-  };
-
-  const tally: Tally = { count: 0, removed: { pc: new Set(), npc: new Set() }, erased: [] };
+  const tally: Tally = { count: 0, sheets: 0, removed: new Map(), erased: [] };
   const first: PlannedWrite[] = [];
   const last: PlannedWrite[] = [];
-  const sheets = liveSheetKinds(records);
 
-  for (const sheetId of [...sheets.keys()].sort()) {
-    const kind = sheets.get(sheetId);
+  for (const template of oldPreset.templates) {
+    const kept = newPreset.templates.find(
+      (candidate) => candidate.id === template.id && candidate.kind === template.kind,
+    );
 
-    if (kind !== undefined) {
-      planSheet(records, sheetId, kinds[kind], tally, first, last);
+    const sheetIds = templateSheetIds(records.values(), oldPreset, template).sort();
+
+    if (kept === undefined) {
+      for (const sheetId of sheetIds) {
+        planDeletedSheet(records, sheetId, template, tally, last);
+      }
+
+      continue;
+    }
+
+    const plan = templatePlan(template.id, template, kept);
+
+    for (const sheetId of sheetIds) {
+      planSheet(records, sheetId, plan, tally, first, last);
     }
   }
 
+  last.push(...inertLinks(records, oldPreset, newPreset, first, last));
+
   return {
     count: tally.count,
+    sheets: tally.sheets,
     digest: erasedDigest(tally.erased),
-    removed: { pc: [...tally.removed.pc].sort(), npc: [...tally.removed.npc].sort() },
+    removed: Object.fromEntries(
+      [...tally.removed].map(([templateId, ids]) => [templateId, [...ids].sort()]),
+    ),
     first,
     last,
   };
 }
 
-// AD-14: a record minted after an upload holds only the fields of its own row in the template of
-// its sheet's kind, each with its field's type. A `row:` or `rep:` of a row the template does not
-// have keeps no value. A tombstone and every other key form pass as they are.
+// AD-14: a record minted after an upload holds only the fields of its own row or repeat block in
+// the template of its sheet, each with its field's type. A `row:` or `rep:` of a row or section the
+// template does not have keeps no value. A tombstone and every other key form pass as they are.
 export function stripToTemplate<Stripped extends Pick<VersionedRecord, 'k' | 'd'>>(
   record: Stripped,
-  template: PresetTemplate,
+  layout: TemplateLayout,
 ): Stripped {
   if (record.d === null) {
     return record;
@@ -127,17 +156,17 @@ export function stripToTemplate<Stripped extends Pick<VersionedRecord, 'k' | 'd'
 
   if (form === 'row') {
     const values = fieldValuesSchema.safeParse(record.d);
-    const fields = targetFields(template, { kind: 'row', rowId: id });
+    const fields = targetFields(layout, { kind: 'row', rowId: id });
 
     return values.success ? { ...record, d: keptValues(values.data, fields ?? []) } : record;
   }
 
   if (form === 'rep') {
-    const row = repDataSchema.safeParse(record.d);
-    const fields = targetFields(template, { kind: 'rep', sectionId: id });
+    const block = repDataSchema.safeParse(record.d);
+    const fields = targetFields(layout, { kind: 'rep', sectionId: id });
 
-    return row.success
-      ? { ...record, d: { ...row.data, cells: keptValues(row.data.cells, fields ?? []) } }
+    return block.success
+      ? { ...record, d: { ...block.data, cells: keptValues(block.data.cells, fields ?? []) } }
       : record;
   }
 
@@ -162,16 +191,16 @@ export function keptValues(values: FieldValues, fields: readonly PresetFieldCell
   return kept;
 }
 
-// AD-14: where a value of the old template goes in the new one, by the rules of `presetDiff`: a
-// non-repeat field to the new row that holds its id, and a repeat section to its new section.
-// `null` when it has none.
+// AD-14: where a value of the old form of a template goes in the new one, by the rules of
+// `presetDiff`: a non-repeat field to the new row that holds its id, and a repeat section to its
+// new section. `null` when it has none.
 export type PresetMoves = {
   rowOf: (fieldId: string) => string | null;
   sectionOf: (sectionId: string) => string | null;
 };
 
-export function presetMoves(before: PresetTemplate, after: PresetTemplate): PresetMoves {
-  const plan = kindPlan('pc', before, after);
+export function presetMoves(before: TemplateLayout, after: TemplateLayout): PresetMoves {
+  const plan = templatePlan('', before, after);
 
   return {
     rowOf: (fieldId) => plan.after.rowFields.get(fieldId)?.rowId ?? null,
@@ -179,10 +208,112 @@ export function presetMoves(before: PresetTemplate, after: PresetTemplate): Pres
   };
 }
 
+// AD-14: a removed template deletes each of its sheets: a sheet of a sheet set with its `sheet:`
+// record and every dependent, a single sheet with its `row:`, `rep:` and `link:` records. Every
+// value the old template shows on it is counted. A sheet of a sheet set always counts as deleted, a
+// single sheet only when it holds a value.
+function planDeletedSheet(
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  template: Template,
+  tally: Tally,
+  last: PlannedWrite[],
+): void {
+  const scopes = templateScopes(template);
+  const before = tally.count;
+  const keys: string[] = [];
+
+  for (const [key, record] of records) {
+    if (record.d === null || !isSheetDependent(key, record, sheetId)) {
+      continue;
+    }
+
+    keys.push(key);
+
+    for (const fieldId of Object.keys(shownValues(key, record, scopes))) {
+      countRemoved(tally, template.id, key, fieldId);
+    }
+  }
+
+  const set = isSheetSet(template);
+
+  if (set) {
+    keys.push(sheetKey(sheetId));
+  }
+
+  if (set || tally.count > before) {
+    tally.sheets += 1;
+    tally.erased.push(`${sheetKey(sheetId)}\u0000`);
+  }
+
+  for (const key of keys.sort()) {
+    last.push({ k: key, d: null });
+  }
+}
+
+// The values of a `row:` or `rep:` record that its template shows: each in its own row or repeat
+// block, with its field's type.
+function shownValues(key: string, record: VersionedRecord, scopes: TemplateScopes): FieldValues {
+  const [form, , id = ''] = key.split(':');
+
+  if (form === 'row') {
+    const values = fieldValuesSchema.safeParse(record.d);
+
+    return values.success ? keptValues(values.data, scopes.rows.get(id) ?? []) : {};
+  }
+
+  if (form === 'rep') {
+    const block = repDataSchema.safeParse(record.d);
+
+    return block.success ? keptValues(block.data.cells, scopes.sections.get(id) ?? []) : {};
+  }
+
+  return {};
+}
+
+// AD-19: the live links the upload leaves inert: a link whose sheet or repeat block the upload
+// removes, or whose template or repeat section stops being linkable. Links already tombstoned with
+// a deleted sheet are left out. A link that was inert before stays as it is.
+function inertLinks(
+  records: ReadonlyMap<string, VersionedRecord>,
+  oldPreset: Preset,
+  newPreset: Preset,
+  first: readonly PlannedWrite[],
+  last: readonly PlannedWrite[],
+): PlannedWrite[] {
+  const after = new Map(records);
+
+  for (const write of [...first, ...last]) {
+    const current = records.get(write.k);
+
+    after.set(write.k, { c: current?.c ?? 1, a: current?.a ?? '', ...write });
+  }
+
+  const beforeBlocks = blockIndex(records.values());
+  const afterBlocks = blockIndex(after.values());
+  const tombstoned = new Set(last.flatMap((write) => (write.d === null ? [write.k] : [])));
+  const inert: PlannedWrite[] = [];
+
+  for (const [key, record] of [...records].sort(([left], [right]) => (left < right ? -1 : 1))) {
+    const target = key.startsWith('link:') ? linkTargetOf(record.d) : null;
+
+    if (
+      target !== null &&
+      !tombstoned.has(key) &&
+      liveLinkTarget(records, oldPreset, target, beforeBlocks) !== null &&
+      liveLinkTarget(after, newPreset, target, afterBlocks) === null
+    ) {
+      inert.push({ k: key, d: null });
+    }
+  }
+
+  return inert;
+}
+
 function planSheet(
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
-  plan: KindPlan,
+  plan: TemplatePlan,
   tally: Tally,
   first: PlannedWrite[],
   last: PlannedWrite[],
@@ -225,7 +356,7 @@ function planSheet(
       if (target !== undefined && row !== undefined && holdsValue(target.field, value)) {
         row[fieldId] = value;
       } else {
-        countRemoved(tally, plan.kind, key, fieldId);
+        countRemoved(tally, plan.templateId, key, fieldId);
       }
     }
   }
@@ -287,7 +418,7 @@ function planRowWrite(
   }
 }
 
-// A live repeat row with the new section it goes to.
+// A live repeat block with the new section it goes to.
 type RepeatRow = {
   key: string;
   newKey: string;
@@ -298,7 +429,7 @@ type RepeatRow = {
   newFields: PresetFieldCell[];
 };
 
-// A repeat row moves to the new section of its section, keeping its `instanceId` and the values
+// A repeat block moves to the new section of its section, keeping its `instanceId` and the values
 // that survive. When several old sections go to one new section, the first keeps its `order` and
 // each next one goes after the highest `order` so far. A section with no new section, or a key a
 // live row keeps or another moved row claimed, leaves the row tombstoned with every value it held
@@ -309,7 +440,7 @@ function planRepeatRows(
   records: ReadonlyMap<string, VersionedRecord>,
   keys: readonly string[],
   sheetId: string,
-  plan: KindPlan,
+  plan: TemplatePlan,
   tally: Tally,
   first: PlannedWrite[],
   last: PlannedWrite[],
@@ -339,7 +470,7 @@ function planRepeatRows(
     const newFields = target === null ? undefined : plan.after.sections.get(target);
 
     if (target === null || newFields === undefined) {
-      countAll(tally, plan.kind, key, held);
+      countAll(tally, plan.templateId, key, held);
       gone.add(key);
       continue;
     }
@@ -377,7 +508,7 @@ function planRepeatRows(
     if (row.newKey === row.key) {
       const current = repDataSchema.safeParse(records.get(row.key)?.d).data;
 
-      countLost(tally, plan.kind, row.key, row.held, cells);
+      countLost(tally, plan.templateId, row.key, row.held, cells);
 
       if (current === undefined || !sameJson(current, next)) {
         strips.set(row.key, next);
@@ -389,7 +520,7 @@ function planRepeatRows(
     gone.add(row.key);
 
     if (staying.has(row.newKey) || claimed.has(row.newKey)) {
-      countAll(tally, plan.kind, row.key, row.held);
+      countAll(tally, plan.templateId, row.key, row.held);
       continue;
     }
 
@@ -398,7 +529,7 @@ function planRepeatRows(
     const existing = repDataSchema.safeParse(records.get(row.newKey)?.d).data;
 
     if (existing === undefined || !sameJson(existing.cells, cells)) {
-      countLost(tally, plan.kind, row.key, row.held, cells);
+      countLost(tally, plan.templateId, row.key, row.held, cells);
       first.push({ k: row.newKey, d: next });
     }
   }
@@ -417,7 +548,7 @@ function planRepeatRows(
 // The rows that go to one new section, by section: the old section of the same id first, then
 // the others in old template order. The first section keeps its `order`. Each next one shifts so
 // its lowest `order` comes after the highest so far.
-function shiftedOrders(moving: readonly RepeatRow[], plan: KindPlan): RepeatRow[] {
+function shiftedOrders(moving: readonly RepeatRow[], plan: TemplatePlan): RepeatRow[] {
   const sections = [...plan.before.sections.keys()];
 
   const rank = (row: RepeatRow): number =>
@@ -470,7 +601,11 @@ function shiftedSections(rows: readonly RepeatRow[]): RepeatRow[] {
   return shifted;
 }
 
-function kindPlan(kind: SheetKind, before: PresetTemplate, after: PresetTemplate): KindPlan {
+function templatePlan(
+  templateId: string,
+  before: TemplateLayout,
+  after: TemplateLayout,
+): TemplatePlan {
   const oldScopes = templateScopes(before);
   const newScopes = templateScopes(after);
   const sectionTargets = new Map<string, string | null>();
@@ -479,7 +614,7 @@ function kindPlan(kind: SheetKind, before: PresetTemplate, after: PresetTemplate
     sectionTargets.set(sectionId, sectionTarget(sectionId, fields, newScopes));
   }
 
-  return { kind, before: oldScopes, after: newScopes, sectionTargets };
+  return { templateId, before: oldScopes, after: newScopes, sectionTargets };
 }
 
 // The new section of an old one: of the new sections that keep at least one of its field ids with
@@ -513,10 +648,22 @@ export function sectionTarget(
   return best?.id ?? null;
 }
 
-export function templateScopes(template: PresetTemplate): TemplateScopes {
+// All rows of a repeat section form one repeat block, so its scope holds the fields of every row.
+export function templateScopes(layout: TemplateLayout): TemplateScopes {
   const scopes: TemplateScopes = { rows: new Map(), rowFields: new Map(), sections: new Map() };
 
-  for (const section of template.sections) {
+  for (const section of layout.sections) {
+    const sectionId = repeatSectionId(section);
+
+    if (sectionId !== null) {
+      scopes.sections.set(sectionId, sectionFields(section));
+      continue;
+    }
+
+    if (section.repeat === true) {
+      continue;
+    }
+
     for (const row of section.rows) {
       const id = firstFieldId(row);
 
@@ -525,11 +672,6 @@ export function templateScopes(template: PresetTemplate): TemplateScopes {
       }
 
       const fields = row.filter((cell) => cell.kind === 'field');
-
-      if (section.repeat === true) {
-        scopes.sections.set(id, fields);
-        continue;
-      }
 
       scopes.rows.set(id, fields);
 
@@ -542,51 +684,40 @@ export function templateScopes(template: PresetTemplate): TemplateScopes {
   return scopes;
 }
 
-function liveSheetKinds(records: ReadonlyMap<string, VersionedRecord>): Map<string, SheetKind> {
-  const kinds = new Map<string, SheetKind>();
-
-  for (const [key, record] of records) {
-    if (!key.startsWith('sheet:')) {
-      continue;
-    }
-
-    const sheet = sheetDataSchema.safeParse(record.d);
-
-    if (sheet.success) {
-      kinds.set(key.slice('sheet:'.length), sheet.data.kind);
-    }
-  }
-
-  return kinds;
-}
-
 // "" and no key hold no value. Any value of the field's type does, `false` and `0` included.
 export function holdsValue(field: PresetFieldCell | undefined, value: FieldValue): boolean {
   return field !== undefined && acceptedFieldValue(field, value).ok;
 }
 
-function countRemoved(tally: Tally, kind: SheetKind, key: string, fieldId: string): void {
+function countRemoved(tally: Tally, templateId: string, key: string, fieldId: string): void {
   tally.count += 1;
-  tally.removed[kind].add(fieldId);
+  addRemoved(tally, templateId, fieldId);
   tally.erased.push(`${key}\u0000${fieldId}`);
 }
 
-function countAll(tally: Tally, kind: SheetKind, key: string, held: FieldValues): void {
+function addRemoved(tally: Tally, templateId: string, fieldId: string): void {
+  const removed = tally.removed.get(templateId) ?? new Set<string>();
+
+  removed.add(fieldId);
+  tally.removed.set(templateId, removed);
+}
+
+function countAll(tally: Tally, templateId: string, key: string, held: FieldValues): void {
   for (const fieldId of Object.keys(held)) {
-    countRemoved(tally, kind, key, fieldId);
+    countRemoved(tally, templateId, key, fieldId);
   }
 }
 
 function countLost(
   tally: Tally,
-  kind: SheetKind,
+  templateId: string,
   key: string,
   held: FieldValues,
   kept: FieldValues,
 ): void {
   for (const fieldId of Object.keys(held)) {
     if (!Object.hasOwn(kept, fieldId)) {
-      countRemoved(tally, kind, key, fieldId);
+      countRemoved(tally, templateId, key, fieldId);
     }
   }
 }

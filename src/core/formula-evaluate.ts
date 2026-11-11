@@ -6,11 +6,11 @@ import type {
 } from '@/core/formula';
 import { parseNumberInput } from '@/core/number-input';
 import {
-  firstFieldId,
+  plainRow,
   resolveFieldReference,
   type PresetCell,
   type PresetFieldCell,
-  type PresetTemplate,
+  type TemplateLayout,
   type TemplateRowPlace,
 } from '@/core/preset';
 import type { FieldValue } from '@/core/records';
@@ -223,40 +223,34 @@ export function formulaDiceTerms(tree: FormulaTree): DiceTerm[] {
 }
 
 // The lookup for a dice cell in the row at `from`. `sheetRow` reads rows of the same sheet only, so
-// an id never crosses characters. An id resolves through `resolveFieldReference`: same row first,
-// then the sheet's non-repeat scope. A repeat row has no `row:` record, so its caller passes the
-// instance's values as `ownRow`; without them its own fields read as empty. A non-repeat row reads
-// its own `row:` record through `sheetRow`.
+// an id never crosses sheets. An id resolves through `resolveFieldReference`: the cell's own repeat
+// block first, then the sheet's non-repeat scope. A repeat block has no `row:` record, so its
+// caller passes the block's values as `ownBlock`; without them its own fields read as empty.
 export function formulaFieldLookup(
-  template: PresetTemplate,
+  layout: TemplateLayout,
   from: TemplateRowPlace,
   sheetRow: SheetRowValues,
-  ownRow?: FieldValues,
+  ownBlock: FieldValues = NO_VALUES,
 ): FieldLookup {
-  const section = template.sections[from.sectionIndex];
-  const row = section?.rows[from.rowIndex];
-  const rowId = row === undefined ? null : firstFieldId(row);
-
-  const ownValues =
-    ownRow ?? (section?.repeat === true || rowId === null ? NO_VALUES : sheetRow(rowId));
+  const section = layout.sections[from.sectionIndex];
 
   return (id) => {
-    const reference = resolveFieldReference(template, from, id);
+    const reference = resolveFieldReference(layout, from, id);
 
-    if (reference === null) {
+    if (reference === null || section === undefined) {
       return null;
     }
 
     const cell =
-      reference.scope === 'row'
-        ? fieldIn(row, id)
-        : fieldIn(sheetScopeRow(template, reference.rowId), id);
+      reference.scope === 'block'
+        ? fieldIn(section.rows, id)
+        : fieldIn([plainRow(layout, reference.rowId) ?? []], id);
 
     if (cell === null) {
       return null;
     }
 
-    const values = reference.scope === 'row' ? ownValues : sheetRow(reference.rowId);
+    const values = reference.scope === 'block' ? ownBlock : sheetRow(reference.rowId);
 
     return fieldNumber(cell, values.get(id));
   };
@@ -317,15 +311,14 @@ function compare(operator: ComparisonOperator, roll: number, target: number): bo
   return roll > target;
 }
 
-function sheetScopeRow(template: PresetTemplate, rowId: string): readonly PresetCell[] | undefined {
-  return template.sections
-    .filter((section) => section.repeat !== true)
-    .flatMap((section) => section.rows)
-    .find((row) => firstFieldId(row) === rowId);
-}
+function fieldIn(rows: readonly (readonly PresetCell[])[], id: string): PresetFieldCell | null {
+  for (const row of rows) {
+    const cell = row.find((candidate) => candidate.kind === 'field' && candidate.id === id);
 
-function fieldIn(row: readonly PresetCell[] | undefined, id: string): PresetFieldCell | null {
-  const cell = row?.find((candidate) => candidate.kind === 'field' && candidate.id === id);
+    if (cell?.kind === 'field') {
+      return cell;
+    }
+  }
 
-  return cell?.kind === 'field' ? cell : null;
+  return null;
 }

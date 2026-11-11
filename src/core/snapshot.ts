@@ -38,8 +38,10 @@ export type Snapshot = z.infer<typeof snapshotContentSchema>;
 // The value stored under SNAPSHOT_KEY: `data` is the deflated, base64-encoded JSON of a Snapshot.
 export type SnapshotValue = z.infer<typeof snapshotValueSchema>;
 
-// `newer-version`: a newer build wrote it, so this one neither reads nor overwrites it (AD-12).
-export type SnapshotFailure = 'newer-version' | 'invalid-snapshot';
+// AD-12: `newer-version`: a newer build wrote it, so this one neither reads nor overwrites it.
+// `older-version`: an older format, which no migration reads; only a wipe or an import replaces it.
+// `invalid-snapshot`: a copy that does not decode.
+export type SnapshotFailure = 'newer-version' | 'older-version' | 'invalid-snapshot';
 
 export type EncodeFailure = 'too-large';
 
@@ -75,6 +77,15 @@ export function readSnapshot(metadata: JsonObject): Result<Snapshot | null, Snap
 
   if (version.success && version.data.v > FORMAT_VERSION) {
     return err('newer-version');
+  }
+
+  if (
+    version.success &&
+    Number.isInteger(version.data.v) &&
+    version.data.v >= 1 &&
+    version.data.v < FORMAT_VERSION
+  ) {
+    return err('older-version');
   }
 
   const parsed = snapshotValueSchema.safeParse(value);

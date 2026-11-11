@@ -9,7 +9,8 @@ import {
 
 export type FieldValues = ReadonlyMap<string, FieldValue>;
 
-export type RepeatInstance = { instanceId: string; values: FieldValues };
+// One repeat block of one sheet: the values of every row of its section.
+export type RepeatBlock = { instanceId: string; order: number; values: FieldValues };
 
 const NO_VALUES: FieldValues = new Map();
 
@@ -29,20 +30,20 @@ export function rowValues(
 }
 
 // Ties compare by code unit, not by locale, so every client and reload gets the same order.
-export function repeatInstances(
+export function repeatBlocks(
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
   sectionId: string,
-): RepeatInstance[] {
+): RepeatBlock[] {
   const prefix = repKeyPrefix(sheetId, sectionId);
-  const instances: (RepeatInstance & { order: number })[] = [];
+  const blocks: RepeatBlock[] = [];
 
   for (const record of records.values()) {
     if (record.k.startsWith(prefix)) {
       const data = repDataSchema.safeParse(record.d);
 
       if (data.success) {
-        instances.push({
+        blocks.push({
           instanceId: record.k.slice(prefix.length),
           order: data.data.order,
           values: new Map(Object.entries(data.data.cells)),
@@ -51,7 +52,7 @@ export function repeatInstances(
     }
   }
 
-  instances.sort((first, second) => {
+  blocks.sort((first, second) => {
     if (first.order !== second.order) {
       return first.order - second.order;
     }
@@ -63,7 +64,7 @@ export function repeatInstances(
     return first.instanceId < second.instanceId ? -1 : 1;
   });
 
-  return instances.map(({ instanceId, values }) => ({ instanceId, values }));
+  return blocks;
 }
 
 // `before` holds the cells before this one in its row. A `text` cell shows its own text. A field's

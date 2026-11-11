@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 import type { DiceTerm, DieFace } from '@/core/formula-evaluate';
 import type { JsonValue } from '@/core/json';
-import type { SheetData } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 
 // TASK-36: the Dice+ broadcast protocol, as the `dicex` fork and the commercial Dice+ implement it.
@@ -150,9 +149,10 @@ export function dicePlusDice(terms: readonly DiceTerm[]): DicePlusDice | null {
   };
 }
 
-// A character's dice show to everyone; an NPC's only to GM clients, as its notification does.
-export function dicePlusTarget(kind: SheetData['kind']): DicePlusTarget {
-  return kind === 'pc' ? 'everyone' : 'gm_only';
+// AD-13: the roll's `hidden`, computed once, also picks where its dice show: a hidden sheet's only on
+// GM clients, as its notification.
+export function dicePlusTarget(hidden: boolean): DicePlusTarget {
+  return hidden ? 'gm_only' : 'everyone';
 }
 
 // The faces of a result in the tree order of `terms`. A result counts only with one group per

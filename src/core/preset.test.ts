@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { inflateSync, strFromU8 } from 'fflate';
+import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
 import { z } from 'zod';
 
 import type { JsonObject, JsonValue } from '@/core/json';
@@ -14,10 +14,14 @@ import {
   firstFieldId,
   formatPresetFile,
   parsePresetFile,
+  plainRowIdOf,
+  repeatSectionId,
   resolveFieldReference,
+  templateById,
   windowSizeOf,
   type Preset,
-  type PresetTemplate,
+  type PresetSection,
+  type TemplateLayout,
   type WindowSize,
 } from './preset';
 
@@ -31,16 +35,45 @@ const MANIFEST_PATH = join(import.meta.dir, '../../public/manifest.json');
 
 const NUMBER_FIELD = (id: string): JsonObject => ({ kind: 'field', type: 'number', id });
 
+const TEXT_FIELD = (id: string): JsonObject => ({ kind: 'field', type: 'text', id });
+
 const LABEL: JsonObject = { kind: 'text', text: 'Сила' };
 
 const MINIMAL: Preset = {
-  v: 1,
-  character: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
-  npc: { sections: [] },
+  v: 2,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Персонажи',
+      nameField: 'name',
+      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+    },
+  ],
 };
 
-function fileOf(character: JsonValue[], npc: JsonValue[] = []): string {
-  return JSON.stringify({ v: 1, character: { sections: character }, npc: { sections: npc } });
+// A sheet set named by its `name` field, which the first section holds before `sections`.
+function setOf(id: string, sections: JsonValue[], nameField = 'name'): JsonObject {
+  return {
+    id,
+    kind: 'set',
+    title: 'Персонажи',
+    nameField,
+    sections: [{ rows: [[TEXT_FIELD('name')]] }, ...sections],
+  };
+}
+
+function singleOf(id: string, sections: JsonValue[]): JsonObject {
+  return { id, kind: 'single', title: 'Заметки', sections };
+}
+
+function presetOf(...templates: JsonValue[]): string {
+  return JSON.stringify({ v: 2, templates });
+}
+
+// A preset of one single sheet with these sections, so no name field rule applies.
+function fileOf(sections: JsonValue[]): string {
+  return presetOf(singleOf('notes', sections));
 }
 
 function decodeIndependently(data: string): JsonValue {
@@ -76,9 +109,38 @@ describe('parsePresetFile', () => {
     expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
   });
 
-  test('accepts one id in the character and the NPC template', () => {
+  test('accepts every template property the format names', () => {
     // #given
-    const text = fileOf([{ rows: [[NUMBER_FIELD('hp')]] }], [{ rows: [[NUMBER_FIELD('hp')]] }]);
+    const text = presetOf(
+      {
+        ...setOf('pc', [{ repeat: true, tokens: true, rows: [[TEXT_FIELD('attack')]] }]),
+        visibility: 'all',
+        tokens: true,
+      },
+      {
+        ...singleOf('npc', [{ repeat: true, tokens: true, rows: [[TEXT_FIELD('npc_name')]] }]),
+        visibility: 'gm',
+      },
+      {
+        ...singleOf('inventory', [{ rows: [[NUMBER_FIELD('gold')]] }]),
+        players: 'edit',
+        tokens: true,
+      },
+    );
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+  });
+
+  test('accepts one field id in two templates', () => {
+    // #given
+    const text = presetOf(
+      setOf('pc', [{ rows: [[NUMBER_FIELD('hp')]] }]),
+      singleOf('npc', [{ rows: [[NUMBER_FIELD('hp')]] }]),
+    );
 
     // #when
     const parsed = parsePresetFile(text);
@@ -87,12 +149,12 @@ describe('parsePresetFile', () => {
     expect(parsed.ok).toBe(true);
   });
 
-  test('accepts one id in a repeat row and outside it', () => {
+  test('accepts one id in a repeat section and outside it', () => {
     // #given
     const text = fileOf([
       { rows: [[NUMBER_FIELD('bonus')]] },
       { repeat: true, rows: [[NUMBER_FIELD('attack'), NUMBER_FIELD('bonus')]] },
-      { repeat: true, rows: [[NUMBER_FIELD('spell'), NUMBER_FIELD('bonus')]] },
+      { repeat: true, rows: [[NUMBER_FIELD('spell')], [NUMBER_FIELD('bonus')]] },
     ]);
 
     // #when
@@ -100,6 +162,22 @@ describe('parsePresetFile', () => {
 
     // #then
     expect(parsed.ok).toBe(true);
+  });
+
+  test('accepts a repeat section of several rows whose first field is in a later row', () => {
+    // #given
+    const text = fileOf([
+      {
+        repeat: true,
+        rows: [[LABEL], [TEXT_FIELD('npc_name'), NUMBER_FIELD('hp')], [NUMBER_FIELD('ac')]],
+      },
+    ]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
   });
 
   test('accepts a columns row with fewer cells than the grid', () => {
@@ -114,7 +192,7 @@ describe('parsePresetFile', () => {
   });
 
   test.each<[string, string]>([
-    ['not JSON', '{"v": 1,'],
+    ['not JSON', '{"v": 2,'],
     ['an empty file', ''],
   ])('refuses %s as not JSON', (_name, text) => {
     // #when
@@ -147,7 +225,7 @@ describe('parsePresetFile', () => {
   });
 
   test.each<[string, JsonValue]>([
-    ['an integer above the current one', 2],
+    ['an integer above the current one', 3],
     ['a much higher integer', 99],
     ['above the largest safe integer', 1e16],
   ])('refuses a file whose v is %s as newer', (_name, v) => {
@@ -164,9 +242,10 @@ describe('parsePresetFile', () => {
   test.each<[string, JsonValue | undefined]>([
     ['absent', undefined],
     ['lower', 0],
-    ['a fraction below the current one', 0.5],
-    ['a fraction above the current one', 1.5],
-    ['a string', '1'],
+    ['the older format 1', 1],
+    ['a fraction below the current one', 1.5],
+    ['a fraction above the current one', 2.5],
+    ['a string', '2'],
     ['null', null],
   ])('refuses a file whose v is %s as an unsupported version', (_name, v) => {
     // #given
@@ -179,11 +258,55 @@ describe('parsePresetFile', () => {
     expect(parsed).toEqual({ ok: false, error: { code: 'unsupported-version' } });
   });
 
+  test('refuses a whole preset of format 1 as an unsupported version', () => {
+    // #given
+    const text = JSON.stringify({
+      v: 1,
+      character: { sections: [{ rows: [[NUMBER_FIELD('str')]] }] },
+      npc: { sections: [] },
+    });
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: { code: 'unsupported-version' } });
+  });
+
   test.each<[string, JsonValue]>([
     ['an array', [MINIMAL]],
     ['a number', 1],
     ['an unknown top-level key', { ...MINIMAL, extra: true }],
-    ['a missing template', { v: 1, character: MINIMAL.character }],
+    ['no templates', { v: 2 }],
+    ['an empty template list', { v: 2, templates: [] }],
+    [
+      'the templates of format 1 at v 2',
+      { v: 2, character: { sections: [] }, npc: { sections: [] } },
+    ],
+    ['a template of an unknown kind', JSON.parse(presetOf({ ...singleOf('x', []), kind: 'npc' }))],
+    ['a template with no kind', JSON.parse(presetOf({ id: 'x', title: 'X', sections: [] }))],
+    ['a template with no id', JSON.parse(presetOf({ kind: 'single', title: 'X', sections: [] }))],
+    ['a template with no title', JSON.parse(presetOf({ id: 'x', kind: 'single', sections: [] }))],
+    ['a template with no sections', JSON.parse(presetOf({ id: 'x', kind: 'single', title: 'X' }))],
+    ['an unknown template key', JSON.parse(presetOf({ ...singleOf('x', []), order: 1 }))],
+    [
+      'a sheet set with no name field',
+      JSON.parse(presetOf({ id: 'pc', kind: 'set', title: 'Персонажи', sections: [] })),
+    ],
+    [
+      'a name field on a single sheet',
+      JSON.parse(
+        presetOf({ ...singleOf('x', [{ rows: [[TEXT_FIELD('name')]] }]), nameField: 'name' }),
+      ),
+    ],
+    ['players on a sheet set', JSON.parse(presetOf({ ...setOf('pc', []), players: 'edit' }))],
+    ['players other than edit', JSON.parse(presetOf({ ...singleOf('x', []), players: 'view' }))],
+    [
+      'an unknown visibility',
+      JSON.parse(presetOf({ ...singleOf('x', []), visibility: 'players' })),
+    ],
+    ['tokens that is false', JSON.parse(presetOf({ ...singleOf('x', []), tokens: false }))],
+    ['section tokens without repeat', JSON.parse(fileOf([{ tokens: true, rows: [[LABEL]] }]))],
     ['an unknown section key', JSON.parse(fileOf([{ rows: [], hidden: true }]))],
     ['an unknown cell key', JSON.parse(fileOf([{ rows: [[{ ...LABEL, size: 2 }]] }]))],
     ['an unknown cell kind', JSON.parse(fileOf([{ rows: [[{ kind: 'image', src: 'x' }]] }]))],
@@ -202,6 +325,95 @@ describe('parsePresetFile', () => {
 
     // #then
     expect(parsed).toEqual({ ok: false, error: { code: 'invalid-structure' } });
+  });
+
+  test.each<[string, string]>([
+    ['two words', 'two words'],
+    ['1st', '1st'],
+    ['a-b', 'a-b'],
+    ['a:b', 'a:b'],
+    ['', ''],
+    ['d20', 'd20'],
+    ['floor', 'floor'],
+    ['constructor', 'constructor'],
+    ['__proto__', '__proto__'],
+    ['a'.repeat(65), `${'a'.repeat(40)}…`],
+  ])('refuses the template id %j', (id, detail) => {
+    // #given
+    const text = presetOf(singleOf(id, []));
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: { code: 'invalid-template-id', detail } });
+  });
+
+  test.each(['pc', '_hidden', 'Gm_notes', 'a'.repeat(64)])('accepts the template id %j', (id) => {
+    // #given
+    const text = presetOf(singleOf(id, []));
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed.ok).toBe(true);
+  });
+
+  test('refuses two templates that share an id, whatever their kind', () => {
+    // #given
+    const text = presetOf(setOf('pc', []), singleOf('pc', []));
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: { code: 'duplicate-template', detail: 'pc' } });
+  });
+
+  test.each<[string, JsonValue[]]>([
+    ['a number field', [{ rows: [[NUMBER_FIELD('title')]] }]],
+    ['a check field', [{ rows: [[{ kind: 'field', type: 'check', id: 'title' }]] }]],
+    ['a text field of a repeat section', [{ repeat: true, rows: [[TEXT_FIELD('title')]] }]],
+    ['no field', [{ rows: [[TEXT_FIELD('other')]] }]],
+  ])('refuses a sheet set whose name field names %s', (_name, sections) => {
+    // #given
+    const text = presetOf({
+      id: 'crew',
+      kind: 'set',
+      title: 'Экипаж',
+      nameField: 'title',
+      sections,
+    });
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({
+      ok: false,
+      error: { code: 'bad-name-field', detail: 'crew', field: 'title' },
+    });
+  });
+
+  test('accepts a name field that a text field outside repeat sections holds in any row', () => {
+    // #given
+    const text = presetOf({
+      id: 'crew',
+      kind: 'set',
+      title: 'Экипаж',
+      nameField: 'title',
+      sections: [
+        { repeat: true, rows: [[TEXT_FIELD('item')]] },
+        { rows: [[NUMBER_FIELD('str')], [LABEL, TEXT_FIELD('title')]] },
+      ],
+    });
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed.ok).toBe(true);
   });
 
   test.each([
@@ -249,6 +461,16 @@ describe('parsePresetFile', () => {
       [{ repeat: true, rows: [[NUMBER_FIELD('item'), NUMBER_FIELD('item')]] }],
       'item',
     ],
+    [
+      'two rows of one repeat section',
+      [
+        {
+          repeat: true,
+          rows: [[NUMBER_FIELD('item'), NUMBER_FIELD('qty')], [NUMBER_FIELD('qty')]],
+        },
+      ],
+      'qty',
+    ],
   ])('refuses an id twice in %s', (_name, sections, id) => {
     // #when
     const parsed = parsePresetFile(fileOf(sections));
@@ -257,9 +479,12 @@ describe('parsePresetFile', () => {
     expect(parsed).toEqual({ ok: false, error: { code: 'duplicate-id', detail: id } });
   });
 
-  test('refuses an id twice in one scope of the NPC template', () => {
+  test('refuses an id twice in one scope of a later template', () => {
     // #given
-    const text = fileOf([], [{ rows: [[NUMBER_FIELD('hp'), NUMBER_FIELD('hp')]] }]);
+    const text = presetOf(
+      setOf('pc', [{ rows: [[NUMBER_FIELD('hp')]] }]),
+      singleOf('npc', [{ rows: [[NUMBER_FIELD('hp'), NUMBER_FIELD('hp')]] }]),
+    );
 
     // #when
     const parsed = parsePresetFile(text);
@@ -270,8 +495,11 @@ describe('parsePresetFile', () => {
 
   test.each<[string, JsonValue]>([
     ['no row', { repeat: true, rows: [] }],
-    ['two rows', { repeat: true, rows: [[NUMBER_FIELD('a')], [NUMBER_FIELD('b')]] }],
     ['a row with no field', { repeat: true, rows: [[LABEL, { kind: 'dice', formula: '1d6' }]] }],
+    [
+      'two rows with no field',
+      { repeat: true, rows: [[LABEL], [{ kind: 'dice', formula: '1d6' }]] },
+    ],
   ])('refuses a repeat section with %s', (_name, section) => {
     // #when
     const parsed = parsePresetFile(fileOf([section]));
@@ -280,11 +508,14 @@ describe('parsePresetFile', () => {
     expect(parsed).toEqual({ ok: false, error: { code: 'bad-repeat' } });
   });
 
-  test('refuses two repeat sections of one template that start with one id', () => {
+  test.each<[string, JsonValue]>([
+    ['in its first row', { repeat: true, rows: [[NUMBER_FIELD('item')]] }],
+    ['in a later row', { repeat: true, rows: [[LABEL], [NUMBER_FIELD('item')]] }],
+  ])('refuses two repeat sections of one template whose first field id, %s, is one', (_n, s) => {
     // #given
     const text = fileOf([
       { repeat: true, rows: [[LABEL, NUMBER_FIELD('item'), NUMBER_FIELD('weight')]] },
-      { repeat: true, rows: [[NUMBER_FIELD('item')]] },
+      s,
     ]);
 
     // #when
@@ -292,6 +523,20 @@ describe('parsePresetFile', () => {
 
     // #then
     expect(parsed).toEqual({ ok: false, error: { code: 'duplicate-section', detail: 'item' } });
+  });
+
+  test('accepts two templates with repeat sections that start with one id', () => {
+    // #given
+    const text = presetOf(
+      singleOf('npc', [{ repeat: true, rows: [[TEXT_FIELD('item')]] }]),
+      singleOf('inventory', [{ repeat: true, rows: [[TEXT_FIELD('item')]] }]),
+    );
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed.ok).toBe(true);
   });
 
   test('refuses a columns row with more cells than the grid', () => {
@@ -446,6 +691,38 @@ describe('windowSizeOf', () => {
   });
 });
 
+describe('templateById', () => {
+  const PRESET: Preset = {
+    v: 2,
+    templates: [
+      { id: 'pc', kind: 'set', title: 'Персонажи', nameField: 'name', sections: [] },
+      { id: 'npc', kind: 'single', title: 'NPC', visibility: 'gm', sections: [] },
+    ],
+  };
+
+  test('finds a template by its id', () => {
+    // #when
+    const found = templateById(PRESET, 'npc');
+
+    // #then
+    expect(found).toEqual({
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      visibility: 'gm',
+      sections: [],
+    });
+  });
+
+  test('is null for an id no template has', () => {
+    // #when
+    const found = templateById(PRESET, 'journal');
+
+    // #then
+    expect(found).toBeNull();
+  });
+});
+
 describe('firstFieldId', () => {
   test('is the id of the first field, after any text cell', () => {
     // #when
@@ -471,10 +748,71 @@ describe('firstFieldId', () => {
   });
 });
 
+describe('repeatSectionId', () => {
+  test.each<[string, PresetSection, string | null]>([
+    [
+      'the first field of the first row with one',
+      {
+        repeat: true,
+        rows: [
+          [{ kind: 'text', text: 'Противник' }],
+          [
+            { kind: 'field', type: 'text', id: 'npc_name' },
+            { kind: 'field', type: 'number', id: 'hp' },
+          ],
+          [{ kind: 'field', type: 'number', id: 'ac' }],
+        ],
+      },
+      'npc_name',
+    ],
+    [
+      'null for a section that does not repeat',
+      { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] },
+      null,
+    ],
+  ])('is %s', (_name, section, expected) => {
+    // #when
+    const id = repeatSectionId(section);
+
+    // #then
+    expect(id).toBe(expected);
+  });
+});
+
+describe('plainRowIdOf', () => {
+  const LAYOUT: TemplateLayout = {
+    sections: [
+      {
+        rows: [
+          [
+            { kind: 'field', type: 'number', id: 'level' },
+            { kind: 'field', type: 'number', id: 'bonus' },
+          ],
+        ],
+      },
+      { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
+    ],
+  };
+
+  test.each<[string, string, string | null]>([
+    ['the first field id of the row that holds a later field', 'bonus', 'level'],
+    ['the id of a row named by its own first field', 'level', 'level'],
+    ['null for a field of a repeat section', 'item', null],
+    ['null for an id the layout does not hold', 'hp', null],
+  ])('is %s', (_name, fieldId, expected) => {
+    // #when
+    const rowId = plainRowIdOf(LAYOUT, fieldId);
+
+    // #then
+    expect(rowId).toBe(expected);
+  });
+});
+
 describe('resolveFieldReference', () => {
-  // `bonus` sits in the attack row and in the sheet's grid. `weight` only in another repeat section.
-  // Sections: 0 grid, 1 attacks (repeat), 2 inventory (repeat), 3 a dice row with no field.
-  const TEMPLATE: PresetTemplate = {
+  // `bonus` sits in the attack repeat block and in the sheet's grid. `weight` only in another
+  // repeat section. Sections: 0 grid, 1 attacks (repeat, two rows), 2 inventory (repeat), 3 a dice
+  // row with no field.
+  const LAYOUT: TemplateLayout = {
     sections: [
       {
         rows: [
@@ -496,6 +834,10 @@ describe('resolveFieldReference', () => {
             { kind: 'field', type: 'number', id: 'bonus' },
             { kind: 'dice', formula: '1d20+bonus+str' },
           ],
+          [
+            { kind: 'field', type: 'text', id: 'damage' },
+            { kind: 'dice', formula: '1d8+bonus' },
+          ],
         ],
       },
       {
@@ -511,20 +853,18 @@ describe('resolveFieldReference', () => {
     ],
   };
 
-  test.each<
-    [string, PresetTemplate, number, number, string, ReturnType<typeof resolveFieldReference>]
-  >([
+  test.each<[string, number, number, string, ReturnType<typeof resolveFieldReference>]>([
     [
       'an id in the same repeat row over one elsewhere on the sheet',
-      TEMPLATE,
       1,
       0,
       'bonus',
-      { scope: 'row' },
+      { scope: 'block' },
     ],
+    ['an id in another row of the same repeat block', 1, 1, 'bonus', { scope: 'block' }],
+    ['the first field of the repeat block from its later row', 1, 1, 'attack', { scope: 'block' }],
     [
       'an id only in the non-repeat scope, from a repeat row',
-      TEMPLATE,
       1,
       0,
       'str',
@@ -532,31 +872,35 @@ describe('resolveFieldReference', () => {
     ],
     [
       'an id in another row of the sheet, named by that row',
-      TEMPLATE,
       1,
-      0,
+      1,
       'level',
       { scope: 'sheet', rowId: 'level' },
     ],
-    ['an id in the same plain row', TEMPLATE, 0, 1, 'bonus', { scope: 'row' }],
+    [
+      'an id in the same plain row, named by that row',
+      0,
+      1,
+      'bonus',
+      { scope: 'sheet', rowId: 'level' },
+    ],
     [
       'an id of another plain row, from a row with no field',
-      TEMPLATE,
       3,
       0,
       'str',
       { scope: 'sheet', rowId: 'str' },
     ],
-    ['an id only in another repeat section', TEMPLATE, 1, 0, 'weight', null],
-    ['a repeat id from a plain row', TEMPLATE, 0, 0, 'attack', null],
-    ['an id the template does not hold', TEMPLATE, 1, 0, 'hp', null],
-    ['a sheet id from a section index past the template', TEMPLATE, 9, 0, 'str', null],
-    ['a sheet id from a row index past a real section', TEMPLATE, 1, 1, 'str', null],
-    ['a sheet id from a negative row index', TEMPLATE, 0, -1, 'str', null],
-    ['a sheet id from a negative section index', TEMPLATE, -1, 0, 'str', null],
-  ])('resolves %s', (_name, template, sectionIndex, rowIndex, id, expected) => {
+    ['an id only in another repeat section', 1, 0, 'weight', null],
+    ['a repeat id from a plain row', 0, 0, 'attack', null],
+    ['an id the template does not hold', 1, 0, 'hp', null],
+    ['a sheet id from a section index past the template', 9, 0, 'str', null],
+    ['a sheet id from a row index past a real section', 1, 2, 'str', null],
+    ['a sheet id from a negative row index', 0, -1, 'str', null],
+    ['a sheet id from a negative section index', -1, 0, 'str', null],
+  ])('resolves %s', (_name, sectionIndex, rowIndex, id, expected) => {
     // #when
-    const reference = resolveFieldReference(template, { sectionIndex, rowIndex }, id);
+    const reference = resolveFieldReference(LAYOUT, { sectionIndex, rowIndex }, id);
 
     // #then
     expect(reference).toEqual(expected);
@@ -581,9 +925,15 @@ describe('encodePreset with a large preset', () => {
     // #given: random letters barely deflate. 1.5 M of them pass the spread argument limit of
     // V8 (about 125 K) and of Bun (about 1 M), not only one 0x8000-byte chunk.
     const preset: Preset = {
-      v: 1,
-      character: { sections: [{ rows: [[{ kind: 'text', text: randomLabel(1_500_000) }]] }] },
-      npc: { sections: [] },
+      v: 2,
+      templates: [
+        {
+          id: 'notes',
+          kind: 'single',
+          title: 'Заметки',
+          sections: [{ rows: [[{ kind: 'text', text: randomLabel(1_500_000) }]] }],
+        },
+      ],
     };
 
     // #when
@@ -591,9 +941,15 @@ describe('encodePreset with a large preset', () => {
 
     // #then
     expect(decodeIndependently(data)).toEqual({
-      v: 1,
-      character: { sections: [{ rows: [[{ kind: 'text', text: randomLabel(1_500_000) }]] }] },
-      npc: { sections: [] },
+      v: 2,
+      templates: [
+        {
+          id: 'notes',
+          kind: 'single',
+          title: 'Заметки',
+          sections: [{ rows: [[{ kind: 'text', text: randomLabel(1_500_000) }]] }],
+        },
+      ],
     });
   });
 });
@@ -608,6 +964,23 @@ describe('decodePreset', () => {
 
     // #then
     expect(decoded).toEqual({ ok: true, value: JSON.parse(EXAMPLE_TEXT) });
+  });
+
+  test('refuses a stored preset of format 1 as an unsupported version', () => {
+    // #given: the record data an older build stored, deflated and base64-encoded by hand.
+    const stored = {
+      v: 1,
+      character: { sections: [{ rows: [[NUMBER_FIELD('str')]] }] },
+      npc: { sections: [] },
+    };
+
+    const data = Buffer.from(deflateSync(strToU8(JSON.stringify(stored)))).toString('base64');
+
+    // #when
+    const decoded = decodePreset(data);
+
+    // #then
+    expect(decoded).toEqual({ ok: false, error: { code: 'unsupported-version' } });
   });
 
   test.each([
@@ -631,7 +1004,7 @@ describe('formatPresetFile', () => {
     const lines = formatPresetFile(preset).split('\n');
 
     // #then
-    expect(lines.slice(0, 3)).toEqual(['{', '  "v": 1,', '  "character": {']);
+    expect(lines.slice(0, 4)).toEqual(['{', '  "v": 2,', '  "templates": [', '    {']);
   });
 
   test('writes the window size after v and before the templates', () => {
@@ -644,12 +1017,12 @@ describe('formatPresetFile', () => {
     // #then
     expect(lines.slice(0, 7)).toEqual([
       '{',
-      '  "v": 1,',
+      '  "v": 2,',
       '  "window": {',
       '    "width": 900,',
       '    "height": 700',
       '  },',
-      '  "character": {',
+      '  "templates": [',
     ]);
   });
 
@@ -681,7 +1054,7 @@ function randomLabel(length: number): string {
 }
 
 describe('the e2e preset fixtures', () => {
-  test('are the two game systems the NPC tests load', () => {
+  test('are the two game systems the e2e tests load', () => {
     // #when
     const names = new Set(readdirSync(FIXTURE_DIR));
 

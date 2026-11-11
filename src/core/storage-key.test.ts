@@ -3,10 +3,14 @@ import { describe, expect, test } from 'bun:test';
 import { ok } from '@/core/result';
 import {
   buildStorageKey,
+  generationMarkerKey,
   incompleteMarkerKey,
   INITIAL_GENERATION,
+  isOlderFormatRoomKey,
+  parseGenerationMarkerKey,
   parseIncompleteMarkerKey,
   parseStorageKey,
+  roomKeyFormat,
 } from '@/core/storage-key';
 
 const INVALID = { ok: false, error: 'invalid-storage-key' } as const;
@@ -24,7 +28,7 @@ describe('buildStorageKey', () => {
     const built = buildStorageKey('r', { n: 2, a: 'x' }, 'preset');
 
     // #then
-    expect(built).toEqual({ ok: true, value: 'mr1:r:2:x:preset' });
+    expect(built).toEqual({ ok: true, value: 'mr2:r:2:x:preset' });
   });
 
   test('builds the key of the initial generation with an empty author segment', () => {
@@ -32,7 +36,7 @@ describe('buildStorageKey', () => {
     const built = buildStorageKey('r', { n: 0, a: '' }, 'row:s:f');
 
     // #then
-    expect(built).toEqual({ ok: true, value: 'mr1:r:0::row:s:f' });
+    expect(built).toEqual({ ok: true, value: 'mr2:r:0::row:s:f' });
   });
 
   test.each([
@@ -54,7 +58,7 @@ describe('buildStorageKey', () => {
 describe('parseStorageKey', () => {
   test('splits a key whose record key has colons of its own', () => {
     // #when
-    const parsed = parseStorageKey('mr1:r:2:x:rep:s:sec:i');
+    const parsed = parseStorageKey('mr2:r:2:x:rep:s:sec:i');
 
     // #then
     expect(parsed).toEqual({
@@ -65,7 +69,7 @@ describe('parseStorageKey', () => {
 
   test('reads an empty generation author', () => {
     // #when
-    const parsed = parseStorageKey('mr1:r:0::preset');
+    const parsed = parseStorageKey('mr2:r:0::preset');
 
     // #then
     expect(parsed).toEqual({
@@ -75,15 +79,16 @@ describe('parseStorageKey', () => {
   });
 
   test.each([
-    ['another format version', 'mr2:r:2:x:preset'],
+    ['the older format version', 'mr1:r:2:x:preset'],
+    ['a newer format version', 'mr3:r:2:x:preset'],
     ['a key of another application', 'theme'],
-    ['a missing record key', 'mr1:r:2:x'],
-    ['an empty room id', 'mr1::2:x:preset'],
-    ['a non-numeric generation', 'mr1:r:two:x:preset'],
-    ['a generation with a leading zero', 'mr1:r:02:x:preset'],
-    ['a negative generation', 'mr1:r:-1:x:preset'],
-    ['a generation in exponent form', 'mr1:r:1e3:x:preset'],
-    ['an unknown record key', 'mr1:r:2:x:note:1'],
+    ['a missing record key', 'mr2:r:2:x'],
+    ['an empty room id', 'mr2::2:x:preset'],
+    ['a non-numeric generation', 'mr2:r:two:x:preset'],
+    ['a generation with a leading zero', 'mr2:r:02:x:preset'],
+    ['a negative generation', 'mr2:r:-1:x:preset'],
+    ['a generation in exponent form', 'mr2:r:1e3:x:preset'],
+    ['an unknown record key', 'mr2:r:2:x:note:1'],
   ])('refuses %s', (_name, storageKey) => {
     // #when
     const parsed = parseStorageKey(storageKey);
@@ -100,14 +105,14 @@ describe('incomplete generation marker', () => {
 
     // #then
     expect({ key, asRecord: key.ok ? parseStorageKey(key.value).ok : true }).toEqual({
-      key: ok('mr1:room:3:gm:#incomplete'),
+      key: ok('mr2:room:3:gm:#incomplete'),
       asRecord: false,
     });
   });
 
   test('reads its room and generation back', () => {
     // #when
-    const parts = parseIncompleteMarkerKey('mr1:room:0::#incomplete');
+    const parts = parseIncompleteMarkerKey('mr2:room:0::#incomplete');
 
     // #then
     expect(parts).toEqual(ok({ roomId: 'room', generation: { n: 0, a: '' } }));
@@ -115,9 +120,76 @@ describe('incomplete generation marker', () => {
 
   test('does not read a record key as a marker', () => {
     // #when
-    const parts = parseIncompleteMarkerKey('mr1:room:3:gm:sheet:brok');
+    const parts = parseIncompleteMarkerKey('mr2:room:3:gm:sheet:brok');
 
     // #then
     expect(parts.ok).toBe(false);
+  });
+});
+
+describe('generation marker', () => {
+  test('builds a key under the generation that no record key can take', () => {
+    // #when
+    const key = generationMarkerKey('room', { n: 3, a: 'gm' });
+
+    // #then
+    expect({ key, asRecord: key.ok ? parseStorageKey(key.value).ok : true }).toEqual({
+      key: ok('mr2:room:3:gm:#generation'),
+      asRecord: false,
+    });
+  });
+
+  test('reads its room and generation back', () => {
+    // #when
+    const parts = parseGenerationMarkerKey('mr2:room:0::#generation');
+
+    // #then
+    expect(parts).toEqual(ok({ roomId: 'room', generation: { n: 0, a: '' } }));
+  });
+
+  test.each([
+    ['an incomplete marker', 'mr2:room:3:gm:#incomplete'],
+    ['a record key', 'mr2:room:3:gm:sheet:brok'],
+    ['a marker of the older format', 'mr1:room:3:gm:#generation'],
+  ])('does not read %s as a generation marker', (_name, storageKey) => {
+    // #when
+    const parts = parseGenerationMarkerKey(storageKey);
+
+    // #then
+    expect(parts.ok).toBe(false);
+  });
+});
+
+describe('roomKeyFormat', () => {
+  test.each<[string, string, number | null]>([
+    ['a key of the current format', 'mr2:room:3:gm:preset', 2],
+    ['a key of the older format', 'mr1:room:3:gm:preset', 1],
+    ['a marker of the older format', 'mr1:room:3:gm:#incomplete', 1],
+    ['a key of a newer format', 'mr7:room:3:gm:preset', 7],
+    ['a key of another room', 'mr1:other:3:gm:preset', null],
+    ['a key of another application', 'theme', null],
+    ['a format with a leading zero', 'mr01:room:3:gm:preset', null],
+    ['a format with no number', 'mr:room:3:gm:preset', null],
+  ])('reads %s', (_name, storageKey, format) => {
+    // #when
+    const read = roomKeyFormat(storageKey, 'room');
+
+    // #then
+    expect(read).toBe(format);
+  });
+});
+
+describe('isOlderFormatRoomKey', () => {
+  test.each<[string, string, boolean]>([
+    ['a key of the format 1', 'mr1:room:3:gm:preset', true],
+    ['a key of the current format', 'mr2:room:3:gm:preset', false],
+    ['a key of a newer format', 'mr3:room:3:gm:preset', false],
+    ['a key of the format 1 for another room', 'mr1:other:3:gm:preset', false],
+  ])('answers for %s', (_name, storageKey, older) => {
+    // #when
+    const answer = isOlderFormatRoomKey(storageKey, 'room');
+
+    // #then
+    expect(answer).toBe(older);
   });
 });

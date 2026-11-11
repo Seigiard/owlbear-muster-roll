@@ -10,13 +10,15 @@ import {
 } from '@/core/formula-evaluate';
 import { parseFormula } from '@/core/formula';
 import {
-  firstFieldId,
+  plainRow,
+  repeatSectionId,
   resolveFieldReference,
   type PresetCell,
-  type PresetTemplate,
+  type PresetSection,
+  type TemplateLayout,
   type TemplateRowPlace,
 } from '@/core/preset';
-import { repDataSchema, repKeyPrefix, type FieldValue, type VersionedRecord } from '@/core/records';
+import { repDataSchema, repKey, type FieldValue, type VersionedRecord } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 import { cellLabel, rowValues, type FieldValues } from '@/core/sheet-values';
 
@@ -26,7 +28,7 @@ export const shownValueSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('error') }),
 ]);
 
-// A dice cell by position in its template. `instanceId` names the repeat row, `null` a plain row.
+// A dice cell by position in its template. `instanceId` names the repeat block, `null` a plain row.
 export const dicePlaceSchema = z.strictObject({
   sectionIndex: z.number().int().nonnegative(),
   rowIndex: z.number().int().nonnegative(),
@@ -45,7 +47,7 @@ export type DicePlace = z.infer<typeof dicePlaceSchema>;
 export type DiceRoll = { cell: string; result: RollResult };
 
 // `field` names the referenced field by its label, or by its id when it is not on the sheet.
-// `not-dice` is a place with no dice cell or a repeat row that is gone.
+// `not-dice` is a place with no dice cell or a repeat block that is gone.
 export type DiceRollFailure =
   | { code: 'field'; field: string }
   | { code: 'arithmetic' }
@@ -62,14 +64,14 @@ export type PreparedDiceRoll = {
 // Rolls the dice cell at `place` of one sheet, from `records` as the client shows them with the
 // window's `shown` values over them. A field shown in an input error gives the field error.
 export function rollDiceCell(
-  template: PresetTemplate,
+  layout: TemplateLayout,
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
   place: DicePlace,
   shown: ShownValues,
   faces: FaceSource,
 ): Result<DiceRoll, DiceRollFailure> {
-  const prepared = prepareDiceRoll(template, records, sheetId, place, shown);
+  const prepared = prepareDiceRoll(layout, records, sheetId, place, shown);
 
   if (!prepared.ok) {
     return prepared;
@@ -83,32 +85,37 @@ export function rollDiceCell(
 // As `rollDiceCell`, with the faces left for later, so a caller can ask for them by the terms.
 // `records` and `shown` must not change while the result is in use.
 export function prepareDiceRoll(
-  template: PresetTemplate,
+  layout: TemplateLayout,
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
   place: DicePlace,
   shown: ShownValues,
 ): Result<PreparedDiceRoll, DiceRollFailure> {
-  const section = template.sections[place.sectionIndex];
+  const section = layout.sections[place.sectionIndex];
   const row = section?.rows[place.rowIndex];
   const cell = row?.[place.cellIndex];
   const repeat = section?.repeat === true;
 
-  if (row === undefined || cell?.kind !== 'dice' || repeat !== (place.instanceId !== null)) {
+  if (
+    section === undefined ||
+    row === undefined ||
+    cell?.kind !== 'dice' ||
+    repeat !== (place.instanceId !== null)
+  ) {
     return err({ code: 'not-dice' });
   }
 
   const from: TemplateRowPlace = { sectionIndex: place.sectionIndex, rowIndex: place.rowIndex };
-  let ownRow: FieldValues | undefined;
+  let ownBlock: FieldValues | undefined;
 
   if (place.instanceId !== null) {
-    const instance = instanceValues(records, sheetId, row, place.instanceId);
+    const block = blockValues(records, sheetId, section, place.instanceId);
 
-    if (instance === null) {
+    if (block === null) {
       return err({ code: 'not-dice' });
     }
 
-    ownRow = withShown(instance, shown);
+    ownBlock = withShown(block, shown);
   }
 
   const tree = parseFormula(cell.formula);
@@ -121,10 +128,10 @@ export function prepareDiceRoll(
   const formula = tree.value;
 
   const lookup = formulaFieldLookup(
-    template,
+    layout,
     from,
     (rowId) => withShown(rowValues(records, sheetId, rowId), shown),
-    ownRow,
+    ownBlock,
   );
 
   return ok({
@@ -140,7 +147,7 @@ export function prepareDiceRoll(
       if (!rolled.ok) {
         return err(
           rolled.error.code === 'field'
-            ? { code: 'field', field: fieldLabel(template, from, rolled.error.fieldId) }
+            ? { code: 'field', field: fieldLabel(layout, from, rolled.error.fieldId) }
             : { code: 'arithmetic' },
         );
       }
@@ -150,22 +157,20 @@ export function prepareDiceRoll(
   });
 }
 
-// The values of one repeat row, or `null` for an instance that is gone.
-function instanceValues(
+// The values of one repeat block, or `null` for a repeat block that is gone.
+function blockValues(
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
-  row: readonly PresetCell[],
+  section: PresetSection,
   instanceId: string,
 ): FieldValues | null {
-  const sectionId = firstFieldId(row);
+  const sectionId = repeatSectionId(section);
 
   if (sectionId === null) {
     return null;
   }
 
-  const data = repDataSchema.safeParse(
-    records.get(`${repKeyPrefix(sheetId, sectionId)}${instanceId}`)?.d,
-  );
+  const data = repDataSchema.safeParse(records.get(repKey(sheetId, sectionId, instanceId))?.d);
 
   return data.success ? new Map(Object.entries(data.data.cells)) : null;
 }
@@ -191,27 +196,25 @@ function withShown(values: FieldValues, shown: ShownValues): FieldValues {
 }
 
 // The label of the field `id` resolves to from the rolled row, or the id itself for an id that
-// resolves to no field on the sheet.
-function fieldLabel(template: PresetTemplate, from: TemplateRowPlace, id: string): string {
-  const reference = resolveFieldReference(template, from, id);
-  const ownRow = template.sections[from.sectionIndex]?.rows[from.rowIndex];
+// resolves to no field on the sheet. The label comes from the row that holds the field.
+function fieldLabel(layout: TemplateLayout, from: TemplateRowPlace, id: string): string {
+  const reference = resolveFieldReference(layout, from, id);
 
-  const row =
+  const rows: readonly (readonly PresetCell[])[] =
     reference === null
-      ? undefined
-      : reference.scope === 'row'
-        ? ownRow
-        : sheetScopeRow(template, reference.rowId);
+      ? []
+      : reference.scope === 'block'
+        ? (layout.sections[from.sectionIndex]?.rows ?? [])
+        : [plainRow(layout, reference.rowId) ?? []];
 
-  const index = row?.findIndex((cell) => cell.kind === 'field' && cell.id === id) ?? -1;
-  const cell = index === -1 ? undefined : row?.[index];
+  for (const row of rows) {
+    const index = row.findIndex((cell) => cell.kind === 'field' && cell.id === id);
+    const cell = row[index];
 
-  return row === undefined || cell === undefined ? id : cellLabel(cell, row.slice(0, index));
-}
+    if (cell !== undefined) {
+      return cellLabel(cell, row.slice(0, index));
+    }
+  }
 
-function sheetScopeRow(template: PresetTemplate, rowId: string): readonly PresetCell[] | undefined {
-  return template.sections
-    .filter((section) => section.repeat !== true)
-    .flatMap((section) => section.rows)
-    .find((row) => firstFieldId(row) === rowId);
+  return id;
 }

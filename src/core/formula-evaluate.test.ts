@@ -13,13 +13,13 @@ import {
   type RandomSource,
   type RollResult,
 } from '@/core/formula-evaluate';
-import type { PresetTemplate, TemplateRowPlace } from '@/core/preset';
+import type { TemplateLayout, TemplateRowPlace } from '@/core/preset';
 import type { Result } from '@/core/result';
 import type { FieldValues } from '@/core/sheet-values';
 
 // Sections: 0 the sheet grid, 1 attacks (repeat), 2 inventory (repeat), 3 a dice row with no field.
 // `bonus` sits in the attack row and in the grid row named `level`. `weight` only in inventory.
-const TEMPLATE: PresetTemplate = {
+const TEMPLATE: TemplateLayout = {
   sections: [
     {
       rows: [
@@ -311,6 +311,44 @@ describe('evaluateFormula', () => {
 
     // #when
     const result = evaluateAt('1d20 + bonus', lookup, [0.3]);
+
+    // #then
+    expect(result).toEqual({
+      ok: true,
+      value: { roll: 12, faces: [7], target: null, targetFaces: [], outcome: null },
+    });
+  });
+
+  test('a dice cell in the second row of a repeat block reads a field from the first row of its block', () => {
+    // #given a two-row repeat section; the block holds bonus 3 in row one and range 2 in row two
+    const layout: TemplateLayout = {
+      sections: [
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+            ],
+            [
+              { kind: 'field', type: 'number', id: 'range' },
+              { kind: 'dice', formula: '1d20+bonus+range' },
+            ],
+          ],
+        },
+      ],
+    };
+
+    const block: FieldValues = new Map<string, number | string>([
+      ['attack', 'Лук'],
+      ['bonus', 3],
+      ['range', 2],
+    ]);
+
+    const lookup = formulaFieldLookup(layout, { sectionIndex: 0, rowIndex: 1 }, sheetRow, block);
+
+    // #when
+    const result = evaluateAt('1d20 + bonus + range', lookup, [0.3]);
 
     // #then
     expect(result).toEqual({
