@@ -76,3 +76,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-6-read-characters-with-no-gm-online.md`
   summary: No test proves a window never receives room-copy outcome `read` before the copy's records.
   evidence: Putting `noteRoomCopy` before `receiveRecords` in `mergeReadRoomCopy` keeps every test green; the gap lasts between two back-to-back deltas.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-1-evaluate-dice-formulas-safely.md`
+  summary: A number field value that stringifies in exponent form (for example `1e-7`) gives the field error in a roll.
+  evidence: `fieldNumber` reads numbers through `parseNumberInput(valueText(value))`, and the 1.9 parser refuses exponent notation.
