@@ -8,12 +8,20 @@ import { decodePreset, type Preset, type SheetSetTemplate } from '@/core/preset'
 import { presetDataSchema, type VersionedRecord } from '@/core/records';
 import { isSheetSet, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
-import { linkedTargetKeys } from '@/core/token-links';
+import { linkTargetKey, type LinkTarget } from '@/core/link-target';
+import { liveLinks } from '@/core/token-links';
+import {
+  selectionMarks,
+  selectionStep,
+  tokensByTarget,
+  type SelectionStep,
+} from '@/core/token-selection';
 import { visibleRecordMap, type PlayerRole } from '@/core/visibility';
 import { platform } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { bannerFor } from '@/ui/banner-message';
 import { copy } from '@/ui/copy';
+import { watchMapSelection, type MapSelection } from '@/ui/map-selection';
 import { createPendingMarks, type PendingMarks } from '@/ui/pending-marks';
 import { PresetUpload, uploadDisabledReason } from '@/ui/preset-actions';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
@@ -22,6 +30,7 @@ import { SettingsView } from '@/ui/settings/settings-view';
 import { DeleteConfirmation } from '@/ui/sheet/delete-confirmation';
 import type { DiceRolling } from '@/ui/sheet/dice-button';
 import { createLocalFieldValues } from '@/ui/sheet/local-field-values';
+import { MapSelectionContext, type MapSelectionView } from '@/ui/sheet/map-toggle';
 import { sheetPendingOf, type SheetPending } from '@/ui/sheet/pending-mark';
 import type { BlockTools } from '@/ui/sheet/preset-section';
 import { SheetBody } from '@/ui/sheet/sheet-body';
@@ -70,6 +79,8 @@ type WindowRootProps = {
   store: ProjectionStore;
   // UX-DR3: which of a player's waiting edits show "Ожидает" by now.
   pendingMarks: PendingMarks;
+  // CAP-32: this client's map selection and the items of the open scene.
+  mapSelection: MapSelection;
   sendCommand: ReplicaClient['sendCommand'];
   requestPresetDiff: ReplicaClient['requestPresetDiff'];
   requestSnapshotCheck: ReplicaClient['requestSnapshotCheck'];
@@ -107,6 +118,8 @@ async function start(): Promise<void> {
       followTheme(platform.theme, document.documentElement),
     ]);
 
+    const mapSelection = watchMapSelection(platform.selection, platform.scene);
+
     const client = startReplicaClient(
       platform.broadcast,
       createSendQueue(platform.broadcast, TIMING),
@@ -127,6 +140,7 @@ async function start(): Promise<void> {
         playerId={playerId}
         store={store}
         pendingMarks={pendingMarks}
+        mapSelection={mapSelection}
         sendCommand={client.sendCommand}
         requestPresetDiff={client.requestPresetDiff}
         requestSnapshotCheck={client.requestSnapshotCheck}
@@ -144,6 +158,7 @@ function WindowRoot({
   playerId,
   store: projection,
   pendingMarks: marks,
+  mapSelection,
   sendCommand,
   requestPresetDiff,
   requestSnapshotCheck,
@@ -219,7 +234,37 @@ function WindowRoot({
   const [blockReveal, setBlockReveal] = useState<BlockRevealRequest | null>(null);
   // The token status reads `link:` records only, never the scene (FR18), and AD-19 drops an inert
   // link.
-  const linkedTargets = useMemo(() => linkedTargetKeys(records, preset), [records, preset]);
+  const links = useMemo(() => liveLinks(records, preset), [records, preset]);
+  const targetTokens = useMemo(() => tokensByTarget(links), [links]);
+  const linkedTargets = useMemo(() => new Set(targetTokens.keys()), [targetTokens]);
+  const mapSelected = useStore(mapSelection.$selection);
+  const sceneItems = useStore(mapSelection.$sceneItems);
+  // CAP-32: the marks follow this client's own selection through the links this role sees.
+  const mapMarks = useMemo(() => selectionMarks(links, mapSelected), [links, mapSelected]);
+
+  const mapView = useMemo<MapSelectionView>(
+    () => ({
+      marked: mapMarks.targets,
+      // Selecting tokens from the window is GM-only.
+      selector: isGm
+        ? {
+            stepFor: (target: LinkTarget) =>
+              selectionStep(targetTokens.get(linkTargetKey(target)) ?? [], sceneItems, mapSelected),
+            take: (step: SelectionStep) => {
+              const write =
+                step.kind === 'select'
+                  ? platform.selection.select(step.tokenIds)
+                  : platform.selection.deselect(step.tokenIds);
+
+              write.catch((error) => {
+                console.error('Muster Roll could not change the map selection', error);
+              });
+            },
+          }
+        : null,
+    }),
+    [mapMarks, isGm, targetTokens, sceneItems, mapSelected],
+  );
 
   const editing = useMemo<FieldEditing>(
     () => ({
@@ -604,6 +649,7 @@ function WindowRoot({
             id: tab.id,
             label: tab.name === '' ? copy.unnamed : tab.name,
             mark: tab.owned ? copy.ownMark : undefined,
+            selectedOnMap: mapMarks.sheetIds.has(tab.sheetId),
             content: !ready || preset === null ? loading : content(tab),
           },
         },
@@ -712,7 +758,11 @@ function WindowRoot({
     };
   }
 
-  return <WindowShell layout={layout} banner={bannerFor(notices, sync)} />;
+  return (
+    <MapSelectionContext value={mapView}>
+      <WindowShell layout={layout} banner={bannerFor(notices, sync)} />
+    </MapSelectionContext>
+  );
 }
 
 // True when the focus is on a control of this window, not on its body or outside it.

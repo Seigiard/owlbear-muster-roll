@@ -1,4 +1,4 @@
-import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefCallback } from 'react';
 
 import { patchRecordKey, type FieldPatchTarget } from '@/core/field-patch';
@@ -21,6 +21,7 @@ import type { ReplicaClient } from '@/ui/replica-client';
 
 import type { DiceRow } from './dice-button';
 import { DuplicateCount } from './duplicate-count';
+import { MapSelectionContext, MapToggle } from './map-toggle';
 import { PendingMark, rowPending, type RowPending, type SheetPending } from './pending-mark';
 import { SheetCell } from './preset-cell';
 import type { FieldPlace } from './use-field-edit';
@@ -37,6 +38,9 @@ const WIDTH_CLASSES: Record<NonNullable<PresetSection['width']>, string> = {
 const ROW_CLASS = 'touch-target items-center gap-x-2 px-1';
 
 const STRIPE_CLASS = 'bg-surface-stripe';
+
+// CAP-32: a repeat block whose linked token is selected on the map, as a bar on its left edge.
+const MAP_MARK_CLASS = 'shadow-[inset_3px_0_0_var(--color-accent)]';
 
 // UX-DR28: a removed repeat block's cells dim, and its control slot, which holds the mark, does
 // not. Written out whole, so Tailwind finds the class.
@@ -340,6 +344,7 @@ function Blocks({
 }: BlocksProps): ReactNode {
   // The mark ids: one per repeat block under this section's prefix.
   const markPrefix = useId();
+  const mapMarked = useContext(MapSelectionContext).marked;
   const [duplicateAsk, setDuplicateAsk] = useState<DuplicateAsk | null>(null);
   const duplicateButtons = useRef(new Map<string, HTMLButtonElement>());
   // The repeat block the open duplicate block belongs to, for a close that runs outside a render.
@@ -444,14 +449,17 @@ function Blocks({
         </div>
       ) : null;
 
+    const name = block.name === '' ? copy.unnamed : block.name;
+    const onMap = mapMarked.has(linkTargetKey({ sheetId, instanceId: block.instanceId }));
+
     return (
       <div
         key={block.instanceId}
         ref={controls?.blockElement(block.instanceId)}
         role="group"
-        aria-label={block.name === '' ? copy.unnamed : block.name}
+        aria-label={onMap ? copy.label.selectedOnMap(name) : name}
         tabIndex={-1}
-        className={`${columns === undefined ? '' : 'col-span-full grid grid-cols-subgrid'} ${stripe(index)}`}
+        className={`${columns === undefined ? '' : 'col-span-full grid grid-cols-subgrid'} ${stripe(index)} ${onMap ? MAP_MARK_CLASS : ''}`}
         data-repeat-block={block.instanceId}
       >
         {rows}
@@ -522,6 +530,12 @@ function BlockSlot({
       {linked === null ? null : (
         <Chip>{linked ? copy.status.tokenLinked : copy.status.noToken}</Chip>
       )}
+      {linked === true ? (
+        <MapToggle
+          target={{ sheetId, instanceId }}
+          accessibleName={copy.label.selectBlockOnMap(index + 1)}
+        />
+      ) : null}
       {tools === null || block.pending.removed ? null : (
         <Button
           ref={duplicateButton}
