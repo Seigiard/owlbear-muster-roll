@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-11T20:37:00Z'
-updated_date: '2026-11-11T20:40:00Z'
+updated_date: '2026-11-11T20:50:00Z'
 labels:
   - v2
 dependencies: []
@@ -51,4 +51,14 @@ Owner decisions still open, to settle in the spec phase: who sees and who edits 
 
 <!-- SECTION:NOTES:BEGIN -->
 Research done (step 1). Impact: ~98 files name the two-template model (70 of them tests). Format change bumps the shared FORMAT_VERSION (messages, room copy, stored records mr1, snapshot file, preset file). Room copy margin today 3286 bytes on the d20 worst case. Waiting for owner decisions: NPC model (Лист vs Набор on one page) with duplicates and token links; visibility per Набор/Лист; write access and owners for Листы; tab name field rules; old-format presets and rooms; tab bar order; upload that removes a Набор/Лист with sheets; token links to Листы.
+
+Owner answers 2026-11-11 (relayed by coordinator):
+- D1/D8: NPC is an ordinary Лист; fixed NPC tab, NPC-only code and per-sheet NPC duplicates (old CAP-16) removed («дубли и привязка похуй, всё можем почистить, там почти ничего нет»). Token linking is a preset property tokens on a Набор, a Лист and a repeat section («почему не tokens: в репит секции»). On a repeat section each block links to its own token; the token opens the sheet and scrolls to the block; a link stores sheet + block; deleting a block removes its links; token label comes from the block's first field. On a Набор or Лист a token links to the whole sheet. Дублировать moves to repeat blocks in any repeat section. Multi-line repeat allowed: all rows of a repeat section form one block; upload rule «в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем».
+- D2: visibility property on each Набор and Лист; hidden = GM-only in the interface, rolls GM-only, no player token menu.
+- D3: Листы take no per-player grants; preset players: edit lets players edit, otherwise not. Набор sheets keep access panel and owner.
+- D4: required preset key on each Набор naming a non-repeat text field as tab name; anyone with write access edits it; header name edits the same field; empty value shows a fallback.
+- D5: no migrations; v1 data not read, v1 files refused with a message; add GM-only «Очистить всё» in Settings that wipes room copy, local copy and all records after one confirmation (new capability).
+- D6: one scrolling tab list in preset order, only the gear pinned, a + per Набор after its last sheet, a player's own sheets first.
+- D7: allowed; the upload confirmation also names how many sheets are deleted.
+- Defaults accepted: stable id + title per entry, Лист sheet id from preset id, at least one entry, snapshot import drops sheets of unknown Наборы with a count, link picker groups in preset order.
 <!-- SECTION:NOTES:END -->
