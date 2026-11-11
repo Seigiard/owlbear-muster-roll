@@ -159,6 +159,16 @@ const aclSetSchema = z.strictObject({
   on: z.boolean(),
 });
 
+// FR19: picks the one owner of a character, or none with `playerId: null`. `name` is the player's
+// name as the GM's window knows it, kept in `plink:` and in a new `acl:` as the last known name. The
+// engine checks the ids and that the sheet is a live character.
+const ownerSetSchema = z.strictObject({
+  type: z.literal('owner-set'),
+  sheetId: z.string(),
+  playerId: z.string().nullable(),
+  name: z.string(),
+});
+
 // The window sends the deflated data, not the JSON, because a preset over the message limit as
 // JSON can still fit once deflated. The engine decodes and validates it again.
 const presetUploadSchema = z.strictObject({
@@ -200,6 +210,7 @@ const commandIntentSchema = z.discriminatedUnion('type', [
   linkSetSchema,
   linkClearSchema,
   aclSetSchema,
+  ownerSetSchema,
   presetUploadSchema,
   fieldPatchSchema,
   repeatRowAddSchema,
@@ -239,9 +250,9 @@ const commandRejectedSchema = z.strictObject({
     'invalid-token-id',
     // A `link-clear` for a token with no link.
     'unknown-link',
-    // A player id no `acl:` key can hold.
+    // A player id no `acl:` or `plink:` key can hold.
     'invalid-player-id',
-    // Access is given on a character only, never on an NPC.
+    // Access and an owner are given on a character only, never on an NPC.
     'not-character',
     // A player client edits nothing until Epic 3 brings `propose`.
     'not-allowed',

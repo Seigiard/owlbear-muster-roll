@@ -1,4 +1,4 @@
-import { aclKey, playerName } from '@/core/access';
+import { aclKey, playerName, plinkKey } from '@/core/access';
 import {
   acceptedFieldValue,
   findPatchField,
@@ -18,6 +18,7 @@ import {
   hasLiveSheet,
   playerDataSchema,
   playerIdSchema,
+  plinkPrefix,
   presetDataSchema,
   repDataSchema,
   repKeyPrefix,
@@ -52,10 +53,12 @@ export type FieldPatchCommand = Extract<Command, { type: 'field-patch' }>;
 // applied, and mints nothing. `newRecordId` gives the ids a command makes itself, such as an NPC
 // copy's, of a kind and each named by its role in the command. The pending view composes a queued
 // command many times, so one role must get one id each time, whatever records come or go in between.
+// `isGmPlayer` is true for a player id the party lists as a GM, and for this client's own one.
 export type ComposeContext = {
   records: ReadonlyMap<string, VersionedRecord>;
   mint: (key: string, highestKnownCounter: number) => Version;
   newRecordId: (kind: RecordIdKind, role: string) => string;
+  isGmPlayer: (playerId: string) => boolean;
 };
 
 // TASK-37: new ids are short, so a drawn id can collide. A command that draws its own ids draws a
@@ -334,6 +337,8 @@ export function createComposers(connectionId: string): Composers {
           return listOf(composeLinkClear(context, command));
         case 'acl-set':
           return listOf(composeAclSet(context, command));
+        case 'owner-set':
+          return composeOwnerSet(context, command);
         case 'preset-upload':
           return listOf(composePresetUpload(context, command));
         case 'field-patch':
@@ -578,20 +583,10 @@ function composeAclSet(
   context: ComposeContext,
   command: Extract<Command, { type: 'acl-set' }>,
 ): Result<VersionedRecord, RejectionReason> {
-  const current = liveSheetRecord(context, command.sheetId);
+  const character = liveCharacter(context, command.sheetId);
 
-  if (!current.ok) {
-    return current;
-  }
-
-  const sheet = sheetDataSchema.safeParse(current.value.d);
-
-  if (!sheet.success) {
-    return err('unknown-sheet');
-  }
-
-  if (sheet.data.kind !== 'pc') {
-    return err('not-character');
+  if (!character.ok) {
+    return character;
   }
 
   if (!playerIdSchema.safeParse(command.playerId).success) {
@@ -617,6 +612,89 @@ function composeAclSet(
   const record: VersionedRecord = { k, d: { name }, c, a };
 
   return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+}
+
+// FR19: one batch. Picking a player writes their `acl:` when it is not live, so editing turns on,
+// tombstones every other live `plink:` of the sheet, and writes their `plink:` when it is not live.
+// A live `plink:` keeps its name. Their `plink:` goes last, so a write that fails part way never
+// shows a new owner whose other records are missing. "Никто" (`playerId: null`) tombstones every
+// live `plink:` of the sheet. No other `acl:` changes, so a previous owner keeps editing. A GM, this
+// client's own player included, owns nothing. A batch that would change nothing is refused, so a
+// repeated pick adds no version.
+function composeOwnerSet(
+  context: ComposeContext,
+  command: Extract<Command, { type: 'owner-set' }>,
+): Result<VersionedRecord[], RejectionReason> {
+  const character = liveCharacter(context, command.sheetId);
+
+  if (!character.ok) {
+    return character;
+  }
+
+  const { playerId } = command;
+
+  if (
+    playerId !== null &&
+    (!playerIdSchema.safeParse(playerId).success || context.isGmPlayer(playerId))
+  ) {
+    return err('invalid-player-id');
+  }
+
+  const owner = playerId === null ? null : plinkKey(command.sheetId, playerId);
+  const prefix = plinkPrefix(command.sheetId);
+  const batch: VersionedRecord[] = [];
+
+  if (playerId !== null) {
+    const acl = context.records.get(aclKey(command.sheetId, playerId));
+
+    if (acl === undefined || acl.d === null) {
+      const k = aclKey(command.sheetId, playerId);
+
+      batch.push({ k, d: { name: playerName(command.name) }, ...context.mint(k, acl?.c ?? 0) });
+    }
+  }
+
+  for (const [key, record] of context.records) {
+    if (key.startsWith(prefix) && key !== owner && record.d !== null) {
+      batch.push(tombstone(context, record));
+    }
+  }
+
+  if (owner !== null) {
+    const existing = context.records.get(owner);
+
+    if (existing === undefined || existing.d === null) {
+      const d = { name: playerName(command.name) };
+
+      batch.push({ k: owner, d, ...context.mint(owner, existing?.c ?? 0) });
+    }
+  }
+
+  if (batch.length === 0) {
+    return err('unchanged');
+  }
+
+  return batch.every(recordFitsOneMessage) ? ok(batch) : err('too-large');
+}
+
+// A live sheet whose data says it is a character.
+function liveCharacter(
+  context: ComposeContext,
+  sheetId: string,
+): Result<VersionedRecord, RejectionReason> {
+  const current = liveSheetRecord(context, sheetId);
+
+  if (!current.ok) {
+    return current;
+  }
+
+  const sheet = sheetDataSchema.safeParse(current.value.d);
+
+  if (!sheet.success) {
+    return err('unknown-sheet');
+  }
+
+  return sheet.data.kind === 'pc' ? current : err('not-character');
 }
 
 // The live `row:` and `rep:` records of one sheet, by key, so copies list them in one order.

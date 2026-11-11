@@ -202,9 +202,10 @@ export async function startReplicaEngine(
   const newRecordIdOf = options.newRecordId ?? newRecordId;
   const random = options.random ?? Math.random;
 
-  const [startRole, connectionId] = await Promise.all([
+  const [startRole, connectionId, ownPlayerId] = await Promise.all([
     platform.player.getRole(),
     platform.player.getConnectionId(),
+    platform.player.getId(),
   ]);
 
   const loaded = loadReplica(platform, startRole);
@@ -656,7 +657,16 @@ export async function startReplicaEngine(
   }
 
   function liveContext(): ComposeContext {
-    return { records: replica, mint: minter.mint, newRecordId: newRecordIdOf };
+    return { records: replica, mint: minter.mint, newRecordId: newRecordIdOf, isGmPlayer };
+  }
+
+  // FR19: a GM owns no character, so neither this client's player id nor one the party lists as a
+  // GM takes an owner link.
+  function isGmPlayer(playerId: string): boolean {
+    return (
+      playerId === ownPlayerId ||
+      roster.entries().some((member) => member.id === playerId && member.role === 'GM')
+    );
   }
 
   // Mints nothing: a version of the pending view never reaches the room or the storage.
@@ -668,6 +678,7 @@ export async function startReplicaEngine(
         a: connectionId,
       }),
       newRecordId: newRecordIdOf,
+      isGmPlayer,
     };
   }
 

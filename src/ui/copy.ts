@@ -32,7 +32,13 @@ export const copy = {
     // says whose it is.
     mayEdit: 'Может править',
     mayEditFor: (name: string): string => `${name}: может править`,
+    // The radio group of the access panel that picks the one owner of a character, and its option
+    // for no owner (UX-DR12).
+    owner: 'Его персонаж',
+    noOwner: 'Никто',
   },
+  // After the name on the tab of a character the player owns (UX-DR8).
+  ownMark: 'вы',
   newCharacter: 'Новый персонаж',
   newNpc: 'Новый NPC',
   addSign: '+',

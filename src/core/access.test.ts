@@ -4,9 +4,12 @@ import {
   accessRows,
   aclKey,
   canEdit,
+  ownedFirst,
+  ownedSheetIds,
   PARTY_LIMIT,
   partyEntries,
   playerName,
+  plinkKey,
   type PartyEntry,
 } from '@/core/access';
 import { playerIdSchema, recordKeySchema, type VersionedRecord } from '@/core/records';
@@ -287,6 +290,85 @@ describe('playerIdSchema', () => {
 
     // #then
     expect(key).toBe('acl:brok:p-1');
+  });
+});
+
+describe('ownedSheetIds', () => {
+  test('holds the sheets whose owner is this player, and none another player owns', () => {
+    // #given
+    const sheets = [{ sheetId: 'brok' }, { sheetId: 'kira' }, { sheetId: 'yarl' }];
+
+    const records = byKey([
+      plink('brok', 'p-oly', 'Оля'),
+      plink('kira', 'p-gena', 'Гена'),
+      { ...plink('yarl', 'p-oly', 'Оля'), d: null, c: 2 },
+    ]);
+
+    // #when
+    const owned = ownedSheetIds(sheets, records, 'p-oly');
+
+    // #then
+    expect([...owned]).toEqual(['brok']);
+  });
+
+  test('follows the plink: with the highest (c, a) when two are live', () => {
+    // #given
+    const records = byKey([
+      { ...plink('brok', 'p-oly', 'Оля'), c: 2, a: 'gm-a' },
+      { ...plink('brok', 'p-gena', 'Гена'), c: 2, a: 'gm-b' },
+    ]);
+
+    // #when
+    const owned = [
+      [...ownedSheetIds([{ sheetId: 'brok' }], records, 'p-oly')],
+      [...ownedSheetIds([{ sheetId: 'brok' }], records, 'p-gena')],
+    ];
+
+    // #then
+    expect(owned).toEqual([[], ['brok']]);
+  });
+});
+
+describe('ownedFirst', () => {
+  const SHEETS = [
+    { sheetId: 'd', order: 1 },
+    { sheetId: 'b', order: 0 },
+    { sheetId: 'c', order: 1 },
+    { sheetId: 'a', order: 2 },
+  ];
+
+  test('puts an owned character first, then the rest by (order, sheetId)', () => {
+    // #when
+    const sheets = ownedFirst(SHEETS, new Set(['a']));
+
+    // #then
+    expect(sheets.map((sheet) => sheet.sheetId)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  test('puts several owned characters first by (order, sheetId), then the rest the same way', () => {
+    // #when
+    const sheets = ownedFirst(SHEETS, new Set(['a', 'd', 'c']));
+
+    // #then
+    expect(sheets.map((sheet) => sheet.sheetId)).toEqual(['c', 'd', 'a', 'b']);
+  });
+
+  test('keeps the order by (order, sheetId) with nothing owned', () => {
+    // #when
+    const sheets = ownedFirst(SHEETS, new Set());
+
+    // #then
+    expect(sheets.map((sheet) => sheet.sheetId)).toEqual(['b', 'c', 'd', 'a']);
+  });
+});
+
+describe('plinkKey', () => {
+  test('makes the plink: key of a sheet and a player', () => {
+    // #when
+    const key = plinkKey('brok', 'p-1');
+
+    // #then
+    expect(key).toBe('plink:brok:p-1');
   });
 });
 

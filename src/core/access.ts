@@ -1,5 +1,11 @@
-import { playerDataSchema, playerIdSchema, type VersionedRecord } from '@/core/records';
-import { SHEET_NAME_MAX_LENGTH } from '@/core/sheets';
+import { ownersBySheet } from '@/core/merge';
+import {
+  playerDataSchema,
+  playerIdSchema,
+  plinkPrefix,
+  type VersionedRecord,
+} from '@/core/records';
+import { SHEET_NAME_MAX_LENGTH, sortSheets, type SheetSummary } from '@/core/sheets';
 import type { PlayerRole } from '@/core/visibility';
 
 // One party member as the access panel needs it.
@@ -28,6 +34,42 @@ const NAMES = new Intl.Collator('ru');
 
 export function aclKey(sheetId: string, playerId: string): string {
   return `acl:${sheetId}:${playerId}`;
+}
+
+export function plinkKey(sheetId: string, playerId: string): string {
+  return `${plinkPrefix(sheetId)}${playerId}`;
+}
+
+// FR19: the ids of the sheets whose owner is this player.
+export function ownedSheetIds(
+  sheets: readonly Pick<SheetSummary, 'sheetId'>[],
+  records: ReadonlyMap<string, VersionedRecord>,
+  playerId: string,
+): Set<string> {
+  const owners = ownersBySheet(records.values());
+  const owned = new Set<string>();
+
+  for (const { sheetId } of sheets) {
+    if (owners.get(sheetId) === playerId) {
+      owned.add(sheetId);
+    }
+  }
+
+  return owned;
+}
+
+// FR19, UX-DR8: the characters a player owns come first, then the rest. Each part is ordered by
+// `(order, sheetId)`.
+export function ownedFirst<Sheet extends Pick<SheetSummary, 'sheetId' | 'order'>>(
+  sheets: readonly Sheet[],
+  owned: ReadonlySet<string>,
+): Sheet[] {
+  const sorted = sortSheets(sheets);
+
+  return [
+    ...sorted.filter((sheet) => owned.has(sheet.sheetId)),
+    ...sorted.filter((sheet) => !owned.has(sheet.sheetId)),
+  ];
 }
 
 // Trimmed and cut to `PLAYER_NAME_MAX_LENGTH` code points. A blank name becomes "".

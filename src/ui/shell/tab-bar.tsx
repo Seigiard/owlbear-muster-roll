@@ -13,7 +13,8 @@ const TAB_CLASS =
 
 const SELECTABLE_CLASS = 'data-selected:bg-surface data-selected:text-accent';
 
-// A long name is cut with an ellipsis. The tab text stays whole, so it is still the accessible name.
+// A long name is cut with an ellipsis. The text in the DOM stays whole, so the accessible name still
+// holds the whole name.
 const SCROLLING_TAB_CLASS = `${TAB_CLASS} ${SELECTABLE_CLASS} max-w-[160px]`;
 
 // Pinned tabs sit after "+" and stick to the right edge. The pseudo-element fills the gap before
@@ -23,7 +24,15 @@ const PINNED_TAB_CLASS = `${TAB_CLASS} ${SELECTABLE_CLASS} sticky order-2 before
 // The window's line height, for a wheel that reports lines instead of pixels.
 const WHEEL_LINE_PX = 20;
 
-export type ShellTab = { id: string; label: string; accessibleName?: string; content: ReactNode };
+// `mark` shows after the label and is never cut, such as "вы" on a player's own character. The tab
+// bar then names the tab "{label}, {mark}", so the name does not run the two words together.
+export type ShellTab = {
+  id: string;
+  label: string;
+  mark?: string;
+  accessibleName?: string;
+  content: ReactNode;
+};
 
 export type ShellToggle = {
   label: string;
@@ -52,11 +61,14 @@ export function TabBar({ scrollingTabs, pinnedTabs, add }: TabBarProps): ReactNo
             <Tab
               key={tab.id}
               id={tab.id}
-              aria-label={tab.accessibleName}
+              aria-label={tab.mark === undefined ? tab.accessibleName : `${tab.label}, ${tab.mark}`}
               ref={revealIfSelected}
               className={SCROLLING_TAB_CLASS}
             >
-              <span className="truncate">{tab.label}</span>
+              <span className="min-w-[0] truncate">{tab.label}</span>
+              {tab.mark === undefined ? null : (
+                <span className="ml-1 shrink-0 text-label-sm text-text-muted">{tab.mark}</span>
+              )}
             </Tab>
           ))}
           {pinnedTabs.map((tab, index) => (

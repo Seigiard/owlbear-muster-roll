@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { canEdit } from '@/core/access';
+import { canEdit, ownedFirst, ownedSheetIds } from '@/core/access';
 import { newSheetId } from '@/core/ids';
 import { decodePreset, type Preset } from '@/core/preset';
 import { hasLiveSheet, presetDataSchema, type VersionedRecord } from '@/core/records';
@@ -150,10 +150,19 @@ function WindowRoot({
   const presetData = presetDataOf(records);
   const preset = useMemo(() => decodedPreset(presetData), [presetData]);
 
-  const { characters, npcs } = useMemo(
-    () => visibleSheets(role, records.values()),
-    [role, records],
-  );
+  // FR19, UX-DR8: a player's own characters come first and carry the mark "вы". A GM owns none.
+  const { characters, npcs, owned } = useMemo(() => {
+    const visible = visibleSheets(role, records.values());
+
+    const ownedIds =
+      role === 'GM' ? new Set<string>() : ownedSheetIds(visible.characters, records, playerId);
+
+    return {
+      characters: ownedFirst(visible.characters, ownedIds),
+      npcs: visible.npcs,
+      owned: ownedIds,
+    };
+  }, [role, records, playerId]);
 
   // AD-7: until the first catch-up ends, no data counts as the room's. The tab bar shows what is
   // known and every panel says "Загрузка…", so no empty or no-preset state shows too early.
@@ -678,6 +687,7 @@ function WindowRoot({
       scrollingTabs: characters.map((sheet) => ({
         id: sheetKey(sheet.sheetId),
         label: sheet.name,
+        mark: owned.has(sheet.sheetId) ? copy.ownMark : undefined,
         content:
           !ready || preset === null ? (
             loading

@@ -144,6 +144,40 @@ describe('parseWindowMessage', () => {
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
 
+  test('accepts an owner-set command for a player and for no one', () => {
+    // #given
+    const messages: WindowMessage[] = [
+      {
+        t: 'command',
+        id: 'c1',
+        command: { type: 'owner-set', sheetId: 's1', playerId: 'p-1', name: 'Оля' },
+      },
+      {
+        t: 'command',
+        id: 'c2',
+        command: { type: 'owner-set', sheetId: 's1', playerId: null, name: '' },
+      },
+    ];
+
+    // #when
+    const parsed = messages.map((message) => parseWindowMessage(message));
+
+    // #then
+    expect(parsed).toEqual(messages.map((value) => ({ ok: true, value })));
+  });
+
+  test.each<[string, JsonValue]>([
+    ['no playerId', { type: 'owner-set', sheetId: 's1', name: 'Оля' }],
+    ['no name', { type: 'owner-set', sheetId: 's1', playerId: 'p-1' }],
+    ['d beside the ids', { type: 'owner-set', sheetId: 's1', playerId: 'p-1', name: '', d: null }],
+  ])('refuses an owner-set command with %s', (_name, command) => {
+    // #when
+    const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+  });
+
   test('accepts a preset-upload command carrying base64 data', () => {
     // #given
     const message: WindowMessage = {

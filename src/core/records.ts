@@ -103,6 +103,12 @@ export function repKeyPrefix(sheetId: string, sectionId: string): string {
   return `rep:${sheetId}:${sectionId}:`;
 }
 
+// The key prefix of every `plink:` of one sheet. It ends with ":", so a sheet "a" never reads the
+// owner links of a sheet "ab".
+export function plinkPrefix(sheetId: string): string {
+  return `plink:${sheetId}:`;
+}
+
 // A tombstoned sheet is deleted, so it does not count.
 export function hasLiveSheet(records: Iterable<VersionedRecord>): boolean {
   for (const record of records) {
