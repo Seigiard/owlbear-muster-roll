@@ -113,7 +113,7 @@ One copy of a repeat section's rows on one sheet, such as one NPC. Each sheet ha
 _Avoid_: repeat row, instance, item, entry
 
 **Duplicate**:
-A new repeat block that copies the values of another one. In the interface: «Дубль».
+A new repeat block that copies the values of another one. In the interface: «Дубль», made by the «Дублировать…» command.
 _Avoid_: clone, copy (alone)
 
 **Owner**:
