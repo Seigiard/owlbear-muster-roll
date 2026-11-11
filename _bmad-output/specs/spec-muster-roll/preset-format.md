@@ -18,7 +18,7 @@ A preset is a JSON file that lists the sheets of one room. Each entry is a На�
 | --- | --- |
 | Name field (Набор only, required) | Names a non-repeat `text` field of the entry. Its value is each sheet's tab name. Anyone with write access may edit it |
 | `visibility` | Visible to players (default) or hidden. A hidden entry shows only to the GM, its rolls show only on GM clients, and players get no token menu on its sheets. Hiding is in the interface only |
-| `players: edit` (Лист only) | Every player may edit the Лист. Without it, players read it only. A Набор sheet takes per-player write access and an owner instead |
+| `players: edit` | Every player may edit every sheet of the entry, with no per-player grant. Without it, a Набор sheet takes per-player write access from the GM, and players read a Лист only. A Набор sheet can have an owner either way |
 | `tokens` | A token can link to the whole sheet, such as a chest that opens Инвентарь |
 
 ## Cell kinds

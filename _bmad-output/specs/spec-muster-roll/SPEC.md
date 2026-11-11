@@ -31,8 +31,8 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **intent:** Players see the sheets of every visible Набор and Лист and no sheet of a hidden one.
   - **success:** A player client shows every sheet of a visible Набор or Лист and shows no sheet of a hidden one.
 - **CAP-3**
-  - **intent:** The GM can turn write access on or off per player and per Набор sheet. Players edit a Лист only when the preset says `players: edit`.
-  - **success:** With access on, the player's edit reaches all clients. Sheets without access stay read-only for that player. With access off, the edit does not apply. A player's edit of a Лист with `players: edit` reaches all clients, and an edit of any other Лист does not apply.
+  - **intent:** The GM can turn write access on or off per player and per sheet of a Набор. With `players: edit` in the preset, every player may edit every sheet of that Набор or Лист. Without it, players read a Лист only.
+  - **success:** With access on, the player's edit reaches all clients. Sheets without access stay read-only for that player. With access off, the edit does not apply. A player's edit of a sheet whose entry sets `players: edit` reaches all clients with no grant. An edit of a Лист without it does not apply.
 - **CAP-4**
   - **intent:** A JSON preset defines any number of Наборы and Листы, each with its own sections, for any game system (`preset-format.md`).
   - **success:** A preset for a second system with Инвентарь and Список заклинаний gives working sheets with no code change.
@@ -141,6 +141,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - One editing GM tab.
 - Sections per sheet, computed display fields and per-edit approval. Every sheet of a Набор follows one schema.
 - Per-player write grants on a Лист. The preset decides with `players: edit`.
+- Per-player read-only exceptions on an entry with `players: edit`.
 - Duplicating a whole Набор sheet. Only a repeat block is duplicated (CAP-30).
 - Migration of v1 presets, snapshots and rooms.
 - An in-extension preset editor and per-field confirmation of a preset upload. Presets are usually set before a game.
@@ -169,6 +170,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - Duplicating a repeat block is GM-only, like the retired NPC duplicate. Numbering applies to the block's first field when it is a `text` field with a value.
 - An upload that drops `tokens` from a Набор, Лист or section, or removes the sheet or block, also removes its token links. Links are not counted in the confirmation.
 - A Лист's tab name is its preset `title`.
+- On a Набор with `players: edit`, the access panel keeps the owner choice and hides the per-player "Может править" checkboxes, showing that every player may edit. Stored grants stay and apply again if `players: edit` is removed.
 - A joining client gets current data from an online GM client, otherwise from the last snapshot.
 - The interface text is Russian in v1.
 - The interface follows the live Owlbear theme, and no separate palette exists.
