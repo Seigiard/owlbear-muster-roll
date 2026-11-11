@@ -430,6 +430,7 @@ describe('parseEngineMessage', () => {
       role: 'GM',
     },
     roomCopy: NO_COPY,
+    party: [],
   };
 
   test('accepts a projection part', () => {
@@ -475,6 +476,50 @@ describe('parseEngineMessage', () => {
     expect(parsed).toEqual([true, false, false, false]);
   });
 
+  test('reads a projection part and a delta of an older background, with no party, as an empty party', () => {
+    // #given
+    const { party: _party, ...projection } = PROJECTION;
+
+    const delta = {
+      t: 'delta',
+      engine: 'e1',
+      seq: 5,
+      records: [],
+      pending: [],
+      withdrawn: [],
+      notices: [],
+      sync: LIVE,
+      roomCopy: NO_COPY,
+    };
+
+    // #when
+    const parsed = [parseEngineMessage(projection), parseEngineMessage(delta)];
+
+    // #then
+    expect(
+      parsed.map((result) => (result.ok && 'party' in result.value ? result.value.party : null)),
+    ).toEqual([[], []]);
+  });
+
+  test('refuses a party over 100 player ids, or with a bad id or too long a name', () => {
+    // #given
+    const member = { id: 'p-1', name: 'Оля', role: 'PLAYER' };
+
+    // #when
+    const parsed = [
+      parseEngineMessage({ ...PROJECTION, party: [member] }).ok,
+      parseEngineMessage({
+        ...PROJECTION,
+        party: Array.from({ length: 101 }, (_unused, index) => ({ ...member, id: `p-${index}` })),
+      }).ok,
+      parseEngineMessage({ ...PROJECTION, party: [{ ...member, id: 'a b' }] }).ok,
+      parseEngineMessage({ ...PROJECTION, party: [{ ...member, name: 'Я'.repeat(101) }] }).ok,
+    ];
+
+    // #then
+    expect(parsed).toEqual([true, false, false, false]);
+  });
+
   test('accepts a delta and a rejected command', () => {
     // #given
     const delta: EngineMessage = {
@@ -487,6 +532,7 @@ describe('parseEngineMessage', () => {
       notices: [],
       sync: LIVE,
       roomCopy: NO_COPY,
+      party: [],
     };
 
     const rejected: EngineMessage = { t: 'command-rejected', id: 'c1', reason: 'too-large' };
@@ -513,6 +559,7 @@ describe('parseEngineMessage', () => {
       notices: ['local-save-failed', 'new-version'],
       sync: LIVE,
       roomCopy: NO_COPY,
+      party: [],
     };
 
     // #when
@@ -540,6 +587,7 @@ describe('parseEngineMessage', () => {
       notices: ['room-copy-not-saved'],
       sync: LIVE,
       roomCopy: { state: 'failed', usedBytes: 4200, freeBytes: 0, outcome: null },
+      party: [],
     };
 
     // #when

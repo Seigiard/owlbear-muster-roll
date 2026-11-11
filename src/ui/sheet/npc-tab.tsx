@@ -24,7 +24,7 @@ type NpcTabProps = {
   editing: FieldEditing;
   rolling: DiceRolling;
   sendCommand: ReplicaClient['sendCommand'];
-  store: Pick<ProjectionStore, '$rejections' | '$records'>;
+  store: Pick<ProjectionStore, '$rejections' | '$records' | '$party'>;
   // The open delete confirmation for one of these NPCs, or `null`.
   confirmation: ReactNode;
   onAdd: () => void;
@@ -112,6 +112,7 @@ export function NpcTab({
               <li key={key}>
                 <section aria-label={npc.name} data-sheet={key} tabIndex={-1}>
                   <SheetHeader
+                    kind="npc"
                     variant="npc"
                     sheetId={npc.sheetId}
                     name={npc.name}

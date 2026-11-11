@@ -3,13 +3,20 @@ import { z } from 'zod';
 import type { JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
 
+// Owlbear names a player by an id with no ":", so it fits the `acl:` and `plink:` key forms. The
+// bound keeps a forged id from making a key no message could carry. One rule for the keys and for
+// every check of a player id.
+const PLAYER_ID_PATTERN = '[^:\\s]{1,128}';
+
+export const playerIdSchema = z.string().regex(new RegExp(`^${PLAYER_ID_PATTERN}$`));
+
 const presetKeySchema = z.literal('preset');
 const sheetKeySchema = z.string().regex(/^sheet:[^:]+$/);
 const rowKeySchema = z.string().regex(/^row:[^:]+:[^:]+$/);
 const repKeySchema = z.string().regex(/^rep:[^:]+:[^:]+:[^:]+$/);
-const aclKeySchema = z.string().regex(/^acl:[^:]+:[^:]+$/);
+const aclKeySchema = z.string().regex(new RegExp(`^acl:[^:]+:${PLAYER_ID_PATTERN}$`));
 const linkKeySchema = z.string().regex(/^link:[^:]+$/);
-const plinkKeySchema = z.string().regex(/^plink:[^:]+:[^:]+$/);
+const plinkKeySchema = z.string().regex(new RegExp(`^plink:[^:]+:${PLAYER_ID_PATTERN}$`));
 
 export const recordKeySchema = z.union([
   presetKeySchema,
@@ -36,7 +43,8 @@ export const sheetDataSchema = z.strictObject({
 
 export const repDataSchema = z.strictObject({ order: z.number(), cells: fieldValuesSchema });
 
-const playerDataSchema = z.strictObject({ name: z.string() });
+// `acl:` and `plink:` hold the player's last known name.
+export const playerDataSchema = z.strictObject({ name: z.string() });
 
 export const linkDataSchema = z.string().regex(/^[^:]+$/);
 

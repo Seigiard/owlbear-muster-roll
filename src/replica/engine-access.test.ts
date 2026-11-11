@@ -1,0 +1,481 @@
+import { afterEach, describe, expect, test } from 'bun:test';
+
+import type { PartyEntry } from '@/core/access';
+import type { JsonValue } from '@/core/json';
+import { encodePreset, type Preset } from '@/core/preset';
+import { recordSchema, type VersionedRecord } from '@/core/records';
+import { SYNC_CHANNEL } from '@/core/room-messages';
+import type { Timing } from '@/core/timing';
+import type { Command } from '@/core/ui-messages';
+import {
+  createMemoryBus,
+  createMemoryRoom,
+  createMockPlatform,
+  type MockPlatform,
+  type MockRoom,
+  type MockStorageBacking,
+} from '@/platform/current';
+import type { PlayerRole } from '@/platform/ports';
+import { createSendQueue } from '@/platform/send-queue';
+import { startReplicaEngine } from '@/replica/engine';
+import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
+import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
+
+const TIMING: Timing = {
+  sendSpacingMs: 0,
+  rateLimitBackoffStartMs: 1,
+  rateLimitBackoffMaxMs: 2,
+  projectionRequestRepeatMs: 25,
+  projectionIncompleteTimeoutMs: 80,
+  fieldSavePauseMs: 1,
+  catchUpTimeoutMs: 400,
+  stateAnswerDelayMinMs: 0,
+  stateAnswerDelayMaxMs: 0,
+  // Far past any test, so no ping goes out unless a test asks for one.
+  gmLinkTimeoutMs: 60000,
+  // Far past any test, so no room copy is written unless a test asks for one.
+  snapshotPauseMs: 60000,
+  snapshotJitterMs: 0,
+  openRequestTtlMs: 15000,
+};
+
+const STORAGE_PREFIX = 'mr1:mock-room:0::';
+const WAIT_LIMIT_MS = 2000;
+const POLL_MS = 2;
+
+const PRESET: Preset = {
+  v: 1,
+  character: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] },
+  npc: { sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] },
+};
+
+const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
+
+// "Брок" is a live character, "Скелет" a live NPC, and "Лиза" was deleted.
+const BASE: readonly VersionedRecord[] = [
+  PRESET_RECORD,
+  { k: 'sheet:brok', d: { kind: 'pc', name: 'Брок', order: 0 }, c: 1, a: 'seed' },
+  { k: 'sheet:skel', d: { kind: 'npc', name: 'Скелет', order: 0 }, c: 1, a: 'seed' },
+  { k: 'sheet:liza', d: null, c: 2, a: 'seed' },
+];
+
+type Client = {
+  platform: MockPlatform;
+  backing: MockStorageBacking;
+  store: ProjectionStore;
+  window: ReplicaClient;
+};
+
+type Heard = { from: string; data: JsonValue };
+
+type Room = { room: MockRoom; heard: Heard[] };
+
+type ClientOptions = { role?: PlayerRole; seeded?: readonly VersionedRecord[] };
+
+const cleanups: (() => void)[] = [];
+
+afterEach(() => {
+  for (const cleanup of cleanups.splice(0)) {
+    cleanup();
+  }
+});
+
+describe('acl-set', () => {
+  test('grants access: acl:{sheetId}:{playerId} holds the name at c: 1 by this connection, saved and sent', async () => {
+    // #given
+    const room = openRoom();
+    const client = await startClient(room, 'gm-a');
+
+    // #when
+    send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля', on: true });
+    await waitUntil(() => committed(room, 'gm-a').length === 1);
+
+    // #then
+    const expected: VersionedRecord = { k: 'acl:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'gm-a' };
+
+    expect({
+      shown: shown(client, 'acl:brok:p-oly'),
+      stored: stored(client, 'acl:brok:p-oly'),
+      sent: committed(room, 'gm-a'),
+    }).toEqual({ shown: expected, stored: expected, sent: [expected] });
+  });
+
+  test('revokes access: the acl: record is tombstoned, saved and sent', async () => {
+    // #given
+    const room = openRoom();
+
+    const client = await startClient(room, 'gm-a', {
+      seeded: [...BASE, { k: 'acl:brok:p-oly', d: { name: 'Оля' }, c: 3, a: 'seed' }],
+    });
+
+    // #when
+    send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля', on: false });
+    await waitUntil(() => committed(room, 'gm-a').length === 1);
+
+    // #then
+    const expected: VersionedRecord = { k: 'acl:brok:p-oly', d: null, c: 4, a: 'gm-a' };
+
+    expect({
+      shown: shown(client, 'acl:brok:p-oly'),
+      stored: stored(client, 'acl:brok:p-oly'),
+      sent: committed(room, 'gm-a'),
+    }).toEqual({ shown: expected, stored: expected, sent: [expected] });
+  });
+
+  test('grants again over a tombstone with the name of the moment', async () => {
+    // #given
+    const room = openRoom();
+
+    const client = await startClient(room, 'gm-a', {
+      seeded: [...BASE, { k: 'acl:brok:p-oly', d: null, c: 5, a: 'seed' }],
+    });
+
+    // #when
+    send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name: 'Ольга', on: true });
+    await waitUntil(() => shown(client, 'acl:brok:p-oly')?.d !== null);
+
+    // #then
+    expect(stored(client, 'acl:brok:p-oly')).toEqual({
+      k: 'acl:brok:p-oly',
+      d: { name: 'Ольга' },
+      c: 6,
+      a: 'gm-a',
+    });
+  });
+
+  for (const [label, name, expected] of [
+    ['trims the name', '  Оля  ', 'Оля'],
+    ['cuts the name at 100 code points', `${'😀'.repeat(120)}`, '😀'.repeat(100)],
+    ['stores "" for a blank name', '   ', ''],
+  ] as const) {
+    test(`${label} it stores`, async () => {
+      // #given
+      const room = openRoom();
+      const client = await startClient(room, 'gm-a');
+
+      // #when
+      send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name, on: true });
+      await waitUntil(() => shown(client, 'acl:brok:p-oly') !== undefined);
+
+      // #then
+      expect(stored(client, 'acl:brok:p-oly')?.d).toEqual({ name: expected });
+    });
+  }
+
+  for (const [label, seeded, on] of [
+    ['a grant that is already live with that name', { name: 'Оля' }, true],
+    ['a revoke with no live record', null, false],
+  ] as const) {
+    test(`refuses ${label} with "unchanged" and writes nothing`, async () => {
+      // #given
+      const room = openRoom();
+      const before: VersionedRecord = { k: 'acl:brok:p-oly', d: seeded, c: 2, a: 'seed' };
+      const client = await startClient(room, 'gm-a', { seeded: [...BASE, before] });
+
+      // #when
+      const id = send(client, {
+        type: 'acl-set',
+        sheetId: 'brok',
+        playerId: 'p-oly',
+        name: 'Оля',
+        on,
+      });
+
+      await waitUntil(() => rejection(client, id) !== undefined);
+
+      // #then
+      expect({ reason: rejection(client, id), stored: stored(client, 'acl:brok:p-oly') }).toEqual({
+        reason: 'unchanged',
+        stored: before,
+      });
+    });
+  }
+
+  for (const [sheetId, playerId, reason] of [
+    ['skel', 'p-oly', 'not-character'],
+    ['liza', 'p-oly', 'deleted-sheet'],
+    ['nobody', 'p-oly', 'unknown-sheet'],
+    ['bad:id', 'p-oly', 'invalid-sheet-id'],
+    ['brok', 'a:b', 'invalid-player-id'],
+    ['brok', '', 'invalid-player-id'],
+  ] as const) {
+    test(`refuses sheet "${sheetId}" and player "${playerId}" with "${reason}" and writes nothing`, async () => {
+      // #given
+      const room = openRoom();
+      const client = await startClient(room, 'gm-a');
+
+      // #when
+      const id = send(client, { type: 'acl-set', sheetId, playerId, name: 'Оля', on: true });
+      await waitUntil(() => rejection(client, id) !== undefined);
+
+      // #then
+      expect({
+        reason: rejection(client, id),
+        acl: [...client.store.$records.get().keys()].filter((key) => key.startsWith('acl:')),
+        sent: committed(room, 'gm-a'),
+      }).toEqual({ reason, acl: [], sent: [] });
+    });
+  }
+
+  test('refuses a player with "not-allowed" and writes nothing', async () => {
+    // #given
+    const room = openRoom();
+    await startClient(room, 'gm-a');
+    const player = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
+    await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
+
+    // #when
+    const id = send(player, {
+      type: 'acl-set',
+      sheetId: 'brok',
+      playerId: 'player-a',
+      name: 'player-a',
+      on: true,
+    });
+
+    await waitUntil(() => rejection(player, id) !== undefined);
+
+    // #then
+    expect({
+      reason: rejection(player, id),
+      shown: shown(player, 'acl:brok:player-a'),
+      sent: committed(room, 'player-a'),
+    }).toEqual({ reason: 'not-allowed', shown: undefined, sent: [] });
+  });
+
+  test('reaches a player, whose window then holds its live acl:, and the revoke takes it back', async () => {
+    // #given
+    const room = openRoom();
+    const gmClient = await startClient(room, 'gm-a');
+    const player = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
+    await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
+
+    // #when
+    send(gmClient, {
+      type: 'acl-set',
+      sheetId: 'brok',
+      playerId: 'player-a',
+      name: 'player-a',
+      on: true,
+    });
+    await waitUntil(() => shown(player, 'acl:brok:player-a')?.d != null);
+    const granted = shown(player, 'acl:brok:player-a')?.d;
+
+    send(gmClient, {
+      type: 'acl-set',
+      sheetId: 'brok',
+      playerId: 'player-a',
+      name: 'player-a',
+      on: false,
+    });
+    await waitUntil(() => shown(player, 'acl:brok:player-a')?.d === null);
+
+    // #then
+    expect(granted).toEqual({ name: 'player-a' });
+  });
+
+  test('a sheet delete tombstones the acl: records the command wrote', async () => {
+    // #given
+    const room = openRoom();
+    const client = await startClient(room, 'gm-a');
+
+    send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля', on: true });
+    send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-gena', name: 'Гена', on: true });
+    await waitUntil(() => shown(client, 'acl:brok:p-gena') !== undefined);
+
+    // #when
+    send(client, { type: 'sheet-delete', sheetId: 'brok' });
+    await waitUntil(() => shown(client, 'sheet:brok')?.d === null);
+
+    // #then
+    expect([stored(client, 'acl:brok:p-oly'), stored(client, 'acl:brok:p-gena')]).toEqual([
+      { k: 'acl:brok:p-oly', d: null, c: 2, a: 'gm-a' },
+      { k: 'acl:brok:p-gena', d: null, c: 2, a: 'gm-a' },
+    ]);
+  });
+});
+
+describe('party in the projection', () => {
+  test('gives a GM window every other party member with player id, name and role', async () => {
+    // #given
+    const room = openRoom();
+    joinAs(room, 'p-oly', 'PLAYER', 'Оля');
+    joinAs(room, 'gm-b', 'GM', 'Мастер');
+
+    // #when
+    const client = await startClient(room, 'gm-a');
+
+    // #then
+    await waitUntil(() => client.store.$party.get().length === 2);
+    expect(sortedParty(client)).toEqual([
+      { id: 'gm-b', name: 'Мастер', role: 'GM' },
+      { id: 'p-oly', name: 'Оля', role: 'PLAYER' },
+    ]);
+  });
+
+  test('follows a player who joins and leaves while the window is open', async () => {
+    // #given
+    const room = openRoom();
+    const client = await startClient(room, 'gm-a');
+
+    // #when
+    joinAs(room, 'p-oly', 'PLAYER', 'Оля');
+    await waitUntil(() => client.store.$party.get().length === 1);
+    const joined = sortedParty(client);
+
+    room.room.leave('p-oly');
+    await waitUntil(() => client.store.$party.get().length === 0);
+
+    // #then
+    expect(joined).toEqual([{ id: 'p-oly', name: 'Оля', role: 'PLAYER' }]);
+  });
+
+  test('gives a player window no party', async () => {
+    // #given
+    const room = openRoom();
+    await startClient(room, 'gm-a');
+    joinAs(room, 'p-oly', 'PLAYER', 'Оля');
+
+    // #when
+    const player = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
+    await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
+
+    // #then
+    expect(player.store.$party.get()).toEqual([]);
+  });
+});
+
+async function startClient(
+  room: Room,
+  connectionId: string,
+  options: ClientOptions = {},
+): Promise<Client> {
+  const backing = createBacking();
+  const bus = createMemoryBus();
+  const role = options.role ?? 'GM';
+
+  const identity = {
+    room: room.room,
+    connectionId,
+    playerId: connectionId,
+    name: connectionId,
+    role,
+  };
+
+  const platform = createMockPlatform(bus, backing, identity);
+
+  for (const record of options.seeded ?? BASE) {
+    backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
+  }
+
+  platform.joinParty();
+
+  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
+    timing: TIMING,
+  });
+
+  const store = createProjectionStore();
+
+  const window = startReplicaClient(
+    createMockPlatform(bus, backing, identity).broadcast,
+    createSendQueue(platform.broadcast, TIMING),
+    store,
+    TIMING,
+  );
+
+  cleanups.push(engine.stop, window.stop);
+  await waitUntil(() => store.$loaded.get());
+
+  return { platform, backing, store, window };
+}
+
+function openRoom(): Room {
+  const room = createMemoryRoom();
+  const heard: Heard[] = [];
+
+  room.onRemote(SYNC_CHANNEL, 'observer', (event) => {
+    heard.push({ from: event.connectionId, data: event.data });
+  });
+
+  return { room, heard };
+}
+
+function joinAs(room: Room, connectionId: string, role: PlayerRole, name = connectionId): void {
+  room.room.join({ id: connectionId, connectionId, name, role });
+}
+
+function sortedParty(client: Client): PartyEntry[] {
+  return [...client.store.$party.get()].sort((first, second) =>
+    first.id < second.id ? -1 : first.id > second.id ? 1 : 0,
+  );
+}
+
+// The records one client sent to the room in commits, in send order.
+function committed(room: Room, from: string): VersionedRecord[] {
+  return room.heard.flatMap((message) => {
+    const data = Object(message.data);
+
+    return message.from === from && data.t === 'commit'
+      ? recordSchema.array().parse(data.records)
+      : [];
+  });
+}
+
+async function waitUntil(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + WAIT_LIMIT_MS;
+
+  while (!condition()) {
+    if (Date.now() > deadline) {
+      throw new Error('the condition never became true');
+    }
+
+    // Polling is the point here: each round has to let the paced queues run.
+    // oxlint-disable-next-line no-await-in-loop
+    await pause(POLL_MS);
+  }
+}
+
+function pause(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+function send(client: Client, command: Command): string {
+  const sent = client.window.sendCommand(command);
+
+  if (!sent.ok) {
+    throw new Error(`the window refused the command: ${sent.error}`);
+  }
+
+  return sent.value;
+}
+
+function rejection(client: Client, id: string): string | undefined {
+  return client.store.$rejections.get().get(id)?.reason;
+}
+
+function shown(client: Client, key: string): VersionedRecord | undefined {
+  return client.store.$records.get().get(key);
+}
+
+function stored(client: Client, key: string): VersionedRecord | null {
+  const text = client.backing.get(`${STORAGE_PREFIX}${key}`);
+
+  return text === null ? null : recordSchema.parse(JSON.parse(text));
+}
+
+function createBacking(): MockStorageBacking {
+  const entries = new Map<string, string>();
+
+  return {
+    get: (key) => entries.get(key) ?? null,
+    set: (key, value) => {
+      entries.set(key, value);
+    },
+    remove: (key) => {
+      entries.delete(key);
+    },
+    keys: () => [...entries.keys()],
+  };
+}

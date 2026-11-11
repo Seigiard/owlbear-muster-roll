@@ -28,6 +28,10 @@ export const copy = {
     // The accessible name of a read-only check mark: its field's label and its state.
     checked: (name: string): string => `${name}: отмечено`,
     unchecked: (name: string): string => `${name}: не отмечено`,
+    // The checkbox of one player's row in the access panel (UX-DR12), and its accessible name, which
+    // says whose it is.
+    mayEdit: 'Может править',
+    mayEditFor: (name: string): string => `${name}: может править`,
   },
   newCharacter: 'Новый персонаж',
   newNpc: 'Новый NPC',
@@ -105,5 +109,10 @@ export const copy = {
   unlinkFailed: 'Не удалось отвязать лист. Попробуйте ещё раз.',
   editDenied: 'Нет прав на правку',
   dataReplaced: 'Данные комнаты заменены',
+  // In the access panel when a change was refused, could not be sent, or got no answer. It follows
+  // the `duplicateFailed` pattern.
+  aclFailed: 'Не удалось изменить доступ. Попробуйте ещё раз.',
+  // The access panel with no player to list (UX-DR12).
+  noPlayers: 'Пока никого нет',
   guestNote: 'Гость привязан к своему браузеру. Из другого браузера доступ придётся выдать снова.',
 } as const;

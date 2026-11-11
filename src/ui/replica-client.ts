@@ -155,6 +155,7 @@ export function startReplicaClient(
       lastPart.sync,
     );
     store.setRoomCopy(lastPart.roomCopy);
+    store.setParty(lastPart.party);
     liveEngine = complete.engine;
     lastSeq = complete.seq;
     phase = 'live';
@@ -194,6 +195,7 @@ export function startReplicaClient(
     lastSeq = delta.seq;
     store.applyDelta(delta.records, delta.pending, delta.withdrawn, delta.notices, delta.sync);
     store.setRoomCopy(delta.roomCopy);
+    store.setParty(delta.party);
   }
 
   function handleMessage(message: EngineMessage): void {

@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 
+import { partyEntries, type PartyEntry } from '@/core/access';
 import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { rollDiceCell } from '@/core/dice-roll';
 import { recordDigest } from '@/core/digest';
@@ -233,7 +234,6 @@ export async function startReplicaEngine(
   let ownGeneration = persistence?.generation ?? INITIAL_GENERATION;
   let highestSeenGeneration = ownGeneration;
   const outbox = createCommitOutbox(sendQueue, () => ownGeneration);
-  const roster = createPartyRoster(platform.party);
   let sequence = 0;
   // AD-12: once a newer build has spoken in the room, the banner stays until a reload.
   let newerVersionSeen = false;
@@ -299,6 +299,11 @@ export async function startReplicaEngine(
   let roleReads = 0;
   // A window ignores deltas until its first projection, so none is worth sending before one.
   let projectionSent = false;
+  // The party as the windows last got it, as JSON, so a party change that changes nothing they show
+  // sends no delta.
+  let shownParty = '[]';
+  // Made after `stopped` and `projectionSent`, which its callback reads.
+  const roster = createPartyRoster(platform.party, followParty);
   // AD-6: only the engine sets it, from GM-origin messages the gate admits, never from the party.
   // Any admitted GM message counts, also one from a GM that is itself catching up, as the 2.4 spec
   // chooses: such a client still responds.
@@ -408,6 +413,7 @@ export async function startReplicaEngine(
       notices: currentNotices(),
       sync: { ...sync, gmLink, role },
       roomCopy: roomCopyStatus(),
+      party: windowParty(),
     };
 
     const parts = splitParts(records, pendingRecords, jsonByteLength(envelope));
@@ -520,6 +526,7 @@ export async function startReplicaEngine(
       notices: currentNotices(),
       sync: { ...sync, gmLink, role },
       roomCopy: roomCopyStatus(),
+      party: windowParty(),
     };
 
     const parts = splitParts(content.records, content.pending, jsonByteLength(envelope));
@@ -540,6 +547,26 @@ export async function startReplicaEngine(
       send({ ...envelope, seq: sequence, withdrawn, ...part }).catch((error) => {
         console.error('Muster Roll could not send a delta', error);
       });
+    }
+  }
+
+  // UX-DR12: only a GM's access panel lists the party, so a player's windows get none.
+  function windowParty(): PartyEntry[] {
+    const party = role === 'GM' ? partyEntries(roster.entries()) : [];
+
+    shownParty = JSON.stringify(party);
+
+    return party;
+  }
+
+  // A party change reaches a GM's windows at once, so the access panel lists who is in the room.
+  function followParty(): void {
+    if (stopped || !projectionSent || role !== 'GM') {
+      return;
+    }
+
+    if (JSON.stringify(partyEntries(roster.entries())) !== shownParty) {
+      emitDelta([]);
     }
   }
 

@@ -17,6 +17,9 @@ export type PressableProps = {
   accessibleName?: string;
   // The id of a message about this control, for an enabled one. A disabled one names its reason.
   describedBy?: string;
+  // For a control that shows or hides a panel: whether it is shown, and the panel's id.
+  expanded?: boolean;
+  controls?: string;
   ref?: Ref<HTMLButtonElement>;
 };
 
@@ -34,6 +37,8 @@ export function Pressable({
   autoFocus,
   accessibleName,
   describedBy,
+  expanded,
+  controls,
   ref,
 }: PressableProps & { className: string }): ReactNode {
   const reasonId = useId();
@@ -48,6 +53,8 @@ export function Pressable({
       onPress={onPress}
       autoFocus={autoFocus}
       aria-describedby={isDisabled ? reasonId : describedBy}
+      aria-expanded={expanded}
+      aria-controls={controls}
     >
       {children}
     </AriaButton>

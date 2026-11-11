@@ -1,3 +1,4 @@
+import type { PartyEntry } from '@/core/access';
 import type { PartyMember, PartyPort, PlayerRole } from '@/platform/ports';
 
 // `name` is the player name the party lists for the connection.
@@ -6,12 +7,15 @@ export type RoomSender = { role: PlayerRole; playerId: string; name: string };
 export type PartyRoster = {
   // The sender behind a connection id, or `null` when the party does not know it after one re-read.
   senderOf: (connectionId: string) => Promise<RoomSender | null>;
+  // The party as last read, one entry per connection, for the access panel.
+  entries: () => PartyEntry[];
   stop: () => void;
 };
 
 // AD-5: a room message names its sender only by connection id, and the party port maps it to a role
-// and a player id. Another GM connection of the same account is a member of its own.
-export function createPartyRoster(party: PartyPort): PartyRoster {
+// and a player id. Another GM connection of the same account is a member of its own. `onReplace`
+// hears every new read of the party.
+export function createPartyRoster(party: PartyPort, onReplace?: () => void): PartyRoster {
   let members = new Map<string, RoomSender>();
   // Counts party changes, so a read that started before one cannot bring the older list back.
   let epoch = 0;
@@ -25,6 +29,7 @@ export function createPartyRoster(party: PartyPort): PartyRoster {
         { role: player.role, playerId: player.id, name: player.name },
       ]),
     );
+    onReplace?.();
   }
 
   async function read(): Promise<void> {
@@ -70,6 +75,12 @@ export function createPartyRoster(party: PartyPort): PartyRoster {
 
       return members.get(connectionId) ?? null;
     },
+    entries: () =>
+      [...members.values()].map((member) => ({
+        id: member.playerId,
+        name: member.name,
+        role: member.role,
+      })),
     stop: unsubscribe,
   };
 }

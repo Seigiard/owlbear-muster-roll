@@ -42,5 +42,8 @@ export const TIMING: Timing = {
   openRequestTtlMs: 15000,
 };
 
+// An access change with no answer this long shows that it failed, so the panel never waits forever.
+export const ACCESS_CHANGE_TIMEOUT_MS = 5000;
+
 // A browser may read a download's object URL after the click returns, so it lives this long.
 export const DOWNLOAD_URL_LIFETIME_MS = 30000;

@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
+import { PARTY_LIMIT, PLAYER_NAME_MAX_LENGTH, type PartyEntry } from '@/core/access';
 import { dicePlaceSchema, shownValueSchema } from '@/core/dice-roll';
 import { fieldPatchTargetSchema } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
-import { recordSchema } from '@/core/records';
+import { playerIdSchema, recordSchema } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 
 export const UI_CHANNEL = 'app.muster-roll/ui';
@@ -49,6 +50,20 @@ export const syncSchema = z.strictObject({
   role: z.enum(['GM', 'PLAYER']),
 });
 
+// The party as the access panel needs it: one entry per player id, with its name and role, as
+// `partyEntries` builds it. Only a GM's engine fills it. The default lets a newer window read the
+// parts of an older background, which sends none.
+const partySchema = z
+  .array(
+    z.strictObject({
+      id: playerIdSchema,
+      name: z.string().refine((name) => Array.from(name).length <= PLAYER_NAME_MAX_LENGTH),
+      role: z.enum(['GM', 'PLAYER']),
+    }) satisfies z.ZodType<PartyEntry>,
+  )
+  .max(PARTY_LIMIT)
+  .default([]);
+
 const projectionRequestSchema = z.strictObject({
   t: z.literal('projection-request'),
   nonce: idSchema,
@@ -69,6 +84,7 @@ const projectionSchema = z
     notices: z.array(noticeSchema),
     sync: syncSchema,
     roomCopy: roomCopySchema,
+    party: partySchema,
   })
   .refine((part) => part.i <= part.n);
 
@@ -85,6 +101,7 @@ const deltaSchema = z.strictObject({
   notices: z.array(noticeSchema),
   sync: syncSchema,
   roomCopy: roomCopySchema,
+  party: partySchema,
 });
 
 // A command is an intent. Strict objects refuse any message that also carries k, d, c or a.
@@ -131,6 +148,17 @@ const linkClearSchema = z.strictObject({
   tokenId: z.string(),
 });
 
+// FR3: turns one player's write access to one character on or off. `name` is the player's name as
+// the GM's window knows it, kept in the record as the last known name. The engine checks the ids
+// and that the sheet is a live character.
+const aclSetSchema = z.strictObject({
+  type: z.literal('acl-set'),
+  sheetId: z.string(),
+  playerId: z.string(),
+  name: z.string(),
+  on: z.boolean(),
+});
+
 // The window sends the deflated data, not the JSON, because a preset over the message limit as
 // JSON can still fit once deflated. The engine decodes and validates it again.
 const presetUploadSchema = z.strictObject({
@@ -171,6 +199,7 @@ const commandIntentSchema = z.discriminatedUnion('type', [
   sheetDuplicateSchema,
   linkSetSchema,
   linkClearSchema,
+  aclSetSchema,
   presetUploadSchema,
   fieldPatchSchema,
   repeatRowAddSchema,
@@ -210,6 +239,10 @@ const commandRejectedSchema = z.strictObject({
     'invalid-token-id',
     // A `link-clear` for a token with no link.
     'unknown-link',
+    // A player id no `acl:` key can hold.
+    'invalid-player-id',
+    // Access is given on a character only, never on an NPC.
+    'not-character',
     // A player client edits nothing until Epic 3 brings `propose`.
     'not-allowed',
     // AD-14: a preset upload waits until catch-up ends.
@@ -282,6 +315,8 @@ export type GmLink = SyncState['gmLink'];
 export type RoomCopyStatus = z.infer<typeof roomCopySchema>;
 
 export type RoomCopyOutcome = z.infer<typeof roomCopyOutcomeSchema>;
+
+export type PartyList = z.infer<typeof partySchema>;
 
 export type Command = z.infer<typeof commandIntentSchema>;
 

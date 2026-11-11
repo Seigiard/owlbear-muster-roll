@@ -1,3 +1,4 @@
+import { aclKey, playerName } from '@/core/access';
 import {
   acceptedFieldValue,
   findPatchField,
@@ -15,6 +16,8 @@ import { decodePreset, encodePreset, type Preset, type PresetTemplate } from '@/
 import {
   fieldValuesSchema,
   hasLiveSheet,
+  playerDataSchema,
+  playerIdSchema,
   presetDataSchema,
   repDataSchema,
   repKeyPrefix,
@@ -329,6 +332,8 @@ export function createComposers(connectionId: string): Composers {
           return listOf(composeLinkSet(context, command));
         case 'link-clear':
           return listOf(composeLinkClear(context, command));
+        case 'acl-set':
+          return listOf(composeAclSet(context, command));
         case 'preset-upload':
           return listOf(composePresetUpload(context, command));
         case 'field-patch':
@@ -563,6 +568,55 @@ function composeLinkClear(
   return current === undefined || current.d === null
     ? err('unknown-link')
     : ok(tombstone(context, current));
+}
+
+// FR3: access on is a live `acl:` record with the player's last known name, and off is its
+// tombstone. Only a live character takes access. The name is trimmed and cut as a sheet name is,
+// and "" when no name is known. A change that leaves the record as it is refused, so a repeated
+// press adds no version.
+function composeAclSet(
+  context: ComposeContext,
+  command: Extract<Command, { type: 'acl-set' }>,
+): Result<VersionedRecord, RejectionReason> {
+  const current = liveSheetRecord(context, command.sheetId);
+
+  if (!current.ok) {
+    return current;
+  }
+
+  const sheet = sheetDataSchema.safeParse(current.value.d);
+
+  if (!sheet.success) {
+    return err('unknown-sheet');
+  }
+
+  if (sheet.data.kind !== 'pc') {
+    return err('not-character');
+  }
+
+  if (!playerIdSchema.safeParse(command.playerId).success) {
+    return err('invalid-player-id');
+  }
+
+  const k = aclKey(command.sheetId, command.playerId);
+  const existing = context.records.get(k);
+
+  if (!command.on) {
+    return existing === undefined || existing.d === null
+      ? err('unchanged')
+      : ok(tombstone(context, existing));
+  }
+
+  const name = playerName(command.name);
+
+  if (playerDataSchema.safeParse(existing?.d).data?.name === name) {
+    return err('unchanged');
+  }
+
+  const { c, a } = context.mint(k, existing?.c ?? 0);
+  const record: VersionedRecord = { k, d: { name }, c, a };
+
+  return recordFitsOneMessage(record) ? ok(record) : err('too-large');
 }
 
 // The live `row:` and `rep:` records of one sheet, by key, so copies list them in one order.

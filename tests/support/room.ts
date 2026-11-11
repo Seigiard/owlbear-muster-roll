@@ -239,11 +239,13 @@ export async function postRemote(
 }
 
 // Lists a connection in the room's party with no page behind it, so it never answers. A GM listed
-// this way keeps every other GM client waiting for an answer until its catch-up times out.
+// this way keeps every other GM client waiting for an answer until its catch-up times out. The
+// player id and the name are the connection id unless `as` names them.
 export async function addPartyMember(
   page: Page,
   connectionId: string,
   role: 'GM' | 'PLAYER',
+  as: { id?: string; name?: string } = {},
 ): Promise<void> {
   await page.evaluate(
     ([key, channel, member]) => {
@@ -255,7 +257,7 @@ export async function addPartyMember(
     [
       `${PARTY_STORAGE_PREFIX}${MOCK_ROOM_ID}`,
       `${PARTY_CHANNEL_PREFIX}${MOCK_ROOM_ID}`,
-      { id: connectionId, connectionId, name: connectionId, role },
+      { id: as.id ?? connectionId, connectionId, name: as.name ?? connectionId, role },
     ] as const,
   );
 }

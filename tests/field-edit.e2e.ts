@@ -616,7 +616,7 @@ test('Tab goes through the tab bar, the header, then every field and row control
   const reached: string[] = [];
 
   // #when
-  for (let press = 0; press < 14; press += 1) {
+  for (let press = 0; press < 15; press += 1) {
     // Each step reads the focus the previous key left.
     // oxlint-disable-next-line no-await-in-loop
     reached.push(await focusedControl(page));
@@ -629,6 +629,7 @@ test('Tab goes through the tab bar, the header, then every field and row control
     'tab Брок',
     'button Добавить персонажа',
     'textbox Имя персонажа',
+    'button Доступ',
     'button Действия с листом',
     'textbox Сила',
     'checkbox Сила',

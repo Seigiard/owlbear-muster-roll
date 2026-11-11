@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { canEdit } from '@/core/access';
 import { newSheetId } from '@/core/ids';
 import { decodePreset, type Preset } from '@/core/preset';
 import { hasLiveSheet, presetDataSchema, type VersionedRecord } from '@/core/records';
@@ -65,6 +66,8 @@ type FocusAfterLoss =
 type WindowRootProps = {
   // The window's own read, shown until the first projection brings the engine's role.
   initialRole: PlayerRole;
+  // This client's player id, which a player's write access names (FR3).
+  playerId: string;
   store: ProjectionStore;
   sendCommand: ReplicaClient['sendCommand'];
   requestRoll: ReplicaClient['requestRoll'];
@@ -88,8 +91,9 @@ platform.onReady(() => {
 
 async function start(): Promise<void> {
   try {
-    const [initialRole] = await Promise.all([
+    const [initialRole, playerId] = await Promise.all([
       platform.player.getRole(),
+      platform.player.getId(),
       followTheme(platform.theme, document.documentElement),
     ]);
 
@@ -110,6 +114,7 @@ async function start(): Promise<void> {
     root.render(
       <WindowRoot
         initialRole={initialRole}
+        playerId={playerId}
         store={store}
         sendCommand={client.sendCommand}
         requestRoll={client.requestRoll}
@@ -123,6 +128,7 @@ async function start(): Promise<void> {
 
 function WindowRoot({
   initialRole,
+  playerId,
   store: projection,
   sendCommand,
   requestRoll,
@@ -543,6 +549,8 @@ function WindowRoot({
               {confirmationFor(sheet)}
               <SheetHeader
                 key={id}
+                kind="pc"
+                playerId={playerId}
                 sheetId={sheet.sheetId}
                 name={sheet.name}
                 tokenLinked={linkedSheets.has(sheet.sheetId)}
@@ -675,7 +683,10 @@ function WindowRoot({
             loading
           ) : (
             <>
-              <ReadOnlySheetHeader name={sheet.name} />
+              <ReadOnlySheetHeader
+                name={sheet.name}
+                canEdit={canEdit(records, sheet.sheetId, playerId)}
+              />
               <SheetBody
                 template={preset.character}
                 sheetId={sheet.sheetId}

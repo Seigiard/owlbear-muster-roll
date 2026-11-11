@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import {
   Button as AriaButton,
@@ -12,15 +12,23 @@ import {
   TextField,
 } from 'react-aria-components';
 
+import type { SheetData } from '@/core/records';
 import { parseSheetName } from '@/core/sheets';
 import { copy } from '@/ui/copy';
 import { Chip } from '@/ui/primitives/chip';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
+import { AccessPanel } from './access-panel';
 import { DuplicateCount } from './duplicate-count';
 
-type SheetHeaderProps = {
+// A character's header has the "Доступ" chip, and its panel leaves out this client's own player
+// id. An NPC takes no access (UX-DR10).
+type SheetKindProps =
+  | { kind: Extract<SheetData['kind'], 'pc'>; playerId: string }
+  | { kind: Extract<SheetData['kind'], 'npc'>; playerId?: undefined };
+
+type SheetHeaderProps = SheetKindProps & {
   // `character` heads a character's tab. `npc` heads one NPC's block on the NPC tab.
   variant?: 'character' | 'npc';
   sheetId: string;
@@ -28,7 +36,7 @@ type SheetHeaderProps = {
   // A live `link:` record points to this sheet (UX-DR10, UX-DR19).
   tokenLinked: boolean;
   sendCommand: ReplicaClient['sendCommand'];
-  store: Pick<ProjectionStore, '$rejections' | '$records'>;
+  store: Pick<ProjectionStore, '$rejections' | '$records' | '$party'>;
   // True for a sheet this window has just created, so the GM can type its name at once.
   focusName: boolean;
   onNameFocused: () => void;
@@ -67,6 +75,8 @@ const VARIANT = {
 } as const;
 
 export function SheetHeader({
+  kind,
+  playerId,
   variant = 'character',
   sheetId,
   name,
@@ -81,6 +91,9 @@ export function SheetHeader({
 }: SheetHeaderProps): ReactNode {
   const inputRef = useRef<HTMLInputElement>(null);
   const actionsRef = useRef<HTMLButtonElement>(null);
+  const accessRef = useRef<HTMLButtonElement>(null);
+  const accessPanelId = useId();
+  const [accessOpen, setAccessOpen] = useState(false);
   const rejections = useStore(store.$rejections);
   const [edit, setEdit] = useState<NameEdit>(NO_EDIT);
   // `null` while the duplicate block is closed, else how many times "Дублировать…" was picked.
@@ -150,6 +163,12 @@ export function SheetHeader({
     actionsRef.current?.focus();
   }, []);
 
+  // `Esc` in the panel closes it, and the focus goes back to "Доступ", where the GM opened it.
+  const closeAccess = useCallback(() => {
+    setAccessOpen(false);
+    accessRef.current?.focus();
+  }, []);
+
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
     if (event.key === 'Enter') {
       save();
@@ -178,6 +197,21 @@ export function SheetHeader({
           />
           <FieldError className="text-label-sm text-danger-text">{copy.valueTooLong}</FieldError>
         </TextField>
+        {kind === 'pc' ? (
+          <span className="shrink-0">
+            <Chip
+              ref={accessRef}
+              pressed={accessOpen}
+              expanded={accessOpen}
+              controls={accessOpen ? accessPanelId : undefined}
+              onPress={() => {
+                setAccessOpen((open) => !open);
+              }}
+            >
+              {copy.place.access}
+            </Chip>
+          </span>
+        ) : null}
         <span className="shrink-0">
           <Chip>{tokenLinked ? copy.status.tokenLinked : copy.status.noToken}</Chip>
         </span>
@@ -220,6 +254,16 @@ export function SheetHeader({
           </Popover>
         </MenuTrigger>
       </header>
+      {playerId !== undefined && accessOpen ? (
+        <AccessPanel
+          id={accessPanelId}
+          sheetId={sheetId}
+          ownPlayerId={playerId}
+          store={store}
+          sendCommand={sendCommand}
+          onClose={closeAccess}
+        />
+      ) : null}
       {canDuplicate && duplicateAsk !== null ? (
         <DuplicateCount
           sheetId={sheetId}
@@ -234,14 +278,23 @@ export function SheetHeader({
   );
 }
 
-// A player's header: the name as text, with no rename and no "⋯", and the status beside it.
-export function ReadOnlySheetHeader({ name }: { name: string }): ReactNode {
+// A player's header: the name as text, with no rename and no "⋯", and the status beside it. The
+// status says whether a live `acl:` record gives this player write access (UX-DR10).
+export function ReadOnlySheetHeader({
+  name,
+  canEdit,
+}: {
+  name: string;
+  canEdit: boolean;
+}): ReactNode {
   const look = VARIANT.character;
 
   return (
     <header className={`flex items-baseline gap-2 ${look.header}`}>
       <h1 className={`min-w-[0] px-1 text-text [overflow-wrap:anywhere] ${look.name}`}>{name}</h1>
-      <span className="shrink-0 text-label-sm text-text-muted">{copy.status.readOnly}</span>
+      <span className="shrink-0 text-label-sm text-text-muted">
+        {canEdit ? copy.status.canEdit : copy.status.readOnly}
+      </span>
     </header>
   );
 }

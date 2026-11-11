@@ -44,6 +44,7 @@ const PROJECTION: EngineMessage = {
     role: 'GM',
   },
   roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null },
+  party: [],
 };
 
 const OPEN: EngineMessage = { t: 'open-sheet', id: 'open-1', sheetId: 'brok' };

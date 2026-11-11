@@ -1,5 +1,6 @@
 import { atom, type ReadableAtom } from 'nanostores';
 
+import type { PartyEntry } from '@/core/access';
 import type { VersionedRecord } from '@/core/records';
 import { ROOM_METADATA_BYTE_LIMIT } from '@/core/snapshot';
 import type {
@@ -29,6 +30,8 @@ export type ProjectionStore = {
   // FR14: the last sheet "Открыть лист" asked this window to show, or `null` before any. The window
   // tells a new request from one it has taken by its id.
   $openRequest: ReadableAtom<OpenSheetRequest | null>;
+  // UX-DR12: the party as the engine last read it, for a GM's access panel. A player's is empty.
+  $party: ReadableAtom<readonly PartyEntry[]>;
   replaceAll: (
     records: readonly VersionedRecord[],
     pending: readonly VersionedRecord[],
@@ -46,6 +49,7 @@ export type ProjectionStore = {
   setRollOutcome: (outcome: RollOutcomeMessage) => void;
   setRoomCopy: (roomCopy: RoomCopyStatus) => void;
   setOpenRequest: (request: OpenSheetRequest) => void;
+  setParty: (party: readonly PartyEntry[]) => void;
 };
 
 // Far more than the commands or rolls one window has on their way at once.
@@ -80,6 +84,7 @@ export function createProjectionStore(): ProjectionStore {
   const $sync = atom<SyncState>(UNKNOWN_SYNC);
   const $roomCopy = atom<RoomCopyStatus>(UNKNOWN_ROOM_COPY);
   const $openRequest = atom<OpenSheetRequest | null>(null);
+  const $party = atom<readonly PartyEntry[]>([]);
   let replica = new Map<string, VersionedRecord>();
   let pendingView = new Map<string, VersionedRecord>();
 
@@ -106,6 +111,7 @@ export function createProjectionStore(): ProjectionStore {
     $sync,
     $roomCopy,
     $openRequest,
+    $party,
     replaceAll: (records, pending, notices, sync) => {
       replica = new Map(records.map((record) => [record.k, record]));
       // A live engine has no pending view.
@@ -147,6 +153,12 @@ export function createProjectionStore(): ProjectionStore {
     },
     setOpenRequest: (request) => {
       $openRequest.set(request);
+    },
+    setParty: (party) => {
+      // Every delta carries the party, so an unchanged one keeps its value and wakes no view.
+      if (JSON.stringify(party) !== JSON.stringify($party.get())) {
+        $party.set(party);
+      }
     },
   };
 }
