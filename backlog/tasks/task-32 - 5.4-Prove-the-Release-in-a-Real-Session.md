@@ -4,7 +4,7 @@ title: 5.4 Prove the Release in a Real Session
 status: To Do
 assignee: []
 created_date: '2026-11-10T15:37:00Z'
-updated_date: '2026-11-11T11:01:00Z'
+updated_date: '2026-11-11T11:15:00Z'
 labels:
   - epic-5
 milestone: m-4
@@ -49,4 +49,6 @@ Release check prepared by the agent (Epics 1-5 built and verified on the mock on
 - Owner gate: deploy the release candidate (wrangler deploy is the owner's step).
 - Live-room checklist: preset upload and download; GM edit; access panel and owner pick; player edit with the "Ожидает" mark (close the GM tab to see it at once, reopen to clear); revoke during an edit gives "Нет прав на правку"; character roll; NPC roll seen only by GM clients; token open; no-GM read; edit then close the window at once; "Скачать снимок" really saves a file in the Owlbear iframe; "Загрузить снимок" in a second room, a second GM tab sees "Данные комнаты заменены"; preset change over existing sheets with the erase confirmation; screen reader announces the row mark.
 - Session gate: compare snapshots exported at session end, after a reload, and on a second GM device (same bytes expected for the same data).
+
+Owner decision (AC 1): the existing tests/fixtures/presets/d6-pool.json counts as the second-system preset; loading it in the live room closes AC 1. A hand-built preset waits for the preset configurator (see the new configurator task).
 <!-- SECTION:NOTES:END -->
