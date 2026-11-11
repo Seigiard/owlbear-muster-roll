@@ -322,7 +322,6 @@ CAP-16 is retired. CAP-20 to CAP-28 belong to the v2 builder, which this spine d
 | Timeout, pause and delay values | One owner each | First live-room test |
 | Send spacing | One owner. Start at 50 ms, under the measured limit of about 25 messages per second per connection | If a live session gets `RateLimitHit` |
 | Preset JSON keys beyond those in `preset-format.md` | One schema in `core/preset` owns them, and `docs/preset-format.md` documents them | First preset |
-| Room copy margin on the sheet set and single sheet format | Re-measured by `snapshot-size.test.ts` on the new worst case, under the 1500-byte gate of TASK-34 | TASK-41 build |
 | Snapshot byte layout, such as an author table | One codec in `core/snapshot`, under the AD-12 version rule | When size pressure appears |
 | Removing tombstones inside a generation | Only needed if a room runs out of space | First real-format size measurement |
 | Deleting data of old rooms from `localStorage` | Quota is about 5 MB and failure raises a notice | First quota notice |
