@@ -4,11 +4,14 @@ companions:
   - preset-format.md
   - storage-and-sync.md
   - stack.md
+  - preset-builder.md
+  - ../../../docs/preset-format.md
   - ../../planning-artifacts/architecture/architecture-owlbear-muster-roll-2026-11-10/ARCHITECTURE-SPINE.md
   - ../../planning-artifacts/ux-designs/ux-owlbear-muster-roll-2026-11-10/DESIGN.md
   - ../../planning-artifacts/ux-designs/ux-owlbear-muster-roll-2026-11-10/EXPERIENCE.md
 sources:
   - ../../forge/muster-roll/forged-idea.md
+  - ../../forge/preset-builder/forged-idea.md
 ---
 
 > **Canonical contract.** This SPEC and the files in `companions:` are the complete, preservation-validated contract for what to build, test, and validate. Source documents listed in frontmatter are for traceability — consult them only if you need narrative rationale or prose color this contract intentionally omits.
@@ -17,7 +20,7 @@ sources:
 
 ## Why
 
-Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep the whole party and the NPCs in one room, for any game system. The simple sheet extension, dummy-sheet, stores each sheet in the player's browser. It has no room storage, no presets and no GM-owned sheets. Muster Roll gives one room GM-owned sheets that a preset defines. Version 1 is a POC without a server. It must prove that this model holds for a real session. During play, the GM and players open sheets to see current stats and inventory, and dice cells spare players from memorising the rules.
+Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep the whole party and the NPCs in one room, for any game system. The simple sheet extension, dummy-sheet, stores each sheet in the player's browser. It has no room storage, no presets and no GM-owned sheets. Muster Roll gives one room GM-owned sheets that a preset defines. Version 1 is a POC without a server. It must prove that this model holds for a real session. During play, the GM and players open sheets to see current stats and inventory, and dice cells spare players from memorising the rules. Today a GM describes a sheet only by writing preset JSON, and nobody wants to. v2 adds a preset builder, so a GM builds a preset without JSON (`preset-builder.md`).
 
 ## Capabilities
 
@@ -78,6 +81,33 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - **CAP-19**
   - **intent:** The GM can mark a player as the owner of a character.
   - **success:** A character has at most one owner. The owner's client shows that character first. Choosing an owner turns on write access for that player, and the GM can turn it off (CAP-3).
+- **CAP-20** (v2)
+  - **intent:** A GM can build a preset without writing JSON, on a separate page of the deployed site.
+  - **success:** Starting blank, from a repository example or from a file, a GM makes a preset with both templates and downloads it with no JSON editing. A file that fails the preset checks does not open and shows the upload's message.
+- **CAP-21** (v2)
+  - **intent:** The room and the builder exchange a preset by file, and the extension settings open the builder.
+  - **success:** A preset downloaded from the extension opens in the builder. A file downloaded from the builder uploads through CAP-8. The settings button opens the builder in a new tab.
+- **CAP-22** (v2)
+  - **intent:** The GM edits the preset through a structure tree and a form, beside a live preview.
+  - **success:** A form edit redraws the preview at once, drawn by the extension's own sheet components. A click on a preview cell selects its item in the tree.
+- **CAP-23** (v2)
+  - **intent:** The builder covers the whole preset format.
+  - **success:** Both templates, section `title`, `width`, `columns` and `repeat`, every cell kind and `window` can each be set in the builder.
+- **CAP-24** (v2)
+  - **intent:** Every field has an id that the GM can see and rewrite, and formulas offer the ids as completions.
+  - **success:** A new field gets an id from its label that follows the id rules and is unique in its scope. A label change keeps the id. The field form shows the id, and the GM can rewrite it to `str`.
+- **CAP-25** (v2)
+  - **intent:** Renaming a field id rewrites the formulas that refer to it.
+  - **success:** Renaming `str` rewrites `str` by whole word in every formula that resolves to that field, leaves `str_tired` unchanged and says how many formulas changed. In a preset opened from a file, a changed id warns that the field's stored values in the room will be erased.
+- **CAP-26** (v2)
+  - **intent:** The builder keeps one draft by itself.
+  - **success:** After the page is closed and opened again, the builder offers to continue the draft.
+- **CAP-27** (v2)
+  - **intent:** The GM can undo and redo every edit in the builder.
+  - **success:** Each edit kind can be undone and then redone, and the preset returns to the same state each time.
+- **CAP-28** (v2)
+  - **intent:** The builder allows invalid states while editing and downloads only a valid preset.
+  - **success:** Each error shows at its tree item and its preview cell, and a problem counter jumps to the first. Download is enabled only when `parsePresetFile` accepts the preset.
 
 ## Constraints
 
@@ -93,6 +123,9 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - A room has one preset file. It holds a character template and a short NPC template, and all sheets follow it.
 - Hirelings and pets are characters, so NPCs stay GM-only.
 - The interface matches the simplicity of dummy-sheet. Muster Roll takes no code or storage from it.
+- The builder is a top-level page on the deployed site, outside the Owlbear iframe. The iframe's storage is partitioned from a top-level tab, so the extension and the builder exchange no data through storage.
+- The builder's preview uses the extension's own sheet components. No second sheet renderer exists.
+- The builder checks a preset with `parsePresetFile`, the upload's own check, and shows the upload's refusal messages.
 
 ## Non-goals
 
@@ -102,7 +135,9 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - One editing GM tab.
 - Per-character sections, computed display fields and per-edit approval.
 - An in-extension preset editor and per-field confirmation of a preset upload. Presets are usually set before a game.
-- Past the POC: a separate preset editor with preview, request-and-confirm write access, + and − buttons as a property of number fields, token-linked stats, guest "open this character", sending rolls to the Dice extension.
+- Past the POC: request-and-confirm write access, + and − buttons as a property of number fields, token-linked stats, guest "open this character", sending rolls to the Dice extension.
+- In the builder: in-place editing on the sheet, a text markup in place of JSON, hidden field ids, blocking of edits that make the preset invalid, and repair of a file that fails the preset checks.
+- After v2: the settings button passes the room's preset to the builder in the URL fragment, and the builder writes to the room directly. Direct write waits for the v2 server.
 - Merging two simultaneous edits of one row. Only the latest stays.
 - Merging an imported snapshot into room data.
 - Player edits while no GM client responds, in v1. A server in v2 changes this.
@@ -113,6 +148,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 
 - One real session runs with the party and NPCs kept only in the extension, and no data is lost.
 - A preset for a second system is built without code changes.
+- v2: a GM builds a second-system preset in the builder without editing JSON, and the extension accepts the downloaded file on upload.
 
 ## Assumptions
 
@@ -124,3 +160,9 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - A joining client gets current data from an online GM client, otherwise from the last snapshot.
 - The interface text is Russian in v1.
 - The interface follows the live Owlbear theme, and no separate palette exists.
+- The builder interface text is Russian, like the extension and the refusal messages it reuses.
+- The changed-id warning compares ids with the file the builder opened. A preset started blank or from an example shows no such warning.
+
+## Open Questions
+
+- Can the Owlbear extension iframe open a new tab? The v2 settings button (CAP-21) depends on it, and the extension opens no tab today.
