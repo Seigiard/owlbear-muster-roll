@@ -117,7 +117,7 @@ A sheet's name is the value of its Набор's name field, a Лист's name is
 | No data and no GM | Player | "ГМ ещё не заходил. Листов пока нет." with the no-GM banner |
 | Набор with no sheets | Tab bar | GM sees that Набор's "+" in its place. A player sees nothing for it |
 | No visible tab | Player | "ГМ ещё не создал листы." |
-| Room copy of an older format | GM | The banner names "Очистить всё". The room shows no data until it is cleared or a preset is loaded |
+| Room copy of an older format | GM | The banner names "Очистить всё" and stays until the room is cleared. No room copy is saved meanwhile |
 | No GM responds | Player | Warning banner. Sheets stay readable. The edit stays visible |
 | Pending edit | Player | The typed value shows at once. The "Ожидает" mark appears when the edit is unanswered after a short delay, or at once with no GM. A pending new block carries the same mark. A pending removed block stays dimmed with the mark |
 | Edit confirmed | Player | The mark disappears. No message |
