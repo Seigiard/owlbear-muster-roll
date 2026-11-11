@@ -75,8 +75,8 @@ const BASE_SECTIONS: PresetSection[] = [
   repeat(text('attack'), number('bonus')),
 ];
 
-// A sheet of a sheet set with a plain row of a number and a check, a text row, a number row, and
-// a repeat section of a text and a number.
+// A sheet of a sheet set with a plain row of a number and a check, a text row, a number row, and a
+// repeat section of a text and a number.
 const BASE = preset(BASE_SECTIONS);
 
 function sheet(id: string, set = 'pc'): VersionedRecord {

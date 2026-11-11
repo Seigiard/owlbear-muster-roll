@@ -149,8 +149,8 @@ export function dicePlusDice(terms: readonly DiceTerm[]): DicePlusDice | null {
   };
 }
 
-// AD-13: the roll's `hidden`, computed once, also picks where its dice show: a hidden sheet's only on
-// GM clients, as its notification.
+// AD-13: the roll's `hidden`, computed once, also picks where its dice show: a hidden sheet's only
+// on GM clients, as its notification.
 export function dicePlusTarget(hidden: boolean): DicePlusTarget {
   return hidden ? 'gm_only' : 'everyone';
 }

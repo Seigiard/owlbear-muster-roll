@@ -832,6 +832,24 @@ describe("a player's edit", () => {
     }).toEqual({ sent: again, shown: again, replica: current });
   });
 
+  test('stale with a current record below its c: rebuilt, and proposed again only on its backoff', async () => {
+    // #given: the GM's answer is stale over a field its template lacks, not over the version.
+    const { room, player } = await playerWithSilentGm();
+
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1);
+
+    // #when
+    answer(room, { ...reject({ k: STR_ROW.k, c: 3, a: PLAYER_ID }, 'stale'), current: STR_ROW });
+    await pause(50);
+
+    // #then
+    expect({ sent: proposals(room).length, pending: pendingKeys(player) }).toEqual({
+      sent: 1,
+      pending: [STR_ROW.k],
+    });
+  });
+
   test('stale over a removed row it edits: dropped with "Нет прав на правку"', async () => {
     // #given
     const { room, player } = await playerWithSilentGm();

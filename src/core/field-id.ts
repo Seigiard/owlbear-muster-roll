@@ -21,8 +21,8 @@ export function isFieldId(id: string): boolean {
   );
 }
 
-// A template id follows the field id rules. It also names a single sheet's sheet id and a
-// sheet's `set`, so it stays within the sheet id length.
+// A template id follows the field id rules. It also names a single sheet's sheet id and a sheet's
+// `set`, so it stays within the sheet id length.
 export const TEMPLATE_ID_MAX_LENGTH = 64;
 
 export function isTemplateId(id: string): boolean {

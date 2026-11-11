@@ -102,8 +102,8 @@ function loadPreset(): Preset {
 }
 
 // The tools that make one room's records with real ids: nanoid sheet and instance ids, Owlbear
-// UUIDs for players and tokens, and two GM connections as authors. A seeded random keeps the
-// number reproducible.
+// UUIDs for players and tokens, and two GM connections as authors. A seeded random keeps the number
+// reproducible.
 type Maker = {
   random: () => number;
   author: () => string;

@@ -88,11 +88,6 @@ export function targetFields(
   return row === null ? null : row.filter((cell) => cell.kind === 'field');
 }
 
-// A repeat section is named by the id of its first field in row order.
-export function isRepeatSectionId(layout: TemplateLayout, sectionId: string): boolean {
-  return repeatSectionById(layout, sectionId) !== null;
-}
-
 // `number` takes a finite number, `text` a non-empty string and `check` a boolean. Any type may
 // be cleared.
 export function acceptedFieldValue(
@@ -108,8 +103,8 @@ export function acceptedFieldValue(
   return parsed.success ? ok(parsed.data) : err('invalid-value');
 }
 
-// The record data after the patch, merged into what the record holds now. An absent or deleted
-// row record starts empty. A repeat block must be live, because only an add command makes one. A patch
+// The record data after the patch, merged into what the record holds now. An absent or deleted row
+// record starts empty. A repeat block must be live, because only an add command makes one. A patch
 // that changes nothing is refused, so no version is minted for it.
 export function patchedRecord(
   sheetId: string,

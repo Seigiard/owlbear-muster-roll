@@ -21,7 +21,8 @@ import {
   type VersionedRecord,
 } from '@/core/records';
 
-// The longest name a duplicate gives a repeat block, and the longest player name kept.
+// The most code points of a sheet's name that a roll or a view shows. A name field holds any text,
+// so its value is cut to this.
 export const SHEET_NAME_MAX_LENGTH = 100;
 
 // The nanoid alphabet. A narrower rule than the record key's, so an id never holds ":". A template
@@ -187,7 +188,9 @@ export function sheetName(
   );
 
   // The preset schema makes every name field a `text` field.
-  return nameText('text', values.data?.[policy.nameField.fieldId]);
+  const name = nameText('text', values.data?.[policy.nameField.fieldId]);
+
+  return Array.from(name).slice(0, SHEET_NAME_MAX_LENGTH).join('');
 }
 
 // A repeat block is named by its first field's value, "" when it has none.

@@ -82,16 +82,16 @@ const EMPTY_MIGRATION: PresetMigration = {
   last: [],
 };
 
-// AD-14: one pass over the full replica, template by template. A template keeps its sheets when
-// the new preset has a template of the same `id` and `kind`, and each sheet is checked against the
-// old and new form of it. A value is read only where the old preset shows it: its field in the row
-// or repeat block of its record, with its type. Any other stored value is no value and leaves
-// without a count. A `row:` value survives when the new template has its id in any non-repeat row
-// with the same type, and moves to that row. A `rep:` repeat block moves to the new section of its
-// old one with its `instanceId`, `order` and the values whose id the new section has with the same
-// type. A key present with `false` holds a value. A template that is gone, or changed in `id` or
-// `kind`, deletes its sheets with every value they hold. With no old preset nothing is read, so
-// nothing moves or counts.
+// AD-14: one pass over the full replica, template by template. A template keeps its sheets when the
+// new preset has a template of the same `id` and `kind`, and each sheet is checked against the old
+// and new form of it. A value is read only where the old preset shows it: its field in the row or
+// repeat block of its record, with its type. Any other stored value is no value and leaves without
+// a count. A `row:` value survives when the new template has its id in any non-repeat row with the
+// same type, and moves to that row. A `rep:` repeat block moves to the new section of its old one
+// with its `instanceId`, `order` and the values whose id the new section has with the same type. A
+// key present with `false` holds a value. A template that is gone, or changed in `id` or `kind`,
+// deletes its sheets with every value they hold. With no old preset nothing is read, so nothing
+// moves or counts.
 export function presetDiff(
   records: ReadonlyMap<string, VersionedRecord>,
   oldPreset: Preset | null,
@@ -434,8 +434,8 @@ type RepeatRow = {
 // each next one goes after the highest `order` so far. A section with no new section, or a key a
 // live row keeps or another moved row claimed, leaves the row tombstoned with every value it held
 // counted. A key that already holds the cells the move would write is a retry of a batch that
-// stopped part way: only the old key goes, uncounted. A section the old preset does not have
-// shows nothing, so its row goes uncounted.
+// stopped part way: only the old key goes, uncounted. A section the old preset does not have shows
+// nothing, so its row goes uncounted.
 function planRepeatRows(
   records: ReadonlyMap<string, VersionedRecord>,
   keys: readonly string[],

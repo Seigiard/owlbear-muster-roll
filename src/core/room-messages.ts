@@ -167,7 +167,8 @@ const rollSchema = z.strictObject({
   result: rollResultSchema,
 });
 
-// AD-9: the new generation of an import or a wipe. The data comes through catch-up or the room copy.
+// AD-9: the new generation of an import or a wipe. The data comes through catch-up or the room
+// copy.
 const resetSchema = z.strictObject({
   v: z.literal(FORMAT_VERSION),
   g: generationSchema,

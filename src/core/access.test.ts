@@ -429,6 +429,7 @@ const PROPOSAL_PRESET: Preset = {
       sections: [
         { rows: [[{ kind: 'field', type: 'text', id: 'items' }]] },
         { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'gear' }]] },
+        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'tool' }]] },
       ],
     },
     {
@@ -470,7 +471,8 @@ const OWN_ITEM: VersionedRecord = {
 // "Брок" is a live sheet of a sheet set Оля may edit, "Лиза" a deleted one she held access to,
 // "Кира" a live one she has no access to, "Босс" a sheet of a hidden sheet set she holds an `acl:`
 // of, and "stray" a sheet record whose `set` is a single sheet. She also holds an `acl:` of the
-// single sheets "npc" and "journal", which a single sheet does not read.
+// single sheets "npc" and "journal", which a single sheet does not read. The single sheet
+// "inventory" holds the instance ids "t1", live, and "t2", removed, in its section "tool".
 const PROPOSAL_CONTEXT: ProposalContext = {
   preset: PROPOSAL_PRESET,
   records: byKey([
@@ -489,6 +491,8 @@ const PROPOSAL_CONTEXT: ProposalContext = {
     LIVE_ITEM,
     REMOVED_ITEM,
     OWN_ITEM,
+    { k: 'rep:inventory:tool:t1', d: { order: 0, cells: { tool: 'Кирка' } }, c: 1, a: 'gm-a' },
+    { k: 'rep:inventory:tool:t2', d: null, c: 2, a: 'gm-a' },
   ]),
 };
 
@@ -628,6 +632,22 @@ describe('checkProposal', () => {
       { k: 'rep:brok:item:r9', d: { order: 1, cells: {} }, c: 1 + PROPOSE_C_MAX_STEP, a: 'p-conn' },
     ],
     ['the largest safe c', { ...STR_ROW, d: { str: 6 }, c: Number.MAX_SAFE_INTEGER, a: 'p-conn' }],
+    [
+      'a new repeat block whose cells set a field its section does not have',
+      { k: 'rep:brok:item:r9', d: { order: 1, cells: { str: 1 } }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a new row record that sets a field its row does not have',
+      { k: 'row:inventory:items', d: { gear: 'Фонарь' }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a new repeat block whose instance id another section of the sheet holds live',
+      { k: 'rep:inventory:gear:t1', d: { order: 0, cells: { gear: 'Фонарь' } }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a new repeat block whose instance id another section of the sheet holds removed',
+      { k: 'rep:inventory:gear:t2', d: { order: 0, cells: { gear: 'Фонарь' } }, c: 1, a: 'p-conn' },
+    ],
   ])('denies %s', (_name, record) => {
     // #when
     const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, record);

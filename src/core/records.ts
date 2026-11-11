@@ -48,8 +48,8 @@ export const presetDataSchema = z.base64().min(1);
 // A template id of the preset, as `set` names one.
 export const templateIdSchema = z.string().refine(isTemplateId);
 
-// AD-2: a sheet of a sheet set. `set` names its sheet set. Its name is the value of the sheet
-// set's name field, kept in a `row:` record, never here. A single sheet has no `sheet:` record.
+// AD-2: a sheet of a sheet set. `set` names its sheet set. Its name is the value of the sheet set's
+// name field, kept in a `row:` record, never here. A single sheet has no `sheet:` record.
 export const sheetDataSchema = z.strictObject({ set: templateIdSchema, order: z.number() });
 
 export const repDataSchema = z.strictObject({ order: z.number(), cells: fieldValuesSchema });

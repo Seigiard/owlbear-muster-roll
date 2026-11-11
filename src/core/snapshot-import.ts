@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 import { FORMAT_VERSION } from '@/core/format-version';
 import type { JsonValue } from '@/core/json';
+import { blockIndex, linkDataOf, liveLinkTarget } from '@/core/link-target';
 import { recordFitsOneMessage } from '@/core/message-size';
 import {
   PRESET_FILE_BYTE_LIMIT,
@@ -156,8 +157,9 @@ type Dropped = string[];
 // that holds its id now, a repeat block into the repeat section of its file section, with its
 // `instanceId` and `order`. A value whose id the template does not have in that scope, or whose
 // type is not its field's, is dropped and counted. The output holds the current `preset`, every
-// `link:` of a kept sheet, and no `acl:` or `plink:` record, so every player is read-only and no
-// sheet has an owner. Every record is at `c: 1` by `author`.
+// `link:` of a kept sheet that is live over the output (AD-19), and no `acl:` or `plink:` record,
+// so every player is read-only and no sheet has an owner. An inert link is dropped uncounted. Every
+// record is at `c: 1` by `author`.
 export function importSnapshot(
   file: SnapshotFile,
   current: CurrentPreset,
@@ -195,20 +197,49 @@ export function importSnapshot(
     }
   }
 
+  const parsed = parsedRecords(records);
+
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  const placed = new Map(parsed.value.map((record) => [record.k, record]));
+  const blocks = blockIndex(placed.values());
+  const links: Candidate[] = [];
+
   for (const link of file.links) {
-    if (kept.has(link.sheetId)) {
-      add(
-        `link:${link.tokenId}`,
-        link.instanceId === undefined
-          ? { s: link.sheetId }
-          : { s: link.sheetId, i: link.instanceId },
-      );
+    const target = { sheetId: link.sheetId, instanceId: link.instanceId ?? null };
+
+    if (kept.has(link.sheetId) && liveLinkTarget(placed, current.preset, target, blocks) !== null) {
+      links.push({ k: `link:${link.tokenId}`, d: linkDataOf(target), c: 1, a: author });
     }
   }
 
+  const parsedLinks = parsedRecords(links);
+
+  if (!parsedLinks.ok) {
+    return parsedLinks;
+  }
+
+  const output = [...parsed.value, ...parsedLinks.value];
+
+  output.sort((left, right) => compareCodeUnits(left.k, right.k));
+
+  return ok({
+    records: output,
+    count: dropped.length - droppedSheets,
+    sheets: droppedSheets,
+    digest: erasedDigest(dropped),
+  });
+}
+
+// Every candidate through the record schema, each within one message.
+function parsedRecords(
+  candidates: readonly Candidate[],
+): Result<VersionedRecord[], SnapshotImportFailure> {
   const parsed: VersionedRecord[] = [];
 
-  for (const record of records) {
+  for (const record of candidates) {
     const valid = recordSchema.safeParse(record);
 
     if (!valid.success) {
@@ -222,14 +253,7 @@ export function importSnapshot(
     parsed.push(valid.data);
   }
 
-  parsed.sort((left, right) => compareCodeUnits(left.k, right.k));
-
-  return ok({
-    records: parsed,
-    count: dropped.length - droppedSheets,
-    sheets: droppedSheets,
-    digest: erasedDigest(dropped),
-  });
+  return ok(parsed);
 }
 
 // AD-18: a sheet with `set` belongs to that sheet set, unless its id is a template id. A sheet with
@@ -320,8 +344,8 @@ type SectionMove = { sectionId: string; target: string | null; rows: readonly Fi
 // Every file section goes to one current section, or to none. The file sections of one current
 // section keep their order: the one with the section's own id first, then the others by id. The
 // first keeps its `order`, and each next one shifts so its lowest `order` comes after the highest
-// so far. A repeat block whose `instanceId` an earlier one of the sheet took is
-// dropped with all its values.
+// so far. A repeat block whose `instanceId` an earlier one of the sheet took is dropped with all
+// its values.
 function repeatValues(
   sheet: SnapshotSheet,
   scopes: TemplateScopes,

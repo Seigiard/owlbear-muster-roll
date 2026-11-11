@@ -10,7 +10,7 @@ import {
   type PresetSection,
   type Template,
 } from '@/core/preset';
-import { presetDiff } from '@/core/preset-migrate';
+import { NOTHING_ERASED, presetDiff } from '@/core/preset-migrate';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
@@ -118,7 +118,8 @@ const PRESET: Preset = {
   ],
 };
 
-// The row of `str` is named by `note` now, and the repeat section by `label`, which replaces `item`.
+// The row of `str` is named by `note` now, and the repeat section by `label`, which replaces
+// `item`.
 const MOVED: Preset = {
   v: 2,
   templates: [
@@ -581,6 +582,40 @@ describe('a preset upload that removes a template', () => {
         digest: expect.not.stringMatching(`^${found.digest}$`),
       },
       stored: PRESET_RECORD,
+    });
+  });
+
+  test('that deletes only an empty sheet refuses an upload sent as 0 and 0, and deletes nothing', async () => {
+    // #given: one sheet of the set, with no values.
+    const room = openRoom();
+    const empty: VersionedRecord = { k: 'sheet:anya', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' };
+    const gm = await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, empty] });
+
+    // #when
+    const id = send(gm, {
+      type: 'preset-upload',
+      data: encodePreset(NO_PC),
+      expectedCount: 0,
+      expectedSheets: 0,
+      expectedDigest: NOTHING_ERASED,
+    });
+
+    await waitUntil(() => rejection(gm, id) !== undefined);
+
+    // #then
+    expect({
+      rejection: gm.store.$rejections.get().get(id),
+      sheet: stored(gm, 'sheet:anya'),
+    }).toEqual({
+      rejection: {
+        t: 'command-rejected',
+        id,
+        reason: 'count-changed',
+        count: 0,
+        sheets: 1,
+        digest: expect.any(String),
+      },
+      sheet: empty,
     });
   });
 

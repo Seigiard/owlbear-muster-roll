@@ -13,8 +13,8 @@ import {
   type SnapshotFileFailure,
 } from '@/core/snapshot-import';
 
-// A preset as the 5.3 spec reads it, on v2 templates: a sheet set `pc` with two non-repeat rows
-// and two repeat sections, and a single sheet `npc` with a row and a linkable repeat section whose
+// A preset as the 5.3 spec reads it, on v2 templates: a sheet set `pc` with two non-repeat rows and
+// two repeat sections, and a single sheet `npc` with a row and a linkable repeat section whose
 // blocks span two rows.
 const PRESET: Preset = {
   v: 2,
@@ -466,6 +466,38 @@ describe('importSnapshot', () => {
       count: 3,
       sheets: 4,
     });
+  });
+
+  test('keeps only the links that are live over the imported records, uncounted', () => {
+    // #given: a linkable sheet, a linkable repeat block, a repeat block the file lacks, a repeat
+    // block of a section with no `tokens`, and a single sheet whose template has no `tokens`.
+    const input = file(
+      [
+        pc('brok', {
+          repeats: { attack: [{ instanceId: 'a1', order: 0, cells: { attack: 'Меч' } }] },
+        }),
+        single('npc', {
+          repeats: { npc_name: [{ instanceId: 'n1', order: 0, cells: { npc_name: 'Скелет' } }] },
+        }),
+      ],
+      [
+        { tokenId: 't1', sheetId: 'brok' },
+        { tokenId: 't2', sheetId: 'npc', instanceId: 'n1' },
+        { tokenId: 't3', sheetId: 'npc', instanceId: 'n9' },
+        { tokenId: 't4', sheetId: 'brok', instanceId: 'a1' },
+        { tokenId: 't5', sheetId: 'npc' },
+      ],
+    );
+
+    // #when
+    const { records, count, sheets } = imported(input);
+
+    // #then
+    expect({
+      links: [...records.keys()].filter((key) => key.startsWith('link:')),
+      count,
+      sheets,
+    }).toEqual({ links: ['link:t1', 'link:t2'], count: 0, sheets: 0 });
   });
 
   test('gives the same digest for the same dropped values and another for others', () => {

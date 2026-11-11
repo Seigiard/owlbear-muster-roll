@@ -379,6 +379,17 @@ describe('sheetName', () => {
     expect(sheetName(records, PRESET, 'brok')).toBe('12');
   });
 
+  test('cuts a long name field value to 100 code points', () => {
+    // #given
+    const records = recordsOf(
+      record('sheet:brok', { set: 'pc', order: 0 }),
+      record('row:brok:level', { name: `${'😀'.repeat(100)}Брок` }),
+    );
+
+    // #then
+    expect(sheetName(records, PRESET, 'brok')).toBe('😀'.repeat(100));
+  });
+
   test('names no sheet that no template owns', () => {
     // #then
     expect(sheetName(recordsOf(record('sheet:brok', null)), PRESET, 'brok')).toBeNull();

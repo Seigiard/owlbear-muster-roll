@@ -67,8 +67,8 @@ type RepeatBlock = z.infer<typeof repeatBlockSchema>;
 // The sheets of every template in preset order, with their row values and repeat blocks, and the
 // live links. A sheet set's sheets come by `(order, id)`, and a single sheet once, values or none.
 // Repeat blocks come by `(order, instanceId)`. The keys of every dictionary (rows, sections and
-// cells) are sorted, so two exports of the same records are equal byte for byte (Story 5.4
-// compares them). Fixed objects keep the key order they are built in.
+// cells) are sorted, so two exports of the same records are equal byte for byte (Story 5.4 compares
+// them). Fixed objects keep the key order they are built in.
 export function encodeSnapshotFile(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset,
@@ -208,9 +208,9 @@ function compareCodeUnits(first: string, second: string): number {
   return first < second ? -1 : 1;
 }
 
-// The ids of one file that must be unique: sheet ids and token ids. A link must name a sheet of
-// the file, and a repeat block link one of that sheet's repeat blocks. A second repeat block with
-// one instance id in one sheet is no refusal: the import drops it (AD-2).
+// The ids of one file that must be unique: sheet ids and token ids. A link must name a sheet of the
+// file, and a repeat block link one of that sheet's repeat blocks. A second repeat block with one
+// instance id in one sheet is no refusal: the import drops it (AD-2).
 function checkIds(file: z.infer<typeof snapshotFileFields>, ctx: z.RefinementCtx): void {
   const instanceIds = new Map<string, Set<string>>();
 

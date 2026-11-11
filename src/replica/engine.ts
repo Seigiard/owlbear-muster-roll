@@ -21,7 +21,7 @@ import {
   splitBatch,
 } from '@/core/message-size';
 import type { FieldPatchTarget } from '@/core/field-patch';
-import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
+import { compareGenerations, counterAbove, mergeRecords, type Version } from '@/core/merge';
 import { listedFaces, randomFaces, type FaceSource } from '@/core/formula-evaluate';
 import { blockIndex, linkTargetKey, type LinkTarget } from '@/core/link-target';
 import { decodePreset, windowSizeOf, type Preset, type Template } from '@/core/preset';
@@ -193,9 +193,9 @@ export type EngineTiming = Pick<
   | 'incompleteRequestMaxMs'
 >;
 
-// Tests inject the timing, the ids, and the random source of the answer delay, the room copy
-// jitter and the dice. `newId` makes the engine's own ids, such as nonces; `newRecordId` makes the
-// sheet and instance ids of the records a command makes, such as a duplicate's.
+// Tests inject the timing, the ids, and the random source of the answer delay, the room copy jitter
+// and the dice. `newId` makes the engine's own ids, such as nonces; `newRecordId` makes the sheet
+// and instance ids of the records a command makes, such as a duplicate's.
 export type ReplicaEngineOptions = {
   timing?: EngineTiming;
   newId?: () => string;
@@ -1036,7 +1036,8 @@ export async function startReplicaEngine(
 
   function runCommand(id: string, command: Command): void {
     // AD-4: a player never merges its own edit, which would beat later GM edits of its key. Its
-    // field and repeat block edits wait for a GM client's check. Nothing else is a player's to write.
+    // field and repeat block edits wait for a GM client's check. Nothing else is a player's to
+    // write.
     if (role !== 'GM') {
       handlePlayerCommand(id, command);
 
@@ -1301,7 +1302,7 @@ export async function startReplicaEngine(
       return;
     }
 
-    if (await replaceGeneration(id, records, false)) {
+    if (await replaceGeneration(id, records)) {
       send({ t: 'snapshot-imported', id }).catch((error) => {
         console.error('Muster Roll could not report a snapshot import', error);
       });
@@ -1309,8 +1310,8 @@ export async function startReplicaEngine(
   }
 
   // AD-9, CAP-31: a wipe is a generation change with no records, `preset` included. The window
-  // asked its one confirmation. It works in a room whose data has an older format too: the room copy
-  // of an older format is written over, and the local keys of every format go.
+  // asked its one confirmation. It works in a room whose data has an older format too: the room
+  // copy of an older format is written over, and the local keys of every format go.
   async function wipeRoom(id: string): Promise<void> {
     if (importing) {
       reject(id, 'importing');
@@ -1324,7 +1325,7 @@ export async function startReplicaEngine(
       return;
     }
 
-    if (await replaceGeneration(id, [], true)) {
+    if (await replaceGeneration(id, [])) {
       send({ t: 'wiped', id }).catch((error) => {
         console.error('Muster Roll could not report a wipe', error);
       });
@@ -1334,12 +1335,11 @@ export async function startReplicaEngine(
   // AD-9: the second half of an import, and all of a wipe. The client takes a generation above
   // every one it knows, saves it, writes the room copy, and only then sends `reset`. A failed save
   // stops before the copy and `reset`, and the part saved goes, so nothing changes. A copy that
-  // cannot be saved does not stop it. `wipe` also deletes this room's keys of older storage formats.
+  // cannot be saved does not stop it. It also deletes this room's keys of older storage formats.
   // True once the new generation is the room's.
   async function replaceGeneration(
     id: string,
     records: readonly VersionedRecord[],
-    wipe: boolean,
   ): Promise<boolean> {
     if (persistence === null) {
       reject(id, 'write-failed');
@@ -1408,9 +1408,7 @@ export async function startReplicaEngine(
         console.error('Muster Roll could not remove the replaced records', removed.error);
       }
 
-      if (wipe) {
-        removeOlderFormats(store);
-      }
+      removeOlderFormats(store);
     } finally {
       importing = false;
       // Deletions that waited out the import, whether it finished, stopped or was replaced.
@@ -1703,11 +1701,13 @@ export async function startReplicaEngine(
   // The newest version of an entry over `base`, the newest record of its key this client knows,
   // with `c` above every one it knows of the key, its own included, put into the queue and sent.
   // `force` sends a patch that changes nothing on `base`: after a version of the entry went out, an
-  // edit back to the base's data must still beat it. Returns why nothing went out.
+  // edit back to the base's data must still beat it. Returns why nothing went out. `held`: the new
+  // version goes out on the entry's running backoff, not at once.
   function proposeEntry(
     entry: ProposalEntry,
     base: VersionedRecord | undefined,
     force: boolean,
+    held = false,
   ): ProposalFailure | null {
     const made = rebuiltRecord(entry, base, force);
 
@@ -1717,7 +1717,11 @@ export async function startReplicaEngine(
       return made.error;
     }
 
-    proposals.put({ ...entry, record: made.value });
+    if (held) {
+      proposals.hold({ ...entry, record: made.value });
+    } else {
+      proposals.put({ ...entry, record: made.value });
+    }
 
     return null;
   }
@@ -1929,7 +1933,10 @@ export async function startReplicaEngine(
   // AD-4: only a rejection of this client's newest version of a key counts. `denied` drops the
   // entry, so the value returns. `stale` applies the patch to the GM's record, takes a `c` above it
   // and proposes again with the backoff started over; an edit of a row the GM holds removed is
-  // dropped as denied, and a patch the record already holds ends there.
+  // dropped as denied, and a patch the record already holds ends there. A stale answer over a
+  // record below the rejected version is about a field the GM's template lacks, not the version:
+  // the GM would answer the same at once, so the new version waits for the running backoff, and the
+  // preset that reaches one side in the meantime ends it.
   function receiveReject(message: RejectMessage): void {
     const entry = role === 'GM' ? undefined : proposals.matching(message);
 
@@ -1952,7 +1959,16 @@ export async function startReplicaEngine(
       // AD-7: no version goes out until catch-up ends, which takes the entry's `c` over what it
       // brought, the GM's record merged below included.
       proposals.put({ ...entry, record: null });
-    } else if (deniesEdit(proposeEntry(entry, base, false))) {
+    } else if (
+      deniesEdit(
+        proposeEntry(
+          entry,
+          base,
+          false,
+          entry.record !== null && counterAbove(entry.record, message.current),
+        ),
+      )
+    ) {
       // The GM holds a `c` at least as high as this entry's, so no older version of it can win, and
       // a patch the GM's record already holds needs nothing more.
       notifyDenied();
@@ -2013,8 +2029,8 @@ export async function startReplicaEngine(
     void rollWithDice(message.id, prepared.value, local.value);
   }
 
-  // AD-13, AD-18: `hidden` is computed once here, from the sheet's template, and every output of the
-  // roll uses it. A player never rolls a hidden sheet, as it never sees one.
+  // AD-13, AD-18: `hidden` is computed once here, from the sheet's template, and every output of
+  // the roll uses it. A player never rolls a hidden sheet, as it never sees one.
   function prepareRoll(message: RollRequestMessage): Result<PreparedRoll, RollOutcome> {
     const view = pendingView();
     const preset = presetOf(view.get('preset'));
@@ -2233,8 +2249,8 @@ export async function startReplicaEngine(
 
   // AD-13: a roll shows once per id, and a player shows only one with `hidden: false`. Only this
   // background page shows it, so it shows with the window closed. It never enters the replica. A
-  // player cannot see a hidden sheet, so a hidden roll from a player is forged, and the name shown is
-  // the one the party lists for the sender.
+  // player cannot see a hidden sheet, so a hidden roll from a player is forged, and the name shown
+  // is the one the party lists for the sender.
   function receiveRoll(message: RollMessage, sender: RollSender): void {
     if (recentRollIds.has(message.id)) {
       return;
@@ -3203,8 +3219,8 @@ export async function startReplicaEngine(
   // nothing. The values return in the same delta, and one notification covers every drop. A removal
   // of a repeat block that is gone already got what it asked for, so it drops with no notification.
   // AD-14: after a preset change each entry first moves to the keys the new form of its sheet's
-  // template gives its values, as the GM's migration moves the rows: an entry with nothing that maps
-  // drops in silence.
+  // template gives its values, as the GM's migration moves the rows: an entry with nothing that
+  // maps drops in silence.
   function dropDisallowed(presetBefore: VersionedRecord | undefined): void {
     if (role === 'GM') {
       return;

@@ -231,8 +231,8 @@ export function firstFieldId(row: readonly PresetCell[]): string | null {
   return null;
 }
 
-// Every field of a section, in row order. For a repeat section, these are the fields of one
-// repeat block.
+// Every field of a section, in row order. For a repeat section, these are the fields of one repeat
+// block.
 export function sectionFields(section: PresetSection): PresetFieldCell[] {
   return section.rows.flatMap((row) => row.filter((cell) => cell.kind === 'field'));
 }
@@ -288,9 +288,9 @@ export function plainRowIdOf(layout: TemplateLayout, fieldId: string): string | 
   return null;
 }
 
-// Where `id` resolves from a cell of the row at `from`: the cell's own repeat block first, then
-// the template's non-repeat scope. A field of a repeat section is reachable only from inside its
-// own repeat block, so an id found only in another repeat section, or only in another template,
+// Where `id` resolves from a cell of the row at `from`: the cell's own repeat block first, then the
+// template's non-repeat scope. A field of a repeat section is reachable only from inside its own
+// repeat block, so an id found only in another repeat section, or only in another template,
 // resolves to `null`.
 export function resolveFieldReference(
   layout: TemplateLayout,
@@ -312,8 +312,8 @@ export function resolveFieldReference(
   return rowId === null ? null : { scope: 'sheet', rowId };
 }
 
-// Rules in list order: the template id, then its sections, then its name field. Each template is
-// a scope of its own, so one field id can occur in two templates.
+// Rules in list order: the template id, then its sections, then its name field. Each template is a
+// scope of its own, so one field id can occur in two templates.
 function presetRulesFailure(preset: Preset): PresetFailure | null {
   const templateIds = new Set<string>();
 

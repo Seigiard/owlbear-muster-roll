@@ -49,9 +49,9 @@ export type TokenMenuAction = 'link' | 'unlink' | 'open';
 // One filter per icon of the item, in the order Owlbear tries them.
 export type TokenMenuEntry = { action: TokenMenuAction; filters: TokenMenuFilter[] };
 
-// One target of the link picker. `sheetName` is the sheet's name and `blockName` the repeat
-// block's first field value, "" when empty; `blockName` is `null` for a sheet target. `linked`:
-// a live link names the target already.
+// One target of the link picker. `sheetName` is the sheet's name and `blockName` the repeat block's
+// first field value, "" when empty; `blockName` is `null` for a sheet target. `linked`: a live link
+// names the target already.
 export type PickerTarget = {
   target: LinkTarget;
   sheetName: string;
@@ -130,8 +130,8 @@ export function tokensToUnlink(
     .sort();
 }
 
-// The `linkTargetKey` of every target at least one live link names, for the token status of a
-// sheet or a repeat block.
+// The `linkTargetKey` of every target at least one live link names, for the token status of a sheet
+// or a repeat block.
 export function linkedTargetKeys(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset | null,
@@ -213,9 +213,9 @@ export function pickerGroups(
 // AD-2 and UX-DR21: Owlbear filters match item keys only and do not change, so the menu is built
 // from the records of the moment. Every item applies to one token of the character layer. A GM gets
 // "Привязать лист…" on a token no live link names, and "Отвязать лист" only on a token a live link
-// names, so with no link that item has no entry: a filter cannot match an empty set. "Открыть
-// лист" shows on the tokens whose target's template the viewer's role may see. Token ids are
-// sorted, so the same records always give the same filters.
+// names, so with no link that item has no entry: a filter cannot match an empty set. "Открыть лист"
+// shows on the tokens whose target's template the viewer's role may see. Token ids are sorted, so
+// the same records always give the same filters.
 export function tokenMenuEntries(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset | null,

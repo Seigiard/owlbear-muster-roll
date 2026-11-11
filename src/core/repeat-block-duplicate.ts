@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { sectionFirstField, type PresetSection } from '@/core/preset';
 import type { FieldValue, FieldValues } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
-import { SHEET_NAME_MAX_LENGTH } from '@/core/sheets';
 
 // A value a `text` field holds. A field whose type changed can leave a value of another type.
 const textValueSchema = z.string().min(1);
@@ -20,10 +19,13 @@ const DIGITS = /^\d+$/;
 
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
+// The longest name a duplicate gives a repeat block, in code points.
+const BLOCK_NAME_MAX_LENGTH = 100;
+
 export type DuplicateCountFailure = 'invalid-count';
 
-// A number too long to fit a name even with no base, which only a name longer than the limit
-// can lead to.
+// A number too long to fit a name even with no base, which only a name longer than the limit can
+// lead to.
 export type DuplicateNameFailure = 'name-too-long';
 
 type NumberedName = { base: string; number: bigint };
@@ -56,11 +58,11 @@ export function duplicateBlockCells(
   return names.ok ? ok(names.value.map((name) => ({ ...source, [first.id]: name }))) : names;
 }
 
-// UX-DR20: the source name without its trailing number, then the highest number any repeat block
-// of that exact base carries, the source's own included, + 1. A source with no number and no
-// numbered namesake starts at 1. A number can have more digits than a double holds, so it is a
-// bigint. A number whose name a repeat block already has is skipped: a shortened base never counts
-// as the base, so its names would come back.
+// UX-DR20: the source name without its trailing number, then the highest number any repeat block of
+// that exact base carries, the source's own included, + 1. A source with no number and no numbered
+// namesake starts at 1. A number can have more digits than a double holds, so it is a bigint. A
+// number whose name a repeat block already has is skipped: a shortened base never counts as the
+// base, so its names would come back.
 export function duplicateNames(
   sourceName: string,
   existingNames: readonly string[],
@@ -96,8 +98,8 @@ export function duplicateNames(
   return ok(names);
 }
 
-// Only a whole number in digits counts, so "1.5", "1e1" and "+3" are refused. Spaces around it
-// are dropped, as the field shows nothing of them.
+// Only a whole number in digits counts, so "1.5", "1e1" and "+3" are refused. Spaces around it are
+// dropped, as the field shows nothing of them.
 export function parseDuplicateCount(text: string): Result<number, DuplicateCountFailure> {
   const trimmed = text.trim();
 
@@ -128,16 +130,15 @@ function numberedName(name: string): NumberedName | null {
 }
 
 // The number always stays whole, so the base gives way when the name would pass the limit. The
-// limit counts code points, and the base is cut between graphemes, so no
-// letter loses its accent.
+// limit counts code points, and the base is cut between graphemes, so no letter loses its accent.
 function fittedName(base: string, number: string): string | null {
   const numberLength = Array.from(number).length;
 
-  if (numberLength > SHEET_NAME_MAX_LENGTH) {
+  if (numberLength > BLOCK_NAME_MAX_LENGTH) {
     return null;
   }
 
-  const room = SHEET_NAME_MAX_LENGTH - numberLength - 1;
+  const room = BLOCK_NAME_MAX_LENGTH - numberLength - 1;
   let shortened = '';
   let length = 0;
 

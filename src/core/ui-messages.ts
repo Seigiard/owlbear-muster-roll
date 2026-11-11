@@ -26,8 +26,8 @@ export const noticeSchema = z.enum([
 
 // What the last catch-up found in the room copy: `read` a copy of this client's generation, merged;
 // `none` no copy; `unreadable` a copy that does not decode, one of another generation, or a failed
-// read with no outcome known yet; `newer` a copy of a newer build, left unread; `older` a copy of an
-// older format, left unread (AD-12). `null` until a catch-up has read the room metadata.
+// read with no outcome known yet; `newer` a copy of a newer build, left unread; `older` a copy of
+// an older format, left unread (AD-12). `null` until a catch-up has read the room metadata.
 export const roomCopyOutcomeSchema = z
   .enum(['read', 'none', 'unreadable', 'newer', 'older'])
   .nullable();
@@ -115,10 +115,10 @@ const deltaSchema = z.strictObject({
   party: partySchema,
 });
 
-// A command is an intent. Strict objects refuse any message that also carries k, d, c or a.
-// The ids are checked by the engine, so a bad one gets a rejection, not silence.
-// The window picks the sheetId, so it can select the new tab when the delta arrives. A new sheet
-// has an empty name: a rename is a field patch of the name field.
+// A command is an intent. Strict objects refuse any message that also carries k, d, c or a. The ids
+// are checked by the engine, so a bad one gets a rejection, not silence. The window picks the
+// sheetId, so it can select the new tab when the delta arrives. A new sheet has an empty name: a
+// rename is a field patch of the name field.
 const sheetCreateSchema = z.strictObject({
   type: z.literal('sheet-create'),
   sheetId: z.string(),
@@ -199,8 +199,8 @@ const presetUploadSchema = z.strictObject({
 });
 
 // AD-9: the snapshot file, deflated and base64-encoded, and the digest of the values and sheets it
-// drops, as the GM confirmed it from `snapshot-check-result`. The engine runs the import again and refuses
-// with `count-changed` when its own digest differs.
+// drops, as the GM confirmed it from `snapshot-check-result`. The engine runs the import again and
+// refuses with `count-changed` when its own digest differs.
 const snapshotImportSchema = z.strictObject({
   type: z.literal('snapshot-import'),
   data: presetDataSchema,
@@ -415,8 +415,8 @@ const rollOutcomeSchema = z.strictObject({
 });
 
 // FR14: "Открыть лист" asks a window to show a sheet, and with `instanceId` to scroll to that
-// repeat block of it. The engine holds the request and sends it again after each projection until
-// a window acknowledges its id. A new press replaces it.
+// repeat block of it. The engine holds the request and sends it again after each projection until a
+// window acknowledges its id. A new press replaces it.
 const openSheetSchema = z.strictObject({
   t: z.literal('open-sheet'),
   id: idSchema,

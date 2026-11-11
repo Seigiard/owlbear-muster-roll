@@ -1710,8 +1710,8 @@ describe('write failure', () => {
     expect(view.store.$notices.get()).toEqual(['local-save-failed']);
   });
 
-  // The failure ends before the command, or `store.write` would refuse on its own read. The
-  // command is a preset upload, as the failed read leaves no preset for a sheet to need.
+  // The failure ends before the command, or `store.write` would refuse on its own read. The command
+  // is a preset upload, as the failed read leaves no preset for a sheet to need.
   test.each(['read', 'list'] as const)(
     'keeps the notice and writes nothing after a %s failure at start',
     async (operation) => {
@@ -2294,7 +2294,8 @@ describe('field-patch', () => {
 });
 
 describe('repeat blocks', () => {
-  // Two repeat sections, so a block of one never counts for the other, and a single sheet with none.
+  // Two repeat sections, so a block of one never counts for the other, and a single sheet with
+  // none.
   const ROWS_PRESET: Preset = {
     v: 2,
     templates: [

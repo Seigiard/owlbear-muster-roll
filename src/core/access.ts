@@ -3,6 +3,7 @@ import { counterAbove, ownersBySheet, sameRecord } from '@/core/merge';
 import type { Preset, PresetFieldCell } from '@/core/preset';
 import {
   fieldValuesSchema,
+  parseRepKey,
   playerDataSchema,
   playerIdSchema,
   plinkPrefix,
@@ -10,7 +11,7 @@ import {
   type FieldValues,
   type VersionedRecord,
 } from '@/core/records';
-import { resolveSheet, SHEET_NAME_MAX_LENGTH, sortSheets, type SheetSummary } from '@/core/sheets';
+import { resolveSheet, sortSheets, type SheetSummary } from '@/core/sheets';
 import type { PlayerRole } from '@/core/visibility';
 
 // One party member as the access panel needs it.
@@ -23,8 +24,8 @@ export type AccessRow = { playerId: string; name: string | null; canEdit: boolea
 // The party a window gets holds at most this many player ids, so it never crowds the message.
 export const PARTY_LIMIT = 100;
 
-// A player name is kept as a sheet name is: trimmed, and at most this many code points.
-export const PLAYER_NAME_MAX_LENGTH = SHEET_NAME_MAX_LENGTH;
+// A player name is kept trimmed, and at most this many code points.
+export const PLAYER_NAME_MAX_LENGTH = 100;
 
 // The forms whose records say a player already holds rights on a sheet. Their names stand in for a
 // player who is not in the room.
@@ -132,8 +133,8 @@ type ProposalJudgement = 'allowed' | 'denied' | 'unknown-field';
 // How the values of a record compare with the fields of its row or repeat block.
 type DataFit = 'fits' | 'denied' | 'unknown-field';
 
-// FR3, AD-4: the checks of a player's record that read no version. `proposalJudgement` tells why
-// a record fails. The GM client runs it on a proposal, and the player's own client before it queues
+// FR3, AD-4: the checks of a player's record that read no version. `proposalJudgement` tells why a
+// record fails. The GM client runs it on a proposal, and the player's own client before it queues
 // an edit.
 export function proposalAllowed(
   context: ProposalContext,
@@ -144,12 +145,14 @@ export function proposalAllowed(
 }
 
 // AD-4, in this order: the checks of `proposalAllowed`, an `a` that is the sender's own and a `c`
-// at most `PROPOSE_C_MAX_STEP` above the current one; a record identical to the current one is
-// committed; a removal of a removed repeat block commits the existing tombstone; an edit of a
-// removed repeat block is denied; a field id the template does not have answers stale with the
-// current record, so the player applies its patch to it; then a `c` above the current one is
-// committed and any other is stale. So an identical proposal from a player with no access is
-// denied. The proposed `d` is never rewritten.
+// at most `PROPOSE_C_MAX_STEP` above the current one; a key with no current record is committed
+// only when it passes them all, and a new repeat block only with an instance id no other section
+// of its sheet holds (AD-2); a record identical to the current one is committed; a removal of a
+// removed repeat block commits the existing tombstone; an edit of a removed repeat block is denied;
+// a field id the template does not have answers stale with the current record, so the player
+// applies its patch to it; then a `c` above the current one is committed and any other is stale.
+// So an identical proposal from a player with no access is denied. The proposed `d` is never
+// rewritten.
 export function checkProposal(
   context: ProposalContext,
   sender: ProposalSender,
@@ -166,9 +169,12 @@ export function checkProposal(
     return { kind: 'denied' };
   }
 
-  // With no current record there is nothing to answer stale with.
+  // With no current record there is nothing to answer stale with. AD-2: a new repeat block takes no
+  // instance id that another section of its sheet holds, live or removed.
   if (current === undefined) {
-    return judgement === 'allowed' ? { kind: 'commit' } : { kind: 'denied' };
+    return judgement === 'allowed' && !instanceHeldElsewhere(context.records, record.k)
+      ? { kind: 'commit' }
+      : { kind: 'denied' };
   }
 
   if (sameRecord(record, current)) {
@@ -302,8 +308,9 @@ function heldRight(record: VersionedRecord, sheetId: string): HeldRight | null {
 // AD-4, AD-18: the key is a `row:` or `rep:` of a sheet whose template is visible. A sheet of a
 // sheet set must be live, and the player must hold a live `acl:` of it. A single sheet must be
 // player-editable. Only the values the record sets or changes against the current record of its key
-// are judged: each must be a field of its row or repeat block with the field's JSON type, so a value
-// an older preset left keeps no edit of its row out. `d: null` is a repeat block's removal only.
+// are judged: each must be a field of its row or repeat block with the field's JSON type, so a
+// value an older preset left keeps no edit of its row out. `d: null` is a repeat block's removal
+// only.
 function proposalJudgement(
   context: ProposalContext,
   playerId: string,
@@ -339,6 +346,34 @@ function proposalJudgement(
   );
 
   return fit === 'fits' ? 'allowed' : fit;
+}
+
+// True when `key` names a repeat block whose instance id the same sheet holds under another
+// section, as a live repeat block or a tombstone.
+function instanceHeldElsewhere(
+  records: ReadonlyMap<string, VersionedRecord>,
+  key: string,
+): boolean {
+  const block = parseRepKey(key);
+
+  if (block === null) {
+    return false;
+  }
+
+  for (const other of records.keys()) {
+    const held = parseRepKey(other);
+
+    if (
+      held !== null &&
+      held.sheetId === block.sheetId &&
+      held.instanceId === block.instanceId &&
+      held.sectionId !== block.sectionId
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // `row:{sheetId}:{rowId}` or `rep:{sheetId}:{sectionId}:{instanceId}`. Any other form is the GM's.

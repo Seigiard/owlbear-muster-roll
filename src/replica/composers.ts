@@ -410,9 +410,9 @@ export function createComposers(connectionId: string): Composers {
 
   // CAP-30: `count` new repeat blocks of the same sheet and section after its last one, at `c: 1`,
   // each with the source's values and, when its first field is a `text` field with a value, the
-  // next number in it. A copy gets no link. A new instance id is short (TASK-37), so it can collide:
-  // one the sheet already holds, a tombstone included, or one of this batch is drawn again, and one
-  // still taken refuses the command.
+  // next number in it. A copy gets no link. A new instance id is short (TASK-37), so it can
+  // collide: one the sheet already holds, a tombstone included, or one of this batch is drawn
+  // again, and one still taken refuses the command.
   function composeRepeatBlockDuplicate(
     context: ComposeContext,
     command: Extract<Command, { type: 'repeat-block-duplicate' }>,
@@ -490,8 +490,8 @@ export function createComposers(connectionId: string): Composers {
     return section === null ? err('unknown-section') : ok({ policy: policy.value, section });
   }
 
-  // AD-18: a new sheet of the sheet set `set`, after its last sheet. Its name field is empty, so
-  // it shows the fallback name until someone types one.
+  // AD-18: a new sheet of the sheet set `set`, after its last sheet. Its name field is empty, so it
+  // shows the fallback name until someone types one.
   function composeSheetCreate(
     context: ComposeContext,
     command: Extract<Command, { type: 'sheet-create' }>,
@@ -600,8 +600,8 @@ export function createComposers(connectionId: string): Composers {
 
   // FR3: access on is a live `acl:` record with the player's last known name, and off is its
   // tombstone. Only a live sheet of a sheet set takes access. The name is trimmed and cut, and ""
-  // when no name is known. A change that leaves the record as it is refused, so a repeated press adds
-  // no version.
+  // when no name is known. A change that leaves the record as it is refused, so a repeated press
+  // adds no version.
   function composeAclSet(
     context: ComposeContext,
     command: Extract<Command, { type: 'acl-set' }>,
@@ -638,12 +638,12 @@ export function createComposers(connectionId: string): Composers {
   }
 
   // FR19: one batch. Picking a player writes their `acl:` when it is not live, so editing turns on,
-  // tombstones every other live `plink:` of the sheet, and writes their `plink:` when it is not live.
-  // A live `plink:` keeps its name. Their `plink:` goes last, so a write that fails part way never
-  // shows a new owner whose other records are missing. "Никто" (`playerId: null`) tombstones every
-  // live `plink:` of the sheet. No other `acl:` changes, so a previous owner keeps editing. A GM, this
-  // client's own player included, owns nothing. A batch that would change nothing is refused, so a
-  // repeated pick adds no version. Only a sheet of a sheet set has an owner.
+  // tombstones every other live `plink:` of the sheet, and writes their `plink:` when it is not
+  // live. A live `plink:` keeps its name. Their `plink:` goes last, so a write that fails part way
+  // never shows a new owner whose other records are missing. "Никто" (`playerId: null`) tombstones
+  // every live `plink:` of the sheet. No other `acl:` changes, so a previous owner keeps editing. A
+  // GM, this client's own player included, owns nothing. A batch that would change nothing is
+  // refused, so a repeated pick adds no version. Only a sheet of a sheet set has an owner.
   function composeOwnerSet(
     context: ComposeContext,
     command: Extract<Command, { type: 'owner-set' }>,

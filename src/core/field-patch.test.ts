@@ -6,7 +6,6 @@ import type { FieldValue, VersionedRecord } from '@/core/records';
 import {
   acceptedFieldValue,
   findPatchField,
-  isRepeatSectionId,
   patchedRecord,
   patchedRecordFits,
   patchRecordKey,
@@ -115,17 +114,6 @@ describe('targetFields', () => {
   test('gives null for a section id that is the second field of a repeat section', () => {
     // #then
     expect(targetFields(TEMPLATE, { kind: 'rep', sectionId: 'range' })).toBeNull();
-  });
-});
-
-describe('isRepeatSectionId', () => {
-  test.each([
-    ['attack', true],
-    ['range', false],
-    ['str', false],
-  ])('judges %s as %p', (sectionId, expected) => {
-    // #then
-    expect(isRepeatSectionId(TEMPLATE, sectionId)).toBe(expected);
   });
 });
 

@@ -719,6 +719,27 @@ describe('import', () => {
     ]);
   });
 
+  test("removes this room's keys of an older format once complete, and keeps another room's", async () => {
+    // #given
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      stored: {
+        'mr1:mock-room:0::preset': '{"k":"preset","d":"x","c":1,"a":"seed"}',
+        'mr1:mock-room:2:gm-a:#incomplete': '1',
+        'mr1:other-room:0::preset': '{"k":"preset","d":"x","c":1,"a":"seed"}',
+      },
+      untilLive: true,
+    });
+
+    // #when
+    await importFile(gm);
+    await waitUntil(() => storedKeys(gm, OLD_PREFIX).length === 0);
+
+    // #then
+    expect(storedKeys(gm, 'mr1:')).toEqual(['mr1:other-room:0::preset']);
+  });
+
   test('asks again with the new count when the dropped values changed since the check', async () => {
     // #given
     const room = openRoom();

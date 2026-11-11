@@ -551,7 +551,8 @@ describe('writer read and merge', () => {
   );
 });
 
-// AD-12, CAP-31: no migration reads a copy of an older format. Only a wipe or an import replaces it.
+// AD-12, CAP-31: no migration reads a copy of an older format. Only a wipe or an import replaces
+// it.
 describe('a room copy of an older format', () => {
   test('a GM that reads it at catch-up shows the older-format notice and outcome older, and its writes never replace it', async () => {
     // #given

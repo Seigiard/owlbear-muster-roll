@@ -60,8 +60,6 @@ const markerPartsSchema = z.strictObject({
 
 export type StorageMarker = z.infer<typeof markerPartsSchema>;
 
-export type IncompleteMarker = StorageMarker;
-
 export function incompleteMarkerKey(
   roomId: string,
   generation: Generation,
@@ -88,9 +86,9 @@ export function parseGenerationMarkerKey(
   return parseMarkerKey(storageKey, GENERATION_MARK);
 }
 
-// The storage format version of a key that room `roomId` owns in any format, as `mr1:{roomId}:…`
-// or `mr2:{roomId}:…`. `null` for a key of another room or of no format. A wipe deletes every key
-// with a format, and an adopting GM client those of a format below the current one (AD-9).
+// The storage format version of a key that room `roomId` owns in any format, as `mr1:{roomId}:…` or
+// `mr2:{roomId}:…`. `null` for a key of another room or of no format. A wipe deletes every key with
+// a format, and an adopting GM client those of a format below the current one (AD-9).
 export function roomKeyFormat(storageKey: string, roomId: string): number | null {
   const [format = '', room] = storageKey.split(':', 2);
   const version = /^mr(0|[1-9][0-9]*)$/.exec(format)?.[1];
