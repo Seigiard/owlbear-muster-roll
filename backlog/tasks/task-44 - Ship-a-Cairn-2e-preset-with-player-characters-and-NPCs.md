@@ -4,6 +4,7 @@ title: Ship a Cairn 2e preset with player characters and NPCs
 status: To Do
 assignee: []
 created_date: '2026-11-11T22:36:00Z'
+updated_date: '2026-11-11T22:36:00Z'
 labels: []
 dependencies:
   - TASK-41
@@ -28,4 +29,17 @@ The owner runs Cairn 2e and wants a ready preset instead of writing one. It is a
 - [ ] #4 An NPC single sheet holds a linkable repeat section; each repeat block is one NPC with the Cairn 2e stat block: name, HP, Armor, STR, DEX, WIL, attacks with damage dice, and notes. NPC sheets are visible to GMs only
 - [ ] #5 Every attack in both templates has a dice cell for its damage formula
 - [ ] #6 A parse test covers the preset file, and the owner opens it in a live room
+- [ ] #7 Before the preset is built, a survey of public Cairn 2e character sheets (many projects on GitHub, plus the official sheet) is recorded in the task notes: the stats and layout they share, and what the preset takes from them. Unlicensed projects give ideas only, never copied content
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-11-11T22:36:00Z
+
+---
+
+Owner: search the web first; GitHub has many Cairn character sheet projects to learn the stat set and layout from.
+
+---
+<!-- COMMENTS:END -->
