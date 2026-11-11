@@ -1,3 +1,6 @@
+## Domain language
+
+Name things with the terms in [GLOSSARY.md](GLOSSARY.md): in code, specs, docs, task text and replies. Read it before you name a new concept, and update it when a term is added or its meaning changes.
 
 <!-- BACKLOG.MD GUIDELINES START -->
 <!-- backlog.md-instructions-version: 1.55.3 -->
