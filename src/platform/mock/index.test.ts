@@ -6,7 +6,7 @@ import type { PlayerRole } from '@/platform/ports';
 
 import { LIGHT_THEME } from '../../../tests/support/colors';
 import { createMemoryBus, createMemoryRoom, createMockPlatform, type MockPlatform } from './index';
-import type { MockRoom } from './room';
+import { createPageRoom, type MockRoom, type MockScene } from './room';
 
 describe('mock broadcast', () => {
   test('delivers a LOCAL message to a listener on the same channel', async () => {
@@ -522,6 +522,95 @@ describe('mock readiness', () => {
   });
 });
 
+describe('mock scene', () => {
+  test('opens ready with no item', async () => {
+    // #given
+    const platform = createMockPlatform();
+
+    // #when
+    const scene = {
+      ready: await platform.scene.isReady(),
+      items: await platform.scene.getItemIds(),
+    };
+
+    // #then
+    expect(scene).toEqual({ ready: true, items: [] });
+  });
+
+  test('is one scene for the room: every client hears each change, a repeated one included', async () => {
+    // #given
+    const room = createMemoryRoom();
+    const writer = client(room, 'a', 'GM');
+    const reader = client(room, 'b', 'GM');
+    const heard: string[] = [];
+
+    reader.scene.onReadyChange((ready) => {
+      heard.push(`ready ${String(ready)}`);
+    });
+    reader.scene.onItemsChange((itemIds) => {
+      heard.push(`items ${itemIds.join(',')}`);
+    });
+
+    // #when
+    writer.addSceneItems(['t1', 't2']);
+    writer.addSceneItems(['t2']);
+    writer.removeSceneItems(['t1']);
+    writer.setSceneReady(false);
+    writer.setSceneItems(['other']);
+    writer.setSceneReady(true);
+
+    // #then
+    expect({ heard, items: await reader.scene.getItemIds() }).toEqual({
+      heard: ['items t1,t2', 'items t1,t2', 'items t2', 'ready false', 'items other', 'ready true'],
+      items: ['other'],
+    });
+  });
+
+  test('stops calling a removed scene listener', () => {
+    // #given
+    const platform = createMockPlatform();
+    const heard: string[][] = [];
+
+    const unsubscribe = platform.scene.onItemsChange((itemIds) => {
+      heard.push(itemIds);
+    });
+
+    // #when
+    unsubscribe();
+    platform.addSceneItems(['t1']);
+
+    // #then
+    expect(heard).toEqual([]);
+  });
+});
+
+describe('mock page room scene', () => {
+  test('another page hears every step in order, even when it reads them after the last one', async () => {
+    // #given
+    const writer = createPageRoom('scene-order-room');
+    const reader = createPageRoom('scene-order-room');
+    const heard: string[] = [];
+
+    reader.onSceneChange((scene, change) => {
+      heard.push(`${change} ${String(scene.ready)} ${scene.itemIds.join(',')}`);
+    });
+
+    // #when: three steps before the first message can arrive.
+    writer.setScene({ ready: false, itemIds: [] }, 'ready');
+    writer.setScene({ ready: false, itemIds: ['b1'] }, 'items');
+    writer.setScene({ ready: true, itemIds: ['b1'] }, 'ready');
+    await waitFor(() => heard.length === 3);
+
+    // #then
+    const read: MockScene = reader.getScene();
+
+    expect({ heard, read }).toEqual({
+      heard: ['ready false ', 'items false b1', 'ready true b1'],
+      read: { ready: true, itemIds: ['b1'] },
+    });
+  });
+});
+
 describe('current platform under bun test', () => {
   test('resolves to the mock adapter', () => {
     // #when
@@ -555,4 +644,16 @@ function pushIntoList(metadata: JsonObject): void {
   }
 
   list.push(99);
+}
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1000;
+
+  while (!condition() && Date.now() < deadline) {
+    // Polling is the point here: the channel delivers on its own schedule.
+    // oxlint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2);
+    });
+  }
 }

@@ -35,6 +35,12 @@ export const METADATA_STORAGE_PREFIX = 'mock-metadata:';
 
 export const METADATA_CHANNEL_PREFIX = 'muster-roll-mock-metadata:';
 
+// The scene of a mock room, shared by every client as Owlbear shares it, lives in localStorage under
+// this prefix and the room id, as the metadata does.
+export const SCENE_STORAGE_PREFIX = 'mock-scene:';
+
+export const SCENE_CHANNEL_PREFIX = 'muster-roll-mock-scene:';
+
 // A shorter room copy pause and jitter for tests, in milliseconds, as with the catch-up timeout.
 export const SNAPSHOT_PAUSE_PARAM = 'mock-snapshot-pause-ms';
 

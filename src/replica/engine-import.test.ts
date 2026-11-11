@@ -779,6 +779,46 @@ describe('import', () => {
     }).toEqual({ rename: 'importing', imported: 'snapshot-imported', commits: [] });
   });
 
+  test('a linked token deleted from the scene during the import loses its link once the import ends', async () => {
+    // #given: the file links t1, and the open scene holds t1.
+    const room = openRoom();
+    const { gate, opened } = createWriteGate();
+
+    room.room.setScene({ ready: true, itemIds: ['t1', 'map'] }, 'items');
+
+    const gm = await startClient(room, 'gm-a', {
+      untilLive: true,
+      platform: gatedWrites(gate, opened),
+    });
+
+    const digest = String(Object(await check(gm)).digest);
+    const imported = send(gm, { type: 'snapshot-import', data: DATA, expectedDigest: digest });
+
+    await waitUntil(() => gate.calls === 1);
+    gm.platform.removeSceneItems(['t1']);
+    await pause(20);
+
+    const during = shown(gm, 'link:t1')?.d;
+
+    // #when
+    gate.open();
+    await waitUntil(() => answerOf(gm, imported) !== null);
+    await waitUntil(() => shown(gm, 'link:t1')?.d === null);
+
+    // #then
+    const prefix = `${ROOM_PREFIX}1:gm-a:`;
+
+    expect({
+      during,
+      stored: stored(gm, `${prefix}link:t1`),
+      rejections: [...gm.store.$rejections.get().keys()],
+    }).toEqual({
+      during: 'anya',
+      stored: { k: 'link:t1', d: null, c: 2, a: 'gm-a' },
+      rejections: [],
+    });
+  });
+
   test('an import that finds a copy of a higher generation adopts it, overwrites nothing and sends no reset', async () => {
     // #given: this client missed the change event of that copy.
     const room = openRoom();

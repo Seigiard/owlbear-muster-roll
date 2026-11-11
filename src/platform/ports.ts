@@ -124,6 +124,17 @@ export type NotificationPort = {
   show: (message: string, variant?: NotificationVariant) => Promise<string>;
 };
 
+// The scene the room has open, as item ids only. Owlbear reports the scene not ready while no scene
+// is open and while it changes to another one.
+export type ScenePort = {
+  isReady: () => Promise<boolean>;
+  onReadyChange: (callback: (ready: boolean) => void) => Unsubscribe;
+  getItemIds: () => Promise<string[]>;
+  // Every item id of the scene after each item update. Owlbear calls back on any update, a drag
+  // included, so the same list can come again and again.
+  onItemsChange: (callback: (itemIds: string[]) => void) => Unsubscribe;
+};
+
 export type Theme = {
   mode: 'DARK' | 'LIGHT';
   primary: { main: string; contrastText: string };
@@ -147,5 +158,6 @@ export type Platform = {
   popover: PopoverPort;
   action: ActionPort;
   notification: NotificationPort;
+  scene: ScenePort;
   theme: ThemePort;
 };

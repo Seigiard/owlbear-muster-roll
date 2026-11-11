@@ -194,6 +194,52 @@ test('a pick of a sheet deleted while the picker was open shows the failure and 
   }).toEqual({ closed: [], link: ABSENT });
 });
 
+test(`a token deleted from the scene clears its link, and the header shows "${NO_TOKEN}"`, async ({
+  page,
+  context,
+}) => {
+  // #given
+  const background = await openRoom(page, context, ROOM);
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+  await changeScene(background, [{ add: ['t-anya', 't-gob', 'map'] }]);
+  await expect(headerOf(page).getByText(TOKEN_LINKED)).toBeVisible();
+
+  // #when
+  await changeScene(background, [{ remove: ['t-anya'] }]);
+
+  // #then
+  await expect(headerOf(page).getByText(NO_TOKEN)).toBeVisible();
+  expect({
+    link: await storedData(page, 'link:t-anya'),
+    other: await storedData(page, 'link:t-gob'),
+    sheet: await storedData(page, 'sheet:anya'),
+  }).toEqual({ link: null, other: 'gob', sheet: { kind: 'pc', name: 'Аня', order: 0 } });
+});
+
+test('a scene change keeps the links of the scene left behind', async ({ page, context }) => {
+  // #given: "Аня" has her token on the first scene, "Гоблин" his on the second.
+  const background = await openRoom(page, context, ROOM);
+
+  await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+  await changeScene(background, [{ add: ['t-anya'] }]);
+
+  // #when: the GM opens the second scene and deletes the goblin's token there.
+  await changeScene(background, [{ ready: false }, { items: ['t-gob'] }, { ready: true }]);
+  await page.getByRole('tab', { name: 'NPC' }).click();
+  await expect(npcBlock(page, 'Гоблин').getByText(TOKEN_LINKED)).toBeVisible();
+  await changeScene(background, [{ remove: ['t-gob'] }]);
+  await expect(npcBlock(page, 'Гоблин').getByText(NO_TOKEN)).toBeVisible();
+
+  // #then
+  await page.getByRole('tab', { name: 'Аня' }).click();
+  await expect(headerOf(page).getByText(TOKEN_LINKED)).toBeVisible();
+  expect({
+    anya: await storedData(page, 'link:t-anya'),
+    goblin: await storedData(page, 'link:t-gob'),
+  }).toEqual({ anya: 'anya', goblin: null });
+});
+
 function pc(id: string, name: string, order: number): StoredRecord {
   return record(`sheet:${id}`, { kind: 'pc', name, order });
 }
@@ -245,6 +291,31 @@ async function waitForMenu(background: Page, ids: readonly string[]): Promise<vo
       background.evaluate(() => window.mockPlatform.contextMenuItems().map((item) => item.id)),
     )
     .toEqual(ids);
+}
+
+// One change of the room's scene, as Owlbear reports it.
+type SceneStep =
+  | { add: string[] }
+  | { remove: string[] }
+  | { items: string[] }
+  | { ready: boolean };
+
+// Changes the room's scene through the background's mock, one step after another, as the GM would
+// in Owlbear.
+async function changeScene(background: Page, steps: readonly SceneStep[]): Promise<void> {
+  await background.evaluate((all) => {
+    for (const step of all) {
+      if ('add' in step) {
+        window.mockPlatform.addSceneItems(step.add);
+      } else if ('remove' in step) {
+        window.mockPlatform.removeSceneItems(step.remove);
+      } else if ('items' in step) {
+        window.mockPlatform.setSceneItems(step.items);
+      } else {
+        window.mockPlatform.setSceneReady(step.ready);
+      }
+    }
+  }, steps);
 }
 
 async function clickMenuItem(background: Page, id: string, tokenId: string): Promise<void> {

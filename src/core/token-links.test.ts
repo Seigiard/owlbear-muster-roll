@@ -7,8 +7,10 @@ import {
   liveLinks,
   openTarget,
   pickerOrder,
+  removedItemIds,
   tokenIdSchema,
   tokenMenuEntries,
+  tokensToUnlink,
   type TokenMenuFilter,
   type TokenMenuKeyFilter,
 } from '@/core/token-links';
@@ -323,6 +325,79 @@ describe('linkPickerUrl', () => {
 
     // #then
     expect(url).toBe('/picker.html?token=a%2Fb%26c');
+  });
+});
+
+describe('removedItemIds', () => {
+  test('lists the ids the previous list held and the next one does not, in their order', () => {
+    // #when
+    const removed = removedItemIds(['t1', 't2', 'map', 't3'], new Set(['t2', 'new']));
+
+    // #then
+    expect(removed).toEqual(['t1', 'map', 't3']);
+  });
+
+  test('lists nothing for an id that only the next list holds, such as a token never seen', () => {
+    // #when
+    const removed = removedItemIds(['t1'], new Set(['t1', 'other-scene-token']));
+
+    // #then
+    expect(removed).toEqual([]);
+  });
+});
+
+describe('tokensToUnlink', () => {
+  const records = byKey([
+    sheet('brok', 'pc', 'Брок', 0),
+    sheet('skel', 'npc', 'Скелет', 0),
+    link('t1', 'brok'),
+    link('t2', 'skel'),
+    link('t3', 'brok'),
+    { k: 'link:t-cleared', d: null, c: 2, a: 'gm' },
+    link('t-gone', 'deleted-sheet'),
+  ]);
+
+  test('names a deleted token whose link is live', () => {
+    // #when
+    const unlinked = tokensToUnlink(removedItemIds(['t1', 't2'], new Set(['t2'])), records);
+
+    // #then
+    expect(unlinked).toEqual(['t1']);
+  });
+
+  test('names every linked token deleted at once, sorted', () => {
+    // #when
+    const unlinked = tokensToUnlink(['t3', 'map', 't1', 't2'], records);
+
+    // #then
+    expect(unlinked).toEqual(['t1', 't2', 't3']);
+  });
+
+  test('keeps the link of a token that was never in the list, such as one on another scene', () => {
+    // #when
+    const unlinked = tokensToUnlink(removedItemIds(['t2', 'map'], new Set(['map'])), records);
+
+    // #then
+    expect(unlinked).toEqual(['t2']);
+  });
+
+  test('names no token with no link, a cleared link, or a key no command could write', () => {
+    // #given
+    const withBadKey = new Map(records).set('link:bad:id', link('bad:id', 'brok'));
+
+    // #when
+    const unlinked = tokensToUnlink(['map', 't-cleared', 'bad:id'], withBadKey);
+
+    // #then
+    expect(unlinked).toEqual([]);
+  });
+
+  test('names a token whose link points to a deleted sheet, so no orphan record stays', () => {
+    // #when
+    const unlinked = tokensToUnlink(['t-gone'], records);
+
+    // #then
+    expect(unlinked).toEqual(['t-gone']);
   });
 });
 

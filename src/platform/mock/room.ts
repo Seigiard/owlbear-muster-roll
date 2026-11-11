@@ -8,6 +8,8 @@ import {
   METADATA_STORAGE_PREFIX,
   PARTY_CHANNEL_PREFIX,
   PARTY_STORAGE_PREFIX,
+  SCENE_CHANNEL_PREFIX,
+  SCENE_STORAGE_PREFIX,
 } from './client-params';
 import { createMemoryBus, type LocalBus } from './local-bus';
 
@@ -30,12 +32,29 @@ const partySchema = z.array(
 
 const metadataSchema = z.record(z.string(), z.json());
 
+const sceneSchema = z.object({ ready: z.boolean(), itemIds: z.array(z.string()) });
+
+const sceneChangeSchema = z.object({ kind: z.enum(['ready', 'items']), scene: sceneSchema });
+
+// A room opens with a ready scene that holds no item, so a test that never touches the scene sees
+// no removal.
+const INITIAL_SCENE: MockScene = { ready: true, itemIds: [] };
+
 // Owlbear keeps 16 kB of room metadata. It reports success for a write past that and drops it.
 const METADATA_BYTE_LIMIT = 16 * 1024;
 
 type RemoteListener = (event: BroadcastEvent) => void;
 
 type MetadataListener = (metadata: JsonObject) => void;
+
+// The scene the room has open: whether it is ready, and its item ids in order.
+export type MockScene = { ready: boolean; itemIds: string[] };
+
+// What Owlbear reports about one change: readiness, or the item list. It reports both even when
+// they did not change.
+export type MockSceneChange = 'ready' | 'items';
+
+type SceneListener = (scene: MockScene, change: MockSceneChange) => void;
 
 // What every client of one room shares: REMOTE delivery, the party and the room metadata.
 export type MockRoom = {
@@ -51,6 +70,11 @@ export type MockRoom = {
   // the change, the writer's own included.
   setMetadata: (update: MetadataUpdate) => void;
   onMetadataChange: (listener: MetadataListener) => Unsubscribe;
+  // One scene for the whole room, as Owlbear shows every client the scene the GM opened.
+  getScene: () => MockScene;
+  // Every client's listeners hear the change, the writer's own included, in the order it was made.
+  setScene: (scene: MockScene, change: MockSceneChange) => void;
+  onSceneChange: (listener: SceneListener) => Unsubscribe;
 };
 
 // Several clients in one process, as unit tests build them.
@@ -58,8 +82,10 @@ export function createMemoryRoom(): MockRoom {
   const remote = createMemoryBus();
   const partyListeners = new Set<() => void>();
   const metadataListeners = new Set<MetadataListener>();
+  const sceneListeners = new Set<SceneListener>();
   let members: PartyMember[] = [];
   let metadata: JsonObject = {};
+  let scene: MockScene = structuredClone(INITIAL_SCENE);
 
   function changeParty(next: PartyMember[]): void {
     members = next;
@@ -97,21 +123,35 @@ export function createMemoryRoom(): MockRoom {
       }
     },
     onMetadataChange: (listener) => subscribe(metadataListeners, listener),
+    getScene: () => structuredClone(scene),
+    setScene: (next, change) => {
+      scene = structuredClone(next);
+
+      for (const listener of sceneListeners) {
+        listener(structuredClone(scene), change);
+      }
+    },
+    onSceneChange: (listener) => subscribe(sceneListeners, listener),
   };
 }
 
 // Real pages of every client in one browser. REMOTE goes over a BroadcastChannel per room. The
-// party and the room metadata live in localStorage, outside every device's namespace, and a
-// BroadcastChannel each tells the other pages they changed.
+// party, the room metadata and the scene live in localStorage, outside every device's namespace,
+// and a BroadcastChannel each tells the other pages they changed. A scene change carries the scene
+// after it, so each page hears every step in order, even when several steps were made before the
+// first message arrived.
 export function createPageRoom(roomId: string): MockRoom {
   const remote = createMemoryBus();
   const partyListeners = new Set<() => void>();
   const metadataListeners = new Set<MetadataListener>();
+  const sceneListeners = new Set<SceneListener>();
   const partyKey = `${PARTY_STORAGE_PREFIX}${roomId}`;
   const metadataKey = `${METADATA_STORAGE_PREFIX}${roomId}`;
+  const sceneKey = `${SCENE_STORAGE_PREFIX}${roomId}`;
   let remoteChannel: BroadcastChannel | null = null;
   let partyChannel: BroadcastChannel | null = null;
   let metadataChannel: BroadcastChannel | null = null;
+  let sceneChannel: BroadcastChannel | null = null;
 
   function sharedRemote(): BroadcastChannel {
     if (remoteChannel === null) {
@@ -187,6 +227,38 @@ export function createPageRoom(roomId: string): MockRoom {
     }
   }
 
+  function sharedScene(): BroadcastChannel {
+    if (sceneChannel === null) {
+      sceneChannel = new BroadcastChannel(`${SCENE_CHANNEL_PREFIX}${roomId}`);
+      sceneChannel.addEventListener('message', (event: MessageEvent) => {
+        const parsed = sceneChangeSchema.safeParse(event.data);
+
+        if (parsed.success) {
+          notifyScene(parsed.data.scene, parsed.data.kind);
+        }
+      });
+    }
+
+    return sceneChannel;
+  }
+
+  function notifyScene(scene: MockScene, change: MockSceneChange): void {
+    for (const listener of sceneListeners) {
+      listener(structuredClone(scene), change);
+    }
+  }
+
+  function readScene(): MockScene {
+    try {
+      const text = localStorage.getItem(sceneKey);
+      const parsed = text === null ? null : sceneSchema.safeParse(JSON.parse(text));
+
+      return parsed?.success === true ? parsed.data : structuredClone(INITIAL_SCENE);
+    } catch {
+      return structuredClone(INITIAL_SCENE);
+    }
+  }
+
   return {
     postRemote: (channel, data, connectionId) => {
       remote.post(channel, data, connectionId);
@@ -225,6 +297,25 @@ export function createPageRoom(roomId: string): MockRoom {
       sharedMetadata();
 
       return subscribe(metadataListeners, listener);
+    },
+    getScene: readScene,
+    setScene: (next, change) => {
+      const scene = structuredClone(next);
+
+      // The message carries the scene, so a failed write only leaves later readers behind.
+      try {
+        localStorage.setItem(sceneKey, JSON.stringify(scene));
+      } catch (error) {
+        console.error('Muster Roll mock could not store the scene', error);
+      }
+
+      sharedScene().postMessage({ kind: change, scene });
+      notifyScene(scene, change);
+    },
+    onSceneChange: (listener) => {
+      sharedScene();
+
+      return subscribe(sceneListeners, listener);
     },
   };
 }

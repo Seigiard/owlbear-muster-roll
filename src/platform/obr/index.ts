@@ -84,6 +84,19 @@ export const platform: Platform = {
   notification: {
     show: (message, variant) => OBR.notification.show(message, variant),
   },
+  scene: {
+    isReady: () => OBR.scene.isReady(),
+    onReadyChange: (callback) => OBR.scene.onReadyChange(callback),
+    getItemIds: async () => {
+      const items = await OBR.scene.items.getItems();
+
+      return items.map((item) => item.id);
+    },
+    onItemsChange: (callback) =>
+      OBR.scene.items.onChange((items) => {
+        callback(items.map((item) => item.id));
+      }),
+  },
   theme: {
     getTheme: () => OBR.theme.getTheme(),
     onChange: (callback) => OBR.theme.onChange(callback),

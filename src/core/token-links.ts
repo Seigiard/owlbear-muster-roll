@@ -52,8 +52,9 @@ export function linkPickerUrl(tokenId: string): string {
 }
 
 // Token id to sheet id, for every link whose sheet is live. A link to a deleted or unknown sheet
-// counts as no link everywhere (FR18). Only `link:` records count, never the scene, so a token
-// that left the room still counts as linked in v1.
+// counts as no link everywhere (FR18). Only `link:` records count, never the scene: a GM client
+// tombstones the link of a token deleted from the scene (`tokensToUnlink`), and a link to a token
+// on another scene stays.
 export function liveLinks(records: ReadonlyMap<string, VersionedRecord>): Map<string, string> {
   const links = new Map<string, string>();
 
@@ -74,6 +75,30 @@ export function liveLinks(records: ReadonlyMap<string, VersionedRecord>): Map<st
   }
 
   return links;
+}
+
+// The item ids in `previous` that `next` no longer holds, in the order `previous` lists them. Both
+// lists must come from one ready period of one scene: a scene that changes or closes takes its
+// items away too, and those tokens were not deleted.
+export function removedItemIds(previous: Iterable<string>, next: ReadonlySet<string>): string[] {
+  return [...new Set(previous)].filter((id) => !next.has(id));
+}
+
+// The removed token ids whose `link:` record is not a tombstone, sorted. A link to a sheet that is
+// gone is cleared too. The tombstone stays a record, but the menu filters stop growing with tokens
+// that no longer exist. A token id no command could write is skipped, as `link-clear` would refuse
+// it.
+export function tokensToUnlink(
+  removed: Iterable<string>,
+  records: ReadonlyMap<string, VersionedRecord>,
+): string[] {
+  return [...new Set(removed)]
+    .filter(
+      (tokenId) =>
+        tokenIdSchema.safeParse(tokenId).success &&
+        (records.get(linkKey(tokenId))?.d ?? null) !== null,
+    )
+    .sort();
 }
 
 // The sheets at least one live link points to.

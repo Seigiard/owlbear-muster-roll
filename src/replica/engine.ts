@@ -62,7 +62,7 @@ import {
   importSnapshot,
   type SnapshotImport,
 } from '@/core/snapshot-import';
-import { liveSheetShownTo, openTarget } from '@/core/token-links';
+import { liveSheetShownTo, openTarget, tokensToUnlink } from '@/core/token-links';
 import {
   encodeSnapshot,
   readBackHolds,
@@ -116,6 +116,7 @@ import {
   type ProposalPatch,
 } from '@/replica/proposal-queue';
 import { createRecordStore, type RecordStore } from '@/replica/record-store';
+import { watchSceneRemovals, type SceneWatch } from '@/replica/scene-watch';
 import { createTokenMenu, type TokenMenuCopy } from '@/replica/token-menu';
 import { createVersionMinter } from '@/replica/version-minter';
 
@@ -128,6 +129,9 @@ const RECENT_COMMAND_ID_LIMIT = 256;
 
 // Far more catch-up nonces than a room sends while one answer is on its way.
 const RECENT_NONCE_LIMIT = 256;
+
+// Far more tokens than one session deletes while a link to one of them can still arrive.
+const DELETED_TOKEN_LIMIT = 1024;
 
 // Far more rolls than reach a client while one of them can still arrive twice.
 const RECENT_ROLL_ID_LIMIT = 256;
@@ -149,6 +153,7 @@ export type ReplicaEnginePlatform = Pick<
   | 'party'
   | 'player'
   | 'popover'
+  | 'scene'
   | 'storage'
 >;
 
@@ -340,6 +345,18 @@ export async function startReplicaEngine(
           open: openFromToken,
         });
 
+  // TASK-39: a GM client watches the open scene and clears the link of a token deleted from it,
+  // through the same GM command path as "Отвязать лист". A player client never reads the scene.
+  let sceneWatch: SceneWatch | null = null;
+  // The ids of those commands. A refused clear is silent, because the token is gone and no GM could
+  // act on a message about it. The token stays in `deletedTokens`, so the next check tries again.
+  const sceneCommandIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
+  // Item ids this GM client saw deleted from the open scene, oldest first, until the item shows in
+  // the scene again. A link to one of them is cleared whenever this client is live and not
+  // importing: one that waited out a catch-up or an import, and one that another GM client wrote
+  // after the deletion.
+  const deletedTokens = new Set<string>();
+
   // FR14: the sheet "Открыть лист" asked for, until a window acknowledges it. A newer press
   // replaces it. It is dropped once this role cannot see the sheet, the sheet is gone, Owlbear
   // refuses to open the window, or it outlives its lifetime.
@@ -474,6 +491,10 @@ export async function startReplicaEngine(
     reason: RejectionReason,
     changed: { count: number; digest: string } = { count: 0, digest: NOTHING_ERASED },
   ): void {
+    if (sceneCommandIds.has(id)) {
+      return;
+    }
+
     if (menuCommandIds.has(id) && options.menuCopy !== undefined) {
       platform.notification.show(options.menuCopy.unlinkFailed, 'ERROR').catch((error) => {
         console.error('Muster Roll could not show a refused unlink', error);
@@ -682,6 +703,70 @@ export async function startReplicaEngine(
     }
   }
 
+  // Only a GM client watches the scene. A fresh watch has seen no item, so a role change never counts
+  // the tokens already gone as deleted.
+  function followScene(): void {
+    if (role === 'GM' && !stopped) {
+      sceneWatch ??= watchSceneRemovals(platform.scene, {
+        removed: unlinkRemoved,
+        present: forgetPresent,
+      });
+
+      return;
+    }
+
+    sceneWatch?.stop();
+    sceneWatch = null;
+    deletedTokens.clear();
+  }
+
+  function unlinkRemoved(itemIds: readonly string[]): void {
+    if (stopped || role !== 'GM') {
+      return;
+    }
+
+    for (const itemId of itemIds) {
+      deletedTokens.delete(itemId);
+      deletedTokens.add(itemId);
+    }
+
+    // The oldest go first, so a long session keeps a bounded list.
+    for (const oldest of deletedTokens) {
+      if (deletedTokens.size <= DELETED_TOKEN_LIMIT) {
+        break;
+      }
+
+      deletedTokens.delete(oldest);
+    }
+
+    clearDeletedLinks();
+  }
+
+  // An item back in the scene, as after an Owlbear undo, is not deleted, so the GM can link it again.
+  function forgetPresent(itemIds: ReadonlySet<string>): void {
+    for (const tokenId of deletedTokens) {
+      if (itemIds.has(tokenId)) {
+        deletedTokens.delete(tokenId);
+      }
+    }
+  }
+
+  // The live links of deleted tokens, once this GM client is live and not importing. One
+  // `link-clear` per token, each with an id no window owns. Engine-made, so its id stays out of
+  // `recentCommandIds`, which only guards against window repeats.
+  function clearDeletedLinks(): void {
+    if (stopped || role !== 'GM' || sync.state === 'catching-up' || importing) {
+      return;
+    }
+
+    for (const tokenId of tokensToUnlink(deletedTokens, replica)) {
+      const id = newId();
+
+      sceneCommandIds.add(id);
+      runCommand(id, { type: 'link-clear', tokenId });
+    }
+  }
+
   // A window drops a withdrawn key from its replica too, so a key that leaves the pending view comes
   // with the replica's record again.
   function gmDelta(records: readonly VersionedRecord[], changes: PendingChanges): DeltaContent {
@@ -844,44 +929,47 @@ export async function startReplicaEngine(
     }
 
     recentCommandIds.add(message.id);
+    runCommand(message.id, message.command);
+  }
 
+  function runCommand(id: string, command: Command): void {
     // AD-4: a player never merges its own edit, which would beat later GM edits of its key. Its
     // field and repeat row edits wait for a GM client's check. Nothing else is a player's to write.
     if (role !== 'GM') {
-      handlePlayerCommand(message.id, message.command);
+      handlePlayerCommand(id, command);
 
       return;
     }
 
     // AD-9: until the importer's `reset` is out, no commit of the new generation may reach the room.
     if (importing) {
-      reject(message.id, 'importing');
+      reject(id, 'importing');
 
       return;
     }
 
     if (sync.state === 'catching-up') {
-      queueIntent(message.id, message.command);
+      queueIntent(id, command);
 
       return;
     }
 
-    if (message.command.type === 'preset-upload') {
-      uploadPreset(message.id, message.command);
+    if (command.type === 'preset-upload') {
+      uploadPreset(id, command);
 
       return;
     }
 
-    if (message.command.type === 'snapshot-import') {
-      void importFromSnapshot(message.id, message.command);
+    if (command.type === 'snapshot-import') {
+      void importFromSnapshot(id, command);
 
       return;
     }
 
-    const composed = composers.compose(liveContext(), message.command);
+    const composed = composers.compose(liveContext(), command);
 
     if (!composed.ok) {
-      reject(message.id, composed.error);
+      reject(id, composed.error);
 
       return;
     }
@@ -1162,6 +1250,8 @@ export async function startReplicaEngine(
       }
     } finally {
       importing = false;
+      // Deletions that waited out the import, whether it finished, stopped or was replaced.
+      clearDeletedLinks();
     }
 
     send({ t: 'snapshot-imported', id }).catch((error) => {
@@ -2709,6 +2799,7 @@ export async function startReplicaEngine(
     // The first catch-up's end allows the menu, and it merged what this client had loaded.
     refreshTokenMenu();
     answerHeldRequests();
+    clearDeletedLinks();
 
     // AD-8: a write owed from before, or the edits that waited, go into the room copy now.
     if (roomCopyOwed || replayed.length > 0) {
@@ -2747,6 +2838,11 @@ export async function startReplicaEngine(
 
     if (changed.length > 0 || currentNotices().join() !== noticesBefore) {
       emitDelta(changed);
+    }
+
+    // Another GM client may link a token this client saw deleted.
+    if (changed.length > 0) {
+      clearDeletedLinks();
     }
 
     return changed;
@@ -3078,6 +3174,7 @@ export async function startReplicaEngine(
     role = next;
     proposals.clear();
     refreshTokenMenu();
+    followScene();
     forgetDigests();
     // A new stream: the catch-up entry below sends a delta, and each window that gets it from a
     // new engine id asks for a projection of the records the new role sees.
@@ -3419,6 +3516,8 @@ export async function startReplicaEngine(
 
   const unsubscribeMetadata = platform.metadata.onMetadataChange(followMetadata);
 
+  followScene();
+
   const started = enterCatchUp('start');
 
   watchGmSilence();
@@ -3449,6 +3548,7 @@ export async function startReplicaEngine(
       roster.stop();
       outbox.stop();
       tokenMenu?.stop();
+      followScene();
     },
     flushNow: () => {
       // A closing page cannot wait for catch-up, so the intents it holds apply and go out now.

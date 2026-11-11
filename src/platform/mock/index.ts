@@ -29,9 +29,15 @@ import {
   SNAPSHOT_PAUSE_PARAM,
 } from './client-params';
 import { createMemoryBus, createPageBus, type LocalBus } from './local-bus';
-import { createMemoryRoom, createPageRoom, type MockRoom } from './room';
+import {
+  createMemoryRoom,
+  createPageRoom,
+  type MockRoom,
+  type MockScene,
+  type MockSceneChange,
+} from './room';
 
-export { createMemoryBus, createMemoryRoom, type MockRoom };
+export { createMemoryBus, createMemoryRoom, type MockRoom, type MockScene };
 
 const MOCK_PLAYER_ID = 'mock-player';
 const MOCK_PLAYER_NAME = 'Mock GM';
@@ -108,6 +114,14 @@ export type MockPlatform = Platform & {
   actionOpens: () => number;
   // The next request to open the action window rejects, as Owlbear can refuse one.
   failNextActionOpen: () => void;
+  // The room's scene, shared by every client of the room. Each call is one change Owlbear reports:
+  // a readiness change, or one item list. Both are reported even when nothing changed, as Owlbear
+  // reports every item update.
+  setSceneReady: (ready: boolean) => void;
+  addSceneItems: (itemIds: string[]) => void;
+  removeSceneItems: (itemIds: string[]) => void;
+  // Replaces the whole item list, as another scene's items would, in one change.
+  setSceneItems: (itemIds: string[]) => void;
 };
 
 declare global {
@@ -195,6 +209,10 @@ export function createMockPlatform(
   // Owlbear lists every member but the caller.
   function others(): PartyMember[] {
     return room.members().filter((member) => member.connectionId !== connectionId);
+  }
+
+  function changeScene(kind: MockSceneChange, change: (scene: MockScene) => MockScene): void {
+    room.setScene(change(room.getScene()), kind);
   }
 
   return {
@@ -330,6 +348,23 @@ export function createMockPlatform(
         return Promise.resolve(MOCK_NOTIFICATION_ID);
       },
     },
+    // Owlbear calls back once per change, also with a readiness or a list it already reported.
+    scene: {
+      isReady: () => Promise.resolve(room.getScene().ready),
+      onReadyChange: (callback) =>
+        room.onSceneChange((scene, change) => {
+          if (change === 'ready') {
+            callback(scene.ready);
+          }
+        }),
+      getItemIds: () => Promise.resolve(room.getScene().itemIds),
+      onItemsChange: (callback) =>
+        room.onSceneChange((scene, change) => {
+          if (change === 'items') {
+            callback(scene.itemIds);
+          }
+        }),
+    },
     theme: {
       getTheme: () => {
         const params = new URLSearchParams(window.location.search);
@@ -411,6 +446,24 @@ export function createMockPlatform(
     actionOpens: () => actionOpens,
     failNextActionOpen: () => {
       actionOpenFails = true;
+    },
+    setSceneReady: (ready) => {
+      changeScene('ready', (scene) => ({ ...scene, ready }));
+    },
+    addSceneItems: (itemIds) => {
+      changeScene('items', (scene) => ({
+        ...scene,
+        itemIds: [...scene.itemIds, ...itemIds.filter((id) => !scene.itemIds.includes(id))],
+      }));
+    },
+    removeSceneItems: (itemIds) => {
+      changeScene('items', (scene) => ({
+        ...scene,
+        itemIds: scene.itemIds.filter((id) => !itemIds.includes(id)),
+      }));
+    },
+    setSceneItems: (itemIds) => {
+      changeScene('items', (scene) => ({ ...scene, itemIds: [...itemIds] }));
     },
   };
 }

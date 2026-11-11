@@ -75,3 +75,6 @@ export const ACCESS_CHANGE_TIMEOUT_MS = 5000;
 
 // A browser may read a download's object URL after the click returns, so it lives this long.
 export const DOWNLOAD_URL_LIFETIME_MS = 30000;
+
+// A scene read that failed is tried again after this long, while the scene stays as it was.
+export const SCENE_READ_RETRY_MS = 500;
