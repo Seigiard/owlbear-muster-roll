@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-11T04:41:00Z'
-updated_date: '2026-11-11T16:06:00Z'
+updated_date: '2026-11-11T16:45:00Z'
 labels:
   - v2
 dependencies: []
@@ -52,4 +52,6 @@ Research 2026-11-11 (from source):
 Permalinks: dicex ef79a207 src/plugin/dicePlusProtocol.ts, dicePlusBackgroundListeners.ts, dicePlusResultReporter.ts; official ccc32bec src/plugin/DiceRollSync.tsx.
 
 Fork: https://github.com/Seigiard/dicex, installed from https://seigiard.com/dicex/manifest.json (seigiard.github.io redirects there without CORS). Visibility is the caller's: rollTarget everyone = public, self = roller only, dm/gm_only = roller and GM. The consent/allowlist idea was dropped by the owner. Client implemented per spec-4-8; review round 1 patched. Checks 2026-11-11: oxfmt, lint, typecheck, bun test 2037 pass, vite build, test:browser 398 passed twice. AC 2-5 proven against a fake extension that models dicex result shapes (src/replica/engine-dice-extension.test.ts, tests/dice-extension.e2e.ts). Open: owner live-room check with the fork; client follow-up for the GM access permission dicex is getting.
+
+Follow-up spec-4-9 (GM access permission in the fork): GM client asks dicex for access at start; probes name the source and read `permitted`; refused access rolls local at once; player sees «Ждём разрешения ГМ…» while the GM decides. Owner live finding fixed: dice messages bypass the paced room queue, a roll waits up to 1 s for a fresh probe, each roll logs its path. Checks: bun test 2060 pass, test:browser 399 passed twice, lint/typecheck/build exit 0.
 <!-- SECTION:NOTES:END -->
