@@ -2,8 +2,10 @@ import type { JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
 import { TIMING, type Timing } from '@/core/timing';
 import type {
+  ContextMenuItem,
   PartyMember,
   Platform,
+  Popover,
   PlayerRole,
   SendFailure,
   StorageFailure,
@@ -34,6 +36,10 @@ export { createMemoryBus, createMemoryRoom, type MockRoom };
 const MOCK_PLAYER_ID = 'mock-player';
 const MOCK_PLAYER_NAME = 'Mock GM';
 const MOCK_NOTIFICATION_ID = 'mock-notification';
+
+// The element id Owlbear passes to a context menu click: the menu entry that was pressed.
+const MOCK_MENU_ELEMENT_ID = 'mock-context-menu-element';
+
 const THEME_READ_FAILS_PARAM = 'mock-theme-read-fails';
 const THEME_READ_SLOW_PARAM = 'mock-theme-read-slow';
 const THEME_READ_SLOW_MS = 200;
@@ -70,6 +76,9 @@ export type MockClient = {
   role: PlayerRole;
 };
 
+// One context menu port call, in the order this page made it.
+export type ContextMenuCall = { kind: 'create' | 'remove'; id: string };
+
 export type MockPlatform = Platform & {
   setTheme: (theme: Theme) => void;
   // `rejoin: false` changes only the player's own role, as Owlbear does, with no party change.
@@ -84,6 +93,17 @@ export type MockPlatform = Platform & {
   sendRemoteAs: (connectionId: string, channel: string, data: JsonValue) => void;
   // Every notification this page has shown, oldest first.
   shownNotifications: () => string[];
+  // The context menu items this page has created and not removed, in the order they were created.
+  contextMenuItems: () => ContextMenuItem[];
+  contextMenuCalls: () => ContextMenuCall[];
+  // The next call of each listed kind rejects and changes nothing, one per entry.
+  failNextContextMenuCalls: (kinds: ContextMenuCall['kind'][]) => void;
+  // Presses an item for the selected items, as Owlbear calls it back. Owlbear applies the filters
+  // before it shows an item, so the caller picks a selection the filters would show it for. False
+  // when no such item exists.
+  clickContextMenuItem: (id: string, itemIds: string[]) => boolean;
+  openedPopovers: () => Popover[];
+  closedPopovers: () => string[];
 };
 
 declare global {
@@ -127,6 +147,11 @@ export function createMockPlatform(
   const roleListeners = new Set<() => void>();
   const sendFailures: SendFailure[] = [];
   const notifications: string[] = [];
+  const menuItems = new Map<string, ContextMenuItem>();
+  const menuCalls: ContextMenuCall[] = [];
+  const menuFailures: ContextMenuCall['kind'][] = [];
+  const opened: Popover[] = [];
+  const closed: string[] = [];
   const { room, connectionId, playerId, name } = client;
   let role: PlayerRole = client.role;
   let joined = false;
@@ -142,6 +167,18 @@ export function createMockPlatform(
     }
 
     return ok(action());
+  }
+
+  function takeMenuFailure(kind: ContextMenuCall['kind']): boolean {
+    const index = menuFailures.indexOf(kind);
+
+    if (index === -1) {
+      return false;
+    }
+
+    menuFailures.splice(index, 1);
+
+    return true;
   }
 
   function joinParty(): void {
@@ -231,12 +268,40 @@ export function createMockPlatform(
       keys: () => attemptStorage('list', () => backing.keys()),
     },
     contextMenu: {
-      create: () => Promise.resolve(),
-      remove: () => Promise.resolve(),
+      // As in Owlbear, an item created again under its id replaces the old one.
+      create: (item) => {
+        if (takeMenuFailure('create')) {
+          return Promise.reject(new Error('mock context menu create failed'));
+        }
+
+        menuItems.delete(item.id);
+        menuItems.set(item.id, item);
+        menuCalls.push({ kind: 'create', id: item.id });
+
+        return Promise.resolve();
+      },
+      remove: (id) => {
+        if (takeMenuFailure('remove')) {
+          return Promise.reject(new Error('mock context menu remove failed'));
+        }
+
+        menuItems.delete(id);
+        menuCalls.push({ kind: 'remove', id });
+
+        return Promise.resolve();
+      },
     },
     popover: {
-      open: () => Promise.resolve(),
-      close: () => Promise.resolve(),
+      open: (popover) => {
+        opened.push(popover);
+
+        return Promise.resolve();
+      },
+      close: (id) => {
+        closed.push(id);
+
+        return Promise.resolve();
+      },
     },
     action: {
       open: () => Promise.resolve(),
@@ -308,6 +373,24 @@ export function createMockPlatform(
       room.postRemote(channel, data, sender);
     },
     shownNotifications: () => [...notifications],
+    contextMenuItems: () => [...menuItems.values()],
+    contextMenuCalls: () => [...menuCalls],
+    failNextContextMenuCalls: (kinds) => {
+      menuFailures.push(...kinds);
+    },
+    clickContextMenuItem: (id, itemIds) => {
+      const item = menuItems.get(id);
+
+      if (item === undefined) {
+        return false;
+      }
+
+      item.onClick?.({ items: itemIds.map((itemId) => ({ id: itemId })) }, MOCK_MENU_ELEMENT_ID);
+
+      return true;
+    },
+    openedPopovers: () => [...opened],
+    closedPopovers: () => [...closed],
   };
 }
 

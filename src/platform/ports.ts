@@ -73,10 +73,13 @@ export type ContextMenuKeyFilter = {
   coordinator?: '&&' | '||';
 };
 
+// `every` must hold for every selected item, `some` for at least one, as in the SDK.
 export type ContextMenuIconFilter = {
+  min?: number;
   max?: number;
   roles?: PlayerRole[];
   every?: ContextMenuKeyFilter[];
+  some?: ContextMenuKeyFilter[];
 };
 
 export type ContextMenuIcon = {

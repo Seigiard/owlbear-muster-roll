@@ -110,9 +110,9 @@ describe('default-mode vite build', () => {
     expect(exitCode).toBe(0);
   });
 
-  test('emits both entry pages, the manifest and the headers file', () => {
+  test('emits every entry page, the manifest and the headers file', () => {
     // #given
-    const required = ['index.html', 'background.html', 'manifest.json', '_headers'];
+    const required = ['index.html', 'background.html', 'picker.html', 'manifest.json', '_headers'];
 
     // #when
     const missing = required.filter((name) => !existsSync(join(outDir, name)));

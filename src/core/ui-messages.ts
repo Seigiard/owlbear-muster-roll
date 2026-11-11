@@ -117,6 +117,20 @@ const sheetDuplicateSchema = z.strictObject({
   count: z.number(),
 });
 
+// FR18: a token links to one sheet, so a new link replaces the token's old one. The engine checks
+// the token id and that the sheet is live.
+const linkSetSchema = z.strictObject({
+  type: z.literal('link-set'),
+  tokenId: z.string(),
+  sheetId: z.string(),
+});
+
+// Tombstones the token's link. The sheet and the token stay.
+const linkClearSchema = z.strictObject({
+  type: z.literal('link-clear'),
+  tokenId: z.string(),
+});
+
 // The window sends the deflated data, not the JSON, because a preset over the message limit as
 // JSON can still fit once deflated. The engine decodes and validates it again.
 const presetUploadSchema = z.strictObject({
@@ -155,6 +169,8 @@ const commandIntentSchema = z.discriminatedUnion('type', [
   sheetRenameSchema,
   sheetDeleteSchema,
   sheetDuplicateSchema,
+  linkSetSchema,
+  linkClearSchema,
   presetUploadSchema,
   fieldPatchSchema,
   repeatRowAddSchema,
@@ -190,6 +206,10 @@ const commandRejectedSchema = z.strictObject({
     'invalid-count',
     // Only an NPC is duplicated.
     'not-npc',
+    // A token id no `link:` key can hold.
+    'invalid-token-id',
+    // A `link-clear` for a token with no link.
+    'unknown-link',
     // A player client edits nothing until Epic 3 brings `propose`.
     'not-allowed',
     // AD-14: a preset upload waits until catch-up ends.

@@ -1,7 +1,8 @@
 import { platform, timing } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { startReplicaEngine } from '@/replica/engine';
-// The roll strings, the one text the background shows. The engine takes them as an option.
+// The roll strings and the token menu labels, the only text the background shows. The engine
+// takes them as options.
 import { copy } from '@/ui/copy';
 
 platform.onReady(() => {
@@ -13,6 +14,11 @@ async function start(): Promise<void> {
     const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, timing), {
       timing,
       rollCopy: copy,
+      menuCopy: {
+        linkSheet: copy.command.linkSheet,
+        unlinkSheet: copy.command.unlinkSheet,
+        unlinkFailed: copy.unlinkFailed,
+      },
     });
 
     // A closing tab still sends its held commits.

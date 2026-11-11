@@ -18,6 +18,8 @@ type NpcTabProps = {
   npcs: readonly SheetSummary[];
   template: PresetTemplate;
   records: ReadonlyMap<string, VersionedRecord>;
+  // The sheets a live link points to.
+  linkedSheets: ReadonlySet<string>;
   editing: FieldEditing;
   rolling: DiceRolling;
   sendCommand: ReplicaClient['sendCommand'];
@@ -41,6 +43,7 @@ export function NpcTab({
   npcs,
   template,
   records,
+  linkedSheets,
   editing,
   rolling,
   sendCommand,
@@ -84,6 +87,7 @@ export function NpcTab({
                     variant="npc"
                     sheetId={npc.sheetId}
                     name={npc.name}
+                    tokenLinked={linkedSheets.has(npc.sheetId)}
                     sendCommand={sendCommand}
                     store={store}
                     focusName={focusNameOf === key}

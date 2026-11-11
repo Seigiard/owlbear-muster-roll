@@ -8,6 +8,7 @@ import { decodePreset, type Preset } from '@/core/preset';
 import { hasLiveSheet, presetDataSchema, type VersionedRecord } from '@/core/records';
 import { sheetKey, type SheetSummary } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
+import { linkedSheetIds } from '@/core/token-links';
 import { visibleRecordMap, visibleSheets, type PlayerRole } from '@/core/visibility';
 import { platform } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
@@ -164,6 +165,8 @@ function WindowRoot({
   // A sheet this window has confirmed the deletion of, until it is gone or the deletion fails.
   const [deleting, setDeleting] = useState<DeletingSheet | null>(null);
   const [focusAfterLoss, setFocusAfterLoss] = useState<FocusAfterLoss | null>(null);
+  // The token status reads `link:` records only, never the scene (FR18).
+  const linkedSheets = useMemo(() => linkedSheetIds(records), [records]);
   const characterTabs = characters.map((sheet) => sheetKey(sheet.sheetId));
   // Kept stable between renders, as the focus effect reads it.
   const npcSheets = useMemo(() => npcs.map((sheet) => sheetKey(sheet.sheetId)), [npcs]);
@@ -473,6 +476,7 @@ function WindowRoot({
                 key={id}
                 sheetId={sheet.sheetId}
                 name={sheet.name}
+                tokenLinked={linkedSheets.has(sheet.sheetId)}
                 sendCommand={sendCommand}
                 store={projection}
                 focusName={focusNameOf === id}
@@ -518,6 +522,7 @@ function WindowRoot({
                 npcs={npcs}
                 template={preset.npc}
                 records={records}
+                linkedSheets={linkedSheets}
                 editing={editing}
                 rolling={rolling}
                 sendCommand={sendCommand}

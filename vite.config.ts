@@ -21,7 +21,11 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       rolldownOptions: {
-        input: { index: fromRoot('index.html'), background: fromRoot('background.html') },
+        input: {
+          index: fromRoot('index.html'),
+          background: fromRoot('background.html'),
+          picker: fromRoot('picker.html'),
+        },
         output: {
           // A stable chunk for the SDK and adapter, instead of a name that follows shared code.
           advancedChunks: { groups: [{ name: 'obr', test: /platform\/obr|@owlbear-rodeo\/sdk/ }] },

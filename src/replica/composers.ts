@@ -32,6 +32,7 @@ import {
   sheetIdSchema,
   sheetKey,
 } from '@/core/sheets';
+import { linkKey, tokenIdSchema } from '@/core/token-links';
 import type { Command, RejectionReason } from '@/core/ui-messages';
 
 // One live value record of a duplicated sheet, with the key parts a copy keeps.
@@ -318,6 +319,10 @@ export function createComposers(connectionId: string): Composers {
           return composeSheetDelete(context, command);
         case 'sheet-duplicate':
           return composeSheetDuplicate(context, command);
+        case 'link-set':
+          return listOf(composeLinkSet(context, command));
+        case 'link-clear':
+          return listOf(composeLinkClear(context, command));
         case 'preset-upload':
           return listOf(composePresetUpload(context, command));
         case 'field-patch':
@@ -482,6 +487,46 @@ function composeSheetDuplicate(
   }
 
   return copies.every(recordFitsOneMessage) ? ok(copies) : err('too-large');
+}
+
+// FR18: a token holds one sheet, so the new link replaces the old one. A sheet can have many
+// tokens, so no other link changes. A link to a sheet that is not live is refused.
+function composeLinkSet(
+  context: ComposeContext,
+  command: Extract<Command, { type: 'link-set' }>,
+): Result<VersionedRecord, RejectionReason> {
+  if (!tokenIdSchema.safeParse(command.tokenId).success) {
+    return err('invalid-token-id');
+  }
+
+  const sheet = liveSheetRecord(context, command.sheetId);
+
+  if (!sheet.ok) {
+    return sheet;
+  }
+
+  const k = linkKey(command.tokenId);
+  const { c, a } = context.mint(k, context.records.get(k)?.c ?? 0);
+  const record: VersionedRecord = { k, d: command.sheetId, c, a };
+
+  return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+}
+
+// The link goes, and the sheet and the token stay. A link to a deleted sheet is still a record, so
+// it can be cleared too.
+function composeLinkClear(
+  context: ComposeContext,
+  command: Extract<Command, { type: 'link-clear' }>,
+): Result<VersionedRecord, RejectionReason> {
+  if (!tokenIdSchema.safeParse(command.tokenId).success) {
+    return err('invalid-token-id');
+  }
+
+  const current = context.records.get(linkKey(command.tokenId));
+
+  return current === undefined || current.d === null
+    ? err('unknown-link')
+    : ok(tombstone(context, current));
 }
 
 // The live `row:` and `rep:` records of one sheet, by key, so copies list them in one order.

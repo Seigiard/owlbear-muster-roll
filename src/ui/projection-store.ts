@@ -13,6 +13,8 @@ import type {
 export type ProjectionStore = {
   // The replica as the window shows it: the pending view stands in for the records of its keys.
   $records: ReadableAtom<ReadonlyMap<string, VersionedRecord>>;
+  // The replica alone, with no pending view: what the engine has applied.
+  $replica: ReadableAtom<ReadonlyMap<string, VersionedRecord>>;
   $notices: ReadableAtom<readonly Notice[]>;
   // Recent rejections by command id, so two that land before one render both stay readable.
   $rejections: ReadableAtom<ReadonlyMap<string, CommandRejectedMessage>>;
@@ -65,6 +67,7 @@ const UNKNOWN_ROOM_COPY: RoomCopyStatus = {
 // The engine orders messages by sequence, so a window replaces records and never compares versions.
 export function createProjectionStore(): ProjectionStore {
   const $records = atom<ReadonlyMap<string, VersionedRecord>>(new Map());
+  const $replica = atom<ReadonlyMap<string, VersionedRecord>>(new Map());
   const $notices = atom<readonly Notice[]>([]);
   const $rejections = atom<ReadonlyMap<string, CommandRejectedMessage>>(new Map());
   const $rollOutcomes = atom<ReadonlyMap<string, RollOutcomeMessage>>(new Map());
@@ -82,12 +85,14 @@ export function createProjectionStore(): ProjectionStore {
     }
 
     $records.set(shown);
+    $replica.set(new Map(replica));
     $notices.set(notices);
     $sync.set(sync);
   }
 
   return {
     $records,
+    $replica,
     $notices,
     $rejections,
     $rollOutcomes,

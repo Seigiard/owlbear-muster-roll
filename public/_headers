@@ -10,6 +10,10 @@
   Access-Control-Allow-Origin: https://www.owlbear.rodeo
   Cache-Control: no-cache
 
+/picker.html
+  Access-Control-Allow-Origin: https://www.owlbear.rodeo
+  Cache-Control: no-cache
+
 /icon.svg
   Access-Control-Allow-Origin: https://www.owlbear.rodeo
   Cache-Control: no-cache

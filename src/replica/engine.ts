@@ -72,6 +72,7 @@ import { createComposers, type ComposeContext } from '@/replica/composers';
 import { createPartyRoster, type RoomSender } from '@/replica/party-roster';
 import { createPendingQueue, type PendingEntry } from '@/replica/pending-queue';
 import { createRecordStore, type RecordStore } from '@/replica/record-store';
+import { createTokenMenu, type TokenMenuCopy } from '@/replica/token-menu';
 import { createVersionMinter } from '@/replica/version-minter';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
@@ -92,7 +93,14 @@ const UNREADABLE_STORAGE_MARK = '(unreadable)';
 
 export type ReplicaEnginePlatform = Pick<
   Platform,
-  'broadcast' | 'metadata' | 'notification' | 'party' | 'player' | 'storage'
+  | 'broadcast'
+  | 'contextMenu'
+  | 'metadata'
+  | 'notification'
+  | 'party'
+  | 'player'
+  | 'popover'
+  | 'storage'
 >;
 
 export type EngineTiming = Pick<
@@ -113,6 +121,9 @@ export type ReplicaEngineOptions = {
   random?: () => number;
   // The copy catalog's roll strings. The background page passes them; with none, no roll shows.
   rollCopy?: RollCopy;
+  // The copy catalog's token menu labels. The background page passes them; with none, no token
+  // menu is made.
+  menuCopy?: TokenMenuCopy;
 };
 
 export type ReplicaEngine = {
@@ -219,6 +230,21 @@ export async function startReplicaEngine(
   // AD-12: once a newer build has spoken in the room, the banner stays until a reload.
   let newerVersionSeen = false;
   let stopped = false;
+
+  // AD-10: the background owns the token menu. "Отвязать лист" runs as a GM command of this
+  // engine, so it goes through the same checks, catch-up queue, storage and send as a window's.
+  // No window owns the id of a command the menu issues, so this page shows its rejection.
+  const menuCommandIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
+
+  const tokenMenu =
+    options.menuCopy === undefined
+      ? null
+      : createTokenMenu(platform, options.menuCopy, (tokenId) => {
+          const id = newId();
+
+          menuCommandIds.add(id);
+          handleCommand({ t: 'command', id, command: { type: 'link-clear', tokenId } });
+        });
 
   // AD-7 catch-up. `ownNonce` is set only while catching up.
   let sync: CatchUpState = {
@@ -327,6 +353,12 @@ export async function startReplicaEngine(
   }
 
   function reject(id: string, reason: RejectionReason): void {
+    if (menuCommandIds.has(id) && options.menuCopy !== undefined) {
+      platform.notification.show(options.menuCopy.unlinkFailed, 'ERROR').catch((error) => {
+        console.error('Muster Roll could not show a refused unlink', error);
+      });
+    }
+
     send({ t: 'command-rejected', id, reason }).catch((error) => {
       console.error('Muster Roll could not reject a command', error);
     });
@@ -431,6 +463,15 @@ export async function startReplicaEngine(
       send({ ...envelope, seq: sequence, withdrawn, ...part }).catch((error) => {
         console.error('Muster Roll could not send a delta', error);
       });
+    }
+  }
+
+  // AD-2: the menu follows every change of the replica or the role, once the first catch-up has
+  // brought the room's links. It reads the replica, not the pending view, so a queued link shows
+  // in the menu when it applies. Records that change nothing leave the filters as they were.
+  function refreshTokenMenu(): void {
+    if (tokenMenu !== null && !stopped && sync.firstCatchUpDone) {
+      tokenMenu.update(replica, role);
     }
   }
 
@@ -562,6 +603,8 @@ export async function startReplicaEngine(
 
       applied.push(merge(persisted.record));
     }
+
+    refreshTokenMenu();
 
     return applied;
   }
@@ -936,6 +979,8 @@ export async function startReplicaEngine(
         changed.push(winner);
       }
     }
+
+    refreshTokenMenu();
 
     return changed;
   }
@@ -1428,6 +1473,8 @@ export async function startReplicaEngine(
     }
 
     sendCommits(replayed);
+    // The first catch-up's end allows the menu, and it merged what this client had loaded.
+    refreshTokenMenu();
     answerHeldRequests();
 
     // AD-8: a write owed from before, or the edits that waited, go into the room copy now.
@@ -1457,6 +1504,10 @@ export async function startReplicaEngine(
         winner = merge(persist(winner).record);
         changed.push(winner);
       }
+    }
+
+    if (changed.length > 0) {
+      refreshTokenMenu();
     }
 
     if (changed.length > 0 || currentNotices().join() !== noticesBefore) {
@@ -1683,6 +1734,7 @@ export async function startReplicaEngine(
 
   function changeRole(next: PlayerRole): void {
     role = next;
+    refreshTokenMenu();
     forgetDigests();
     // A new stream: the catch-up entry below sends a delta, and each window that gets it from a
     // new engine id asks for a projection of the records the new role sees.
@@ -2007,6 +2059,7 @@ export async function startReplicaEngine(
       unsubscribeMetadata();
       roster.stop();
       outbox.stop();
+      tokenMenu?.stop();
     },
     flushNow: () => {
       // A closing page cannot wait for catch-up, so the intents it holds apply and go out now.

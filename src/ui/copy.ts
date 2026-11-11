@@ -97,6 +97,12 @@ export const copy = {
   rollFailure: 'провал',
   rollFailed: 'Бросок не удался. Попробуйте ещё раз.',
   duplicateFailed: 'Не удалось дублировать. Попробуйте ещё раз.',
+  // The link picker with no sheet to list (UX-DR22).
+  noSheetsToLink: 'Сначала создайте лист',
+  // Under the link picker's list when the link was not saved, such as for a sheet deleted meanwhile.
+  linkFailed: 'Не удалось привязать. Попробуйте ещё раз.',
+  // An Owlbear notification when the engine refused "Отвязать лист".
+  unlinkFailed: 'Не удалось отвязать лист. Попробуйте ещё раз.',
   editDenied: 'Нет прав на правку',
   dataReplaced: 'Данные комнаты заменены',
   guestNote: 'Гость привязан к своему браузеру. Из другого браузера доступ придётся выдать снова.',

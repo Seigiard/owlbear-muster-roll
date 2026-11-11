@@ -14,6 +14,7 @@ import {
 
 import { parseSheetName } from '@/core/sheets';
 import { copy } from '@/ui/copy';
+import { Chip } from '@/ui/primitives/chip';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
@@ -24,6 +25,8 @@ type SheetHeaderProps = {
   variant?: 'character' | 'npc';
   sheetId: string;
   name: string;
+  // A live `link:` record points to this sheet (UX-DR10, UX-DR19).
+  tokenLinked: boolean;
   sendCommand: ReplicaClient['sendCommand'];
   store: Pick<ProjectionStore, '$rejections' | '$records'>;
   // True for a sheet this window has just created, so the GM can type its name at once.
@@ -67,6 +70,7 @@ export function SheetHeader({
   variant = 'character',
   sheetId,
   name,
+  tokenLinked,
   sendCommand,
   store,
   focusName,
@@ -174,6 +178,9 @@ export function SheetHeader({
           />
           <FieldError className="text-label-sm text-danger-text">{copy.valueTooLong}</FieldError>
         </TextField>
+        <span className="shrink-0">
+          <Chip>{tokenLinked ? copy.status.tokenLinked : copy.status.noToken}</Chip>
+        </span>
         <MenuTrigger>
           <AriaButton
             ref={actionsRef}
