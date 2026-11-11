@@ -569,36 +569,45 @@ function WindowRoot({
     );
   }
 
-  // One item per entry, in the entries' order.
+  // One item per entry, in the entries' order. A sheet set's "+" shows only once the first catch-up
+  // has ended with a preset, so the loading bar holds the known tabs and no command.
   function barItems(content: (tab: SheetTab) => ReactNode): ShellBarItem[] {
-    return entries.map((entry): ShellBarItem => {
+    return entries.flatMap((entry): ShellBarItem[] => {
       if (entry.kind === 'add') {
+        if (presetState !== 'present') {
+          return [];
+        }
+
         const { set } = entry;
 
-        return {
-          kind: 'action',
-          id: `add:${set.id}`,
-          action: {
-            label: copy.addSign,
-            accessibleName: copy.label.addToSet(set.title),
-            onPress: () => {
-              addSheet(set);
+        return [
+          {
+            kind: 'action',
+            id: `add:${set.id}`,
+            action: {
+              label: copy.addSign,
+              accessibleName: copy.label.addToSet(set.title),
+              onPress: () => {
+                addSheet(set);
+              },
             },
           },
-        };
+        ];
       }
 
       const { tab } = entry;
 
-      return {
-        kind: 'tab',
-        tab: {
-          id: tab.id,
-          label: tab.name === '' ? copy.unnamed : tab.name,
-          mark: tab.owned ? copy.ownMark : undefined,
-          content: !ready || preset === null ? loading : content(tab),
+      return [
+        {
+          kind: 'tab',
+          tab: {
+            id: tab.id,
+            label: tab.name === '' ? copy.unnamed : tab.name,
+            mark: tab.owned ? copy.ownMark : undefined,
+            content: !ready || preset === null ? loading : content(tab),
+          },
         },
-      };
+      ];
     });
   }
 

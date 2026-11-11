@@ -1,5 +1,6 @@
+import { useContext, useEffect } from 'react';
 import type { ReactNode, WheelEvent as ReactWheelEvent } from 'react';
-import { Button, Tab, TabList, ToggleButton } from 'react-aria-components';
+import { Button, Tab, TabList, TabListStateContext, ToggleButton } from 'react-aria-components';
 
 import { revealElement } from '@/ui/reveal';
 
@@ -64,6 +65,8 @@ export function itemTabs(items: readonly ShellBarItem[]): ShellTab[] {
 // outside the list. The flex `order` of each item puts a button after the tabs it follows, and the
 // pinned tabs after everything.
 export function TabBar({ items, pinnedTabs }: TabBarProps): ReactNode {
+  useTabKeyEntersAtSelection();
+
   return (
     <div className="bg-surface-bar px-2 pt-2">
       <div data-tab-scroller className={SCROLLER_CLASS} onWheel={scrollSideways}>
@@ -121,6 +124,31 @@ export function TabBar({ items, pinnedTabs }: TabBarProps): ReactNode {
       </div>
     </div>
   );
+}
+
+// The Tab key enters a tab list at its focused key. React Aria moves that key to the selected tab
+// only in the commit the selection changes, and skips a tab that is not in the collection yet. A
+// tab mounts a commit after its selection, as the first tab does when the preset arrives, so the
+// key would stay on the tab selected before, such as the gear.
+function useTabKeyEntersAtSelection(): void {
+  const state = useContext(TabListStateContext);
+
+  useEffect(() => {
+    if (state === null) {
+      return;
+    }
+
+    const { selectedKey, selectionManager, collection } = state;
+
+    if (
+      !selectionManager.isFocused &&
+      selectedKey !== null &&
+      selectionManager.focusedKey !== selectedKey &&
+      collection.getItem(selectedKey) !== null
+    ) {
+      selectionManager.setFocusedKey(selectedKey);
+    }
+  });
 }
 
 // React Aria marks each tab with its key, and the app gives a tab no id of its own in the DOM.
