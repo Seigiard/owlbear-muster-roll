@@ -36,7 +36,13 @@ export type DiceRow = {
   fieldIds: ReadonlySet<string>;
 };
 
-type DiceButtonProps = { label: string; row: DiceRow; cellIndex: number };
+// `disabledReasonId` names the text that says why the button is off, as a removed row's mark.
+type DiceButtonProps = {
+  label: string;
+  row: DiceRow;
+  cellIndex: number;
+  disabledReasonId?: string;
+};
 
 // A message shows until the sheet's values change from the ones it was shown with.
 type ShownMessage = { text: string; signature: string };
@@ -46,7 +52,12 @@ export const DiceSheetContext = createContext<DiceSheet | null>(null);
 // Rolls on press. A bad formula shows its message under the button and sends nothing; the
 // message clears on the next press or on any value change of the sheet. A press while a roll is on
 // its way does nothing, so one press never rolls twice.
-export function DiceButton({ label, row, cellIndex }: DiceButtonProps): ReactNode {
+export function DiceButton({
+  label,
+  row,
+  cellIndex,
+  disabledReasonId,
+}: DiceButtonProps): ReactNode {
   const messageId = useId();
   const sheet = useDiceSheet();
   const outcomes = useStore(sheet.$rollOutcomes);
@@ -100,6 +111,7 @@ export function DiceButton({ label, row, cellIndex }: DiceButtonProps): ReactNod
         className={DICE_BUTTON_CLASS}
         onPress={roll}
         describedBy={message === null ? undefined : messageId}
+        disabledReasonId={disabledReasonId}
       >
         {label}
       </Pressable>

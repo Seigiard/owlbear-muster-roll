@@ -6,6 +6,7 @@ import { firstFieldId, type PresetTemplate } from '@/core/preset';
 import { repKeyPrefix, rowKey, type VersionedRecord } from '@/core/records';
 
 import { DiceSheetContext, type DiceRolling, type DiceSheet } from './dice-button';
+import { withRemovedRows, type SheetPending } from './pending-mark';
 import { SheetSection } from './preset-section';
 import { FieldEditingContext, type FieldEditing } from './use-field-edit';
 
@@ -18,6 +19,8 @@ type SheetBodyProps = {
   editing: FieldEditing | null;
   // Anyone who sees a sheet rolls its dice, so a read-only sheet has this too.
   rolling: DiceRolling;
+  // A player's edits that wait for a GM (UX-DR28). `null` for a GM, whose edits never wait.
+  pending: SheetPending | null;
 };
 
 // The container query measures the content area, so a narrow window stacks every section.
@@ -27,7 +30,9 @@ export function SheetBody({
   records,
   editing,
   rolling,
+  pending,
 }: SheetBodyProps): ReactNode {
+  const shownRecords = useMemo(() => withRemovedRows(records, pending), [records, pending]);
   const localChanges = useStore(rolling.localValues.$changes).get(sheetId) ?? 0;
 
   const valuesSignature = useMemo(
@@ -51,8 +56,9 @@ export function SheetBody({
                 section={section}
                 sectionIndex={index}
                 sheetId={sheetId}
-                records={records}
+                records={shownRecords}
                 readOnly={editing === null}
+                pending={pending}
               />
             ))}
           </div>

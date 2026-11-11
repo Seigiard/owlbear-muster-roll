@@ -15,6 +15,7 @@ export type Timing = {
   readonly proposeResendStartMs: number;
   readonly proposeResendMaxMs: number;
   readonly editDeniedQuietMs: number;
+  readonly pendingMarkDelayMs: number;
 };
 
 export const TIMING: Timing = {
@@ -50,6 +51,9 @@ export const TIMING: Timing = {
   // UX-DR29: "Нет прав на правку" shows once for `denied` answers within this long of the last one
   // shown, so one revoke that refuses several pending keys shows one notification.
   editDeniedQuietMs: 2000,
+  // UX-DR3: a player's edit with no answer this long shows "Ожидает". With no GM it shows at once.
+  // The window keeps this timer, so a hidden background page cannot hold the mark back.
+  pendingMarkDelayMs: 1000,
 };
 
 // An access change with no answer this long shows that it failed, so the panel never waits forever.

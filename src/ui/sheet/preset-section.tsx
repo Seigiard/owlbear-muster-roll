@@ -9,6 +9,7 @@ import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
 
 import type { DiceRow } from './dice-button';
+import { PendingMark, rowPending, type RowPending, type SheetPending } from './pending-mark';
 import { SheetCell } from './preset-cell';
 import type { FieldPlace } from './use-field-edit';
 import { useRepeatRows, type RepeatRows } from './use-repeat-rows';
@@ -25,6 +26,10 @@ const ROW_CLASS = 'touch-target items-center gap-x-2 px-1';
 
 const STRIPE_CLASS = 'bg-surface-stripe';
 
+// UX-DR28: a removed row's cells dim, and its control slot, which holds the mark, does not. Written
+// out whole, so Tailwind finds the class.
+const REMOVED_ROW_CLASS = '[&>:not([data-row-control])]:opacity-50';
+
 // Field ids hold no "#", so a key from an index never equals one from an id.
 const INDEX_KEY_PREFIX = '#';
 
@@ -35,6 +40,8 @@ type SheetSectionProps = {
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
   readOnly: boolean;
+  // A player's edits that wait for a GM, or `null` for a GM, whose edits never wait.
+  pending: SheetPending | null;
 };
 
 // `instanceId` is set for a row of a repeat section.
@@ -45,6 +52,7 @@ type SheetRow = {
   place: FieldPlace | null;
   instanceId: string | null;
   dice: DiceRow;
+  pending: RowPending;
 };
 
 type RowsProps = {
@@ -65,6 +73,7 @@ export function SheetSection({
   sheetId,
   records,
   readOnly,
+  pending,
 }: SheetSectionProps): ReactNode {
   const headingId = useId();
   const title = sectionTitle(section);
@@ -83,6 +92,7 @@ export function SheetSection({
         sheetId={sheetId}
         records={records}
         readOnly={readOnly}
+        pending={pending}
       />
     ) : readOnly ? (
       <ReadOnlyRepeatContent
@@ -90,6 +100,7 @@ export function SheetSection({
         sectionIndex={sectionIndex}
         sheetId={sheetId}
         records={records}
+        pending={pending}
         sectionId={repeat.sectionId}
         template={repeat.template}
       />
@@ -99,6 +110,7 @@ export function SheetSection({
         sectionIndex={sectionIndex}
         sheetId={sheetId}
         records={records}
+        pending={pending}
         sectionId={repeat.sectionId}
         template={repeat.template}
       />
@@ -137,10 +149,11 @@ function PlainContent({
   sheetId,
   records,
   readOnly,
+  pending,
 }: SheetSectionProps): ReactNode {
   const rows = useMemo(
-    () => plainRows(section, sectionIndex, sheetId, records),
-    [section, sectionIndex, sheetId, records],
+    () => plainRows(section, sectionIndex, sheetId, records, pending),
+    [section, sectionIndex, sheetId, records, pending],
   );
 
   return (
@@ -156,12 +169,13 @@ function ReadOnlyRepeatContent({
   sectionIndex,
   sheetId,
   records,
+  pending,
   sectionId,
   template,
 }: SectionContentProps): ReactNode {
   const rows = useMemo(
-    () => repeatRows(template, sectionIndex, sectionId, sheetId, records),
-    [template, sectionIndex, sectionId, sheetId, records],
+    () => repeatRows(template, sectionIndex, sectionId, sheetId, records, pending),
+    [template, sectionIndex, sectionId, sheetId, records, pending],
   );
 
   return (
@@ -178,15 +192,21 @@ function RepeatContent({
   sectionIndex,
   sheetId,
   records,
+  pending,
   sectionId,
   template,
 }: SectionContentProps): ReactNode {
   const rows = useMemo(
-    () => repeatRows(template, sectionIndex, sectionId, sheetId, records),
-    [template, sectionIndex, sectionId, sheetId, records],
+    () => repeatRows(template, sectionIndex, sectionId, sheetId, records, pending),
+    [template, sectionIndex, sectionId, sheetId, records, pending],
   );
 
-  const instanceIds = useMemo(() => rows.flatMap((row) => row.instanceId ?? []), [rows]);
+  // A row whose removal waits for a GM counts as gone: its "Удалить" is gone, so the focus moves on.
+  const instanceIds = useMemo(
+    () => rows.flatMap((row) => (row.pending.removed ? [] : (row.instanceId ?? []))),
+    [rows],
+  );
+
   const controls = useRepeatRows(sheetId, sectionId, instanceIds);
 
   return (
@@ -207,25 +227,29 @@ function RepeatContent({
 // that field when the preset changes around it.
 // Rows count from 1, so the second, fourth and later even rows stripe.
 function Rows({ section, rows, readOnly, controls }: RowsProps): ReactNode {
+  // The row mark ids: one per row key under this section's prefix.
+  const markPrefix = useId();
+
   if (section.columns === undefined) {
     return rows.map((row, index) => (
       <div
         key={row.key}
         ref={rowRef(row, controls)}
-        className={`flex flex-wrap gap-y-1 ${ROW_CLASS} ${stripe(index)}`}
+        className={`flex flex-wrap gap-y-1 ${ROW_CLASS} ${stripe(index)} ${removedClass(row)}`}
         data-row
       >
-        <Cells row={row} readOnly={readOnly} />
-        <DeleteControl row={row} index={index} controls={controls} />
+        <Cells row={row} readOnly={readOnly} rowMarkId={rowMarkId(markPrefix, row)} />
+        <RowSlot row={row} index={index} controls={controls} markId={`${markPrefix}${row.key}`} />
       </div>
     ));
   }
 
   // Each row is a subgrid over all tracks, so its cells align with every other row and its stripe
-  // spans the whole grid. A short row leaves its last tracks empty. Row controls take one more
-  // track after the preset's columns, so they line up too.
+  // spans the whole grid. A short row leaves its last tracks empty. Row slots take one more track
+  // after the preset's columns, so they line up too.
   const columns = section.columns;
-  const tracks = `repeat(${columns}, auto)${controls === undefined ? '' : ' auto'}`;
+  const slotted = controls !== undefined || rows.some((row) => row.pending.rowMarked);
+  const tracks = `repeat(${columns}, auto)${slotted ? ' auto' : ''}`;
 
   return (
     <div className="grid w-max min-w-full gap-x-2" style={{ gridTemplateColumns: tracks }}>
@@ -233,48 +257,76 @@ function Rows({ section, rows, readOnly, controls }: RowsProps): ReactNode {
         <div
           key={row.key}
           ref={rowRef(row, controls)}
-          className={`col-span-full grid grid-cols-subgrid ${ROW_CLASS} ${stripe(index)}`}
+          className={`col-span-full grid grid-cols-subgrid ${ROW_CLASS} ${stripe(index)} ${removedClass(row)}`}
           data-row
         >
-          <Cells row={row} readOnly={readOnly} />
-          <DeleteControl row={row} index={index} controls={controls} column={columns + 1} />
+          <Cells row={row} readOnly={readOnly} rowMarkId={rowMarkId(markPrefix, row)} />
+          <RowSlot
+            row={row}
+            index={index}
+            controls={controls}
+            column={columns + 1}
+            markId={`${markPrefix}${row.key}`}
+          />
         </div>
       ))}
     </div>
   );
 }
 
-// `column` places the control in the extra grid track, past a short row's empty tracks.
-function DeleteControl({
+// A repeat row's slot: its "Удалить", and its own "Ожидает" (UX-DR28), each shown on its own.
+// `column` places the slot in the extra grid track, past a short row's empty tracks. A removed row
+// has no "Удалить", so it cannot be removed twice and its focus moves on. The slot is a polite live
+// region, mounted before the mark, so a removal's mark is announced once, when it appears.
+function RowSlot({
   row,
   index,
   controls,
   column,
+  markId,
 }: {
   row: SheetRow;
   index: number;
   controls: RepeatRows | undefined;
   column?: number;
+  markId: string;
 }): ReactNode {
   const { instanceId } = row;
 
-  if (controls === undefined || instanceId === null) {
+  if (instanceId === null || (controls === undefined && !row.pending.rowMarked)) {
     return null;
   }
 
   return (
-    <div style={column === undefined ? undefined : { gridColumnStart: column }}>
-      <Button
-        ref={controls.deleteButton(instanceId)}
-        accessibleName={copy.label.deleteRow(index + 1)}
-        onPress={() => {
-          controls.remove(instanceId);
-        }}
-      >
-        {copy.command.delete}
-      </Button>
+    <div
+      className="flex flex-wrap items-center gap-x-2"
+      style={column === undefined ? undefined : { gridColumnStart: column }}
+      aria-live="polite"
+      data-row-control
+    >
+      {row.pending.rowMarked ? <PendingMark id={markId} /> : null}
+      {controls === undefined || row.pending.removed ? null : (
+        <Button
+          ref={controls.deleteButton(instanceId)}
+          accessibleName={copy.label.deleteRow(index + 1)}
+          onPress={() => {
+            controls.remove(instanceId);
+          }}
+        >
+          {copy.command.delete}
+        </Button>
+      )}
     </div>
   );
+}
+
+function removedClass(row: SheetRow): string {
+  return row.pending.removed ? REMOVED_ROW_CLASS : '';
+}
+
+// The id of the row's own mark while its slot shows it, which each of its fields names.
+function rowMarkId(prefix: string, row: SheetRow): string | null {
+  return row.pending.rowMarked && row.instanceId !== null ? `${prefix}${row.key}` : null;
 }
 
 function rowRef(
@@ -290,7 +342,15 @@ function stripe(index: number): string {
   return index % 2 === 1 ? STRIPE_CLASS : '';
 }
 
-function Cells({ row, readOnly }: { row: SheetRow; readOnly: boolean }): ReactNode {
+function Cells({
+  row,
+  readOnly,
+  rowMarkId: markId,
+}: {
+  row: SheetRow;
+  readOnly: boolean;
+  rowMarkId: string | null;
+}): ReactNode {
   return row.cells.map((cell, index) => (
     <SheetCell
       key={cell.kind === 'field' ? cell.id : `${INDEX_KEY_PREFIX}${index}`}
@@ -301,6 +361,11 @@ function Cells({ row, readOnly }: { row: SheetRow; readOnly: boolean }): ReactNo
       readOnly={readOnly}
       row={row.dice}
       cellIndex={index}
+      pending={{
+        disabled: row.pending.removed,
+        marked: cell.kind === 'field' && row.pending.markedFields.has(cell.id),
+        rowMarkId: markId,
+      }}
     />
   ));
 }
@@ -322,6 +387,7 @@ function plainRows(
   sectionIndex: number,
   sheetId: string,
   records: ReadonlyMap<string, VersionedRecord>,
+  pending: SheetPending | null,
 ): SheetRow[] {
   return section.rows.map((cells, index) => {
     const rowId = firstFieldId(cells);
@@ -329,6 +395,12 @@ function plainRows(
 
     return {
       key: rowId ?? `${INDEX_KEY_PREFIX}${index}`,
+      pending: rowPending(
+        pending,
+        target === null ? null : patchRecordKey(sheetId, target),
+        fieldIdsOf(cells),
+        false,
+      ),
       cells,
       values: rowValues(records, sheetId, rowId),
       place: target === null ? null : placeOf(records, sheetId, target),
@@ -352,6 +424,7 @@ function repeatRows(
   sectionId: string,
   sheetId: string,
   records: ReadonlyMap<string, VersionedRecord>,
+  pending: SheetPending | null,
 ): SheetRow[] {
   const fieldIds = fieldIdsOf(template);
 
@@ -360,6 +433,7 @@ function repeatRows(
 
     return {
       key: instance.instanceId,
+      pending: rowPending(pending, patchRecordKey(sheetId, target), fieldIds, true),
       cells: template,
       values: instance.values,
       place: placeOf(records, sheetId, target),

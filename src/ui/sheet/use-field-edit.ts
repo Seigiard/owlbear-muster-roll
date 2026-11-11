@@ -60,6 +60,8 @@ type FieldArguments = {
   place: FieldPlace;
   fieldId: string;
   recordValue: FieldValue | undefined;
+  // A field of a row whose removal waits for a GM (UX-DR28).
+  disabled?: boolean;
 };
 
 // A saved value the projection has not brought back yet, so the field does not flash the old one
@@ -117,7 +119,7 @@ export function createFieldFlushes(): FieldFlushes {
 // and when the window closes, never per keystroke.
 export function useTextFieldEdit(
   type: 'text' | 'number',
-  { place, fieldId, recordValue }: FieldArguments,
+  { place, fieldId, recordValue, disabled = false }: FieldArguments,
 ): TextFieldEdit {
   const editing = useFieldEditing();
   const shown = useShownValue(editing, recordValue);
@@ -126,6 +128,8 @@ export function useTextFieldEdit(
   const stateRef = useRef(state);
   const latest = useRef<Latest>({ place, fieldId, recordValue, editing, type, shown });
   const pauseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const focused = useRef(false);
+  const wasDisabled = useRef(disabled);
 
   useLayoutEffect(() => {
     latest.current = { place, fieldId, recordValue, editing, type, shown };
@@ -291,6 +295,17 @@ export function useTextFieldEdit(
     [],
   );
 
+  // A focused field that turns disabled may lose its focus with no blur, so it saves what was typed
+  // as a blur would, first.
+  useEffect(() => {
+    if (disabled && !wasDisabled.current && focused.current) {
+      focused.current = false;
+      save('blur');
+    }
+
+    wasDisabled.current = disabled;
+  });
+
   const refusedTooLong = shown.refused?.reason === 'too-large' ? shown.refused.held : null;
 
   // The background found the record too long, so the text comes back with the message, unless the
@@ -314,6 +329,8 @@ export function useTextFieldEdit(
     text: state.draft?.text ?? valueText(shown.value ?? undefined),
     error: state.error,
     onFocus: () => {
+      focused.current = true;
+
       // A focused field keeps its text, so a change from another client does not move it.
       if (stateRef.current.draft === null) {
         update(frozenAtCurrent());
@@ -332,6 +349,7 @@ export function useTextFieldEdit(
       }, editing.pauseMs);
     },
     onBlur: () => {
+      focused.current = false;
       save('blur');
     },
     onKeyDown: (event) => {

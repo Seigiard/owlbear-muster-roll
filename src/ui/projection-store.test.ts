@@ -16,6 +16,11 @@ const LIVE: SyncState = {
   role: 'GM',
 };
 
+const PLAYER_LIVE: SyncState = { ...LIVE, gmLink: 'online', role: 'PLAYER' };
+
+const STR_ROW: VersionedRecord = { k: 'row:brok:str', d: { str: 10, note: 'а' }, c: 2, a: 'gm' };
+const SWORD: VersionedRecord = { k: 'rep:brok:item:r1', d: { order: 0, cells: {} }, c: 1, a: 'gm' };
+
 const CATCHING_UP: SyncState = {
   state: 'catching-up',
   firstCatchUpDone: true,
@@ -212,5 +217,132 @@ describe('projection store', () => {
       oldest: store.$rejections.get().has('c0'),
       newest: store.$rejections.get().has('c256'),
     }).toEqual({ size: 256, oldest: false, newest: true });
+  });
+});
+
+describe("projection store's pending entries", () => {
+  test("names a player's field edit by the fields it changes over the applied record, with their values", () => {
+    // #given
+    const store = createProjectionStore();
+
+    const proposed: VersionedRecord = {
+      ...STR_ROW,
+      d: { str: 11, hp: 3 },
+      c: 3,
+      a: 'p',
+    };
+
+    // #when
+    store.replaceAll([STR_ROW], [proposed], [], PLAYER_LIVE);
+
+    // #then
+    const entry = store.$pending.get().get(STR_ROW.k);
+
+    expect({
+      kind: entry?.kind,
+      fields: [...(entry?.fields ?? [])].sort(([first], [second]) => first.localeCompare(second)),
+    }).toEqual({
+      kind: 'edit',
+      fields: [
+        ['hp', 3],
+        ['note', null],
+        ['str', 11],
+      ],
+    });
+  });
+
+  test('names a new repeat row an add, and a repeat row a removal turns to a tombstone a remove', () => {
+    // #given
+    const store = createProjectionStore();
+
+    const added: VersionedRecord = {
+      k: 'rep:brok:item:r9',
+      d: { order: 1, cells: {} },
+      c: 1,
+      a: 'p',
+    };
+
+    const removed: VersionedRecord = { ...SWORD, d: null, c: 2, a: 'p' };
+
+    // #when
+    store.replaceAll([SWORD], [added, removed], [], PLAYER_LIVE);
+
+    // #then
+    expect(
+      [...store.$pending.get()].map(([key, entry]) => [key, entry.kind, entry.applied]),
+    ).toEqual([
+      [added.k, 'add', undefined],
+      [SWORD.k, 'remove', SWORD],
+    ]);
+  });
+
+  test('names a cell edit of a repeat row an edit of that cell', () => {
+    // #given
+    const store = createProjectionStore();
+
+    const proposed: VersionedRecord = {
+      ...SWORD,
+      d: { order: 0, cells: { qty: 2 } },
+      c: 2,
+      a: 'p',
+    };
+
+    // #when
+    store.replaceAll([SWORD], [proposed], [], PLAYER_LIVE);
+
+    // #then
+    const entry = store.$pending.get().get(SWORD.k);
+
+    expect({ kind: entry?.kind, fields: [...(entry?.fields ?? [])] }).toEqual({
+      kind: 'edit',
+      fields: [['qty', 2]],
+    });
+  });
+
+  test('names an edit back to the applied values an edit of no field, with its record', () => {
+    // #given
+    const store = createProjectionStore();
+    const proposed: VersionedRecord = { ...STR_ROW, c: 4, a: 'p' };
+
+    // #when
+    store.replaceAll([STR_ROW], [proposed], [], PLAYER_LIVE);
+
+    // #then
+    const entry = store.$pending.get().get(STR_ROW.k);
+
+    expect({ kind: entry?.kind, fields: entry?.fields.size, record: entry?.record }).toEqual({
+      kind: 'edit',
+      fields: 0,
+      record: proposed,
+    });
+  });
+
+  test('drops an entry once the engine withdraws its key', () => {
+    // #given
+    const store = createProjectionStore();
+    const proposed: VersionedRecord = { ...STR_ROW, d: { str: 11 }, c: 3, a: 'p' };
+
+    store.replaceAll([STR_ROW], [proposed], [], PLAYER_LIVE);
+
+    // #when
+    store.applyDelta([proposed], [], [STR_ROW.k], [], PLAYER_LIVE);
+
+    // #then
+    expect([...store.$pending.get().keys()]).toEqual([]);
+  });
+
+  test("holds none for a GM, whose catch-up queue is no player's edit", () => {
+    // #given
+    const store = createProjectionStore();
+    const queued: VersionedRecord = { ...STR_ROW, d: { str: 11 }, c: 3, a: 'gm' };
+
+    // #when
+    store.replaceAll([STR_ROW], [queued], [], CATCHING_UP);
+
+    // #then
+    expect({
+      shown: store.$records.get().get(STR_ROW.k),
+      pending: store.$pending.get().size,
+    }).toEqual({ shown: queued, pending: 0 });
   });
 });

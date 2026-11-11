@@ -12,6 +12,8 @@ export type PressableProps = {
   onPress?: () => void;
   // A control is disabled only through its reason, so no disabled control can lack one.
   disabledReason?: string;
+  // Or through the id of text already on the page that says why, which names the reason instead.
+  disabledReasonId?: string;
   autoFocus?: boolean;
   // Replaces the visible text as the name, for a control that repeats and must say which one it is.
   accessibleName?: string;
@@ -34,6 +36,7 @@ export function Pressable({
   children,
   onPress,
   disabledReason,
+  disabledReasonId,
   autoFocus,
   accessibleName,
   describedBy,
@@ -42,7 +45,7 @@ export function Pressable({
   ref,
 }: PressableProps & { className: string }): ReactNode {
   const reasonId = useId();
-  const isDisabled = disabledReason !== undefined;
+  const isDisabled = disabledReason !== undefined || disabledReasonId !== undefined;
 
   const button = (
     <AriaButton
@@ -52,7 +55,7 @@ export function Pressable({
       isDisabled={isDisabled}
       onPress={onPress}
       autoFocus={autoFocus}
-      aria-describedby={isDisabled ? reasonId : describedBy}
+      aria-describedby={isDisabled ? (disabledReasonId ?? reasonId) : describedBy}
       aria-expanded={expanded}
       aria-controls={controls}
     >
@@ -60,7 +63,7 @@ export function Pressable({
     </AriaButton>
   );
 
-  if (!isDisabled) {
+  if (disabledReason === undefined) {
     return button;
   }
 

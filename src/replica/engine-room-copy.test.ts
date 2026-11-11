@@ -41,6 +41,7 @@ const TIMING: Timing = {
   proposeResendStartMs: 2000,
   proposeResendMaxMs: 30000,
   editDeniedQuietMs: 2000,
+  pendingMarkDelayMs: 1000,
 };
 
 // Short enough to see the write, long enough to see that nothing was written before it.

@@ -2014,6 +2014,7 @@ export async function startReplicaEngine(
 
     if (changed.length > 0) {
       refreshTokenMenu();
+      dropDisallowed();
     }
 
     if (changed.length > 0 || currentNotices().join() !== noticesBefore) {
@@ -2021,6 +2022,42 @@ export async function startReplicaEngine(
     }
 
     return changed;
+  }
+
+  // UX-DR29: once the records change, an entry the player may no longer make waits for no GM: its
+  // access was revoked, its sheet deleted or made an NPC, or the repeat row it edits removed. It is
+  // checked against the replica after the whole batch, so a revoke and a re-grant in one batch drop
+  // nothing. The values return in the same delta, and one notification covers every drop. A removal
+  // of a row that is gone already got what it asked for, so it drops with no notification.
+  function dropDisallowed(): void {
+    if (role === 'GM') {
+      return;
+    }
+
+    const context = proposalContext(replica);
+    let denied = false;
+
+    for (const entry of proposals.entries()) {
+      // The version is a placeholder: no check of `proposalAllowed` reads it.
+      const made = proposedRecord(
+        entry.k,
+        entry.patch,
+        replica.get(entry.k),
+        () => ({ c: 1, a: connectionId }),
+        true,
+      );
+
+      if (made.ok && proposalAllowed(context, ownPlayerId, made.value)) {
+        continue;
+      }
+
+      proposals.drop(entry.k);
+      denied ||= made.ok || deniesEdit(made.error);
+    }
+
+    if (denied) {
+      notifyDenied();
+    }
   }
 
   // AD-7 answer: a GM client that is live and can vouch for its records answers after a random

@@ -133,6 +133,7 @@ export function NpcTab({
                     records={records}
                     editing={editing}
                     rolling={rolling}
+                    pending={null}
                   />
                 </section>
               </li>

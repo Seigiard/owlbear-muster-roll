@@ -43,6 +43,7 @@ const TIMING: Timing = {
   proposeResendStartMs: 60000,
   proposeResendMaxMs: 60000,
   editDeniedQuietMs: 2000,
+  pendingMarkDelayMs: 1000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -952,6 +953,234 @@ describe("a player's entry over its lifetime", () => {
       shown: shown(player, STR_ROW.k),
       notifications: player.platform.shownNotifications(),
     }).toEqual({ sent: [], shown: STR_ROW, notifications: [DENIED] });
+  });
+
+  test('of a sheet whose access is revoked while live: dropped at once with the values back and one notification', async () => {
+    // #given: no quiet window, so each notification shown is one the engine asked for.
+    const { room, player } = await playerWithSilentGm({ editDeniedQuietMs: 0 });
+
+    send(player, strEdit('str', 11));
+    send(player, swordEdit(3));
+    await waitUntil(() => proposals(room).length === 2 && pendingKeys(player).length === 2);
+
+    // #when: the revoke, then the GM's late denial of an entry it dropped.
+    answer(room, commit([{ k: `acl:brok:${PLAYER_ID}`, d: null, c: 2, a: 'gm-a' }]));
+    await waitUntil(() => pendingKeys(player).length === 0);
+    answer(room, reject({ k: STR_ROW.k, c: 3, a: PLAYER_ID }, 'denied'));
+    await pause(50);
+
+    // #then
+    expect({
+      shown: [shown(player, STR_ROW.k), shown(player, SWORD.k)],
+      pending: player.store.$pending.get().size,
+      notifications: player.platform.shownNotifications(),
+    }).toEqual({ shown: [STR_ROW, SWORD], pending: 0, notifications: [DENIED] });
+  });
+
+  test("stays when another player's access to its sheet is revoked", async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm({ editDeniedQuietMs: 0 });
+
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1 && pendingKeys(player).length === 1);
+
+    // #when
+    answer(room, commit([{ k: 'acl:brok:someone-else', d: null, c: 2, a: 'gm-a' }]));
+    await waitUntil(() => player.store.$replica.get().has('acl:brok:someone-else'));
+    await pause(30);
+
+    // #then
+    expect({
+      pending: pendingKeys(player),
+      notifications: player.platform.shownNotifications(),
+    }).toEqual({ pending: [STR_ROW.k], notifications: [] });
+  });
+
+  test('of another sheet stays when access to one sheet is revoked, whose entries drop', async () => {
+    // #given: the player may edit Кира too.
+    const { room, player } = await playerWithSilentGm({ editDeniedQuietMs: 0 });
+
+    answer(room, commit([{ k: `acl:kira:${PLAYER_ID}`, d: { name: 'Оля' }, c: 1, a: 'gm-a' }]));
+    await waitUntil(() => player.store.$replica.get().has(`acl:kira:${PLAYER_ID}`));
+    send(player, strEdit('str', 11));
+    send(player, {
+      type: 'field-patch',
+      sheetId: 'kira',
+      target: { kind: 'row', rowId: 'str' },
+      fieldId: 'str',
+      value: 7,
+    });
+    await waitUntil(() => proposals(room).length === 2 && pendingKeys(player).length === 2);
+
+    // #when
+    answer(room, commit([{ k: `acl:kira:${PLAYER_ID}`, d: null, c: 2, a: 'gm-a' }]));
+    await waitUntil(() => pendingKeys(player).length === 1);
+    await pause(30);
+
+    // #then
+    expect({
+      pending: pendingKeys(player),
+      notifications: player.platform.shownNotifications(),
+    }).toEqual({ pending: [STR_ROW.k], notifications: [DENIED] });
+  });
+
+  test('of a sheet whose access a state answer revokes during catch-up: dropped with one notification', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm({ editDeniedQuietMs: 0 });
+
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1 && pendingKeys(player).length === 1);
+
+    const asked = heardOf(room, PLAYER_ID, 'state-request').length;
+
+    player.engine.catchUp();
+    await waitUntil(() => heardOf(room, PLAYER_ID, 'state-request').length > asked);
+
+    const r = String(Object(heardOf(room, PLAYER_ID, 'state-request').at(-1)).r);
+
+    const revoked = BASE.map((record) =>
+      record.k === `acl:brok:${PLAYER_ID}` ? { ...record, d: null, c: 2, a: 'gm-a' } : record,
+    );
+
+    // #when
+    answer(room, {
+      v: 1,
+      g: GENERATION,
+      t: 'state',
+      r,
+      i: 1,
+      n: 1,
+      records: encodeStateRecords(revoked),
+    });
+
+    await waitUntil(() => player.store.$sync.get().state === 'live');
+    await pause(30);
+
+    // #then
+    expect({
+      shown: shown(player, STR_ROW.k),
+      pending: pendingKeys(player),
+      sent: proposals(room).length,
+      notifications: player.platform.shownNotifications(),
+    }).toEqual({ shown: STR_ROW, pending: [], sent: 1, notifications: [DENIED] });
+  });
+
+  test('waiting for its c during catch-up: dropped at the revoke, before catch-up ends', async () => {
+    // #given: catch-up waits long for the silent GM.
+    const { room, player } = await playerWithSilentGm({
+      editDeniedQuietMs: 0,
+      catchUpTimeoutMs: 5000,
+    });
+
+    player.engine.catchUp();
+    await waitUntil(() => player.store.$sync.get().state === 'catching-up');
+    send(player, strEdit('str', 11));
+    await waitUntil(() => pendingKeys(player).length === 1);
+
+    // #when
+    answer(room, commit([{ k: `acl:brok:${PLAYER_ID}`, d: null, c: 2, a: 'gm-a' }]));
+    await waitUntil(() => pendingKeys(player).length === 0);
+
+    // #then
+    expect({
+      state: player.store.$sync.get().state,
+      shown: shown(player, STR_ROW.k),
+      notifications: player.platform.shownNotifications(),
+    }).toEqual({ state: 'catching-up', shown: STR_ROW, notifications: [DENIED] });
+  });
+
+  test('of a sheet the GM deletes: dropped with the notification', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm({ editDeniedQuietMs: 0 });
+
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1 && pendingKeys(player).length === 1);
+
+    // #when
+    answer(room, commit([{ k: 'sheet:brok', d: null, c: 2, a: 'gm-a' }]));
+    await waitUntil(() => player.store.$replica.get().get('sheet:brok')?.d === null);
+    await pause(30);
+
+    // #then
+    expect({
+      pending: player.store.$pending.get().size,
+      notifications: player.platform.shownNotifications(),
+    }).toEqual({ pending: 0, notifications: [DENIED] });
+  });
+
+  test('of a repeat row the GM removes: dropped with the notification', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm({ editDeniedQuietMs: 0 });
+
+    send(player, swordEdit(3));
+    await waitUntil(() => proposals(room).length === 1 && pendingKeys(player).length === 1);
+
+    // #when
+    answer(room, commit([{ ...SWORD, d: null, c: 5, a: 'gm-a' }]));
+    await waitUntil(() => pendingKeys(player).length === 0);
+    await pause(30);
+
+    // #then
+    expect({
+      shown: shown(player, SWORD.k)?.d,
+      notifications: player.platform.shownNotifications(),
+    }).toEqual({ shown: null, notifications: [DENIED] });
+  });
+
+  test('removing a repeat row the GM removes too: dropped with no notification and never resent', async () => {
+    // #given: an entry with no answer is resent every 40 ms.
+    const { room, player } = await playerWithSilentGm({
+      editDeniedQuietMs: 0,
+      proposeResendStartMs: 40,
+      proposeResendMaxMs: 40,
+    });
+
+    send(player, {
+      type: 'repeat-row-delete',
+      sheetId: 'brok',
+      sectionId: 'item',
+      instanceId: 'r1',
+    });
+    await waitUntil(() => proposals(room).length === 1 && player.store.$pending.get().size === 1);
+
+    // #when
+    answer(room, commit([{ ...SWORD, d: null, c: 5, a: 'gm-a' }]));
+    await waitUntil(() => player.store.$pending.get().size === 0);
+    const sent = proposals(room).length;
+
+    await pause(200);
+
+    // #then
+    expect({
+      resent: proposals(room).length - sent,
+      notifications: player.platform.shownNotifications(),
+    }).toEqual({ resent: 0, notifications: [] });
+  });
+
+  test('stays when a revoke and a re-grant of its access come in one batch', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm({ editDeniedQuietMs: 0 });
+
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1 && pendingKeys(player).length === 1);
+
+    // #when
+    answer(
+      room,
+      commit([
+        { k: `acl:brok:${PLAYER_ID}`, d: null, c: 2, a: 'gm-a' },
+        { k: `acl:brok:${PLAYER_ID}`, d: { name: 'Оля' }, c: 3, a: 'gm-a' },
+      ]),
+    );
+
+    await waitUntil(() => player.store.$replica.get().get(`acl:brok:${PLAYER_ID}`)?.c === 3);
+    await pause(30);
+
+    // #then
+    expect({
+      pending: pendingKeys(player),
+      notifications: player.platform.shownNotifications(),
+    }).toEqual({ pending: [STR_ROW.k], notifications: [] });
   });
 
   test('is cleared, with its pending view, when the player adopts a higher generation', async () => {

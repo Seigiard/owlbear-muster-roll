@@ -15,6 +15,7 @@ import { platform } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { bannerFor } from '@/ui/banner-message';
 import { copy } from '@/ui/copy';
+import { createPendingMarks, type PendingMarks } from '@/ui/pending-marks';
 import { PresetUpload, uploadDisabledReason } from '@/ui/preset-actions';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
@@ -24,6 +25,7 @@ import { DeleteConfirmation } from '@/ui/sheet/delete-confirmation';
 import type { DiceRolling } from '@/ui/sheet/dice-button';
 import { createLocalFieldValues } from '@/ui/sheet/local-field-values';
 import { NpcTab } from '@/ui/sheet/npc-tab';
+import { sheetPendingOf, type SheetPending } from '@/ui/sheet/pending-mark';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { createFieldFlushes, type FieldEditing } from '@/ui/sheet/use-field-edit';
 import { focusTab, revealTab } from '@/ui/shell/tab-bar';
@@ -69,6 +71,8 @@ type WindowRootProps = {
   // This client's player id, which a player's write access names (FR3).
   playerId: string;
   store: ProjectionStore;
+  // UX-DR3: which of a player's waiting edits show "Ожидает" by now.
+  pendingMarks: PendingMarks;
   sendCommand: ReplicaClient['sendCommand'];
   requestRoll: ReplicaClient['requestRoll'];
   acknowledgeOpen: ReplicaClient['acknowledgeOpen'];
@@ -82,6 +86,13 @@ if (container === null) {
 
 const root = createRoot(container);
 const store = createProjectionStore();
+
+const pendingMarks = createPendingMarks({
+  $pending: store.$pending,
+  $sync: store.$sync,
+  delayMs: TIMING.pendingMarkDelayMs,
+});
+
 const pageHideFlushes = createFieldFlushes();
 const localFieldValues = createLocalFieldValues();
 
@@ -116,6 +127,7 @@ async function start(): Promise<void> {
         initialRole={initialRole}
         playerId={playerId}
         store={store}
+        pendingMarks={pendingMarks}
         sendCommand={client.sendCommand}
         requestRoll={client.requestRoll}
         acknowledgeOpen={client.acknowledgeOpen}
@@ -130,6 +142,7 @@ function WindowRoot({
   initialRole,
   playerId,
   store: projection,
+  pendingMarks: marks,
   sendCommand,
   requestRoll,
   acknowledgeOpen,
@@ -146,6 +159,9 @@ function WindowRoot({
   // role on its own.
   const records = useMemo(() => visibleRecordMap(role, allRecords), [role, allRecords]);
   const rejections = useStore(projection.$rejections);
+  const pendingEntries = useStore(projection.$pending);
+  const marked = useStore(marks.$marked);
+
   const openRequest = useStore(projection.$openRequest);
   const presetData = presetDataOf(records);
   const preset = useMemo(() => decodedPreset(presetData), [presetData]);
@@ -163,6 +179,15 @@ function WindowRoot({
       owned: ownedIds,
     };
   }, [role, records, playerId]);
+
+  // UX-DR28: each character gets only its own waiting edits and marks.
+  const pendingBySheet = useMemo(() => {
+    const pending: SheetPending = { entries: pendingEntries, marked };
+
+    return new Map(
+      characters.map((sheet) => [sheet.sheetId, sheetPendingOf(pending, sheet.sheetId)]),
+    );
+  }, [pendingEntries, marked, characters]);
 
   // AD-7: until the first catch-up ends, no data counts as the room's. The tab bar shows what is
   // known and every panel says "Загрузка…", so no empty or no-preset state shows too early.
@@ -580,6 +605,7 @@ function WindowRoot({
                   records={records}
                   editing={editing}
                   rolling={rolling}
+                  pending={null}
                 />
               )}
             </>
@@ -705,6 +731,7 @@ function WindowRoot({
                   records={records}
                   editing={mayEdit ? editing : null}
                   rolling={rolling}
+                  pending={pendingBySheet.get(sheet.sheetId) ?? null}
                 />
               </>
             ),
