@@ -1,4 +1,5 @@
 import type { JsonValue } from '@/core/json';
+import type { WindowSize } from '@/core/preset';
 import { err, ok, type Result } from '@/core/result';
 import { TIMING, type Timing } from '@/core/timing';
 import type {
@@ -88,6 +89,8 @@ export type ContextMenuCall = { kind: 'create' | 'remove'; id: string };
 // One scene label call, read or write, in the order this page made it.
 export type SceneLabelCall = { kind: 'read' | 'write'; itemId: string };
 
+export type WindowSizeCall = WindowSize;
+
 export type MockPlatform = Platform & {
   setTheme: (theme: Theme) => void;
   // `rejoin: false` changes only the player's own role, as Owlbear does, with no party change.
@@ -117,6 +120,10 @@ export type MockPlatform = Platform & {
   actionOpens: () => number;
   // The next request to open the action window rejects, as Owlbear can refuse one.
   failNextActionOpen: () => void;
+  // Every size this page asked Owlbear to give the action window, oldest first, failed ones too.
+  actionSizes: () => WindowSizeCall[];
+  // The next request to size the action window rejects.
+  failNextActionSize: () => void;
   // The room's scene, shared by every client of the room. Each call is one change Owlbear reports:
   // a readiness change, or one item list. Both are reported even when nothing changed, as Owlbear
   // reports every item update.
@@ -187,6 +194,8 @@ export function createMockPlatform(
   const labelFailures: SceneLabelCall['kind'][] = [];
   let actionOpens = 0;
   let actionOpenFails = false;
+  const actionSizes: WindowSizeCall[] = [];
+  let actionSizeFails = false;
   const { room, connectionId, playerId, name } = client;
   let role: PlayerRole = client.role;
   let joined = false;
@@ -383,6 +392,17 @@ export function createMockPlatform(
 
         return Promise.resolve();
       },
+      setSize: (width, height) => {
+        actionSizes.push({ width, height });
+
+        if (actionSizeFails) {
+          actionSizeFails = false;
+
+          return Promise.reject(new Error('mock action size failed'));
+        }
+
+        return Promise.resolve();
+      },
     },
     notification: {
       show: (message) => {
@@ -518,6 +538,10 @@ export function createMockPlatform(
     actionOpens: () => actionOpens,
     failNextActionOpen: () => {
       actionOpenFails = true;
+    },
+    actionSizes: () => [...actionSizes],
+    failNextActionSize: () => {
+      actionSizeFails = true;
     },
     setSceneReady: (ready) => {
       changeScene('ready', (scene) => ({ ...scene, ready }));

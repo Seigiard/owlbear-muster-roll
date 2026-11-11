@@ -7,7 +7,8 @@ A preset is a JSON file that holds the structure of the sheets in one room: a ch
 ## Shape
 
 ```
-{ v, character: Template, npc: Template }
+{ v, window?, character: Template, npc: Template }
+Window   = { width, height }
 Template = { sections: Section[] }
 Section  = { title?, width?, columns?, repeat?, rows: Cell[][] }
 Cell     = { kind: "text", text } | { kind: "field", type, id } | { kind: "dice", formula }
@@ -22,6 +23,7 @@ Every object is strict. A key that is not in this document makes the file invali
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `v` | integer, required | Format version. The current version is `1`. |
+| `window` | `{ width, height }`, optional | The size of the action window in px, for every client. Both keys are required integers, and no other key is allowed. Without `window` the window is 600 by 600 px. "Скачать пресет" writes it back after `v`. |
 | `character` | Template, required | The template of every character sheet. |
 | `npc` | Template, required | The template of every NPC sheet. |
 
@@ -101,6 +103,7 @@ Examples: `1d20 <= str - 2*str_tired`, `floor(a/2)+ceil(b)`, `2D6+1`.
 
 - A file over 1 MiB is refused before it is read.
 - The preset is stored deflated and base64-encoded in one record. A preset that cannot fit one message after that is refused as too large.
+- `window.width` is from 360 to 1440 px, and `window.height` is from 360 to 1080 px. Both bounds are inclusive.
 
 ## Versions
 
@@ -115,6 +118,7 @@ A refused file changes nothing. The message under the button names the first pro
 | Problem | Reason in the message |
 | --- | --- |
 | The file is not JSON | это не JSON |
+| `window` is not an object with integer `width` and `height` in range, or has another key | в window нужны только width и height, целые числа: ширина от 360 до 1440 px, высота от 360 до 1080 px |
 | An unknown key, cell kind, field type or `width`, or a missing key | неверная структура |
 | No `v`, or a `v` that is lower or not an integer | неподдерживаемая версия формата |
 | A field id breaks the id rules | недопустимый id поля «{id}» |

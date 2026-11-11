@@ -21,7 +21,7 @@ import {
 } from '@/core/message-size';
 import type { FieldPatchTarget } from '@/core/field-patch';
 import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
-import { decodePreset, type Preset } from '@/core/preset';
+import { decodePreset, windowSizeOf, type Preset } from '@/core/preset';
 import { NOTHING_ERASED, presetMoves, stripToTemplate } from '@/core/preset-migrate';
 import {
   fieldValuesSchema,
@@ -119,6 +119,7 @@ import { createRecordStore, type RecordStore } from '@/replica/record-store';
 import { watchSceneRemovals, type SceneWatch } from '@/replica/scene-watch';
 import { createTokenMenu, type TokenMenuCopy } from '@/replica/token-menu';
 import { createVersionMinter } from '@/replica/version-minter';
+import { createWindowSizer } from '@/replica/window-size';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
 
@@ -288,6 +289,15 @@ export async function startReplicaEngine(
   const recentRollIds = createBoundedIdSet(RECENT_ROLL_ID_LIMIT);
   const recentRollRequestIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
   let decodedPreset: DecodedPreset | null = null;
+  // TASK-33: the window follows the size of the `preset` record. `sizedFor` names the version the
+  // size was last taken from, "" for no preset. It is null before the first size and after a failed
+  // one, so the next replica change asks again.
+  let sizedFor: string | null = null;
+
+  const windowSizer = createWindowSizer(platform.action, () => {
+    sizedFor = null;
+  });
+
   const answeringNonces = new Set<string>();
   const pending = createPendingQueue();
   // The ids each pending intent has made so far, by command id and then by role, until the queue
@@ -456,6 +466,9 @@ export async function startReplicaEngine(
   for (const record of loaded.records) {
     merge(record);
   }
+
+  // TASK-33: a saved preset sizes the window before the first catch-up ends.
+  followWindowSize();
 
   function merge(record: VersionedRecord): VersionedRecord {
     const current = replica.get(record.k);
@@ -703,6 +716,39 @@ export async function startReplicaEngine(
     }
   }
 
+  // TASK-33: every client sizes the window from the preset it holds, once it holds one or its first
+  // catch-up found none. A size is taken once per version of the `preset` record. A preset this
+  // build cannot read, as one a newer build wrote, keeps the current size.
+  function followWindowSize(): void {
+    const record = replica.get('preset');
+
+    if (stopped || (record === undefined && !sync.firstCatchUpDone)) {
+      return;
+    }
+
+    const version = record === undefined ? '' : `${record.c}:${record.a}`;
+
+    if (version === sizedFor) {
+      return;
+    }
+
+    sizedFor = version;
+
+    const preset = presetOf(record);
+
+    if (record !== undefined && preset === null) {
+      return;
+    }
+
+    windowSizer.apply(windowSizeOf(preset));
+  }
+
+  // The replica changed: the token menu and the window size follow it.
+  function followReplica(): void {
+    refreshTokenMenu();
+    followWindowSize();
+  }
+
   // Only a GM client watches the scene. A fresh watch has seen no item, so a role change never counts
   // the tokens already gone as deleted.
   function followScene(): void {
@@ -910,7 +956,7 @@ export async function startReplicaEngine(
       applied.push(merge(persisted.record));
     }
 
-    refreshTokenMenu();
+    followReplica();
 
     return applied;
   }
@@ -1328,7 +1374,7 @@ export async function startReplicaEngine(
     engineId = newId();
     sequence = 0;
     dropStaleOpen();
-    refreshTokenMenu();
+    followReplica();
   }
 
   // AD-9: the importer's room copy of the new generation. One that does not fit or fails its
@@ -2124,7 +2170,7 @@ export async function startReplicaEngine(
       }
     }
 
-    refreshTokenMenu();
+    followReplica();
 
     return changed;
   }
@@ -2796,8 +2842,9 @@ export async function startReplicaEngine(
     }
 
     sendCommits(replayed);
-    // The first catch-up's end allows the menu, and it merged what this client had loaded.
-    refreshTokenMenu();
+    // The first catch-up's end allows the menu and a size with no preset, and it merged what this
+    // client had loaded.
+    followReplica();
     answerHeldRequests();
     clearDeletedLinks();
 
@@ -2832,7 +2879,7 @@ export async function startReplicaEngine(
     }
 
     if (changed.length > 0) {
-      refreshTokenMenu();
+      followReplica();
       dropDisallowed(presetBefore);
     }
 

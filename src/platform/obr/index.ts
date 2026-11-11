@@ -81,6 +81,9 @@ export const platform: Platform = {
   },
   action: {
     open: () => OBR.action.open(),
+    setSize: async (width, height) => {
+      await Promise.all([OBR.action.setWidth(width), OBR.action.setHeight(height)]);
+    },
   },
   notification: {
     show: (message, variant) => OBR.notification.show(message, variant),

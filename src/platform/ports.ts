@@ -116,6 +116,10 @@ export type PopoverPort = {
 
 export type ActionPort = {
   open: () => Promise<void>;
+  // Sets the action window size in px, for this client only. It applies while the window is open
+  // too, and to the next open. A failure can leave one dimension applied; the caller's retry sets
+  // both.
+  setSize: (width: number, height: number) => Promise<void>;
 };
 
 export type NotificationVariant = 'DEFAULT' | 'ERROR' | 'INFO' | 'SUCCESS' | 'WARNING';

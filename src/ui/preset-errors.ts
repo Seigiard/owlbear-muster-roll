@@ -1,4 +1,4 @@
-import type { PresetFailure } from '@/core/preset';
+import { WINDOW_SIZE_LIMITS, type PresetFailure } from '@/core/preset';
 import type { RejectionReason } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 
@@ -60,6 +60,8 @@ function badFileReason(failure: Exclude<PresetFailure, { code: 'newer-version' }
       return reason.rowTooWide;
     case 'bad-formula':
       return reason.badFormula(failure.detail);
+    case 'bad-window':
+      return reason.badWindow(WINDOW_SIZE_LIMITS.width, WINDOW_SIZE_LIMITS.height);
     default:
       return unknownFailure(failure);
   }

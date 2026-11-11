@@ -33,8 +33,21 @@ const sectionSchema = z.strictObject({
 
 const templateSchema = z.strictObject({ sections: z.array(sectionSchema) });
 
+// TASK-33: the action window size a preset may set, in px, inclusive. The lower bound keeps the
+// narrowest sheet layout usable; the upper bound keeps the window on a laptop screen.
+export const WINDOW_SIZE_LIMITS = {
+  width: { min: 360, max: 1440 },
+  height: { min: 360, max: 1080 },
+} as const;
+
+const windowSchema = z.strictObject({
+  width: z.number().int().min(WINDOW_SIZE_LIMITS.width.min).max(WINDOW_SIZE_LIMITS.width.max),
+  height: z.number().int().min(WINDOW_SIZE_LIMITS.height.min).max(WINDOW_SIZE_LIMITS.height.max),
+});
+
 const presetSchema = z.strictObject({
   v: z.literal(FORMAT_VERSION),
+  window: windowSchema.optional(),
   character: templateSchema,
   npc: templateSchema,
 });
@@ -56,6 +69,12 @@ export type PresetCell = z.infer<typeof cellSchema>;
 
 export type PresetFieldCell = z.infer<typeof fieldCellSchema>;
 
+export type WindowSize = z.infer<typeof windowSchema>;
+
+// The window size with no preset, or with a preset that sets none. `public/manifest.json` opens
+// the window at this size before any background page runs, so the two must agree.
+export const DEFAULT_WINDOW_SIZE: WindowSize = { width: 600, height: 600 };
+
 // A row of a template by position, so a row with no field, as a dice row, can be named too.
 export type TemplateRowPlace = { sectionIndex: number; rowIndex: number };
 
@@ -74,10 +93,11 @@ export type PresetFailure =
   | { code: 'bad-repeat' }
   | { code: 'duplicate-section'; detail: string }
   | { code: 'row-too-wide' }
-  | { code: 'bad-formula'; detail: string };
+  | { code: 'bad-formula'; detail: string }
+  | { code: 'bad-window' };
 
-// Check order: size, JSON, `v`, structure, then rules. `v` comes before the structure, because a
-// newer file may have a shape this build does not know.
+// Check order: size, JSON, `v`, `window`, structure, then rules. `v` comes before the structure,
+// because a newer file may have a shape this build does not know.
 export function parsePresetFile(text: string): Result<Preset, PresetFailure> {
   if (encoder.encode(text).length > PRESET_FILE_BYTE_LIMIT) {
     return err({ code: 'too-large' });
@@ -113,6 +133,11 @@ export function parsePresetFile(text: string): Result<Preset, PresetFailure> {
     return err({ code: 'unsupported-version' });
   }
 
+  // Checked before the structure, so any wrong `window` gets its own reason.
+  if (Object.hasOwn(file.data, 'window') && !windowSchema.safeParse(file.data.window).success) {
+    return err({ code: 'bad-window' });
+  }
+
   const preset = presetSchema.safeParse(candidate);
 
   if (!preset.success) {
@@ -135,11 +160,19 @@ export function decodePreset(data: string): Result<Preset, PresetFailure> {
   return text.ok ? parsePresetFile(text.value) : err({ code: 'invalid-structure' });
 }
 
-// The downloaded file: structure only, at the current `v`.
+// The downloaded file: structure and window size only, at the current `v`.
 export function formatPresetFile(preset: Preset): string {
-  const file: Preset = { v: FORMAT_VERSION, character: preset.character, npc: preset.npc };
+  const file: Preset =
+    preset.window === undefined
+      ? { v: FORMAT_VERSION, character: preset.character, npc: preset.npc }
+      : { v: FORMAT_VERSION, window: preset.window, character: preset.character, npc: preset.npc };
 
   return JSON.stringify(file, null, 2);
+}
+
+// TASK-33: the size the action window takes for the room's preset.
+export function windowSizeOf(preset: Preset | null): WindowSize {
+  return preset?.window ?? DEFAULT_WINDOW_SIZE;
 }
 
 // The id of a row's first field. It names the row's `row:` record, and for a repeat row the

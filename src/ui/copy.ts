@@ -1,3 +1,8 @@
+import type { WINDOW_SIZE_LIMITS } from '@/core/preset';
+
+// A window size bound from the preset rules, so the message names the range the parser checks.
+type WindowRange = (typeof WINDOW_SIZE_LIMITS)[keyof typeof WINDOW_SIZE_LIMITS];
+
 export const copy = {
   command: {
     loadPreset: 'Загрузить пресет',
@@ -97,6 +102,8 @@ export const copy = {
     duplicateSection: (id: string): string => `две повторяемые секции с id «${id}»`,
     rowTooWide: 'в строке больше ячеек, чем колонок',
     badFormula: (formula: string): string => `ошибка в формуле «${formula}»`,
+    badWindow: (width: WindowRange, height: WindowRange): string =>
+      `в window нужны только width и height, целые числа: ширина от ${width.min} до ${width.max} px, высота от ${height.min} до ${height.max} px`,
     tooLarge: 'файл слишком большой',
     // A file that is not a snapshot, such as a preset, under "Загрузить снимок".
     notSnapshot: 'это не снимок',

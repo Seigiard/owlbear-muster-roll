@@ -74,6 +74,28 @@ function writes(migration: PresetMigration) {
 }
 
 describe('presetDiff', () => {
+  test('erases and moves nothing when only the window size changes', () => {
+    // #given
+    const resized: Preset = { ...BASE, window: { width: 900, height: 700 } };
+
+    const records = replica(
+      sheet('brok'),
+      row('brok', 'str', { str: 12, str_tired: false }),
+      rep('brok', 'attack', 'i1', { attack: 'Меч', bonus: 3 }),
+    );
+
+    // #when
+    const migration = presetDiff(records, BASE, resized);
+
+    // #then
+    expect({ count: migration.count, removed: migration.removed, ...writes(migration) }).toEqual({
+      count: 0,
+      removed: { pc: [], npc: [] },
+      first: [],
+      last: [],
+    });
+  });
+
   test('keeps every value when only a label changes', () => {
     // #given
     const renamed = preset([

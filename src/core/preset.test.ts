@@ -8,14 +8,17 @@ import { z } from 'zod';
 import type { JsonObject, JsonValue } from '@/core/json';
 
 import {
+  DEFAULT_WINDOW_SIZE,
   decodePreset,
   encodePreset,
   firstFieldId,
   formatPresetFile,
   parsePresetFile,
   resolveFieldReference,
+  windowSizeOf,
   type Preset,
   type PresetTemplate,
+  type WindowSize,
 } from './preset';
 
 const EXAMPLE_PATH = join(import.meta.dir, '../../docs/example-preset.json');
@@ -23,6 +26,8 @@ const EXAMPLE_PATH = join(import.meta.dir, '../../docs/example-preset.json');
 const EXAMPLE_TEXT = readFileSync(EXAMPLE_PATH, 'utf8');
 
 const FIXTURE_DIR = join(import.meta.dir, '../../tests/fixtures/presets');
+
+const MANIFEST_PATH = join(import.meta.dir, '../../public/manifest.json');
 
 const NUMBER_FIELD = (id: string): JsonObject => ({ kind: 'field', type: 'number', id });
 
@@ -355,6 +360,92 @@ describe('parsePresetFile', () => {
   });
 });
 
+describe('parsePresetFile with a window size', () => {
+  test.each<[string, WindowSize]>([
+    ['a common size', { width: 900, height: 700 }],
+    ['the smallest size', { width: 360, height: 360 }],
+    ['the largest size', { width: 1440, height: 1080 }],
+  ])('accepts %s', (_name, window) => {
+    // #given
+    const text = JSON.stringify({ ...MINIMAL, window });
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: { ...MINIMAL, window } });
+  });
+
+  test.each<[string, JsonValue]>([
+    ['a width below 360', { width: 359, height: 700 }],
+    ['a width above 1440', { width: 1441, height: 700 }],
+    ['a height below 360', { width: 900, height: 359 }],
+    ['a height above 1080', { width: 900, height: 1081 }],
+    ['a zero width', { width: 0, height: 700 }],
+    ['a negative height', { width: 900, height: -700 }],
+    ['an empty object', {}],
+    ['a missing height', { width: 900 }],
+    ['a missing width', { height: 700 }],
+    ['a string width', { width: '900', height: 700 }],
+    ['a fractional width', { width: 900.5, height: 700 }],
+    ['an extra key', { width: 900, height: 700, resizable: true }],
+    ['null', null],
+    ['an array', [900, 700]],
+  ])('refuses %s as a bad window', (_name, window) => {
+    // #given
+    const text = JSON.stringify({ ...MINIMAL, window });
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: { code: 'bad-window' } });
+  });
+
+  test('keeps the window size through encode and decode', () => {
+    // #given
+    const preset: Preset = { ...MINIMAL, window: { width: 900, height: 700 } };
+
+    // #when
+    const decoded = decodePreset(encodePreset(preset));
+
+    // #then
+    expect(decoded).toEqual({ ok: true, value: preset });
+  });
+});
+
+describe('windowSizeOf', () => {
+  test('is the size the preset sets', () => {
+    // #when
+    const size = windowSizeOf({ ...MINIMAL, window: { width: 900, height: 700 } });
+
+    // #then
+    expect(size).toEqual({ width: 900, height: 700 });
+  });
+
+  test.each<[string, Preset | null]>([
+    ['a preset with no size', MINIMAL],
+    ['no preset', null],
+  ])('is 600 by 600 for %s', (_name, preset) => {
+    // #when
+    const size = windowSizeOf(preset);
+
+    // #then
+    expect(size).toEqual({ width: 600, height: 600 });
+  });
+
+  test('the default is the size the manifest opens the window at', () => {
+    // #given
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+
+    // #when
+    const opened = { width: manifest.action.width, height: manifest.action.height };
+
+    // #then
+    expect(opened).toEqual(DEFAULT_WINDOW_SIZE);
+  });
+});
+
 describe('firstFieldId', () => {
   test('is the id of the first field, after any text cell', () => {
     // #when
@@ -541,6 +632,25 @@ describe('formatPresetFile', () => {
 
     // #then
     expect(lines.slice(0, 3)).toEqual(['{', '  "v": 1,', '  "character": {']);
+  });
+
+  test('writes the window size after v and before the templates', () => {
+    // #given
+    const preset: Preset = { ...MINIMAL, window: { width: 900, height: 700 } };
+
+    // #when
+    const lines = formatPresetFile(preset).split('\n');
+
+    // #then
+    expect(lines.slice(0, 7)).toEqual([
+      '{',
+      '  "v": 1,',
+      '  "window": {',
+      '    "width": 900,',
+      '    "height": 700',
+      '  },',
+      '  "character": {',
+    ]);
   });
 
   test('gives back the same structure when the downloaded file is uploaded again', () => {
