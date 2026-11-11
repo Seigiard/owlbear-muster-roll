@@ -36,6 +36,27 @@ Outcome: hardened. Input for `bmad-spec` (update `SPEC.md`), then `bmad-ux`.
 - **Blocking edits that would make the preset invalid:** it forces one edit order.
 - **Direct handoff between the extension window and the builder tab through storage:** the Owlbear iframe's storage is partitioned from a top-level tab.
 
+## Build approach (after research, 2026-11-11)
+
+- Build from parts, no editor library:
+  - the tree is react-aria-components `Tree` with `useDragAndDrop`, already a dependency;
+  - one store holds the preset itself, and undo/redo is a stack of past presets;
+  - property forms for the five node kinds (section, row, text, field, dice) are written by hand;
+  - the preview uses our sheet components, and each cell carries a path for click-to-select;
+  - zod `issue.path` puts each error at its item.
+- Rejected:
+  - Puck (MIT, React 19): own `Data` format needs a two-way converter, canvas-first UX, 0.x with an experimental UI override API, ~169 KB gz. Prototype it only if a canvas UX is wanted later.
+  - Craft.js, GrapesJS, Form.io, react-form-builder2: own document models; Craft.js is stale.
+  - SurveyJS Creator: commercial license.
+  - Builder.io and Plasmic: hosted SaaS.
+  - RJSF and JSON Forms: little gain for five node kinds, and a foreign look.
+  - TTRPG sheet tools: no reusable parts.
+- From dummy-sheet, ideas only. It has no license, so its code may not be copied:
+  - new items start with sensible defaults, so the builder is never empty or broken;
+  - an "add …" button closes each container, full width, naming what it adds;
+  - the download file name holds the preset name and the time;
+  - a clear split between preview and edit.
+
 ## After v2
 
 - **Room preset in the link:** the settings button passes the room's current preset in the URL `#fragment`, deflated with `encodePreset`, so it never reaches the server. Check first that the Owlbear iframe may open a new tab. The way back stays a file.
