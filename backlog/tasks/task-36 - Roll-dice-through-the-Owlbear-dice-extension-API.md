@@ -1,11 +1,11 @@
 ---
 id: TASK-36
 title: Roll dice through the Owlbear dice extension API
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-11T04:41:00Z'
-updated_date: '2026-11-11T16:45:00Z'
+updated_date: '2026-11-11T16:51:00Z'
 labels:
   - v2
 dependencies: []
@@ -54,4 +54,12 @@ Permalinks: dicex ef79a207 src/plugin/dicePlusProtocol.ts, dicePlusBackgroundLis
 Fork: https://github.com/Seigiard/dicex, installed from https://seigiard.com/dicex/manifest.json (seigiard.github.io redirects there without CORS). Visibility is the caller's: rollTarget everyone = public, self = roller only, dm/gm_only = roller and GM. The consent/allowlist idea was dropped by the owner. Client implemented per spec-4-8; review round 1 patched. Checks 2026-11-11: oxfmt, lint, typecheck, bun test 2037 pass, vite build, test:browser 398 passed twice. AC 2-5 proven against a fake extension that models dicex result shapes (src/replica/engine-dice-extension.test.ts, tests/dice-extension.e2e.ts). Open: owner live-room check with the fork; client follow-up for the GM access permission dicex is getting.
 
 Follow-up spec-4-9 (GM access permission in the fork): GM client asks dicex for access at start; probes name the source and read `permitted`; refused access rolls local at once; player sees «Ждём разрешения ГМ…» while the GM decides. Owner live finding fixed: dice messages bypass the paced room queue, a roll waits up to 1 s for a fresh probe, each roll logs its path. Checks: bun test 2060 pass, test:browser 399 passed twice, lint/typecheck/build exit 0.
+
+Owner live check 2026-11-11 (fork deployed, Muster Roll deployed): GM sees the dicex access prompt at entry; first roll after a reload shows 3D dice; a player roll before the answer waits and then rolls; Deny rolls local at once; each roll logs its path. Upstream PRs: https://github.com/abottchen/dicex/pull/22 (caller visibility), https://github.com/abottchen/dicex/pull/23 (GM access).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Muster Roll now rolls a dice cell through a Dice+ compatible extension when one is in the room: our own fork Seigiard/dicex (https://seigiard.com/dicex/manifest.json) or the commercial Dice+. The formula is still evaluated by our parser; only the dice faces come from the extension, so the notification matches the 3D dice. Character rolls are public, NPC rolls go to the GM. The fork makes rollTarget the caller's choice and lets the GM allow an extension per room; the GM client asks for access at entry. Without an extension, on refusal, error or timeout, the roll is local. d100 rolls locally because dicex reports only the tens die. Verified by unit, engine and e2e tests and by the owner in a live room.
+<!-- SECTION:FINAL_SUMMARY:END -->
