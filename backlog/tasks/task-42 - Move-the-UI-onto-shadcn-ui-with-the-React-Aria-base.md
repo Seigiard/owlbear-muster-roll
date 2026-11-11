@@ -4,6 +4,7 @@ title: Move the UI onto shadcn/ui with the React Aria base
 status: To Do
 assignee: []
 created_date: '2026-11-11T21:56:00Z'
+updated_date: '2026-11-11T22:08:00Z'
 labels:
   - v2
 dependencies:
@@ -36,4 +37,23 @@ Start with a spike in a branch: init, version compatibility, Owlbear theme mappe
 - [ ] #3 The existing primitives (button, chip, field, banner) are replaced by shadcn components, and all lint, typecheck, unit and e2e checks pass
 - [ ] #4 DESIGN.md names the shadcn tokens and states which components come from shadcn and which stay custom (the builder tree)
 - [ ] #5 Keyboard and focus behaviour of every replaced control is unchanged or better, checked against the EXPERIENCE.md Accessibility Floor
+- [ ] #6 Theme fallbacks in src/preview/themes.ts, the mock platform, tests/support/colors.ts and DESIGN.md hex values are the live Owlbear values, so the preview and e2e tests show the colours players see
+- [ ] #7 In the light theme, accent text on the surface and text on the accent reach 4.5:1, raised through color-mix from the Owlbear theme colours rather than new fixed hex values or other theme fields
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-11-11T22:08:00Z
+
+---
+
+Live Owlbear theme values, read from the extension root style in a live room on 2026-11-11.
+Dark: background.paper #222639, background.default #1e2231, text.primary #fff, text.secondary rgba(255, 255, 255, 0.7), primary.main #bb99ff, primary.contrastText rgba(0, 0, 0, 0.87).
+Light: background.paper #f1f3f9, background.default #dde1ee, text.primary rgba(0, 0, 0, 0.87), text.secondary rgba(0, 0, 0, 0.6), primary.main #9966ff, primary.contrastText #fff.
+Current fallbacks differ: dark is grey with a gold accent (#333333, #D9B36C), light has a blue accent (#0055AA).
+Contrast with the live values: light accent on surface 3.3:1 (section headings, dice button labels), light white text on the accent button 3.7:1; the dark theme passes every check. Owner decision: raise the light accent contrast with color-mix from the theme colours, not by taking primary.dark.
+Report (expires 2026-12-09): https://reports.1218217.xyz/reports/owlbear-muster-roll/20261111T220407Z-3a9ee538/index.html
+
+---
+<!-- COMMENTS:END -->
