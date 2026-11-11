@@ -312,7 +312,7 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 | CAP-29 | core, ui | AD-2, AD-18 |
 | CAP-30 | core, replica, ui | AD-2, AD-10, AD-19 |
 | CAP-31 | replica, ui | AD-9, AD-11, AD-12 |
-| CAP-32 | ui, platform | AD-19, Visibility convention, SDK boundary. The map selection is this client's own state: the window reads and writes it through its port, and it never enters records, messages or storage |
+| CAP-32 | core, ui, platform | AD-19, Visibility convention, SDK boundary |
 
 CAP-16 is retired. CAP-20 to CAP-28 belong to the v2 builder, which this spine does not cover yet.
 

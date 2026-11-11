@@ -58,7 +58,7 @@ Short and literal. Commands are perfective verbs. Places are nouns. Statuses are
 | Add a sheet of a sheet set | "+" with the accessible name "Добавить: {title}" |
 | Place | "Настройки", "Доступ" |
 | Status | "Ожидает", "Только чтение", "Можно править", "Токен привязан", "Нет токена" |
-| Selection mark, in an accessible name only | "{name}, выделен на карте" |
+| Selection mark, in an accessible name only | "{name}, токен выделен" |
 | Select a repeat block's tokens | "Выделить на карте" with the accessible name "Выделить блок {n} на карте", where `{n}` is the repeat block's position in its section from 1 |
 | Empty sheet name | "Без имени" |
 | Loading | "Загрузка…" |
