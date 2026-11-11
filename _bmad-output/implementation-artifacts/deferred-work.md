@@ -79,3 +79,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-1-evaluate-dice-formulas-safely.md`
   summary: A number field value that stringifies in exponent form (for example `1e-7`) gives the field error in a roll.
   evidence: `fieldNumber` reads numbers through `parseNumberInput(valueText(value))`, and the 1.9 parser refuses exponent notation.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-2-roll-a-dice-cell-and-show-the-result.md`
+  summary: A roll pressed right after a blur save that the engine rejects uses the old record value, while the window shows the typed text again.
+  evidence: The blur save clears the window draft before the roll request; the window does not keep drafts until the patch is acknowledged.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-2-roll-a-dice-cell-and-show-the-result.md`
+  summary: A player roll that uses the player's own pending edit is untested until Epic 3 adds player edits.
+  evidence: Only the GM pending path exists now; `engine-roll.test.ts` covers it.
