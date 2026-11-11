@@ -101,6 +101,22 @@ const PRESET_TEXT = JSON.stringify({
       visibility: 'gm',
       sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
     },
+    {
+      id: 'loot',
+      kind: 'single',
+      title: 'Добыча',
+      players: 'edit',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Золото' },
+              { kind: 'field', type: 'number', id: 'gold' },
+            ],
+          ],
+        },
+      ],
+    },
   ],
 });
 
@@ -209,6 +225,35 @@ test("a GM's commit takes the mark away with no message", async ({ context }) =>
   await expect(mark(player.window)).toHaveCount(0);
   await expect(strength(player.window)).toHaveValue('16');
   await expect(strength(player.window)).toHaveAccessibleDescription('');
+  expect(await notifications(player)).toEqual([]);
+});
+
+test('an edit of a player-editable single sheet shows "Ожидает" after the delay, and the GM\'s commit takes it away', async ({
+  context,
+}) => {
+  // #given
+  const { gm, player } = await openWithSilentGm(context);
+
+  await player.window.getByRole('tab', { name: 'Добыча' }).click();
+
+  // #when
+  await gold(player.window).fill('30');
+  await gold(player.window).press('Enter');
+
+  // #then
+  await expect.poll(() => proposedKeys(gm.window)).toEqual(['row:loot:gold']);
+  await expect(player.window.getByRole('tabpanel').getByText(READ_ONLY)).toHaveCount(0);
+  await expect(mark(player.window)).toBeVisible({ timeout: MARK_DELAY_MS * 3 });
+  await expect(gold(player.window)).toHaveValue('30');
+  await expect(gold(player.window)).toHaveAccessibleDescription(PENDING);
+
+  // #when
+  await commitProposal(gm, 'row:loot:gold');
+
+  // #then
+  await expect(mark(player.window)).toHaveCount(0);
+  await expect(gold(player.window)).toHaveValue('30');
+  await expect(gold(player.window)).toHaveAccessibleDescription('');
   expect(await notifications(player)).toEqual([]);
 });
 
@@ -504,6 +549,10 @@ function mark(page: Page): Locator {
 
 function strength(page: Page): Locator {
   return page.getByRole('tabpanel').getByRole('textbox', { name: 'Сила', exact: true });
+}
+
+function gold(page: Page): Locator {
+  return page.getByRole('tabpanel').getByRole('textbox', { name: 'Золото', exact: true });
 }
 
 function dexterity(page: Page): Locator {

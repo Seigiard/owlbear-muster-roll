@@ -23,9 +23,9 @@ const NAME_CLASS = 'text-sheet-title';
 // A player's status beside the name (UX-DR10).
 export type HeaderStatus = 'can-edit' | 'read-only';
 
-// What a GM gets in the header. `access` shows the "Доступ" chip, on a visible sheet of a sheet set.
-// `tokenLinked` is the token status of a linkable template, `null` for one that is not. `onDelete`
-// shows "⋯" with "Удалить", on a sheet of a sheet set only.
+// What a GM gets in the header. `access` shows the "Доступ" chip, on a visible sheet of a sheet
+// set. `tokenLinked` is the token status of a linkable template, `null` for one that is not.
+// `onDelete` shows "⋯" with "Удалить", on a sheet of a sheet set only.
 export type GmHeader = {
   playerId: string;
   access: boolean;

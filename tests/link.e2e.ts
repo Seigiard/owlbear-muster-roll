@@ -565,7 +565,7 @@ async function headerStatus(page: Page): Promise<string> {
 
 // A target by its shown text, as the text keeps the two names apart with a comma.
 function targetButton(picker: Page, text: string): Locator {
-  return picker.getByRole('button').filter({ hasText: new RegExp(`^${text}$`) });
+  return picker.getByRole('button', { name: text, exact: true });
 }
 
 // A repeat block is a group named by its first field.
@@ -579,7 +579,10 @@ async function pickerGroups(picker: Page): Promise<{ group: string; targets: str
   return picker.locator('main section').evaluateAll((sections) =>
     sections.map((section) => ({
       group: section.getAttribute('aria-label') ?? '',
-      targets: [...section.querySelectorAll('button')].map((button) => button.textContent),
+      // A target's accessible name joins its names and status: «Скелет, NPC».
+      targets: [...section.querySelectorAll('button')].map(
+        (button) => button.getAttribute('aria-label') ?? button.textContent,
+      ),
     })),
   );
 }

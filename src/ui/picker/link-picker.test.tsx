@@ -114,7 +114,7 @@ afterEach(() => {
 });
 
 describe('link picker targets', () => {
-  test('lists one group per linkable template and repeat section, in preset order', async () => {
+  test('lists one group per linkable template and repeat section, in preset order, each target named with no space before a comma', async () => {
     // #given
     const picker = await openPicker({ read: { label: '' } });
 
@@ -707,11 +707,14 @@ function offer(picker: Harness): OfferView {
   };
 }
 
-// Each group's heading and the text of its targets, with the sr-only separators read as they are.
-function groupsOf(picker: Harness): { heading: string; targets: string[] }[] {
+// Each group's heading and the accessible names of its targets. A target's `aria-label` overrides
+// the name its text would give, so it is the name a screen reader reads.
+function groupsOf(picker: Harness): { heading: string; targets: (string | null)[] }[] {
   return [...picker.container.querySelectorAll('section')].map((section) => ({
     heading: section.getAttribute('aria-label') ?? '',
-    targets: [...section.querySelectorAll('button')].map((button) => button.textContent),
+    targets: [...section.querySelectorAll('button')].map((button) =>
+      button.getAttribute('aria-label'),
+    ),
   }));
 }
 

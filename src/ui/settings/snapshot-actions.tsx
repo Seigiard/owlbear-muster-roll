@@ -53,9 +53,9 @@ type SnapshotActionsParts = {
 // FR13, UX-DR23, UX-DR25, UX-DR30: "Скачать снимок" writes the file from the records this window
 // holds and sends nothing to the replica. "Загрузить снимок" checks the file in the window, then
 // the replica counts the values and the sheets the current preset would drop, and one block asks
-// before anything is written. On confirm the replica counts again, and a different count asks again. Cancel,
-// Escape, leaving Settings, closing the window and the start of catch-up close the block, and
-// nothing is written. Both buttons wait during catch-up and need a preset.
+// before anything is written. On confirm the replica counts again, and a different count asks
+// again. Cancel, Escape, leaving Settings, closing the window and the start of catch-up close the
+// block, and nothing is written. Both buttons wait during catch-up and need a preset.
 export function useSnapshotActions({
   records,
   preset,

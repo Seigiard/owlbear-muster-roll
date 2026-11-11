@@ -62,12 +62,12 @@ type PresetUploadParts = {
   upload: ReactNode;
 };
 
-// FR8, AD-14: a file goes through the window's checks, then the replica counts the stored values
-// it would erase and the sheets it would delete. With none it is uploaded at once. With some, one
-// block asks first. On confirm the replica counts again: new counts above 0 ask again, and counts of
-// 0 take the path that erases nothing. "Формат листов изменён." shows after either upload. Catch-up closes the block, and
-// nothing is written. While a request waits the button waits too; with no answer in time it
-// gives up, and a late answer is ignored.
+// FR8, AD-14: a file goes through the window's checks, then the replica counts the stored values it
+// would erase and the sheets it would delete. With none it is uploaded at once. With some, one
+// block asks first. On confirm the replica counts again: new counts above 0 ask again, and counts
+// of 0 take the path that erases nothing. "Формат листов изменён." shows after either upload.
+// Catch-up closes the block, and nothing is written. While a request waits the button waits too;
+// with no answer in time it gives up, and a late answer is ignored.
 export function usePresetUpload({
   client,
   store,

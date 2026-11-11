@@ -14,8 +14,8 @@ const TAB_CLASS =
 
 const SELECTABLE_CLASS = 'data-selected:bg-surface data-selected:text-accent';
 
-// A long name is cut with an ellipsis. The text in the DOM stays whole, so the accessible name still
-// holds the whole name.
+// A long name is cut with an ellipsis. The text in the DOM stays whole, so the accessible name
+// still holds the whole name.
 const SCROLLING_TAB_CLASS = `${TAB_CLASS} ${SELECTABLE_CLASS} max-w-[160px]`;
 
 // Pinned tabs come after every other item and stick to the right edge. The pseudo-element fills the

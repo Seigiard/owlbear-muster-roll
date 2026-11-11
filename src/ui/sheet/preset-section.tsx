@@ -58,6 +58,8 @@ type SheetSectionProps = {
   section: PresetSection;
   // The section's position in its template, which a roll request names.
   sectionIndex: number;
+  // The title of the section's template, which names an untitled repeat section's "Добавить".
+  templateTitle: string;
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
   readOnly: boolean;
@@ -65,6 +67,8 @@ type SheetSectionProps = {
   pending: SheetPending | null;
   blockTools: BlockTools | null;
 };
+
+type PlainContentProps = Omit<SheetSectionProps, 'blockTools' | 'templateTitle'>;
 
 // One row as its cells show it. Every row of a repeat block shares the block's record.
 type SheetRow = {
@@ -87,9 +91,12 @@ type SheetBlock = {
 
 type RepeatContentProps = Omit<SheetSectionProps, 'readOnly'> & { sectionId: string };
 
+type ReadOnlyRepeatContentProps = Omit<RepeatContentProps, 'templateTitle'>;
+
 export function SheetSection({
   section,
   sectionIndex,
+  templateTitle,
   sheetId,
   records,
   readOnly,
@@ -123,12 +130,11 @@ export function SheetSection({
         records={records}
         readOnly={readOnly}
         pending={pending}
-        blockTools={blockTools}
       />
     ) : readOnly ? (
       <ReadOnlyRepeatContent {...repeatProps} sectionId={sectionId} />
     ) : (
-      <RepeatContent {...repeatProps} sectionId={sectionId} />
+      <RepeatContent {...repeatProps} templateTitle={templateTitle} sectionId={sectionId} />
     );
 
   if (title === null) {
@@ -165,7 +171,7 @@ function PlainContent({
   records,
   readOnly,
   pending,
-}: SheetSectionProps): ReactNode {
+}: PlainContentProps): ReactNode {
   const rows = useMemo(
     () => plainRows(section, sectionIndex, sheetId, records, pending),
     [section, sectionIndex, sheetId, records, pending],
@@ -188,7 +194,7 @@ function ReadOnlyRepeatContent({
   pending,
   sectionId,
   blockTools,
-}: RepeatContentProps): ReactNode {
+}: ReadOnlyRepeatContentProps): ReactNode {
   const blocks = useMemo(
     () => repeatBlocksOf(section, sectionIndex, sectionId, sheetId, records, pending),
     [section, sectionIndex, sectionId, sheetId, records, pending],
@@ -210,10 +216,12 @@ function ReadOnlyRepeatContent({
 }
 
 // A repeat section shows each repeat block of this sheet with its "Удалить", and "Добавить" under
-// them. The section title says what is added, and the accessible name of "Добавить" names it.
+// them. The accessible name of "Добавить" names the section by its title, or an untitled one by its
+// template's, so the buttons of two sections differ.
 function RepeatContent({
   section,
   sectionIndex,
+  templateTitle,
   sheetId,
   records,
   pending,
@@ -233,7 +241,7 @@ function RepeatContent({
   );
 
   const controls = useRepeatBlocks(sheetId, sectionId, instanceIds);
-  const title = sectionTitle(section);
+  const title = sectionTitle(section) ?? templateTitle;
 
   return (
     <>
@@ -251,7 +259,7 @@ function RepeatContent({
       <div className="mt-1">
         <Button
           ref={controls.addButton}
-          accessibleName={title === null ? undefined : copy.label.addToSection(title)}
+          accessibleName={copy.label.addToSection(title)}
           onPress={controls.add}
         >
           {copy.command.add}
@@ -426,6 +434,7 @@ function Blocks({
             sheetId={sheetId}
             sectionId={sectionId}
             instanceId={block.instanceId}
+            fieldIds={sectionFields(section).map((field) => field.id)}
             sendCommand={tools.sendCommand}
             store={tools.store}
             focusRequest={duplicateAsk.request}
@@ -478,8 +487,8 @@ type BlockSlotProps = {
   onDuplicate: () => void;
 };
 
-// A repeat block's slot: its own "Ожидает" (UX-DR28), the GM's token status and "Дублировать…",
-// and its "Удалить", each shown on its own. `column` places the slot in the extra grid track, past a
+// A repeat block's slot: its own "Ожидает" (UX-DR28), the GM's token status and "Дублировать…", and
+// its "Удалить", each shown on its own. `column` places the slot in the extra grid track, past a
 // short row's empty tracks. A removed repeat block has no "Удалить", so it cannot be removed twice
 // and its focus moves on. The slot is a polite live region, mounted before the mark, so a removal's
 // mark is announced once, when it appears.

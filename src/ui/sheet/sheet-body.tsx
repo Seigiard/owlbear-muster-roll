@@ -2,7 +2,7 @@ import { useStore } from '@nanostores/react';
 import { useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 
-import { firstFieldId, repeatSectionId, type TemplateLayout } from '@/core/preset';
+import { firstFieldId, repeatSectionId, type Template, type TemplateLayout } from '@/core/preset';
 import { repKeyPrefix, rowKey, type VersionedRecord } from '@/core/records';
 import { revealElement } from '@/ui/reveal';
 
@@ -17,7 +17,8 @@ export type BlockReveal = { instanceId: string; focus: boolean };
 
 type SheetBodyProps = {
   // The sheet's template, as `core/sheets` resolves it.
-  template: TemplateLayout;
+  // The title names an untitled repeat section's "Добавить".
+  template: Pick<Template, 'sections' | 'title'>;
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
   // `null` shows every value read-only, with no row controls: a player with no access to the sheet.
@@ -89,6 +90,7 @@ export function SheetBody({
                 key={index}
                 section={section}
                 sectionIndex={index}
+                templateTitle={template.title}
                 sheetId={sheetId}
                 records={shownRecords}
                 readOnly={editing === null}

@@ -39,8 +39,8 @@ export const copy = {
     // The accessible name of a read-only check mark: its field's label and its state.
     checked: (name: string): string => `${name}: отмечено`,
     unchecked: (name: string): string => `${name}: не отмечено`,
-    // The checkbox of one player's row in the access panel (UX-DR12), and its accessible name, which
-    // says whose it is.
+    // The checkbox of one player's row in the access panel (UX-DR12), and its accessible name,
+    // which says whose it is.
     mayEdit: 'Может править',
     mayEditFor: (name: string): string => `${name}: может править`,
     // The radio group of the access panel that picks the one owner of a sheet of a sheet set, and
@@ -101,6 +101,8 @@ export const copy = {
   // `snapshotImportFailed` pattern.
   wipeFailed: 'Не удалось очистить. Попробуйте ещё раз.',
   wipeNotAllowed: 'Очищать может только мастер.',
+  // AD-9: a snapshot import runs on the GM client, and nothing writes until it ends.
+  wipeAfterImport: 'Идёт загрузка снимка. Очистить можно после неё.',
   deleteConfirmation: (name: string): string => `Удалить «${name}»? Это нельзя отменить.`,
   badFormula: (field: string): string => `Нельзя бросить: поле «${field}» пустое или не число`,
   badFormulaResult: 'Нельзя бросить: формула не дала числа',
@@ -134,7 +136,8 @@ export const copy = {
   presetUnreadable: 'Сохранённый пресет не читается. Обновите расширение.',
   presetWriteFailed: 'Не удалось сохранить пресет. Попробуйте ещё раз.',
   presetNotAllowed: 'Загружать пресет может только мастер.',
-  // AD-9: an import that saved nothing, or got no answer. It follows the `presetWriteFailed` pattern.
+  // AD-9: an import that saved nothing, or got no answer. It follows the `presetWriteFailed`
+  // pattern.
   snapshotImportFailed: 'Не удалось загрузить снимок. Попробуйте ещё раз.',
   // An import whose answer never came may still have replaced the room, so the GM looks first.
   snapshotImportNoAnswer: 'Ответ не пришёл. Проверьте листы, прежде чем загружать снова.',
@@ -155,7 +158,8 @@ export const copy = {
   duplicateFailed: 'Не удалось дублировать. Попробуйте ещё раз.',
   // The link picker with no target to list (UX-DR22).
   noSheetsToLink: 'Сначала создайте лист',
-  // Under the link picker's list when the link was not saved, such as for a sheet deleted meanwhile.
+  // Under the link picker's list when the link was not saved, such as for a sheet deleted
+  // meanwhile.
   linkFailed: 'Не удалось привязать. Попробуйте ещё раз.',
   // The link picker's offer to set the label under the token to the picked target's name, and the
   // hint under it with the label the token has now.

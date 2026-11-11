@@ -27,8 +27,8 @@ export type PendingKind = 'add' | 'edit' | 'remove';
 
 export type PendingEntry = {
   kind: PendingKind;
-  // The fields an `edit` changes over the applied record, each with its pending value, `null` for
-  // a cleared one. An `add` and a `remove` name none, as their mark is the row's. An `edit` can name
+  // The fields an `edit` changes over the applied record, each with its pending value, `null` for a
+  // cleared one. An `add` and a `remove` name none, as their mark is the row's. An `edit` can name
   // none too, as when a value was edited back to the applied one.
   fields: ReadonlyMap<string, FieldValue | null>;
   // The record the window shows for the key: the newest version of the edit.

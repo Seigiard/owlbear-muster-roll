@@ -2,7 +2,7 @@ import { useStore } from '@nanostores/react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
-import { TIMING } from '@/core/timing';
+import { WIPE_TIMEOUT_MS } from '@/core/timing';
 import type { RejectionReason } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
@@ -12,8 +12,9 @@ import type { ReplicaClient } from '@/ui/replica-client';
 // AD-9, kept in this window only, so a window that closes, or a GM who leaves Settings, forgets it
 // and writes nothing. `asking` shows the block, `wiping` waits for the answer. `ask` counts the
 // questions, so a new one remounts the block and its focus goes to "Отменить" again.
+// `untilCatchUpEnds` marks a message that holds only while catch-up runs, so its end clears it.
 type WipeState =
-  | { phase: 'idle'; message: string | null; ask: number }
+  | { phase: 'idle'; message: string | null; untilCatchUpEnds?: boolean; ask: number }
   | { phase: 'asking'; ask: number }
   | { phase: 'wiping'; commandId: string; ask: number };
 
@@ -48,15 +49,31 @@ export function useWipeActions({
   const { sendCommand } = client;
   const waitingId = state.phase === 'wiping' ? state.commandId : null;
 
+  // The catch-up state this render last saw, so its end clears a message that only held during it.
+  const [seenCatchingUp, setSeenCatchingUp] = useState(catchingUp);
+
   if (catchingUp && state.phase === 'asking') {
     setState({ phase: 'idle', message: null, ask: state.ask });
+  }
+
+  if (catchingUp !== seenCatchingUp) {
+    setSeenCatchingUp(catchingUp);
+
+    if (!catchingUp && state.phase === 'idle' && state.untilCatchUpEnds) {
+      setState({ phase: 'idle', message: null, ask: state.ask });
+    }
   }
 
   if (waitingId !== null) {
     const rejection = rejections.get(waitingId);
 
     if (rejection !== undefined) {
-      setState({ phase: 'idle', message: wipeRejectionText(rejection.reason), ask: state.ask });
+      setState({
+        phase: 'idle',
+        message: wipeRejectionText(rejection.reason),
+        untilCatchUpEnds: rejection.reason === 'catching-up',
+        ask: state.ask,
+      });
     } else if (results.has(waitingId)) {
       setState({ phase: 'idle', message: null, ask: state.ask });
     }
@@ -74,7 +91,7 @@ export function useWipeActions({
           ? { phase: 'idle', message: copy.wipeFailed, ask: current.ask }
           : current,
       );
-    }, TIMING.snapshotImportTimeoutMs);
+    }, WIPE_TIMEOUT_MS);
 
     return () => {
       clearTimeout(timer);
@@ -146,7 +163,8 @@ export function useWipeActions({
   };
 }
 
-// What the window says under "Очистить всё" for a refused wipe.
+// What the window says under "Очистить всё" for a refused wipe. A reason no case names, such as a
+// failed write, is a failed wipe.
 export function wipeRejectionText(reason: RejectionReason): string {
   switch (reason) {
     case 'not-allowed':
@@ -154,7 +172,9 @@ export function wipeRejectionText(reason: RejectionReason): string {
     case 'catching-up':
       return copy.loading;
     case 'importing':
-      return copy.snapshotImporting;
+      return copy.wipeAfterImport;
+    case 'data-replaced':
+      return copy.snapshotDataReplaced;
     default:
       return copy.wipeFailed;
   }

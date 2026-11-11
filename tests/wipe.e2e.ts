@@ -31,6 +31,7 @@ const UNREADABLE = 'Копия в комнате не читается. Дожд
 const NO_GM = 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.';
 const NO_PRESET = 'ГМ ещё не настроил листы.';
 const DATA_REPLACED = 'Данные комнаты заменены';
+const WIPE_FAILED = 'Не удалось очистить. Попробуйте ещё раз.';
 
 const ASK =
   'Будут удалены пресет, все листы, копия в комнате и копия в этом браузере. Игроки потеряют привязки и права. Очистить всё?';
@@ -144,6 +145,29 @@ test('with no preset, "Очистить всё" in Settings asks once, focused o
     copy: V1_COPY,
     keys: keysBefore,
   });
+});
+
+test('with no preset and Settings open, a confirmed wipe ends with "Очистить всё" enabled and focused, and no failure', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context, GM, null);
+
+  await gm.window.getByRole('button', { name: SETTINGS }).click();
+  await wipeButton(gm.window).click();
+
+  // #when
+  await confirmation(gm.window).getByRole('button', { name: WIPE }).click();
+
+  // #then
+  await expect
+    .poll(() => roomCopyContent(gm.window))
+    .toEqual({ v: 2, content: { g: { n: 1, a: gm.connectionId }, records: [] } });
+  await expect(confirmation(gm.window)).toHaveCount(0);
+  await expect(wipeButton(gm.window)).toBeEnabled();
+  await expect(wipeButton(gm.window)).toBeFocused();
+  await expect(wipeSection(gm.window).getByText(WIPE_FAILED)).toHaveCount(0);
+  await expect(wipeSection(gm.window).locator('[aria-live]')).toHaveText('');
 });
 
 test('Escape closes the wipe confirmation and changes nothing', async ({ context }) => {
@@ -341,8 +365,12 @@ function otherRoomKeys(keys: readonly string[]): string[] {
   return keys.filter((key) => key.includes(':other-room:')).sort();
 }
 
+function wipeSection(page: Page): Locator {
+  return page.getByRole('region', { name: 'Очистка' });
+}
+
 function wipeButton(page: Page): Locator {
-  return page.getByRole('region', { name: 'Очистка' }).getByRole('button', { name: WIPE });
+  return wipeSection(page).getByRole('button', { name: WIPE });
 }
 
 function confirmation(page: Page): Locator {

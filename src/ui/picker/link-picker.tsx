@@ -49,8 +49,8 @@ type CurrentLabel =
 
 // UX-DR22: the targets a token can link to, in groups in preset order: one per linkable sheet set
 // or single sheet, and one per linkable repeat section. In each group the targets with no token
-// come first. A pick stays on screen until its link is in the replica, so a refused one, such as for
-// a sheet deleted meanwhile, shows a message here instead of closing the picker.
+// come first. A pick stays on screen until its link is in the replica, so a refused one, such as
+// for a sheet deleted meanwhile, shows a message here instead of closing the picker.
 export function LinkPicker({
   tokenId,
   store,
@@ -227,28 +227,21 @@ export function LinkPicker({
               onPress={() => {
                 pick(choice);
               }}
+              aria-label={targetAccessibleName(choice)}
               className="touch-target flex w-full items-center gap-2 rounded-sm px-3 text-left text-text data-disabled:opacity-50 data-hovered:bg-surface-tab data-pressed:bg-surface-tab"
             >
               <span className="min-w-[0] flex-1 [overflow-wrap:anywhere]">
                 {shownName(choice.blockName ?? choice.sheetName)}
                 {choice.blockName === null ? null : (
-                  <>
-                    {/* Keeps the two names apart in the accessible name. */}
-                    <span className="sr-only">, </span>
-                    <span className="ml-2 text-label-sm text-text-muted">
-                      {shownName(choice.sheetName)}
-                    </span>
-                  </>
+                  <span className="ml-2 text-label-sm text-text-muted">
+                    {shownName(choice.sheetName)}
+                  </span>
                 )}
               </span>
               {choice.linked ? (
-                <>
-                  {/* Keeps the name and the status apart in the accessible name. */}
-                  <span className="sr-only">, </span>
-                  <span className="shrink-0 text-label-sm text-text-muted">
-                    {copy.status.tokenLinked}
-                  </span>
-                </>
+                <span className="shrink-0 text-label-sm text-text-muted">
+                  {copy.status.tokenLinked}
+                </span>
               ) : null}
             </AriaButton>
           </li>
@@ -362,6 +355,18 @@ function groupHeading(group: PickerGroup): string {
   return group.section === null
     ? group.template.title
     : (sectionTitle(group.section) ?? group.template.title);
+}
+
+// The visible parts joined by commas, so a screen reader does not run them together. Built here,
+// as the computed name of separate spans adds a space before each comma.
+export function targetAccessibleName(choice: PickerTarget): string {
+  return [
+    shownName(choice.blockName ?? choice.sheetName),
+    choice.blockName === null ? null : shownName(choice.sheetName),
+    choice.linked ? copy.status.tokenLinked : null,
+  ]
+    .filter((part) => part !== null)
+    .join(', ');
 }
 
 // The one fallback label of an empty name.
