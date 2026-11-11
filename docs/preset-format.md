@@ -129,8 +129,6 @@ A refused file changes nothing. The message under the button names the first pro
 | A formula breaks the formula rules | ошибка в формуле «{formula}» |
 | The file or the stored preset is too large | файл слишком большой |
 
-While sheets exist, "Загрузить пресет" is disabled with "Удалите листы, чтобы заменить пресет.".
-
 ## Preview a preset
 
 To see a preset while you edit it, with no Owlbear room, run:
