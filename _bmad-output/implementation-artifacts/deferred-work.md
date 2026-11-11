@@ -91,3 +91,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-4-link-a-token-to-a-sheet.md`
   summary: `link:` records of tokens removed from the scene are never cleaned up, so menu filters and re-creations grow over a campaign.
   evidence: v1 reads `link:` records only and never the scene; a removed token cannot be clicked to unlink.
+
+## From spec-3-3-apply-a-players-edit-after-a-gm-check (TASK-22)
+
+- A player with access can add `rep:` instances without limit; only the room-copy size check stops growth. Consider a per-section instance quota.
+- With two GM clients, a player's record with a `c` equal to an unseen GM edit can win the author tie.
+- Pending entries wait up to `proposeResendMaxMs` (30 s) after a GM leaves catch-up when `gmLink` does not change.
+- The engine test `TIMING` literal is copied in about 14 files; a shared fixture would remove the copies.
+- The `gone` race in `handlePlayerCommand` (a row removed by a not-yet-shown commit) has no test.
