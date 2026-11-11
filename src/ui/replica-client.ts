@@ -46,6 +46,9 @@ export type ReplicaClient = {
   // AD-14: asks how many stored values the preset in `data` would erase. The answer and any
   // refusal come by the id it returns.
   requestPresetDiff: (data: string) => Result<string, CommandFailure>;
+  // AD-9: asks how many values of the snapshot file in `data` the current preset would drop. The
+  // answer and any refusal come by the id it returns.
+  requestSnapshotCheck: (data: string) => Result<string, CommandFailure>;
   // Through the same queue as commands, so a field patch sent before it reaches the engine first.
   requestRoll: (request: RollRequest) => Result<string, CommandFailure>;
   // FR14: tells the engine this window took the open request with this id, so no window gets it
@@ -212,6 +215,10 @@ export function startReplicaClient(
       if (ownCommandIds.has(message.id)) {
         store.setPresetResult(message);
       }
+    } else if (message.t === 'snapshot-check-result' || message.t === 'snapshot-imported') {
+      if (ownCommandIds.has(message.id)) {
+        store.setSnapshotResult(message);
+      }
     } else if (message.t === 'roll-outcome') {
       if (ownRollIds.has(message.id)) {
         store.setRollOutcome(message);
@@ -272,6 +279,22 @@ export function startReplicaClient(
       ownCommandIds.add(id);
       send(message).catch((error) => {
         console.error('Muster Roll could not ask for a preset diff', error);
+      });
+
+      return ok(id);
+    },
+    requestSnapshotCheck: (data) => {
+      const id = newId();
+      const message: WindowMessage = { t: 'snapshot-check', id, data };
+
+      if (!fitsOneMessage(message)) {
+        return err('too-large');
+      }
+
+      // A refusal comes as a command's does, so the id counts as one.
+      ownCommandIds.add(id);
+      send(message).catch((error) => {
+        console.error('Muster Roll could not ask for a snapshot check', error);
       });
 
       return ok(id);

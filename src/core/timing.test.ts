@@ -41,4 +41,14 @@ describe('timing constants', () => {
     // #then
     expect(TIMING.presetRequestTimeoutMs).toBe(15000);
   });
+
+  test('asks again for an incomplete generation after 2 s, doubling up to 30 s, as the 5.3 spec says', () => {
+    // #then
+    expect([TIMING.incompleteRequestStartMs, TIMING.incompleteRequestMaxMs]).toEqual([2000, 30000]);
+  });
+
+  test('gives up on a snapshot import with no answer after 60 s', () => {
+    // #then
+    expect(TIMING.snapshotImportTimeoutMs).toBe(60000);
+  });
 });

@@ -30,6 +30,9 @@ const TIMING: Timing = {
   editDeniedQuietMs: 2000,
   pendingMarkDelayMs: 1000,
   presetRequestTimeoutMs: 15000,
+  incompleteRequestStartMs: 2000,
+  incompleteRequestMaxMs: 30000,
+  snapshotImportTimeoutMs: 60000,
 };
 
 const GENERATION = { n: 0, a: '' };
@@ -168,6 +171,24 @@ describe('commit outbox', () => {
 
     // #then
     expect(rig.sent.map((one) => one.data)).toEqual(['first']);
+  });
+
+  test('drop forgets a commit waiting in the queue, and the outbox still sends what comes after', async () => {
+    // #given
+    const rig = createRig();
+    const outbox = createCommitOutbox(rig.queue, () => GENERATION);
+
+    await holdQueue(rig);
+    outbox.add([row('str', 1)]);
+
+    // #when
+    outbox.drop();
+    await drained(rig);
+    outbox.add([row('dex', 2)]);
+    await drained(rig);
+
+    // #then
+    expect(rig.sent.map((one) => one.data)).toEqual(['first', commit([row('dex', 2)]).data]);
   });
 
   test("a newer GM record of a proposed key still carries the player's (k, c, a) in its commit", async () => {

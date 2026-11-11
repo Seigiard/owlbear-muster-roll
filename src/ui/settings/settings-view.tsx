@@ -9,7 +9,7 @@ import { PresetDownload, uploadDisabledReason, usePresetUpload } from '@/ui/pres
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 import { roomCopyText } from '@/ui/settings/room-copy-text';
-import { SnapshotActions } from '@/ui/settings/snapshot-actions';
+import { useSnapshotActions } from '@/ui/settings/snapshot-actions';
 
 type SettingsViewProps = {
   // The window's records, which "Скачать снимок" writes to the file.
@@ -17,13 +17,13 @@ type SettingsViewProps = {
   preset: Preset | null;
   catchingUp: boolean;
   roomCopy: RoomCopyStatus;
-  client: Pick<ReplicaClient, 'sendCommand' | 'requestPresetDiff'>;
-  store: Pick<ProjectionStore, '$rejections' | '$presetResults'>;
+  client: Pick<ReplicaClient, 'sendCommand' | 'requestPresetDiff' | 'requestSnapshotCheck'>;
+  store: Pick<ProjectionStore, '$rejections' | '$presetResults' | '$snapshotResults'>;
 };
 
 // Sections come in the order Пресет, Снимок, Копия в комнате. In each section the first action is
 // the primary one: the upload under Пресет, the download under Снимок. A confirmation block comes
-// before every section, at the top of the content area.
+// before every section, at the top of the content area, and closes when the GM leaves Settings.
 export function SettingsView({
   records,
   preset,
@@ -43,9 +43,12 @@ export function SettingsView({
     disabledReason: uploadDisabledReason(catchingUp),
   });
 
+  const snapshot = useSnapshotActions({ records, preset, catchingUp, client, store });
+
   return (
     <div className="flex flex-col gap-4">
       {confirmation}
+      {snapshot.confirmation}
       <section aria-labelledby={headingId} className="flex flex-col gap-2">
         <h2 id={headingId} className="text-section-heading">
           {copy.section.preset}
@@ -59,9 +62,7 @@ export function SettingsView({
         <h2 id={snapshotHeadingId} className="text-section-heading">
           {copy.section.snapshot}
         </h2>
-        <div className="flex flex-wrap items-start gap-2">
-          <SnapshotActions records={records} preset={preset} catchingUp={catchingUp} />
-        </div>
+        <div className="flex flex-wrap items-start gap-2">{snapshot.actions}</div>
       </section>
       <section aria-labelledby={roomCopyHeadingId} className="flex flex-col gap-2">
         <h2 id={roomCopyHeadingId} className="text-section-heading">

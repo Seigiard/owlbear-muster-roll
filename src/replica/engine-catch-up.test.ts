@@ -44,6 +44,9 @@ const TIMING: Timing = {
   editDeniedQuietMs: 2000,
   pendingMarkDelayMs: 1000,
   presetRequestTimeoutMs: 15000,
+  incompleteRequestStartMs: 2000,
+  incompleteRequestMaxMs: 30000,
+  snapshotImportTimeoutMs: 60000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -1156,27 +1159,26 @@ describe('role and generation', () => {
     });
   });
 
-  test('a GM client does not merge a state of a higher generation', async () => {
+  test('a GM client adopts a complete state of a higher generation that answers its request', async () => {
     // #given
     const room = openRoom();
+    const higher = { n: 1, a: 'x' };
+    const liza = sheet('liza', 'Лиза');
 
     joinAs(room, GHOST, 'GM');
 
     const client = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 1500 } });
 
     // #when
-    room.post(
-      GHOST,
-      stateMessage(lastRequest(room, 'gm-b'), [sheet('liza', 'Лиза')], 1, 1, { n: 1, a: 'x' }),
-    );
-    await waitUntil(() => requestsOf(room, 'gm-b').length === 2);
-    await pause(30);
+    room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), [liza], 1, 1, higher));
+    await waitUntil(() => sync(client).state === 'live');
 
-    // #then
-    expect({ liza: shown(client, 'sheet:liza'), sync: sync(client).state }).toEqual({
-      liza: undefined,
-      sync: 'catching-up',
-    });
+    // #then: the old generation's records are gone from the replica and the storage.
+    expect({
+      liza: shown(client, liza.k),
+      brok: shown(client, BROK.k) ?? null,
+      stored: client.backing.keys().sort(),
+    }).toEqual({ liza, brok: null, stored: ['mr1:mock-room:1:x:sheet:liza'] });
   });
 });
 

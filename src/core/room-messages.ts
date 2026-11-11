@@ -165,6 +165,13 @@ const rollSchema = z.strictObject({
   result: rollResultSchema,
 });
 
+// AD-9: the importer's new generation. The data comes through catch-up or the room copy.
+const resetSchema = z.strictObject({
+  v: z.literal(FORMAT_VERSION),
+  g: generationSchema,
+  t: z.literal('reset'),
+});
+
 const roomMessageSchema = z.discriminatedUnion('t', [
   commitSchema,
   proposeSchema,
@@ -174,6 +181,7 @@ const roomMessageSchema = z.discriminatedUnion('t', [
   pingSchema,
   aliveSchema,
   rollSchema,
+  resetSchema,
 ]);
 
 export type CommitMessage = z.infer<typeof commitSchema>;
@@ -195,6 +203,8 @@ export type PingMessage = z.infer<typeof pingSchema>;
 export type AliveMessage = z.infer<typeof aliveSchema>;
 
 export type RollMessage = z.infer<typeof rollSchema>;
+
+export type ResetMessage = z.infer<typeof resetSchema>;
 
 // What a roll carries apart from the envelope.
 export type RollContent = Omit<RollMessage, 'v' | 'g' | 't'>;
@@ -290,6 +300,10 @@ export function pingMessage(generation: Generation): PingMessage {
 
 export function rollMessage(generation: Generation, content: RollContent): RollMessage {
   return { v: FORMAT_VERSION, g: generation, t: 'roll', ...content };
+}
+
+export function resetMessage(generation: Generation): ResetMessage {
+  return { v: FORMAT_VERSION, g: generation, t: 'reset' };
 }
 
 export function aliveMessage(generation: Generation, digest: number): AliveMessage {

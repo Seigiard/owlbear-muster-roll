@@ -43,6 +43,9 @@ const TIMING: Timing = {
   editDeniedQuietMs: 2000,
   pendingMarkDelayMs: 1000,
   presetRequestTimeoutMs: 15000,
+  incompleteRequestStartMs: 2000,
+  incompleteRequestMaxMs: 30000,
+  snapshotImportTimeoutMs: 60000,
 };
 
 // Short enough to see the write, long enough to see that nothing was written before it.
@@ -477,25 +480,26 @@ describe('writer read and merge', () => {
     });
   });
 
-  test('a copy of a higher generation is neither merged nor overwritten, and the GM enters catching-up', async () => {
+  test('a copy of a higher generation is not overwritten: the GM adopts it in place of its own data', async () => {
     // #given
     const room = openRoom();
     const client = await startClient(room, 'gm-a', { untilLive: true });
-    const higher = copyValue(HIGHER, [MIRA]);
+    const higher = copyValue(HIGHER, [PRESET_RECORD, MIRA]);
 
     joinAs(room, GHOST, 'GM');
     room.room.setMetadata({ [KEY]: higher });
+    await waitUntil(() => shown(client, MIRA.k) !== undefined);
 
     // #when
     client.engine.pageHidden();
-    await waitUntil(() => requestsOf(room, 'gm-a').length === 2);
+    await settle();
 
     // #then
     expect({
       copy: room.room.getMetadata()[KEY],
-      mira: shown(client, MIRA.k) ?? null,
-      requests: requestsOf(room, 'gm-a').length,
-    }).toEqual({ copy: higher, mira: null, requests: 2 });
+      mira: shown(client, MIRA.k),
+      brok: shown(client, BROK.k) ?? null,
+    }).toEqual({ copy: higher, mira: MIRA, brok: null });
   });
 
   test.each<[string, JsonValue, Notice[]]>([
@@ -1001,28 +1005,35 @@ describe('review cases', () => {
     });
   });
 
-  test('a copy of a higher generation seen again sends the GM to catch-up again', async () => {
-    // #given
+  test('the writer adopts a copy of a higher generation it reads, and writes none of its own', async () => {
+    // #given: the copy appears with no change event, as one another GM wrote while this one slept.
     const room = openRoom();
+    const gate = createGate();
 
     joinAs(room, GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', {
+      platform: gated(gate),
       timing: { catchUpTimeoutMs: 50 },
       untilLive: true,
     });
 
-    room.room.setMetadata({ [KEY]: copyValue(HIGHER, [MIRA]) });
-    client.engine.pageHidden();
-    await waitUntil(() => requestsOf(room, 'gm-a').length === 2);
-    await waitUntil(() => client.store.$sync.get().state === 'live');
+    const higher = copyValue(HIGHER, [PRESET_RECORD, MIRA]);
+    const writes = gate.writes;
+
+    room.room.setMetadata({ [KEY]: higher });
 
     // #when
     client.engine.pageHidden();
-    await waitUntil(() => requestsOf(room, 'gm-a').length === 3);
+    await waitUntil(() => shown(client, MIRA.k) !== undefined);
+    await waitUntil(() => client.store.$sync.get().state === 'live');
 
     // #then
-    expect(roomCopyStatus(client).state).not.toBe('saved');
+    expect({
+      writes: gate.writes - writes,
+      copy: room.room.getMetadata()[KEY],
+      brok: shown(client, BROK.k) ?? null,
+    }).toEqual({ writes: 0, copy: higher, brok: null });
   });
 
   test('a GM that cannot read the copy at catch-up shows the failed state', async () => {

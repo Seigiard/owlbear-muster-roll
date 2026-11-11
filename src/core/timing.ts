@@ -17,6 +17,11 @@ export type Timing = {
   readonly editDeniedQuietMs: number;
   readonly pendingMarkDelayMs: number;
   readonly presetRequestTimeoutMs: number;
+  readonly incompleteRequestStartMs: number;
+  readonly incompleteRequestMaxMs: number;
+  // A window gives up on a snapshot import with no answer. Longer than the preset wait, as the
+  // import writes the room copy before it answers.
+  readonly snapshotImportTimeoutMs: number;
 };
 
 export const TIMING: Timing = {
@@ -58,6 +63,11 @@ export const TIMING: Timing = {
   // AD-14: a preset diff or upload with no answer this long gives up, so the button never waits
   // forever.
   presetRequestTimeoutMs: 15000,
+  // AD-9: a client whose new generation is not complete stays in catch-up past its timeout and asks
+  // for the state again after this long, then after twice as long each time, up to the max.
+  incompleteRequestStartMs: 2000,
+  incompleteRequestMaxMs: 30000,
+  snapshotImportTimeoutMs: 60000,
 };
 
 // An access change with no answer this long shows that it failed, so the panel never waits forever.

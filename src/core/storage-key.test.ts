@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 
-import { buildStorageKey, INITIAL_GENERATION, parseStorageKey } from '@/core/storage-key';
+import { ok } from '@/core/result';
+import {
+  buildStorageKey,
+  incompleteMarkerKey,
+  INITIAL_GENERATION,
+  parseIncompleteMarkerKey,
+  parseStorageKey,
+} from '@/core/storage-key';
 
 const INVALID = { ok: false, error: 'invalid-storage-key' } as const;
 
@@ -83,5 +90,34 @@ describe('parseStorageKey', () => {
 
     // #then
     expect(parsed).toEqual(INVALID);
+  });
+});
+
+describe('incomplete generation marker', () => {
+  test('builds a key under the generation that no record key can take', () => {
+    // #when
+    const key = incompleteMarkerKey('room', { n: 3, a: 'gm' });
+
+    // #then
+    expect({ key, asRecord: key.ok ? parseStorageKey(key.value).ok : true }).toEqual({
+      key: ok('mr1:room:3:gm:#incomplete'),
+      asRecord: false,
+    });
+  });
+
+  test('reads its room and generation back', () => {
+    // #when
+    const parts = parseIncompleteMarkerKey('mr1:room:0::#incomplete');
+
+    // #then
+    expect(parts).toEqual(ok({ roomId: 'room', generation: { n: 0, a: '' } }));
+  });
+
+  test('does not read a record key as a marker', () => {
+    // #when
+    const parts = parseIncompleteMarkerKey('mr1:room:3:gm:sheet:brok');
+
+    // #then
+    expect(parts.ok).toBe(false);
   });
 });

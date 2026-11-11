@@ -75,6 +75,7 @@ type WindowRootProps = {
   pendingMarks: PendingMarks;
   sendCommand: ReplicaClient['sendCommand'];
   requestPresetDiff: ReplicaClient['requestPresetDiff'];
+  requestSnapshotCheck: ReplicaClient['requestSnapshotCheck'];
   requestRoll: ReplicaClient['requestRoll'];
   acknowledgeOpen: ReplicaClient['acknowledgeOpen'];
 };
@@ -131,6 +132,7 @@ async function start(): Promise<void> {
         pendingMarks={pendingMarks}
         sendCommand={client.sendCommand}
         requestPresetDiff={client.requestPresetDiff}
+        requestSnapshotCheck={client.requestSnapshotCheck}
         requestRoll={client.requestRoll}
         acknowledgeOpen={client.acknowledgeOpen}
       />,
@@ -147,6 +149,7 @@ function WindowRoot({
   pendingMarks: marks,
   sendCommand,
   requestPresetDiff,
+  requestSnapshotCheck,
   requestRoll,
   acknowledgeOpen,
 }: WindowRootProps): ReactNode {
@@ -237,8 +240,8 @@ function WindowRoot({
   );
 
   const presetClient = useMemo(
-    () => ({ sendCommand, requestPresetDiff }),
-    [sendCommand, requestPresetDiff],
+    () => ({ sendCommand, requestPresetDiff, requestSnapshotCheck }),
+    [sendCommand, requestPresetDiff, requestSnapshotCheck],
   );
 
   const rolling = useMemo<DiceRolling>(

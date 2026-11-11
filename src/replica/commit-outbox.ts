@@ -20,6 +20,9 @@ export type CommitOutbox = {
   flush: () => void;
   // Sends nothing more, not even a commit already waiting in the queue.
   stop: () => void;
+  // AD-9: forgets every held record and ack, so a commit waiting in the queue sends nothing. The
+  // queue composes it with the generation of the moment it sends, which a replaced room changed.
+  drop: () => void;
   // True while a record is held here or a commit is in the send queue and not yet sent.
   hasUnsent: () => boolean;
 };
@@ -158,6 +161,10 @@ export function createCommitOutbox(
     },
     stop: () => {
       stopped = true;
+      held.clear();
+      heldAcks.clear();
+    },
+    drop: () => {
       held.clear();
       heldAcks.clear();
     },

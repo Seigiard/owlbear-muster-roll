@@ -203,7 +203,8 @@ test('during catch-up Settings disables the snapshot download and upload with th
   await expect(snapshotButton(client.window, LOAD_SNAPSHOT)).toHaveAccessibleDescription(LOADING);
   await expect(snapshotButton(client.window, DOWNLOAD_SNAPSHOT)).toBeEnabled({ timeout: 6000 });
   await expect(snapshotButton(client.window, DOWNLOAD_SNAPSHOT)).toHaveAccessibleDescription('');
-  await expect(snapshotButton(client.window, LOAD_SNAPSHOT)).toHaveCount(0);
+  await expect(snapshotButton(client.window, LOAD_SNAPSHOT)).toBeEnabled();
+  await expect(snapshotButton(client.window, LOAD_SNAPSHOT)).toHaveAccessibleDescription('');
 });
 
 test('a page that becomes visible again catches up, and the upload waits for it', async ({

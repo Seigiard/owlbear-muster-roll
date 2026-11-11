@@ -42,6 +42,7 @@ import {
   pingMessage,
   proposeMessage,
   rejectMessage,
+  resetMessage,
   rollMessage,
   stateRequestMessage,
   SYNC_CHANNEL,
@@ -56,6 +57,11 @@ import {
   type StateMessage,
 } from '@/core/room-messages';
 import { sheetKey } from '@/core/sheets';
+import {
+  decodeSnapshotFileData,
+  importSnapshot,
+  type SnapshotImport,
+} from '@/core/snapshot-import';
 import { liveSheetShownTo, openTarget } from '@/core/token-links';
 import {
   encodeSnapshot,
@@ -70,7 +76,7 @@ import {
   type SnapshotValue,
 } from '@/core/snapshot';
 import { decodeStateRecords, stateAnswer } from '@/core/state-records';
-import { INITIAL_GENERATION, type Generation } from '@/core/storage-key';
+import { generationSchema, INITIAL_GENERATION, type Generation } from '@/core/storage-key';
 import { TIMING, type Timing } from '@/core/timing';
 import {
   parseWindowMessage,
@@ -89,6 +95,7 @@ import {
   type RollRequestMessage,
   type RoomCopyOutcome,
   type RoomCopyStatus,
+  type SnapshotCheckMessage,
   type SyncState,
 } from '@/core/ui-messages';
 import { rollShownTo, visibleRecords, type PlayerRole } from '@/core/visibility';
@@ -128,6 +135,10 @@ const RECENT_ROLL_ID_LIMIT = 256;
 // Sits in the problem set, and no write clears it: a reload has to read the storage again.
 const UNREADABLE_STORAGE_MARK = '(unreadable)';
 
+// AD-9: a new generation whose save failed. Its keys name no record of the generation kept, so the
+// mark goes with the next record saved, or when the replica is replaced.
+const GENERATION_SAVE_MARK = '(generation-save)';
+
 export type ReplicaEnginePlatform = Pick<
   Platform,
   | 'action'
@@ -153,6 +164,8 @@ export type EngineTiming = Pick<
   | 'proposeResendStartMs'
   | 'proposeResendMaxMs'
   | 'editDeniedQuietMs'
+  | 'incompleteRequestStartMs'
+  | 'incompleteRequestMaxMs'
 >;
 
 // Tests inject the timing, the ids, and the random source of the answer delay, the room copy
@@ -171,6 +184,9 @@ export type ReplicaEngineOptions = {
   // UX-DR29: the copy catalog's "Нет прав на правку". The background page passes it; with none, a
   // denied edit shows no notification.
   editDenied?: string;
+  // UX-DR31: the copy catalog's "Данные комнаты заменены". The background page passes it; with
+  // none, an adopted generation shows no notification.
+  dataReplaced?: string;
 };
 
 export type ReplicaEngine = {
@@ -409,6 +425,16 @@ export async function startReplicaEngine(
   // Counts `resume` and visibility changes. A write stops when one falls between its read and its
   // write.
   let pageChanges = 0;
+  // The write in flight, so an import's write waits for it and never lands before an older copy.
+  let roomCopyRun: Promise<void> = Promise.resolve();
+  // AD-9: the higher generation this client adopts, until it is complete. Its records gather in
+  // `incoming`, apart from the replica, which keeps the old data shown and saved until then.
+  let adoptTarget: Generation | null = null;
+  let incoming = new Map<string, VersionedRecord>();
+  // The wait before the next `state-request` of an incomplete generation, doubled after each.
+  let incompleteRetryMs = timing.incompleteRequestStartMs;
+  // True while this client's own import writes the room copy and sends `reset`.
+  let importing = false;
 
   for (const record of loaded.records) {
     merge(record);
@@ -722,6 +748,7 @@ export async function startReplicaEngine(
 
     if (written.ok) {
       problemKeys.delete(record.k);
+      problemKeys.delete(GENERATION_SAVE_MARK);
 
       return { record: written.value, saved: true };
     }
@@ -826,6 +853,13 @@ export async function startReplicaEngine(
       return;
     }
 
+    // AD-9: until the importer's `reset` is out, no commit of the new generation may reach the room.
+    if (importing) {
+      reject(message.id, 'importing');
+
+      return;
+    }
+
     if (sync.state === 'catching-up') {
       queueIntent(message.id, message.command);
 
@@ -834,6 +868,12 @@ export async function startReplicaEngine(
 
     if (message.command.type === 'preset-upload') {
       uploadPreset(message.id, message.command);
+
+      return;
+    }
+
+    if (message.command.type === 'snapshot-import') {
+      void importFromSnapshot(message.id, message.command);
 
       return;
     }
@@ -943,6 +983,394 @@ export async function startReplicaEngine(
     send({ t: 'preset-uploaded', id, count: batch.value.count }).catch((error) => {
       console.error('Muster Roll could not report a preset upload', error);
     });
+  }
+
+  // AD-9: a window asks how many values of a snapshot file the current preset would drop before it
+  // asks the GM. A live GM client answers from its replica. The answer writes nothing.
+  function handleSnapshotCheck(message: SnapshotCheckMessage): void {
+    if (recentCommandIds.has(message.id)) {
+      return;
+    }
+
+    recentCommandIds.add(message.id);
+
+    if (role !== 'GM') {
+      reject(message.id, 'not-allowed');
+
+      return;
+    }
+
+    if (importing) {
+      reject(message.id, 'importing');
+
+      return;
+    }
+
+    if (sync.state === 'catching-up') {
+      reject(message.id, 'catching-up');
+
+      return;
+    }
+
+    // A GM client whose storage could not be read cannot save a new generation.
+    if (persistence === null) {
+      reject(message.id, 'write-failed');
+
+      return;
+    }
+
+    const planned = planImport(message.data);
+
+    if (!planned.ok) {
+      reject(message.id, planned.error);
+
+      return;
+    }
+
+    const { count, digest } = planned.value;
+
+    send({ t: 'snapshot-check-result', id: message.id, count, digest }).catch((error) => {
+      console.error('Muster Roll could not answer a snapshot check', error);
+    });
+  }
+
+  // AD-9: the file read again and placed over the current preset. An import needs a preset.
+  function planImport(data: string): Result<SnapshotImport, RejectionReason> {
+    const file = decodeSnapshotFileData(data);
+
+    if (!file.ok) {
+      return err(file.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
+    }
+
+    const stored = replica.get('preset');
+    const presetData = presetDataSchema.safeParse(stored?.d);
+
+    if (!presetData.success) {
+      return err('preset-required');
+    }
+
+    const preset = presetOf(stored);
+
+    if (preset === null) {
+      return err('preset-unreadable');
+    }
+
+    const imported = importSnapshot(file.value, { preset, data: presetData.data }, connectionId);
+
+    if (!imported.ok) {
+      return err(imported.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
+    }
+
+    return imported;
+  }
+
+  // AD-9: the confirmed import runs the placement again: values it drops other than the confirmed
+  // ones ask again. The importer takes a generation above every one it knows, saves it, writes the
+  // room copy, and only then sends `reset`. A failed save stops before the copy and `reset`, and the
+  // part saved goes, so nothing changes. A copy that cannot be saved does not stop the import.
+  async function importFromSnapshot(
+    id: string,
+    command: Extract<Command, { type: 'snapshot-import' }>,
+  ): Promise<void> {
+    if (importing) {
+      reject(id, 'importing');
+
+      return;
+    }
+
+    if (persistence === null) {
+      reject(id, 'write-failed');
+
+      return;
+    }
+
+    const planned = planImport(command.data);
+
+    if (!planned.ok) {
+      reject(id, planned.error);
+
+      return;
+    }
+
+    const { records, count, digest } = planned.value;
+
+    if (digest !== command.expectedDigest) {
+      reject(id, 'count-changed', { count, digest });
+
+      return;
+    }
+
+    const generation: Generation = {
+      n: Math.max(ownGeneration.n, highestSeenGeneration.n) + 1,
+      a: connectionId,
+    };
+
+    if (!generationSchema.safeParse(generation).success) {
+      reject(id, 'write-failed');
+
+      return;
+    }
+
+    // The commits held so far belong to the old generation, so they go out under it.
+    outbox.flush();
+
+    const { store } = persistence;
+
+    if (!saveGeneration(store, generation, records)) {
+      const removed = store.removeGeneration(generation);
+
+      if (!removed.ok) {
+        console.error('Muster Roll could not remove a part saved import', removed.error);
+      }
+
+      emitDelta([]);
+      reject(id, 'write-failed');
+
+      return;
+    }
+
+    importing = true;
+    persistence = { store, generation };
+    replaceReplica(generation, records);
+    // Live, so no intent waits. A GM has no proposals.
+    proposals.clear();
+    emitDelta([]);
+
+    try {
+      await writeImportCopy(generation);
+
+      if (stopped) {
+        return;
+      }
+
+      // Another import of a higher generation won while the copy was written: this one is
+      // replaced, and its `reset` would only send the room after a generation already gone.
+      if (importSuperseded(generation)) {
+        reject(id, 'data-replaced');
+
+        return;
+      }
+
+      sendQueue.enqueue(SYNC_CHANNEL, resetMessage(generation), REMOTE).catch((error) => {
+        console.error('Muster Roll could not send the reset', error);
+      });
+
+      const removed = store.removeGenerationsBelow(generation);
+
+      if (!removed.ok) {
+        console.error('Muster Roll could not remove the replaced records', removed.error);
+      }
+    } finally {
+      importing = false;
+    }
+
+    send({ t: 'snapshot-imported', id }).catch((error) => {
+      console.error('Muster Roll could not report a snapshot import', error);
+    });
+  }
+
+  // True once this client stopped, or left the generation it imports for a higher one.
+  function importSuperseded(generation: Generation): boolean {
+    return stopped || adoptTarget !== null || compareGenerations(ownGeneration, generation) !== 0;
+  }
+
+  // AD-9: the incomplete marker first, then every record, then the marker off. A failed write
+  // leaves the marker, so a start never reads the part that was written, and raises the
+  // local-save notice.
+  function saveGeneration(
+    store: RecordStore,
+    generation: Generation,
+    records: readonly VersionedRecord[],
+  ): boolean {
+    const marked = store.markIncomplete(generation);
+
+    if (!marked.ok) {
+      console.error('Muster Roll could not mark a new generation', marked.error);
+      problemKeys.add(GENERATION_SAVE_MARK);
+
+      return false;
+    }
+
+    for (const record of records) {
+      const written = store.write(generation, record);
+
+      if (!written.ok) {
+        console.error('Muster Roll could not save a record of a new generation', written.error);
+        problemKeys.add(GENERATION_SAVE_MARK);
+
+        return false;
+      }
+    }
+
+    const complete = store.markComplete(generation);
+
+    if (!complete.ok) {
+      console.error('Muster Roll could not mark a new generation complete', complete.error);
+      problemKeys.add(GENERATION_SAVE_MARK);
+
+      return false;
+    }
+
+    return true;
+  }
+
+  // The replica becomes the new generation's records. The windows get a new stream, as a delta
+  // cannot take the old records out of them: each asks for a fresh projection.
+  function replaceReplica(generation: Generation, records: readonly VersionedRecord[]): void {
+    ownGeneration = generation;
+    highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
+    replica.clear();
+    cachedDigest = null;
+    decodedPreset = null;
+
+    // The keys that failed to save were the old generation's. Unreadable storage stays unreadable.
+    for (const key of problemKeys) {
+      if (key !== UNREADABLE_STORAGE_MARK) {
+        problemKeys.delete(key);
+      }
+    }
+
+    for (const record of records) {
+      merge(record);
+    }
+
+    forgetDigests();
+    engineId = newId();
+    sequence = 0;
+    dropStaleOpen();
+    refreshTokenMenu();
+  }
+
+  // AD-9: the importer's room copy of the new generation. One that does not fit or fails its
+  // read-back raises the not-saved notice, and a copy of a lower generation goes from the room, so
+  // a player with no GM does not read the replaced data. It waits for a write in flight, which
+  // could land an older copy after it.
+  async function writeImportCopy(generation: Generation): Promise<void> {
+    while (roomCopyWriting) {
+      await roomCopyRun;
+    }
+
+    const before = roomCopySignature();
+
+    roomCopyWriting = true;
+
+    try {
+      const verified = await importCopyVerified(generation);
+
+      if (importSuperseded(generation)) {
+        return;
+      }
+
+      if (verified !== null) {
+        roomCopyOwed = false;
+        roomCopyNotSaved = false;
+        noteRoomCopy(verified, true, before);
+
+        return;
+      }
+
+      roomCopyNotSaved = true;
+      roomCopyOwed = true;
+      await removeLowerCopy(generation, before);
+    } finally {
+      roomCopyWriting = false;
+    }
+
+    if (roomCopyRerun) {
+      roomCopyRerun = false;
+      void writeRoomCopy();
+    }
+  }
+
+  // The read-back metadata of a verified write, or `null`.
+  async function importCopyVerified(generation: Generation): Promise<JsonObject | null> {
+    const metadata = await readMetadata(platform);
+
+    if (metadata === null || importSuperseded(generation)) {
+      return null;
+    }
+
+    // A copy of a higher generation is another import that won: it is adopted, not overwritten.
+    if (adoptedHigherCopy(metadata, generation)) {
+      return null;
+    }
+
+    const written: Snapshot = { g: generation, records: [...replica.values()] };
+    const value = encodeSnapshot(written.g, written.records);
+
+    if (!value.ok || roomMetadataBytes(metadata, value.value) > ROOM_METADATA_BYTE_LIMIT) {
+      return null;
+    }
+
+    try {
+      await platform.metadata.setMetadata({ [SNAPSHOT_KEY]: value.value });
+    } catch (error) {
+      console.error('Muster Roll could not write the room copy', error);
+
+      return null;
+    }
+
+    const readBack = await readMetadata(platform);
+
+    if (
+      readBack === null ||
+      importSuperseded(generation) ||
+      adoptedHigherCopy(readBack, generation)
+    ) {
+      return null;
+    }
+
+    const check = readSnapshot(readBack);
+
+    return check.ok && readBackHolds(written, check.value) ? readBack : null;
+  }
+
+  // Adopts a room copy of a generation above `generation`, and says whether there was one.
+  function adoptedHigherCopy(metadata: JsonObject, generation: Generation): boolean {
+    const read = readSnapshot(metadata);
+
+    if (!read.ok || read.value === null || compareGenerations(read.value.g, generation) <= 0) {
+      return false;
+    }
+
+    adoptFromCopy(read.value);
+
+    return true;
+  }
+
+  // A copy this build cannot read stays: it may be a newer build's.
+  async function removeLowerCopy(generation: Generation, before: string): Promise<void> {
+    const metadata = await readMetadata(platform);
+
+    if (metadata === null || importSuperseded(generation)) {
+      emitRoomCopyChange(before);
+
+      return;
+    }
+
+    const read = readSnapshot(metadata);
+
+    if (!read.ok || read.value === null || compareGenerations(read.value.g, generation) >= 0) {
+      noteRoomCopy(metadata, false, before);
+
+      return;
+    }
+
+    try {
+      await platform.metadata.setMetadata({ [SNAPSHOT_KEY]: undefined });
+    } catch (error) {
+      console.error('Muster Roll could not remove the replaced room copy', error);
+    }
+
+    const after = await readMetadata(platform);
+
+    if (after === null || stopped) {
+      emitRoomCopyChange(before);
+
+      return;
+    }
+
+    noteRoomCopy(after, false, before);
   }
 
   // AD-4: a player's edit of a field or a repeat row becomes the entry of its key in the proposal
@@ -1415,7 +1843,7 @@ export async function startReplicaEngine(
   // AD-7: an intent made during catch-up waits and takes `c` on exit. It is checked now against the
   // pending view, so a refusal comes at once.
   function queueIntent(id: string, command: Command): void {
-    if (command.type === 'preset-upload') {
+    if (command.type === 'preset-upload' || command.type === 'snapshot-import') {
       reject(id, 'catching-up');
 
       return;
@@ -1684,9 +2112,9 @@ export async function startReplicaEngine(
     }
   }
 
-  // AD-7 and AD-9: a copy of this client's generation merges. A client that holds no record takes
-  // the copy's higher generation, as at start it takes the highest one it knows. A lower one, or a
-  // higher one over held records, is left alone. `null` is a failed read, which proves nothing.
+  // AD-7 and AD-9: a copy of this client's generation merges. A copy of a higher generation is
+  // adopted, as at start a client takes the highest one it knows. A lower one is left alone. `null`
+  // is a failed read, which proves nothing.
   function mergeRoomCopy(metadata: JsonObject | null): void {
     const before = roomCopySignature();
 
@@ -1723,12 +2151,11 @@ export async function startReplicaEngine(
       return;
     }
 
-    // A GM client that holds no record has nothing of its own generation to lose, so it takes the
-    // copy's, as AD-9 has every client take the highest generation it knows at start: a GM on a
-    // new device after an import loads that way. `receiveState` keeps a GM's generation, because a
-    // `state` can reach a GM that holds records, and full adoption with its pending queue is Epic 5.
-    if (compareGenerations(copy.g, ownGeneration) > 0 && replica.size === 0) {
-      adoptGeneration(copy.g);
+    // AD-9: a copy of a higher generation is adopted, and as it decodes it completes that
+    // generation at once: a client that starts after an import takes the highest generation of its
+    // storage and the copy.
+    if (compareGenerations(copy.g, ownGeneration) > 0) {
+      adoptFromCopy(copy);
     }
 
     const sameGeneration = compareGenerations(copy.g, ownGeneration) === 0;
@@ -1743,20 +2170,6 @@ export async function startReplicaEngine(
     }
 
     noteRoomCopy(metadata, sameGeneration);
-  }
-
-  // Only a client that holds no record comes here, so nothing of the old generation is left to
-  // drop. A GM client persists under the new one from now on.
-  function adoptGeneration(generation: Generation): void {
-    ownGeneration = generation;
-    // A player's edits were made against the old generation's records, which no longer count.
-    proposals.clear();
-    highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
-    forgetDigests();
-
-    if (persistence !== null) {
-      persistence = { ...persistence, generation };
-    }
   }
 
   // AD-8: the edits paused. Each edit puts the write off again by the whole pause.
@@ -1777,7 +2190,13 @@ export async function startReplicaEngine(
   // AD-8: only a live GM client that can vouch for its records writes, as only such a client
   // answers a `state-request`. Checked again after every await.
   function canWriteRoomCopy(): boolean {
-    return !stopped && role === 'GM' && persistence !== null && sync.state === 'live';
+    return (
+      !stopped &&
+      role === 'GM' &&
+      persistence !== null &&
+      sync.state === 'live' &&
+      adoptTarget === null
+    );
   }
 
   // AD-8: read, merge, encode, measure, write and read back. Any run that does not end in a
@@ -1798,8 +2217,12 @@ export async function startReplicaEngine(
 
     roomCopyWriting = true;
 
+    const run = runRoomCopyWrite();
+
+    roomCopyRun = run.catch(() => undefined);
+
     try {
-      await runRoomCopyWrite();
+      await run;
     } finally {
       roomCopyWriting = false;
     }
@@ -1841,7 +2264,7 @@ export async function startReplicaEngine(
       const relation = compareGenerations(copy.g, ownGeneration);
 
       if (relation > 0) {
-        catchUpToCopyGeneration(copy.g);
+        adoptFromCopy(copy);
 
         return;
       }
@@ -1899,7 +2322,7 @@ export async function startReplicaEngine(
 
     // A copy of a higher generation holds none of this client's records, so it is not saved.
     if (check.ok && check.value !== null && compareGenerations(check.value.g, written.g) > 0) {
-      catchUpToCopyGeneration(check.value.g);
+      adoptFromCopy(check.value);
 
       return;
     }
@@ -1917,12 +2340,153 @@ export async function startReplicaEngine(
     noteRoomCopy(readBack, true, before);
   }
 
-  // AD-8 step 1: a copy of a higher generation is neither merged nor overwritten. Every sighting
-  // enters catch-up, also of a generation seen before, so the GM does not stay live skipping writes.
-  function catchUpToCopyGeneration(generation: Generation): void {
+  // AD-9 and gap 12: any client that reads a room copy of a higher generation adopts it, and a
+  // decoded copy of the generation it adopts completes it at once. A copy of a generation lower
+  // than the one it adopts already is left alone.
+  function adoptFromCopy(copy: Snapshot): void {
+    seeGeneration(copy.g, sync.state === 'catching-up');
+
+    if (adoptTarget !== null && compareGenerations(copy.g, adoptTarget) === 0) {
+      stage(copy.records);
+      completeAdoption(true);
+    }
+  }
+
+  // AD-9: a generation above this client's own, and above the one it adopts, starts adoption. Its
+  // pending queue, the GM intents and the player entries alike, drops with the notification, and
+  // catch-up runs. The replica keeps the old data until the new generation is complete.
+  // `keepNonce`: the message that shows it answers this client's current request, so the catch-up
+  // in progress keeps its `r` and takes that answer.
+  function seeGeneration(generation: Generation, keepNonce: boolean): void {
     highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
+
+    if (compareGenerations(generation, adoptTarget ?? ownGeneration) <= 0) {
+      return;
+    }
+
+    // A client that showed nothing yet, as a player that just joined, has nothing replaced.
+    const hadData =
+      replica.size > 0 ||
+      adoptTarget !== null ||
+      pending.entries().length > 0 ||
+      proposals.entries().length > 0;
+
+    adoptTarget = generation;
+    incoming = new Map();
+    incompleteRetryMs = timing.incompleteRequestStartMs;
+    // A held commit composes with the generation of the moment it sends, so it would carry old
+    // records into the new generation.
+    outbox.drop();
+    dropPendingWork();
     forgetDigests();
+
+    if (hadData) {
+      notifyDataReplaced();
+    }
+
+    if (keepNonce && sync.state === 'catching-up' && ownNonce !== null) {
+      catchUpTrigger = 'generation';
+      // Answers of the old generation end nothing now.
+      answers = new Map();
+      emitDelta([]);
+
+      return;
+    }
+
     void enterCatchUp('generation');
+  }
+
+  // UX-DR31: the intents made against the replaced data go, each refused to its window, and so do a
+  // player's edits.
+  function dropPendingWork(): void {
+    for (const entry of pending.takeAll()) {
+      const ids = entry.kind === 'intent' ? [entry.id] : entry.patches.map((patch) => patch.id);
+
+      for (const id of ids) {
+        reject(id, 'data-replaced');
+      }
+    }
+
+    pendingIds.clear();
+    proposals.clear();
+  }
+
+  function notifyDataReplaced(): void {
+    if (options.dataReplaced === undefined) {
+      return;
+    }
+
+    platform.notification.show(options.dataReplaced).catch((error) => {
+      console.error('Muster Roll could not show that the room data was replaced', error);
+    });
+  }
+
+  // Records of the generation this client adopts, kept apart from the replica until it is
+  // complete. Every one is complete, so any number of them merge.
+  function stage(records: readonly VersionedRecord[]): void {
+    for (const record of records) {
+      if (!recordFitsOneMessage(record)) {
+        console.error('Muster Roll dropped a remote record too large for one message', record.k);
+        continue;
+      }
+
+      const current = incoming.get(record.k);
+
+      incoming.set(record.k, current === undefined ? record : mergeRecords(current, record));
+    }
+  }
+
+  // AD-9: the new generation is complete. A GM client saves it under the new generation first and
+  // deletes the old one only once that save is complete. A save that fails keeps the old one and
+  // raises the local-save notice. Catch-up then goes on by the usual rules.
+  // `fromCopy`: the room copy completed it, so a copy of this generation is in the room. A save
+  // that fails removes the part saved, keeps the old generation in storage and in the replica, and
+  // leaves the adoption open, so the next answer or copy tries again.
+  function completeAdoption(fromCopy = false): void {
+    const generation = adoptTarget;
+
+    if (generation === null) {
+      return;
+    }
+
+    const records = [...incoming.values()];
+
+    if (persistence !== null) {
+      const { store } = persistence;
+
+      if (!saveGeneration(store, generation, records)) {
+        const removed = store.removeGeneration(generation);
+
+        if (!removed.ok) {
+          console.error('Muster Roll could not remove a part saved generation', removed.error);
+        }
+
+        emitDelta([]);
+
+        return;
+      }
+
+      persistence = { store, generation };
+
+      const removed = store.removeGenerationsBelow(generation);
+
+      if (!removed.ok) {
+        console.error('Muster Roll could not remove the replaced records', removed.error);
+      }
+    }
+
+    adoptTarget = null;
+    incoming = new Map();
+    incompleteRetryMs = timing.incompleteRequestStartMs;
+    replaceReplica(generation, records);
+    // A copy read before was of the old generation.
+    roomCopyExists = fromCopy;
+
+    if (sync.state === 'catching-up') {
+      armCatchUpTimeout();
+    }
+
+    emitDelta([]);
   }
 
   // A GM raises the not-saved notice for a copy it cannot read; a newer build's copy also raises
@@ -1953,10 +2517,20 @@ export async function startReplicaEngine(
     }
   }
 
-  // Another GM's write or another extension's data changes what Settings shows. Nothing merges here.
+  // Another GM's write or another extension's data changes what Settings shows. A copy of this
+  // generation does not merge here. A copy of a higher generation is adopted (gap 12), as an
+  // importer writes it before its `reset`.
   function followMetadata(metadata: JsonObject): void {
+    if (stopped) {
+      return;
+    }
+
     const read = readSnapshot(metadata);
     const copy = read.ok ? read.value : null;
+
+    if (copy !== null && compareGenerations(copy.g, ownGeneration) > 0) {
+      adoptFromCopy(copy);
+    }
 
     noteRoomCopy(metadata, copy !== null && compareGenerations(copy.g, ownGeneration) === 0);
   }
@@ -2014,16 +2588,34 @@ export async function startReplicaEngine(
       });
   }
 
+  // AD-9: while the generation this client adopts is incomplete, the timeout does not end
+  // catch-up. It reads the room copy and asks again, after a wait that doubles up to the max.
   function armCatchUpTimeout(): void {
     clearTimeout(catchUpTimer);
 
     const nonce = ownNonce;
 
+    // The jitter keeps the clients that saw one `reset` from asking together.
+    const delay =
+      adoptTarget === null
+        ? timing.catchUpTimeoutMs
+        : incompleteRetryMs - (random() * incompleteRetryMs) / 4;
+
     catchUpTimer = setTimeout(() => {
-      if (!stopped && sync.state === 'catching-up' && ownNonce === nonce) {
-        leaveCatchUp('unanswered');
+      if (stopped || sync.state !== 'catching-up' || ownNonce !== nonce || nonce === null) {
+        return;
       }
-    }, timing.catchUpTimeoutMs);
+
+      if (adoptTarget === null) {
+        leaveCatchUp('unanswered');
+
+        return;
+      }
+
+      incompleteRetryMs = Math.min(incompleteRetryMs * 2, timing.incompleteRequestMaxMs);
+      armCatchUpTimeout();
+      void askAfterRoomCopy(nonce, true);
+    }, delay);
   }
 
   // AD-7: a GM client whose confirmed party read shows no other GM connection has nobody to wait
@@ -2043,13 +2635,23 @@ export async function startReplicaEngine(
       return;
     }
 
+    // AD-9: an incomplete generation waits for a GM client or its room copy, alone or not.
+    if (adoptTarget !== null) {
+      return;
+    }
+
     if (!players.some((player) => player.role === 'GM')) {
       leaveCatchUp('unanswered');
     }
   }
 
-  // `responder` is the GM client whose complete answer ended the catch-up.
+  // `responder` is the GM client whose complete answer ended the catch-up. AD-9: a client whose new
+  // generation is incomplete stays.
   function leaveCatchUp(exit: CatchUpExit, responder?: string): void {
+    if (adoptTarget !== null) {
+      return;
+    }
+
     clearTimeout(catchUpTimer);
 
     // AD-7: a lagging GM keeps its digest after it answered, so comparing it again would loop. A
@@ -2320,9 +2922,13 @@ export async function startReplicaEngine(
   // A GM whose storage could not be read keeps its records to itself, as with commits.
   // A catch-up for drift only pulls state, so a GM in one still answers. Two GMs that drift from each
   // other would otherwise both wait and time out, again and again.
+  // AD-9: a client whose new generation is incomplete answers nothing.
   function canAnswer(): boolean {
     return (
-      role === 'GM' && persistence !== null && (sync.state === 'live' || catchUpTrigger === 'drift')
+      role === 'GM' &&
+      persistence !== null &&
+      adoptTarget === null &&
+      (sync.state === 'live' || catchUpTrigger === 'drift')
     );
   }
 
@@ -2382,22 +2988,26 @@ export async function startReplicaEngine(
     }
 
     if (relation === 'higher') {
-      // A GM client keeps its generation until Epic 5 brings full adoption.
-      if (!adoptsGeneration(message)) {
+      // AD-9: the gate started adoption already. Only the generation adopted gathers, apart from
+      // the replica, and only its answers complete it.
+      if (adoptTarget === null || compareGenerations(message.g, adoptTarget) !== 0) {
         return;
       }
 
-      ownGeneration = message.g;
-      // A player's edits were made against the old generation's records, which no longer count.
-      proposals.clear();
-      forgetDigests();
-      highestSeenGeneration = higherGeneration(highestSeenGeneration, message.g);
-    } else {
-      // Only a readable answer of this generation makes this client's own answer needless.
-      answeredNonces.add(message.r);
-      clearTimeout(answerTimers.get(message.r));
-      answerTimers.delete(message.r);
+      if (message.r === ownNonce) {
+        answerSeen = true;
+      }
+
+      stage(records.value);
+      countAnswerPart(message, sender);
+
+      return;
     }
+
+    // Only a readable answer of this generation makes this client's own answer needless.
+    answeredNonces.add(message.r);
+    clearTimeout(answerTimers.get(message.r));
+    answerTimers.delete(message.r);
 
     if (message.r === ownNonce) {
       answerSeen = true;
@@ -2412,7 +3022,11 @@ export async function startReplicaEngine(
   // The parts of the last own `r` still count after a timeout, so a late complete answer shows
   // that a GM client answered.
   function countAnswerPart(message: StateMessage, sender: string): void {
-    if (message.r !== lastNonce) {
+    // AD-9: while a generation is adopted, only its answers count.
+    if (
+      message.r !== lastNonce ||
+      (adoptTarget !== null && compareGenerations(message.g, adoptTarget) !== 0)
+    ) {
       return;
     }
 
@@ -2426,32 +3040,14 @@ export async function startReplicaEngine(
       return;
     }
 
+    completeAdoption();
+
     if (sync.state === 'catching-up') {
       leaveCatchUp('answered', sender);
     } else if (!sync.gmAnswered) {
       sync = { ...sync, gmAnswered: true };
       emitDelta([]);
     }
-  }
-
-  // A player holds no persisted data, so it takes the generation of the answer to its own request.
-  function adoptsGeneration(message: RoomMessage): boolean {
-    return (
-      message.t === 'state' &&
-      role !== 'GM' &&
-      sync.state === 'catching-up' &&
-      message.r === ownNonce
-    );
-  }
-
-  function noteHigherGeneration(generation: Generation): void {
-    if (compareGenerations(generation, highestSeenGeneration) <= 0) {
-      return;
-    }
-
-    highestSeenGeneration = generation;
-    forgetDigests();
-    void enterCatchUp('generation');
   }
 
   async function rereadRole(): Promise<void> {
@@ -2696,9 +3292,20 @@ export async function startReplicaEngine(
 
     const relation = generationRelation(message.g, ownGeneration);
 
-    // AD-7: a GM that speaks from a higher generation sends this client back to catch-up.
-    if (relation === 'higher' && sender?.role === 'GM' && !adoptsGeneration(message)) {
-      noteHigherGeneration(message.g);
+    // AD-5 and AD-9: a GM that speaks from a higher generation, by `reset` or any other message,
+    // starts adoption. An answer to this client's own request keeps that request.
+    if (relation === 'higher' && sender?.role === 'GM') {
+      seeGeneration(message.g, message.t === 'state' && message.r === ownNonce);
+
+      // The gate takes a commit of its own generation only, so one of the generation adopted
+      // gathers here, or it would be lost until the next drift check.
+      if (
+        message.t === 'commit' &&
+        adoptTarget !== null &&
+        compareGenerations(message.g, adoptTarget) === 0
+      ) {
+        stage(message.records);
+      }
     }
 
     if (!admitRoomMessage(message.t, sender?.role ?? null, relation)) {
@@ -2759,6 +3366,9 @@ export async function startReplicaEngine(
         }
 
         break;
+      // AD-9: the gate admits only a higher generation from a GM, which started adoption above.
+      case 'reset':
+        break;
       default:
         unknownRoomMessage(message);
     }
@@ -2791,6 +3401,8 @@ export async function startReplicaEngine(
       handleRollRequest(parsed.value);
     } else if (parsed.value.t === 'open-sheet-ack') {
       dropOpen(parsed.value.id);
+    } else if (parsed.value.t === 'snapshot-check') {
+      handleSnapshotCheck(parsed.value);
     } else {
       handleCommand(parsed.value);
     }
@@ -2996,6 +3608,13 @@ function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedR
   }
 
   const store = createRecordStore(platform.storage, platform.metadata.getRoomId());
+  // AD-9: a generation whose save stopped part way is no data.
+  const removed = store.removeIncomplete();
+
+  if (!removed.ok) {
+    console.error('Muster Roll could not remove an incomplete generation', removed.error);
+  }
+
   const highest = store.readHighestGeneration();
 
   if (!highest.ok) {
@@ -3006,6 +3625,13 @@ function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedR
   }
 
   const generation = highest.value;
+  // AD-9: a run that stopped after it saved a new generation may have left the old one behind.
+  const below = store.removeGenerationsBelow(generation);
+
+  if (!below.ok) {
+    console.error('Muster Roll could not remove a replaced generation', below.error);
+  }
+
   const load = store.loadGeneration(generation);
 
   if (!load.ok) {

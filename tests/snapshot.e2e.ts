@@ -1,16 +1,27 @@
 import { readFileSync } from 'node:fs';
 
 import { expect, test } from '@playwright/test';
-import type { Locator, Page } from '@playwright/test';
+import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { z } from 'zod';
+
+import type { JsonValue } from '@/core/json';
 
 import { cssValue, renderedColor } from './support/colors';
 import {
+  addPartyMember,
   afterSettling,
+  connectionIdOf,
+  EXAMPLE_PRESET_TEXT,
   openBackground,
+  openClientBackground,
+  openClientWindow,
   openRoom,
   record,
+  seedStorage,
+  storedRecords,
   watchCommands,
+  type ClientParams,
+  type RoomClient,
   type StoredRecord,
 } from './support/room';
 
@@ -21,6 +32,21 @@ const DOWNLOAD = 'Скачать снимок';
 const UPLOAD = 'Загрузить снимок';
 const LOAD_PRESET = 'Загрузить пресет';
 const PRESET_REQUIRED = 'Сначала загрузите пресет.';
+const CANCEL = 'Отменить';
+const ADD = 'Добавить персонажа';
+const DATA_REPLACED = 'Данные комнаты заменены';
+
+const ASK =
+  'Все данные комнаты будут заменены. Игроки потеряют привязки и права. Загрузить снимок?';
+
+const ASK_DROPS_ONE = `${ASK} Не войдут значения удалённых полей: 1.`;
+const NOT_SNAPSHOT = 'Файл не подошёл: это не снимок. Ничего не изменено.';
+const NOT_JSON = 'Файл не подошёл: это не JSON. Ничего не изменено.';
+const NEWER = 'Файл из более новой версии. Перезагрузите страницу.';
+const MOCK_ROOM = 'mr1:mock-room:';
+const FIRST_GENERATION = `${MOCK_ROOM}0::`;
+const SILENT_GM = 'silent-gm';
+const OPEN_ITEM = 'app.muster-roll/open-sheet';
 const ACCENT: readonly [number, number, number] = [217, 179, 108];
 
 // Midday, so no time zone of the test machine moves it to another date.
@@ -65,13 +91,13 @@ test('Settings lists Пресет, Снимок, Копия в комнате, w
     SNAPSHOT,
     'Копия в комнате',
   ]);
-  await expect(section.getByRole('button')).toHaveText([DOWNLOAD]);
+  await expect(section.getByRole('button')).toHaveText([DOWNLOAD, UPLOAD]);
   expect(
     await renderedColor(section.getByRole('button', { name: DOWNLOAD }), 'background-color'),
   ).toEqual(ACCENT);
 });
 
-test('with a preset, "Скачать снимок" is enabled and "Загрузить снимок" is not shown until Story 5.3', async ({
+test('with a preset, "Скачать снимок" and "Загрузить снимок" are both enabled', async ({
   page,
   context,
 }) => {
@@ -83,7 +109,7 @@ test('with a preset, "Скачать снимок" is enabled and "Загруз�
 
   // #then
   await expect(snapshotSection(page).getByRole('button', { name: DOWNLOAD })).toBeEnabled();
-  await expect(snapshotSection(page).getByRole('button', { name: UPLOAD })).toHaveCount(0);
+  await expect(snapshotSection(page).getByRole('button', { name: UPLOAD })).toBeEnabled();
 });
 
 test('the downloaded snapshot holds the live sheets, their values and links, and nothing else', async ({
@@ -168,6 +194,341 @@ test('with no preset, both snapshot buttons are disabled with the preset-first r
   expect(await cssValue(upload, 'border-top-width')).toBe('1px');
 });
 
+// The file of the 5.3 tests: one character the example preset places, and one value it has no
+// field for.
+const MIRA_FILE = {
+  v: 1,
+  type: 'muster-roll/snapshot',
+  sheets: [
+    {
+      id: 'mira',
+      kind: 'pc',
+      name: 'Мира',
+      order: 0,
+      rows: { class: { class: 'Маг', level: 2, gone: 'x' } },
+      repeats: {},
+    },
+  ],
+  links: [{ tokenId: 't9', sheetId: 'mira' }],
+};
+
+// Аня comes first, so opening Мира from its token changes the tab. `t-absent` is no token on the
+// scene.
+const LINKED_FILE = {
+  ...MIRA_FILE,
+  sheets: [
+    { id: 'anya', kind: 'pc', name: 'Аня', order: 0, rows: {}, repeats: {} },
+    { ...MIRA_FILE.sheets[0], order: 1 },
+  ],
+  links: [
+    { tokenId: 't9', sheetId: 'mira' },
+    { tokenId: 't-absent', sheetId: 'anya' },
+  ],
+};
+
+const GM: ClientParams = { client: 'a', name: 'Мастер' };
+const OTHER_GM: ClientParams = { client: 'b', name: 'Второй', device: 'b' };
+
+const PLAYER: ClientParams = {
+  client: 'p',
+  role: 'PLAYER',
+  player: 'lisa',
+  device: 'p',
+  name: 'Лиза',
+};
+
+test('a file that is no snapshot, or not JSON, or newer, is refused under the button and asks nothing', async ({
+  page,
+  context,
+}) => {
+  // #given
+  await openRoom(page, context, RECORDS);
+  await page.getByRole('tab', { name: SETTINGS }).click();
+
+  const cases: [string, string][] = [
+    [JSON.stringify({ v: 1, character: { sections: [] }, npc: { sections: [] } }), NOT_SNAPSHOT],
+    ['{', NOT_JSON],
+    [JSON.stringify({ v: 2, type: 'muster-roll/snapshot' }), NEWER],
+  ];
+
+  for (const [text, message] of cases) {
+    // #when
+    // oxlint-disable-next-line no-await-in-loop
+    await chooseSnapshot(page, text);
+
+    // #then
+    // oxlint-disable-next-line no-await-in-loop
+    await expect(underImport(page)).toHaveText(message);
+    // oxlint-disable-next-line no-await-in-loop
+    await expect(confirmation(page)).toHaveCount(0);
+  }
+
+  expect(await storedRecords(page, 'sheet:brok')).toHaveLength(1);
+});
+
+test('a snapshot asks once, with the dropped count, and its focus starts on "Отменить"', async ({
+  page,
+  context,
+}) => {
+  // #given
+  await openRoom(page, context, RECORDS);
+  await page.getByRole('tab', { name: SETTINGS }).click();
+
+  // #when
+  await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
+
+  // #then
+  await expect(confirmation(page)).toHaveAccessibleName(ASK_DROPS_ONE);
+  await expect(confirmation(page).getByRole('button')).toHaveText([UPLOAD, CANCEL]);
+  await expect(confirmation(page).getByRole('button', { name: CANCEL })).toBeFocused();
+});
+
+test('"Отменить" and Escape close the block and write nothing', async ({ page, context }) => {
+  // #given
+  await openRoom(page, context, RECORDS);
+  await page.getByRole('tab', { name: SETTINGS }).click();
+  await watchCommands(page);
+
+  const keysBefore = await keysUnder(page, MOCK_ROOM);
+
+  await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
+
+  // #when
+  await confirmation(page).getByRole('button', { name: CANCEL }).click();
+
+  // #then
+  await expect(confirmation(page)).toHaveCount(0);
+  await expect(importButton(page)).toBeFocused();
+
+  // #when
+  await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
+  await expect(confirmation(page).getByRole('button', { name: CANCEL })).toBeFocused();
+  await page.keyboard.press('Escape');
+
+  // #then
+  await expect(confirmation(page)).toHaveCount(0);
+  const commands = (await afterSettling(page)).commands;
+  const keys = await keysUnder(page, MOCK_ROOM);
+
+  expect({
+    commands,
+    keys,
+    onlyFirstGeneration: keys.every((key) => key.startsWith(FIRST_GENERATION)),
+  }).toEqual({ commands: [], keys: keysBefore, onlyFirstGeneration: true });
+});
+
+test('a confirm after the preset changed asks again with the new count, focused on "Отменить"', async ({
+  page,
+  context,
+}) => {
+  // #given
+  await openRoom(page, context, RECORDS);
+  await page.getByRole('tab', { name: SETTINGS }).click();
+  await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
+  await expect(confirmation(page)).toHaveAccessibleName(ASK_DROPS_ONE);
+
+  // #when: another window of the GM renames "level", so the file's level has no field either.
+  const other = await openClientWindow(context, {});
+
+  await other.getByRole('tab', { name: SETTINGS }).click();
+  await uploadPreset(other, EXAMPLE_PRESET_TEXT.replaceAll('level', 'rank'));
+  await other
+    .getByRole('group', { name: /Загрузить пресет\?$/ })
+    .getByRole('button', { name: LOAD_PRESET })
+    .click();
+  await expect(other.getByRole('group', { name: /Загрузить пресет\?$/ })).toHaveCount(0);
+  await confirmation(page).getByRole('button', { name: UPLOAD }).click();
+
+  // #then
+  await expect(confirmation(page)).toHaveAccessibleName(
+    `${ASK} Не войдут значения удалённых полей: 2.`,
+  );
+  await expect(confirmation(page).getByRole('button', { name: CANCEL })).toBeFocused();
+  expect((await keysUnder(page, MOCK_ROOM)).every((key) => key.startsWith(FIRST_GENERATION))).toBe(
+    true,
+  );
+
+  // #when
+  await confirmation(page).getByRole('button', { name: UPLOAD }).click();
+
+  // #then
+  await expect(confirmation(page)).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Мира' })).toBeVisible();
+});
+
+test('a catch-up closes an open confirmation, writes nothing, and the focus comes back to the button', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const background = await openRoom(page, context, RECORDS);
+
+  await page.getByRole('tab', { name: SETTINGS }).click();
+
+  const keysBefore = await keysUnder(page, MOCK_ROOM);
+
+  await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
+  await expect(confirmation(page)).toBeVisible();
+
+  // #when: a GM that never answers joins, and the page comes back online.
+  await addPartyMember(page, SILENT_GM, 'GM');
+  await background.evaluate(() => {
+    window.dispatchEvent(new Event('online'));
+  });
+
+  // #then
+  await expect(confirmation(page)).toHaveCount(0);
+  await expect(importButton(page)).toHaveAccessibleDescription('Загрузка…');
+  expect(await keysUnder(page, MOCK_ROOM)).toEqual(keysBefore);
+  // The button takes the focus again once catch-up gives up on the silent GM.
+  await expect(importButton(page)).toBeFocused({ timeout: 10000 });
+  expect(await keysUnder(page, MOCK_ROOM)).toEqual(keysBefore);
+});
+
+test('after an import a link to a token in the room opens its sheet, and one to an absent token stays inert', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const background = await openRoom(page, context, RECORDS);
+
+  await page.getByRole('tab', { name: SETTINGS }).click();
+  await chooseSnapshot(page, JSON.stringify(LINKED_FILE));
+  await confirmation(page).getByRole('button', { name: UPLOAD }).click();
+  await expect(page.getByRole('tab', { name: 'Мира' })).toBeVisible();
+  await expect
+    .poll(() =>
+      background.evaluate(() => window.mockPlatform.contextMenuItems().map((item) => item.id)),
+    )
+    .toContain(OPEN_ITEM);
+
+  // #when: only t9 is a token on the scene.
+  const clicked = await background.evaluate(
+    ([item, token]) => window.mockPlatform.clickContextMenuItem(item, [token]),
+    [OPEN_ITEM, 't9'] as const,
+  );
+
+  // #then
+  expect(clicked).toBe(true);
+  await expect(page.getByRole('tab', { name: 'Мира' })).toHaveAttribute('aria-selected', 'true');
+  expect(await background.evaluate(() => window.mockPlatform.shownNotifications())).toEqual([]);
+});
+
+test('a confirmed import replaces the room on every client: another GM and a player are told and see it', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context, GM);
+  const other = await openGm(context, OTHER_GM);
+  const player = await openPlayer(context);
+
+  await expect(player.window.getByRole('tab', { name: 'Брок' })).toBeVisible();
+  await gm.window.getByRole('tab', { name: SETTINGS }).click();
+  await chooseSnapshot(gm.window, JSON.stringify(MIRA_FILE));
+
+  // #when
+  await confirmation(gm.window).getByRole('button', { name: UPLOAD }).click();
+
+  // #then
+  await expect(confirmation(gm.window)).toHaveCount(0);
+
+  for (const client of [gm, other, player]) {
+    // oxlint-disable-next-line no-await-in-loop
+    await expect(client.window.getByRole('tab', { name: 'Мира' })).toBeVisible();
+    // oxlint-disable-next-line no-await-in-loop
+    await expect(client.window.getByRole('tab', { name: 'Брок' })).toHaveCount(0);
+  }
+
+  await expect.poll(() => shownNotifications(other)).toEqual([DATA_REPLACED]);
+  await expect.poll(() => shownNotifications(player)).toEqual([DATA_REPLACED]);
+  expect(await shownNotifications(gm)).toEqual([]);
+  // The old generation goes once the new one is complete.
+  const imported = `${MOCK_ROOM}1:${gm.connectionId}:`;
+
+  await expect
+    .poll(async () =>
+      (await keysUnder(gm.window, MOCK_ROOM)).every((key) => key.startsWith(imported)),
+    )
+    .toBe(true);
+  expect(await keysUnder(gm.window, imported)).toContain(`${imported}sheet:mira`);
+});
+
+async function openGm(context: BrowserContext, params: ClientParams): Promise<RoomClient> {
+  const window = await openClientWindow(context, params);
+
+  await seedStorage(window, RECORDS, undefined, params.device ?? '');
+
+  const background = await openClientBackground(context, params);
+
+  await expect(window.getByRole('button', { name: ADD })).toBeVisible();
+
+  return { window, background, connectionId: connectionIdOf(params) };
+}
+
+async function openPlayer(context: BrowserContext): Promise<RoomClient> {
+  const window = await openClientWindow(context, PLAYER);
+  const background = await openClientBackground(context, PLAYER);
+
+  return { window, background, connectionId: connectionIdOf(PLAYER) };
+}
+
+async function uploadPreset(page: Page, text: string): Promise<void> {
+  const choosing = page.waitForEvent('filechooser');
+
+  await page
+    .getByRole('region', { name: 'Пресет' })
+    .getByRole('button', { name: LOAD_PRESET })
+    .click();
+
+  const chooser = await choosing;
+
+  await chooser.setFiles({
+    name: 'preset.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(text),
+  });
+}
+
+async function chooseSnapshot(page: Page, text: string): Promise<void> {
+  const choosing = page.waitForEvent('filechooser');
+
+  await importButton(page).click();
+
+  const chooser = await choosing;
+
+  await chooser.setFiles({
+    name: 'snapshot.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(text),
+  });
+}
+
+// The background shows the notifications of its client.
+async function shownNotifications(client: RoomClient): Promise<string[]> {
+  return client.background.evaluate(() => window.mockPlatform.shownNotifications());
+}
+
+async function keysUnder(page: Page, prefix: string): Promise<string[]> {
+  const keys: JsonValue = await page.evaluate(
+    (start) => Object.keys(localStorage).filter((key) => key.startsWith(start)),
+    prefix,
+  );
+
+  return z.array(z.string()).parse(keys);
+}
+
 function snapshotSection(page: Page): Locator {
   return page.getByRole('region', { name: SNAPSHOT });
+}
+
+function importButton(page: Page): Locator {
+  return snapshotSection(page).getByRole('button', { name: UPLOAD });
+}
+
+function underImport(page: Page): Locator {
+  return importButton(page).locator('xpath=ancestor::div[1]/div[@aria-live]');
+}
+
+function confirmation(page: Page): Locator {
+  return page.getByRole('group', { name: /Загрузить снимок\?/ });
 }

@@ -188,6 +188,15 @@ const presetUploadSchema = z.strictObject({
   expectedDigest: erasedDigestSchema,
 });
 
+// AD-9: the snapshot file, deflated and base64-encoded, and the digest of the values it drops, as
+// the GM confirmed it from `snapshot-check-result`. The engine runs the import again and refuses
+// with `count-changed` when its own digest differs.
+const snapshotImportSchema = z.strictObject({
+  type: z.literal('snapshot-import'),
+  data: presetDataSchema,
+  expectedDigest: erasedDigestSchema,
+});
+
 // One field, one value or a clear as `null`. The value is any JSON, so the engine, which knows
 // the field's type, rejects a wrong one instead of the schema dropping it in silence.
 const fieldPatchSchema = z.strictObject({
@@ -224,6 +233,7 @@ const commandIntentSchema = z.discriminatedUnion('type', [
   aclSetSchema,
   ownerSetSchema,
   presetUploadSchema,
+  snapshotImportSchema,
   fieldPatchSchema,
   repeatRowAddSchema,
   repeatRowDeleteSchema,
@@ -244,6 +254,28 @@ const presetDiffSchema = z.strictObject({
 });
 
 const countSchema = z.number().int().nonnegative();
+
+// AD-9: asks how many values of the snapshot file the current preset would drop. It writes
+// nothing, so it is no command. A refusal comes as `command-rejected` with this id.
+const snapshotCheckSchema = z.strictObject({
+  t: z.literal('snapshot-check'),
+  id: idSchema,
+  data: presetDataSchema,
+});
+
+// The answer to `snapshot-check`: the count of values the import would drop, and their digest.
+const snapshotCheckResultSchema = z.strictObject({
+  t: z.literal('snapshot-check-result'),
+  id: idSchema,
+  count: countSchema,
+  digest: erasedDigestSchema,
+});
+
+// A `snapshot-import` replaced the room's data.
+const snapshotImportedSchema = z.strictObject({
+  t: z.literal('snapshot-imported'),
+  id: idSchema,
+});
 
 // The answer to `preset-diff`: the count of stored values the upload would erase, and their digest.
 const presetDiffResultSchema = z.strictObject({
@@ -298,6 +330,14 @@ const plainRejectionSchema = z.strictObject({
     'not-allowed',
     // AD-14: a preset upload waits until catch-up ends.
     'catching-up',
+    // AD-9: the snapshot file does not parse, or a sheet of it breaks a rule.
+    'invalid-snapshot',
+    // AD-9: an import needs a preset in the room.
+    'preset-required',
+    // AD-9: the room's data was replaced while the command waited, so it was dropped.
+    'data-replaced',
+    // AD-9: a snapshot import runs on this GM client, and nothing writes until its `reset` is out.
+    'importing',
   ]),
 });
 
@@ -363,6 +403,7 @@ const windowMessageSchema = z.discriminatedUnion('t', [
   presetDiffSchema,
   rollRequestSchema,
   openSheetAckSchema,
+  snapshotCheckSchema,
 ]);
 
 const engineMessageSchema = z.discriminatedUnion('t', [
@@ -373,6 +414,8 @@ const engineMessageSchema = z.discriminatedUnion('t', [
   openSheetSchema,
   presetDiffResultSchema,
   presetUploadedSchema,
+  snapshotCheckResultSchema,
+  snapshotImportedSchema,
 ]);
 
 export type Notice = z.infer<typeof noticeSchema>;
@@ -401,6 +444,15 @@ export type PresetUploadedMessage = z.infer<typeof presetUploadedSchema>;
 
 // What the engine answered to a window's preset diff or upload, by its id.
 export type PresetResultMessage = PresetDiffResultMessage | PresetUploadedMessage;
+
+export type SnapshotCheckMessage = z.infer<typeof snapshotCheckSchema>;
+
+export type SnapshotCheckResultMessage = z.infer<typeof snapshotCheckResultSchema>;
+
+export type SnapshotImportedMessage = z.infer<typeof snapshotImportedSchema>;
+
+// What the engine answered to a window's snapshot check or import, by its id.
+export type SnapshotResultMessage = SnapshotCheckResultMessage | SnapshotImportedMessage;
 
 export type RejectionReason = CommandRejectedMessage['reason'];
 

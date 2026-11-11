@@ -42,7 +42,7 @@ export type PresetMigration = {
 
 // The fields of a template by scope. A non-repeat field is found by id in any non-repeat row. A
 // repeat section is named by its sectionId and lists its fields in template order.
-type TemplateScopes = {
+export type TemplateScopes = {
   rows: Map<string, PresetFieldCell[]>;
   rowFields: Map<string, { rowId: string; field: PresetFieldCell }>;
   sections: Map<string, PresetFieldCell[]>;
@@ -485,7 +485,7 @@ function kindPlan(kind: SheetKind, before: PresetTemplate, after: PresetTemplate
 // The new section of an old one: of the new sections that keep at least one of its field ids with
 // the same type, the one that holds the old sectionId, else the one that keeps the most, with ties
 // going to the first in template order. `null` when none keeps any.
-function sectionTarget(
+export function sectionTarget(
   sectionId: string,
   fields: readonly PresetFieldCell[],
   after: TemplateScopes,
@@ -513,7 +513,7 @@ function sectionTarget(
   return best?.id ?? null;
 }
 
-function templateScopes(template: PresetTemplate): TemplateScopes {
+export function templateScopes(template: PresetTemplate): TemplateScopes {
   const scopes: TemplateScopes = { rows: new Map(), rowFields: new Map(), sections: new Map() };
 
   for (const section of template.sections) {
@@ -561,7 +561,7 @@ function liveSheetKinds(records: ReadonlyMap<string, VersionedRecord>): Map<stri
 }
 
 // "" and no key hold no value. Any value of the field's type does, `false` and `0` included.
-function holdsValue(field: PresetFieldCell | undefined, value: FieldValue): boolean {
+export function holdsValue(field: PresetFieldCell | undefined, value: FieldValue): boolean {
   return field !== undefined && acceptedFieldValue(field, value).ok;
 }
 
@@ -592,7 +592,7 @@ function countLost(
 }
 
 // A 32-bit FNV-1a hash of the sorted erased (key, field id) pairs, as hex.
-function erasedDigest(erased: readonly string[]): string {
+export function erasedDigest(erased: readonly string[]): string {
   let hash = 0x811c9dc5;
 
   for (const byte of new TextEncoder().encode([...erased].sort().join('\u0001'))) {

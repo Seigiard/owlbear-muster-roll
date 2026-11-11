@@ -98,12 +98,21 @@ export const copy = {
     rowTooWide: 'в строке больше ячеек, чем колонок',
     badFormula: (formula: string): string => `ошибка в формуле «${formula}»`,
     tooLarge: 'файл слишком большой',
+    // A file that is not a snapshot, such as a preset, under "Загрузить снимок".
+    notSnapshot: 'это не снимок',
   },
   presetRequired: 'Сначала загрузите пресет.',
   // AD-14: the stored preset does not decode, as one a newer build wrote, so no upload can run.
   presetUnreadable: 'Сохранённый пресет не читается. Обновите расширение.',
   presetWriteFailed: 'Не удалось сохранить пресет. Попробуйте ещё раз.',
   presetNotAllowed: 'Загружать пресет может только мастер.',
+  // AD-9: an import that saved nothing, or got no answer. It follows the `presetWriteFailed` pattern.
+  snapshotImportFailed: 'Не удалось загрузить снимок. Попробуйте ещё раз.',
+  // An import whose answer never came may still have replaced the room, so the GM looks first.
+  snapshotImportNoAnswer: 'Ответ не пришёл. Проверьте листы, прежде чем загружать снова.',
+  snapshotImporting: 'Идёт загрузка снимка…',
+  snapshotNotAllowed: 'Загружать снимок может только мастер.',
+  snapshotDataReplaced: 'Данные комнаты уже заменены.',
   roll: (roller: string, sheet: string, cell: string, result: string): string =>
     `${roller}: ${sheet}, ${cell} — ${result}`,
   rollSuccess: 'успех',

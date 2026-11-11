@@ -41,6 +41,9 @@ const TIMING: Timing = {
   editDeniedQuietMs: 2000,
   pendingMarkDelayMs: 1000,
   presetRequestTimeoutMs: 15000,
+  incompleteRequestStartMs: 2000,
+  incompleteRequestMaxMs: 30000,
+  snapshotImportTimeoutMs: 60000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';

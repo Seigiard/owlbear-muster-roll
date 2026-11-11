@@ -16,6 +16,7 @@ import type {
   PresetResultMessage,
   RollOutcomeMessage,
   RoomCopyStatus,
+  SnapshotResultMessage,
   SyncState,
 } from '@/core/ui-messages';
 
@@ -50,6 +51,8 @@ export type ProjectionStore = {
   $rollOutcomes: ReadableAtom<ReadonlyMap<string, RollOutcomeMessage>>;
   // AD-14: recent answers to this window's preset diffs and uploads, by their id.
   $presetResults: ReadableAtom<ReadonlyMap<string, PresetResultMessage>>;
+  // AD-9: recent answers to this window's snapshot checks and imports, by their id.
+  $snapshotResults: ReadableAtom<ReadonlyMap<string, SnapshotResultMessage>>;
   // False until the first full projection, so an empty room is not mistaken for one still loading.
   $loaded: ReadableAtom<boolean>;
   $sync: ReadableAtom<SyncState>;
@@ -76,6 +79,7 @@ export type ProjectionStore = {
   setRejection: (rejection: CommandRejectedMessage) => void;
   setRollOutcome: (outcome: RollOutcomeMessage) => void;
   setPresetResult: (result: PresetResultMessage) => void;
+  setSnapshotResult: (result: SnapshotResultMessage) => void;
   setRoomCopy: (roomCopy: RoomCopyStatus) => void;
   setOpenRequest: (request: OpenSheetRequest) => void;
   setParty: (party: readonly PartyEntry[]) => void;
@@ -111,6 +115,7 @@ export function createProjectionStore(): ProjectionStore {
   const $rejections = atom<ReadonlyMap<string, CommandRejectedMessage>>(new Map());
   const $rollOutcomes = atom<ReadonlyMap<string, RollOutcomeMessage>>(new Map());
   const $presetResults = atom<ReadonlyMap<string, PresetResultMessage>>(new Map());
+  const $snapshotResults = atom<ReadonlyMap<string, SnapshotResultMessage>>(new Map());
   const $loaded = atom(false);
   const $sync = atom<SyncState>(UNKNOWN_SYNC);
   const $roomCopy = atom<RoomCopyStatus>(UNKNOWN_ROOM_COPY);
@@ -141,6 +146,7 @@ export function createProjectionStore(): ProjectionStore {
     $rejections,
     $rollOutcomes,
     $presetResults,
+    $snapshotResults,
     $loaded,
     $sync,
     $roomCopy,
@@ -179,6 +185,9 @@ export function createProjectionStore(): ProjectionStore {
     },
     setPresetResult: (result) => {
       $presetResults.set(withRecent($presetResults.get(), result.id, result));
+    },
+    setSnapshotResult: (result) => {
+      $snapshotResults.set(withRecent($snapshotResults.get(), result.id, result));
     },
     setRoomCopy: (roomCopy) => {
       $roomCopy.set(roomCopy);

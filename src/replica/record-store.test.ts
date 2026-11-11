@@ -439,3 +439,97 @@ describe('record store readHighestGeneration', () => {
     expect(generation).toEqual(err({ operation: 'read', reason: 'fake failure' }));
   });
 });
+
+describe('record store generations', () => {
+  const RECORD = '{"k":"link:t","d":"s","c":1,"a":"conn"}';
+
+  test('does not read a generation with the incomplete marker as the highest', () => {
+    // #given
+    const storage = createFakeStorage();
+    const store = createRecordStore(storage.port, 'r');
+
+    storage.entries.set('mr1:r:1:a:link:t', RECORD);
+    storage.entries.set('mr1:r:2:b:link:t', RECORD);
+    store.markIncomplete({ n: 2, a: 'b' });
+
+    // #when
+    const generation = store.readHighestGeneration();
+
+    // #then
+    expect(generation).toEqual(ok({ n: 1, a: 'a' }));
+  });
+
+  test('reads a generation again once it is marked complete', () => {
+    // #given
+    const storage = createFakeStorage();
+    const store = createRecordStore(storage.port, 'r');
+
+    storage.entries.set('mr1:r:2:b:link:t', RECORD);
+    store.markIncomplete({ n: 2, a: 'b' });
+
+    // #when
+    store.markComplete({ n: 2, a: 'b' });
+
+    // #then
+    expect({
+      generation: store.readHighestGeneration(),
+      keys: [...storage.entries.keys()],
+    }).toEqual({ generation: ok({ n: 2, a: 'b' }), keys: ['mr1:r:2:b:link:t'] });
+  });
+
+  test('removes every key of an incomplete generation of this room, and nothing else', () => {
+    // #given
+    const storage = createFakeStorage();
+    const store = createRecordStore(storage.port, 'r');
+
+    storage.entries.set('mr1:r:1:a:link:t', RECORD);
+    storage.entries.set('mr1:r:2:b:link:t', RECORD);
+    storage.entries.set('mr1:other:2:b:link:t', RECORD);
+    storage.entries.set('mr1:other:2:b:#incomplete', '1');
+    store.markIncomplete({ n: 2, a: 'b' });
+
+    // #when
+    store.removeIncomplete();
+
+    // #then
+    expect([...storage.entries.keys()].sort()).toEqual([
+      'mr1:other:2:b:#incomplete',
+      'mr1:other:2:b:link:t',
+      'mr1:r:1:a:link:t',
+    ]);
+  });
+
+  test('removes the generations below one, with their markers, and keeps that one and others', () => {
+    // #given
+    const storage = createFakeStorage();
+    const store = createRecordStore(storage.port, 'r');
+
+    storage.entries.set('mr1:r:0::link:t', RECORD);
+    storage.entries.set('mr1:r:1:a:link:t', RECORD);
+    storage.entries.set('mr1:r:1:a:#incomplete', '1');
+    storage.entries.set('mr1:r:2:b:link:t', RECORD);
+    storage.entries.set('mr1:other:0::link:t', RECORD);
+
+    // #when
+    store.removeGenerationsBelow({ n: 2, a: 'b' });
+
+    // #then
+    expect([...storage.entries.keys()].sort()).toEqual(['mr1:other:0::link:t', 'mr1:r:2:b:link:t']);
+  });
+
+  test('removes one generation with its marker', () => {
+    // #given
+    const storage = createFakeStorage();
+    const store = createRecordStore(storage.port, 'r');
+
+    storage.entries.set('mr1:r:0::link:t', RECORD);
+    storage.entries.set('mr1:r:2:b:link:t', RECORD);
+    store.markIncomplete({ n: 2, a: 'b' });
+
+    // #when
+    store.removeGeneration({ n: 2, a: 'b' });
+
+    // #then
+    expect([...storage.entries.keys()]).toEqual(['mr1:r:0::link:t']);
+  });
+});

@@ -46,6 +46,9 @@ const TIMING: Timing = {
   editDeniedQuietMs: 2000,
   pendingMarkDelayMs: 1000,
   presetRequestTimeoutMs: 15000,
+  incompleteRequestStartMs: 2000,
+  incompleteRequestMaxMs: 30000,
+  snapshotImportTimeoutMs: 60000,
 };
 
 // The key of the 2.5 spec, written out by hand.
@@ -707,7 +710,7 @@ describe('outcomes with nothing to read', () => {
     expect(roomCopy(player).outcome).toBe('unreadable');
   });
 
-  test('a copy of another generation that the player cannot take is unreadable', async () => {
+  test('a player that holds records adopts a copy of a higher generation in place of them', async () => {
     // #given: the player holds a record of its own generation from a GM commit.
     const room = openRoom();
 
@@ -727,9 +730,9 @@ describe('outcomes with nothing to read', () => {
 
     // #when
     player.engine.catchUp();
-    await waitUntil(() => roomCopy(player).outcome === 'unreadable');
+    await waitUntil(() => roomCopy(player).outcome === 'read' && keysOf(player).includes(MIRA.k));
 
     // #then
-    expect(keysOf(player)).toEqual(['sheet:brok']);
+    expect(keysOf(player)).toEqual(['preset', 'sheet:mira']);
   });
 });

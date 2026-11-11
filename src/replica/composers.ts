@@ -419,6 +419,9 @@ export function createComposers(connectionId: string): Composers {
         // `composePresetUpload` only. A flat list here would lose the order.
         case 'preset-upload':
           return err('not-allowed');
+        // AD-9: an import replaces the generation, so the engine runs it on its own path.
+        case 'snapshot-import':
+          return err('not-allowed');
 
         case 'field-patch':
           return listOf(composeFieldPatch(context, command));

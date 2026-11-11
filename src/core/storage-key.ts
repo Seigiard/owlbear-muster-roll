@@ -43,6 +43,55 @@ export function buildStorageKey(
   return ok(`${STORAGE_FORMAT}:${parts.data.roomId}:${n}:${a}:${parts.data.key}`);
 }
 
+// AD-9: the marker a client sets before it writes the records of a new generation and removes once
+// the generation is complete. No record key starts with "#", so a marker never reads as a record.
+const INCOMPLETE_MARK = '#incomplete';
+
+const markerPartsSchema = z.strictObject({
+  roomId: storageKeyPartsSchema.shape.roomId,
+  generation: generationSchema,
+});
+
+export type IncompleteMarker = z.infer<typeof markerPartsSchema>;
+
+export function incompleteMarkerKey(
+  roomId: string,
+  generation: Generation,
+): Result<string, StorageKeyFailure> {
+  const parts = markerPartsSchema.safeParse({ roomId, generation });
+
+  if (!parts.success) {
+    return err('invalid-storage-key');
+  }
+
+  const { n, a } = parts.data.generation;
+
+  return ok(`${STORAGE_FORMAT}:${parts.data.roomId}:${n}:${a}:${INCOMPLETE_MARK}`);
+}
+
+export function parseIncompleteMarkerKey(
+  storageKey: string,
+): Result<IncompleteMarker, StorageKeyFailure> {
+  const [format, roomId, counter, author, mark, ...rest] = storageKey.split(':');
+
+  if (
+    format !== STORAGE_FORMAT ||
+    counter === undefined ||
+    !CANONICAL_INTEGER.test(counter) ||
+    mark !== INCOMPLETE_MARK ||
+    rest.length > 0
+  ) {
+    return err('invalid-storage-key');
+  }
+
+  const parts = markerPartsSchema.safeParse({
+    roomId,
+    generation: { n: Number(counter), a: author },
+  });
+
+  return parts.success ? ok(parts.data) : err('invalid-storage-key');
+}
+
 export function parseStorageKey(storageKey: string): Result<StorageKeyParts, StorageKeyFailure> {
   const [format, roomId, counter, author, ...keySegments] = storageKey.split(':');
 
