@@ -139,3 +139,9 @@
 
 - Owlbear's resize of an open action window through `setWidth`/`setHeight` is unverified live. Owner check in a live room.
 - A test that an adopted generation resizes before its catch-up ends needs a long catch-up fixture.
+
+## From spec-4-8 (TASK-36, dice extension)
+
+- d100 rolls locally, because dicex reports only the tens die. Supporting it needs dicex to report the combined value.
+- The client follows dicex shapes read from source; a live-room roll with the fork confirms them.
+- dicex gains a GM access permission (owner decision 2026-11-11); the client should ask for access up front and read `permitted` from the readiness reply once the fork ships it.
