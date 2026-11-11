@@ -14,6 +14,7 @@ import {
   CLIENT_PARAM,
   DEVICE_PARAM,
   deviceStoragePrefix,
+  DICE_FACES_PARAM,
   GM_LINK_TIMEOUT_PARAM,
   MOCK_ROOM_ID,
   mockConnectionId,
@@ -72,6 +73,8 @@ export type ClientParams = {
   // The background's room copy pause and jitter, shorter than the 3 s and 2 s of `TIMING`.
   snapshotPauseMs?: number;
   snapshotJitterMs?: number;
+  // The background runs a fake dice extension that answers every die with these faces.
+  diceFaces?: number[];
 };
 
 // One client: its background page and one window, which share a connection id.
@@ -397,6 +400,7 @@ export function clientQuery(params: ClientParams): string {
     [GM_LINK_TIMEOUT_PARAM, params.gmLinkTimeoutMs?.toString()],
     [SNAPSHOT_PAUSE_PARAM, params.snapshotPauseMs?.toString()],
     [SNAPSHOT_JITTER_PARAM, params.snapshotJitterMs?.toString()],
+    [DICE_FACES_PARAM, params.diceFaces?.join(',')],
   ] as const) {
     if (value !== undefined) {
       query.set(name, value);

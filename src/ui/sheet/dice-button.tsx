@@ -51,7 +51,7 @@ export const DiceSheetContext = createContext<DiceSheet | null>(null);
 
 // Rolls on press. A bad formula shows its message under the button and sends nothing; the
 // message clears on the next press or on any value change of the sheet. A press while a roll is on
-// its way does nothing, so one press never rolls twice.
+// its way does nothing, so one press never rolls twice, and the line under the button says it waits.
 export function DiceButton({
   label,
   row,
@@ -115,9 +115,14 @@ export function DiceButton({
       >
         {label}
       </Pressable>
-      {/* Always mounted, so a screen reader announces the message. */}
-      <span id={messageId} aria-live="polite" className="text-label-sm text-danger-text">
-        {message?.text ?? ''}
+      {/* Always mounted, so a screen reader announces the message. A roll on its way shows that it
+      waits, as the dice extension can take seconds. */}
+      <span
+        id={messageId}
+        aria-live="polite"
+        className={`text-label-sm ${requestId === null ? 'text-danger-text' : 'text-text-muted'}`}
+      >
+        {requestId === null ? (message?.text ?? '') : copy.rolling}
       </span>
     </div>
   );

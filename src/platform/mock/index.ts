@@ -19,6 +19,7 @@ import {
   GM_LINK_TIMEOUT_PARAM,
   CLIENT_PARAM,
   DEVICE_PARAM,
+  DICE_FACES_PARAM,
   deviceStoragePrefix,
   MOCK_CONNECTION_ID,
   MOCK_ROOM_ID,
@@ -29,6 +30,11 @@ import {
   SNAPSHOT_JITTER_PARAM,
   SNAPSHOT_PAUSE_PARAM,
 } from './client-params';
+import {
+  startFakeDiceExtension,
+  type FakeDiceAnswer,
+  type FakeDiceExtension,
+} from './dice-extension';
 import { createMemoryBus, createPageBus, type LocalBus } from './local-bus';
 import {
   createMemoryRoom,
@@ -38,7 +44,15 @@ import {
   type MockSceneChange,
 } from './room';
 
-export { createMemoryBus, createMemoryRoom, type MockRoom, type MockScene };
+export {
+  createMemoryBus,
+  createMemoryRoom,
+  startFakeDiceExtension,
+  type FakeDiceAnswer,
+  type FakeDiceExtension,
+  type MockRoom,
+  type MockScene,
+};
 
 const MOCK_PLAYER_ID = 'mock-player';
 const MOCK_PLAYER_NAME = 'Mock GM';
@@ -149,6 +163,8 @@ declare global {
     // Playwright reaches the mock through this. The mock never enters a production build.
     setMockTheme: (theme: Theme) => void;
     mockPlatform: MockPlatform;
+    // The fake dice extension of a background page whose URL names dice faces.
+    mockDiceExtension?: FakeDiceExtension;
   }
 }
 
@@ -160,10 +176,20 @@ const mockPlatform = createMockPlatform(
   pageClient,
 );
 
-// The background page stands for its client in the party, as long as it is open.
+// The background page stands for its client in the party, as long as it is open. A fake dice
+// extension starts before the engine, so the engine's first probe finds it.
 if (window.location.pathname.endsWith('/background.html')) {
   mockPlatform.joinParty();
   window.addEventListener('pagehide', mockPlatform.leaveParty);
+
+  const diceFaces = diceFacesFromPageUrl();
+
+  if (diceFaces !== null) {
+    window.mockDiceExtension = startFakeDiceExtension(mockPlatform.broadcast, pageClient.playerId, {
+      kind: 'faces',
+      faces: diceFaces,
+    });
+  }
 }
 
 export const platform: Platform = mockPlatform;
@@ -641,6 +667,20 @@ function clientFromPageUrl(): MockClient {
     name: params.get(NAME_PARAM) ?? MOCK_PLAYER_NAME,
     role,
   };
+}
+
+// `null` with no param, or with an empty segment or a face that is not a whole number from 1.
+function diceFacesFromPageUrl(): number[] | null {
+  const text = new URLSearchParams(window.location.search).get(DICE_FACES_PARAM);
+  const segments = text?.split(',') ?? [];
+  const faces = segments.map(Number);
+
+  const valid =
+    segments.length > 0 &&
+    segments.every((segment) => segment.trim() !== '') &&
+    faces.every((face) => Number.isInteger(face) && face >= 1);
+
+  return valid ? faces : null;
 }
 
 function timingFromPageUrl(): Timing {

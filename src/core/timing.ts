@@ -94,3 +94,24 @@ export const LINK_PICKER_TIMING: LinkPickerTiming = {
   labelReadTimeoutMs: 2000,
   labelWriteTimeoutMs: 5000,
 };
+
+// TASK-36: the dice extension's waits, each from the moment it starts. A readiness probe gets
+// `probeWaitMs` for an answer. A roll probes again when the last probe is older than
+// `probeMaxAgeMs`. A roll with no result `resultTimeoutMs` after it was asked for rolls locally. An
+// unanswered probe at start is tried again `startProbeRetries` times, after `startProbeRetryMs` and
+// then twice as long each time, for an extension that loads after Muster Roll.
+export type DiceExtensionTiming = {
+  probeWaitMs: number;
+  probeMaxAgeMs: number;
+  resultTimeoutMs: number;
+  startProbeRetries: number;
+  startProbeRetryMs: number;
+};
+
+export const DICE_EXTENSION_TIMING: DiceExtensionTiming = {
+  probeWaitMs: 1000,
+  probeMaxAgeMs: 60000,
+  resultTimeoutMs: 30000,
+  startProbeRetries: 3,
+  startProbeRetryMs: 2000,
+};

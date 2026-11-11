@@ -37,8 +37,17 @@ export type EvaluationFailure = { code: 'field'; fieldId: string } | { code: 'ar
 // The number an id stands for, or `null` when it gives the field error.
 export type FieldLookup = (id: string) => number | null;
 
-// A value in [0, 1), as `Math.random` returns. A face out of range is clamped to [1, sides].
+// A value in [0, 1), as `Math.random` returns.
 export type RandomSource = () => number;
+
+// The face one die of `sides` shows. The evaluator clamps a face out of range to [1, sides].
+export type FaceSource = (sides: number) => number;
+
+// One `NdM` of a formula.
+export type DiceTerm = { count: number; sides: number };
+
+// The face one die of `sides` shows.
+export type DieFace = { sides: number; face: number };
 
 // The values of the sheet's `row:` record named by `rowId`.
 export type SheetRowValues = (rowId: string) => FieldValues;
@@ -48,11 +57,11 @@ export type SheetRowValues = (rowId: string) => FieldValues;
 export function evaluateFormula(
   tree: FormulaTree,
   lookup: FieldLookup,
-  random: RandomSource,
+  faces: FaceSource = randomFaces(Math.random),
 ): Result<RollResult, EvaluationFailure> {
-  const faces: number[] = [];
+  const rollFaces: number[] = [];
   const targetFaces: number[] = [];
-  let sideFaces = faces;
+  let sideFaces = rollFaces;
 
   // Past the safe range a number is inexact, so it is refused like Infinity.
   function evaluate(expression: FormulaExpression): Result<number, EvaluationFailure> {
@@ -114,7 +123,7 @@ export function evaluateFormula(
     let total = 0;
 
     for (let index = 0; index < count; index += 1) {
-      const face = clampFace(Math.floor(random() * sides) + 1, sides);
+      const face = clampFace(faces(sides), sides);
 
       sideFaces.push(face);
       total += face;
@@ -127,7 +136,7 @@ export function evaluateFormula(
     const roll = evaluate(tree);
 
     return roll.ok
-      ? ok({ roll: roll.value, faces, target: null, targetFaces, outcome: null })
+      ? ok({ roll: roll.value, faces: rollFaces, target: null, targetFaces, outcome: null })
       : roll;
   }
 
@@ -149,11 +158,68 @@ export function evaluateFormula(
 
   return ok({
     roll: roll.value,
-    faces,
+    faces: rollFaces,
     target: target.value,
     targetFaces,
     outcome: holds ? 'success' : 'failure',
   });
+}
+
+// Each face is `floor(random() * sides) + 1`.
+export function randomFaces(random: RandomSource): FaceSource {
+  return (sides) => Math.floor(random() * sides) + 1;
+}
+
+// The listed faces in order, one per die, each for a die of its `sides`. A die of other sides, or
+// one past the end of the list, throws: the caller builds the list from `formulaDiceTerms`, so
+// either means a broken caller, not a bad formula.
+export function listedFaces(faces: readonly DieFace[]): FaceSource {
+  let index = 0;
+
+  return (sides) => {
+    const die = faces[index];
+
+    if (die?.sides !== sides) {
+      throw new Error(`Listed face ${index + 1} is not for a d${sides}`);
+    }
+
+    index += 1;
+
+    return die.face;
+  };
+}
+
+// The `NdM` terms of a formula, both sides of a comparison, in the order the evaluator rolls them.
+export function formulaDiceTerms(tree: FormulaTree): DiceTerm[] {
+  const terms: DiceTerm[] = [];
+
+  function walk(expression: FormulaTree): void {
+    switch (expression.kind) {
+      case 'dice':
+        terms.push({ count: expression.count, sides: expression.sides });
+
+        return;
+      case 'call':
+        walk(expression.argument);
+
+        return;
+      case 'binary':
+      case 'comparison':
+        walk(expression.left);
+        walk(expression.right);
+
+        return;
+      case 'integer':
+      case 'field':
+        return;
+      default:
+        expression satisfies never;
+    }
+  }
+
+  walk(tree);
+
+  return terms;
 }
 
 // The lookup for a dice cell in the row at `from`. `sheetRow` reads rows of the same sheet only, so
@@ -230,7 +296,7 @@ function arithmetic(
   return right === 0 ? err({ code: 'arithmetic' }) : ok(left / right);
 }
 
-// A source outside [0, 1) would give a face of 0 or sides + 1, and NaN no face at all.
+// A random source outside [0, 1) would give a face of 0 or sides + 1, and NaN no face at all.
 function clampFace(face: number, sides: number): number {
   return Number.isFinite(face) ? Math.min(Math.max(face, 1), sides) : 1;
 }

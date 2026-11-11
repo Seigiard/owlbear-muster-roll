@@ -41,6 +41,10 @@ export const SCENE_STORAGE_PREFIX = 'mock-scene:';
 
 export const SCENE_CHANNEL_PREFIX = 'muster-roll-mock-scene:';
 
+// The background page of a client with this param runs a fake dice extension that answers every
+// die with the listed faces, comma-separated, as `startFakeDiceExtension` does.
+export const DICE_FACES_PARAM = 'mock-dice-faces';
+
 // A shorter room copy pause and jitter for tests, in milliseconds, as with the catch-up timeout.
 export const SNAPSHOT_PAUSE_PARAM = 'mock-snapshot-pause-ms';
 

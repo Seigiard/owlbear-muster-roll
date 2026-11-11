@@ -9,7 +9,8 @@ import {
   type ProposalContext,
 } from '@/core/access';
 import { createBoundedIdSet } from '@/core/bounded-id-set';
-import { rollDiceCell } from '@/core/dice-roll';
+import { dicePlusDice, dicePlusTarget } from '@/core/dice-plus';
+import { prepareDiceRoll, type DiceRollFailure, type PreparedDiceRoll } from '@/core/dice-roll';
 import { recordDigest } from '@/core/digest';
 import { newRecordId, type RecordIdKind } from '@/core/ids';
 import type { JsonObject } from '@/core/json';
@@ -21,6 +22,7 @@ import {
 } from '@/core/message-size';
 import type { FieldPatchTarget } from '@/core/field-patch';
 import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
+import { listedFaces, randomFaces, type FaceSource } from '@/core/formula-evaluate';
 import { decodePreset, windowSizeOf, type Preset } from '@/core/preset';
 import { NOTHING_ERASED, presetMoves, stripToTemplate } from '@/core/preset-migrate';
 import {
@@ -77,7 +79,12 @@ import {
 } from '@/core/snapshot';
 import { decodeStateRecords, stateAnswer } from '@/core/state-records';
 import { generationSchema, INITIAL_GENERATION, type Generation } from '@/core/storage-key';
-import { TIMING, type Timing } from '@/core/timing';
+import {
+  DICE_EXTENSION_TIMING,
+  TIMING,
+  type DiceExtensionTiming,
+  type Timing,
+} from '@/core/timing';
 import {
   parseWindowMessage,
   UI_CHANNEL,
@@ -103,6 +110,7 @@ import type { BroadcastEvent, BroadcastOptions, PartyMember, Platform } from '@/
 import type { SendQueue } from '@/platform/send-queue';
 import { createCommitOutbox } from '@/replica/commit-outbox';
 import { createComposers, type ComposeContext } from '@/replica/composers';
+import { createDiceExtension } from '@/replica/dice-extension';
 import { createPartyRoster, type RoomSender } from '@/replica/party-roster';
 import { createPendingQueue, type PendingEntry } from '@/replica/pending-queue';
 import {
@@ -182,6 +190,8 @@ export type ReplicaEngineOptions = {
   newId?: () => string;
   newRecordId?: (kind: RecordIdKind) => string;
   random?: () => number;
+  // TASK-36: the dice extension's waits.
+  diceTiming?: DiceExtensionTiming;
   // The copy catalog's roll strings. The background page passes them; with none, no roll shows.
   rollCopy?: RollCopy;
   // The copy catalog's token menu labels. The background page passes them; with none, no token
@@ -246,6 +256,11 @@ type DeltaContent = Part & { withdrawn: string[] };
 
 // A roll evaluated in this client, before it has an id and the roller's name.
 type EvaluatedRoll = Omit<RollContent, 'id' | 'roller'>;
+
+// A dice cell of one sheet, read at the request, waiting for its faces.
+type PreparedRoll = Pick<EvaluatedRoll, 'sheetId' | 'kind' | 'sheetName'> & {
+  dice: PreparedDiceRoll;
+};
 
 // Who a shown roll came from: this client, or a party member the gate admitted.
 type RollSender = Pick<RoomSender, 'role' | 'name'>;
@@ -341,6 +356,16 @@ export async function startReplicaEngine(
   // engine, so it goes through the same checks, catch-up queue, storage and send as a window's.
   // No window owns the id of a command the menu issues, so this page shows its rejection.
   const menuCommandIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
+
+  // TASK-36: the dice extension of this client, if one answers. It probes at start.
+  const diceExtension = createDiceExtension(
+    platform.broadcast,
+    sendQueue,
+    options.diceTiming ?? DICE_EXTENSION_TIMING,
+    newId,
+  );
+
+  diceExtension.start();
 
   const tokenMenu =
     options.menuCopy === undefined
@@ -1816,7 +1841,10 @@ export async function startReplicaEngine(
 
   // AD-13: the roller's replica evaluates once, from the values its windows show: the replica with
   // its pending edits, and the window's own unsent text and input errors over them. A roll writes
-  // nothing, so a player and a client in catch-up roll too.
+  // nothing, so a player and a client in catch-up roll too. The values are read at the request. A
+  // local roll comes first: a field error, or an arithmetic error with its faces, sends nothing
+  // anywhere, and it stands in when the dice extension gives no faces (TASK-36). Other faces from
+  // the extension can still give an arithmetic error, after its dice showed.
   function handleRollRequest(message: RollRequestMessage): void {
     if (recentRollRequestIds.has(message.id)) {
       return;
@@ -1824,16 +1852,26 @@ export async function startReplicaEngine(
 
     recentRollRequestIds.add(message.id);
 
-    const evaluated = evaluateRoll(message);
+    const prepared = prepareRoll(message);
 
-    if (evaluated.ok) {
-      void sendRoll(message.id, evaluated.value);
-    } else {
-      replyRoll(message.id, evaluated.error);
+    if (!prepared.ok) {
+      replyRoll(message.id, prepared.error);
+
+      return;
     }
+
+    const local = evaluatedWith(prepared.value, randomFaces(random));
+
+    if (!local.ok) {
+      replyRoll(message.id, local.error);
+
+      return;
+    }
+
+    void rollWithDice(message.id, prepared.value, local.value);
   }
 
-  function evaluateRoll(message: RollRequestMessage): Result<EvaluatedRoll, RollOutcome> {
+  function prepareRoll(message: RollRequestMessage): Result<PreparedRoll, RollOutcome> {
     const view = pendingView();
     const sheet = sheetDataSchema.safeParse(view.get(sheetKey(message.sheetId))?.d);
 
@@ -1850,26 +1888,98 @@ export async function startReplicaEngine(
 
     const { kind, name } = sheet.data;
 
-    const rolled = rollDiceCell(
+    const dice = prepareDiceRoll(
       kind === 'pc' ? preset.character : preset.npc,
       view,
       message.sheetId,
       message.place,
       new Map(Object.entries(message.shown)),
-      random,
     );
 
-    if (!rolled.ok) {
-      return err(rolled.error.code === 'not-dice' ? { code: 'refused' } : rolled.error);
+    if (!dice.ok) {
+      return err(rollFailure(dice.error));
     }
 
-    return ok({
-      sheetId: message.sheetId,
-      kind,
-      sheetName: name,
-      cell: rolled.value.cell,
-      result: rolled.value.result,
+    return ok({ sheetId: message.sheetId, kind, sheetName: name, dice: dice.value });
+  }
+
+  // TASK-36: the faces come from the dice extension of this client when it is ready and can roll
+  // every term, and the 3D dice show to the clients that see the notification. With no extension,
+  // an error, a result that does not match, or no result in time, the local roll goes out.
+  async function rollWithDice(
+    requestId: string,
+    prepared: PreparedRoll,
+    local: EvaluatedRoll,
+  ): Promise<void> {
+    let roller: string;
+
+    try {
+      roller = await platform.player.getName();
+    } catch (error) {
+      console.error('Muster Roll could not read the player name for a roll', error);
+      replyRoll(requestId, { code: 'failed' });
+
+      return;
+    }
+
+    const dice = dicePlusDice(prepared.dice.terms);
+    const ready = dice !== null && !stopped && (await diceExtension.ready());
+
+    // The role can change while the name is read or the probe answers. `sendRoll` refuses such a
+    // roll, and no dice show for it.
+    if (dice === null || !ready || stopped || !rollShownTo(role, prepared.kind)) {
+      await sendRoll(requestId, local, roller);
+
+      return;
+    }
+
+    const faces = await diceExtension.roll({
+      terms: prepared.dice.terms,
+      notation: dice.notation,
+      playerId: ownPlayerId,
+      playerName: roller,
+      rollTarget: dicePlusTarget(prepared.kind),
     });
+
+    // A stopped page sends nothing more, and its wait was no failure of the extension.
+    if (stopped) {
+      return;
+    }
+
+    if (!faces.ok) {
+      if (faces.error.code === 'stopped') {
+        return;
+      }
+
+      console.error(
+        'Muster Roll rolled locally, as the dice extension gave no faces:',
+        faces.error.reason,
+      );
+      await sendRoll(requestId, local, roller);
+
+      return;
+    }
+
+    // The extension's faces are the roll, and its dice already showed, so no local roll follows
+    // them, even when they give an arithmetic error.
+    let evaluated: Result<EvaluatedRoll, RollOutcome>;
+
+    try {
+      evaluated = evaluatedWith(prepared, listedFaces(faces.value));
+    } catch (error) {
+      console.error('Muster Roll could not apply the dice extension faces', error);
+      replyRoll(requestId, { code: 'failed' });
+
+      return;
+    }
+
+    if (!evaluated.ok) {
+      replyRoll(requestId, evaluated.error);
+
+      return;
+    }
+
+    await sendRoll(requestId, evaluated.value, roller);
   }
 
   // Decoded again only when the record's version changes, not on every press.
@@ -1896,23 +2006,16 @@ export async function startReplicaEngine(
 
   // The roller's name is read at roll time. `REMOTE` does not echo to the sender, so this client
   // shows its own roll through the same id check as a received one, once the room has it.
-  async function sendRoll(requestId: string, evaluated: EvaluatedRoll): Promise<void> {
-    let roller: string;
-
-    try {
-      roller = await platform.player.getName();
-    } catch (error) {
-      console.error('Muster Roll could not read the player name for a roll', error);
-      replyRoll(requestId, { code: 'failed' });
-
-      return;
-    }
-
+  async function sendRoll(
+    requestId: string,
+    evaluated: EvaluatedRoll,
+    roller: string,
+  ): Promise<void> {
     if (stopped) {
       return;
     }
 
-    // The role can change while the name is read.
+    // The role can change while the name is read or the dice roll.
     if (!rollShownTo(role, evaluated.kind)) {
       replyRoll(requestId, { code: 'refused' });
 
@@ -3595,6 +3698,7 @@ export async function startReplicaEngine(
       roster.stop();
       outbox.stop();
       tokenMenu?.stop();
+      diceExtension.stop();
       followScene();
     },
     flushNow: () => {
@@ -3800,4 +3904,29 @@ function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedR
   }
 
   return { records, problemKeys, persistence: { store, generation } };
+}
+
+// A dice cell that is gone is refused; a field or arithmetic failure goes to the window as it is.
+function rollFailure(failure: DiceRollFailure): RollOutcome {
+  return failure.code === 'not-dice' ? { code: 'refused' } : failure;
+}
+
+// The roll of a prepared dice cell with these faces, as the room message carries it.
+function evaluatedWith(
+  prepared: PreparedRoll,
+  faces: FaceSource,
+): Result<EvaluatedRoll, RollOutcome> {
+  const rolled = prepared.dice.roll(faces);
+
+  if (!rolled.ok) {
+    return err(rollFailure(rolled.error));
+  }
+
+  return ok({
+    sheetId: prepared.sheetId,
+    kind: prepared.kind,
+    sheetName: prepared.sheetName,
+    cell: prepared.dice.cell,
+    result: rolled.value,
+  });
 }

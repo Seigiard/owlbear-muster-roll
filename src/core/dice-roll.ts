@@ -2,8 +2,10 @@ import { z } from 'zod';
 
 import {
   evaluateFormula,
+  formulaDiceTerms,
   formulaFieldLookup,
-  type RandomSource,
+  type DiceTerm,
+  type FaceSource,
   type RollResult,
 } from '@/core/formula-evaluate';
 import { parseFormula } from '@/core/formula';
@@ -49,6 +51,14 @@ export type DiceRollFailure =
   | { code: 'arithmetic' }
   | { code: 'not-dice' };
 
+// A dice cell ready to roll: its label, its dice terms in tree order, and the roll itself, which
+// reads the values `prepareDiceRoll` was given each time it runs.
+export type PreparedDiceRoll = {
+  cell: string;
+  terms: DiceTerm[];
+  roll: (faces: FaceSource) => Result<RollResult, DiceRollFailure>;
+};
+
 // Rolls the dice cell at `place` of one sheet, from `records` as the client shows them with the
 // window's `shown` values over them. A field shown in an input error gives the field error.
 export function rollDiceCell(
@@ -57,8 +67,28 @@ export function rollDiceCell(
   sheetId: string,
   place: DicePlace,
   shown: ShownValues,
-  random: RandomSource,
+  faces: FaceSource,
 ): Result<DiceRoll, DiceRollFailure> {
+  const prepared = prepareDiceRoll(template, records, sheetId, place, shown);
+
+  if (!prepared.ok) {
+    return prepared;
+  }
+
+  const rolled = prepared.value.roll(faces);
+
+  return rolled.ok ? ok({ cell: prepared.value.cell, result: rolled.value }) : rolled;
+}
+
+// As `rollDiceCell`, with the faces left for later, so a caller can ask for them by the terms.
+// `records` and `shown` must not change while the result is in use.
+export function prepareDiceRoll(
+  template: PresetTemplate,
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  place: DicePlace,
+  shown: ShownValues,
+): Result<PreparedDiceRoll, DiceRollFailure> {
   const section = template.sections[place.sectionIndex];
   const row = section?.rows[place.rowIndex];
   const cell = row?.[place.cellIndex];
@@ -88,6 +118,8 @@ export function rollDiceCell(
     return err({ code: 'arithmetic' });
   }
 
+  const formula = tree.value;
+
   const lookup = formulaFieldLookup(
     template,
     from,
@@ -95,21 +127,27 @@ export function rollDiceCell(
     ownRow,
   );
 
-  const rolled = evaluateFormula(
-    tree.value,
-    (id) => (shown.get(id)?.kind === 'error' ? null : lookup(id)),
-    random,
-  );
+  return ok({
+    cell: cellLabel(cell, row.slice(0, place.cellIndex)),
+    terms: formulaDiceTerms(formula),
+    roll: (faces) => {
+      const rolled = evaluateFormula(
+        formula,
+        (id) => (shown.get(id)?.kind === 'error' ? null : lookup(id)),
+        faces,
+      );
 
-  if (!rolled.ok) {
-    return err(
-      rolled.error.code === 'field'
-        ? { code: 'field', field: fieldLabel(template, from, rolled.error.fieldId) }
-        : { code: 'arithmetic' },
-    );
-  }
+      if (!rolled.ok) {
+        return err(
+          rolled.error.code === 'field'
+            ? { code: 'field', field: fieldLabel(template, from, rolled.error.fieldId) }
+            : { code: 'arithmetic' },
+        );
+      }
 
-  return ok({ cell: cellLabel(cell, row.slice(0, place.cellIndex)), result: rolled.value });
+      return rolled;
+    },
+  });
 }
 
 // The values of one repeat row, or `null` for an instance that is gone.

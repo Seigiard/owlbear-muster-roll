@@ -125,6 +125,8 @@ export const copy = {
   rollSuccess: 'успех',
   rollFailure: 'провал',
   rollFailed: 'Бросок не удался. Попробуйте ещё раз.',
+  // Under a dice button while its roll waits, as for the dice extension's dice (TASK-36).
+  rolling: 'Бросаем…',
   duplicateFailed: 'Не удалось дублировать. Попробуйте ещё раз.',
   // The link picker with no sheet to list (UX-DR22).
   noSheetsToLink: 'Сначала создайте лист',

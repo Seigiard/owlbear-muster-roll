@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { randomFaces } from '@/core/formula-evaluate';
 import type { PresetTemplate } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 
@@ -60,7 +61,7 @@ const STRENGTH: DicePlace = { sectionIndex: 0, rowIndex: 0, cellIndex: 3, instan
 const ATTACK: DicePlace = { sectionIndex: 1, rowIndex: 0, cellIndex: 3, instanceId: 'i1' };
 
 function roll(place: DicePlace, shown: [string, ShownValue][] = []) {
-  return rollDiceCell(TEMPLATE, RECORDS, 'brok', place, new Map(shown), SEVEN);
+  return rollDiceCell(TEMPLATE, RECORDS, 'brok', place, new Map(shown), randomFaces(SEVEN));
 }
 
 describe('rollDiceCell', () => {

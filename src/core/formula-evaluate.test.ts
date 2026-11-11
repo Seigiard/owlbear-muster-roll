@@ -3,7 +3,11 @@ import { describe, expect, test } from 'bun:test';
 import { parseFormula, type FormulaTree } from '@/core/formula';
 import {
   evaluateFormula,
+  formulaDiceTerms,
   formulaFieldLookup,
+  listedFaces,
+  randomFaces,
+  type DieFace,
   type EvaluationFailure,
   type FieldLookup,
   type RandomSource,
@@ -128,7 +132,7 @@ function evaluateAt(
   lookup: FieldLookup,
   randoms: readonly number[] = [],
 ): Result<RollResult, EvaluationFailure> {
-  return evaluateFormula(treeOf(formula), lookup, sequence(randoms));
+  return evaluateFormula(treeOf(formula), lookup, randomFaces(sequence(randoms)));
 }
 
 const DICE_ROW_LOOKUP = formulaFieldLookup(TEMPLATE, DICE_ROW, sheetRow, NO_VALUES);
@@ -458,3 +462,105 @@ describe('evaluateFormula', () => {
     });
   });
 });
+
+describe('formulaDiceTerms', () => {
+  test.each<[string, string, { count: number; sides: number }[]]>([
+    ['one die', '1d20 + str', [{ count: 1, sides: 20 }]],
+    [
+      'several terms, signs dropped',
+      '2d6 + 1d8 - 1d4',
+      [
+        { count: 2, sides: 6 },
+        { count: 1, sides: 8 },
+        { count: 1, sides: 4 },
+      ],
+    ],
+    [
+      'both sides of a comparison, inside a call',
+      '1d20 <= floor(3d6 / 2) - 1d4',
+      [
+        { count: 1, sides: 20 },
+        { count: 3, sides: 6 },
+        { count: 1, sides: 4 },
+      ],
+    ],
+    ['no dice', 'str + 2', []],
+  ])('lists %s in tree order', (_case, formula, terms) => {
+    // #when
+    const listed = formulaDiceTerms(treeOf(formula));
+
+    // #then
+    expect(listed).toEqual(terms);
+  });
+});
+
+describe('evaluateFormula with listed faces', () => {
+  test('takes each face in tree order and applies the signs itself', () => {
+    // #when: 6 + 5 + 8 - 3.
+    const result = evaluateFormula(
+      treeOf('2d6 + 1d8 - 1d4'),
+      DICE_ROW_LOOKUP,
+      listedFaces(dieFaces([6, 6], [5, 6], [8, 8], [3, 4])),
+    );
+
+    // #then
+    expect(result).toEqual({
+      ok: true,
+      value: { roll: 16, faces: [6, 5, 8, 3], target: null, targetFaces: [], outcome: null },
+    });
+  });
+
+  test('compares a listed face with the target', () => {
+    // #when: the target is 14 - 2 * 2 = 10.
+    const result = evaluateFormula(
+      treeOf('1d20 <= str - 2*str_tired'),
+      DICE_ROW_LOOKUP,
+      listedFaces(dieFaces([15, 20])),
+    );
+
+    // #then
+    expect(result).toEqual({
+      ok: true,
+      value: { roll: 15, faces: [15], target: 10, targetFaces: [], outcome: 'failure' },
+    });
+  });
+
+  test('gives target-side dice the faces after the roll side', () => {
+    // #when
+    const result = evaluateFormula(
+      treeOf('1d20 > 1d6 + 2'),
+      DICE_ROW_LOOKUP,
+      listedFaces(dieFaces([4, 20], [5, 6])),
+    );
+
+    // #then
+    expect(result).toEqual({
+      ok: true,
+      value: { roll: 4, faces: [4], target: 7, targetFaces: [5], outcome: 'failure' },
+    });
+  });
+
+  test.each<[string, [number, number][]]>([
+    [
+      'a face for other sides',
+      [
+        [4, 20],
+        [5, 8],
+      ],
+    ],
+    ['a list that runs out', [[4, 20]]],
+  ])('throws on %s, as only a broken caller can give one', (_case, faces) => {
+    // #when
+    const evaluate = (): void => {
+      evaluateFormula(treeOf('1d20 > 1d6 + 2'), DICE_ROW_LOOKUP, listedFaces(dieFaces(...faces)));
+    };
+
+    // #then
+    expect(evaluate).toThrow();
+  });
+});
+
+// Faces as `[face, sides]` pairs.
+function dieFaces(...faces: [number, number][]): DieFace[] {
+  return faces.map(([face, sides]) => ({ sides, face }));
+}
