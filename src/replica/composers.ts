@@ -6,6 +6,7 @@ import {
   patchedRecord,
   patchedRecordFits,
   patchRecordKey,
+  targetFields,
   type PatchedRecord,
 } from '@/core/field-patch';
 import type { RecordIdKind } from '@/core/ids';
@@ -14,8 +15,13 @@ import type { Version } from '@/core/merge';
 import { duplicateNames, isDuplicateCount } from '@/core/npc-duplicate';
 import { decodePreset, encodePreset, type Preset, type PresetTemplate } from '@/core/preset';
 import {
+  presetDiff,
+  stripToTemplate,
+  type PlannedWrite,
+  type PresetMigration,
+} from '@/core/preset-migrate';
+import {
   fieldValuesSchema,
-  hasLiveSheet,
   playerDataSchema,
   playerIdSchema,
   plinkPrefix,
@@ -73,6 +79,19 @@ export type PatchRefusal = { id: string; reason: RejectionReason };
 // `record` is `null` when the patches change nothing together.
 export type ComposedPatches = { record: VersionedRecord | null; refusals: PatchRefusal[] };
 
+// AD-14: the records of one preset upload, in the groups they are written and sent in, and the
+// number of stored values they erase.
+export type PresetUploadBatch = { groups: VersionedRecord[][]; count: number };
+
+// `count` is the new count, with `count-changed` only.
+// `changed` goes with `count-changed` only: the new count and digest.
+export type PresetUploadRefusal = {
+  reason: RejectionReason;
+  changed?: { count: number; digest: string };
+};
+
+type PlannedUpload = { d: string; migration: PresetMigration };
+
 export type Composers = {
   compose: (
     context: ComposeContext,
@@ -80,6 +99,16 @@ export type Composers = {
   ) => Result<VersionedRecord[], RejectionReason>;
   // Several field patches of one record key, applied in order and minted once.
   composePatches: (context: ComposeContext, patches: readonly IdentifiedPatch[]) => ComposedPatches;
+  composePresetUpload: (
+    context: ComposeContext,
+    command: Extract<Command, { type: 'preset-upload' }>,
+  ) => Result<PresetUploadBatch, PresetUploadRefusal>;
+  // AD-14: how many stored values the preset in `data` would erase, and their digest. It mints
+  // nothing.
+  presetDiffResult: (
+    context: ComposeContext,
+    data: string,
+  ) => Result<{ count: number; digest: string }, RejectionReason>;
 };
 
 // The preset decoded from the `d` it came from, so a run of patches decodes it once.
@@ -88,11 +117,13 @@ type DecodedPreset = { d: string; preset: Preset | null };
 export function createComposers(connectionId: string): Composers {
   let decodedPreset: DecodedPreset | null = null;
 
-  function composePresetUpload(
+  // AD-14: the new preset, validated and measured, and the migration from the stored one. A stored
+  // preset that does not decode may come from a newer build, so no diff runs over it.
+  function planPresetUpload(
     context: ComposeContext,
-    command: Extract<Command, { type: 'preset-upload' }>,
-  ): Result<VersionedRecord, RejectionReason> {
-    const preset = decodePreset(command.data);
+    data: string,
+  ): Result<PlannedUpload, RejectionReason> {
+    const preset = decodePreset(data);
 
     if (!preset.ok) {
       return err('invalid-preset');
@@ -106,14 +137,56 @@ export function createComposers(connectionId: string): Composers {
       return err('too-large');
     }
 
-    // Temporary until Story 5.1 brings the AD-14 diff: a preset change must not orphan values.
-    if (hasLiveSheet(context.records.values())) {
-      return err('sheets-exist');
+    const stored = context.records.get('preset');
+    const old = stored === undefined ? null : currentPreset(context);
+
+    if (stored !== undefined && old === null) {
+      return err('preset-unreadable');
     }
 
-    const { c, a } = context.mint('preset', context.records.get('preset')?.c ?? 0);
+    return ok({ d, migration: presetDiff(context.records, old, preset.value) });
+  }
 
-    return ok({ k: 'preset', d, c, a });
+  // AD-14: three groups in send order: rows under new keys and rows that gain values, then
+  // `preset`, then tombstones of old keys and stripped rows. A count above 0 that is not the one
+  // the GM confirmed, or that erases other values than the confirmed diff, is refused with the
+  // new count. A new count of 0 erases nothing, so it applies.
+  function composePresetUpload(
+    context: ComposeContext,
+    command: Extract<Command, { type: 'preset-upload' }>,
+  ): Result<PresetUploadBatch, PresetUploadRefusal> {
+    const planned = planPresetUpload(context, command.data);
+
+    if (!planned.ok) {
+      return err({ reason: planned.error });
+    }
+
+    const { d, migration } = planned.value;
+
+    if (
+      migration.count > 0 &&
+      (migration.count !== command.expectedCount || migration.digest !== command.expectedDigest)
+    ) {
+      return err({
+        reason: 'count-changed',
+        changed: { count: migration.count, digest: migration.digest },
+      });
+    }
+
+    const minted = (write: PlannedWrite): VersionedRecord => ({
+      ...write,
+      ...context.mint(write.k, context.records.get(write.k)?.c ?? 0),
+    });
+
+    const groups: VersionedRecord[][] = [
+      migration.first.map(minted),
+      [{ k: 'preset', d, ...context.mint('preset', context.records.get('preset')?.c ?? 0) }],
+      migration.last.map(minted),
+    ];
+
+    return groups.every((group) => group.every(recordFitsOneMessage))
+      ? ok({ groups, count: migration.count })
+      : err({ reason: 'too-large' });
   }
 
   // The field must be in the targeted row of the sheet's own template, and the value of its type.
@@ -153,7 +226,10 @@ export function createComposers(connectionId: string): Composers {
       return patched;
     }
 
-    return patchedRecordFits(patched.value) ? patched : err('too-large');
+    // AD-14: a new version keeps no value the template no longer has in this row.
+    const stripped = stripToTemplate(patched.value, template.value);
+
+    return patchedRecordFits(stripped) ? ok(stripped) : err('too-large');
   }
 
   function composeFieldPatch(
@@ -330,7 +406,7 @@ export function createComposers(connectionId: string): Composers {
         case 'sheet-delete':
           return composeSheetDelete(context, command);
         case 'sheet-duplicate':
-          return composeSheetDuplicate(context, command);
+          return composeSheetDuplicate(context, command, currentPreset(context)?.npc ?? null);
         case 'link-set':
           return listOf(composeLinkSet(context, command));
         case 'link-clear':
@@ -339,8 +415,11 @@ export function createComposers(connectionId: string): Composers {
           return listOf(composeAclSet(context, command));
         case 'owner-set':
           return composeOwnerSet(context, command);
+        // AD-14: an upload is an ordered batch with its own confirmation, sent through
+        // `composePresetUpload` only. A flat list here would lose the order.
         case 'preset-upload':
-          return listOf(composePresetUpload(context, command));
+          return err('not-allowed');
+
         case 'field-patch':
           return listOf(composeFieldPatch(context, command));
         case 'repeat-row-add':
@@ -352,6 +431,16 @@ export function createComposers(connectionId: string): Composers {
       }
     },
     composePatches,
+    composePresetUpload,
+    presetDiffResult: (context, data) => {
+      const planned = planPresetUpload(context, data);
+
+      if (!planned.ok) {
+        return planned;
+      }
+
+      return ok({ count: planned.value.migration.count, digest: planned.value.migration.digest });
+    },
   };
 }
 
@@ -449,6 +538,7 @@ function composeSheetDelete(
 function composeSheetDuplicate(
   context: ComposeContext,
   command: Extract<Command, { type: 'sheet-duplicate' }>,
+  template: PresetTemplate | null,
 ): Result<VersionedRecord[], RejectionReason> {
   if (!isDuplicateCount(command.count)) {
     return err('invalid-count');
@@ -478,7 +568,7 @@ function composeSheetDuplicate(
   }
 
   const firstOrder = nextOrder(context, 'npc');
-  const values = copiedValues(context, command.sheetId);
+  const values = copiedValues(context, command.sheetId, template);
   const copies: VersionedRecord[] = [];
   const written = new Set<string>();
   const liveDependents = liveDependentSheetIds(context);
@@ -697,8 +787,14 @@ function liveCharacter(
   return sheet.data.kind === 'pc' ? current : err('not-character');
 }
 
-// The live `row:` and `rep:` records of one sheet, by key, so copies list them in one order.
-function copiedValues(context: ComposeContext, sheetId: string): CopiedValue[] {
+// The live `row:` and `rep:` records of one sheet, by key, so copies list them in one order. AD-14:
+// with a preset, each copy holds only what the NPC template has, and a row it does not have is not
+// copied.
+function copiedValues(
+  context: ComposeContext,
+  sheetId: string,
+  template: PresetTemplate | null,
+): CopiedValue[] {
   const rowPrefix = `row:${sheetId}:`;
   const repPrefix = `rep:${sheetId}:`;
   const values: CopiedValue[] = [];
@@ -711,22 +807,48 @@ function copiedValues(context: ComposeContext, sheetId: string): CopiedValue[] {
     const d = context.records.get(key)?.d;
 
     if (key.startsWith(rowPrefix)) {
+      const rowId = key.slice(rowPrefix.length);
       const row = fieldValuesSchema.safeParse(d);
 
-      if (row.success) {
-        values.push({ kind: 'row', rowId: key.slice(rowPrefix.length), d: row.data });
+      if (row.success && inTemplate(template, { kind: 'row', rowId })) {
+        values.push({ kind: 'row', rowId, d: strippedData(template, key, row.data) });
       }
     } else if (key.startsWith(repPrefix)) {
       const rep = repDataSchema.safeParse(d);
       const [sectionId, instanceId] = key.slice(repPrefix.length).split(':');
 
-      if (rep.success && sectionId !== undefined && instanceId !== undefined) {
-        values.push({ kind: 'rep', sectionId, instanceId, d: rep.data });
+      if (
+        rep.success &&
+        sectionId !== undefined &&
+        instanceId !== undefined &&
+        inTemplate(template, { kind: 'rep', sectionId })
+      ) {
+        values.push({
+          kind: 'rep',
+          sectionId,
+          instanceId,
+          d: strippedData(template, key, rep.data),
+        });
       }
     }
   }
 
   return values;
+}
+
+function inTemplate(
+  template: PresetTemplate | null,
+  target: { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string },
+): boolean {
+  return template === null || targetFields(template, target) !== null;
+}
+
+function strippedData<Data extends FieldValues | RepData>(
+  template: PresetTemplate | null,
+  k: string,
+  d: Data,
+): Data {
+  return template === null ? d : stripToTemplate({ k, d }, template).d;
 }
 
 // The first free id of a role, drawn again at most `MAX_ID_REDRAWS` times, or `null`. Each redraw is

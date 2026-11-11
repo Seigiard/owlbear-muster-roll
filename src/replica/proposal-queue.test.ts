@@ -1,11 +1,13 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
 import type { Version } from '@/core/merge';
+import type { PresetTemplate } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import {
   combinePatches,
   createProposalQueue,
   proposedRecord,
+  strippedPatch,
   type ProposalEntry,
   type ProposalQueue,
 } from '@/replica/proposal-queue';
@@ -412,5 +414,75 @@ describe('proposedRecord', () => {
       { ok: false, error: 'gone' },
       { ok: false, error: 'unchanged' },
     ]);
+  });
+});
+
+describe('strippedPatch', () => {
+  const TEMPLATE: PresetTemplate = {
+    sections: [
+      {
+        rows: [
+          [
+            { kind: 'field', type: 'number', id: 'str' },
+            { kind: 'field', type: 'check', id: 'str_tired' },
+          ],
+        ],
+      },
+      {
+        repeat: true,
+        rows: [
+          [
+            { kind: 'field', type: 'text', id: 'attack' },
+            { kind: 'field', type: 'number', id: 'bonus' },
+          ],
+        ],
+      },
+    ],
+  };
+
+  test('returns the same patch when the template has every field', () => {
+    // #given
+    const patch = { kind: 'fields', values: { str: 3, str_tired: null } } as const;
+
+    // #then
+    expect(strippedPatch('row:brok:str', patch, TEMPLATE)).toBe(patch);
+  });
+
+  test('drops the fields the row no longer has, and values of another type', () => {
+    // #when
+    const stripped = strippedPatch(
+      'row:brok:str',
+      { kind: 'fields', values: { str: 3, str_tired: 'yes', gone: 1 } },
+      TEMPLATE,
+    );
+
+    // #then
+    expect(stripped).toEqual({ kind: 'fields', values: { str: 3 } });
+  });
+
+  test.each<[string, string, Parameters<typeof strippedPatch>[1]]>([
+    ['only removed fields', 'row:brok:str', { kind: 'fields', values: { gone: 1 } }],
+    ['a row the template no longer has', 'row:brok:gone', { kind: 'fields', values: { gone: 1 } }],
+    ['a removal in a section that is gone', 'rep:brok:spell:i1', { kind: 'remove' }],
+    [
+      'a new row in a section that is gone',
+      'rep:brok:spell:i1',
+      { kind: 'add', d: { order: 0, cells: {} } },
+    ],
+  ])('leaves nothing of %s', (_name, key, patch) => {
+    // #then
+    expect(strippedPatch(key, patch, TEMPLATE)).toBeNull();
+  });
+
+  test('keeps a new repeat row with only the cells its section has', () => {
+    // #when
+    const stripped = strippedPatch(
+      'rep:brok:attack:i1',
+      { kind: 'add', d: { order: 2, cells: { attack: 'Меч', range: 30 } } },
+      TEMPLATE,
+    );
+
+    // #then
+    expect(stripped).toEqual({ kind: 'add', d: { order: 2, cells: { attack: 'Меч' } } });
   });
 });

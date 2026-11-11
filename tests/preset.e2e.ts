@@ -372,10 +372,7 @@ test('the downloaded preset holds the structure at the current v and loads in an
   await otherRoom.close();
 });
 
-test('while a sheet exists the upload is disabled with its reason in both places', async ({
-  page,
-  context,
-}) => {
+test('while a sheet exists the upload stays enabled in both places', async ({ page, context }) => {
   // #given
   await page.goto('/index.html');
   await seedStorage(page, SHEET_KEY, SAVED_SHEET);
@@ -384,7 +381,7 @@ test('while a sheet exists the upload is disabled with its reason in both places
   // #when
   const main = page.getByRole('button', { name: UPLOAD });
 
-  await expect(main).toBeDisabled();
+  await expect(main).toBeEnabled();
   await page.getByRole('button', { name: SETTINGS }).click();
 
   // #then
@@ -392,11 +389,11 @@ test('while a sheet exists the upload is disabled with its reason in both places
     name: UPLOAD,
   });
 
-  await expect(inSettings).toBeDisabled();
-  await expect(inSettings).toHaveAccessibleDescription('Удалите листы, чтобы заменить пресет.');
+  await expect(inSettings).toBeEnabled();
+  await expect(inSettings).toHaveAccessibleDescription('');
 });
 
-test('with a preset and a sheet, Settings disables the upload and keeps the download', async ({
+test('with a preset and a sheet, Settings enables the upload and the download', async ({
   page,
   context,
 }) => {
@@ -410,9 +407,8 @@ test('with a preset and a sheet, Settings disables the upload and keeps the down
   await page.getByRole('tab', { name: SETTINGS }).click();
 
   // #then
-  await expect(page.getByRole('button', { name: UPLOAD })).toHaveAccessibleDescription(
-    'Удалите листы, чтобы заменить пресет.',
-  );
+  await expect(page.getByRole('button', { name: UPLOAD })).toBeEnabled();
+  await expect(page.getByRole('button', { name: UPLOAD })).toHaveAccessibleDescription('');
   await expect(page.getByRole('button', { name: DOWNLOAD })).toBeEnabled();
 });
 

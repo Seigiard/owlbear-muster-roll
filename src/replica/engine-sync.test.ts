@@ -41,6 +41,7 @@ const TIMING: Timing = {
   proposeResendMaxMs: 30000,
   editDeniedQuietMs: 2000,
   pendingMarkDelayMs: 1000,
+  presetRequestTimeoutMs: 15000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -819,7 +820,12 @@ describe('player client', () => {
     { type: 'sheet-create', sheetId: 'lisa', kind: 'pc', name: 'Лиза' },
     { type: 'sheet-rename', sheetId: 'brok', name: 'Брок Смелый' },
     { type: 'sheet-delete', sheetId: 'brok' },
-    { type: 'preset-upload', data: encodePreset(PRESET) },
+    {
+      type: 'preset-upload',
+      data: encodePreset(PRESET),
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
+    },
     patch(ROW_STR, 'str', 12),
     { type: 'repeat-row-add', sheetId: 'brok', sectionId: 'attack', instanceId: 'i1' },
     { type: 'repeat-row-delete', sheetId: 'brok', sectionId: 'attack', instanceId: 'i1' },

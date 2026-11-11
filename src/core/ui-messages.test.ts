@@ -183,7 +183,12 @@ describe('parseWindowMessage', () => {
     const message: WindowMessage = {
       t: 'command',
       id: 'c1',
-      command: { type: 'preset-upload', data: 'eJyrVipTsjKsBQAIkwIe' },
+      command: {
+        type: 'preset-upload',
+        data: 'eJyrVipTsjKsBQAIkwIe',
+        expectedCount: 0,
+        expectedDigest: '811c9dc5',
+      },
     };
 
     // #when
@@ -194,10 +199,27 @@ describe('parseWindowMessage', () => {
   });
 
   test.each<[string, JsonValue]>([
-    ['data that is not base64', { type: 'preset-upload', data: '{"v":1}' }],
-    ['empty data', { type: 'preset-upload', data: '' }],
-    ['no data', { type: 'preset-upload' }],
-    ['a whole record beside its data', { type: 'preset-upload', data: 'AAAA', k: 'preset' }],
+    [
+      'data that is not base64',
+      { type: 'preset-upload', data: '{"v":1}', expectedCount: 0, expectedDigest: '811c9dc5' },
+    ],
+    [
+      'empty data',
+      { type: 'preset-upload', data: '', expectedCount: 0, expectedDigest: '811c9dc5' },
+    ],
+    ['no data', { type: 'preset-upload', expectedCount: 0, expectedDigest: '811c9dc5' }],
+    ['no expected count', { type: 'preset-upload', data: 'AAAA' }],
+    ['a negative expected count', { type: 'preset-upload', data: 'AAAA', expectedCount: -1 }],
+    [
+      'a whole record beside its data',
+      {
+        type: 'preset-upload',
+        data: 'AAAA',
+        expectedCount: 0,
+        expectedDigest: '811c9dc5',
+        k: 'preset',
+      },
+    ],
   ])('refuses a preset-upload command with %s', (_name, command) => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
@@ -380,7 +402,7 @@ describe('parseEngineMessage', () => {
   test.each([
     'too-large',
     'invalid-preset',
-    'sheets-exist',
+    'preset-unreadable',
     'invalid-sheet-id',
     'sheet-exists',
     'unknown-sheet',
@@ -444,6 +466,22 @@ describe('parseEngineMessage', () => {
 
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+  });
+
+  test('takes a count and a digest with `count-changed` only', () => {
+    // #given
+    const changed = { t: 'command-rejected', id: 'c1', reason: 'count-changed' };
+
+    // #when
+    const parsed = [
+      parseEngineMessage({ ...changed, count: 2, digest: '0a1b2c3d' }).ok,
+      parseEngineMessage(changed).ok,
+      parseEngineMessage({ ...changed, count: 2 }).ok,
+      parseEngineMessage({ t: 'command-rejected', id: 'c1', reason: 'too-large', count: 2 }).ok,
+    ];
+
+    // #then
+    expect(parsed).toEqual([true, false, false, false]);
   });
 
   const PROJECTION: EngineMessage = {

@@ -43,6 +43,7 @@ const TIMING: Timing = {
   proposeResendMaxMs: 30000,
   editDeniedQuietMs: 2000,
   pendingMarkDelayMs: 1000,
+  presetRequestTimeoutMs: 15000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -918,7 +919,13 @@ describe('pending queue', () => {
 
     // #when
     const unknown = send(client, patch(ROW_STR, 'nope', 1));
-    const upload = send(client, { type: 'preset-upload', data: encodePreset(PRESET) });
+
+    const upload = send(client, {
+      type: 'preset-upload',
+      data: encodePreset(PRESET),
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
+    });
 
     await waitUntil(() => client.store.$rejections.get().size === 2);
 

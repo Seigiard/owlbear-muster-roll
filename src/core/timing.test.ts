@@ -36,4 +36,9 @@ describe('timing constants', () => {
     // #then
     expect(TIMING.openRequestTtlMs).toBe(15000);
   });
+
+  test('gives up on a preset diff or upload with no answer after 15 s', () => {
+    // #then
+    expect(TIMING.presetRequestTimeoutMs).toBe(15000);
+  });
 });

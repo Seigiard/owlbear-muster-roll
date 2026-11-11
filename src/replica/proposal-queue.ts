@@ -1,5 +1,8 @@
+import { acceptedFieldValue, targetFields } from '@/core/field-patch';
 import { sameJson } from '@/core/json';
 import type { Version } from '@/core/merge';
+import type { PresetTemplate } from '@/core/preset';
+import { keptValues, type PresetMoves } from '@/core/preset-migrate';
 import {
   fieldValuesSchema,
   repDataSchema,
@@ -252,6 +255,86 @@ export function proposedRecord(
   return !force && sameJson(instance, after)
     ? err('unchanged')
     : ok({ k: key, d: after, ...mint() });
+}
+
+// AD-14: the patch with only the fields the template has in the row of `key`, each value of its
+// field's type or a clear. The same patch when nothing goes, and `null` when nothing is left: a
+// row or repeat section the template no longer has, or field values that all went.
+export function strippedPatch(
+  key: string,
+  patch: ProposalPatch,
+  template: PresetTemplate,
+): ProposalPatch | null {
+  const [form, , id = ''] = key.split(':');
+
+  const fields =
+    form === 'rep'
+      ? targetFields(template, { kind: 'rep', sectionId: id })
+      : targetFields(template, { kind: 'row', rowId: id });
+
+  if (fields === null) {
+    return null;
+  }
+
+  if (patch.kind === 'remove') {
+    return patch;
+  }
+
+  if (patch.kind === 'add') {
+    const cells = keptValues(patch.d.cells, fields);
+
+    return sameJson(cells, patch.d.cells) ? patch : { kind: 'add', d: { ...patch.d, cells } };
+  }
+
+  const entries = Object.entries(patch.values).filter(([fieldId, value]) => {
+    const field = fields.find((cell) => cell.id === fieldId);
+
+    return field !== undefined && acceptedFieldValue(field, value).ok;
+  });
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return entries.length === Object.keys(patch.values).length
+    ? patch
+    : { kind: 'fields', values: Object.fromEntries(entries) };
+}
+
+// AD-14: the patch of `key` under the keys a new preset gives it. A row's field values go to the new
+// rows that hold their ids, so one patch can split; a value with no new row goes. A repeat row's
+// patch, a removal too, goes to the new section of its section. Empty when nothing maps.
+export function movedPatches(
+  key: string,
+  patch: ProposalPatch,
+  moves: PresetMoves,
+): { k: string; patch: ProposalPatch }[] {
+  const [form, sheetId = '', id = '', instanceId = ''] = key.split(':');
+
+  if (form === 'rep') {
+    const target = moves.sectionOf(id);
+
+    return target === null ? [] : [{ k: `rep:${sheetId}:${target}:${instanceId}`, patch }];
+  }
+
+  if (patch.kind !== 'fields') {
+    return [{ k: key, patch }];
+  }
+
+  const byRow = new Map<string, Record<string, FieldValue | null>>();
+
+  for (const [fieldId, value] of Object.entries(patch.values)) {
+    const rowId = moves.rowOf(fieldId);
+
+    if (rowId !== null) {
+      byRow.set(rowId, { ...byRow.get(rowId), [fieldId]: value });
+    }
+  }
+
+  return [...byRow].map(([rowId, values]) => ({
+    k: `row:${sheetId}:${rowId}`,
+    patch: { kind: 'fields', values },
+  }));
 }
 
 function withValues(

@@ -99,8 +99,10 @@ export const copy = {
     tooLarge: 'файл слишком большой',
   },
   presetRequired: 'Сначала загрузите пресет.',
-  // Temporary until Story 5.1 lets a preset change go over existing sheets.
-  presetLocked: 'Удалите листы, чтобы заменить пресет.',
+  // AD-14: the stored preset does not decode, as one a newer build wrote, so no upload can run.
+  presetUnreadable: 'Сохранённый пресет не читается. Обновите расширение.',
+  presetWriteFailed: 'Не удалось сохранить пресет. Попробуйте ещё раз.',
+  presetNotAllowed: 'Загружать пресет может только мастер.',
   roll: (roller: string, sheet: string, cell: string, result: string): string =>
     `${roller}: ${sheet}, ${cell} — ${result}`,
   rollSuccess: 'успех',

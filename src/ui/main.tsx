@@ -6,7 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { canEdit, ownedFirst, ownedSheetIds } from '@/core/access';
 import { newSheetId } from '@/core/ids';
 import { decodePreset, type Preset } from '@/core/preset';
-import { hasLiveSheet, presetDataSchema, type VersionedRecord } from '@/core/records';
+import { presetDataSchema, type VersionedRecord } from '@/core/records';
 import { sheetKey, type SheetSummary } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
 import { linkedSheetIds } from '@/core/token-links';
@@ -74,6 +74,7 @@ type WindowRootProps = {
   // UX-DR3: which of a player's waiting edits show "Ожидает" by now.
   pendingMarks: PendingMarks;
   sendCommand: ReplicaClient['sendCommand'];
+  requestPresetDiff: ReplicaClient['requestPresetDiff'];
   requestRoll: ReplicaClient['requestRoll'];
   acknowledgeOpen: ReplicaClient['acknowledgeOpen'];
 };
@@ -129,6 +130,7 @@ async function start(): Promise<void> {
         store={store}
         pendingMarks={pendingMarks}
         sendCommand={client.sendCommand}
+        requestPresetDiff={client.requestPresetDiff}
         requestRoll={client.requestRoll}
         acknowledgeOpen={client.acknowledgeOpen}
       />,
@@ -144,6 +146,7 @@ function WindowRoot({
   store: projection,
   pendingMarks: marks,
   sendCommand,
+  requestPresetDiff,
   requestRoll,
   acknowledgeOpen,
 }: WindowRootProps): ReactNode {
@@ -231,6 +234,11 @@ function WindowRoot({
       localValues: localFieldValues,
     }),
     [sendCommand, projection],
+  );
+
+  const presetClient = useMemo(
+    () => ({ sendCommand, requestPresetDiff }),
+    [sendCommand, requestPresetDiff],
   );
 
   const rolling = useMemo<DiceRolling>(
@@ -526,16 +534,14 @@ function WindowRoot({
     );
   }
 
-  const sheetsExist = hasLiveSheet(records.values());
   const loading = <p>{copy.loading}</p>;
 
   const settings = (
     <SettingsView
       preset={preset}
-      sheetsExist={sheetsExist}
       catchingUp={catchingUp}
       roomCopy={roomCopy}
-      sendCommand={sendCommand}
+      client={presetClient}
       store={projection}
     />
   );
@@ -558,9 +564,10 @@ function WindowRoot({
           settings
         ) : (
           <PresetUpload
-            sendCommand={sendCommand}
+            client={presetClient}
             store={projection}
-            disabledReason={uploadDisabledReason(catchingUp, sheetsExist)}
+            catchingUp={catchingUp}
+            disabledReason={uploadDisabledReason(catchingUp)}
           />
         ),
       };

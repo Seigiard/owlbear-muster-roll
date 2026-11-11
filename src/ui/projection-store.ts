@@ -13,6 +13,7 @@ import type {
   CommandRejectedMessage,
   Notice,
   OpenSheetRequest,
+  PresetResultMessage,
   RollOutcomeMessage,
   RoomCopyStatus,
   SyncState,
@@ -47,6 +48,8 @@ export type ProjectionStore = {
   $rejections: ReadableAtom<ReadonlyMap<string, CommandRejectedMessage>>;
   // Recent outcomes of this window's roll requests, by request id.
   $rollOutcomes: ReadableAtom<ReadonlyMap<string, RollOutcomeMessage>>;
+  // AD-14: recent answers to this window's preset diffs and uploads, by their id.
+  $presetResults: ReadableAtom<ReadonlyMap<string, PresetResultMessage>>;
   // False until the first full projection, so an empty room is not mistaken for one still loading.
   $loaded: ReadableAtom<boolean>;
   $sync: ReadableAtom<SyncState>;
@@ -72,6 +75,7 @@ export type ProjectionStore = {
   ) => void;
   setRejection: (rejection: CommandRejectedMessage) => void;
   setRollOutcome: (outcome: RollOutcomeMessage) => void;
+  setPresetResult: (result: PresetResultMessage) => void;
   setRoomCopy: (roomCopy: RoomCopyStatus) => void;
   setOpenRequest: (request: OpenSheetRequest) => void;
   setParty: (party: readonly PartyEntry[]) => void;
@@ -106,6 +110,7 @@ export function createProjectionStore(): ProjectionStore {
   const $notices = atom<readonly Notice[]>([]);
   const $rejections = atom<ReadonlyMap<string, CommandRejectedMessage>>(new Map());
   const $rollOutcomes = atom<ReadonlyMap<string, RollOutcomeMessage>>(new Map());
+  const $presetResults = atom<ReadonlyMap<string, PresetResultMessage>>(new Map());
   const $loaded = atom(false);
   const $sync = atom<SyncState>(UNKNOWN_SYNC);
   const $roomCopy = atom<RoomCopyStatus>(UNKNOWN_ROOM_COPY);
@@ -135,6 +140,7 @@ export function createProjectionStore(): ProjectionStore {
     $notices,
     $rejections,
     $rollOutcomes,
+    $presetResults,
     $loaded,
     $sync,
     $roomCopy,
@@ -170,6 +176,9 @@ export function createProjectionStore(): ProjectionStore {
     },
     setRollOutcome: (outcome) => {
       $rollOutcomes.set(withRecent($rollOutcomes.get(), outcome.id, outcome));
+    },
+    setPresetResult: (result) => {
+      $presetResults.set(withRecent($presetResults.get(), result.id, result));
     },
     setRoomCopy: (roomCopy) => {
       $roomCopy.set(roomCopy);

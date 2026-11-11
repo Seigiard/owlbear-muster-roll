@@ -10,9 +10,21 @@ export function presetFailureMessage(failure: PresetFailure): string {
   return copy.badFile(badFileReason(failure));
 }
 
-// `sheets-exist` and `catching-up` have no message of their own: the same projection disables the
-// upload with its reason.
+// `catching-up` has no message of its own: the same projection disables the upload with its reason.
+// `count-changed` asks again instead.
 export function presetRejectionMessage(reason: RejectionReason): string | null {
+  if (reason === 'preset-unreadable') {
+    return copy.presetUnreadable;
+  }
+
+  if (reason === 'write-failed') {
+    return copy.presetWriteFailed;
+  }
+
+  if (reason === 'not-allowed') {
+    return copy.presetNotAllowed;
+  }
+
   if (reason === 'too-large') {
     return copy.badFile(copy.badFileReason.tooLarge);
   }

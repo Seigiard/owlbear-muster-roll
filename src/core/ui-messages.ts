@@ -173,9 +173,19 @@ const ownerSetSchema = z.strictObject({
 
 // The window sends the deflated data, not the JSON, because a preset over the message limit as
 // JSON can still fit once deflated. The engine decodes and validates it again.
+const presetDataSchema = z.base64().min(1);
+
+// AD-14: a hash of the erased (key, field id) pairs, from `preset-diff-result`.
+const erasedDigestSchema = z.string().regex(/^[0-9a-f]{8}$/);
+
+// AD-14: the count of stored values the upload erases, as the GM confirmed it, or 0 when the diff
+// found none, and the digest of those values. The engine runs the diff again and refuses with
+// `count-changed` when its own count is above 0 and the count or the digest differs.
 const presetUploadSchema = z.strictObject({
   type: z.literal('preset-upload'),
-  data: z.base64().min(1),
+  data: presetDataSchema,
+  expectedCount: z.number().int().nonnegative(),
+  expectedDigest: erasedDigestSchema,
 });
 
 // One field, one value or a clear as `null`. The value is any JSON, so the engine, which knows
@@ -225,13 +235,41 @@ const commandSchema = z.strictObject({
   command: commandIntentSchema,
 });
 
-const commandRejectedSchema = z.strictObject({
+// AD-14: asks how many stored values the preset would erase. It writes nothing, so it is no command.
+// A refusal comes as `command-rejected` with this id.
+const presetDiffSchema = z.strictObject({
+  t: z.literal('preset-diff'),
+  id: idSchema,
+  data: presetDataSchema,
+});
+
+const countSchema = z.number().int().nonnegative();
+
+// The answer to `preset-diff`: the count of stored values the upload would erase, and their digest.
+const presetDiffResultSchema = z.strictObject({
+  t: z.literal('preset-diff-result'),
+  id: idSchema,
+  count: countSchema,
+  digest: erasedDigestSchema,
+});
+
+// A `preset-upload` wrote its whole batch. `count` is the number of stored values it erased.
+const presetUploadedSchema = z.strictObject({
+  t: z.literal('preset-uploaded'),
+  id: idSchema,
+  count: countSchema,
+});
+
+const plainRejectionSchema = z.strictObject({
   t: z.literal('command-rejected'),
   id: idSchema,
   reason: z.enum([
     'too-large',
     'invalid-preset',
-    'sheets-exist',
+    // AD-14: the stored preset does not decode, as one from a newer build, so no diff can run.
+    'preset-unreadable',
+    // AD-14: a write of the upload batch failed, so the batch stopped there.
+    'write-failed',
     'invalid-sheet-id',
     'sheet-exists',
     'unknown-sheet',
@@ -262,6 +300,21 @@ const commandRejectedSchema = z.strictObject({
     'catching-up',
   ]),
 });
+
+// AD-14: the replica changed since the diff, and the upload would erase other values: `count` of
+// them, with `digest` for the next confirmation.
+const countChangedSchema = z.strictObject({
+  t: z.literal('command-rejected'),
+  id: idSchema,
+  reason: z.literal('count-changed'),
+  count: countSchema,
+  digest: erasedDigestSchema,
+});
+
+const commandRejectedSchema = z.discriminatedUnion('reason', [
+  plainRejectionSchema,
+  countChangedSchema,
+]);
 
 // AD-13: a roll is no command, as it writes nothing, so a player and a client in catch-up roll too.
 // `shown` holds what the window shows in the fields it holds locally, by field id: unsent text, or
@@ -307,6 +360,7 @@ const openSheetAckSchema = z.strictObject({
 const windowMessageSchema = z.discriminatedUnion('t', [
   projectionRequestSchema,
   commandSchema,
+  presetDiffSchema,
   rollRequestSchema,
   openSheetAckSchema,
 ]);
@@ -317,6 +371,8 @@ const engineMessageSchema = z.discriminatedUnion('t', [
   commandRejectedSchema,
   rollOutcomeSchema,
   openSheetSchema,
+  presetDiffResultSchema,
+  presetUploadedSchema,
 ]);
 
 export type Notice = z.infer<typeof noticeSchema>;
@@ -336,6 +392,15 @@ export type Command = z.infer<typeof commandIntentSchema>;
 export type CommandMessage = z.infer<typeof commandSchema>;
 
 export type CommandRejectedMessage = z.infer<typeof commandRejectedSchema>;
+
+export type PresetDiffMessage = z.infer<typeof presetDiffSchema>;
+
+export type PresetDiffResultMessage = z.infer<typeof presetDiffResultSchema>;
+
+export type PresetUploadedMessage = z.infer<typeof presetUploadedSchema>;
+
+// What the engine answered to a window's preset diff or upload, by its id.
+export type PresetResultMessage = PresetDiffResultMessage | PresetUploadedMessage;
 
 export type RejectionReason = CommandRejectedMessage['reason'];
 

@@ -16,6 +16,7 @@ export type Timing = {
   readonly proposeResendMaxMs: number;
   readonly editDeniedQuietMs: number;
   readonly pendingMarkDelayMs: number;
+  readonly presetRequestTimeoutMs: number;
 };
 
 export const TIMING: Timing = {
@@ -54,6 +55,9 @@ export const TIMING: Timing = {
   // UX-DR3: a player's edit with no answer this long shows "Ожидает". With no GM it shows at once.
   // The window keeps this timer, so a hidden background page cannot hold the mark back.
   pendingMarkDelayMs: 1000,
+  // AD-14: a preset diff or upload with no answer this long gives up, so the button never waits
+  // forever.
+  presetRequestTimeoutMs: 15000,
 };
 
 // An access change with no answer this long shows that it failed, so the panel never waits forever.

@@ -22,6 +22,7 @@ import {
 import type { FieldPatchTarget } from '@/core/field-patch';
 import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
 import { decodePreset, type Preset } from '@/core/preset';
+import { NOTHING_ERASED, presetMoves, stripToTemplate } from '@/core/preset-migrate';
 import {
   fieldValuesSchema,
   presetDataSchema,
@@ -81,6 +82,7 @@ import {
   type GmLink,
   type Notice,
   type OpenSheetRequest,
+  type PresetDiffMessage,
   type ProjectionMessage,
   type RejectionReason,
   type RollOutcome,
@@ -99,7 +101,9 @@ import { createPendingQueue, type PendingEntry } from '@/replica/pending-queue';
 import {
   combinePatches,
   createProposalQueue,
+  movedPatches,
   proposedRecord,
+  strippedPatch,
   type ProposalEntry,
   type ProposalFailure,
   type ProposalPatch,
@@ -438,14 +442,24 @@ export async function startReplicaEngine(
     return sendQueue.enqueue(UI_CHANNEL, message, LOCAL);
   }
 
-  function reject(id: string, reason: RejectionReason): void {
+  // `changed` goes with `count-changed` only.
+  function reject(
+    id: string,
+    reason: RejectionReason,
+    changed: { count: number; digest: string } = { count: 0, digest: NOTHING_ERASED },
+  ): void {
     if (menuCommandIds.has(id) && options.menuCopy !== undefined) {
       platform.notification.show(options.menuCopy.unlinkFailed, 'ERROR').catch((error) => {
         console.error('Muster Roll could not show a refused unlink', error);
       });
     }
 
-    send({ t: 'command-rejected', id, reason }).catch((error) => {
+    const message: EngineMessage =
+      reason === 'count-changed'
+        ? { t: 'command-rejected', id, reason, ...changed }
+        : { t: 'command-rejected', id, reason };
+
+    send(message).catch((error) => {
       console.error('Muster Roll could not reject a command', error);
     });
   }
@@ -766,15 +780,18 @@ export async function startReplicaEngine(
 
   // A batch is saved in order and stops at its first failed write. The failed record and the ones
   // after it are not applied, so a retry of the command reaches them again. A single record keeps
-  // its value after a failed write, and the notice asks the GM for a snapshot.
-  function apply(records: readonly VersionedRecord[]): VersionedRecord[] {
-    const isBatch = records.length > 1;
+  // its value after a failed write, and the notice asks the GM for a snapshot, unless it is part of
+  // a batch the caller splits.
+  function apply(
+    records: readonly VersionedRecord[],
+    stopsOnFailure = records.length > 1,
+  ): VersionedRecord[] {
     const applied: VersionedRecord[] = [];
 
     for (const record of records) {
       const persisted = persist(record);
 
-      if (!persisted.saved && isBatch) {
+      if (!persisted.saved && stopsOnFailure) {
         break;
       }
 
@@ -815,6 +832,12 @@ export async function startReplicaEngine(
       return;
     }
 
+    if (message.command.type === 'preset-upload') {
+      uploadPreset(message.id, message.command);
+
+      return;
+    }
+
     const composed = composers.compose(liveContext(), message.command);
 
     if (!composed.ok) {
@@ -832,6 +855,94 @@ export async function startReplicaEngine(
     if (applied.length > 0) {
       scheduleRoomCopy();
     }
+  }
+
+  // AD-14: a window asks how many stored values a preset would erase before it asks the GM. A GM
+  // client that is live answers with one diff over its full replica. The answer writes nothing.
+  function handlePresetDiff(message: PresetDiffMessage): void {
+    if (recentCommandIds.has(message.id)) {
+      return;
+    }
+
+    recentCommandIds.add(message.id);
+
+    if (role !== 'GM') {
+      reject(message.id, 'not-allowed');
+
+      return;
+    }
+
+    if (sync.state === 'catching-up') {
+      reject(message.id, 'catching-up');
+
+      return;
+    }
+
+    const diff = composers.presetDiffResult(liveContext(), message.data);
+
+    if (!diff.ok) {
+      reject(message.id, diff.error);
+
+      return;
+    }
+
+    send({ t: 'preset-diff-result', id: message.id, ...diff.value }).catch((error) => {
+      console.error('Muster Roll could not answer a preset diff', error);
+    });
+  }
+
+  // AD-14: the diff runs again over the replica as it is now. The commits held so far go out
+  // first, then each group of the batch is saved and sent as commits of its own, in order: rows
+  // under new keys, `preset`, then tombstones of old keys and stripped rows. A failed write stops
+  // the batch there, so a closure or a failure at any point leaves values readable under one of
+  // the two presets. The generation does not change.
+  function uploadPreset(id: string, command: Extract<Command, { type: 'preset-upload' }>): void {
+    const batch = composers.composePresetUpload(liveContext(), command);
+
+    if (!batch.ok) {
+      reject(id, batch.error.reason, batch.error.changed);
+
+      return;
+    }
+
+    if (persistence !== null) {
+      outbox.flush();
+    }
+
+    const applied: VersionedRecord[] = [];
+    let complete = true;
+
+    for (const group of batch.value.groups) {
+      const written = apply(group, true);
+
+      applied.push(...written);
+
+      if (persistence !== null && written.length > 0) {
+        outbox.add(written);
+        outbox.flush();
+      }
+
+      if (written.length < group.length) {
+        complete = false;
+        break;
+      }
+    }
+
+    emitDelta(applied);
+
+    if (applied.length > 0) {
+      scheduleRoomCopy();
+    }
+
+    if (!complete) {
+      reject(id, 'write-failed');
+
+      return;
+    }
+
+    send({ t: 'preset-uploaded', id, count: batch.value.count }).catch((error) => {
+      console.error('Muster Roll could not report a preset upload', error);
+    });
   }
 
   // AD-4: a player's edit of a field or a repeat row becomes the entry of its key in the proposal
@@ -927,7 +1038,21 @@ export async function startReplicaEngine(
       force,
     );
 
-    return made.ok && !recordFitsOneMessage(made.value) ? err('too-large') : made;
+    if (!made.ok) {
+      return made;
+    }
+
+    const stripped = strippedProposal(made.value);
+
+    return recordFitsOneMessage(stripped) ? ok(stripped) : err('too-large');
+  }
+
+  // AD-14: a player's version keeps no value the character template no longer has in its row, so a
+  // value an older preset left in the base never goes out with it.
+  function strippedProposal(record: VersionedRecord): VersionedRecord {
+    const preset = presetOf(replica.get('preset'));
+
+    return preset === null ? record : stripToTemplate(record, preset.character);
   }
 
   // AD-7: the edits made during catch-up take their `c` now, over the records it brought, and only
@@ -1353,7 +1478,7 @@ export async function startReplicaEngine(
       true,
     );
 
-    return made.ok ? made.value : null;
+    return made.ok ? strippedProposal(made.value) : null;
   }
 
   function composedEntry(context: ComposeContext, entry: PendingEntry): VersionedRecord[] {
@@ -1993,6 +2118,7 @@ export async function startReplicaEngine(
   // A remote record is never sent on again.
   function receiveRecords(records: readonly VersionedRecord[]): VersionedRecord[] {
     const noticesBefore = currentNotices().join();
+    const presetBefore = replica.get('preset');
     const changed: VersionedRecord[] = [];
 
     for (const record of records) {
@@ -2014,7 +2140,7 @@ export async function startReplicaEngine(
 
     if (changed.length > 0) {
       refreshTokenMenu();
-      dropDisallowed();
+      dropDisallowed(presetBefore);
     }
 
     if (changed.length > 0 || currentNotices().join() !== noticesBefore) {
@@ -2029,35 +2155,107 @@ export async function startReplicaEngine(
   // checked against the replica after the whole batch, so a revoke and a re-grant in one batch drop
   // nothing. The values return in the same delta, and one notification covers every drop. A removal
   // of a row that is gone already got what it asked for, so it drops with no notification.
-  function dropDisallowed(): void {
+  // AD-14: after a preset change each entry first moves to the keys the new preset gives its
+  // values, as the GM's migration moves the rows: an entry with nothing that maps drops in silence.
+  function dropDisallowed(presetBefore: VersionedRecord | undefined): void {
     if (role === 'GM') {
       return;
     }
 
     const context = proposalContext(replica);
+    const before = presetBefore === replica.get('preset') ? null : presetOf(presetBefore);
+
+    const moves =
+      before === null || context.preset === null
+        ? null
+        : presetMoves(before.character, context.preset.character);
+
     let denied = false;
 
-    for (const entry of proposals.entries()) {
-      // The version is a placeholder: no check of `proposalAllowed` reads it.
-      const made = proposedRecord(
-        entry.k,
-        entry.patch,
-        replica.get(entry.k),
-        () => ({ c: 1, a: connectionId }),
-        true,
-      );
+    for (const found of proposals.entries()) {
+      const parts = moves === null ? null : movedPatches(found.k, found.patch, moves);
 
-      if (made.ok && proposalAllowed(context, ownPlayerId, made.value)) {
+      if (parts === null || (parts.length === 1 && parts[0]?.k === found.k)) {
+        denied = recheckProposal(found, context, false) || denied;
         continue;
       }
 
-      proposals.drop(entry.k);
-      denied ||= made.ok || deniesEdit(made.error);
+      proposals.drop(found.k);
+
+      for (const part of parts) {
+        const existing = proposals.get(part.k);
+
+        const patch =
+          existing?.patch.kind === 'fields' && part.patch.kind === 'fields'
+            ? {
+                kind: 'fields' as const,
+                values: { ...part.patch.values, ...existing.patch.values },
+              }
+            : (existing?.patch ?? part.patch);
+
+        const entry: ProposalEntry = {
+          k: part.k,
+          patch,
+          record: found.record === null ? null : (existing?.record ?? found.record),
+          sent: existing?.sent ?? false,
+        };
+
+        denied = recheckProposal(entry, context, true) || denied;
+      }
     }
 
     if (denied) {
       notifyDenied();
     }
+  }
+
+  // AD-14: the entry loses the fields the current preset no longer has in its row, in silence. An
+  // entry with nothing left drops in silence too, and one that lost fields or moved goes out again,
+  // so the GM never answers its older version. True when a drop needs the denied notification.
+  function recheckProposal(
+    found: ProposalEntry,
+    context: ProposalContext,
+    moved: boolean,
+  ): boolean {
+    const patch =
+      context.preset === null
+        ? found.patch
+        : strippedPatch(found.k, found.patch, context.preset.character);
+
+    if (patch === null) {
+      proposals.drop(found.k);
+
+      return false;
+    }
+
+    const entry = patch === found.patch ? found : { ...found, patch };
+
+    // The version is a placeholder: no check of `proposalAllowed` reads it.
+    const made = proposedRecord(
+      entry.k,
+      entry.patch,
+      replica.get(entry.k),
+      () => ({ c: 1, a: connectionId }),
+      true,
+    );
+
+    if (!made.ok || !proposalAllowed(context, ownPlayerId, made.value)) {
+      proposals.drop(entry.k);
+
+      return made.ok || deniesEdit(made.error);
+    }
+
+    if (entry === found && !moved) {
+      return false;
+    }
+
+    if (entry.record === null) {
+      proposals.put(entry);
+
+      return false;
+    }
+
+    return deniesEdit(proposeEntry(entry, replica.get(entry.k), entry.sent));
   }
 
   // AD-7 answer: a GM client that is live and can vouch for its records answers after a random
@@ -2587,6 +2785,8 @@ export async function startReplicaEngine(
 
     if (parsed.value.t === 'projection-request') {
       sendProjection(parsed.value.nonce);
+    } else if (parsed.value.t === 'preset-diff') {
+      handlePresetDiff(parsed.value);
     } else if (parsed.value.t === 'roll-request') {
       handleRollRequest(parsed.value);
     } else if (parsed.value.t === 'open-sheet-ack') {

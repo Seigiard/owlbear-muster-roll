@@ -109,17 +109,6 @@ export function plinkPrefix(sheetId: string): string {
   return `plink:${sheetId}:`;
 }
 
-// A tombstoned sheet is deleted, so it does not count.
-export function hasLiveSheet(records: Iterable<VersionedRecord>): boolean {
-  for (const record of records) {
-    if (record.k.startsWith('sheet:') && record.d !== null) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 function versionedRecordOf<Key extends z.ZodType, Data extends z.ZodType>(key: Key, data: Data) {
   return z.strictObject({
     k: key,

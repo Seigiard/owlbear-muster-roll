@@ -26,6 +26,7 @@ const TIMING: Timing = {
   proposeResendMaxMs: 30000,
   editDeniedQuietMs: 2000,
   pendingMarkDelayMs: 1000,
+  presetRequestTimeoutMs: 15000,
 };
 
 const NONCE = 'nonce-1';

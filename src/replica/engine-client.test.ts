@@ -39,6 +39,7 @@ const TIMING: Timing = {
   proposeResendMaxMs: 30000,
   editDeniedQuietMs: 2000,
   pendingMarkDelayMs: 1000,
+  presetRequestTimeoutMs: 15000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -1828,7 +1829,12 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'preset-upload', data: encodePreset(examplePreset()) });
+    view.client.sendCommand({
+      type: 'preset-upload',
+      data: encodePreset(examplePreset()),
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
+    });
     await waitUntil(() => view.store.$records.get().has('preset'));
 
     // #then
@@ -1847,7 +1853,12 @@ describe('preset upload', () => {
     const engine = await startEngine(rig);
     const first = await openAndLoad(rig);
 
-    first.client.sendCommand({ type: 'preset-upload', data: encodePreset(examplePreset()) });
+    first.client.sendCommand({
+      type: 'preset-upload',
+      data: encodePreset(examplePreset()),
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
+    });
     await waitUntil(() => first.store.$records.get().has('preset'));
     engine.stop();
     first.client.stop();
@@ -1872,11 +1883,21 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
     const replacement: Preset = { v: 1, character: { sections: [] }, npc: { sections: [] } };
 
-    view.client.sendCommand({ type: 'preset-upload', data: encodePreset(examplePreset()) });
+    view.client.sendCommand({
+      type: 'preset-upload',
+      data: encodePreset(examplePreset()),
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
+    });
     await waitUntil(() => deltas(rig).length === 1);
 
     // #when
-    view.client.sendCommand({ type: 'preset-upload', data: encodePreset(replacement) });
+    view.client.sendCommand({
+      type: 'preset-upload',
+      data: encodePreset(replacement),
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
+    });
     await waitUntil(() => deltas(rig).length === 2);
 
     // #then
@@ -1909,7 +1930,12 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    const sent = view.client.sendCommand({ type: 'preset-upload', data });
+    const sent = view.client.sendCommand({
+      type: 'preset-upload',
+      data,
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
+    });
 
     await waitUntil(() => lastRejection(view.store) !== null);
 
@@ -1937,7 +1963,12 @@ describe('preset upload', () => {
     const data = incompressiblePresetData();
 
     // #when
-    const sent = view.client.sendCommand({ type: 'preset-upload', data });
+    const sent = view.client.sendCommand({
+      type: 'preset-upload',
+      data,
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
+    });
 
     await waitUntil(() => lastRejection(view.store) !== null);
 
@@ -1949,7 +1980,7 @@ describe('preset upload', () => {
     }).toEqual({ sent: true, rejection: 'too-large', stored: { ok: true, value: [] } });
   });
 
-  test('rejects an upload while a sheet exists and leaves the preset as it was', async () => {
+  test('accepts an upload while a sheet exists', async () => {
     // #given
     const rig = createRig();
 
@@ -1959,15 +1990,19 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'preset-upload', data: encodePreset(examplePreset()) });
-    await waitUntil(() => lastRejection(view.store) !== null);
+    view.client.sendCommand({
+      type: 'preset-upload',
+      data: encodePreset(examplePreset()),
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
+    });
+    await waitUntil(() => view.store.$records.get().has('preset'));
 
     // #then
     expect({
-      reason: lastRejection(view.store)?.reason,
-      preset: view.store.$records.get().has('preset'),
-      stored: rig.platform.storage.getItem(`${STORAGE_PREFIX}preset`),
-    }).toEqual({ reason: 'sheets-exist', preset: false, stored: { ok: true, value: null } });
+      rejection: lastRejection(view.store),
+      stored: storedPreset(rig)?.preset,
+    }).toEqual({ rejection: null, stored: JSON.parse(EXAMPLE_PRESET_TEXT) });
   });
 
   test('accepts an upload when the only sheet is deleted', async () => {
@@ -1980,14 +2015,19 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'preset-upload', data: encodePreset(examplePreset()) });
+    view.client.sendCommand({
+      type: 'preset-upload',
+      data: encodePreset(examplePreset()),
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
+    });
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
     expect(storedPreset(rig)?.preset).toEqual(JSON.parse(EXAMPLE_PRESET_TEXT));
   });
 
-  test('rejects an upload that a sheet-create reaches the replica before', async () => {
+  test('accepts an upload that a sheet-create reaches the replica before', async () => {
     // #given
     const rig = createRig();
 
@@ -1997,26 +2037,19 @@ describe('preset upload', () => {
 
     // #when
     view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', kind: 'pc', name: 'Брок' });
-
-    const upload = view.client.sendCommand({
+    view.client.sendCommand({
       type: 'preset-upload',
       data: encodePreset(examplePreset()),
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
     });
-
-    await waitUntil(() => lastRejection(view.store) !== null);
+    await waitUntil(() => view.store.$records.get().has('preset'));
 
     // #then
     expect({
       rejection: lastRejection(view.store),
-      preset: view.store.$records.get().has('preset'),
-    }).toEqual({
-      rejection: {
-        t: 'command-rejected',
-        id: upload.ok ? upload.value : '',
-        reason: 'sheets-exist',
-      },
-      preset: false,
-    });
+      sheet: view.store.$records.get().has('sheet:brok'),
+    }).toEqual({ rejection: null, sheet: true });
   });
 });
 
@@ -2298,6 +2331,8 @@ describe('field-patch', () => {
         },
         npc: { sections: [] },
       }),
+      expectedCount: 0,
+      expectedDigest: '811c9dc5',
     });
     view.client.sendCommand({ type: 'sheet-create', sheetId: 'liza', kind: 'pc', name: 'Лиза' });
     await waitUntil(() => view.store.$records.get().has('sheet:liza'));

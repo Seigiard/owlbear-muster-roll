@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { FileTrigger } from 'react-aria-components';
 
@@ -10,83 +10,243 @@ import {
   PRESET_FILE_BYTE_LIMIT,
   type Preset,
 } from '@/core/preset';
-import type { CommandRejectedMessage } from '@/core/ui-messages';
+import { err, ok, type Result } from '@/core/result';
+import { TIMING } from '@/core/timing';
+import type { CommandRejectedMessage, PresetResultMessage } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { downloadJsonFile } from '@/ui/download';
 import { presetFailureMessage, presetRejectionMessage } from '@/ui/preset-errors';
 import { Button } from '@/ui/primitives/button';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
+import { PresetConfirmation } from '@/ui/settings/preset-confirmation';
 
 const PRESET_FILE_NAME = 'muster-roll-preset.json';
 
 const ACCEPTED_FILE_TYPES = ['.json', 'application/json'];
 
-// A file error stays until the next attempt. The command id ties a later rejection to this attempt.
-type UploadAttempt = { error: string | null; commandId: string | null };
+// What the window says under the button: a file error or refusal, or the result of an upload. It
+// stays until the next attempt.
+type UploadMessage = { text: string; tone: 'error' | 'result' };
 
-const NO_ATTEMPT: UploadAttempt = { error: null, commandId: null };
+// AD-14, kept in this window only, so a window that closes forgets it and writes nothing. The new
+// preset's data stays here while the GM decides; other windows see nothing until the batch commits.
+// `diffing` waits for the count, `asking` shows the block, `uploading` waits for the batch. `ask`
+// counts the questions, so a new count remounts the block and its focus goes to "Отменить" again.
+// `digest` names the values the GM was asked about, so the upload erases only those.
+type UploadState =
+  | { phase: 'idle'; message: UploadMessage | null; ask: number }
+  | { phase: 'diffing'; data: string; requestId: string; ask: number }
+  | { phase: 'asking'; data: string; count: number; digest: string; ask: number }
+  | { phase: 'uploading'; data: string; commandId: string; ask: number };
 
-type PresetUploadProps = {
-  sendCommand: ReplicaClient['sendCommand'];
-  store: Pick<ProjectionStore, '$rejections'>;
+// What an answer to a request leads to: a new state, or an upload to send.
+type Settled = UploadState | { phase: 'send'; data: string; digest: string; ask: number };
+
+type PresetUploadOptions = {
+  client: Pick<ReplicaClient, 'sendCommand' | 'requestPresetDiff'>;
+  store: Pick<ProjectionStore, '$rejections' | '$presetResults'>;
+  catchingUp: boolean;
   disabledReason?: string;
 };
 
-export function PresetUpload({ sendCommand, store, disabledReason }: PresetUploadProps): ReactNode {
-  const [attempt, setAttempt] = useState<UploadAttempt>(NO_ATTEMPT);
-  const rejections = useStore(store.$rejections);
-  const rejection = attempt.commandId === null ? undefined : rejections.get(attempt.commandId);
-  const message = attempt.error ?? rejectionMessageFor(attempt, rejection);
+type PresetUploadParts = {
+  // The confirmation block, for the top of the content area, or `null` while none is open.
+  confirmation: ReactNode;
+  // "Загрузить пресет" with its message under it.
+  upload: ReactNode;
+};
 
-  async function upload(file: File): Promise<void> {
-    setAttempt(NO_ATTEMPT);
-    setAttempt(await sendPreset(file, sendCommand));
+// FR8, AD-14: a file goes through the window's checks, then the replica counts the stored values
+// it would erase. With none it is uploaded at once. With some, one block asks first. On confirm the
+// replica counts again: a new count above 0 asks again, and a count of 0 takes the path that erases
+// nothing. "Формат листов изменён." shows after either upload. Catch-up closes the block, and
+// nothing is written. While a request waits the button waits too; with no answer in time it
+// gives up, and a late answer is ignored.
+export function usePresetUpload({
+  client,
+  store,
+  catchingUp,
+  disabledReason,
+}: PresetUploadOptions): PresetUploadParts {
+  const [state, setState] = useState<UploadState>({ phase: 'idle', message: null, ask: 0 });
+  const rejections = useStore(store.$rejections);
+  const results = useStore(store.$presetResults);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  // The ids whose answer was taken or given up on, so no answer settles a request twice.
+  const settledIds = useRef(new Set<string>());
+  // Set on confirm: the button the focus went back to waits, so it takes the focus again after.
+  const refocus = useRef(false);
+  const { sendCommand, requestPresetDiff } = client;
+  const waitingId = requestIdOf(state);
+
+  if (catchingUp && state.phase === 'asking') {
+    setState({ phase: 'idle', message: null, ask: state.ask });
   }
 
+  const upload = useCallback(
+    (data: string, expectedCount: number, expectedDigest: string, ask: number): UploadState => {
+      const sent = sendCommand({ type: 'preset-upload', data, expectedCount, expectedDigest });
+
+      return sent.ok
+        ? { phase: 'uploading', data, commandId: sent.value, ask }
+        : { phase: 'idle', message: errorMessage(tooLargeText()), ask };
+    },
+    [sendCommand],
+  );
+
+  // The send happens here, once per request id, never while a state is computed.
+  useEffect(() => {
+    if (state.phase !== 'diffing' && state.phase !== 'uploading') {
+      return;
+    }
+
+    const id = state.phase === 'diffing' ? state.requestId : state.commandId;
+
+    if (settledIds.current.has(id)) {
+      return;
+    }
+
+    const next = settled(state, rejections.get(id), results.get(id));
+
+    if (next === state) {
+      return;
+    }
+
+    settledIds.current.add(id);
+    setState(next.phase === 'send' ? upload(next.data, 0, next.digest, next.ask) : next);
+  }, [state, rejections, results, upload]);
+
+  useEffect(() => {
+    if (waitingId === null) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      settledIds.current.add(waitingId);
+      setState((current) =>
+        requestIdOf(current) === waitingId
+          ? { phase: 'idle', message: errorMessage(copy.presetWriteFailed), ask: current.ask }
+          : current,
+      );
+    }, TIMING.presetRequestTimeoutMs);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [waitingId]);
+
+  useEffect(() => {
+    if (state.phase === 'idle' && refocus.current) {
+      refocus.current = false;
+      buttonRef.current?.focus();
+    }
+  }, [state.phase]);
+
+  async function choose(file: File): Promise<void> {
+    setState((current) => ({ phase: 'idle', message: null, ask: current.ask }));
+
+    const data = await readPreset(file);
+
+    if (!data.ok) {
+      setState((current) => ({
+        phase: 'idle',
+        message: errorMessage(data.error),
+        ask: current.ask,
+      }));
+
+      return;
+    }
+
+    const requested = requestPresetDiff(data.value);
+
+    setState((current) =>
+      requested.ok
+        ? { phase: 'diffing', data: data.value, requestId: requested.value, ask: current.ask }
+        : { phase: 'idle', message: errorMessage(tooLargeText()), ask: current.ask },
+    );
+  }
+
+  function backToButton(): void {
+    buttonRef.current?.focus();
+  }
+
+  const confirmation =
+    state.phase === 'asking' ? (
+      <PresetConfirmation
+        key={state.ask}
+        count={state.count}
+        onConfirm={() => {
+          refocus.current = true;
+          setState(upload(state.data, state.count, state.digest, state.ask));
+          backToButton();
+        }}
+        onCancel={() => {
+          setState({ phase: 'idle', message: null, ask: state.ask });
+          backToButton();
+        }}
+      />
+    ) : null;
+
+  const waitingReason = waitingId === null ? undefined : copy.loading;
+  const reason = disabledReason ?? waitingReason;
+
   const button = (
-    <Button variant="primary" disabledReason={disabledReason}>
+    <Button ref={buttonRef} variant="primary" disabledReason={reason}>
       {copy.command.loadPreset}
     </Button>
   );
 
-  return (
-    <div className="flex flex-col items-start gap-1">
-      {disabledReason === undefined ? (
-        <FileTrigger
-          acceptedFileTypes={ACCEPTED_FILE_TYPES}
-          onSelect={(files) => {
-            const file = files?.[0];
+  const message = state.phase === 'idle' ? state.message : null;
 
-            if (file !== undefined) {
-              upload(file).catch((error) => {
-                console.error('Muster Roll could not upload a preset', error);
-              });
-            }
-          }}
+  return {
+    confirmation,
+    upload: (
+      <div className="flex flex-col items-start gap-1">
+        {reason === undefined ? (
+          <FileTrigger
+            acceptedFileTypes={ACCEPTED_FILE_TYPES}
+            onSelect={(files) => {
+              const file = files?.[0];
+
+              if (file !== undefined) {
+                choose(file).catch((error) => {
+                  console.error('Muster Roll could not upload a preset', error);
+                });
+              }
+            }}
+          >
+            {button}
+          </FileTrigger>
+        ) : (
+          button
+        )}
+        <div
+          aria-live="polite"
+          className={`text-label-sm ${message?.tone === 'result' ? 'text-text' : 'text-danger-text'}`}
         >
-          {button}
-        </FileTrigger>
-      ) : (
-        button
-      )}
-      <div aria-live="polite" className="text-label-sm text-danger-text">
-        {message}
+          {message?.text}
+        </div>
       </div>
-    </div>
+    ),
+  };
+}
+
+// The upload alone, for a window with no preset: its block, if one opens, comes first.
+export function PresetUpload(props: PresetUploadOptions): ReactNode {
+  const { confirmation, upload } = usePresetUpload(props);
+
+  return (
+    <>
+      {confirmation}
+      {upload}
+    </>
   );
 }
 
 // UX-DR30: during catch-up the upload waits, and the replica refuses it as well.
-export function uploadDisabledReason(
-  catchingUp: boolean,
-  sheetsExist: boolean,
-): string | undefined {
-  if (catchingUp) {
-    return copy.loading;
-  }
-
-  return sheetsExist ? copy.presetLocked : undefined;
+export function uploadDisabledReason(catchingUp: boolean): string | undefined {
+  return catchingUp ? copy.loading : undefined;
 }
 
 type PresetDownloadProps = { preset: Preset | null; catchingUp: boolean };
@@ -111,15 +271,11 @@ export function PresetDownload({ preset, catchingUp }: PresetDownloadProps): Rea
   );
 }
 
-async function sendPreset(
-  file: File,
-  sendCommand: ReplicaClient['sendCommand'],
-): Promise<UploadAttempt> {
-  const tooLarge = copy.badFile(copy.badFileReason.tooLarge);
-
+// The window's own checks of the file, then its data as the replica takes it.
+async function readPreset(file: File): Promise<Result<string, string>> {
   // Checked before reading, so a huge file is never read into the window.
   if (file.size > PRESET_FILE_BYTE_LIMIT) {
-    return { error: tooLarge, commandId: null };
+    return err(tooLargeText());
   }
 
   let text: string;
@@ -128,27 +284,72 @@ async function sendPreset(
   try {
     text = await file.text();
   } catch {
-    return { error: copy.badFile(copy.badFileReason.notJson), commandId: null };
+    return err(copy.badFile(copy.badFileReason.notJson));
   }
 
   const parsed = parsePresetFile(text);
 
-  if (!parsed.ok) {
-    return { error: presetFailureMessage(parsed.error), commandId: null };
-  }
-
-  const sent = sendCommand({ type: 'preset-upload', data: encodePreset(parsed.value) });
-
-  return sent.ok ? { error: null, commandId: sent.value } : { error: tooLarge, commandId: null };
+  return parsed.ok ? ok(encodePreset(parsed.value)) : err(presetFailureMessage(parsed.error));
 }
 
-function rejectionMessageFor(
-  attempt: UploadAttempt,
-  rejection: CommandRejectedMessage | undefined,
-): string | null {
-  if (rejection === undefined || rejection.id !== attempt.commandId) {
-    return null;
+// The id of the request the window waits on, or `null`.
+function requestIdOf(state: UploadState): string | null {
+  if (state.phase === 'diffing') {
+    return state.requestId;
   }
 
-  return presetRejectionMessage(rejection.reason);
+  return state.phase === 'uploading' ? state.commandId : null;
+}
+
+// What the answer to the diff or the upload leads to, or `state` itself while none has come.
+function settled(
+  state: Extract<UploadState, { phase: 'diffing' | 'uploading' }>,
+  rejection: CommandRejectedMessage | undefined,
+  result: PresetResultMessage | undefined,
+): Settled {
+  if (rejection?.reason === 'count-changed') {
+    return {
+      phase: 'asking',
+      data: state.data,
+      count: rejection.count,
+      digest: rejection.digest,
+      ask: state.ask + 1,
+    };
+  }
+
+  if (rejection !== undefined) {
+    const text = presetRejectionMessage(rejection.reason);
+
+    return { phase: 'idle', message: text === null ? null : errorMessage(text), ask: state.ask };
+  }
+
+  if (result?.t === 'preset-diff-result' && state.phase === 'diffing') {
+    return result.count === 0
+      ? { phase: 'send', data: state.data, digest: result.digest, ask: state.ask }
+      : {
+          phase: 'asking',
+          data: state.data,
+          count: result.count,
+          digest: result.digest,
+          ask: state.ask + 1,
+        };
+  }
+
+  if (result?.t === 'preset-uploaded') {
+    return {
+      phase: 'idle',
+      message: { text: copy.presetUploadRemovesNothing, tone: 'result' },
+      ask: state.ask,
+    };
+  }
+
+  return state;
+}
+
+function errorMessage(text: string): UploadMessage {
+  return { text, tone: 'error' };
+}
+
+function tooLargeText(): string {
+  return copy.badFile(copy.badFileReason.tooLarge);
 }

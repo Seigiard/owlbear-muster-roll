@@ -43,6 +43,9 @@ export type RollRequest = Omit<RollRequestMessage, 't' | 'id'>;
 
 export type ReplicaClient = {
   sendCommand: (command: Command, options?: SendCommandOptions) => Result<string, CommandFailure>;
+  // AD-14: asks how many stored values the preset in `data` would erase. The answer and any
+  // refusal come by the id it returns.
+  requestPresetDiff: (data: string) => Result<string, CommandFailure>;
   // Through the same queue as commands, so a field patch sent before it reaches the engine first.
   requestRoll: (request: RollRequest) => Result<string, CommandFailure>;
   // FR14: tells the engine this window took the open request with this id, so no window gets it
@@ -205,6 +208,10 @@ export function startReplicaClient(
       if (ownCommandIds.has(message.id)) {
         store.setRejection(message);
       }
+    } else if (message.t === 'preset-diff-result' || message.t === 'preset-uploaded') {
+      if (ownCommandIds.has(message.id)) {
+        store.setPresetResult(message);
+      }
     } else if (message.t === 'roll-outcome') {
       if (ownRollIds.has(message.id)) {
         store.setRollOutcome(message);
@@ -249,6 +256,22 @@ export function startReplicaClient(
 
       sent.catch((error) => {
         console.error('Muster Roll could not send a command', error);
+      });
+
+      return ok(id);
+    },
+    requestPresetDiff: (data) => {
+      const id = newId();
+      const message: WindowMessage = { t: 'preset-diff', id, data };
+
+      if (!fitsOneMessage(message)) {
+        return err('too-large');
+      }
+
+      // A refusal comes as a command's does, so the id counts as one.
+      ownCommandIds.add(id);
+      send(message).catch((error) => {
+        console.error('Muster Roll could not ask for a preset diff', error);
       });
 
       return ok(id);
