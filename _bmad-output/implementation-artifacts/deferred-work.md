@@ -110,3 +110,8 @@
 - A second GM client still on the old preset can write an old key after the upload; incoming commits are not stripped.
 - No test covers a merged row over the message limit (`too-large`), or the 15 s window timeout.
 - The confirmation shows only the count, not which fields lose values.
+
+## From spec-5-2-download-a-room-snapshot (TASK-30)
+
+- No feedback after "Скачать снимок"; the Owlbear iframe may block downloads. Check in the live room (TASK-32).
+- A value still in its typing pause is not in the downloaded file.
