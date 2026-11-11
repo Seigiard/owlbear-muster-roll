@@ -2,7 +2,7 @@
 
 An Owlbear Rodeo extension that keeps the sheets of one room, such as the party, the NPCs and a shared inventory, under the GMs' control. A preset defines the sheets, so the extension works for any game system.
 
-## People
+## Room and people
 
 **Room**:
 One Owlbear Rodeo room. Every preset, sheet, link and right belongs to exactly one room.
@@ -21,7 +21,7 @@ A player without an Owlbear account. A guest's identity holds only in one browse
 _Avoid_: anonymous player
 
 **Online GM**:
-A GM who is in the room and whose extension answers right now. A GM who is in the room but whose tab sleeps is not online.
+A GM who is in the room and whose client answers right now. A hidden tab that still answers is online.
 _Avoid_: present GM, active GM
 
 ## Presets
@@ -83,11 +83,11 @@ A cell that holds a value on each sheet: text, a number, or a check.
 _Avoid_: input, stat, attribute, property
 
 **Field id**:
-The name of a field. Values are kept under it, and formulas refer to the field by it. A label change keeps it, and an id change loses the field's stored values.
+The name of a field. Values are kept under it, and formulas refer to the field by it.
 _Avoid_: key, name, variable
 
 **Scope**:
-The set of fields a field id must be unique in and a formula can see. The fields outside repeat sections of one template form one scope. The rows of each repeat section form a scope of their own.
+The set of fields a field id must be unique in. The fields outside repeat sections of one template form one scope, and the rows of each repeat section form a scope of their own. A formula in a repeat section sees its own scope first, then the outer one.
 _Avoid_: namespace, context
 
 **Dice cell**:
@@ -113,7 +113,7 @@ One copy of a repeat section's rows on one sheet, such as one NPC. Each sheet ha
 _Avoid_: repeat row, instance, item, entry
 
 **Duplicate**:
-A new repeat block that copies the values of another one. In the interface: «Дубль».
+A new repeat block that copies the values of another one. In the interface: «Дубль», made by the «Дублировать…» command.
 _Avoid_: clone, copy (alone)
 
 **Owner**:
@@ -139,13 +139,13 @@ The result of one press of a dice cell, with the roller's name. A roll from a sh
 _Avoid_: throw, dice result
 
 **Dice extension**:
-Another Owlbear extension that draws 3D dice, such as Dice+ or Dicex. When one is in the room and a GM allows it, a roll uses its dice.
+Another Owlbear extension that draws 3D dice, such as Dice+ or Dicex.
 _Avoid_: dice tray, dice roller
 
 ## Keeping room data
 
 **Room copy**:
-The compressed copy of a room's sheets, values and links that the room itself keeps, so players can read sheets with no GM online. It is written only when it fits.
+The compressed copy of a room's sheets, values and links that the room itself keeps, so players can read sheets with no GM online.
 _Avoid_: backup, cache, room snapshot
 
 **Snapshot**:
@@ -153,7 +153,7 @@ A file that holds all of a room's sheets, values and token links. A GM downloads
 _Avoid_: export, backup, save file
 
 **Preset change**:
-A GM's upload of a new preset to a room that already has sheets. A new field starts empty. A removed field's values, and the sheets of a removed template, are erased after one confirmation.
+A GM's upload of a new preset to a room that already has sheets.
 _Avoid_: migration, preset update
 
 **Wipe**:
@@ -171,5 +171,5 @@ A sheet drawn from a preset that is not in a room, with sample or empty values, 
 _Avoid_: mockup, render
 
 **Draft**:
-The one unfinished preset the builder keeps by itself until the GM downloads it.
+The one unfinished preset the builder keeps by itself and offers to continue on the next visit.
 _Avoid_: autosave, work in progress
