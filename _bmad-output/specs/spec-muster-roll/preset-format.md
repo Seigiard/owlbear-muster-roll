@@ -1,6 +1,25 @@
 # Preset format
 
-A preset is a JSON template with the shape section → rows → cells. It holds structure only. Values are stored apart from it, by field id. One preset file holds a character template and a short NPC template. This file fixes the names it uses. Architecture decides all other JSON keys.
+A preset is a JSON file that lists the sheets of one room. Each entry is a Набор or a Лист with its own schema of the shape section → rows → cells. A preset holds structure only. Values are stored apart from it, by field id. This file fixes the names it uses. Architecture decides all other JSON keys.
+
+## Sheet entries
+
+| Term | Format `kind` | In the room |
+| --- | --- | --- |
+| Набор | `many` | The GM creates, and deletes, any number of sheets from its schema, such as player characters. A field the entry names gives each sheet its tab name |
+| Лист | `one` | Exactly one sheet, from its own schema, such as NPC, Инвентарь, История or Список заклинаний. Its tab name is its `title`. No command creates or deletes it |
+
+- Never call a Набор "character sheets". The name stays abstract.
+- A preset has at least one entry. Each entry has a stable `id` and a `title`.
+- An entry's identity is its `id` and `kind`. An upload that changes either removes the old entry and adds a new one.
+- Tabs follow the preset order.
+
+| Entry property | Effect |
+| --- | --- |
+| Name field (Набор only, required) | Names a non-repeat `text` field of the entry. Its value is each sheet's tab name. Anyone with write access may edit it |
+| `visibility` | Visible to players (default) or hidden. A hidden entry shows only to the GM, its rolls show only on GM clients, and players get no token menu on its sheets. Hiding is in the interface only |
+| `players: edit` (Лист only) | Every player may edit the Лист. Without it, players read it only. A Набор sheet takes per-player write access and an owner instead |
+| `tokens` | A token can link to the whole sheet, such as a chest that opens Инвентарь |
 
 ## Cell kinds
 
@@ -16,17 +35,19 @@ A preset is a JSON template with the shape section → rows → cells. It holds 
 | --- | --- |
 | `columns` | All rows of the section share one grid, so columns align. A shorter row leaves trailing cells empty, and a row with more cells than the grid is refused |
 | No `columns` | Rows flow inline |
-| `repeat` | A row template repeats per character, and each character has its own rows |
+| `repeat` | All rows of the section form one block. The block repeats, and each sheet has its own blocks. Rule at upload: «в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем» |
+| `tokens` (with `repeat` only) | Each block links to its own token. The token opens the sheet scrolled to that block. Deleting a block removes its links. The offered token label is the block's first field |
 | `width` | `1/3`, `1/2` or `full` (default). Sections flow side by side and wrap as whole blocks |
 
-Ids resolve inside the row first, then globally.
+- Ids resolve inside the block first, then in the sheet.
+- The GM can duplicate a repeat block (CAP-30). Copies keep the values, take a number in the first field when it is a `text` field with a value, and have no token link.
 
 ## Window size
 
 A preset can set the size of the action window with an optional top-level key, after `v`:
 
 ```json
-{ "v": 1, "window": { "width": 900, "height": 700 }, "character": { … }, "npc": { … } }
+{ "v": 2, "window": { "width": 900, "height": 700 }, "sheets": [ … ] }
 ```
 
 - `width` and `height` are integers in px. Width: 360 to 1440. Height: 360 to 1080. Both bounds are inclusive.
@@ -50,19 +71,27 @@ Example: `1d20 <= str - 2*str_tired`.
 - A formula holds integer literals, field ids, `+ - * /`, parentheses, `floor()`, `ceil()`, `NdM` with literal `N` and `M`, and at most one comparison from `<= < >= >`.
 - Formulas run through a small parser, never `eval`.
 - Anyone who can see a sheet can roll its dice cells.
-- The extension rolls itself. A result from a character sheet goes to everyone by broadcast, with the roller's name.
-- A result from an NPC sheet shows only on GM clients.
+- The extension rolls itself. A result from a visible sheet goes to everyone by broadcast, with the roller's name.
+- A result from a hidden sheet shows only on GM clients.
 - A formula runs only on a roll. Computed display fields are a non-goal.
 
 ## Preset changes
 
-The GM downloads the JSON file, edits it and uploads it. An upload that removes fields with values asks for one confirmation for the whole upload: the data will be lost. Any other upload shows a short notice that the format changed.
+The GM downloads the JSON file, edits it and uploads it. An upload that removes fields with values, or a Набор or Лист with sheets or values, asks for one confirmation for the whole upload: it names how many values will be erased and how many sheets will be deleted. Any other upload shows a short notice that the format changed.
 
-| Change in the file | Effect on all sheets |
+| Change in the file | Effect on the room |
 | --- | --- |
 | Add a field | The field is empty |
 | Remove a field | Its values are erased after the confirmation |
 | Rename a field (same id) | Keeps its values |
 | Change a field's type (same id) | Counts as a removal: its values are erased after the confirmation |
+| Add a Лист | Its tab appears, empty |
+| Remove a Набор, or change its `id` or `kind` | Its sheets are deleted with their values, token links, owners and write rights after the confirmation |
+| Remove a Лист, or change its `id` or `kind` | Its values and token links are erased after the confirmation |
+| Remove `tokens` | Its token links are removed. Not counted in the confirmation |
 
 A formula that refers to a removed field shows the error above.
+
+## Older format
+
+Format version 1 (a `character` and an `npc` template) is not migrated. A v1 preset or snapshot file is refused with a message. A room with v1 data is cleared with "Очистить всё" (CAP-31).

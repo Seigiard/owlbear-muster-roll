@@ -25,7 +25,9 @@ If the snapshot does not fit, the GM sees a notice and play continues by broadca
 | File | Holds | On import |
 | --- | --- | --- |
 | Preset | Structure only | Gives the same structure |
-| Room snapshot | Values and token links | Replaces all room data after confirmation. Drops values of field ids not in the current preset and shows their count. Restores a token link where the token exists. Resets player links and write rights to read |
+| Room snapshot | Values and token links | Replaces all room data after confirmation. Drops values of field ids not in the current preset, and sheets of a Набор or Лист the preset lacks, and shows both counts. Restores a token link where the token exists. Resets player links and write rights to read |
+
+A v1 preset or snapshot file is refused with a message. v1 room data is not read. "Очистить всё" (CAP-31) removes the preset, every record, the room copy and the GM's local copy of the room after one confirmation.
 
 ## Platform limits
 
@@ -54,9 +56,9 @@ Deflate plus base64, on synthetic data with English notes.
 | 6 PC + 30 NPC | 8.5kB | 10.5kB |
 | 6 PC + 60 NPC | 13kB | 16.7kB |
 
-Russian text and the preset add more. These measurements predate the typed-field format, so measure again on the real format.
+Russian text and the preset add more. These measurements predate the typed-field format, so measure again on the real format. A preset with several Наборы and Листы makes the stored preset larger, and NPCs as repeat blocks of one Лист need no sheet record each, so the worst case is measured again on the Набор and Лист format.
 
 ## Accepted losses
 
 - Until v2, only the room snapshot and manual export protect against loss of the local copy.
-- NPC sheets and NPC rolls are hidden in the interface only. Any client can read the room snapshot.
+- Hidden sheets and their rolls are hidden in the interface only. Any client can read the room snapshot.
