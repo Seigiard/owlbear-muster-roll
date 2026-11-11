@@ -94,8 +94,33 @@ test('a dice button says it is rolling while it waits for the dice', async ({ co
   ).toHaveText('Бросаем…');
 });
 
-async function openGm(context: BrowserContext): Promise<RoomClient> {
-  const window = await openClientWindow(context, GM);
+test("a dice button says it waits for the GM's answer, and rolls with the extension once the GM allows", async ({
+  context,
+}) => {
+  // #given: the GM has not answered the extension's prompt for Muster Roll, which the GM's client
+  // asked for at start.
+  const gm = await openGm(context, { ...GM, diceAccess: 'unknown' });
+  const status = diceButton(gm.window).locator('xpath=following-sibling::span[@aria-live]');
+
+  await expect
+    .poll(() => gm.background.evaluate(() => window.mockDiceExtension?.accessRequests().length))
+    .toBe(1);
+
+  // #when
+  await diceButton(gm.window).click();
+
+  await expect(status).toHaveText('Ждём разрешения ГМ…');
+  await gm.background.evaluate(() => {
+    window.mockDiceExtension?.answerPrompt('allowed');
+  });
+
+  // #then: 17 + str 14, from the extension, and the line under the button clears.
+  await expect.poll(() => shownNotifications(gm)).toEqual(['Мастер: Брок, Удар — 31']);
+  await expect(status).toHaveText('');
+});
+
+async function openGm(context: BrowserContext, params: ClientParams = GM): Promise<RoomClient> {
+  const window = await openClientWindow(context, params);
 
   await seedStorage(
     window,
@@ -104,14 +129,14 @@ async function openGm(context: BrowserContext): Promise<RoomClient> {
       record('row:brok:str', { str: 14 }),
     ],
     JSON.stringify(PRESET),
-    GM.device,
+    params.device,
   );
 
-  const background = await openClientBackground(context, GM);
+  const background = await openClientBackground(context, params);
 
   await expect(window.getByRole('tabpanel').getByRole('button', { name: 'Удар' })).toBeVisible();
 
-  return { window, background, connectionId: connectionIdOf(GM) };
+  return { window, background, connectionId: connectionIdOf(params) };
 }
 
 async function openPlayer(context: BrowserContext): Promise<RoomClient> {

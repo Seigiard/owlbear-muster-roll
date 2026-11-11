@@ -1,14 +1,22 @@
 import {
   DICE_PLUS_ERROR_CHANNEL,
+  DICE_PLUS_NO_GM,
+  DICE_PLUS_NOT_PERMITTED,
   DICE_PLUS_READY_CHANNEL,
+  DICE_PLUS_REQUEST_ACCESS_CHANNEL,
   DICE_PLUS_RESULT_CHANNEL,
   DICE_PLUS_ROLL_REQUEST_CHANNEL,
+  dicePlusAccessRequestSchema,
   dicePlusReadyProbeSchema,
   dicePlusRollRequestSchema,
+  type DicePlusAccessRequest,
+  type DicePlusAccessStatus,
   type DicePlusRollRequest,
 } from '@/core/dice-plus';
 import type { JsonValue } from '@/core/json';
 import type { BroadcastOptions, BroadcastPort } from '@/platform/ports';
+
+import type { FakeDiceAccess } from './client-params';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
 
@@ -27,28 +35,60 @@ export type FakeDiceAnswer =
   | { kind: 'error' }
   | { kind: 'silent' };
 
+// `dicex`'s `ACCESS_DECISION_TIMEOUT_MS`: how long it holds a request for the GM's answer.
+const PROMPT_TIMEOUT_MS = 25000;
+
+// What the GM does with the extension's prompt: answers it, or leaves it until `dicex` stops
+// waiting.
+export type FakePromptAnswer = 'allowed' | 'denied' | 'timeout';
+
 export type FakeDiceExtension = {
-  // Every roll request it took, oldest first.
+  // Every roll request it took, oldest first, also the ones it holds for the GM's answer.
   requests: () => DicePlusRollRequest[];
-  // Every probe it heard, answered or not.
+  // Every probe it heard, answered or not, and the request id of the latest.
   probes: () => number;
+  lastProbeId: () => string | null;
+  // Every access request it heard, oldest first.
+  accessRequests: () => DicePlusAccessRequest[];
   answerWith: (answer: FakeDiceAnswer) => void;
   // `false` leaves probes unanswered, as a room with no dice extension.
   setReady: (ready: boolean) => void;
+  // `false`: no GM is in the room, so a source with no answer gets `no-gm`, and so does every
+  // request held for the GM.
+  setGmInRoom: (gmInRoom: boolean) => void;
+  // Changes the room's answer, as a GM does in `dicex`'s GM tools. It answers no held request.
+  setAccess: (access: FakeDiceAccess) => void;
+  // Ends the open prompt: every held access request and roll gets the answer, and `allowed` or
+  // `denied` becomes the room's answer.
+  answerPrompt: (answer: FakePromptAnswer) => void;
   stop: () => void;
 };
 
+// `access`: the room's answer it starts with, `allowed` by default. `promptTimeoutMs`: how long it
+// holds a request for the GM's answer before it counts as `timeout`, `dicex`'s 25 s by default.
+export type FakeDiceOptions = { access?: FakeDiceAccess; promptTimeoutMs?: number };
+
 // A Dice+ dice extension on one client's LOCAL broadcast, as `dicex` behaves: it answers a probe,
-// and rolls only a request for its own player.
+// and rolls only a request for its own player. It lets a source roll by the room's answer: with
+// none and a GM in the room it holds an access request and a roll until `answerPrompt`, or until
+// the prompt times out, as `dicex` holds them while the GM's prompt is open.
 export function startFakeDiceExtension(
   broadcast: BroadcastPort,
   playerId: string,
   answer: FakeDiceAnswer,
+  options: FakeDiceOptions = {},
 ): FakeDiceExtension {
   const taken: DicePlusRollRequest[] = [];
+  const asked: DicePlusAccessRequest[] = [];
+  const heldAccess: DicePlusAccessRequest[] = [];
+  const heldRolls: DicePlusRollRequest[] = [];
   let current = answer;
+  let decision = options.access ?? 'allowed';
+  let promptTimer: ReturnType<typeof setTimeout> | undefined;
   let ready = true;
+  let gmInRoom = true;
   let probes = 0;
+  let lastProbeId: string | null = null;
 
   function send(channel: string, data: JsonValue): void {
     broadcast.sendMessage(channel, data, LOCAL).catch((error) => {
@@ -65,13 +105,40 @@ export function startFakeDiceExtension(
     }
 
     probes += 1;
+    lastProbeId = probe.data.requestId;
 
-    if (ready) {
-      send(DICE_PLUS_READY_CHANNEL, {
-        requestId: probe.data.requestId,
-        ready: true,
-        timestamp: Date.now(),
-      });
+    if (!ready) {
+      return;
+    }
+
+    const reply = { requestId: probe.data.requestId, ready: true, timestamp: Date.now() };
+
+    // A caller that names no source gets the reply of old, with no word on access.
+    send(
+      DICE_PLUS_READY_CHANNEL,
+      decision === 'unmanaged' || probe.data.source === undefined
+        ? reply
+        : { ...reply, permitted: decision === 'allowed' },
+    );
+  });
+
+  const unsubscribeAccess = broadcast.onMessage(DICE_PLUS_REQUEST_ACCESS_CHANNEL, (event) => {
+    const request = dicePlusAccessRequestSchema.safeParse(event.data);
+
+    if (!request.success || decision === 'unmanaged') {
+      return;
+    }
+
+    asked.push(request.data);
+
+    if (decision !== 'unknown') {
+      sendAccess(request.data, decision);
+    } else if (!gmInRoom) {
+      sendAccess(request.data, 'no-gm');
+    } else {
+      sendAccess(request.data, 'pending');
+      heldAccess.push(request.data);
+      openPrompt();
     }
   });
 
@@ -83,8 +150,57 @@ export function startFakeDiceExtension(
     }
 
     taken.push(request.data);
-    answerRequest(request.data);
+
+    if (decision === 'allowed' || decision === 'unmanaged') {
+      answerRequest(request.data);
+    } else if (decision === 'denied') {
+      refuse(request.data, DICE_PLUS_NOT_PERMITTED);
+    } else if (!gmInRoom) {
+      refuse(request.data, DICE_PLUS_NO_GM);
+    } else {
+      heldRolls.push(request.data);
+      openPrompt();
+    }
   });
+
+  // One prompt serves every held request, as `dicex` asks the GM once per source.
+  function openPrompt(): void {
+    if (promptTimer === undefined) {
+      promptTimer = setTimeout(() => {
+        answerHeld('timeout', DICE_PLUS_NOT_PERMITTED);
+      }, options.promptTimeoutMs ?? PROMPT_TIMEOUT_MS);
+    }
+  }
+
+  // Every held access request gets `status`, and every held roll is rolled or refused with `error`.
+  function answerHeld(status: DicePlusAccessStatus, error: string | null): void {
+    clearTimeout(promptTimer);
+    promptTimer = undefined;
+
+    for (const request of heldAccess.splice(0)) {
+      sendAccess(request, status);
+    }
+
+    for (const request of heldRolls.splice(0)) {
+      if (error === null) {
+        answerRequest(request);
+      } else {
+        refuse(request, error);
+      }
+    }
+  }
+
+  function sendAccess(request: DicePlusAccessRequest, status: DicePlusAccessStatus): void {
+    send(`${request.source}/access`, { requestId: request.requestId, status });
+  }
+
+  function refuse(request: DicePlusRollRequest, error: string): void {
+    send(DICE_PLUS_ERROR_CHANNEL, {
+      rollId: request.rollId,
+      error,
+      notation: request.diceNotation,
+    });
+  }
 
   function answerRequest(request: DicePlusRollRequest): void {
     if (current.kind === 'silent') {
@@ -110,14 +226,35 @@ export function startFakeDiceExtension(
   return {
     requests: () => [...taken],
     probes: () => probes,
+    lastProbeId: () => lastProbeId,
+    accessRequests: () => [...asked],
     answerWith: (next) => {
       current = next;
     },
     setReady: (next) => {
       ready = next;
     },
+    setGmInRoom: (next) => {
+      gmInRoom = next;
+
+      if (!gmInRoom) {
+        answerHeld('no-gm', DICE_PLUS_NO_GM);
+      }
+    },
+    setAccess: (next) => {
+      decision = next;
+    },
+    answerPrompt: (prompt) => {
+      if (decision === 'unknown' && prompt !== 'timeout') {
+        decision = prompt;
+      }
+
+      answerHeld(prompt, prompt === 'allowed' ? null : DICE_PLUS_NOT_PERMITTED);
+    },
     stop: () => {
+      clearTimeout(promptTimer);
       unsubscribeReady();
+      unsubscribeAccess();
       unsubscribeRoll();
     },
   };

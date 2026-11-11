@@ -19,7 +19,9 @@ import {
   GM_LINK_TIMEOUT_PARAM,
   CLIENT_PARAM,
   DEVICE_PARAM,
+  DICE_ACCESS_PARAM,
   DICE_FACES_PARAM,
+  FAKE_DICE_ACCESS,
   deviceStoragePrefix,
   MOCK_CONNECTION_ID,
   MOCK_ROOM_ID,
@@ -29,6 +31,7 @@ import {
   ROLE_PARAM,
   SNAPSHOT_JITTER_PARAM,
   SNAPSHOT_PAUSE_PARAM,
+  type FakeDiceAccess,
 } from './client-params';
 import {
   startFakeDiceExtension,
@@ -48,6 +51,7 @@ export {
   createMemoryBus,
   createMemoryRoom,
   startFakeDiceExtension,
+  type FakeDiceAccess,
   type FakeDiceAnswer,
   type FakeDiceExtension,
   type MockRoom,
@@ -183,12 +187,15 @@ if (window.location.pathname.endsWith('/background.html')) {
   window.addEventListener('pagehide', mockPlatform.leaveParty);
 
   const diceFaces = diceFacesFromPageUrl();
+  const diceAccess = diceAccessFromPageUrl();
 
-  if (diceFaces !== null) {
-    window.mockDiceExtension = startFakeDiceExtension(mockPlatform.broadcast, pageClient.playerId, {
-      kind: 'faces',
-      faces: diceFaces,
-    });
+  if (diceFaces !== null && diceAccess !== null) {
+    window.mockDiceExtension = startFakeDiceExtension(
+      mockPlatform.broadcast,
+      pageClient.playerId,
+      { kind: 'faces', faces: diceFaces },
+      { access: diceAccess },
+    );
   }
 }
 
@@ -681,6 +688,18 @@ function diceFacesFromPageUrl(): number[] | null {
     faces.every((face) => Number.isInteger(face) && face >= 1);
 
   return valid ? faces : null;
+}
+
+// `allowed` with no param, and `null` with one it does not know, as a bad faces param starts no
+// fake.
+function diceAccessFromPageUrl(): FakeDiceAccess | null {
+  const text = new URLSearchParams(window.location.search).get(DICE_ACCESS_PARAM);
+
+  if (text === null) {
+    return 'allowed';
+  }
+
+  return FAKE_DICE_ACCESS.find((access) => access === text) ?? null;
 }
 
 function timingFromPageUrl(): Timing {

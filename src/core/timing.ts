@@ -99,13 +99,16 @@ export const LINK_PICKER_TIMING: LinkPickerTiming = {
 // `probeWaitMs` for an answer. A roll probes again when the last probe is older than
 // `probeMaxAgeMs`. A roll with no result `resultTimeoutMs` after it was asked for rolls locally. An
 // unanswered probe at start is tried again `startProbeRetries` times, after `startProbeRetryMs` and
-// then twice as long each time, for an extension that loads after Muster Roll.
+// then twice as long each time, for an extension that loads after Muster Roll. A roll the GM has not
+// yet allowed waits `accessWaitMs` longer, as `dicex` holds it that long for the GM's answer (its
+// `ACCESS_DECISION_TIMEOUT_MS`).
 export type DiceExtensionTiming = {
   probeWaitMs: number;
   probeMaxAgeMs: number;
   resultTimeoutMs: number;
   startProbeRetries: number;
   startProbeRetryMs: number;
+  accessWaitMs: number;
 };
 
 export const DICE_EXTENSION_TIMING: DiceExtensionTiming = {
@@ -114,4 +117,5 @@ export const DICE_EXTENSION_TIMING: DiceExtensionTiming = {
   resultTimeoutMs: 30000,
   startProbeRetries: 3,
   startProbeRetryMs: 2000,
+  accessWaitMs: 25000,
 };

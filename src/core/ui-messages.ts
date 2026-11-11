@@ -370,11 +370,13 @@ const rollRequestSchema = z.strictObject({
 
 // `rolled` went out to the room. `field` and `arithmetic` name what is wrong with the formula.
 // `refused` is a place with no dice cell, or a sheet this client cannot roll. `failed` is a roll the
-// engine could not send.
+// engine could not send. `waiting-access` is no end: the roll went to the dice extension, which
+// holds it until the GM allows Muster Roll (TASK-36), and another outcome for the id follows.
 const rollOutcomeSchema = z.strictObject({
   t: z.literal('roll-outcome'),
   id: idSchema,
   outcome: z.discriminatedUnion('code', [
+    z.strictObject({ code: z.literal('waiting-access') }),
     z.strictObject({ code: z.literal('rolled') }),
     z.strictObject({ code: z.literal('field'), field: z.string() }),
     z.strictObject({ code: z.literal('arithmetic') }),

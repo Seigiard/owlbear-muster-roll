@@ -1,17 +1,25 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 
-import { DICE_PLUS_ERROR_CHANNEL, DICE_PLUS_RESULT_CHANNEL } from '@/core/dice-plus';
+import {
+  DICE_PLUS_ACCESS_CHANNEL,
+  DICE_PLUS_ERROR_CHANNEL,
+  DICE_PLUS_READY_CHANNEL,
+  DICE_PLUS_REQUEST_ACCESS_CHANNEL,
+  DICE_PLUS_RESULT_CHANNEL,
+} from '@/core/dice-plus';
 import type { JsonValue } from '@/core/json';
+import { err } from '@/core/result';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { DiceExtensionTiming, Timing } from '@/core/timing';
-import type { RollOutcome } from '@/core/ui-messages';
+import { UI_CHANNEL, type RollOutcome } from '@/core/ui-messages';
 import {
   createMemoryBus,
   createMemoryRoom,
   createMockPlatform,
   startFakeDiceExtension,
+  type FakeDiceAccess,
   type FakeDiceAnswer,
   type FakeDiceExtension,
   type MockPlatform,
@@ -56,6 +64,7 @@ const DICE_TIMING: DiceExtensionTiming = {
   resultTimeoutMs: 60000,
   startProbeRetries: 0,
   startProbeRetryMs: 60000,
+  accessWaitMs: 60000,
 };
 
 const STORAGE_PREFIX = 'mr1:mock-room:0::';
@@ -170,6 +179,13 @@ type ClientOptions = {
   // The client's fake dice extension, started before its engine. None: no extension.
   dice?: FakeDiceAnswer;
   diceReady?: boolean;
+  // The GM's answer for Muster Roll the extension starts with, and whether a GM is in the room.
+  diceAccess?: FakeDiceAccess;
+  gmInRoom?: boolean;
+  // How long the extension holds a request for the GM's answer.
+  promptTimeoutMs?: number;
+  // The background's first access requests fail to send, one per entry.
+  failAccessRequests?: number;
   diceTiming?: Partial<DiceExtensionTiming>;
   // The background's first sends fail, one per entry, from its start.
   failFirstSends?: number;
@@ -183,11 +199,23 @@ type Client = {
   // Sends LOCAL on the client's own broadcast, as another extension of it would.
   local: MockPlatform;
   dice: FakeDiceExtension | null;
+  // Every roll outcome the engine sent its windows, oldest first, by request id.
+  outcomes: Map<string, RollOutcome[]>;
 };
 
 type Room = { room: MockRoom; rolls: JsonValue[] };
 
 const cleanups: (() => void)[] = [];
+
+// The path each roll took, as the engine logs it, oldest first.
+let rollPaths: JsonValue[] = [];
+
+beforeEach(() => {
+  rollPaths = [];
+  spyOn(console, 'info').mockImplementation((line: JsonValue) => {
+    rollPaths.push(line);
+  });
+});
 
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) {
@@ -265,9 +293,39 @@ async function startClient(
   const dice =
     options.dice === undefined
       ? null
-      : startFakeDiceExtension(local.broadcast, connectionId, options.dice);
+      : startFakeDiceExtension(local.broadcast, connectionId, options.dice, {
+          access: options.diceAccess,
+          promptTimeoutMs: options.promptTimeoutMs,
+        });
 
   dice?.setReady(options.diceReady ?? true);
+  dice?.setGmInRoom(options.gmInRoom ?? true);
+
+  const outcomes = new Map<string, RollOutcome[]>();
+
+  cleanups.push(
+    local.broadcast.onMessage(UI_CHANNEL, (event) => {
+      const message = Object(event.data);
+
+      if (message.t === 'roll-outcome') {
+        outcomes.set(message.id, [...(outcomes.get(message.id) ?? []), message.outcome]);
+      }
+    }),
+  );
+
+  let accessFailures = options.failAccessRequests ?? 0;
+  const sendMessage = platform.broadcast.sendMessage;
+
+  platform.broadcast.sendMessage = async (channel, data, sendOptions) => {
+    if (channel === DICE_PLUS_REQUEST_ACCESS_CHANNEL && accessFailures > 0) {
+      accessFailures -= 1;
+
+      return err({ kind: 'failed', reason: 'test' });
+    }
+
+    return sendMessage(channel, data, sendOptions);
+  };
+
   platform.failNextSends(
     Array.from({ length: options.failFirstSends ?? 0 }, () => ({
       kind: 'failed' as const,
@@ -297,7 +355,7 @@ async function startClient(
   // The fake answers a probe as it hears it, so the engine knows it is ready once it is counted.
   await waitUntil(() => dice === null || dice.probes() > 0 || (options.failFirstSends ?? 0) > 0);
 
-  return { platform, engine, store, window, local, dice };
+  return { platform, engine, store, window, local, dice, outcomes };
 }
 
 async function waitUntil(condition: () => boolean): Promise<void> {
@@ -343,15 +401,31 @@ const HUNDRED = characterRow(12, 1);
 const DIVISION = characterRow(13, 1);
 
 async function roll(client: Client, request: RollRequest): Promise<RollOutcome> {
+  return finalOutcome(client, requestRoll(client, request));
+}
+
+// The request id of a roll the window sent.
+function requestRoll(client: Client, request: RollRequest): string {
   const sent = client.window.requestRoll(request);
 
   if (!sent.ok) {
     throw new Error(`the window refused the roll: ${sent.error}`);
   }
 
-  await waitUntil(() => client.store.$rollOutcomes.get().has(sent.value));
+  return sent.value;
+}
 
-  const outcome = client.store.$rollOutcomes.get().get(sent.value)?.outcome;
+// The outcome that ends the roll. Waiting for the GM is none.
+async function finalOutcome(client: Client, id: string): Promise<RollOutcome> {
+  const final = (): RollOutcome | undefined => {
+    const outcome = client.store.$rollOutcomes.get().get(id)?.outcome;
+
+    return outcome?.code === 'waiting-access' ? undefined : outcome;
+  };
+
+  await waitUntil(() => final() !== undefined);
+
+  const outcome = final();
 
   if (outcome === undefined) {
     throw new Error('the roll has no outcome');
@@ -616,25 +690,37 @@ describe('a roll with a dice extension in the client', () => {
 });
 
 describe('a roll falls back to a local roll', () => {
-  test('with no extension that answers, at once, while the probe still waits', async () => {
-    // #given: the probe at start waits far past the roll.
+  test('with no extension that answers, after a fresh probe gets no answer, and logs why', async () => {
+    // #given
     const room = openRoom();
 
     const gm = await startClient(room, 'gm-a', {
       name: 'Мастер',
       dice: { kind: 'faces', faces: [17] },
       diceReady: false,
-      diceTiming: { probeWaitMs: 60000 },
+      diceTiming: { probeWaitMs: 30 },
     });
+
+    await pause(40);
+
+    const probesBefore = gm.dice?.probes();
 
     // #when
     const outcome = await roll(gm, STRIKE);
 
     // #then
-    expect({ outcome, requests: requests(gm), shown: shown(gm) }).toEqual({
+    expect({
+      outcome,
+      probes: (gm.dice?.probes() ?? 0) - (probesBefore ?? 0),
+      requests: requests(gm),
+      shown: shown(gm),
+      paths: rollPaths,
+    }).toEqual({
       outcome: { code: 'rolled' },
+      probes: 1,
       requests: [],
       shown: ['Мастер: Брок, Удар — 21'],
+      paths: ['Muster Roll rolled locally: no dice extension answered'],
     });
   });
 
@@ -907,15 +993,15 @@ describe('the dice extension client', () => {
     });
   });
 
-  test('a roll after the max age with no extension last time rolls locally and refreshes in the background', async () => {
-    // #given: the probe at start went unanswered.
+  test('a roll with no extension last time waits for a fresh probe and uses the extension it finds', async () => {
+    // #given: the probe at start went unanswered, as for an extension that loads after the start.
     const room = openRoom();
 
     const gm = await startClient(room, 'gm-a', {
       name: 'Мастер',
       dice: { kind: 'faces', faces: [17] },
       diceReady: false,
-      diceTiming: { probeWaitMs: 10, probeMaxAgeMs: 0 },
+      diceTiming: { probeWaitMs: 10 },
     });
 
     await pause(30);
@@ -923,11 +1009,64 @@ describe('the dice extension client', () => {
 
     // #when
     await roll(gm, STRIKE);
-    await waitUntil(() => gm.dice?.probes() === 2);
+
+    // #then
+    expect({
+      probes: gm.dice?.probes(),
+      requests: requests(gm).length,
+      shown: shown(gm),
+      paths: rollPaths,
+    }).toEqual({
+      probes: 2,
+      requests: 1,
+      shown: ['Мастер: Брок, Удар — 31'],
+      paths: ['Muster Roll rolled with the dice extension'],
+    });
+  });
+
+  test('a ready answer that comes after the probe wait still counts for the next roll', async () => {
+    // #given: the extension answers the start probe late.
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceReady: false,
+      diceTiming: { probeWaitMs: 20 },
+    });
+
+    const probeIds: string[] = [];
+
+    cleanups.push(
+      gm.local.broadcast.onMessage(DICE_PLUS_READY_CHANNEL, (event) => {
+        const message = Object(event.data);
+
+        if (message.ready === undefined) {
+          probeIds.push(String(message.requestId));
+        }
+      }),
+    );
+
+    // The start probe went before the listener, so a roll's probe, after the start probe's wait,
+    // gives the id to answer late.
+    await pause(30);
+
+    const first = roll(gm, STRIKE);
+
+    await waitUntil(() => probeIds.length === 1);
+    await first;
+    await gm.local.broadcast.sendMessage(
+      DICE_PLUS_READY_CHANNEL,
+      { requestId: probeIds[0] ?? '', ready: true, timestamp: 0, permitted: true },
+      { destination: 'LOCAL' },
+    );
+
+    // #when
     await roll(gm, STRIKE);
 
-    // #then: the first roll is local, the second uses the extension the refresh found.
-    expect({ requests: requests(gm).length, shown: shown(gm) }).toEqual({
+    // #then: the first roll is local, the second uses the extension the late answer found.
+    expect({ probes: gm.dice?.probes(), requests: requests(gm).length, shown: shown(gm) }).toEqual({
+      probes: 2,
       requests: 1,
       shown: ['Мастер: Брок, Удар — 21', 'Мастер: Брок, Удар — 31'],
     });
@@ -994,14 +1133,18 @@ describe('the dice extension client', () => {
 
     // #when
     await roll(gm, STRIKE);
-    await waitUntil(() => gm.dice?.probes() === 1);
-    await roll(gm, STRIKE);
 
     // #then
-    expect({ probesAtStart, requests: requests(gm).length, shown: shown(gm) }).toEqual({
+    expect({
+      probesAtStart,
+      probes: gm.dice?.probes(),
+      requests: requests(gm).length,
+      shown: shown(gm),
+    }).toEqual({
       probesAtStart: 0,
+      probes: 1,
       requests: 1,
-      shown: ['Мастер: Брок, Удар — 21', 'Мастер: Брок, Удар — 31'],
+      shown: ['Мастер: Брок, Удар — 31'],
     });
   });
 
@@ -1065,6 +1208,687 @@ describe('the dice extension client', () => {
 
     // #then
     expect(requests(player).map((request) => Object(request).playerId)).toEqual(['player']);
+  });
+});
+
+const DENIED_REASON = 'the GM has not allowed Muster Roll to roll dice in this room';
+
+const NO_GM_REASON = 'no GM is in the room to allow Muster Roll to roll dice';
+
+describe('a dice extension that lets Muster Roll roll only after the GM allows it', () => {
+  test('is asked for access once by a GM client, though a second probe still finds no access', async () => {
+    // #given: every roll probes again.
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+      diceTiming: { probeMaxAgeMs: 0 },
+    });
+
+    await waitUntil(() => gm.dice?.accessRequests().length === 1);
+
+    // #when: the roll's probe finds no access while the GM's prompt is open.
+    const id = requestRoll(gm, STRIKE);
+
+    await waitUntil(() => requests(gm).length === 1);
+    gm.dice?.answerPrompt('allowed');
+    await finalOutcome(gm, id);
+
+    // #then
+    expect({ probes: gm.dice?.probes(), accessRequests: gm.dice?.accessRequests() }).toEqual({
+      probes: 2,
+      accessRequests: [{ requestId: expect.any(String), source: 'app.muster-roll' }],
+    });
+  });
+
+  test('that the GM allows at start rolls the first roll with no wait for the GM', async () => {
+    // #given
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+    });
+
+    await waitUntil(() => gm.dice?.accessRequests().length === 1);
+    gm.dice?.answerPrompt('allowed');
+    await pause(20);
+
+    // #when
+    const id = requestRoll(gm, STRIKE);
+
+    await finalOutcome(gm, id);
+
+    // #then
+    expect({ outcomes: gm.outcomes.get(id), shown: shown(gm) }).toEqual({
+      outcomes: [{ code: 'rolled' }],
+      shown: ['Мастер: Брок, Удар — 31'],
+    });
+  });
+
+  test('keeps access learned from a roll over a probe answer that started before it', async () => {
+    // #given: a player client, which never asks for access itself, learned of the GM's answer from
+    // its first roll, after its start probe found no access.
+    const room = openRoom();
+    await startClient(room, 'gm-a');
+
+    const player = await startClient(room, 'player', {
+      role: 'PLAYER',
+      name: 'Лиза',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+    });
+
+    const first = requestRoll(player, STRIKE);
+
+    await waitUntil(() => requests(player).length === 1);
+    player.dice?.answerPrompt('allowed');
+    await finalOutcome(player, first);
+
+    // #when: the start probe's answer comes again, late.
+    await player.local.broadcast.sendMessage(
+      DICE_PLUS_READY_CHANNEL,
+      { requestId: player.dice?.lastProbeId() ?? '', ready: true, timestamp: 0, permitted: false },
+      { destination: 'LOCAL' },
+    );
+
+    const second = requestRoll(player, STRIKE);
+
+    await finalOutcome(player, second);
+
+    // #then
+    expect(player.outcomes.get(second)).toEqual([{ code: 'rolled' }]);
+  });
+
+  test('is asked again by a GM client when a probe finds that the extension forgot its access', async () => {
+    // #given: the GM allowed at start, and every roll probes again.
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+      diceTiming: { probeMaxAgeMs: 0 },
+    });
+
+    await waitUntil(() => gm.dice?.accessRequests().length === 1);
+    gm.dice?.answerPrompt('allowed');
+    await roll(gm, STRIKE);
+    gm.dice?.setAccess('unknown');
+
+    // #when
+    const id = requestRoll(gm, STRIKE);
+
+    await waitUntil(() => requests(gm).length === 2);
+    gm.dice?.answerPrompt('allowed');
+    await finalOutcome(gm, id);
+
+    // #then
+    expect({
+      accessRequests: gm.dice?.accessRequests().length,
+      outcomes: gm.outcomes.get(id),
+    }).toEqual({
+      accessRequests: 2,
+      outcomes: [{ code: 'waiting-access' }, { code: 'rolled' }],
+    });
+  });
+
+  test("lets a player's next roll go with no wait for the GM once a roll came back", async () => {
+    // #given: the player's probe found no access, and the GM allowed during the first roll.
+    const room = openRoom();
+    await startClient(room, 'gm-a');
+
+    const player = await startClient(room, 'player', {
+      role: 'PLAYER',
+      name: 'Лиза',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+    });
+
+    const first = requestRoll(player, STRIKE);
+
+    await waitUntil(() => requests(player).length === 1);
+    player.dice?.answerPrompt('allowed');
+    await finalOutcome(player, first);
+
+    // #when: within the probe's max age, so no probe tells the player of the answer.
+    const second = requestRoll(player, STRIKE);
+
+    await finalOutcome(player, second);
+
+    // #then
+    expect([first, second].map((id) => player.outcomes.get(id))).toEqual([
+      [{ code: 'waiting-access' }, { code: 'rolled' }],
+      [{ code: 'rolled' }],
+    ]);
+  });
+
+  test.each<[string, FakeDiceAccess]>([
+    ['that already allowed Muster Roll', 'allowed'],
+    ['that knows no access, as the commercial Dice+', 'unmanaged'],
+  ])('%s is not asked for access, and rolls with no wait for the GM', async (_name, access) => {
+    // #given
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: access,
+    });
+
+    // #when
+    const id = requestRoll(gm, STRIKE);
+
+    await finalOutcome(gm, id);
+
+    // #then
+    expect({
+      accessRequests: gm.dice?.accessRequests(),
+      outcomes: gm.outcomes.get(id),
+      shown: shown(gm),
+    }).toEqual({
+      accessRequests: [],
+      outcomes: [{ code: 'rolled' }],
+      shown: ['Мастер: Брок, Удар — 31'],
+    });
+  });
+
+  test("is never asked for access by a player client, whose roll waits for the GM's answer", async () => {
+    // #given
+    const room = openRoom();
+    await startClient(room, 'gm-a');
+
+    const player = await startClient(room, 'player', {
+      role: 'PLAYER',
+      name: 'Лиза',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+    });
+
+    const id = requestRoll(player, STRIKE);
+
+    await waitUntil(() => requests(player).length === 1 && player.outcomes.has(id));
+
+    // #when
+    player.dice?.answerPrompt('allowed');
+    await finalOutcome(player, id);
+
+    // #then
+    expect({
+      accessRequests: player.dice?.accessRequests(),
+      outcomes: player.outcomes.get(id),
+      shown: shown(player),
+    }).toEqual({
+      accessRequests: [],
+      outcomes: [{ code: 'waiting-access' }, { code: 'rolled' }],
+      shown: ['Лиза: Брок, Удар — 31'],
+    });
+  });
+
+  test('takes a roll while the GM has not answered, and the window hears it waits until the GM allows it', async () => {
+    // #given
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+    });
+
+    const id = requestRoll(gm, STRIKE);
+
+    await waitUntil(() => requests(gm).length === 1 && gm.outcomes.has(id));
+
+    const waiting = gm.outcomes.get(id);
+
+    // #when
+    gm.dice?.answerPrompt('allowed');
+    await finalOutcome(gm, id);
+
+    // #then
+    expect({ waiting, outcomes: gm.outcomes.get(id), shown: shown(gm) }).toEqual({
+      waiting: [{ code: 'waiting-access' }],
+      outcomes: [{ code: 'waiting-access' }, { code: 'rolled' }],
+      shown: ['Мастер: Брок, Удар — 31'],
+    });
+  });
+
+  test('refuses a waiting roll when the GM denies, and it rolls locally', async () => {
+    // #given
+    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+    });
+
+    const id = requestRoll(gm, STRIKE);
+
+    await waitUntil(() => requests(gm).length === 1);
+
+    // #when
+    gm.dice?.answerPrompt('denied');
+    await finalOutcome(gm, id);
+
+    // #then
+    expect({
+      outcomes: gm.outcomes.get(id),
+      shown: shown(gm),
+      reasons: fallbackReasons(errors.mock.calls),
+    }).toEqual({
+      outcomes: [{ code: 'waiting-access' }, { code: 'rolled' }],
+      shown: ['Мастер: Брок, Удар — 21'],
+      reasons: [DENIED_REASON],
+    });
+  });
+
+  test('refuses a waiting roll when the GM does not answer in time, and it rolls locally', async () => {
+    // #given: the GM's prompt for the start's access request timed out already.
+    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+      promptTimeoutMs: 30,
+    });
+
+    await pause(50);
+
+    // #when
+    const id = requestRoll(gm, STRIKE);
+
+    await finalOutcome(gm, id);
+
+    // #then
+    expect({
+      outcomes: gm.outcomes.get(id),
+      shown: shown(gm),
+      reasons: fallbackReasons(errors.mock.calls),
+    }).toEqual({
+      outcomes: [{ code: 'waiting-access' }, { code: 'rolled' }],
+      shown: ['Мастер: Брок, Удар — 21'],
+      reasons: [DENIED_REASON],
+    });
+  });
+
+  test('with no GM in the room refuses a roll at once, the window hears no wait for a GM, and the next roll asks nothing', async () => {
+    // #given: the GM left after the player loaded the sheets, so neither the extension nor the
+    // party has a GM. The result wait is far past the test's wait limit.
+    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a');
+
+    const player = await startClient(room, 'player', {
+      role: 'PLAYER',
+      name: 'Лиза',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+      gmInRoom: false,
+    });
+
+    gm.engine.stop();
+    gm.platform.leaveParty();
+    await pause(20);
+
+    // #when
+    const ids = [requestRoll(player, STRIKE)];
+
+    await finalOutcome(player, ids[0] ?? '');
+    ids.push(requestRoll(player, STRIKE));
+    await finalOutcome(player, ids[1] ?? '');
+
+    // #then
+    expect({
+      outcomes: ids.map((id) => player.outcomes.get(id)),
+      requests: requests(player).length,
+      shown: shown(player),
+      reasons: fallbackReasons(errors.mock.calls),
+    }).toEqual({
+      outcomes: [[{ code: 'rolled' }], [{ code: 'rolled' }]],
+      requests: 1,
+      shown: ['Лиза: Брок, Удар — 21', 'Лиза: Брок, Удар — 21'],
+      reasons: [NO_GM_REASON],
+    });
+  });
+
+  test('answers a GM client with no-gm, so it rolls locally at once and asks again on a later probe', async () => {
+    // #given: the extension sees no GM, and every roll probes again.
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+      gmInRoom: false,
+      diceTiming: { probeMaxAgeMs: 0 },
+    });
+
+    await waitUntil(() => gm.dice?.accessRequests().length === 1);
+    await pause(20);
+
+    // #when
+    const id = requestRoll(gm, STRIKE);
+
+    await finalOutcome(gm, id);
+
+    // #then
+    expect({
+      accessRequests: gm.dice?.accessRequests().length,
+      outcomes: gm.outcomes.get(id),
+      requests: requests(gm).length,
+      shown: shown(gm),
+    }).toEqual({
+      accessRequests: 2,
+      outcomes: [{ code: 'rolled' }],
+      requests: 0,
+      shown: ['Мастер: Брок, Удар — 21'],
+    });
+  });
+
+  test('that takes access back refuses the roll, a GM client asks again, and the next roll asks nothing', async () => {
+    // #given: a roll went through, then the GM denied Muster Roll in the extension.
+    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+    });
+
+    await roll(gm, STRIKE);
+    gm.dice?.setAccess('denied');
+
+    // #when
+    const revoked = requestRoll(gm, STRIKE);
+
+    await finalOutcome(gm, revoked);
+    await waitUntil(() => gm.dice?.accessRequests().length === 1);
+    await pause(20);
+    await roll(gm, STRIKE);
+
+    // #then
+    expect({
+      revoked: gm.outcomes.get(revoked),
+      requests: requests(gm).length,
+      shown: shown(gm),
+      reasons: fallbackReasons(errors.mock.calls),
+    }).toEqual({
+      revoked: [{ code: 'rolled' }],
+      requests: 2,
+      shown: ['Мастер: Брок, Удар — 31', 'Мастер: Брок, Удар — 21', 'Мастер: Брок, Удар — 21'],
+      reasons: [DENIED_REASON],
+    });
+  });
+
+  test('is asked again by a GM client whose access request got no answer in time', async () => {
+    // #given: the extension holds the request far past the client's own wait, and every roll
+    // probes again.
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+      diceTiming: { probeWaitMs: 20, probeMaxAgeMs: 0, accessWaitMs: 30 },
+    });
+
+    await waitUntil(() => gm.dice?.accessRequests().length === 1);
+    await pause(80);
+
+    // #when
+    const id = requestRoll(gm, STRIKE);
+
+    await waitUntil(() => requests(gm).length === 1);
+    gm.dice?.answerPrompt('allowed');
+    await finalOutcome(gm, id);
+
+    // #then
+    expect({ accessRequests: gm.dice?.accessRequests().length, shown: shown(gm) }).toEqual({
+      accessRequests: 2,
+      shown: ['Мастер: Брок, Удар — 31'],
+    });
+  });
+
+  test('is asked again on a later probe when the access request could not be sent', async () => {
+    // #given: every roll probes again.
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+      diceTiming: { probeMaxAgeMs: 0 },
+      failAccessRequests: 1,
+    });
+
+    await pause(20);
+
+    const atStart = gm.dice?.accessRequests().length;
+
+    // #when
+    const id = requestRoll(gm, STRIKE);
+
+    await waitUntil(() => requests(gm).length === 1);
+    gm.dice?.answerPrompt('allowed');
+    await finalOutcome(gm, id);
+
+    // #then
+    expect({ atStart, accessRequests: gm.dice?.accessRequests().length }).toEqual({
+      atStart: 0,
+      accessRequests: 1,
+    });
+  });
+
+  test('is asked for access by a client that becomes a GM', async () => {
+    // #given
+    const room = openRoom();
+    await startClient(room, 'gm-a');
+
+    const player = await startClient(room, 'player', {
+      role: 'PLAYER',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+    });
+
+    await pause(20);
+
+    const asPlayer = player.dice?.accessRequests().length;
+
+    // #when
+    player.platform.setRole('GM');
+    await waitUntil(() => player.dice?.accessRequests().length === 1);
+
+    // #then
+    expect({ asPlayer, asGm: player.dice?.accessRequests().length }).toEqual({
+      asPlayer: 0,
+      asGm: 1,
+    });
+  });
+
+  test("starts a queued roll's result wait when its request goes out", async () => {
+    // #given: the second roll waits behind the first longer than a result wait.
+    const room = openRoom();
+    const LOCAL = { destination: 'LOCAL' } as const;
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'silent' },
+      diceTiming: { resultTimeoutMs: 100 },
+    });
+
+    const first = requestRoll(gm, STRIKE);
+    const second = requestRoll(gm, STRIKE);
+
+    await waitUntil(() => requests(gm).length === 1);
+    await pause(70);
+    await gm.local.broadcast.sendMessage(
+      DICE_PLUS_RESULT_CHANNEL,
+      resultOf(String(Object(requests(gm)[0]).rollId), [['d20', [17]]]),
+      LOCAL,
+    );
+    await waitUntil(() => requests(gm).length === 2);
+    await pause(50);
+
+    // #when: 120 ms after the second roll was asked for, 50 ms after its request went out.
+    await gm.local.broadcast.sendMessage(
+      DICE_PLUS_RESULT_CHANNEL,
+      resultOf(String(Object(requests(gm)[1]).rollId), [['d20', [15]]]),
+      LOCAL,
+    );
+    await Promise.all([finalOutcome(gm, first), finalOutcome(gm, second)]);
+
+    // #then
+    expect(shown(gm)).toEqual(['Мастер: Брок, Удар — 31', 'Мастер: Брок, Удар — 29']);
+  });
+
+  test('that the GM denied earlier gets no roll: each rolls locally at once, and a GM client does not ask again', async () => {
+    // #given: the start probe asked, and the extension answered with the stored denial. Every roll
+    // probes again.
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'denied',
+      diceTiming: { probeMaxAgeMs: 0 },
+    });
+
+    await waitUntil(() => gm.dice?.accessRequests().length === 1);
+    await pause(20);
+
+    // #when
+    const ids = [requestRoll(gm, STRIKE)];
+
+    await finalOutcome(gm, ids[0] ?? '');
+    ids.push(requestRoll(gm, STRIKE));
+    await finalOutcome(gm, ids[1] ?? '');
+
+    // #then
+    expect({
+      probes: gm.dice?.probes(),
+      accessRequests: gm.dice?.accessRequests().length,
+      requests: requests(gm).length,
+      outcomes: ids.map((id) => gm.outcomes.get(id)),
+      shown: shown(gm),
+      paths: rollPaths,
+    }).toEqual({
+      probes: 3,
+      accessRequests: 1,
+      requests: 0,
+      outcomes: [[{ code: 'rolled' }], [{ code: 'rolled' }]],
+      shown: ['Мастер: Брок, Удар — 21', 'Мастер: Брок, Удар — 21'],
+      paths: [
+        'Muster Roll rolled locally: access refused',
+        'Muster Roll rolled locally: access refused',
+      ],
+    });
+  });
+
+  test('is asked again by a GM client after a timeout answer, when a later probe still finds no access', async () => {
+    // #given: the start probe asked, and the GM let the prompt time out.
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+      diceTiming: { probeMaxAgeMs: 0 },
+    });
+
+    await waitUntil(() => gm.dice?.accessRequests().length === 1);
+    gm.dice?.answerPrompt('timeout');
+    await pause(20);
+
+    // #when: the roll probes again.
+    const id = requestRoll(gm, STRIKE);
+
+    await waitUntil(() => requests(gm).length === 1);
+    gm.dice?.answerPrompt('allowed');
+    await finalOutcome(gm, id);
+
+    // #then
+    expect({ accessRequests: gm.dice?.accessRequests().length, shown: shown(gm) }).toEqual({
+      accessRequests: 2,
+      shown: ['Мастер: Брок, Удар — 31'],
+    });
+  });
+
+  test('gets the access wait on top of the result wait for a roll the GM has not allowed', async () => {
+    // #given: the GM answers after the result wait alone, and within it with the access wait.
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+      diceTiming: { resultTimeoutMs: 50, accessWaitMs: 1000 },
+    });
+
+    const id = requestRoll(gm, STRIKE);
+
+    await waitUntil(() => requests(gm).length === 1);
+    await pause(100);
+
+    // #when
+    gm.dice?.answerPrompt('allowed');
+
+    // #then
+    expect({ outcome: await finalOutcome(gm, id), shown: shown(gm) }).toEqual({
+      outcome: { code: 'rolled' },
+      shown: ['Мастер: Брок, Удар — 31'],
+    });
+  });
+
+  test("takes only its own access request's allowed answer as access, never pending", async () => {
+    // #given: the GM's prompt is open, and stray answers come on the access channel.
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+      diceAccess: 'unknown',
+    });
+
+    await waitUntil(() => gm.dice?.accessRequests().length === 1);
+
+    const LOCAL = { destination: 'LOCAL' } as const;
+    const ownId = String(gm.dice?.accessRequests()[0]?.requestId);
+
+    await gm.local.broadcast.sendMessage(
+      DICE_PLUS_ACCESS_CHANNEL,
+      { requestId: 'other', status: 'allowed' },
+      LOCAL,
+    );
+    await gm.local.broadcast.sendMessage(
+      DICE_PLUS_ACCESS_CHANNEL,
+      { requestId: ownId, status: 'yes' },
+      LOCAL,
+    );
+    await gm.local.broadcast.sendMessage(DICE_PLUS_ACCESS_CHANNEL, 'allowed', LOCAL);
+
+    const first = requestRoll(gm, STRIKE);
+
+    await waitUntil(() => requests(gm).length === 1);
+
+    // #when: the GM allows, which answers the access request too.
+    gm.dice?.answerPrompt('allowed');
+    await finalOutcome(gm, first);
+
+    const second = requestRoll(gm, STRIKE);
+
+    await finalOutcome(gm, second);
+
+    // #then
+    expect([first, second].map((id) => gm.outcomes.get(id))).toEqual([
+      [{ code: 'waiting-access' }, { code: 'rolled' }],
+      [{ code: 'rolled' }],
+    ]);
   });
 });
 

@@ -14,6 +14,7 @@ import {
   CLIENT_PARAM,
   DEVICE_PARAM,
   deviceStoragePrefix,
+  DICE_ACCESS_PARAM,
   DICE_FACES_PARAM,
   GM_LINK_TIMEOUT_PARAM,
   MOCK_ROOM_ID,
@@ -25,6 +26,7 @@ import {
   ROLE_PARAM,
   SNAPSHOT_JITTER_PARAM,
   SNAPSHOT_PAUSE_PARAM,
+  type FakeDiceAccess,
 } from '@/platform/mock/client-params';
 
 // The mock room's storage before any import: generation 0 with no author.
@@ -75,6 +77,8 @@ export type ClientParams = {
   snapshotJitterMs?: number;
   // The background runs a fake dice extension that answers every die with these faces.
   diceFaces?: number[];
+  // The GM's answer for Muster Roll that the fake dice extension starts with.
+  diceAccess?: FakeDiceAccess;
 };
 
 // One client: its background page and one window, which share a connection id.
@@ -401,6 +405,7 @@ export function clientQuery(params: ClientParams): string {
     [SNAPSHOT_PAUSE_PARAM, params.snapshotPauseMs?.toString()],
     [SNAPSHOT_JITTER_PARAM, params.snapshotJitterMs?.toString()],
     [DICE_FACES_PARAM, params.diceFaces?.join(',')],
+    [DICE_ACCESS_PARAM, params.diceAccess],
   ] as const) {
     if (value !== undefined) {
       query.set(name, value);

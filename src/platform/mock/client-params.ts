@@ -45,6 +45,22 @@ export const SCENE_CHANNEL_PREFIX = 'muster-roll-mock-scene:';
 // die with the listed faces, comma-separated, as `startFakeDiceExtension` does.
 export const DICE_FACES_PARAM = 'mock-dice-faces';
 
+// The GM's answer for Muster Roll that the fake dice extension starts with, as a
+// `FakeDiceAccess`. With no param Muster Roll is allowed; with one it does not know, no fake starts.
+export const DICE_ACCESS_PARAM = 'mock-dice-access';
+
+// The GM's answer for the requesting source in the room, as `dicex` keeps it in room metadata.
+// `unknown`: no GM has answered yet. `unmanaged` is the commercial Dice+, which knows no access: it
+// lets every source roll, says nothing of access in a probe reply, and ignores an access request.
+export type FakeDiceAccess = 'allowed' | 'denied' | 'unknown' | 'unmanaged';
+
+export const FAKE_DICE_ACCESS: readonly FakeDiceAccess[] = [
+  'allowed',
+  'denied',
+  'unknown',
+  'unmanaged',
+];
+
 // A shorter room copy pause and jitter for tests, in milliseconds, as with the catch-up timeout.
 export const SNAPSHOT_PAUSE_PARAM = 'mock-snapshot-pause-ms';
 

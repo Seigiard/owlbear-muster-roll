@@ -51,7 +51,8 @@ export const DiceSheetContext = createContext<DiceSheet | null>(null);
 
 // Rolls on press. A bad formula shows its message under the button and sends nothing; the
 // message clears on the next press or on any value change of the sheet. A press while a roll is on
-// its way does nothing, so one press never rolls twice, and the line under the button says it waits.
+// its way does nothing, so one press never rolls twice, and the line under the button says it waits,
+// and for the GM's answer when the dice extension waits for it.
 export function DiceButton({
   label,
   row,
@@ -64,10 +65,11 @@ export function DiceButton({
   const [requestId, setRequestId] = useState<string | null>(null);
   const [message, setMessage] = useState<ShownMessage | null>(null);
   const outcome = requestId === null ? undefined : outcomes.get(requestId)?.outcome;
+  const waitingForGm = outcome?.code === 'waiting-access';
 
   // The signature is taken when the outcome lands, so a field patch the press itself saved, whose
-  // delta comes before the outcome, does not clear the message.
-  if (outcome !== undefined) {
+  // delta comes before the outcome, does not clear the message. Waiting for the GM is no outcome.
+  if (outcome !== undefined && !waitingForGm) {
     const text = outcomeText(outcome);
 
     setRequestId(null);
@@ -122,7 +124,11 @@ export function DiceButton({
         aria-live="polite"
         className={`text-label-sm ${requestId === null ? 'text-danger-text' : 'text-text-muted'}`}
       >
-        {requestId === null ? (message?.text ?? '') : copy.rolling}
+        {requestId === null
+          ? (message?.text ?? '')
+          : waitingForGm
+            ? copy.rollWaitingForGm
+            : copy.rolling}
       </span>
     </div>
   );
@@ -140,7 +146,7 @@ function useDiceSheet(): DiceSheet {
 
 // A roll that went out shows nothing here; it shows as a notification.
 function outcomeText(outcome: RollOutcome): string | null {
-  if (outcome.code === 'rolled') {
+  if (outcome.code === 'rolled' || outcome.code === 'waiting-access') {
     return null;
   }
 

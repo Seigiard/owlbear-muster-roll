@@ -357,12 +357,13 @@ export async function startReplicaEngine(
   // No window owns the id of a command the menu issues, so this page shows its rejection.
   const menuCommandIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
 
-  // TASK-36: the dice extension of this client, if one answers. It probes at start.
+  // TASK-36: the dice extension of this client, if one answers. It probes at start, and a GM
+  // client asks it for access when the probe says the GM has not allowed Muster Roll yet.
   const diceExtension = createDiceExtension(
     platform.broadcast,
-    sendQueue,
     options.diceTiming ?? DICE_EXTENSION_TIMING,
     newId,
+    () => role === 'GM',
   );
 
   diceExtension.start();
@@ -1905,7 +1906,9 @@ export async function startReplicaEngine(
 
   // TASK-36: the faces come from the dice extension of this client when it is ready and can roll
   // every term, and the 3D dice show to the clients that see the notification. With no extension,
-  // an error, a result that does not match, or no result in time, the local roll goes out.
+  // an error, a refusal of access, a result that does not match, or no result in time, the local
+  // roll goes out. A roll the GM has not allowed yet still goes to the extension, which holds it
+  // for the GM's answer, and the window says it waits for that answer.
   async function rollWithDice(
     requestId: string,
     prepared: PreparedRoll,
@@ -1923,14 +1926,40 @@ export async function startReplicaEngine(
     }
 
     const dice = dicePlusDice(prepared.dice.terms);
-    const ready = dice !== null && !stopped && (await diceExtension.ready());
 
-    // The role can change while the name is read or the probe answers. `sendRoll` refuses such a
-    // roll, and no dice show for it.
-    if (dice === null || !ready || stopped || !rollShownTo(role, prepared.kind)) {
+    if (dice === null) {
+      console.info('Muster Roll rolled locally: unsupported dice');
       await sendRoll(requestId, local, roller);
 
       return;
+    }
+
+    const readiness = stopped ? 'absent' : await diceExtension.ready();
+
+    if (!stopped && (readiness === 'absent' || readiness === 'refused')) {
+      console.info(
+        readiness === 'absent'
+          ? 'Muster Roll rolled locally: no dice extension answered'
+          : 'Muster Roll rolled locally: access refused',
+      );
+    }
+
+    // The role can change while the name is read or the probe answers. `sendRoll` refuses such a
+    // roll, and no dice show for it.
+    if (
+      readiness === 'absent' ||
+      readiness === 'refused' ||
+      stopped ||
+      !rollShownTo(role, prepared.kind)
+    ) {
+      await sendRoll(requestId, local, roller);
+
+      return;
+    }
+
+    // With no GM in the room the extension refuses at once, so the window shows no wait for one.
+    if (readiness === 'pending' || (readiness === 'unknown' && gmInRoom())) {
+      replyRoll(requestId, { code: 'waiting-access' });
     }
 
     const faces = await diceExtension.roll({
@@ -1955,10 +1984,13 @@ export async function startReplicaEngine(
         'Muster Roll rolled locally, as the dice extension gave no faces:',
         faces.error.reason,
       );
+      console.info('Muster Roll rolled locally: the dice extension gave no faces');
       await sendRoll(requestId, local, roller);
 
       return;
     }
+
+    console.info('Muster Roll rolled with the dice extension');
 
     // The extension's faces are the roll, and its dice already showed, so no local roll follows
     // them, even when they give an arithmetic error.
@@ -1980,6 +2012,10 @@ export async function startReplicaEngine(
     }
 
     await sendRoll(requestId, evaluated.value, roller);
+  }
+
+  function gmInRoom(): boolean {
+    return role === 'GM' || roster.entries().some((member) => member.role === 'GM');
   }
 
   // Decoded again only when the record's version changes, not on every press.
@@ -3338,6 +3374,9 @@ export async function startReplicaEngine(
     roomCopyNotSaved = false;
 
     if (next === 'GM') {
+      // TASK-36: a GM client asks the dice extension for access, if it has none.
+      diceExtension.becameGm();
+
       // As at start: the highest generation of this client and of what the storage holds.
       const store = createRecordStore(platform.storage, platform.metadata.getRoomId());
       const stored = store.readHighestGeneration();

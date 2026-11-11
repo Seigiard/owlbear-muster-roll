@@ -17,6 +17,18 @@ export const DICE_PLUS_RESULT_CHANNEL = `${DICE_PLUS_SOURCE}/roll-result`;
 
 export const DICE_PLUS_ERROR_CHANNEL = `${DICE_PLUS_SOURCE}/roll-error`;
 
+// TASK-36: the `dicex` fork lets a source roll only after a GM of the room allows it. A client
+// asks on this channel, and the answers come on the source's access channel.
+export const DICE_PLUS_REQUEST_ACCESS_CHANNEL = 'dice-plus/request-access';
+
+export const DICE_PLUS_ACCESS_CHANNEL = `${DICE_PLUS_SOURCE}/access`;
+
+// The `error` of a roll error when the GM has not allowed this source, and when no GM is in the
+// room to allow it. Both are refusals of access, not of the formula.
+export const DICE_PLUS_NOT_PERMITTED = 'not-permitted';
+
+export const DICE_PLUS_NO_GM = 'no-gm';
+
 // The dice this client asks the extension for, in the order `dicex` fills its result groups: its
 // dice set order, whatever the notation's order. A d100 is left out: `dicex` reports it as a
 // tens-only d100 group beside a stray d10, with no combined face, so a d100 rolls locally.
@@ -40,15 +52,40 @@ export const dicePlusRollRequestSchema = z.object({
   source: z.string(),
 });
 
+// `source` makes `dicex` say in its reply whether the GM allowed this source.
 export const dicePlusReadyProbeSchema = z.object({
   requestId: z.string().min(1),
   timestamp: z.number(),
+  source: z.string().optional(),
 });
 
-// A probe on the same channel has no `ready`, so it never parses as a reply.
+// A probe on the same channel has no `ready`, so it never parses as a reply. A reply with no
+// `permitted`, as the commercial Dice+ sends, lets every source roll.
 export const dicePlusReadyReplySchema = z.object({
   requestId: z.string(),
   ready: z.boolean(),
+  permitted: z.boolean().optional(),
+});
+
+export const dicePlusAccessRequestSchema = z.object({
+  requestId: z.string().min(1),
+  source: z.string(),
+});
+
+// `pending`: a GM was asked, and a second answer follows with `allowed`, `denied` or `timeout`.
+// `no-gm`: no GM is in the room to answer. `allowed` and `denied` can also be the room's stored
+// answer, sent at once.
+export const dicePlusAccessStatusSchema = z.enum([
+  'allowed',
+  'denied',
+  'pending',
+  'no-gm',
+  'timeout',
+]);
+
+export const dicePlusAccessReplySchema = z.object({
+  requestId: z.string(),
+  status: dicePlusAccessStatusSchema,
 });
 
 // What a reply on the result or the error channel must hold to be matched to a request at all.
@@ -76,6 +113,10 @@ export type DicePlusTarget = z.infer<typeof dicePlusTargetSchema>;
 export type DicePlusRollRequest = z.infer<typeof dicePlusRollRequestSchema>;
 
 export type DicePlusReadyProbe = z.infer<typeof dicePlusReadyProbeSchema>;
+
+export type DicePlusAccessRequest = z.infer<typeof dicePlusAccessRequestSchema>;
+
+export type DicePlusAccessStatus = z.infer<typeof dicePlusAccessStatusSchema>;
 
 // What the extension rolls for a formula: its terms merged by sides and ordered as `dicex` fills
 // its result groups, as one notation of positive terms, such as `3d6+1d8` for `2d6 + 1d8 - 1d6`.
