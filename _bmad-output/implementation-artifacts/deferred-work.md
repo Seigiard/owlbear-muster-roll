@@ -70,3 +70,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-2-catch-up-on-join-and-on-return.md`
   summary: A GM client that sees a higher generation enters catch-up but drops every higher-generation `state`, waits the full timeout, then replays pending intents as commits that peers of the higher generation drop.
   evidence: `receiveState` adopts a higher generation only for a client without persisted data. Epic 5 owns AD-9 adoption.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-5-save-a-room-copy-that-survives-the-gms-browser.md`
+  summary: Room metadata is writable by any party member, so a player can write a forged room copy that GM clients merge as authoritative records (security review finding). Owner decision: accept the table-trust model, or design provenance for the copy.
+  evidence: `src/replica/engine.ts` merges `copy.records` of the same generation during catch-up and before a write. Owlbear room metadata has no writer identity; a signing key cannot be shared between GM devices without a server.

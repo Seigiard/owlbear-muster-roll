@@ -4,11 +4,13 @@ title: 3.1 Grant Write Access per Player and Character
 status: To Do
 assignee: []
 created_date: '2026-11-10T15:37:00Z'
+updated_date: '2026-11-11T00:23:00Z'
 labels:
   - epic-3
 milestone: m-2
 dependencies:
   - TASK-19
+  - TASK-34
 references:
   - _bmad-output/planning-artifacts/epics.md
 documentation:
