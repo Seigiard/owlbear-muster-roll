@@ -3,7 +3,7 @@ name: Muster Roll
 description: Plain, dense sheets inside an Owlbear Rodeo window. Colours come from the live Owlbear theme; the hex values are fallbacks for tests and mocks.
 status: final
 created: 2026-11-10
-updated: 2026-11-10
+updated: 2026-11-11
 sources:
   - ../../../specs/spec-muster-roll/SPEC.md
   - ../../../specs/spec-muster-roll/preset-format.md
@@ -137,15 +137,15 @@ Tabs use `{rounded.md}` on the top corners. The window uses `{rounded.lg}`. Chip
 | Component | Visual rule |
 | --- | --- |
 | Tab bar | `{components.tab}` for each tab. The active tab uses `{components.tab-active}` and joins the content area |
-| Character header | Name in `{typography.sheet-title}`, chips after it, `⋯` at the end, bottom rule in `{colors.line}` |
+| Sheet header | Name or Лист title in `{typography.sheet-title}`, chips after it, `⋯` at the end, bottom rule in `{colors.line}` |
 | Field value | Arrangement comes from the preset. Even preset rows use `{colors.surface-stripe}`. An editable value has a dotted underline in `{colors.line-strong}` |
 | Pending mark | Text "Ожидает" in `{typography.label-sm}`, as the warning surface and text pair, after the value |
 | Section | `{typography.section-heading}` in `{colors.accent}`, with a left rule in `{colors.line}` |
 | Chip | `{components.chip}`, `{typography.label-sm}` |
 | Dice button | `{components.dice-button}`, `{typography.label-sm}` |
 | Status banner | `{components.banner-warning}` or `{components.banner-danger}`, full window width |
-| Access panel, NPC menu, Confirmation | Inline block on `{colors.surface-bar}` with a `{colors.line}` border and `{rounded.md}` |
-| NPC block | Name in `{typography.section-heading}`, left rule in `{colors.line}` |
+| Access panel, duplicate count, Confirmation | Inline block on `{colors.surface-bar}` with a `{colors.line}` border and `{rounded.md}` |
+| Repeat block | The block's rows, then its controls in `{typography.label-sm}`. Blocks are separated by a `{colors.line}` rule |
 | Settings actions | First action `{components.button-primary}`, the others `{components.button-secondary}` |
 | Focus | 2 px outline in `{colors.focus}` on every control. Never removed |
 | Disabled | Control at 50% opacity, with a text reason near it |
