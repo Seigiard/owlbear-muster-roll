@@ -1,55 +1,28 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
-import type { RecordIdKind } from '@/core/ids';
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
-import { recordSchema, type FieldValues, type VersionedRecord } from '@/core/records';
-import { SYNC_CHANNEL } from '@/core/room-messages';
+import type { FieldValues, VersionedRecord } from '@/core/records';
 import { encodeStateRecords } from '@/core/state-records';
 import type { Timing } from '@/core/timing';
 import type { Command } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
+import type { ReplicaEngineOptions } from '@/replica/engine';
+import {
+  createRoomRig,
+  heardOf,
+  lastRequest,
+  rejection,
+  send,
+  shown,
+  storageKey,
+  storedKeys,
+  storedRecord,
+  type RigClient,
+  type RigRoom,
+  waitUntil,
+} from '@/replica/room-rig';
 
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 400,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 0,
-  // Far past any test, so no ping goes out unless a test asks for one.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
-
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
 const GHOST = 'ghost-gm';
 
 // "npc" holds the NPCs as repeat blocks of two rows, and a repeat section whose first field is a
@@ -127,45 +100,27 @@ const SOURCE: readonly VersionedRecord[] = [
   block('camp', 'cart', 'c1', 0, { cart: 'Телега' }),
 ];
 
-type Client = {
-  connectionId: string;
-  // The keys seeded into its storage, so the copies are what else it shows.
-  seeded: ReadonlySet<string>;
-  backing: MockStorageBacking;
-  store: ProjectionStore;
-  window: ReplicaClient;
-};
+// The keys seeded into its storage, so the copies are what else it shows.
+type Client = RigClient;
 
-type Heard = { from: string; data: JsonValue };
-
-type Room = { room: MockRoom; heard: Heard[]; post: (from: string, data: JsonValue) => void };
+type Room = RigRoom;
 
 type ClientOptions = {
   role?: PlayerRole;
-  newRecordId?: (kind: RecordIdKind) => string;
+  engine?: ReplicaEngineOptions;
   seeded?: readonly VersionedRecord[];
   // Stored records that fail the record schema, so the engine skips them at start.
-  corrupt?: readonly JsonValue[];
+  entries?: Readonly<Record<string, string>>;
   timing?: Partial<Timing>;
 };
 
 // One copy as the test reads it: its section and data, its instance id and version aside.
 type Copy = { section: string; d: JsonValue };
 
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  mock.restore();
-
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
-
 describe('repeat-block-duplicate', () => {
   test('writes nine copies of "Скелет 1", "Скелет 2" to "Скелет 10", after the last repeat block of its section, with its values', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
 
     // #when
@@ -183,7 +138,7 @@ describe('repeat-block-duplicate', () => {
 
   test('puts every copy under a new 8-character instance id of the same sheet and section, at c: 1 by this connection, with no link', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
 
     // #when
@@ -211,7 +166,7 @@ describe('repeat-block-duplicate', () => {
 
   test('leaves the source repeat block and its link as they were', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
 
     // #when
@@ -219,12 +174,12 @@ describe('repeat-block-duplicate', () => {
     await waitUntil(() => addedRecords(client).length === 3);
 
     // #then
-    expect(SOURCE.map((one) => stored(client, one.k))).toEqual([...SOURCE]);
+    expect(SOURCE.map((one) => storedRecord(client, one.k))).toEqual([...SOURCE]);
   });
 
   test('sends the copies to the room in commits, which another GM client merges and persists', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const first = await startClient(room, 'gm-a');
     const second = await startClient(room, 'gm-b');
 
@@ -237,7 +192,7 @@ describe('repeat-block-duplicate', () => {
 
     expect({
       shown: keys.map((key) => shown(second, key)),
-      stored: keys.map((key) => stored(second, key)),
+      stored: keys.map((key) => storedRecord(second, key)),
     }).toEqual({
       shown: addedRecords(first),
       stored: addedRecords(first),
@@ -246,7 +201,7 @@ describe('repeat-block-duplicate', () => {
 
   test('numbers copies of an unnumbered source from 1 and leaves its name', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const source = block('npc', 'mob', 'sk1', 0, { mob: 'Скелет' });
     const client = await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, source] });
 
@@ -264,7 +219,7 @@ describe('repeat-block-duplicate', () => {
   test('numbers after the highest live repeat block of the same base in the same section of the same sheet', async () => {
     // #given: a higher namesake, and higher numbers on a removed block, another base and another
     // sheet.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [
@@ -288,7 +243,7 @@ describe('repeat-block-duplicate', () => {
 
   test('copies a repeat block whose first field is not text with its values as they are', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
 
     // #when
@@ -304,7 +259,7 @@ describe('repeat-block-duplicate', () => {
 
   test('duplicates a repeat block of a sheet of a sheet set', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
 
     // #when
@@ -323,7 +278,7 @@ describe('repeat-block-duplicate', () => {
 
   test('an edit of one copy changes no other copy and not the source', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
 
     send(client, duplicate('npc', 'mob', 'sk1', 2));
@@ -375,7 +330,7 @@ describe('repeat-block-duplicate', () => {
     ],
   ])('rejects %s and writes nothing', async (_name, command, reason) => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [
@@ -384,7 +339,14 @@ describe('repeat-block-duplicate', () => {
         // A value past the limit, as a record holds any value: its next number has 101 digits.
         block('npc', 'mob', 'long', 9, { mob: `Скелет ${'9'.repeat(100)}` }),
       ],
-      corrupt: [{ k: 'sheet:bad', d: { kind: 'pc', name: 'Битый' }, c: 1, a: 'seed' }],
+      entries: {
+        [storageKey('sheet:bad')]: JSON.stringify({
+          k: 'sheet:bad',
+          d: { kind: 'pc', name: 'Битый' },
+          c: 1,
+          a: 'seed',
+        }),
+      },
     });
 
     const before = storedKeys(client);
@@ -409,11 +371,11 @@ describe('repeat-block-duplicate', () => {
     'draws an instance id that %s holds again and writes the copy under the next free one',
     async (_name, taken) => {
       // #given: AD-2, an instance id is unique in its sheet across sections, tombstones included.
-      const room = openRoom();
+      const room = roomRig.openRoom();
       const ids = [lastKeySegment(taken), 'fresh'];
 
       const client = await startClient(room, 'gm-a', {
-        newRecordId: () => ids.shift() ?? 'spent',
+        engine: { newRecordId: () => ids.shift() ?? 'spent' },
       });
 
       // #when
@@ -421,7 +383,7 @@ describe('repeat-block-duplicate', () => {
       await waitUntil(() => addedRecords(client).length === 1);
 
       // #then
-      expect({ keys: newKeys(client), taken: stored(client, taken.k) }).toEqual({
+      expect({ keys: newKeys(client), taken: storedRecord(client, taken.k) }).toEqual({
         keys: ['rep:npc:mob:fresh'],
         taken,
       });
@@ -430,8 +392,8 @@ describe('repeat-block-duplicate', () => {
 
   test('refuses two copies when every draw gives one instance id and writes nothing', async () => {
     // #given: no record holds the id, so only the first copy of this batch takes it.
-    const room = openRoom();
-    const client = await startClient(room, 'gm-a', { newRecordId: () => 'twin' });
+    const room = roomRig.openRoom();
+    const client = await startClient(room, 'gm-a', { engine: { newRecordId: () => 'twin' } });
     const before = storedKeys(client);
 
     // #when
@@ -448,7 +410,7 @@ describe('repeat-block-duplicate', () => {
 
   test('sends fifty copies through the send queue to another GM client whole', async () => {
     // #given: copies too large together for one message.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const seeded = [PRESET_RECORD, block('npc', 'mob', 'sk1', 0, { tactics: 'х'.repeat(1000) })];
     const first = await startClient(room, 'gm-a', { seeded });
     const second = await startClient(room, 'gm-b', { seeded });
@@ -466,7 +428,7 @@ describe('repeat-block-duplicate', () => {
 
   test('a player client is refused as not allowed, also on a sheet every player edits, and writes nothing', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'player-a', { role: 'PLAYER' });
 
     // #when
@@ -483,9 +445,9 @@ describe('repeat-block-duplicate', () => {
 
   test('a namesake that arrives during catch-up numbers the copies after it on exit, under the keys shown', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 1500 } });
 
@@ -503,7 +465,7 @@ describe('repeat-block-duplicate', () => {
     // #then
     expect({
       keys: newKeys(client).filter((key) => key !== arrived.k),
-      stored: shownKeys.map((key) => stored(client, key)?.c),
+      stored: shownKeys.map((key) => storedRecord(client, key)?.c),
       copies: shownKeys.map((key) => shown(client, key)?.d).sort(byOrder),
     }).toEqual({
       keys: shownKeys,
@@ -517,9 +479,9 @@ describe('repeat-block-duplicate', () => {
 
   test('during catch-up the copies show at once, wait unsaved, and are written under the same keys on exit', async () => {
     // #given: a GM that never answers holds this client in catch-up.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 1500 } });
 
@@ -530,7 +492,7 @@ describe('repeat-block-duplicate', () => {
     const during = {
       keys: newKeys(client),
       names: namesOf(client),
-      stored: newKeys(client).map((key) => stored(client, key)),
+      stored: newKeys(client).map((key) => storedRecord(client, key)),
       commits: heardOf(room, 'gm-a', 'commit').length,
     };
 
@@ -543,7 +505,7 @@ describe('repeat-block-duplicate', () => {
       during,
       after: {
         keys: newKeys(client),
-        stored: newKeys(client).map((key) => stored(client, key)?.c),
+        stored: newKeys(client).map((key) => storedRecord(client, key)?.c),
       },
     }).toEqual({
       during: {
@@ -558,9 +520,9 @@ describe('repeat-block-duplicate', () => {
 
   test('during catch-up the copies take 8-character instance ids', async () => {
     // #given: a GM that never answers holds this client in catch-up.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 1500 } });
 
@@ -597,52 +559,7 @@ function duplicate(sheetId: string, sectionId: string, instanceId: string, count
   return { type: 'repeat-block-duplicate', sheetId, sectionId, instanceId, count };
 }
 
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
-}
-
-function openRoom(): Room {
-  const room = createMemoryRoom();
-
-  const observer = createMockPlatform(createMemoryBus(), createBacking(), {
-    room,
-    connectionId: 'observer',
-    playerId: 'observer',
-    name: 'observer',
-    role: 'PLAYER',
-  });
-
-  const heard: Heard[] = [];
-
-  cleanups.push(
-    observer.broadcast.onMessage(SYNC_CHANNEL, (event) => {
-      heard.push({ from: event.connectionId, data: event.data });
-    }),
-  );
-
-  return {
-    room,
-    heard,
-    post: (from, data) => {
-      observer.sendRemoteAs(from, SYNC_CHANNEL, data);
-    },
-  };
-}
-
-function joinAs(room: Room, connectionId: string, role: PlayerRole): void {
-  room.room.join({ id: connectionId, connectionId, name: connectionId, role });
-}
+const roomRig = createRoomRig({ seeded: [PRESET_RECORD, ...SOURCE], until: 'live' });
 
 // A GM client waits until it is live, unless a GM that never answers holds it in catch-up.
 async function startClient(
@@ -650,97 +567,15 @@ async function startClient(
   connectionId: string,
   options: ClientOptions = {},
 ): Promise<Client> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
-  const role = options.role ?? 'GM';
-
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: connectionId,
-    role,
-  };
-
-  const platform = createMockPlatform(bus, backing, identity);
-
-  const seeded = options.seeded ?? base();
-
-  for (const record of [...seeded, ...(options.corrupt ?? [])]) {
-    backing.set(`${STORAGE_PREFIX}${String(Object(record).k)}`, JSON.stringify(record));
-  }
-
-  platform.joinParty();
-
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: { ...TIMING, ...options.timing },
-    newRecordId: options.newRecordId,
+  return roomRig.startClient(room, connectionId, {
+    ...options,
+    until: options.timing?.catchUpTimeoutMs === undefined ? 'live' : 'loaded',
   });
-
-  const store = createProjectionStore();
-
-  const window = startReplicaClient(
-    createMockPlatform(bus, backing, identity).broadcast,
-    createSendQueue(platform.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-  await waitUntil(() => store.$loaded.get());
-
-  if (options.timing?.catchUpTimeoutMs === undefined) {
-    await waitUntil(() => store.$sync.get().state === 'live');
-  }
-
-  return { connectionId, seeded: new Set(seeded.map((one) => one.k)), backing, store, window };
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
-}
-
-function send(client: Client, command: Command): string {
-  const sent = client.window.sendCommand(command);
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the command: ${sent.error}`);
-  }
-
-  return sent.value;
-}
-
-function rejection(client: Client, id: string): string | undefined {
-  return client.store.$rejections.get().get(id)?.reason;
 }
 
 // The window's records, with the pending view standing in for the records of its keys.
 function shownRecords(client: Client): ReadonlyMap<string, VersionedRecord> {
   return client.store.$records.get();
-}
-
-function shown(client: Client, key: string): VersionedRecord | undefined {
-  return shownRecords(client).get(key);
-}
-
-function stored(client: Client, key: string): VersionedRecord | null {
-  const text = client.backing.get(`${STORAGE_PREFIX}${key}`);
-
-  return text === null ? null : recordSchema.parse(JSON.parse(text));
-}
-
-function storedKeys(client: Client): string[] {
-  return client.backing.keys().sort();
 }
 
 // Shown repeat blocks the test did not seed: the copies.
@@ -772,24 +607,6 @@ function byOrder(first: JsonValue | undefined, second: JsonValue | undefined): n
 
 function lastKeySegment(record: Pick<VersionedRecord, 'k'>): string {
   return record.k.split(':').at(-1) ?? '';
-}
-
-function heardOf(room: Room, from: string, t: string): JsonValue[] {
-  return room.heard.flatMap((message) =>
-    message.from === from && Object(message.data).t === t ? [message.data] : [],
-  );
-}
-
-function lastRequest(room: Room, from: string): string {
-  const nonce = heardOf(room, from, 'state-request')
-    .map((message) => String(Object(message).r))
-    .at(-1);
-
-  if (nonce === undefined) {
-    throw new Error(`${from} has asked for no state`);
-  }
-
-  return nonce;
 }
 
 function stateMessage(r: string, records: readonly VersionedRecord[]): JsonValue {

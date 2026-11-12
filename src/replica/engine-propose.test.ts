@@ -1,58 +1,28 @@
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import { inflateSync, strFromU8 } from 'fflate';
 
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
-import { SYNC_CHANNEL } from '@/core/room-messages';
 import { encodeStateRecords } from '@/core/state-records';
 import type { Timing } from '@/core/timing';
 import type { Command } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
+import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine, type ReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
+import {
+  createRoomRig,
+  heardOf,
+  pause,
+  rejection,
+  send,
+  shown,
+  storedRecord,
+  type RigClient,
+  type RigRoom,
+  waitUntil,
+} from '@/replica/room-rig';
 
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 400,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 0,
-  // Far past any test, so no ping goes out and no GM goes offline unless a test asks for it.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  // Far past most tests, so a proposal goes out once unless a test asks for resends.
-  proposeResendStartMs: 60000,
-  proposeResendMaxMs: 60000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
-
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
 const GENERATION = { n: 0, a: '' };
 const DENIED = 'Нет прав на правку';
 
@@ -142,17 +112,15 @@ const BASE: readonly VersionedRecord[] = [
   REMOVED,
 ];
 
-type Client = {
-  platform: MockPlatform;
-  backing: MockStorageBacking;
-  engine: ReplicaEngine;
-  store: ProjectionStore;
-  window: ReplicaClient;
-};
+const roomRig = createRoomRig({
+  seeded: BASE,
+  timing: { proposeResendStartMs: 60000, proposeResendMaxMs: 60000 },
+  until: 'live',
+});
 
-type Heard = { from: string; data: JsonValue };
+type Client = RigClient;
 
-type Room = { room: MockRoom; heard: Heard[] };
+type Room = RigRoom;
 
 type ClientOptions = {
   role?: PlayerRole;
@@ -162,18 +130,10 @@ type ClientOptions = {
   timing?: Partial<Timing>;
 };
 
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
-
 describe('a GM client answers a proposal', () => {
   test('with c above the current one: merges it with c and a unchanged and commits it with its echo', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const proposed: VersionedRecord = { ...STR_ROW, d: { str: 11 }, c: 3, a: PLAYER_SOCKET };
 
@@ -186,7 +146,7 @@ describe('a GM client answers a proposal', () => {
     // #then
     expect({
       sent: heardOf(room, 'gm-a', 'commit'),
-      stored: stored(gm, proposed.k),
+      stored: storedRecord(gm, proposed.k),
       shown: shown(gm, proposed.k),
     }).toEqual({
       sent: [commit([proposed], [{ k: proposed.k, c: 3, a: PLAYER_SOCKET }])],
@@ -197,7 +157,7 @@ describe('a GM client answers a proposal', () => {
 
   test('identical to the current record, also when sent again: the same commit with its echo', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const proposed: VersionedRecord = { ...STR_ROW, d: { str: 11 }, c: 3, a: PLAYER_SOCKET };
 
@@ -210,18 +170,20 @@ describe('a GM client answers a proposal', () => {
     await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 2);
 
     // #then
-    expect({ sent: heardOf(room, 'gm-a', 'commit'), stored: stored(gm, proposed.k) }).toEqual({
-      sent: [
-        commit([proposed], [{ k: proposed.k, c: 3, a: PLAYER_SOCKET }]),
-        commit([proposed], [{ k: proposed.k, c: 3, a: PLAYER_SOCKET }]),
-      ],
-      stored: proposed,
-    });
+    expect({ sent: heardOf(room, 'gm-a', 'commit'), stored: storedRecord(gm, proposed.k) }).toEqual(
+      {
+        sent: [
+          commit([proposed], [{ k: proposed.k, c: 3, a: PLAYER_SOCKET }]),
+          commit([proposed], [{ k: proposed.k, c: 3, a: PLAYER_SOCKET }]),
+        ],
+        stored: proposed,
+      },
+    );
   });
 
   test("that removes a removed repeat block: commits the existing tombstone with the proposer's echo", async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
 
     joinPlayerSocket(room);
@@ -231,7 +193,7 @@ describe('a GM client answers a proposal', () => {
     await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 1);
 
     // #then
-    expect({ sent: heardOf(room, 'gm-a', 'commit'), stored: stored(gm, REMOVED.k) }).toEqual({
+    expect({ sent: heardOf(room, 'gm-a', 'commit'), stored: storedRecord(gm, REMOVED.k) }).toEqual({
       sent: [commit([REMOVED], [{ k: REMOVED.k, c: 1, a: PLAYER_SOCKET }])],
       stored: REMOVED,
     });
@@ -257,7 +219,7 @@ describe('a GM client answers a proposal', () => {
     ],
   ])('of %s: rejects it as denied with its echo and keeps its records', async (_name, record) => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
 
     joinPlayerSocket(room);
@@ -270,7 +232,7 @@ describe('a GM client answers a proposal', () => {
     expect({
       sent: heardOf(room, 'gm-a', 'reject'),
       commits: heardOf(room, 'gm-a', 'commit'),
-      stored: stored(gm, record.k),
+      stored: storedRecord(gm, record.k),
     }).toEqual({
       sent: [reject(record, 'denied')],
       commits: [],
@@ -280,7 +242,7 @@ describe('a GM client answers a proposal', () => {
 
   test('of a single sheet every player edits, from a player with no access: commits it', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const proposed: VersionedRecord = { k: 'row:camp:food', d: { food: 3 }, c: 1, a: S };
 
@@ -291,15 +253,17 @@ describe('a GM client answers a proposal', () => {
     await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 1);
 
     // #then
-    expect({ sent: heardOf(room, 'gm-a', 'commit'), stored: stored(gm, proposed.k) }).toEqual({
-      sent: [commit([proposed], [{ k: proposed.k, c: 1, a: S }])],
-      stored: proposed,
-    });
+    expect({ sent: heardOf(room, 'gm-a', 'commit'), stored: storedRecord(gm, proposed.k) }).toEqual(
+      {
+        sent: [commit([proposed], [{ k: proposed.k, c: 1, a: S }])],
+        stored: proposed,
+      },
+    );
   });
 
   test('that removes a repeat block: tombstones the links to it too, and keeps other links', async () => {
     // #given: AD-19, t1 and t2 link the sword and t3 links the sheet.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const sheetLink: VersionedRecord = { k: 'link:t3', d: { s: 'brok' }, c: 1, a: 'seed' };
 
@@ -326,7 +290,7 @@ describe('a GM client answers a proposal', () => {
 
     expect({
       sent: committedRecords(room, 'gm-a'),
-      stored: links.map((link) => stored(gm, link.k)),
+      stored: links.map((link) => storedRecord(gm, link.k)),
     }).toEqual({
       sent: [removal, ...tombstones],
       stored: [...tombstones, sheetLink],
@@ -335,7 +299,7 @@ describe('a GM client answers a proposal', () => {
 
   test('with a c not above the current one: rejects it as stale with the current record', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const proposed: VersionedRecord = { ...STR_ROW, d: { str: 11 }, c: 2, a: PLAYER_SOCKET };
 
@@ -346,7 +310,7 @@ describe('a GM client answers a proposal', () => {
     await waitUntil(() => heardOf(room, 'gm-a', 'reject').length === 1);
 
     // #then
-    expect({ sent: heardOf(room, 'gm-a', 'reject'), stored: stored(gm, STR_ROW.k) }).toEqual({
+    expect({ sent: heardOf(room, 'gm-a', 'reject'), stored: storedRecord(gm, STR_ROW.k) }).toEqual({
       sent: [{ ...reject(proposed, 'stale'), current: STR_ROW }],
       stored: STR_ROW,
     });
@@ -354,7 +318,7 @@ describe('a GM client answers a proposal', () => {
 
   test('with a field id absent from the row: rejects it as stale with the current record', async () => {
     // #given: AD-4, as a player whose preset is older sends it, so it applies its patch again.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const proposed: VersionedRecord = { ...STR_ROW, d: { qty: 1 }, c: 3, a: PLAYER_SOCKET };
 
@@ -365,7 +329,7 @@ describe('a GM client answers a proposal', () => {
     await waitUntil(() => heardOf(room, 'gm-a', 'reject').length === 1);
 
     // #then
-    expect({ sent: heardOf(room, 'gm-a', 'reject'), stored: stored(gm, STR_ROW.k) }).toEqual({
+    expect({ sent: heardOf(room, 'gm-a', 'reject'), stored: storedRecord(gm, STR_ROW.k) }).toEqual({
       sent: [{ ...reject(proposed, 'stale'), current: STR_ROW }],
       stored: STR_ROW,
     });
@@ -373,7 +337,7 @@ describe('a GM client answers a proposal', () => {
 
   test('on two GM clients: both store the same record and both commit its echo', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gmA = await startClient(room, 'gm-a');
     const gmB = await startClient(room, 'gm-b');
 
@@ -399,18 +363,18 @@ describe('a GM client answers a proposal', () => {
     const echo = commit([proposed], [{ k: proposed.k, c: 4, a: PLAYER_SOCKET }]);
 
     expect({
-      stored: [stored(gmA, proposed.k), stored(gmB, proposed.k)],
+      stored: [storedRecord(gmA, proposed.k), storedRecord(gmB, proposed.k)],
       sent: [heardOf(room, 'gm-a', 'commit'), heardOf(room, 'gm-b', 'commit')],
     }).toEqual({ stored: [proposed, proposed], sent: [[echo], [echo]] });
   });
 
   test('while catching up: neither commits nor rejects, also after its catch-up ends', async () => {
     // #given: a GM that never answers holds this client in catch-up.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.join({ id: 'ghost', connectionId: 'ghost', name: 'ghost', role: 'GM' });
 
-    const gm = await startClient(room, 'gm-a', { awaitLive: false });
+    const gm = await startClient(room, 'gm-a', { until: 'loaded' });
 
     joinPlayerSocket(room);
 
@@ -426,13 +390,13 @@ describe('a GM client answers a proposal', () => {
     expect({
       during,
       answers: [...heardOf(room, 'gm-a', 'commit'), ...heardOf(room, 'gm-a', 'reject')],
-      stored: stored(gm, STR_ROW.k),
+      stored: storedRecord(gm, STR_ROW.k),
     }).toEqual({ during: 'catching-up', answers: [], stored: STR_ROW });
   });
 
   test('from a connection the party does not know: drops it with no answer', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
 
     // #when
@@ -442,7 +406,7 @@ describe('a GM client answers a proposal', () => {
     // #then
     expect({
       answers: [...heardOf(room, 'gm-a', 'commit'), ...heardOf(room, 'gm-a', 'reject')],
-      stored: stored(gm, STR_ROW.k),
+      stored: storedRecord(gm, STR_ROW.k),
     }).toEqual({ answers: [], stored: STR_ROW });
   });
 
@@ -450,7 +414,7 @@ describe('a GM client answers a proposal', () => {
     // #given: the GM's record and the long connection id fill one message between them.
     const socket = `p-${'x'.repeat(1000)}`;
     const big: VersionedRecord = { ...STR_ROW, d: { str: 10, note: 'ы'.repeat(7000) } };
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     await startClient(room, 'gm-a', { seeded: [...BASE.filter((one) => one.k !== big.k), big] });
     room.room.join({ id: PLAYER_ID, connectionId: socket, name: 'Оля', role: 'PLAYER' });
@@ -469,7 +433,7 @@ describe('a GM client answers a proposal', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     await startClient(room, 'gm-a', {
       platform: (platform) => {
@@ -491,35 +455,31 @@ describe('a GM client answers a proposal', () => {
 
   test('of another generation: drops it with no answer', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
 
     joinPlayerSocket(room);
 
     // #when
-    room.room.postRemote(
-      SYNC_CHANNEL,
-      {
-        v: 2,
-        g: { n: 1, a: 'other' },
-        t: 'propose',
-        records: [{ ...STR_ROW, d: { str: 11 }, c: 3, a: PLAYER_SOCKET }],
-      },
-      PLAYER_SOCKET,
-    );
+    room.post(PLAYER_SOCKET, {
+      v: 2,
+      g: { n: 1, a: 'other' },
+      t: 'propose',
+      records: [{ ...STR_ROW, d: { str: 11 }, c: 3, a: PLAYER_SOCKET }],
+    });
 
     await pause(50);
 
     // #then
     expect({
       answers: [...heardOf(room, 'gm-a', 'commit'), ...heardOf(room, 'gm-a', 'reject')],
-      stored: stored(gm, STR_ROW.k),
+      stored: storedRecord(gm, STR_ROW.k),
     }).toEqual({ answers: [], stored: STR_ROW });
   });
 
   test('that it commits: writes the room copy after the pause', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     await startClient(room, 'gm-a', { timing: { snapshotPauseMs: 20 } });
     joinPlayerSocket(room);
@@ -1541,7 +1501,7 @@ describe("a player's entry over its lifetime", () => {
 describe('a player and a GM client together', () => {
   test("apply a player's field edit, repeat block add and repeat block removal on both clients", async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const player = await startClient(room, PLAYER_ID, { role: 'PLAYER', seeded: [] });
     await waitUntil(() => shown(player, SWORD.k) !== undefined);
@@ -1576,7 +1536,7 @@ describe('a player and a GM client together', () => {
     ];
 
     expect({
-      gm: expected.map((record) => stored(gm, record.k)),
+      gm: expected.map((record) => storedRecord(gm, record.k)),
       player: expected.map((record) => player.store.$replica.get().get(record.k)),
     }).toEqual({ gm: expected, player: expected });
   });
@@ -1587,7 +1547,7 @@ describe('a player and a GM client together', () => {
 async function playerWithSilentGm(
   timing: Partial<Timing> = {},
 ): Promise<{ room: Room; player: Client }> {
-  const room = openRoom();
+  const room = roomRig.openRoom();
   const gm = await startClient(room, 'gm-a');
   const player = await startClient(room, PLAYER_ID, { role: 'PLAYER', seeded: [], timing });
 
@@ -1600,53 +1560,17 @@ async function playerWithSilentGm(
 async function startClient(
   room: Room,
   connectionId: string,
-  options: ClientOptions & { awaitLive?: boolean } = {},
+  options: ClientOptions & { until?: 'loaded' | 'live' } = {},
 ): Promise<Client> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
-  const role = options.role ?? 'GM';
-
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: connectionId,
-    role,
-  };
-
-  const created = createMockPlatform(bus, backing, identity);
-  const platform = options.platform?.(created) ?? created;
-
-  for (const record of options.seeded ?? BASE) {
-    backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  platform.joinParty();
-
-  const timing = { ...TIMING, ...options.timing };
-
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, timing), {
-    timing,
-    editDenied: DENIED,
+  return roomRig.startClient(room, connectionId, {
+    ...options,
+    until: options.until ?? 'live',
+    engine: { editDenied: DENIED },
   });
+}
 
-  const store = createProjectionStore();
-
-  const window = startReplicaClient(
-    createMockPlatform(bus, backing, identity).broadcast,
-    createSendQueue(platform.broadcast, timing),
-    store,
-    timing,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-
-  await waitUntil(
-    () =>
-      store.$loaded.get() && (options.awaitLive === false || store.$sync.get().state === 'live'),
-  );
-
-  return { platform, backing, engine, store, window };
+function joinPlayerSocket(room: Room): void {
+  room.room.join({ id: PLAYER_ID, connectionId: PLAYER_SOCKET, name: 'Оля', role: 'PLAYER' });
 }
 
 // The records of the room copy the GM wrote, or `null` before it wrote one.
@@ -1663,34 +1587,13 @@ function roomCopyRecords(room: Room): VersionedRecord[] | null {
   return recordSchema.array().parse(content.records);
 }
 
-function openRoom(): Room {
-  const room = createMemoryRoom();
-  const heard: Heard[] = [];
-
-  cleanups.push(
-    room.onRemote(SYNC_CHANNEL, 'observer', (event) => {
-      heard.push({ from: event.connectionId, data: event.data });
-    }),
-  );
-
-  return { room, heard };
-}
-
-function joinPlayerSocket(room: Room): void {
-  room.room.join({ id: PLAYER_ID, connectionId: PLAYER_SOCKET, name: 'Оля', role: 'PLAYER' });
-}
-
 function propose(room: Room, record: VersionedRecord, from = PLAYER_SOCKET): void {
-  room.room.postRemote(
-    SYNC_CHANNEL,
-    { v: 2, g: GENERATION, t: 'propose', records: [record] },
-    from,
-  );
+  room.post(from, { v: 2, g: GENERATION, t: 'propose', records: [record] });
 }
 
 // A message from the GM client the test speaks for.
 function answer(room: Room, data: JsonValue): void {
-  room.room.postRemote(SYNC_CHANNEL, data, 'gm-a');
+  room.post('gm-a', data);
 }
 
 function commit(
@@ -1726,13 +1629,6 @@ function swordEdit(qty: number): Command {
   };
 }
 
-// The messages of one type one client sent to the room, in send order.
-function heardOf(room: Room, from: string, t: string): JsonValue[] {
-  return room.heard.flatMap((message) =>
-    message.from === from && Object(message.data).t === t ? [message.data] : [],
-  );
-}
-
 // The records one client sent to the room in commits, in send order.
 function committedRecords(room: Room, from: string): VersionedRecord[] {
   return heardOf(room, from, 'commit').flatMap((data) =>
@@ -1759,63 +1655,4 @@ function pendingKeys(client: Client): string[] {
   keys.sort();
 
   return keys;
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await pause(POLL_MS);
-  }
-}
-
-function pause(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-function send(client: Client, command: Command): string {
-  const sent = client.window.sendCommand(command);
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the command: ${sent.error}`);
-  }
-
-  return sent.value;
-}
-
-function rejection(client: Client, id: string): string | undefined {
-  return client.store.$rejections.get().get(id)?.reason;
-}
-
-function shown(client: Client, key: string): VersionedRecord | undefined {
-  return client.store.$records.get().get(key);
-}
-
-function stored(client: Client, key: string): VersionedRecord | null {
-  const text = client.backing.get(`${STORAGE_PREFIX}${key}`);
-
-  return text === null ? null : recordSchema.parse(JSON.parse(text));
-}
-
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
 }

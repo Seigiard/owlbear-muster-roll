@@ -1,55 +1,26 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import type { JsonValue } from '@/core/json';
 import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
-import type { Timing } from '@/core/timing';
-import { UI_CHANNEL, type Command } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
+import type { Command } from '@/core/ui-messages';
+import { createMemoryBacking, type MockStorageBacking } from '@/platform/current';
 import type { PlayerRole, StorageOperation } from '@/platform/ports';
-import { createSendQueue, type Wait } from '@/platform/send-queue';
-import { startReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
+import type { Wait } from '@/platform/send-queue';
+import {
+  createRoomRig,
+  send,
+  shown,
+  storageKey,
+  storedKeys,
+  storedRecord,
+  type RigClient,
+  type RigRoom,
+  waitUntil,
+} from '@/replica/room-rig';
 
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 200,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 5,
-  // Far past any test, so no ping goes out unless a test asks for one.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
-
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
 const INITIAL = { n: 0, a: '' };
 const ROW_STR = { kind: 'row', rowId: 'str' } as const;
 const ROW_NOTES = { kind: 'row', rowId: 'notes' } as const;
@@ -95,19 +66,14 @@ type ClientOptions = {
   role?: PlayerRole;
   playerId?: string;
   backing?: MockStorageBacking;
-  wait?: Wait;
+  sendWait?: Wait;
   seeded?: readonly VersionedRecord[];
-  generationPrefix?: string;
+  generation?: { n: number; a: string };
   // Fail from the start, so the engine meets them while it loads.
   failingStorage?: StorageOperation[];
 };
 
-type Client = {
-  connectionId: string;
-  platform: MockPlatform;
-  backing: MockStorageBacking;
-  store: ProjectionStore;
-  window: ReplicaClient;
+type Client = RigClient & {
   // Every delta the background has sent its windows so far, and the keys they carried in order.
   deltas: () => number;
   deltaKeys: string[];
@@ -117,152 +83,62 @@ type Heard = { from: string; data: JsonValue };
 
 type Listener = { heard: Heard[]; post: (from: string, data: JsonValue) => void };
 
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  mock.restore();
-
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
-
 function sheet(id: string, c = 1, a = 'seed'): VersionedRecord {
   return { k: `sheet:${id}`, d: { set: 'pc', order: 0 }, c, a };
 }
 
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
-}
+const roomRig = createRoomRig({
+  seeded: [PRESET_RECORD, BROK],
+  timing: { catchUpTimeoutMs: 200, stateAnswerDelayMaxMs: 5 },
+  until: 'live',
+});
 
 // One client of the room: its background engine and one window, on a LOCAL bus of their own.
 async function startClient(
-  room: MockRoom,
+  room: RigRoom,
   connectionId: string,
   options: ClientOptions = {},
 ): Promise<Client> {
-  const backing = options.backing ?? createBacking();
-  const bus = createMemoryBus();
+  const client = await roomRig.startClient(room, connectionId, {
+    ...options,
+    generation: options.generation,
+    sendWait: options.sendWait,
+    platform: (platform) => {
+      platform.setFailingStorageOperations(options.failingStorage ?? []);
 
-  const identity = {
-    room,
-    connectionId,
-    playerId: options.playerId ?? 'owner',
-    name: connectionId,
-    role: options.role ?? 'GM',
-  };
+      return platform;
+    },
+  });
 
-  const platform = createMockPlatform(bus, backing, identity);
-
-  for (const record of options.seeded ?? [PRESET_RECORD, BROK]) {
-    backing.set(`${options.generationPrefix ?? STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  platform.setFailingStorageOperations(options.failingStorage ?? []);
-  platform.joinParty();
-
-  const engine = await startReplicaEngine(
-    platform,
-    createSendQueue(platform.broadcast, TIMING, options.wait),
-    { timing: TIMING },
-  );
-
-  // The window is a page of the same client, so it has the same connection id and joins no party.
-  const windowPlatform = createMockPlatform(bus, backing, identity);
-  const store = createProjectionStore();
-  let deltas = 0;
-  const deltaKeys: string[] = [];
-
-  cleanups.push(
-    windowPlatform.broadcast.onMessage(UI_CHANNEL, (event) => {
-      const message = Object(event.data);
-
-      if (message.t === 'delta') {
-        deltas += 1;
-        deltaKeys.push(
-          ...recordSchema
+  return {
+    ...client,
+    deltas: () => client.local.filter((message) => Object(message).t === 'delta').length,
+    get deltaKeys() {
+      return client.local
+        .filter((message) => Object(message).t === 'delta')
+        .flatMap((message) =>
+          recordSchema
             .array()
-            .parse(message.records)
+            .parse(Object(message).records)
             .map((record) => record.k),
         );
-      }
-    }),
-  );
-
-  const window = startReplicaClient(
-    windowPlatform.broadcast,
-    createSendQueue(windowPlatform.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-  // A client catches up on start, and an edit made before that ends would wait in the queue.
-  await waitUntil(() => store.$loaded.get() && store.$sync.get().state === 'live');
-
-  return { connectionId, platform, backing, store, window, deltas: () => deltas, deltaKeys };
+    },
+  };
 }
 
 // A connection that is in the room and not in the party: it hears every REMOTE message of the
 // given types.
-function listen(room: MockRoom, types: readonly string[] = ['commit']): Listener {
-  const observer = createMockPlatform(createMemoryBus(), createBacking(), {
-    room,
-    connectionId: 'observer',
-    playerId: 'observer',
-    name: 'observer',
-    role: 'PLAYER',
-  });
-
-  const heard: Heard[] = [];
-
-  cleanups.push(
-    observer.broadcast.onMessage(SYNC_CHANNEL, (event) => {
-      if (types.includes(String(Object(event.data).t))) {
-        heard.push({ from: event.connectionId, data: event.data });
-      }
-    }),
-  );
-
+function listen(room: RigRoom, types: readonly string[] = ['commit']): Listener {
   return {
-    heard,
-    post: (from, data) => {
-      observer.sendRemoteAs(from, SYNC_CHANNEL, data);
+    get heard() {
+      return room.heard.flatMap((message) =>
+        types.includes(String(Object(message.data).t))
+          ? [{ from: message.from, data: message.data }]
+          : [],
+      );
     },
+    post: room.post,
   };
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
-}
-
-function send(client: Client, command: Command): void {
-  const sent = client.window.sendCommand(command);
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the command: ${sent.error}`);
-  }
 }
 
 function patch(target: typeof ROW_STR | typeof ROW_NOTES, fieldId: string, value: JsonValue) {
@@ -278,20 +154,6 @@ function rename(sheetId: string, name: string) {
     fieldId: 'name',
     value: name,
   } satisfies Command;
-}
-
-function shown(client: Client, key: string): VersionedRecord | undefined {
-  return client.store.$records.get().get(key);
-}
-
-function stored(client: Client, key: string, prefix = STORAGE_PREFIX): VersionedRecord | null {
-  const text = client.backing.get(`${prefix}${key}`);
-
-  return text === null ? null : recordSchema.parse(JSON.parse(text));
-}
-
-function storedKeys(client: Client): string[] {
-  return client.backing.keys();
 }
 
 function commit(records: VersionedRecord[], g = INITIAL, v = 2): JsonValue {
@@ -319,21 +181,15 @@ function commitsFrom(heard: readonly Heard[], from: string): JsonValue[] {
 describe('GM edit goes out', () => {
   test('as one commit on REMOTE with the written record, after it is merged and persisted', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const gmA = await startClient(room, 'gm-a');
     const storedWhenSent: (VersionedRecord | null)[] = [];
 
-    cleanups.push(
-      createMockPlatform(createMemoryBus(), createBacking(), {
-        room,
-        connectionId: 'probe',
-        playerId: 'probe',
-        name: 'probe',
-        role: 'PLAYER',
-      }).broadcast.onMessage(SYNC_CHANNEL, (event) => {
+    roomRig.cleanup(
+      room.room.onRemote(SYNC_CHANNEL, 'probe', (event) => {
         if (Object(event.data).t === 'commit') {
-          storedWhenSent.push(stored(gmA, 'row:brok:str'));
+          storedWhenSent.push(storedRecord(gmA, 'row:brok:str'));
         }
       }),
     );
@@ -354,7 +210,7 @@ describe('GM edit goes out', () => {
 
   test('splits a commit over the message limit into parts that each fit and together hold all', async () => {
     // #given: each row key is over 4000 bytes, so its tombstone is too.
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const rowKeys = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => `row:brok:${'ы'.repeat(2000)}${id}`);
     const rows = rowKeys.map((k): VersionedRecord => ({ k, d: { str: 3 }, c: 1, a: 'seed' }));
@@ -386,7 +242,7 @@ describe('GM edit goes out', () => {
 describe('coalescing', () => {
   test('sends only the newer record of a key edited twice while the queue is held, and keeps the other keys', async () => {
     // #given: once the queue has sent the first delta, its spacing pause holds until released.
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const releases: (() => void)[] = [];
     let hold: Promise<void> | null = null;
@@ -394,7 +250,7 @@ describe('coalescing', () => {
     const wait: Wait = (milliseconds) =>
       hold ?? new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-    const gmA = await startClient(room, 'gm-a', { wait });
+    const gmA = await startClient(room, 'gm-a', { sendWait: wait });
 
     hold = new Promise((resolve) => {
       releases.push(resolve);
@@ -404,7 +260,7 @@ describe('coalescing', () => {
     send(gmA, patch(ROW_STR, 'str', 1));
     send(gmA, patch(ROW_STR, 'str', 2));
     send(gmA, patch(ROW_NOTES, 'notes', 'Хромает'));
-    await waitUntil(() => stored(gmA, 'row:brok:notes') !== null);
+    await waitUntil(() => storedRecord(gmA, 'row:brok:notes') !== null);
     hold = null;
 
     for (const release of releases) {
@@ -433,8 +289,8 @@ describe('two GM clients', () => {
     ['in two tabs of one browser', true],
   ])('%s keep edits to different rows made at once, on both and in storage', async (_n, shared) => {
     // #given
-    const room = createMemoryRoom();
-    const backing = shared ? createBacking() : undefined;
+    const room = roomRig.openRoom();
+    const backing = shared ? createMemoryBacking() : undefined;
     const gmA = await startClient(room, 'gm-a', { backing });
     const gmB = await startClient(room, 'gm-b', { backing });
 
@@ -453,7 +309,7 @@ describe('two GM clients', () => {
     expect(
       [gmA, gmB].map((gm) => ({
         shown: [shown(gm, str.k), shown(gm, notes.k)],
-        stored: [stored(gm, str.k), stored(gm, notes.k)],
+        stored: [storedRecord(gm, str.k), storedRecord(gm, notes.k)],
       })),
     ).toEqual([
       { shown: [str, notes], stored: [str, notes] },
@@ -463,7 +319,7 @@ describe('two GM clients', () => {
 
   test('settle on the record with the higher (c, a) when both edit one row at once', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const gmA = await startClient(room, 'gm-a');
     const gmB = await startClient(room, 'gm-b');
 
@@ -476,7 +332,7 @@ describe('two GM clients', () => {
 
     await waitUntil(() => [gmA, gmB].every((gm) => shown(gm, winner.k)?.a === 'gm-b'));
 
-    expect([gmA, gmB].map((gm) => [shown(gm, winner.k), stored(gm, winner.k)])).toEqual([
+    expect([gmA, gmB].map((gm) => [shown(gm, winner.k), storedRecord(gm, winner.k)])).toEqual([
       [winner, winner],
       [winner, winner],
     ]);
@@ -484,7 +340,7 @@ describe('two GM clients', () => {
 
   test('edit a row the other just changed from the record it received', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const gmA = await startClient(room, 'gm-a');
     const gmB = await startClient(room, 'gm-b');
 
@@ -499,7 +355,7 @@ describe('two GM clients', () => {
 
     await waitUntil(() => shown(gmA, latest.k)?.c === 2);
 
-    expect([shown(gmA, latest.k), stored(gmA, latest.k), shown(gmB, latest.k)]).toEqual([
+    expect([shown(gmA, latest.k), storedRecord(gmA, latest.k), shown(gmB, latest.k)]).toEqual([
       latest,
       latest,
       latest,
@@ -508,7 +364,7 @@ describe('two GM clients', () => {
 
   test('see a sheet created, renamed and deleted by the other', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const gmA = await startClient(room, 'gm-a');
     const gmB = await startClient(room, 'gm-b');
 
@@ -536,7 +392,7 @@ describe('two GM clients', () => {
 
   test('of one player id are both known, so the commits of each apply on the other', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const gmA = await startClient(room, 'gm-a', { playerId: 'owner' });
     const gmB = await startClient(room, 'gm-b', { playerId: 'owner' });
 
@@ -557,7 +413,7 @@ describe('two GM clients', () => {
 
   test('do not send a received commit on again', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const gmA = await startClient(room, 'gm-a');
     const gmB = await startClient(room, 'gm-b');
@@ -575,7 +431,7 @@ describe('two GM clients', () => {
 describe('gate', () => {
   test('handles room messages in arrival order, also when the first needs a party read', async () => {
     // #given: "late" is a GM the last party change did not list, so its message waits for a read.
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
 
@@ -600,7 +456,7 @@ describe('gate', () => {
 
   test('drops a commit from a connection the party does not know after one re-read', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
 
@@ -621,7 +477,7 @@ describe('gate', () => {
 
   test('drops a commit from a known player', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
 
@@ -633,25 +489,22 @@ describe('gate', () => {
     await afterMarker(wire.post, 'gm-b', gm);
 
     // #then
-    expect({ shown: shown(gm, 'sheet:lisa'), stored: stored(gm, 'sheet:lisa') }).toEqual({
+    expect({ shown: shown(gm, 'sheet:lisa'), stored: storedRecord(gm, 'sheet:lisa') }).toEqual({
       shown: undefined,
       stored: null,
     });
   });
 
   test.each([
-    ['higher', { n: 1, a: 'x' }, ''],
-    ['lower', INITIAL, 'mr2:mock-room:1:x:'],
-  ])('drops a GM commit of a %s generation', async (_name, g, ownPrefix) => {
+    ['higher', { n: 1, a: 'x' }, INITIAL],
+    ['lower', INITIAL, { n: 1, a: 'x' }],
+  ])('drops a GM commit of a %s generation', async (_name, g, ownGeneration) => {
     // #given: a GM whose storage is at generation 1 has that generation as its own.
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
-    const prefix = ownPrefix === '' ? STORAGE_PREFIX : ownPrefix;
-    const gm = await startClient(room, 'gm-a', { generationPrefix: prefix });
+    const gm = await startClient(room, 'gm-a', { generation: ownGeneration });
 
-    await startClient(room, 'gm-b', { generationPrefix: prefix });
-
-    const ownGeneration = ownPrefix === '' ? INITIAL : { n: 1, a: 'x' };
+    await startClient(room, 'gm-b', { generation: ownGeneration });
 
     // #when
     wire.post('gm-b', commit([sheet('lisa', 1, 'gm-b')], g));
@@ -659,7 +512,10 @@ describe('gate', () => {
     await waitUntil(() => shown(gm, 'sheet:marker') !== undefined);
 
     // #then
-    expect({ shown: shown(gm, 'sheet:lisa'), stored: stored(gm, 'sheet:lisa', prefix) }).toEqual({
+    expect({
+      shown: shown(gm, 'sheet:lisa'),
+      stored: storedRecord(gm, 'sheet:lisa', ownGeneration),
+    }).toEqual({
       shown: undefined,
       stored: null,
     });
@@ -667,7 +523,7 @@ describe('gate', () => {
 
   test('drops a message with a lower v and shows no notice', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
 
@@ -686,7 +542,7 @@ describe('gate', () => {
 
   test('drops a message with a higher v and keeps the new-version notice after later deltas', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
 
@@ -700,11 +556,7 @@ describe('gate', () => {
     // #then
     expect({ notices: gm.store.$notices.get(), stored: storedKeys(gm).sort() }).toEqual({
       notices: ['new-version'],
-      stored: [
-        `${STORAGE_PREFIX}preset`,
-        `${STORAGE_PREFIX}sheet:brok`,
-        `${STORAGE_PREFIX}sheet:marker`,
-      ],
+      stored: [storageKey('preset'), storageKey('sheet:brok'), storageKey('sheet:marker')],
     });
   });
 
@@ -715,7 +567,7 @@ describe('gate', () => {
     ['no envelope at all', 'commit'],
   ])('drops a message with the right v and %s, and throws nothing', async (_name, message) => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
     const errors = spyOn(console, 'error');
@@ -737,7 +589,7 @@ describe('gate', () => {
 describe('remote record', () => {
   test('that cannot be saved stays in the replica and raises the local-save notice', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
 
@@ -752,7 +604,7 @@ describe('remote record', () => {
     // #then
     expect({
       shown: shown(gm, 'sheet:lisa'),
-      stored: stored(gm, 'sheet:lisa'),
+      stored: storedRecord(gm, 'sheet:lisa'),
       notices: gm.store.$notices.get(),
     }).toEqual({
       shown: sheet('lisa', 1, 'gm-b'),
@@ -763,7 +615,7 @@ describe('remote record', () => {
 
   test('that loses to the local one sends no delta and writes nothing', async () => {
     // #given: the GM holds Брок at c 5.
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const local = sheet('brok', 5, 'seed');
     const gm = await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, local] });
@@ -782,14 +634,14 @@ describe('remote record', () => {
       shown: shown(gm, local.k),
       deltas: gm.deltas() - deltasBefore,
       writes: writes.mock.calls.map(([key]) => key),
-    }).toEqual({ shown: local, deltas: 1, writes: [`${STORAGE_PREFIX}sheet:marker`] });
+    }).toEqual({ shown: local, deltas: 1, writes: [storageKey('sheet:marker')] });
   });
 });
 
 describe('GM whose storage could not be read', () => {
   test('applies its own edit and sends no commit', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
 
     spyOn(console, 'error').mockImplementation(() => undefined);
@@ -820,7 +672,7 @@ describe('GM whose storage could not be read', () => {
 describe('remote record too large for one message', () => {
   test('is dropped, and the other records of its commit still apply', async () => {
     // #given: the record fits the commit, but not a window message with its envelope reserve.
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
 
@@ -839,7 +691,7 @@ describe('remote record too large for one message', () => {
     await waitUntil(() => shown(gm, 'sheet:lisa') !== undefined);
 
     // #then
-    expect({ shown: shown(gm, huge.k), stored: stored(gm, huge.k) }).toEqual({
+    expect({ shown: shown(gm, huge.k), stored: storedRecord(gm, huge.k) }).toEqual({
       shown: undefined,
       stored: null,
     });
@@ -871,7 +723,7 @@ describe('player client', () => {
     { type: 'wipe' },
   ])('refuses %o as not allowed and changes nothing', async (command) => {
     // #given: the player holds Брок and the preset from a GM commit.
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const wire = listen(room);
     const player = await startClient(room, 'player-p', { role: 'PLAYER', seeded: [] });
 
@@ -899,7 +751,7 @@ describe('player client', () => {
 
   test('merges a GM commit into its replica and persists nothing', async () => {
     // #given
-    const room = createMemoryRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const player = await startClient(room, 'player-p', { role: 'PLAYER', seeded: [] });
 

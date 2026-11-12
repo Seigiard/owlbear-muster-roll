@@ -667,7 +667,7 @@ export function defaultClient(room: MockRoom): MockClient {
   };
 }
 
-function createMemoryBacking(): MockStorageBacking {
+export function createMemoryBacking(): MockStorageBacking {
   const stored = new Map<string, string>();
 
   return {

@@ -207,3 +207,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-42-shadcn-aria.md`
   summary: The three copies of the live Owlbear themes can drift apart, and no test compares them.
   evidence: `MOCK_THEME` in `src/platform/mock/index.ts`, `PREVIEW_THEMES` in `src/preview/themes.ts` and `LIGHT_THEME` in `tests/support/colors.ts`. The builder page shows `PREVIEW_THEMES`, and the contrast test reads only `LIGHT_THEME`. A unit test that compares them needs the mock theme exported.
+
+## Deferred from: build of spec-task-47-shared-engine-test-rig (2026-11-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-47-shared-engine-test-rig.md`
+  summary: No test fails when a GM client still adopting another generation writes the room copy.
+  evidence: Removing `adoptTarget === null` from `canWriteRoomCopy` in `src/replica/engine.ts` leaves all 658 engine tests green, both before and after the rig move. AD-8 says only a client that can vouch for its records writes the copy.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-47-shared-engine-test-rig.md`
+  summary: Four non-engine test files still hold their own full `Timing` literal.
+  evidence: `src/ui/replica-client.test.ts`, `src/ui/picker/link-picker.test.tsx`, `src/replica/commit-outbox.test.ts` and `src/platform/send-queue.test.ts` were outside TASK-47's scope; a new `Timing` field must still be added to each by hand.

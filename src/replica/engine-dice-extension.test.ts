@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { z } from 'zod';
 
 import {
   DICE_PLUS_ACCESS_CHANNEL,
@@ -11,51 +12,20 @@ import type { JsonValue } from '@/core/json';
 import { err } from '@/core/result';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { SYNC_CHANNEL } from '@/core/room-messages';
-import type { DiceExtensionTiming, Timing } from '@/core/timing';
+import type { DiceExtensionTiming } from '@/core/timing';
 import { UI_CHANNEL, type RollOutcome } from '@/core/ui-messages';
 import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
   startFakeDiceExtension,
   type FakeDiceAccess,
   type FakeDiceAnswer,
   type FakeDiceExtension,
   type MockPlatform,
   type MockRoom,
-  type MockStorageBacking,
 } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine, type ReplicaEngine } from '@/replica/engine';
+import { createRoomRig, pause, waitUntil, type RigClient } from '@/replica/room-rig';
 import { copy } from '@/ui/copy';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient, type RollRequest } from '@/ui/replica-client';
-
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 200,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 5,
-  gmLinkTimeoutMs: 60000,
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
+import type { RollRequest } from '@/ui/replica-client';
 
 // Waits far past any test unless a test shortens one.
 const DICE_TIMING: DiceExtensionTiming = {
@@ -67,9 +37,18 @@ const DICE_TIMING: DiceExtensionTiming = {
   accessWaitMs: 60000,
 };
 
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
+const rollOutcomeMessageSchema = z.strictObject({
+  t: z.literal('roll-outcome'),
+  id: z.string(),
+  outcome: z.discriminatedUnion('code', [
+    z.strictObject({ code: z.literal('waiting-access') }),
+    z.strictObject({ code: z.literal('rolled') }),
+    z.strictObject({ code: z.literal('field'), field: z.string() }),
+    z.strictObject({ code: z.literal('arithmetic') }),
+    z.strictObject({ code: z.literal('refused') }),
+    z.strictObject({ code: z.literal('failed') }),
+  ]),
+});
 
 // A local die shows floor(0.3 * sides) + 1: a d20 7, a d6 2, a d3 1, a d1000 301.
 const LOCAL_RANDOM = (): number => 0.3;
@@ -203,11 +182,7 @@ type ClientOptions = {
   failFirstSends?: number;
 };
 
-type Client = {
-  platform: MockPlatform;
-  engine: ReplicaEngine;
-  store: ProjectionStore;
-  window: ReplicaClient;
+type Client = Omit<RigClient, 'local'> & {
   // Sends LOCAL on the client's own broadcast, as another extension of it would.
   local: MockPlatform;
   dice: FakeDiceExtension | null;
@@ -217,7 +192,11 @@ type Client = {
 
 type Room = { room: MockRoom; rolls: JsonValue[] };
 
-const cleanups: (() => void)[] = [];
+const roomRig = createRoomRig({
+  seeded: SEEDED,
+  timing: { catchUpTimeoutMs: 200, stateAnswerDelayMaxMs: 5 },
+  until: 'live',
+});
 
 // The path each roll took, as the engine logs it, oldest first.
 let rollPaths: JsonValue[] = [];
@@ -229,52 +208,18 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-
-  mock.restore();
-});
-
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
-}
-
 // A connection in the room and not in the party: it hears every roll.
 function openRoom(): Room {
-  const room = createMemoryRoom();
+  const rigRoom = roomRig.openRoom();
 
-  const observer = createMockPlatform(createMemoryBus(), createBacking(), {
-    room,
-    connectionId: 'observer',
-    playerId: 'observer',
-    name: 'observer',
-    role: 'PLAYER',
-  });
-
-  const rolls: JsonValue[] = [];
-
-  cleanups.push(
-    observer.broadcast.onMessage(SYNC_CHANNEL, (event) => {
-      if (Object(event.data).t === 'roll') {
-        rolls.push(event.data);
-      }
-    }),
-  );
-
-  return { room, rolls };
+  return {
+    room: rigRoom.room,
+    get rolls() {
+      return rigRoom.heard.flatMap((message) =>
+        Object(message.data).t === 'roll' ? [message.data] : [],
+      );
+    },
+  };
 }
 
 async function startClient(
@@ -282,53 +227,54 @@ async function startClient(
   connectionId: string,
   options: ClientOptions = {},
 ): Promise<Client> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
+  const outcomes = new Map<string, RollOutcome[]>();
+  let accessFailures = options.failAccessRequests ?? 0;
+  let dice: FakeDiceExtension | null = null;
 
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: options.name ?? connectionId,
-    role: options.role ?? 'GM',
-  };
+  const client = roomRig.createClient(room.room, connectionId, {
+    role: options.role,
+    name: options.name,
+    engine: {
+      diceTiming: { ...DICE_TIMING, ...options.diceTiming },
+      random: LOCAL_RANDOM,
+      rollCopy: copy,
+    },
+  });
 
-  const platform = createMockPlatform(bus, backing, identity);
-  const local = createMockPlatform(bus, backing, identity);
-
-  for (const record of SEEDED) {
-    backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  platform.joinParty();
-
-  const dice =
+  const pagePlatform = client.newPage();
+  dice =
     options.dice === undefined
       ? null
-      : startFakeDiceExtension(local.broadcast, connectionId, options.dice, {
+      : startFakeDiceExtension(pagePlatform.broadcast, connectionId, options.dice, {
           access: options.diceAccess,
           promptTimeoutMs: options.promptTimeoutMs,
         });
-
   dice?.setReady(options.diceReady ?? true);
   dice?.setGmInRoom(options.gmInRoom ?? true);
+  roomRig.cleanup(
+    pagePlatform.broadcast.onMessage(UI_CHANNEL, (event) => {
+      const message = rollOutcomeMessageSchema.safeParse(event.data);
 
-  const outcomes = new Map<string, RollOutcome[]>();
-
-  cleanups.push(
-    local.broadcast.onMessage(UI_CHANNEL, (event) => {
-      const message = Object(event.data);
-
-      if (message.t === 'roll-outcome') {
-        outcomes.set(message.id, [...(outcomes.get(message.id) ?? []), message.outcome]);
+      if (!message.success) {
+        return;
       }
+
+      outcomes.set(message.data.id, [
+        ...(outcomes.get(message.data.id) ?? []),
+        message.data.outcome,
+      ]);
     }),
   );
+  roomRig.cleanup(() => dice?.stop());
 
-  let accessFailures = options.failAccessRequests ?? 0;
-  const sendMessage = platform.broadcast.sendMessage;
-
-  platform.broadcast.sendMessage = async (channel, data, sendOptions) => {
+  client.platform.failNextSends(
+    Array.from({ length: options.failFirstSends ?? 0 }, () => ({
+      kind: 'failed' as const,
+      reason: 'test',
+    })),
+  );
+  const sendMessage = client.platform.broadcast.sendMessage;
+  client.platform.broadcast.sendMessage = async (channel, data, sendOptions) => {
     if (channel === DICE_PLUS_REQUEST_ACCESS_CHANNEL && accessFailures > 0) {
       accessFailures -= 1;
 
@@ -338,54 +284,13 @@ async function startClient(
     return sendMessage(channel, data, sendOptions);
   };
 
-  platform.failNextSends(
-    Array.from({ length: options.failFirstSends ?? 0 }, () => ({
-      kind: 'failed' as const,
-      reason: 'test',
-    })),
+  await client.startEngine();
+  client.openWindow();
+  await roomRig.waitUntil(
+    () => client.store.$loaded.get() && client.store.$sync.get().state === 'live',
   );
 
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: TIMING,
-    diceTiming: { ...DICE_TIMING, ...options.diceTiming },
-    random: LOCAL_RANDOM,
-    rollCopy: copy,
-  });
-
-  const store = createProjectionStore();
-  const windowPlatform = createMockPlatform(bus, backing, identity);
-
-  const window = startReplicaClient(
-    windowPlatform.broadcast,
-    createSendQueue(windowPlatform.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop, () => dice?.stop());
-  await waitUntil(() => store.$loaded.get() && store.$sync.get().state === 'live');
-  // The fake answers a probe as it hears it, so the engine knows it is ready once it is counted.
-  await waitUntil(() => dice === null || dice.probes() > 0 || (options.failFirstSends ?? 0) > 0);
-
-  return { platform, engine, store, window, local, dice, outcomes };
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
-}
-
-async function pause(milliseconds: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+  return { ...client, local: pagePlatform, dice, outcomes };
 }
 
 // The dice cell of a character row, by its row and cell index.
@@ -1046,7 +951,7 @@ describe('the dice extension client', () => {
 
     const probeIds: string[] = [];
 
-    cleanups.push(
+    roomRig.cleanup(
       gm.local.broadcast.onMessage(DICE_PLUS_READY_CHANNEL, (event) => {
         const message = Object(event.data);
 
