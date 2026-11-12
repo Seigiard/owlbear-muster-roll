@@ -1,11 +1,11 @@
 ---
 id: TASK-38
 title: Build presets without writing JSON by hand
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-11T11:15:00Z'
-updated_date: '2026-11-12T00:57:00Z'
+updated_date: '2026-11-12T02:26:00Z'
 labels:
   - v2
 dependencies:
@@ -24,7 +24,7 @@ Today a GM describes a sheet only by writing preset JSON by hand, which needs kn
 - [x] #1 On a separate page of the deployed site, a GM starts blank, from a repository example or from a file, builds a preset with sheet sets and single sheets (sections, rows, labels, fields, dice cells and window) and downloads it without editing JSON (CAP-20, CAP-23)
 - [x] #2 A file that fails the preset checks does not open in the builder and shows the upload's message (CAP-20)
 - [x] #3 A preset downloaded from the extension opens in the builder, and a file downloaded from the builder uploads through «Загрузить пресет» (CAP-21)
-- [ ] #4 The settings button in the extension opens the builder in a new tab, checked live in an Owlbear room (CAP-21)
+- [x] #4 The settings button in the extension opens the builder in a new tab, checked live in an Owlbear room (CAP-21)
 - [x] #5 A structure tree and a form edit the preset beside a live preview drawn by the extension's own sheet components; a form edit redraws the preview at once, and a click on a preview cell selects its tree item (CAP-22)
 - [x] #6 A new field gets an id from its label that follows the id rules and is unique in its scope, a label change keeps it, and the field form shows and rewrites it; renaming str rewrites str by whole word in every formula that resolves to it, leaves str_tired, and says how many formulas changed; in a preset opened from a file, a changed id warns that the room's values will be erased (CAP-24, CAP-25)
 - [x] #7 After the page is closed and opened again, the builder opens on the draft with no prompt, and with no draft on an empty preset (CAP-26)
@@ -44,10 +44,12 @@ Forge session 2026-11-11 hardened the builder's shape: _bmad-output/forge/preset
 2026-11-12: built on branch worktree-agent-a924ec9329138ca78 per _bmad-output/implementation-artifacts/spec-task-38-preset-builder.md. Full check green: oxfmt, lint 0 errors, typecheck, bun test 2551 pass, test:browser 462 pass (tests/builder.e2e.ts 11), build emits builder.html with no obr chunk. AC #4 stays open: a new tab from the Settings link in a live Owlbear room is the owner's check.
 
 2026-11-12 review: three reviewers (blind, edge case, verification gap) gave 27 findings, triaged in the build spec. 13 fixed in f222f03 (unsafe integers dropping the draft, download off with no problem shown, empty-preset reason, Russian-layout undo keys, Ctrl+Y, rename to invalid or taken id leaving formulas alone, failed draft read status, caret word refresh, build test imports, docs section, three e2e). 6 deferred to deferred-work.md, 8 rejected with evidence. AD-24 amended for the rename case. Full check after fixes: oxfmt clean; lint 0 errors (warnings only in tests/replica.e2e.ts, pre-existing); typecheck clean; bun test 2556 pass; test:browser 464 pass; build ok with dist/builder.html. AC #1 evidence is the local build and e2e; the deployed site gets the page when the owner deploys. AC #4 stays open for the owner's live check.
+
+2026-11-12: the owner checked live after deploy 467da22d: the «Конструктор пресетов» link in Settings opens the builder in a new tab from the Owlbear iframe.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Adds builder.html, a preset builder outside Owlbear: a structure tree with drag, per-item forms, a live preview drawn by the window's sheet components, undo and redo, a draft kept in the browser, every problem marked at its item with a counter, and download gated on parsePresetFile. Core gains presetProblems (parsePresetFile now returns its first), field id suggestion with transliteration, and formula rename by whole word in the parser's scopes. Settings links to the builder in a new tab. Open: AC #4, the owner's live check that the Owlbear iframe opens the tab; deferred review items are in deferred-work.md.
+The preset builder ships as builder.html on the deployed site: a structure tree with forms, a live preview drawn by the extension's sheet components, field ids made from labels with formula-aware rename, one auto-saved draft with undo/redo, problems shown at their items, and download only when parsePresetFile accepts the preset. Settings link to it in a new tab, which the owner confirmed in a live room. Deferred items are in deferred-work.md.
 <!-- SECTION:FINAL_SUMMARY:END -->

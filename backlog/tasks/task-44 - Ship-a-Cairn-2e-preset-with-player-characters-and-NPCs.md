@@ -1,11 +1,11 @@
 ---
 id: TASK-44
 title: Ship a Cairn 2e preset with player characters and NPCs
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-11T22:36:00Z'
-updated_date: '2026-11-12T01:12:00Z'
+updated_date: '2026-11-12T02:26:00Z'
 labels: []
 dependencies:
   - TASK-41
@@ -29,7 +29,7 @@ The owner runs Cairn 2e and wants a ready preset instead of writing one. It is a
 - [x] #3 Each attribute has a dice cell for a save: d20 roll-under the current value, per the SRD
 - [x] #4 An NPC single sheet holds a linkable repeat section; each repeat block is one NPC with the Cairn 2e stat block: name, HP, Armor, STR, DEX, WIL, attacks with damage dice, and notes. NPC sheets are visible to GMs only
 - [x] #5 Every attack in both templates has a dice cell for its damage formula
-- [ ] #6 A parse test covers the preset file, and the owner opens it in a live room
+- [x] #6 A parse test covers the preset file, and the owner opens it in a live room
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -63,6 +63,8 @@ Verification (2026-11-12), commit 012f8ed on the agent branch:
 - Preview: drawn with sample and empty values at 640x720, no console errors; NPC block fits in 9 columns.
 - Full check: oxfmt check clean; lint exit 0 (warnings only in files this task did not touch); typecheck exit 0; bun test 2558 pass 0 fail; test:browser 464 passed; build ok.
 - Spec: _bmad-output/implementation-artifacts/spec-task-44-cairn-2e-preset.md. Format gaps also in deferred-work.md.
+
+2026-11-12: the owner opened the preset in a live room after deploy 467da22d: «в целом есть».
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -76,3 +78,9 @@ Owner: search the web first; GitHub has many Cairn character sheet projects to l
 
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+presets/cairn-2e.json ships a Cairn 2e preset checked against the SRD: a sheet set for player characters with attributes, saves, HP, armor, deprivation, ten inventory slots with fatigue, weapons and traits, and a GM-only NPC single sheet whose linkable repeat blocks hold the Cairn stat block. A parse test covers every shipped preset. Format gaps (damage die from a field, roll labels from fields, crit rules, nested attacks in an NPC, slot counting) are in deferred-work.md.
+<!-- SECTION:FINAL_SUMMARY:END -->

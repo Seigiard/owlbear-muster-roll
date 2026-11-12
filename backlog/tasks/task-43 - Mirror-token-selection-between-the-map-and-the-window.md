@@ -1,11 +1,11 @@
 ---
 id: TASK-43
 title: Mirror token selection between the map and the window
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-11T22:18:00Z'
-updated_date: '2026-11-11T23:56:00Z'
+updated_date: '2026-11-12T02:26:00Z'
 labels: []
 dependencies:
   - TASK-41
@@ -30,7 +30,7 @@ With many linked tokens on the map, a GM cannot tell which sheet or repeat block
 - [x] #4 A linked token that is not on the current scene is skipped with no error
 - [x] #5 Players see marks for their own selection. Selecting tokens from the window is GM-only
 - [x] #6 Reading and changing the selection is a port in `src/platform/ports.ts` with the OBR and the mock adapter. E2E tests on the mock cover both directions
-- [ ] #7 The owner checks both directions in a live Owlbear room
+- [x] #7 The owner checks both directions in a live Owlbear room
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -57,4 +57,12 @@ Evidence per AC (all on the mock adapter):
 - AC6: SelectionPort in src/platform/ports.ts; OBR adapter in src/platform/obr/index.ts (OBR.player getSelection/onChange/select(ids,false)/deselect(ids)); mock adapter with per-client selection (setMapSelection, failNextSelectionWrite) in src/platform/mock/; e2e covers both directions.
 Full check: oxfmt clean, lint exit 0, typecheck clean, bun test 2465 pass, test:browser 451 pass, build ok.
 AC7 waits for the owner's live-room check, so the task stays In Progress.
+
+2026-11-12: the owner checked both directions in a live Owlbear room after deploy 467da22d: works.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Token selection follows the token link both ways (CAP-32): a selected linked token marks its sheet tab and repeat block, and a GM selects or deselects a target's tokens from the window with «Выделить на карте». Selection goes through a platform port with OBR and mock adapters; e2e on the mock covers both directions, and the owner confirmed it in a live room.
+<!-- SECTION:FINAL_SUMMARY:END -->
