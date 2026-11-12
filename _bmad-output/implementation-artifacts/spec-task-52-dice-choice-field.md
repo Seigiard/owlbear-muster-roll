@@ -2,7 +2,7 @@
 title: 'TASK-52 Let a formula roll the die a dice-choice field holds'
 type: 'feature'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '283a33e1c7f5579ce417bc0d3d7efc4aa02c5abb'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -71,14 +71,14 @@ Decisions (owner said "работай автономно"; recorded in the spec,
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/core/formula.ts`, `formula-evaluate.ts`, `dice-roll.ts` + tests -- parse, resolve, roll, label -- AC #2, #3, #5.
-- [ ] `src/core/preset.ts` + test -- schema, option rule, formula type check -- AC #1, #4.
-- [ ] `field-patch`, `preset-migrate`, `snapshot-import`, `formula-rename` + tests -- value type, migration, import, rename.
-- [ ] `src/ui/copy.ts`, `preset-errors.ts`, `src/ui/sheet/preset-cell.tsx`, `src/preview/sample-records.ts` -- picker and messages -- AC #1, #4.
-- [ ] `src/builder/*` + tests -- «Выбор кубика».
-- [ ] `docs/preset-format.md`, `docs/example-preset.json` -- AC #7.
-- [ ] `presets/cairn-2e.json`, `presets/README.md`, `deferred-work.md` -- AC #6.
-- [ ] `tests/dice-choice-field.e2e.ts`, `tests/builder.e2e.ts` -- browser proof.
+- [x] `src/core/formula.ts`, `formula-evaluate.ts`, `dice-roll.ts` + tests -- parse, resolve, roll, label -- AC #2, #3, #5.
+- [x] `src/core/preset.ts` + test -- schema, option rule, formula type check -- AC #1, #4.
+- [x] `field-patch`, `preset-migrate`, `snapshot-import`, `formula-rename` + tests -- value type, migration, import, rename.
+- [x] `src/ui/copy.ts`, `preset-errors.ts`, `src/ui/sheet/preset-cell.tsx`, `src/preview/sample-records.ts` -- picker and messages -- AC #1, #4.
+- [x] `src/builder/*` + tests -- «Выбор кубика».
+- [x] `docs/preset-format.md`, `docs/example-preset.json` -- AC #7.
+- [x] `presets/cairn-2e.json`, `presets/README.md`, `deferred-work.md` -- AC #6.
+- [x] `tests/dice-choice-field.e2e.ts`, `tests/builder.e2e.ts` -- browser proof.
 
 **Acceptance Criteria:**
 - Given the example preset and `presets/cairn-2e.json`, when parsed, then both pass and every formula id resolves (`bun test src/core/preset.test.ts`).
@@ -86,9 +86,16 @@ Decisions (owner said "работай автономно"; recorded in the spec,
 
 ## Implementation Notes
 
+- Built through `implement` (tdd chain, 3 batches) and `code-review` (2 revmux rounds). Run directory: `~/.claude/artifacts/tdd-20261112-060500/task-52-dice-choice-field/`.
+- `writeDiceFields` in `src/core/formula.ts` writes the label from the tokenizer spans, so the label and the parser agree on what a `Nd(id)` term is.
+- `tests/support/room.ts`: `storedData` and `storedRecords` read the page's device namespace through `storageKeyForPage`. The full browser suite passes with it.
+- Batch 3 (Matrix Test Audit) added the roll-time half of M8: `1d(nothing)` gives the field error naming `nothing`. Calibrated.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+- Code-review carry-over: no open decision, no unresolved critical or major, no deferred finding, no corrected criterion. Round 1 found 1 major and 2 minor (all fixed in batch 2); round 2 (final profile) found 0.
 
 ## Verification
 
