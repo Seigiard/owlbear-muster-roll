@@ -517,22 +517,30 @@ function CellForm({ store, template, origin, cell, path }: CellFormProps): React
           { value: 'number', label: form.typeNumber },
           { value: 'check', label: form.typeCheck },
           { value: 'select', label: form.typeSelect },
+          { value: 'dice-choice', label: form.typeDiceChoice },
         ]}
         onChange={(type) => {
-          if (type === 'text' || type === 'number' || type === 'check' || type === 'select') {
+          if (
+            type === 'text' ||
+            type === 'number' ||
+            type === 'check' ||
+            type === 'select' ||
+            type === 'dice-choice'
+          ) {
             update((current) =>
               current.kind === 'field' ? withFieldType(current, type) : current,
             );
           }
         }}
       />
-      {cell.type === 'select' ? (
+      {cell.type === 'select' || cell.type === 'dice-choice' ? (
         <OptionsInput
           options={cell.options}
           onChange={(options) => {
             update(
               (current) =>
-                current.kind === 'field' && current.type === 'select'
+                current.kind === 'field' &&
+                (current.type === 'select' || current.type === 'dice-choice')
                   ? { ...current, options }
                   : current,
               `${uid}:options`,

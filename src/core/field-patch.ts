@@ -38,6 +38,7 @@ const VALUE_SCHEMAS = {
   text: z.string().min(1),
   check: z.boolean(),
   select: z.string().min(1),
+  'dice-choice': z.string().min(1),
 } as const satisfies Record<PresetFieldCell['type'], z.ZodType<FieldValue>>;
 
 // The largest id on the wire, standing in for the author a record gets when it is minted. The

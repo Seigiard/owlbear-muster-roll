@@ -60,7 +60,7 @@ const encoder = new TextEncoder();
 
 const BYTE_ORDER_MARK = '\uFEFF';
 
-type SnapshotFieldType = Exclude<PresetFieldCell['type'], 'select'>;
+type SnapshotFieldType = Exclude<PresetFieldCell['type'], 'select' | 'dice-choice'>;
 
 const FIELD_TYPES: readonly SnapshotFieldType[] = ['text', 'number', 'check'];
 

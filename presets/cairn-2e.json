@@ -396,7 +396,7 @@
         },
         {
           "title": "Оружие",
-          "columns": 6,
+          "columns": 4,
           "repeat": true,
           "rows": [
             [
@@ -406,24 +406,18 @@
                 "id": "weapon"
               },
               {
-                "kind": "dice",
-                "formula": "1d4"
+                "kind": "text",
+                "text": "Урон"
+              },
+              {
+                "kind": "field",
+                "type": "dice-choice",
+                "id": "weapon_die",
+                "options": ["d4", "d6", "d8", "d10", "d12"]
               },
               {
                 "kind": "dice",
-                "formula": "1d6"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d8"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d10"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d12"
+                "formula": "1d(weapon_die)"
               }
             ]
           ]
@@ -660,24 +654,18 @@
                 "id": "attack_1"
               },
               {
-                "kind": "dice",
-                "formula": "1d4"
+                "kind": "text",
+                "text": "Урон"
+              },
+              {
+                "kind": "field",
+                "type": "dice-choice",
+                "id": "attack_1_die",
+                "options": ["d4", "d6", "d8", "d10", "d12"]
               },
               {
                 "kind": "dice",
-                "formula": "1d6"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d8"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d10"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d12"
+                "formula": "1d(attack_1_die)"
               }
             ],
             [
@@ -687,24 +675,18 @@
                 "id": "attack_2"
               },
               {
-                "kind": "dice",
-                "formula": "1d4"
+                "kind": "text",
+                "text": "Урон"
+              },
+              {
+                "kind": "field",
+                "type": "dice-choice",
+                "id": "attack_2_die",
+                "options": ["d4", "d6", "d8", "d10", "d12"]
               },
               {
                 "kind": "dice",
-                "formula": "1d6"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d8"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d10"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d12"
+                "formula": "1d(attack_2_die)"
               }
             ],
             [

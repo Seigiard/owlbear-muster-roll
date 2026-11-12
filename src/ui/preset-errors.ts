@@ -75,6 +75,12 @@ export function badFileReason(failure: Exclude<PresetFailure, { code: 'newer-ver
       return reason.blankOption(failure.field);
     case 'duplicate-option':
       return reason.duplicateOption(failure.detail, failure.field);
+    case 'bad-die-option':
+      return reason.badDieOption(failure.detail, failure.field);
+    case 'die-field-as-number':
+      return reason.dieFieldAsNumber(failure.detail, failure.field);
+    case 'field-not-die':
+      return reason.fieldNotDie(failure.detail, failure.field);
     default:
       return unknownFailure(failure);
   }

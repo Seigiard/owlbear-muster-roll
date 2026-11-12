@@ -139,6 +139,12 @@ export const copy = {
     blankOption: (field: string): string => `пустой вариант в поле «${field}»`,
     duplicateOption: (option: string, field: string): string =>
       `вариант «${option}» повторяется в поле «${field}»`,
+    badDieOption: (option: string, field: string): string =>
+      `вариант «${option}» в поле «${field}» не кубик вида d6`,
+    dieFieldAsNumber: (formula: string, field: string): string =>
+      `в формуле «${formula}» поле «${field}» — выбор кубика, бросайте его как 1d(${field})`,
+    fieldNotDie: (formula: string, field: string): string =>
+      `в формуле «${formula}» поле «${field}» не выбор кубика`,
     tooLarge: 'файл слишком большой',
     // A file that is not a snapshot, such as a preset, under "Загрузить снимок".
     notSnapshot: 'это не снимок',
@@ -277,9 +283,11 @@ export const copy = {
       typeNumber: 'Число',
       typeCheck: 'Флажок',
       typeSelect: 'Список',
+      typeDiceChoice: 'Выбор кубика',
       selectOptions: 'Варианты — по одному в строке',
       defaultSelectOptionOne: 'Вариант 1',
       defaultSelectOptionTwo: 'Вариант 2',
+      defaultDiceOptions: 'd4\nd6\nd8\nd10\nd12\nd20',
       fieldId: 'Id — имя для формул',
       fieldUses: (n: number): string => `Встречается в формулах: ${n}.`,
       formula: 'Формула',

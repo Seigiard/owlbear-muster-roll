@@ -2,8 +2,10 @@ import { z } from 'zod';
 
 import {
   evaluateFormula,
+  formulaDiceFieldLookup,
   formulaDiceTerms,
   formulaFieldLookup,
+  resolveFormulaDiceFields,
   type DiceTerm,
   type FaceSource,
   type RollResult,
@@ -134,12 +136,40 @@ export function prepareDiceRoll(
     ownBlock,
   );
 
+  const diceFieldLookup = formulaDiceFieldLookup(
+    layout,
+    from,
+    (rowId) => withShown(rowValues(records, sheetId, rowId), shown),
+    ownBlock,
+  );
+
+  const resolved = resolveFormulaDiceFields(formula, diceFieldLookup);
+
+  if (!resolved.ok) {
+    return err({ code: 'field', field: fieldLabel(layout, from, resolved.error.fieldId) });
+  }
+
+  const writtenFormula = writeDiceFields(cell.formula, diceFieldLookup);
+
+  if (!writtenFormula.ok) {
+    return err({ code: 'field', field: fieldLabel(layout, from, writtenFormula.error) });
+  }
+
+  const cellText = cellLabel(cell, row.slice(0, place.cellIndex));
+  const hasDiceField = /[0-9]+[dD]\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\)/.test(cell.formula);
+
+  const label = hasDiceField
+    ? cellText === cell.formula
+      ? writtenFormula.value
+      : `${cellText} (${writtenFormula.value})`
+    : cellText;
+
   return ok({
-    cell: cellLabel(cell, row.slice(0, place.cellIndex)),
-    terms: formulaDiceTerms(formula),
+    cell: label,
+    terms: formulaDiceTerms(resolved.value),
     roll: (faces) => {
       const rolled = evaluateFormula(
-        formula,
+        resolved.value,
         (id) => (shown.get(id)?.kind === 'error' ? null : lookup(id)),
         faces,
       );
@@ -155,6 +185,31 @@ export function prepareDiceRoll(
       return rolled;
     },
   });
+}
+
+const DICE_FIELD_SLOT = /[0-9]+[dD]\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g;
+
+function writeDiceFields(
+  formula: string,
+  lookup: (id: string) => number | null,
+): Result<string, string> {
+  let failure: string | null = null;
+
+  const written = formula.replace(DICE_FIELD_SLOT, (slot, id: string) => {
+    const sides = lookup(id);
+
+    if (sides === null) {
+      failure = id;
+
+      return slot;
+    }
+
+    const count = slot.match(/^[0-9]+/)?.[0] ?? '';
+
+    return `${count}d${sides}`;
+  });
+
+  return failure === null ? ok(written) : err(failure);
 }
 
 // The values of one repeat block, or `null` for a repeat block that is gone.

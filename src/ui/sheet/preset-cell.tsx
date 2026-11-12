@@ -137,7 +137,7 @@ function CellContent({
 
   return cell.type === 'check' ? (
     <CheckField field={cell} label={label} values={values} place={place} pending={pending} />
-  ) : cell.type === 'select' ? (
+  ) : cell.type === 'select' || cell.type === 'dice-choice' ? (
     <SelectField field={cell} label={label} values={values} place={place} pending={pending} />
   ) : (
     <TextValueField field={cell} label={label} values={values} place={place} pending={pending} />
@@ -201,7 +201,7 @@ function SelectField({
   place,
   pending,
 }: Omit<FieldProps, 'field'> & {
-  field: Extract<PresetFieldCell, { type: 'select' }>;
+  field: Extract<PresetFieldCell, { type: 'select' | 'dice-choice' }>;
 }): ReactNode {
   const markId = useId();
   const edit = useSelectFieldEdit({ place, fieldId: field.id, recordValue: values.get(field.id) });

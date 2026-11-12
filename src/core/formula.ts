@@ -7,6 +7,7 @@ const DICE_COUNT_MAX = 100;
 const DICE_SIDES_MAX = 1000;
 
 const WHITESPACE = /\s+/y;
+const DICE_FIELD = /([0-9]+)[dD]\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/y;
 const NUMBER = /([0-9]+)(?:[dD]([0-9]+))?/y;
 const NAME = /[A-Za-z_][A-Za-z0-9_]*/y;
 const SYMBOL = /<=|>=|[-+*/()<>]/y;
@@ -21,6 +22,7 @@ export type ComparisonOperator = '<=' | '<' | '>=' | '>';
 export type FormulaExpression =
   | { kind: 'integer'; value: number }
   | { kind: 'dice'; count: number; sides: number }
+  | { kind: 'dice-field'; count: number; id: string }
   | { kind: 'field'; id: string }
   | { kind: 'call'; name: FormulaFunction; argument: FormulaExpression }
   | {
@@ -47,6 +49,7 @@ type FormulaSymbol = ArithmeticOperator | ComparisonOperator | '(' | ')';
 type Token =
   | { kind: 'integer'; value: number }
   | { kind: 'dice'; count: number; sides: number }
+  | { kind: 'dice-field'; count: number; id: string }
   | { kind: 'name'; name: string }
   | { kind: 'symbol'; symbol: FormulaSymbol };
 
@@ -103,6 +106,17 @@ function tokenize(formula: string): Token[] {
       continue;
     }
 
+    const diceField = matchAt(DICE_FIELD);
+
+    if (diceField !== null) {
+      if (NAME_CHARACTER.test(formula[index] ?? '')) {
+        throw new FormulaError('syntax-error');
+      }
+
+      tokens.push(diceFieldToken(diceField[1] ?? '', diceField[2] ?? ''));
+      continue;
+    }
+
     const number = matchAt(NUMBER);
 
     if (number !== null) {
@@ -152,6 +166,16 @@ function numberToken(countDigits: string, sidesDigits: string | undefined): Toke
   }
 
   return { kind: 'dice', count, sides };
+}
+
+function diceFieldToken(countDigits: string, id: string): Token {
+  const count = Number(countDigits);
+
+  if (count < 1 || count > DICE_COUNT_MAX) {
+    throw new FormulaError('dice-out-of-range');
+  }
+
+  return { kind: 'dice-field', count, id };
 }
 
 function toSymbol(text: string): FormulaSymbol {
@@ -231,7 +255,7 @@ function parseTokens(tokens: readonly Token[]): FormulaTree {
 
     position += 1;
 
-    if (token?.kind === 'integer' || token?.kind === 'dice') {
+    if (token?.kind === 'integer' || token?.kind === 'dice' || token?.kind === 'dice-field') {
       return token;
     }
 

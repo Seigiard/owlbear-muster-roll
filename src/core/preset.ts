@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 import { isFieldId, isTemplateId } from '@/core/field-id';
 import { FORMAT_VERSION } from '@/core/format-version';
-import { parseFormula } from '@/core/formula';
+import { parseFormula, type FormulaExpression, type FormulaTree } from '@/core/formula';
 import type { JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
 
@@ -24,6 +24,12 @@ const fieldCellSchema = z.discriminatedUnion('type', [
   z.strictObject({
     kind: z.literal('field'),
     type: z.literal('select'),
+    id: z.string(),
+    ...fieldOptions,
+  }),
+  z.strictObject({
+    kind: z.literal('field'),
+    type: z.literal('dice-choice'),
     id: z.string(),
     ...fieldOptions,
   }),
@@ -153,7 +159,10 @@ export type PresetFailure =
   | { code: 'bad-window' }
   | { code: 'no-options'; field: string }
   | { code: 'blank-option'; field: string }
-  | { code: 'duplicate-option'; detail: string; field: string };
+  | { code: 'duplicate-option'; detail: string; field: string }
+  | { code: 'bad-die-option'; detail: string; field: string }
+  | { code: 'die-field-as-number'; detail: string; field: string }
+  | { code: 'field-not-die'; detail: string; field: string };
 
 // Check order: size, JSON, `v`, `window`, structure, then rules. `v` comes before the structure,
 // because a newer file may have a shape this build does not know.
@@ -371,6 +380,7 @@ export function presetProblems(preset: Preset): PresetProblem[] {
     }
 
     problems.push(...sectionsProblems(template, path));
+    problems.push(...formulaTypeProblems(template, path));
 
     const nameFailure = nameFieldFailure(template);
 
@@ -510,11 +520,11 @@ function cellFailure(cell: PresetCell, scope: Set<string>): PresetFailure | null
 
   scope.add(cell.id);
 
-  return cell.type === 'select' ? selectOptionsFailure(cell) : null;
+  return cell.type === 'select' || cell.type === 'dice-choice' ? selectOptionsFailure(cell) : null;
 }
 
 function selectOptionsFailure(
-  field: Extract<PresetFieldCell, { type: 'select' }>,
+  field: Extract<PresetFieldCell, { type: 'select' | 'dice-choice' }>,
 ): PresetFailure | null {
   if (field.options.length === 0) {
     return { code: 'no-options', field: shortDetail(field.id) };
@@ -536,6 +546,115 @@ function selectOptionsFailure(
     }
 
     seen.add(option);
+
+    if (field.type === 'dice-choice' && !/^d(?:[1-9][0-9]{0,2}|1000)$/.test(option)) {
+      return { code: 'bad-die-option', detail: shortDetail(option), field: shortDetail(field.id) };
+    }
+  }
+
+  return null;
+}
+
+function formulaTypeProblems(template: Template, templatePath: readonly number[]): PresetProblem[] {
+  const problems: PresetProblem[] = [];
+
+  template.sections.forEach((section, sectionIndex) => {
+    section.rows.forEach((row, rowIndex) => {
+      row.forEach((cell, cellIndex) => {
+        if (cell.kind !== 'dice') {
+          return;
+        }
+
+        const parsed = parseFormula(cell.formula);
+
+        const failure = parsed.ok
+          ? formulaTypeFailure(template, { sectionIndex, rowIndex }, parsed.value, cell.formula)
+          : null;
+
+        if (failure !== null) {
+          problems.push({
+            failure,
+            path: [...templatePath, sectionIndex, rowIndex, cellIndex],
+          });
+        }
+      });
+    });
+  });
+
+  return problems;
+}
+
+function formulaTypeFailure(
+  template: Template,
+  from: TemplateRowPlace,
+  tree: FormulaTree,
+  formula: string,
+): PresetFailure | null {
+  function walk(expression: FormulaExpression): PresetFailure | null {
+    if (expression.kind === 'field') {
+      const field = fieldReference(template, from, expression.id);
+
+      return field?.type === 'dice-choice'
+        ? {
+            code: 'die-field-as-number',
+            detail: shortDetail(formula),
+            field: shortDetail(expression.id),
+          }
+        : null;
+    }
+
+    if (expression.kind === 'dice-field') {
+      const field = fieldReference(template, from, expression.id);
+
+      return field === null || field.type === 'dice-choice'
+        ? null
+        : {
+            code: 'field-not-die',
+            detail: shortDetail(formula),
+            field: shortDetail(expression.id),
+          };
+    }
+
+    if (expression.kind === 'integer' || expression.kind === 'dice') {
+      return null;
+    }
+
+    if (expression.kind === 'call') {
+      return walk(expression.argument);
+    }
+
+    return walk(expression.left) ?? walk(expression.right);
+  }
+
+  if (tree.kind === 'comparison') {
+    return walk(tree.left) ?? walk(tree.right);
+  }
+
+  return walk(tree);
+}
+
+function fieldReference(
+  template: Template,
+  from: TemplateRowPlace,
+  id: string,
+): PresetFieldCell | null {
+  const reference = resolveFieldReference(template, from, id);
+
+  if (reference === null) {
+    return null;
+  }
+
+  const rows =
+    reference.scope === 'block'
+      ? (template.sections[from.sectionIndex]?.rows ?? [])
+      : [plainRow(template, reference.rowId) ?? []];
+
+  for (const row of rows) {
+    const field = row.find((cell) => cell.kind === 'field' && cell.id === id);
+
+    if (field?.kind === 'field') {
+      return field;
+    }
   }
 
   return null;
