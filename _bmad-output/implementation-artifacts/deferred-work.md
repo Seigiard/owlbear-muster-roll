@@ -216,3 +216,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-47-shared-engine-test-rig.md`
   summary: Four non-engine test files still hold their own full `Timing` literal.
   evidence: `src/ui/replica-client.test.ts`, `src/ui/picker/link-picker.test.tsx`, `src/replica/commit-outbox.test.ts` and `src/platform/send-queue.test.ts` were outside TASK-47's scope; a new `Timing` field must still be added to each by hand.
+
+## Deferred from: build of spec-task-45-pending-edits-module (2026-11-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-45-pending-edits-module.md`
+  summary: The `proposalAllowed` pre-check in `edit` of `src/replica/pending-edits.ts` is an equivalent mutation (M6): no test fails without it, before or after TASK-45.
+  evidence: `resolveSheet` (`src/core/sheets.ts`) gives a hidden template `write: 'none'`, so `playerMayEdit` and the composer refuse every case `proposalJudgement` refuses. Either the check is dead and can go, or a state where it alone refuses needs a test; deciding needs a look at `core/access`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-45-pending-edits-module.md`
+  summary: Mutation M9 (a stale answer rebases on `current` alone) survived every engine test at the baseline; only the new unit test kills it.
+  evidence: ticket.md calibration in the TASK-45 run directory: M9 fails 0 tests at the baseline and after phase A, 1 test after phase B (`a stale answer below the edit rebuilds over the newest known record, not only the answer`). No engine-level or e2e test covers it.

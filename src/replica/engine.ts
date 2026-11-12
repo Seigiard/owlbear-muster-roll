@@ -1,13 +1,6 @@
 import { nanoid } from 'nanoid';
 
-import {
-  canEdit,
-  checkProposal,
-  partyEntries,
-  proposalAllowed,
-  type PartyEntry,
-  type ProposalContext,
-} from '@/core/access';
+import { checkProposal, partyEntries, type PartyEntry, type ProposalContext } from '@/core/access';
 import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { dicePlusDice, dicePlusTarget } from '@/core/dice-plus';
 import { prepareDiceRoll, type DiceRollFailure, type PreparedDiceRoll } from '@/core/dice-roll';
@@ -20,25 +13,12 @@ import {
   recordFitsOneMessage,
   splitBatch,
 } from '@/core/message-size';
-import type { FieldPatchTarget } from '@/core/field-patch';
-import { compareGenerations, counterAbove, mergeRecords, type Version } from '@/core/merge';
+import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
 import { listedFaces, randomFaces, type FaceSource } from '@/core/formula-evaluate';
 import { blockIndex, linkTargetKey, type LinkTarget } from '@/core/link-target';
-import { decodePreset, windowSizeOf, type Preset, type Template } from '@/core/preset';
-import {
-  NOTHING_ERASED,
-  presetMoves,
-  stripToTemplate,
-  type PresetMoves,
-} from '@/core/preset-migrate';
-import {
-  fieldValuesSchema,
-  parseRepKey,
-  presetDataSchema,
-  repDataSchema,
-  type FieldValue,
-  type VersionedRecord,
-} from '@/core/records';
+import { decodePreset, windowSizeOf, type Preset } from '@/core/preset';
+import { NOTHING_ERASED } from '@/core/preset-migrate';
+import { parseRepKey, presetDataSchema, type VersionedRecord } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 import { rollNotificationText, type RollCopy } from '@/core/roll-text';
 import {
@@ -55,7 +35,6 @@ import {
   stateRequestMessage,
   SYNC_CHANNEL,
   type AliveMessage,
-  type CommitMessage,
   type GenerationRelation,
   type ProposeMessage,
   type RejectMessage,
@@ -64,7 +43,7 @@ import {
   type RoomMessage,
   type StateMessage,
 } from '@/core/room-messages';
-import { dependentSheetId, resolveSheet, sheetName } from '@/core/sheets';
+import { resolveSheet, sheetName } from '@/core/sheets';
 import {
   decodeSnapshotFileData,
   importSnapshot,
@@ -124,16 +103,7 @@ import {
 import { createDiceExtension } from '@/replica/dice-extension';
 import { createPartyRoster, type RoomSender } from '@/replica/party-roster';
 import { createPendingQueue, type PendingEntry } from '@/replica/pending-queue';
-import {
-  combinePatches,
-  createProposalQueue,
-  movedPatches,
-  proposedRecord,
-  strippedPatch,
-  type ProposalEntry,
-  type ProposalFailure,
-  type ProposalPatch,
-} from '@/replica/proposal-queue';
+import { createPendingEdits } from '@/replica/pending-edits';
 import { createRecordStore, type RecordStore } from '@/replica/record-store';
 import { watchSceneRemovals, type SceneWatch } from '@/replica/scene-watch';
 import { createTokenMenu, type TokenMenuCopy } from '@/replica/token-menu';
@@ -279,12 +249,6 @@ type RollSender = Pick<RoomSender, 'role' | 'name'>;
 // The decoded preset, kept while the `preset` record keeps its version.
 type DecodedPreset = { c: number; a: string; preset: Preset };
 
-// The commands a player with access sends as proposals (AD-4).
-type PlayerEditCommand = Extract<
-  Command,
-  { type: 'field-patch' | 'repeat-block-add' | 'repeat-block-delete' }
->;
-
 export async function startReplicaEngine(
   platform: ReplicaEnginePlatform,
   sendQueue: SendQueue,
@@ -337,11 +301,20 @@ export async function startReplicaEngine(
   let ownGeneration = persistence?.generation ?? INITIAL_GENERATION;
   let highestSeenGeneration = ownGeneration;
   const outbox = createCommitOutbox(sendQueue, () => ownGeneration);
+  let stopped = false;
 
   // AD-4: a player's edits, one entry per key, until a GM client answers each. Only the newest
   // version of an entry is composed into the `propose` the queue takes.
-  const proposals = createProposalQueue({
+  const pendingEdits = createPendingEdits({
     timing,
+    playerId: ownPlayerId,
+    connectionId,
+    records: () => replica,
+    catchingUp: () => sync.state === 'catching-up',
+    presetOf,
+    compose: (view, command) => composers.compose(dryContext(view), command),
+    mint: minter.mint,
+    now: () => performance.now(),
     enqueue: (compose) =>
       sendQueue.enqueueComposed(
         SYNC_CHANNEL,
@@ -356,13 +329,9 @@ export async function startReplicaEngine(
       ),
   });
 
-  // UX-DR29: when "Нет прав на правку" last showed, on the monotonic clock.
-  let lastDeniedAt = Number.NEGATIVE_INFINITY;
   let sequence = 0;
   // AD-12: once a newer build has spoken in the room, the banner stays until a reload.
   let newerVersionSeen = false;
-  let stopped = false;
-
   // AD-10: the background owns the token menu. "Отвязать лист" runs as a GM command of this
   // engine, so it goes through the same checks, catch-up queue, storage and send as a window's.
   // No window owns the id of a command the menu issues, so this page shows its rejection.
@@ -1379,8 +1348,8 @@ export async function startReplicaEngine(
     importing = true;
     persistence = { store, generation };
     replaceReplica(generation, records);
-    // Live, so no intent waits. A GM has no proposals.
-    proposals.clear();
+    // Live, so no intent waits. A GM has no pending edits.
+    pendingEdits.clear();
     emitDelta([]);
 
     try {
@@ -1642,159 +1611,24 @@ export async function startReplicaEngine(
     noteRoomCopy(after, false, before);
   }
 
-  // AD-4: a player's edit of a field or a repeat block becomes the entry of its key in the proposal
-  // queue. It is checked now against what the windows show, with the checks a GM client runs that
-  // read no version, so a refusal comes at once. Made during catch-up, it waits for its `c`.
+  // AD-4: the pending-edits module checks and queues a player's edit. The engine reports only the
+  // immediate command rejection or the notification the module returns.
   function handlePlayerCommand(id: string, command: Command): void {
-    if (!isPlayerEdit(command)) {
-      reject(id, 'not-allowed');
-
-      return;
-    }
-
     const view = pendingView();
 
-    // No access refuses before the field is checked, so a read-only sheet says why.
-    if (!playerMayEdit(view, command.sheetId)) {
-      reject(id, 'not-allowed');
+    const result = pendingEdits.edit(command, view);
+
+    if (!result.ok) {
+      reject(id, result.error);
 
       return;
     }
 
-    const composed = composers.compose(dryContext(view), command);
-
-    if (!composed.ok) {
-      reject(id, composed.error);
-
-      return;
-    }
-
-    const [record] = composed.value;
-
-    if (record === undefined || !proposalAllowed(proposalContext(view), ownPlayerId, record)) {
-      reject(id, 'not-allowed');
-
-      return;
-    }
-
-    const patch = patchOf(command, record);
-    const existing = proposals.get(record.k);
-
-    const entry: ProposalEntry = {
-      k: record.k,
-      patch: existing === undefined ? patch : combinePatches(existing.patch, patch),
-      record: existing?.record ?? null,
-      sent: existing?.sent ?? false,
-    };
-
-    if (sync.state === 'catching-up') {
-      // AD-7: no version goes out until catch-up ends, the older one included.
-      proposals.put({ ...entry, record: null });
-    } else if (deniesEdit(proposeEntry(entry, replica.get(entry.k), entry.sent))) {
-      // The row was removed by a commit the windows do not show yet, or the edit grew too large.
+    if (result.value.notify) {
       notifyDenied();
     }
 
     emitDelta([]);
-  }
-
-  // The newest version of an entry over `base`, the newest record of its key this client knows,
-  // with `c` above every one it knows of the key, its own included, put into the queue and sent.
-  // `force` sends a patch that changes nothing on `base`: after a version of the entry went out, an
-  // edit back to the base's data must still beat it. Returns why nothing went out. `held`: the new
-  // version goes out on the entry's running backoff, not at once.
-  function proposeEntry(
-    entry: ProposalEntry,
-    base: VersionedRecord | undefined,
-    force: boolean,
-    held = false,
-  ): ProposalFailure | null {
-    const made = rebuiltRecord(entry, base, force);
-
-    if (!made.ok) {
-      proposals.drop(entry.k);
-
-      return made.error;
-    }
-
-    if (held) {
-      proposals.hold({ ...entry, record: made.value });
-    } else {
-      proposals.put({ ...entry, record: made.value });
-    }
-
-    return null;
-  }
-
-  function rebuiltRecord(
-    entry: ProposalEntry,
-    base: VersionedRecord | undefined,
-    force: boolean,
-  ): Result<VersionedRecord, ProposalFailure> {
-    const highest = Math.max(base?.c ?? 0, entry.record?.c ?? 0);
-
-    const made = proposedRecord(
-      entry.k,
-      entry.patch,
-      base,
-      () => minter.mint(entry.k, highest),
-      force,
-    );
-
-    if (!made.ok) {
-      return made;
-    }
-
-    const stripped = strippedProposal(made.value);
-
-    return recordFitsOneMessage(stripped) ? ok(stripped) : err('too-large');
-  }
-
-  // AD-4, AD-18: the sheet's template lets this player edit it: a sheet of a sheet set it holds a
-  // live `acl:` of, or a player-editable single sheet. A hidden template takes no player edit.
-  function playerMayEdit(view: ReadonlyMap<string, VersionedRecord>, sheetId: string): boolean {
-    const policy = resolveSheet(view, presetOf(view.get('preset')), sheetId);
-
-    return (
-      policy !== null &&
-      (policy.write === 'players-edit' ||
-        (policy.write === 'per-player' && canEdit(view, sheetId, ownPlayerId)))
-    );
-  }
-
-  // AD-14: a player's version keeps no value the template of its sheet no longer has in its row or
-  // repeat block, so a value an older preset left in the base never goes out with it.
-  function strippedProposal(record: VersionedRecord): VersionedRecord {
-    const template = templateOfKey(replica, presetOf(replica.get('preset')), record.k);
-
-    return template === null ? record : stripToTemplate(record, template);
-  }
-
-  // AD-7: the edits made during catch-up take their `c` now, over the records it brought, and only
-  // then are proposed. One that the player may no longer make, or that edits a removed row, is
-  // dropped with the notification.
-  function proposeWaiting(): void {
-    let denied = false;
-
-    for (const entry of proposals.entries()) {
-      if (entry.record !== null) {
-        continue;
-      }
-
-      const base = replica.get(entry.k);
-      const made = rebuiltRecord(entry, base, entry.sent);
-
-      if (made.ok && proposalAllowed(proposalContext(replica), ownPlayerId, made.value)) {
-        proposals.put({ ...entry, record: made.value });
-      } else {
-        proposals.drop(entry.k);
-        denied ||= !made.ok ? deniesEdit(made.error) : true;
-      }
-    }
-
-    if (denied) {
-      notifyDenied();
-    }
   }
 
   function proposalContext(records: ReadonlyMap<string, VersionedRecord>): ProposalContext {
@@ -1909,88 +1743,33 @@ export async function startReplicaEngine(
     });
   }
 
-  // AD-4: a player's entry clears on an ack or a record that names its own `(k, c, a)`. A commit of
-  // an older version of the key leaves it. Returns whether any entry cleared.
-  function clearAnswered(message: CommitMessage): boolean {
-    if (role === 'GM') {
-      return false;
-    }
-
-    let cleared = false;
-
-    for (const edit of [...message.acks, ...message.records.map(editIdOf)]) {
-      const entry = proposals.matching(edit);
-
-      if (entry !== undefined) {
-        proposals.drop(entry.k);
-        cleared = true;
-      }
-    }
-
-    return cleared;
-  }
-
-  // AD-4: only a rejection of this client's newest version of a key counts. `denied` drops the
-  // entry, so the value returns. `stale` applies the patch to the GM's record, takes a `c` above it
-  // and proposes again with the backoff started over; an edit of a row the GM holds removed is
-  // dropped as denied, and a patch the record already holds ends there. A stale answer over a
-  // record below the rejected version is about a field the GM's template lacks, not the version:
-  // the GM would answer the same at once, so the new version waits for the running backoff, and the
-  // preset that reaches one side in the meantime ends it.
   function receiveReject(message: RejectMessage): void {
-    const entry = role === 'GM' ? undefined : proposals.matching(message);
-
-    if (entry === undefined) {
+    if (role === 'GM') {
       return;
     }
 
-    if (message.reason === 'denied' || message.current === undefined) {
-      proposals.drop(entry.k);
-      notifyDenied();
-      emitDelta([]);
+    const result = pendingEdits.rejected(message);
 
+    if (result === null) {
       return;
     }
 
-    const known = replica.get(entry.k);
-    const base = known === undefined ? message.current : mergeRecords(known, message.current);
-
-    if (sync.state === 'catching-up') {
-      // AD-7: no version goes out until catch-up ends, which takes the entry's `c` over what it
-      // brought, the GM's record merged below included.
-      proposals.put({ ...entry, record: null });
-    } else if (
-      deniesEdit(
-        proposeEntry(
-          entry,
-          base,
-          false,
-          entry.record !== null && counterAbove(entry.record, message.current),
-        ),
-      )
-    ) {
-      // The GM holds a `c` at least as high as this entry's, so no older version of it can win, and
-      // a patch the GM's record already holds needs nothing more.
+    if (result.notify) {
       notifyDenied();
     }
 
     // The GM's record merges too: it is newer than this client's.
-    if (receiveRecords([message.current]).length === 0) {
+    const changed = result.merge === null ? [] : receiveRecords([result.merge]);
+
+    if (changed.length === 0) {
       emitDelta([]);
     }
   }
 
-  // UX-DR29: one notification for `denied` answers that arrive close together, such as one revoke
-  // refusing several keys. Only a shown one starts the quiet window, so a steady trickle of denials
-  // still shows one notification per window.
   function notifyDenied(): void {
-    const now = performance.now();
-
-    if (now - lastDeniedAt < timing.editDeniedQuietMs || options.editDenied === undefined) {
+    if (options.editDenied === undefined) {
       return;
     }
-
-    lastDeniedAt = now;
 
     platform.notification.show(options.editDenied, 'ERROR').catch((error) => {
       console.error('Muster Roll could not show a denied edit', error);
@@ -2314,35 +2093,9 @@ export async function startReplicaEngine(
       }
     }
 
-    // Built over the newest record of its key, so a GM edit of other fields that came after the
-    // entry's version still shows. A sent version keeps its own `(c, a)`.
-    for (const entry of proposals.entries()) {
-      const shown = waitingRecord(entry, view.get(entry.k));
-
-      if (shown !== null) {
-        view.set(
-          entry.k,
-          entry.record === null ? shown : { ...shown, c: entry.record.c, a: entry.record.a },
-        );
-      }
-    }
+    pendingEdits.overlay(view);
 
     return view;
-  }
-
-  function waitingRecord(
-    entry: ProposalEntry,
-    base: VersionedRecord | undefined,
-  ): VersionedRecord | null {
-    const made = proposedRecord(
-      entry.k,
-      entry.patch,
-      base,
-      () => ({ c: (base?.c ?? 0) + 1, a: connectionId }),
-      true,
-    );
-
-    return made.ok ? strippedProposal(made.value) : null;
   }
 
   function composedEntry(context: ComposeContext, entry: PendingEntry): VersionedRecord[] {
@@ -2364,7 +2117,7 @@ export async function startReplicaEngine(
   // changes, which the windows withdraw so the replica's record shows again: when catch-up ends,
   // and when a player's proposal is answered.
   function pendingViewChanges(): PendingChanges {
-    if (pending.entries().length === 0 && proposals.entries().length === 0) {
+    if (pending.entries().length === 0 && pendingEdits.size() === 0) {
       const withdrawn = [...shownPending.keys()];
 
       shownPending = new Map();
@@ -2805,7 +2558,7 @@ export async function startReplicaEngine(
       replica.size > 0 ||
       adoptTarget !== null ||
       pending.entries().length > 0 ||
-      proposals.entries().length > 0;
+      pendingEdits.size() > 0;
 
     adoptTarget = generation;
     incoming = new Map();
@@ -2844,7 +2597,7 @@ export async function startReplicaEngine(
     }
 
     pendingIds.clear();
-    proposals.clear();
+    pendingEdits.clear();
   }
 
   function notifyDataReplaced(): void {
@@ -3149,7 +2902,11 @@ export async function startReplicaEngine(
     const replayed = replayPending();
 
     changed.push(...replayed);
-    proposeWaiting();
+    const pendingDenial = pendingEdits.caughtUp();
+
+    if (pendingDenial.notify) {
+      notifyDenied();
+    }
 
     // Sent in `live`, so the windows drop the pending view in the same step. With no window yet,
     // the view is still brought up to date, as the first projection sends it.
@@ -3198,7 +2955,10 @@ export async function startReplicaEngine(
 
     if (changed.length > 0) {
       followReplica();
-      dropDisallowed(presetBefore);
+
+      if (role !== 'GM' && pendingEdits.recordsChanged(presetBefore).notify) {
+        notifyDenied();
+      }
     }
 
     if (changed.length > 0 || currentNotices().join() !== noticesBefore) {
@@ -3211,113 +2971,6 @@ export async function startReplicaEngine(
     }
 
     return changed;
-  }
-
-  // UX-DR29: once the records change, an entry the player may no longer make waits for no GM: its
-  // access was revoked, its sheet deleted or hidden, or the repeat block it edits removed. It is
-  // checked against the replica after the whole batch, so a revoke and a re-grant in one batch drop
-  // nothing. The values return in the same delta, and one notification covers every drop. A removal
-  // of a repeat block that is gone already got what it asked for, so it drops with no notification.
-  // AD-14: after a preset change each entry first moves to the keys the new form of its sheet's
-  // template gives its values, as the GM's migration moves the rows: an entry with nothing that
-  // maps drops in silence.
-  function dropDisallowed(presetBefore: VersionedRecord | undefined): void {
-    if (role === 'GM') {
-      return;
-    }
-
-    const context = proposalContext(replica);
-    const before = presetBefore === replica.get('preset') ? null : presetOf(presetBefore);
-    let denied = false;
-
-    for (const found of proposals.entries()) {
-      const moves =
-        before === null || context.preset === null
-          ? null
-          : templateMoves(replica, before, context.preset, found.k);
-
-      const parts = moves === null ? null : movedPatches(found.k, found.patch, moves);
-
-      if (parts === null || (parts.length === 1 && parts[0]?.k === found.k)) {
-        denied = recheckProposal(found, context, false) || denied;
-        continue;
-      }
-
-      proposals.drop(found.k);
-
-      for (const part of parts) {
-        const existing = proposals.get(part.k);
-
-        const patch =
-          existing?.patch.kind === 'fields' && part.patch.kind === 'fields'
-            ? {
-                kind: 'fields' as const,
-                values: { ...part.patch.values, ...existing.patch.values },
-              }
-            : (existing?.patch ?? part.patch);
-
-        const entry: ProposalEntry = {
-          k: part.k,
-          patch,
-          record: found.record === null ? null : (existing?.record ?? found.record),
-          sent: existing?.sent ?? false,
-        };
-
-        denied = recheckProposal(entry, context, true) || denied;
-      }
-    }
-
-    if (denied) {
-      notifyDenied();
-    }
-  }
-
-  // AD-14: the entry loses the fields its sheet's template no longer has in its row or repeat
-  // block, in silence. An entry with nothing left drops in silence too, and one that lost fields or
-  // moved goes out again, so the GM never answers its older version. True when a drop needs the
-  // denied notification.
-  function recheckProposal(
-    found: ProposalEntry,
-    context: ProposalContext,
-    moved: boolean,
-  ): boolean {
-    const template = templateOfKey(replica, context.preset, found.k);
-    const patch = template === null ? found.patch : strippedPatch(found.k, found.patch, template);
-
-    if (patch === null) {
-      proposals.drop(found.k);
-
-      return false;
-    }
-
-    const entry = patch === found.patch ? found : { ...found, patch };
-
-    // The version is a placeholder: no check of `proposalAllowed` reads it.
-    const made = proposedRecord(
-      entry.k,
-      entry.patch,
-      replica.get(entry.k),
-      () => ({ c: 1, a: connectionId }),
-      true,
-    );
-
-    if (!made.ok || !proposalAllowed(context, ownPlayerId, made.value)) {
-      proposals.drop(entry.k);
-
-      return made.ok || deniesEdit(made.error);
-    }
-
-    if (entry === found && !moved) {
-      return false;
-    }
-
-    if (entry.record === null) {
-      proposals.put(entry);
-
-      return false;
-    }
-
-    return deniesEdit(proposeEntry(entry, replica.get(entry.k), entry.sent));
   }
 
   // AD-7 answer: a GM client that is live and can vouch for its records answers after a random
@@ -3533,10 +3186,14 @@ export async function startReplicaEngine(
 
   function changeRole(next: PlayerRole): void {
     // A GM proposes nothing, so a promoted player's edits become its own GM edits below.
-    const promoted = next === 'GM' ? proposals.entries() : [];
+    const promoted = next === 'GM' ? pendingEdits.drain() : [];
 
     role = next;
-    proposals.clear();
+
+    if (next !== 'GM') {
+      pendingEdits.clear();
+    }
+
     refreshTokenMenu();
     followScene();
     forgetDigests();
@@ -3574,10 +3231,8 @@ export async function startReplicaEngine(
 
     // AD-7: they wait in the GM's catch-up queue as intents and apply when it ends. No window knows
     // their ids, so a refusal then reaches none.
-    for (const entry of promoted) {
-      for (const command of commandsOf(entry)) {
-        pending.add(newId(), command);
-      }
+    for (const command of promoted) {
+      pending.add(newId(), command);
     }
 
     void enterCatchUp('role');
@@ -3637,7 +3292,7 @@ export async function startReplicaEngine(
 
     // A GM is back, so the edits that waited for one go out now, not after their backoff.
     if (next === 'online' && role !== 'GM') {
-      proposals.resendAll();
+      pendingEdits.gmBack();
     }
 
     if (next === 'online' && !answersOwn && role !== 'GM' && sync.state === 'live') {
@@ -3793,7 +3448,10 @@ export async function startReplicaEngine(
   ): void {
     switch (message.t) {
       case 'commit': {
-        const cleared = clearAnswered(message);
+        const cleared =
+          role === 'GM'
+            ? false
+            : pendingEdits.answered([...message.acks, ...message.records.map(editIdOf)]);
 
         // AD-8: another GM's edit changed the replica, so this GM writes too. The jitter keeps
         // GM clients from writing together.
@@ -3906,7 +3564,7 @@ export async function startReplicaEngine(
       }
 
       answerTimers.clear();
-      proposals.clear();
+      pendingEdits.clear();
       unsubscribeUi();
       unsubscribeRoom();
       unsubscribeParty();
@@ -3995,23 +3653,6 @@ function removeOlderFormats(store: RecordStore): void {
   }
 }
 
-// AD-14: where the values of a `row:` or `rep:` key go when its sheet's template changes from its
-// form in `before` to its form in `after`. A template matches by its `id` and `kind`. `null` when
-// either preset has no template for the sheet, or the template changed its `id` or `kind`.
-function templateMoves(
-  records: ReadonlyMap<string, VersionedRecord>,
-  before: Preset,
-  after: Preset,
-  key: string,
-): PresetMoves | null {
-  const old = templateOfKey(records, before, key);
-  const now = templateOfKey(records, after, key);
-
-  return old === null || now === null || old.id !== now.id || old.kind !== now.kind
-    ? null
-    : presetMoves(old, now);
-}
-
 // AD-12: what a room copy that cannot be read shows a player: a newer build's, an older format's,
 // or one that does not decode.
 function outcomeOf(failure: SnapshotFailure): RoomCopyOutcome {
@@ -4022,89 +3663,8 @@ function outcomeOf(failure: SnapshotFailure): RoomCopyOutcome {
   return failure === 'older-version' ? 'older' : 'unreadable';
 }
 
-// AD-18: the template of the sheet a `row:` or `rep:` key belongs to, or `null` when no template
-// owns that sheet.
-function templateOfKey(
-  records: ReadonlyMap<string, VersionedRecord>,
-  preset: Preset | null,
-  key: string,
-): Template | null {
-  const sheetId = dependentSheetId(key, { d: null });
-
-  return sheetId === null ? null : (resolveSheet(records, preset, sheetId)?.template ?? null);
-}
-
 function higherGeneration(first: Generation, second: Generation): Generation {
   return compareGenerations(first, second) >= 0 ? first : second;
-}
-
-function isPlayerEdit(command: Command): command is PlayerEditCommand {
-  return (
-    command.type === 'field-patch' ||
-    command.type === 'repeat-block-add' ||
-    command.type === 'repeat-block-delete'
-  );
-}
-
-// The patch an edit makes, read from the record it composed: a field's value as the composer
-// accepted it, a new repeat block with its order and cells, or a removal.
-function patchOf(command: PlayerEditCommand, record: VersionedRecord): ProposalPatch {
-  if (command.type === 'repeat-block-delete') {
-    return { kind: 'remove' };
-  }
-
-  const block = record.k.startsWith('rep:') ? repDataSchema.parse(record.d) : null;
-
-  if (command.type === 'repeat-block-add' && block !== null) {
-    return { kind: 'add', d: block };
-  }
-
-  const values = block === null ? fieldValuesSchema.parse(record.d) : block.cells;
-  const fieldId = command.type === 'field-patch' ? command.fieldId : '';
-
-  return { kind: 'fields', values: { [fieldId]: values[fieldId] ?? null } };
-}
-
-// The commands that make a player's entry again as a GM's own edit: a removal, or a new repeat
-// block and then its cells, or the fields it sets and clears.
-function commandsOf(entry: ProposalEntry): PlayerEditCommand[] {
-  const [form, sheetId = '', id = '', instanceId = ''] = entry.k.split(':');
-
-  const target: FieldPatchTarget =
-    form === 'rep' ? { kind: 'rep', sectionId: id, instanceId } : { kind: 'row', rowId: id };
-
-  const fieldPatches = (values: Readonly<Record<string, FieldValue | null>>): PlayerEditCommand[] =>
-    Object.entries(values).map(([fieldId, value]) => ({
-      type: 'field-patch',
-      sheetId,
-      target,
-      fieldId,
-      value,
-    }));
-
-  switch (entry.patch.kind) {
-    case 'remove':
-      return [{ type: 'repeat-block-delete', sheetId, sectionId: id, instanceId }];
-    case 'add':
-      return [
-        { type: 'repeat-block-add', sheetId, sectionId: id, instanceId },
-        ...fieldPatches(entry.patch.d.cells),
-      ];
-    case 'fields':
-      return fieldPatches(entry.patch.values);
-    default:
-      return unknownPatch(entry.patch);
-  }
-}
-
-// `tsc` fails here when a proposal patch has no case above.
-function unknownPatch(patch: never): never {
-  throw new Error(`Muster Roll has no case for the proposal patch ${JSON.stringify(patch)}`);
-}
-
-// A failure the player hears of as "Нет прав на правку": its edit cannot go to a GM client at all.
-function deniesEdit(failure: ProposalFailure | null): boolean {
-  return failure === 'gone' || failure === 'too-large';
 }
 
 // `tsc` fails here when a proposal verdict has no case above.
