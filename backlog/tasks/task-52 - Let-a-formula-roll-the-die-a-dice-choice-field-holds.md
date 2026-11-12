@@ -1,9 +1,11 @@
 ---
 id: TASK-52
 title: Let a formula roll the die a dice-choice field holds
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T02:15:00Z'
+updated_date: '2026-11-12T04:59:00Z'
 labels:
   - v2
 dependencies:
@@ -32,3 +34,9 @@ A formula needs literal dice sizes (`1d8`), so a die cannot come from a field. I
 - [ ] #6 presets/cairn-2e.json gives each weapon and each NPC attack one dice-choice field and one damage dice cell, and the deferred-work entry about die sizes from a field is closed
 - [ ] #7 docs/preset-format.md, the spec copy of the format and docs/example-preset.json describe the field and the formula syntax; the example parse test passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Build through bmad-build: spec _bmad-output/implementation-artifacts/spec-task-52-dice-choice-field.md, implemented by the implement skill (tdd chain, then code-review). 1. Docs (glossary, spec/UX/arch memlogs) in 999e137. 2. core: Nd(id) parse, resolve to NdM before terms/evaluation, roll label, preset type check and die-option rule. 3. field-patch, migrate, import, rename. 4. sheet picker, copy, preview, builder «Выбор кубика». 5. docs/preset-format.md, example preset, Cairn preset, deferred-work close. 6. Full check.
+<!-- SECTION:PLAN:END -->
