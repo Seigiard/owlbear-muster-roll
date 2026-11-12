@@ -23,7 +23,7 @@ context:
 ## Boundaries & Constraints
 
 **Always:**
-- Written against master `7b05722`. TASK-46 changes `leaveCatchUp`, `replayPending`, `runCommand`, `handlePlayerCommand` and the engine tests. Before phase A, merge master after TASK-46 lands, update the Code Map line numbers, and take the baseline there.
+- Written against master `7b05722`, refreshed on master `3d8a197` (TASK-46 merged). The baseline is `3d8a197`: 2681 tests, 8803 assertions, 492 e2e tests.
 - Phase A moves code and changes no test file. The junit list of `bun test` (test name and assertion count) equals the baseline, and every e2e test passes. Phase B adds `src/replica/catch-up.test.ts`. Phase C retires only the engine tests named in Tasks.
 - Calibrate each mutation in Verification twice: at the baseline in `engine.ts` and after phase A in `catch-up.ts`. Both runs must fail the same tests. After phase B, each mutation fails at least one `catch-up.test.ts` test. Record in the notes a mutation that survives at the baseline.
 - Order of effects stays as today. Examples: a GM-origin message changes the link before the engine dispatches it. A complete answer of the adopted generation saves it before catch-up ends. Exit effects run in `live`.
@@ -68,10 +68,11 @@ Each row is a group of tests in `catch-up.test.ts`. Fakes supply role, vouching,
 
 ## Code Map
 
-Line numbers are at `7b05722`.
+Line numbers are at `3d8a197`.
 
-- `src/replica/engine.ts` -- to move: variables 383-437 (`sync` to `catchUpTrigger`), 468 and 471 (`adoptTarget`, `incompleteRetryMs`). Functions: `enterCatchUp` 2234, `askAfterRoomCopy` 2281 (only its decision part), `ask`, `requestState` 2763-2787, `armCatchUpTimeout` 2789, `leaveIfAlone` 2819 (only its decision part), `leaveCatchUp` 2846 down to `ownNonce = null`, `receiveStateRequest` to `answerState` 2978-3092, the bookkeeping of `receiveState` 3094, `countAnswerPart` 3137, `hearGm` to `receiveAlive` 3244-3382. Also the gate part of `seeGeneration` 2549 and of `completeAdoption` 2634. Module scope: `AnswerParts`, `CatchUpTrigger`, `CatchUpState`, `DRIFT_ALIVE_COUNT`, `DigestMismatches`, `CatchUpExit`, `RECENT_NONCE_LIMIT`.
-- `src/replica/engine.ts` -- stays in the engine: `mergePersisted`, `mergeRoomCopy`, the party read, `stage`, `incoming`, `highestSeenGeneration`, `persistAllOnExit`, `dropPendingWork`, `notifyDataReplaced`, `replaceReplica` (without `forgetDigests`), and the exit effects of `leaveCatchUp` from `const changed` on (persist all, replay, `pendingEdits.caughtUp`, delta, commits, `followReplica`, `clearDeletedLinks`, room copy). `handleRoomMessage` 3394 keeps its order: generation seen, gate, GM heard, dispatch.
+- `src/replica/engine.ts` -- to move: variables 389-442 (`sync` to `catchUpTrigger`), 473 and 476 (`adoptTarget`, `incompleteRetryMs`). Functions: `enterCatchUp` 2261, `askAfterRoomCopy` 2308 (only its decision part), `ask`, `requestState` 2790-2814, `armCatchUpTimeout` 2816, `leaveIfAlone` 2846 (only its decision part), `leaveCatchUp` 2873 down to `ownNonce = null` (2901), `receiveStateRequest` to `answerState` 3009-3123, the bookkeeping of `receiveState` 3125, `countAnswerPart` 3168, `hearGm` to `receiveAlive` 3275-3413. Also the gate part of `seeGeneration` 2576 and of `completeAdoption` 2661. Module scope: `AnswerParts`, `CatchUpTrigger`, `CatchUpState`, `DRIFT_ALIVE_COUNT`, `DigestMismatches`, `CatchUpExit`, `RECENT_NONCE_LIMIT`.
+- `src/replica/engine.ts` -- stays in the engine: `mergePersisted`, `mergeRoomCopy`, the party read, `stage`, `incoming`, `highestSeenGeneration`, `persistAllOnExit`, `notifyDataReplaced`, `replaceReplica` (without `forgetDigests`), and `handleRoomMessage` 3425, which keeps its order: generation seen, gate, GM heard, dispatch.
+- TASK-46 code that the executors take over unchanged. The exit effects of `leaveCatchUp`, from `const changed` (2903) on, become the `caught-up` executor: persist all, `replayPending()` (2172, returns `{ applied, completed }`), `pendingEdits.caughtUp`, the delta, then `commandDone(id)` (548) for each `completed` id after the delta, `sendCommits(applied)`, `followReplica`, `clearDeletedLinks`, and the room copy when `roomCopyOwed || applied.length > 0`. `dropPendingWork` (2617, refuses each queued window id with `data-replaced`) runs inside the `adopt` executor. `flushNow` (about 3612) calls `closing()`; its `caught-up` replays and answers the queued intents as today.
 - `src/replica/pending-edits.ts` -- the precedent: injected queries, small results. It is not changed.
 - `src/core/bounded-id-set.ts` -- `createBoundedIdSet` for the answered nonces. `src/core/merge.ts` -- `compareGenerations`. `src/core/room-messages.ts` -- `RoomMessage`, `StateMessage`, `GenerationRelation`.
 - Tests that stay as evidence: `engine-catch-up.test.ts`, `engine-liveness.test.ts`, `engine-no-gm.test.ts`, `engine-import.test.ts`, `engine-wipe.test.ts` (adoption), and `src/replica/room-rig.ts`.
@@ -79,7 +80,7 @@ Line numbers are at `7b05722`.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Baseline -- merge master after TASK-46, then save the junit list of `bun test`, the e2e pass list, and the wall time of the three catch-up test files.
+- [x] Baseline -- at `3d8a197` (worktree with its own `bun install`): 2681 tests, 8803 assertions, 0 failures. Wall time: `engine-catch-up` 3.55 s (45 tests), `engine-liveness` 5.66 s (25), `engine-no-gm` 4.05 s (19). Files: `/private/tmp/claude-501/-Users-seigiard-Projects-owlbear-muster-roll-prototypes-owlbear-probe/cb274a81-7b80-4b9c-8a25-e8e948de01b1/scratchpad/baseline.xml` and `baseline-list.tsv` beside it (file, classname, name, assertions, sorted; made by `junit-list.py` beside it). Make the after-list with the same script and `diff` the two.
 - [ ] `src/replica/catch-up.ts` -- create the module per Design Notes from the moved code -- phase A.
 - [ ] `src/replica/engine.ts` -- add the decision runner and the timer table, route every event, and delete the moved code -- phase A. Commit when the junit list equals the baseline.
 - [ ] `GLOSSARY.md` -- add **Catch-up** under "Keeping room data", in the phase A commit.
