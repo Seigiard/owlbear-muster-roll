@@ -17,7 +17,7 @@ Window   = { width, height }
 Template = { id, kind: "set", title, nameField, visibility?, tokens?, sections: Section[] }
          | { id, kind: "single", title, visibility?, players?, tokens?, sections: Section[] }
 Section  = { title?, width?, columns?, repeat?, tokens?, rows: Cell[][] }
-Cell     = { kind: "text", text } | { kind: "field", type, id } | { kind: "dice", formula }
+Cell     = { kind: "text", text } | { kind: "field", type, id, options? } | { kind: "dice", formula }
 ```
 
 Every object is strict. A key that is not in this document makes the file invalid.
@@ -61,8 +61,12 @@ Every object is strict. A key that is not in this document makes the file invali
 | `kind` | Other keys | Meaning |
 | --- | --- | --- |
 | `"text"` | `text`: string | A fixed label. It has no value. |
-| `"field"` | `type`: `"text"`, `"number"` or `"check"`; `id`: string | A value that the GM fills in. The `id` is the key of its value. |
+| `"field"` | `type`: `"text"`, `"number"`, `"check"` or `"select"`; `id`: string | A value that the GM fills in. The `id` is the key of its value. A `select` field also has required `options`: a non-empty list of distinct, non-blank strings. |
 | `"dice"` | `formula`: string | A dice cell that rolls the formula. It has no value. |
+
+A `select` field offers the empty choice «—» followed by its `options` in order. The empty choice
+clears the field. Stored values are strings; a value that is no longer in `options` remains visible
+until the picker replaces it.
 
 ## Ids
 
@@ -123,6 +127,7 @@ An upload over existing sheets keeps values by field id. One confirmation names 
 | Add a field | The field is empty |
 | Remove a field | Its values are erased |
 | Rename a field label (same id) | Keeps its values |
+| Change only a select field's `options` (same id and type) | Keeps its values |
 | Change a field's type (same id) | Counts as a removal: its values are erased |
 | Add a template | A single sheet tab appears empty; a sheet set shows its "+" |
 | Remove a template, or change its `id` or `kind` | Its sheets are deleted with their values, token links, owners and write access |
@@ -155,6 +160,9 @@ A refused file changes nothing. The message under the button names the first pro
 | A sheet set's `nameField` names no `text` field outside its `repeat` sections | в наборе «{id}» нет текстового поля «{nameField}» вне повторяемых секций |
 | A field id breaks the id rules | недопустимый id поля «{id}» |
 | An id repeats in one scope | поле «{id}» повторяется |
+| A select field has no options | у поля «{id}» нет вариантов |
+| A select field has an empty or spaces-only option | пустой вариант в поле «{id}» |
+| A select field repeats an option | вариант «{option}» повторяется в поле «{id}» |
 | A `repeat` section without a row with a field | в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем |
 | Two `repeat` sections start with one id | две повторяемые секции с id «{id}» |
 | A row has more cells than `columns` | в строке больше ячеек, чем колонок |
@@ -207,6 +215,10 @@ This walks through `docs/example-preset.json`.
               { "kind": "field", "type": "text", "id": "class" },
               { "kind": "text", "text": "Уровень" },
               { "kind": "field", "type": "number", "id": "level" }, // a number value
+            ],
+            [
+              { "kind": "text", "text": "Броня" },
+              { "kind": "field", "type": "select", "id": "armor", "options": ["Нет", "Кожаная", "Кольчуга"] }, // a pick from a list
             ],
           ],
         },
