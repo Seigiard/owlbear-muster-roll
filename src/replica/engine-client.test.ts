@@ -10,7 +10,7 @@ import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { encodePreset, parsePresetFile, type Preset } from '@/core/preset';
 import { presetDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
 import { err } from '@/core/result';
-import { UI_CHANNEL, type Command, type CommandRejectedMessage } from '@/core/ui-messages';
+import { UI_CHANNEL, type Command } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole, SendResult } from '@/platform/ports';
 import type { ReplicaEngine } from '@/replica/engine';
@@ -232,19 +232,9 @@ async function openAndLoad(rig: Rig): Promise<WindowView> {
 }
 
 async function rejectionOf(view: WindowView, command: Command): Promise<string | undefined> {
-  const sent = view.client.sendCommand(command);
+  const settled = await Promise.resolve(view.client.sendCommand(command));
 
-  if (!sent.ok) {
-    throw new Error(`the window refused the command before sending it: ${sent.error}`);
-  }
-
-  await waitUntil(() => view.store.$rejections.get().has(sent.value));
-
-  return view.store.$rejections.get().get(sent.value)?.reason;
-}
-
-function lastRejection(store: ProjectionStore): CommandRejectedMessage | null {
-  return [...store.$rejections.get().values()].at(-1) ?? null;
+  return settled.kind === 'refused' ? settled.rejection.reason : undefined;
 }
 
 // What a rejected command must leave: the window's records and no delta at all.
@@ -848,6 +838,35 @@ describe('sequence gap', () => {
 });
 
 describe('command', () => {
+  test('answers a live GM command after the delta that carries its effect', async () => {
+    // #given
+    const rig = createRig();
+
+    seedRecords(rig, PRESET_RECORD);
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #when
+    const outcome = Promise.resolve(
+      view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' }),
+    );
+
+    await waitUntil(() => deltas(rig).length === 1);
+    await pause(10);
+
+    // #then
+    expect({
+      sequence: rig.wire
+        .filter((message) => message.t === 'delta' || message.t === 'command-done')
+        .map((message) => message.t),
+      outcome: await outcome,
+    }).toEqual({
+      sequence: ['delta', 'command-done'],
+      outcome: { kind: 'answered', answer: undefined },
+    });
+  });
+
   test('makes the replica compose d, mint c and emit a delta', async () => {
     // #given
     const rig = createRig();
@@ -1095,19 +1114,29 @@ describe('record too large', () => {
     const before = rig.wire.length;
 
     // #when
-    const sent = view.client.sendCommand({
-      type: 'field-patch',
-      sheetId: 'long',
-      target: { kind: 'row', rowId: 'name' },
-      fieldId: 'name',
-      value: 'ы'.repeat(8000),
-    });
+    const sent = await Promise.resolve(
+      view.client.sendCommand({
+        type: 'field-patch',
+        sheetId: 'long',
+        target: { kind: 'row', rowId: 'name' },
+        fieldId: 'name',
+        value: 'ы'.repeat(8000),
+      }),
+    );
 
     await pause(10);
+    const mintedId = rig.client.mintedIds.at(-1) ?? 'missing-command-id';
 
     // #then
     expect({ sent, newMessages: rig.wire.length - before }).toEqual({
-      sent: { ok: false, error: 'too-large' },
+      sent: {
+        kind: 'refused',
+        rejection: {
+          t: 'command-rejected',
+          id: mintedId,
+          reason: 'too-large',
+        },
+      },
       newMessages: 0,
     });
   });
@@ -1289,23 +1318,6 @@ describe('sheet-create', () => {
 
     // #then
     expect(keysOf(view.store)).toEqual(['preset', 'sheet:brok']);
-  });
-
-  test('does not show another window a rejection it did not cause', async () => {
-    // #given
-    const rig = createRig();
-
-    seedRecords(rig, PRESET_RECORD);
-    await startEngine(rig);
-
-    const sender = await openAndLoad(rig);
-    const other = await openAndLoad(rig);
-
-    // #when
-    await rejectionOf(sender, { type: 'sheet-create', sheetId: 'a:b', set: 'pc' });
-
-    // #then
-    expect(lastRejection(other.store)).toBeNull();
   });
 });
 
@@ -1773,18 +1785,23 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    const sent = view.client.sendCommand({ ...upload(PRESET), data });
-
-    await waitUntil(() => lastRejection(view.store) !== null);
+    const outcome = await Promise.resolve(view.client.sendCommand({ ...upload(PRESET), data }));
 
     // #then
     expect({
-      rejection: lastRejection(view.store),
+      outcome,
       records: recordsOf(view.store),
       deltas: deltas(rig).length,
       stored: rig.platform.storage.keys(),
     }).toEqual({
-      rejection: { t: 'command-rejected', id: sent.ok ? sent.value : '', reason: 'invalid-preset' },
+      outcome: {
+        kind: 'refused',
+        rejection: {
+          t: 'command-rejected',
+          id: expect.any(String),
+          reason: 'invalid-preset',
+        },
+      },
       records: [],
       deltas: 0,
       stored: { ok: true, value: [] },
@@ -1801,16 +1818,14 @@ describe('preset upload', () => {
     const data = incompressiblePresetData();
 
     // #when
-    const sent = view.client.sendCommand({ ...upload(PRESET), data });
-
-    await waitUntil(() => lastRejection(view.store) !== null);
+    const outcome = await Promise.resolve(view.client.sendCommand({ ...upload(PRESET), data }));
 
     // #then
     expect({
-      sent: sent.ok,
-      rejection: lastRejection(view.store)?.reason,
+      kind: outcome.kind,
+      rejection: outcome.kind === 'refused' ? outcome.rejection.reason : null,
       stored: rig.platform.storage.keys(),
-    }).toEqual({ sent: true, rejection: 'too-large', stored: { ok: true, value: [] } });
+    }).toEqual({ kind: 'refused', rejection: 'too-large', stored: { ok: true, value: [] } });
   });
 
   test('accepts an upload while a sheet exists', async () => {
@@ -1823,14 +1838,17 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand(upload(examplePreset()));
+    const outcome = await Promise.resolve(view.client.sendCommand(upload(examplePreset())));
     await waitUntil(() => view.store.$records.get().has('preset'));
 
     // #then
     expect({
-      rejection: lastRejection(view.store),
+      outcome,
       stored: storedPreset(rig)?.preset,
-    }).toEqual({ rejection: null, stored: JSON.parse(EXAMPLE_PRESET_TEXT) });
+    }).toEqual({
+      outcome: { kind: 'answered', answer: { count: 0, sheets: 0 } },
+      stored: JSON.parse(EXAMPLE_PRESET_TEXT),
+    });
   });
 
   test('accepts an upload when the only sheet is deleted', async () => {
@@ -1843,8 +1861,9 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand(upload(examplePreset()));
+    const outcome = Promise.resolve(view.client.sendCommand(upload(examplePreset())));
     await waitUntil(() => deltas(rig).length === 1);
+    await outcome;
 
     // #then
     expect(storedPreset(rig)?.preset).toEqual(JSON.parse(EXAMPLE_PRESET_TEXT));
@@ -1860,15 +1879,24 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
 
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
-    view.client.sendCommand(upload(examplePreset()));
+    const created = Promise.resolve(
+      view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' }),
+    );
+
+    const uploaded = Promise.resolve(view.client.sendCommand(upload(examplePreset())));
     await waitUntil(() => view.store.$records.get().has('preset'));
 
     // #then
     expect({
-      rejection: lastRejection(view.store),
+      outcomes: await Promise.all([created, uploaded]),
       sheet: view.store.$records.get().has('sheet:brok'),
-    }).toEqual({ rejection: null, sheet: true });
+    }).toEqual({
+      outcomes: [
+        { kind: 'answered', answer: undefined },
+        { kind: 'answered', answer: { count: 0, sheets: 0 } },
+      ],
+      sheet: true,
+    });
   });
 });
 

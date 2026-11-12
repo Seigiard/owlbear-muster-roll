@@ -13,6 +13,7 @@ import {
   createRoomRig,
   heardOf,
   lastRequest,
+  outcome,
   pause,
   rejection,
   requestsOf,
@@ -638,6 +639,30 @@ describe('re-entry', () => {
 });
 
 describe('pending queue', () => {
+  test('a queued GM command gets one answered outcome when replay applies it', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const client = await catchingUpAgain(room, 'gm-a');
+    const id = send(client, patch(ROW_STR, 'str', 12));
+
+    await waitUntil(() => shown(client, 'row:brok:str') !== undefined);
+
+    // #when
+    room.post(GHOST, stateMessage(lastRequest(room, 'gm-a'), []));
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 1);
+    await pause(10);
+
+    // #then
+    expect({
+      outcome: outcome(client, id),
+      answers: client.local.filter(
+        (message) =>
+          (Object(message).t === 'command-done' || Object(message).t === 'command-rejected') &&
+          Object(message).id === id,
+      ).length,
+    }).toEqual({ outcome: { kind: 'answered', answer: undefined }, answers: 1 });
+  });
+
   test('a GM edit shows at once, is not saved or sent, and takes c on exit', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -774,7 +799,9 @@ describe('pending queue', () => {
       expectedDigest: '811c9dc5',
     });
 
-    await waitUntil(() => client.store.$rejections.get().size === 2);
+    await waitUntil(
+      () => outcome(client, unknown) !== undefined && outcome(client, upload) !== undefined,
+    );
 
     // #then
     expect({
@@ -802,9 +829,24 @@ describe('pending queue', () => {
     // #then
     expect({
       reason: rejection(client, sent),
+      outcome: outcome(client, sent),
+      answers: client.local.filter(
+        (message) =>
+          (Object(message).t === 'command-done' || Object(message).t === 'command-rejected') &&
+          Object(message).id === sent,
+      ).length,
       stored: storedRecord(client, 'row:brok:str'),
       commits: heardOf(room, 'gm-a', 'commit'),
-    }).toEqual({ reason: 'deleted-sheet', stored: null, commits: [] });
+    }).toEqual({
+      reason: 'deleted-sheet',
+      outcome: {
+        kind: 'refused',
+        rejection: { t: 'command-rejected', id: sent, reason: 'deleted-sheet' },
+      },
+      answers: 1,
+      stored: null,
+      commits: [],
+    });
   });
 
   test('a key that leaves the pending view shows its replica record again while catching up', async () => {
@@ -874,17 +916,30 @@ describe('pending queue', () => {
     client.platform.setRole('PLAYER');
     await waitUntil(() => requestsOf(room, 'gm-a').length === 3);
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-a'), []));
-    await waitUntil(() => client.store.$rejections.get().size === 2);
+    await waitUntil(
+      () => outcome(client, edit) !== undefined && outcome(client, create) !== undefined,
+    );
     await pause(30);
 
     // #then
     expect({
       reasons: [rejection(client, edit), rejection(client, create)],
+      outcomes: [outcome(client, edit), outcome(client, create)],
       shown: [shown(client, 'row:brok:str'), shown(client, 'sheet:liza')],
       stored: [storedRecord(client, 'row:brok:str'), storedRecord(client, 'sheet:liza')],
       commits: heardOf(room, 'gm-a', 'commit'),
     }).toEqual({
       reasons: ['not-allowed', 'not-allowed'],
+      outcomes: [
+        {
+          kind: 'refused',
+          rejection: { t: 'command-rejected', id: edit, reason: 'not-allowed' },
+        },
+        {
+          kind: 'refused',
+          rejection: { t: 'command-rejected', id: create, reason: 'not-allowed' },
+        },
+      ],
       shown: [undefined, undefined],
       stored: [null, null],
       commits: [],

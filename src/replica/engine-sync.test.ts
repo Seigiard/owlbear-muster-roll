@@ -735,14 +735,12 @@ describe('player client', () => {
 
     const before = [...player.store.$records.get().values()];
     const deltasBefore = player.deltas();
-    const sent = player.window.sendCommand(command);
-
     // #when
-    await waitUntil(() => sent.ok && player.store.$rejections.get().has(sent.value));
+    const settled = await Promise.resolve(player.window.sendCommand(command));
 
     // #then
     expect({
-      reason: sent.ok ? player.store.$rejections.get().get(sent.value)?.reason : sent.error,
+      reason: settled.kind === 'refused' ? settled.rejection.reason : settled.kind,
       records: [...player.store.$records.get().values()],
       deltas: player.deltas() - deltasBefore,
       heard: commitsFrom(wire.heard, 'player-p'),

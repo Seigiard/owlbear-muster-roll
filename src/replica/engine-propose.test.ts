@@ -13,6 +13,7 @@ import type { PlayerRole } from '@/platform/ports';
 import {
   createRoomRig,
   heardOf,
+  outcome,
   pause,
   rejection,
   send,
@@ -496,6 +497,36 @@ describe('a GM client answers a proposal', () => {
 });
 
 describe("a player's edit", () => {
+  test("answers when pending edits accepts it, and the GM's later reject is no second answer", async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm();
+
+    // #when
+    const id = send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1);
+    await pause(10);
+    const accepted = outcome(player, id);
+    answer(room, reject({ k: STR_ROW.k, c: 3, a: PLAYER_ID }, 'denied'));
+    await pause(10);
+
+    // #then
+    expect({
+      accepted,
+      afterReject: outcome(player, id),
+      answers: player.local
+        .filter(
+          (message) =>
+            (Object(message).t === 'command-done' || Object(message).t === 'command-rejected') &&
+            Object(message).id === id,
+        )
+        .map((message) => Object(message).t),
+    }).toEqual({
+      accepted: { kind: 'answered', answer: undefined },
+      afterReject: { kind: 'answered', answer: undefined },
+      answers: ['command-done'],
+    });
+  });
+
   test('with access: proposed with c above the record, shown at once and not merged', async () => {
     // #given
     const { room, player } = await playerWithSilentGm();

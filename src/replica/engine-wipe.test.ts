@@ -11,7 +11,9 @@ import {
   copyValue,
   createRoomRig,
   heardOf,
+  outcome,
   pause,
+  rejection,
   roomCopyOf,
   send,
   storageKey,
@@ -103,26 +105,25 @@ async function startClient(
   });
 }
 
-// The engine's answer to the wipe: `wiped`, or the rejection.
+// The window's outcome from the wipe, reduced to the value these tests inspect.
 async function wipe(client: Client): Promise<JsonValue> {
   const id = send(client, { type: 'wipe' });
 
-  await roomRig.waitUntil(() => answerOf(client, id) !== null);
+  await roomRig.waitUntil(() => outcome(client, id) !== undefined);
 
-  return answerOf(client, id);
-}
+  const reason = rejection(client, id);
 
-function answerOf(client: Client, id: string): JsonValue {
-  const rejection = client.store.$rejections.get().get(id);
+  const kind = outcome(client, id)?.kind;
 
-  if (rejection !== undefined) {
-    return { ...rejection };
+  if (reason !== undefined) {
+    return { kind: 'refused', reason };
   }
 
-  return (
-    client.local.find((message) => Object(message).t === 'wiped' && Object(message).id === id) ??
-    null
-  );
+  if (kind === undefined) {
+    throw new Error('the wipe has no outcome');
+  }
+
+  return { kind };
 }
 
 function shownKeys(client: Client): string[] {
@@ -167,7 +168,7 @@ describe('a wipe', () => {
       events: room.events.slice(eventsBefore).filter((one) => one === 'copy' || one === 'reset'),
       reset: heardOf(room, 'gm-a', 'reset'),
     }).toEqual({
-      answer: { t: 'wiped', id: expect.any(String) },
+      answer: { kind: 'answered' },
       shown: [],
       copy: { v: 2, g: WIPED, records: [] },
       events: ['copy', 'reset'],

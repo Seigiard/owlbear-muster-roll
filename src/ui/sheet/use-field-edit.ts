@@ -1,5 +1,3 @@
-import { useStore } from '@nanostores/react';
-import type { ReadableAtom } from 'nanostores';
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 
@@ -15,7 +13,7 @@ import type { FieldValue, VersionedRecord } from '@/core/records';
 import { ok, type Result } from '@/core/result';
 import { isChecked, valueText } from '@/core/sheet-values';
 import type { CommandRejectedMessage } from '@/core/ui-messages';
-import type { ReplicaClient } from '@/ui/replica-client';
+import type { CommandOutcomePromise, ReplicaClient } from '@/ui/replica-client';
 
 import type { LocalFieldValues } from './local-field-values';
 
@@ -28,7 +26,6 @@ export type FieldFlushes = {
 // What every editable field of a sheet shares.
 export type FieldEditing = {
   sendCommand: ReplicaClient['sendCommand'];
-  $rejections: ReadableAtom<ReadonlyMap<string, CommandRejectedMessage>>;
   pauseMs: number;
   // Run on `pagehide`, so a closing window still sends what was typed.
   pageHideFlushes: FieldFlushes;
@@ -67,9 +64,9 @@ type FieldArguments = {
 };
 
 // A saved value the projection has not brought back yet, so the field does not flash the old one
-// while the delta is on its way. Its command id ties a rejection to it, and `text` is what the GM
-// typed, for a rejection that hands it back.
-type Held = { value: FieldPatchValue; text: string; commandId: string };
+// while the delta is on its way. Its outcome ties a refusal to it, and `text` is what the GM typed,
+// for a refusal that hands it back.
+type Held = { value: FieldPatchValue; text: string; outcome: CommandOutcomePromise<undefined> };
 
 // The text in a focused field, or a left field whose text did not save. `baseline` is the value
 // at focus or at the last pause save: a save goes out only when the text means something else.
@@ -224,7 +221,7 @@ export function useTextFieldEdit(
       return;
     }
 
-    const sent = current.editing.sendCommand(
+    const outcome = current.editing.sendCommand(
       {
         type: 'field-patch',
         sheetId: current.place.sheetId,
@@ -235,15 +232,7 @@ export function useTextFieldEdit(
       { urgent: mode === 'pagehide' },
     );
 
-    if (!sent.ok) {
-      if (showsMessage) {
-        update({ draft, error: 'too-long' });
-      }
-
-      return;
-    }
-
-    const held: Held = { value: parsed.value, text: draft.text, commandId: sent.value };
+    const held: Held = { value: parsed.value, text: draft.text, outcome };
 
     // `enter` freezes the text at the value just sent, before the next render brings it.
     current.shown = { value: parsed.value, held, refused: null };
@@ -390,9 +379,7 @@ export function useCheckFieldEdit({ place, fieldId, recordValue }: FieldArgument
         value: !checked,
       });
 
-      if (sent.ok) {
-        shown.hold({ value: !checked, text: '', commandId: sent.value });
-      }
+      shown.hold({ value: !checked, text: '', outcome: sent });
     },
   };
 }
@@ -423,9 +410,7 @@ export function useSelectFieldEdit({
         value: next,
       });
 
-      if (sent.ok) {
-        shown.hold({ value: next, text: '', commandId: sent.value });
-      }
+      shown.hold({ value: next, text: '', outcome: sent });
     },
   };
 }
@@ -446,12 +431,10 @@ function useShownValue(
   editing: FieldEditing,
   recordValue: FieldValue | undefined,
 ): Shown & { hold: (held: Held) => void } {
-  const rejections = useStore(editing.$rejections);
   const [held, setHeld] = useState<Held | null>(null);
-  const rejection = held === null ? undefined : rejections.get(held.commandId);
+  const [refused, setRefused] = useState<Shown['refused']>(null);
 
-  const settled =
-    held !== null && (sameFieldValue(recordValue, held.value) || rejection !== undefined);
+  const settled = held !== null && sameFieldValue(recordValue, held.value);
 
   useEffect(() => {
     if (settled) {
@@ -459,13 +442,44 @@ function useShownValue(
     }
   }, [settled]);
 
+  useEffect(() => {
+    if (held === null) {
+      return;
+    }
+
+    let active = true;
+
+    void held.outcome
+      .then((outcome) => {
+        if (!active || outcome.kind === 'answered') {
+          return;
+        }
+
+        setHeld((current) => (current === held ? null : current));
+
+        if (outcome.kind === 'refused') {
+          setRefused({ held, reason: outcome.rejection.reason });
+        }
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not settle a field edit', error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [held]);
+
   const active = settled ? null : held;
 
   return {
     value: active === null ? (recordValue ?? null) : active.value,
     held: active,
-    refused: held !== null && rejection !== undefined ? { held, reason: rejection.reason } : null,
-    hold: setHeld,
+    refused,
+    hold: (next) => {
+      setRefused(null);
+      setHeld(next);
+    },
   };
 }
 

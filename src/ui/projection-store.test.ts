@@ -186,38 +186,6 @@ describe('projection store', () => {
       replica: FIRST,
     });
   });
-
-  test('remembers each rejected command by its id, when two land before anyone reads them', () => {
-    // #given
-    const store = createProjectionStore();
-
-    // #when
-    store.setRejection({ t: 'command-rejected', id: 'c1', reason: 'too-large' });
-    store.setRejection({ t: 'command-rejected', id: 'c2', reason: 'unknown-field' });
-
-    // #then
-    expect([...store.$rejections.get()]).toEqual([
-      ['c1', { t: 'command-rejected', id: 'c1', reason: 'too-large' }],
-      ['c2', { t: 'command-rejected', id: 'c2', reason: 'unknown-field' }],
-    ]);
-  });
-
-  test('forgets the oldest rejection past 256', () => {
-    // #given
-    const store = createProjectionStore();
-
-    // #when
-    for (let index = 0; index <= 256; index += 1) {
-      store.setRejection({ t: 'command-rejected', id: `c${index}`, reason: 'too-large' });
-    }
-
-    // #then
-    expect({
-      size: store.$rejections.get().size,
-      oldest: store.$rejections.get().has('c0'),
-      newest: store.$rejections.get().has('c256'),
-    }).toEqual({ size: 256, oldest: false, newest: true });
-  });
 });
 
 describe("projection store's pending entries", () => {

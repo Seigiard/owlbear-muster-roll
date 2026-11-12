@@ -287,20 +287,21 @@ describe('a player alone reads the room copy', () => {
     const player = await playerAlone(room, { gmLinkTimeoutMs: 60 });
 
     // #when: an edit attempt, and long enough for pings to go out.
-    const sent = player.window.sendCommand({
-      type: 'field-patch',
-      sheetId: 'brok',
-      target: { kind: 'row', rowId: 'str' },
-      fieldId: 'str',
-      value: 3,
-    });
+    const settled = await Promise.resolve(
+      player.window.sendCommand({
+        type: 'field-patch',
+        sheetId: 'brok',
+        target: { kind: 'row', rowId: 'str' },
+        fieldId: 'str',
+        value: 3,
+      }),
+    );
 
-    await waitUntil(() => sent.ok && player.store.$rejections.get().has(sent.value));
     await pause(100);
 
     // #then
     expect({
-      reason: sent.ok ? player.store.$rejections.get().get(sent.value)?.reason : sent.error,
+      reason: settled.kind === 'refused' ? settled.rejection.reason : settled.kind,
       sentTypes: [...new Set(typesFrom(room, PLAYER))].sort(),
       keys: keysOf(player),
     }).toEqual({

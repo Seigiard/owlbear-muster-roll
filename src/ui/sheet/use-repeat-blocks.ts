@@ -1,8 +1,8 @@
-import { useStore } from '@nanostores/react';
 import { useEffect, useRef, useState } from 'react';
 import type { RefCallback, RefObject } from 'react';
 
 import { newInstanceId } from '@/core/ids';
+import type { CommandOutcomePromise } from '@/ui/replica-client';
 
 import { useFieldEditing } from './use-field-edit';
 
@@ -21,8 +21,17 @@ export type RepeatBlockControls = {
 // A sent add or delete, until its delta moves the focus or a rejection ends the wait. `next` is the
 // repeat block after the deleted one when "Удалить" was pressed.
 type FocusWait =
-  | { kind: 'added'; instanceId: string; commandId: string }
-  | { kind: 'deleted'; instanceId: string; next: string | null; commandId: string };
+  | {
+      kind: 'added';
+      instanceId: string;
+      outcome: CommandOutcomePromise<undefined>;
+    }
+  | {
+      kind: 'deleted';
+      instanceId: string;
+      next: string | null;
+      outcome: CommandOutcomePromise<undefined>;
+    };
 
 // The add and delete controls of one repeat section of one sheet. The window picks the new repeat
 // block's id, so it knows which repeat block to focus when the delta brings it.
@@ -32,7 +41,6 @@ export function useRepeatBlocks(
   instanceIds: readonly string[],
 ): RepeatBlockControls {
   const editing = useFieldEditing();
-  const rejections = useStore(editing.$rejections);
   const [wait, setWait] = useState<FocusWait | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   const blockElements = useRef(new Map<string, HTMLElement>());
@@ -43,9 +51,29 @@ export function useRepeatBlocks(
       return;
     }
 
-    if (rejections.has(wait.commandId)) {
-      setWait(null);
+    let active = true;
 
+    void wait.outcome
+      .then((outcome) => {
+        if (!active) {
+          return;
+        }
+
+        if (outcome.kind !== 'answered') {
+          setWait((current) => (current === wait ? null : current));
+        }
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not settle a repeat block command', error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [wait]);
+
+  useEffect(() => {
+    if (wait === null) {
       return;
     }
 
@@ -71,7 +99,7 @@ export function useRepeatBlocks(
         (next ?? addButton.current)?.focus();
       }
     }
-  }, [wait, rejections, instanceIds]);
+  }, [wait, instanceIds]);
 
   return {
     addButton,
@@ -102,33 +130,29 @@ export function useRepeatBlocks(
       // collision writes over nothing.
       const instanceId = newInstanceId();
 
-      const sent = editing.sendCommand({
+      const outcome = editing.sendCommand({
         type: 'repeat-block-add',
         sheetId,
         sectionId,
         instanceId,
       });
 
-      if (sent.ok) {
-        setWait({ kind: 'added', instanceId, commandId: sent.value });
-      }
+      setWait({ kind: 'added', instanceId, outcome });
     },
     remove: (instanceId) => {
-      const sent = editing.sendCommand({
+      const outcome = editing.sendCommand({
         type: 'repeat-block-delete',
         sheetId,
         sectionId,
         instanceId,
       });
 
-      if (sent.ok) {
-        setWait({
-          kind: 'deleted',
-          instanceId,
-          next: instanceIds[instanceIds.indexOf(instanceId) + 1] ?? null,
-          commandId: sent.value,
-        });
-      }
+      setWait({
+        kind: 'deleted',
+        instanceId,
+        next: instanceIds[instanceIds.indexOf(instanceId) + 1] ?? null,
+        outcome,
+      });
     },
   };
 }

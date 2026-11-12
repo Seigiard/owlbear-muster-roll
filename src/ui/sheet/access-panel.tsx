@@ -2,13 +2,11 @@ import { useStore } from '@nanostores/react';
 import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { FocusEvent, KeyboardEvent, ReactNode } from 'react';
 
-import { accessRows, aclKey, canEdit, shownName, type AccessRow } from '@/core/access';
+import { accessRows, canEdit, shownName, type AccessRow } from '@/core/access';
 import { ownersBySheet } from '@/core/merge';
-import { plinkPrefix, type VersionedRecord } from '@/core/records';
-import { ACCESS_CHANGE_TIMEOUT_MS } from '@/core/timing';
 import { copy } from '@/ui/copy';
 import type { ProjectionStore } from '@/ui/projection-store';
-import type { ReplicaClient } from '@/ui/replica-client';
+import type { CommandOutcome, CommandOutcomePromise, ReplicaClient } from '@/ui/replica-client';
 
 type AccessPanelProps = {
   // The id the "Доступ" chip names in `aria-controls`.
@@ -16,19 +14,17 @@ type AccessPanelProps = {
   sheetId: string;
   // This client's own player id, which gets no row.
   ownPlayerId: string;
-  store: Pick<ProjectionStore, '$records' | '$party' | '$rejections'>;
+  store: Pick<ProjectionStore, '$records' | '$party'>;
   sendCommand: ReplicaClient['sendCommand'];
   // `Esc` in the panel. The header closes it and gives the focus back to the chip.
   onClose: () => void;
 };
 
-// The latest change sent for one player. `before` is the version of the `acl:` record when it went,
-// so only a record written after it can answer it. Its command id ties a rejection to it.
-type SentChange = { on: boolean; commandId: string; before: string; sentAt: number };
+// The latest change sent for one player. Its outcome settles this change.
+type SentChange = { on: boolean; outcome: CommandOutcomePromise<undefined> };
 
-// The latest owner pick sent, `null` for "Никто". `before` is the versions of the sheet's `plink:`
-// records and the picked player's `acl:` when it went, so only a batch written after it answers it.
-type SentOwner = { playerId: string | null; commandId: string; before: string; sentAt: number };
+// The latest owner pick sent, `null` for "Никто". Its outcome settles this pick.
+type SentOwner = { playerId: string | null; outcome: CommandOutcomePromise<undefined> };
 
 // What the panel sent and has no answer for yet, and whether the last change failed.
 type PanelState = {
@@ -37,14 +33,13 @@ type PanelState = {
   failed: boolean;
 };
 
-// Each change of the state goes through the reducer, so a timer and a render that land together
-// never overwrite each other, and each answer ends only the change of its own command id.
+// Each change of the state goes through the reducer, so records and outcomes settle only their own
+// sent change.
 type PanelAction =
   | { t: 'acl-sent'; playerId: string; change: SentChange }
   | { t: 'owner-sent'; owner: SentOwner }
-  | { t: 'send-failed' }
-  | { t: 'settled'; answered: ReadonlySet<string>; refused: ReadonlySet<string> }
-  | { t: 'timed-out'; commandId: string };
+  | { t: 'records-settled'; playerIds: readonly string[]; owner: boolean }
+  | { t: 'outcome'; target: SentChange | SentOwner; outcome: CommandOutcome<undefined> };
 
 // One option of the radio group "Его лист".
 type OwnerOption = { playerId: string | null; label: string };
@@ -64,7 +59,6 @@ export function AccessPanel({
 }: AccessPanelProps): ReactNode {
   const records = useStore(store.$records);
   const party = useStore(store.$party);
-  const rejections = useStore(store.$rejections);
   const [state, dispatch] = useReducer(reducePanel, INITIAL_STATE);
 
   const rows = useMemo(
@@ -78,68 +72,41 @@ export function AccessPanel({
     [records, sheetId],
   );
 
-  // A change ends on a rejection of its own command id, where "unchanged" means the wanted state is
-  // already in place. An access change also ends when an `acl:` record written after it shows its
-  // state. An owner pick ends once its records moved past the versions it was sent over, whoever's
-  // pick won, as the records then show the room's owner.
-  const answered = new Set<string>();
-  const refused = new Set<string>();
-
-  function settle(commandId: string, done: boolean): void {
-    const rejection = rejections.get(commandId);
-
-    if (rejection === undefined) {
-      if (done) {
-        answered.add(commandId);
-      }
-    } else if (rejection.reason === 'unchanged') {
-      answered.add(commandId);
-    } else {
-      refused.add(commandId);
-    }
-  }
-
-  for (const [playerId, change] of state.acl) {
-    settle(
-      change.commandId,
-      versionOf(records.get(aclKey(sheetId, playerId))) !== change.before &&
-        canEdit(records, sheetId, playerId) === change.on,
-    );
-  }
-
-  if (state.owner !== null) {
-    settle(
-      state.owner.commandId,
-      ownerVersions(records, sheetId, state.owner.playerId) !== state.owner.before,
-    );
-  }
-
-  if (answered.size > 0 || refused.size > 0) {
-    dispatch({ t: 'settled', answered, refused });
-  }
-
-  // A change that is not answered in time is dropped, so the controls show the records again.
   useEffect(() => {
     const pending = [...state.acl.values(), ...(state.owner === null ? [] : [state.owner])];
+    let active = true;
 
-    const timers = pending.map((change) =>
-      setTimeout(
-        () => {
-          dispatch({ t: 'timed-out', commandId: change.commandId });
-        },
-        Math.max(0, change.sentAt + ACCESS_CHANGE_TIMEOUT_MS - Date.now()),
-      ),
-    );
+    for (const change of pending) {
+      void change.outcome
+        .then((outcome) => {
+          if (active) {
+            dispatch({ t: 'outcome', target: change, outcome });
+          }
+        })
+        .catch((error) => {
+          console.error('Muster Roll could not settle an access change', error);
+        });
+    }
 
     return () => {
-      for (const timer of timers) {
-        clearTimeout(timer);
-      }
+      active = false;
     };
   }, [state.acl, state.owner]);
 
+  useEffect(() => {
+    const playerIds = [...state.acl].flatMap(([playerId, change]) =>
+      canEdit(records, sheetId, playerId) === change.on ? [playerId] : [],
+    );
+
+    const ownerSettled = state.owner !== null && owner === state.owner.playerId;
+
+    if (playerIds.length > 0 || ownerSettled) {
+      dispatch({ t: 'records-settled', playerIds, owner: ownerSettled });
+    }
+  }, [records, sheetId, state.acl, state.owner, owner]);
+
   function change(row: AccessRow, on: boolean): void {
-    const result = sendCommand({
+    const outcome = sendCommand({
       type: 'acl-set',
       sheetId,
       playerId: row.playerId,
@@ -148,28 +115,17 @@ export function AccessPanel({
       on,
     });
 
-    if (!result.ok) {
-      dispatch({ t: 'send-failed' });
-
-      return;
-    }
-
     dispatch({
       t: 'acl-sent',
       playerId: row.playerId,
-      change: {
-        on,
-        commandId: result.value,
-        before: versionOf(records.get(aclKey(sheetId, row.playerId))),
-        sentAt: Date.now(),
-      },
+      change: { on, outcome },
     });
   }
 
   function pickOwner(playerId: string | null): void {
     const row = rows.find((candidate) => candidate.playerId === playerId);
 
-    const result = sendCommand({
+    const outcome = sendCommand({
       type: 'owner-set',
       sheetId,
       playerId,
@@ -177,20 +133,9 @@ export function AccessPanel({
       name: row?.name ?? '',
     });
 
-    if (!result.ok) {
-      dispatch({ t: 'send-failed' });
-
-      return;
-    }
-
     dispatch({
       t: 'owner-sent',
-      owner: {
-        playerId,
-        commandId: result.value,
-        before: ownerVersions(records, sheetId, playerId),
-        sentAt: Date.now(),
-      },
+      owner: { playerId, outcome },
     });
   }
 
@@ -265,52 +210,48 @@ function reducePanel(state: PanelState, action: PanelAction): PanelState {
       return { acl, owner: action.owner, failed: false };
     }
 
-    case 'send-failed':
-      return { ...state, failed: true };
-    case 'settled':
-      return dropped(state, (commandId) => {
-        if (action.refused.has(commandId)) {
-          return 'failed';
-        }
+    case 'records-settled': {
+      const acl = new Map(state.acl);
 
-        return action.answered.has(commandId) ? 'done' : 'kept';
-      });
-    case 'timed-out':
-      return dropped(state, (commandId) => (commandId === action.commandId ? 'failed' : 'kept'));
+      for (const playerId of action.playerIds) {
+        acl.delete(playerId);
+      }
+
+      const owner = action.owner ? null : state.owner;
+
+      return acl.size !== state.acl.size || owner !== state.owner
+        ? { ...state, acl, owner }
+        : state;
+    }
+
+    case 'outcome':
+      return settleTarget(
+        state,
+        action.target,
+        action.outcome.kind === 'timed-out' ||
+          (action.outcome.kind === 'refused' && action.outcome.rejection.reason !== 'unchanged'),
+      );
     default:
       return unknownAction(action);
   }
 }
 
-// The state with each change `outcome` ends dropped. It is failed when a dropped change failed.
-function dropped(
+function settleTarget(
   state: PanelState,
-  outcome: (commandId: string) => 'kept' | 'done' | 'failed',
+  target: SentChange | SentOwner,
+  failed: boolean,
 ): PanelState {
-  let changed = false;
-  let failed = state.failed;
   const acl = new Map(state.acl);
 
-  for (const [playerId, change] of state.acl) {
-    const result = outcome(change.commandId);
-
-    if (result !== 'kept') {
+  for (const [playerId, change] of acl) {
+    if (change === target) {
       acl.delete(playerId);
-      changed = true;
-      failed ||= result === 'failed';
+
+      return { acl, owner: state.owner, failed: state.failed || failed };
     }
   }
 
-  let { owner } = state;
-  const ownerResult = owner === null ? 'kept' : outcome(owner.commandId);
-
-  if (ownerResult !== 'kept') {
-    owner = null;
-    changed = true;
-    failed ||= ownerResult === 'failed';
-  }
-
-  return changed ? { acl, owner, failed } : state;
+  return state.owner === target ? { acl, owner: null, failed: state.failed || failed } : state;
 }
 
 // `tsc` fails here when an action has no case above.
@@ -448,32 +389,4 @@ function AccessRowItem({ row, checked, onChange }: AccessRowItemProps): ReactNod
       </div>
     </li>
   );
-}
-
-// The versions an owner pick writes over: every `plink:` of the sheet and the picked player's
-// `acl:`, as one string.
-function ownerVersions(
-  records: ReadonlyMap<string, VersionedRecord>,
-  sheetId: string,
-  playerId: string | null,
-): string {
-  const prefix = plinkPrefix(sheetId);
-  const plinks: string[] = [];
-
-  for (const record of records.values()) {
-    if (record.k.startsWith(prefix)) {
-      plinks.push(`${record.k}=${versionOf(record)}`);
-    }
-  }
-
-  plinks.sort();
-
-  const acl = playerId === null ? '' : versionOf(records.get(aclKey(sheetId, playerId)));
-
-  return `${plinks.join(',')};${acl}`;
-}
-
-// A record's version as one string, or "" for no record.
-function versionOf(record: VersionedRecord | undefined): string {
-  return record === undefined ? '' : `${record.c}:${record.a}`;
 }

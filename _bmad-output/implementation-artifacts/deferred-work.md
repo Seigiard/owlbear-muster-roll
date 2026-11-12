@@ -231,3 +231,18 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-54-roll-without-closing-the-window.md`
   summary: In the dicex fork, a remote player's tray can cover the roller's own Dice+ tray in the bottom-right popover.
   evidence: `src/plugin/PopoverTrays.tsx` (branch `dice-plus-roll-without-action`) renders the roller's tray and every remote `PopoverTray` at the same absolute spot (`right=16 bottom=16`). The later sibling covers the earlier one when two rolls show at once. Remote trays already overlap this way on base 47cd243. A fix needs a stacking or layout decision. Code-review finding bugs+impl-terra-2 (revmux round 1).
+
+## Deferred from: build of spec-task-46-command-outcomes (2026-11-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-46-command-outcomes.md`
+  summary: A window of a newer build that talks to an older background page never gets `command-done`, so commands the old engine applied time out after 15 s.
+  evidence: After a deploy, a room opened before it keeps the old background page. Result answers (preset, snapshot, wipe, roll) still arrive, and access, link, create and repeat-block views settle from records, so the visible harm is a false `copy.duplicateFailed` and a dropped held field value. A fix needs a protocol choice, for example a build marker the window reads before it waits for `command-done`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-46-command-outcomes.md`
+  summary: A snapshot import that succeeds after its 60 s timeout no longer clears `copy.snapshotImportNoAnswer`.
+  evidence: The client drops every answer after the timeout (spec matrix "Timed out"), so the spec-5-3 rule that a late `snapshot-imported` clears the warning no longer holds. Restoring it needs a view signal for a replaced room that does not depend on the late answer.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-46-command-outcomes.md`
+  summary: A duplicate queued during a catch-up longer than 15 s shows `copy.duplicateFailed`, and a retry queues a second duplicate.
+  evidence: The duplicate now closes when replay answers (spec Always). An incomplete catch-up with backoff can last up to `incompleteRequestMaxMs` (30 s), longer than the default command timeout.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-46-command-outcomes.md`
+  summary: A comment in `tests/owner.e2e.ts` still names `ACCESS_CHANGE_TIMEOUT_MS`, which TASK-46 replaced with `Timing.accessChangeTimeoutMs`.
+  evidence: TASK-46 kept `tests/` unchanged as the oracle for unchanged behaviour, so the comment was left for a later edit of that file.

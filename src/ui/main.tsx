@@ -25,7 +25,11 @@ import { watchMapSelection, type MapSelection } from '@/ui/map-selection';
 import { createPendingMarks, type PendingMarks } from '@/ui/pending-marks';
 import { PresetUpload, uploadDisabledReason } from '@/ui/preset-actions';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
+import {
+  startReplicaClient,
+  type CommandOutcomePromise,
+  type ReplicaClient,
+} from '@/ui/replica-client';
 import { SettingsView } from '@/ui/settings/settings-view';
 import { DeleteConfirmation } from '@/ui/sheet/delete-confirmation';
 import type { DiceRolling } from '@/ui/sheet/dice-button';
@@ -50,14 +54,14 @@ const SETTINGS_TAB = 'settings';
 
 type PresetState = 'unknown' | 'absent' | 'present';
 
-// A sheet is named by its tab id, the `sheet:` key form of its id. The command id ties a rejection
-// to the creation, so a refused sheet stops waiting for its tab.
-type CreatedSheet = { sheet: string; commandId: string };
+// A sheet is named by its tab id, the `sheet:` key form of its id. The outcome stops waiting when
+// the engine refuses or times out the creation.
+type CreatedSheet = { sheet: string; outcome: CommandOutcomePromise<undefined> };
 
 type DeleteAsk = { sheet: string; request: number };
 
-// The command id ties a rejection to the deletion, so a refused one stops waiting.
-type DeletingSheet = { sheet: string; commandId: string };
+// The outcome stops waiting when the engine refuses or times out the deletion.
+type DeletingSheet = { sheet: string; outcome: CommandOutcomePromise<undefined> };
 
 // FR14: the tab "Открыть лист" selected. It scrolls into view in the bar once, and takes the focus
 // when the focus was in the window and no repeat block takes it.
@@ -183,7 +187,6 @@ function WindowRoot({
     [role, preset, allRecords],
   );
 
-  const rejections = useStore(projection.$rejections);
   const pendingEntries = useStore(projection.$pending);
   const marked = useStore(marks.$marked);
   const openRequest = useStore(projection.$openRequest);
@@ -269,7 +272,6 @@ function WindowRoot({
   const editing = useMemo<FieldEditing>(
     () => ({
       sendCommand,
-      $rejections: projection.$rejections,
       pauseMs: TIMING.fieldSavePauseMs,
       pageHideFlushes,
       localValues: localFieldValues,
@@ -285,15 +287,17 @@ function WindowRoot({
   const rolling = useMemo<DiceRolling>(
     () => ({
       requestRoll,
-      $rollOutcomes: projection.$rollOutcomes,
       localValues: localFieldValues,
     }),
     [requestRoll, projection],
   );
 
   const blockTools = useMemo<BlockTools>(
-    () => ({ sendCommand, store: projection, linkedTargets }),
-    [sendCommand, projection, linkedTargets],
+    () => ({
+      sendCommand: (command) => sendCommand(command),
+      linkedTargets,
+    }),
+    [sendCommand, linkedTargets],
   );
 
   // A GM with no sheet tab lands on Settings. A player with none has no tab bar.
@@ -336,6 +340,51 @@ function WindowRoot({
   const awaitedCreate = isGm ? created : null;
   const awaitedDelete = isGm ? deleting : null;
 
+  useEffect(() => {
+    if (created === null) {
+      return;
+    }
+
+    let active = true;
+
+    void created.outcome
+      .then((outcome) => {
+        if (active && outcome.kind !== 'answered') {
+          setCreated(null);
+        }
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not settle sheet creation', error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [created]);
+
+  useEffect(() => {
+    if (deleting === null) {
+      return;
+    }
+
+    let active = true;
+
+    void deleting.outcome
+      .then((outcome) => {
+        if (active && outcome.kind !== 'answered') {
+          setDeleting(null);
+          setFocusAfterLoss({ kind: 'actions', sheet: deleting.sheet, tab: tabOf(deleting.sheet) });
+        }
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not settle sheet deletion', error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [deleting]);
+
   if (
     !isGm &&
     (settingsOpen ||
@@ -354,9 +403,7 @@ function WindowRoot({
   // The sheet whose name takes the focus, as this render leaves it.
   let nameFocus = focusNameOf;
 
-  if (awaitedCreate !== null && rejections.has(awaitedCreate.commandId)) {
-    setCreated(null);
-  } else if (awaitedCreate !== null && tabOf(awaitedCreate.sheet) !== null) {
+  if (awaitedCreate !== null && tabOf(awaitedCreate.sheet) !== null) {
     // UX: a new sheet's tab opens and its name takes the focus.
     setCreated(null);
     shownTab = awaitedCreate.sheet;
@@ -419,13 +466,6 @@ function WindowRoot({
   if (awaitedDelete !== null && tabOf(awaitedDelete.sheet) === null) {
     setDeleting(null);
     setFocusAfterLoss({ kind: 'tab' });
-  } else if (awaitedDelete !== null && rejections.has(awaitedDelete.commandId)) {
-    setDeleting(null);
-    setFocusAfterLoss({
-      kind: 'actions',
-      sheet: awaitedDelete.sheet,
-      tab: tabOf(awaitedDelete.sheet),
-    });
   }
 
   // Applied only to focus that fell to the page body, and only on the tab that lost it, so a
@@ -484,13 +524,10 @@ function WindowRoot({
     // Closed at once, so a second press sends no second command.
     setDeleteAsk(null);
 
-    const sent = sendCommand({ type: 'sheet-delete', sheetId: tab.sheetId });
-
-    if (sent.ok) {
-      setDeleting({ sheet: tab.id, commandId: sent.value });
-    } else {
-      setFocusActionsOf(tab.id);
-    }
+    setDeleting({
+      sheet: tab.id,
+      outcome: sendCommand({ type: 'sheet-delete', sheetId: tab.sheetId }),
+    });
   }
 
   // CAP-17: a new sheet of the sheet set, with an empty name.
@@ -503,11 +540,10 @@ function WindowRoot({
     // The GM has moved on from the open confirmation.
     setDeleteAsk(null);
 
-    const sent = sendCommand({ type: 'sheet-create', sheetId, set: set.id });
-
-    if (sent.ok) {
-      setCreated({ sheet: sheetKey(sheetId), commandId: sent.value });
-    }
+    setCreated({
+      sheet: sheetKey(sheetId),
+      outcome: sendCommand({ type: 'sheet-create', sheetId, set: set.id }),
+    });
   }
 
   // The open confirmation, when it asks about `tab`.
@@ -664,7 +700,6 @@ function WindowRoot({
       catchingUp={catchingUp}
       roomCopy={roomCopy}
       client={presetClient}
-      store={projection}
     />
   );
 
@@ -687,7 +722,6 @@ function WindowRoot({
         ) : (
           <PresetUpload
             client={presetClient}
-            store={projection}
             catchingUp={catchingUp}
             disabledReason={uploadDisabledReason(catchingUp)}
           />

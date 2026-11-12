@@ -1,4 +1,3 @@
-import { useStore } from '@nanostores/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { FileTrigger } from 'react-aria-components';
@@ -12,13 +11,15 @@ import {
   parseSnapshotFile,
   SNAPSHOT_FILE_BYTE_LIMIT,
 } from '@/core/snapshot-import';
-import { TIMING } from '@/core/timing';
-import type { CommandRejectedMessage, SnapshotResultMessage } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { downloadJsonFile } from '@/ui/download';
 import { Button } from '@/ui/primitives/button';
-import type { ProjectionStore } from '@/ui/projection-store';
-import type { ReplicaClient } from '@/ui/replica-client';
+import type {
+  CommandOutcome,
+  CommandOutcomePromise,
+  ErasedCounts,
+  ReplicaClient,
+} from '@/ui/replica-client';
 import { SnapshotConfirmation } from '@/ui/settings/snapshot-confirmation';
 import { fileFailureText, snapshotRejectionText } from '@/ui/settings/snapshot-text';
 
@@ -31,16 +32,15 @@ const ACCEPTED_FILE_TYPES = ['.json', 'application/json'];
 // import drops only those.
 type ImportState =
   | { phase: 'idle'; message: string | null; ask: number }
-  | { phase: 'checking'; data: string; requestId: string; ask: number }
+  | { phase: 'checking'; data: string; outcome: Promise<CommandOutcome<ErasedCounts>>; ask: number }
   | { phase: 'asking'; data: string; count: number; sheets: number; digest: string; ask: number }
-  | { phase: 'importing'; data: string; commandId: string; ask: number };
+  | { phase: 'importing'; data: string; outcome: CommandOutcomePromise<undefined>; ask: number };
 
 type SnapshotActionsOptions = {
   records: ReadonlyMap<string, VersionedRecord>;
   preset: Preset | null;
   catchingUp: boolean;
   client: Pick<ReplicaClient, 'sendCommand' | 'requestSnapshotCheck'>;
-  store: Pick<ProjectionStore, '$rejections' | '$snapshotResults'>;
 };
 
 type SnapshotActionsParts = {
@@ -61,19 +61,12 @@ export function useSnapshotActions({
   preset,
   catchingUp,
   client,
-  store,
 }: SnapshotActionsOptions): SnapshotActionsParts {
   const [state, setState] = useState<ImportState>({ phase: 'idle', message: null, ask: 0 });
-  const rejections = useStore(store.$rejections);
-  const results = useStore(store.$snapshotResults);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  // The ids whose answer was taken or given up on, so no answer settles a request twice.
-  const settledIds = useRef(new Set<string>());
-  // An import the window gave up on. It may still succeed, and then its message goes.
-  const abandonedId = useRef<string | null>(null);
   const refocus = useRef(false);
   const { sendCommand, requestSnapshotCheck } = client;
-  const waitingId = requestIdOf(state);
+  const waiting = state.phase === 'checking' || state.phase === 'importing';
 
   if (catchingUp && state.phase === 'asking') {
     refocus.current = true;
@@ -84,80 +77,26 @@ export function useSnapshotActions({
     (data: string, expectedDigest: string, ask: number): ImportState => {
       const sent = sendCommand({ type: 'snapshot-import', data, expectedDigest });
 
-      return sent.ok
-        ? { phase: 'importing', data, commandId: sent.value, ask }
-        : { phase: 'idle', message: copy.badFile(copy.badFileReason.tooLarge), ask };
+      return { phase: 'importing', data, outcome: sent, ask };
     },
     [sendCommand],
   );
 
   useEffect(() => {
-    if (state.phase !== 'checking' && state.phase !== 'importing') {
+    if (!waiting) {
       return;
     }
 
-    const id = state.phase === 'checking' ? state.requestId : state.commandId;
+    const current = state;
 
-    if (settledIds.current.has(id)) {
-      return;
-    }
-
-    const next = settled(state, rejections.get(id), results.get(id));
-
-    if (next !== state) {
-      settledIds.current.add(id);
-      setState(next);
-    }
-  }, [state, rejections, results]);
-
-  const importWait = state.phase === 'importing';
-
-  useEffect(() => {
-    if (waitingId === null) {
-      return undefined;
-    }
-
-    const timer = setTimeout(
-      () => {
-        settledIds.current.add(waitingId);
-
-        if (importWait) {
-          abandonedId.current = waitingId;
-        }
-
-        setState((current) =>
-          requestIdOf(current) === waitingId
-            ? {
-                phase: 'idle',
-                message: importWait ? copy.snapshotImportNoAnswer : copy.snapshotImportFailed,
-                ask: current.ask,
-              }
-            : current,
-        );
-      },
-      importWait ? TIMING.snapshotImportTimeoutMs : TIMING.presetRequestTimeoutMs,
-    );
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [waitingId, importWait]);
-
-  // A late answer of an import given up on: it did replace the room, so the warning goes.
-  useEffect(() => {
-    const id = abandonedId.current;
-
-    if (id === null || results.get(id)?.t !== 'snapshot-imported') {
-      return;
-    }
-
-    abandonedId.current = null;
-    setState((current) =>
-      current.phase === 'idle' && current.message === copy.snapshotImportNoAnswer
-        ? { phase: 'idle', message: null, ask: current.ask }
-        : current,
-    );
-  }, [results]);
+    void current.outcome
+      .then((outcome) => {
+        setState((shown) => (shown === current ? settled(current, outcome) : shown));
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not settle a snapshot request', error);
+      });
+  }, [state, waiting]);
 
   async function choose(file: File): Promise<void> {
     setState((current) => ({ phase: 'idle', message: null, ask: current.ask }));
@@ -172,11 +111,12 @@ export function useSnapshotActions({
 
     const requested = requestSnapshotCheck(data.value);
 
-    setState((current) =>
-      requested.ok
-        ? { phase: 'checking', data: data.value, requestId: requested.value, ask: current.ask }
-        : { phase: 'idle', message: copy.badFile(copy.badFileReason.tooLarge), ask: current.ask },
-    );
+    setState((current) => ({
+      phase: 'checking',
+      data: data.value,
+      outcome: requested,
+      ask: current.ask,
+    }));
   }
 
   function backToButton(): void {
@@ -204,7 +144,7 @@ export function useSnapshotActions({
   const reason = snapshotDisabledReason(preset, catchingUp);
   // The download needs the preset, and its reason says so.
   const downloadPreset = reason === undefined ? preset : null;
-  const importReason = reason ?? (waitingId === null ? undefined : copy.loading);
+  const importReason = reason ?? (waiting ? copy.loading : undefined);
   const buttonEnabled = importReason === undefined;
 
   // The block closed while the button was disabled, so the focus fell to the page. It goes back
@@ -307,50 +247,53 @@ async function readSnapshotFile(file: File): Promise<Result<string, string>> {
   return parsed.ok ? ok(encodeSnapshotFileData(parsed.value)) : err(fileFailureText(parsed.error));
 }
 
-// The id of the request the window waits on, or `null`.
-function requestIdOf(state: ImportState): string | null {
-  if (state.phase === 'checking') {
-    return state.requestId;
-  }
-
-  return state.phase === 'importing' ? state.commandId : null;
-}
-
-// What the answer to the check or the import leads to, or `state` itself while none has come.
+// What the answer to the check or the import leads to.
 function settled(
   state: Extract<ImportState, { phase: 'checking' | 'importing' }>,
-  rejection: CommandRejectedMessage | undefined,
-  result: SnapshotResultMessage | undefined,
+  outcome: CommandOutcome<ErasedCounts | undefined>,
 ): ImportState {
-  if (rejection?.reason === 'count-changed') {
+  if (outcome.kind === 'timed-out') {
+    return {
+      phase: 'idle',
+      message:
+        state.phase === 'importing' ? copy.snapshotImportNoAnswer : copy.snapshotImportFailed,
+      ask: state.ask,
+    };
+  }
+
+  if (outcome.kind === 'refused' && outcome.rejection.reason === 'count-changed') {
     return {
       phase: 'asking',
       data: state.data,
-      count: rejection.count,
-      sheets: rejection.sheets,
-      digest: rejection.digest,
+      count: outcome.rejection.count,
+      sheets: outcome.rejection.sheets,
+      digest: outcome.rejection.digest,
       ask: state.ask + 1,
     };
   }
 
-  if (rejection !== undefined) {
-    return { phase: 'idle', message: snapshotRejectionText(rejection.reason), ask: state.ask };
+  if (outcome.kind === 'refused') {
+    return {
+      phase: 'idle',
+      message: snapshotRejectionText(outcome.rejection.reason),
+      ask: state.ask,
+    };
   }
 
-  if (result?.t === 'snapshot-check-result' && state.phase === 'checking') {
+  if (state.phase === 'checking') {
+    if (outcome.answer === undefined) {
+      return { phase: 'idle', message: copy.snapshotImportFailed, ask: state.ask };
+    }
+
     return {
       phase: 'asking',
       data: state.data,
-      count: result.count,
-      sheets: result.sheets,
-      digest: result.digest,
+      count: outcome.answer.count,
+      sheets: outcome.answer.sheets,
+      digest: outcome.answer.digest,
       ask: state.ask + 1,
     };
   }
 
-  if (result?.t === 'snapshot-imported') {
-    return { phase: 'idle', message: null, ask: state.ask };
-  }
-
-  return state;
+  return { phase: 'idle', message: null, ask: state.ask };
 }

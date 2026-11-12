@@ -6,7 +6,6 @@ import { FORMAT_VERSION } from '@/core/format-version';
 import { linkDataOf, type LinkTarget } from '@/core/link-target';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { ok } from '@/core/result';
 import type { LinkPickerTiming } from '@/core/timing';
 import type { Command, SyncState } from '@/core/ui-messages';
 import type { NotificationVariant } from '@/platform/ports';
@@ -90,7 +89,6 @@ type PortAnswer = 'resolves' | 'rejects' | 'hangs';
 
 // Waits short enough for a test to sit through.
 const SHORT: LinkPickerTiming = {
-  pickTimeoutMs: 80,
   labelReadTimeoutMs: 30,
   labelWriteTimeoutMs: 30,
 };
@@ -99,7 +97,16 @@ type Harness = {
   store: ProjectionStore;
   steps: Step[];
   container: HTMLElement;
+  answers: ((outcome: LinkOutcome) => void)[];
 };
+
+type LinkOutcome =
+  | { kind: 'answered'; answer: undefined }
+  | {
+      kind: 'refused';
+      rejection: { t: 'command-rejected'; id: string; reason: 'deleted-sheet' };
+    }
+  | { kind: 'timed-out' };
 
 const mounted: Root[] = [];
 
@@ -386,7 +393,7 @@ describe('link picker label offer', () => {
     const picker = await openPicker({
       read: { label: '' },
       write: 'hangs',
-      timing: { pickTimeoutMs: 40, labelReadTimeoutMs: 1000, labelWriteTimeoutMs: 1000 },
+      timing: { labelReadTimeoutMs: 1000, labelWriteTimeoutMs: 1000 },
     });
 
     await pick(picker, 'Арагорн');
@@ -411,6 +418,35 @@ describe('link picker label offer', () => {
     });
   });
 
+  test('a timed-out outcome after the link arrives does not interrupt finishing', async () => {
+    // #given
+    const picker = await openPicker({
+      read: { label: '' },
+      write: 'hangs',
+      timing: { labelReadTimeoutMs: 1000, labelWriteTimeoutMs: 1000 },
+    });
+
+    await pick(picker, 'Арагорн');
+    await arrive(picker, 'arag', 'pending');
+
+    // #when
+    await act(async () => {
+      answerNext(picker, { kind: 'timed-out' });
+    });
+    await settle();
+
+    // #then
+    expect({
+      finishing: picker.steps.slice(-2),
+      failure: failureText(picker),
+      sheetsDisabled: sheetsDisabled(picker),
+    }).toEqual({
+      finishing: [{ kind: 'arrived' }, { kind: 'write', label: 'Арагорн' }],
+      failure: '',
+      sheetsDisabled: true,
+    });
+  });
+
   test('a client that stopped being GM before the link arrived writes no label', async () => {
     // #given
     const picker = await openPicker({ read: { label: '' } });
@@ -430,6 +466,7 @@ describe('link picker label offer', () => {
           role: 'PLAYER',
         },
       );
+      answerNext(picker, { kind: 'answered', answer: undefined });
     });
     await settle();
 
@@ -449,7 +486,10 @@ describe('link picker label offer', () => {
     // #when
     await pick(picker, 'Арагорн');
     await act(async () => {
-      picker.store.setRejection({ t: 'command-rejected', id: 'cmd-1', reason: 'deleted-sheet' });
+      answerNext(picker, {
+        kind: 'refused',
+        rejection: { t: 'command-rejected', id: 'cmd-1', reason: 'deleted-sheet' },
+      });
     });
     await settle();
 
@@ -535,6 +575,7 @@ type PickerOptions = {
 async function openPicker(options: PickerOptions): Promise<Harness> {
   const store = createProjectionStore();
   const steps: Step[] = [];
+  const answers: ((outcome: LinkOutcome) => void)[] = [];
   const container = document.createElement('div');
   const root = createRoot(container);
   let commands = 0;
@@ -582,7 +623,7 @@ async function openPicker(options: PickerOptions): Promise<Harness> {
           commands += 1;
           steps.push({ kind: 'send', command });
 
-          return ok(`cmd-${commands}`);
+          return new Promise<LinkOutcome>((resolve) => answers.push(resolve));
         }}
         scene={scene}
         notification={notification}
@@ -597,7 +638,7 @@ async function openPicker(options: PickerOptions): Promise<Harness> {
   });
   await settle();
 
-  return { store, steps, container };
+  return { store, steps, container, answers };
 }
 
 function answer<Value>(how: PortAnswer = 'resolves', value: Value): Promise<Value> {
@@ -620,7 +661,11 @@ function linkSet(name: TargetName): Command {
 }
 
 // The link of the last pick arrives in the replica, as the engine's delta brings it.
-async function arrive(picker: Harness, name: TargetName): Promise<void> {
+async function arrive(
+  picker: Harness,
+  name: TargetName,
+  outcome: LinkOutcome | 'pending' = { kind: 'answered', answer: undefined },
+): Promise<void> {
   await act(async () => {
     picker.steps.push({ kind: 'arrived' });
     picker.store.applyDelta(
@@ -630,8 +675,22 @@ async function arrive(picker: Harness, name: TargetName): Promise<void> {
       [],
       GM_LIVE,
     );
+
+    if (outcome !== 'pending') {
+      answerNext(picker, outcome);
+    }
   });
   await settle();
+}
+
+function answerNext(picker: Harness, outcome: LinkOutcome): void {
+  const resolveAnswer = picker.answers.shift();
+
+  if (resolveAnswer === undefined) {
+    throw new Error('the picker has no command waiting for an outcome');
+  }
+
+  resolveAnswer(outcome);
 }
 
 async function pick(picker: Harness, name: string): Promise<void> {
