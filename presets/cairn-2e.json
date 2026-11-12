@@ -94,7 +94,8 @@
               {
                 "kind": "field",
                 "type": "number",
-                "id": "str_max"
+                "id": "str_max",
+                "name": "STR, максимум"
               },
               {
                 "kind": "dice",
@@ -114,7 +115,8 @@
               {
                 "kind": "field",
                 "type": "number",
-                "id": "dex_max"
+                "id": "dex_max",
+                "name": "DEX, максимум"
               },
               {
                 "kind": "dice",
@@ -134,7 +136,8 @@
               {
                 "kind": "field",
                 "type": "number",
-                "id": "wil_max"
+                "id": "wil_max",
+                "name": "WIL, максимум"
               },
               {
                 "kind": "dice",
@@ -165,7 +168,8 @@
               {
                 "kind": "field",
                 "type": "number",
-                "id": "hp_max"
+                "id": "hp_max",
+                "name": "HP, максимум"
               }
             ],
             [
@@ -403,7 +407,8 @@
               {
                 "kind": "field",
                 "type": "text",
-                "id": "weapon"
+                "id": "weapon",
+                "name": "Оружие"
               },
               {
                 "kind": "text",
@@ -576,7 +581,8 @@
               {
                 "kind": "field",
                 "type": "text",
-                "id": "npc_name"
+                "id": "npc_name",
+                "name": "Имя NPC"
               },
               {
                 "kind": "text",
@@ -594,7 +600,8 @@
               {
                 "kind": "field",
                 "type": "number",
-                "id": "hp_max"
+                "id": "hp_max",
+                "name": "HP, максимум"
               },
               {
                 "kind": "text",
@@ -651,7 +658,8 @@
               {
                 "kind": "field",
                 "type": "text",
-                "id": "attack_1"
+                "id": "attack_1",
+                "name": "Атака 1"
               },
               {
                 "kind": "text",
@@ -661,18 +669,21 @@
                 "kind": "field",
                 "type": "dice-choice",
                 "id": "attack_1_die",
+                "name": "Урон атаки 1",
                 "options": ["d4", "d6", "d8", "d10", "d12"]
               },
               {
                 "kind": "dice",
-                "formula": "1d(attack_1_die)"
+                "formula": "1d(attack_1_die)",
+                "name": "Урон атаки 1"
               }
             ],
             [
               {
                 "kind": "field",
                 "type": "text",
-                "id": "attack_2"
+                "id": "attack_2",
+                "name": "Атака 2"
               },
               {
                 "kind": "text",
@@ -682,11 +693,13 @@
                 "kind": "field",
                 "type": "dice-choice",
                 "id": "attack_2_die",
+                "name": "Урон атаки 2",
                 "options": ["d4", "d6", "d8", "d10", "d12"]
               },
               {
                 "kind": "dice",
-                "formula": "1d(attack_2_die)"
+                "formula": "1d(attack_2_die)",
+                "name": "Урон атаки 2"
               }
             ],
             [
