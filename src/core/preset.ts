@@ -14,28 +14,53 @@ const encoder = new TextEncoder();
 
 const textCellSchema = z.strictObject({ kind: z.literal('text'), text: z.string() });
 
+export const CELL_NAME_MAX_CHARACTERS = 60;
+
+const cellName = { name: z.string().optional() };
+
 // Shared by option-list field types, so a later list-backed type can use the same shape and rules.
 const fieldOptions = { options: z.array(z.string()) };
 
 const fieldCellSchema = z.discriminatedUnion('type', [
-  z.strictObject({ kind: z.literal('field'), type: z.literal('text'), id: z.string() }),
-  z.strictObject({ kind: z.literal('field'), type: z.literal('number'), id: z.string() }),
-  z.strictObject({ kind: z.literal('field'), type: z.literal('check'), id: z.string() }),
+  z.strictObject({
+    kind: z.literal('field'),
+    type: z.literal('text'),
+    id: z.string(),
+    ...cellName,
+  }),
+  z.strictObject({
+    kind: z.literal('field'),
+    type: z.literal('number'),
+    id: z.string(),
+    ...cellName,
+  }),
+  z.strictObject({
+    kind: z.literal('field'),
+    type: z.literal('check'),
+    id: z.string(),
+    ...cellName,
+  }),
   z.strictObject({
     kind: z.literal('field'),
     type: z.literal('select'),
     id: z.string(),
+    ...cellName,
     ...fieldOptions,
   }),
   z.strictObject({
     kind: z.literal('field'),
     type: z.literal('dice-choice'),
     id: z.string(),
+    ...cellName,
     ...fieldOptions,
   }),
 ]);
 
-const diceCellSchema = z.strictObject({ kind: z.literal('dice'), formula: z.string() });
+const diceCellSchema = z.strictObject({
+  kind: z.literal('dice'),
+  formula: z.string(),
+  ...cellName,
+});
 
 const cellSchema = z.discriminatedUnion('kind', [textCellSchema, fieldCellSchema, diceCellSchema]);
 
@@ -162,7 +187,9 @@ export type PresetFailure =
   | { code: 'duplicate-option'; detail: string; field: string }
   | { code: 'bad-die-option'; detail: string; field: string }
   | { code: 'die-field-as-number'; detail: string; field: string }
-  | { code: 'field-not-die'; detail: string; field: string };
+  | { code: 'field-not-die'; detail: string; field: string }
+  | { code: 'blank-name'; detail: string; cell: 'field' | 'dice' }
+  | { code: 'long-name'; detail: string; cell: 'field' | 'dice' };
 
 // Check order: size, JSON, `v`, `window`, structure, then rules. `v` comes before the structure,
 // because a newer file may have a shape this build does not know.
@@ -505,9 +532,11 @@ function cellFailure(cell: PresetCell, scope: Set<string>): PresetFailure | null
   }
 
   if (cell.kind === 'dice') {
-    return parseFormula(cell.formula).ok
-      ? null
-      : { code: 'bad-formula', detail: shortDetail(cell.formula) };
+    if (!parseFormula(cell.formula).ok) {
+      return { code: 'bad-formula', detail: shortDetail(cell.formula) };
+    }
+
+    return cellNameFailure(cell.name, shortDetail(cell.formula), 'dice');
   }
 
   if (!isFieldId(cell.id)) {
@@ -520,7 +549,28 @@ function cellFailure(cell: PresetCell, scope: Set<string>): PresetFailure | null
 
   scope.add(cell.id);
 
-  return cell.type === 'select' || cell.type === 'dice-choice' ? selectOptionsFailure(cell) : null;
+  const optionsFailure =
+    cell.type === 'select' || cell.type === 'dice-choice' ? selectOptionsFailure(cell) : null;
+
+  return optionsFailure ?? cellNameFailure(cell.name, shortDetail(cell.id), 'field');
+}
+
+function cellNameFailure(
+  name: string | undefined,
+  detail: string,
+  cell: 'field' | 'dice',
+): PresetFailure | null {
+  if (name === undefined) {
+    return null;
+  }
+
+  if (name.trim() === '') {
+    return { code: 'blank-name', detail, cell };
+  }
+
+  return Array.from(name).length > CELL_NAME_MAX_CHARACTERS
+    ? { code: 'long-name', detail, cell }
+    : null;
 }
 
 function selectOptionsFailure(
