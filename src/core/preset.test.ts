@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
 import { z } from 'zod';
 
+import { parseFormula, type FormulaTree } from '@/core/formula';
 import type { JsonObject, JsonValue } from '@/core/json';
 
 import {
@@ -1080,7 +1081,7 @@ describe('the e2e preset fixtures', () => {
   }
 });
 
-describe('the shipped presets', () => {
+describe('the preset files in presets/', () => {
   const names = readdirSync(PRESET_DIR).filter((name) => name.endsWith('.json'));
 
   test('include the Cairn 2e preset', () => {
@@ -1099,8 +1100,54 @@ describe('the shipped presets', () => {
       // #then
       expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
     });
+
+    // The parse accepts any valid id in a formula, so a misspelt one shows only when it is rolled.
+    test(`${name} names in each formula only fields its dice cell can read`, () => {
+      // #given
+      const preset = structureOf(readFileSync(join(PRESET_DIR, name), 'utf8'));
+
+      // #when
+      const unresolved: string[] = [];
+
+      for (const template of preset.templates) {
+        template.sections.forEach((section, sectionIndex) => {
+          section.rows.forEach((row, rowIndex) => {
+            for (const cell of row) {
+              const tree = cell.kind === 'dice' ? parseFormula(cell.formula) : null;
+
+              if (tree === null || !tree.ok) {
+                continue;
+              }
+
+              for (const id of formulaFieldIds(tree.value)) {
+                if (resolveFieldReference(template, { sectionIndex, rowIndex }, id) === null) {
+                  unresolved.push(`${template.id}: ${id}`);
+                }
+              }
+            }
+          });
+        });
+      }
+
+      // #then
+      expect(unresolved).toEqual([]);
+    });
   }
 });
+
+function formulaFieldIds(tree: FormulaTree): string[] {
+  switch (tree.kind) {
+    case 'field':
+      return [tree.id];
+    case 'call':
+      return formulaFieldIds(tree.argument);
+    case 'binary':
+    case 'comparison':
+      return [...formulaFieldIds(tree.left), ...formulaFieldIds(tree.right)];
+    default:
+      return [];
+  }
+}
 
 // A preset that passes the structure check, for the rule checks alone.
 function structureOf(text: string): Preset {
