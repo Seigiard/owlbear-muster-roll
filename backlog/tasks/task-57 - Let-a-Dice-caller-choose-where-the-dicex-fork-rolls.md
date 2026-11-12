@@ -1,9 +1,11 @@
 ---
 id: TASK-57
 title: Let a Dice+ caller choose where the dicex fork rolls
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T11:57:00Z'
+updated_date: '2026-11-12T11:59:00Z'
 labels: []
 dependencies:
   - TASK-54
@@ -27,3 +29,14 @@ TASK-54 made the dicex fork pick the roll place by itself: the Dicex window when
 - [ ] #5 The dicex Dice+ protocol docs describe `rollIn`, its default and its fallbacks
 - [ ] #6 dicex tests and build pass, and PR #2 carries the change
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Build spec: _bmad-output/implementation-artifacts/spec-task-57-choose-where-dicex-rolls.md. Code lives in the dicex fork worktree /Users/seigiard/Projects/dicex-task-54, branch dice-plus-roll-without-action (PR #2), base 52f7410.
+1. dicePlusProtocol.ts: optional rollIn on RollRequest, a resolver (absent/unknown -> auto), features on IsReadyResponse.
+2. relayRollRequest routes by rollIn: auto = TASK-54 routing; window = open the action and relay there; tray = popover handshake even when the window is open, fall back to the action on timeout.
+3. isReady replies carry features: ["rollIn"].
+4. README Dice+ section documents rollIn, its default, fallbacks and the isReady advertisement.
+5. Tests beside the changed modules; yarn test + yarn build; push the branch so PR #2 updates; update the PR text; draft the upstream PR text.
+<!-- SECTION:PLAN:END -->
