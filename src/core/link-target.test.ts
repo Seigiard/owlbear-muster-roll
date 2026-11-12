@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { Preset, PresetSection, Template } from '@/core/preset';
+import type { Preset, PresetSection, Template, TemplateLayout } from '@/core/preset';
 import type { JsonValue } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
 
@@ -10,6 +10,7 @@ import {
   linkTargetKey,
   linkTargetOf,
   liveLinkTarget,
+  repeatBlockTabIndex,
   sameLinkTarget,
   type LinkTarget,
 } from './link-target';
@@ -35,7 +36,15 @@ const PC: Template = {
   title: 'Персонажи',
   nameField: 'name',
   tokens: true,
-  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, PET_SECTION, ITEM_SECTION],
+  tabs: [
+    {
+      sections: [
+        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+        PET_SECTION,
+        ITEM_SECTION,
+      ],
+    },
+  ],
 };
 
 const NPC_SECTION: PresetSection = {
@@ -50,10 +59,10 @@ const NPC: Template = {
   kind: 'single',
   title: 'НПС',
   visibility: 'gm',
-  sections: [NPC_SECTION],
+  tabs: [{ sections: [NPC_SECTION] }],
 };
 
-const PRESET: Preset = { v: 2, templates: [PC, NPC] };
+const PRESET: Preset = { v: 3, templates: [PC, NPC] };
 
 function record(k: string, d: JsonValue): VersionedRecord {
   // SAFETY: some cases build a record no schema takes on purpose, so the code under test meets it.
@@ -204,5 +213,32 @@ describe('liveLinkTarget', () => {
   test('treats every link as inert with no decoded preset', () => {
     // #then
     expect(live({ sheetId: 'brok', instanceId: null }, null)).toBeNull();
+  });
+});
+
+describe('repeatBlockTabIndex', () => {
+  // CAP-34: the repeat section `pet` sits on the second tab.
+  const LAYOUT: TemplateLayout = {
+    tabs: [
+      { title: 'Основное', sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] },
+      { title: 'Питомцы', sections: [PET_SECTION] },
+    ],
+  };
+
+  const RECORDS: VersionedRecord[] = [
+    { k: 'rep:brok:pet:p1', d: { order: 0, cells: {} }, c: 1, a: 'gm' },
+    { k: 'rep:brok:pet:gone', d: null, c: 2, a: 'gm' },
+  ];
+
+  test.each<[string, string, number | null]>([
+    ['a live repeat block', 'p1', 1],
+    ['a removed repeat block', 'gone', null],
+    ['an unknown repeat block', 'nobody', null],
+  ])('finds the tab of %s', (_name, instanceId, expected) => {
+    // #when
+    const tab = repeatBlockTabIndex(RECORDS, LAYOUT, 'brok', instanceId);
+
+    // #then
+    expect(tab).toBe(expected);
   });
 });

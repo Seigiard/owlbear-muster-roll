@@ -48,24 +48,28 @@ const PLAYER: ClientParams = {
 
 // A visible sheet set, the hidden single sheet NPC, a visible single sheet, and a hidden sheet set.
 const PRESET_TEXT = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -75,16 +79,20 @@ const PRESET_TEXT = JSON.stringify({
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          title: 'Противники',
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'npc_name' },
-              { kind: 'text', text: 'Хиты' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
+          sections: [
+            {
+              title: 'Противники',
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'npc_name' },
+                  { kind: 'text', text: 'Хиты' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -94,13 +102,17 @@ const PRESET_TEXT = JSON.stringify({
       kind: 'single',
       title: 'Инвентарь',
       players: 'edit',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Золото' },
-              { kind: 'field', type: 'number', id: 'gold' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Золото' },
+                  { kind: 'field', type: 'number', id: 'gold' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -111,13 +123,17 @@ const PRESET_TEXT = JSON.stringify({
       title: 'Агенты',
       nameField: 'agent',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Агент' },
-              { kind: 'field', type: 'text', id: 'agent' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Агент' },
+                  { kind: 'field', type: 'text', id: 'agent' },
+                ],
+              ],
+            },
           ],
         },
       ],

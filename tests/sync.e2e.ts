@@ -38,35 +38,39 @@ const PLAYER: ClientParams = { client: 'p', role: 'PLAYER', player: 'lisa', devi
 const INITIAL = { n: 0, a: '' };
 
 const PRESET = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-          ],
-        },
-        {
-          title: 'Сетка',
-          columns: 3,
-          rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'str_tired' },
-            ],
-            [
-              { kind: 'text', text: 'Ловкость' },
-              { kind: 'field', type: 'number', id: 'dex' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+              ],
+            },
+            {
+              title: 'Сетка',
+              columns: 3,
+              rows: [
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'str_tired' },
+                ],
+                [
+                  { kind: 'text', text: 'Ловкость' },
+                  { kind: 'field', type: 'number', id: 'dex' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -76,16 +80,20 @@ const PRESET = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          title: 'Противники',
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'npc_name' },
-              { kind: 'text', text: 'Хиты' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
+          sections: [
+            {
+              title: 'Противники',
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'npc_name' },
+                  { kind: 'text', text: 'Хиты' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -131,7 +139,7 @@ test('a GM edit goes out as one commit and updates a field in place on the other
   expect({ heard: await heardRemote(b.window), stored: await stored(a.window, written.k) }).toEqual(
     {
       heard: [
-        { from: a.connectionId, data: { v: 2, g: INITIAL, t: 'commit', records: [written] } },
+        { from: a.connectionId, data: { v: 3, g: INITIAL, t: 'commit', records: [written] } },
       ],
       stored: written,
     },
@@ -330,7 +338,7 @@ test('a message with a higher v is dropped and shows the new-version banner', as
   const [a, b] = await twoGms(context);
 
   // #when
-  await postRemote(a.window, a.connectionId, { v: 3, t: 'commit', unread: 'a newer field' });
+  await postRemote(a.window, a.connectionId, { v: 4, t: 'commit', unread: 'a newer field' });
 
   // #then
   await expect(b.window.getByRole('status')).toHaveText(NEW_VERSION);
@@ -393,7 +401,7 @@ function sheet(id: string, name: string): StoredRecord[] {
 type RawCommit = { v: number; g: { n: number; a: string }; t: string; records: StoredRecord[] };
 
 function commit(records: StoredRecord[], g = INITIAL): RawCommit {
-  return { v: 2, g, t: 'commit', records };
+  return { v: 3, g, t: 'commit', records };
 }
 
 // A valid commit from a known GM, after the message under test. Room messages are handled in

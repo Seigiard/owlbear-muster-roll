@@ -30,7 +30,7 @@ const MENU_COPY = {
 };
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
@@ -38,9 +38,13 @@ const PRESET: Preset = {
       title: 'Персонажи',
       nameField: 'name',
       tokens: true,
-      sections: [
-        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
-        { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] },
+      tabs: [
+        {
+          sections: [
+            { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+            { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] },
+          ],
+        },
       ],
     },
     {
@@ -48,15 +52,19 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          repeat: true,
-          tokens: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'foe' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
+          sections: [
+            {
+              repeat: true,
+              tokens: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'foe' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                ],
+              ],
+            },
           ],
         },
       ],

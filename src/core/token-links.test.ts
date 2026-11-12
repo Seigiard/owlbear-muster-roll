@@ -34,7 +34,7 @@ const PC: Template = {
   title: 'Персонажи',
   nameField: 'name',
   tokens: true,
-  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, PET_SECTION],
+  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, PET_SECTION] }],
 };
 
 const NPC_SECTION: PresetSection = {
@@ -49,7 +49,7 @@ const NPC: Template = {
   kind: 'single',
   title: 'НПС',
   visibility: 'gm',
-  sections: [NPC_SECTION],
+  tabs: [{ sections: [NPC_SECTION] }],
 };
 
 const INVENTORY: Template = {
@@ -58,7 +58,7 @@ const INVENTORY: Template = {
   title: 'Инвентарь',
   players: 'edit',
   tokens: true,
-  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'items' }]] }],
+  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'items' }]] }] }],
 };
 
 // Nothing in it is linkable.
@@ -66,10 +66,10 @@ const JOURNAL: Template = {
   id: 'journal',
   kind: 'single',
   title: 'Журнал',
-  sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }],
+  tabs: [{ sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }] }],
 };
 
-const PRESET: Preset = { v: 2, templates: [PC, NPC, INVENTORY, JOURNAL] };
+const PRESET: Preset = { v: 3, templates: [PC, NPC, INVENTORY, JOURNAL] };
 
 describe('liveLinks', () => {
   test('maps each token to the live target its link names, two tokens to one sheet included', () => {

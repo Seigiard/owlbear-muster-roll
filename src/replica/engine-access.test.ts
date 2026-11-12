@@ -16,18 +16,22 @@ import {
 } from '@/replica/room-rig';
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [{ kind: 'field', type: 'number', id: 'str' }],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [{ kind: 'field', type: 'number', id: 'str' }],
+              ],
+            },
           ],
         },
       ],
@@ -37,15 +41,19 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          repeat: true,
-          tokens: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'mob' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
+          sections: [
+            {
+              repeat: true,
+              tokens: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'mob' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                ],
+              ],
+            },
           ],
         },
       ],

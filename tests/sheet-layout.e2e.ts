@@ -11,93 +11,97 @@ const LONG_VALUE = 'Ш'.repeat(120);
 // Every cell kind and layout the matrix of the 1.8 spec names, in the width order it lists. The
 // sheet set names each sheet by `motto`, so the layout needs no field of its own for the name.
 const PRESET = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'motto',
-      sections: [
+      tabs: [
         {
-          title: 'Сетка',
-          width: '1/3',
-          columns: 3,
-          rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'str_tired' },
-            ],
-            [
-              { kind: 'text', text: 'Ловкость' },
-              { kind: 'field', type: 'number', id: 'dex' },
-            ],
+          sections: [
+            {
+              title: 'Сетка',
+              width: '1/3',
+              columns: 3,
+              rows: [
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'str_tired' },
+                ],
+                [
+                  { kind: 'text', text: 'Ловкость' },
+                  { kind: 'field', type: 'number', id: 'dex' },
+                ],
+              ],
+            },
+            {
+              title: 'Строки',
+              width: '1/3',
+              rows: [
+                [
+                  { kind: 'text', text: 'Хиты сейчас' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                  { kind: 'text', text: 'из максимума' },
+                  { kind: 'field', type: 'number', id: 'hp_max' },
+                ],
+                [{ kind: 'field', type: 'text', id: 'motto' }],
+                [
+                  { kind: 'text', text: 'Удача' },
+                  { kind: 'dice', formula: '2d6' },
+                ],
+                [{ kind: 'dice', formula: '1d20+str' }],
+              ],
+            },
+            {
+              title: 'Широкая',
+              width: '1/3',
+              columns: 2,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'wide_a' },
+                  { kind: 'field', type: 'text', id: 'wide_b' },
+                ],
+              ],
+            },
+            {
+              title: 'Атаки',
+              width: '1/2',
+              columns: 2,
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'attack' },
+                  { kind: 'field', type: 'number', id: 'bonus' },
+                ],
+              ],
+            },
+            {
+              width: 'full',
+              rows: [
+                [
+                  { kind: 'text', text: 'Заметки' },
+                  { kind: 'field', type: 'text', id: 'notes' },
+                ],
+              ],
+            },
+            {
+              title: 'Отметки',
+              rows: [
+                [
+                  { kind: 'text', text: 'Отдых' },
+                  { kind: 'field', type: 'check', id: 'rested' },
+                ],
+              ],
+            },
+            {
+              title: 'Пусто',
+              repeat: true,
+              rows: [[{ kind: 'field', type: 'text', id: 'item' }]],
+            },
           ],
-        },
-        {
-          title: 'Строки',
-          width: '1/3',
-          rows: [
-            [
-              { kind: 'text', text: 'Хиты сейчас' },
-              { kind: 'field', type: 'number', id: 'hp' },
-              { kind: 'text', text: 'из максимума' },
-              { kind: 'field', type: 'number', id: 'hp_max' },
-            ],
-            [{ kind: 'field', type: 'text', id: 'motto' }],
-            [
-              { kind: 'text', text: 'Удача' },
-              { kind: 'dice', formula: '2d6' },
-            ],
-            [{ kind: 'dice', formula: '1d20+str' }],
-          ],
-        },
-        {
-          title: 'Широкая',
-          width: '1/3',
-          columns: 2,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'wide_a' },
-              { kind: 'field', type: 'text', id: 'wide_b' },
-            ],
-          ],
-        },
-        {
-          title: 'Атаки',
-          width: '1/2',
-          columns: 2,
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'field', type: 'number', id: 'bonus' },
-            ],
-          ],
-        },
-        {
-          width: 'full',
-          rows: [
-            [
-              { kind: 'text', text: 'Заметки' },
-              { kind: 'field', type: 'text', id: 'notes' },
-            ],
-          ],
-        },
-        {
-          title: 'Отметки',
-          rows: [
-            [
-              { kind: 'text', text: 'Отдых' },
-              { kind: 'field', type: 'check', id: 'rested' },
-            ],
-          ],
-        },
-        {
-          title: 'Пусто',
-          repeat: true,
-          rows: [[{ kind: 'field', type: 'text', id: 'item' }]],
         },
       ],
     },
@@ -106,7 +110,7 @@ const PRESET = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
     },
   ],
 } as const;

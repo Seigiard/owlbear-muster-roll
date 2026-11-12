@@ -32,7 +32,7 @@ test.beforeEach(async ({ page }) => {
 function launchText(title: string, window?: { width: number; height: number }): string {
   const preset = JSON.parse(D20_TEXT);
 
-  preset.templates[0].sections[0].title = title;
+  preset.templates[0].tabs[0].sections[0].title = title;
 
   const file = window === undefined ? preset : { v: preset.v, window, ...preset };
 
@@ -254,4 +254,32 @@ test('a dice press settles at once and shows no message', async ({ page }) => {
   await expect(characterFrame(page).getByText(copy.rolling)).toHaveCount(0);
   await expect(characterFrame(page).getByText(copy.rollFailed)).toHaveCount(0);
   await expect(dice).toBeEnabled();
+});
+
+test('a frame switches the tabs of a sheet with two tabs', async ({ page }) => {
+  // #given: the sheet set's sections split into two titled tabs, "Персонаж" alone on the second.
+  const preset = JSON.parse(launchText('Launch section'));
+  const [first, ...rest] = preset.templates[0].tabs[0].sections;
+
+  preset.templates[0].tabs = [
+    { title: 'Основное', sections: rest },
+    { title: 'Анкета', sections: [first] },
+  ];
+  writeLaunchFile(JSON.stringify(preset, null, 2));
+  await page.goto(PAGE);
+
+  const tabs = characterFrame(page).getByRole('tablist', { name: copy.label.sheetTabs });
+
+  await expect(tabs.getByRole('tab', { name: 'Основное' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(characterFrame(page).getByText('Launch section')).toHaveCount(0);
+
+  // #when
+  await tabs.getByRole('tab', { name: 'Анкета' }).click();
+
+  // #then
+  await expect(tabs.getByRole('tab', { name: 'Анкета' })).toHaveAttribute('aria-selected', 'true');
+  await expect(characterFrame(page).getByText('Launch section')).toBeVisible();
 });

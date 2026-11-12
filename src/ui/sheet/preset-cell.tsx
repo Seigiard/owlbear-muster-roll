@@ -103,7 +103,10 @@ export function SheetCell({
   return preview === null ? (
     node
   ) : (
-    <div className="contents" data-cell={`${row.sectionIndex}.${row.rowIndex}.${cellIndex}`}>
+    <div
+      className="contents"
+      data-cell={`${row.tabIndex}.${row.sectionIndex}.${row.rowIndex}.${cellIndex}`}
+    >
       {node}
     </div>
   );

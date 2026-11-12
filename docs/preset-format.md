@@ -1,11 +1,11 @@
 # Preset file format
 
-A preset is a JSON file that lists the templates of one room. Each template is a sheet set or a single sheet, with its own sections. A preset holds no values. Values are stored apart from it, by field id. The GM uploads it with "Загрузить пресет" and gets it back with "Скачать пресет".
+A preset is a JSON file that lists the templates of one room. Each template is a sheet set or a single sheet, with its own tabs of sections. A preset holds no values. Values are stored apart from it, by field id. The GM uploads it with "Загрузить пресет" and gets it back with "Скачать пресет".
 
 - A **sheet set** (`"kind": "set"`) is a template that GMs create any number of sheets from, such as the party. Its name field gives each sheet its tab name.
 - A **single sheet** (`"kind": "single"`) exists exactly once in the room, such as NPCs, a shared inventory, a story log or a spell list. Its tab name is its `title`. Nobody creates or deletes it.
 
-The window shows one tab per sheet, in the order of the list.
+The window shows one tab per sheet, in the order of the list. A sheet splits into tabs of its own (see Tab below), and shows one of them at a time.
 
 `docs/example-preset.json` is a complete preset. A test parses it, so it stays valid.
 
@@ -14,8 +14,9 @@ The window shows one tab per sheet, in the order of the list.
 ```
 { v, window?, templates: Template[] }
 Window   = { width, height }
-Template = { id, kind: "set", title, nameField, visibility?, tokens?, sections: Section[] }
-         | { id, kind: "single", title, visibility?, players?, tokens?, sections: Section[] }
+Template = { id, kind: "set", title, nameField, visibility?, tokens?, tabs: Tab[] }
+         | { id, kind: "single", title, visibility?, players?, tokens?, tabs: Tab[] }
+Tab      = { title?, visibility?, sections: Section[] }
 Section  = { title?, width?, columns?, repeat?, tokens?, rows: Cell[][] }
 Cell     = { kind: "text", text } | { kind: "field", type, id, name?, options? } | { kind: "dice", formula, name? }
 ```
@@ -28,7 +29,7 @@ Every object is strict. A key that is not in this document makes the file invali
 
 | Key | Type | Meaning |
 | --- | --- | --- |
-| `v` | integer, required | Format version. The current version is `2`. |
+| `v` | integer, required | Format version. The current version is `3`. |
 | `window` | `{ width, height }`, optional | The size of the action window in px, for every client. Both keys are required integers, and no other key is allowed. Without `window` the window is 600 by 600 px. "Скачать пресет" writes it back after `v`. |
 | `templates` | Template array, required, at least one | The sheet sets and single sheets of the room, in tab order. |
 
@@ -43,7 +44,19 @@ Every object is strict. A key that is not in this document makes the file invali
 | `visibility` | `"all"` or `"gm"`, optional | `"all"` (the default): players see the template's sheets. `"gm"`: only the GM sees them, rolls from them show only on GM clients, and players get no token menu on them. Hiding is in the interface only: any client can read the room copy. |
 | `players` | `"edit"`, optional, on a single sheet only | Every player may edit the single sheet. Without it, players read it only. A sheet of a sheet set takes write access per player from the GM, in the "Доступ" panel. A hidden single sheet takes no player edit. |
 | `tokens` | `true`, optional | A token can link to the whole sheet, such as a chest token that opens Инвентарь. |
-| `sections` | Section array, required | The sections of the sheet, in display order. |
+| `tabs` | Tab array, required, at least one | The tabs of the sheet, in display order. |
+
+### Tab
+
+A tab («Вкладка» in the interface) is a titled group of sections inside a sheet. A sheet shows one tab at a time. A template with one tab draws no tab row. With more tabs, the row sits above the sheet's sections, scrolls sideways when the tabs do not fit, and the Left and Right keys move between the tabs. Each client keeps the open tab of each sheet for itself: it is never stored or sent. A token that opens a repeat block opens the tab that holds it.
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `title` | string, optional | The tab's name in the tab row. Required, and not blank, when the template has more than one tab. |
+| `visibility` | `"all"` or `"gm"`, optional | Kept in the file. This version does not hide a tab yet: every tab shows to everyone who sees the sheet. |
+| `sections` | Section array, required | The sections of the tab, in display order. |
+
+Tabs change only the layout. Field id scopes, the name field, formulas, repeat section ids and stored values are the same for the whole template, across all its tabs. A formula on one tab can use a field on another tab. A section can move to another tab, and its values stay.
 
 ### Section
 
@@ -101,7 +114,7 @@ the accessible name starts with the visible label, so speech input users can act
 
 ### Scopes
 
-- All fields outside `repeat` sections in one template are one scope. An id is unique in its scope.
+- All fields outside `repeat` sections in one template, across all its tabs, are one scope. An id is unique in its scope.
 - All fields of one `repeat` section, across its rows, are a scope of their own.
 - Each template is separate. One field id can occur in two templates.
 - One id can occur in a `repeat` section and outside it.
@@ -172,13 +185,13 @@ An upload over existing sheets keeps values by field id. One confirmation names 
 
 - A file over 1 MiB is refused before it is read.
 - The preset is stored deflated and base64-encoded in one record. A preset that cannot fit one message after that is refused as too large.
-- `window.width` is from 360 to 1440 px, and `window.height` is from 360 to 1080 px. Both bounds are inclusive.
+- `window.width` is from 480 to 1440 px, and `window.height` is from 360 to 1080 px. Both bounds are inclusive.
 - A cell name is at most 60 Unicode characters. It must contain a non-space character.
 
 ## Versions
 
 - A file with a `v` higher than the current version is refused with "Файл из более новой версии. Перезагрузите страницу.". A newer build of the extension can read it.
-- A file with no `v`, a `v` that is not an integer, or a lower `v` is refused. Version 1 presets (with `character` and `npc`) are not converted: rewrite them in this format.
+- A file with no `v`, a `v` that is not an integer, or a lower `v` is refused. Older presets are not converted: rewrite them in this format. For a version 2 preset, put the `sections` of each template into `"tabs": [{ "sections": [...] }]` and set `"v": 3`. Version 1 presets (with `character` and `npc`) need a full rewrite.
 - "Скачать пресет" always writes the current `v`.
 
 ## Refused files
@@ -188,11 +201,12 @@ A refused file changes nothing. The message under the button names the first pro
 | Problem | Reason in the message |
 | --- | --- |
 | The file is not JSON | это не JSON |
-| `window` is not an object with integer `width` and `height` in range, or has another key | в window нужны только width и height, целые числа: ширина от 360 до 1440 px, высота от 360 до 1080 px |
-| An unknown key, cell kind, field type, `kind` or `width`, a missing key, an empty `templates`, `nameField` on a single sheet, `players` on a sheet set, or `tokens` on a section without `repeat` | неверная структура |
+| `window` is not an object with integer `width` and `height` in range, or has another key | в window нужны только width и height, целые числа: ширина от 480 до 1440 px, высота от 360 до 1080 px |
+| An unknown key, cell kind, field type, `kind` or `width`, a missing key, an empty `templates`, an empty `tabs`, `nameField` on a single sheet, `players` on a sheet set, or `tokens` on a section without `repeat` | неверная структура |
 | No `v`, or a `v` that is lower or not an integer | неподдерживаемая версия формата |
 | An template id breaks the id rules | недопустимый id листа «{id}» |
 | Two templates share an id | лист «{id}» повторяется |
+| A template has more than one tab, and a tab has no title or a blank one | в листе «{id}» больше одной вкладки, и у вкладки нет заголовка |
 | A sheet set's `nameField` names no `text` field outside its `repeat` sections | в наборе «{id}» нет текстового поля «{nameField}» вне повторяемых секций |
 | A field id breaks the id rules | недопустимый id поля «{id}» |
 | An id repeats in one scope | поле «{id}» повторяется |
@@ -212,7 +226,7 @@ A refused file changes nothing. The message under the button names the first pro
 
 ## Build a preset without JSON
 
-The builder page, `/builder.html`, makes a preset with no JSON to write. Open it with "Конструктор пресетов" in the Пресет section of Settings. It opens in a new tab. The page starts from an empty preset, an example or a file, and edits it as a tree with a form for each item. "Скачать пресет" is enabled only when the preset has no problems, so each file it gives is one that "Загрузить пресет" accepts.
+The builder page, `/builder.html`, makes a preset with no JSON to write. Open it with "Конструктор пресетов" in the Пресет section of Settings. It opens in a new tab. The page starts from an empty preset, an example or a file, and edits it as a tree with a form for each item: template, tab, section, row and cell. A new template starts with one untitled tab; "Добавить вкладку" adds another, and a section can be dragged to another tab. The preview shows the tab of the selected item, and a click on a tab in the preview selects it. "Скачать пресет" is enabled only when the preset has no problems, so each file it gives is one that "Загрузить пресет" accepts.
 
 ## Preview a preset
 
@@ -224,7 +238,7 @@ bun run preview [path/to/preset.json]
 
 The command starts the dev server in the mock mode and opens `/preview.html`. The page lists `docs/example-preset.json`, `tests/fixtures/presets/*.json` and `presets/*.json`. Only the `.json` files right in each folder are listed, not those in subfolders. A path given to the command can be anywhere on disk. It joins the list, is marked "(launch file)", and opens first. A relative path is read from the repository root. A path with no file stops the command with an error.
 
-The page draws one sheet of each template read-only, as a player sees it, each in a frame of the preset's window size. A hidden template is drawn too, so its author can see it. Each frame shows the window's tab bar with the sheet's tab, so the sheet gets the same room as in the window. "Sample values" fills every field and gives each repeat section two blocks; off, the sheets are empty, as just after they are added. "Light theme" switches from Owlbear's dark theme. The page address keeps the chosen file and both switches. The address names a launch file by its absolute path, so a link to it works only on the same machine.
+The page draws one sheet of each template read-only, as a player sees it, each in a frame of the preset's window size. A hidden template is drawn too, so its author can see it. Each frame shows the window's tab bar with the sheet's tab, so the sheet gets the same room as in the window. A sheet with more than one tab shows its tab row, and a click switches the tab in that frame. "Sample values" fills every field and gives each repeat section two blocks; off, the sheets are empty, as just after they are added. "Light theme" switches from Owlbear's dark theme. The page address keeps the chosen file and both switches. The address names a launch file by its absolute path, so a link to it works only on the same machine.
 
 Each save of a listed file draws the page again. A file that fails the checks shows the same message as an upload, and the next good save draws the sheets again. Dice cells do not roll. The page never writes to a file.
 
@@ -234,7 +248,7 @@ This walks through `docs/example-preset.json`.
 
 ```jsonc
 {
-  "v": 2, // the current format version
+  "v": 3, // the current format version
   "templates": [
     {
       "id": "pc", // values of every sheet of this sheet set are stored under "pc"
@@ -242,83 +256,87 @@ This walks through `docs/example-preset.json`.
       "title": "Персонажи", // the "+" reads "Добавить: Персонажи"
       "nameField": "name", // the "name" field below names each tab
       "tokens": true, // a token can link to one of these sheets
-      "sections": [
-        {
-          "title": "Персонаж",
-          "columns": 4, // one grid of four columns
-          "rows": [
-            [
-              { "kind": "text", "text": "Имя" }, // a fixed label
-              { "kind": "field", "type": "text", "id": "name" }, // the tab name
-            ],
-            [
-              { "kind": "text", "text": "Класс" },
-              { "kind": "field", "type": "text", "id": "class" },
-              { "kind": "text", "text": "Уровень" },
-              { "kind": "field", "type": "number", "id": "level" }, // a number value
-            ],
-            [
-              { "kind": "text", "text": "Броня" },
-              { "kind": "field", "type": "select", "id": "armor", "options": ["Нет", "Кожаная", "Кольчуга"] }, // a pick from a list
-            ],
+      "tabs": [
+        { // one tab: the sheet draws no tab row, and its title may be left out
+          "sections": [
+            {
+              "title": "Персонаж",
+              "columns": 4, // one grid of four columns
+              "rows": [
+                [
+                  { "kind": "text", "text": "Имя" }, // a fixed label
+                  { "kind": "field", "type": "text", "id": "name" }, // the tab name
+                ],
+                [
+                  { "kind": "text", "text": "Класс" },
+                  { "kind": "field", "type": "text", "id": "class" },
+                  { "kind": "text", "text": "Уровень" },
+                  { "kind": "field", "type": "number", "id": "level" }, // a number value
+                ],
+                [
+                  { "kind": "text", "text": "Броня" },
+                  { "kind": "field", "type": "select", "id": "armor", "options": ["Нет", "Кожаная", "Кольчуга"] }, // a pick from a list
+                ],
+              ],
+            },
+            {
+              "title": "Характеристики",
+              "width": "1/2", // half the sheet width, beside the next section
+              "columns": 4,
+              "rows": [
+                [
+                  { "kind": "text", "text": "Сила" },
+                  { "kind": "field", "type": "number", "id": "str" },
+                  { "kind": "field", "type": "check", "id": "str_tired", "name": "Сила: усталость" }, // counts as 0 or 1 in a formula
+                  { "kind": "dice", "formula": "1d20 <= str - 2*str_tired" }, // a roll-under check
+                ],
+                // ... "Ловкость" in the same layout, with dex_tired named "Ловкость: усталость" ...
+                [
+                  { "kind": "text", "text": "Удача" },
+                  { "kind": "dice", "formula": "2D6+1" }, // two cells: the last two grid cells stay empty
+                ],
+              ],
+            },
+            {
+              "title": "Здоровье",
+              "width": "1/2",
+              // no "columns": the cells of each row flow inline
+              "rows": [
+                [
+                  { "kind": "text", "text": "Хиты" },
+                  { "kind": "field", "type": "number", "id": "hp" },
+                  { "kind": "text", "text": "из" },
+                  { "kind": "field", "type": "number", "id": "hp_max", "name": "Хиты, максимум" },
+                ],
+                [
+                  { "kind": "text", "text": "Отдых" },
+                  { "kind": "dice", "formula": "floor(hp_max/2) + ceil(level/3)" }, // ids from other sections
+                ],
+              ],
+            },
+            {
+              "title": "Атаки",
+              "width": "full",
+              "columns": 4,
+              "repeat": true, // each sheet has its own list of attack repeat blocks
+              "rows": [
+                // the first field id, "attack", identifies the section
+                [
+                  { "kind": "field", "type": "text", "id": "attack" },
+                  { "kind": "field", "type": "number", "id": "bonus" },
+                  { "kind": "text", "text": "Бросок" },
+                  { "kind": "dice", "formula": "1d20 + bonus" }, // "bonus" resolves inside the repeat block first
+                ],
+                [
+                  { "kind": "text", "text": "Урон" },
+                  { "kind": "field", "type": "dice-choice", "id": "damage_die", "options": ["d4", "d6", "d8", "d10", "d12"] },
+                  { "kind": "dice", "formula": "1d(damage_die) + bonus" }, // the chosen die is written into the roll label
+                ],
+              ],
+            },
+            // ... "Снаряжение" (repeat, 1/3) and "Заметки" ...
           ],
         },
-        {
-          "title": "Характеристики",
-          "width": "1/2", // half the sheet width, beside the next section
-          "columns": 4,
-          "rows": [
-            [
-              { "kind": "text", "text": "Сила" },
-              { "kind": "field", "type": "number", "id": "str" },
-              { "kind": "field", "type": "check", "id": "str_tired", "name": "Сила: усталость" }, // counts as 0 or 1 in a formula
-              { "kind": "dice", "formula": "1d20 <= str - 2*str_tired" }, // a roll-under check
-            ],
-            // ... "Ловкость" in the same layout, with dex_tired named "Ловкость: усталость" ...
-            [
-              { "kind": "text", "text": "Удача" },
-              { "kind": "dice", "formula": "2D6+1" }, // two cells: the last two grid cells stay empty
-            ],
-          ],
-        },
-        {
-          "title": "Здоровье",
-          "width": "1/2",
-          // no "columns": the cells of each row flow inline
-          "rows": [
-            [
-              { "kind": "text", "text": "Хиты" },
-              { "kind": "field", "type": "number", "id": "hp" },
-              { "kind": "text", "text": "из" },
-              { "kind": "field", "type": "number", "id": "hp_max", "name": "Хиты, максимум" },
-            ],
-            [
-              { "kind": "text", "text": "Отдых" },
-              { "kind": "dice", "formula": "floor(hp_max/2) + ceil(level/3)" }, // ids from other sections
-            ],
-          ],
-        },
-        {
-          "title": "Атаки",
-          "width": "full",
-          "columns": 4,
-          "repeat": true, // each sheet has its own list of attack repeat blocks
-          "rows": [
-            // the first field id, "attack", identifies the section
-            [
-              { "kind": "field", "type": "text", "id": "attack" },
-              { "kind": "field", "type": "number", "id": "bonus" },
-              { "kind": "text", "text": "Бросок" },
-              { "kind": "dice", "formula": "1d20 + bonus" }, // "bonus" resolves inside the repeat block first
-            ],
-            [
-              { "kind": "text", "text": "Урон" },
-              { "kind": "field", "type": "dice-choice", "id": "damage_die", "options": ["d4", "d6", "d8", "d10", "d12"] },
-              { "kind": "dice", "formula": "1d(damage_die) + bonus" }, // the chosen die is written into the roll label
-            ],
-          ],
-        },
-        // ... "Снаряжение" (repeat, 1/3) and "Заметки" ...
       ],
     },
     {
@@ -326,24 +344,28 @@ This walks through `docs/example-preset.json`.
       "kind": "single", // a single sheet: one tab, named "NPC"; NPCs are its repeat blocks
       "title": "NPC",
       "visibility": "gm", // only the GM sees it and its rolls
-      "sections": [
+      "tabs": [
         {
-          "title": "Противники",
-          "columns": 3,
-          "repeat": true,
-          "tokens": true, // each NPC repeat block links to its own token; the GM can duplicate one
-          "rows": [
-            // two rows, one repeat block: every NPC has a name, hits and strength
-            [
-              { "kind": "field", "type": "text", "id": "npc_name" }, // the first field: the token label and the duplicate number
-              { "kind": "text", "text": "Хиты" },
-              { "kind": "field", "type": "number", "id": "hp" }, // "hp" is also a "pc" id: templates are separate scopes
-            ],
-            [
-              { "kind": "text", "text": "Сила" },
-              { "kind": "field", "type": "number", "id": "str" },
-              { "kind": "dice", "formula": "1d20 <= str" },
-            ],
+          "sections": [
+            {
+              "title": "Противники",
+              "columns": 3,
+              "repeat": true,
+              "tokens": true, // each NPC repeat block links to its own token; the GM can duplicate one
+              "rows": [
+                // two rows, one repeat block: every NPC has a name, hits and strength
+                [
+                  { "kind": "field", "type": "text", "id": "npc_name" }, // the first field: the token label and the duplicate number
+                  { "kind": "text", "text": "Хиты" },
+                  { "kind": "field", "type": "number", "id": "hp" }, // "hp" is also a "pc" id: templates are separate scopes
+                ],
+                [
+                  { "kind": "text", "text": "Сила" },
+                  { "kind": "field", "type": "number", "id": "str" },
+                  { "kind": "dice", "formula": "1d20 <= str" },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -354,8 +376,12 @@ This walks through `docs/example-preset.json`.
       "title": "Инвентарь",
       "players": "edit", // every player may edit it
       "tokens": true, // a chest token can open it
-      "sections": [
-        // ... a repeat section of items, and "Деньги" with "gold" ...
+      "tabs": [
+        {
+          "sections": [
+            // ... a repeat section of items, and "Деньги" with "gold" ...
+          ],
+        },
       ],
     },
   ],

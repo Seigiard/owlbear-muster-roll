@@ -29,13 +29,17 @@ function diceChoiceField(id: string, options: string[]): PresetFieldCell {
 }
 
 const TEMPLATE: TemplateLayout = {
-  sections: [
-    { rows: [[{ kind: 'text', text: 'Сила' }, STR, TIRED], [NOTES]] },
+  tabs: [
     {
-      repeat: true,
-      rows: [
-        [ATTACK, BONUS],
-        [{ kind: 'text', text: 'Дальность' }, RANGE],
+      sections: [
+        { rows: [[{ kind: 'text', text: 'Сила' }, STR, TIRED], [NOTES]] },
+        {
+          repeat: true,
+          rows: [
+            [ATTACK, BONUS],
+            [{ kind: 'text', text: 'Дальность' }, RANGE],
+          ],
+        },
       ],
     },
   ],

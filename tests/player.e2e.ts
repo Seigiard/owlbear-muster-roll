@@ -37,47 +37,51 @@ const PLAYER: ClientParams = { client: 'p', role: 'PLAYER', player: 'lisa', devi
 
 // A sheet set "Персонажи" and a hidden single sheet "NPC", whose NPCs are repeat blocks.
 const PRESET = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          title: 'Основное',
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-            ],
-            [
-              { kind: 'text', text: 'Устал' },
-              { kind: 'field', type: 'check', id: 'tired' },
-            ],
-            [
-              { kind: 'text', text: 'Отдохнул' },
-              { kind: 'field', type: 'check', id: 'rested' },
-            ],
-            [
-              { kind: 'text', text: 'Заметки' },
-              { kind: 'field', type: 'text', id: 'notes' },
-            ],
-          ],
-        },
-        {
-          title: 'Атаки',
-          repeat: true,
-          rows: [
-            [
-              { kind: 'text', text: 'Атака' },
-              { kind: 'field', type: 'text', id: 'attack' },
-            ],
+          sections: [
+            {
+              title: 'Основное',
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                ],
+                [
+                  { kind: 'text', text: 'Устал' },
+                  { kind: 'field', type: 'check', id: 'tired' },
+                ],
+                [
+                  { kind: 'text', text: 'Отдохнул' },
+                  { kind: 'field', type: 'check', id: 'rested' },
+                ],
+                [
+                  { kind: 'text', text: 'Заметки' },
+                  { kind: 'field', type: 'text', id: 'notes' },
+                ],
+              ],
+            },
+            {
+              title: 'Атаки',
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'text', text: 'Атака' },
+                  { kind: 'field', type: 'text', id: 'attack' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -87,16 +91,20 @@ const PRESET = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          title: 'Противники',
-          repeat: true,
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'npc_name' }],
-            [
-              { kind: 'text', text: 'Хиты' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
+          sections: [
+            {
+              title: 'Противники',
+              repeat: true,
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'npc_name' }],
+                [
+                  { kind: 'text', text: 'Хиты' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                ],
+              ],
+            },
           ],
         },
       ],

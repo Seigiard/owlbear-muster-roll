@@ -442,22 +442,26 @@ describe('proposedRecord', () => {
 
 describe('strippedPatch', () => {
   const TEMPLATE: TemplateLayout = {
-    sections: [
+    tabs: [
       {
-        rows: [
-          [
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'check', id: 'str_tired' },
-          ],
-        ],
-      },
-      {
-        repeat: true,
-        rows: [
-          [
-            { kind: 'field', type: 'text', id: 'attack' },
-            { kind: 'field', type: 'number', id: 'bonus' },
-          ],
+        sections: [
+          {
+            rows: [
+              [
+                { kind: 'field', type: 'number', id: 'str' },
+                { kind: 'field', type: 'check', id: 'str_tired' },
+              ],
+            ],
+          },
+          {
+            repeat: true,
+            rows: [
+              [
+                { kind: 'field', type: 'text', id: 'attack' },
+                { kind: 'field', type: 'number', id: 'bonus' },
+              ],
+            ],
+          },
         ],
       },
     ],

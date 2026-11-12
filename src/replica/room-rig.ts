@@ -3,6 +3,7 @@ import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 
+import { FORMAT_VERSION } from '@/core/format-version';
 import type { JsonObject, JsonValue } from '@/core/json';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
@@ -30,7 +31,7 @@ import { createProjectionStore, type ProjectionStore } from '@/ui/projection-sto
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
 
 const RIG_ROOM_ID = 'mock-room';
-const RIG_FORMAT = 2;
+const RIG_FORMAT = FORMAT_VERSION;
 const WAIT_LIMIT_MS = 2000;
 const POLL_MS = 2;
 
@@ -583,7 +584,7 @@ export function storedKeys(client: Pick<RigClient, 'backing'>): string[] {
 export function copyValue(
   generation: GenerationLike,
   records: readonly VersionedRecord[],
-  version = 2,
+  version = FORMAT_VERSION,
 ): JsonObject {
   const deflated = deflateSync(strToU8(JSON.stringify({ g: generation, records })));
 

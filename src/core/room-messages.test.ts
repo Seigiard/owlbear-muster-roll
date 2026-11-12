@@ -73,18 +73,18 @@ const CASES = TYPES.flatMap((t) =>
 const RECORD = { k: 'sheet:a', d: { set: 'pc', order: 0 }, c: 1, a: 'gm-a' };
 
 function commit(overrides: { [key: string]: JsonValue } = {}): JsonValue {
-  return { v: 2, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], ...overrides };
+  return { v: 3, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], ...overrides };
 }
 
 const ROW = { k: 'row:brok:str', d: { str: 5 }, c: 2, a: 'p-conn' };
 
 function propose(overrides: { [key: string]: JsonValue } = {}): JsonValue {
-  return { v: 2, g: { n: 0, a: '' }, t: 'propose', records: [ROW], ...overrides };
+  return { v: 3, g: { n: 0, a: '' }, t: 'propose', records: [ROW], ...overrides };
 }
 
 function reject(overrides: { [key: string]: JsonValue } = {}): JsonValue {
   return {
-    v: 2,
+    v: 3,
     g: { n: 0, a: '' },
     t: 'reject',
     k: ROW.k,
@@ -96,7 +96,7 @@ function reject(overrides: { [key: string]: JsonValue } = {}): JsonValue {
 }
 
 const ROLL: RollMessage = {
-  v: 2,
+  v: 3,
   g: { n: 0, a: '' },
   t: 'roll',
   id: 'r1',
@@ -114,7 +114,7 @@ function roll(overrides: { [key: string]: JsonValue } = {}): JsonValue {
 
 function state(overrides: { [key: string]: JsonValue } = {}): JsonValue {
   return {
-    v: 2,
+    v: 3,
     g: { n: 0, a: '' },
     t: 'state',
     r: 'r1',
@@ -143,7 +143,7 @@ describe('parseRoomMessage', () => {
     // #then
     expect(parsed).toEqual({
       ok: true,
-      value: { v: 2, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], acks: [] },
+      value: { v: 3, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], acks: [] },
     });
   });
 
@@ -157,7 +157,7 @@ describe('parseRoomMessage', () => {
     // #then
     expect(parsed).toEqual({
       ok: true,
-      value: { v: 2, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], acks },
+      value: { v: 3, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], acks },
     });
   });
 
@@ -171,7 +171,7 @@ describe('parseRoomMessage', () => {
     // #then
     expect(parsed).toEqual({
       ok: true,
-      value: { v: 2, g: { n: 1, a: 'x' }, t: 'propose', records: [ROW] },
+      value: { v: 3, g: { n: 1, a: 'x' }, t: 'propose', records: [ROW] },
     });
   });
 
@@ -188,17 +188,17 @@ describe('parseRoomMessage', () => {
 
     // #then
     expect(parsed).toEqual([
-      { ok: true, value: { v: 2, g: { n: 0, a: '' }, t: 'reject', ...edit, reason: 'denied' } },
+      { ok: true, value: { v: 3, g: { n: 0, a: '' }, t: 'reject', ...edit, reason: 'denied' } },
       {
         ok: true,
-        value: { v: 2, g: { n: 0, a: '' }, t: 'reject', ...edit, reason: 'stale', current },
+        value: { v: 3, g: { n: 0, a: '' }, t: 'reject', ...edit, reason: 'stale', current },
       },
     ]);
   });
 
   test('reads a state-request and a state part', () => {
     // #given
-    const request = { v: 2, g: { n: 2, a: 'x' }, t: 'state-request', r: 'r1' };
+    const request = { v: 3, g: { n: 2, a: 'x' }, t: 'state-request', r: 'r1' };
 
     // #when
     const parsed = [parseRoomMessage(request), parseRoomMessage(state({ i: 2, n: 3 }))];
@@ -220,8 +220,8 @@ describe('parseRoomMessage', () => {
 
   test('reads a ping and an alive with its digest', () => {
     // #given
-    const ping = { v: 2, g: { n: 0, a: '' }, t: 'ping' } as const;
-    const alive = { v: 2, g: { n: 3, a: 'y' }, t: 'alive', digest: 4294967295 } as const;
+    const ping = { v: 3, g: { n: 0, a: '' }, t: 'ping' } as const;
+    const alive = { v: 3, g: { n: 3, a: 'y' }, t: 'alive', digest: 4294967295 } as const;
 
     // #when
     const parsed = [parseRoomMessage(ping), parseRoomMessage(alive)];
@@ -239,8 +239,8 @@ describe('parseRoomMessage', () => {
 
     // #then
     expect(built.map((message) => parseRoomMessage(message))).toEqual([
-      { ok: true, value: { v: 2, g: { n: 1, a: 'x' }, t: 'ping' } },
-      { ok: true, value: { v: 2, g: { n: 1, a: 'x' }, t: 'alive', digest: 0 } },
+      { ok: true, value: { v: 3, g: { n: 1, a: 'x' }, t: 'ping' } },
+      { ok: true, value: { v: 3, g: { n: 1, a: 'x' }, t: 'alive', digest: 0 } },
     ]);
   });
 
@@ -276,7 +276,7 @@ describe('parseRoomMessage', () => {
 
   test('reports a higher v before it looks at the rest of the message', () => {
     // #when
-    const parsed = parseRoomMessage({ v: 3, t: 'something-new', anything: [1, 2] });
+    const parsed = parseRoomMessage({ v: 4, t: 'something-new', anything: [1, 2] });
 
     // #then
     expect(parsed).toEqual({ ok: false, error: 'newer-version' });
@@ -299,7 +299,7 @@ describe('parseRoomMessage', () => {
     ['not an object', 'commit'],
     ['a record that fails its schema', commit({ records: [{ ...RECORD, c: 0 }] })],
     ['no records', commit({ records: [] })],
-    ['no generation', { v: 2, t: 'commit', records: [RECORD] }],
+    ['no generation', { v: 3, t: 'commit', records: [RECORD] }],
     ['an extra key', commit({ extra: true })],
     ['a roll with the shape of a commit', commit({ t: 'roll' })],
     ['a roll with no id', roll({ id: '' })],
@@ -308,7 +308,7 @@ describe('parseRoomMessage', () => {
     [
       'a roll with the kind of format 1 in place of hidden',
       {
-        v: 2,
+        v: 3,
         g: { n: 0, a: '' },
         t: 'roll',
         id: 'r1',
@@ -331,24 +331,24 @@ describe('parseRoomMessage', () => {
     ],
     ['a roll with an extra key', roll({ records: [] })],
     ['a ping with an extra key', commit({ t: 'ping' })],
-    ['an alive with no digest', { v: 2, g: { n: 0, a: '' }, t: 'alive' }],
-    ['an alive with a negative digest', { v: 2, g: { n: 0, a: '' }, t: 'alive', digest: -1 }],
+    ['an alive with no digest', { v: 3, g: { n: 0, a: '' }, t: 'alive' }],
+    ['an alive with a negative digest', { v: 3, g: { n: 0, a: '' }, t: 'alive', digest: -1 }],
     [
       'an alive with a digest past 32 bits',
-      { v: 2, g: { n: 0, a: '' }, t: 'alive', digest: 4294967296 },
+      { v: 3, g: { n: 0, a: '' }, t: 'alive', digest: 4294967296 },
     ],
-    ['an alive with a fractional digest', { v: 2, g: { n: 0, a: '' }, t: 'alive', digest: 1.5 }],
-    ['a state-request with no nonce', { v: 2, g: { n: 0, a: '' }, t: 'state-request' }],
+    ['an alive with a fractional digest', { v: 3, g: { n: 0, a: '' }, t: 'alive', digest: 1.5 }],
+    ['a state-request with no nonce', { v: 3, g: { n: 0, a: '' }, t: 'state-request' }],
     [
       'a state-request with an empty nonce',
-      { v: 2, g: { n: 0, a: '' }, t: 'state-request', r: '' },
+      { v: 3, g: { n: 0, a: '' }, t: 'state-request', r: '' },
     ],
     ['a state part numbered above its total', state({ i: 3, n: 2 })],
     ['a state part numbered 0', state({ i: 0 })],
     ['a state whose records are not base64', state({ records: 'not base64!' })],
     [
       'a state with no nonce',
-      { v: 2, g: { n: 0, a: '' }, t: 'state', i: 1, n: 1, records: encodeStateRecords([RECORD]) },
+      { v: 3, g: { n: 0, a: '' }, t: 'state', i: 1, n: 1, records: encodeStateRecords([RECORD]) },
     ],
     ['an unknown type', commit({ t: 'shout' })],
     ['an ack with c 0', commit({ acks: [{ k: 'row:brok:str', c: 0, a: 'p' }] })],

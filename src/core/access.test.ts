@@ -385,31 +385,35 @@ const PC: Template = {
   kind: 'set',
   title: 'Персонажи',
   nameField: 'note',
-  sections: [
+  tabs: [
     {
-      rows: [
-        [
-          { kind: 'field', type: 'number', id: 'str' },
-          { kind: 'field', type: 'text', id: 'note' },
-          { kind: 'field', type: 'check', id: 'tired' },
-        ],
-      ],
-    },
-    {
-      repeat: true,
-      rows: [
-        [
-          { kind: 'field', type: 'text', id: 'item' },
-          { kind: 'field', type: 'number', id: 'qty' },
-        ],
-        [{ kind: 'field', type: 'number', id: 'weight' }],
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'text', id: 'note' },
+              { kind: 'field', type: 'check', id: 'tired' },
+            ],
+          ],
+        },
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'item' },
+              { kind: 'field', type: 'number', id: 'qty' },
+            ],
+            [{ kind: 'field', type: 'number', id: 'weight' }],
+          ],
+        },
       ],
     },
   ],
 };
 
 const PROPOSAL_PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     PC,
     // Hidden, so its `players: "edit"` lets no player edit it.
@@ -419,24 +423,28 @@ const PROPOSAL_PRESET: Preset = {
       title: 'НПС',
       visibility: 'gm',
       players: 'edit',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] }],
     },
     {
       id: 'inventory',
       kind: 'single',
       title: 'Инвентарь',
       players: 'edit',
-      sections: [
-        { rows: [[{ kind: 'field', type: 'text', id: 'items' }]] },
-        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'gear' }]] },
-        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'tool' }]] },
+      tabs: [
+        {
+          sections: [
+            { rows: [[{ kind: 'field', type: 'text', id: 'items' }]] },
+            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'gear' }]] },
+            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'tool' }]] },
+          ],
+        },
       ],
     },
     {
       id: 'journal',
       kind: 'single',
       title: 'Журнал',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }] }],
     },
     {
       id: 'villains',
@@ -444,7 +452,7 @@ const PROPOSAL_PRESET: Preset = {
       title: 'Злодеи',
       nameField: 'villain',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }] }],
     },
   ],
 };

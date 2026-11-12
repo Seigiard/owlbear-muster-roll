@@ -42,7 +42,7 @@ const CURRENT_ROOM_PREFIX = `${storageKey('', INITIAL).split(':').slice(0, 2).jo
 const GHOST = 'ghost-gm';
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
@@ -50,12 +50,16 @@ const PRESET: Preset = {
       title: 'Персонажи',
       nameField: 'name',
       tokens: true,
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [{ kind: 'field', type: 'number', id: 'str' }],
-            [{ kind: 'field', type: 'text', id: 'notes' }],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [{ kind: 'field', type: 'number', id: 'str' }],
+                [{ kind: 'field', type: 'text', id: 'notes' }],
+              ],
+            },
           ],
         },
       ],
@@ -65,7 +69,7 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
     },
   ],
 };
@@ -80,7 +84,7 @@ const OLD_ROOM: readonly VersionedRecord[] = [PRESET_RECORD, BROK, BROK_STR, ACL
 // One sheet of the sheet set, the NPC single sheet and a link, with one value the preset has no
 // field for.
 const FILE: SnapshotFile = {
-  v: 2,
+  v: 3,
   type: 'muster-roll/snapshot',
   sheets: [
     {
@@ -284,7 +288,7 @@ function stateMessage(
   i = 1,
   n = 1,
 ): JsonValue {
-  return { v: 2, g, t: 'state', r, i, n, records: encodeStateRecords(records) };
+  return { v: 3, g, t: 'state', r, i, n, records: encodeStateRecords(records) };
 }
 
 function newGenerationOf(connectionId: string): Generation {
@@ -384,7 +388,7 @@ describe('import', () => {
 
     const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a', { until: 'live' });
-    const newer = { v: 3, data: 'from a newer build' };
+    const newer = { v: 4, data: 'from a newer build' };
 
     room.room.setMetadata({ [KEY]: newer });
 
@@ -409,7 +413,7 @@ describe('import', () => {
 
     // #when
     await importFile(gm);
-    await roomRig.waitUntil(() => Object(room.room.getMetadata()[KEY]).v === 2);
+    await roomRig.waitUntil(() => Object(room.room.getMetadata()[KEY]).v === 3);
     // The delta with the notices reaches the window after the write.
     await pause(30);
 
@@ -421,7 +425,7 @@ describe('import', () => {
       notices: gm.store.$notices.get(),
     }).toEqual({
       before: ['room-copy-older-format'],
-      v: 2,
+      v: 3,
       copy: newGenerationOf('gm-a'),
       notices: [],
     });
@@ -456,7 +460,7 @@ describe('import', () => {
       answer: 'answered',
       events: ['copy', 'reset'],
       savedAtCopy: true,
-      reset: [{ v: 2, g: generation, t: 'reset' }],
+      reset: [{ v: 3, g: generation, t: 'reset' }],
       copy: generation,
     });
   });
@@ -951,7 +955,7 @@ describe('adoption', () => {
     const asked = heardOf(room, 'gm-b', 'state-request').length;
 
     // #when
-    room.post(GHOST, { v: 2, g: generation, t: 'alive', digest: 1 });
+    room.post(GHOST, { v: 3, g: generation, t: 'alive', digest: 1 });
     await roomRig.waitUntil(() => outcome(gm, intent) !== undefined);
     await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), [PRESET_RECORD, anya], generation));
@@ -1025,13 +1029,13 @@ describe('adoption', () => {
     const asked = heardOf(room, 'gm-b', 'state-request').length;
 
     // #when
-    room.post(GHOST, { v: 2, g: newGenerationOf(GHOST), t: 'reset' });
+    room.post(GHOST, { v: 3, g: newGenerationOf(GHOST), t: 'reset' });
     await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
 
     const started = Date.now();
 
-    room.post('asker', { v: 2, g: INITIAL, t: 'state-request', r: 'asker-r' });
-    room.post('asker', { v: 2, g: INITIAL, t: 'ping' });
+    room.post('asker', { v: 3, g: INITIAL, t: 'state-request', r: 'asker-r' });
+    room.post('asker', { v: 3, g: INITIAL, t: 'ping' });
     gm.engine.pageHidden();
     // Past the catch-up timeout, with requests again after 60, 120, 240 and 240 ms: the cap.
     await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length === asked + 5);
@@ -1076,7 +1080,7 @@ describe('adoption', () => {
 
     const asked = heardOf(room, 'gm-b', 'state-request').length;
 
-    room.post(GHOST, { v: 2, g: generation, t: 'reset' });
+    room.post(GHOST, { v: 3, g: generation, t: 'reset' });
     await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
 
     const r = lastRequest(room, 'gm-b');
@@ -1125,9 +1129,9 @@ describe('adoption', () => {
     await roomRig.waitUntil(() => player.store.$pending.get().size === 1);
 
     // #when
-    room.post(GHOST, { v: 2, g: newGenerationOf(GHOST), t: 'reset' });
+    room.post(GHOST, { v: 3, g: newGenerationOf(GHOST), t: 'reset' });
     room.join(GHOST, 'GM');
-    room.post(GHOST, { v: 2, g: newGenerationOf(GHOST), t: 'reset' });
+    room.post(GHOST, { v: 3, g: newGenerationOf(GHOST), t: 'reset' });
     await roomRig.waitUntil(() => player.store.$pending.get().size === 0);
 
     // #then
@@ -1222,11 +1226,11 @@ describe('adoption guards', () => {
     const mira = importedRecord(GHOST, 'sheet:mira', { set: 'pc', order: 1 });
     const asked = heardOf(room, 'gm-b', 'state-request').length;
 
-    room.post(GHOST, { v: 2, g: generation, t: 'reset' });
+    room.post(GHOST, { v: 3, g: generation, t: 'reset' });
     await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
 
     // #when
-    room.post(GHOST, { v: 2, g: generation, t: 'commit', records: [mira] });
+    room.post(GHOST, { v: 3, g: generation, t: 'commit', records: [mira] });
     await pause(20);
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), [PRESET_RECORD, anya], generation));
     await roomRig.waitUntil(() => sync(gm).state === 'live');

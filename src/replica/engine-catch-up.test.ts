@@ -36,7 +36,7 @@ const ASKER = 'asker';
 
 // "pc" is the visible sheet set, "npc" a hidden single sheet and "mon" a hidden sheet set.
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
@@ -44,18 +44,22 @@ const PRESET: Preset = {
       title: 'Персонажи',
       nameField: 'name',
       tokens: true,
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'str_tired' },
-            ],
-            [{ kind: 'field', type: 'text', id: 'notes' }],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'str_tired' },
+                ],
+                [{ kind: 'field', type: 'text', id: 'notes' }],
+              ],
+            },
+            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] },
           ],
         },
-        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] },
       ],
     },
     {
@@ -64,7 +68,7 @@ const PRESET: Preset = {
       title: 'NPC',
       visibility: 'gm',
       tokens: true,
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
     },
     {
       id: 'mon',
@@ -72,11 +76,15 @@ const PRESET: Preset = {
       title: 'Монстры',
       nameField: 'title',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'title' }],
-            [{ kind: 'field', type: 'number', id: 'mhp' }],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'title' }],
+                [{ kind: 'field', type: 'number', id: 'mhp' }],
+              ],
+            },
           ],
         },
       ],
@@ -142,11 +150,11 @@ function stateMessage(
   n = 1,
   g: Generation = INITIAL,
 ): JsonValue {
-  return { v: 2, g, t: 'state', r, i, n, records: encodeStateRecords(records) };
+  return { v: 3, g, t: 'state', r, i, n, records: encodeStateRecords(records) };
 }
 
 function commit(records: VersionedRecord[], g: Generation = INITIAL): JsonValue {
-  return { v: 2, g, t: 'commit', records };
+  return { v: 3, g, t: 'commit', records };
 }
 
 // A GM client in `catching-up` after its first catch-up: it was alone, then a GM that never answers
@@ -192,7 +200,7 @@ describe('start', () => {
         role: 'GM',
       },
       brok: BROK,
-      request: [{ v: 2, g: INITIAL, t: 'state-request', r: lastRequest(room, 'gm-b') }],
+      request: [{ v: 3, g: INITIAL, t: 'state-request', r: lastRequest(room, 'gm-b') }],
     });
   });
 
@@ -279,7 +287,7 @@ describe('answer', () => {
     // #when
     const asked = Date.now();
 
-    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 3, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await waitUntil(() => heardOf(room, 'gm-a', 'state').length > 0);
 
     // #then
@@ -309,7 +317,7 @@ describe('answer', () => {
     room.join(GHOST, 'GM');
 
     // #when
-    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 3, g: INITIAL, t: 'state-request', r: 'r-asker' });
     room.post(GHOST, stateMessage('r-asker', [BROK]));
     await pause(200);
 
@@ -327,7 +335,7 @@ describe('answer', () => {
     const client = await startClient(room, 'gm-b');
 
     // #when
-    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 3, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await pause(100);
 
     // #then
@@ -345,7 +353,7 @@ describe('answer', () => {
     await startClient(room, 'player-p', { role: 'PLAYER', seeded: [], until: 'live' });
 
     // #when
-    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 3, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await pause(100);
 
     // #then
@@ -368,7 +376,7 @@ describe('answer', () => {
     room.join(ASKER, 'PLAYER');
 
     // #when
-    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 3, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await pause(100);
 
     // #then
@@ -390,9 +398,9 @@ describe('answer', () => {
     room.join(GHOST, 'GM');
 
     // #when
-    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 3, g: INITIAL, t: 'state-request', r: 'r-asker' });
     room.post(GHOST, {
-      v: 2,
+      v: 3,
       g: INITIAL,
       t: 'state',
       r: 'r-asker',
@@ -412,11 +420,11 @@ describe('answer', () => {
 
     await startClient(room, 'gm-a', { until: 'live' });
     room.join(ASKER, 'PLAYER');
-    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 3, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await waitUntil(() => heardOf(room, 'gm-a', 'state').length === 1);
 
     // #when
-    room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
+    room.post(ASKER, { v: 3, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await waitUntil(() => heardOf(room, 'gm-a', 'state').length === 2);
 
     // #then

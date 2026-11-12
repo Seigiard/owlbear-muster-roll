@@ -13,7 +13,7 @@ import {
 // A linkable sheet set `pc`, a single sheet `npc` with a linkable repeat section, and a single
 // sheet `notes` with no token link.
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
@@ -21,23 +21,27 @@ const PRESET: Preset = {
       title: 'Персонажи',
       nameField: 'name',
       tokens: true,
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'str_tired' },
-            ],
-          ],
-        },
-        {
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'field', type: 'number', id: 'bonus' },
-            ],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'str_tired' },
+                ],
+              ],
+            },
+            {
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'attack' },
+                  { kind: 'field', type: 'number', id: 'bonus' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -47,15 +51,19 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          repeat: true,
-          tokens: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'npc_name' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
+          sections: [
+            {
+              repeat: true,
+              tokens: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'npc_name' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -64,7 +72,7 @@ const PRESET: Preset = {
       id: 'notes',
       kind: 'single',
       title: 'Заметки',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'plot' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'plot' }]] }] }],
     },
   ],
 };
@@ -92,7 +100,7 @@ describe('encodeSnapshotFile', () => {
 
     // #then
     expect(file).toEqual({
-      v: 2,
+      v: 3,
       type: 'muster-roll/snapshot',
       sheets: [
         { id: 'anya', set: 'pc', order: 0, rows: {}, repeats: {} },
@@ -133,7 +141,7 @@ describe('encodeSnapshotFile', () => {
 
     // #then
     expect(file).toEqual({
-      v: 2,
+      v: 3,
       type: 'muster-roll/snapshot',
       sheets: [
         { id: 'npc', rows: {}, repeats: {} },
@@ -289,7 +297,7 @@ describe('encodeSnapshotFile', () => {
 describe('formatSnapshotFile', () => {
   test('writes the file pretty-printed with 2 spaces and keys in the format order', () => {
     // #given: one template of each kind.
-    const preset: Preset = { v: 2, templates: PRESET.templates.slice(0, 2) };
+    const preset: Preset = { v: 3, templates: PRESET.templates.slice(0, 2) };
 
     const records = byKey([
       record('sheet:brok', { set: 'pc', order: 0 }),
@@ -306,7 +314,7 @@ describe('formatSnapshotFile', () => {
     expect(text).toBe(
       [
         '{',
-        '  "v": 2,',
+        '  "v": 3,',
         '  "type": "muster-roll/snapshot",',
         '  "sheets": [',
         '    {',
@@ -435,10 +443,10 @@ describe('snapshotFileSchema', () => {
   });
 
   test.each<[string, JsonValue]>([
-    ['no type, as a preset file has none', { v: 2, sheets: [], links: [] }],
+    ['no type, as a preset file has none', { v: 3, sheets: [], links: [] }],
     ['the type of a preset', { ...file({}), type: 'muster-roll/preset' }],
     ['an older v', { ...file({}), v: 1 }],
-    ['a newer v', { ...file({}), v: 3 }],
+    ['a newer v', { ...file({}), v: 4 }],
     ['a preset', { ...file({}), preset: 'x' }],
     ['two sheets with one id', file({ sheets: [sheet('s'), sheet('s')] })],
     [
@@ -490,7 +498,7 @@ describe('snapshotFileSchema', () => {
     ],
   ])('refuses the %s __proto__', (_name, sheetText) => {
     // #given
-    const text = `{"v": 2, "type": "muster-roll/snapshot", "sheets": [${sheetText}], "links": []}`;
+    const text = `{"v": 3, "type": "muster-roll/snapshot", "sheets": [${sheetText}], "links": []}`;
 
     // #when
     const parsed = snapshotFileSchema.safeParse(JSON.parse(text));
@@ -529,7 +537,7 @@ function byKey(records: readonly VersionedRecord[]): Map<string, VersionedRecord
 
 function file(parts: { sheets?: JsonValue[]; links?: JsonValue[] }): JsonObject {
   return {
-    v: 2,
+    v: 3,
     type: 'muster-roll/snapshot',
     sheets: parts.sheets ?? [],
     links: parts.links ?? [],

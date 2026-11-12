@@ -48,10 +48,10 @@ const OLD_KEYS: readonly (readonly [string, string])[] = [
   ['mr1:mock-room:0::sheet:brok', '{"k":"sheet:brok","d":{"kind":"pc","name":"Брок","order":0}}'],
   ['mr1:mock-room:0::row:brok:str', '{"k":"row:brok:str","d":{"str":14}}'],
   ['mr1:other-room:0::sheet:anya', '{"k":"sheet:anya","d":{"kind":"pc","name":"Аня","order":0}}'],
-  ['mr2:other-room:0::sheet:anya', '{"k":"sheet:anya","d":{"set":"pc","order":0}}'],
+  ['mr3:other-room:0::sheet:anya', '{"k":"sheet:anya","d":{"set":"pc","order":0}}'],
 ];
 
-const OTHER_ROOM_KEYS = ['mr1:other-room:0::sheet:anya', 'mr2:other-room:0::sheet:anya'];
+const OTHER_ROOM_KEYS = ['mr1:other-room:0::sheet:anya', 'mr3:other-room:0::sheet:anya'];
 
 // A sheet in this format, for the GM devices that have used this build in the room since.
 const RECORDS: readonly StoredRecord[] = [...pcSheet('brok', 'Брок', 0)];
@@ -162,7 +162,7 @@ test('with no preset and Settings open, a confirmed wipe ends with "Очисти
   // #then
   await expect
     .poll(() => roomCopyContent(gm.window))
-    .toEqual({ v: 2, content: { g: { n: 1, a: gm.connectionId }, records: [] } });
+    .toEqual({ v: 3, content: { g: { n: 1, a: gm.connectionId }, records: [] } });
   await expect(confirmation(gm.window)).toHaveCount(0);
   await expect(wipeButton(gm.window)).toBeEnabled();
   await expect(wipeButton(gm.window)).toBeFocused();
@@ -225,7 +225,7 @@ test('a confirmed wipe of a room with a version 1 copy empties it on every clien
 
   // AD-9: the room copy is written over with the new generation and no record.
   expect(await roomCopyContent(gm.window)).toEqual({
-    v: 2,
+    v: 3,
     content: { g: { n: 1, a: gm.connectionId }, records: [] },
   });
 

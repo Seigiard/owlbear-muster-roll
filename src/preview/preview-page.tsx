@@ -2,7 +2,13 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { TabPanel, Tabs } from 'react-aria-components';
 
-import { parsePresetFile, windowSizeOf, type Preset, type WindowSize } from '@/core/preset';
+import {
+  openTabIndex,
+  parsePresetFile,
+  windowSizeOf,
+  type Preset,
+  type WindowSize,
+} from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { sheetName, sheetPolicy } from '@/core/sheets';
 import { copy } from '@/ui/copy';
@@ -190,8 +196,9 @@ type SheetFrameProps = {
 // out its tabs, with the tab bar holding the sheet's tab, then the content area that scrolls
 // inside. The read-only view a player gets: no edit inputs and no repeat block controls, and the
 // status a player with no write access sees. A hidden template is drawn too, with no status, as no
-// player sees it.
+// player sees it. Each frame switches its tabs on its own, and every tab shows, hidden ones too.
 function SheetFrame({ preset, size, sheet, records, rolling }: SheetFrameProps): ReactNode {
+  const [chosenTab, setChosenTab] = useState<number | undefined>(undefined);
   const policy = sheetPolicy(sheet.template, sheet.sheetId);
   const name = sheetName(records, preset, sheet.sheetId) ?? '';
 
@@ -230,6 +237,8 @@ function SheetFrame({ preset, size, sheet, records, rolling }: SheetFrameProps):
             <SheetBody
               template={sheet.template}
               sheetId={sheet.sheetId}
+              openTab={openTabIndex(sheet.template, chosenTab)}
+              onOpenTab={setChosenTab}
               records={records}
               editing={null}
               rolling={rolling}

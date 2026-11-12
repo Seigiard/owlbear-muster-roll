@@ -14,8 +14,11 @@ import {
   encodePreset,
   firstFieldId,
   formatPresetFile,
+  layoutSections,
+  openTabIndex,
   parsePresetFile,
   parsePresetStructure,
+  placedSections,
   plainRowIdOf,
   presetProblems,
   repeatSectionId,
@@ -65,14 +68,14 @@ type SelectFailure =
   | { code: 'duplicate-option'; detail: string; field: string };
 
 const MINIMAL: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
   ],
 };
@@ -84,16 +87,16 @@ function setOf(id: string, sections: JsonValue[], nameField = 'name'): JsonObjec
     kind: 'set',
     title: 'Персонажи',
     nameField,
-    sections: [{ rows: [[TEXT_FIELD('name')]] }, ...sections],
+    tabs: [{ sections: [{ rows: [[TEXT_FIELD('name')]] }, ...sections] }],
   };
 }
 
 function singleOf(id: string, sections: JsonValue[]): JsonObject {
-  return { id, kind: 'single', title: 'Заметки', sections };
+  return { id, kind: 'single', title: 'Заметки', tabs: [{ sections }] };
 }
 
 function presetOf(...templates: JsonValue[]): string {
-  return JSON.stringify({ v: 2, templates });
+  return JSON.stringify({ v: 3, templates });
 }
 
 // A preset of one single sheet with these sections, so no name field rule applies.
@@ -103,23 +106,27 @@ function fileOf(sections: JsonValue[]): string {
 
 function presetWithSelect(options: string[]): Preset {
   return {
-    v: 2,
+    v: 3,
     templates: [
       {
         id: 'notes',
         kind: 'single',
         title: 'Заметки',
-        sections: [
+        tabs: [
           {
-            rows: [
-              [
-                {
-                  kind: 'field',
-                  type: 'select',
-                  id: 'armor',
-                  options,
-                },
-              ],
+            sections: [
+              {
+                rows: [
+                  [
+                    {
+                      kind: 'field',
+                      type: 'select',
+                      id: 'armor',
+                      options,
+                    },
+                  ],
+                ],
+              },
             ],
           },
         ],
@@ -151,7 +158,7 @@ describe('parsePresetFile', () => {
 
     // #when
     const hasSelect = parsed.value.templates.some((template) =>
-      template.sections.some((section) =>
+      layoutSections(template).some((section) =>
         section.rows.some((row) =>
           row.some(
             (cell) => cell.kind === 'field' && z.literal('select').safeParse(cell.type).success,
@@ -408,7 +415,7 @@ describe('parsePresetFile', () => {
   });
 
   test.each<[string, string]>([
-    ['not JSON', '{"v": 2,'],
+    ['not JSON', '{"v": 3,'],
     ['an empty file', ''],
   ])('refuses %s as not JSON', (_name, text) => {
     // #when
@@ -441,7 +448,7 @@ describe('parsePresetFile', () => {
   });
 
   test.each<[string, JsonValue]>([
-    ['an integer above the current one', 3],
+    ['an integer above the current one', 4],
     ['a much higher integer', 99],
     ['above the largest safe integer', 1e16],
   ])('refuses a file whose v is %s as newer', (_name, v) => {
@@ -459,9 +466,10 @@ describe('parsePresetFile', () => {
     ['absent', undefined],
     ['lower', 0],
     ['the older format 1', 1],
-    ['a fraction below the current one', 1.5],
-    ['a fraction above the current one', 2.5],
-    ['a string', '2'],
+    ['the older format 2', 2],
+    ['a fraction below the current one', 2.5],
+    ['a fraction above the current one', 3.5],
+    ['a string', '3'],
     ['null', null],
   ])('refuses a file whose v is %s as an unsupported version', (_name, v) => {
     // #given
@@ -489,25 +497,55 @@ describe('parsePresetFile', () => {
     expect(parsed).toEqual({ ok: false, error: { code: 'unsupported-version' } });
   });
 
+  test('refuses a whole preset of format 2, with sections in a template, as an unsupported version', () => {
+    // #given
+    const text = JSON.stringify({
+      v: 2,
+      templates: [
+        {
+          id: 'npc',
+          kind: 'single',
+          title: 'NPC',
+          sections: [{ rows: [[NUMBER_FIELD('str')]] }],
+        },
+      ],
+    });
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: { code: 'unsupported-version' } });
+  });
+
   test.each<[string, JsonValue]>([
     ['an array', [MINIMAL]],
     ['a number', 1],
     ['an unknown top-level key', { ...MINIMAL, extra: true }],
-    ['no templates', { v: 2 }],
-    ['an empty template list', { v: 2, templates: [] }],
+    ['no templates', { v: 3 }],
+    ['an empty template list', { v: 3, templates: [] }],
     [
-      'the templates of format 1 at v 2',
-      { v: 2, character: { sections: [] }, npc: { sections: [] } },
+      'the templates of format 1 at v 3',
+      { v: 3, character: { sections: [] }, npc: { sections: [] } },
     ],
     ['a template of an unknown kind', JSON.parse(presetOf({ ...singleOf('x', []), kind: 'npc' }))],
-    ['a template with no kind', JSON.parse(presetOf({ id: 'x', title: 'X', sections: [] }))],
-    ['a template with no id', JSON.parse(presetOf({ kind: 'single', title: 'X', sections: [] }))],
-    ['a template with no title', JSON.parse(presetOf({ id: 'x', kind: 'single', sections: [] }))],
+    [
+      'a template with no kind',
+      JSON.parse(presetOf({ id: 'x', title: 'X', tabs: [{ sections: [] }] })),
+    ],
+    [
+      'a template with no id',
+      JSON.parse(presetOf({ kind: 'single', title: 'X', tabs: [{ sections: [] }] })),
+    ],
+    [
+      'a template with no title',
+      JSON.parse(presetOf({ id: 'x', kind: 'single', tabs: [{ sections: [] }] })),
+    ],
     ['a template with no sections', JSON.parse(presetOf({ id: 'x', kind: 'single', title: 'X' }))],
     ['an unknown template key', JSON.parse(presetOf({ ...singleOf('x', []), order: 1 }))],
     [
       'a sheet set with no name field',
-      JSON.parse(presetOf({ id: 'pc', kind: 'set', title: 'Персонажи', sections: [] })),
+      JSON.parse(presetOf({ id: 'pc', kind: 'set', title: 'Персонажи', tabs: [{ sections: [] }] })),
     ],
     [
       'a name field on a single sheet',
@@ -709,7 +747,7 @@ describe('parsePresetFile', () => {
       kind: 'set',
       title: 'Экипаж',
       nameField: 'title',
-      sections,
+      tabs: [{ sections }],
     });
 
     // #when
@@ -729,9 +767,13 @@ describe('parsePresetFile', () => {
       kind: 'set',
       title: 'Экипаж',
       nameField: 'title',
-      sections: [
-        { repeat: true, rows: [[TEXT_FIELD('item')]] },
-        { rows: [[NUMBER_FIELD('str')], [LABEL, TEXT_FIELD('title')]] },
+      tabs: [
+        {
+          sections: [
+            { repeat: true, rows: [[TEXT_FIELD('item')]] },
+            { rows: [[NUMBER_FIELD('str')], [LABEL, TEXT_FIELD('title')]] },
+          ],
+        },
       ],
     });
 
@@ -941,10 +983,151 @@ describe('parsePresetFile', () => {
   });
 });
 
+// CAP-34: a template's sections live in its tabs.
+function tabbedSet(tabs: JsonValue[]): JsonObject {
+  return { id: 'pc', kind: 'set', title: 'Персонажи', nameField: 'name', tabs };
+}
+
+describe('parsePresetFile with tabs', () => {
+  test('accepts a template of two titled tabs', () => {
+    // #given
+    const text = presetOf(
+      tabbedSet([
+        { title: 'Основное', sections: [{ rows: [[TEXT_FIELD('name')]] }] },
+        { title: 'Заметки', visibility: 'gm', sections: [{ rows: [[TEXT_FIELD('notes')]] }] },
+      ]),
+    );
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed.ok).toBe(true);
+  });
+
+  test('accepts a template of one tab with no title', () => {
+    // #given
+    const text = presetOf(tabbedSet([{ sections: [{ rows: [[TEXT_FIELD('name')]] }] }]));
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed.ok).toBe(true);
+  });
+
+  test.each<[string, JsonObject]>([
+    ['no title', {}],
+    ['a blank title', { title: '  ' }],
+  ])('refuses a tab with %s beside another tab, naming the template', (_name, title) => {
+    // #given
+    const text = presetOf(
+      tabbedSet([
+        { title: 'Основное', sections: [{ rows: [[TEXT_FIELD('name')]] }] },
+        { ...title, sections: [] },
+      ]),
+    );
+
+    // #when
+    const parsed = parsePresetFile(text);
+    const preset = parsePresetStructure(JSON.parse(text));
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: { code: 'untitled-tab', detail: 'pc' } });
+    expect(preset === null ? null : presetProblems(preset)).toEqual([
+      { failure: { code: 'untitled-tab', detail: 'pc' }, path: [0, 1] },
+    ]);
+  });
+
+  test('refuses a template with no tabs as a broken structure, which a builder draft holds', () => {
+    // #given
+    const draft = { v: 3, templates: [{ id: 'npc', kind: 'single', title: 'NPC', tabs: [] }] };
+
+    // #when
+    const parsed = parsePresetFile(JSON.stringify(draft));
+    const structure = parsePresetStructure(draft);
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: { code: 'invalid-structure' } });
+    expect(structure).not.toBeNull();
+  });
+
+  test('refuses a field id on two tabs outside repeat sections, at the second one', () => {
+    // #given
+    const text = presetOf(
+      tabbedSet([
+        { title: 'Основное', sections: [{ rows: [[TEXT_FIELD('name'), NUMBER_FIELD('str')]] }] },
+        {
+          title: 'Бой',
+          sections: [{ rows: [[NUMBER_FIELD('hp')]] }, { rows: [[NUMBER_FIELD('str')]] }],
+        },
+      ]),
+    );
+
+    // #when
+    const parsed = parsePresetFile(text);
+    const preset = parsePresetStructure(JSON.parse(text));
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: { code: 'duplicate-id', detail: 'str' } });
+    expect(preset === null ? null : presetProblems(preset)).toEqual([
+      { failure: { code: 'duplicate-id', detail: 'str' }, path: [0, 1, 1, 0, 0] },
+    ]);
+  });
+
+  test('accepts a formula on one tab that names a field on another', () => {
+    // #given
+    const text = presetOf(
+      tabbedSet([
+        { title: 'Основное', sections: [{ rows: [[TEXT_FIELD('name'), NUMBER_FIELD('str')]] }] },
+        { title: 'Бой', sections: [{ rows: [[{ kind: 'dice', formula: '1d20 + str' }]] }] },
+      ]),
+    );
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed.ok).toBe(true);
+
+    if (parsed.ok) {
+      const template = parsed.value.templates[0];
+
+      expect(
+        template === undefined
+          ? null
+          : resolveFieldReference(template, { tabIndex: 1, sectionIndex: 0, rowIndex: 0 }, 'str'),
+      ).toEqual({ scope: 'sheet', rowId: 'name' });
+    }
+  });
+});
+
+describe('openTabIndex', () => {
+  const layout: TemplateLayout = {
+    tabs: [
+      { title: 'A', sections: [] },
+      { title: 'B', sections: [] },
+    ],
+  };
+
+  test.each<[string, number | undefined, number]>([
+    ['no choice', undefined, 0],
+    ['a chosen tab the template has', 1, 1],
+    ['a chosen tab past the last one', 2, 0],
+    ['a negative choice', -1, 0],
+  ])('opens the right tab for %s', (_name, chosen, expected) => {
+    // #when
+    const open = openTabIndex(layout, chosen);
+
+    // #then
+    expect(open).toBe(expected);
+  });
+});
+
 describe('parsePresetFile with a window size', () => {
   test.each<[string, WindowSize]>([
     ['a common size', { width: 900, height: 700 }],
-    ['the smallest size', { width: 360, height: 360 }],
+    ['the smallest size', { width: 480, height: 360 }],
     ['the largest size', { width: 1440, height: 1080 }],
   ])('accepts %s', (_name, window) => {
     // #given
@@ -958,7 +1141,8 @@ describe('parsePresetFile with a window size', () => {
   });
 
   test.each<[string, JsonValue]>([
-    ['a width below 360', { width: 359, height: 700 }],
+    ['a width below 480', { width: 479, height: 700 }],
+    ['a width of 400, which fits no sidebar beside a sheet', { width: 400, height: 700 }],
     ['a width above 1440', { width: 1441, height: 700 }],
     ['a height below 360', { width: 900, height: 359 }],
     ['a height above 1080', { width: 900, height: 1081 }],
@@ -1029,10 +1213,10 @@ describe('windowSizeOf', () => {
 
 describe('templateById', () => {
   const PRESET: Preset = {
-    v: 2,
+    v: 3,
     templates: [
-      { id: 'pc', kind: 'set', title: 'Персонажи', nameField: 'name', sections: [] },
-      { id: 'npc', kind: 'single', title: 'NPC', visibility: 'gm', sections: [] },
+      { id: 'pc', kind: 'set', title: 'Персонажи', nameField: 'name', tabs: [{ sections: [] }] },
+      { id: 'npc', kind: 'single', title: 'NPC', visibility: 'gm', tabs: [{ sections: [] }] },
     ],
   };
 
@@ -1046,7 +1230,7 @@ describe('templateById', () => {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [],
+      tabs: [{ sections: [] }],
     });
   });
 
@@ -1117,16 +1301,20 @@ describe('repeatSectionId', () => {
 
 describe('plainRowIdOf', () => {
   const LAYOUT: TemplateLayout = {
-    sections: [
+    tabs: [
       {
-        rows: [
-          [
-            { kind: 'field', type: 'number', id: 'level' },
-            { kind: 'field', type: 'number', id: 'bonus' },
-          ],
+        sections: [
+          {
+            rows: [
+              [
+                { kind: 'field', type: 'number', id: 'level' },
+                { kind: 'field', type: 'number', id: 'bonus' },
+              ],
+            ],
+          },
+          { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
         ],
       },
-      { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
     ],
   };
 
@@ -1149,43 +1337,47 @@ describe('resolveFieldReference', () => {
   // repeat section. Sections: 0 grid, 1 attacks (repeat, two rows), 2 inventory (repeat), 3 a dice
   // row with no field.
   const LAYOUT: TemplateLayout = {
-    sections: [
+    tabs: [
       {
-        rows: [
-          [
-            { kind: 'text', text: 'Сила' },
-            { kind: 'field', type: 'number', id: 'str' },
-          ],
-          [
-            { kind: 'field', type: 'number', id: 'level' },
-            { kind: 'field', type: 'number', id: 'bonus' },
-          ],
+        sections: [
+          {
+            rows: [
+              [
+                { kind: 'text', text: 'Сила' },
+                { kind: 'field', type: 'number', id: 'str' },
+              ],
+              [
+                { kind: 'field', type: 'number', id: 'level' },
+                { kind: 'field', type: 'number', id: 'bonus' },
+              ],
+            ],
+          },
+          {
+            repeat: true,
+            rows: [
+              [
+                { kind: 'field', type: 'text', id: 'attack' },
+                { kind: 'field', type: 'number', id: 'bonus' },
+                { kind: 'dice', formula: '1d20+bonus+str' },
+              ],
+              [
+                { kind: 'field', type: 'text', id: 'damage' },
+                { kind: 'dice', formula: '1d8+bonus' },
+              ],
+            ],
+          },
+          {
+            repeat: true,
+            rows: [
+              [
+                { kind: 'field', type: 'text', id: 'item' },
+                { kind: 'field', type: 'number', id: 'weight' },
+              ],
+            ],
+          },
+          { rows: [[{ kind: 'dice', formula: '1d20+str' }]] },
         ],
       },
-      {
-        repeat: true,
-        rows: [
-          [
-            { kind: 'field', type: 'text', id: 'attack' },
-            { kind: 'field', type: 'number', id: 'bonus' },
-            { kind: 'dice', formula: '1d20+bonus+str' },
-          ],
-          [
-            { kind: 'field', type: 'text', id: 'damage' },
-            { kind: 'dice', formula: '1d8+bonus' },
-          ],
-        ],
-      },
-      {
-        repeat: true,
-        rows: [
-          [
-            { kind: 'field', type: 'text', id: 'item' },
-            { kind: 'field', type: 'number', id: 'weight' },
-          ],
-        ],
-      },
-      { rows: [[{ kind: 'dice', formula: '1d20+str' }]] },
     ],
   };
 
@@ -1236,7 +1428,7 @@ describe('resolveFieldReference', () => {
     ['a sheet id from a negative section index', -1, 0, 'str', null],
   ])('resolves %s', (_name, sectionIndex, rowIndex, id, expected) => {
     // #when
-    const reference = resolveFieldReference(LAYOUT, { sectionIndex, rowIndex }, id);
+    const reference = resolveFieldReference(LAYOUT, { tabIndex: 0, sectionIndex, rowIndex }, id);
 
     // #then
     expect(reference).toEqual(expected);
@@ -1261,13 +1453,13 @@ describe('encodePreset with a large preset', () => {
     // #given: random letters barely deflate. 1.5 M of them pass the spread argument limit of
     // V8 (about 125 K) and of Bun (about 1 M), not only one 0x8000-byte chunk.
     const preset: Preset = {
-      v: 2,
+      v: 3,
       templates: [
         {
           id: 'notes',
           kind: 'single',
           title: 'Заметки',
-          sections: [{ rows: [[{ kind: 'text', text: randomLabel(1_500_000) }]] }],
+          tabs: [{ sections: [{ rows: [[{ kind: 'text', text: randomLabel(1_500_000) }]] }] }],
         },
       ],
     };
@@ -1277,13 +1469,13 @@ describe('encodePreset with a large preset', () => {
 
     // #then
     expect(decodeIndependently(data)).toEqual({
-      v: 2,
+      v: 3,
       templates: [
         {
           id: 'notes',
           kind: 'single',
           title: 'Заметки',
-          sections: [{ rows: [[{ kind: 'text', text: randomLabel(1_500_000) }]] }],
+          tabs: [{ sections: [{ rows: [[{ kind: 'text', text: randomLabel(1_500_000) }]] }] }],
         },
       ],
     });
@@ -1306,8 +1498,8 @@ describe('decodePreset', () => {
     // #given: the record data an older build stored, deflated and base64-encoded by hand.
     const stored = {
       v: 1,
-      character: { sections: [{ rows: [[NUMBER_FIELD('str')]] }] },
-      npc: { sections: [] },
+      character: { tabs: [{ sections: [{ rows: [[NUMBER_FIELD('str')]] }] }] },
+      npc: { tabs: [{ sections: [] }] },
     };
 
     const data = Buffer.from(deflateSync(strToU8(JSON.stringify(stored)))).toString('base64');
@@ -1340,7 +1532,7 @@ describe('formatPresetFile', () => {
     const lines = formatPresetFile(preset).split('\n');
 
     // #then
-    expect(lines.slice(0, 4)).toEqual(['{', '  "v": 2,', '  "templates": [', '    {']);
+    expect(lines.slice(0, 4)).toEqual(['{', '  "v": 3,', '  "templates": [', '    {']);
   });
 
   test('writes the window size after v and before the templates', () => {
@@ -1353,7 +1545,7 @@ describe('formatPresetFile', () => {
     // #then
     expect(lines.slice(0, 7)).toEqual([
       '{',
-      '  "v": 2,',
+      '  "v": 3,',
       '  "window": {',
       '    "width": 900,',
       '    "height": 700',
@@ -1434,7 +1626,7 @@ describe('the preset files in presets/', () => {
     const badFallbacks: string[] = [];
 
     for (const template of parsed.value.templates) {
-      for (const section of template.sections) {
+      for (const section of layoutSections(template)) {
         for (const row of section.rows) {
           row.forEach((cell, index) => {
             if (cell.kind === 'text') {
@@ -1515,7 +1707,7 @@ describe('the preset files in presets/', () => {
       const unresolved: string[] = [];
 
       for (const template of preset.templates) {
-        template.sections.forEach((section, sectionIndex) => {
+        placedSections(template).forEach(({ place, section }) => {
           section.rows.forEach((row, rowIndex) => {
             for (const cell of row) {
               const tree = cell.kind === 'dice' ? parseFormula(cell.formula) : null;
@@ -1525,7 +1717,7 @@ describe('the preset files in presets/', () => {
               }
 
               for (const id of formulaFieldIds(tree.value)) {
-                if (resolveFieldReference(template, { sectionIndex, rowIndex }, id) === null) {
+                if (resolveFieldReference(template, { ...place, rowIndex }, id) === null) {
                   unresolved.push(`${template.id}: ${id}`);
                 }
               }
@@ -1593,28 +1785,32 @@ describe('presetProblems', () => {
   test('points dice-choice option and formula type failures at their owning cells', () => {
     // #given
     const preset: Preset = {
-      v: 2,
+      v: 3,
       templates: [
         {
           id: 'notes',
           kind: 'single',
           title: 'Заметки',
-          sections: [
+          tabs: [
             {
-              rows: [
-                [
-                  {
-                    kind: 'field',
-                    type: 'dice-choice',
-                    id: 'weapon_die',
-                    options: ['d8', '8'],
-                  },
-                  { kind: 'dice', formula: '1d20 + weapon_die' },
-                ],
-                [
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                  { kind: 'dice', formula: '1d(bonus)' },
-                ],
+              sections: [
+                {
+                  rows: [
+                    [
+                      {
+                        kind: 'field',
+                        type: 'dice-choice',
+                        id: 'weapon_die',
+                        options: ['d8', '8'],
+                      },
+                      { kind: 'dice', formula: '1d20 + weapon_die' },
+                    ],
+                    [
+                      { kind: 'field', type: 'number', id: 'bonus' },
+                      { kind: 'dice', formula: '1d(bonus)' },
+                    ],
+                  ],
+                },
               ],
             },
           ],
@@ -1630,7 +1826,7 @@ describe('presetProblems', () => {
     expect(actual).toEqual([
       {
         failure: { code: 'bad-die-option', detail: '8', field: 'weapon_die' },
-        path: [0, 0, 0, 0],
+        path: [0, 0, 0, 0, 0],
       },
       {
         failure: {
@@ -1638,11 +1834,11 @@ describe('presetProblems', () => {
           detail: '1d20 + weapon_die',
           field: 'weapon_die',
         },
-        path: [0, 0, 0, 1],
+        path: [0, 0, 0, 0, 1],
       },
       {
         failure: { code: 'field-not-die', detail: '1d(bonus)', field: 'bonus' },
-        path: [0, 0, 1, 1],
+        path: [0, 0, 0, 1, 1],
       },
     ]);
   });
@@ -1669,16 +1865,16 @@ describe('presetProblems', () => {
 
     // #then
     expect(problems).toEqual([
-      { failure: { code: 'row-too-wide' }, path: [0, 1, 0] },
-      { failure: { code: 'invalid-id', detail: 'd20' }, path: [0, 1, 0, 1] },
-      { failure: { code: 'bad-formula', detail: '1d20+' }, path: [0, 1, 1, 0] },
-      { failure: { code: 'bad-repeat' }, path: [0, 2] },
+      { failure: { code: 'row-too-wide' }, path: [0, 0, 1, 0] },
+      { failure: { code: 'invalid-id', detail: 'd20' }, path: [0, 0, 1, 0, 1] },
+      { failure: { code: 'bad-formula', detail: '1d20+' }, path: [0, 0, 1, 1, 0] },
+      { failure: { code: 'bad-repeat' }, path: [0, 0, 2] },
       { failure: { code: 'duplicate-template', detail: 'pc' }, path: [1] },
-      { failure: { code: 'duplicate-id', detail: 'name' }, path: [1, 1, 0, 0] },
+      { failure: { code: 'duplicate-id', detail: 'name' }, path: [1, 0, 1, 0, 0] },
       { failure: { code: 'bad-name-field', detail: 'pc', field: 'nope' }, path: [1] },
       { failure: { code: 'invalid-template-id', detail: '1bad' }, path: [2] },
-      { failure: { code: 'duplicate-id', detail: 'item' }, path: [2, 1, 0, 1] },
-      { failure: { code: 'duplicate-section', detail: 'item' }, path: [2, 1] },
+      { failure: { code: 'duplicate-id', detail: 'item' }, path: [2, 0, 1, 0, 1] },
+      { failure: { code: 'duplicate-section', detail: 'item' }, path: [2, 0, 1] },
     ]);
   });
 
@@ -1714,14 +1910,14 @@ describe('presetProblems', () => {
     const actual: unknown = problems;
 
     // #then
-    expect(actual).toEqual([{ failure, path: [0, 0, 0, 0] }]);
+    expect(actual).toEqual([{ failure, path: [0, 0, 0, 0, 0] }]);
   });
 });
 
 describe('parsePresetStructure', () => {
   test('keeps a preset with no templates and a window out of range', () => {
     // #given
-    const draft: Preset = { v: 2, window: { width: 200, height: 2000 }, templates: [] };
+    const draft: Preset = { v: 3, window: { width: 200, height: 2000 }, templates: [] };
 
     // #when
     const preset = parsePresetStructure(draft);
@@ -1731,10 +1927,10 @@ describe('parsePresetStructure', () => {
   });
 
   test.each<[string, JsonValue]>([
-    ['an unknown key', { v: 2, templates: [], extra: 1 }],
+    ['an unknown key', { v: 3, templates: [], extra: 1 }],
     ['another version', { v: 1, templates: [] }],
-    ['a window of fractions', { v: 2, window: { width: 600.5, height: 600 }, templates: [] }],
-    ['a cell of no kind', { v: 2, templates: [singleOf('a', [{ rows: [[{ text: 'x' }]] }])] }],
+    ['a window of fractions', { v: 3, window: { width: 600.5, height: 600 }, templates: [] }],
+    ['a cell of no kind', { v: 3, templates: [singleOf('a', [{ rows: [[{ text: 'x' }]] }])] }],
   ])('is null for %s', (_name, candidate) => {
     // #when
     const preset = parsePresetStructure(candidate);

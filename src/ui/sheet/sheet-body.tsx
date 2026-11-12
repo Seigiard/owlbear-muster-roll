@@ -2,13 +2,20 @@ import { useStore } from '@nanostores/react';
 import { useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 
-import { firstFieldId, repeatSectionId, type Template, type TemplateLayout } from '@/core/preset';
+import {
+  firstFieldId,
+  layoutSections,
+  repeatSectionId,
+  type Template,
+  type TemplateLayout,
+} from '@/core/preset';
 import { repKeyPrefix, rowKey, type VersionedRecord } from '@/core/records';
 import { revealElement } from '@/ui/reveal';
 
 import { DiceSheetContext, type DiceRolling, type DiceSheet } from './dice-button';
 import { withRemovedRows, type SheetPending } from './pending-mark';
 import { SheetSection, type BlockTools } from './preset-section';
+import { TabRow } from './tab-row';
 import { FieldEditingContext, type FieldEditing } from './use-field-edit';
 
 // FR14: the repeat block "Открыть лист" asked for. It scrolls into view once, and takes the focus
@@ -18,8 +25,12 @@ export type BlockReveal = { instanceId: string; focus: boolean };
 type SheetBodyProps = {
   // The sheet's template, as `core/sheets` resolves it.
   // The title names an untitled repeat section's "Добавить".
-  template: Pick<Template, 'sections' | 'title'>;
+  template: Pick<Template, 'tabs' | 'title'>;
   sheetId: string;
+  // The tab this sheet shows, as `openTabIndex` picks it. The tab row reports a choice through
+  // `onOpenTab`; without it the row shows the tab and keeps it.
+  openTab: number;
+  onOpenTab?: (index: number) => void;
   records: ReadonlyMap<string, VersionedRecord>;
   // `null` shows every value read-only, with no row controls: a player with no access to the sheet.
   editing: FieldEditing | null;
@@ -37,6 +48,8 @@ type SheetBodyProps = {
 export function SheetBody({
   template,
   sheetId,
+  openTab,
+  onOpenTab,
   records,
   editing,
   rolling,
@@ -59,8 +72,9 @@ export function SheetBody({
     [rolling, valuesSignature],
   );
 
-  // Runs when the body mounts too, so a request that selected this sheet's tab finds its repeat
-  // block. A repeat block that is gone shows nothing, and the request still ends.
+  // Runs when the body mounts too, so a request that selected this sheet, and the tab that holds
+  // its repeat block, finds that block. A repeat block that is gone shows nothing, and the request
+  // still ends.
   useEffect(() => {
     if (reveal === null) {
       return;
@@ -83,30 +97,39 @@ export function SheetBody({
   return (
     <FieldEditingContext value={editing}>
       <DiceSheetContext value={diceSheet}>
-        <div className="@container">
-          <div ref={body} className="flex flex-wrap gap-4" data-sheet-body>
-            {template.sections.map((section, index) => (
-              <SheetSection
-                key={index}
-                section={section}
-                sectionIndex={index}
-                templateTitle={template.title}
-                sheetId={sheetId}
-                records={shownRecords}
-                readOnly={editing === null}
-                pending={pending}
-                blockTools={blockTools}
-              />
-            ))}
+        <TabRow tabs={template.tabs} openTab={openTab} onOpenTab={onOpenTab}>
+          <div className="@container">
+            <div
+              ref={body}
+              className="flex flex-wrap gap-4"
+              data-sheet-body
+              data-tab-index={openTab}
+            >
+              {(template.tabs[openTab]?.sections ?? []).map((section, index) => (
+                <SheetSection
+                  key={`${openTab}.${index}`}
+                  section={section}
+                  tabIndex={openTab}
+                  sectionIndex={index}
+                  templateTitle={template.title}
+                  sheetId={sheetId}
+                  records={shownRecords}
+                  readOnly={editing === null}
+                  pending={pending}
+                  blockTools={blockTools}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        </TabRow>
       </DiceSheetContext>
     </FieldEditingContext>
   );
 }
 
-// The versions of the sheet's `row:` and `rep:` records, and the count of local changes to the
-// values its fields show, so it changes with any value of the sheet and with no other record.
+// The versions of the sheet's `row:` and `rep:` records on every tab, and the count of local
+// changes to the values its fields show, so it changes with any value of the sheet and with no
+// other record. A formula may read a field of another tab.
 function sheetValuesSignature(
   template: TemplateLayout,
   records: ReadonlyMap<string, VersionedRecord>,
@@ -116,7 +139,7 @@ function sheetValuesSignature(
   const versions: string[] = [];
   const repeatPrefixes: string[] = [];
 
-  for (const section of template.sections) {
+  for (const section of layoutSections(template)) {
     const sectionId = repeatSectionId(section);
 
     if (section.repeat === true) {

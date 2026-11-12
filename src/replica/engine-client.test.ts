@@ -28,28 +28,30 @@ import type { ReplicaClient } from '@/ui/replica-client';
 
 // Two sheet sets, so a new sheet's order counts only its own set, and a hidden single sheet.
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
     {
       id: 'ally',
       kind: 'set',
       title: 'Союзники',
       nameField: 'name',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
     {
       id: 'npc',
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'label' }]] }],
+      tabs: [
+        { sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'label' }]] }] },
+      ],
     },
   ],
 };
@@ -1759,23 +1761,31 @@ describe('preset upload', () => {
     [
       'a preset that repeats an id, which the window would have refused',
       deflatedJson({
-        v: 2,
+        v: 3,
         templates: [
           {
             id: 'pc',
             kind: 'set',
             title: 'Персонажи',
             nameField: 'name',
-            sections: [{ rows: [[textField('name'), numberField('str'), numberField('str')]] }],
+            tabs: [
+              {
+                sections: [{ rows: [[textField('name'), numberField('str'), numberField('str')]] }],
+              },
+            ],
           },
         ],
       }),
     ],
     [
       'a preset of the older format',
-      deflatedJson({ v: 1, character: { sections: [] }, npc: { sections: [] } }),
+      deflatedJson({
+        v: 1,
+        character: { tabs: [{ sections: [] }] },
+        npc: { tabs: [{ sections: [] }] },
+      }),
     ],
-    ['a newer preset', deflatedJson({ ...PRESET, v: 3 })],
+    ['a newer preset', deflatedJson({ ...PRESET, v: 4 })],
   ])('validates again and rejects %s, storing nothing', async (_name, data) => {
     // #given
     const rig = createRig();
@@ -1907,32 +1917,36 @@ describe('field-patch', () => {
   // A sheet set with its name field, a plain row, a text row and a repeat section, and a single
   // sheet with a template of its own.
   const PATCH_PRESET: Preset = {
-    v: 2,
+    v: 3,
     templates: [
       {
         id: 'pc',
         kind: 'set',
         title: 'Персонажи',
         nameField: 'name',
-        sections: [
+        tabs: [
           {
-            rows: [
-              [{ kind: 'field', type: 'text', id: 'name' }],
-              [
-                { kind: 'text', text: 'Сила' },
-                { kind: 'field', type: 'number', id: 'str' },
-                { kind: 'field', type: 'check', id: 'str_tired' },
-              ],
-              [{ kind: 'field', type: 'text', id: 'notes' }],
-            ],
-          },
-          {
-            repeat: true,
-            rows: [
-              [
-                { kind: 'field', type: 'text', id: 'attack' },
-                { kind: 'field', type: 'number', id: 'bonus' },
-              ],
+            sections: [
+              {
+                rows: [
+                  [{ kind: 'field', type: 'text', id: 'name' }],
+                  [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'str_tired' },
+                  ],
+                  [{ kind: 'field', type: 'text', id: 'notes' }],
+                ],
+              },
+              {
+                repeat: true,
+                rows: [
+                  [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                  ],
+                ],
+              },
             ],
           },
         ],
@@ -1942,7 +1956,7 @@ describe('field-patch', () => {
         kind: 'single',
         title: 'NPC',
         visibility: 'gm',
-        sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+        tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
       },
     ],
   };
@@ -2194,21 +2208,25 @@ describe('field-patch', () => {
     view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
     view.client.sendCommand(
       upload({
-        v: 2,
+        v: 3,
         templates: [
           {
             id: 'pc',
             kind: 'set',
             title: 'Персонажи',
             nameField: 'name',
-            sections: [
+            tabs: [
               {
-                rows: [
-                  [{ kind: 'field', type: 'text', id: 'name' }],
-                  [
-                    { kind: 'field', type: 'number', id: 'str' },
-                    { kind: 'field', type: 'number', id: 'dex' },
-                  ],
+                sections: [
+                  {
+                    rows: [
+                      [{ kind: 'field', type: 'text', id: 'name' }],
+                      [
+                        { kind: 'field', type: 'number', id: 'str' },
+                        { kind: 'field', type: 'number', id: 'dex' },
+                      ],
+                    ],
+                  },
                 ],
               },
             ],
@@ -2259,30 +2277,34 @@ describe('repeat blocks', () => {
   // Two repeat sections, so a block of one never counts for the other, and a single sheet with
   // none.
   const ROWS_PRESET: Preset = {
-    v: 2,
+    v: 3,
     templates: [
       {
         id: 'pc',
         kind: 'set',
         title: 'Персонажи',
         nameField: 'name',
-        sections: [
+        tabs: [
           {
-            rows: [
-              [{ kind: 'field', type: 'text', id: 'name' }],
-              [{ kind: 'field', type: 'number', id: 'str' }],
+            sections: [
+              {
+                rows: [
+                  [{ kind: 'field', type: 'text', id: 'name' }],
+                  [{ kind: 'field', type: 'number', id: 'str' }],
+                ],
+              },
+              {
+                repeat: true,
+                rows: [
+                  [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                  ],
+                ],
+              },
+              { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
             ],
           },
-          {
-            repeat: true,
-            rows: [
-              [
-                { kind: 'field', type: 'text', id: 'attack' },
-                { kind: 'field', type: 'number', id: 'bonus' },
-              ],
-            ],
-          },
-          { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
         ],
       },
       {
@@ -2290,7 +2312,7 @@ describe('repeat blocks', () => {
         kind: 'single',
         title: 'NPC',
         visibility: 'gm',
-        sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+        tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
       },
     ],
   };
@@ -2681,18 +2703,22 @@ function incompressiblePresetData(): string {
     label += Array.from({ length: 50 }, nextCharacter).join('');
 
     const data = encodePreset({
-      v: 2,
+      v: 3,
       templates: [
         {
           id: 'pc',
           kind: 'set',
           title: 'Персонажи',
           nameField: 'name',
-          sections: [
+          tabs: [
             {
-              rows: [
-                [{ kind: 'text', text: label }],
-                [{ kind: 'field', type: 'text', id: 'name' }],
+              sections: [
+                {
+                  rows: [
+                    [{ kind: 'text', text: label }],
+                    [{ kind: 'field', type: 'text', id: 'name' }],
+                  ],
+                },
               ],
             },
           ],

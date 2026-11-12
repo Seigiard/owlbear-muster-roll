@@ -11,14 +11,14 @@ const LOCAL_SAVE_FAILED = 'Не удалось сохранить в брауз�
 
 // One sheet set, so a `sheet-create` names a sheet set the engine knows.
 const PRESET_TEXT = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
   ],
 });

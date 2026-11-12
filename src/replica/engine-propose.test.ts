@@ -35,31 +35,35 @@ const PLAYER_ID = 'player-a';
 // "pc" is a sheet set whose repeat blocks a token can link to. "npc" is a single sheet only GMs
 // see, "rules" one players see but do not edit, and "camp" one every player edits.
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'text', id: 'note' },
-            ],
-          ],
-        },
-        {
-          repeat: true,
-          tokens: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'item' },
-              { kind: 'field', type: 'number', id: 'qty' },
-            ],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'text', id: 'note' },
+                ],
+              ],
+            },
+            {
+              repeat: true,
+              tokens: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'item' },
+                  { kind: 'field', type: 'number', id: 'qty' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -70,22 +74,26 @@ const PRESET: Preset = {
       title: 'NPC',
       visibility: 'gm',
       players: 'edit',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] }],
     },
     {
       id: 'rules',
       kind: 'single',
       title: 'Правила',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'rule' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'rule' }]] }] }],
     },
     {
       id: 'camp',
       kind: 'single',
       title: 'Лагерь',
       players: 'edit',
-      sections: [
-        { rows: [[{ kind: 'field', type: 'number', id: 'food' }]] },
-        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'cart' }]] },
+      tabs: [
+        {
+          sections: [
+            { rows: [[{ kind: 'field', type: 'number', id: 'food' }]] },
+            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'cart' }]] },
+          ],
+        },
       ],
     },
   ],
@@ -463,7 +471,7 @@ describe('a GM client answers a proposal', () => {
 
     // #when
     room.post(PLAYER_SOCKET, {
-      v: 2,
+      v: 3,
       g: { n: 1, a: 'other' },
       t: 'propose',
       records: [{ ...STR_ROW, d: { str: 11 }, c: 3, a: PLAYER_SOCKET }],
@@ -722,7 +730,7 @@ describe("a player's entry over its lifetime", () => {
 
     // #when
     answer(room, {
-      v: 2,
+      v: 3,
       g: { n: 1, a: 'gm-a' },
       t: 'state',
       r,
@@ -774,7 +782,7 @@ describe("a player's entry over its lifetime", () => {
     await waitUntil(() => player.store.$sync.get().gmLink === 'offline');
 
     // #when
-    answer(room, { v: 2, g: GENERATION, t: 'alive', digest: 0 });
+    answer(room, { v: 3, g: GENERATION, t: 'alive', digest: 0 });
     await waitUntil(() => proposals(room).length === 2);
 
     // #then
@@ -874,7 +882,7 @@ function roomCopyRecords(room: Room): VersionedRecord[] | null {
 }
 
 function propose(room: Room, record: VersionedRecord, from = PLAYER_SOCKET): void {
-  room.post(from, { v: 2, g: GENERATION, t: 'propose', records: [record] });
+  room.post(from, { v: 3, g: GENERATION, t: 'propose', records: [record] });
 }
 
 // A message from the GM client the test speaks for.
@@ -887,12 +895,12 @@ function commit(
   acks?: { k: string; c: number; a: string }[],
 ): JsonValue {
   return acks === undefined
-    ? { v: 2, g: GENERATION, t: 'commit', records }
-    : { v: 2, g: GENERATION, t: 'commit', records, acks };
+    ? { v: 3, g: GENERATION, t: 'commit', records }
+    : { v: 3, g: GENERATION, t: 'commit', records, acks };
 }
 
 function reject(edit: { k: string; c: number; a: string }, reason: 'denied' | 'stale') {
-  return { v: 2, g: GENERATION, t: 'reject', k: edit.k, c: edit.c, a: edit.a, reason };
+  return { v: 3, g: GENERATION, t: 'reject', k: edit.k, c: edit.c, a: edit.a, reason };
 }
 
 function strEdit(fieldId: string, value: JsonValue): Command {

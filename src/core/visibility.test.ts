@@ -20,9 +20,13 @@ const PC: Template = {
   title: 'Персонажи',
   nameField: 'name',
   tokens: true,
-  sections: [
-    { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
-    { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] },
+  tabs: [
+    {
+      sections: [
+        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] },
+      ],
+    },
   ],
 };
 
@@ -32,9 +36,13 @@ const NPC: Template = {
   kind: 'single',
   title: 'НПС',
   visibility: 'gm',
-  sections: [
-    { rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] },
-    { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'npc_name' }]] },
+  tabs: [
+    {
+      sections: [
+        { rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] },
+        { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'npc_name' }]] },
+      ],
+    },
   ],
 };
 
@@ -43,7 +51,7 @@ const INVENTORY: Template = {
   kind: 'single',
   title: 'Инвентарь',
   players: 'edit',
-  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'items' }]] }],
+  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'items' }]] }] }],
 };
 
 const VILLAINS: Template = {
@@ -52,10 +60,10 @@ const VILLAINS: Template = {
   title: 'Злодеи',
   nameField: 'villain',
   visibility: 'gm',
-  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }],
+  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }] }],
 };
 
-const PRESET: Preset = { v: 2, templates: [PC, NPC, INVENTORY, VILLAINS] };
+const PRESET: Preset = { v: 3, templates: [PC, NPC, INVENTORY, VILLAINS] };
 
 function record(k: string, d: JsonValue): VersionedRecord {
   // SAFETY: some cases build a record no schema takes on purpose, so the code under test meets it.

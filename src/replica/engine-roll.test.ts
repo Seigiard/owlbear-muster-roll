@@ -20,50 +20,54 @@ const GHOST_NAME = 'Призрак';
 const SEVEN = (): number => 0.3;
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'str_tired' },
-              { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
-            ],
-            [
-              { kind: 'text', text: 'Ловкость' },
-              { kind: 'field', type: 'number', id: 'dex' },
-              { kind: 'dice', formula: '1d20 + dex' },
-            ],
-            [
-              { kind: 'text', text: 'Деление' },
-              { kind: 'dice', formula: 'str / (str - str)' },
-            ],
-          ],
-        },
-        {
-          repeat: true,
-          rows: [
-            [
-              { kind: 'text', text: 'Атака' },
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'field', type: 'number', id: 'bonus' },
-              { kind: 'dice', formula: '1d20 + bonus' },
-            ],
-          ],
-        },
-        {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'str_tired' },
+                  { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
+                ],
+                [
+                  { kind: 'text', text: 'Ловкость' },
+                  { kind: 'field', type: 'number', id: 'dex' },
+                  { kind: 'dice', formula: '1d20 + dex' },
+                ],
+                [
+                  { kind: 'text', text: 'Деление' },
+                  { kind: 'dice', formula: 'str / (str - str)' },
+                ],
+              ],
+            },
+            {
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'text', text: 'Атака' },
+                  { kind: 'field', type: 'text', id: 'attack' },
+                  { kind: 'field', type: 'number', id: 'bonus' },
+                  { kind: 'dice', formula: '1d20 + bonus' },
+                ],
+              ],
+            },
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -73,14 +77,18 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Хиты' },
-              { kind: 'field', type: 'number', id: 'hp' },
-              { kind: 'dice', formula: '1d20 + hp' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Хиты' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                  { kind: 'dice', formula: '1d20 + hp' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -102,7 +110,7 @@ const SEEDED: VersionedRecord[] = [
 
 const STRENGTH: RollRequest = {
   sheetId: 'brok',
-  place: { sectionIndex: 0, rowIndex: 0, cellIndex: 3, instanceId: null },
+  place: { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 3, instanceId: null },
   shown: {},
 };
 
@@ -118,7 +126,7 @@ const DIVISION: RollRequest = {
 
 const ATTACK: RollRequest = {
   sheetId: 'brok',
-  place: { sectionIndex: 1, rowIndex: 0, cellIndex: 3, instanceId: 'i1' },
+  place: { tabIndex: 0, sectionIndex: 1, rowIndex: 0, cellIndex: 3, instanceId: 'i1' },
   shown: {},
 };
 
@@ -126,7 +134,7 @@ const UNNAMED_STRENGTH: RollRequest = { ...STRENGTH, sheetId: 'liza' };
 
 const HIT_POINTS: RollRequest = {
   sheetId: 'npc',
-  place: { sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: null },
+  place: { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: null },
   shown: {},
 };
 
@@ -199,7 +207,7 @@ function joinGhost(room: Room, role: PlayerRole): void {
 // A roll as the room carries it, with the roller name its sender wrote in.
 function rollFrom(id: string, sheetName: string, hidden = false, roller = GHOST_NAME): JsonValue {
   return {
-    v: 2,
+    v: 3,
     g: { n: 0, a: '' },
     t: 'roll',
     id,
@@ -236,7 +244,7 @@ describe('a roll', () => {
         {
           from: 'gm-a',
           data: {
-            v: 2,
+            v: 3,
             g: { n: 0, a: '' },
             t: 'roll',
             id: expect.any(String),

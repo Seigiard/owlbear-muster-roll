@@ -31,7 +31,7 @@ The file that sets the structure of every sheet in a room as a list of templates
 _Avoid_: template file, schema, config, system
 
 **Template**:
-One entry of a preset: a sheet set or a single sheet, with its title and its sections.
+One entry of a preset: a sheet set or a single sheet, with its title and its tabs.
 _Avoid_: layout, form, blank, sheet kind
 
 **Sheet set**:
@@ -58,8 +58,12 @@ _Avoid_: shared, public, open sheet
 A sheet set, single sheet or repeat section whose sheets or repeat blocks tokens may link to.
 _Avoid_: token-enabled, bindable
 
+**Tab**:
+A titled group of sections inside a sheet. A template has at least one tab, and a sheet shows one tab at a time. A template with one tab draws no tab row. Each client keeps the open tab of each sheet for itself. Tabs change only the layout: field id scopes, formulas and stored values span all tabs of a template. In the interface: «Вкладка».
+_Avoid_: page, sheet tab (the sheet's own entry in the window's tab bar)
+
 **Section**:
-A titled block of a template that holds rows.
+A titled block of a tab that holds rows.
 _Avoid_: group, panel, block
 
 **Repeat section**:

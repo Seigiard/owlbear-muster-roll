@@ -80,7 +80,9 @@ const BAD_FILES: readonly (readonly [string, string, string])[] = [
         kind: 'set',
         title: 'Персонажи',
         nameField: 'attack',
-        sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] }],
+        tabs: [
+          { sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] }] },
+        ],
       },
     ]),
     'в наборе «pc» нет текстового поля «attack» вне повторяемых секций',
@@ -128,7 +130,11 @@ const BAD_FILES: readonly (readonly [string, string, string])[] = [
   ],
   [
     'a version 1 preset with character and npc',
-    JSON.stringify({ v: 1, character: { sections: [] }, npc: { sections: [] } }),
+    JSON.stringify({
+      v: 1,
+      character: { tabs: [{ sections: [] }] },
+      npc: { tabs: [{ sections: [] }] },
+    }),
     'неподдерживаемая версия формата',
   ],
   ['a file over 1 MiB', ' '.repeat(1024 * 1024 + 1), 'файл слишком большой'],
@@ -307,7 +313,7 @@ test('a file from a newer version asks for a reload and changes nothing', async 
   await watchWire(page);
 
   // #when
-  await uploadFile(page, JSON.stringify({ v: 3, anything: [] }));
+  await uploadFile(page, JSON.stringify({ v: 4, anything: [] }));
 
   // #then
   await expect(page.getByText('Файл из более новой версии. Перезагрузите страницу.')).toBeVisible();
@@ -482,7 +488,7 @@ function fileText(section: JsonValue): string {
 }
 
 function templatesText(templates: readonly JsonValue[]): string {
-  return JSON.stringify({ v: 2, templates });
+  return JSON.stringify({ v: 3, templates });
 }
 
 function setTemplate(id: string, sections: readonly JsonValue[]) {
@@ -491,12 +497,12 @@ function setTemplate(id: string, sections: readonly JsonValue[]) {
     kind: 'set',
     title: 'Персонажи',
     nameField: 'name',
-    sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, ...sections],
+    tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, ...sections] }],
   };
 }
 
 function singleTemplate(id: string) {
-  return { id, kind: 'single', title: 'Заметки', sections: [] };
+  return { id, kind: 'single', title: 'Заметки', tabs: [{ sections: [] }] };
 }
 
 function randomLabel(length: number): string {

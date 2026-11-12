@@ -17,7 +17,7 @@ import {
 // two repeat sections, and a single sheet `npc` with a row and a linkable repeat section whose
 // blocks span two rows.
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
@@ -25,32 +25,36 @@ const PRESET: Preset = {
       title: 'Персонажи',
       nameField: 'notes',
       tokens: true,
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'tired' },
-            ],
-            [{ kind: 'field', type: 'text', id: 'notes' }],
-          ],
-        },
-        {
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'field', type: 'number', id: 'bonus' },
-            ],
-          ],
-        },
-        {
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'item' },
-              { kind: 'field', type: 'number', id: 'weight' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'tired' },
+                ],
+                [{ kind: 'field', type: 'text', id: 'notes' }],
+              ],
+            },
+            {
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'attack' },
+                  { kind: 'field', type: 'number', id: 'bonus' },
+                ],
+              ],
+            },
+            {
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'item' },
+                  { kind: 'field', type: 'number', id: 'weight' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -59,17 +63,21 @@ const PRESET: Preset = {
       id: 'npc',
       kind: 'single',
       title: 'NPC',
-      sections: [
-        { rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] },
+      tabs: [
         {
-          repeat: true,
-          tokens: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'npc_name' },
-              { kind: 'field', type: 'number', id: 'ac' },
-            ],
-            [{ kind: 'field', type: 'number', id: 'might' }],
+          sections: [
+            { rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] },
+            {
+              repeat: true,
+              tokens: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'npc_name' },
+                  { kind: 'field', type: 'number', id: 'ac' },
+                ],
+                [{ kind: 'field', type: 'number', id: 'might' }],
+              ],
+            },
           ],
         },
       ],
@@ -102,7 +110,7 @@ function single(id: string, parts: SheetParts = {}): SnapshotSheet {
 }
 
 function file(sheets: readonly SnapshotSheet[], links: SnapshotFile['links'] = []): SnapshotFile {
-  return { v: 2, type: 'muster-roll/snapshot', sheets: [...sheets], links };
+  return { v: 3, type: 'muster-roll/snapshot', sheets: [...sheets], links };
 }
 
 // The imported records by key, and the counts of dropped values and dropped sheets.
@@ -307,24 +315,28 @@ describe('importSnapshot', () => {
   test('keeps every select-only repeat block through export and import into the same preset', () => {
     // #given
     const preset: Preset = {
-      v: 2,
+      v: 3,
       templates: [
         {
           id: 'inventory',
           kind: 'single',
           title: 'Инвентарь',
-          sections: [
+          tabs: [
             {
-              repeat: true,
-              rows: [
-                [
-                  {
-                    kind: 'field',
-                    type: 'select',
-                    id: 'armor',
-                    options: ['Кожаная', 'Кольчуга'],
-                  },
-                ],
+              sections: [
+                {
+                  repeat: true,
+                  rows: [
+                    [
+                      {
+                        kind: 'field',
+                        type: 'select',
+                        id: 'armor',
+                        options: ['Кожаная', 'Кольчуга'],
+                      },
+                    ],
+                  ],
+                },
               ],
             },
           ],
@@ -381,23 +393,27 @@ describe('importSnapshot', () => {
   test('matches a snapshot text value to a current dice-choice field', () => {
     // #given
     const preset: Preset = {
-      v: 2,
+      v: 3,
       templates: [
         {
           id: 'inventory',
           kind: 'single',
           title: 'Инвентарь',
-          sections: [
+          tabs: [
             {
-              rows: [
-                [
-                  {
-                    kind: 'field',
-                    type: 'dice-choice',
-                    id: 'weapon_die',
-                    options: ['d6', 'd8'],
-                  },
-                ],
+              sections: [
+                {
+                  rows: [
+                    [
+                      {
+                        kind: 'field',
+                        type: 'dice-choice',
+                        id: 'weapon_die',
+                        options: ['d6', 'd8'],
+                      },
+                    ],
+                  ],
+                },
               ],
             },
           ],
@@ -698,7 +714,7 @@ describe('parseSnapshotFile', () => {
 
   test.each([
     ['not JSON', '{', 'not-json'],
-    ['a newer v, whatever its shape', '{"v":3,"sheets":7}', 'newer-version'],
+    ['a newer v, whatever its shape', '{"v":4,"sheets":7}', 'newer-version'],
     [
       'a v1 snapshot file',
       '{"v":1,"type":"muster-roll/snapshot","sheets":[],"links":[]}',
@@ -710,17 +726,17 @@ describe('parseSnapshotFile', () => {
       'unsupported-version',
     ],
     ['no v', '{"type":"muster-roll/snapshot"}', 'unsupported-version'],
-    ['a preset file', '{"v":2,"templates":[]}', 'not-snapshot'],
+    ['a preset file', '{"v":3,"templates":[]}', 'not-snapshot'],
     ['an object of another type with no v', '{"type":"other/thing"}', 'not-snapshot'],
     ['an array', '[]', 'invalid-structure'],
     [
       'a wrong shape',
-      '{"v":2,"type":"muster-roll/snapshot","sheets":{},"links":[]}',
+      '{"v":3,"type":"muster-roll/snapshot","sheets":{},"links":[]}',
       'invalid-structure',
     ],
     [
       'a link to no sheet of the file',
-      '{"v":2,"type":"muster-roll/snapshot","sheets":[],"links":[{"tokenId":"t","sheetId":"x"}]}',
+      '{"v":3,"type":"muster-roll/snapshot","sheets":[],"links":[{"tokenId":"t","sheetId":"x"}]}',
       'invalid-structure',
     ],
   ] satisfies [string, string, SnapshotFileFailure][])('refuses %s', (_name, text, failure) => {

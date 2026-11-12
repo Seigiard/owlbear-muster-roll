@@ -27,33 +27,33 @@ const D6_POOL = readFileSync(new URL('fixtures/presets/d6-pool.json', import.met
 
 // Two sheet sets between two single sheets, so each "+" has a neighbour on both sides.
 const TWO_SETS = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
     {
       id: 'inv',
       kind: 'single',
       title: 'Инвентарь',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'gold' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'gold' }]] }] }],
     },
     {
       id: 'ship',
       kind: 'set',
       title: 'Корабли',
       nameField: 'ship_name',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'ship_name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'ship_name' }]] }] }],
     },
     {
       id: 'log',
       kind: 'single',
       title: 'Журнал',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }] }],
     },
   ],
 });

@@ -3,6 +3,7 @@ import { sameJson } from '@/core/json';
 import { blockIndex, linkTargetOf, liveLinkTarget } from '@/core/link-target';
 import {
   firstFieldId,
+  layoutSections,
   repeatSectionId,
   sectionFields,
   type Preset,
@@ -680,7 +681,7 @@ export function sectionTarget(
 export function templateScopes(layout: TemplateLayout): TemplateScopes {
   const scopes: TemplateScopes = { rows: new Map(), rowFields: new Map(), sections: new Map() };
 
-  for (const section of layout.sections) {
+  for (const section of layoutSections(layout)) {
     const sectionId = repeatSectionId(section);
 
     if (sectionId !== null) {

@@ -275,7 +275,7 @@ describe('parseWindowMessage', () => {
   };
 
   test.each<[string, JsonValue]>([
-    ['data that is not base64', { ...UPLOAD, data: '{"v":2}' }],
+    ['data that is not base64', { ...UPLOAD, data: '{"v":3}' }],
     ['empty data', { ...UPLOAD, data: '' }],
     [
       'no data',
@@ -383,7 +383,7 @@ describe('parseWindowMessage', () => {
     t: 'roll-request',
     id: 'r1',
     sheetId: 'brok',
-    place: { sectionIndex: 1, rowIndex: 0, cellIndex: 3, instanceId: 'i1' },
+    place: { tabIndex: 0, sectionIndex: 1, rowIndex: 0, cellIndex: 3, instanceId: 'i1' },
     shown: { bonus: { kind: 'text', text: '5' }, str: { kind: 'error' } },
   } satisfies WindowMessage;
 
@@ -400,7 +400,7 @@ describe('parseWindowMessage', () => {
     ['a negative cell index', { ...ROLL_REQUEST, place: { ...ROLL_REQUEST.place, cellIndex: -1 } }],
     [
       'a place with no instance',
-      { ...ROLL_REQUEST, place: { sectionIndex: 0, rowIndex: 0, cellIndex: 1 } },
+      { ...ROLL_REQUEST, place: { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 1 } },
     ],
     ['a shown value of an unknown kind', { ...ROLL_REQUEST, shown: { str: { kind: 'number' } } }],
     [

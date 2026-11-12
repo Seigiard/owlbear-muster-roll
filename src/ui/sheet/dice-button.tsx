@@ -25,6 +25,7 @@ export type DiceSheet = DiceRolling & { valuesSignature: string };
 // The rolled row, as a roll request names it and as its local values are told apart.
 export type DiceRow = {
   sheetId: string;
+  tabIndex: number;
   sectionIndex: number;
   rowIndex: number;
   instanceId: string | null;
@@ -79,6 +80,7 @@ export function DiceButton({
     setMessage(null);
 
     const place: DicePlace = {
+      tabIndex: row.tabIndex,
       sectionIndex: row.sectionIndex,
       rowIndex: row.rowIndex,
       cellIndex,

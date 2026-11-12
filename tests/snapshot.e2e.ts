@@ -147,7 +147,7 @@ test('the downloaded snapshot holds the live sheets, their values and links, and
     // The templates in preset order: the sheets of "Персонажи" by order, then each single sheet
     // once, with values or none.
     file: {
-      v: 2,
+      v: 3,
       type: 'muster-roll/snapshot',
       sheets: [
         { id: 'anya', set: 'pc', order: 0, rows: { name: { name: 'Аня' } }, repeats: {} },
@@ -208,7 +208,7 @@ test('with no preset, both snapshot buttons are disabled with the preset-first r
 // The file of the 5.3 tests: one character the example preset places, and one value it has no
 // field for.
 const MIRA_FILE = {
-  v: 2,
+  v: 3,
   type: 'muster-roll/snapshot',
   sheets: [
     {
@@ -274,7 +274,7 @@ test('a file that is no snapshot, or not JSON, or newer, is refused under the bu
   const cases: [string, string][] = [
     [EXAMPLE_PRESET_TEXT, NOT_SNAPSHOT],
     ['{', NOT_JSON],
-    [JSON.stringify({ v: 3, type: 'muster-roll/snapshot' }), NEWER],
+    [JSON.stringify({ v: 4, type: 'muster-roll/snapshot' }), NEWER],
     // AD-12: no migration from a version 1 file.
     [JSON.stringify({ ...MIRA_FILE, v: 1 }), UNSUPPORTED],
   ];

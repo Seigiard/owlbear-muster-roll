@@ -4,11 +4,11 @@ import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { newSheetId } from '@/core/ids';
-import { decodePreset, type Preset, type SheetSetTemplate } from '@/core/preset';
+import { decodePreset, openTabIndex, type Preset, type SheetSetTemplate } from '@/core/preset';
 import { presetDataSchema, type VersionedRecord } from '@/core/records';
 import { isSheetSet, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
-import { linkTargetKey, type LinkTarget } from '@/core/link-target';
+import { linkTargetKey, repeatBlockTabIndex, type LinkTarget } from '@/core/link-target';
 import { liveLinks } from '@/core/token-links';
 import {
   selectionMarks,
@@ -235,6 +235,13 @@ function WindowRoot({
   const [takenOpen, setTakenOpen] = useState<string | null>(null);
   const [tabReveal, setTabReveal] = useState<TabReveal | null>(null);
   const [blockReveal, setBlockReveal] = useState<BlockRevealRequest | null>(null);
+
+  // CAP-34, AD-26: the template tab this window chose on each sheet, by the sheet's tab id. It is
+  // client UI state: it never enters a record, a message or a snapshot.
+  const [chosenTemplateTabs, setChosenTemplateTabs] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+
   // The token status reads `link:` records only, never the scene (FR18), and AD-19 drops an inert
   // link.
   const links = useMemo(() => liveLinks(records, preset), [records, preset]);
@@ -433,6 +440,18 @@ function WindowRoot({
       setTabReveal({ tab, focus: focus && block === null });
       setBlockReveal(block === null ? null : { sheet, instanceId: block, focus });
 
+      // A repeat block opens on the template tab that holds its repeat section.
+      const template = tabs.find((listed) => listed.id === tab)?.policy.template;
+
+      const blockTab =
+        block === null || template === undefined
+          ? null
+          : repeatBlockTabIndex(records.values(), template, openRequest.sheetId, block);
+
+      if (blockTab !== null) {
+        chooseTemplateTab(tab, blockTab);
+      }
+
       // A name on another tab would take the focus away from the opened sheet.
       if (nameFocus !== null && nameFocus !== tab) {
         setFocusNameOf(null);
@@ -509,6 +528,21 @@ function WindowRoot({
       focusTab(tabReveal.tab, { preventScroll: true });
     }
   }, [tabReveal]);
+
+  function chooseTemplateTab(sheet: string, index: number): void {
+    setChosenTemplateTabs((current) => new Map(current).set(sheet, index));
+  }
+
+  // The template tab a sheet shows: the one this window chose while the template has it, else the
+  // first.
+  function templateTabProps(tab: SheetTab) {
+    return {
+      openTab: openTabIndex(tab.policy.template, chosenTemplateTabs.get(tab.id)),
+      onOpenTab: (index: number) => {
+        chooseTemplateTab(tab.id, index);
+      },
+    };
+  }
 
   function askDelete(sheet: string): void {
     // A new request remounts the block, so a repeated "Удалить" takes the focus again.
@@ -605,6 +639,7 @@ function WindowRoot({
         <SheetBody
           template={policy.template}
           sheetId={tab.sheetId}
+          {...templateTabProps(tab)}
           records={records}
           editing={editing}
           rolling={rolling}
@@ -639,6 +674,7 @@ function WindowRoot({
         <SheetBody
           template={tab.policy.template}
           sheetId={tab.sheetId}
+          {...templateTabProps(tab)}
           records={records}
           editing={mayEdit ? editing : null}
           rolling={rolling}

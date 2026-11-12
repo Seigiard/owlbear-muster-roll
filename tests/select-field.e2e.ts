@@ -27,20 +27,24 @@ const PLAYER: ClientParams = {
 };
 
 const BASE_PRESET_TEXT = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -215,24 +219,28 @@ for (const [name, options, reason] of [
 
 function selectPresetText(options: readonly string[]): string {
   return JSON.stringify({
-    v: 2,
+    v: 3,
     templates: [
       {
         id: 'pc',
         kind: 'set',
         title: 'Персонажи',
         nameField: 'name',
-        sections: [
+        tabs: [
           {
-            rows: [
-              [
-                { kind: 'text', text: 'Имя' },
-                { kind: 'field', type: 'text', id: 'name' },
-              ],
-              [
-                { kind: 'text', text: 'Броня' },
-                { kind: 'field', type: 'select', id: 'armor', options },
-              ],
+            sections: [
+              {
+                rows: [
+                  [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                  [
+                    { kind: 'text', text: 'Броня' },
+                    { kind: 'field', type: 'select', id: 'armor', options },
+                  ],
+                ],
+              },
             ],
           },
         ],

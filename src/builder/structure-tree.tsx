@@ -19,6 +19,7 @@ import {
   addCell,
   addRow,
   addSection,
+  addTab,
   addTemplate,
   ancestorUids,
   locate,
@@ -30,6 +31,7 @@ import {
   type DocCell,
   type DocRow,
   type DocSection,
+  type DocTab,
   type DocTemplate,
   type DropSpot,
   type ItemKind,
@@ -47,8 +49,8 @@ type StructureTreeProps = {
   focusRequest: FocusRequest | null;
 };
 
-// An add item's key names what it adds and where: `add:set`, `add:single`, `add:section:{uid}`,
-// `add:row:{uid}`, or `add:{cell kind}:{uid}`. Uids hold no ":".
+// An add item's key names what it adds and where: `add:set`, `add:single`, `add:tab:{uid}`,
+// `add:section:{uid}`, `add:row:{uid}`, or `add:{cell kind}:{uid}`. Uids hold no ":".
 const ADD_PREFIX = 'add:';
 const ADD_SET_KEY = 'add:set';
 const ADD_SINGLE_KEY = 'add:single';
@@ -58,7 +60,7 @@ const DRAG_TYPE_PREFIX = 'application/x-muster-roll-';
 // The window and the add items cannot move. Their drag type is accepted nowhere.
 const FIXED_DRAG_TYPE = `${DRAG_TYPE_PREFIX}fixed`;
 
-const MOVABLE_KINDS: readonly ItemKind[] = ['template', 'section', 'row', 'cell'];
+const MOVABLE_KINDS: readonly ItemKind[] = ['template', 'tab', 'section', 'row', 'cell'];
 
 const ITEM_CLASS =
   'touch-target flex cursor-default items-center rounded-sm text-text outline-none data-focus-visible:outline-2 data-focus-visible:outline-solid data-focus-visible:outline-focus data-selected:bg-surface-tab data-dragging:opacity-50 data-drop-target:bg-surface-tab';
@@ -71,8 +73,9 @@ const ICON_BUTTON_CLASS =
 
 const INDENT_PX = 16;
 
-// CAP-22, AD-25: the preset as a tree. The window first, then each template with its sections,
-// rows and cells, each container closed by its add items. Reorder is by drag only.
+// CAP-22, AD-25: the preset as a tree. The window first, then each template with its tabs,
+// sections, rows and cells, each container closed by its add items. Every template shows its tab
+// level, a one-tab template too, so a drop into a tab is always reachable. Reorder is by drag only.
 export function StructureTree({
   store,
   document,
@@ -324,11 +327,29 @@ function TemplateItem({
       problem={problems.has(template.uid)}
       movable
     >
-      {template.sections.map((section) => (
+      {template.tabs.map((tab) => (
+        <TabItem key={tab.uid} tab={tab} problems={problems} onAdd={onAdd} />
+      ))}
+      <AddItem
+        addKey={`${ADD_PREFIX}tab:${template.uid}`}
+        label={copy.builder.addTab}
+        onAdd={onAdd}
+      />
+    </Item>
+  );
+}
+
+function TabItem({ tab, problems, onAdd }: ContainerProps & { tab: DocTab }): ReactNode {
+  const title =
+    tab.title === undefined || tab.title.trim() === '' ? copy.builder.untitledTab : tab.title;
+
+  return (
+    <Item uid={tab.uid} label={title} problem={problems.has(tab.uid)} movable>
+      {tab.sections.map((section) => (
         <SectionItem key={section.uid} section={section} problems={problems} onAdd={onAdd} />
       ))}
       <AddItem
-        addKey={`${ADD_PREFIX}section:${template.uid}`}
+        addKey={`${ADD_PREFIX}section:${tab.uid}`}
         label={copy.builder.addSection}
         onAdd={onAdd}
       />
@@ -421,7 +442,10 @@ export function cellItemLabel(cell: DocCell): string {
 function containerUids(document: BuilderDocument): string[] {
   return document.templates.flatMap((template) => [
     template.uid,
-    ...template.sections.flatMap((section) => [section.uid, ...section.rows.map((row) => row.uid)]),
+    ...template.tabs.flatMap((tab) => [
+      tab.uid,
+      ...tab.sections.flatMap((section) => [section.uid, ...section.rows.map((row) => row.uid)]),
+    ]),
   ]);
 }
 
@@ -430,12 +454,15 @@ function allAddKeys(document: BuilderDocument): string[] {
     ADD_SET_KEY,
     ADD_SINGLE_KEY,
     ...document.templates.flatMap((template) => [
-      `${ADD_PREFIX}section:${template.uid}`,
-      ...template.sections.flatMap((section) => [
-        `${ADD_PREFIX}row:${section.uid}`,
-        ...section.rows.flatMap((row) =>
-          (['text', 'field', 'dice'] as const).map((kind) => `${ADD_PREFIX}${kind}:${row.uid}`),
-        ),
+      `${ADD_PREFIX}tab:${template.uid}`,
+      ...template.tabs.flatMap((tab) => [
+        `${ADD_PREFIX}section:${tab.uid}`,
+        ...tab.sections.flatMap((section) => [
+          `${ADD_PREFIX}row:${section.uid}`,
+          ...section.rows.flatMap((row) =>
+            (['text', 'field', 'dice'] as const).map((kind) => `${ADD_PREFIX}${kind}:${row.uid}`),
+          ),
+        ]),
       ]),
     ]),
   ];
@@ -443,7 +470,7 @@ function allAddKeys(document: BuilderDocument): string[] {
 
 // An add item's target: what it adds, and the container it adds into.
 type AddTarget = {
-  adds: 'set' | 'single' | 'section' | 'row' | CellKind;
+  adds: 'set' | 'single' | 'tab' | 'section' | 'row' | CellKind;
   container: string | null;
 };
 
@@ -457,6 +484,7 @@ function parseAddKey(key: string): AddTarget | null {
   switch (adds) {
     case 'set':
     case 'single':
+    case 'tab':
     case 'section':
     case 'row':
     case 'text':
@@ -481,6 +509,10 @@ function addFromKey(document: BuilderDocument, key: string): ReturnType<typeof a
 
   if (target.container === null) {
     return null;
+  }
+
+  if (target.adds === 'tab') {
+    return addTab(document, target.container);
   }
 
   if (target.adds === 'section') {
@@ -508,6 +540,7 @@ function draggedKind(types: DragTypes): ItemKind | null {
 const ADDED_KIND: Readonly<Record<AddTarget['adds'], ItemKind>> = {
   set: 'template',
   single: 'template',
+  tab: 'tab',
   section: 'section',
   row: 'row',
   text: 'cell',

@@ -25,18 +25,22 @@ const INITIAL: Generation = { n: 0, a: '' };
 const GHOST = 'ghost-gm';
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [{ kind: 'field', type: 'number', id: 'str' }],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [{ kind: 'field', type: 'number', id: 'str' }],
+              ],
+            },
           ],
         },
       ],
@@ -46,7 +50,7 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
     },
   ],
 };
@@ -121,19 +125,19 @@ function syncState(client: Client): string {
 }
 
 function alive(digest: number, g: Generation = INITIAL): JsonValue {
-  return { v: 2, g, t: 'alive', digest };
+  return { v: 3, g, t: 'alive', digest };
 }
 
 function ping(g: Generation = INITIAL): JsonValue {
-  return { v: 2, g, t: 'ping' };
+  return { v: 3, g, t: 'ping' };
 }
 
 function commit(records: VersionedRecord[], g: Generation = INITIAL): JsonValue {
-  return { v: 2, g, t: 'commit', records };
+  return { v: 3, g, t: 'commit', records };
 }
 
 function stateMessage(r: string, records: readonly VersionedRecord[]): JsonValue {
-  return { v: 2, g: INITIAL, t: 'state', r, i: 1, n: 1, records: encodeStateRecords(records) };
+  return { v: 3, g: INITIAL, t: 'state', r, i: 1, n: 1, records: encodeStateRecords(records) };
 }
 
 // A GM client that is live and alone, then hears from a GM that only the test speaks for.

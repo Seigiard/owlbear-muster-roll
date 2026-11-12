@@ -54,7 +54,11 @@ export const copy = {
     // its option for no owner (UX-DR12).
     owner: 'Его лист',
     noOwner: 'Никто',
+    // CAP-34: the accessible name of a sheet's tab row.
+    sheetTabs: 'Вкладки листа',
   },
+  // A tab with no title in the tab row, as a builder draft may hold one.
+  untitledTab: 'Вкладка',
   // After the name on the tab of a sheet the player owns (UX-DR8).
   ownMark: 'вы',
   addSign: '+',
@@ -125,6 +129,8 @@ export const copy = {
     unsupportedVersion: 'неподдерживаемая версия формата',
     invalidTemplateId: (id: string): string => `недопустимый id листа «${id}»`,
     duplicateTemplate: (id: string): string => `лист «${id}» повторяется`,
+    untitledTab: (id: string): string =>
+      `в листе «${id}» больше одной вкладки, и у вкладки нет заголовка`,
     badNameField: (id: string, field: string): string =>
       `в наборе «${id}» нет текстового поля «${field}» вне повторяемых секций`,
     invalidFieldId: (id: string): string => `недопустимый id поля «${id}»`,
@@ -226,6 +232,7 @@ export const copy = {
     preview: (width: number, height: number): string => `Превью · окно ${width} × ${height}`,
     addSet: 'Добавить набор',
     addSingle: 'Добавить одиночный лист',
+    addTab: 'Добавить вкладку',
     addSection: 'Добавить секцию',
     addRow: 'Добавить строку',
     addLabel: 'Добавить подпись',
@@ -240,6 +247,7 @@ export const copy = {
     // The tree's items, by kind.
     windowItem: (width: number, height: number): string => `Окно ${width} × ${height}`,
     templateItem: (title: string, kind: string): string => `${title} · ${kind}`,
+    untitledTab: 'Вкладка',
     untitledSection: 'Секция',
     rowItem: (n: number): string => `Строка ${n}`,
     fieldItem: (id: string, type: string): string => `${id} · ${type}`,
@@ -261,7 +269,7 @@ export const copy = {
       width: 'Ширина, px',
       height: 'Высота, px',
       windowHint:
-        'Ширина от 360 до 1440, высота от 360 до 1080. Без своего размера окно 600 × 600.',
+        'Ширина от 480 до 1440, высота от 360 до 1080. Без своего размера окно 600 × 600.',
       title: 'Заголовок',
       id: 'Id',
       kind: 'Вид',

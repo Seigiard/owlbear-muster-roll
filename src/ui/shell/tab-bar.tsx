@@ -201,7 +201,7 @@ export function ToggleBar({ toggle }: { toggle: ShellToggle }): ReactNode {
 
 // A mouse wheel has only a vertical delta. A trackpad or a tilt wheel that has a horizontal one
 // already scrolls the row by itself.
-function scrollSideways(event: ReactWheelEvent<HTMLDivElement>): void {
+export function scrollSideways(event: ReactWheelEvent<HTMLDivElement>): void {
   if (event.deltaX !== 0 || event.deltaY === 0) {
     return;
   }

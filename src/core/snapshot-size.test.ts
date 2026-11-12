@@ -8,6 +8,7 @@ import { INSTANCE_ID_LENGTH, SHEET_ID_LENGTH } from './ids';
 import {
   encodePreset,
   firstFieldId,
+  layoutSections,
   parsePresetFile,
   repeatSectionId,
   sectionFields,
@@ -165,7 +166,7 @@ function sheetRecords(
     records.push(linkRecord(maker, { s: sheetId }));
   }
 
-  for (const section of template.sections) {
+  for (const section of layoutSections(template)) {
     const sectionId = repeatSectionId(section);
 
     if (sectionId === null) {

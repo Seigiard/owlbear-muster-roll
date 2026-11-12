@@ -1,5 +1,5 @@
 {
-  "v": 2,
+  "v": 3,
   "templates": [
     {
       "id": "pc",
@@ -7,114 +7,230 @@
       "title": "Персонажи",
       "nameField": "name",
       "tokens": true,
-      "sections": [
+      "tabs": [
         {
-          "title": "Персонаж",
-          "columns": 4,
-          "rows": [
-            [
-              { "kind": "text", "text": "Имя" },
-              { "kind": "field", "type": "text", "id": "name" }
-            ],
-            [
-              { "kind": "text", "text": "Класс" },
-              { "kind": "field", "type": "text", "id": "class" },
-              { "kind": "text", "text": "Уровень" },
-              { "kind": "field", "type": "number", "id": "level" }
-            ],
-            [
-              { "kind": "text", "text": "Броня" },
-              {
-                "kind": "field",
-                "type": "select",
-                "id": "armor",
-                "options": ["Нет", "Кожаная", "Кольчуга"]
-              }
-            ]
+          "sections": [
+            {
+              "title": "Персонаж",
+              "columns": 4,
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Имя"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "name"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "text": "Класс"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "class"
+                  },
+                  {
+                    "kind": "text",
+                    "text": "Уровень"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "level"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "text": "Броня"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "select",
+                    "id": "armor",
+                    "options": ["Нет", "Кожаная", "Кольчуга"]
+                  }
+                ]
+              ]
+            },
+            {
+              "title": "Характеристики",
+              "width": "1/2",
+              "columns": 4,
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Сила"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "str"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "check",
+                    "id": "str_tired",
+                    "name": "Сила: усталость"
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "1d20 <= str - 2*str_tired"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "text": "Ловкость"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "dex"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "check",
+                    "id": "dex_tired",
+                    "name": "Ловкость: усталость"
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "1d20 <= dex - 2*dex_tired"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "text": "Удача"
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "2D6+1"
+                  }
+                ]
+              ]
+            },
+            {
+              "title": "Здоровье",
+              "width": "1/2",
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Хиты"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "hp"
+                  },
+                  {
+                    "kind": "text",
+                    "text": "из"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "hp_max",
+                    "name": "Хиты, максимум"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "text": "Отдых"
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "floor(hp_max/2) + ceil(level/3)"
+                  }
+                ]
+              ]
+            },
+            {
+              "title": "Атаки",
+              "width": "full",
+              "columns": 4,
+              "repeat": true,
+              "rows": [
+                [
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "attack"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "bonus"
+                  },
+                  {
+                    "kind": "text",
+                    "text": "Бросок"
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "1d20 + bonus"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "text": "Урон"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "dice-choice",
+                    "id": "damage_die",
+                    "options": ["d4", "d6", "d8", "d10", "d12"]
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "1d(damage_die) + bonus"
+                  }
+                ]
+              ]
+            },
+            {
+              "title": "Снаряжение",
+              "width": "1/3",
+              "repeat": true,
+              "rows": [
+                [
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "item"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "check",
+                    "id": "equipped"
+                  }
+                ]
+              ]
+            },
+            {
+              "title": "Заметки",
+              "rows": [
+                [
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "notes"
+                  }
+                ]
+              ]
+            }
           ]
-        },
-        {
-          "title": "Характеристики",
-          "width": "1/2",
-          "columns": 4,
-          "rows": [
-            [
-              { "kind": "text", "text": "Сила" },
-              { "kind": "field", "type": "number", "id": "str" },
-              { "kind": "field", "type": "check", "id": "str_tired", "name": "Сила: усталость" },
-              { "kind": "dice", "formula": "1d20 <= str - 2*str_tired" }
-            ],
-            [
-              { "kind": "text", "text": "Ловкость" },
-              { "kind": "field", "type": "number", "id": "dex" },
-              {
-                "kind": "field",
-                "type": "check",
-                "id": "dex_tired",
-                "name": "Ловкость: усталость"
-              },
-              { "kind": "dice", "formula": "1d20 <= dex - 2*dex_tired" }
-            ],
-            [
-              { "kind": "text", "text": "Удача" },
-              { "kind": "dice", "formula": "2D6+1" }
-            ]
-          ]
-        },
-        {
-          "title": "Здоровье",
-          "width": "1/2",
-          "rows": [
-            [
-              { "kind": "text", "text": "Хиты" },
-              { "kind": "field", "type": "number", "id": "hp" },
-              { "kind": "text", "text": "из" },
-              { "kind": "field", "type": "number", "id": "hp_max", "name": "Хиты, максимум" }
-            ],
-            [
-              { "kind": "text", "text": "Отдых" },
-              { "kind": "dice", "formula": "floor(hp_max/2) + ceil(level/3)" }
-            ]
-          ]
-        },
-        {
-          "title": "Атаки",
-          "width": "full",
-          "columns": 4,
-          "repeat": true,
-          "rows": [
-            [
-              { "kind": "field", "type": "text", "id": "attack" },
-              { "kind": "field", "type": "number", "id": "bonus" },
-              { "kind": "text", "text": "Бросок" },
-              { "kind": "dice", "formula": "1d20 + bonus" }
-            ],
-            [
-              { "kind": "text", "text": "Урон" },
-              {
-                "kind": "field",
-                "type": "dice-choice",
-                "id": "damage_die",
-                "options": ["d4", "d6", "d8", "d10", "d12"]
-              },
-              { "kind": "dice", "formula": "1d(damage_die) + bonus" }
-            ]
-          ]
-        },
-        {
-          "title": "Снаряжение",
-          "width": "1/3",
-          "repeat": true,
-          "rows": [
-            [
-              { "kind": "field", "type": "text", "id": "item" },
-              { "kind": "field", "type": "check", "id": "equipped" }
-            ]
-          ]
-        },
-        {
-          "title": "Заметки",
-          "rows": [[{ "kind": "field", "type": "text", "id": "notes" }]]
         }
       ]
     },
@@ -123,23 +239,48 @@
       "kind": "single",
       "title": "NPC",
       "visibility": "gm",
-      "sections": [
+      "tabs": [
         {
-          "title": "Противники",
-          "columns": 3,
-          "repeat": true,
-          "tokens": true,
-          "rows": [
-            [
-              { "kind": "field", "type": "text", "id": "npc_name" },
-              { "kind": "text", "text": "Хиты" },
-              { "kind": "field", "type": "number", "id": "hp" }
-            ],
-            [
-              { "kind": "text", "text": "Сила" },
-              { "kind": "field", "type": "number", "id": "str" },
-              { "kind": "dice", "formula": "1d20 <= str" }
-            ]
+          "sections": [
+            {
+              "title": "Противники",
+              "columns": 3,
+              "repeat": true,
+              "tokens": true,
+              "rows": [
+                [
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "npc_name"
+                  },
+                  {
+                    "kind": "text",
+                    "text": "Хиты"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "hp"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "text": "Сила"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "str"
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "1d20 <= str"
+                  }
+                ]
+              ]
+            }
           ]
         }
       ]
@@ -150,24 +291,43 @@
       "title": "Инвентарь",
       "players": "edit",
       "tokens": true,
-      "sections": [
+      "tabs": [
         {
-          "title": "Общие вещи",
-          "repeat": true,
-          "rows": [
-            [
-              { "kind": "field", "type": "text", "id": "item" },
-              { "kind": "field", "type": "number", "id": "count" }
-            ]
-          ]
-        },
-        {
-          "title": "Деньги",
-          "rows": [
-            [
-              { "kind": "text", "text": "Золото" },
-              { "kind": "field", "type": "number", "id": "gold" }
-            ]
+          "sections": [
+            {
+              "title": "Общие вещи",
+              "repeat": true,
+              "rows": [
+                [
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "item"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "count"
+                  }
+                ]
+              ]
+            },
+            {
+              "title": "Деньги",
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Золото"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "gold"
+                  }
+                ]
+              ]
+            }
           ]
         }
       ]

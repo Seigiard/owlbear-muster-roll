@@ -60,19 +60,19 @@ const NPC = {
   id: 'npc',
   kind: 'single',
   title: 'NPC',
-  sections: [{ rows: [labelled('Хиты', number('hp'))] }],
+  tabs: [{ sections: [{ rows: [labelled('Хиты', number('hp'))] }] }],
 };
 
 function presetText(rows: JsonValue[][], more: readonly JsonValue[] = []): string {
   return JSON.stringify({
-    v: 2,
+    v: 3,
     templates: [
       {
         id: 'pc',
         kind: 'set',
         title: 'Персонажи',
         nameField: 'name',
-        sections: [NAME, { title: 'Основное', rows }, ATTACKS],
+        tabs: [{ sections: [NAME, { title: 'Основное', rows }, ATTACKS] }],
       },
       NPC,
       ...more,
@@ -86,7 +86,7 @@ const CREW = {
   kind: 'set',
   title: 'Экипаж',
   nameField: 'name',
-  sections: [NAME],
+  tabs: [{ sections: [NAME] }],
 };
 
 const BEFORE = presetText([
@@ -163,7 +163,7 @@ function lootPreset(sectionTokens: boolean): string {
         kind: 'single',
         title: 'Добыча',
         tokens: true,
-        sections: [sectionTokens ? { ...LOOT_ITEMS, tokens: true } : LOOT_ITEMS],
+        tabs: [{ sections: [sectionTokens ? { ...LOOT_ITEMS, tokens: true } : LOOT_ITEMS] }],
       },
     ],
   );

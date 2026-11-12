@@ -3,18 +3,28 @@ import { describe, expect, test } from 'bun:test';
 import { parsePresetFile, PRESET_FILE_BYTE_LIMIT, type Preset } from '@/core/preset';
 import { copy } from '@/ui/copy';
 
-import { EMPTY_DOCUMENT, fromPreset, PRESET_UID, uidAt, WINDOW_UID } from './document';
+import {
+  addTab,
+  EMPTY_DOCUMENT,
+  fromPreset,
+  PRESET_UID,
+  removeItem,
+  uidAt,
+  WINDOW_UID,
+  type BuilderDocument,
+  type DocumentEdit,
+} from './document';
 import { builderProblems, downloadText, problemReason } from './problems';
 
 const VALID: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Экипаж',
       nameField: 'name',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
   ],
 };
@@ -39,18 +49,22 @@ describe('builderProblems', () => {
           kind: 'set',
           title: 'Экипаж',
           nameField: 'name',
-          sections: [
+          tabs: [
             {
-              columns: 1,
-              rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'name' },
-                  { kind: 'field', type: 'number', id: 'name' },
-                ],
-                [{ kind: 'dice', formula: '1d20+' }],
+              sections: [
+                {
+                  columns: 1,
+                  rows: [
+                    [
+                      { kind: 'field', type: 'text', id: 'name' },
+                      { kind: 'field', type: 'number', id: 'name' },
+                    ],
+                    [{ kind: 'dice', formula: '1d20+' }],
+                  ],
+                },
+                { repeat: true, rows: [] },
               ],
             },
-            { repeat: true, rows: [] },
           ],
         },
       ],
@@ -64,10 +78,10 @@ describe('builderProblems', () => {
 
     expect(problems).toEqual([
       { uid: WINDOW_UID, failure: { code: 'bad-window' } },
-      { uid: at(0, 0, 0), failure: { code: 'row-too-wide' } },
-      { uid: at(0, 0, 0, 1), failure: { code: 'duplicate-id', detail: 'name' } },
-      { uid: at(0, 0, 1, 0), failure: { code: 'bad-formula', detail: '1d20+' } },
-      { uid: at(0, 1), failure: { code: 'bad-repeat' } },
+      { uid: at(0, 0, 0, 0), failure: { code: 'row-too-wide' } },
+      { uid: at(0, 0, 0, 0, 1), failure: { code: 'duplicate-id', detail: 'name' } },
+      { uid: at(0, 0, 0, 1, 0), failure: { code: 'bad-formula', detail: '1d20+' } },
+      { uid: at(0, 0, 1), failure: { code: 'bad-repeat' } },
     ]);
     expect(downloadText(document)).toBeNull();
   });
@@ -81,7 +95,7 @@ describe('builderProblems', () => {
           kind: 'set',
           title: 'Экипаж',
           nameField: 'nope',
-          sections: [{ rows: [[{ kind: 'dice', formula: '(' }]] }],
+          tabs: [{ sections: [{ rows: [[{ kind: 'dice', formula: '(' }]] }] }],
         },
       ],
     });
@@ -92,7 +106,7 @@ describe('builderProblems', () => {
     // #then
     expect(problems.map((problem) => problem.uid)).toEqual([
       uidAt(document, [0]) ?? '',
-      uidAt(document, [0, 0, 0, 0]) ?? '',
+      uidAt(document, [0, 0, 0, 0, 0]) ?? '',
     ]);
   });
   test('a preset the checks pass but the upload refuses has its problem at the preset', () => {
@@ -103,7 +117,7 @@ describe('builderProblems', () => {
           id: 'pc',
           kind: 'single',
           title: 'x'.repeat(PRESET_FILE_BYTE_LIMIT),
-          sections: [{ rows: [] }],
+          tabs: [{ sections: [{ rows: [] }] }],
         },
       ],
     });
@@ -116,6 +130,57 @@ describe('builderProblems', () => {
     expect(downloadText(document)).toBeNull();
   });
 });
+
+describe('builderProblems with tabs', () => {
+  test('marks each untitled tab of a template with two tabs at the tab', () => {
+    // #given
+    const document = fromPreset(VALID);
+    const added = edited(addTab(document, uidOf(document, [0])));
+
+    // #when
+    const problems = builderProblems(added.document);
+
+    // #then
+    expect(problems).toEqual([
+      { uid: uidOf(document, [0, 0]), failure: { code: 'untitled-tab', detail: 'pc' } },
+      { uid: added.changed, failure: { code: 'untitled-tab', detail: 'pc' } },
+    ]);
+  });
+
+  test('marks a template with no tabs at the template, and gives no download', () => {
+    // #given
+    const document = fromPreset(VALID);
+    const removed = edited(removeItem(document, uidOf(document, [0, 0])));
+
+    // #when
+    const problems = builderProblems(removed.document);
+
+    // #then
+    expect(problems).toContainEqual({
+      uid: uidOf(document, [0]),
+      failure: { code: 'invalid-structure' },
+    });
+    expect(downloadText(removed.document)).toBeNull();
+  });
+});
+
+function uidOf(document: BuilderDocument, path: number[]): string {
+  const found = uidAt(document, path);
+
+  if (found === null) {
+    throw new Error(`No item at ${path.join('.')}`);
+  }
+
+  return found;
+}
+
+function edited(edit: DocumentEdit | null): DocumentEdit {
+  if (edit === null) {
+    throw new Error('The edit changed nothing');
+  }
+
+  return edit;
+}
 
 describe('downloadText', () => {
   test('is the file the upload accepts', () => {

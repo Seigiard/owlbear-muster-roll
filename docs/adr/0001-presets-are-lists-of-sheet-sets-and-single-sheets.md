@@ -17,4 +17,5 @@ A preset used to hold exactly two templates, character and NPC, and the code tre
 - An NPC is a repeat block, so a repeat section may hold several rows, and a token can link to one repeat block.
 - Duplicating a whole sheet is gone. Duplicate copies a repeat block.
 - The format moves to version 2 with no migration. Version 1 presets, snapshots and room copies are refused, and GMs start over with the «Очистить всё» action. This was accepted because only the owner's test rooms held version 1 data. A rollback cannot cross this version.
+- Version 3 (TASK-58) puts the sections of each template into a required list of tabs, again with no migration. Version 1 and 2 presets, snapshots and room copies are refused the same way, and stored keys move from `mr2` to `mr3`. A rollback cannot cross this version either.
 - Per-player write access and owners stay on sheets of a sheet set. A single sheet is player-editable or read-only for players.

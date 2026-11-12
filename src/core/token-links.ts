@@ -8,7 +8,13 @@ import {
   type LinkTarget,
   type LiveLinkTarget,
 } from '@/core/link-target';
-import { repeatSectionId, type Preset, type PresetSection, type Template } from '@/core/preset';
+import {
+  layoutSections,
+  repeatSectionId,
+  type Preset,
+  type PresetSection,
+  type Template,
+} from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { repeatBlocks } from '@/core/sheet-values';
 import { repeatBlockName, sheetName, templateSheetIds } from '@/core/sheets';
@@ -182,7 +188,7 @@ export function pickerGroups(
       });
     }
 
-    for (const section of template.sections) {
+    for (const section of layoutSections(template)) {
       const sectionId = repeatSectionId(section);
 
       if (sectionId === null || section.tokens !== true) {

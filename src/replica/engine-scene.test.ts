@@ -34,7 +34,7 @@ const MENU_COPY = {
 
 // "pc" links whole sheets, and "npc" links its repeat blocks.
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
@@ -42,15 +42,19 @@ const PRESET: Preset = {
       title: 'Персонажи',
       nameField: 'name',
       tokens: true,
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
     {
       id: 'npc',
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
-        { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'mob' }]] },
+      tabs: [
+        {
+          sections: [
+            { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'mob' }]] },
+          ],
+        },
       ],
     },
   ],
@@ -576,7 +580,7 @@ function post(room: Room, from: string, data: JsonValue): void {
 }
 
 function commit(records: VersionedRecord[]): JsonValue {
-  return { v: 2, g: INITIAL, t: 'commit', records };
+  return { v: 3, g: INITIAL, t: 'commit', records };
 }
 
 function isLive(client: Client): boolean {

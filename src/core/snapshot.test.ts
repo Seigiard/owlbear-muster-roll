@@ -29,7 +29,7 @@ const ACL: VersionedRecord = { k: 'acl:b:p1', d: { name: 'Лиза' }, c: 1, a: 
 const TOMBSTONE: VersionedRecord = { k: 'link:t1', d: null, c: 3, a: 'y' };
 
 // Written by hand, as the spec describes the stored value, with no code under test.
-function storedValue(content: JsonValue, v: JsonValue = 2): JsonObject {
+function storedValue(content: JsonValue, v: JsonValue = 3): JsonObject {
   const deflated = deflateSync(strToU8(JSON.stringify(content)));
 
   return { v, data: Buffer.from(deflated).toString('base64') };
@@ -51,7 +51,7 @@ describe('encodeSnapshot', () => {
       v: encoded.ok ? encoded.value.v : null,
       data: encoded.ok ? decodedData(encoded.value) : null,
     }).toEqual({
-      v: 2,
+      v: 3,
       data: { g: { n: 2, a: 'gm' }, records: [ACL, TOMBSTONE, ROW, SHEET] },
     });
   });
@@ -95,7 +95,7 @@ describe('readSnapshot', () => {
 
   test('refuses a higher v without decoding its data', () => {
     // #given
-    const metadata = { [KEY]: { v: 3, data: 'not base64 and not deflate!' } };
+    const metadata = { [KEY]: { v: 4, data: 'not base64 and not deflate!' } };
 
     // #when
     const read = readSnapshot(metadata);
@@ -104,9 +104,9 @@ describe('readSnapshot', () => {
     expect(read).toEqual({ ok: false, error: 'newer-version' });
   });
 
-  test('refuses a copy of the older format 1 without decoding its data', () => {
+  test.each([1, 2])('refuses a copy of the older format %i without decoding its data', (format) => {
     // #given
-    const metadata = { [KEY]: { v: 1, data: 'not base64 and not deflate!' } };
+    const metadata = { [KEY]: { v: format, data: 'not base64 and not deflate!' } };
 
     // #when
     const read = readSnapshot(metadata);
@@ -115,23 +115,26 @@ describe('readSnapshot', () => {
     expect(read).toEqual({ ok: false, error: 'older-version' });
   });
 
-  test('refuses a well-formed copy of the older format 1 as older, not as valid', () => {
-    // #given
-    const metadata = { [KEY]: storedValue({ g: INITIAL, records: [] }, 1) };
+  test.each([1, 2])(
+    'refuses a well-formed copy of the older format %i as older, not as valid',
+    (format) => {
+      // #given
+      const metadata = { [KEY]: storedValue({ g: INITIAL, records: [] }, format) };
 
-    // #when
-    const read = readSnapshot(metadata);
+      // #when
+      const read = readSnapshot(metadata);
 
-    // #then
-    expect(read).toEqual({ ok: false, error: 'older-version' });
-  });
+      // #then
+      expect(read).toEqual({ ok: false, error: 'older-version' });
+    },
+  );
 
   test.each<[string, JsonValue]>([
     ['a lower v', storedValue({ g: INITIAL, records: [] }, 0)],
     ['no v', { data: storedValue({ g: INITIAL, records: [] }).data ?? '' }],
     ['a string', 'snapshot'],
-    ['data that is not base64', { v: 2, data: '%%%' }],
-    ['data that is not deflate', { v: 2, data: Buffer.from('plain text').toString('base64') }],
+    ['data that is not base64', { v: 3, data: '%%%' }],
+    ['data that is not deflate', { v: 3, data: Buffer.from('plain text').toString('base64') }],
     ['JSON that is not a snapshot', storedValue({ g: INITIAL })],
     [
       'an invalid record',
@@ -151,7 +154,7 @@ describe('readSnapshot', () => {
     const bomb = Buffer.from(deflateSync(new Uint8Array(1_000_000))).toString('base64');
 
     // #when
-    const read = readSnapshot({ [KEY]: { v: 2, data: bomb } });
+    const read = readSnapshot({ [KEY]: { v: 3, data: bomb } });
 
     // #then
     expect(read).toEqual({ ok: false, error: 'invalid-snapshot' });
@@ -161,12 +164,12 @@ describe('readSnapshot', () => {
 describe('roomMetadataBytes', () => {
   test('counts all metadata as UTF-8 JSON with the copy key replaced', () => {
     // #given
-    // {"other":"я","app.muster-roll/snapshot":{"v":2,"data":"AA"}} is 60 characters, and "я" takes
+    // {"other":"я","app.muster-roll/snapshot":{"v":3,"data":"AA"}} is 60 characters, and "я" takes
     // two bytes in UTF-8.
-    const metadata = { other: 'я', [KEY]: { v: 2, data: 'old copy, much longer' } };
+    const metadata = { other: 'я', [KEY]: { v: 3, data: 'old copy, much longer' } };
 
     // #when
-    const bytes = roomMetadataBytes(metadata, { v: 2, data: 'AA' });
+    const bytes = roomMetadataBytes(metadata, { v: 3, data: 'AA' });
 
     // #then
     expect(bytes).toBe(61);
@@ -174,7 +177,7 @@ describe('roomMetadataBytes', () => {
 
   test('counts the metadata with the copy key taken out for an undefined value', () => {
     // #given
-    const metadata = { other: 'я', [KEY]: { v: 2, data: 'AA' } };
+    const metadata = { other: 'я', [KEY]: { v: 3, data: 'AA' } };
 
     // #when
     const bytes = roomMetadataBytes(metadata, undefined);
@@ -188,7 +191,7 @@ describe('roomCopyUsage', () => {
   test('gives the copy key its own bytes and leaves the limit less all metadata free', () => {
     // #given
     // 61 bytes in all, 14 of them without the copy.
-    const metadata = { other: 'я', [KEY]: { v: 2, data: 'AA' } };
+    const metadata = { other: 'я', [KEY]: { v: 3, data: 'AA' } };
 
     // #when
     const usage = roomCopyUsage(metadata);

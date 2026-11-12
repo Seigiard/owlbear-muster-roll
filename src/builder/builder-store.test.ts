@@ -86,9 +86,9 @@ type EditCase = [
 // One case per edit kind, each on the d20 preset.
 const EDITS: EditCase[] = [
   ['an added template', () => (document) => addTemplate(document, 'set')],
-  ['an added section', (store) => (document) => addSection(document, uid(store, 0))],
-  ['an added row', (store) => (document) => addRow(document, uid(store, 0, 0))],
-  ['an added field', (store) => (document) => addCell(document, uid(store, 0, 0, 0), 'field')],
+  ['an added section', (store) => (document) => addSection(document, uid(store, 0, 0))],
+  ['an added row', (store) => (document) => addRow(document, uid(store, 0, 0, 0))],
+  ['an added field', (store) => (document) => addCell(document, uid(store, 0, 0, 0, 0), 'field')],
   [
     'a template form change',
     (store) => (document) =>
@@ -97,23 +97,23 @@ const EDITS: EditCase[] = [
   [
     'a section form change',
     (store) => (document) =>
-      updateSection(document, uid(store, 0, 0), (section) => withRepeat(section, true)),
+      updateSection(document, uid(store, 0, 0, 0), (section) => withRepeat(section, true)),
   ],
   [
     'a cell form change',
     (store) => (document) =>
-      updateCell(document, uid(store, 0, 0, 0, 1), (cell) =>
+      updateCell(document, uid(store, 0, 0, 0, 0, 1), (cell) =>
         cell.kind === 'field' ? { ...cell, type: 'number' } : cell,
       ),
   ],
   ['a window change', () => (document) => setWindow(document, { width: 800, height: 700 })],
-  ['a removal', (store) => (document) => removeItem(document, uid(store, 0, 1))],
+  ['a removal', (store) => (document) => removeItem(document, uid(store, 0, 0, 1))],
   [
     'a move',
     (store) => (document) =>
       moveItem(document, uid(store, 1), { place: 'before', sibling: uid(store, 0) }),
   ],
-  ['a rename', (store) => (document) => renameField(document, uid(store, 0, 0, 0, 1), 'imya')],
+  ['a rename', (store) => (document) => renameField(document, uid(store, 0, 0, 0, 0, 1), 'imya')],
 ];
 
 describe('undo and redo', () => {
@@ -221,7 +221,7 @@ describe('undo and redo', () => {
 
     store.open(D20, null, 'd20');
 
-    const row = uid(store, 0, 0, 0);
+    const row = uid(store, 0, 0, 0, 0);
 
     store.edit((document) => addCell(document, row, 'dice'));
     store.select(WINDOW_UID);
@@ -237,7 +237,7 @@ describe('undo and redo', () => {
 
     // #then
     expect(store.$state.get().selection).toBe(
-      uid(store, 0, 0, 0, D20.templates[0]?.sections[0]?.rows[0]?.length ?? 0),
+      uid(store, 0, 0, 0, 0, D20.templates[0]?.tabs[0]?.sections[0]?.rows[0]?.length ?? 0),
     );
   });
 });
@@ -268,14 +268,14 @@ describe('the draft', () => {
 
     storage.setItem(
       DRAFT_STORAGE_KEY,
-      JSON.stringify({ preset: { v: 2, templates: [{ id: 'x' }] }, origin: null, name: 'x' }),
+      JSON.stringify({ preset: { v: 3, templates: [{ id: 'x' }] }, origin: null, name: 'x' }),
     );
 
     // #when
     const store = createBuilderStore(storage);
 
     // #then
-    expect(presetOf(store)).toEqual({ v: 2, templates: [] });
+    expect(presetOf(store)).toEqual({ v: 3, templates: [] });
     expect(store.$state.get().selection).toBe(WINDOW_UID);
   });
 
@@ -305,6 +305,6 @@ describe('the draft', () => {
 
     // #then
     expect(store.$state.get().draft).toBe('failed');
-    expect(presetOf(store)).toEqual({ v: 2, templates: [] });
+    expect(presetOf(store)).toEqual({ v: 3, templates: [] });
   });
 });

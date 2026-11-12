@@ -41,27 +41,31 @@ const D6_POOL_PRESET = fixture('d6-pool');
 // A sheet set whose repeat section "Атаки" is linkable, so a player with write access can remove a
 // repeat block that tokens link to.
 const LINKABLE_ATTACKS_PRESET = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+              ],
+            },
+            {
+              title: 'Атаки',
+              repeat: true,
+              tokens: true,
+              rows: [[{ kind: 'field', type: 'text', id: 'attack' }]],
+            },
           ],
-        },
-        {
-          title: 'Атаки',
-          repeat: true,
-          tokens: true,
-          rows: [[{ kind: 'field', type: 'text', id: 'attack' }]],
         },
       ],
     },

@@ -53,43 +53,47 @@ const PLAYER: ClientParams = {
 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-          ],
-        },
-        {
-          title: 'Основное',
-          rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'text', text: 'Ловкость' },
-              { kind: 'field', type: 'number', id: 'dex' },
-            ],
-          ],
-        },
-        {
-          title: 'Атаки',
-          repeat: true,
-          rows: [
-            [
-              { kind: 'text', text: 'Атака' },
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'text', text: 'Маг' },
-              { kind: 'field', type: 'check', id: 'magic' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+              ],
+            },
+            {
+              title: 'Основное',
+              rows: [
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'text', text: 'Ловкость' },
+                  { kind: 'field', type: 'number', id: 'dex' },
+                ],
+              ],
+            },
+            {
+              title: 'Атаки',
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'text', text: 'Атака' },
+                  { kind: 'field', type: 'text', id: 'attack' },
+                  { kind: 'text', text: 'Маг' },
+                  { kind: 'field', type: 'check', id: 'magic' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -99,20 +103,24 @@ const PRESET_TEXT = JSON.stringify({
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
     },
     {
       id: 'loot',
       kind: 'single',
       title: 'Добыча',
       players: 'edit',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Золото' },
-              { kind: 'field', type: 'number', id: 'gold' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Золото' },
+                  { kind: 'field', type: 'number', id: 'gold' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -391,7 +399,7 @@ test('a revoke while an edit waits makes the sheet read-only at once, returns th
 
   // #when
   await postRemote(gm.window, gm.connectionId, {
-    v: 2,
+    v: 3,
     g: GENERATION,
     t: 'commit',
     records: [{ k: 'acl:brok:lisa', d: null, c: 2, a: gm.connectionId }],
@@ -517,7 +525,7 @@ async function commitProposal(gm: RoomClient, prefix: string): Promise<void> {
   const proposal = await newestProposal(gm.window, prefix);
 
   await postRemote(gm.window, gm.connectionId, {
-    v: 2,
+    v: 3,
     g: GENERATION,
     t: 'commit',
     records: [proposal],
@@ -529,7 +537,7 @@ async function rejectProposal(gm: RoomClient, prefix: string): Promise<void> {
   const proposal = await newestProposal(gm.window, prefix);
 
   await postRemote(gm.window, gm.connectionId, {
-    v: 2,
+    v: 3,
     g: GENERATION,
     t: 'reject',
     k: proposal.k,

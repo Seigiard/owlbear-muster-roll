@@ -15,30 +15,34 @@ const PLAYER = 'player-a';
 const CONNECTION = 'player-connection';
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Characters',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'text', id: 'note' },
-            ],
-          ],
-        },
-        {
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'item' },
-              { kind: 'field', type: 'number', id: 'qty' },
-            ],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'text', id: 'note' },
+                ],
+              ],
+            },
+            {
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'item' },
+                  { kind: 'field', type: 'number', id: 'qty' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -48,13 +52,13 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'Camp',
       players: 'edit',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'food' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'food' }]] }] }],
     },
     {
       id: 'rules',
       kind: 'single',
       title: 'Rules',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'rule' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'rule' }]] }] }],
     },
   ],
 };
@@ -86,7 +90,7 @@ const HIDDEN_PRESET: Preset = {
       title: 'Hidden',
       visibility: 'gm',
       players: 'edit',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] }],
     },
   ],
 };
@@ -707,11 +711,15 @@ describe('pending edits', () => {
       templates: [
         {
           ...PRESET.templates[0]!,
-          sections: [
+          tabs: [
             {
-              rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [{ kind: 'field', type: 'number', id: 'str' }],
+              sections: [
+                {
+                  rows: [
+                    [{ kind: 'field', type: 'text', id: 'name' }],
+                    [{ kind: 'field', type: 'number', id: 'str' }],
+                  ],
+                },
               ],
             },
           ],
@@ -744,7 +752,7 @@ describe('pending edits', () => {
       templates: [
         {
           ...PRESET.templates[0]!,
-          sections: [PRESET.templates[0]!.sections[0]!],
+          tabs: [{ sections: [PRESET.templates[0]!.tabs[0]!.sections[0]!] }],
         },
         ...PRESET.templates.slice(1),
       ],
@@ -1040,14 +1048,18 @@ function noNotePreset(): Preset {
     templates: [
       {
         ...PRESET.templates[0]!,
-        sections: [
+        tabs: [
           {
-            rows: [
-              [{ kind: 'field', type: 'text', id: 'name' }],
-              [{ kind: 'field', type: 'number', id: 'str' }],
+            sections: [
+              {
+                rows: [
+                  [{ kind: 'field', type: 'text', id: 'name' }],
+                  [{ kind: 'field', type: 'number', id: 'str' }],
+                ],
+              },
+              PRESET.templates[0]!.tabs[0]!.sections[1]!,
             ],
           },
-          PRESET.templates[0]!.sections[1]!,
         ],
       },
       ...PRESET.templates.slice(1),
@@ -1061,23 +1073,27 @@ function movedPreset(): Preset {
     templates: [
       {
         ...PRESET.templates[0]!,
-        sections: [
+        tabs: [
           {
-            rows: [
-              [{ kind: 'field', type: 'text', id: 'name' }],
-              [
-                { kind: 'field', type: 'text', id: 'note' },
-                { kind: 'field', type: 'number', id: 'str' },
-              ],
-            ],
-          },
-          {
-            repeat: true,
-            rows: [
-              [
-                { kind: 'field', type: 'text', id: 'label' },
-                { kind: 'field', type: 'number', id: 'qty' },
-              ],
+            sections: [
+              {
+                rows: [
+                  [{ kind: 'field', type: 'text', id: 'name' }],
+                  [
+                    { kind: 'field', type: 'text', id: 'note' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                ],
+              },
+              {
+                repeat: true,
+                rows: [
+                  [
+                    { kind: 'field', type: 'text', id: 'label' },
+                    { kind: 'field', type: 'number', id: 'qty' },
+                  ],
+                ],
+              },
             ],
           },
         ],
@@ -1112,7 +1128,7 @@ function reject(
   current?: VersionedRecord,
 ): RejectMessage {
   const message = {
-    v: 2,
+    v: 3,
     g: { n: 0, a: '' },
     t: 'reject',
     ...edit,
