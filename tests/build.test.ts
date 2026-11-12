@@ -19,7 +19,7 @@ const HASHED_ASSET = /^.+-[A-Za-z0-9_-]{8}\.(?:js|css)$/;
 // Every hex of the live Owlbear themes and of the DESIGN.md theme-mapped tokens, with the short
 // forms a minifier can write. White is left out: Tailwind's own ring offset ships it.
 const MAPPED_HEX =
-  /#(?:222639|1e2231|383c4d|222638|4e5161|91939c|bb99ff|b9f|ffffffb3|000000de|f1f3f9|dde1ee|9966ff|96f)(?![0-9a-f])/gi;
+  /#(?:222639|1e2231|383c4d|222638|4e5161|91939c|bb99ff|b9f|ffffffb3|000000de|00000099|0009|f1f3f9|dde1ee|9966ff|96f)(?![0-9a-f])/gi;
 
 const FIXED_HEX = [
   '#4a3a1e',

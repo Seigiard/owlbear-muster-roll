@@ -38,7 +38,8 @@ export function themeTokens(theme: Theme): ThemeTokens {
 }
 
 // Owlbear's light primary is too pale for text: 3.3:1 on the paper and 3.7:1 under its contrast
-// text. Mixing in the text colour darkens it past 4.5:1 on every surface it sits on.
+// text. Mixing in the text colour darkens it past 4.5:1 on every surface it sits on. That text
+// colour is 87% opaque, so the mix is about 95% opaque and the surface under it shows a little.
 function accentColor(theme: Theme): string {
   if (theme.mode === 'DARK') {
     return theme.primary.main;

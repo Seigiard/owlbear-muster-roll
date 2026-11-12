@@ -53,7 +53,10 @@ const TEXT_PAIRS: ReadonlyArray<readonly [string, readonly string[]]> = [
     '--color-text',
     ['--color-surface', '--color-surface-bar', '--color-surface-tab', '--color-surface-stripe'],
   ],
-  ['--color-text-muted', ['--color-surface', '--color-surface-bar', '--color-surface-stripe']],
+  [
+    '--color-text-muted',
+    ['--color-surface', '--color-surface-bar', '--color-surface-tab', '--color-surface-stripe'],
+  ],
   [
     '--color-accent',
     ['--color-surface', '--color-surface-bar', '--color-surface-tab', '--color-surface-stripe'],
@@ -61,7 +64,12 @@ const TEXT_PAIRS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['--color-accent-contrast', ['--color-accent']],
 ];
 
-const FOCUS_SURFACES = ['--color-surface', '--color-surface-bar', '--color-surface-tab'];
+const FOCUS_SURFACES = [
+  '--color-surface',
+  '--color-surface-bar',
+  '--color-surface-tab',
+  '--color-surface-stripe',
+];
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
