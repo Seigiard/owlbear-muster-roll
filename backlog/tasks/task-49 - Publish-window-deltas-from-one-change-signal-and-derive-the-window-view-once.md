@@ -1,9 +1,11 @@
 ---
 id: TASK-49
 title: Publish window deltas from one change signal and derive the window view once
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T02:11:00Z'
+updated_date: '2026-11-12T18:30:00Z'
 labels: []
 dependencies: []
 references:
