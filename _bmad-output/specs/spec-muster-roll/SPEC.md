@@ -12,6 +12,7 @@ companions:
 sources:
   - ../../forge/muster-roll/forged-idea.md
   - ../../forge/preset-builder/forged-idea.md
+  - ../../forge/sidebar-tabs-layout/forged-idea.md
 ---
 
 > **Canonical contract.** This SPEC and the files in `companions:` are the complete, preservation-validated contract for what to build, test, and validate. Source documents listed in frontmatter are for traceability — consult them only if you need narrative rationale or prose color this contract intentionally omits.
@@ -20,7 +21,7 @@ sources:
 
 ## Why
 
-Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep the whole party, the NPCs and shared records such as an inventory in one room, for any game system. The simple sheet extension, dummy-sheet, stores each sheet in the player's browser. It has no room storage, no presets and no GM-owned sheets. Muster Roll gives one room GM-owned sheets that a preset defines. A preset is a list of templates: a sheet set gives any number of sheets, such as the party, and a single sheet exists once, such as NPCs, a shared inventory or a story log (`preset-format.md`, `docs/adr/0001-presets-are-lists-of-sheet-sets-and-single-sheets.md`). Version 1 is a POC without a server. It must prove that this model holds for a real session. During play, the GM and players open sheets to see current stats and inventory, and dice cells spare players from memorising the rules. Today a GM describes a sheet only by writing preset JSON, and nobody wants to. v2 adds a preset builder, so a GM builds a preset without JSON (`preset-builder.md`).
+Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep the whole party, the NPCs and shared records such as an inventory in one room, for any game system. The simple sheet extension, dummy-sheet, stores each sheet in the player's browser. It has no room storage, no presets and no GM-owned sheets. Muster Roll gives one room GM-owned sheets that a preset defines. A preset is a list of templates: a sheet set gives any number of sheets, such as the party, and a single sheet exists once, such as NPCs, a shared inventory or a story log (`preset-format.md`, `docs/adr/0001-presets-are-lists-of-sheet-sets-and-single-sheets.md`). Version 1 is a POC without a server. It must prove that this model holds for a real session. During play, the GM and players open sheets to see current stats and inventory, and dice cells spare players from memorising the rules. Today a GM describes a sheet only by writing preset JSON, and nobody wants to. v2 adds a preset builder, so a GM builds a preset without JSON (`preset-builder.md`). Format version 3 changes the window: a sidebar lists the sheets, and a sheet splits its sections into tabs, so a long sheet and a GM-only part of a visible sheet fit one window.
 
 ## Capabilities
 
@@ -28,8 +29,8 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **intent:** The GM can edit every sheet and the preset.
   - **success:** A GM change to any value on any sheet stays after a reload.
 - **CAP-2**
-  - **intent:** Players see the sheets of every visible sheet set and single sheet and no sheet of a hidden one.
-  - **success:** A player client shows every sheet of a visible sheet set or single sheet and shows no sheet of a hidden one.
+  - **intent:** Players see the sheets of every visible sheet set and single sheet, and no sheet of a hidden one and no hidden tab.
+  - **success:** A player client shows every sheet of a visible sheet set or single sheet, shows no sheet of a hidden one, and shows no hidden tab of a visible sheet.
 - **CAP-3**
   - **intent:** The GM can turn write access on or off per player and per sheet of a sheet set. Players edit a single sheet only when it is player-editable.
   - **success:** With access on, the player's edit reaches all clients. Sheets without access stay read-only for that player. With access off, the edit does not apply. A player's edit of a player-editable single sheet reaches all clients, and an edit of any other single sheet does not apply.
@@ -41,7 +42,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **success:** Rows in a `columns` section align in one grid. All rows of a repeat section form one repeat block, and each sheet has its own number of repeat blocks. Ids resolve inside the repeat block first, then in the sheet.
 - **CAP-6**
   - **intent:** Anyone who can see a sheet can roll its dice cells. Everyone who can see the sheet sees the result.
-  - **success:** `1d20 <= str - 2*str_tired` with filled fields rolls once, and all connected clients show the same result with the roller's name. A roll from a hidden sheet shows only on GM clients.
+  - **success:** `1d20 <= str - 2*str_tired` with filled fields rolls once, and all connected clients show the same result with the roller's name. A roll from a hidden sheet or a hidden tab shows only on GM clients.
 - **CAP-7**
   - **intent:** A formula with bad input refuses to roll.
   - **success:** A formula with an empty, non-numeric or removed field shows an error. No roll and no broadcast occur.
@@ -65,13 +66,13 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **success:** The file holds values and token links. Import replaces all room data after confirmation. Values of field ids not in the current preset are dropped, and so are sheets of a sheet set or single sheet the preset lacks. The GM sees both counts. Import restores a token link where the token exists. Import resets player links and write rights to read.
 - **CAP-14**
   - **intent:** A user can open a linked sheet from its token.
-  - **success:** The sheet opens for those who can already see it. A link to a repeat block opens the sheet scrolled to that repeat block. A hidden sheet opens only for the GM.
+  - **success:** The sheet opens for those who can already see it. A link to a repeat block opens the sheet on the tab that holds it, scrolled to that repeat block. A hidden sheet, or a repeat block on a hidden tab, opens only for the GM.
 - **CAP-15**
   - **intent:** A player's edit waits for a GM client, and the player sees when none responds.
   - **success:** With no GM client responding, the player sees a "no connection to GM" status and the edit does not apply. When a GM client responds, the edit is sent again, confirmed and applied.
 - **CAP-17**
-  - **intent:** The GM can create and delete sheets of each sheet set, and the field the preset names gives each sheet its tab name.
-  - **success:** A new sheet shows on every client that can see it. An edit of the name field by anyone with write access renames the tab on every client. After one confirmation, a deleted sheet disappears with its values, token links, owner and write rights.
+  - **intent:** The GM can create and delete sheets of each sheet set, and the field the preset names gives each sheet its name in the sidebar.
+  - **success:** A new sheet shows on every client that can see it. An edit of the name field by anyone with write access renames the sheet's sidebar entry on every client. After one confirmation, a deleted sheet disappears with its values, token links, owner and write rights.
 - **CAP-18**
   - **intent:** The GM can link a token to a sheet or to a repeat block of a linkable template or repeat section, and remove that link.
   - **success:** A linked token opens its sheet (CAP-14). A token links to one sheet or repeat block, and each of those can have many tokens. Removing a link keeps the sheet and the token. Deleting a repeat block removes its links.
@@ -89,7 +90,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **success:** A form edit redraws the preview at once, drawn by the extension's own sheet components. A click on a preview cell selects its item in the tree.
 - **CAP-23** (v2)
   - **intent:** The builder covers the whole preset format.
-  - **success:** Every sheet set and single sheet with its properties, section `title`, `width`, `columns`, `repeat` and linkable, every cell kind and `window` can each be set in the builder.
+  - **success:** Every sheet set and single sheet with its properties, tab `title` and `visibility`, section `title`, `width`, `columns`, `repeat` and linkable, every cell kind and `window` can each be set in the builder.
 - **CAP-24** (v2)
   - **intent:** Every field has an id that the GM can see and rewrite, and formulas offer the ids as completions.
   - **success:** A new field gets an id from its label that follows the id rules and is unique in its scope. A label change keeps the id. The field form shows the id, and the GM can rewrite it to `str`.
@@ -106,8 +107,8 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **intent:** The builder allows invalid states while editing and downloads only a valid preset.
   - **success:** Each error shows at its tree item and its preview cell, and a problem counter jumps to the first. Download is enabled only when `parsePresetFile` accepts the preset.
 - **CAP-29**
-  - **intent:** Each single sheet exists exactly once in the room and shows as its own tab.
-  - **success:** A preset with a single sheet gives one tab with its title on every client that can see it. No command creates or deletes it, and its values stay across reloads and across uploads that keep it.
+  - **intent:** Each single sheet exists exactly once in the room and shows as its own sidebar entry.
+  - **success:** A preset with a single sheet gives one sidebar entry with its title on every client that can see it. No command creates or deletes it, and its values stay across reloads and across uploads that keep it.
 - **CAP-30**
   - **intent:** The GM can duplicate a repeat block, so that each token has its own repeat block.
   - **success:** Nine duplicates of a repeat block whose first field is "Скелет 1" give ten repeat blocks with the same values and numbered first fields. An edit to one does not change the others. A duplicate has no token link.
@@ -116,7 +117,16 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **success:** After one confirmation, the preset, every sheet, the room copy and the GM's local copy are gone on every client. This also works in a room whose data has an older format.
 - **CAP-32**
   - **intent:** Token selection follows the token link both ways: a token selected on the map marks its sheet or repeat block in the window, and a GM selects the linked tokens of a sheet or repeat block from the window.
-  - **success:** A selected linked token marks the tab of its sheet and, for a repeat block, that repeat block, and the window does not switch tabs. Several selected tokens mark every target, and a cleared selection clears the marks. A GM selects all linked tokens of a sheet or repeat block on the open scene with one action, and the same action deselects them. Players see marks for their own selection on sheets they can see and do not select from the window.
+  - **success:** A selected linked token marks the sidebar entry of its sheet and, for a repeat block, that repeat block and the tab that holds it, and the window does not switch sheet or tab. Several selected tokens mark every target, and a cleared selection clears the marks. A GM selects all linked tokens of a sheet or repeat block on the open scene with one action, and the same action deselects them. Players see marks for their own selection on sheets they can see and do not select from the window.
+- **CAP-33** (v3)
+  - **intent:** The window navigates between sheets through a sidebar, where each sheet set is a titled group of its sheets.
+  - **success:** A preset with two sheet sets and two single sheets gives a sidebar of two groups, each a heading with the set's title, its sheets and its "+", each followed by a divider, then two plain entries, with settings at the bottom. A 480 px window shows the sheet beside the sidebar. A long sheet name is cut short and shows in full in a tooltip.
+- **CAP-34** (v3)
+  - **intent:** A template splits its sections into tabs, and a sheet shows one tab at a time (`preset-format.md`).
+  - **success:** A template with tabs «Основное» and «Снаряжение» shows a row of both, and each shows its own sections. A template with one tab shows no tab row. A formula on one tab rolls with a field from another tab.
+- **CAP-35** (v3)
+  - **intent:** A preset can hide a tab from players.
+  - **success:** On a visible sheet with a hidden tab «Заметки мастера», the GM sees the tab and a player does not. A roll from it shows only on GM clients, and players get no token menu on its linkable repeat blocks. A visible template whose every tab is hidden is accepted, and players see its sheets with no tab.
 
 ## Constraints
 
@@ -130,10 +140,14 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - A player's edit takes effect only after a GM client checks the write right.
 - A write right binds to the player id. A guest's id holds only in one browser. An account has one id across browsers.
 - A room has one preset file. It holds at least one sheet set or single sheet, and all sheets follow it.
-- No migration from format version 1. A v1 preset or snapshot file is refused with a message, and v1 room data is not read. A wipe («Очистить всё», CAP-31) clears such a room.
+- Format version 3. No migration from versions 1 and 2: such a preset or snapshot file is refused with a message, and such room data is not read. A wipe («Очистить всё», CAP-31) clears such a room.
 - The interface matches the simplicity of dummy-sheet. Muster Roll takes no code or storage from it.
 - The builder is a top-level page on the deployed site, outside the Owlbear iframe. The iframe's storage is partitioned from a top-level tab, so the extension and the builder exchange no data through storage.
 - The builder's preview uses the extension's own sheet components. No second sheet renderer exists.
+- The extension, the preview page and the builder preview draw the window, with its sidebar and tabs, through one frame component.
+- The window is at least 480 px wide, so the sidebar and a sheet fit side by side. The sidebar is always shown, about 8–9 rem wide.
+- A template's fields outside repeat sections are one id scope across all its tabs.
+- Visibility only narrows: a tab is hidden when its template or the tab is hidden.
 - The builder checks a preset with `parsePresetFile`, the upload's own check, and shows the upload's refusal messages.
 
 ## Non-goals
@@ -145,7 +159,11 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - Sections per sheet, computed display fields and per-edit approval. Every sheet of a sheet set follows one schema.
 - Per-player write access on a single sheet. The preset makes it player-editable or not (`players: edit`).
 - Duplicating a whole sheet of a sheet set. Only a repeat block is duplicated (CAP-30).
-- Migration of v1 presets, snapshots and rooms.
+- Migration of v1 and v2 presets, snapshots and rooms.
+- Hiding one sheet of a sheet set. GM-only is set in the preset, per template and per tab.
+- A preset check against a visible template whose every tab is hidden.
+- Generating the builder's forms or tree from the preset schema. Its real exceptions (values drawn from other data, edits with side effects, formula and option inputs) stay hand-written.
+- In v3: collapsing the sidebar, and a JSON Schema export of the preset format.
 - An in-extension preset editor and per-field confirmation of a preset upload. Presets are usually set before a game.
 - Past the POC: request-and-confirm write access, + and − buttons as a property of number fields, token-linked stats, guest "open this sheet".
 - In the builder: in-place editing on the sheet, a text markup in place of JSON, hidden field ids, blocking of edits that make the preset invalid, and repair of a file that fails the preset checks.
@@ -171,7 +189,11 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - Write access to a sheet includes adding and removing its repeat blocks.
 - Duplicating a repeat block is GM-only, like the retired NPC duplicate. Numbering applies to the repeat block's first field when it is a `text` field with a value.
 - An upload that makes a template or repeat section no longer linkable, or removes the sheet or repeat block, also removes its token links. Links are not counted in the confirmation.
-- A single sheet's tab name is its preset `title`.
+- A single sheet's sidebar entry is its preset `title`.
+- A player's edit of a field on a hidden tab is refused by the GM client's access check, as for a hidden template.
+- A sheet opens on its first tab the role can see. The chosen tab is local to the client and is not stored in the room.
+- A sheet set's name field may sit on any tab, a hidden one included. The sheet's name still shows in the sidebar.
+- A visible dice cell whose formula names a field on a hidden tab shows that value in the roll. Hiding is in the interface only.
 - A joining client gets current data from an online GM client, otherwise from the last room copy.
 - The interface text is Russian in v1.
 - The interface follows the live Owlbear theme, and no separate palette exists.
@@ -182,3 +204,5 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 ## Open Questions
 
 - Can the Owlbear extension iframe open a new tab? The v2 settings button (CAP-21) depends on it, and the extension opens no tab today.
+- `EXPERIENCE.md` and `DESIGN.md` describe the tab bar. They need the sidebar and tabs (bmad-ux) before CAP-33 to CAP-35 are built.
+- `ARCHITECTURE-SPINE.md` AD-18, the one visibility resolver, needs the tab level and the access rule for fields on a hidden tab (bmad-architecture).

@@ -1,25 +1,44 @@
 # Preset format
 
-A preset is a JSON file that lists the templates of one room. Each template is a sheet set or a single sheet, with its title and its sections of the shape section → rows → cells. A preset holds structure only. Values are stored apart from it, by field id. This file fixes the names it uses, with the terms of `GLOSSARY.md`. `docs/preset-format.md` holds the JSON keys. `docs/adr/0001-presets-are-lists-of-sheet-sets-and-single-sheets.md` records why.
+A preset is a JSON file that lists the templates of one room. Each template is a sheet set or a single sheet, with its title and its tabs of the shape tab → sections → rows → cells. A preset holds structure only. Values are stored apart from it, by field id. This file fixes the names it uses, with the terms of `GLOSSARY.md`. `docs/preset-format.md` holds the JSON keys. `docs/adr/0001-presets-are-lists-of-sheet-sets-and-single-sheets.md` records why.
 
 ## Templates
 
 | Term | Interface | Format `kind` | In the room |
 | --- | --- | --- | --- |
 | Sheet set | «Набор» | `set` | GMs create, and delete, any number of sheets from it, such as the party. Its name field names each sheet |
-| Single sheet | «Одиночный лист» | `single` | Exactly one sheet, such as NPCs, a shared inventory, a story log or a spell list. Its tab name is its `title`. No command creates or deletes it |
+| Single sheet | «Одиночный лист» | `single` | Exactly one sheet, such as NPCs, a shared inventory, a story log or a spell list. Its sidebar entry is its `title`. No command creates or deletes it |
 
 - Never call a sheet set "character sheets". Character and NPC are preset content, not kinds of sheet.
 - A preset has at least one template. Each template has a stable `id`, unique in the preset, and a `title`.
 - A template's identity is its `id` and `kind`. An upload that changes either removes the old template and adds a new one.
-- Tabs follow the preset order.
+- Sidebar entries follow the preset order. Each sheet set is a group: a heading with its `title`, its sheets and its "+". A single sheet is a plain entry. A player's own sheets come first in their group. A divider follows each sheet set group, and settings sit at the bottom. The sidebar entry takes over what the word "tab" meant for a sheet before version 3.
 
 | Template property | Effect |
 | --- | --- |
-| Name field (sheet set only, required) | A field of type `text` outside repeat sections of the template. Its value names each sheet on its tab, in token labels and in rolls. Anyone with write access may edit it |
+| Name field (sheet set only, required) | A field of type `text` outside repeat sections of the template. Its value names each sheet in the sidebar, in token labels and in rolls. It may sit on any tab. Anyone with write access may edit it |
 | Visibility | Players see it (default), or only GMs. A hidden template's sheets show only to GMs, their rolls show only on GM clients, and players get no token menu on them. Hiding is in the interface only |
 | Player-editable (single sheet only) | Every player may edit the single sheet, with no per-player write access. Without it, players read it only. A sheet of a sheet set takes per-player write access and an owner instead |
 | Linkable | A token can link to the whole sheet, such as a chest token that opens a shared inventory |
+
+## Tabs
+
+A tab («Вкладка» in the interface) is a titled group of sections inside a sheet. Every template has a list of at least one tab, and the sections live in the tabs. A sheet shows one tab at a time.
+
+| Tab property | Effect |
+| --- | --- |
+| `title` | The tab's name in the tab row. Required when the template has more than one tab. A template with one tab draws no tab row, and its tab may have no title |
+| `visibility` | Players see the tab (default), or only GMs. A hidden tab acts as a hidden template does: players do not see it, its rolls show only on GM clients, and players get no token menu on its linkable repeat blocks. Hiding is in the interface only |
+| `sections` | The tab's sections, in display order |
+
+- Visibility only narrows: a tab is hidden when its template or the tab is hidden.
+- A visible template whose every tab is hidden is accepted. Players see its sheets with no tab.
+- Many tabs scroll in one row.
+- A token that opens a repeat block selects the tab that holds it. A selection mark on a repeat block in another tab also marks that tab.
+- The shape of a tab is strict, as every object of the format.
+- A dice cell that players see and whose formula names a field on a hidden tab shows that value in the roll. This is accepted.
+- The preview page's frames switch tabs too.
+- Rejected: a tab as a string key on a section (a typo makes a new tab), and optional tabs beside `sections` (two shapes in every reader of the format).
 
 ## Cell kinds
 
@@ -70,7 +89,7 @@ A cell name (key `name`, «Название» in the builder) names a field or a
 | Linkable (with `repeat` only) | Each repeat block can link to its own token. The token opens the sheet scrolled to that repeat block. Deleting a repeat block removes its links. The offered token label is the repeat block's first field |
 | `width` | `1/3`, `1/2` or `full` (default). Sections flow side by side and wrap as whole sections |
 
-- Ids resolve inside the repeat block first, then in the sheet.
+- Ids resolve inside the repeat block first, then in the sheet, across all its tabs.
 - The GM can duplicate a repeat block (CAP-30). A duplicate keeps the values, takes a number in the first field when it is a `text` field with a value, and has no token link.
 
 ## Window size
@@ -78,10 +97,10 @@ A cell name (key `name`, «Название» in the builder) names a field or a
 A preset can set the size of the action window with an optional top-level key, after `v`:
 
 ```json
-{ "v": 2, "window": { "width": 900, "height": 700 }, "templates": [ … ] }
+{ "v": 3, "window": { "width": 900, "height": 700 }, "templates": [ … ] }
 ```
 
-- `width` and `height` are integers in px. Width: 360 to 1440. Height: 360 to 1080. Both bounds are inclusive.
+- `width` and `height` are integers in px. Width: 480 to 1440, so the sidebar and a sheet fit side by side. Height: 360 to 1080. Both bounds are inclusive.
 - Both keys are necessary, and no other key is allowed in `window`.
 - A `window` that breaks one of these rules refuses the whole file. The message under the upload button names the allowed range, and nothing changes.
 - With no `window`, or with no preset in the room, the window is 600 by 600 px.
@@ -106,7 +125,7 @@ Example: `1d20 <= str - 2*str_tired`.
 - Formulas run through a small parser, never `eval`.
 - Anyone who can see a sheet can roll its dice cells.
 - A roll uses the dice of a dice extension when one is in the room and a GM allows it. Otherwise the extension rolls itself. A roll from a sheet players can see goes to everyone by broadcast, with the roller's name.
-- A roll from a hidden sheet shows only on GM clients.
+- A roll from a hidden sheet or a hidden tab shows only on GM clients.
 - A formula runs only on a roll. Computed display fields are a non-goal.
 
 ## Preset changes
@@ -122,7 +141,10 @@ The GM downloads the JSON file, edits it and uploads it. A preset change that re
 | Change a field's type (same field id), `text` to `select` included | Counts as a removal: its values are erased after the confirmation |
 | Change a select field's options (same field id) | Keeps its values. A value that is no longer an option still shows |
 | Change a dice-choice field's options (same field id) | Keeps its values, as for a select field. `select` to `dice-choice`, or back, is a type change |
-| Add a single sheet | Its tab appears, empty |
+| Add a single sheet | Its sidebar entry appears, empty |
+| Add, rename, reorder, hide or show a tab | Keeps every value |
+| Move a section to another tab | Keeps its values |
+| Remove a tab | Its fields count as removed: their values are erased after the confirmation |
 | Remove a sheet set, or change its `id` or `kind` | Its sheets are deleted with their values, token links, owners and write access after the confirmation |
 | Remove a single sheet, or change its `id` or `kind` | Its values and token links are erased after the confirmation |
 | Make a template or repeat section not linkable | Its token links are removed. Not counted in the confirmation |
@@ -131,4 +153,4 @@ A formula that refers to a removed field shows the error above.
 
 ## Older format
 
-Format version 1 (a `character` and an `npc` template) is not migrated. A v1 preset or snapshot is refused with a message. A room with v1 data is cleared with a wipe («Очистить всё», CAP-31).
+The current format is version 3. Versions 1 (a `character` and an `npc` template) and 2 (sections directly in a template, no tabs) are not migrated. Such a preset or snapshot is refused with a message. A room with such data is cleared with a wipe («Очистить всё», CAP-31).

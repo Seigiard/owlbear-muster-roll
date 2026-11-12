@@ -12,9 +12,11 @@ The extension settings have a button that opens the builder in a new tab. Exchan
 
 ## Editing model
 
-- A structure tree (sections, rows, cells) with a form for the selected item.
+- A structure tree (templates, tabs, sections, rows, cells) with a form for the selected item.
+- A new template starts with one untitled tab. Sections drag between tabs. The tab form sets its title and visibility.
 - A live preview beside them, drawn by the extension's own sheet components.
 - A click on a preview cell selects its item in the tree.
+- The preview shows the tab that holds the item selected in the tree, and its tabs can be switched.
 
 ## Field ids
 
@@ -44,6 +46,7 @@ The extension settings have a button that opens the builder in a new tab. Exchan
 The whole format of `docs/preset-format.md`:
 
 - every sheet set and single sheet with its properties;
+- tab `title` and `visibility`;
 - section `title`, `width`, `columns`, `repeat` and linkable;
 - every cell kind;
 - `window`.
@@ -80,7 +83,7 @@ Guidance for architecture, from research on 2026-11-11. Not product requirements
 - Build from parts, no editor library:
   - the tree is react-aria-components `Tree` with `useDragAndDrop`, already a dependency;
   - one store holds the preset itself, and undo/redo is a stack of past presets;
-  - property forms for the five node kinds (section, row, text, field, dice) are written by hand;
+  - property forms for the node kinds (tab, section, row, text, field, dice) are written by hand. Generating them from the zod schema was rejected on 2026-11-12: values drawn from other data (`nameField`, formula ids), edits with side effects (id rename, `set` ↔ `single`, field type) and the formula and option inputs stay hand-written, and the cell form is mostly such exceptions;
   - the preview uses our sheet components, and each cell carries a path for click-to-select;
   - zod `issue.path` puts each error at its item.
 - Rejected libraries:
