@@ -74,7 +74,7 @@ graph TD
 - A single sheet has no `sheet:` record. Its `sheetId` is its template id. A new `sheetId` of a sheet set equal to a template id is refused at create.
 - `rowId` is the id of the first `field` in that preset row. `sectionId` is the id of the first `field` of a `repeat` section in row order. Preset files carry no row or section ids. Rows with no field have no record.
 - Within one non-repeat scope, and within one repeat block, a field id is unique, and the preset schema refuses a duplicate.
-- A value is a JSON number for `number`, a string for `text`, a boolean for `check`, and the option's string for `select`. A `select` value is not checked against its options, so a value a preset change leaves outside them stays. An empty field has no key.
+- A value is a JSON number for `number`, a string for `text`, a boolean for `check`, and the option's string for `select` and `dice-choice`. Such a value is not checked against its options, so a value a preset change leaves outside them stays. An empty field has no key.
 - The name of a sheet of a sheet set is not stored in `sheet:`. It is the value of its name field, in that field's `row:` record.
 - An emptied record keeps a non-null `d`: `{}` for `row:`, `{ order, cells: {} }` for `rep:`. Only a repeat block removal, a sheet delete, an upload that removes the row or section, and a generation change write `d: null`. A player sends `d: null` only for a `rep:` key.
 - The `sheetId` of a sheet of a sheet set, and every `instanceId`, are client-generated nanoids. An `instanceId` is unique within its sheet, across sections. A pass that moves a `rep:` record to a new section keeps its `instanceId`. An import drops a second repeat block with one `instanceId` in one sheet. Field and template ids come from the preset. `order` is a number, with ties broken by id.
@@ -268,7 +268,7 @@ A message with a higher generation also starts AD-9 adoption.
 | SDK boundary | Only `src/platform/obr` imports `@owlbear-rodeo/sdk`. A lint rule enforces this. Tests use the mock adapter of the same ports |
 | Visibility | Views get sheets only through `core/visibility`, which takes the role and the decoded preset. A player sees the preset, the sheets of visible templates with their dependents, and live links to them. With no decoded preset a player sees only the `preset` record. Players hold hidden records too, and hiding is at the interface only |
 | Sheet names | Only `core` names a sheet: a sheet of a sheet set by its name field value, a single sheet by its `title`, and an empty name by one fallback label. Tabs, headers, roll messages, token labels and the link picker read that function. A repeat block is named by its first field's value, with the same fallback |
-| Formulas | Only the parser in `core/formula`. Never `eval` or `new Function` |
+| Formulas | Only the parser in `core/formula`. Never `eval` or `new Function`. A die chosen in a dice-choice field (`Nd(id)`) is resolved to a literal `NdM` before dice terms are listed or the tree is evaluated |
 | Errors | `core` returns results and does not throw for expected failures. `replica` reports them through notices |
 | Edit granularity | A field sends on blur or after a typing pause, never per keystroke |
 | Time | Timers only schedule work. A rule must not depend on timer accuracy in a hidden tab |
