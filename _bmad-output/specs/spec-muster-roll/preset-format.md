@@ -26,8 +26,19 @@ A preset is a JSON file that lists the templates of one room. Each template is a
 | Kind | Holds | Stored value |
 | --- | --- | --- |
 | Label (`text`) | Fixed text | None |
-| Field (`field`) | Type `text`, `number` or `check`, and a stable field id | One value per field id |
+| Field (`field`) | Type `text`, `number`, `check` or `select`, and a stable field id | One value per field id |
 | Dice cell (`dice`) | Formula over field ids | None |
+
+### Select field
+
+A select field (type `select`, «Список» in the interface) lists its options in the preset. The sheet shows a picker with exactly those options.
+
+- The value is the text of the chosen option.
+- The picker also offers an empty choice, which clears the field.
+- The preset check refuses a select field with no options, with a blank option (empty or spaces only) or with a repeated option, and the message names the field.
+- A stored value that is no longer an option, as a changed preset leaves it, still shows and can be replaced.
+- Anyone with write access picks an option. A player's pick is a pending edit, as for any field. A reader without write access sees the value read-only.
+- A select field is never a sheet set's name field. A duplicate gives it no number.
 
 ## Layout
 
@@ -84,7 +95,8 @@ The GM downloads the JSON file, edits it and uploads it. A preset change that re
 | Add a field | The field is empty |
 | Remove a field | Its values are erased after the confirmation |
 | Rename a field label (same field id) | Keeps its values |
-| Change a field's type (same field id) | Counts as a removal: its values are erased after the confirmation |
+| Change a field's type (same field id), `text` to `select` included | Counts as a removal: its values are erased after the confirmation |
+| Change a select field's options (same field id) | Keeps its values. A value that is no longer an option still shows |
 | Add a single sheet | Its tab appears, empty |
 | Remove a sheet set, or change its `id` or `kind` | Its sheets are deleted with their values, token links, owners and write access after the confirmation |
 | Remove a single sheet, or change its `id` or `kind` | Its values and token links are erased after the confirmation |

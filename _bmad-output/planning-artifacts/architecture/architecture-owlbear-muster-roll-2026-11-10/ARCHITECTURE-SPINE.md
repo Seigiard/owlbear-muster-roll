@@ -74,7 +74,7 @@ graph TD
 - A single sheet has no `sheet:` record. Its `sheetId` is its template id. A new `sheetId` of a sheet set equal to a template id is refused at create.
 - `rowId` is the id of the first `field` in that preset row. `sectionId` is the id of the first `field` of a `repeat` section in row order. Preset files carry no row or section ids. Rows with no field have no record.
 - Within one non-repeat scope, and within one repeat block, a field id is unique, and the preset schema refuses a duplicate.
-- A value is a JSON number for `number`, a string for `text`, a boolean for `check`. An empty field has no key.
+- A value is a JSON number for `number`, a string for `text`, a boolean for `check`, and the option's string for `select`. A `select` value is not checked against its options, so a value a preset change leaves outside them stays. An empty field has no key.
 - The name of a sheet of a sheet set is not stored in `sheet:`. It is the value of its name field, in that field's `row:` record.
 - An emptied record keeps a non-null `d`: `{}` for `row:`, `{ order, cells: {} }` for `rep:`. Only a repeat block removal, a sheet delete, an upload that removes the row or section, and a generation change write `d: null`. A player sends `d: null` only for a `rep:` key.
 - The `sheetId` of a sheet of a sheet set, and every `instanceId`, are client-generated nanoids. An `instanceId` is unique within its sheet, across sections. A pass that moves a `rep:` record to a new section keeps its `instanceId`. An import drops a second repeat block with one `instanceId` in one sheet. Field and template ids come from the preset. `order` is a number, with ties broken by id.
