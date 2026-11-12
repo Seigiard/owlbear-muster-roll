@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { createContext, useContext, useId } from 'react';
 import type { ReactNode } from 'react';
 
 import type { PresetCell, PresetFieldCell } from '@/core/preset';
@@ -59,8 +59,49 @@ const READ_ONLY_CHECK_CLASS =
 
 const CHECK_MARK = '✓';
 
+// AD-23: the preset builder's preview, `null` in the window. When set, each cell sits in a
+// `display: contents` element that names its place, `{section}.{row}.{cell}`, so a click and a mark
+// find it, and an empty field shows its id as a placeholder, the name formulas use.
+export type CellPreview = { placeholders: true };
+
+export const CellPreviewContext = createContext<CellPreview | null>(null);
+
 // Every value is editable in place, with no edit mode. A read-only value is text.
 export function SheetCell({
+  cell,
+  before,
+  values,
+  place,
+  readOnly,
+  row,
+  cellIndex,
+  pending,
+}: SheetCellProps): ReactNode {
+  const preview = useContext(CellPreviewContext);
+
+  const node = (
+    <CellContent
+      cell={cell}
+      before={before}
+      values={values}
+      place={place}
+      readOnly={readOnly}
+      row={row}
+      cellIndex={cellIndex}
+      pending={pending}
+    />
+  );
+
+  return preview === null ? (
+    node
+  ) : (
+    <div className="contents" data-cell={`${row.sectionIndex}.${row.rowIndex}.${cellIndex}`}>
+      {node}
+    </div>
+  );
+}
+
+function CellContent({
   cell,
   before,
   values,
@@ -119,9 +160,12 @@ function ReadOnlyValue({ field, label, values }: Omit<FieldProps, 'place' | 'pen
     );
   }
 
+  const preview = useContext(CellPreviewContext);
+  const text = valueText(value);
+
   return (
     <span role="group" aria-label={label} className={READ_ONLY_VALUE_CLASS} data-read-only-value>
-      {valueText(value)}
+      {text === '' && preview !== null ? <span className="text-text-muted">{field.id}</span> : text}
     </span>
   );
 }

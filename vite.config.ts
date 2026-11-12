@@ -41,10 +41,24 @@ export default defineConfig(({ mode }) => {
           index: fromRoot('index.html'),
           background: fromRoot('background.html'),
           picker: fromRoot('picker.html'),
+          // AD-20: the preset builder, a top-level page with no Owlbear.
+          builder: fromRoot('builder.html'),
         },
         output: {
-          // A stable chunk for the SDK and adapter, instead of a name that follows shared code.
-          advancedChunks: { groups: [{ name: 'obr', test: /platform\/obr|@owlbear-rodeo\/sdk/ }] },
+          // A stable chunk for the SDK and adapter, instead of a name that follows shared code. The
+          // core and its libraries go first into a chunk of their own: the `obr` group takes its
+          // modules' dependencies too, and the builder page (AD-20) must load the core without the
+          // SDK.
+          advancedChunks: {
+            groups: [
+              {
+                name: 'core',
+                test: /src\/core\/|node_modules\/(?:zod|fflate)\//,
+                priority: 2,
+              },
+              { name: 'obr', test: /platform\/obr|@owlbear-rodeo\/sdk/, priority: 1 },
+            ],
+          },
         },
       },
     },

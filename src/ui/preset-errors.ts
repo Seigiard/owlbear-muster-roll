@@ -36,7 +36,8 @@ export function presetRejectionMessage(reason: RejectionReason): string | null {
   return null;
 }
 
-function badFileReason(failure: Exclude<PresetFailure, { code: 'newer-version' }>): string {
+// The reason inside the refusal message, which the builder also shows at the item that fails.
+export function badFileReason(failure: Exclude<PresetFailure, { code: 'newer-version' }>): string {
   const reason = copy.badFileReason;
 
   switch (failure.code) {

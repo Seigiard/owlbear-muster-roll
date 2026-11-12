@@ -6,11 +6,15 @@ import type { VersionedRecord } from '@/core/records';
 import type { RoomCopyStatus } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { PresetDownload, uploadDisabledReason, usePresetUpload } from '@/ui/preset-actions';
+import { SECONDARY_BUTTON_CLASS } from '@/ui/primitives/button';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 import { roomCopyText } from '@/ui/settings/room-copy-text';
 import { useSnapshotActions } from '@/ui/settings/snapshot-actions';
 import { useWipeActions } from '@/ui/settings/wipe-actions';
+
+// CAP-21: the preset builder, on the same origin as the window.
+const BUILDER_PATH = '/builder.html';
 
 type SettingsViewProps = {
   // The window's records, which "Скачать снимок" writes to the file.
@@ -41,6 +45,7 @@ export function SettingsView({
   const snapshotHeadingId = useId();
   const roomCopyHeadingId = useId();
   const wipeHeadingId = useId();
+  const builderHintId = useId();
 
   const { confirmation, upload } = usePresetUpload({
     client,
@@ -64,6 +69,21 @@ export function SettingsView({
         <div className="flex flex-wrap items-start gap-2">
           {upload}
           <PresetDownload preset={preset} catchingUp={catchingUp} />
+        </div>
+        <div className="flex flex-col items-start gap-1">
+          {/* AD-20: a plain link. The builder and the room exchange a preset by file only. */}
+          <a
+            href={BUILDER_PATH}
+            target="_blank"
+            rel="noopener"
+            aria-describedby={builderHintId}
+            className={SECONDARY_BUTTON_CLASS}
+          >
+            {copy.builder.settingsLink}
+          </a>
+          <span id={builderHintId} className="text-label-sm text-text-muted">
+            {copy.builder.settingsHint}
+          </span>
         </div>
       </section>
       <section aria-labelledby={snapshotHeadingId} className="flex flex-col gap-2">

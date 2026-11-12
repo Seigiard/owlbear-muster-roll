@@ -145,14 +145,19 @@ export function SheetSection({
 
   if (title === null) {
     return (
-      <div className={className} data-section>
+      <div className={className} data-section data-section-index={sectionIndex}>
         {content}
       </div>
     );
   }
 
   return (
-    <section className={className} aria-labelledby={headingId} data-section>
+    <section
+      className={className}
+      aria-labelledby={headingId}
+      data-section
+      data-section-index={sectionIndex}
+    >
       <h2 id={headingId} className="mb-1 text-section-heading text-accent">
         {title}
       </h2>
@@ -293,6 +298,7 @@ function PlainRows({
         key={row.key}
         className={`flex flex-wrap gap-y-1 ${ROW_CLASS} ${stripe(index)}`}
         data-row
+        data-row-index={index}
       >
         <Cells row={row} readOnly={readOnly} rowMarkId={null} />
       </div>
@@ -311,6 +317,7 @@ function PlainRows({
           key={row.key}
           className={`col-span-full grid grid-cols-subgrid ${ROW_CLASS} ${stripe(index)}`}
           data-row
+          data-row-index={index}
         >
           <Cells row={row} readOnly={readOnly} rowMarkId={null} />
         </div>
@@ -428,6 +435,7 @@ function Blocks({
             : `col-span-full grid grid-cols-subgrid ${ROW_CLASS} ${removed}`
         }
         data-row
+        data-row-index={rowIndex}
       >
         <Cells row={row} readOnly={readOnly} rowMarkId={rowMarkId} />
         {rowIndex === 0 ? slot : null}
