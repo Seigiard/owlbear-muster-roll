@@ -33,6 +33,8 @@ const EXAMPLE_TEXT = readFileSync(EXAMPLE_PATH, 'utf8');
 
 const FIXTURE_DIR = join(import.meta.dir, '../../tests/fixtures/presets');
 
+const PRESET_DIR = join(import.meta.dir, '../../presets');
+
 const MANIFEST_PATH = join(import.meta.dir, '../../public/manifest.json');
 
 const NUMBER_FIELD = (id: string): JsonObject => ({ kind: 'field', type: 'number', id });
@@ -1068,6 +1070,28 @@ describe('the e2e preset fixtures', () => {
     test(`${name} parses into the preset it holds`, () => {
       // #given
       const text = readFileSync(join(FIXTURE_DIR, name), 'utf8');
+
+      // #when
+      const parsed = parsePresetFile(text);
+
+      // #then
+      expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    });
+  }
+});
+
+describe('the shipped presets', () => {
+  const names = readdirSync(PRESET_DIR).filter((name) => name.endsWith('.json'));
+
+  test('include the Cairn 2e preset', () => {
+    // #then
+    expect(names).toContain('cairn-2e.json');
+  });
+
+  for (const name of names) {
+    test(`${name} parses into the preset it holds`, () => {
+      // #given
+      const text = readFileSync(join(PRESET_DIR, name), 'utf8');
 
       // #when
       const parsed = parsePresetFile(text);
