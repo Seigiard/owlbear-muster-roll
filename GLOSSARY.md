@@ -106,6 +106,10 @@ _Avoid_: namespace, context
 A cell that rolls its formula when pressed. It holds no value.
 _Avoid_: dice button, roll cell, macro
 
+**Cell name**:
+The optional name a preset gives a field or a dice cell. It names the control for screen readers, names a dice cell in a roll, and shows in a tooltip. Without one, the nearest label before the cell in its row names it, else the field id or the formula. In the interface: «Название».
+_Avoid_: field name (formulas name a field by its field id), caption, tooltip, hint, title
+
 **Formula**:
 The dice expression of a dice cell, such as `1d20 <= str - 2*str_tired`. It refers to fields by field id. A dice term takes its die size from the formula, as in `1d8`, or from a dice-choice field, as in `1d(weapon_die)`.
 _Avoid_: macro, script, expression

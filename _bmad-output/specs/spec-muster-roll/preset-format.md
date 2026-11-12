@@ -29,6 +29,8 @@ A preset is a JSON file that lists the templates of one room. Each template is a
 | Field (`field`) | Type `text`, `number`, `check`, `select` or `dice-choice`, and a stable field id | One value per field id |
 | Dice cell (`dice`) | Formula over field ids | None |
 
+A field and a dice cell may also carry a cell name (see Cell names).
+
 ### Select field
 
 A select field (type `select`, «Список» in the interface) lists its options in the preset. The sheet shows a picker with exactly those options.
@@ -47,6 +49,16 @@ A dice-choice field (type `dice-choice`, «Выбор кубика» in the inte
 - Each option is `d` followed by an integer from 1 to 1000 with no leading zero, such as `d4`, `d20` or `d100`.
 - The picker, the empty choice, the value, stale values and the select field's option rules are the same as for a select field.
 - The preset check also refuses an option that is not a die size, and the message names the field and the option.
+
+### Cell names
+
+A cell name (key `name`, «Название» in the builder) names a field or a dice cell. It fixes a compact layout, where the label before a cell does not say what the cell is for.
+
+- A field of any type and a dice cell may carry it. A label (`text`) may not.
+- It is a string with at least one non-space character, at most 60 characters long. The preset check refuses a blank name (empty or spaces only) and a longer one, and the message names the cell: a field by its id, a dice cell by its formula.
+- A cell's label is its cell name; without one, the nearest preceding label with text in its row; without that, the field id or the formula. The label is the field's accessible name, the dice button's accessible name, the roll's name for the dice cell and the field's name in a roll error.
+- The dice button keeps its visible text: the nearest preceding label, otherwise its formula.
+- A named field or dice cell shows its cell name in a tooltip on hover and on focus, for a reader and a writer alike. The tooltip leaves the control uncovered.
 
 ## Layout
 
@@ -86,11 +98,11 @@ Example: `1d20 <= str - 2*str_tired`.
 - Formulas support `floor`, `ceil` and roll-under.
 - A formula with an empty, non-numeric or removed field shows an error and does not roll.
 - A preset with a formula syntax error, an unknown function or a dice term outside 1 to 100 dice and 1 to 1000 sides is refused at upload.
-- A dice cell's label is the nearest preceding label in its row, otherwise its formula.
+- A dice cell's label is its cell name, otherwise the nearest preceding label in its row, otherwise its formula.
 - A formula holds integer literals, field ids, `+ - * /`, parentheses, `floor()`, `ceil()`, `NdM` with literal `N` and `M`, `Nd(id)` with a literal `N`, and at most one comparison from `<= < >= >`.
 - `Nd(id)` rolls `N` dice of the size chosen in the dice-choice field `id`, such as `1d(weapon_die) + bonus`. An empty dice-choice field, or a value that is not a die size, shows the field error and does not roll.
 - The preset check refuses, and names the dice cell, a formula whose id resolves to a dice-choice field outside `Nd(...)`, or whose `Nd(...)` id resolves to a field of another type. An id that resolves to no field is an error only at the roll.
-- A roll names its dice cell by its label. A formula with `Nd(id)` writes out the chosen dice in that name: a dice cell named by its formula shows the formula with each `Nd(id)` as `NdM`, such as `1d8 + bonus`, and a dice cell named by a label shows the label and that formula in parentheses, such as «Урон (1d8)».
+- A roll names its dice cell by its label. A formula with `Nd(id)` writes out the chosen dice in that name: a dice cell named by its formula shows the formula with each `Nd(id)` as `NdM`, such as `1d8 + bonus`, and a dice cell named by a cell name or a label shows that name and the formula in parentheses, such as «Урон (1d8)».
 - Formulas run through a small parser, never `eval`.
 - Anyone who can see a sheet can roll its dice cells.
 - A roll uses the dice of a dice extension when one is in the room and a GM allows it. Otherwise the extension rolls itself. A roll from a sheet players can see goes to everyone by broadcast, with the roller's name.
@@ -106,6 +118,7 @@ The GM downloads the JSON file, edits it and uploads it. A preset change that re
 | Add a field | The field is empty |
 | Remove a field | Its values are erased after the confirmation |
 | Rename a field label (same field id) | Keeps its values |
+| Add, change or remove a cell name | Keeps every value |
 | Change a field's type (same field id), `text` to `select` included | Counts as a removal: its values are erased after the confirmation |
 | Change a select field's options (same field id) | Keeps its values. A value that is no longer an option still shows |
 | Change a dice-choice field's options (same field id) | Keeps its values, as for a select field. `select` to `dice-choice`, or back, is a type change |

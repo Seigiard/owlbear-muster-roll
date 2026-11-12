@@ -145,6 +145,7 @@ Tabs use `{rounded.md}` on the top corners. The window uses `{rounded.lg}`. Chip
 | Section | `{typography.section-heading}` in `{colors.accent}`, with a left rule in `{colors.line}` |
 | Chip | `{components.chip}`, `{typography.label-sm}` |
 | Dice button | `{components.dice-button}`, `{typography.label-sm}` |
+| Tooltip | A cell name in `{typography.label-sm}` `{colors.text}` on `{colors.surface-tab}`, with a `{colors.line}` border, `{rounded.sm}` and padding `{spacing.1}` `{spacing.2}`. One line up to the window width, then it wraps. It sits `{spacing.1}` above the control, or below it when there is no room above |
 | Status banner | `{components.banner-warning}` or `{components.banner-danger}`, full window width |
 | Access panel, duplicate count, Confirmation | Inline block on `{colors.surface-bar}` with a `{colors.line}` border and `{rounded.md}` |
 | Repeat block | The block's rows, then its controls in `{typography.label-sm}`. Blocks are separated by a `{colors.line}` rule |
