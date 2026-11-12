@@ -68,6 +68,7 @@ Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you w
 <important if="you are writing or changing tests">
 
 - Unit tests sit beside their source as `*.test.ts` and use `bun:test` with `#given` / `#when` / `#then` comments.
+- Engine tests (`src/replica/engine-*.test.ts`) build rooms, clients, storage keys and timing with `src/replica/room-rig.ts`. A file states only the timings and the wait limit it changes.
 - E2E tests run the app on the mock adapter. URL parameters in `src/platform/mock/client-params.ts` set the role, the player and faults; `tests/support/room.ts` seeds rooms.
 - The mock proves app logic only. Behavior in a live Owlbear room needs the owner's check.
 </important>

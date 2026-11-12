@@ -1,51 +1,23 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { SYNC_CHANNEL } from '@/core/room-messages';
 import { encodeStateRecords } from '@/core/state-records';
 import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
 import type { GmLink } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine, type ReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
-
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 150,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 5,
-  // Far past any test, so a test that is not about pings sees none.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
+import {
+  createRoomRig,
+  heardOf,
+  lastRequest,
+  pause,
+  requestsOf,
+  shown,
+  type RigClient,
+  type RigRoom,
+} from '@/replica/room-rig';
 
 const WAIT_LIMIT_MS = 3000;
 const POLL_MS = 2;
@@ -112,155 +84,32 @@ type ClientOptions = {
   // The generation the seeded records are stored under.
   generation?: Generation;
   timing?: Partial<Timing>;
-  untilLive?: boolean;
+  until?: 'loaded' | 'live';
 };
 
-type Client = {
-  connectionId: string;
-  engine: ReplicaEngine;
-  store: ProjectionStore;
-  window: ReplicaClient;
-};
+type Client = RigClient;
 
-type Heard = { from: string; data: JsonValue };
+type Room = RigRoom;
 
-type Room = {
-  room: MockRoom;
-  heard: Heard[];
-  post: (from: string, data: JsonValue) => void;
-};
-
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
+const roomRig = createRoomRig({
+  waitLimitMs: 3000,
+  seeded: [PRESET_RECORD, BROK],
+  timing: { catchUpTimeoutMs: 150, stateAnswerDelayMaxMs: 5 },
 });
-
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
-}
-
-function openRoom(): Room {
-  const room = createMemoryRoom();
-
-  const observer = createMockPlatform(createMemoryBus(), createBacking(), {
-    room,
-    connectionId: 'observer',
-    playerId: 'observer',
-    name: 'observer',
-    role: 'PLAYER',
-  });
-
-  const heard: Heard[] = [];
-
-  cleanups.push(
-    observer.broadcast.onMessage(SYNC_CHANNEL, (event) => {
-      heard.push({ from: event.connectionId, data: event.data });
-    }),
-  );
-
-  return {
-    room,
-    heard,
-    post: (from, data) => {
-      observer.sendRemoteAs(from, SYNC_CHANNEL, data);
-    },
-  };
-}
-
-// A party member with no engine behind it. The test speaks for it.
-function joinAs(room: Room, connectionId: string, role: PlayerRole): void {
-  room.room.join({ id: connectionId, connectionId, name: connectionId, role });
-}
 
 async function startClient(
   room: Room,
   connectionId: string,
   options: ClientOptions = {},
 ): Promise<Client> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
-  const generation = options.generation ?? INITIAL;
-
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: connectionId,
-    role: options.role ?? 'GM',
-  };
-
-  const platform = createMockPlatform(bus, backing, identity);
-
-  for (const record of options.seeded ?? [PRESET_RECORD, BROK]) {
-    backing.set(
-      `mr2:mock-room:${generation.n}:${generation.a}:${record.k}`,
-      JSON.stringify(record),
-    );
-  }
-
-  platform.joinParty();
-
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: { ...TIMING, ...options.timing },
+  return roomRig.startClient(room, connectionId, {
+    ...options,
+    generation: options.generation,
   });
-
-  const store = createProjectionStore();
-
-  const window = startReplicaClient(
-    createMockPlatform(bus, backing, identity).broadcast,
-    createSendQueue(platform.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-  await waitUntil(() => store.$loaded.get());
-
-  if (options.untilLive === true) {
-    await waitUntil(() => store.$sync.get().state === 'live');
-  }
-
-  return { connectionId, engine, store, window };
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
-}
-
-function pause(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function gmLink(client: Client): GmLink {
   return client.store.$sync.get().gmLink;
-}
-
-function shown(client: Client, key: string): VersionedRecord | undefined {
-  return client.store.$records.get().get(key);
 }
 
 function keysOf(client: Client): string[] {
@@ -269,26 +118,6 @@ function keysOf(client: Client): string[] {
 
 function syncState(client: Client): string {
   return client.store.$sync.get().state;
-}
-
-function heardOf(room: Room, from: string, t: string): JsonValue[] {
-  return room.heard.flatMap((message) =>
-    message.from === from && Object(message.data).t === t ? [message.data] : [],
-  );
-}
-
-function requestsOf(room: Room, from: string): string[] {
-  return heardOf(room, from, 'state-request').map((message) => String(Object(message).r));
-}
-
-function lastRequest(room: Room, from: string): string {
-  const nonce = requestsOf(room, from).at(-1);
-
-  if (nonce === undefined) {
-    throw new Error(`${from} has asked for no state`);
-  }
-
-  return nonce;
 }
 
 function alive(digest: number, g: Generation = INITIAL): JsonValue {
@@ -310,11 +139,11 @@ function stateMessage(r: string, records: readonly VersionedRecord[]): JsonValue
 // A GM client that is live and alone, then hears from a GM that only the test speaks for.
 async function liveGmWithGhost(room: Room, timing: Partial<Timing> = {}): Promise<Client> {
   const client = await startClient(room, 'gm-b', {
-    untilLive: true,
+    until: 'live',
     timing: { ...DRIFT_TIMING, ...timing },
   });
 
-  joinAs(room, GHOST, 'GM');
+  room.join(GHOST, 'GM');
 
   return client;
 }
@@ -325,7 +154,7 @@ async function settled(room: Room, client: Client): Promise<number> {
   const before = heardOf(room, client.connectionId, 'alive').length;
 
   room.post(GHOST, ping());
-  await waitUntil(() => heardOf(room, client.connectionId, 'alive').length > before);
+  await roomRig.waitUntil(() => heardOf(room, client.connectionId, 'alive').length > before);
 
   return requestsOf(room, client.connectionId).length;
 }
@@ -340,7 +169,7 @@ async function differTwice(room: Room, from: string, digest: number): Promise<vo
 describe('gmLink', () => {
   test('starts offline for any client', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     // #when
     const client = await startClient(room, 'player-p', { role: 'PLAYER', seeded: [] });
@@ -357,21 +186,21 @@ describe('gmLink', () => {
 
   test('turns online when any admitted message from a GM sender arrives', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
       seeded: [],
-      untilLive: true,
+      until: 'live',
     });
 
     const before = gmLink(client);
 
     // #when
     room.post(GHOST, ping());
-    await waitUntil(() => gmLink(client) === 'online');
+    await roomRig.waitUntil(() => gmLink(client) === 'online');
 
     // #then
     expect({ before, after: gmLink(client) }).toEqual({ before: 'offline', after: 'online' });
@@ -379,19 +208,19 @@ describe('gmLink', () => {
 
   test('stays offline for a message from a player or one the gate drops', async () => {
     // #given: this client is of generation 1, so a GM commit of generation 0 is dropped.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const generation = { n: 1, a: 'x' };
-    const client = await startClient(room, 'gm-b', { untilLive: true, generation });
+    const client = await startClient(room, 'gm-b', { until: 'live', generation });
 
-    joinAs(room, 'player-q', 'PLAYER');
-    joinAs(room, GHOST, 'GM');
+    room.join('player-q', 'PLAYER');
+    room.join(GHOST, 'GM');
 
     // #when: the player's last ping is answered only after every message before it was handled.
     room.post('player-q', ping());
     room.post(GHOST, commit([BROK], INITIAL));
     room.post('stranger', alive(SEEDED_DIGEST, generation));
     room.post('player-q', ping());
-    await waitUntil(() => heardOf(room, 'gm-b', 'alive').length === 2);
+    await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'alive').length === 2);
 
     // #then
     expect(gmLink(client)).toBe('offline');
@@ -399,9 +228,9 @@ describe('gmLink', () => {
 
   test('turns offline when no GM-origin message arrives for the timeout', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
@@ -410,12 +239,12 @@ describe('gmLink', () => {
     });
 
     room.post(GHOST, stateMessage(lastRequest(room, 'player-p'), [PRESET_RECORD]));
-    await waitUntil(() => gmLink(client) === 'online');
+    await roomRig.waitUntil(() => gmLink(client) === 'online');
 
     const online = Date.now();
 
     // #when
-    await waitUntil(() => gmLink(client) === 'offline');
+    await roomRig.waitUntil(() => gmLink(client) === 'offline');
 
     // #then
     const waited = Date.now() - online;
@@ -425,9 +254,9 @@ describe('gmLink', () => {
 
   test('no ping and no offline mark comes after stop', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
@@ -436,7 +265,7 @@ describe('gmLink', () => {
     });
 
     room.post(GHOST, ping());
-    await waitUntil(() => gmLink(client) === 'online');
+    await roomRig.waitUntil(() => gmLink(client) === 'online');
 
     const pingsAtStop = heardOf(room, 'player-p', 'ping').length;
 
@@ -453,16 +282,16 @@ describe('gmLink', () => {
 
   test('stays offline while the party lists a GM that sends nothing', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     // #when
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
       seeded: [],
       timing: { gmLinkTimeoutMs: 200 },
-      untilLive: true,
+      until: 'live',
     });
 
     await pause(250);
@@ -476,8 +305,8 @@ describe('gmLink', () => {
 
   test('a GM tab that only answers pings keeps a player online', async () => {
     // #given: the GM's own timers never fire within the test, as in a hidden tab.
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
 
     const player = await startClient(room, 'player-p', {
       role: 'PLAYER',
@@ -485,7 +314,7 @@ describe('gmLink', () => {
       timing: { gmLinkTimeoutMs: 120 },
     });
 
-    await waitUntil(() => gmLink(player) === 'online');
+    await roomRig.waitUntil(() => gmLink(player) === 'online');
 
     const links: GmLink[] = [];
 
@@ -510,7 +339,7 @@ describe('gmLink', () => {
 describe('ping', () => {
   test('a client that hears no GM for half the timeout sends a ping, and repeats it', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const started = Date.now();
 
     // #when
@@ -520,7 +349,7 @@ describe('ping', () => {
       timing: { gmLinkTimeoutMs: 200 },
     });
 
-    await waitUntil(() => heardOf(room, client.connectionId, 'ping').length === 2);
+    await roomRig.waitUntil(() => heardOf(room, client.connectionId, 'ping').length === 2);
 
     // #then
     expect({
@@ -531,9 +360,9 @@ describe('ping', () => {
 
   test('a GM-origin message puts off the ping', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
@@ -554,15 +383,15 @@ describe('ping', () => {
 
   test('a live GM answers a ping at once with its generation and the digest of its records', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, 'player-p', 'PLAYER');
+    room.join('player-p', 'PLAYER');
 
-    const client = await startClient(room, 'gm-b', { untilLive: true });
+    const client = await startClient(room, 'gm-b', { until: 'live' });
 
     // #when
     room.post('player-p', ping());
-    await waitUntil(() => heardOf(room, client.connectionId, 'alive').length === 1);
+    await roomRig.waitUntil(() => heardOf(room, client.connectionId, 'alive').length === 1);
 
     // #then
     expect(heardOf(room, client.connectionId, 'alive')).toEqual([alive(SEEDED_DIGEST)]);
@@ -570,15 +399,15 @@ describe('ping', () => {
 
   test('a GM answers a ping of another generation with its own generation', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, 'player-p', 'PLAYER');
+    room.join('player-p', 'PLAYER');
 
-    const client = await startClient(room, 'gm-b', { untilLive: true });
+    const client = await startClient(room, 'gm-b', { until: 'live' });
 
     // #when
     room.post('player-p', ping({ n: 5, a: 'z' }));
-    await waitUntil(() => heardOf(room, client.connectionId, 'alive').length === 1);
+    await roomRig.waitUntil(() => heardOf(room, client.connectionId, 'alive').length === 1);
 
     // #then
     expect(heardOf(room, client.connectionId, 'alive')).toEqual([alive(SEEDED_DIGEST, INITIAL)]);
@@ -586,16 +415,16 @@ describe('ping', () => {
 
   test('a GM in catching-up does not answer a ping', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
-    joinAs(room, 'player-p', 'PLAYER');
+    room.join(GHOST, 'GM');
+    room.join('player-p', 'PLAYER');
 
     const client = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 400 } });
 
     // #when
     room.post('player-p', ping());
-    await waitUntil(() => syncState(client) === 'live');
+    await roomRig.waitUntil(() => syncState(client) === 'live');
 
     // #then
     expect(heardOf(room, client.connectionId, 'alive')).toEqual([]);
@@ -603,19 +432,19 @@ describe('ping', () => {
 
   test('a player does not answer a ping', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
       seeded: [],
-      untilLive: true,
+      until: 'live',
     });
 
     // #when
     room.post(GHOST, ping());
-    await waitUntil(() => gmLink(client) === 'online');
+    await roomRig.waitUntil(() => gmLink(client) === 'online');
     await pause(30);
 
     // #then
@@ -626,12 +455,12 @@ describe('ping', () => {
 describe('drift', () => {
   test('a digest that differs in two windows from one GM enters catching-up', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await liveGmWithGhost(room);
 
     // #when
     await differTwice(room, GHOST, OTHER_DIGEST);
-    await waitUntil(() => requestsOf(room, 'gm-b').length === 2);
+    await roomRig.waitUntil(() => requestsOf(room, 'gm-b').length === 2);
 
     // #then
     expect(syncState(client)).toBe('catching-up');
@@ -639,7 +468,7 @@ describe('drift', () => {
 
   test('a burst of differing alive within one window starts no catch-up', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await liveGmWithGhost(room);
 
     // #when
@@ -656,7 +485,7 @@ describe('drift', () => {
 
   test('a digest that differs once and then matches starts no catch-up', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await liveGmWithGhost(room);
 
     // #when
@@ -675,10 +504,10 @@ describe('drift', () => {
 
   test('differences from two GMs do not add up', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await liveGmWithGhost(room);
 
-    joinAs(room, 'gm-c', 'GM');
+    room.join('gm-c', 'GM');
 
     // #when
     room.post(GHOST, alive(OTHER_DIGEST));
@@ -694,7 +523,7 @@ describe('drift', () => {
 
   test('differences do not carry across a catch-up', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await liveGmWithGhost(room, { catchUpTimeoutMs: 150 });
 
     room.post(GHOST, alive(OTHER_DIGEST));
@@ -702,8 +531,8 @@ describe('drift', () => {
 
     // #when: a return starts a catch-up that times out, past one counting window.
     client.engine.catchUp();
-    await waitUntil(() => requestsOf(room, 'gm-b').length === 2);
-    await waitUntil(() => syncState(client) === 'live');
+    await roomRig.waitUntil(() => requestsOf(room, 'gm-b').length === 2);
+    await roomRig.waitUntil(() => syncState(client) === 'live');
     room.post(GHOST, alive(OTHER_DIGEST));
 
     // #then
@@ -715,16 +544,16 @@ describe('drift', () => {
 
   test('an alive of another generation is not compared', async () => {
     // #given: this client is of generation 1, and the ghost speaks from generation 0.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const generation = { n: 1, a: 'x' };
 
     const client = await startClient(room, 'gm-b', {
-      untilLive: true,
+      until: 'live',
       generation,
       timing: DRIFT_TIMING,
     });
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     // #when
     room.post(GHOST, alive(OTHER_DIGEST, INITIAL));
@@ -735,7 +564,7 @@ describe('drift', () => {
     const before = heardOf(room, 'gm-b', 'alive').length;
 
     room.post(GHOST, ping(generation));
-    await waitUntil(() => heardOf(room, 'gm-b', 'alive').length > before);
+    await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'alive').length > before);
     expect({ requests: requestsOf(room, 'gm-b').length, state: syncState(client) }).toEqual({
       requests: 1,
       state: 'live',
@@ -744,13 +573,13 @@ describe('drift', () => {
 
   test('after a complete answer from a GM, its unchanged digest is ignored until it changes', async () => {
     // #given: a lagging ghost drives a catch-up and answers it in full.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await liveGmWithGhost(room);
 
     await differTwice(room, GHOST, OTHER_DIGEST);
-    await waitUntil(() => requestsOf(room, 'gm-b').length === 2);
+    await roomRig.waitUntil(() => requestsOf(room, 'gm-b').length === 2);
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), []));
-    await waitUntil(() => syncState(client) === 'live');
+    await roomRig.waitUntil(() => syncState(client) === 'live');
 
     // #when
     await differTwice(room, GHOST, OTHER_DIGEST);
@@ -758,7 +587,7 @@ describe('drift', () => {
     const ignored = await settled(room, client);
 
     await differTwice(room, GHOST, OTHER_DIGEST + 1);
-    await waitUntil(() => requestsOf(room, 'gm-b').length === 3);
+    await roomRig.waitUntil(() => requestsOf(room, 'gm-b').length === 3);
 
     // #then
     expect({ ignored, state: syncState(client) }).toEqual({ ignored: 2, state: 'catching-up' });
@@ -766,14 +595,14 @@ describe('drift', () => {
 
   test('drift from one GM answered in full by another ignores the drifting GM too', async () => {
     // #given: the ghost lags, and gm-y answers the catch-up its drift starts.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await liveGmWithGhost(room);
 
-    joinAs(room, 'gm-y', 'GM');
+    room.join('gm-y', 'GM');
     await differTwice(room, GHOST, OTHER_DIGEST);
-    await waitUntil(() => requestsOf(room, 'gm-b').length === 2);
+    await roomRig.waitUntil(() => requestsOf(room, 'gm-b').length === 2);
     room.post('gm-y', stateMessage(lastRequest(room, 'gm-b'), []));
-    await waitUntil(() => syncState(client) === 'live');
+    await roomRig.waitUntil(() => syncState(client) === 'live');
 
     // #when
     await differTwice(room, GHOST, OTHER_DIGEST);
@@ -787,16 +616,16 @@ describe('drift', () => {
 
   test('a catch-up that ends by timeout starts no ignore', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await liveGmWithGhost(room, { catchUpTimeoutMs: 100 });
 
     await differTwice(room, GHOST, OTHER_DIGEST);
-    await waitUntil(() => requestsOf(room, 'gm-b').length === 2);
-    await waitUntil(() => syncState(client) === 'live');
+    await roomRig.waitUntil(() => requestsOf(room, 'gm-b').length === 2);
+    await roomRig.waitUntil(() => syncState(client) === 'live');
 
     // #when
     await differTwice(room, GHOST, OTHER_DIGEST);
-    await waitUntil(() => requestsOf(room, 'gm-b').length === 3);
+    await roomRig.waitUntil(() => requestsOf(room, 'gm-b').length === 3);
 
     // #then
     expect(syncState(client)).toBe('catching-up');
@@ -804,12 +633,12 @@ describe('drift', () => {
 
   test('a complete answer that comes late, while live, starts no ignore', async () => {
     // #given: the start catch-up timed out, and the ghost has said its digest once.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-b', {
-      untilLive: true,
+      until: 'live',
       timing: { ...DRIFT_TIMING, catchUpTimeoutMs: 100 },
     });
 
@@ -819,7 +648,7 @@ describe('drift', () => {
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), []));
     await pause(NEXT_WINDOW_MS);
     room.post(GHOST, alive(OTHER_DIGEST));
-    await waitUntil(() => requestsOf(room, 'gm-b').length === 2);
+    await roomRig.waitUntil(() => requestsOf(room, 'gm-b').length === 2);
 
     // #then
     expect(syncState(client)).toBe('catching-up');
@@ -827,9 +656,9 @@ describe('drift', () => {
 
   test('a player compares digests too', async () => {
     // #given: the ghost answers the start catch-up, so its later messages are no GM return.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
@@ -837,13 +666,13 @@ describe('drift', () => {
       timing: DRIFT_TIMING,
     });
 
-    await waitUntil(() => requestsOf(room, 'player-p').length === 1);
+    await roomRig.waitUntil(() => requestsOf(room, 'player-p').length === 1);
     room.post(GHOST, stateMessage(lastRequest(room, 'player-p'), []));
-    await waitUntil(() => syncState(client) === 'live');
+    await roomRig.waitUntil(() => syncState(client) === 'live');
 
     // #when
     await differTwice(room, GHOST, OTHER_DIGEST);
-    await waitUntil(() => requestsOf(room, 'player-p').length === 2);
+    await roomRig.waitUntil(() => requestsOf(room, 'player-p').length === 2);
 
     // #then
     expect(syncState(client)).toBe('catching-up');
@@ -851,7 +680,7 @@ describe('drift', () => {
 
   test('two GM clients that drift from each other answer each other and converge', async () => {
     // #given: gm-b took gm-a's records at its start, and gm-a never got gm-b's own.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const timing: Partial<Timing> = {
       ...DRIFT_TIMING,
@@ -861,15 +690,15 @@ describe('drift', () => {
       stateAnswerDelayMaxMs: 50,
     };
 
-    const a = await startClient(room, 'gm-a', { untilLive: true, timing });
+    const a = await startClient(room, 'gm-a', { until: 'live', timing });
 
     const b = await startClient(room, 'gm-b', {
-      untilLive: true,
+      until: 'live',
       timing,
       seeded: [PRESET_RECORD, LIZA],
     });
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     // #when: the ghost's pings make both answer, so each hears the other's digest at once.
     const deadline = Date.now() + WAIT_LIMIT_MS;

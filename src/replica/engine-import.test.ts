@@ -1,64 +1,41 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
-import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
+import { inflateSync, strFromU8 } from 'fflate';
 
-import type { JsonObject, JsonValue } from '@/core/json';
+import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { err } from '@/core/result';
-import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { SnapshotFile } from '@/core/snapshot-file';
 import { encodeSnapshotFileData } from '@/core/snapshot-import';
 import { encodeStateRecords } from '@/core/state-records';
 import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
-import type { Command, SyncState } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
+import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createSendQueue, type Wait } from '@/platform/send-queue';
-import { startReplicaEngine, type ReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
-
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 150,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 5,
-  gmLinkTimeoutMs: 60000,
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 60,
-  incompleteRequestMaxMs: 240,
-  snapshotImportTimeoutMs: 60000,
-};
+import type { Wait } from '@/platform/send-queue';
+import {
+  copyValue,
+  createRoomRig,
+  heardOf,
+  lastRequest,
+  pause,
+  send,
+  shown,
+  storedRecord,
+  storageKey,
+  sync,
+  type RigClient,
+  type RigRoom,
+} from '@/replica/room-rig';
 
 // The strings and keys of the 5.3 spec, written out by hand.
 const DATA_REPLACED = 'Данные комнаты заменены';
 const KEY = 'app.muster-roll/snapshot';
-const ROOM_PREFIX = 'mr2:mock-room:';
-const OLD_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 3000;
-const POLL_MS = 2;
+const OLD_PREFIX = storageKey('', { n: 0, a: '' });
 const INITIAL: Generation = { n: 0, a: '' };
+const FORMAT_ONE_GENERIC = storageKey('', INITIAL, { format: 1 }).slice(0, 4);
+const CURRENT_ROOM_PREFIX = `${storageKey('', INITIAL).split(':').slice(0, 2).join(':')}:`;
 const GHOST = 'ghost-gm';
 
 const PRESET: Preset = {
@@ -121,9 +98,9 @@ type ClientOptions = {
   role?: PlayerRole;
   seeded?: readonly VersionedRecord[];
   // Raw storage entries next to the seeded records, as another generation left them.
-  stored?: Readonly<Record<string, string>>;
+  entries?: Readonly<Record<string, string>>;
   timing?: Partial<Timing>;
-  untilLive?: boolean;
+  until?: 'loaded' | 'live';
   platform?: (platform: MockPlatform) => MockPlatform;
   // The engine's send queue pauses here between sends.
   hold?: Hold;
@@ -135,34 +112,9 @@ type Hold = { wait: Wait; hold: () => void; release: () => void };
 // Holds every room copy write until it opens, and counts the writes that reached it.
 type WriteGate = { calls: number; open: () => void };
 
-type Client = {
-  connectionId: string;
-  platform: MockPlatform;
-  backing: MockStorageBacking;
-  engine: ReplicaEngine;
-  store: ProjectionStore;
-  window: ReplicaClient;
-};
+type Client = RigClient;
 
-type Heard = { from: string; data: JsonValue; at: number };
-
-type Room = {
-  room: MockRoom;
-  heard: Heard[];
-  // What happened in the room, in order: `copy` for a room copy write, and each `t` heard.
-  events: string[];
-  post: (from: string, data: JsonValue) => void;
-};
-
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  mock.restore();
-
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
+type Room = RigRoom;
 
 function createHold(): Hold {
   let held = false;
@@ -227,7 +179,7 @@ function failingNewGeneration(saved: number): (platform: MockPlatform) => MockPl
     storage: {
       ...platform.storage,
       setItem: (key, value) => {
-        if (key.startsWith(`${ROOM_PREFIX}1:`)) {
+        if (key.startsWith(storageKey('', { n: 1, a: '' }).replace('::', ':'))) {
           writes += 1;
 
           if (writes > saved) {
@@ -245,12 +197,6 @@ function sheet(id: string, order = 0): VersionedRecord {
   return { k: `sheet:${id}`, d: { set: 'pc', order }, c: 1, a: 'seed' };
 }
 
-function copyValue(g: Generation, records: readonly VersionedRecord[], v = 2): JsonObject {
-  const deflated = deflateSync(strToU8(JSON.stringify({ g, records })));
-
-  return { v, data: Buffer.from(deflated).toString('base64') };
-}
-
 function roomCopyGeneration(room: Room): JsonValue {
   const value = room.room.getMetadata()[KEY];
 
@@ -263,141 +209,27 @@ function roomCopyGeneration(room: Room): JsonValue {
   return JSON.parse(strFromU8(inflateSync(new Uint8Array(Buffer.from(data, 'base64'))))).g;
 }
 
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
-}
-
-function openRoom(): Room {
-  const room = createMemoryRoom();
-
-  const observer = createMockPlatform(createMemoryBus(), createBacking(), {
-    room,
-    connectionId: 'observer',
-    playerId: 'observer',
-    name: 'observer',
-    role: 'PLAYER',
-  });
-
-  const heard: Heard[] = [];
-  const events: string[] = [];
-
-  cleanups.push(
-    observer.broadcast.onMessage(SYNC_CHANNEL, (event) => {
-      heard.push({ from: event.connectionId, data: event.data, at: Date.now() });
-      events.push(String(Object(event.data).t));
-    }),
-    room.onMetadataChange(() => {
-      events.push('copy');
-    }),
-  );
-
-  return {
-    room,
-    heard,
-    events,
-    post: (from, data) => {
-      observer.sendRemoteAs(from, SYNC_CHANNEL, data);
-    },
-  };
-}
-
-function joinAs(room: Room, connectionId: string, role: PlayerRole): void {
-  room.room.join({ id: connectionId, connectionId, name: connectionId, role });
-}
+const roomRig = createRoomRig({
+  waitLimitMs: 3000,
+  seeded: OLD_ROOM,
+  timing: {
+    catchUpTimeoutMs: 150,
+    stateAnswerDelayMaxMs: 5,
+    incompleteRequestStartMs: 60,
+    incompleteRequestMaxMs: 240,
+  },
+});
 
 async function startClient(
   room: Room,
   connectionId: string,
   options: ClientOptions = {},
 ): Promise<Client> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
-
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: connectionId,
-    role: options.role ?? 'GM',
-  };
-
-  const created = createMockPlatform(bus, backing, identity);
-  const platform = options.platform?.(created) ?? created;
-
-  for (const record of options.seeded ?? OLD_ROOM) {
-    backing.set(`${OLD_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  for (const [key, value] of Object.entries(options.stored ?? {})) {
-    backing.set(key, value);
-  }
-
-  created.joinParty();
-
-  const engineQueue = createSendQueue(platform.broadcast, TIMING, options.hold?.wait);
-
-  const engine = await startReplicaEngine(platform, engineQueue, {
-    timing: { ...TIMING, ...options.timing },
-    random: () => 0,
-    dataReplaced: DATA_REPLACED,
+  return roomRig.startClient(room, connectionId, {
+    ...options,
+    engine: { random: () => 0, dataReplaced: DATA_REPLACED },
+    sendWait: options.hold?.wait,
   });
-
-  const store = createProjectionStore();
-
-  const window = startReplicaClient(
-    createMockPlatform(bus, backing, identity).broadcast,
-    createSendQueue(created.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-  await waitUntil(() => store.$loaded.get());
-
-  if (options.untilLive === true) {
-    await waitUntil(() => store.$sync.get().state === 'live');
-  }
-
-  return { connectionId, platform: created, backing, engine, store, window };
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
-}
-
-function pause(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-function send(client: Client, command: Command): string {
-  const sent = client.window.sendCommand(command);
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the command: ${sent.error}`);
-  }
-
-  return sent.value;
 }
 
 // The check's answer, or the reason it was refused.
@@ -408,7 +240,7 @@ async function check(client: Client, data = DATA): Promise<JsonValue> {
     throw new Error(`the window refused the check: ${sent.error}`);
   }
 
-  await waitUntil(() => answerOf(client, sent.value) !== null);
+  await roomRig.waitUntil(() => answerOf(client, sent.value) !== null);
 
   return answerOf(client, sent.value);
 }
@@ -418,7 +250,7 @@ async function importFile(client: Client, digest?: string, data = DATA): Promise
   const expected = digest ?? String(Object(await check(client, data)).digest);
   const id = send(client, { type: 'snapshot-import', data, expectedDigest: expected });
 
-  await waitUntil(() => answerOf(client, id) !== null);
+  await roomRig.waitUntil(() => answerOf(client, id) !== null);
 
   return answerOf(client, id);
 }
@@ -435,45 +267,15 @@ function answerOf(client: Client, id: string): JsonValue {
   return result === undefined ? null : { ...result };
 }
 
-function shown(client: Client, key: string): VersionedRecord | undefined {
-  return client.store.$records.get().get(key);
-}
-
 function shownKeys(client: Client): string[] {
   return [...client.store.$records.get().keys()].sort();
 }
 
-function sync(client: Client): SyncState {
-  return client.store.$sync.get();
-}
-
-function storedKeys(client: Client, prefix = ROOM_PREFIX): string[] {
+function storedKeys(client: Client, prefix = CURRENT_ROOM_PREFIX): string[] {
   return client.backing
     .keys()
     .filter((key) => key.startsWith(prefix))
     .sort();
-}
-
-function stored(client: Client, key: string): VersionedRecord | null {
-  const text = client.backing.get(key);
-
-  return text === null ? null : recordSchema.parse(JSON.parse(text));
-}
-
-function heardOf(room: Room, from: string, t: string): JsonValue[] {
-  return room.heard.flatMap((message) =>
-    message.from === from && Object(message.data).t === t ? [message.data] : [],
-  );
-}
-
-function lastRequest(room: Room, from: string): string {
-  const request = heardOf(room, from, 'state-request').at(-1);
-
-  if (request === undefined) {
-    throw new Error(`${from} has asked for no state`);
-  }
-
-  return String(Object(request).r);
 }
 
 function stateMessage(
@@ -498,8 +300,8 @@ function importedRecord(connectionId: string, k: string, d: VersionedRecord['d']
 describe('check', () => {
   test('answers the count and digest of dropped values and writes nothing', async () => {
     // #given
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
     const keysBefore = storedKeys(gm);
     const heardBefore = room.heard.length;
 
@@ -530,8 +332,8 @@ describe('check', () => {
 
   test('refuses a room with no preset', async () => {
     // #given
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { seeded: [BROK], untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: [BROK], until: 'live' });
 
     // #when
     const answer = await check(gm);
@@ -542,8 +344,8 @@ describe('check', () => {
 
   test('refuses data that is no snapshot as a bad file', async () => {
     // #given
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
 
     // #when
     const answer = await check(
@@ -559,8 +361,8 @@ describe('check', () => {
 describe('import', () => {
   test('drops a file sheet of no template of the preset with its values and counts it', async () => {
     // #given: a sheet of a sheet set the preset does not have, holding one value.
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
 
     const data = encodeSnapshotFileData({
       ...FILE,
@@ -574,7 +376,7 @@ describe('import', () => {
     const checked = await check(gm, data);
 
     await importFile(gm, String(Object(checked).digest), data);
-    await waitUntil(() => shown(gm, 'sheet:anya') !== undefined);
+    await roomRig.waitUntil(() => shown(gm, 'sheet:anya') !== undefined);
 
     // #then: `gone` of Аня and `hp` of the dropped sheet.
     expect({
@@ -587,15 +389,15 @@ describe('import', () => {
     // #given: the copy appears after catch-up, so only the import reads it.
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
     const newer = { v: 3, data: 'from a newer build' };
 
     room.room.setMetadata({ [KEY]: newer });
 
     // #when
     await importFile(gm);
-    await waitUntil(() => gm.store.$notices.get().includes('new-version'));
+    await roomRig.waitUntil(() => gm.store.$notices.get().includes('new-version'));
 
     // #then
     expect(room.room.getMetadata()[KEY]).toEqual(newer);
@@ -605,16 +407,16 @@ describe('import', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [], 1) });
 
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
     const before = gm.store.$notices.get();
 
     // #when
     await importFile(gm);
-    await waitUntil(() => Object(room.room.getMetadata()[KEY]).v === 2);
+    await roomRig.waitUntil(() => Object(room.room.getMetadata()[KEY]).v === 2);
     // The delta with the notices reaches the window after the write.
     await pause(30);
 
@@ -634,21 +436,21 @@ describe('import', () => {
 
   test('saves the new generation, writes its room copy and only then sends reset', async () => {
     // #given
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
     const generation = newGenerationOf('gm-a');
     let savedAtCopy: string[] = [];
 
-    cleanups.push(
+    roomRig.cleanup(
       room.room.onMetadataChange(() => {
-        savedAtCopy = storedKeys(gm, `${ROOM_PREFIX}1:gm-a:`);
+        savedAtCopy = storedKeys(gm, storageKey('', { n: 1, a: 'gm-a' }));
       }),
     );
 
     // #when
     const answer = await importFile(gm);
 
-    await waitUntil(() => heardOf(room, 'gm-a', 'reset').length === 1);
+    await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'reset').length === 1);
 
     // #then
     expect({
@@ -668,12 +470,12 @@ describe('import', () => {
 
   test('replaces the data with records at c: 1, the current preset and the links, with no access or owner', async () => {
     // #given
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
 
     // #when
     await importFile(gm);
-    await waitUntil(() => shown(gm, 'sheet:anya') !== undefined);
+    await roomRig.waitUntil(() => shown(gm, 'sheet:anya') !== undefined);
 
     // #then
     expect({
@@ -699,51 +501,54 @@ describe('import', () => {
 
   test('keeps only the new generation in storage once it is complete', async () => {
     // #given
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
 
     // #when
     await importFile(gm);
-    await waitUntil(() => storedKeys(gm, OLD_PREFIX).length === 0);
+    await roomRig.waitUntil(() => storedKeys(gm, OLD_PREFIX).length === 0);
 
     // #then
     expect(storedKeys(gm)).toEqual([
-      'mr2:mock-room:1:gm-a:#generation',
-      'mr2:mock-room:1:gm-a:link:t1',
-      'mr2:mock-room:1:gm-a:preset',
-      'mr2:mock-room:1:gm-a:row:anya:name',
-      'mr2:mock-room:1:gm-a:row:anya:notes',
-      'mr2:mock-room:1:gm-a:row:anya:str',
-      'mr2:mock-room:1:gm-a:row:npc:hp',
-      'mr2:mock-room:1:gm-a:sheet:anya',
+      storageKey('#generation', { n: 1, a: 'gm-a' }),
+      storageKey('link:t1', { n: 1, a: 'gm-a' }),
+      storageKey('preset', { n: 1, a: 'gm-a' }),
+      storageKey('row:anya:name', { n: 1, a: 'gm-a' }),
+      storageKey('row:anya:notes', { n: 1, a: 'gm-a' }),
+      storageKey('row:anya:str', { n: 1, a: 'gm-a' }),
+      storageKey('row:npc:hp', { n: 1, a: 'gm-a' }),
+      storageKey('sheet:anya', { n: 1, a: 'gm-a' }),
     ]);
   });
 
   test("removes this room's keys of an older format once complete, and keeps another room's", async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const gm = await startClient(room, 'gm-a', {
-      stored: {
-        'mr1:mock-room:0::preset': '{"k":"preset","d":"x","c":1,"a":"seed"}',
-        'mr1:mock-room:2:gm-a:#incomplete': '1',
-        'mr1:other-room:0::preset': '{"k":"preset","d":"x","c":1,"a":"seed"}',
+      entries: {
+        [storageKey('preset', INITIAL, { format: 1 })]: '{"k":"preset","d":"x","c":1,"a":"seed"}',
+        [storageKey('#incomplete', { n: 2, a: 'gm-a' }, { format: 1 })]: '1',
+        [storageKey('preset', INITIAL, { roomId: 'other-room', format: 1 })]:
+          '{"k":"preset","d":"x","c":1,"a":"seed"}',
       },
-      untilLive: true,
+      until: 'live',
     });
 
     // #when
     await importFile(gm);
-    await waitUntil(() => storedKeys(gm, OLD_PREFIX).length === 0);
+    await roomRig.waitUntil(() => storedKeys(gm, OLD_PREFIX).length === 0);
 
     // #then
-    expect(storedKeys(gm, 'mr1:')).toEqual(['mr1:other-room:0::preset']);
+    expect(storedKeys(gm, FORMAT_ONE_GENERIC)).toEqual([
+      storageKey('preset', INITIAL, { roomId: 'other-room', format: 1 }),
+    ]);
   });
 
   test('asks again with the new count when the dropped values changed since the check', async () => {
     // #given
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
     const keysBefore = storedKeys(gm);
 
     // #when
@@ -768,11 +573,11 @@ describe('import', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     // The marker and two records save, then the storage is full.
     const gm = await startClient(room, 'gm-a', {
-      untilLive: true,
+      until: 'live',
       platform: failingNewGeneration(3),
     });
 
@@ -806,15 +611,15 @@ describe('import', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const gm = await startClient(room, 'gm-a', {
-      untilLive: true,
+      until: 'live',
       platform: failingNewGeneration(3),
     });
 
     await importFile(gm);
-    await waitUntil(() => gm.store.$notices.get().length === 1);
+    await roomRig.waitUntil(() => gm.store.$notices.get().length === 1);
 
     // #when
     send(gm, {
@@ -826,15 +631,15 @@ describe('import', () => {
     });
 
     // #then
-    await waitUntil(() => gm.store.$notices.get().length === 0);
-    expect(Object(stored(gm, `${OLD_PREFIX}${BROK_STR.k}`)?.d).str).toBe(16);
+    await roomRig.waitUntil(() => gm.store.$notices.get().length === 0);
+    expect(Object(storedRecord(gm, BROK_STR.k, INITIAL)?.d).str).toBe(16);
   });
 
   test('an edit held in the outbox goes out under the old generation, before reset', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const hold = createHold();
-    const gm = await startClient(room, 'gm-a', { untilLive: true, hold });
+    const gm = await startClient(room, 'gm-a', { until: 'live', hold });
     const digest = String(Object(await check(gm)).digest);
 
     hold.hold();
@@ -845,13 +650,13 @@ describe('import', () => {
       fieldId: 'str',
       value: 16,
     });
-    await waitUntil(() => Object(stored(gm, `${OLD_PREFIX}${BROK_STR.k}`)?.d).str === 16);
+    await roomRig.waitUntil(() => Object(storedRecord(gm, BROK_STR.k, INITIAL)?.d).str === 16);
 
     // #when
     send(gm, { type: 'snapshot-import', data: DATA, expectedDigest: digest });
-    await waitUntil(() => storedKeys(gm, OLD_PREFIX).length === 0);
+    await roomRig.waitUntil(() => storedKeys(gm, OLD_PREFIX).length === 0);
     hold.release();
-    await waitUntil(() => heardOf(room, 'gm-a', 'reset').length === 1);
+    await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'reset').length === 1);
 
     // #then
     const messages = room.heard.filter((message) => message.from === 'gm-a');
@@ -868,18 +673,18 @@ describe('import', () => {
 
   test('a GM write during the import is refused until reset is out', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const { gate, opened } = createWriteGate();
 
     const gm = await startClient(room, 'gm-a', {
-      untilLive: true,
+      until: 'live',
       platform: gatedWrites(gate, opened),
     });
 
     const digest = String(Object(await check(gm)).digest);
     const imported = send(gm, { type: 'snapshot-import', data: DATA, expectedDigest: digest });
 
-    await waitUntil(() => gate.calls === 1);
+    await roomRig.waitUntil(() => gate.calls === 1);
 
     // #when
     const edit = send(gm, {
@@ -890,9 +695,9 @@ describe('import', () => {
       value: 5,
     });
 
-    await waitUntil(() => answerOf(gm, edit) !== null);
+    await roomRig.waitUntil(() => answerOf(gm, edit) !== null);
     gate.open();
-    await waitUntil(() => answerOf(gm, imported) !== null);
+    await roomRig.waitUntil(() => answerOf(gm, imported) !== null);
 
     // #then
     expect({
@@ -906,20 +711,20 @@ describe('import', () => {
 
   test('a linked token deleted from the scene during the import loses its link once the import ends', async () => {
     // #given: the file links t1, and the open scene holds t1.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const { gate, opened } = createWriteGate();
 
     room.room.setScene({ ready: true, itemIds: ['t1', 'map'], labels: {} }, 'items');
 
     const gm = await startClient(room, 'gm-a', {
-      untilLive: true,
+      until: 'live',
       platform: gatedWrites(gate, opened),
     });
 
     const digest = String(Object(await check(gm)).digest);
     const imported = send(gm, { type: 'snapshot-import', data: DATA, expectedDigest: digest });
 
-    await waitUntil(() => gate.calls === 1);
+    await roomRig.waitUntil(() => gate.calls === 1);
     gm.platform.removeSceneItems(['t1']);
     await pause(20);
 
@@ -927,15 +732,13 @@ describe('import', () => {
 
     // #when
     gate.open();
-    await waitUntil(() => answerOf(gm, imported) !== null);
-    await waitUntil(() => shown(gm, 'link:t1')?.d === null);
+    await roomRig.waitUntil(() => answerOf(gm, imported) !== null);
+    await roomRig.waitUntil(() => shown(gm, 'link:t1')?.d === null);
 
     // #then
-    const prefix = `${ROOM_PREFIX}1:gm-a:`;
-
     expect({
       during,
-      stored: stored(gm, `${prefix}link:t1`),
+      stored: storedRecord(gm, 'link:t1', { n: 1, a: 'gm-a' }),
       rejections: [...gm.store.$rejections.get().keys()],
     }).toEqual({
       during: { s: 'anya' },
@@ -946,12 +749,12 @@ describe('import', () => {
 
   test('an import that finds a copy of a higher generation adopts it, overwrites nothing and sends no reset', async () => {
     // #given: this client missed the change event of that copy.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const higher: Generation = { n: 5, a: 'zz' };
     const mira = importedRecord('zz', 'sheet:mira', { set: 'pc', order: 0 });
 
     const gm = await startClient(room, 'gm-a', {
-      untilLive: true,
+      until: 'live',
       platform: (platform) => ({
         ...platform,
         metadata: { ...platform.metadata, onMetadataChange: () => () => undefined },
@@ -965,7 +768,7 @@ describe('import', () => {
     // #when
     const answer = await importFile(gm, digest);
 
-    await waitUntil(() => shown(gm, mira.k) !== undefined);
+    await roomRig.waitUntil(() => shown(gm, mira.k) !== undefined);
 
     // #then
     expect({
@@ -983,16 +786,16 @@ describe('import', () => {
 
   test('two imports at once end with every client on the higher one', async () => {
     // #given: both copies wait, so each import read the room before either wrote.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const { gate, opened } = createWriteGate();
 
     const first = await startClient(room, 'gm-a', {
-      untilLive: true,
+      until: 'live',
       platform: gatedWrites(gate, opened),
     });
 
     const second = await startClient(room, 'gm-b', {
-      untilLive: true,
+      until: 'live',
       platform: gatedWrites(gate, opened),
     });
 
@@ -1003,23 +806,25 @@ describe('import', () => {
       send(client, { type: 'snapshot-import', data: DATA, expectedDigest: digest }),
     );
 
-    await waitUntil(() => gate.calls === 2);
+    await roomRig.waitUntil(() => gate.calls === 2);
     gate.open();
-    await waitUntil(() =>
+    await roomRig.waitUntil(() =>
       ids.every((id, index) => answerOf([first, second][index] ?? first, id) !== null),
     );
-    await waitUntil(() =>
+    await roomRig.waitUntil(() =>
       [first, second].every(
         (client) => sync(client).state === 'live' && storedKeys(client, OLD_PREFIX).length === 0,
       ),
     );
-    await waitUntil(() => stored(first, `${ROOM_PREFIX}1:gm-b:sheet:anya`) !== null);
-    await waitUntil(() => shown(first, 'sheet:anya') !== undefined);
+    await roomRig.waitUntil(() => storedRecord(first, 'sheet:anya', { n: 1, a: 'gm-b' }) !== null);
+    await roomRig.waitUntil(() => shown(first, 'sheet:anya') !== undefined);
 
     // #then
     expect({
-      first: storedKeys(first).every((key) => key.startsWith(`${ROOM_PREFIX}1:gm-b:`)),
-      second: storedKeys(second).every((key) => key.startsWith(`${ROOM_PREFIX}1:gm-b:`)),
+      first: storedKeys(first).every((key) => key.startsWith(storageKey('', { n: 1, a: 'gm-b' }))),
+      second: storedKeys(second).every((key) =>
+        key.startsWith(storageKey('', { n: 1, a: 'gm-b' })),
+      ),
       shown: shownKeys(first),
       winner: Object(answerOf(second, ids[1] ?? '')).t,
     }).toEqual({
@@ -1032,21 +837,21 @@ describe('import', () => {
 
   test('a copy over the limit still finishes the import, sends reset, shows the notice and removes the old copy', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({
       [KEY]: copyValue(INITIAL, OLD_ROOM),
       'other.extension/data': 'x'.repeat(15200),
     });
 
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
 
     // #when
     const answer = await importFile(gm);
 
-    await waitUntil(() => heardOf(room, 'gm-a', 'reset').length === 1);
-    await waitUntil(() => room.room.getMetadata()[KEY] === undefined);
-    await waitUntil(() => gm.store.$notices.get().length > 0);
+    await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'reset').length === 1);
+    await roomRig.waitUntil(() => room.room.getMetadata()[KEY] === undefined);
+    await roomRig.waitUntil(() => gm.store.$notices.get().length > 0);
 
     // #then
     expect({
@@ -1062,20 +867,20 @@ describe('import', () => {
 
   test('a player sees the imported data, read-only and with no owner', async () => {
     // #given
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
 
     const player = await startClient(room, 'player-p', {
       role: 'PLAYER',
       seeded: [],
-      untilLive: true,
+      until: 'live',
     });
 
-    await waitUntil(() => shown(player, ACL.k) !== undefined);
+    await roomRig.waitUntil(() => shown(player, ACL.k) !== undefined);
 
     // #when
     await importFile(gm);
-    await waitUntil(
+    await roomRig.waitUntil(
       () => shown(player, 'sheet:anya') !== undefined && sync(player).state === 'live',
     );
 
@@ -1087,7 +892,7 @@ describe('import', () => {
       value: 5,
     });
 
-    await waitUntil(() => player.store.$rejections.get().has(id));
+    await roomRig.waitUntil(() => player.store.$rejections.get().has(id));
 
     // #then
     expect({
@@ -1102,23 +907,25 @@ describe('import', () => {
 describe('adoption', () => {
   test('a second GM adopts on reset alone: it drops its old data, saves the new and notifies', async () => {
     // #given: the copy cannot be saved, so only reset and catch-up bring the data.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({ 'other.extension/data': 'x'.repeat(15400) });
 
-    const importer = await startClient(room, 'gm-a', { untilLive: true });
-    const other = await startClient(room, 'gm-b', { untilLive: true });
+    const importer = await startClient(room, 'gm-a', { until: 'live' });
+    const other = await startClient(room, 'gm-b', { until: 'live' });
 
     // #when
     await importFile(importer);
-    await waitUntil(() => shown(other, 'sheet:anya') !== undefined && sync(other).state === 'live');
+    await roomRig.waitUntil(
+      () => shown(other, 'sheet:anya') !== undefined && sync(other).state === 'live',
+    );
 
     // #then
     expect({
       keys: shownKeys(other),
       notified: other.platform.shownNotifications(),
-      stored: storedKeys(other).every((key) => key.startsWith(`${ROOM_PREFIX}1:gm-a:`)),
-      str: stored(other, `${ROOM_PREFIX}1:gm-a:row:anya:str`),
+      stored: storedKeys(other).every((key) => key.startsWith(storageKey('', { n: 1, a: 'gm-a' }))),
+      str: storedRecord(other, 'row:anya:str', { n: 1, a: 'gm-a' }),
     }).toEqual({
       keys: shownKeys(importer),
       notified: [DATA_REPLACED],
@@ -1129,9 +936,9 @@ describe('adoption', () => {
 
   test('a GM adopts from another message of a higher generation and drops its waiting intents', async () => {
     // #given: a GM that never answers keeps this client in catch-up with an intent queued.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const gm = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 2000 } });
 
@@ -1146,16 +953,16 @@ describe('adoption', () => {
     const generation = newGenerationOf(GHOST);
     const anya = importedRecord(GHOST, 'sheet:anya', { set: 'pc', order: 0 });
 
-    await waitUntil(() => Object(shown(gm, BROK_STR.k)?.d).str === 11);
+    await roomRig.waitUntil(() => Object(shown(gm, BROK_STR.k)?.d).str === 11);
 
     const asked = heardOf(room, 'gm-b', 'state-request').length;
 
     // #when
     room.post(GHOST, { v: 2, g: generation, t: 'alive', digest: 1 });
-    await waitUntil(() => gm.store.$rejections.get().has(intent));
-    await waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
+    await roomRig.waitUntil(() => gm.store.$rejections.get().has(intent));
+    await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), [PRESET_RECORD, anya], generation));
-    await waitUntil(() => sync(gm).state === 'live');
+    await roomRig.waitUntil(() => sync(gm).state === 'live');
 
     // #then
     expect({
@@ -1171,15 +978,15 @@ describe('adoption', () => {
 
   test('a live GM adopts a room copy of a higher generation at once', async () => {
     // #given
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-b', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-b', { until: 'live' });
     const generation = newGenerationOf('gm-a');
     const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
 
     // #when
     room.room.setMetadata({ [KEY]: copyValue(generation, [PRESET_RECORD, anya]) });
-    await waitUntil(() => shown(gm, anya.k) !== undefined);
-    await waitUntil(() => sync(gm).state === 'live');
+    await roomRig.waitUntil(() => shown(gm, anya.k) !== undefined);
+    await roomRig.waitUntil(() => sync(gm).state === 'live');
 
     // #then
     expect({
@@ -1189,9 +996,9 @@ describe('adoption', () => {
     }).toEqual({
       keys: ['preset', 'sheet:anya'],
       stored: [
-        'mr2:mock-room:1:gm-a:#generation',
-        'mr2:mock-room:1:gm-a:preset',
-        'mr2:mock-room:1:gm-a:sheet:anya',
+        storageKey('#generation', { n: 1, a: 'gm-a' }),
+        storageKey('preset', { n: 1, a: 'gm-a' }),
+        storageKey('sheet:anya', { n: 1, a: 'gm-a' }),
       ],
       notified: [DATA_REPLACED],
     });
@@ -1199,15 +1006,15 @@ describe('adoption', () => {
 
   test('while incomplete it keeps its data, writes no copy, answers nothing and asks again with backoff', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
-    joinAs(room, 'asker', 'PLAYER');
+    room.join(GHOST, 'GM');
+    room.join('asker', 'PLAYER');
 
-    const gm = await startClient(room, 'gm-b', { untilLive: true });
+    const gm = await startClient(room, 'gm-b', { until: 'live' });
     let copyWrites = 0;
 
-    cleanups.push(
+    roomRig.cleanup(
       room.room.onMetadataChange(() => {
         copyWrites += 1;
       }),
@@ -1217,7 +1024,7 @@ describe('adoption', () => {
 
     // #when
     room.post(GHOST, { v: 2, g: newGenerationOf(GHOST), t: 'reset' });
-    await waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
+    await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
 
     const started = Date.now();
 
@@ -1225,7 +1032,7 @@ describe('adoption', () => {
     room.post('asker', { v: 2, g: INITIAL, t: 'ping' });
     gm.engine.pageHidden();
     // Past the catch-up timeout, with requests again after 60, 120, 240 and 240 ms: the cap.
-    await waitUntil(() => heardOf(room, 'gm-b', 'state-request').length === asked + 5);
+    await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length === asked + 5);
 
     const waited = Date.now() - started;
 
@@ -1239,7 +1046,7 @@ describe('adoption', () => {
     expect({
       sync: sync(gm).state,
       brok: shown(gm, BROK.k),
-      stored: stored(gm, `${OLD_PREFIX}${BROK.k}`),
+      stored: storedRecord(gm, BROK.k, INITIAL),
       copyWrites,
       answers: heardOf(room, 'gm-b', 'state').length + heardOf(room, 'gm-b', 'alive').length,
       backedOff: waited >= 60 + 120 + 240 + 240 - 20,
@@ -1257,18 +1064,18 @@ describe('adoption', () => {
 
   test('a partial answer does not complete it, and all parts of one responder do', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
-    const gm = await startClient(room, 'gm-b', { untilLive: true });
+    const gm = await startClient(room, 'gm-b', { until: 'live' });
     const generation = newGenerationOf(GHOST);
     const anya = importedRecord(GHOST, 'sheet:anya', { set: 'pc', order: 0 });
 
     const asked = heardOf(room, 'gm-b', 'state-request').length;
 
     room.post(GHOST, { v: 2, g: generation, t: 'reset' });
-    await waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
+    await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
 
     const r = lastRequest(room, 'gm-b');
 
@@ -1283,7 +1090,7 @@ describe('adoption', () => {
     };
 
     room.post(GHOST, stateMessage(r, [anya], generation, 2, 2));
-    await waitUntil(() => sync(gm).state === 'live');
+    await roomRig.waitUntil(() => sync(gm).state === 'live');
 
     // #then
     expect({ partial, keys: shownKeys(gm), old: storedKeys(gm, OLD_PREFIX) }).toEqual({
@@ -1295,16 +1102,16 @@ describe('adoption', () => {
 
   test('a player drops its waiting edits with the notification', async () => {
     // #given
-    const room = openRoom();
-    const gm = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
 
     const player = await startClient(room, 'player-p', {
       role: 'PLAYER',
       seeded: [],
-      untilLive: true,
+      until: 'live',
     });
 
-    await waitUntil(() => shown(player, ACL.k) !== undefined);
+    await roomRig.waitUntil(() => shown(player, ACL.k) !== undefined);
     gm.engine.stop();
     send(player, {
       type: 'field-patch',
@@ -1313,13 +1120,13 @@ describe('adoption', () => {
       fieldId: 'str',
       value: 11,
     });
-    await waitUntil(() => player.store.$pending.get().size === 1);
+    await roomRig.waitUntil(() => player.store.$pending.get().size === 1);
 
     // #when
     room.post(GHOST, { v: 2, g: newGenerationOf(GHOST), t: 'reset' });
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
     room.post(GHOST, { v: 2, g: newGenerationOf(GHOST), t: 'reset' });
-    await waitUntil(() => player.store.$pending.get().size === 0);
+    await roomRig.waitUntil(() => player.store.$pending.get().size === 0);
 
     // #then
     expect(player.platform.shownNotifications()).toEqual([DATA_REPLACED]);
@@ -1329,9 +1136,9 @@ describe('adoption', () => {
 describe('adoption guards', () => {
   test('a commit held in the outbox when adoption starts never goes out under the new generation', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const hold = createHold();
-    const gm = await startClient(room, 'gm-b', { untilLive: true, hold });
+    const gm = await startClient(room, 'gm-b', { until: 'live', hold });
     const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
 
     hold.hold();
@@ -1342,13 +1149,13 @@ describe('adoption guards', () => {
       fieldId: 'str',
       value: 15,
     });
-    await waitUntil(() => Object(stored(gm, `${OLD_PREFIX}${BROK_STR.k}`)?.d).str === 15);
+    await roomRig.waitUntil(() => Object(storedRecord(gm, BROK_STR.k, INITIAL)?.d).str === 15);
 
     // #when
     room.room.setMetadata({ [KEY]: copyValue(newGenerationOf('gm-a'), [PRESET_RECORD, anya]) });
-    await waitUntil(() => storedKeys(gm, OLD_PREFIX).length === 0);
+    await roomRig.waitUntil(() => storedKeys(gm, OLD_PREFIX).length === 0);
     hold.release();
-    await waitUntil(() => sync(gm).state === 'live');
+    await roomRig.waitUntil(() => sync(gm).state === 'live');
     await pause(30);
 
     // #then
@@ -1361,11 +1168,11 @@ describe('adoption guards', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
-    const importer = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const importer = await startClient(room, 'gm-a', { until: 'live' });
 
     const other = await startClient(room, 'gm-b', {
-      untilLive: true,
+      until: 'live',
       platform: failingNewGeneration(1),
     });
 
@@ -1373,7 +1180,7 @@ describe('adoption guards', () => {
 
     // #when
     await importFile(importer);
-    await waitUntil(() => other.store.$notices.get().includes('local-save-failed'));
+    await roomRig.waitUntil(() => other.store.$notices.get().includes('local-save-failed'));
     await pause(30);
 
     // #then
@@ -1386,16 +1193,16 @@ describe('adoption guards', () => {
 
   test('a client with no data adopts with no notification', async () => {
     // #given
-    const room = openRoom();
-    const importer = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const importer = await startClient(room, 'gm-a', { until: 'live' });
 
     await importFile(importer);
-    await waitUntil(() => roomCopyGeneration(room) !== null);
+    await roomRig.waitUntil(() => roomCopyGeneration(room) !== null);
 
     // #when
-    const fresh = await startClient(room, 'gm-c', { seeded: [], untilLive: true });
+    const fresh = await startClient(room, 'gm-c', { seeded: [], until: 'live' });
 
-    await waitUntil(() => shown(fresh, 'sheet:anya') !== undefined);
+    await roomRig.waitUntil(() => shown(fresh, 'sheet:anya') !== undefined);
 
     // #then
     expect(fresh.platform.shownNotifications()).toEqual([]);
@@ -1403,24 +1210,24 @@ describe('adoption guards', () => {
 
   test('a commit of the adopted generation during adoption is there once it is complete', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
-    const gm = await startClient(room, 'gm-b', { untilLive: true });
+    const gm = await startClient(room, 'gm-b', { until: 'live' });
     const generation = newGenerationOf(GHOST);
     const anya = importedRecord(GHOST, 'sheet:anya', { set: 'pc', order: 0 });
     const mira = importedRecord(GHOST, 'sheet:mira', { set: 'pc', order: 1 });
     const asked = heardOf(room, 'gm-b', 'state-request').length;
 
     room.post(GHOST, { v: 2, g: generation, t: 'reset' });
-    await waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
+    await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
 
     // #when
     room.post(GHOST, { v: 2, g: generation, t: 'commit', records: [mira] });
     await pause(20);
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), [PRESET_RECORD, anya], generation));
-    await waitUntil(() => sync(gm).state === 'live');
+    await roomRig.waitUntil(() => sync(gm).state === 'live');
 
     // #then
     expect(shownKeys(gm)).toEqual(['preset', 'sheet:anya', 'sheet:mira']);
@@ -1430,16 +1237,16 @@ describe('adoption guards', () => {
 describe('start', () => {
   test('a generation saved part way is not read and its keys go', async () => {
     // #given
-    const room = openRoom();
-    const partial = 'mr2:mock-room:1:gm-x:';
+    const room = roomRig.openRoom();
+    const partial = storageKey('', { n: 1, a: 'gm-x' });
 
     // #when
     const gm = await startClient(room, 'gm-a', {
-      stored: {
+      entries: {
         [`${partial}#incomplete`]: '1',
         [`${partial}preset`]: JSON.stringify(PRESET_RECORD),
       },
-      untilLive: true,
+      until: 'live',
     });
 
     // #then
@@ -1451,14 +1258,14 @@ describe('start', () => {
 
   test('takes the room copy of a higher generation over its stored one', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const generation = newGenerationOf('gm-a');
     const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
 
     room.room.setMetadata({ [KEY]: copyValue(generation, [PRESET_RECORD, anya]) });
 
     // #when
-    const gm = await startClient(room, 'gm-b', { untilLive: true });
+    const gm = await startClient(room, 'gm-b', { until: 'live' });
 
     // #then
     expect({ keys: shownKeys(gm), old: storedKeys(gm, OLD_PREFIX) }).toEqual({
@@ -1469,14 +1276,14 @@ describe('start', () => {
 
   test('removes a generation below the highest one that a run left behind', async () => {
     // #given
-    const room = openRoom();
-    const newer = 'mr2:mock-room:1:gm-a:';
+    const room = roomRig.openRoom();
+    const newer = storageKey('', { n: 1, a: 'gm-a' });
     const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
 
     // #when
     const gm = await startClient(room, 'gm-b', {
-      stored: { [`${newer}${anya.k}`]: JSON.stringify(anya) },
-      untilLive: true,
+      entries: { [`${newer}${anya.k}`]: JSON.stringify(anya) },
+      until: 'live',
     });
 
     // #then
@@ -1485,16 +1292,16 @@ describe('start', () => {
 
   test('takes its stored generation when it is the highest', async () => {
     // #given
-    const room = openRoom();
-    const newer = 'mr2:mock-room:2:gm-a:';
+    const room = roomRig.openRoom();
+    const newer = storageKey('', { n: 2, a: 'gm-a' });
     const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
 
     room.room.setMetadata({ [KEY]: copyValue(newGenerationOf('gm-a'), [PRESET_RECORD]) });
 
     // #when
     const gm = await startClient(room, 'gm-b', {
-      stored: { [`${newer}${anya.k}`]: JSON.stringify(anya) },
-      untilLive: true,
+      entries: { [`${newer}${anya.k}`]: JSON.stringify(anya) },
+      until: 'live',
     });
 
     // #then

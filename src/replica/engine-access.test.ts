@@ -1,56 +1,19 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
 import type { PartyEntry } from '@/core/access';
-import type { JsonValue } from '@/core/json';
 import { ownerOf } from '@/core/merge';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
-import { SYNC_CHANNEL } from '@/core/room-messages';
-import type { Timing } from '@/core/timing';
-import type { Command } from '@/core/ui-messages';
 import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
-import type { PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
-
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 400,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 0,
-  // Far past any test, so no ping goes out unless a test asks for one.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
-
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
+  createRoomRig,
+  rejection,
+  send,
+  shown,
+  storedRecord,
+  waitUntil,
+  type RigClient,
+  type RigRoom,
+} from '@/replica/room-rig';
 
 const PRESET: Preset = {
   v: 2,
@@ -100,32 +63,15 @@ const BASE: readonly VersionedRecord[] = [
   { k: 'sheet:liza', d: null, c: 2, a: 'seed' },
 ];
 
-type Client = {
-  platform: MockPlatform;
-  backing: MockStorageBacking;
-  store: ProjectionStore;
-  window: ReplicaClient;
-};
+type Client = RigClient;
 
-type Heard = { from: string; data: JsonValue };
-
-type Room = { room: MockRoom; heard: Heard[] };
-
-type ClientOptions = { role?: PlayerRole; seeded?: readonly VersionedRecord[] };
-
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
+type Room = RigRoom;
 
 describe('acl-set', () => {
   test('grants access: acl:{sheetId}:{playerId} holds the name at c: 1 by this connection, saved and sent', async () => {
     // #given
-    const room = openRoom();
-    const client = await startClient(room, 'gm-a');
+    const room = roomRig.openRoom();
+    const client = await roomRig.startClient(room, 'gm-a');
 
     // #when
     send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля', on: true });
@@ -136,16 +82,16 @@ describe('acl-set', () => {
 
     expect({
       shown: shown(client, 'acl:brok:p-oly'),
-      stored: stored(client, 'acl:brok:p-oly'),
+      stored: storedRecord(client, 'acl:brok:p-oly'),
       sent: committed(room, 'gm-a'),
     }).toEqual({ shown: expected, stored: expected, sent: [expected] });
   });
 
   test('revokes access: the acl: record is tombstoned, saved and sent', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    const client = await startClient(room, 'gm-a', {
+    const client = await roomRig.startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'acl:brok:p-oly', d: { name: 'Оля' }, c: 3, a: 'seed' }],
     });
 
@@ -158,16 +104,16 @@ describe('acl-set', () => {
 
     expect({
       shown: shown(client, 'acl:brok:p-oly'),
-      stored: stored(client, 'acl:brok:p-oly'),
+      stored: storedRecord(client, 'acl:brok:p-oly'),
       sent: committed(room, 'gm-a'),
     }).toEqual({ shown: expected, stored: expected, sent: [expected] });
   });
 
   test('grants again over a tombstone with the name of the moment', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    const client = await startClient(room, 'gm-a', {
+    const client = await roomRig.startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'acl:brok:p-oly', d: null, c: 5, a: 'seed' }],
     });
 
@@ -176,7 +122,7 @@ describe('acl-set', () => {
     await waitUntil(() => shown(client, 'acl:brok:p-oly')?.d !== null);
 
     // #then
-    expect(stored(client, 'acl:brok:p-oly')).toEqual({
+    expect(storedRecord(client, 'acl:brok:p-oly')).toEqual({
       k: 'acl:brok:p-oly',
       d: { name: 'Ольга' },
       c: 6,
@@ -191,15 +137,15 @@ describe('acl-set', () => {
   ] as const) {
     test(`${label} it stores`, async () => {
       // #given
-      const room = openRoom();
-      const client = await startClient(room, 'gm-a');
+      const room = roomRig.openRoom();
+      const client = await roomRig.startClient(room, 'gm-a');
 
       // #when
       send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name, on: true });
       await waitUntil(() => shown(client, 'acl:brok:p-oly') !== undefined);
 
       // #then
-      expect(stored(client, 'acl:brok:p-oly')?.d).toEqual({ name: expected });
+      expect(storedRecord(client, 'acl:brok:p-oly')?.d).toEqual({ name: expected });
     });
   }
 
@@ -209,9 +155,9 @@ describe('acl-set', () => {
   ] as const) {
     test(`refuses ${label} with "unchanged" and writes nothing`, async () => {
       // #given
-      const room = openRoom();
+      const room = roomRig.openRoom();
       const before: VersionedRecord = { k: 'acl:brok:p-oly', d: seeded, c: 2, a: 'seed' };
-      const client = await startClient(room, 'gm-a', { seeded: [...BASE, before] });
+      const client = await roomRig.startClient(room, 'gm-a', { seeded: [...BASE, before] });
 
       // #when
       const id = send(client, {
@@ -225,7 +171,10 @@ describe('acl-set', () => {
       await waitUntil(() => rejection(client, id) !== undefined);
 
       // #then
-      expect({ reason: rejection(client, id), stored: stored(client, 'acl:brok:p-oly') }).toEqual({
+      expect({
+        reason: rejection(client, id),
+        stored: storedRecord(client, 'acl:brok:p-oly'),
+      }).toEqual({
         reason: 'unchanged',
         stored: before,
       });
@@ -242,8 +191,8 @@ describe('acl-set', () => {
   ] as const) {
     test(`refuses sheet "${sheetId}" and player "${playerId}" with "${reason}" and writes nothing`, async () => {
       // #given
-      const room = openRoom();
-      const client = await startClient(room, 'gm-a');
+      const room = roomRig.openRoom();
+      const client = await roomRig.startClient(room, 'gm-a');
 
       // #when
       const id = send(client, { type: 'acl-set', sheetId, playerId, name: 'Оля', on: true });
@@ -260,9 +209,9 @@ describe('acl-set', () => {
 
   test('refuses a player with "not-allowed" and writes nothing', async () => {
     // #given
-    const room = openRoom();
-    await startClient(room, 'gm-a');
-    const player = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
+    const room = roomRig.openRoom();
+    await roomRig.startClient(room, 'gm-a');
+    const player = await roomRig.startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
     await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
 
     // #when
@@ -286,9 +235,9 @@ describe('acl-set', () => {
 
   test('reaches a player, whose window then holds its live acl:, and the revoke takes it back', async () => {
     // #given
-    const room = openRoom();
-    const gmClient = await startClient(room, 'gm-a');
-    const player = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
+    const room = roomRig.openRoom();
+    const gmClient = await roomRig.startClient(room, 'gm-a');
+    const player = await roomRig.startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
     await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
 
     // #when
@@ -317,8 +266,8 @@ describe('acl-set', () => {
 
   test('a sheet delete tombstones the acl: records the command wrote', async () => {
     // #given
-    const room = openRoom();
-    const client = await startClient(room, 'gm-a');
+    const room = roomRig.openRoom();
+    const client = await roomRig.startClient(room, 'gm-a');
 
     send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля', on: true });
     send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-gena', name: 'Гена', on: true });
@@ -329,7 +278,10 @@ describe('acl-set', () => {
     await waitUntil(() => shown(client, 'sheet:brok')?.d === null);
 
     // #then
-    expect([stored(client, 'acl:brok:p-oly'), stored(client, 'acl:brok:p-gena')]).toEqual([
+    expect([
+      storedRecord(client, 'acl:brok:p-oly'),
+      storedRecord(client, 'acl:brok:p-gena'),
+    ]).toEqual([
       { k: 'acl:brok:p-oly', d: null, c: 2, a: 'gm-a' },
       { k: 'acl:brok:p-gena', d: null, c: 2, a: 'gm-a' },
     ]);
@@ -339,8 +291,8 @@ describe('acl-set', () => {
 describe('owner-set', () => {
   test('picks an owner: acl: then plink: hold the name, in one commit, saved and shown', async () => {
     // #given
-    const room = openRoom();
-    const client = await startClient(room, 'gm-a');
+    const room = roomRig.openRoom();
+    const client = await roomRig.startClient(room, 'gm-a');
 
     // #when
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: 'p-oly', name: ' Оля ' });
@@ -352,17 +304,17 @@ describe('owner-set', () => {
 
     expect({
       sent: commits(room, 'gm-a'),
-      stored: [stored(client, acl.k), stored(client, plink.k)],
+      stored: [storedRecord(client, acl.k), storedRecord(client, plink.k)],
       owner: ownerOf(client.store.$records.get().values(), 'brok'),
     }).toEqual({ sent: [[acl, plink]], stored: [acl, plink], owner: 'p-oly' });
   });
 
   test("a new owner tombstones the previous owner's plink: and leaves the previous acl: alone", async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const aclA: VersionedRecord = { k: 'acl:brok:p-oly', d: { name: 'Оля' }, c: 3, a: 'seed' };
 
-    const client = await startClient(room, 'gm-a', {
+    const client = await roomRig.startClient(room, 'gm-a', {
       seeded: [...BASE, aclA, { k: 'plink:brok:p-oly', d: { name: 'Оля' }, c: 2, a: 'seed' }],
     });
 
@@ -373,7 +325,7 @@ describe('owner-set', () => {
     // #then
     expect({
       sent: commits(room, 'gm-a'),
-      aclA: stored(client, 'acl:brok:p-oly'),
+      aclA: storedRecord(client, 'acl:brok:p-oly'),
       owner: ownerOf(client.store.$records.get().values(), 'brok'),
     }).toEqual({
       sent: [
@@ -390,17 +342,17 @@ describe('owner-set', () => {
 
   test('writes no acl: for an owner whose acl: is already live, and keeps it as it was', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const acl: VersionedRecord = { k: 'acl:brok:p-oly', d: { name: 'Оля' }, c: 4, a: 'seed' };
 
-    const client = await startClient(room, 'gm-a', { seeded: [...BASE, acl] });
+    const client = await roomRig.startClient(room, 'gm-a', { seeded: [...BASE, acl] });
 
     // #when
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: 'p-oly', name: 'Ольга' });
     await waitUntil(() => commits(room, 'gm-a').length === 1);
 
     // #then
-    expect({ sent: commits(room, 'gm-a'), acl: stored(client, acl.k) }).toEqual({
+    expect({ sent: commits(room, 'gm-a'), acl: storedRecord(client, acl.k) }).toEqual({
       sent: [[{ k: 'plink:brok:p-oly', d: { name: 'Ольга' }, c: 1, a: 'gm-a' }]],
       acl,
     });
@@ -408,9 +360,9 @@ describe('owner-set', () => {
 
   test('writes acl: again over its tombstone, as picking an owner turns editing on', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    const client = await startClient(room, 'gm-a', {
+    const client = await roomRig.startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'acl:brok:p-oly', d: null, c: 6, a: 'seed' }],
     });
 
@@ -419,7 +371,7 @@ describe('owner-set', () => {
     await waitUntil(() => commits(room, 'gm-a').length === 1);
 
     // #then
-    expect(stored(client, 'acl:brok:p-oly')).toEqual({
+    expect(storedRecord(client, 'acl:brok:p-oly')).toEqual({
       k: 'acl:brok:p-oly',
       d: { name: 'Оля' },
       c: 7,
@@ -429,10 +381,10 @@ describe('owner-set', () => {
 
   test('"Никто" tombstones every live plink: of the sheet and leaves acl: as it was', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const acl: VersionedRecord = { k: 'acl:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'seed' };
 
-    const client = await startClient(room, 'gm-a', {
+    const client = await roomRig.startClient(room, 'gm-a', {
       seeded: [
         ...BASE,
         acl,
@@ -450,7 +402,7 @@ describe('owner-set', () => {
     // #then
     expect({
       sent: sortedByKey(commits(room, 'gm-a')[0] ?? []),
-      acl: stored(client, acl.k),
+      acl: storedRecord(client, acl.k),
       owner: ownerOf(client.store.$records.get().values(), 'brok'),
     }).toEqual({
       sent: [
@@ -476,8 +428,8 @@ describe('owner-set', () => {
   ] as const) {
     test(`refuses ${label} with "unchanged" and writes nothing`, async () => {
       // #given
-      const room = openRoom();
-      const client = await startClient(room, 'gm-a', { seeded: [...BASE, ...seeded] });
+      const room = roomRig.openRoom();
+      const client = await roomRig.startClient(room, 'gm-a', { seeded: [...BASE, ...seeded] });
 
       // #when
       const id = send(client, { type: 'owner-set', sheetId: 'brok', playerId, name: 'Оля' });
@@ -502,8 +454,8 @@ describe('owner-set', () => {
   ] as const) {
     test(`refuses sheet "${sheetId}" and player ${JSON.stringify(playerId)} with "${reason}" and writes nothing`, async () => {
       // #given
-      const room = openRoom();
-      const client = await startClient(room, 'gm-a');
+      const room = roomRig.openRoom();
+      const client = await roomRig.startClient(room, 'gm-a');
 
       // #when
       const id = send(client, { type: 'owner-set', sheetId, playerId, name: 'Оля' });
@@ -519,9 +471,9 @@ describe('owner-set', () => {
 
   test('refuses a player with "not-allowed" and writes nothing', async () => {
     // #given
-    const room = openRoom();
-    await startClient(room, 'gm-a');
-    const player = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
+    const room = roomRig.openRoom();
+    await roomRig.startClient(room, 'gm-a');
+    const player = await roomRig.startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
     await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
 
     // #when
@@ -544,8 +496,8 @@ describe('owner-set', () => {
 
   test('clearing "Может править" for the owner tombstones acl: only, and the owner stays', async () => {
     // #given
-    const room = openRoom();
-    const client = await startClient(room, 'gm-a');
+    const room = roomRig.openRoom();
+    const client = await roomRig.startClient(room, 'gm-a');
 
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля' });
     await waitUntil(() => shown(client, 'plink:brok:p-oly') !== undefined);
@@ -556,7 +508,7 @@ describe('owner-set', () => {
 
     // #then
     expect({
-      plink: stored(client, 'plink:brok:p-oly'),
+      plink: storedRecord(client, 'plink:brok:p-oly'),
       owner: ownerOf(client.store.$records.get().values(), 'brok'),
     }).toEqual({
       plink: { k: 'plink:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'gm-a' },
@@ -566,9 +518,9 @@ describe('owner-set', () => {
 
   test('with two live plink: records, the next pick tombstones both', async () => {
     // #given: two GM clients picked at once, and the merge kept both.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    const client = await startClient(room, 'gm-a', {
+    const client = await roomRig.startClient(room, 'gm-a', {
       seeded: [
         ...BASE,
         { k: 'plink:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'gm-b' },
@@ -604,10 +556,10 @@ describe('owner-set', () => {
 
   test('two GM clients that pick different owners at once end with one owner on every client', async () => {
     // #given
-    const room = openRoom();
-    const gmA = await startClient(room, 'gm-a');
-    const gmB = await startClient(room, 'gm-b');
-    const player = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
+    const room = roomRig.openRoom();
+    const gmA = await roomRig.startClient(room, 'gm-a');
+    const gmB = await roomRig.startClient(room, 'gm-b');
+    const player = await roomRig.startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
     await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
 
     // #when
@@ -629,7 +581,7 @@ describe('owner-set', () => {
 
     // #then: the expected owner is read from the stored records, by `(c, a)` and then by key.
     const live = keys.flatMap((key) => {
-      const record = stored(gmA, key);
+      const record = storedRecord(gmA, key);
 
       return record === null || record.d === null ? [] : [record];
     });
@@ -660,9 +612,9 @@ describe('owner-set', () => {
   ] as const) {
     test(`refuses ${label} as owner with "invalid-player-id" and writes nothing`, async () => {
       // #given
-      const room = openRoom();
-      joinAs(room, 'gm-b', 'GM', 'Мастер');
-      const client = await startClient(room, 'gm-a');
+      const room = roomRig.openRoom();
+      room.join('gm-b', 'GM', 'Мастер');
+      const client = await roomRig.startClient(room, 'gm-a');
       await waitUntil(() => client.store.$party.get().length === 1);
 
       // #when
@@ -679,8 +631,8 @@ describe('owner-set', () => {
 
   test('a sheet delete tombstones the plink: records the command wrote', async () => {
     // #given
-    const room = openRoom();
-    const client = await startClient(room, 'gm-a');
+    const room = roomRig.openRoom();
+    const client = await roomRig.startClient(room, 'gm-a');
 
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля' });
     await waitUntil(() => shown(client, 'plink:brok:p-oly') !== undefined);
@@ -690,7 +642,10 @@ describe('owner-set', () => {
     await waitUntil(() => shown(client, 'sheet:brok')?.d === null);
 
     // #then
-    expect([stored(client, 'plink:brok:p-oly'), stored(client, 'acl:brok:p-oly')]).toEqual([
+    expect([
+      storedRecord(client, 'plink:brok:p-oly'),
+      storedRecord(client, 'acl:brok:p-oly'),
+    ]).toEqual([
       { k: 'plink:brok:p-oly', d: null, c: 2, a: 'gm-a' },
       { k: 'acl:brok:p-oly', d: null, c: 2, a: 'gm-a' },
     ]);
@@ -700,12 +655,12 @@ describe('owner-set', () => {
 describe('party in the projection', () => {
   test('gives a GM window every other party member with player id, name and role', async () => {
     // #given
-    const room = openRoom();
-    joinAs(room, 'p-oly', 'PLAYER', 'Оля');
-    joinAs(room, 'gm-b', 'GM', 'Мастер');
+    const room = roomRig.openRoom();
+    room.join('p-oly', 'PLAYER', 'Оля');
+    room.join('gm-b', 'GM', 'Мастер');
 
     // #when
-    const client = await startClient(room, 'gm-a');
+    const client = await roomRig.startClient(room, 'gm-a');
 
     // #then
     await waitUntil(() => client.store.$party.get().length === 2);
@@ -717,11 +672,11 @@ describe('party in the projection', () => {
 
   test('follows a player who joins and leaves while the window is open', async () => {
     // #given
-    const room = openRoom();
-    const client = await startClient(room, 'gm-a');
+    const room = roomRig.openRoom();
+    const client = await roomRig.startClient(room, 'gm-a');
 
     // #when
-    joinAs(room, 'p-oly', 'PLAYER', 'Оля');
+    room.join('p-oly', 'PLAYER', 'Оля');
     await waitUntil(() => client.store.$party.get().length === 1);
     const joined = sortedParty(client);
 
@@ -734,12 +689,12 @@ describe('party in the projection', () => {
 
   test('gives a player window no party', async () => {
     // #given
-    const room = openRoom();
-    await startClient(room, 'gm-a');
-    joinAs(room, 'p-oly', 'PLAYER', 'Оля');
+    const room = roomRig.openRoom();
+    await roomRig.startClient(room, 'gm-a');
+    room.join('p-oly', 'PLAYER', 'Оля');
 
     // #when
-    const player = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
+    const player = await roomRig.startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
     await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
 
     // #then
@@ -747,64 +702,7 @@ describe('party in the projection', () => {
   });
 });
 
-async function startClient(
-  room: Room,
-  connectionId: string,
-  options: ClientOptions = {},
-): Promise<Client> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
-  const role = options.role ?? 'GM';
-
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: connectionId,
-    role,
-  };
-
-  const platform = createMockPlatform(bus, backing, identity);
-
-  for (const record of options.seeded ?? BASE) {
-    backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  platform.joinParty();
-
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: TIMING,
-  });
-
-  const store = createProjectionStore();
-
-  const window = startReplicaClient(
-    createMockPlatform(bus, backing, identity).broadcast,
-    createSendQueue(platform.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-  await waitUntil(() => store.$loaded.get());
-
-  return { platform, backing, store, window };
-}
-
-function openRoom(): Room {
-  const room = createMemoryRoom();
-  const heard: Heard[] = [];
-
-  room.onRemote(SYNC_CHANNEL, 'observer', (event) => {
-    heard.push({ from: event.connectionId, data: event.data });
-  });
-
-  return { room, heard };
-}
-
-function joinAs(room: Room, connectionId: string, role: PlayerRole, name = connectionId): void {
-  room.room.join({ id: connectionId, connectionId, name, role });
-}
+const roomRig = createRoomRig({ seeded: BASE });
 
 function sortedParty(client: Client): PartyEntry[] {
   return [...client.store.$party.get()].sort((first, second) =>
@@ -838,63 +736,4 @@ function sortedByKey(records: readonly VersionedRecord[]): VersionedRecord[] {
   return [...records].sort((first, second) =>
     first.k < second.k ? -1 : first.k > second.k ? 1 : 0,
   );
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await pause(POLL_MS);
-  }
-}
-
-function pause(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-function send(client: Client, command: Command): string {
-  const sent = client.window.sendCommand(command);
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the command: ${sent.error}`);
-  }
-
-  return sent.value;
-}
-
-function rejection(client: Client, id: string): string | undefined {
-  return client.store.$rejections.get().get(id)?.reason;
-}
-
-function shown(client: Client, key: string): VersionedRecord | undefined {
-  return client.store.$records.get().get(key);
-}
-
-function stored(client: Client, key: string): VersionedRecord | null {
-  const text = client.backing.get(`${STORAGE_PREFIX}${key}`);
-
-  return text === null ? null : recordSchema.parse(JSON.parse(text));
-}
-
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -10,42 +10,21 @@ import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { encodePreset, parsePresetFile, type Preset } from '@/core/preset';
 import { presetDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
 import { err } from '@/core/result';
-import type { Timing } from '@/core/timing';
 import { UI_CHANNEL, type Command, type CommandRejectedMessage } from '@/core/ui-messages';
-import { createMemoryBus, createMockPlatform, type MockPlatform } from '@/platform/current';
+import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole, SendResult } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine, type ReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
-
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 200,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 0,
-  // Far past any test, so no ping goes out unless a test asks for one.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
-
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
+import type { ReplicaEngine } from '@/replica/engine';
+import {
+  createRoomRig,
+  pause,
+  RIG_TIMING,
+  storageKey,
+  type RigClient,
+  type RigPage,
+  waitUntil,
+} from '@/replica/room-rig';
+import type { ProjectionStore } from '@/ui/projection-store';
+import type { ReplicaClient } from '@/ui/replica-client';
 
 // Two sheet sets, so a new sheet's order counts only its own set, and a hidden single sheet.
 const PRESET: Preset = {
@@ -95,9 +74,6 @@ const LIVE_SYNC = {
 // What an engine that has read no room copy sends.
 const NO_ROOM_COPY = { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null } as const;
 
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
-
 type WireMessage = {
   t: string;
   nonce?: string;
@@ -112,7 +88,7 @@ type WireMessage = {
 };
 
 type Rig = {
-  bus: ReturnType<typeof createMemoryBus>;
+  client: RigClient;
   platform: MockPlatform;
   wire: WireMessage[];
 };
@@ -121,32 +97,27 @@ type WindowView = { client: ReplicaClient; store: ProjectionStore };
 
 type Aftermath = { records: VersionedRecord[]; deltas: number };
 
-const cleanups: (() => void)[] = [];
-
 let generatedIds = 0;
-
-afterEach(() => {
-  mock.restore();
-
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
+const roomRig = createRoomRig({ timing: { catchUpTimeoutMs: 200 } });
 
 function silenceErrors(): void {
   spyOn(console, 'error').mockImplementation(() => undefined);
 }
 
-function createRig(role: PlayerRole = 'GM'): Rig {
-  const bus = createMemoryBus();
-  const platform = createMockPlatform(bus);
-  const wire: WireMessage[] = [];
+function createRig(
+  role: PlayerRole = 'GM',
+  platform?: (platform: MockPlatform) => MockPlatform,
+): Rig {
+  const client = roomRig.createClient(roomRig.openRoom(), 'mock-connection', { role, platform });
 
-  platform.setRole(role);
-  // SAFETY: the test reads only messages the code under test put on the wire.
-  platform.broadcast.onMessage(UI_CHANNEL, (event) => wire.push(event.data as WireMessage));
-
-  return { bus, platform, wire };
+  return {
+    client,
+    platform: client.platform,
+    get wire() {
+      // SAFETY: the test reads only messages the code under test put on the UI channel.
+      return client.local as WireMessage[];
+    },
+  };
 }
 
 function ids(...values: string[]): () => string {
@@ -158,50 +129,15 @@ function ids(...values: string[]): () => string {
 }
 
 async function startEngine(rig: Rig, newId?: () => string): Promise<ReplicaEngine> {
-  const engine = await startReplicaEngine(
-    rig.platform,
-    createSendQueue(rig.platform.broadcast, TIMING),
-    { timing: TIMING, newId },
-  );
+  await rig.client.startEngine(newId === undefined ? undefined : { engine: { newId } });
 
-  cleanups.push(engine.stop);
-
-  return engine;
+  return rig.client.engine;
 }
 
 function openWindow(rig: Rig, newId?: () => string): WindowView {
-  const platform = createMockPlatform(rig.bus);
-  const store = createProjectionStore();
+  const page: RigPage = rig.client.openWindow({ newId });
 
-  const client = startReplicaClient(
-    platform.broadcast,
-    createSendQueue(platform.broadcast, TIMING),
-    store,
-    TIMING,
-    newId,
-  );
-
-  cleanups.push(client.stop);
-
-  return { client, store };
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queue run.
-    // oxlint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
-}
-
-function pause(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  return { client: page.window, store: page.store };
 }
 
 function post(rig: Rig, message: JsonValue): Promise<SendResult> {
@@ -209,7 +145,7 @@ function post(rig: Rig, message: JsonValue): Promise<SendResult> {
 }
 
 function seed(rig: Rig, key: string, value: string): void {
-  rig.platform.storage.setItem(`${STORAGE_PREFIX}${key}`, value);
+  rig.platform.storage.setItem(storageKey(key), value);
 }
 
 function sheet(id: string, c = 1): VersionedRecord {
@@ -241,7 +177,7 @@ function storedRecords(rig: Rig): VersionedRecord[] {
   }
 
   return keys.value
-    .filter((key) => key.startsWith(STORAGE_PREFIX))
+    .filter((key) => key.startsWith(storageKey('')))
     .map((key) => {
       const text = rig.platform.storage.getItem(key);
 
@@ -290,7 +226,7 @@ async function openAndLoad(rig: Rig): Promise<WindowView> {
     ),
   );
   // Lets the window's own listener run, and lets a repeat that was already queued go out.
-  await pause(TIMING.projectionRequestRepeatMs);
+  await pause(RIG_TIMING.projectionRequestRepeatMs);
 
   return view;
 }
@@ -322,7 +258,10 @@ describe('GM start', () => {
     const rig = createRig();
 
     seedRecords(rig, sheet('a'), nameRow('a', 'Брок'), sheet('b'), nameRow('b', 'Лиза'));
-    rig.platform.storage.setItem('mr2:other-room:0::sheet:c', JSON.stringify(sheet('c')));
+    rig.platform.storage.setItem(
+      storageKey('sheet:c', { n: 0, a: '' }, { roomId: 'other-room' }),
+      JSON.stringify(sheet('c')),
+    );
 
     await startEngine(rig);
 
@@ -342,7 +281,10 @@ describe('GM start', () => {
     // #given
     const rig = createRig();
 
-    rig.platform.storage.setItem('mr2:mock-room:1:x:sheet:new', JSON.stringify(sheet('new')));
+    rig.platform.storage.setItem(
+      storageKey('sheet:new', { n: 1, a: 'x' }),
+      JSON.stringify(sheet('new')),
+    );
     seed(rig, 'sheet:old', JSON.stringify(sheet('old')));
     await startEngine(rig);
 
@@ -391,7 +333,7 @@ describe('corrupt stored record', () => {
     // #then
     expect({
       notices: view.store.$notices.get(),
-      stored: rig.platform.storage.getItem(`${STORAGE_PREFIX}sheet:bad`),
+      stored: rig.platform.storage.getItem(storageKey('sheet:bad')),
     }).toEqual({
       notices: [],
       stored: {
@@ -504,11 +446,11 @@ describe('open window', () => {
     // #when
     await startEngine(rig);
     await waitUntil(() => recordsOf(view.store).length === 1);
-    await pause(TIMING.projectionRequestRepeatMs * 2);
+    await pause(RIG_TIMING.projectionRequestRepeatMs * 2);
 
     const settled = requests(rig).length;
 
-    await pause(TIMING.projectionRequestRepeatMs * 4);
+    await pause(RIG_TIMING.projectionRequestRepeatMs * 4);
 
     // #then
     expect({ records: recordsOf(view.store), requests: requests(rig).length - settled }).toEqual({
@@ -591,35 +533,32 @@ describe('open window', () => {
 describe('repeated requests', () => {
   test('answers a repeat once while the first answer is still queued', async () => {
     // #given
-    const rig = createRig();
     let openGate: () => void = () => undefined;
 
     const gate = new Promise<void>((resolve) => {
       openGate = resolve;
     });
 
-    const engine = await startReplicaEngine(
-      rig.platform,
-      createSendQueue(
-        {
-          sendMessage: async (channel, data, options) => {
-            await gate;
+    const rig = createRig('GM', (platform) => ({
+      ...platform,
+      broadcast: {
+        ...platform.broadcast,
+        sendMessage: async (channel, data, options) => {
+          await gate;
 
-            return rig.platform.broadcast.sendMessage(channel, data, options);
-          },
+          return platform.broadcast.sendMessage(channel, data, options);
         },
-        TIMING,
-      ),
-    );
+      },
+    }));
 
-    cleanups.push(engine.stop);
+    await startEngine(rig);
 
     // #when
     await post(rig, { t: 'projection-request', nonce: 'same' });
     await post(rig, { t: 'projection-request', nonce: 'same' });
     openGate();
     await waitUntil(() => rig.wire.some((message) => message.t === 'projection'));
-    await pause(TIMING.projectionRequestRepeatMs);
+    await pause(RIG_TIMING.projectionRequestRepeatMs);
 
     // #then
     expect(rig.wire.filter((message) => message.t === 'projection').length).toBe(1);
@@ -628,23 +567,18 @@ describe('repeated requests', () => {
   test('delivers a request once while it waits under a rate limit across repeats', async () => {
     // #given: two 40 ms backoffs cover three repeat intervals of 25 ms.
     const rig = createRig();
-    const platform = createMockPlatform(rig.bus);
-    const slowBackoff = { ...TIMING, rateLimitBackoffStartMs: 40, rateLimitBackoffMaxMs: 40 };
 
     await startEngine(rig);
-    platform.failNextSends([{ kind: 'rate-limited' }, { kind: 'rate-limited' }]);
 
     // #when
-    const client = startReplicaClient(
-      platform.broadcast,
-      createSendQueue(platform.broadcast, slowBackoff),
-      createProjectionStore(),
-      TIMING,
-    );
+    rig.client.openWindow({
+      queueTiming: { rateLimitBackoffStartMs: 40, rateLimitBackoffMaxMs: 40 },
+      beforeStart: (platform) =>
+        platform.failNextSends([{ kind: 'rate-limited' }, { kind: 'rate-limited' }]),
+    });
 
-    cleanups.push(client.stop);
     await waitUntil(() => rig.wire.some((message) => message.t === 'projection'));
-    await pause(TIMING.projectionRequestRepeatMs * 2);
+    await pause(RIG_TIMING.projectionRequestRepeatMs * 2);
 
     // #then
     expect(requests(rig).length).toBe(1);
@@ -901,7 +835,7 @@ describe('sequence gap', () => {
       sync: LIVE_SYNC,
       roomCopy: NO_ROOM_COPY,
     });
-    await pause(TIMING.projectionRequestRepeatMs * 4);
+    await pause(RIG_TIMING.projectionRequestRepeatMs * 4);
 
     // #then
     expect({ names: namesOf(view.store), extra: requests(rig).length - requestsAfterLoad }).toEqual(
@@ -970,7 +904,7 @@ describe('command', () => {
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
-    expect(rig.platform.storage.getItem(`${STORAGE_PREFIX}sheet:made`)).toEqual({
+    expect(rig.platform.storage.getItem(storageKey('sheet:made'))).toEqual({
       ok: true,
       value: '{"k":"sheet:made","d":{"set":"pc","order":0},"c":1,"a":"mock-connection"}',
     });
@@ -1194,7 +1128,7 @@ describe('sheet-create', () => {
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
-    expect(rig.platform.storage.getItem(`${STORAGE_PREFIX}sheet:b-1_X`)).toEqual({
+    expect(rig.platform.storage.getItem(storageKey('sheet:b-1_X'))).toEqual({
       ok: true,
       value: '{"k":"sheet:b-1_X","d":{"set":"ally","order":0},"c":1,"a":"mock-connection"}',
     });
@@ -1453,7 +1387,7 @@ describe('sheet-delete', () => {
     // #then
     expect({
       delta: deltas(rig)[0]?.records,
-      stored: rig.platform.storage.getItem(`${STORAGE_PREFIX}row:brok:old`),
+      stored: rig.platform.storage.getItem(storageKey('row:brok:old')),
     }).toEqual({
       delta: [{ k: 'sheet:brok', d: null, c: 2, a: 'mock-connection' }],
       stored: { ok: true, value: JSON.stringify(oldTombstone) },
@@ -1544,7 +1478,7 @@ describe('sheet-delete', () => {
     const first = await openAndLoad(rig);
 
     const failing = spyOn(rig.platform.storage, 'setItem').mockImplementation((key, value) =>
-      key === `${STORAGE_PREFIX}acl:brok:p1`
+      key === storageKey('acl:brok:p1')
         ? err({ operation: 'write', reason: 'quota' })
         : setItem(key, value),
     );
@@ -1680,7 +1614,7 @@ describe('write failure', () => {
     await waitUntil(() => view.store.$notices.get().length === 0);
 
     // #then
-    expect(rig.platform.storage.getItem(`${STORAGE_PREFIX}sheet:flaky`)).toEqual({
+    expect(rig.platform.storage.getItem(storageKey('sheet:flaky'))).toEqual({
       ok: true,
       value: '{"k":"sheet:flaky","d":null,"c":2,"a":"mock-connection"}',
     });
@@ -2010,7 +1944,7 @@ describe('field-patch', () => {
   }
 
   function stored(rig: Rig, key: string): JsonValue {
-    const text = rig.platform.storage.getItem(`${STORAGE_PREFIX}${key}`);
+    const text = rig.platform.storage.getItem(storageKey(key));
 
     return text.ok && text.value !== null ? z.json().parse(JSON.parse(text.value)) : null;
   }
@@ -2690,7 +2624,7 @@ function inflatedJson(data: string): JsonValue {
 }
 
 function storedPreset(rig: Rig): { c: number; a: string; preset: JsonValue } | null {
-  const text = rig.platform.storage.getItem(`${STORAGE_PREFIX}preset`);
+  const text = rig.platform.storage.getItem(storageKey('preset'));
 
   if (!text.ok || text.value === null) {
     return null;
