@@ -10,14 +10,15 @@ import {
   ADD,
   addPartyMember,
   connectionIdOf,
+  isStorageKeyInGeneration,
   openClientBackground,
   openClientWindow,
   pcSheet,
   record,
+  roomKeys,
   repRecord,
   seedStorage,
   storedData,
-  STORAGE_PREFIX,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
@@ -266,7 +267,9 @@ test('a confirmed upload erases the removed values on every client, keeps rename
     tired: await storedData(gm.window, 'row:brok:tired'),
     str: await storedData(gm.window, 'row:brok:str'),
     bonus: await storedData(gm.window, 'rep:brok:bonus:i1'),
-    otherGenerations: await keysOutside(gm.window, STORAGE_PREFIX),
+    otherGenerations: (await roomKeys(gm.window)).filter(
+      (key) => !isStorageKeyInGeneration(key, { n: 0, a: '' }),
+    ),
   }).toEqual({
     preset: JSON.parse(REMOVES_TWO),
     dex: null,
@@ -567,13 +570,4 @@ async function storedPreset(page: Page): Promise<JsonValue> {
   const text = strFromU8(inflateSync(Buffer.from(z.string().parse(data), 'base64')));
 
   return z.json().parse(JSON.parse(text));
-}
-
-// Record keys of this room stored under any other generation.
-async function keysOutside(page: Page, prefix: string): Promise<string[]> {
-  return page.evaluate(
-    (kept) =>
-      Object.keys(localStorage).filter((key) => key.startsWith('mr2:') && !key.startsWith(kept)),
-    prefix,
-  );
 }
