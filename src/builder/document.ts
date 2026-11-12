@@ -4,6 +4,7 @@ import { renameFieldId } from '@/core/formula-rename';
 import type {
   Preset,
   PresetCell,
+  PresetFieldCell,
   PresetSection,
   SheetSetTemplate,
   SingleSheetTemplate,
@@ -136,10 +137,41 @@ function cellToPreset(cell: DocCell): PresetCell {
   }
 
   if (cell.kind === 'field') {
-    return { kind: 'field', type: cell.type, id: cell.id };
+    return cell.type === 'select' || cell.type === 'dice-choice'
+      ? { kind: 'field', type: cell.type, id: cell.id, options: cell.options }
+      : { kind: 'field', type: cell.type, id: cell.id };
   }
 
   return { kind: 'dice', formula: cell.formula };
+}
+
+export function withFieldType(
+  field: Extract<DocCell, { kind: 'field' }>,
+  type: Extract<PresetFieldCell, { kind: 'field' }>['type'],
+): Extract<DocCell, { kind: 'field' }> {
+  if (type === 'select' || type === 'dice-choice') {
+    return field.type === type
+      ? field
+      : {
+          ...field,
+          type,
+          options:
+            type === 'dice-choice'
+              ? copy.builder.form.defaultDiceOptions.split('\n')
+              : [
+                  copy.builder.form.defaultSelectOptionOne,
+                  copy.builder.form.defaultSelectOptionTwo,
+                ],
+        };
+  }
+
+  if (field.type !== 'select' && field.type !== 'dice-choice') {
+    return { ...field, type };
+  }
+
+  const { options: _options, ...withoutOptions } = field;
+
+  return { ...withoutOptions, type };
 }
 
 // Paths and lookups.

@@ -309,7 +309,7 @@ export async function addPartyMember(
 export async function storedData(page: Page, key: string): Promise<JsonValue> {
   const text = await page.evaluate(
     (storageKey) => localStorage.getItem(storageKey),
-    `${STORAGE_PREFIX}${key}`,
+    storageKeyForPage(page, key),
   );
 
   return text === null ? ABSENT : storedRecordSchema.parse(JSON.parse(text)).d;
@@ -323,10 +323,16 @@ export async function storedRecords(page: Page, prefix = ''): Promise<StoredReco
       Object.keys(localStorage)
         .filter((key) => key.startsWith(start))
         .map((key) => localStorage.getItem(key) ?? 'null'),
-    `${STORAGE_PREFIX}${prefix}`,
+    storageKeyForPage(page, prefix),
   );
 
   return texts.map((text) => storedRecordSchema.parse(JSON.parse(text)));
+}
+
+function storageKeyForPage(page: Page, key: string): string {
+  const device = new URL(page.url()).searchParams.get(DEVICE_PARAM) ?? '';
+
+  return `${deviceStoragePrefix(device)}${STORAGE_PREFIX}${key}`;
 }
 
 // The keys one device holds, with its device prefix taken off.

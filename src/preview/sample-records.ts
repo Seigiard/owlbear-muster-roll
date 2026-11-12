@@ -169,6 +169,10 @@ function sampleValue(
     return value;
   }
 
+  if (field.type === 'select' || field.type === 'dice-choice') {
+    return field.options[0] ?? field.id;
+  }
+
   const label = cellLabel(field, before);
 
   return block === null ? label : `${label} ${block}`;

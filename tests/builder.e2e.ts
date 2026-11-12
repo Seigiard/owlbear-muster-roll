@@ -253,6 +253,144 @@ test('builds a preset with the tree and the forms, and the window loads the down
   await expect(window.getByRole('button', { name: copy.label.addToSet('Экипаж') })).toBeVisible();
 });
 
+test('builds, previews and downloads a select field, then drops its options on a type switch', async ({
+  page,
+}) => {
+  // #given
+  await page.goto(PAGE);
+  await pick(item(page, builder.addSingle));
+  await pick(item(page, builder.addRow));
+  await pick(item(page, builder.addLabel));
+  await form(page).getByRole('textbox', { name: builder.form.text }).fill('Броня');
+  await pick(item(page, builder.addField));
+
+  const type = form(page).getByRole('combobox', { name: builder.form.fieldType });
+
+  // #when
+  const typeNames = await type
+    .locator('option')
+    .evaluateAll((options) => options.map((option) => option.textContent));
+
+  // #then
+  expect(typeNames).toEqual(['Текст', 'Число', 'Флажок', 'Список', 'Выбор кубика']);
+
+  // #when
+  await type.selectOption({ label: 'Список' });
+
+  const options = form(page).getByRole('textbox', {
+    name: 'Варианты — по одному в строке',
+  });
+
+  // #then
+  await expect(options).toHaveValue('Вариант 1\nВариант 2');
+
+  // #when
+  await options.fill('  Кожаная  \n\n Кольчуга ');
+  await options.blur();
+
+  // #then
+  await expect(item(page, 'bronya · Список')).toBeVisible();
+  await expect(preview(page).getByRole('combobox', { name: 'Броня' })).toHaveCount(0);
+
+  const previewField = preview(page).getByRole('group', { name: 'Броня' });
+
+  await expect(previewField).toHaveText('bronya');
+
+  // #when
+  await previewField.click();
+
+  // #then
+  await expect(item(page, 'bronya · Список')).toHaveAttribute('aria-selected', 'true');
+
+  // #when
+  const selectDownloading = page.waitForEvent('download');
+
+  await downloadButton(page).click();
+
+  const selectPath = await (await selectDownloading).path();
+  const selectFile = JSON.parse(readFileSync(selectPath, 'utf8'));
+
+  // #then
+  expect(selectFile.templates[0]?.sections[0]?.rows[0]).toEqual([
+    { kind: 'text', text: 'Броня' },
+    {
+      kind: 'field',
+      type: 'select',
+      id: 'bronya',
+      options: ['Кожаная', 'Кольчуга'],
+    },
+  ]);
+
+  // #when
+  await type.selectOption({ label: 'Текст' });
+
+  const textDownloading = page.waitForEvent('download');
+
+  await downloadButton(page).click();
+
+  const textPath = await (await textDownloading).path();
+  const textFile = JSON.parse(readFileSync(textPath, 'utf8'));
+
+  // #then
+  await expect(
+    form(page).getByRole('textbox', { name: 'Варианты — по одному в строке' }),
+  ).toHaveCount(0);
+  expect(textFile.templates[0]?.sections[0]?.rows[0]).toEqual([
+    { kind: 'text', text: 'Броня' },
+    { kind: 'field', type: 'text', id: 'bronya' },
+  ]);
+});
+
+test('switches a field to dice-choice with the standard dice and downloads its tree type', async ({
+  page,
+}) => {
+  // #given
+  await page.goto(PAGE);
+  await pick(item(page, builder.addSingle));
+  await pick(item(page, builder.addRow));
+  await pick(item(page, builder.addLabel));
+  await form(page).getByRole('textbox', { name: builder.form.text }).fill('Урон');
+  await pick(item(page, builder.addField));
+
+  const type = form(page).getByRole('combobox', { name: builder.form.fieldType });
+
+  // #when
+  const typeNames = await type
+    .locator('option')
+    .evaluateAll((options) => options.map((option) => option.textContent));
+
+  // #then
+  expect(typeNames).toEqual(['Текст', 'Число', 'Флажок', 'Список', 'Выбор кубика']);
+
+  // #when
+  await type.selectOption({ label: 'Выбор кубика' });
+
+  // #then
+  await expect(
+    form(page).getByRole('textbox', { name: 'Варианты — по одному в строке' }),
+  ).toHaveValue('d4\nd6\nd8\nd10\nd12\nd20');
+  await expect(item(page, 'uron · Выбор кубика')).toBeVisible();
+
+  // #when
+  const downloading = page.waitForEvent('download');
+
+  await downloadButton(page).click();
+
+  const path = await (await downloading).path();
+  const file = JSON.parse(readFileSync(path, 'utf8'));
+
+  // #then
+  expect(file.templates[0]?.sections[0]?.rows[0]).toEqual([
+    { kind: 'text', text: 'Урон' },
+    {
+      kind: 'field',
+      type: 'dice-choice',
+      id: 'uron',
+      options: ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'],
+    },
+  ]);
+});
+
 test('opens the draft again after a reload, with no prompt', async ({ page }) => {
   // #given
   await page.goto(PAGE);
@@ -491,6 +629,36 @@ test('undo and redo each change, and typing in one input is one step', async ({ 
 
   // #then
   await expect(tree(page).getByRole('row', { name: builder.untitledSection })).toHaveCount(2);
+});
+
+test('typing select options with a new line is one undo step', async ({ page }) => {
+  // #given
+  await page.goto(PAGE);
+  await pick(item(page, builder.addSingle));
+  await pick(item(page, builder.addRow));
+  await pick(item(page, builder.addField));
+  await form(page)
+    .getByRole('combobox', { name: builder.form.fieldType })
+    .selectOption({ label: 'Список' });
+
+  const options = form(page).getByRole('textbox', {
+    name: 'Варианты — по одному в строке',
+  });
+
+  // #when
+  await options.selectText();
+  await options.pressSequentially('Кожаная');
+  await options.press('Enter');
+  await options.pressSequentially('Кольчуга');
+
+  // #then
+  await expect(options).toHaveValue('Кожаная\nКольчуга');
+
+  // #when
+  await page.getByRole('button', { name: builder.undo }).click();
+
+  // #then
+  await expect(options).toHaveValue('Вариант 1\nВариант 2');
 });
 
 test('drags a row out of a repeat section, and the emptied repeat section shows as a problem', async ({

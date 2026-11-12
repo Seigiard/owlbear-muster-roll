@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { PresetFieldCell, TemplateLayout } from '@/core/preset';
 import type { FieldValue, VersionedRecord } from '@/core/records';
 
@@ -18,6 +17,16 @@ const NOTES: PresetFieldCell = { kind: 'field', type: 'text', id: 'notes' };
 const ATTACK: PresetFieldCell = { kind: 'field', type: 'text', id: 'attack' };
 const BONUS: PresetFieldCell = { kind: 'field', type: 'number', id: 'bonus' };
 const RANGE: PresetFieldCell = { kind: 'field', type: 'number', id: 'range' };
+
+const ARMOR = selectField('armor', ['Кожаная', 'Кольчуга']);
+
+function selectField(id: string, options: string[]): PresetFieldCell {
+  return { kind: 'field', type: 'select', id, options };
+}
+
+function diceChoiceField(id: string, options: string[]): PresetFieldCell {
+  return { kind: 'field', type: 'dice-choice', id, options };
+}
 
 const TEMPLATE: TemplateLayout = {
   sections: [
@@ -141,7 +150,65 @@ describe('acceptedFieldValue', () => {
     // #then
     expect(acceptedFieldValue(field, value)).toEqual({ ok: false, error: 'invalid-value' });
   });
+
+  test('a select accepts any non-empty string, including a stale option, and nothing else', () => {
+    // #given
+    const helperSuccess = capture(() => 'control');
+
+    const helperFailure = capture(() => {
+      throw new Error('control error');
+    });
+
+    // #when
+    const results = {
+      listed: capture(() => acceptedFieldValue(ARMOR, 'Кожаная')),
+      stale: capture(() => acceptedFieldValue(ARMOR, 'Латы')),
+      empty: capture(() => acceptedFieldValue(ARMOR, '')),
+      number: capture(() => acceptedFieldValue(ARMOR, 2)),
+    };
+
+    // #then
+    expect({ helperSuccess, helperFailure, results }).toEqual({
+      helperSuccess: { result: 'control' },
+      helperFailure: { threw: 'control error' },
+      results: {
+        listed: { result: { ok: true, value: 'Кожаная' } },
+        stale: { result: { ok: true, value: 'Латы' } },
+        empty: { result: { ok: false, error: 'invalid-value' } },
+        number: { result: { ok: false, error: 'invalid-value' } },
+      },
+    });
+  });
+
+  test('a dice-choice field accepts any non-empty string without checking option membership', () => {
+    // #given
+    const field = diceChoiceField('weapon_die', ['d6', 'd8']);
+
+    // #when
+    const results = {
+      listed: capture(() => acceptedFieldValue(field, 'd8')),
+      stale: capture(() => acceptedFieldValue(field, 'd12')),
+      empty: capture(() => acceptedFieldValue(field, '')),
+      number: capture(() => acceptedFieldValue(field, 8)),
+    };
+
+    // #then
+    expect(results).toEqual({
+      listed: { result: { ok: true, value: 'd8' } },
+      stale: { result: { ok: true, value: 'd12' } },
+      empty: { result: { ok: false, error: 'invalid-value' } },
+      number: { result: { ok: false, error: 'invalid-value' } },
+    });
+  });
 });
+
+function capture<Result>(operation: () => Result): { result: Result } | { threw: string } {
+  try {
+    return { result: operation() };
+  } catch (error) {
+    return { threw: error instanceof Error ? error.message : String(error) };
+  }
+}
 
 describe('patchedRecord', () => {
   const ROW = { kind: 'row', rowId: 'str' } as const;

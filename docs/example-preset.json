@@ -21,6 +21,15 @@
               { "kind": "field", "type": "text", "id": "class" },
               { "kind": "text", "text": "Уровень" },
               { "kind": "field", "type": "number", "id": "level" }
+            ],
+            [
+              { "kind": "text", "text": "Броня" },
+              {
+                "kind": "field",
+                "type": "select",
+                "id": "armor",
+                "options": ["Нет", "Кожаная", "Кольчуга"]
+              }
             ]
           ]
         },
@@ -74,6 +83,16 @@
               { "kind": "field", "type": "number", "id": "bonus" },
               { "kind": "text", "text": "Бросок" },
               { "kind": "dice", "formula": "1d20 + bonus" }
+            ],
+            [
+              { "kind": "text", "text": "Урон" },
+              {
+                "kind": "field",
+                "type": "dice-choice",
+                "id": "damage_die",
+                "options": ["d4", "d6", "d8", "d10", "d12"]
+              },
+              { "kind": "dice", "formula": "1d(damage_die) + bonus" }
             ]
           ]
         },

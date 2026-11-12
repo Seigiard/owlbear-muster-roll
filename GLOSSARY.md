@@ -79,8 +79,20 @@ A cell with fixed text from the preset. It holds no value.
 _Avoid_: text cell, caption, static text
 
 **Field**:
-A cell that holds a value on each sheet: text, a number, or a check.
+A cell that holds a value on each sheet: text, a number, a check, or one option of a select field.
 _Avoid_: input, stat, attribute, property
+
+**Select field**:
+A field whose value is one of the options its preset lists. The sheet offers only those options. In the interface: «Список».
+_Avoid_: dropdown, enum, list field
+
+**Option**:
+One value that a select field lists in the preset. In the interface: «Вариант».
+_Avoid_: choice, item, enum value
+
+**Dice-choice field**:
+A select field whose options are die sizes, such as `d6` or `d8`. A formula rolls the chosen die with `Nd(id)`, such as `1d(weapon_die)`. In the interface: «Выбор кубика».
+_Avoid_: die field, dice select, die picker
 
 **Field id**:
 The name of a field. Values are kept under it, and formulas refer to the field by it.
@@ -95,7 +107,7 @@ A cell that rolls its formula when pressed. It holds no value.
 _Avoid_: dice button, roll cell, macro
 
 **Formula**:
-The dice expression of a dice cell, such as `1d20 <= str - 2*str_tired`. It refers to fields by field id.
+The dice expression of a dice cell, such as `1d20 <= str - 2*str_tired`. It refers to fields by field id. A dice term takes its die size from the formula, as in `1d8`, or from a dice-choice field, as in `1d(weapon_die)`.
 _Avoid_: macro, script, expression
 
 ## Sheets

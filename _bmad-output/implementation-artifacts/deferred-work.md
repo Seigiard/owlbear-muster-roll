@@ -180,6 +180,7 @@
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-44-cairn-2e-preset.md`
   summary: A formula cannot take its die size from a field, so a weapon's damage die is not part of its repeat block.
+  status: resolved by spec-task-52 (TASK-52)
   evidence: Dice terms need literal `N` and `M` (`src/core/formula.ts`). `presets/cairn-2e.json` shows `1d4` to `1d12` on every attack row instead, and the player picks the weapon's die.
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-44-cairn-2e-preset.md`
   summary: A dice cell's label comes only from a fixed text cell, so a damage roll reads «1d8», not the weapon's name.

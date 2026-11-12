@@ -20,6 +20,7 @@ import {
   updateSection,
   updateTemplate,
   withOption,
+  withFieldType,
   withRepeat,
   withTemplateKind,
   type BuilderDocument,
@@ -515,13 +516,39 @@ function CellForm({ store, template, origin, cell, path }: CellFormProps): React
           { value: 'text', label: form.typeText },
           { value: 'number', label: form.typeNumber },
           { value: 'check', label: form.typeCheck },
+          { value: 'select', label: form.typeSelect },
+          { value: 'dice-choice', label: form.typeDiceChoice },
         ]}
         onChange={(type) => {
-          if (type === 'text' || type === 'number' || type === 'check') {
-            update((current) => (current.kind === 'field' ? { ...current, type } : current));
+          if (
+            type === 'text' ||
+            type === 'number' ||
+            type === 'check' ||
+            type === 'select' ||
+            type === 'dice-choice'
+          ) {
+            update((current) =>
+              current.kind === 'field' ? withFieldType(current, type) : current,
+            );
           }
         }}
       />
+      {cell.type === 'select' || cell.type === 'dice-choice' ? (
+        <OptionsInput
+          options={cell.options}
+          onChange={(options) => {
+            update(
+              (current) =>
+                current.kind === 'field' &&
+                (current.type === 'select' || current.type === 'dice-choice')
+                  ? { ...current, options }
+                  : current,
+              `${uid}:options`,
+            );
+          }}
+          onBlur={store.endRun}
+        />
+      ) : null}
       <IdInput
         label={form.fieldId}
         id={cell.id}
@@ -552,6 +579,56 @@ function CellForm({ store, template, origin, cell, path }: CellFormProps): React
       />
     </>
   );
+}
+
+type OptionsInputProps = {
+  options: readonly string[];
+  onChange: (options: string[]) => void;
+  onBlur: () => void;
+};
+
+function OptionsInput({ options, onChange, onBlur }: OptionsInputProps): ReactNode {
+  const id = useId();
+  const [text, setText] = useState(() => options.join('\n'));
+  const [committed, setCommitted] = useState(() => options.join('\n'));
+  const serialized = options.join('\n');
+
+  // A store change from undo/redo or another form replaces the draft, but normal typing keeps its
+  // raw whitespace and blank lines while the document stores the normalized options.
+  if (serialized !== committed) {
+    setCommitted(serialized);
+    setText(serialized);
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className={LABEL_CLASS}>
+        {copy.builder.form.selectOptions}
+      </label>
+      <textarea
+        id={id}
+        className={INPUT_CLASS}
+        rows={Math.max(2, text.split('\n').length)}
+        value={text}
+        onChange={(event) => {
+          const nextText = event.target.value;
+          const nextOptions = normalizedOptions(nextText);
+
+          setText(nextText);
+          setCommitted(nextOptions.join('\n'));
+          onChange(nextOptions);
+        }}
+        onBlur={onBlur}
+      />
+    </div>
+  );
+}
+
+function normalizedOptions(text: string): string[] {
+  return text
+    .split('\n')
+    .map((option) => option.trim())
+    .filter((option) => option !== '');
 }
 
 // Inputs.

@@ -2,13 +2,15 @@ import { z } from 'zod';
 
 import {
   evaluateFormula,
+  formulaDiceFieldLookup,
   formulaDiceTerms,
   formulaFieldLookup,
+  resolveFormulaDiceFields,
   type DiceTerm,
   type FaceSource,
   type RollResult,
 } from '@/core/formula-evaluate';
-import { parseFormula } from '@/core/formula';
+import { parseFormula, writeDiceFields } from '@/core/formula';
 import {
   plainRow,
   repeatSectionId,
@@ -43,7 +45,7 @@ export type ShownValues = ReadonlyMap<string, ShownValue>;
 
 export type DicePlace = z.infer<typeof dicePlaceSchema>;
 
-// `cell` is the dice button's label by the Story 1.8 rule.
+// `cell` is the preceding text label, or the formula with each Nd(id) written as NdM.
 export type DiceRoll = { cell: string; result: RollResult };
 
 // `field` names the referenced field by its label, or by its id when it is not on the sheet.
@@ -134,12 +136,45 @@ export function prepareDiceRoll(
     ownBlock,
   );
 
+  const diceFieldLookup = formulaDiceFieldLookup(
+    layout,
+    from,
+    (rowId) => withShown(rowValues(records, sheetId, rowId), shown),
+    ownBlock,
+  );
+
+  const resolved = resolveFormulaDiceFields(formula, diceFieldLookup);
+
+  if (!resolved.ok) {
+    return err({ code: 'field', field: fieldLabel(layout, from, resolved.error.fieldId) });
+  }
+
+  // Resolution above proves every Nd(id) has a value, so the writer can use a non-null lookup.
+  const writtenFormula = writeDiceFields(cell.formula, (id) => {
+    const sides = diceFieldLookup(id);
+
+    if (sides === null) {
+      throw new Error(`Unresolved dice field ${id}`);
+    }
+
+    return sides;
+  });
+
+  const cellText = cellLabel(cell, row.slice(0, place.cellIndex));
+
+  const label =
+    writtenFormula !== cell.formula
+      ? cellText === cell.formula
+        ? writtenFormula
+        : `${cellText} (${writtenFormula})`
+      : cellText;
+
   return ok({
-    cell: cellLabel(cell, row.slice(0, place.cellIndex)),
-    terms: formulaDiceTerms(formula),
+    cell: label,
+    terms: formulaDiceTerms(resolved.value),
     roll: (faces) => {
       const rolled = evaluateFormula(
-        formula,
+        resolved.value,
         (id) => (shown.get(id)?.kind === 'error' ? null : lookup(id)),
         faces,
       );

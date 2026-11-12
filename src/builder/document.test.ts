@@ -72,6 +72,101 @@ describe('fromPreset and toPreset', () => {
     expect(back).toEqual(preset);
     expect(JSON.stringify(back)).not.toContain('uid');
   });
+
+  test('keeps a select field and its options through the builder document', () => {
+    // #given
+    const preset: Preset = {
+      v: 2,
+      templates: [
+        {
+          id: 'inventory',
+          kind: 'single',
+          title: 'Инвентарь',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Броня' },
+                  {
+                    kind: 'field',
+                    type: 'select',
+                    id: 'armor',
+                    options: ['Без доспеха', 'Кожаная'],
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    // #when
+    const back = toPreset(fromPreset(preset));
+    const actual: unknown = back;
+
+    // #then
+    expect(actual).toEqual({
+      v: 2,
+      templates: [
+        {
+          id: 'inventory',
+          kind: 'single',
+          title: 'Инвентарь',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Броня' },
+                  {
+                    kind: 'field',
+                    type: 'select',
+                    id: 'armor',
+                    options: ['Без доспеха', 'Кожаная'],
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  test('keeps a dice-choice field and its options through the builder document', () => {
+    // #given
+    const preset: Preset = {
+      v: 2,
+      templates: [
+        {
+          id: 'weapons',
+          kind: 'single',
+          title: 'Оружие',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Урон' },
+                  {
+                    kind: 'field',
+                    type: 'dice-choice',
+                    id: 'weapon_die',
+                    options: ['d4', 'd6', 'd8'],
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    // #when
+    const back = toPreset(fromPreset(preset));
+
+    // #then
+    expect(back).toEqual(preset);
+  });
 });
 
 describe('addTemplate', () => {

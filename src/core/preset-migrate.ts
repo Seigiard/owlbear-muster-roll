@@ -341,19 +341,21 @@ function planSheet(
     const oldFields = plan.before.rows.get(key.slice(rowPrefix.length)) ?? [];
 
     for (const [fieldId, value] of Object.entries(values.data ?? {})) {
-      if (
-        !holdsValue(
-          oldFields.find((field) => field.id === fieldId),
-          value,
-        )
-      ) {
+      const oldField = oldFields.find((field) => field.id === fieldId);
+
+      if (!holdsValue(oldField, value)) {
         continue;
       }
 
       const target = plan.after.rowFields.get(fieldId);
       const row = target === undefined ? undefined : newRows.get(target.rowId);
 
-      if (target !== undefined && row !== undefined && holdsValue(target.field, value)) {
+      if (
+        target !== undefined &&
+        row !== undefined &&
+        oldField?.type === target.field.type &&
+        holdsValue(target.field, value)
+      ) {
         row[fieldId] = value;
       } else {
         countRemoved(tally, plan.templateId, key, fieldId);
@@ -467,7 +469,17 @@ function planRepeatRows(
 
     const held = keptValues(row.data.cells, oldFields);
     const target = plan.sectionTargets.get(sectionId) ?? null;
-    const newFields = target === null ? undefined : plan.after.sections.get(target);
+
+    const newFields =
+      target === null
+        ? undefined
+        : plan.after.sections
+            .get(target)
+            ?.filter((newField) =>
+              oldFields.some(
+                (oldField) => oldField.id === newField.id && oldField.type === newField.type,
+              ),
+            );
 
     if (target === null || newFields === undefined) {
       countAll(tally, plan.templateId, key, held);
@@ -477,7 +489,15 @@ function planRepeatRows(
 
     const newKey = `rep:${sheetId}:${target}:${instanceId}`;
 
-    moving.push({ key, newKey, sectionId, target, order: row.data.order, held, newFields });
+    moving.push({
+      key,
+      newKey,
+      sectionId,
+      target,
+      order: row.data.order,
+      held,
+      newFields: newFields ?? [],
+    });
   }
 
   const staying = new Set(moving.flatMap((row) => (row.newKey === row.key ? [row.key] : [])));
@@ -624,12 +644,20 @@ export function sectionTarget(
   sectionId: string,
   fields: readonly PresetFieldCell[],
   after: TemplateScopes,
+  allowTextForSelect = false,
 ): string | null {
   let best: { id: string; kept: number } | null = null;
 
   for (const [candidate, newFields] of after.sections) {
     const kept = fields.filter((field) =>
-      newFields.some((other) => other.id === field.id && other.type === field.type),
+      newFields.some(
+        (other) =>
+          other.id === field.id &&
+          (other.type === field.type ||
+            (allowTextForSelect &&
+              field.type === 'text' &&
+              (other.type === 'select' || other.type === 'dice-choice'))),
+      ),
     ).length;
 
     if (kept === 0) {

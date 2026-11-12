@@ -26,8 +26,27 @@ A preset is a JSON file that lists the templates of one room. Each template is a
 | Kind | Holds | Stored value |
 | --- | --- | --- |
 | Label (`text`) | Fixed text | None |
-| Field (`field`) | Type `text`, `number` or `check`, and a stable field id | One value per field id |
+| Field (`field`) | Type `text`, `number`, `check`, `select` or `dice-choice`, and a stable field id | One value per field id |
 | Dice cell (`dice`) | Formula over field ids | None |
+
+### Select field
+
+A select field (type `select`, «Список» in the interface) lists its options in the preset. The sheet shows a picker with exactly those options.
+
+- The value is the text of the chosen option.
+- The picker also offers an empty choice, which clears the field.
+- The preset check refuses a select field with no options, with a blank option (empty or spaces only) or with a repeated option, and the message names the field.
+- A stored value that is no longer an option, as a changed preset leaves it, still shows and can be replaced.
+- Anyone with write access picks an option. A player's pick is a pending edit, as for any field. A reader without write access sees the value read-only.
+- A select field is never a sheet set's name field. A duplicate gives it no number.
+
+### Dice-choice field
+
+A dice-choice field (type `dice-choice`, «Выбор кубика» in the interface) is a select field whose options are die sizes, such as `d6` or `d8`. A formula rolls the chosen die (see Dice formulas).
+
+- Each option is `d` followed by an integer from 1 to 1000 with no leading zero, such as `d4`, `d20` or `d100`.
+- The picker, the empty choice, the value, stale values and the select field's option rules are the same as for a select field.
+- The preset check also refuses an option that is not a die size, and the message names the field and the option.
 
 ## Layout
 
@@ -68,7 +87,10 @@ Example: `1d20 <= str - 2*str_tired`.
 - A formula with an empty, non-numeric or removed field shows an error and does not roll.
 - A preset with a formula syntax error, an unknown function or a dice term outside 1 to 100 dice and 1 to 1000 sides is refused at upload.
 - A dice cell's label is the nearest preceding label in its row, otherwise its formula.
-- A formula holds integer literals, field ids, `+ - * /`, parentheses, `floor()`, `ceil()`, `NdM` with literal `N` and `M`, and at most one comparison from `<= < >= >`.
+- A formula holds integer literals, field ids, `+ - * /`, parentheses, `floor()`, `ceil()`, `NdM` with literal `N` and `M`, `Nd(id)` with a literal `N`, and at most one comparison from `<= < >= >`.
+- `Nd(id)` rolls `N` dice of the size chosen in the dice-choice field `id`, such as `1d(weapon_die) + bonus`. An empty dice-choice field, or a value that is not a die size, shows the field error and does not roll.
+- The preset check refuses, and names the dice cell, a formula whose id resolves to a dice-choice field outside `Nd(...)`, or whose `Nd(...)` id resolves to a field of another type. An id that resolves to no field is an error only at the roll.
+- A roll names its dice cell by its label. A formula with `Nd(id)` writes out the chosen dice in that name: a dice cell named by its formula shows the formula with each `Nd(id)` as `NdM`, such as `1d8 + bonus`, and a dice cell named by a label shows the label and that formula in parentheses, such as «Урон (1d8)».
 - Formulas run through a small parser, never `eval`.
 - Anyone who can see a sheet can roll its dice cells.
 - A roll uses the dice of a dice extension when one is in the room and a GM allows it. Otherwise the extension rolls itself. A roll from a sheet players can see goes to everyone by broadcast, with the roller's name.
@@ -84,7 +106,9 @@ The GM downloads the JSON file, edits it and uploads it. A preset change that re
 | Add a field | The field is empty |
 | Remove a field | Its values are erased after the confirmation |
 | Rename a field label (same field id) | Keeps its values |
-| Change a field's type (same field id) | Counts as a removal: its values are erased after the confirmation |
+| Change a field's type (same field id), `text` to `select` included | Counts as a removal: its values are erased after the confirmation |
+| Change a select field's options (same field id) | Keeps its values. A value that is no longer an option still shows |
+| Change a dice-choice field's options (same field id) | Keeps its values, as for a select field. `select` to `dice-choice`, or back, is a type change |
 | Add a single sheet | Its tab appears, empty |
 | Remove a sheet set, or change its `id` or `kind` | Its sheets are deleted with their values, token links, owners and write access after the confirmation |
 | Remove a single sheet, or change its `id` or `kind` | Its values and token links are erased after the confirmation |

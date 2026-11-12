@@ -9,6 +9,7 @@ import { DiceButton, type DiceRow } from './dice-button';
 import { PendingMark } from './pending-mark';
 import {
   useCheckFieldEdit,
+  useSelectFieldEdit,
   useTextFieldEdit,
   type FieldErrorKind,
   type FieldPlace,
@@ -136,6 +137,8 @@ function CellContent({
 
   return cell.type === 'check' ? (
     <CheckField field={cell} label={label} values={values} place={place} pending={pending} />
+  ) : cell.type === 'select' || cell.type === 'dice-choice' ? (
+    <SelectField field={cell} label={label} values={values} place={place} pending={pending} />
   ) : (
     <TextValueField field={cell} label={label} values={values} place={place} pending={pending} />
   );
@@ -186,6 +189,76 @@ function CheckField({ field, label, values, place, pending }: FieldProps): React
         disabled={pending.disabled}
         onChange={edit.onToggle}
       />
+      {pending.marked ? <PendingMark id={markId} /> : null}
+    </span>
+  );
+}
+
+function SelectField({
+  field,
+  label,
+  values,
+  place,
+  pending,
+}: Omit<FieldProps, 'field'> & {
+  field: Extract<PresetFieldCell, { type: 'select' | 'dice-choice' }>;
+}): ReactNode {
+  const markId = useId();
+  const edit = useSelectFieldEdit({ place, fieldId: field.id, recordValue: values.get(field.id) });
+
+  const stale =
+    edit.value !== '' && !field.options.includes(edit.value) ? (
+      <option value={edit.value} disabled>
+        {edit.value}
+      </option>
+    ) : null;
+
+  return (
+    <span className="inline-flex items-center gap-1 justify-self-start">
+      <select
+        className={VALUE_CLASS}
+        aria-label={label}
+        aria-describedby={describedBy([pending.marked ? markId : null, pending.rowMarkId])}
+        disabled={pending.disabled}
+        value={edit.value}
+        onKeyDown={(event) => {
+          if (event.altKey || event.metaKey || event.ctrlKey) {
+            return;
+          }
+
+          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+            return;
+          }
+
+          // Plain arrows change and save the value on every platform; modified arrows stay native.
+          const currentIndex = field.options.indexOf(edit.value);
+
+          const nextIndex =
+            event.key === 'ArrowDown'
+              ? Math.min(currentIndex + 1, field.options.length - 1)
+              : currentIndex <= 0
+                ? -1
+                : currentIndex - 1;
+
+          const next = nextIndex === -1 ? '' : field.options[nextIndex];
+
+          if (next !== undefined) {
+            event.preventDefault();
+            edit.onChange(next);
+          }
+        }}
+        onChange={(event) => {
+          edit.onChange(event.target.value);
+        }}
+      >
+        <option value="">{copy.emptySelectOption}</option>
+        {stale}
+        {field.options.map((option, index) => (
+          <option key={`${option}-${index}`} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
       {pending.marked ? <PendingMark id={markId} /> : null}
     </span>
   );
