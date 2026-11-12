@@ -79,8 +79,16 @@ A cell with fixed text from the preset. It holds no value.
 _Avoid_: text cell, caption, static text
 
 **Field**:
-A cell that holds a value on each sheet: text, a number, or a check.
+A cell that holds a value on each sheet: text, a number, a check, or one option of a select field.
 _Avoid_: input, stat, attribute, property
+
+**Select field**:
+A field whose value is one of the options its preset lists. The sheet offers only those options. In the interface: «Список».
+_Avoid_: dropdown, enum, list field
+
+**Option**:
+One value that a select field lists in the preset. In the interface: «Вариант».
+_Avoid_: choice, item, enum value
 
 **Field id**:
 The name of a field. Values are kept under it, and formulas refer to the field by it.
