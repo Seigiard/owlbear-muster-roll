@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import type { Preset } from '@/core/preset';
 import { err } from '@/core/result';
 import type { VersionedRecord } from '@/core/records';
-import type { SnapshotFile } from '@/core/snapshot-file';
+import { encodeSnapshotFile, type SnapshotFile } from '@/core/snapshot-file';
 import {
   decodeSnapshotFileData,
   encodeSnapshotFileData,
@@ -301,6 +301,80 @@ describe('importSnapshot', () => {
     expect({ block: dataOf(records, 'rep:npc:npc_name:n1'), count }).toEqual({
       block: { order: 0, cells: { ac: 12, might: 3, npc_name: 'Волк' } },
       count: 0,
+    });
+  });
+
+  test('keeps every select-only repeat block through export and import into the same preset', () => {
+    // #given
+    const preset: Preset = {
+      v: 2,
+      templates: [
+        {
+          id: 'inventory',
+          kind: 'single',
+          title: 'Инвентарь',
+          sections: [
+            {
+              repeat: true,
+              rows: [
+                [
+                  {
+                    kind: 'field',
+                    type: 'select',
+                    id: 'armor',
+                    options: ['Кожаная', 'Кольчуга'],
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const room = new Map<string, VersionedRecord>([
+      [
+        'rep:inventory:armor:a1',
+        {
+          k: 'rep:inventory:armor:a1',
+          d: { order: 2, cells: { armor: 'Кожаная' } },
+          c: 3,
+          a: 'gm',
+        },
+      ],
+      [
+        'rep:inventory:armor:a2',
+        {
+          k: 'rep:inventory:armor:a2',
+          d: { order: 0, cells: { armor: 'Кольчуга' } },
+          c: 4,
+          a: 'gm',
+        },
+      ],
+    ]);
+
+    const snapshot = encodeSnapshotFile(room, preset);
+
+    // #when
+    const result = importSnapshot(snapshot, { preset, data: CURRENT.data }, AUTHOR);
+
+    // #then
+    if (!result.ok) {
+      throw new Error(`the import failed: ${result.error}`);
+    }
+
+    const records = new Map(result.value.records.map((record) => [record.k, record]));
+
+    expect({
+      a1: dataOf(records, 'rep:inventory:armor:a1'),
+      a2: dataOf(records, 'rep:inventory:armor:a2'),
+      count: result.value.count,
+      sheets: result.value.sheets,
+    }).toEqual({
+      a1: { order: 2, cells: { armor: 'Кожаная' } },
+      a2: { order: 0, cells: { armor: 'Кольчуга' } },
+      count: 0,
+      sheets: 0,
     });
   });
 

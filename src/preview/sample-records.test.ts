@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { FORMAT_VERSION } from '@/core/format-version';
-import { parsePresetFile, type Preset } from '@/core/preset';
+import { parsePresetFile, type Preset, type PresetFieldCell } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { repeatBlocks, rowValues } from '@/core/sheet-values';
 import { sheetName } from '@/core/sheets';
@@ -11,6 +11,17 @@ import { sheetName } from '@/core/sheets';
 import { previewSheets } from './sample-records';
 
 const REPOSITORY_ROOT = join(import.meta.dir, '../..');
+
+const ARMOR = selectField('armor', ['Кожаная', 'Кольчуга']);
+
+function selectField(id: string, options: string[]): PresetFieldCell {
+  const field: PresetFieldCell = { kind: 'field', type: 'text', id };
+
+  Reflect.set(field, 'type', 'select');
+  Reflect.set(field, 'options', options);
+
+  return field;
+}
 
 // A sheet set first, then a hidden single sheet whose repeat section spans two rows.
 const PRESET: Preset = {
@@ -40,6 +51,7 @@ const PRESET: Preset = {
               { kind: 'field', type: 'number', id: 'dex' },
               { kind: 'field', type: 'check', id: 'dex_tired' },
             ],
+            [{ kind: 'text', text: 'Броня' }, ARMOR],
             [{ kind: 'dice', formula: '1d6' }],
             [
               { kind: 'text', text: '  ' },
@@ -118,6 +130,15 @@ describe('previewSheets with sample content', () => {
     expect(rowValues(records, 'preview-1', 'motto').get('motto')).toBe('motto');
   });
 
+  test('gives a select field one of the options from its preset', () => {
+    // #when
+    const { records } = previewSheets(PRESET, 'sample');
+    const value = rowValues(records, 'preview-1', 'armor').get('armor');
+
+    // #then
+    expect(['Кожаная', 'Кольчуга'].includes(String(value))).toBe(true);
+  });
+
   test('gives a repeat section two repeat blocks, each with every field of the section', () => {
     // #when
     const { records } = previewSheets(PRESET, 'sample');
@@ -144,6 +165,7 @@ describe('previewSheets with sample content', () => {
         'row:preview-1:name',
         'row:preview-1:str',
         'row:preview-1:dex',
+        'row:preview-1:armor',
         'row:preview-1:motto',
         'rep:npc:foe:sample-1',
         'rep:npc:foe:sample-2',

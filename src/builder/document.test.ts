@@ -72,6 +72,70 @@ describe('fromPreset and toPreset', () => {
     expect(back).toEqual(preset);
     expect(JSON.stringify(back)).not.toContain('uid');
   });
+
+  test('keeps a select field and its options through the builder document', () => {
+    // #given
+    const preset: Preset = {
+      v: 2,
+      templates: [
+        {
+          id: 'inventory',
+          kind: 'single',
+          title: 'Инвентарь',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Броня' },
+                  { kind: 'field', type: 'text', id: 'armor' },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const field = preset.templates[0]?.sections[0]?.rows[0]?.[1];
+
+    if (field?.kind !== 'field') {
+      throw new Error('the fixture needs its armor field');
+    }
+
+    Reflect.set(field, 'type', 'select');
+    Reflect.set(field, 'options', ['Без доспеха', 'Кожаная']);
+
+    // #when
+    const back = toPreset(fromPreset(preset));
+    const actual: unknown = back;
+
+    // #then
+    expect(actual).toEqual({
+      v: 2,
+      templates: [
+        {
+          id: 'inventory',
+          kind: 'single',
+          title: 'Инвентарь',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Броня' },
+                  {
+                    kind: 'field',
+                    type: 'select',
+                    id: 'armor',
+                    options: ['Без доспеха', 'Кожаная'],
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
 });
 
 describe('addTemplate', () => {

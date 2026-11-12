@@ -27,6 +27,15 @@ function check(id: string): PresetFieldCell {
   return { kind: 'field', type: 'check', id };
 }
 
+function select(id: string, options: string[]): PresetFieldCell {
+  const field: PresetFieldCell = { kind: 'field', type: 'text', id };
+
+  Reflect.set(field, 'type', 'select');
+  Reflect.set(field, 'options', options);
+
+  return field;
+}
+
 function rows(...cells: PresetCell[][]): PresetSection {
   return { rows: cells };
 }
@@ -240,6 +249,93 @@ describe('presetDiff', () => {
       removed: { pc: ['notes'] },
       first: [],
       last: ['row:brok:notes={}'],
+    });
+  });
+
+  test('keeps a plain select value when only its options change', () => {
+    // #given
+    const old = preset([rows([select('armor', ['Кожаная', 'Кольчуга'])])]);
+    const next = preset([rows([select('armor', ['Без доспеха', 'Кожаная'])])]);
+    const records = replica(sheet('brok'), row('brok', 'armor', { armor: 'Кольчуга' }));
+
+    // #when
+    const migration = capture(() => summary(presetDiff(records, old, next)));
+
+    const helperControls = {
+      success: capture(() => 'control'),
+      failure: capture(() => {
+        throw new Error('control error');
+      }),
+    };
+
+    // #then
+    expect({ helperControls, migration }).toEqual({
+      helperControls: {
+        success: { result: 'control' },
+        failure: { threw: 'control error' },
+      },
+      migration: {
+        result: { count: 0, sheets: 0, removed: {}, first: [], last: [] },
+      },
+    });
+  });
+
+  test('keeps a repeat-block select value when only its options change', () => {
+    // #given
+    const old = preset([repeat(select('armor', ['Кожаная', 'Кольчуга']))]);
+    const next = preset([repeat(select('armor', ['Без доспеха', 'Кожаная']))]);
+
+    const records = replica(sheet('brok'), rep('brok', 'armor', 'i1', { armor: 'Кольчуга' }));
+
+    // #when
+    const migration = capture(() => summary(presetDiff(records, old, next)));
+
+    // #then
+    expect(migration).toEqual({
+      result: { count: 0, sheets: 0, removed: {}, first: [], last: [] },
+    });
+  });
+
+  test('erases and counts a text value when the field becomes a select', () => {
+    // #given
+    const old = preset([rows([text('notes')])]);
+    const next = preset([rows([select('notes', ['Смелый', 'Осторожный'])])]);
+    const records = replica(sheet('brok'), row('brok', 'notes', { notes: 'Смелый' }));
+
+    // #when
+    const migration = capture(() => summary(presetDiff(records, old, next)));
+
+    // #then
+    expect(migration).toEqual({
+      result: {
+        count: 1,
+        sheets: 0,
+        removed: { pc: ['notes'] },
+        first: [],
+        last: ['row:brok:notes={}'],
+      },
+    });
+  });
+
+  test('erases a repeat-block field that becomes a select and keeps its other fields', () => {
+    // #given
+    const old = preset([repeat(text('item'), text('armor'))]);
+    const next = preset([repeat(text('item'), select('armor', ['Кожаная', 'Кольчуга']))]);
+
+    const records = replica(
+      sheet('brok'),
+      rep('brok', 'item', 'i1', { item: 'Щит', armor: 'Кожаная' }, 4),
+    );
+
+    // #when
+    const migration = presetDiff(records, old, next);
+
+    // #then
+    expect({ count: migration.count, removed: migration.removed, ...writes(migration) }).toEqual({
+      count: 1,
+      removed: { pc: ['armor'] },
+      first: [],
+      last: ['rep:brok:item:i1={"order":4,"cells":{"item":"Щит"}}'],
     });
   });
 
@@ -962,6 +1058,14 @@ describe('presetDiff', () => {
     });
   });
 });
+
+function capture<Result>(operation: () => Result): { result: Result } | { threw: string } {
+  try {
+    return { result: operation() };
+  } catch (error) {
+    return { threw: error instanceof Error ? error.message : String(error) };
+  }
+}
 
 describe('presetMoves', () => {
   test('names the new row of a field and the new section of a repeat section', () => {

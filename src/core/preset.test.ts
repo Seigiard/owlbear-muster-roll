@@ -42,7 +42,19 @@ const NUMBER_FIELD = (id: string): JsonObject => ({ kind: 'field', type: 'number
 
 const TEXT_FIELD = (id: string): JsonObject => ({ kind: 'field', type: 'text', id });
 
+const SELECT_FIELD = (id: string, options: string[]): JsonObject => ({
+  kind: 'field',
+  type: 'select',
+  id,
+  options,
+});
+
 const LABEL: JsonObject = { kind: 'text', text: 'Сила' };
+
+type SelectFailure =
+  | { code: 'no-options'; field: string }
+  | { code: 'blank-option'; field: string }
+  | { code: 'duplicate-option'; detail: string; field: string };
 
 const MINIMAL: Preset = {
   v: 2,
@@ -81,6 +93,31 @@ function fileOf(sections: JsonValue[]): string {
   return presetOf(singleOf('notes', sections));
 }
 
+function presetWithSelect(options: string[]): Preset {
+  const preset: Preset = {
+    v: 2,
+    templates: [
+      {
+        id: 'notes',
+        kind: 'single',
+        title: 'Заметки',
+        sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'armor' }]] }],
+      },
+    ],
+  };
+
+  const field = preset.templates[0]?.sections[0]?.rows[0]?.[0];
+
+  if (field?.kind !== 'field') {
+    throw new Error('the fixture needs its armor field');
+  }
+
+  Reflect.set(field, 'type', 'select');
+  Reflect.set(field, 'options', options);
+
+  return preset;
+}
+
 function decodeIndependently(data: string): JsonValue {
   return z.json().parse(JSON.parse(strFromU8(inflateSync(Buffer.from(data, 'base64')))));
 }
@@ -92,6 +129,40 @@ describe('parsePresetFile', () => {
 
     // #then
     expect(parsed).toEqual({ ok: true, value: JSON.parse(EXAMPLE_TEXT) });
+  });
+
+  test('the committed example includes a select field', () => {
+    // #given
+    const parsed = parsePresetFile(EXAMPLE_TEXT);
+
+    if (!parsed.ok) {
+      throw new Error('the committed example must parse');
+    }
+
+    // #when
+    const hasSelect = parsed.value.templates.some((template) =>
+      template.sections.some((section) =>
+        section.rows.some((row) =>
+          row.some(
+            (cell) => cell.kind === 'field' && z.literal('select').safeParse(cell.type).success,
+          ),
+        ),
+      ),
+    );
+
+    // #then
+    expect(hasSelect).toBe(true);
+  });
+
+  test('accepts a select field with its options in preset order', () => {
+    // #given
+    const text = fileOf([{ rows: [[SELECT_FIELD('armor', ['Нет', 'Кожаная', 'Кольчуга'])]] }]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
   });
 
   test('accepts every cell kind, columns, repeat and every width', () => {
@@ -324,12 +395,64 @@ describe('parsePresetFile', () => {
     ['a fractional columns', JSON.parse(fileOf([{ columns: 1.5, rows: [] }]))],
     ['a repeat that is false', JSON.parse(fileOf([{ repeat: false, rows: [] }]))],
     ['a field without an id', JSON.parse(fileOf([{ rows: [[{ kind: 'field', type: 'text' }]] }]))],
+    [
+      'a select field without options',
+      JSON.parse(fileOf([{ rows: [[{ kind: 'field', type: 'select', id: 'armor' }]] }])),
+    ],
+    [
+      'options on a text field',
+      JSON.parse(fileOf([{ rows: [[{ ...TEXT_FIELD('armor'), options: ['Кожаная'] }]] }])),
+    ],
+    [
+      'options on a number field',
+      JSON.parse(fileOf([{ rows: [[{ ...NUMBER_FIELD('armor'), options: ['Кожаная'] }]] }])),
+    ],
+    [
+      'options on a check field',
+      JSON.parse(
+        fileOf([
+          {
+            rows: [
+              [
+                {
+                  kind: 'field',
+                  type: 'check',
+                  id: 'armor',
+                  options: ['Кожаная'],
+                },
+              ],
+            ],
+          },
+        ]),
+      ),
+    ],
   ])('refuses %s as an invalid structure', (_name, file) => {
     // #when
     const parsed = parsePresetFile(JSON.stringify(file));
 
     // #then
     expect(parsed).toEqual({ ok: false, error: { code: 'invalid-structure' } });
+  });
+
+  test.each<[string, string[], SelectFailure]>([
+    ['no option', [], { code: 'no-options', field: 'armor' }],
+    ['an empty option', ['', 'Кожаная'], { code: 'blank-option', field: 'armor' }],
+    ['a spaces-only option', ['Кожаная', '  '], { code: 'blank-option', field: 'armor' }],
+    [
+      'a repeated option',
+      ['Кожаная', 'Кольчуга', 'Кожаная'],
+      { code: 'duplicate-option', detail: 'Кожаная', field: 'armor' },
+    ],
+  ])('refuses a select field with %s', (_name, options, error) => {
+    // #given
+    const text = fileOf([{ rows: [[SELECT_FIELD('armor', options)]] }]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+    const actual: unknown = parsed;
+
+    // #then
+    expect(actual).toEqual({ ok: false, error });
   });
 
   test.each<[string, string]>([
@@ -1217,6 +1340,26 @@ describe('presetProblems', () => {
     // #then
     expect(problems.length).toBeGreaterThan(1);
     expect(parsed.ok ? null : parsed.error).toEqual(problems[0]?.failure ?? null);
+  });
+
+  test.each<[string, string[], SelectFailure]>([
+    ['no options', [], { code: 'no-options', field: 'armor' }],
+    ['a blank option', ['Кожаная', ' '], { code: 'blank-option', field: 'armor' }],
+    [
+      'a repeated option',
+      ['Кожаная', 'Кольчуга', 'Кожаная'],
+      { code: 'duplicate-option', detail: 'Кожаная', field: 'armor' },
+    ],
+  ])('points %s at the select field cell', (_name, options, failure) => {
+    // #given
+    const preset = presetWithSelect(options);
+
+    // #when
+    const problems = presetProblems(preset);
+    const actual: unknown = problems;
+
+    // #then
+    expect(actual).toEqual([{ failure, path: [0, 0, 0, 0] }]);
   });
 });
 
