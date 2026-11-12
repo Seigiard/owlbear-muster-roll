@@ -1,11 +1,11 @@
 ---
 id: TASK-54
 title: Roll a dice cell without closing the Muster Roll window
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-12T02:21:00Z'
-updated_date: '2026-11-12T11:36:00Z'
+updated_date: '2026-11-12T13:54:00Z'
 labels:
   - v2
 dependencies:
@@ -24,13 +24,13 @@ Pressing a dice cell rolls through the dice extension (TASK-36), and the roller 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Pressing a dice cell in Muster Roll leaves the Muster Roll window open and focused; the dicex window does not open
-- [ ] #2 The roller sees the 3D dice and the result in the bottom-right dice tray, as other players see a remote roll
-- [ ] #3 Other clients see the roll as they do today, and an NPC roll still reaches the roller and the GM only
+- [x] #1 Pressing a dice cell in Muster Roll leaves the Muster Roll window open and focused; the dicex window does not open
+- [x] #2 The roller sees the 3D dice and the result in the bottom-right dice tray, as other players see a remote roll
+- [x] #3 Other clients see the roll as they do today, and an NPC roll still reaches the roller and the GM only
 - [x] #4 The rolled values still come back to Muster Roll, so the notification and the comparison outcome match the dice
-- [ ] #5 A roll started from the dicex window itself still opens and behaves as before
+- [x] #5 A roll started from the dicex window itself still opens and behaves as before
 - [x] #6 Dice+ (the commercial extension) behaves as it does today, or the task records how it differs
-- [ ] #7 The owner checks the change in a live room with the deployed fork
+- [x] #7 The owner checks the change in a live room with the deployed fork
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -51,4 +51,12 @@ Build 2026-11-12 (dicex fork, branch dice-plus-roll-without-action, worktree /Us
 Fork PR: https://github.com/Seigiard/dicex/pull/2 (head dice-plus-roll-without-action, base main of the fork; CI test job passed). Commits c170000 (tests) and 52f7410 (feature) on 47cd243. Issue comment: https://github.com/Seigiard/dicex/issues/1#issuecomment-6822489617. Not merged: merging to the fork's main deploys GitHub Pages, so it is the owner's step.
 AC evidence: #4 - src/plugin/dicePlusPopoverRollHost.test.ts 'reports a completed popover roll to the requesting Dice+ source' asserts the literal {source}/roll-result payload (rollId, playerId, playerName, rollTarget, totalValue 4, groups) from a popover roll, the same shape the action page sends; Muster Roll parses it unchanged. #6 - Muster Roll has no code change (no diff in src/ or tests/ against 5d59ae9), so a room with the commercial Dice+ behaves as before. #1, #2, #3, #5, #7 need the owner's live-room check with the fork build: unit tests show action.open is never called on the popover path and the popover publishes metadata, GM reveal, roll log and Rumble like the action page, but the tray rendering is not testable in node.
 Deferred: a remote player's tray can cover the roller's tray (all popover trays share one spot); entry in _bmad-output/implementation-artifacts/deferred-work.md.
+
+2026-11-12: the owner merged fork PR #2 (c5738b2), GitHub Pages deployed it, and the owner checked it in a live room: «всё работает как заявленно» (Muster Roll window stays open, dice in the corner tray, other players and the GM see the roll as before, hidden NPC roll reaches only roller and GM, dicex window rolls as before). Upstream PR: https://github.com/abottchen/dicex/pull/24 (stacked on #22 and #23).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+A Dice+ roll from Muster Roll no longer closes the Muster Roll window. The dicex fork now rolls a Dice+ request in the bottom-right popover tray when the Dicex window is closed, instead of calling OBR.action.open(); the roller sees their own dice there, as other players see a remote roll. If the popover does not answer in 2 s, the roll falls back to the Dicex window. Muster Roll code did not change. Verified by 325 dicex tests, two revmux rounds and the owner's live-room check after the fork PR #2 merged and deployed. Known limit, deferred: a remote tray can cover the roller's tray, since all trays share one spot. Upstream PR abottchen/dicex#24 carries this together with TASK-57.
+<!-- SECTION:FINAL_SUMMARY:END -->
