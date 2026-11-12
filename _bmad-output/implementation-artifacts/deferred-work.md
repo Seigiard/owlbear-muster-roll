@@ -225,3 +225,18 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-45-pending-edits-module.md`
   summary: Mutation M9 (a stale answer rebases on `current` alone) survived every engine test at the baseline; only the new unit test kills it.
   evidence: ticket.md calibration in the TASK-45 run directory: M9 fails 0 tests at the baseline and after phase A, 1 test after phase B (`a stale answer below the edit rebuilds over the newest known record, not only the answer`). No engine-level or e2e test covers it.
+
+## Deferred from: build of spec-task-46-command-outcomes (2026-11-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-46-command-outcomes.md`
+  summary: A window of a newer build that talks to an older background page never gets `command-done`, so commands the old engine applied time out after 15 s.
+  evidence: After a deploy, a room opened before it keeps the old background page. Result answers (preset, snapshot, wipe, roll) still arrive, and access, link, create and repeat-block views settle from records, so the visible harm is a false `copy.duplicateFailed` and a dropped held field value. A fix needs a protocol choice, for example a build marker the window reads before it waits for `command-done`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-46-command-outcomes.md`
+  summary: A snapshot import that succeeds after its 60 s timeout no longer clears `copy.snapshotImportNoAnswer`.
+  evidence: The client drops every answer after the timeout (spec matrix "Timed out"), so the spec-5-3 rule that a late `snapshot-imported` clears the warning no longer holds. Restoring it needs a view signal for a replaced room that does not depend on the late answer.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-46-command-outcomes.md`
+  summary: A duplicate queued during a catch-up longer than 15 s shows `copy.duplicateFailed`, and a retry queues a second duplicate.
+  evidence: The duplicate now closes when replay answers (spec Always). An incomplete catch-up with backoff can last up to `incompleteRequestMaxMs` (30 s), longer than the default command timeout.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-46-command-outcomes.md`
+  summary: A comment in `tests/owner.e2e.ts` still names `ACCESS_CHANGE_TIMEOUT_MS`, which TASK-46 replaced with `Timing.accessChangeTimeoutMs`.
+  evidence: TASK-46 kept `tests/` unchanged as the oracle for unchanged behaviour, so the comment was left for a later edit of that file.

@@ -2,7 +2,7 @@
 title: 'TASK-46: give each window command one outcome: answered, refused or timed out'
 type: 'refactor'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '31bf2526fb88eac670fde1c59c53c4842a602a66'
@@ -95,13 +95,13 @@ A view that can send again before an older outcome lands (a field save, an acces
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Baseline -- at `31bf252`, save the junit list of `bun test` (test name, assertion count) and the e2e pass list -- the proof compares against it.
-- [ ] AC3 regression test first -- a `duplicate-count` component test on the baseline interface: another client adds an empty repeat block after a duplicate of an empty source is sent; the block must stay open. Observe it red at the baseline, then port it to the new interface.
-- [ ] `src/core/ui-messages.ts`, `src/replica/engine.ts` -- `command-done` and the AD-10 audit -- one answer per id.
-- [ ] `src/core/timing.ts`, `src/ui/replica-client.ts` -- outcome API, id matching, per-kind timeouts, answer buffering until the projection.
-- [ ] Views and `src/preview/stub-rolling.ts` -- use outcomes; drop ids, result maps and command timers.
-- [ ] `src/ui/projection-store.ts` -- room state only.
-- [ ] Tests -- `replica-client.test.ts`: one test per client matrix row; engine tests: `command-done` for a live GM command, a queued intent at replay, a player's accepted edit, and none for an engine-made command; port harnesses without changing test names or per-test assertion counts.
+- [x] Baseline -- at `31bf252`, save the junit list of `bun test` (test name, assertion count) and the e2e pass list -- the proof compares against it.
+- [x] AC3 regression test first -- a `duplicate-count` component test on the baseline interface: another client adds an empty repeat block after a duplicate of an empty source is sent; the block must stay open. Observe it red at the baseline, then port it to the new interface.
+- [x] `src/core/ui-messages.ts`, `src/replica/engine.ts` -- `command-done` and the AD-10 audit -- one answer per id.
+- [x] `src/core/timing.ts`, `src/ui/replica-client.ts` -- outcome API, id matching, per-kind timeouts, answer buffering until the projection.
+- [x] Views and `src/preview/stub-rolling.ts` -- use outcomes; drop ids, result maps and command timers.
+- [x] `src/ui/projection-store.ts` -- room state only.
+- [x] Tests -- `replica-client.test.ts`: one test per client matrix row; engine tests: `command-done` for a live GM command, a queued intent at replay, a player's accepted edit, and none for an engine-made command; port harnesses without changing test names or per-test assertion counts.
 
 **Acceptance Criteria:**
 - Given the branch, when `rg -n '\$rejections|\$rollOutcomes|\$presetResults|\$snapshotResults|\$wipeResults|commandId|ACCESS_CHANGE_TIMEOUT_MS|WIPE_TIMEOUT_MS|pickTimeoutMs' src` runs, then nothing matches outside `src/ui/replica-client.ts` and its test.
@@ -110,9 +110,73 @@ A view that can send again before an older outcome lands (a field save, an acces
 
 ## Implementation Notes
 
+### AD-10 audit
+
+The engine paths below cover every `WindowMessage` that carries a command or request id. Each
+path has one terminal answer. A duplicate delivery of an already handled id is ignored because its
+original answer already settled that id.
+
+| Window input | Accepted path | Refused path | Terminal answer |
+| --- | --- | --- | --- |
+| `command` while live | GM composition and apply, or accepted player edit | role, import, catch-up, or composer refusal | `command-done` after the effect delta, or `command-rejected` |
+| `command` queued during catch-up | replayed GM intent or accepted queued edit | upload/import/wipe during catch-up, replay refusal, demotion, or generation replacement | `command-done` after replay, or `command-rejected` with `catching-up`, `not-allowed`, or `data-replaced` |
+| `preset-upload` | all batch groups write | composition or batch write failure | `preset-uploaded` after the effect delta, or `command-rejected` |
+| `preset-diff` | live GM computes the diff | player, catch-up, or diff failure | `preset-diff-result`, or `command-rejected` |
+| `snapshot-check` | live GM plans the import | player, importing, catch-up, missing persistence, or invalid plan | `snapshot-check-result`, or `command-rejected` |
+| `snapshot-import` | generation replacement completes | importing, missing persistence, invalid plan, changed digest, failed write, or replacement | `snapshot-imported`, or `command-rejected` |
+| `wipe` | generation replacement completes | importing, missing persistence, failed write, or replacement | `wiped`, or `command-rejected` |
+| `roll-request` | local or dice-extension roll completes | invalid sheet, field/formula error, role change, failed room send, or dice failure | final `roll-outcome`; `waiting-access` is progress only |
+
+`projection-request` and `open-sheet-ack` are window protocol messages, not command outcomes.
+Scene cleanup commands and token-menu commands are engine-owned ids, so they do not receive a
+window `command-done`; scene refusals remain silent and menu refusals use the engine notification
+path. Promoted pending edits receive new engine-owned ids. `dropPendingWork` refuses queued window
+ids with `data-replaced`; an already answered player edit does not acquire a second outcome when its
+later GM proposal is accepted or denied.
+
+The implementation changes that closed the audit gaps were:
+
+- Added `command-done` after live GM deltas and accepted player edits.
+- Added replay completion ids and answered queued intents after catch-up; queued refusals and
+  generation replacement use `command-rejected`.
+- Kept result-bearing answers for preset, snapshot and roll paths, with `command-rejected` on every
+  refusal branch.
+- Moved id matching and one timeout per own request into `src/ui/replica-client.ts`; a late,
+  foreign, or repeated answer cannot settle another request.
+
+### Baseline comparison
+
+The baseline had 2655 test cases and 8775 expect calls. The final implementation has 2681 test
+cases and 8803 expect calls. All retained test names keep their assertion counts. The 36 added
+cases cover client outcome matching, timeout selection, engine answers, replay, player edits,
+engine-owned commands and duplicate outcomes.
+
+Retired tests and their replacement owners:
+
+- The six `copiesArrived` duplicate-count tests are owned by `duplicate count outcomes`: the
+  unrelated empty block case, the refused case and the timed-out case now test the command outcome
+  directly.
+- The two `projection store` rejection-map tests are owned by `replica client command outcomes`:
+  the foreign/repeated answer test and the refusal-fields test.
+- `replica client wipe answers::a window takes the answer to its own wipe, and not another
+  window's` is owned by the same-named test in `replica client command outcomes`.
+- `sheet-create::does not show another window a rejection it did not cause` is owned by
+  `replica client command outcomes::a foreign answer is dropped and a repeated answer cannot
+  replace the first outcome`.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+Step 04 ran the `code-review-carryover` layer only. Code-review round 1 (revmux `mixed-terra`,
+9/9 sources) found 3 major and 14 minor findings; 14 were fixed through a second tdd batch, one was
+rejected. Round 2 (`final`, 2/2 sources) found nothing. The carried items:
+
+| Finding | Verdict | Evidence | Route |
+| --- | --- | --- | --- |
+| Newer window with an older background page never gets `command-done` (arch+quality-claude-3) | medium | After a deploy, a room opened before it keeps the old background page; a new window then times out commands the old engine applied. Result answers (preset, snapshot, wipe, roll) still arrive, and access, link, create and repeat-block views settle from records, so the visible harm is a false `copy.duplicateFailed` and a lost held field value after 15 s. A fix needs a protocol choice the spec does not settle. | defer |
+| A late successful snapshot import no longer clears `copy.snapshotImportNoAnswer` (adversarial-claude-4) | low | The client drops every answer after the 60 s timeout (spec matrix "Timed out"), so the spec-5-3 rule that a late `snapshot-imported` clears the warning no longer holds. The warning still tells the GM to check the sheets, which stays correct. Restoring it needs a view signal for a replaced room. | defer |
+| A duplicate queued during a catch-up longer than 15 s times out (adversarial-claude-1, duplicate part) | low | The spec accepts that the duplicate closes at replay; an incomplete catch-up with backoff can last up to 30 s, so the duplicate shows `copy.duplicateFailed` and a retry queues a second duplicate. | defer |
 
 ## Verification
 
