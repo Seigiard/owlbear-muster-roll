@@ -14,11 +14,20 @@ const encoder = new TextEncoder();
 
 const textCellSchema = z.strictObject({ kind: z.literal('text'), text: z.string() });
 
-const fieldCellSchema = z.strictObject({
-  kind: z.literal('field'),
-  type: z.enum(['text', 'number', 'check']),
-  id: z.string(),
-});
+// Shared by option-list field types, so a later list-backed type can use the same shape and rules.
+const fieldOptions = { options: z.array(z.string()) };
+
+const fieldCellSchema = z.discriminatedUnion('type', [
+  z.strictObject({ kind: z.literal('field'), type: z.literal('text'), id: z.string() }),
+  z.strictObject({ kind: z.literal('field'), type: z.literal('number'), id: z.string() }),
+  z.strictObject({ kind: z.literal('field'), type: z.literal('check'), id: z.string() }),
+  z.strictObject({
+    kind: z.literal('field'),
+    type: z.literal('select'),
+    id: z.string(),
+    ...fieldOptions,
+  }),
+]);
 
 const diceCellSchema = z.strictObject({ kind: z.literal('dice'), formula: z.string() });
 
@@ -141,7 +150,10 @@ export type PresetFailure =
   | { code: 'duplicate-section'; detail: string }
   | { code: 'row-too-wide' }
   | { code: 'bad-formula'; detail: string }
-  | { code: 'bad-window' };
+  | { code: 'bad-window' }
+  | { code: 'no-options'; field: string }
+  | { code: 'blank-option'; field: string }
+  | { code: 'duplicate-option'; detail: string; field: string };
 
 // Check order: size, JSON, `v`, `window`, structure, then rules. `v` comes before the structure,
 // because a newer file may have a shape this build does not know.
@@ -497,6 +509,34 @@ function cellFailure(cell: PresetCell, scope: Set<string>): PresetFailure | null
   }
 
   scope.add(cell.id);
+
+  return cell.type === 'select' ? selectOptionsFailure(cell) : null;
+}
+
+function selectOptionsFailure(
+  field: Extract<PresetFieldCell, { type: 'select' }>,
+): PresetFailure | null {
+  if (field.options.length === 0) {
+    return { code: 'no-options', field: shortDetail(field.id) };
+  }
+
+  const seen = new Set<string>();
+
+  for (const option of field.options) {
+    if (option.trim() === '') {
+      return { code: 'blank-option', field: shortDetail(field.id) };
+    }
+
+    if (seen.has(option)) {
+      return {
+        code: 'duplicate-option',
+        detail: shortDetail(option),
+        field: shortDetail(field.id),
+      };
+    }
+
+    seen.add(option);
+  }
 
   return null;
 }

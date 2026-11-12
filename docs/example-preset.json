@@ -21,6 +21,15 @@
               { "kind": "field", "type": "text", "id": "class" },
               { "kind": "text", "text": "Уровень" },
               { "kind": "field", "type": "number", "id": "level" }
+            ],
+            [
+              { "kind": "text", "text": "Броня" },
+              {
+                "kind": "field",
+                "type": "select",
+                "id": "armor",
+                "options": ["Нет", "Кожаная", "Кольчуга"]
+              }
             ]
           ]
         },

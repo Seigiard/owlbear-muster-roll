@@ -56,6 +56,8 @@ export type TextFieldEdit = {
 
 export type CheckFieldEdit = { checked: boolean; onToggle: () => void };
 
+export type SelectFieldEdit = { value: string; onChange: (value: string) => void };
+
 type FieldArguments = {
   place: FieldPlace;
   fieldId: string;
@@ -390,6 +392,39 @@ export function useCheckFieldEdit({ place, fieldId, recordValue }: FieldArgument
 
       if (sent.ok) {
         shown.hold({ value: !checked, text: '', commandId: sent.value });
+      }
+    },
+  };
+}
+
+// A `select` field saves on the pick that changes its value. The empty option clears the key.
+export function useSelectFieldEdit({
+  place,
+  fieldId,
+  recordValue,
+}: FieldArguments): SelectFieldEdit {
+  const editing = useFieldEditing();
+  const shown = useShownValue(editing, recordValue);
+
+  return {
+    value: valueText(shown.value ?? undefined),
+    onChange: (value) => {
+      const next: FieldPatchValue = value === '' ? null : value;
+
+      if (sameFieldValue(shown.value, next)) {
+        return;
+      }
+
+      const sent = editing.sendCommand({
+        type: 'field-patch',
+        sheetId: place.sheetId,
+        target: place.target,
+        fieldId,
+        value: next,
+      });
+
+      if (sent.ok) {
+        shown.hold({ value: next, text: '', commandId: sent.value });
       }
     },
   };

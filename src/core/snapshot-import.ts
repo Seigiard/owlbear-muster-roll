@@ -60,7 +60,9 @@ const encoder = new TextEncoder();
 
 const BYTE_ORDER_MARK = '\uFEFF';
 
-const FIELD_TYPES: readonly PresetFieldCell['type'][] = ['text', 'number', 'check'];
+type SnapshotFieldType = Exclude<PresetFieldCell['type'], 'select'>;
+
+const FIELD_TYPES: readonly SnapshotFieldType[] = ['text', 'number', 'check'];
 
 const fileObjectSchema = z.looseObject({ v: z.unknown().optional(), type: z.unknown().optional() });
 
@@ -355,7 +357,7 @@ function repeatValues(
 
   const moves: SectionMove[] = sortedEntries(sheet.repeats).map(([sectionId, rows]) => ({
     sectionId,
-    target: sectionTarget(sectionId, fileSectionFields(rows), scopes),
+    target: sectionTarget(sectionId, fileSectionFields(rows), scopes, true),
     rows,
   }));
 
