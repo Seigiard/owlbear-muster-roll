@@ -2,7 +2,7 @@
 title: 'TASK-48: make catch-up and the GM link one state machine'
 type: 'refactor'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '3fb9dde2f413c79178f37b173338c3ceffc923a5'
@@ -82,11 +82,11 @@ Line numbers are at `3d8a197`.
 
 **Execution:**
 - [x] Baseline -- at `3d8a197` (worktree with its own `bun install`): 2681 tests, 8803 assertions, 0 failures. Wall time: `engine-catch-up` 3.55 s (45 tests), `engine-liveness` 5.66 s (25), `engine-no-gm` 4.05 s (19). Files: `/private/tmp/claude-501/-Users-seigiard-Projects-owlbear-muster-roll-prototypes-owlbear-probe/cb274a81-7b80-4b9c-8a25-e8e948de01b1/scratchpad/baseline.xml` and `baseline-list.tsv` beside it (file, classname, name, assertions, sorted; made by `junit-list.py` beside it). Make the after-list with the same script and `diff` the two.
-- [ ] `src/replica/catch-up.ts` -- create the module per Design Notes from the moved code -- phase A.
-- [ ] `src/replica/engine.ts` -- add the decision runner and the timer table, route every event, and delete the moved code -- phase A. Commit when the junit list equals the baseline.
-- [ ] `GLOSSARY.md` -- add **Catch-up** under "Keeping room data", in the phase A commit.
-- [ ] `src/replica/catch-up.test.ts` -- one test per matrix row and per error case, with deterministic fakes -- phase B.
-- [ ] `src/replica/engine-liveness.test.ts` -- retire the drift rule tests that a module test now owns: `a burst of differing alive…`, `a digest that differs once and then matches…`, `differences from two GMs…`, `differences do not carry across a catch-up`, `an alive of another generation…`, `drift from one GM answered in full by another…`, `a catch-up that ends by timeout starts no ignore`, `a complete answer that comes late, while live, starts no ignore`. In the notes, map each one to its owner -- phase C.
+- [x] `src/replica/catch-up.ts` -- create the module per Design Notes from the moved code -- phase A.
+- [x] `src/replica/engine.ts` -- add the decision runner and the timer table, route every event, and delete the moved code -- phase A. Commit when the junit list equals the baseline.
+- [x] `GLOSSARY.md` -- add **Catch-up** under "Keeping room data", in the phase A commit.
+- [x] `src/replica/catch-up.test.ts` -- one test per matrix row and per error case, with deterministic fakes -- phase B.
+- [x] `src/replica/engine-liveness.test.ts` -- retire the drift rule tests that a module test now owns: `a burst of differing alive…`, `a digest that differs once and then matches…`, `differences from two GMs…`, `differences do not carry across a catch-up`, `an alive of another generation…`, `drift from one GM answered in full by another…`, `a catch-up that ends by timeout starts no ignore`, `a complete answer that comes late, while live, starts no ignore`. In the notes, map each one to its owner -- phase C.
 
 **Acceptance Criteria:**
 - Given phase A, when `bun test` runs, then its junit list equals the baseline.
@@ -135,6 +135,24 @@ type Decision = arm{timer, delayMs} | disarm{timer} | entered{trigger, fresh} | 
 
 ## Implementation Notes
 
+- Run directory: `~/.claude/artifacts/tdd-20261112-160659/task-48-catch-up-state-machine/` (`ticket.md`, controls, review rounds).
+- Phase A: the junit list of the whole `bun test` equals the baseline. Mutations M1-M12 fail the same engine tests as at the baseline, except M5. Under M5, `engine-sync :: remote record :: that loses to the local one sends no delta and writes nothing` races on both sides: 17/20 baseline runs failed and 18/20 module runs failed, with the same order of effects. Recorded in `deferred-work.md`.
+- Phase B: `catch-up.test.ts` has 48 tests. Each one fails under a faithful mutation of the rule it protects. Each of M1-M12 fails at least one of them. M2, M7, M10 and M11 survived the engine suite at the baseline, and the module tests now kill them.
+- Phase C, retired tests and their owners in `catch-up.test.ts`:
+  - a burst of differing alive within one window starts no catch-up -> does not start drift from a burst in one window
+  - a digest that differs once and then matches starts no catch-up -> does not start drift from a match between differences
+  - differences from two GMs do not add up -> does not start drift from differences from two GMs
+  - differences do not carry across a catch-up -> a role change starts over and drops old answer parts
+  - an alive of another generation is not compared -> does not start drift from another generation
+  - drift from one GM answered in full by another ignores the drifting GM too -> an answered exit ignores the responder and drift starter, but a timeout ignores neither
+  - a catch-up that ends by timeout starts no ignore -> an answered exit ignores the responder and drift starter, but a timeout ignores neither
+  - a complete answer that comes late, while live, starts no ignore -> a late complete answer marks a live client answered without ignoring later drift
+- Wall time, before -> after: `engine-catch-up` 3.55 s -> 3.48 s (45 tests); `engine-liveness` 5.66 s -> 4.02 s (25 -> 17); `engine-no-gm` 4.05 s -> 4.21 s (19); `catch-up.test.ts` 0.02 s (48).
+- Code review: round 1 (`mixed-terra`, 9/9 sources) found one major. The retired late-answer test had no module owner that held its assertion. Round 1 also found 11 minors. Two of them were behavior gaps against the baseline. First, a complete answer of the adoption target finished the adoption only when its relation was `higher`. Second, `saveAdoption` called back into the module. All were fixed through the tdd chain. Round 2 (`final`, 2/2 sources) found nothing.
+- Full check at the final state: oxfmt, lint, typecheck, `bun test` (2721 pass), `bun run test:browser` (492 pass), `bun run build`.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+- Step 04 ran only the `code-review-carryover` layer, because the override turns the BMAD reviewer layers off. It returned no findings. code-review has no open decision, no unresolved critical or major, no deferred finding, and no corrected criterion (`review-01.md`, `review-02.md`).
