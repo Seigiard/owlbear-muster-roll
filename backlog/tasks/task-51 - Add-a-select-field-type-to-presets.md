@@ -1,9 +1,11 @@
 ---
 id: TASK-51
 title: Add a select field type to presets
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T02:15:00Z'
+updated_date: '2026-11-12T02:34:00Z'
 labels:
   - v2
 dependencies: []
@@ -30,3 +32,14 @@ A field can hold only text, a number or a check today. Games have many values th
 - [ ] #6 The preset builder can add a select field and edit its options
 - [ ] #7 docs/preset-format.md, the spec copy of the format and docs/example-preset.json describe the select field; the example parse test passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Spec: _bmad-output/implementation-artifacts/spec-task-51-select-field.md
+1. Core: select field schema with options, option rules (no options, blank, repeated) naming the field, select value type, same-type rule in preset migration.
+2. Sheet: native select picker saving at once through field-patch; stale value shown; read-only text for readers.
+3. Builder: type «Список», options edited one per line.
+4. Docs: preset-format (user doc + spec copy via memlog), example preset, glossary, EXPERIENCE and architecture via memlogs.
+5. Tests: unit beside sources, e2e on the mock; review; full check.
+<!-- SECTION:PLAN:END -->
