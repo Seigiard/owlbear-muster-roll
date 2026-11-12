@@ -175,3 +175,18 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-38-preset-builder.md`
   summary: The build test's theme-hex check skips every `builder-*` chunk, not only the preview theme values.
   evidence: `BUILDER_CHUNK` in `tests/build.test.ts`; narrowing it needs `src/preview/themes.ts` in a named chunk of its own.
+
+## From spec-task-44 (Cairn 2e preset)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-44-cairn-2e-preset.md`
+  summary: A formula cannot take its die size from a field, so a weapon's damage die is not part of its repeat block.
+  evidence: Dice terms need literal `N` and `M` (`src/core/formula.ts`). `presets/cairn-2e.json` shows `1d4` to `1d12` on every attack row instead, and the player picks the weapon's die.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-44-cairn-2e-preset.md`
+  summary: A dice cell's label comes only from a fixed text cell, so a damage roll reads «1d8», not the weapon's name.
+  evidence: `cellLabel` in `src/core/sheet-values.ts` reads text cells only. A label from the repeat block's first field would name the attack in the roll.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-44-cairn-2e-preset.md`
+  summary: A comparison cannot say that a natural 1 always succeeds and a natural 20 always fails, as Cairn saves do.
+  evidence: `1d20 <= str` gives the same outcome while the attribute is from 1 to 19, which covers Cairn play (attributes 3–18, 0 is death or paralysis).
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-44-cairn-2e-preset.md`
+  summary: A repeat block holds no list of its own, so a Cairn NPC gets two fixed attack rows.
+  evidence: ADR 0001 makes an NPC a repeat block; a third attack goes into the notes.
