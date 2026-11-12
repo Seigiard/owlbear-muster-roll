@@ -19,7 +19,7 @@ Two surfaces: the action window of an Owlbear Rodeo extension, on a laptop or a 
 
 The extension is system-agnostic. The preset decides which sheets exist, their content and its arrangement. This document fixes only the shell around that content. The preset builder (v2, CAP-20 to CAP-28) has its own section, [Preset builder](#preset-builder), and the rules of the window sections apply to it only where that section says so.
 
-`mockups/shell.html` shows the shell, and this document and `DESIGN.md` win on conflict with it. The mock predates sheet sets and single sheets: it shows a fixed NPC tab and a sheet per NPC, which no longer exist. It also treats an owner as an editor, shows the sheet name in a roll, asks for a count with a browser dialog, and uses older labels. It also predates the sidebar and tabs: it shows a tab bar of sheets. `imports/sidebar-tabs-sketch.png` is the owner's sketch of the sidebar and the tab row.
+`mockups/shell.html` shows the shell, and this document and `DESIGN.md` win on conflict with it. The mock predates sheet sets and single sheets: it shows a fixed NPC tab and a sheet per NPC, which no longer exist. It also treats an owner as an editor, shows the sheet name in a roll, asks for a count with a browser dialog, and uses older labels. It also predates the sidebar and tabs: it shows a tab bar of sheets. `imports/sidebar-tabs-sketch.png` is the owner's sketch of the sidebar and the tab row, and `mockups/window-sidebar-tabs.html` is the key-screen mock of the window with them, for the GM and a player. This document and `DESIGN.md` win on conflict with both.
 
 | Term | Meaning | Russian in the interface |
 | --- | --- | --- |

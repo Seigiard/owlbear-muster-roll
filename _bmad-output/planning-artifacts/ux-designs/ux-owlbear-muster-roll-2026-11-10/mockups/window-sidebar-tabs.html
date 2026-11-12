@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Окно: сайдбар и вкладки</title>
+<style>
+/* Key screen: the window with the sidebar and the tab row.
+   Governed by EXPERIENCE.md: Information Architecture; Component Patterns rows Sidebar, Tab row,
+   sheet headers, Repeat block, Map selection, Status banner, Settings; State Patterns
+   "Sheet with no visible tab"; Key Flow "Oleg keeps notes on a hidden tab".
+   DESIGN.md: components sidebar, sidebar-entry(-active), tab(-active); Layout & Spacing; Selection mark.
+   Colours: the dark Owlbear theme fallback from DESIGN.md. The spines win on conflict. */
+:root{
+  --surface:#222639;--surface-bar:#1E2231;--surface-tab:#383C4D;--surface-stripe:#262A3D;
+  --text:#FFFFFF;--muted:#FFFFFFB3;--accent:#BB99FF;--accent-contrast:#000000DE;
+  --line:#4E5161;--line-strong:#91939C;--warn-bg:#4A3A1E;--warn-fg:#FFD894;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#14161f;color:var(--text);font:14px/1.4 system-ui,sans-serif}
+.page{padding:var(--s4);max-width:900px;margin:0 auto}
+h1{font-size:18px;margin:0 0 var(--s1)}
+.lead{color:var(--muted);margin:0 0 var(--s3);font-size:13px}
+.ctl{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s3);align-items:center;margin-bottom:var(--s3);color:var(--muted);font-size:13px}
+.ctl .grp{display:flex;gap:var(--s1);align-items:center;flex-wrap:wrap}
+.ctl button{background:var(--surface-tab);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:6px 10px;font:inherit;cursor:pointer;min-height:32px}
+.ctl button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.fit{width:100%;overflow:hidden}
+.stage{transform-origin:top left}
+.win{width:600px;height:600px;background:var(--surface);border-radius:8px;display:flex;overflow:hidden;box-shadow:0 2px 16px #000a;border:1px solid var(--line)}
+/* Sidebar */
+.side{flex:none;width:8.5rem;background:var(--surface-bar);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.side .list{flex:1;overflow:auto;padding:var(--s2) var(--s1);display:flex;flex-direction:column;gap:2px}
+.grp-h{font-size:12px;color:var(--muted);padding:var(--s1) var(--s2) 2px}
+.entry{display:flex;align-items:center;gap:6px;width:100%;text-align:left;background:none;border:0;color:var(--text);font:inherit;padding:var(--s1) var(--s2);border-radius:6px;cursor:pointer;min-height:32px}
+.entry.in{padding-left:calc(var(--s2) * 2)}
+.entry .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.entry small{color:var(--muted);font-size:11px;flex:none}
+.entry.on{background:var(--surface);color:var(--accent)}
+.entry .dot,.tab .dot{flex:none;width:6px;height:6px;border-radius:9999px;background:var(--accent)}
+.add{color:var(--muted)}
+.div{height:1px;background:var(--line);margin:var(--s2) var(--s1)}
+.side .foot{border-top:1px solid var(--line);padding:var(--s1)}
+/* Content column */
+.col{flex:1;min-width:0;display:flex;flex-direction:column}
+.banner{flex:none;padding:6px var(--s3);font-size:13px;background:var(--warn-bg);color:var(--warn-fg)}
+.head{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:var(--s3) var(--s3) var(--s2);border-bottom:1px solid var(--line)}
+.head h2{margin:0;font-size:16px;line-height:1.3;font-weight:600;border-bottom:1px dotted var(--line-strong)}
+.head h2.ro{border:0}
+.chip{border:1px solid var(--line);border-radius:9999px;padding:2px 9px;font-size:12px;color:var(--text);background:none;font-family:inherit}
+.chip.st{color:var(--muted)}
+.more{margin-left:auto;color:var(--muted);font-size:18px;background:none;border:0;cursor:pointer}
+.tabs{flex:none;display:flex;gap:2px;padding:var(--s2) var(--s3) 0;background:var(--surface-bar);overflow-x:auto;scrollbar-width:thin}
+.tab{flex:none;display:flex;align-items:center;gap:6px;padding:7px 12px;border:0;border-radius:6px 6px 0 0;background:var(--surface-tab);color:var(--text);font:inherit;cursor:pointer;white-space:nowrap}
+.tab.on{background:var(--surface);color:var(--accent);font-weight:600}
+.body{flex:1;overflow:auto;padding:var(--s3)}
+/* Sheet content (preset-driven sample) */
+.secs{display:flex;flex-wrap:wrap;gap:var(--s4)}
+.sec{flex:0 0 100%;min-width:0;border-left:2px solid var(--line);padding-left:var(--s2)}
+.wide .sec.half{flex-basis:calc((100% - var(--s4)) / 2)}
+.sec h4{margin:0 0 var(--s1);font-size:14px;font-weight:600;color:var(--accent)}
+.row{display:grid;grid-template-columns:1fr auto;gap:var(--s2);padding:2px 6px;min-height:32px;align-items:center}
+.row:nth-of-type(even){background:var(--surface-stripe)}
+.v{min-width:32px;text-align:right}
+.v.ed{border-bottom:1px dotted var(--line-strong)}
+.dice{background:none;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:3px 8px;font:inherit;font-size:12px;cursor:pointer}
+.blk{position:relative;padding:var(--s1) 0 var(--s2);border-bottom:1px solid var(--line)}
+.blk.sel::before{content:"";position:absolute;left:-10px;top:0;bottom:0;width:3px;background:var(--accent)}
+.ctrls{display:flex;flex-wrap:wrap;gap:var(--s2);font-size:12px;color:var(--muted);padding:var(--s1) 6px 0}
+.ctrls span{border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+.addrow{font-size:12px;color:var(--muted);margin-top:var(--s2)}
+.set h3{margin:0;font-size:14px;color:var(--accent)}
+.set p{margin:2px 0 var(--s2);color:var(--muted);font-size:13px}
+.set .btns{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--s3)}
+.pri{background:var(--accent);color:var(--accent-contrast);border:0;border-radius:4px;padding:5px 10px;font:inherit}
+.scd{background:none;color:var(--text);border:1px solid var(--line);border-radius:4px;padding:5px 10px;font:inherit}
+.note{color:var(--muted);font-size:13px;margin-top:var(--s3)}
+.note li{margin-bottom:var(--s1)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#555;color:#fff;padding:8px 14px;border-radius:6px;display:none;max-width:90vw;font-size:13px}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Окно Muster Roll: сайдбар и вкладки</h1>
+  <p class="lead">Макет по EXPERIENCE.md и DESIGN.md. Содержимое листа — пример пресета. Нажимайте пункты сайдбара и вкладки.</p>
+  <div class="ctl">
+    <div class="grp">Смотреть как:
+      <button data-role="GM">ГМ (Олег)</button><button data-role="PLAYER">Игрок (Лиза)</button></div>
+    <div class="grp">Баннер:
+      <button data-banner="0">нет</button><button data-banner="1">нет связи с ГМ</button></div>
+    <div class="grp">Окно из пресета:
+      <button data-w="600">600 px</button><button data-w="800">800 px</button></div>
+  </div>
+  <div class="fit" id="fit"><div class="stage" id="stage"><div class="win" id="win"></div></div></div>
+  <ul class="note">
+    <li>На карте выделены токены Лиры и «Скелет 2»: точка на пункте сайдбара и полоса на блоке. Окно само ничего не переключает.</li>
+    <li>Вкладка «Заметки мастера» скрыта от игроков. У ГМа она выглядит как остальные.</li>
+    <li>У «NPC» и «Инвентаря» одна вкладка, поэтому ряда вкладок нет.</li>
+    <li>Длинное имя обрезается. Полное имя — в подсказке при наведении.</li>
+  </ul>
+</div>
+<div id="toast"></div>
+<script>
+const S={role:'GM',banner:false,w:600,sheet:'lira',tab:{}};
+const chars=[
+  {id:'grim',name:'Грим Железнобокий из Северных Холмов',cls:'Воин',lvl:4,str:14,dex:9,hp:'12 из 14'},
+  {id:'lira',name:'Лира',cls:'Следопыт',lvl:3,str:10,dex:15,hp:'8 из 9',own:true,sel:true},
+  {id:'tisha',name:'Тиша',cls:'Жрица',lvl:3,str:9,dex:11,hp:'7 из 7'}
+];
+const charTabs=[{id:'main',t:'Основное'},{id:'gear',t:'Снаряжение'},{id:'gm',t:'Заметки мастера',gm:true}];
+const W=document.getElementById('win'),T=document.getElementById('toast');
+const toast=m=>{T.textContent=m;T.style.display='block';clearTimeout(T._);T._=setTimeout(()=>T.style.display='none',2500)};
+const gm=()=>S.role==='GM';
+function entries(){
+  const cs=gm()?chars:[...chars.filter(c=>c.own),...chars.filter(c=>!c.own)];
+  let h='<div class="grp-h" id="g-pc">Персонажи</div>';
+  for(const c of cs){
+    h+=`<button class="entry in ${S.sheet===c.id?'on':''}" data-sheet="${c.id}" title="${c.name}" aria-label="${c.name}${c.sel?', токен выделен':''}"><span class="nm">${c.name}</span>${!gm()&&c.own?'<small>вы</small>':''}${c.sel?'<span class="dot"></span>':''}</button>`;
+  }
+  if(gm())h+='<button class="entry in add" data-add aria-label="Добавить: Персонажи">+ Добавить</button>';
+  h+='<div class="div"></div>';
+  if(gm())h+=`<button class="entry ${S.sheet==='npc'?'on':''}" data-sheet="npc" aria-label="NPC, токен выделен"><span class="nm">NPC</span><span class="dot"></span></button>`;
+  h+=`<button class="entry ${S.sheet==='inv'?'on':''}" data-sheet="inv"><span class="nm">Инвентарь</span></button>`;
+  return h;
+}
+const row=(l,v,ed)=>`<div class="row"><span>${l}</span><span class="v ${ed?'ed':''}">${v}</span></div>`;
+function charBody(c,tab,ed){
+  if(tab==='main')return `<div class="secs">
+    <div class="sec"><h4>Персонаж</h4>${row('Класс',c.cls,ed)}${row('Уровень',c.lvl,ed)}${row('Броня','Кожаная',ed)}</div>
+    <div class="sec half"><h4>Характеристики</h4>${row('Сила',c.str,ed)}${row('Ловкость',c.dex,ed)}<div class="row"><span>Удача</span><button class="dice" data-roll="${c.name.split(' ')[0]}, 2D6+1 — 9">2D6+1</button></div></div>
+    <div class="sec half"><h4>Здоровье</h4>${row('Хиты',c.hp,ed)}<div class="row"><span>Отдых</span><button class="dice" data-roll="${c.name.split(' ')[0]}, Отдых — 6">Отдых</button></div></div></div>`;
+  if(tab==='gear')return `<div class="secs"><div class="sec"><h4>Атаки</h4>
+    <div class="blk">${row('Меч','+3',ed)}<div class="row"><span>Урон</span><button class="dice" data-roll="${c.name.split(' ')[0]}, Урон (1d8) — 5">Урон</button></div>${ed?'<div class="ctrls"><span>Удалить</span></div>':''}</div>
+    <div class="blk">${row('Лук','+2',ed)}<div class="row"><span>Урон</span><button class="dice" data-roll="${c.name.split(' ')[0]}, Урон (1d6) — 4">Урон</button></div>${ed?'<div class="ctrls"><span>Удалить</span></div>':''}</div>
+    ${ed?'<div class="addrow">Добавить в «Атаки»</div>':''}</div>
+    <div class="sec half"><h4>Деньги</h4>${row('Золото',23,ed)}</div></div>`;
+  return `<div class="secs"><div class="sec"><h4>Тайна</h4>${row('Кто она','Потерянная наследница',true)}${row('Знает ли','Нет',true)}</div></div>`;
+}
+function npcBody(){
+  const b=(n,hp,sel)=>`<div class="blk ${sel?'sel':''}" aria-label="${n}${sel?', токен выделен':''}">${row('Имя',n,true)}${row('Хиты',hp,true)}<div class="row"><span>Сила</span><button class="dice" data-roll="${n}, 1d20 &lt;= str — 7, успех (видит только ГМ)">1d20 &lt;= str</button></div><div class="ctrls"><span>Токен привязан</span>${sel?'<span style="border-color:var(--accent);color:var(--accent)">Выделить на карте</span>':'<span>Выделить на карте</span>'}<span>Дублировать…</span><span>Удалить</span></div></div>`;
+  return `<div class="secs"><div class="sec"><h4>Противники</h4>${b('Скелет 1','7',false)}${b('Скелет 2','4',true)}${b('Скелет 3','7',false)}<div class="addrow">Добавить в «Противники»</div></div></div>`;
+}
+function invBody(){
+  return `<div class="secs"><div class="sec"><h4>Вещи</h4><div class="blk">${row('Верёвка, 15 м','1',true)}</div><div class="blk">${row('Факел','4',true)}</div><div class="addrow">Добавить в «Вещи»</div></div><div class="sec half"><h4>Деньги</h4>${row('Золото',120,true)}</div></div>`;
+}
+function settings(){
+  return `<div class="set"><h3>Пресет</h3><p>Персонажи, NPC, Инвентарь.</p><div class="btns"><button class="pri">Загрузить пресет</button><button class="scd">Скачать пресет</button></div><p>Конструктор пресетов</p>
+  <h3>Снимок</h3><div class="btns"><button class="pri">Загрузить снимок</button><button class="scd">Скачать снимок</button></div>
+  <h3>Копия в комнате</h3><p>Сохранена. 8,7 из 15,5 кБ.</p><h3>Очистка</h3><div class="btns"><button class="scd">Очистить всё</button></div></div>`;
+}
+function content(){
+  if(S.sheet==='set')return {head:'',tabs:'',body:settings()};
+  if(S.sheet==='npc')return {head:`<div class="head"><h2 class="ro">NPC</h2><span class="chip st">Токен привязан</span></div>`,tabs:'',body:npcBody()};
+  if(S.sheet==='inv')return {head:`<div class="head"><h2 class="ro">Инвентарь</h2>${gm()?'':'<span class="chip st">Можно править</span>'}</div>`,tabs:'',body:invBody()};
+  const c=chars.find(x=>x.id===S.sheet);
+  const vis=charTabs.filter(t=>gm()||!t.gm);
+  let tab=S.tab[c.id]; if(!vis.some(t=>t.id===tab))tab=vis[0].id;
+  const ed=gm()||c.own;
+  let head=`<div class="head"><h2 class="${ed?'':'ro'}">${c.name}</h2>`;
+  head+=gm()?`<button class="chip">Доступ</button><span class="chip st">Токен привязан</span>${c.sel?'<button class="chip" style="border-color:var(--accent);color:var(--accent)">Выделить на карте</button>':''}<button class="more" aria-label="Ещё">⋯</button>`
+            :`<span class="chip st">${c.own?'Можно править':'Только чтение'}</span>`;
+  head+='</div>';
+  const tabs=vis.length>1?`<div class="tabs" role="tablist">${vis.map(t=>`<button class="tab ${t.id===tab?'on':''}" role="tab" aria-selected="${t.id===tab}" data-tab="${t.id}">${t.t}</button>`).join('')}</div>`:'';
+  return {head,tabs,body:charBody(c,tab,ed)};
+}
+function render(){
+  if(!gm()&&(S.sheet==='npc'||S.sheet==='set'))S.sheet='lira';
+  const c=content();
+  const banner=S.banner?'<div class="banner">Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.</div>':'';
+  const foot=gm()?`<div class="foot"><button class="entry ${S.sheet==='set'?'on':''}" data-sheet="set"><span aria-hidden="true">⚙</span><span class="nm">Настройки</span></button></div>`:'';
+  W.style.width=S.w+'px';
+  W.innerHTML=`<nav class="side" aria-label="Листы"><div class="list">${entries()}</div>${foot}</nav><div class="col ${S.w>=800?'wide':''}">${banner}${c.head}${c.tabs}<div class="body">${c.body}</div></div>`;
+  document.querySelectorAll('[data-role]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.role===S.role));
+  document.querySelectorAll('[data-banner]').forEach(b=>b.setAttribute('aria-pressed',(b.dataset.banner==='1')===S.banner));
+  document.querySelectorAll('[data-w]').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.w===S.w));
+  fit();
+}
+function fit(){
+  const avail=document.getElementById('fit').clientWidth, st=document.getElementById('stage');
+  const k=Math.min(1,avail/S.w); st.style.transform=`scale(${k})`; document.getElementById('fit').style.height=(600*k)+'px';
+}
+addEventListener('resize',fit);
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return; const d=b.dataset;
+  if(d.role){S.role=d.role}
+  else if(d.banner){S.banner=d.banner==='1'}
+  else if(d.w){S.w=+d.w}
+  else if(d.sheet){S.sheet=d.sheet}
+  else if(d.tab){S.tab[S.sheet]=d.tab}
+  else if('add' in d){toast('Новый лист «Без имени» откроется на первой вкладке');return}
+  else if(d.roll){toast((gm()?'Олег: ':'Лиза: ')+d.roll.replace('&lt;','<'));return}
+  else return;
+  render();
+});
+render();
+</script>
+</body>
+</html>
