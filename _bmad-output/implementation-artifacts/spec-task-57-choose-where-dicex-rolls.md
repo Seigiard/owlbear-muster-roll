@@ -2,7 +2,7 @@
 title: 'TASK-57 Let a Dice+ caller choose where the dicex fork rolls'
 type: 'feature'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '52f7410fddc6c2b1ad839f6626d3191006135f48' # dicex fork, /Users/seigiard/Projects/dicex-task-54
 route: 'dispatch'
 review_loop_iteration: 0
@@ -63,11 +63,11 @@ All paths are in `/Users/seigiard/Projects/dicex-task-54`.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/plugin/dicePlusProtocol.ts` -- `RollIn`, `rollIn?`, resolver, `features` -- the request and reply contract.
-- [ ] `src/plugin/dicePlusBackgroundCoordinator.ts` -- route by resolved `rollIn` -- Matrix rows 1–6.
-- [ ] `src/plugin/dicePlusBackgroundListeners.ts` -- `features: ["rollIn"]` on every isReady reply -- Matrix row 7.
-- [ ] tests beside the changed modules -- every Matrix row.
-- [ ] `README.md` -- document `rollIn` and `features`.
+- [x] `src/plugin/dicePlusProtocol.ts` -- `RollIn`, `rollIn?`, resolver, `features` -- the request and reply contract.
+- [x] `src/plugin/dicePlusBackgroundCoordinator.ts` -- route by resolved `rollIn` -- Matrix rows 1–6.
+- [x] `src/plugin/dicePlusBackgroundListeners.ts` -- `features: ["rollIn"]` on every isReady reply -- Matrix row 7.
+- [x] tests beside the changed modules -- every Matrix row.
+- [x] `README.md` -- document `rollIn` and `features`.
 
 **Acceptance Criteria:**
 - Given the change, when `npx yarn@1.22.22 test` and `npx yarn@1.22.22 build` run in the dicex worktree, then both exit 0 and the four TASK-54 coordinator tests pass unchanged.
@@ -75,9 +75,21 @@ All paths are in `/Users/seigiard/Projects/dicex-task-54`.
 
 ## Implementation Notes
 
+- Built in the dicex fork worktree `/Users/seigiard/Projects/dicex-task-54`, branch `dice-plus-roll-without-action`, on 52f7410. Commits: `8e67c10` (tests), `dfda172` (feature), `48bcadf` (test casts compile against the narrow type), `a1d2557` (narrow `rollIn?: RollIn`, docs), `ad58473` (route-independent test responders). The tdd run directory is `~/.claude/artifacts/tdd-20261112-130019/task-57-choose-where-dicex-rolls/`; it holds every attempt, the lock, the calibration diffs and logs, and the review files. Commit slicing was skipped: the branch already tracks `origin`.
+- New protocol surface in `src/plugin/dicePlusProtocol.ts`: `type RollIn = "auto" | "window" | "tray"`, `RollRequest.rollIn?: RollIn`, `resolveRollIn(value: unknown): RollIn`, `DICE_PLUS_FEATURE_ROLL_IN = "rollIn"`, `IsReadyResponse.features?: string[]`. `relayRollRequest` resolves `rollIn` first: `window` → action route; `tray` → popover handshake, then action route on 2 s silence; `auto` → the TASK-54 routing.
+- The first implementation declared `rollIn?: RollIn | string | number`, because the first test lock cast out-of-type wire values with a plain `as RollRequest`. The tests were re-locked with `as unknown as RollRequest` and the type narrowed.
+- Calibration: the first lock's unknown-value and window/open owners answered only the expected channel and threw in setup under a wrong-route mutation. They were re-locked with a responder that answers every ping. All five planned mutations (unknown → tray, unknown → window, window → popover first, tray → action direct, `isRollRequest` rejecting unknown `rollIn`) now turn their owner red on the final assertion.
+- The README "Dice+ Integration" section is the published protocol doc. The design doc the top comment of `dicePlusProtocol.ts` points at is gitignored and absent, so it was not updated.
+- Checks at `ad58473`: `npx yarn@1.22.22 test` 40 files / 333 tests pass; `npx yarn@1.22.22 build` exit 0.
+- Code review: round 1 (revmux mixed-terra, 9/9 sources) gave 1 minor (deferred by code-review) and 3 immaterial; no fix routed.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+| Finding (layer) | Verdict | Evidence | Route |
+|---|---|---|---|
+| adversarial-claude-1 "With rollIn "tray" while the action window is open, concurrent rolls in the popover and the window overwrite each other's player roll metadata" (code-review-carryover, deferred minor) | low | Real: with the window open, `DiceRollSync` in the Sidebar and `createDiceRollSyncSubscription` in the popover host both write the same player metadata keys, so a hand roll in the window that overlaps a `"tray"` Dice+ roll makes remote trays show the last writer. Display-only for remote viewers; the `roll-result` stays correct; the same overlap exists on 52f7410 when the window opens during a popover roll. Needs a hand roll and a tray roll by one player within seconds, and the fix adds a gate between two iframes. | reject (listed in the PR "Watch out for") |
 
 ## Design Notes
 
