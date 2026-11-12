@@ -300,6 +300,13 @@ const wipedSchema = z.strictObject({
   id: idSchema,
 });
 
+// A command that changed the replica has no result-specific answer. It is sent after the delta
+// carrying the effect, so a window can settle against the records it now holds.
+const commandDoneSchema = z.strictObject({
+  t: z.literal('command-done'),
+  id: idSchema,
+});
+
 // The answer to `preset-diff`: the count of stored values the upload would erase and of sheets it
 // would delete, and their digest.
 const presetDiffResultSchema = z.strictObject({
@@ -450,6 +457,7 @@ const engineMessageSchema = z.discriminatedUnion('t', [
   snapshotCheckResultSchema,
   snapshotImportedSchema,
   wipedSchema,
+  commandDoneSchema,
 ]);
 
 export type Notice = z.infer<typeof noticeSchema>;
@@ -489,6 +497,8 @@ export type SnapshotImportedMessage = z.infer<typeof snapshotImportedSchema>;
 export type SnapshotResultMessage = SnapshotCheckResultMessage | SnapshotImportedMessage;
 
 export type WipedMessage = z.infer<typeof wipedSchema>;
+
+export type CommandDoneMessage = z.infer<typeof commandDoneSchema>;
 
 export type RejectionReason = CommandRejectedMessage['reason'];
 

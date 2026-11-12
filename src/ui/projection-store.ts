@@ -9,17 +9,7 @@ import {
   type VersionedRecord,
 } from '@/core/records';
 import { ROOM_METADATA_BYTE_LIMIT } from '@/core/snapshot';
-import type {
-  CommandRejectedMessage,
-  Notice,
-  OpenSheetRequest,
-  PresetResultMessage,
-  RollOutcomeMessage,
-  RoomCopyStatus,
-  SnapshotResultMessage,
-  SyncState,
-  WipedMessage,
-} from '@/core/ui-messages';
+import type { Notice, OpenSheetRequest, RoomCopyStatus, SyncState } from '@/core/ui-messages';
 
 // What a player's edit that waits for a GM's check does to its key (AD-4): a new repeat block, a
 // change of field values, or a repeat block's removal.
@@ -47,16 +37,6 @@ export type ProjectionStore = {
   // never wait, and its catch-up queue is no proposal.
   $pending: ReadableAtom<ReadonlyMap<string, PendingEntry>>;
   $notices: ReadableAtom<readonly Notice[]>;
-  // Recent rejections by command id, so two that land before one render both stay readable.
-  $rejections: ReadableAtom<ReadonlyMap<string, CommandRejectedMessage>>;
-  // Recent outcomes of this window's roll requests, by request id.
-  $rollOutcomes: ReadableAtom<ReadonlyMap<string, RollOutcomeMessage>>;
-  // AD-14: recent answers to this window's preset diffs and uploads, by their id.
-  $presetResults: ReadableAtom<ReadonlyMap<string, PresetResultMessage>>;
-  // AD-9: recent answers to this window's snapshot checks and imports, by their id.
-  $snapshotResults: ReadableAtom<ReadonlyMap<string, SnapshotResultMessage>>;
-  // AD-9, CAP-31: recent answers to this window's wipes, by their id.
-  $wipeResults: ReadableAtom<ReadonlyMap<string, WipedMessage>>;
   // False until the first full projection, so an empty room is not mistaken for one still loading.
   $loaded: ReadableAtom<boolean>;
   $sync: ReadableAtom<SyncState>;
@@ -80,18 +60,10 @@ export type ProjectionStore = {
     notices: readonly Notice[],
     sync: SyncState,
   ) => void;
-  setRejection: (rejection: CommandRejectedMessage) => void;
-  setRollOutcome: (outcome: RollOutcomeMessage) => void;
-  setPresetResult: (result: PresetResultMessage) => void;
-  setSnapshotResult: (result: SnapshotResultMessage) => void;
-  setWipeResult: (result: WipedMessage) => void;
   setRoomCopy: (roomCopy: RoomCopyStatus) => void;
   setOpenRequest: (request: OpenSheetRequest) => void;
   setParty: (party: readonly PartyEntry[]) => void;
 };
-
-// Far more than the commands or rolls one window has on their way at once.
-const RECENT_REPLY_LIMIT = 256;
 
 // What a window assumes before its first projection: the first catch-up has not ended, and the
 // role allows the least.
@@ -117,11 +89,6 @@ export function createProjectionStore(): ProjectionStore {
   const $replica = atom<ReadonlyMap<string, VersionedRecord>>(new Map());
   const $pending = atom<ReadonlyMap<string, PendingEntry>>(new Map());
   const $notices = atom<readonly Notice[]>([]);
-  const $rejections = atom<ReadonlyMap<string, CommandRejectedMessage>>(new Map());
-  const $rollOutcomes = atom<ReadonlyMap<string, RollOutcomeMessage>>(new Map());
-  const $presetResults = atom<ReadonlyMap<string, PresetResultMessage>>(new Map());
-  const $snapshotResults = atom<ReadonlyMap<string, SnapshotResultMessage>>(new Map());
-  const $wipeResults = atom<ReadonlyMap<string, WipedMessage>>(new Map());
   const $loaded = atom(false);
   const $sync = atom<SyncState>(UNKNOWN_SYNC);
   const $roomCopy = atom<RoomCopyStatus>(UNKNOWN_ROOM_COPY);
@@ -149,11 +116,6 @@ export function createProjectionStore(): ProjectionStore {
     $replica,
     $pending,
     $notices,
-    $rejections,
-    $rollOutcomes,
-    $presetResults,
-    $snapshotResults,
-    $wipeResults,
     $loaded,
     $sync,
     $roomCopy,
@@ -183,21 +145,6 @@ export function createProjectionStore(): ProjectionStore {
       }
 
       show(notices, sync);
-    },
-    setRejection: (rejection) => {
-      $rejections.set(withRecent($rejections.get(), rejection.id, rejection));
-    },
-    setRollOutcome: (outcome) => {
-      $rollOutcomes.set(withRecent($rollOutcomes.get(), outcome.id, outcome));
-    },
-    setPresetResult: (result) => {
-      $presetResults.set(withRecent($presetResults.get(), result.id, result));
-    },
-    setSnapshotResult: (result) => {
-      $snapshotResults.set(withRecent($snapshotResults.get(), result.id, result));
-    },
-    setWipeResult: (result) => {
-      $wipeResults.set(withRecent($wipeResults.get(), result.id, result));
     },
     setRoomCopy: (roomCopy) => {
       $roomCopy.set(roomCopy);
@@ -263,26 +210,4 @@ function changedFields(
   }
 
   return fields;
-}
-
-// A copy with `value` set, holding the newest entries only. A map keeps insertion order, so the
-// first key is the oldest.
-function withRecent<Value>(
-  map: ReadonlyMap<string, Value>,
-  id: string,
-  value: Value,
-): ReadonlyMap<string, Value> {
-  const next = new Map(map);
-
-  next.set(id, value);
-
-  for (const key of next.keys()) {
-    if (next.size <= RECENT_REPLY_LIMIT) {
-      break;
-    }
-
-    next.delete(key);
-  }
-
-  return next;
 }

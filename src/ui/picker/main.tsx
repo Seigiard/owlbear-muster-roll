@@ -46,7 +46,7 @@ async function start(): Promise<void> {
       <LinkPicker
         tokenId={tokenId}
         store={store}
-        sendCommand={client.sendCommand}
+        sendCommand={(command) => client.sendCommand(command)}
         scene={platform.scene}
         notification={platform.notification}
         onLinked={closePicker}

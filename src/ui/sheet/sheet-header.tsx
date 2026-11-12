@@ -36,7 +36,7 @@ export type GmHeader = {
   focusActions: boolean;
   onActionsFocused: () => void;
   sendCommand: ReplicaClient['sendCommand'];
-  store: Pick<ProjectionStore, '$rejections' | '$records' | '$party'>;
+  store: Pick<ProjectionStore, '$records' | '$party'>;
 };
 
 type SheetHeaderProps = {

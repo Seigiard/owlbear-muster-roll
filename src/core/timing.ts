@@ -19,6 +19,12 @@ export type Timing = {
   readonly presetRequestTimeoutMs: number;
   readonly incompleteRequestStartMs: number;
   readonly incompleteRequestMaxMs: number;
+  // Window command waits. The client owns these waits; views do not arm command timers.
+  readonly wipeTimeoutMs: number;
+  readonly accessChangeTimeoutMs: number;
+  readonly linkSetTimeoutMs: number;
+  readonly rollTimeoutMs: number;
+  readonly commandTimeoutMs: number;
   // A window gives up on a snapshot import with no answer. Longer than the preset wait, as the
   // import writes the room copy before it answers.
   readonly snapshotImportTimeoutMs: number;
@@ -67,15 +73,13 @@ export const TIMING: Timing = {
   // for the state again after this long, then after twice as long each time, up to the max.
   incompleteRequestStartMs: 2000,
   incompleteRequestMaxMs: 30000,
+  wipeTimeoutMs: 60000,
+  accessChangeTimeoutMs: 5000,
+  linkSetTimeoutMs: 5000,
+  rollTimeoutMs: 90000,
+  commandTimeoutMs: 15000,
   snapshotImportTimeoutMs: 60000,
 };
-
-// An access change with no answer this long shows that it failed, so the panel never waits forever.
-export const ACCESS_CHANGE_TIMEOUT_MS = 5000;
-
-// CAP-31: a window gives up on a wipe with no answer after this long. As long as the snapshot
-// import wait, as a wipe also writes the room copy before it answers.
-export const WIPE_TIMEOUT_MS = 60000;
 
 // A browser may read a download's object URL after the click returns, so it lives this long.
 export const DOWNLOAD_URL_LIFETIME_MS = 30000;
@@ -83,18 +87,13 @@ export const DOWNLOAD_URL_LIFETIME_MS = 30000;
 // A scene read that failed is tried again after this long, while the scene stays as it was.
 export const SCENE_READ_RETRY_MS = 500;
 
-// The link picker's waits. A pick with neither its link nor a rejection by `pickTimeoutMs` counts
-// as failed. A token label read with no answer by `labelReadTimeoutMs` counts as unreadable, so a
-// hung read never blocks linking. A label write, or its failure notification, with no answer by
-// `labelWriteTimeoutMs` counts as failed, so the picker still closes.
+// The link picker's platform waits. The command wait itself belongs to the replica client.
 export type LinkPickerTiming = {
-  pickTimeoutMs: number;
   labelReadTimeoutMs: number;
   labelWriteTimeoutMs: number;
 };
 
 export const LINK_PICKER_TIMING: LinkPickerTiming = {
-  pickTimeoutMs: 5000,
   labelReadTimeoutMs: 2000,
   labelWriteTimeoutMs: 5000,
 };

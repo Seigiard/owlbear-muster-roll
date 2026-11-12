@@ -13,11 +13,11 @@ import {
 import type { VersionedRecord } from '@/core/records';
 import { repeatBlockName } from '@/core/sheets';
 import { repeatBlocks, rowValues, sectionTitle, type FieldValues } from '@/core/sheet-values';
+import type { Command } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
 import { Chip } from '@/ui/primitives/chip';
-import type { ProjectionStore } from '@/ui/projection-store';
-import type { ReplicaClient } from '@/ui/replica-client';
+import type { CommandOutcomePromise } from '@/ui/replica-client';
 
 import type { DiceRow } from './dice-button';
 import { DuplicateCount } from './duplicate-count';
@@ -54,8 +54,9 @@ const INDEX_KEY_PREFIX = '#';
 // CAP-30, CAP-18: what a GM gets on each repeat block: "Дублировать…", and the token status when
 // the section is linkable. A player and the preview get none.
 export type BlockTools = {
-  sendCommand: ReplicaClient['sendCommand'];
-  store: Pick<ProjectionStore, '$rejections' | '$records'>;
+  sendCommand: (
+    command: Extract<Command, { type: 'repeat-block-duplicate' }>,
+  ) => CommandOutcomePromise<undefined>;
   // The `linkTargetKey` of every target a live link names (AD-19).
   linkedTargets: ReadonlySet<string>;
 };
@@ -449,9 +450,7 @@ function Blocks({
             sheetId={sheetId}
             sectionId={sectionId}
             instanceId={block.instanceId}
-            fieldIds={sectionFields(section).map((field) => field.id)}
             sendCommand={tools.sendCommand}
-            store={tools.store}
             focusRequest={duplicateAsk.request}
             onDone={closeDuplicate}
             onCancel={closeDuplicate}

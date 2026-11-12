@@ -1,4 +1,3 @@
-import { useStore } from '@nanostores/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { FileTrigger } from 'react-aria-components';
@@ -11,14 +10,16 @@ import {
   type Preset,
 } from '@/core/preset';
 import { err, ok, type Result } from '@/core/result';
-import { TIMING } from '@/core/timing';
-import type { CommandRejectedMessage, PresetResultMessage } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { downloadJsonFile } from '@/ui/download';
 import { presetFailureMessage, presetRejectionMessage } from '@/ui/preset-errors';
 import { Button } from '@/ui/primitives/button';
-import type { ProjectionStore } from '@/ui/projection-store';
-import type { ReplicaClient } from '@/ui/replica-client';
+import type {
+  CommandOutcome,
+  CommandOutcomePromise,
+  ErasedCounts,
+  ReplicaClient,
+} from '@/ui/replica-client';
 import { PresetConfirmation } from '@/ui/settings/preset-confirmation';
 
 const PRESET_FILE_NAME = 'muster-roll-preset.json';
@@ -36,9 +37,14 @@ type UploadMessage = { text: string; tone: 'error' | 'result' };
 // `loss` names the values and the sheets the GM was asked about, so the upload erases only those.
 type UploadState =
   | { phase: 'idle'; message: UploadMessage | null; ask: number }
-  | { phase: 'diffing'; data: string; requestId: string; ask: number }
+  | { phase: 'diffing'; data: string; outcome: Promise<CommandOutcome<ErasedCounts>>; ask: number }
   | { phase: 'asking'; data: string; loss: Loss; ask: number }
-  | { phase: 'uploading'; data: string; commandId: string; ask: number };
+  | {
+      phase: 'uploading';
+      data: string;
+      outcome: CommandOutcomePromise<{ count: number; sheets: number }>;
+      ask: number;
+    };
 
 // AD-14: the stored values an upload erases and the sheets it deletes, and their digest.
 type Loss = { count: number; sheets: number; digest: string };
@@ -50,7 +56,6 @@ const NO_LOSS = { count: 0, sheets: 0 } as const;
 
 type PresetUploadOptions = {
   client: Pick<ReplicaClient, 'sendCommand' | 'requestPresetDiff'>;
-  store: Pick<ProjectionStore, '$rejections' | '$presetResults'>;
   catchingUp: boolean;
   disabledReason?: string;
 };
@@ -70,20 +75,15 @@ type PresetUploadParts = {
 // with no answer in time it gives up, and a late answer is ignored.
 export function usePresetUpload({
   client,
-  store,
   catchingUp,
   disabledReason,
 }: PresetUploadOptions): PresetUploadParts {
   const [state, setState] = useState<UploadState>({ phase: 'idle', message: null, ask: 0 });
-  const rejections = useStore(store.$rejections);
-  const results = useStore(store.$presetResults);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  // The ids whose answer was taken or given up on, so no answer settles a request twice.
-  const settledIds = useRef(new Set<string>());
   // Set on confirm: the button the focus went back to waits, so it takes the focus again after.
   const refocus = useRef(false);
   const { sendCommand, requestPresetDiff } = client;
-  const waitingId = requestIdOf(state);
+  const waiting = state.phase === 'diffing' || state.phase === 'uploading';
 
   if (catchingUp && state.phase === 'asking') {
     setState({ phase: 'idle', message: null, ask: state.ask });
@@ -104,53 +104,41 @@ export function usePresetUpload({
         expectedDigest,
       });
 
-      return sent.ok
-        ? { phase: 'uploading', data, commandId: sent.value, ask }
-        : { phase: 'idle', message: errorMessage(tooLargeText()), ask };
+      return { phase: 'uploading', data, outcome: sent, ask };
     },
     [sendCommand],
   );
 
-  // The send happens here, once per request id, never while a state is computed.
+  // Resolve the request before starting an upload, so the send never runs inside a state updater.
   useEffect(() => {
-    if (state.phase !== 'diffing' && state.phase !== 'uploading') {
+    if (!waiting) {
       return;
     }
 
-    const id = state.phase === 'diffing' ? state.requestId : state.commandId;
+    const current = state;
+    let active = true;
 
-    if (settledIds.current.has(id)) {
-      return;
-    }
+    void current.outcome
+      .then((outcome) => {
+        if (!active) {
+          return;
+        }
 
-    const next = settled(state, rejections.get(id), results.get(id));
+        const next = settled(current, outcome);
 
-    if (next === state) {
-      return;
-    }
+        const replacement =
+          next.phase === 'send' ? upload(next.data, NO_LOSS, next.digest, next.ask) : next;
 
-    settledIds.current.add(id);
-    setState(next.phase === 'send' ? upload(next.data, NO_LOSS, next.digest, next.ask) : next);
-  }, [state, rejections, results, upload]);
-
-  useEffect(() => {
-    if (waitingId === null) {
-      return undefined;
-    }
-
-    const timer = setTimeout(() => {
-      settledIds.current.add(waitingId);
-      setState((current) =>
-        requestIdOf(current) === waitingId
-          ? { phase: 'idle', message: errorMessage(copy.presetWriteFailed), ask: current.ask }
-          : current,
-      );
-    }, TIMING.presetRequestTimeoutMs);
+        setState((shown) => (shown === current ? replacement : shown));
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not settle a preset request', error);
+      });
 
     return () => {
-      clearTimeout(timer);
+      active = false;
     };
-  }, [waitingId]);
+  }, [state, upload, waiting]);
 
   useEffect(() => {
     if (state.phase === 'idle' && refocus.current) {
@@ -176,11 +164,12 @@ export function usePresetUpload({
 
     const requested = requestPresetDiff(data.value);
 
-    setState((current) =>
-      requested.ok
-        ? { phase: 'diffing', data: data.value, requestId: requested.value, ask: current.ask }
-        : { phase: 'idle', message: errorMessage(tooLargeText()), ask: current.ask },
-    );
+    setState((current) => ({
+      phase: 'diffing',
+      data: data.value,
+      outcome: requested,
+      ask: current.ask,
+    }));
   }
 
   function backToButton(): void {
@@ -205,7 +194,7 @@ export function usePresetUpload({
       />
     ) : null;
 
-  const waitingReason = waitingId === null ? undefined : copy.loading;
+  const waitingReason = waiting ? copy.loading : undefined;
   const reason = disabledReason ?? waitingReason;
 
   const button = (
@@ -309,48 +298,56 @@ async function readPreset(file: File): Promise<Result<string, string>> {
   return parsed.ok ? ok(encodePreset(parsed.value)) : err(presetFailureMessage(parsed.error));
 }
 
-// The id of the request the window waits on, or `null`.
-function requestIdOf(state: UploadState): string | null {
-  if (state.phase === 'diffing') {
-    return state.requestId;
-  }
-
-  return state.phase === 'uploading' ? state.commandId : null;
-}
-
-// What the answer to the diff or the upload leads to, or `state` itself while none has come.
+// What the answer to the diff or the upload leads to.
 function settled(
   state: Extract<UploadState, { phase: 'diffing' | 'uploading' }>,
-  rejection: CommandRejectedMessage | undefined,
-  result: PresetResultMessage | undefined,
+  outcome: CommandOutcome<ErasedCounts | { count: number; sheets: number }>,
 ): Settled {
-  if (rejection?.reason === 'count-changed') {
+  if (outcome.kind === 'timed-out') {
+    return { phase: 'idle', message: errorMessage(copy.presetWriteFailed), ask: state.ask };
+  }
+
+  if (outcome.kind === 'refused' && outcome.rejection.reason === 'count-changed') {
     return {
       phase: 'asking',
       data: state.data,
-      loss: { count: rejection.count, sheets: rejection.sheets, digest: rejection.digest },
+      loss: {
+        count: outcome.rejection.count,
+        sheets: outcome.rejection.sheets,
+        digest: outcome.rejection.digest,
+      },
       ask: state.ask + 1,
     };
   }
 
-  if (rejection !== undefined) {
-    const text = presetRejectionMessage(rejection.reason);
+  if (outcome.kind === 'refused') {
+    const text = presetRejectionMessage(outcome.rejection.reason);
 
     return { phase: 'idle', message: text === null ? null : errorMessage(text), ask: state.ask };
   }
 
-  if (result?.t === 'preset-diff-result' && state.phase === 'diffing') {
-    return result.count === 0 && result.sheets === 0
-      ? { phase: 'send', data: state.data, digest: result.digest, ask: state.ask }
+  if (outcome.kind === 'answered' && state.phase === 'diffing') {
+    const answer = outcome.answer;
+
+    if (answer === undefined || !('digest' in answer)) {
+      return { phase: 'idle', message: errorMessage(copy.presetWriteFailed), ask: state.ask };
+    }
+
+    return answer.count === 0 && answer.sheets === 0
+      ? { phase: 'send', data: state.data, digest: answer.digest, ask: state.ask }
       : {
           phase: 'asking',
           data: state.data,
-          loss: { count: result.count, sheets: result.sheets, digest: result.digest },
+          loss: {
+            count: answer.count,
+            sheets: answer.sheets,
+            digest: answer.digest,
+          },
           ask: state.ask + 1,
         };
   }
 
-  if (result?.t === 'preset-uploaded') {
+  if (outcome.kind === 'answered' && state.phase === 'uploading') {
     return {
       phase: 'idle',
       message: { text: copy.presetUploadRemovesNothing, tone: 'result' },
