@@ -5,6 +5,7 @@ created: '2026-11-12'
 status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
+baseline_commit: '999c006d927d4aab7714bea115f130cefa8ac274'
 context:
   - '{project-root}/CLAUDE.md'
   - '{project-root}/GLOSSARY.md'
