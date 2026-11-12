@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { z } from 'zod';
 
 import type { PresetFailure } from '@/core/preset';
 
@@ -60,6 +61,40 @@ describe('presetFailureMessage', () => {
 
     // #then
     expect(text).toBe(message);
+  });
+
+  test.each([
+    [
+      { code: 'bad-die-option', detail: '8', field: 'weapon_die' },
+      'Файл не подошёл: вариант «8» в поле «weapon_die» не кубик вида d6. Ничего не изменено.',
+    ],
+    [
+      {
+        code: 'die-field-as-number',
+        detail: '1d20 + weapon_die',
+        field: 'weapon_die',
+      },
+      'Файл не подошёл: в формуле «1d20 + weapon_die» поле «weapon_die» — выбор кубика, бросайте его как 1d(weapon_die). Ничего не изменено.',
+    ],
+    [
+      { code: 'field-not-die', detail: '1d(bonus)', field: 'bonus' },
+      'Файл не подошёл: в формуле «1d(bonus)» поле «bonus» не выбор кубика. Ничего не изменено.',
+    ],
+  ] as const)('gives the dice-choice failure %j its exact message', (failure, message) => {
+    // #when
+    // SAFETY: the table supplies the exact future PresetFailure variants from the approved spec.
+    const presetFailure = z.unknown().parse(failure) as PresetFailure;
+
+    const actual = (() => {
+      try {
+        return presetFailureMessage(presetFailure);
+      } catch (error) {
+        return { threw: error instanceof Error ? error.message : String(error) };
+      }
+    })();
+
+    // #then
+    expect(actual).toBe(message);
   });
 });
 

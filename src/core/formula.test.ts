@@ -70,6 +70,18 @@ describe('parseFormula', () => {
     });
   });
 
+  test.each<[string, unknown]>([
+    ['1d(weapon_die)', { kind: 'dice-field', count: 1, id: 'weapon_die' }],
+    ['2D( weapon_die )', { kind: 'dice-field', count: 2, id: 'weapon_die' }],
+  ])('parses a dice-choice term %s', (formula, tree) => {
+    // #when
+    const parsed = parseFormula(formula);
+    const actual: unknown = parsed;
+
+    // #then
+    expect(actual).toEqual({ ok: true, value: tree });
+  });
+
   test('groups subtraction from the left and lets parentheses override it', () => {
     // #when
     const parsed = [parseFormula('a - b - c'), parseFormula('a - (b - c)')];
@@ -173,6 +185,9 @@ describe('parseFormula', () => {
     ['1d6_', 'syntax-error'],
     ['2abc', 'syntax-error'],
     ['1d', 'syntax-error'],
+    ['1d(2)', 'syntax-error'],
+    ['1d()', 'syntax-error'],
+    ['1d(a+b)', 'syntax-error'],
     ['a % 2', 'syntax-error'],
     ['a == 2', 'syntax-error'],
     ['9007199254740992', 'syntax-error'],

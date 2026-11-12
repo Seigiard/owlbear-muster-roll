@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { z } from 'zod';
 
 import type { PresetCell, PresetSection, Template } from '@/core/preset';
 
@@ -12,6 +13,13 @@ function field(id: string): PresetCell {
 
 function dice(formula: string): PresetCell {
   return { kind: 'dice', formula };
+}
+
+function diceChoice(id: string): PresetCell {
+  // SAFETY: this test supplies the exact future PresetCell variant from the approved spec.
+  return z
+    .unknown()
+    .parse({ kind: 'field', type: 'dice-choice', id, options: ['d6', 'd8'] }) as PresetCell;
 }
 
 function single(sections: PresetSection[]): Template {
@@ -103,6 +111,30 @@ describe('renameFieldId', () => {
 
     // #then
     expect(formulas(renamed.template)).toEqual(['1d20 + dex + 2d']);
+  });
+
+  test('renames an id inside a dice-choice slot by whole word', () => {
+    // #given
+    const template = single([
+      {
+        rows: [
+          [
+            diceChoice('weapon_die'),
+            field('weapon_die_bonus'),
+            dice('1d(weapon_die) + weapon_die_bonus'),
+          ],
+        ],
+      },
+    ]);
+
+    // #when
+    const renamed = renameFieldId(template, FIRST_CELL, 'weapon_die', 'damage_die');
+
+    // #then
+    expect({ formulas: renamed.formulas, formulasText: formulas(renamed.template) }).toEqual({
+      formulas: 1,
+      formulasText: ['1d(damage_die) + weapon_die_bonus'],
+    });
   });
 
   test('renames in a repeat section only the formulas whose row resolves to the renamed field', () => {

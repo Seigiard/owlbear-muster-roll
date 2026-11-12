@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { z } from 'zod';
 
 import { parsePresetFile, type Preset } from '@/core/preset';
 
@@ -131,6 +132,42 @@ describe('fromPreset and toPreset', () => {
         },
       ],
     });
+  });
+
+  test('keeps a dice-choice field and its options through the builder document', () => {
+    // #given
+    // SAFETY: the fixture has the Preset shape plus the approved future field variant.
+    const preset = z.unknown().parse({
+      v: 2,
+      templates: [
+        {
+          id: 'weapons',
+          kind: 'single',
+          title: 'Оружие',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Урон' },
+                  {
+                    kind: 'field',
+                    type: 'dice-choice',
+                    id: 'weapon_die',
+                    options: ['d4', 'd6', 'd8'],
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    }) as Preset;
+
+    // #when
+    const back = toPreset(fromPreset(preset));
+
+    // #then
+    expect(back).toEqual(preset);
   });
 });
 
