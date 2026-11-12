@@ -37,8 +37,8 @@ export type EvaluationFailure = { code: 'field'; fieldId: string } | { code: 'ar
 // The number an id stands for, or `null` when it gives the field error.
 export type FieldLookup = (id: string) => number | null;
 
-// The number of sides chosen by a dice-choice field, or `null` for an unknown, empty, stale or
-// differently typed field.
+// The number of sides chosen by a dice-choice field, or `null` for an unknown, empty, non-die or
+// differently typed value. A stale value that is still a die size remains usable.
 export type DiceFieldLookup = (id: string) => number | null;
 
 // A value in [0, 1), as `Math.random` returns.
@@ -264,7 +264,8 @@ export function formulaDiceFieldLookup(
 }
 
 // Replaces every dice-choice node with a literal dice node before terms are listed or the tree is
-// evaluated. Unknown, empty and stale values stay roll-time field errors.
+// evaluated. Unknown, empty and non-die values stay roll-time field errors; a stale die-size value
+// is resolved and rolled even when it is no longer one of the field's options.
 export function resolveFormulaDiceFields(
   tree: FormulaTree,
   lookup: DiceFieldLookup,

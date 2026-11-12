@@ -10,7 +10,7 @@ import {
   type FaceSource,
   type RollResult,
 } from '@/core/formula-evaluate';
-import { parseFormula } from '@/core/formula';
+import { parseFormula, writeDiceFields } from '@/core/formula';
 import {
   plainRow,
   repeatSectionId,
@@ -45,7 +45,7 @@ export type ShownValues = ReadonlyMap<string, ShownValue>;
 
 export type DicePlace = z.infer<typeof dicePlaceSchema>;
 
-// `cell` is the dice button's label by the Story 1.8 rule.
+// `cell` is the preceding text label, or the formula with each Nd(id) written as NdM.
 export type DiceRoll = { cell: string; result: RollResult };
 
 // `field` names the referenced field by its label, or by its id when it is not on the sheet.
@@ -149,20 +149,25 @@ export function prepareDiceRoll(
     return err({ code: 'field', field: fieldLabel(layout, from, resolved.error.fieldId) });
   }
 
-  const writtenFormula = writeDiceFields(cell.formula, diceFieldLookup);
+  // Resolution above proves every Nd(id) has a value, so the writer can use a non-null lookup.
+  const writtenFormula = writeDiceFields(cell.formula, (id) => {
+    const sides = diceFieldLookup(id);
 
-  if (!writtenFormula.ok) {
-    return err({ code: 'field', field: fieldLabel(layout, from, writtenFormula.error) });
-  }
+    if (sides === null) {
+      throw new Error(`Unresolved dice field ${id}`);
+    }
+
+    return sides;
+  });
 
   const cellText = cellLabel(cell, row.slice(0, place.cellIndex));
-  const hasDiceField = /[0-9]+[dD]\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\)/.test(cell.formula);
 
-  const label = hasDiceField
-    ? cellText === cell.formula
-      ? writtenFormula.value
-      : `${cellText} (${writtenFormula.value})`
-    : cellText;
+  const label =
+    writtenFormula !== cell.formula
+      ? cellText === cell.formula
+        ? writtenFormula
+        : `${cellText} (${writtenFormula})`
+      : cellText;
 
   return ok({
     cell: label,
@@ -185,31 +190,6 @@ export function prepareDiceRoll(
       return rolled;
     },
   });
-}
-
-const DICE_FIELD_SLOT = /[0-9]+[dD]\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g;
-
-function writeDiceFields(
-  formula: string,
-  lookup: (id: string) => number | null,
-): Result<string, string> {
-  let failure: string | null = null;
-
-  const written = formula.replace(DICE_FIELD_SLOT, (slot, id: string) => {
-    const sides = lookup(id);
-
-    if (sides === null) {
-      failure = id;
-
-      return slot;
-    }
-
-    const count = slot.match(/^[0-9]+/)?.[0] ?? '';
-
-    return `${count}d${sides}`;
-  });
-
-  return failure === null ? ok(written) : err(failure);
 }
 
 // The values of one repeat block, or `null` for a repeat block that is gone.

@@ -46,18 +46,20 @@ export type FormulaFailure = 'too-long' | 'syntax-error' | 'unknown-function' | 
 
 type FormulaSymbol = ArithmeticOperator | ComparisonOperator | '(' | ')';
 
+type TokenSpan = { start: number; end: number };
+
 type Token =
-  | { kind: 'integer'; value: number }
-  | { kind: 'dice'; count: number; sides: number }
-  | { kind: 'dice-field'; count: number; id: string }
-  | { kind: 'name'; name: string }
-  | { kind: 'symbol'; symbol: FormulaSymbol };
+  | ({ kind: 'integer'; value: number } & TokenSpan)
+  | ({ kind: 'dice'; count: number; sides: number } & TokenSpan)
+  | ({ kind: 'dice-field'; count: number; id: string } & TokenSpan)
+  | ({ kind: 'name'; name: string } & TokenSpan)
+  | ({ kind: 'symbol'; symbol: FormulaSymbol } & TokenSpan);
 
 // Grammar:
 //   comparison = sum [('<=' | '<' | '>=' | '>') sum]
 //   sum        = product (('+' | '-') product)*
 //   product    = atom (('*' | '/') atom)*
-//   atom       = integer | dice | id | call | '(' sum ')'
+//   atom       = integer | dice | Nd(id) | id | call | '(' sum ')'
 //   call       = ('floor' | 'ceil') '(' sum ')'
 // Minus is binary only. The parser builds a tree and never evaluates.
 export function parseFormula(formula: string): Result<FormulaTree, FormulaFailure> {
@@ -74,6 +76,26 @@ export function parseFormula(formula: string): Result<FormulaTree, FormulaFailur
 
     throw error;
   }
+}
+
+// Writes each parsed Nd(id) token as the literal die selected for that id, while preserving all
+// other source text. The caller resolves every token before calling this function.
+export function writeDiceFields(formula: string, resolve: (id: string) => number): string {
+  const tokens = tokenize(formula);
+  let written = '';
+  let sourceIndex = 0;
+
+  for (const token of tokens) {
+    if (token.kind !== 'dice-field') {
+      continue;
+    }
+
+    written += formula.slice(sourceIndex, token.start);
+    written += `${token.count}d${resolve(token.id)}`;
+    sourceIndex = token.end;
+  }
+
+  return written + formula.slice(sourceIndex);
 }
 
 class FormulaError extends Error {
@@ -106,6 +128,7 @@ function tokenize(formula: string): Token[] {
       continue;
     }
 
+    const diceFieldStart = index;
     const diceField = matchAt(DICE_FIELD);
 
     if (diceField !== null) {
@@ -113,10 +136,11 @@ function tokenize(formula: string): Token[] {
         throw new FormulaError('syntax-error');
       }
 
-      tokens.push(diceFieldToken(diceField[1] ?? '', diceField[2] ?? ''));
+      tokens.push(diceFieldToken(diceField[1] ?? '', diceField[2] ?? '', diceFieldStart, index));
       continue;
     }
 
+    const numberStart = index;
     const number = matchAt(NUMBER);
 
     if (number !== null) {
@@ -125,30 +149,37 @@ function tokenize(formula: string): Token[] {
         throw new FormulaError('syntax-error');
       }
 
-      tokens.push(numberToken(number[1] ?? '', number[2]));
+      tokens.push(numberToken(number[1] ?? '', number[2], numberStart, index));
       continue;
     }
 
+    const nameStart = index;
     const name = matchAt(NAME);
 
     if (name !== null) {
-      tokens.push({ kind: 'name', name: name[0] });
+      tokens.push({ kind: 'name', name: name[0], start: nameStart, end: index });
       continue;
     }
 
+    const symbolStart = index;
     const symbol = matchAt(SYMBOL);
 
     if (symbol === null) {
       throw new FormulaError('syntax-error');
     }
 
-    tokens.push({ kind: 'symbol', symbol: toSymbol(symbol[0]) });
+    tokens.push({ kind: 'symbol', symbol: toSymbol(symbol[0]), start: symbolStart, end: index });
   }
 
   return tokens;
 }
 
-function numberToken(countDigits: string, sidesDigits: string | undefined): Token {
+function numberToken(
+  countDigits: string,
+  sidesDigits: string | undefined,
+  start: number,
+  end: number,
+): Token {
   const count = Number(countDigits);
 
   if (sidesDigits === undefined) {
@@ -156,7 +187,7 @@ function numberToken(countDigits: string, sidesDigits: string | undefined): Toke
       throw new FormulaError('syntax-error');
     }
 
-    return { kind: 'integer', value: count };
+    return { kind: 'integer', value: count, start, end };
   }
 
   const sides = Number(sidesDigits);
@@ -165,17 +196,21 @@ function numberToken(countDigits: string, sidesDigits: string | undefined): Toke
     throw new FormulaError('dice-out-of-range');
   }
 
-  return { kind: 'dice', count, sides };
+  return { kind: 'dice', count, sides, start, end };
 }
 
-function diceFieldToken(countDigits: string, id: string): Token {
+function diceFieldToken(countDigits: string, id: string, start: number, end: number): Token {
   const count = Number(countDigits);
 
   if (count < 1 || count > DICE_COUNT_MAX) {
     throw new FormulaError('dice-out-of-range');
   }
 
-  return { kind: 'dice-field', count, id };
+  if (!isFieldId(id)) {
+    throw new FormulaError('syntax-error');
+  }
+
+  return { kind: 'dice-field', count, id, start, end };
 }
 
 function toSymbol(text: string): FormulaSymbol {
@@ -255,8 +290,16 @@ function parseTokens(tokens: readonly Token[]): FormulaTree {
 
     position += 1;
 
-    if (token?.kind === 'integer' || token?.kind === 'dice' || token?.kind === 'dice-field') {
-      return token;
+    if (token?.kind === 'integer') {
+      return { kind: 'integer', value: token.value };
+    }
+
+    if (token?.kind === 'dice') {
+      return { kind: 'dice', count: token.count, sides: token.sides };
+    }
+
+    if (token?.kind === 'dice-field') {
+      return { kind: 'dice-field', count: token.count, id: token.id };
     }
 
     if (token?.kind === 'name') {

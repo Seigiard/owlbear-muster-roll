@@ -124,11 +124,12 @@ call       = ('floor' | 'ceil') '(' sum ')'
 
 Examples: `1d20 <= str - 2*str_tired`, `floor(a/2)+ceil(b)`, `2D6+1`, `1d(weapon_die) + bonus`.
 
-Before a roll, `Nd(id)` becomes the literal `NdM` from the selected dice-choice field. An empty,
-stale or otherwise invalid value shows a field error and does not roll. A formula that uses a
-dice-choice field outside `Nd(id)`, or uses another field type inside `Nd(id)`, is refused when the
-preset is uploaded. An unknown id inside `Nd(id)` is accepted and gives a field error only when
-rolled.
+Before a roll, `Nd(id)` becomes the literal `NdM` from the selected dice-choice field. An empty or
+non-die value, such as `Меч`, shows a field error and does not roll. A stale value that is still a
+die size, such as `d8` after it was removed from the options, still rolls that die. A formula that
+uses a dice-choice field outside `Nd(id)`, or uses another field type inside `Nd(id)`, is refused
+when the preset is uploaded. An unknown id inside `Nd(id)` is accepted and gives a field error only
+when rolled.
 
 ## Preset changes
 
@@ -182,6 +183,8 @@ A refused file changes nothing. The message under the button names the first pro
 | Two `repeat` sections start with one id | две повторяемые секции с id «{id}» |
 | A row has more cells than `columns` | в строке больше ячеек, чем колонок |
 | A formula breaks the formula rules | ошибка в формуле «{formula}» |
+| A formula uses a dice-choice field as a number outside `Nd(id)` | в формуле «{formula}» поле «{id}» — выбор кубика, бросайте его как 1d({id}) |
+| A formula uses a non-dice field inside `Nd(id)` | в формуле «{formula}» поле «{id}» не выбор кубика |
 | The file or the stored preset is too large | файл слишком большой |
 
 ## Build a preset without JSON
