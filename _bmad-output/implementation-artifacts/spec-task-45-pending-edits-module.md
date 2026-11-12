@@ -2,7 +2,7 @@
 title: 'TASK-45: move the pending edit policy out of the replica engine'
 type: 'refactor'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'caf947b4c4d43b616efbaad154e8ee2128f63719'
@@ -114,11 +114,11 @@ export function createPendingEdits(options: {
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Baseline -- at `baseline_commit`, save the junit list of `src/replica/` (test name and assertion count) and the wall time of `engine-propose.test.ts` and of `bun test` -- the proof compares against it.
-- [ ] `src/replica/pending-edits.ts` -- create the module per Design Notes from the moved engine code -- phase A.
-- [ ] `src/replica/engine.ts` -- call the module at each call site; delete the moved functions -- phase A; commit when the junit list equals the baseline.
-- [ ] `src/replica/pending-edits.test.ts` -- one test per matrix row and error case, with a fake `mint`, `now`, `schedule` and `enqueue`, and real composers -- phase B.
-- [ ] `src/replica/engine-propose.test.ts` -- keep the 14 GM-side tests, the two-engine test, and these wiring tests: `with access: proposed…`, `of a sheet of a sheet set with no access…`, `clears on a commit that echoes…`, `denied: dropped, the value returns…`, `stale: applies its patch…`, `during catch-up: shown at once…`, `of a sheet whose access is revoked while live…`, `stays when a revoke and a re-grant…`, `is cleared, with its pending view…`, `of a player made GM…`, `is resent as soon as the GM link comes back…`. Remove the rest -- phase B; commit.
+- [x] Baseline -- at `baseline_commit`, save the junit list of `src/replica/` (test name and assertion count) and the wall time of `engine-propose.test.ts` and of `bun test` -- the proof compares against it.
+- [x] `src/replica/pending-edits.ts` -- create the module per Design Notes from the moved engine code -- phase A.
+- [x] `src/replica/engine.ts` -- call the module at each call site; delete the moved functions -- phase A; commit when the junit list equals the baseline.
+- [x] `src/replica/pending-edits.test.ts` -- one test per matrix row and error case, with a fake `mint`, `now`, `schedule` and `enqueue`, and real composers -- phase B.
+- [x] `src/replica/engine-propose.test.ts` -- keep the 14 GM-side tests, the two-engine test, and these wiring tests: `with access: proposed…`, `of a sheet of a sheet set with no access…`, `clears on a commit that echoes…`, `denied: dropped, the value returns…`, `stale: applies its patch…`, `during catch-up: shown at once…`, `of a sheet whose access is revoked while live…`, `stays when a revoke and a re-grant…`, `is cleared, with its pending view…`, `of a player made GM…`, `is resent as soon as the GM link comes back…`. Remove the rest -- phase B; commit.
 
 **Acceptance Criteria:**
 - Given phase A, when `bun test src/replica/` runs, then its junit list equals the baseline.
@@ -127,9 +127,24 @@ export function createPendingEdits(options: {
 
 ## Implementation Notes
 
+- Run directory: `~/.claude/artifacts/tdd-20261112-083038/task-45-pending-edits-module/` (ticket.md, lock.json, controls/, review-01.md, review-02.md).
+- Phase A (production only): the junit list of `bun test src/replica/` equals the baseline, 769 tests and 773 assertions. M1-M9 fail the same test sets at the baseline in `engine.ts` and after phase A in `pending-edits.ts`.
+- `recordsChanged` merges a moved part with `combinePatches(part.patch, existing.patch)` instead of the inline merge of `dropDisallowed`. They differ only for an `add` moved onto a `fields` entry of the same repeat block key, which per-sheet instance ids make unreachable.
+- Phase A first skipped the denied-notice quiet window on the `edit` path; the next commit restored it (`denial()` on every path), and the matrix row Quiet window now covers it.
+- Phase B: `pending-edits.test.ts` has 44 tests (junit), each red under at least one faithful mutation. After phase B the failing tests per mutation are: M1 7, M2 5, M3 2, M4 1, M5 2, M7 17, M8 4, M9 1.
+- M6 (drop the `proposalAllowed` pre-check in `edit`) fails no test before or after the change. It is an equivalent mutation: `resolveSheet` gives a hidden template `write: 'none'`, so `playerMayEdit` and the composer refuse every case the pre-check refuses. The acceptance line "after phase B at least one test fails" therefore holds for M1-M5 and M7-M9 only; M6 is named in `deferred-work.md`.
+- M9 survived at the baseline (no engine test rebased a stale answer over the known record); the new test `a stale answer below the edit rebuilds over the newest known record, not only the answer` now kills it.
+- `engine-propose.test.ts` keeps 26 tests (36 junit cases: the 14 GM-side tests, the two-engine test and the 11 named wiring tests). Each of the 35 removed junit cases has an owner in `pending-edits.test.ts` (controls/moved-tests.md).
+- Wall time medians: `engine-propose.test.ts` 4.99 s -> 2.34 s; `pending-edits.test.ts` 0.17 s; `bun test` 57.47 s -> 54.61 s.
+- Review: code-review round 01 (mixed-terra, 9/9 sources) raised 8 test findings, all fixed in tests; round 02 (final, 2/2) raised none.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+| Finding | Verdict | Evidence | Route |
+|---|---|---|---|
+| Carry-over: acceptance "after phase B at least one test fails" does not hold for M6 | low | The pre-check in `edit` is redundant: `playerMayEdit` refuses a hidden sheet (`write: 'none'` from `resolveSheet`) and the composer refuses the rest, so M6 survived at the baseline too (ticket.md D8). Not caused by this change. | defer |
 
 ## Verification
 
