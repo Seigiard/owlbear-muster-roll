@@ -4,13 +4,13 @@ title: Roll a dice cell without closing the Muster Roll window
 status: To Do
 assignee: []
 created_date: '2026-11-12T02:21:00Z'
+updated_date: '2026-11-12T02:27:00Z'
 labels:
   - v2
 dependencies:
   - TASK-36
 references:
-  - https://github.com/Seigiard/dicex
-  - https://github.com/abottchen/dicex
+  - https://github.com/Seigiard/dicex/issues/1
 type: enhancement
 ordinal: 54000
 ---
