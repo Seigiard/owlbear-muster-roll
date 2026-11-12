@@ -1,0 +1,43 @@
+- id: "1"
+  title: Format v3 with tabs in the preset, the sheet, the preview and the builder
+  description: >-
+    Every template holds a required tabs list and a sheet shows one tab at a time under its
+    header (CAP-34, CAP-23); format v3 refuses v1 and v2 data. Covers preset-format.md "Tabs"
+    and "Older format", the window tab row, preview.html and the builder's tab level.
+  spec_checkpoint: false
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Binding rules: ARCHITECTURE-SPINE AD-11 (mr3 keys), AD-12 (v 3, no migration from v1 or v2),
+    AD-14 (tabs never enter record keys), AD-18 "Rule, tabs" (one cell address {tab, section, row,
+    cell}), AD-21 to AD-25, AD-26 "Rule, open tab". Tab visibility is story 2: accept the
+    visibility key but do not hide anything yet. Keep the current tab bar of sheets; the sidebar
+    is story 3. Update docs/preset-format.md (keys, window width 480 to 1440, refusal messages),
+    docs/example-preset.json, presets/*.json and test fixtures; the example's parse test is the
+    completion check. Add Tab to GLOSSARY.md.
+- id: "2"
+  title: GM-only tabs
+  description: >-
+    A preset hides a tab from players: no tab, no roll shown, no token menu or open on its repeat
+    blocks, and its fields read-only for players, the name field included (CAP-35, CAP-2, CAP-6,
+    CAP-14). Hiding stays interface-only; records of hidden tabs stay in every replica.
+  spec_checkpoint: false
+  done_checkpoint: false
+  invoke_dev_with: >-
+    Binding rules: AD-4 "Rule, one edit check", AD-13 (player replica refuses a hidden roll
+    request), AD-18 one core/visibility function for sheet, tab and link target, AD-19, the
+    Visibility convention (records filtered by template only). Today token-links.ts and
+    engine.ts openTargetShown check only the template.
+- id: "3"
+  title: Sidebar and one window frame
+  description: >-
+    The window lists sheets in a sidebar grouped by sheet set, with Settings at the bottom
+    (CAP-33, CAP-17, CAP-29, CAP-32), and the window, preview.html and the builder preview draw
+    through one frame (AD-26). EXPERIENCE.md and DESIGN.md hold the layout.
+  spec_checkpoint: false
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Visual reference: ux-designs/ux-owlbear-muster-roll-2026-11-10/mockups/window-sidebar-tabs.html;
+    the spines win on conflict. Sidebar is 10 rem. ui/sheet-tabs.ts becomes
+    ui/shell/sidebar-entries.ts with playerMayEdit. A sidebar group heading stays outside the
+    react-aria tab list and entries reference it with aria-describedby. Replace the old "sheet tab"
+    meaning in GLOSSARY.md with Sidebar and Sidebar entry.
