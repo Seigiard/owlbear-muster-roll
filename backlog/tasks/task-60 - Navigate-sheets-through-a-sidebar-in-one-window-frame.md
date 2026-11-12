@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@claude'
 created_date: '2026-11-12T18:50:00Z'
+updated_date: '2026-11-12T19:21:00Z'
 labels:
   - v3
 dependencies:
@@ -28,3 +29,9 @@ With tabs inside a sheet, a second horizontal tab bar of sheets is confusing, an
 - [ ] #5 Up and Down move across sidebar entries; group headings are outside the tab list and named by aria-describedby; + Добавить is reached by Tab
 - [ ] #6 GLOSSARY.md replaces the old sheet tab meaning with Sidebar and Sidebar entry
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+src/ui/copy.test.ts "Add a sheet of a sheet set" is red since the UX update (6c8785b): EXPERIENCE.md asks for "+ Добавить", copy.addSign is still "+". The sidebar change sets it; update the "+" assertions in tests/characters.e2e.ts with it.
+<!-- SECTION:NOTES:END -->

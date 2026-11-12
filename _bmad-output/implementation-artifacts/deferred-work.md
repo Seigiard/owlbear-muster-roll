@@ -246,3 +246,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-46-command-outcomes.md`
   summary: A comment in `tests/owner.e2e.ts` still names `ACCESS_CHANGE_TIMEOUT_MS`, which TASK-46 replaced with `Timing.accessChangeTimeoutMs`.
   evidence: TASK-46 kept `tests/` unchanged as the oracle for unchanged behaviour, so the comment was left for a later edit of that file.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-58-tabs-format-v3.md`
+  summary: src/ui/copy.test.ts "Add a sheet of a sheet set" fails because EXPERIENCE.md asks for "+ Добавить" and copy.addSign is "+".
+  evidence: Fails at 411b3d0 before TASK-58; the label belongs to the sidebar (TASK-60), which also updates the "+" assertions in tests/characters.e2e.ts.

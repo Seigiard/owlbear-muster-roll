@@ -2,7 +2,7 @@
 title: 'TASK-58 Split each sheet into tabs with preset format v3'
 type: 'feature'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '411b3d04d0bd49351d39f87b5b7112fdb7034e1f'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -70,13 +70,13 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/core/*` -- v3 schema, helpers, address with tab, problems, failure code, window min -- the contract everything reads
-- [ ] `src/replica/*` -- compile against the helpers; no behavior change
-- [ ] `src/ui/sheet/*`, `src/ui/main.tsx`, `src/ui/copy.ts` -- tab row, open tab, reveal selects tab
-- [ ] `src/preview/*` -- frames switch tabs
-- [ ] `src/builder/*` -- tab node, form, drag, add, preview tab, problems
+- [x] `src/core/*` -- v3 schema, helpers, address with tab, problems, failure code, window min -- the contract everything reads
+- [x] `src/replica/*` -- compile against the helpers; no behavior change
+- [x] `src/ui/sheet/*`, `src/ui/main.tsx`, `src/ui/copy.ts` -- tab row, open tab, reveal selects tab
+- [x] `src/preview/*` -- frames switch tabs
+- [x] `src/builder/*` -- tab node, form, drag, add, preview tab, problems
 - [ ] fixtures, presets, tests -- convert to v3; add unit tests for the I/O matrix and an e2e for tab switching, cross-tab roll and token reveal
-- [ ] `docs/preset-format.md`, spec `preset-format.md` (already v3), `docs/adr/0001…:19`, `GLOSSARY.md` -- keys, refusals, width, Tab
+- [x] `docs/preset-format.md`, spec `preset-format.md` (already v3), `docs/adr/0001…:19`, `GLOSSARY.md` -- keys, refusals, width, Tab
 
 **Acceptance Criteria:**
 - Given a two-tab sheet set, when a GM clicks the second tab, then only its sections show, and switching sheets and back keeps that tab.
@@ -84,6 +84,32 @@ context:
 - Given the builder, when the author adds a tab, drags a section into it and selects a cell on it, then the tree shows the tab level, the preview shows that tab, and the downloaded file parses.
 
 ## Implementation Notes
+
+## Review Triage Log
+
+| # | Layer | Finding | Verdict | Route / evidence |
+|---|---|---|---|---|
+| 1 | edge | Chosen tab is a bare index, so a preset change that reorders tabs opens another tab | low | Rejected: AD-26 fixes the index; a reorder is rare and the fallback is safe; a stable key adds state |
+| 2 | edge | Switching tab during a roll unmounts the dice button state | low | Rejected: same as switching sheets today; the roll still lands in the log |
+| 3 | edge | A v2 builder draft is replaced by an empty one | false | AD-21 drops a draft that fails the structure schema by design; no live users |
+| 4 | edge | Open request before the rep: record exists never selects the tab | low | Rejected: a linked token implies the block record; the window is `ready` before it takes the request |
+| 5 | gap | renameFieldId and fieldFormulaCount untested on two tabs | medium | patch: two-tab cases in formula-rename.test.ts |
+| 6 | gap | scopeFieldIds, formulaFieldIds, nameFieldCandidates untested across tabs | medium | patch: two-tab cases in document.test.ts |
+| 7 | gap | Builder preview click and marks on a non-first tab untested | medium | patch: extend the multi-tab builder e2e |
+| 8 | gap | preview.html frame tab switching untested | medium | patch: preview.e2e case with two tabs |
+| 9 | gap | untitled-tab message missing from the preset-errors table | low | patch: one table row |
+| 10 | blind | Full check red: copy catalog test wants "+ Добавить" | medium | defer: red since 6c8785b (UX update), not this diff; the sidebar task sets the copy; noted on TASK-60 |
+| 11 | blind | Tab visibility "gm" hides nothing yet, no hint | low | Rejected: the intent leaves hiding to TASK-59, which follows before release |
+| 12 | blind | Selection, pending and error marks do not reach the tab row | low | Rejected: tab selection marks are TASK-60 by intent |
+| 13 | blind | Builder preview does not mark a tab that holds a problem | low | Rejected: the problem counter selects the item and the preview follows to its tab |
+| 14 | blind | untitled-tab message does not name the tab; "в листе" wording | low | Rejected: the builder path names the tab; "лист «id»" matches duplicateTemplate |
+| 15 | blind | Template with no tabs shows invalid-structure | false | AD-22 puts it under the existing failure codes by design |
+| 16 | blind | Add tab gives two untitled-tab problems at once | low | Rejected: both problems are true and guide the author |
+| 17 | blind | Glossary and format docs still use "tab" for the sheet bar | low | Rejected: TASK-60 replaces that meaning with Sidebar entry |
+| 18 | blind | No multi-tab example file | low | Rejected: the annotated example in docs shows tabs; the e2e builds its own |
+| 19 | blind | v2 refusal tested on presets only, not snapshots or room data | medium | patch: v 2 cases beside the v 1 ones |
+| 20 | blind | Tab row does not scroll the chosen tab into view; long titles have no tooltip | low | Rejected: needs many tabs; adds an effect |
+| 21 | blind | Comment over moveItem in document.ts is 109 chars | low | patch: wrap it |
 
 ## Verification
 
