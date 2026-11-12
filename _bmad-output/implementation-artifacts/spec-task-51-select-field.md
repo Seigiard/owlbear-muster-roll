@@ -2,7 +2,7 @@
 title: 'TASK-51 Add a select field type to presets'
 type: 'feature'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: '6f1901a1d25fcfb00c4d7221cab092357958ff19'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -74,14 +74,14 @@ Exact Russian strings for `src/ui/copy.ts`: builder field type «Список»;
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/core/preset.ts` + test -- schema, `fieldOptions`, rules `no-options`, `blank-option`, `duplicate-option` with field detail -- AC #2.
-- [ ] `src/core/field-patch.ts`, `preset-migrate.ts`, `snapshot-import.ts` + tests -- select value type; same-type rule on migration -- AC #3, #4.
-- [ ] `src/ui/copy.ts`, `preset-errors.ts` -- messages -- AC #2.
-- [ ] `src/ui/sheet/*` -- `SelectField`, `useSelectFieldEdit` -- AC #1, #3, #4, #5.
-- [ ] `src/preview/sample-records.ts` -- sample value.
-- [ ] `src/builder/*` + tests -- type «Список», options editing -- AC #6.
-- [ ] `docs/preset-format.md`, `docs/example-preset.json` (add one select field, e.g. armour in the `pc` template) -- AC #7. `GLOSSARY.md` and everything under `_bmad-output/planning-artifacts` and `_bmad-output/specs` are changed by the main session through their memlogs: do not edit them.
-- [ ] `tests/select-field.e2e.ts`, `tests/builder.e2e.ts` -- GM pick, clear, stale value, player with and without access, keyboard, name, 32 px; builder adds a select field and edits its options.
+- [x] `src/core/preset.ts` + test -- schema, `fieldOptions`, rules `no-options`, `blank-option`, `duplicate-option` with field detail -- AC #2.
+- [x] `src/core/field-patch.ts`, `preset-migrate.ts`, `snapshot-import.ts` + tests -- select value type; same-type rule on migration -- AC #3, #4.
+- [x] `src/ui/copy.ts`, `preset-errors.ts` -- messages -- AC #2.
+- [x] `src/ui/sheet/*` -- `SelectField`, `useSelectFieldEdit` -- AC #1, #3, #4, #5.
+- [x] `src/preview/sample-records.ts` -- sample value.
+- [x] `src/builder/*` + tests -- type «Список», options editing -- AC #6.
+- [x] `docs/preset-format.md`, `docs/example-preset.json` (add one select field, e.g. armour in the `pc` template) -- AC #7. `GLOSSARY.md` and everything under `_bmad-output/planning-artifacts` and `_bmad-output/specs` are changed by the main session through their memlogs: do not edit them.
+- [x] `tests/select-field.e2e.ts`, `tests/builder.e2e.ts` -- GM pick, clear, stale value, player with and without access, keyboard, name, 32 px; builder adds a select field and edits its options.
 
 **Acceptance Criteria:**
 - Given the example preset with a select field, when parsed, then it passes (`bun test src/core/preset.test.ts`).
@@ -89,9 +89,21 @@ Exact Russian strings for `src/ui/copy.ts`: builder field type «Список»;
 
 ## Implementation Notes
 
+- Built through the `implement` skill (tdd chain, then `code-review`); run directory `~/.claude/artifacts/tdd-20261112-034248/task-51-select-field/`. Code-review round 1 (revmux, 9 sources) routed 7 findings into tdd batch 2: the options textarea is one undo step, snapshot import keeps select values in repeat blocks, a repeat-block text→select test, the builder preview draws a select cell as read-only text (the EXPERIENCE placeholder row), modified arrow keys stay native, one value-selection function in `preset-migrate.ts`, and the docs walkthrough options. Round 2 (`final`) found nothing.
+- Snapshot import cannot tell a `text` value from a `select` value in a file (both are strings), so it lets a file's guessed `text` field match a current `select` field with the same id.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+Step 04 ran only the `code-review-carryover` layer (blind-hunter, edge-case-hunter and verification-gap are off). It returned the four findings code-review deferred; no open decision, no unresolved major, no corrected criterion.
+
+| Finding (code-review id) | Verdict | Evidence | Route |
+|---|---|---|---|
+| Builder trims or splits existing options with edge spaces or newlines (bugs+impl-terra-1), `src/builder/item-form.tsx` | low | Real: re-saving such a file through the builder normalizes those options. Only a hand-written file has them, and keeping raw lines needs a second editing path. | reject (low, rare, fix adds complexity) |
+| `Reflect.set` type workaround in five select fixtures (arch+quality-claude-6), `src/core/preset.test.ts:115` and four more | low | Real: the fixtures bypass type checking, so `tsc` cannot flag them when the select shape changes. Fix is a direct replacement with typed literals. | patch (tdd batch 3) |
+| Unmount save of a text draft lands in a field that just became a select (bugs+impl-codex-2), `src/ui/sheet/preset-cell.tsx` | low | Real: needs one GM typing while another uploads a type change; the result is a visible stale value, not data loss. The fix changes the save-on-unmount contract of every field type. | reject (low, rare, fix adds complexity) |
+| A too-large error on a pick fails silently (bugs+impl-codex-4), `src/ui/sheet/use-field-edit.ts` | low | Real only for an option near 15000 characters; the check field has the same silent path. A message needs new copy and a UX rule. | reject (low, rare, fix adds complexity) |
 
 ## Verification
 
