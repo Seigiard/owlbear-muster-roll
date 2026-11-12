@@ -2,7 +2,7 @@
 title: 'TASK-53 Let a preset name a field and a dice cell, and show the name on hover'
 type: 'feature'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: 'cf8eab9e5aa3404689a53666abaac5729d3919e9'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -69,14 +69,14 @@ Decisions (owner said "работай автономно"; recorded in the spec,
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/core/preset.ts` + test -- schema, two rules -- AC #1, #4.
-- [ ] `src/core/sheet-values.ts`, `src/core/dice-roll.ts` + tests -- label rule, roll label, field error -- AC #1, #2.
-- [ ] `src/ui/copy.ts`, `src/ui/preset-errors.ts` + test -- reasons -- AC #4.
-- [ ] `src/ui/primitives/*`, `src/ui/sheet/preset-cell.tsx`, `src/ui/sheet/dice-button.tsx` -- names and tooltip -- AC #1, #3.
-- [ ] `src/builder/document.ts`, `src/builder/item-form.tsx` + tests -- AC #5.
-- [ ] `docs/preset-format.md`, `docs/example-preset.json` -- AC #7.
-- [ ] `presets/cairn-2e.json`, `deferred-work.md` -- AC #6.
-- [ ] `tests/cell-name.e2e.ts`, `tests/builder.e2e.ts` -- browser proof of AC #1, #3, #5.
+- [x] `src/core/preset.ts` + test -- schema, two rules -- AC #1, #4.
+- [x] `src/core/sheet-values.ts`, `src/core/dice-roll.ts` + tests -- label rule, roll label, field error -- AC #1, #2.
+- [x] `src/ui/copy.ts`, `src/ui/preset-errors.ts` + test -- reasons -- AC #4.
+- [x] `src/ui/primitives/*`, `src/ui/sheet/preset-cell.tsx`, `src/ui/sheet/dice-button.tsx` -- names and tooltip -- AC #1, #3.
+- [x] `src/builder/document.ts`, `src/builder/item-form.tsx` + tests -- AC #5.
+- [x] `docs/preset-format.md`, `docs/example-preset.json` -- AC #7.
+- [x] `presets/cairn-2e.json`, `deferred-work.md` -- AC #6.
+- [x] `tests/cell-name.e2e.ts`, `tests/builder.e2e.ts` -- browser proof of AC #1, #3, #5.
 
 **Acceptance Criteria:**
 - Given the example preset and `presets/cairn-2e.json`, when parsed, then both pass, and no Cairn field or dice cell has `cellLabel` equal to its id or «из» (`bun test src/core/preset.test.ts`).
