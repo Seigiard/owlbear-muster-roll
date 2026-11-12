@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-12T02:18:00Z'
-updated_date: '2026-11-12T07:10:00Z'
+updated_date: '2026-11-12T07:16:00Z'
 labels:
   - v2
 dependencies: []
@@ -33,3 +33,9 @@ A field takes its accessible name from the nearest text cell before it in its ro
 - [ ] #6 presets/cairn-2e.json names weapon, npc_name, attack_1, attack_2, the maximum STR, DEX and WIL fields and hp_max, so no control there is named by its id or by «из»
 - [ ] #7 docs/preset-format.md, the spec copy of the format and docs/example-preset.json describe the name; the example parse test passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Build through bmad-build: spec _bmad-output/implementation-artifacts/spec-task-53-cell-name.md (decisions in the spec, UX and architecture memlogs, commit cf8eab9). 1. Format: optional name on field and dice cells; blank and >60 characters refused, naming the cell. 2. cellLabel takes the name first; roll label, field errors and accessible names follow; dice button keeps its visible text. 3. Tooltip on named cells: hover, keyboard focus and tap; Esc closes; never over the control; named read-only values take focus. 4. Builder: Название input sets and clears the name. 5. Docs, example preset, Cairn names. 6. implement skill (tdd chain + code-review), then the full check.
+<!-- SECTION:PLAN:END -->
