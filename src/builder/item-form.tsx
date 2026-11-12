@@ -11,6 +11,7 @@ import {
   formulaFieldIds,
   locate,
   nameFieldCandidates,
+  PRESET_UID,
   removeItem,
   renameField,
   setWindow,
@@ -58,13 +59,17 @@ export function ItemForm({
   const headingId = useId();
   const path = selection === null ? null : locate(document, selection);
 
-  if (selection === null || path === null) {
-    return null;
-  }
-
   const messages = problems
     .filter((problem) => problem.uid === selection)
     .map((problem) => problemReason(problem.failure));
+
+  // The preset itself has no form: when the counter lands on a problem of the whole preset, its
+  // messages show alone.
+  const presetOnly = selection === PRESET_UID && messages.length > 0;
+
+  if (selection === null || (path === null && !presetOnly)) {
+    return null;
+  }
 
   return (
     <section
@@ -75,7 +80,7 @@ export function ItemForm({
       data-builder-form
     >
       <h2 id={headingId} className="text-section-heading">
-        {formHeading(document, path)}
+        {path === null ? copy.section.preset : formHeading(document, path)}
       </h2>
       {messages.length === 0 ? null : (
         <ul className="flex flex-col gap-1 text-danger-text" data-builder-problems>
@@ -84,7 +89,9 @@ export function ItemForm({
           ))}
         </ul>
       )}
-      <FormBody store={store} document={document} origin={origin} uid={selection} path={path} />
+      {path === null ? null : (
+        <FormBody store={store} document={document} origin={origin} uid={selection} path={path} />
+      )}
     </section>
   );
 }
@@ -702,7 +709,11 @@ function IntegerInput({
 
           if (next === '' && allowEmpty) {
             onValue(undefined);
-          } else if (DIGITS.test(next) && Number(next) >= minimum) {
+          } else if (
+            DIGITS.test(next) &&
+            Number.isSafeInteger(Number(next)) &&
+            Number(next) >= minimum
+          ) {
             onValue(Number(next));
           }
         }}

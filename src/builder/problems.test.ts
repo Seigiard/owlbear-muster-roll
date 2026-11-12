@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { parsePresetFile, type Preset } from '@/core/preset';
+import { parsePresetFile, PRESET_FILE_BYTE_LIMIT, type Preset } from '@/core/preset';
+import { copy } from '@/ui/copy';
 
 import { EMPTY_DOCUMENT, fromPreset, PRESET_UID, uidAt, WINDOW_UID } from './document';
 import { builderProblems, downloadText, problemReason } from './problems';
@@ -24,7 +25,7 @@ describe('builderProblems', () => {
     const problems = builderProblems(EMPTY_DOCUMENT);
 
     // #then
-    expect(problems).toEqual([{ uid: PRESET_UID, failure: { code: 'invalid-structure' } }]);
+    expect(problems).toEqual([{ uid: PRESET_UID, failure: { code: 'no-templates' } }]);
     expect(downloadText(EMPTY_DOCUMENT)).toBeNull();
   });
 
@@ -94,6 +95,26 @@ describe('builderProblems', () => {
       uidAt(document, [0, 0, 0, 0]) ?? '',
     ]);
   });
+  test('a preset the checks pass but the upload refuses has its problem at the preset', () => {
+    // #given
+    const document = fromPreset({
+      templates: [
+        {
+          id: 'pc',
+          kind: 'single',
+          title: 'x'.repeat(PRESET_FILE_BYTE_LIMIT),
+          sections: [{ rows: [] }],
+        },
+      ],
+    });
+
+    // #when
+    const problems = builderProblems(document);
+
+    // #then
+    expect(problems).toEqual([{ uid: PRESET_UID, failure: { code: 'too-large' } }]);
+    expect(downloadText(document)).toBeNull();
+  });
 });
 
 describe('downloadText', () => {
@@ -114,5 +135,15 @@ describe('problemReason', () => {
 
     // #then
     expect(reason).toBe('ошибка в формуле «1d20+dx»');
+  });
+
+  test('a preset with no templates says what to add', () => {
+    // #when
+    const reason = problemReason(
+      builderProblems(EMPTY_DOCUMENT)[0]?.failure ?? { code: 'too-large' },
+    );
+
+    // #then
+    expect(reason).toBe(copy.builder.emptyPreset);
   });
 });

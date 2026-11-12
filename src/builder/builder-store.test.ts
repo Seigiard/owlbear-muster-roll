@@ -290,4 +290,21 @@ describe('the draft', () => {
     expect(store.$state.get().draft).toBe('failed');
     expect(presetOf(store).templates).toHaveLength(1);
   });
+
+  test('a storage that throws on the read starts on the empty preset and says the draft fails', () => {
+    // #given
+    const storage: DraftStorage = {
+      getItem: () => {
+        throw new Error('denied');
+      },
+      setItem: () => undefined,
+    };
+
+    // #when
+    const store = createBuilderStore(storage);
+
+    // #then
+    expect(store.$state.get().draft).toBe('failed');
+    expect(presetOf(store)).toEqual({ v: 2, templates: [] });
+  });
 });

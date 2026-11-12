@@ -198,7 +198,7 @@ describe('default-mode vite build', () => {
     const entry = /src="\/assets\/(builder-[^"]+\.js)"/.exec(page)?.[1] ?? '';
 
     // #when
-    const imported = staticImports(outDir, entry);
+    const imported = chunkImports(outDir, entry);
 
     // #then
     expect(entry).not.toBe('');
@@ -326,8 +326,9 @@ function compileMainCss(): ReturnType<typeof compile> {
   });
 }
 
-// Every chunk an entry chunk loads, as its static imports name them.
-function staticImports(outDir: string, entry: string): Set<string> {
+// Every chunk an entry chunk loads, as its imports name them: `from"./x.js"`, a side-effect
+// `import"./x.js"` and a dynamic `import("./x.js")`.
+function chunkImports(outDir: string, entry: string): Set<string> {
   const seen = new Set<string>();
   const queue = [entry];
 
@@ -342,7 +343,7 @@ function staticImports(outDir: string, entry: string): Set<string> {
 
     const code = readFileSync(join(outDir, 'assets', name), 'utf8');
 
-    for (const [, imported = ''] of code.matchAll(/from"\.\/([^"]+\.js)"/g)) {
+    for (const [, imported = ''] of code.matchAll(/(?:from|import)\(?"\.\/([^"]+\.js)"/g)) {
       queue.push(imported);
     }
   }

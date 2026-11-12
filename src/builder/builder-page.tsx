@@ -371,12 +371,18 @@ function OpenConfirmation({ label, onConfirm, onCancel }: OpenConfirmationProps)
   );
 }
 
-// `Ctrl`/`Cmd`+`Z` undoes and `Shift`+`Ctrl`/`Cmd`+`Z` redoes, outside text inputs, where the
-// keys edit the text.
+// `Ctrl`/`Cmd`+`Z` undoes; `Shift`+`Ctrl`/`Cmd`+`Z` and `Ctrl`/`Cmd`+`Y` redo. Outside text inputs
+// only, where the keys edit the text.
 function useUndoKeys(store: BuilderStore): void {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'z') {
+      // The key's place, not its letter, so a Russian layout undoes too.
+      const undo = event.code === 'KeyZ' && !event.shiftKey;
+
+      const redo =
+        (event.code === 'KeyZ' && event.shiftKey) || (event.code === 'KeyY' && !event.shiftKey);
+
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || !(undo || redo)) {
         return;
       }
 
@@ -386,7 +392,7 @@ function useUndoKeys(store: BuilderStore): void {
 
       event.preventDefault();
 
-      if (event.shiftKey) {
+      if (redo) {
         store.redo();
       } else {
         store.undo();

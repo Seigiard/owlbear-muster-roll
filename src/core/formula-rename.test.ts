@@ -52,6 +52,48 @@ describe('renameFieldId', () => {
     expect(renamed.template.sections[0]?.rows[0]?.[0]).toEqual(field('strength'));
   });
 
+  test('renames only the field when the new id is not a valid id', () => {
+    // #given
+    const template = single([{ rows: [[field('str'), dice('1d20+str')]] }]);
+
+    // #when
+    const renamed = renameFieldId(template, FIRST_CELL, 'str', '2str');
+
+    // #then
+    expect(renamed.formulas).toBe(0);
+    expect(formulas(renamed.template)).toEqual(['1d20+str']);
+    expect(renamed.template.sections[0]?.rows[0]?.[0]).toEqual(field('2str'));
+  });
+
+  test("renames only the field and the name field when the field's scope holds the new id", () => {
+    // #given
+    const template: Template = {
+      id: 'pc',
+      kind: 'set',
+      title: 'Экипаж',
+      nameField: 'name',
+      sections: [
+        {
+          rows: [[{ kind: 'field', type: 'text', id: 'name' }, field('dex'), dice('1d20+name')]],
+        },
+        { repeat: true, rows: [[field('item')]] },
+      ],
+    };
+
+    // #when
+    const renamed = renameFieldId(template, FIRST_CELL, 'name', 'dex');
+
+    // #then
+    expect(renamed.formulas).toBe(0);
+    expect(formulas(renamed.template)).toEqual(['1d20+name']);
+    expect(renamed.template).toMatchObject({ nameField: 'dex' });
+    expect(renamed.template.sections[0]?.rows[0]?.[0]).toEqual({
+      kind: 'field',
+      type: 'text',
+      id: 'dex',
+    });
+  });
+
   test('leaves a dice term and a number glued to letters alone', () => {
     // #given
     const template = single([{ rows: [[field('d'), dice('1d20 + d + 2d')]] }]);

@@ -18,9 +18,12 @@ import {
   type BuilderDocument,
 } from './document';
 
-// AD-22: one problem of the draft, at the item it names. The failure is the upload's own, so its
-// message is the upload's reason.
-export type BuilderProblem = { uid: string; failure: PresetFailure };
+// A preset with no templates is the builder's own problem: its message says what to add.
+export type BuilderFailure = PresetFailure | { code: 'no-templates' };
+
+// AD-22: one problem of the draft, at the item it names. Every other failure is the upload's own,
+// so its message is the upload's reason.
+export type BuilderProblem = { uid: string; failure: BuilderFailure };
 
 // Every problem of the document, in tree order: the window first, then each template with its
 // items, and "no templates" last, where the tree's add items for templates sit. The upload's checks
@@ -45,14 +48,27 @@ export function builderProblems(document: BuilderDocument): BuilderProblem[] {
   problems.push(...rules);
 
   if (document.templates.length === 0) {
-    problems.push({ uid: PRESET_UID, failure: { code: 'invalid-structure' } });
+    problems.push({ uid: PRESET_UID, failure: { code: 'no-templates' } });
+  }
+
+  // The checks above pass, yet the upload refuses the file, as one too large: the preset holds it.
+  if (problems.length === 0) {
+    const parsed = parsePresetFile(formatPresetFile(toPreset(document)));
+
+    if (!parsed.ok) {
+      problems.push({ uid: PRESET_UID, failure: parsed.error });
+    }
   }
 
   return problems;
 }
 
 // The message a problem shows at its item: the reason of the upload's refusal message.
-export function problemReason(failure: PresetFailure): string {
+export function problemReason(failure: BuilderFailure): string {
+  if (failure.code === 'no-templates') {
+    return copy.builder.emptyPreset;
+  }
+
   return failure.code === 'newer-version' ? copy.newerFile : badFileReason(failure);
 }
 

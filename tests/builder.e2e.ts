@@ -317,6 +317,14 @@ test('a file replaces the draft after one confirmation, and a refused file chang
   // #then
   await expect(form(page).getByText(builder.fieldValuesErased('str'))).toBeVisible();
 
+  // #when: the id of a template the file had changes.
+  await pick(item(page, `Экипаж · ${builder.form.kindSet}`));
+  await form(page).getByRole('textbox', { name: builder.form.id, exact: true }).fill('crew');
+  await form(page).getByRole('textbox', { name: builder.form.id, exact: true }).blur();
+
+  // #then
+  await expect(form(page).getByText(builder.templateSheetsDeleted('pc'))).toBeVisible();
+
   // #when: the download takes the file's name with no earlier time.
   const downloading = page.waitForEvent('download');
 
@@ -372,6 +380,57 @@ test('each problem marks its tree item and preview cell, and the counter goes to
   // #then
   await expect(item(page, '1d20+')).toBeFocused();
   await expect(item(page, '1d20+')).toHaveAttribute('aria-selected', 'true');
+});
+
+test('a too-wide row is marked in the preview, and a click on a section heading selects it', async ({
+  page,
+}) => {
+  // #given
+  await page.goto(PAGE);
+  await openFromMenu(page, builder.openD20);
+
+  // #when: "Характеристики" gets fewer columns than its rows have cells.
+  await pick(item(page, 'Характеристики'));
+  await form(page).getByRole('textbox', { name: builder.form.columns }).fill('3');
+
+  // #then
+  await expect(problemCounter(page, 2)).toBeVisible();
+  await expect(
+    preview(page).locator('[data-section-index="1"] [data-row-index="0"]').first(),
+  ).toHaveCSS('box-shadow', /2px/);
+
+  // #when
+  await preview(page).getByRole('heading', { name: 'Хиты' }).click();
+
+  // #then: the section, not its label of the same text.
+  await expect(item(page, 'Хиты').and(page.locator('[aria-level="2"]'))).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+});
+
+test('the formula input completes a field id', async ({ page }) => {
+  // #given
+  await page.goto(PAGE);
+  await openFromMenu(page, builder.openD20);
+  await pick(item(page, '1d20+str').first());
+
+  const formula = form(page).getByRole('combobox', { name: builder.form.formula });
+
+  // #when
+  await formula.fill('');
+  await formula.pressSequentially('1d20+dex_');
+
+  // #then
+  await expect(
+    page.getByRole('listbox', { name: builder.form.completions }).getByRole('option'),
+  ).toHaveText(['dex_save']);
+
+  // #when
+  await formula.press('Enter');
+
+  // #then
+  await expect(formula).toHaveValue('1d20+dex_save');
 });
 
 test('a click on a preview cell selects its tree item', async ({ page }) => {

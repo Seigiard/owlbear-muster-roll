@@ -135,6 +135,8 @@ export function FormulaInput({
           }
         }}
         onClick={readWord}
+        // Home, End and a mouse selection move the caret too.
+        onSelect={readWord}
         onBlur={() => {
           setOpen(false);
           onBlur();

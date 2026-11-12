@@ -74,7 +74,7 @@ const draftSchema = z.object({
 });
 
 export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
-  const loaded = readDraft(storage);
+  const { step: loaded, readable } = readDraft(storage);
 
   const $state = atom<BuilderState>({
     step: loaded,
@@ -82,7 +82,7 @@ export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
     redo: [],
     selection: firstSelection(loaded.document),
     run: null,
-    draft: storage === null ? 'failed' : 'saved',
+    draft: storage === null || !readable ? 'failed' : 'saved',
   });
 
   function commit(next: Omit<BuilderState, 'draft'>): void {
@@ -192,22 +192,24 @@ function nearestLive(document: BuilderDocument, chain: readonly string[]): strin
   return chain.find((uid) => locate(document, uid) !== null) ?? firstSelection(document);
 }
 
+type ReadDraft = { step: BuilderStep; readable: boolean };
+
 // The draft, or a blank step when there is none or it fails the preset structure check. Uids are
-// minted again.
-function readDraft(storage: DraftStorage | null): BuilderStep {
+// minted again. `readable` is false when the storage threw on the read.
+function readDraft(storage: DraftStorage | null): ReadDraft {
   const blank: BuilderStep = { document: EMPTY_DOCUMENT, origin: null, name: BLANK_NAME };
   let text: string | null = null;
 
   try {
     text = storage?.getItem(DRAFT_STORAGE_KEY) ?? null;
   } catch {
-    return blank;
+    return { step: blank, readable: false };
   }
 
-  if (text === null) {
-    return blank;
-  }
+  return { step: text === null ? blank : parseDraft(text, blank), readable: true };
+}
 
+function parseDraft(text: string, blank: BuilderStep): BuilderStep {
   let candidate: ReturnType<typeof JSON.parse>;
 
   try {

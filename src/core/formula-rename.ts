@@ -1,3 +1,4 @@
+import { isFieldId } from '@/core/field-id';
 import {
   resolveFieldReference,
   type PresetCell,
@@ -23,7 +24,8 @@ const NAME_CHARACTER = /[A-Za-z0-9_]/;
 // Renames the field at `place` from `oldId` to `newId`. Every formula whose row resolves `oldId` to
 // that field, as `resolveFieldReference` resolves it, has the id rewritten by whole word, so `str`
 // leaves `str_tired` alone. A sheet set's name field follows its field. A cell at `place` that is
-// not the field `oldId` changes nothing.
+// not the field `oldId` changes nothing. A `newId` that is no valid id, or that the field's scope
+// already holds, renames the field alone: a formula rewritten to it could not be renamed back.
 export function renameFieldId(
   template: Template,
   place: TemplateCellPlace,
@@ -36,6 +38,7 @@ export function renameFieldId(
     return { template, formulas: 0 };
   }
 
+  const rewrites = isFieldId(newId) && !scopeHolds(template, newId, place);
   let formulas = 0;
 
   const sections = template.sections.map((section, sectionIndex) => ({
@@ -53,7 +56,7 @@ export function renameFieldId(
           return { ...cell, id: newId };
         }
 
-        if (other.kind !== 'dice' || !reaches) {
+        if (other.kind !== 'dice' || !reaches || !rewrites) {
           return other;
         }
 
@@ -138,6 +141,18 @@ function resolvesToField(
   }
 
   return isFirstHolder(layout, id, field, false);
+}
+
+// Whether a field of `field`'s scope is `id`: its own repeat section, or every section that does not
+// repeat.
+function scopeHolds(layout: TemplateLayout, id: string, field: TemplateCellPlace): boolean {
+  const block = layout.sections[field.sectionIndex]?.repeat === true;
+
+  return layout.sections.some(
+    (section, sectionIndex) =>
+      (block ? sectionIndex === field.sectionIndex : section.repeat !== true) &&
+      section.rows.some((row) => row.some((cell) => cell.kind === 'field' && cell.id === id)),
+  );
 }
 
 // Whether `field` is the first field `id` of its scope: of its own repeat section when `block`,
