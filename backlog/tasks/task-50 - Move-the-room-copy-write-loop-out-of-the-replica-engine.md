@@ -1,9 +1,11 @@
 ---
 id: TASK-50
 title: Move the room copy write loop out of the replica engine
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T02:11:00Z'
+updated_date: '2026-11-12T18:41:00Z'
 labels: []
 dependencies:
   - TASK-48
@@ -27,3 +29,20 @@ The pure room copy parts already sit in `core/snapshot`, but `src/replica/engine
 - [ ] #2 If it goes ahead: the write loop, owed and rerun state and the status live in one module over the metadata port, tested with a fake metadata port
 - [ ] #3 Only the replica writes room metadata (AD-10); AD-8, AD-9 and AD-17 behavior is unchanged; the full check passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Design pass (done): interface of 25 names over about 300 code lines; 10 of 16 room copy mutations survive the replica suite at a514082. Go ahead.
+2. Wait for TASK-49; merge master; refresh the spec (Code Map lines, the change signal).
+3. Phase A: move the loop, the import write, the catch-up read and the status into src/replica/room-copy.ts; junit list equals the baseline.
+4. Phase B: room-copy.test.ts over the mock metadata port with a fault gate; every mutation fails a module test.
+5. Phase C: retire engine tests a module test owns, each mapped.
+6. Spine docs; full check; close.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Spec: _bmad-output/implementation-artifacts/spec-task-50-room-copy-module.md (draft, commit dbe5d12). Design-pass mutation probe at a514082 (bun test src/replica): R1, R2, R9, R12, R13, R16 killed; R3, R4, R5, R6, R7, R8, R10, R11, R14, R15 survive.
+<!-- SECTION:NOTES:END -->
