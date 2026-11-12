@@ -1,10 +1,11 @@
 ---
 id: TASK-54
 title: Roll a dice cell without closing the Muster Roll window
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T02:21:00Z'
-updated_date: '2026-11-12T02:27:00Z'
+updated_date: '2026-11-12T10:22:00Z'
 labels:
   - v2
 dependencies:
@@ -31,3 +32,13 @@ Pressing a dice cell rolls through the dice extension (TASK-36), and the roller 
 - [ ] #6 Dice+ (the commercial extension) behaves as it does today, or the task records how it differs
 - [ ] #7 The owner checks the change in a live room with the deployed fork
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Build spec: _bmad-output/implementation-artifacts/spec-task-54-roll-without-closing-the-window.md. Code lives in the dicex fork, branch dice-plus-roll-without-action (worktree /Users/seigiard/Projects/dicex-task-54, base origin/main 47cd243); Muster Roll needs no code change.
+1. Background routes a Dice+ roll by OBR.action.isOpen(): open -> today's path to the action page; closed -> new popover channels with a ping/ready handshake; no popover answer in 2 s -> fall back to opening the action.
+2. The popover mounts the roll handler, result reporter, metadata sync, roll log and Rumble subscriptions, and shows the roller's own tray at the bottom right.
+3. Unit tests for routing, fallback and the popover handler; yarn test + yarn build.
+4. Push the branch to the fork and open a PR inside the fork; draft the upstream PR text for the owner.
+<!-- SECTION:PLAN:END -->
