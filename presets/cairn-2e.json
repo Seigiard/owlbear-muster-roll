@@ -573,7 +573,7 @@
       "visibility": "gm",
       "sections": [
         {
-          "title": "Противники",
+          "title": "NPC",
           "columns": 9,
           "repeat": true,
           "tokens": true,
