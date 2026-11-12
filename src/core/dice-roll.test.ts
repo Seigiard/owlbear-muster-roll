@@ -224,6 +224,17 @@ describe('rollDiceCell', () => {
     expect(prepared).toEqual({ ok: false, error: { code: 'field', field: 'Урон' } });
   });
 
+  test('gives the field error when no field resolves from a dice-choice slot', () => {
+    // #given
+    const formula = '1d(nothing)';
+
+    // #when
+    const prepared = diceChoiceRoll(formula, undefined);
+
+    // #then
+    expect(prepared).toEqual({ ok: false, error: { code: 'field', field: 'nothing' } });
+  });
+
   test('rolls from the records and labels the roll by the cell', () => {
     // #when
     const rolled = roll(STRENGTH);
