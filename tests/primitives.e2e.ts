@@ -7,7 +7,7 @@ import type { Rgb } from './support/colors';
 const MIN_CONTRAST = 4.5;
 const MIN_TOUCH_TARGET_PX = 32;
 const MAX_TAB_PRESSES = 20;
-const DARK_FOCUS: Rgb = [217, 179, 108];
+const DARK_FOCUS: Rgb = [187, 153, 255];
 
 type BannerCase = {
   name: string;
@@ -148,7 +148,7 @@ test('a status chip is not a button and renders muted at 12 px', async ({ page }
   };
 
   // #then
-  expect(rendered).toEqual({ buttons: 0, color: [170, 170, 170], fontSize: '12px' });
+  expect(rendered).toEqual({ buttons: 0, color: [189, 190, 196], fontSize: '12px' });
 });
 
 test('typing in a Field reaches onChange and leaving it fires onBlur', async ({ page }) => {
@@ -183,8 +183,8 @@ test('a primary Button renders the accent background and contrast text', async (
 
   // #then
   expect(colors).toEqual([
-    [217, 179, 108],
-    [34, 34, 34],
+    [187, 153, 255],
+    [4, 5, 7],
   ]);
 });
 
@@ -204,8 +204,8 @@ for (const name of ['Secondary', 'Default']) {
 
     // #then
     expect(rendered).toEqual({
-      color: [221, 221, 221],
-      border: [85, 85, 85],
+      color: [255, 255, 255],
+      border: [78, 81, 97],
       borderWidth: '1px',
     });
   });
@@ -225,7 +225,7 @@ test('a Field has a dotted underline in the strong line color', async ({ page })
   };
 
   // #then
-  expect(underline).toEqual({ style: 'dotted', width: '1px', color: [136, 136, 136] });
+  expect(underline).toEqual({ style: 'dotted', width: '1px', color: [145, 147, 156] });
 });
 
 test('the shell banner slot renders the banner as a live region', async ({ page }) => {

@@ -2,19 +2,19 @@ import type { Theme } from '@/platform/ports';
 
 export type PreviewThemeName = 'dark' | 'light';
 
-// The mock room's dark theme (`src/platform/mock/index.ts`) and the light theme the browser tests
-// set (`tests/support/colors.ts`). The mock keeps its own private, and the page may not import it.
+// The two themes of a live Owlbear room. The mock room (`src/platform/mock/index.ts`) and the
+// browser tests (`tests/support/colors.ts`) hold their own copies, and this page may not import them.
 export const PREVIEW_THEMES: Readonly<Record<PreviewThemeName, Theme>> = {
   dark: {
     mode: 'DARK',
-    primary: { main: '#D9B36C', contrastText: '#222222' },
-    background: { default: '#2A2A2A', paper: '#333333' },
-    text: { primary: '#DDDDDD', secondary: '#AAAAAA' },
+    primary: { main: '#bb99ff', contrastText: 'rgba(0, 0, 0, 0.87)' },
+    background: { default: '#1e2231', paper: '#222639' },
+    text: { primary: '#fff', secondary: 'rgba(255, 255, 255, 0.7)' },
   },
   light: {
     mode: 'LIGHT',
-    primary: { main: '#0055AA', contrastText: '#FFFFFF' },
-    background: { default: '#C8C8C8', paper: '#FAFAFA' },
-    text: { primary: '#0A0A0A', secondary: '#555555' },
+    primary: { main: '#9966ff', contrastText: '#fff' },
+    background: { default: '#dde1ee', paper: '#f1f3f9' },
+    text: { primary: 'rgba(0, 0, 0, 0.87)', secondary: 'rgba(0, 0, 0, 0.6)' },
   },
 };

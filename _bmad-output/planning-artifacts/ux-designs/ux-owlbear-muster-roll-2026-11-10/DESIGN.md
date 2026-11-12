@@ -1,6 +1,6 @@
 ---
 name: Muster Roll
-description: Plain, dense sheets inside an Owlbear Rodeo window. Colours come from the live Owlbear theme; the hex values are fallbacks for tests and mocks.
+description: Plain, dense sheets inside an Owlbear Rodeo window. Colours come from the live Owlbear theme; the hex values are its dark theme, the fallback for tests and mocks.
 status: final
 created: 2026-11-10
 updated: 2026-11-12
@@ -10,17 +10,17 @@ sources:
   - ../../../specs/spec-muster-roll/storage-and-sync.md
   - ../../architecture/architecture-owlbear-muster-roll-2026-11-10/ARCHITECTURE-SPINE.md
 colors:
-  surface: '#333333'
-  surface-bar: '#2A2A2A'
-  surface-tab: '#3A3A3A'
-  surface-stripe: '#2D2D2D'
-  text: '#DDDDDD'
-  text-muted: '#AAAAAA'
-  accent: '#D9B36C'
-  accent-contrast: '#222222'
-  line: '#4A4A4A'
-  line-strong: '#888888'
-  focus: '#D9B36C'
+  surface: '#222639'
+  surface-bar: '#1E2231'
+  surface-tab: '#383C4D'
+  surface-stripe: '#222638'
+  text: '#FFFFFF'
+  text-muted: '#FFFFFFB3'
+  accent: '#BB99FF'
+  accent-contrast: '#000000DE'
+  line: '#4E5161'
+  line-strong: '#91939C'
+  focus: '#BB99FF'
   warning-surface: '#4A3A1E'
   warning-text: '#FFD894'
   danger-surface: '#4F2B26'
@@ -98,7 +98,7 @@ Muster Roll is a tool on the table, not a product with a personality. It looks l
 
 ## Colors
 
-Colours follow `OBR.theme` at runtime and change when the Owlbear theme changes. The hex values above are fallbacks for tests and mocks.
+Colours follow `OBR.theme` at runtime and change when the Owlbear theme changes. The hex values above are the dark theme of a live Owlbear room, the fallback for tests and mocks. The light theme of a live room is: paper `#F1F3F9`, default `#DDE1EE`, text `rgba(0, 0, 0, 0.87)`, secondary text `rgba(0, 0, 0, 0.6)`, primary `#9966FF`, contrast text `#FFFFFF`. `src/preview/themes.ts` holds both.
 
 | Token | Runtime source |
 | --- | --- |

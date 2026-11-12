@@ -76,11 +76,12 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 // The default device lists no key that starts with this, so mock bookkeeping stays out of it.
 const MOCK_STORAGE_PREFIX = 'mock-';
 
+// The dark theme of a live Owlbear room.
 const MOCK_THEME: Theme = {
   mode: 'DARK',
-  primary: { main: '#D9B36C', contrastText: '#222222' },
-  background: { default: '#2A2A2A', paper: '#333333' },
-  text: { primary: '#DDDDDD', secondary: '#AAAAAA' },
+  primary: { main: '#bb99ff', contrastText: 'rgba(0, 0, 0, 0.87)' },
+  background: { default: '#1e2231', paper: '#222639' },
+  text: { primary: '#fff', secondary: 'rgba(255, 255, 255, 0.7)' },
 };
 
 type ThemeListener = (theme: Theme) => void;

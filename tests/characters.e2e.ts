@@ -22,8 +22,8 @@ const UNNAMED = 'Без имени';
 const TOO_LONG = 'Слишком длинно';
 const SETTINGS = 'Настройки';
 const GEAR = '⚙︎';
-const LINE: readonly [number, number, number] = [85, 85, 85];
-const LINE_STRONG: readonly [number, number, number] = [136, 136, 136];
+const LINE: readonly [number, number, number] = [78, 81, 97];
+const LINE_STRONG: readonly [number, number, number] = [145, 147, 156];
 
 // A value whose `row:` record cannot fit one message, as `field-edit.e2e.ts` measures it.
 const TOO_LONG_NAME = 'ы'.repeat(7400);
