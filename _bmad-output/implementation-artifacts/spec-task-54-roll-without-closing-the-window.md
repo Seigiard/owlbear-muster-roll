@@ -2,7 +2,7 @@
 title: 'TASK-54 Roll a dice cell without closing the Muster Roll window'
 type: 'feature'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '47cd243f84be492b9026590177c62a32cacab454' # dicex fork, /Users/seigiard/Projects/dicex-task-54
 route: 'dispatch'
 review_loop_iteration: 0
@@ -63,11 +63,11 @@ All paths are in `/Users/seigiard/Projects/dicex-task-54`.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/plugin/dicePlusProtocol.ts` -- add popover ping/ready/roll channel constants -- separate audiences.
-- [ ] `src/plugin/dicePlusBackgroundCoordinator.ts` -- route by `action.isOpen()`; popover handshake; fallback to the action path on timeout -- the Matrix rows 1–3.
-- [ ] `src/plugin/dicePlusInternalRollHandler.ts` -- take the channel set as a parameter, default `INTERNAL_*` -- one roll handler for both pages.
-- [ ] `src/plugin/` new popover roll host (handler + reporter + sync + logger + rumble) and the roller's tray component; mount in `src/plugin/PopoverTrays.tsx` -- popover rolls and shows.
-- [ ] unit tests beside the changed modules -- Matrix rows 1–3 in the coordinator; the popover handler answers only popover channels and starts the roll with the request's visibility; the action handler ignores popover channels.
+- [x] `src/plugin/dicePlusProtocol.ts` -- add popover ping/ready/roll channel constants -- separate audiences.
+- [x] `src/plugin/dicePlusBackgroundCoordinator.ts` -- route by `action.isOpen()`; popover handshake; fallback to the action path on timeout -- the Matrix rows 1–3.
+- [x] `src/plugin/dicePlusInternalRollHandler.ts` -- take the channel set as a parameter, default `INTERNAL_*` -- one roll handler for both pages.
+- [x] `src/plugin/` new popover roll host (handler + reporter + sync + logger + rumble) and the roller's tray component; mount in `src/plugin/PopoverTrays.tsx` -- popover rolls and shows.
+- [x] unit tests beside the changed modules -- Matrix rows 1–3 in the coordinator; the popover handler answers only popover channels and starts the roll with the request's visibility; the action handler ignores popover channels.
 
 **Acceptance Criteria:**
 - Given the dicex window is closed, when a permitted Dice+ request arrives for this player, then `OBR.action.open` is never called and the result arrives on `{source}/roll-result`.
@@ -76,9 +76,23 @@ All paths are in `/Users/seigiard/Projects/dicex-task-54`.
 
 ## Implementation Notes
 
+- Built in the dicex fork worktree `/Users/seigiard/Projects/dicex-task-54`, branch `dice-plus-roll-without-action`. Final commits on 47cd243: `c170000` (tests) and `52f7410` (feature). The tdd run directory is `~/.claude/artifacts/tdd-20261112-113500/task-54-roll-without-closing-the-window/`; it holds every attempt, the lock, the calibration logs and the review files.
+- New module `src/plugin/dicePlusPopoverRollHost.ts` (`mountDicePlusPopoverRollHost`), new component `src/plugin/DicePlusPopoverRollTray.tsx`, popover channels `rodeo.owlbear.dice/popover-ping|ready|roll`. `dicePlusPendingRequest.ts` gained a subscribe so the tray can show the roller's name.
+- The action route still sends the internal roll after its 2 s handshake timeout, as base did; only the popover route skips on timeout and then falls back.
+- A click on the roller's tray before the dice settle does nothing, so the popover keeps its size while its physics produces the values. After they settle, a click hides the tray.
+- Two existing integration tests (`dicePlusAccess.test.ts`, `dicePlusFullRoll.test.ts`) now set `actionIsOpen = true`, because they exercise the action route.
+- The first test lock asserted only the first metadata entry and the first GM reveal. That pushed the first implementation into a completion-only reveal. The test was re-locked and the sync code restored to base, so GM clients again see the hidden throw animate.
+- Checks: `npx yarn@1.22.22 test` 40 files / 325 tests pass; `npx yarn@1.22.22 build` exit 0. Mutation calibration: the routing, the channel isolation and each host subscription go red when removed.
+- Code review: round 1 (revmux mixed-terra, 9/9 sources) gave 4 major and 2 minor findings: 5 fixed, 1 deferred. Round 2 (final, 2/2 sources) gave 0 findings.
+- Not testable here: the tray's React/R3F rendering (vitest runs in node, without a DOM). This is the owner's live check.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+| Finding (layer) | Verdict | Evidence | Route |
+|---|---|---|---|
+| bugs+impl-terra-2 "A remote tray covers the player's own Dice+ roll tray" (code-review-carryover, deferred minor) | low | `PopoverTrays.tsx` renders the roller's tray and every remote `PopoverTray` at the same absolute spot (`right=16 bottom=16`). When a remote roll and the roller's own roll show at the same time, the later sibling covers the other. Remote trays already overlap each other this way on base 47cd243. | defer |
 
 ## Design Notes
 

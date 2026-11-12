@@ -216,3 +216,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-47-shared-engine-test-rig.md`
   summary: Four non-engine test files still hold their own full `Timing` literal.
   evidence: `src/ui/replica-client.test.ts`, `src/ui/picker/link-picker.test.tsx`, `src/replica/commit-outbox.test.ts` and `src/platform/send-queue.test.ts` were outside TASK-47's scope; a new `Timing` field must still be added to each by hand.
+
+## Deferred from: build of spec-task-54-roll-without-closing-the-window (2026-11-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-54-roll-without-closing-the-window.md`
+  summary: In the dicex fork, a remote player's tray can cover the roller's own Dice+ tray in the bottom-right popover.
+  evidence: `src/plugin/PopoverTrays.tsx` (branch `dice-plus-roll-without-action`) renders the roller's tray and every remote `PopoverTray` at the same absolute spot (`right=16 bottom=16`). The later sibling covers the earlier one when two rolls show at once. Remote trays already overlap this way on base 47cd243. A fix needs a stacking or layout decision. Code-review finding bugs+impl-terra-2 (revmux round 1).
