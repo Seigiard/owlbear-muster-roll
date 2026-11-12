@@ -1,37 +1,67 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 
-import { cssValue, LIGHT_THEME, renderedColor, setTheme, tokenColor } from './support/colors';
+import {
+  contrastRatio,
+  cssValue,
+  layeredColor,
+  LIGHT_THEME,
+  renderedColor,
+  setTheme,
+  tokenColor,
+} from './support/colors';
 import type { Rgb } from './support/colors';
 import { openRoom } from './support/room';
 
+// Each mapped token over the window surface, with the live Owlbear themes.
 const DARK_TOKENS: ReadonlyMap<string, Rgb> = new Map<string, Rgb>([
-  ['--color-surface', [51, 51, 51]],
-  ['--color-surface-bar', [42, 42, 42]],
-  ['--color-surface-tab', [68, 68, 68]],
-  ['--color-surface-stripe', [50, 50, 50]],
-  ['--color-line', [85, 85, 85]],
-  ['--color-line-strong', [136, 136, 136]],
-  ['--color-focus', [217, 179, 108]],
-  ['--color-text', [221, 221, 221]],
-  ['--color-text-muted', [170, 170, 170]],
-  ['--color-accent', [217, 179, 108]],
-  ['--color-accent-contrast', [34, 34, 34]],
+  ['--color-surface', [34, 38, 57]],
+  ['--color-surface-bar', [30, 34, 49]],
+  ['--color-surface-tab', [56, 60, 77]],
+  ['--color-surface-stripe', [34, 38, 56]],
+  ['--color-line', [78, 81, 97]],
+  ['--color-line-strong', [145, 147, 156]],
+  ['--color-focus', [187, 153, 255]],
+  ['--color-text', [255, 255, 255]],
+  ['--color-text-muted', [189, 190, 196]],
+  ['--color-accent', [187, 153, 255]],
+  ['--color-accent-contrast', [4, 5, 7]],
 ]);
 
 const LIGHT_TOKENS: ReadonlyMap<string, Rgb> = new Map<string, Rgb>([
-  ['--color-surface', [250, 250, 250]],
-  ['--color-surface-bar', [200, 200, 200]],
-  ['--color-surface-tab', [226, 226, 226]],
-  ['--color-surface-stripe', [246, 246, 246]],
-  ['--color-line', [202, 202, 202]],
-  ['--color-line-strong', [130, 130, 130]],
-  ['--color-focus', [0, 85, 170]],
-  ['--color-text', [10, 10, 10]],
-  ['--color-text-muted', [85, 85, 85]],
-  ['--color-accent', [0, 85, 170]],
+  ['--color-surface', [241, 243, 249]],
+  ['--color-surface-bar', [221, 225, 238]],
+  ['--color-surface-tab', [220, 222, 227]],
+  ['--color-surface-stripe', [239, 242, 248]],
+  ['--color-line', [200, 202, 205]],
+  ['--color-line-strong', [136, 138, 141]],
+  ['--color-focus', [111, 78, 178]],
+  ['--color-text', [32, 32, 33]],
+  ['--color-text-muted', [96, 97, 100]],
+  ['--color-accent', [111, 78, 178]],
   ['--color-accent-contrast', [255, 255, 255]],
 ]);
+
+// EXPERIENCE.md Accessibility Floor: text reaches 4.5:1 in both Owlbear themes. A focus outline is
+// not text, so WCAG 1.4.11 asks 3:1 of it.
+const MIN_TEXT_CONTRAST = 4.5;
+const MIN_FOCUS_CONTRAST = 3;
+
+// Each text token and the surfaces the window puts it on.
+const TEXT_PAIRS: ReadonlyArray<readonly [string, readonly string[]]> = [
+  [
+    '--color-text',
+    ['--color-surface', '--color-surface-bar', '--color-surface-tab', '--color-surface-stripe'],
+  ],
+  ['--color-text-muted', ['--color-surface', '--color-surface-bar', '--color-surface-stripe']],
+  [
+    '--color-accent',
+    ['--color-surface', '--color-surface-bar', '--color-surface-tab', '--color-surface-stripe'],
+  ],
+  ['--color-accent-contrast', ['--color-accent']],
+];
+
+const FOCUS_SURFACES = ['--color-surface', '--color-surface-bar', '--color-surface-tab'];
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
@@ -58,6 +88,47 @@ test('a theme change updates every mapped token', async ({ page }) => {
   // #then
   expect(await tokenColors(page, [...LIGHT_TOKENS.keys()])).toEqual(new Map(LIGHT_TOKENS));
 });
+
+for (const mode of ['dark', 'light'] as const) {
+  test(`the ${mode} theme gives text 4.5:1 and the focus outline 3:1 on every surface`, async ({
+    page,
+  }) => {
+    // #given
+    await openWindow(page);
+
+    if (mode === 'light') {
+      await setTheme(page, LIGHT_THEME);
+    }
+
+    // #when
+    const pairs = [
+      ...TEXT_PAIRS.flatMap(([text, surfaces]) =>
+        surfaces.map((surface) => ({ text, surface, minimum: MIN_TEXT_CONTRAST })),
+      ),
+      ...FOCUS_SURFACES.map((surface) => ({
+        text: '--color-focus',
+        surface,
+        minimum: MIN_FOCUS_CONTRAST,
+      })),
+    ];
+
+    const failing: string[] = [];
+
+    for (const { text, surface, minimum } of pairs) {
+      // Every surface sits on the window surface, so a translucent one shows it through.
+      const back = await layeredColor(page, ['--color-surface', surface]);
+      const front = await layeredColor(page, ['--color-surface', surface, text]);
+      const ratio = contrastRatio(front, back);
+
+      if (ratio < minimum) {
+        failing.push(`${text} on ${surface}: ${ratio.toFixed(2)}`);
+      }
+    }
+
+    // #then
+    expect(failing).toEqual([]);
+  });
+}
 
 test('a theme change does not reload the window', async ({ page }) => {
   // #given
@@ -161,8 +232,8 @@ test('the selected tab takes the active colors and joins the content area', asyn
 
   // #then
   expect(active).toEqual([
-    [51, 51, 51],
-    [217, 179, 108],
+    [34, 38, 57],
+    [187, 153, 255],
   ]);
 });
 
@@ -180,8 +251,8 @@ test('an unselected tab takes the tab colors', async ({ page, context }) => {
 
   // #then
   expect(inactive).toEqual([
-    [68, 68, 68],
-    [221, 221, 221],
+    [56, 60, 77],
+    [255, 255, 255],
   ]);
 });
 
@@ -282,7 +353,7 @@ test('a focused tab shows a 2 px solid outline in the focus color', async ({ pag
     style: await cssValue(tab, 'outline-style'),
     width: await cssValue(tab, 'outline-width'),
     color: await renderedColor(tab, 'outline-color'),
-  }).toEqual({ focused: true, style: 'solid', width: '2px', color: [217, 179, 108] });
+  }).toEqual({ focused: true, style: 'solid', width: '2px', color: [187, 153, 255] });
 });
 
 test('a tab is at least 32 px high', async ({ page, context }) => {

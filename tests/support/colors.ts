@@ -4,11 +4,12 @@ import type { Theme } from '@/platform/ports';
 
 export type Rgb = readonly [number, number, number];
 
+// The light theme of a live Owlbear room.
 export const LIGHT_THEME: Theme = {
   mode: 'LIGHT',
-  primary: { main: '#0055AA', contrastText: '#FFFFFF' },
-  background: { default: '#C8C8C8', paper: '#FAFAFA' },
-  text: { primary: '#0A0A0A', secondary: '#555555' },
+  primary: { main: '#9966ff', contrastText: '#fff' },
+  background: { default: '#dde1ee', paper: '#f1f3f9' },
+  text: { primary: 'rgba(0, 0, 0, 0.87)', secondary: 'rgba(0, 0, 0, 0.6)' },
 };
 
 export async function setTheme(page: Page, theme: Theme): Promise<void> {
@@ -43,6 +44,33 @@ export async function tokenColor(page: Page, token: string): Promise<Rgb> {
   return paintedColor(page, color);
 }
 
+// Paints the tokens one over the other, first at the bottom, and reads the colour that shows. A
+// token with alpha, such as a text colour from Owlbear, shows the layer under it.
+export function layeredColor(page: Page, tokens: readonly string[]): Promise<Rgb> {
+  return page.evaluate((names): Rgb => {
+    const context = document.createElement('canvas').getContext('2d');
+    const probe = document.createElement('div');
+
+    if (context === null) {
+      throw new Error('the page has no 2d canvas');
+    }
+
+    document.body.append(probe);
+
+    for (const name of names) {
+      probe.style.backgroundColor = `var(${name})`;
+      context.fillStyle = getComputedStyle(probe).backgroundColor;
+      context.fillRect(0, 0, 1, 1);
+    }
+
+    probe.remove();
+
+    const [red = 0, green = 0, blue = 0] = context.getImageData(0, 0, 1, 1).data;
+
+    return [red, green, blue];
+  }, tokens);
+}
+
 export function cssValue(locator: Locator, property: string): Promise<string> {
   return locator.evaluate(
     (element, name) => getComputedStyle(element).getPropertyValue(name),
@@ -57,14 +85,21 @@ export function contrastRatio(first: Rgb, second: Rgb): number {
 }
 
 // Chromium reports color-mix results as color(srgb ...), so a canvas turns any color into bytes.
+// The canvas starts as the window surface, so a colour with alpha reads as it paints there.
 function paintedColor(page: Page, color: string): Promise<Rgb> {
   return page.evaluate((fill): Rgb => {
     const context = document.createElement('canvas').getContext('2d');
+    const probe = document.createElement('div');
 
     if (context === null) {
       throw new Error('the page has no 2d canvas');
     }
 
+    probe.style.backgroundColor = 'var(--color-surface)';
+    document.body.append(probe);
+    context.fillStyle = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    context.fillRect(0, 0, 1, 1);
     context.fillStyle = fill;
     context.fillRect(0, 0, 1, 1);
 

@@ -47,6 +47,22 @@ describe('themeTokens', () => {
       '--mr-accent-contrast': '#202122',
     });
   });
+
+  test('darkens the light accent and focus with the text colour', () => {
+    // #when
+    const tokens = themeTokens(LIGHT);
+
+    // #then
+    expect({
+      accent: tokens['--mr-accent'],
+      focus: tokens['--mr-focus'],
+      contrast: tokens['--mr-accent-contrast'],
+    }).toEqual({
+      accent: 'color-mix(in srgb, #A0A1A2 65%, #E0E1E2)',
+      focus: 'color-mix(in srgb, #A0A1A2 65%, #E0E1E2)',
+      contrast: '#B0B1B2',
+    });
+  });
 });
 
 describe('applyTheme', () => {

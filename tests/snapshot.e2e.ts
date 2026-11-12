@@ -51,7 +51,7 @@ const MOCK_ROOM = 'mr2:mock-room:';
 const FIRST_GENERATION = `${MOCK_ROOM}0::`;
 const SILENT_GM = 'silent-gm';
 const OPEN_ITEM = 'app.muster-roll/open-sheet';
-const ACCENT: readonly [number, number, number] = [217, 179, 108];
+const ACCENT: readonly [number, number, number] = [187, 153, 255];
 
 // Midday, so no time zone of the test machine moves it to another date.
 const FIXED_NOW = new Date(2026, 0, 5, 12, 0).getTime();

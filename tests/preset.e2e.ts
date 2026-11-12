@@ -17,7 +17,7 @@ const SHEET_KEY = `${STORAGE_PREFIX}sheet:saved`;
 const UPLOAD = 'Загрузить пресет';
 const DOWNLOAD = 'Скачать пресет';
 const SETTINGS = 'Настройки';
-const ACCENT: readonly [number, number, number] = [217, 179, 108];
+const ACCENT: readonly [number, number, number] = [187, 153, 255];
 const TOO_LARGE = 'Файл не подошёл: файл слишком большой. Ничего не изменено.';
 
 // The preset data that lands here still fits one command message, with its envelope of about
