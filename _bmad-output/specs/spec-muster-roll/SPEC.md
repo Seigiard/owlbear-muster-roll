@@ -145,7 +145,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - The builder is a top-level page on the deployed site, outside the Owlbear iframe. The iframe's storage is partitioned from a top-level tab, so the extension and the builder exchange no data through storage.
 - The builder's preview uses the extension's own sheet components. No second sheet renderer exists.
 - The extension, the preview page and the builder preview draw the window, with its sidebar and tabs, through one frame component.
-- The window is at least 480 px wide, so the sidebar and a sheet fit side by side. The sidebar is always shown, about 8–9 rem wide.
+- The window is at least 480 px wide, so the sidebar and a sheet fit side by side. The sidebar is always shown, 10 rem wide.
 - A template's fields outside repeat sections are one id scope across all its tabs.
 - Visibility only narrows: a tab is hidden when its template or the tab is hidden.
 - The builder checks a preset with `parsePresetFile`, the upload's own check, and shows the upload's refusal messages.

@@ -134,7 +134,7 @@ System font only, because a window loads inside Owlbear and must render at once.
 
 ## Layout & Spacing
 
-The window has the sidebar at the left, about 8.5 rem wide and always shown, and the content column at the right. The content column has an optional banner, the sheet header, the tab row when the sheet has more than one tab, and one scrolling content area with padding of `{spacing.3}`. Sections take the preset's section width and wrap as whole sections. Below 480 px of content width each section takes the full width. Inside a `columns` section, the rows always share one grid. If the grid does not fit, the section scrolls horizontally. Gaps use `{spacing.1}` inside a row, `{spacing.2}` between controls and `{spacing.4}` between sections.
+The window has the sidebar at the left, 10 rem wide and always shown, and the content column at the right. The content column has an optional banner, the sheet header, the tab row when the sheet has more than one tab, and one scrolling content area with padding of `{spacing.3}`. Sections take the preset's section width and wrap as whole sections. Below 480 px of content width each section takes the full width. Inside a `columns` section, the rows always share one grid. If the grid does not fit, the section scrolls horizontally. Gaps use `{spacing.1}` inside a row, `{spacing.2}` between controls and `{spacing.4}` between sections.
 
 ## Elevation & Depth
 
