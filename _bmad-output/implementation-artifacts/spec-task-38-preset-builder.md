@@ -2,7 +2,7 @@
 title: 'TASK-38: build presets without writing JSON (preset builder page)'
 type: 'feature'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '208c950c762bddcd4c596498a01aa22c50a2ca6d'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -94,6 +94,38 @@ context:
 ## Spec Change Log
 
 ## Review Triage Log
+
+Pass 1 (blind-hunter, edge-case-hunter, verification-gap), loop 0.
+
+| # | Source | Finding | Verdict | Evidence | Route |
+|---|--------|---------|---------|----------|-------|
+| 1 | edge, verification | `IntegerInput` stores 17+ digit numbers; zod `.int()` refuses unsafe integers, so `readDraft` drops the whole draft on reload | high | `item-form.tsx` IntegerInput tests only `/^\d+$/`; the verification layer ran `parsePresetStructure` on `columns: 1e20` and got `null` | patch |
+| 2 | blind, edge | Download off while the counter says «Проблем нет» (too-large, unsafe integers) | medium | `downloadText` runs `parsePresetFile`; `builderProblems` lists only rule problems, window and no templates | patch |
+| 3 | edge, blind | The "no templates" problem (at `PRESET_UID`) shows no reason anywhere; its message would be «неверная структура» | medium | `ItemForm` shows messages only for a selection that `locate` finds; `problemReason` maps it to `invalidStructure` | patch |
+| 4 | edge | Ctrl/Cmd+Z does nothing on a Russian layout | medium | `useUndoKeys` compares `event.key` to `z`; on ЙЦУКЕН `event.key` is `я` | patch |
+| 5 | blind | No Ctrl+Y redo | low | `useUndoKeys` handles only Z; direct addition beside fix 4 | patch |
+| 6 | blind, edge | Rename to an invalid or taken id rewrites formulas into text no later rename restores | medium | `renameFieldId` rewrites for any `newId`; `replaceWord(…, '', …)` never matches back | patch (AD-24 keeps "applied and shows as a problem" for the cell; formulas are left alone) |
+| 7 | edge | Draft status says «Черновик сохранён» when reading the draft threw | low | `createBuilderStore` sets `draft` from `storage === null` only; direct correction | patch |
+| 8 | edge | Caret word goes stale on Home/End or a selection with the list open | low | `FormulaInput` reads the word on change, arrows and click only; adding `onSelect` is a direct correction | patch |
+| 9 | blind, edge | `staticImports` misses side-effect and dynamic imports, so the no-`obr` test can pass falsely | low | regex matches only `from"./x.js"`; direct regex correction | patch |
+| 10 | blind | `docs/preset-format.md` does not name the builder | low | the doc still tells GMs to write JSON; one short section is a direct addition | patch |
+| 11 | verification | No e2e for row and section preview marks and clicks | gap | filed pre-verified; `builder.e2e.ts` asserts only `data-cell` marks and cell clicks | patch |
+| 12 | verification | No test for formula completion | gap | filed pre-verified; no test drives the listbox | patch |
+| 13 | verification | No test for the template id warning | gap | filed pre-verified; `templateSheetsDeleted` has no test | patch |
+| 14 | verification | No test that Ctrl/Cmd+Z leaves text inputs alone | gap | filed disposition `defer` | defer |
+| 15 | edge | Field rename after a template id rename finds no origin template, so no values warning | medium | `item-form.tsx` looks up `origin` by the current `template.id`; the fix needs origin ids tracked per uid | defer |
+| 16 | blind, edge | A problem inside a collapsed container shows no mark in the visible tree | medium | `structure-tree.tsx` marks only the problem uid; the counter still reaches it | defer |
+| 17 | edge | Two rows of one plain section starting with one field id give duplicate React keys in the preview | low | `plainRows` keys by `rowId`; only an invalid builder draft reaches it; the fix touches window key stability | defer |
+| 18 | blind | Form inputs carry no `aria-invalid` and no link to their problem message | medium | `FormulaInput` gets `invalid={false}`; `ProblemList` is not referenced by `aria-describedby` | defer |
+| 19 | blind | The hex test skips every `builder-*` chunk, not only the preview themes | low | `BUILDER_CHUNK` filter in `tests/build.test.ts`; narrowing needs a chunk split | defer |
+| 20 | blind, edge | Two builder tabs overwrite one draft | medium | known and accepted in AD-21; listed in the spine's Deferred | reject (already deferred in the spine) |
+| 21 | edge | Undo stack grows without bound | low | no `UNDO_LIMIT`; the spine defers stack depth | reject (already deferred in the spine) |
+| 22 | blind | Only id renames warn about erased room values | medium | AD-24 limits the warning to renames; the spine defers the move and delete warning | reject (already deferred in the spine) |
+| 23 | edge | `file.text()` rejection is unhandled | low | a picked file that vanishes before reading is rare; the fix adds a guard | reject |
+| 24 | edge | Two file picks race on `file.text()` | low | needs two picks within one read; adds a token guard | reject |
+| 25 | blind, edge | Theme cannot return to the system choice, and no live system change | false | owner decision: follows the system on open, a switch overrides and is remembered | reject |
+| 26 | blind | Ctrl+Z in a text input is the browser's undo, not the store's | false | EXPERIENCE.md: the keys work outside text inputs; buttons always work | reject |
+| 27 | blind | Every keystroke writes the draft and runs all checks, with no debounce | false | AD-21 asks for a write after each change and no debounce; presets are a few kB | reject |
 
 ## Design Notes
 

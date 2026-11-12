@@ -161,6 +161,10 @@ A refused file changes nothing. The message under the button names the first pro
 | A formula breaks the formula rules | ошибка в формуле «{formula}» |
 | The file or the stored preset is too large | файл слишком большой |
 
+## Build a preset without JSON
+
+The builder page, `/builder.html`, makes a preset with no JSON to write. Open it with "Конструктор пресетов" in the Пресет section of Settings. It opens in a new tab. The page starts from an empty preset, an example or a file, and edits it as a tree with a form for each item. "Скачать пресет" is enabled only when the preset has no problems, so each file it gives is one that "Загрузить пресет" accepts.
+
 ## Preview a preset
 
 To see a preset while you edit it, with no Owlbear room, run:
