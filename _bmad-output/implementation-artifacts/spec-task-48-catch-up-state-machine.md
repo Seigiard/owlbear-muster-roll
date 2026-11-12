@@ -2,9 +2,10 @@
 title: 'TASK-48: make catch-up and the GM link one state machine'
 type: 'refactor'
 created: '2026-11-12'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
+baseline_commit: '3fb9dde2f413c79178f37b173338c3ceffc923a5'
 context:
   - '{project-root}/CLAUDE.md'
   - '{project-root}/GLOSSARY.md'
