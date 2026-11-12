@@ -1,12 +1,18 @@
 import { afterEach, mock } from 'bun:test';
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
+import { nanoid } from 'nanoid';
 import { z } from 'zod';
 
 import type { JsonObject, JsonValue } from '@/core/json';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
-import type { Command, SyncState } from '@/core/ui-messages';
+import {
+  parseEngineMessage,
+  type Command,
+  type CommandRejectedMessage,
+  type SyncState,
+} from '@/core/ui-messages';
 import type { ReplicaEngineOptions, ReplicaEngine } from '@/replica/engine';
 import {
   createMemoryBacking,
@@ -59,7 +65,17 @@ export const RIG_TIMING: Timing = {
   incompleteRequestStartMs: 2000,
   incompleteRequestMaxMs: 30000,
   snapshotImportTimeoutMs: 60000,
+  wipeTimeoutMs: 60000,
+  accessChangeTimeoutMs: 5000,
+  linkSetTimeoutMs: 5000,
+  rollTimeoutMs: 90000,
+  commandTimeoutMs: 15000,
 };
+
+export type RigOutcome =
+  | { kind: 'answered'; answer: JsonValue | undefined }
+  | { kind: 'refused'; rejection: CommandRejectedMessage }
+  | { kind: 'timed-out' };
 
 export type RigHeard = { from: string; data: JsonValue; at: number };
 
@@ -88,6 +104,8 @@ export type RigClient = {
   window: ReplicaClient;
   startEngine: (options?: RigStartOptions) => Promise<void>;
   local: JsonValue[];
+  mintedIds: string[];
+  commandOutcomes: Map<string, RigOutcome>;
   writes: string[];
   seeded: ReadonlySet<string>;
   newPage: () => MockPlatform;
@@ -232,6 +250,8 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
     const trackedBacking = trackBacking(backing, writes);
 
     const local: JsonValue[] = [];
+    const mintedIds: string[] = [];
+    const commandOutcomes = new Map<string, RigOutcome>();
     const created = createMockPlatform(bus, trackedBacking, identity);
     const effectiveTiming = { ...rigTiming, ...clientOptions.timing };
 
@@ -285,6 +305,7 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
       const pagePlatform = createMockPlatform(bus, trackedBacking, identity);
       const pageStore = createProjectionStore();
       const pageTiming = { ...effectiveTiming, ...pageOptions.queueTiming };
+      const makeId = pageOptions.newId ?? nanoid;
       pageOptions.beforeStart?.(pagePlatform);
 
       const pageWindow = startReplicaClient(
@@ -292,7 +313,13 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
         createSendQueue(pagePlatform.broadcast, pageTiming),
         pageStore,
         effectiveTiming,
-        pageOptions.newId,
+        () => {
+          const id = makeId();
+
+          mintedIds.push(id);
+
+          return id;
+        },
       );
 
       const page: RigPage = {
@@ -350,6 +377,8 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
       },
       startEngine,
       local,
+      mintedIds,
+      commandOutcomes,
       writes,
       seeded: seededKeys,
       newPage: () => createMockPlatform(bus, trackedBacking, identity),
@@ -410,14 +439,49 @@ export function pause(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-export function send(client: Pick<RigClient, 'window'>, command: Command): string {
-  const sent = client.window.sendCommand(command);
+export function send(
+  client: Pick<RigClient, 'window' | 'mintedIds' | 'commandOutcomes'>,
+  command: Command,
+): string {
+  return trackWindowOutcome(client, () => client.window.sendCommand(command));
+}
 
-  if (!sent.ok) {
-    throw new Error(`the window refused the command: ${sent.error}`);
+export function requestPresetDiff(
+  client: Pick<RigClient, 'window' | 'mintedIds' | 'commandOutcomes'>,
+  data: string,
+): string {
+  return trackWindowOutcome(client, () => client.window.requestPresetDiff(data));
+}
+
+export function requestRoll(
+  client: Pick<RigClient, 'window' | 'mintedIds' | 'commandOutcomes'>,
+  request: Parameters<ReplicaClient['requestRoll']>[0],
+  onWaitingAccess?: () => void,
+): string {
+  return trackWindowOutcome(client, () => client.window.requestRoll(request, onWaitingAccess));
+}
+
+function trackWindowOutcome(
+  tracked: Pick<RigClient, 'window' | 'mintedIds' | 'commandOutcomes'>,
+  start: () => Promise<RigOutcome>,
+): string {
+  const before = tracked.mintedIds.length;
+  const pending = Promise.resolve(start());
+  const id = tracked.mintedIds.at(-1);
+
+  if (id === undefined || tracked.mintedIds.length !== before + 1) {
+    throw new Error('the window minted no command id');
   }
 
-  return sent.value;
+  void pending
+    .then((settled) => {
+      tracked.commandOutcomes.set(id, settled);
+    })
+    .catch(() => {
+      console.error('the window outcome rejected');
+    });
+
+  return id;
 }
 
 export function shown(client: Pick<RigClient, 'store'>, key: string): VersionedRecord | undefined {
@@ -428,8 +492,47 @@ export function sync(client: Pick<RigClient, 'store'>): SyncState {
   return client.store.$sync.get();
 }
 
-export function rejection(client: Pick<RigClient, 'store'>, id: string): string | undefined {
-  return client.store.$rejections.get().get(id)?.reason;
+export function rejection(
+  client: Pick<RigClient, 'local' | 'commandOutcomes'>,
+  id: string,
+): string | undefined {
+  const settled = client.commandOutcomes.get(id);
+
+  if (settled?.kind === 'refused') {
+    return settled.rejection.reason;
+  }
+
+  for (let index = client.local.length - 1; index >= 0; index -= 1) {
+    const message = client.local[index];
+
+    if (message === undefined) {
+      continue;
+    }
+
+    const parsed = parseEngineMessage(message);
+
+    if (parsed.ok && parsed.value.t === 'command-rejected' && parsed.value.id === id) {
+      return parsed.value.reason;
+    }
+  }
+
+  return undefined;
+}
+
+export function outcome(
+  client: Pick<RigClient, 'commandOutcomes'>,
+  id: string,
+): RigOutcome | undefined {
+  return client.commandOutcomes.get(id);
+}
+
+export function refusal(
+  client: Pick<RigClient, 'commandOutcomes'>,
+  id: string,
+): CommandRejectedMessage | undefined {
+  const settled = outcome(client, id);
+
+  return settled?.kind === 'refused' ? settled.rejection : undefined;
 }
 
 export function heardOf(room: Pick<RigRoom, 'heard'>, from: string, t: string): JsonValue[] {

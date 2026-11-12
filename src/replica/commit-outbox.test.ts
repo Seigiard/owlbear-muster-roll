@@ -33,6 +33,11 @@ const TIMING: Timing = {
   incompleteRequestStartMs: 2000,
   incompleteRequestMaxMs: 30000,
   snapshotImportTimeoutMs: 60000,
+  wipeTimeoutMs: 60000,
+  accessChangeTimeoutMs: 5000,
+  linkSetTimeoutMs: 5000,
+  rollTimeoutMs: 90000,
+  commandTimeoutMs: 15000,
 };
 
 const GENERATION = { n: 0, a: '' };

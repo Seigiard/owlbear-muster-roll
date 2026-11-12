@@ -179,21 +179,13 @@ async function startClient(
 
 // Requests a roll from the client's window and waits for the engine's answer.
 async function roll(client: Client, request: RollRequest): Promise<RollOutcome> {
-  const sent = client.window.requestRoll(request);
+  const settled = await Promise.resolve(client.window.requestRoll(request));
 
-  if (!sent.ok) {
-    throw new Error(`the window refused the roll: ${sent.error}`);
+  if (settled.kind !== 'answered') {
+    throw new Error(`the roll was ${settled.kind}`);
   }
 
-  await waitUntil(() => client.store.$rollOutcomes.get().has(sent.value));
-
-  const outcome = client.store.$rollOutcomes.get().get(sent.value)?.outcome;
-
-  if (outcome === undefined) {
-    throw new Error('the roll has no outcome');
-  }
-
-  return outcome;
+  return settled.answer;
 }
 
 function shown(client: Client): string[] {

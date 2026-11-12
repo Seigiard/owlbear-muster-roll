@@ -23,7 +23,14 @@ import {
   type MockRoom,
 } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createRoomRig, pause, waitUntil, type RigClient } from '@/replica/room-rig';
+import {
+  createRoomRig,
+  outcome,
+  pause,
+  requestRoll as trackedRoll,
+  waitUntil,
+  type RigClient,
+} from '@/replica/room-rig';
 import { copy } from '@/ui/copy';
 import type { RollRequest } from '@/ui/replica-client';
 
@@ -323,32 +330,28 @@ async function roll(client: Client, request: RollRequest): Promise<RollOutcome> 
 
 // The request id of a roll the window sent.
 function requestRoll(client: Client, request: RollRequest): string {
-  const sent = client.window.requestRoll(request);
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the roll: ${sent.error}`);
-  }
-
-  return sent.value;
+  return trackedRoll(client, request);
 }
 
 // The outcome that ends the roll. Waiting for the GM is none.
 async function finalOutcome(client: Client, id: string): Promise<RollOutcome> {
   const final = (): RollOutcome | undefined => {
-    const outcome = client.store.$rollOutcomes.get().get(id)?.outcome;
+    const settled = outcome(client, id);
 
-    return outcome?.code === 'waiting-access' ? undefined : outcome;
+    return settled?.kind === 'answered'
+      ? rollOutcomeMessageSchema.shape.outcome.parse(settled.answer)
+      : undefined;
   };
 
   await waitUntil(() => final() !== undefined);
 
-  const outcome = final();
+  const settledRoll = final();
 
-  if (outcome === undefined) {
+  if (settledRoll === undefined) {
     throw new Error('the roll has no outcome');
   }
 
-  return outcome;
+  return settledRoll;
 }
 
 function shown(client: Client): string[] {

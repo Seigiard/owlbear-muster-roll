@@ -19,13 +19,16 @@ import {
   createRoomRig,
   heardOf,
   lastRequest,
+  outcome,
   pause,
+  rejection,
   send,
   shown,
   storedRecord,
   storageKey,
   sync,
   type RigClient,
+  type RigOutcome,
   type RigRoom,
 } from '@/replica/room-rig';
 
@@ -234,15 +237,7 @@ async function startClient(
 
 // The check's answer, or the reason it was refused.
 async function check(client: Client, data = DATA): Promise<JsonValue> {
-  const sent = client.window.requestSnapshotCheck(data);
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the check: ${sent.error}`);
-  }
-
-  await roomRig.waitUntil(() => answerOf(client, sent.value) !== null);
-
-  return answerOf(client, sent.value);
+  return answerValue(await Promise.resolve(client.window.requestSnapshotCheck(data)));
 }
 
 // The import's answer, or the reason it was refused, with the digest of a check first.
@@ -250,21 +245,25 @@ async function importFile(client: Client, digest?: string, data = DATA): Promise
   const expected = digest ?? String(Object(await check(client, data)).digest);
   const id = send(client, { type: 'snapshot-import', data, expectedDigest: expected });
 
-  await roomRig.waitUntil(() => answerOf(client, id) !== null);
+  await roomRig.waitUntil(() => outcome(client, id) !== undefined);
 
-  return answerOf(client, id);
+  return answerValue(outcome(client, id));
 }
 
-function answerOf(client: Client, id: string): JsonValue {
-  const rejection = client.store.$rejections.get().get(id);
-
-  if (rejection !== undefined) {
-    return { ...rejection };
+function answerValue(settled: RigOutcome | undefined): JsonValue {
+  if (settled === undefined) {
+    throw new Error('the window returned no command outcome');
   }
 
-  const result = client.store.$snapshotResults.get().get(id);
+  if (settled.kind === 'answered') {
+    return settled.answer ?? { kind: 'answered' };
+  }
 
-  return result === undefined ? null : { ...result };
+  if (settled.kind === 'refused') {
+    return settled.rejection;
+  }
+
+  return { kind: 'timed-out' };
 }
 
 function shownKeys(client: Client): string[] {
@@ -316,13 +315,7 @@ describe('check', () => {
       copy: room.room.getMetadata()[KEY] ?? null,
       brok: shown(gm, BROK.k),
     }).toEqual({
-      answer: {
-        t: 'snapshot-check-result',
-        id: expect.any(String),
-        count: 1,
-        sheets: 0,
-        digest: expect.any(String),
-      },
+      answer: { count: 1, sheets: 0, digest: expect.any(String) },
       keys: keysBefore,
       heard: 0,
       copy: null,
@@ -454,13 +447,13 @@ describe('import', () => {
 
     // #then
     expect({
-      answer: Object(answer).t,
+      answer: Object(answer).kind,
       events: room.events.filter((event) => event === 'copy' || event === 'reset'),
       savedAtCopy: savedAtCopy.length > 0,
       reset: heardOf(room, 'gm-a', 'reset'),
       copy: roomCopyGeneration(room),
     }).toEqual({
-      answer: 'snapshot-imported',
+      answer: 'answered',
       events: ['copy', 'reset'],
       savedAtCopy: true,
       reset: [{ v: 2, g: generation, t: 'reset' }],
@@ -695,18 +688,18 @@ describe('import', () => {
       value: 5,
     });
 
-    await roomRig.waitUntil(() => answerOf(gm, edit) !== null);
+    await roomRig.waitUntil(() => outcome(gm, edit) !== undefined);
     gate.open();
-    await roomRig.waitUntil(() => answerOf(gm, imported) !== null);
+    await roomRig.waitUntil(() => outcome(gm, imported) !== undefined);
 
     // #then
     expect({
-      edit: Object(answerOf(gm, edit)).reason,
-      imported: Object(answerOf(gm, imported)).t,
+      edit: rejection(gm, edit),
+      imported: outcome(gm, imported)?.kind,
       commits: heardOf(room, 'gm-a', 'commit').filter(
         (one) => JSON.stringify(Object(one).g) === JSON.stringify(newGenerationOf('gm-a')),
       ),
-    }).toEqual({ edit: 'importing', imported: 'snapshot-imported', commits: [] });
+    }).toEqual({ edit: 'importing', imported: 'answered', commits: [] });
   });
 
   test('a linked token deleted from the scene during the import loses its link once the import ends', async () => {
@@ -732,14 +725,14 @@ describe('import', () => {
 
     // #when
     gate.open();
-    await roomRig.waitUntil(() => answerOf(gm, imported) !== null);
+    await roomRig.waitUntil(() => outcome(gm, imported) !== undefined);
     await roomRig.waitUntil(() => shown(gm, 'link:t1')?.d === null);
 
     // #then
     expect({
       during,
       stored: storedRecord(gm, 'link:t1', { n: 1, a: 'gm-a' }),
-      rejections: [...gm.store.$rejections.get().keys()],
+      rejections: gm.local.filter((message) => Object(message).t === 'command-rejected'),
     }).toEqual({
       during: { s: 'anya' },
       stored: { k: 'link:t1', d: null, c: 2, a: 'gm-a' },
@@ -809,7 +802,7 @@ describe('import', () => {
     await roomRig.waitUntil(() => gate.calls === 2);
     gate.open();
     await roomRig.waitUntil(() =>
-      ids.every((id, index) => answerOf([first, second][index] ?? first, id) !== null),
+      ids.every((id, index) => outcome([first, second][index] ?? first, id) !== undefined),
     );
     await roomRig.waitUntil(() =>
       [first, second].every(
@@ -826,12 +819,12 @@ describe('import', () => {
         key.startsWith(storageKey('', { n: 1, a: 'gm-b' })),
       ),
       shown: shownKeys(first),
-      winner: Object(answerOf(second, ids[1] ?? '')).t,
+      winner: outcome(second, ids[1] ?? '')?.kind,
     }).toEqual({
       first: true,
       second: true,
       shown: shownKeys(second),
-      winner: 'snapshot-imported',
+      winner: 'answered',
     });
   });
 
@@ -855,11 +848,11 @@ describe('import', () => {
 
     // #then
     expect({
-      answer: Object(answer).t,
+      answer: Object(answer).kind,
       notices: gm.store.$notices.get(),
       roomCopy: gm.store.$roomCopy.get().state,
     }).toEqual({
-      answer: 'snapshot-imported',
+      answer: 'answered',
       notices: ['room-copy-not-saved'],
       roomCopy: 'failed',
     });
@@ -892,13 +885,13 @@ describe('import', () => {
       value: 5,
     });
 
-    await roomRig.waitUntil(() => player.store.$rejections.get().has(id));
+    await roomRig.waitUntil(() => outcome(player, id) !== undefined);
 
     // #then
     expect({
       keys: shownKeys(player).filter((key) => key.startsWith('acl:') || key.startsWith('plink:')),
       brok: shown(player, BROK.k) ?? null,
-      edit: player.store.$rejections.get().get(id)?.reason,
+      edit: rejection(player, id),
       notified: player.platform.shownNotifications(),
     }).toEqual({ keys: [], brok: null, edit: 'not-allowed', notified: [DATA_REPLACED] });
   });
@@ -959,18 +952,27 @@ describe('adoption', () => {
 
     // #when
     room.post(GHOST, { v: 2, g: generation, t: 'alive', digest: 1 });
-    await roomRig.waitUntil(() => gm.store.$rejections.get().has(intent));
+    await roomRig.waitUntil(() => outcome(gm, intent) !== undefined);
     await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
     room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), [PRESET_RECORD, anya], generation));
     await roomRig.waitUntil(() => sync(gm).state === 'live');
 
     // #then
     expect({
-      intent: gm.store.$rejections.get().get(intent)?.reason,
+      intent: rejection(gm, intent),
+      outcome: outcome(gm, intent),
+      answers: gm.local.filter(
+        (message) => Object(message).t === 'command-rejected' && Object(message).id === intent,
+      ).length,
       keys: shownKeys(gm),
       notified: gm.platform.shownNotifications(),
     }).toEqual({
       intent: 'data-replaced',
+      outcome: {
+        kind: 'refused',
+        rejection: { t: 'command-rejected', id: intent, reason: 'data-replaced' },
+      },
+      answers: 1,
       keys: ['preset', 'sheet:anya'],
       notified: [DATA_REPLACED],
     });
