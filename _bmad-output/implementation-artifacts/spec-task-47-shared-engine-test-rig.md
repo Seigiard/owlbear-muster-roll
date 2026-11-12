@@ -2,7 +2,7 @@
 title: 'TASK-47: share one room test rig across the engine tests'
 type: 'refactor'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '999c006d927d4aab7714bea115f130cefa8ac274'
@@ -76,15 +76,28 @@ expect(storedKeys(gm)).toEqual([storageKey('#generation', { n: 1, a: 'gm-a' })])
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/platform/mock/index.ts` -- export `createMemoryBacking` -- one storage implementation.
-- [ ] `src/replica/room-rig.ts` -- create the rig per Design Notes.
-- [ ] `src/replica/engine-*.test.ts` -- move each file onto the rig in slices of 3-5 files; after each slice run those files and compare with the baseline; commit each slice (`test: ...` subject in the repo's style).
+- [x] `src/platform/mock/index.ts` -- export `createMemoryBacking` -- one storage implementation.
+- [x] `src/replica/room-rig.ts` -- create the rig per Design Notes.
+- [x] `src/replica/engine-*.test.ts` -- move each file onto the rig in slices of 3-5 files; after each slice run those files and compare with the baseline; commit each slice (`test: ...` subject in the repo's style).
 
 **Acceptance Criteria:**
 - Given the 18 engine test files, when searched, then none defines `createBacking`, `startReplicaEngine`, `startReplicaClient`, `createSendQueue`, `createProjectionStore` or `createMockPlatform` calls, and none holds a `Timing` literal or a `mr1:`/`mr2:` string.
 - Given the baseline list, when `bun test src/replica/engine-` runs on the branch, then the same 658 test names pass with the same per-test assertion counts, and nothing is skipped.
 
 ## Implementation Notes
+
+- Built through `implement` → `tdd` (checks-only path, no new tests) with four implementer turns in batch 1 and one in batch 2 (review fixes). Run directory: `~/.claude/artifacts/tdd-20261112-034131/task-47-shared-engine-test-rig/`; `ticket.md` there lists every rejected attempt (D1-D8) and its evidence.
+- Deviation from Design Notes, wait limit: `waitUntil` is not a fixed 2000 ms everywhere. `engine-import`, `engine-liveness` and `engine-wipe` waited up to 3000 ms before the move, so `createRoomRig` takes `waitLimitMs` and those files use `roomRig.waitUntil`. The Boundaries rule "no change to how long tests wait" wins over the Design Notes value. The exported `waitUntil` keeps 2000 ms.
+- Rig API additions over Design Notes: `cleanup(fn)` on the rig (registers a teardown that runs after each test, for listeners and fake extensions the files stopped before the move); `waitLimitMs` (above). `engine` options are typed without `timing`; timing comes only from the `timing` options.
+- Cleanup: the rig registers its `afterEach` per `createRoomRig` call. A hook at module scope of a shared module runs only in the first test file that loads it, which leaked engines into later files. The hook also calls `mock.restore()`, because leaked `console.error` spies carried call counts into later files under plain `bun test`.
+- Test-body edits outside the allowed kinds: `engine-room-copy` "merges the copy … second request" captures storage inside an `onRemote` listener, as before, through `roomRig.cleanup`. No test changed name, assertion or expected value.
+- Commits: the per-slice commits were reorganized into two slices at the end (`implement` step 6): the rig with the mock export, then the 18 files.
+- No-weakening controls: junit list of the 18 files equals the base (658 tests, 662 assertions, same per-test counts); per-file effective timing and wait limit equal the base; mutations of the storage key format (458 killed), a 20x catch-up timeout and a silent denied proposal (9 killed) kill the same tests per file at the base and after. A mutation of the room copy write guard survives at both (deferred).
+- `bun test` wall time: 58.9 s before, 58.6 s after; the 18 engine files: 55.9 s before, 55.7 s after.
+
+## Review Triage Log
+
+- Active layer: `code-review-carryover` only (blind-hunter, edge-case-hunter, verification-gap are off). Code-review rounds 01-initial (mixed-terra, 9/9 sources, 3 major + 9 minor, all fixed in batch 2) and 02-after-fix (final, 2/2 sources, no findings). Carry-over: no open decision, no unresolved critical or major, no finding deferred by code-review, no criterion corrected by code-review. Empty list.
 
 ## Verification
 
