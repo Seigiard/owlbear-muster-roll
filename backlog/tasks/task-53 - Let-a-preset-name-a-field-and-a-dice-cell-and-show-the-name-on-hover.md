@@ -1,9 +1,11 @@
 ---
 id: TASK-53
 title: Let a preset name a field and a dice cell, and show the name on hover
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T02:18:00Z'
+updated_date: '2026-11-12T07:10:00Z'
 labels:
   - v2
 dependencies: []
