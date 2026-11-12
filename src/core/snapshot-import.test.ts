@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { z } from 'zod';
 
 import type { Preset } from '@/core/preset';
 import { err } from '@/core/result';
@@ -381,8 +380,7 @@ describe('importSnapshot', () => {
 
   test('matches a snapshot text value to a current dice-choice field', () => {
     // #given
-    // SAFETY: the fixture has the Preset shape plus the approved future field variant.
-    const preset = z.unknown().parse({
+    const preset: Preset = {
       v: 2,
       templates: [
         {
@@ -405,7 +403,7 @@ describe('importSnapshot', () => {
           ],
         },
       ],
-    }) as Preset;
+    };
 
     const input = file([single('inventory', { rows: { weapon_die: { weapon_die: 'd8' } } })]);
 

@@ -756,19 +756,29 @@ describe('parsePresetFile', () => {
     expect(parsed).toEqual({ ok: false, error: { code: 'row-too-wide' } });
   });
 
-  test.each(['1d20 <', 'sqrt(str)', '0d6', '101d6', '1d0', '1d1001', 'a < b < c', '(a < b)'])(
-    'refuses the formula %j',
-    (formula) => {
-      // #given
-      const text = fileOf([{ rows: [[{ kind: 'dice', formula }]] }]);
+  test.each([
+    '1d20 <',
+    'sqrt(str)',
+    '0d6',
+    '101d6',
+    '1d0',
+    '1d1001',
+    'a < b < c',
+    '(a < b)',
+    '1d(d6)',
+    '1d(D20)',
+    '1d(floor)',
+    '1d(constructor)',
+  ])('refuses the formula %j', (formula) => {
+    // #given
+    const text = fileOf([{ rows: [[{ kind: 'dice', formula }]] }]);
 
-      // #when
-      const parsed = parsePresetFile(text);
+    // #when
+    const parsed = parsePresetFile(text);
 
-      // #then
-      expect(parsed).toEqual({ ok: false, error: { code: 'bad-formula', detail: formula } });
-    },
-  );
+    // #then
+    expect(parsed).toEqual({ ok: false, error: { code: 'bad-formula', detail: formula } });
+  });
 
   test('refuses a formula over 200 characters and shortens it in the detail', () => {
     // #given: 201 characters, valid in every other way.
@@ -1388,8 +1398,7 @@ describe('presetProblems', () => {
 
   test('points dice-choice option and formula type failures at their owning cells', () => {
     // #given
-    // SAFETY: the fixture has the Preset shape plus the approved future field variant.
-    const preset = z.unknown().parse({
+    const preset: Preset = {
       v: 2,
       templates: [
         {
@@ -1400,16 +1409,24 @@ describe('presetProblems', () => {
             {
               rows: [
                 [
-                  DICE_CHOICE_FIELD('weapon_die', ['d8', '8']),
+                  {
+                    kind: 'field',
+                    type: 'dice-choice',
+                    id: 'weapon_die',
+                    options: ['d8', '8'],
+                  },
                   { kind: 'dice', formula: '1d20 + weapon_die' },
                 ],
-                [NUMBER_FIELD('bonus'), { kind: 'dice', formula: '1d(bonus)' }],
+                [
+                  { kind: 'field', type: 'number', id: 'bonus' },
+                  { kind: 'dice', formula: '1d(bonus)' },
+                ],
               ],
             },
           ],
         },
       ],
-    }) as Preset;
+    };
 
     // #when
     const problems = presetProblems(preset);

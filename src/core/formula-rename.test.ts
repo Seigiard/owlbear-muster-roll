@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { z } from 'zod';
 
 import type { PresetCell, PresetSection, Template } from '@/core/preset';
 
@@ -16,10 +15,7 @@ function dice(formula: string): PresetCell {
 }
 
 function diceChoice(id: string): PresetCell {
-  // SAFETY: this test supplies the exact future PresetCell variant from the approved spec.
-  return z
-    .unknown()
-    .parse({ kind: 'field', type: 'dice-choice', id, options: ['d6', 'd8'] }) as PresetCell;
+  return { kind: 'field', type: 'dice-choice', id, options: ['d6', 'd8'] };
 }
 
 function single(sections: PresetSection[]): Template {

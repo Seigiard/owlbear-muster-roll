@@ -17,7 +17,7 @@ import {
 
 const GM: ClientParams = { client: 'gm', device: 'gm', name: 'Мастер' };
 
-const PRESET_TEXT = JSON.stringify({
+const PRESET: Preset = {
   v: 2,
   templates: [
     {
@@ -47,7 +47,9 @@ const PRESET_TEXT = JSON.stringify({
       ],
     },
   ],
-});
+};
+
+const PRESET_TEXT = JSON.stringify(PRESET);
 
 const SHEET = pcSheet('brok', 'Брок', 0);
 
@@ -57,8 +59,7 @@ test.beforeEach(async ({ page }) => {
 
 test('the preview sample value is the first dice option', () => {
   // #given
-  // SAFETY: PRESET_TEXT is the approved preset shape exercised by this test.
-  const preset = JSON.parse(PRESET_TEXT) as Preset;
+  const preset = PRESET;
 
   // #when
   const preview = previewSheets(preset, 'sample');

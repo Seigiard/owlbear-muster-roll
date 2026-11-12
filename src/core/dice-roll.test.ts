@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { z } from 'zod';
-
 import { randomFaces } from '@/core/formula-evaluate';
-import type { TemplateLayout } from '@/core/preset';
+import type { PresetCell, TemplateLayout } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 
 import { prepareDiceRoll, rollDiceCell, type DicePlace, type ShownValue } from './dice-roll';
@@ -88,8 +86,13 @@ function roll(place: DicePlace, shown: [string, ShownValue][] = []) {
   return rollDiceCell(TEMPLATE, RECORDS, 'brok', place, new Map(shown), randomFaces(SEVEN));
 }
 
-function diceChoiceRoll(formula: string, value: string | undefined, label: string | null = 'Урон') {
-  const cells: unknown[] = [
+function diceChoiceRoll(
+  formula: string,
+  value: string | undefined,
+  label: string | null = 'Урон',
+  repeat = false,
+) {
+  const cells: PresetCell[] = [
     { kind: 'field', type: 'dice-choice', id: 'weapon_die', options: ['d4', 'd6', 'd8'] },
     { kind: 'field', type: 'number', id: 'bonus' },
     { kind: 'dice', formula },
@@ -99,15 +102,26 @@ function diceChoiceRoll(formula: string, value: string | undefined, label: strin
     cells.unshift({ kind: 'text', text: label });
   }
 
-  // SAFETY: the fixture has the TemplateLayout shape plus the approved future field variant.
-  const layout = z.unknown().parse({ sections: [{ rows: [cells] }] }) as TemplateLayout;
+  const section: TemplateLayout['sections'][number] = { rows: [cells] };
+
+  if (repeat) {
+    section.repeat = true;
+  }
+
+  const layout: TemplateLayout = { sections: [section] };
+
+  const key = repeat ? 'rep:brok:weapon_die:i1' : 'row:brok:weapon_die';
 
   const records = new Map<string, VersionedRecord>([
     [
-      'row:brok:weapon_die',
+      key,
       value === undefined
-        ? { k: 'row:brok:weapon_die', d: { bonus: 2 }, c: 1, a: 'gm' }
-        : { k: 'row:brok:weapon_die', d: { weapon_die: value, bonus: 2 }, c: 1, a: 'gm' },
+        ? repeat
+          ? { k: key, d: { order: 0, cells: { bonus: 2 } }, c: 1, a: 'gm' }
+          : { k: key, d: { bonus: 2 }, c: 1, a: 'gm' }
+        : repeat
+          ? { k: key, d: { order: 0, cells: { weapon_die: value, bonus: 2 } }, c: 1, a: 'gm' }
+          : { k: key, d: { weapon_die: value, bonus: 2 }, c: 1, a: 'gm' },
     ],
   ]);
 
@@ -115,7 +129,7 @@ function diceChoiceRoll(formula: string, value: string | undefined, label: strin
     sectionIndex: 0,
     rowIndex: 0,
     cellIndex: label === null ? 2 : 3,
-    instanceId: null,
+    instanceId: repeat ? 'i1' : null,
   };
 
   return prepareDiceRoll(layout, records, 'brok', place, new Map());
@@ -156,7 +170,7 @@ describe('rollDiceCell', () => {
         result: { roll: 3, faces: [3], target: null, targetFaces: [], outcome: null },
       },
     ],
-  ] as const)('%s', (_name, formula, value, label, expected) => {
+  ])('%s', (_name, formula, value, label, expected) => {
     // #when
     const prepared = diceChoiceRoll(formula, value, label);
     const rolled = prepared.ok ? prepared.value.roll(randomFaces(SEVEN)) : null;
@@ -170,7 +184,33 @@ describe('rollDiceCell', () => {
       : prepared;
 
     // #then
-    expect(z.unknown().parse(actual)).toEqual(expected);
+    expect(actual).toEqual(expected);
+  });
+
+  test('reads a chosen die from its own repeat block and writes it into the label', () => {
+    // #given
+    const prepared = diceChoiceRoll('1d(weapon_die)', 'd8', 'Урон', true);
+
+    if (!prepared.ok) {
+      throw new Error(`the repeat-block dice roll must prepare: ${prepared.error.code}`);
+    }
+
+    // #when
+    const actual = {
+      cell: prepared.value.cell,
+      terms: prepared.value.terms,
+      result: prepared.value.roll(randomFaces(SEVEN)),
+    };
+
+    // #then
+    expect(actual).toEqual({
+      cell: 'Урон (1d8)',
+      terms: [{ count: 1, sides: 8 }],
+      result: {
+        ok: true,
+        value: { roll: 3, faces: [3], target: null, targetFaces: [], outcome: null },
+      },
+    });
   });
 
   test.each([

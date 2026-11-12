@@ -1,6 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { z } from 'zod';
-
 import type {
   Preset,
   PresetCell,
@@ -33,8 +31,7 @@ function select(id: string, options: string[]): PresetFieldCell {
 }
 
 function diceChoice(id: string, options: string[]): PresetFieldCell {
-  // SAFETY: this test supplies the exact future PresetFieldCell variant from the approved spec.
-  return z.unknown().parse({ kind: 'field', type: 'dice-choice', id, options }) as PresetFieldCell;
+  return { kind: 'field', type: 'dice-choice', id, options };
 }
 
 function rows(...cells: PresetCell[][]): PresetSection {
