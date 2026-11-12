@@ -172,6 +172,10 @@ _Avoid_: dice tray, dice roller
 The compressed copy of a room's sheets, values and links that the room itself keeps, so players can read sheets with no GM online.
 _Avoid_: backup, cache, room snapshot
 
+**Catch-up**:
+The state in which a client asks for a complete room state, merges the answer and waits before it accepts room edits.
+_Avoid_: sync, refresh, reload
+
 **Snapshot**:
 A file that holds all of a room's sheets, values and token links. A GM downloads it and can load it into a room, which replaces all of that room's data.
 _Avoid_: export, backup, save file
