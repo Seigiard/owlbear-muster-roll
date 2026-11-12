@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+
 import { randomFaces } from '@/core/formula-evaluate';
 import type { PresetCell, TemplateLayout } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
@@ -247,6 +248,165 @@ describe('rollDiceCell', () => {
         result: { roll: 7, faces: [7], target: 12, targetFaces: [], outcome: 'success' },
       },
     });
+  });
+
+  test('names a roll by the dice cell name while keeping the formula as the roll expression', () => {
+    // #given
+    const layout: TemplateLayout = {
+      sections: [
+        {
+          rows: [
+            [
+              {
+                kind: 'dice',
+                formula: '1d20 <= 10',
+                name: 'Спасбросок STR',
+              },
+            ],
+          ],
+        },
+      ],
+    };
+
+    // #when
+    const prepared = prepareDiceRoll(
+      layout,
+      new Map(),
+      'brok',
+      { sectionIndex: 0, rowIndex: 0, cellIndex: 0, instanceId: null },
+      new Map(),
+    );
+
+    // #then
+    expect(prepared.ok ? prepared.value.cell : prepared).toEqual('Спасбросок STR');
+  });
+
+  test('adds the written chosen die to a named Nd field roll', () => {
+    // #given
+    const layout: TemplateLayout = {
+      sections: [
+        {
+          rows: [
+            [
+              {
+                kind: 'field',
+                type: 'dice-choice',
+                id: 'attack_1_die',
+                options: ['d6', 'd8'],
+              },
+              {
+                kind: 'dice',
+                formula: '1d(attack_1_die)',
+                name: 'Урон атаки 1',
+              },
+            ],
+          ],
+        },
+      ],
+    };
+
+    const records = new Map<string, VersionedRecord>([
+      [
+        'row:brok:attack_1_die',
+        {
+          k: 'row:brok:attack_1_die',
+          d: { attack_1_die: 'd8' },
+          c: 1,
+          a: 'gm',
+        },
+      ],
+    ]);
+
+    // #when
+    const prepared = prepareDiceRoll(
+      layout,
+      records,
+      'brok',
+      { sectionIndex: 0, rowIndex: 0, cellIndex: 1, instanceId: null },
+      new Map(),
+    );
+
+    // #then
+    expect(prepared.ok ? prepared.value.cell : prepared).toEqual('Урон атаки 1 (1d8)');
+  });
+
+  test('keeps a named Nd field roll label when the name equals the unresolved formula', () => {
+    // #given
+    const layout: TemplateLayout = {
+      sections: [
+        {
+          rows: [
+            [
+              {
+                kind: 'field',
+                type: 'dice-choice',
+                id: 'damage',
+                options: ['d6', 'd8'],
+              },
+              {
+                kind: 'dice',
+                formula: '1d(damage)',
+                name: '1d(damage)',
+              },
+            ],
+          ],
+        },
+      ],
+    };
+
+    const records = new Map<string, VersionedRecord>([
+      [
+        'row:brok:damage',
+        {
+          k: 'row:brok:damage',
+          d: { damage: 'd8' },
+          c: 1,
+          a: 'gm',
+        },
+      ],
+    ]);
+
+    // #when
+    const prepared = prepareDiceRoll(
+      layout,
+      records,
+      'brok',
+      { sectionIndex: 0, rowIndex: 0, cellIndex: 1, instanceId: null },
+      new Map(),
+    );
+
+    // #then
+    expect(prepared.ok ? prepared.value.cell : prepared).toEqual('1d(damage) (1d8)');
+  });
+
+  test('names an empty formula field by its cell name', () => {
+    // #given
+    const layout: TemplateLayout = {
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'field', type: 'number', id: 'hp_max', name: 'HP, максимум' },
+              { kind: 'dice', formula: '1d20 <= hp_max' },
+            ],
+          ],
+        },
+      ],
+    };
+
+    // #when
+    const prepared = prepareDiceRoll(
+      layout,
+      new Map([['row:brok:hp_max', { k: 'row:brok:hp_max', d: { hp_max: 10 }, c: 1, a: 'gm' }]]),
+      'brok',
+      { sectionIndex: 0, rowIndex: 0, cellIndex: 1, instanceId: null },
+      new Map([['hp_max', { kind: 'text', text: '' }]]),
+    );
+
+    const result = prepared.ok ? prepared.value.roll(randomFaces(SEVEN)) : prepared;
+
+    // #then
+    expect(result).toEqual({ ok: false, error: { code: 'field', field: 'HP, максимум' } });
   });
 
   test('uses the text a field shows over its record', () => {

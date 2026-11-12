@@ -34,6 +34,10 @@ function diceChoice(id: string, options: string[]): PresetFieldCell {
   return { kind: 'field', type: 'dice-choice', id, options };
 }
 
+function namedNumber(id: string, name?: string): PresetFieldCell {
+  return name === undefined ? number(id) : { ...number(id), name };
+}
+
 function rows(...cells: PresetCell[][]): PresetSection {
   return { rows: cells };
 }
@@ -185,6 +189,32 @@ describe('presetDiff', () => {
       last: [],
     });
   });
+
+  test.each([
+    ['adds', number('hp'), namedNumber('hp', 'Хиты')],
+    ['changes', namedNumber('hp', 'Хиты'), namedNumber('hp', 'HP')],
+    ['removes', namedNumber('hp', 'Хиты'), number('hp')],
+  ] as const)(
+    '%s a cell name without removing or erasing its value',
+    (_change, oldField, nextField) => {
+      // #given
+      const old = preset([rows([oldField], [text('notes')])]);
+      const next = preset([rows([nextField], [text('notes')])]);
+      const records = replica(sheet('brok'), row('brok', 'hp', { hp: 7 }));
+
+      // #when
+      const migration = presetDiff(records, old, next);
+
+      // #then
+      expect(summary(migration)).toEqual({
+        count: 0,
+        sheets: 0,
+        removed: {},
+        first: [],
+        last: [],
+      });
+    },
+  );
 
   test('counts a removed field that holds a value, `false` and 0 included', () => {
     // #given: str_tired and hp go. A row whose last value goes keeps an empty record.

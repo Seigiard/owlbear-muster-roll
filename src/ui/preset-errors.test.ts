@@ -96,6 +96,37 @@ describe('presetFailureMessage', () => {
     // #then
     expect(actual).toBe(message);
   });
+
+  test.each<[PresetFailure, string]>([
+    [
+      { code: 'blank-name', detail: 'hp', cell: 'field' },
+      'Файл не подошёл: пустое название у поля «hp». Ничего не изменено.',
+    ],
+    [
+      { code: 'blank-name', detail: '1d20', cell: 'dice' },
+      'Файл не подошёл: пустое название у кубика «1d20». Ничего не изменено.',
+    ],
+    [
+      { code: 'long-name', detail: 'hp', cell: 'field' },
+      'Файл не подошёл: название поля «hp» длиннее 60 символов. Ничего не изменено.',
+    ],
+    [
+      { code: 'long-name', detail: '1d20', cell: 'dice' },
+      'Файл не подошёл: название кубика «1d20» длиннее 60 символов. Ничего не изменено.',
+    ],
+  ] as const)('gives the cell-name failure %j its exact message', (failure, message) => {
+    // #when
+    const actual = (() => {
+      try {
+        return presetFailureMessage(failure);
+      } catch (error) {
+        return { threw: error instanceof Error ? error.message : String(error) };
+      }
+    })();
+
+    // #then
+    expect(actual).toBe(message);
+  });
 });
 
 describe('presetRejectionMessage', () => {

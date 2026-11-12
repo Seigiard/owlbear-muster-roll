@@ -189,6 +189,28 @@ describe('cellLabel', () => {
     expect(label).toBe('Сила');
   });
 
+  test('a named field uses its cell name instead of the preceding text', () => {
+    // #given
+    const field: PresetCell = { ...STR, name: 'STR, максимум' };
+
+    // #when
+    const label = cellLabel(field, [STRENGTH]);
+
+    // #then
+    expect(label).toBe('STR, максимум');
+  });
+
+  test('a named dice cell uses its cell name instead of the preceding text', () => {
+    // #given
+    const dice: PresetCell = { ...ROLL, name: 'Спасбросок STR' };
+
+    // #when
+    const label = cellLabel(dice, [STRENGTH]);
+
+    // #then
+    expect(label).toBe('Спасбросок STR');
+  });
+
   test('a field takes the nearest preceding text cell, past other fields', () => {
     // #when
     const label = cellLabel(TIRED, [{ kind: 'text', text: 'Хиты' }, STRENGTH, STR]);
