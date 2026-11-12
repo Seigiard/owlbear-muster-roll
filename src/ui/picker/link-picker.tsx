@@ -15,16 +15,19 @@ import {
   type PickerGroup,
   type PickerTarget,
 } from '@/core/token-links';
+import type { Command } from '@/core/ui-messages';
 import { visibleRecordMap } from '@/core/visibility';
 import type { NotificationPort, ScenePort } from '@/platform/ports';
 import { copy } from '@/ui/copy';
 import type { ProjectionStore } from '@/ui/projection-store';
-import type { ReplicaClient } from '@/ui/replica-client';
+import type { CommandOutcomePromise } from '@/ui/replica-client';
 
 type LinkPickerProps = {
   tokenId: string;
-  store: Pick<ProjectionStore, '$loaded' | '$records' | '$rejections' | '$replica' | '$sync'>;
-  sendCommand: ReplicaClient['sendCommand'];
+  store: Pick<ProjectionStore, '$loaded' | '$records' | '$replica' | '$sync'>;
+  sendCommand: (
+    command: Extract<Command, { type: 'link-set' }>,
+  ) => CommandOutcomePromise<undefined>;
   // The token's label: an Owlbear item property, not a record, so the picker reads and sets it.
   scene: Pick<ScenePort, 'getItemLabel' | 'setItemLabel'>;
   notification: Pick<NotificationPort, 'show'>;
@@ -34,9 +37,13 @@ type LinkPickerProps = {
   timing?: LinkPickerTiming;
 };
 
-// The sent pick. The command id ties a rejection to it. `label` is the text to set under the token
-// once the link is in, or `null` to leave the label as it is.
-type Sent = { commandId: string; target: LinkTarget; label: string | null };
+// The sent pick. `label` is the text to set under the token once the link is in, or `null` to leave
+// the label as it is.
+type Sent = {
+  outcome: CommandOutcomePromise<undefined>;
+  target: LinkTarget;
+  label: string | null;
+};
 
 // The token's label as the picker read it when it opened. `unlabelable` is an item that is missing
 // or has no label text, so no write could succeed. `unreadable` is a read that failed or got no
@@ -64,15 +71,14 @@ export function LinkPicker({
   const sync = useStore(store.$sync);
   const allRecords = useStore(store.$records);
   const replica = useStore(store.$replica);
-  const rejections = useStore(store.$rejections);
   const [sent, setSent] = useState<Sent | null>(null);
   const [failed, setFailed] = useState(false);
   const [currentLabel, setCurrentLabel] = useState<CurrentLabel>({ state: 'reading' });
   const [labelWanted, setLabelWanted] = useState(false);
   const labelReadStarted = useRef(false);
-  // The command id of the pick whose label write and close have started, so they run once and its
-  // timer stays off even when another GM relinks the token meanwhile.
-  const finishing = useRef<string | null>(null);
+  // The pick whose label write and close have started, so they run once even when another GM relinks
+  // the token meanwhile.
+  const finishing = useRef<Sent | null>(null);
   // The role when the label write starts, which may come after a role change.
   const role = useRef(sync.role);
   const labelHintId = useId();
@@ -88,11 +94,6 @@ export function LinkPicker({
   );
 
   const groups = useMemo(() => pickerGroups(records, preset), [records, preset]);
-
-  if (sent !== null && rejections.has(sent.commandId)) {
-    setSent(null);
-    setFailed(true);
-  }
 
   // A pending view can still be refused when catch-up ends, so only the replica counts.
   const arrivedTarget = linkTargetOf(replica.get(linkKey(tokenId))?.d ?? null);
@@ -133,11 +134,34 @@ export function LinkPicker({
   }, [mayReadLabel, scene, tokenId, timing]);
 
   useEffect(() => {
-    if (!arrived || finishing.current === sent.commandId) {
+    if (sent === null) {
       return;
     }
 
-    finishing.current = sent.commandId;
+    let active = true;
+
+    void sent.outcome
+      .then((outcome) => {
+        if (active && finishing.current !== sent && outcome.kind !== 'answered') {
+          setSent(null);
+          setFailed(true);
+        }
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not settle a token link', error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [sent]);
+
+  useEffect(() => {
+    if (sent === null || !arrived || finishing.current === sent) {
+      return;
+    }
+
+    finishing.current = sent;
 
     const label = sent.label;
 
@@ -171,22 +195,6 @@ export function LinkPicker({
     void finish();
   }, [arrived, sent, scene, notification, tokenId, onLinked, timing]);
 
-  useEffect(() => {
-    // A pick whose link came in no longer waits, even when the link changes while its label is set.
-    if (sent === null || arrived || finishing.current === sent.commandId) {
-      return undefined;
-    }
-
-    const timer = setTimeout(() => {
-      setSent(null);
-      setFailed(true);
-    }, timing.pickTimeoutMs);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [sent, arrived, timing]);
-
   function pick(choice: PickerTarget): void {
     if (sent !== null) {
       return;
@@ -194,7 +202,7 @@ export function LinkPicker({
 
     const { target } = choice;
 
-    const result = sendCommand({
+    const outcome = sendCommand({
       type: 'link-set',
       tokenId,
       sheetId: target.sheetId,
@@ -205,16 +213,12 @@ export function LinkPicker({
     // name sets none.
     const name = choice.blockName ?? choice.sheetName;
 
-    if (result.ok) {
-      setSent({
-        commandId: result.value,
-        target,
-        label: labelWanted && name !== '' ? name : null,
-      });
-      setFailed(false);
-    } else {
-      setFailed(true);
-    }
+    setSent({
+      outcome,
+      target,
+      label: labelWanted && name !== '' ? name : null,
+    });
+    setFailed(false);
   }
 
   function list(group: PickerGroup): ReactNode {

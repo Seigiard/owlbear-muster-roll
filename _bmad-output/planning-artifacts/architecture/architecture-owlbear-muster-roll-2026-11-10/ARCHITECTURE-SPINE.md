@@ -175,6 +175,7 @@ A message with a higher generation also starts AD-9 adoption.
 - **Rule:** Only `src/replica`, in the background page, mutates the replica, composes `d`, mints `c` or calls room broadcast and metadata. Windows and the background talk on channel `app.muster-roll/ui` with destination `LOCAL`, under schemas in `core`. Handlers tolerate an echo of their own message.
   - Commands are intents, such as a field patch, a repeat block change, a sheet create (naming a sheet set id) or delete, a duplicate, an access or token link change, a roll request, an upload, an import, a wipe, or opening a tab. A rename is a field patch of the name field. A command never carries a whole record.
   - A window opens by sending `projection-request` and gets a full projection, then deltas. The projection holds records through `core/visibility`, the pending queue, `gmLink`, notices and rolls.
+  - Every window command or request id has one terminal answer: a result-specific answer, `command-done` after the effect delta, or `command-rejected`. The background emits no second answer for a repeated id. A window matches answers only to ids it created, owns one timeout per command kind in `Timing`, and settles a timed-out id so a late answer is ignored. The timeout is a client fault boundary, not an engine result.
 
 ### AD-11 — One localStorage key per record [ADOPTED]
 

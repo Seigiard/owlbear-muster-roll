@@ -186,6 +186,11 @@ export type ReplicaEngineOptions = {
   dataReplaced?: string;
 };
 
+type ReplayedPending = {
+  applied: VersionedRecord[];
+  completed: string[];
+};
+
 export type ReplicaEngine = {
   stop: () => void;
   // Sends every waiting message at once, held commits included, for a page that is about to close.
@@ -534,6 +539,19 @@ export async function startReplicaEngine(
 
     send(message).catch((error) => {
       console.error('Muster Roll could not reject a command', error);
+    });
+  }
+
+  // A successful window command is answered after every delta part carrying its effect. Both
+  // messages use the same queue, so a large delta cannot be overtaken by its answer. Engine-made
+  // commands have no window waiting on their ids, so they stay silent.
+  function commandDone(id: string): void {
+    if (sceneCommandIds.has(id) || menuCommandIds.has(id)) {
+      return;
+    }
+
+    send({ t: 'command-done', id }).catch((error) => {
+      console.error('Muster Roll could not answer a command', error);
     });
   }
 
@@ -944,13 +962,13 @@ export async function startReplicaEngine(
   // A pending intent composes again for every pending view and once more on replay. One role of
   // one command gets one id each time, so the view keeps its keys and the replay writes the keys
   // the windows already show, even when records arrive in between.
-  function pendingIdsOf(commandId: string): ComposeContext['newRecordId'] {
+  function pendingIdsOf(intentId: string): ComposeContext['newRecordId'] {
     return (kind, role) => {
-      let ids = pendingIds.get(commandId);
+      let ids = pendingIds.get(intentId);
 
       if (ids === undefined) {
         ids = new Map();
-        pendingIds.set(commandId, ids);
+        pendingIds.set(intentId, ids);
       }
 
       const id = ids.get(role) ?? newRecordIdOf(kind);
@@ -1056,6 +1074,7 @@ export async function startReplicaEngine(
 
     // Sent even when empty, so the window still learns of the notice.
     emitDelta(applied);
+    commandDone(id);
     sendCommits(applied);
 
     if (applied.length > 0) {
@@ -1629,6 +1648,7 @@ export async function startReplicaEngine(
     }
 
     emitDelta([]);
+    commandDone(id);
   }
 
   function proposalContext(records: ReadonlyMap<string, VersionedRecord>): ProposalContext {
@@ -2149,8 +2169,9 @@ export async function startReplicaEngine(
 
   // AD-7 replay: every pending intent runs for real in arrival order. A refusal now goes to the
   // window with the command id it came with.
-  function replayPending(): VersionedRecord[] {
+  function replayPending(): ReplayedPending {
     const applied: VersionedRecord[] = [];
+    const completed: string[] = [];
 
     for (const entry of pending.takeAll()) {
       const ids = entry.kind === 'intent' ? [entry.id] : entry.patches.map((patch) => patch.id);
@@ -2167,11 +2188,13 @@ export async function startReplicaEngine(
 
         if (composed.ok) {
           applied.push(...apply(composed.value));
+          completed.push(entry.id);
         } else {
           reject(entry.id, composed.error);
         }
       } else {
         const { record, refusals } = composers.composePatches(liveContext(), entry.patches);
+        const refused = new Set(refusals.map((refusal) => refusal.id));
 
         for (const refusal of refusals) {
           reject(refusal.id, refusal.reason);
@@ -2180,12 +2203,16 @@ export async function startReplicaEngine(
         if (record !== null) {
           applied.push(...apply([record]));
         }
+
+        completed.push(
+          ...entry.patches.flatMap((patch) => (refused.has(patch.id) ? [] : [patch.id])),
+        );
       }
     }
 
     pendingIds.clear();
 
-    return applied;
+    return { applied, completed };
   }
 
   // A GM client merges what it and the other tabs of its browser saved. A player persists nothing.
@@ -2901,7 +2928,7 @@ export async function startReplicaEngine(
 
     const replayed = replayPending();
 
-    changed.push(...replayed);
+    changed.push(...replayed.applied);
     const pendingDenial = pendingEdits.caughtUp();
 
     if (pendingDenial.notify) {
@@ -2916,7 +2943,11 @@ export async function startReplicaEngine(
       pendingViewChanges();
     }
 
-    sendCommits(replayed);
+    for (const id of replayed.completed) {
+      commandDone(id);
+    }
+
+    sendCommits(replayed.applied);
     // The first catch-up's end allows the menu and a size with no preset, and it merged what this
     // client had loaded.
     followReplica();
@@ -2924,7 +2955,7 @@ export async function startReplicaEngine(
     clearDeletedLinks();
 
     // AD-8: a write owed from before, or the edits that waited, go into the room copy now.
-    if (roomCopyOwed || replayed.length > 0) {
+    if (roomCopyOwed || replayed.applied.length > 0) {
       scheduleRoomCopy();
     }
   }

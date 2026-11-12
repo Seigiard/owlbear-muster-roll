@@ -16,9 +16,12 @@ import type { Command } from '@/core/ui-messages';
 import type { PlayerRole } from '@/platform/ports';
 import {
   createRoomRig,
+  refusal,
   heardOf,
+  outcome,
   pause,
   rejection,
+  requestPresetDiff,
   send,
   shown,
   storageKey,
@@ -205,13 +208,7 @@ describe('a preset diff', () => {
 
     // #then
     expect({ result: result(gm, id), writes: gm.writes.length - writesBefore }).toEqual({
-      result: {
-        t: 'preset-diff-result',
-        id,
-        count: 1,
-        sheets: 0,
-        digest: Object(uploadOf(MOVED, 1)).expectedDigest,
-      },
+      result: { count: 1, sheets: 0, digest: Object(uploadOf(MOVED, 1)).expectedDigest },
       writes: 0,
     });
   });
@@ -304,7 +301,7 @@ describe('a preset upload', () => {
       label: storedRecord(gm, 'rep:brok:label:r1')?.d,
       gone: [storedRecord(gm, STR_ROW.k)?.d, storedRecord(gm, SWORD.k)?.d],
     }).toEqual({
-      result: { t: 'preset-uploaded', id, count: 1, sheets: 0 },
+      result: { count: 1, sheets: 0 },
       commits: [
         ['row:brok:note', 'rep:brok:label:r1'],
         ['preset'],
@@ -351,7 +348,7 @@ describe('a preset upload', () => {
 
     // #then
     expect({
-      rejection: gm.store.$rejections.get().get(id),
+      rejection: refusal(gm, id),
       writes: gm.writes.length - writesBefore,
       commits: heardOf(room, 'gm-a', 'commit'),
     }).toEqual({
@@ -379,7 +376,7 @@ describe('a preset upload', () => {
 
     // #then
     expect({
-      rejection: gm.store.$rejections.get().get(id),
+      rejection: refusal(gm, id),
       stored: storedRecord(gm, 'preset'),
     }).toEqual({
       rejection: {
@@ -438,7 +435,7 @@ describe('a preset upload', () => {
 
     // #then
     expect({ result: result(gm, id), stored: storedRecord(gm, 'preset')?.d }).toEqual({
-      result: { t: 'preset-uploaded', id, count: 0, sheets: 0 },
+      result: { count: 0, sheets: 0 },
       stored: encodePreset(RELABELLED),
     });
   });
@@ -492,7 +489,7 @@ describe('a preset upload that removes a template', () => {
       gone: gone.map((key) => storedRecord(gm, key)?.d),
     }).toEqual({
       diff: [3, 3],
-      result: { t: 'preset-uploaded', id, count: 3, sheets: 3 },
+      result: { count: 3, sheets: 3 },
       gone: gone.map(() => null),
     });
   });
@@ -524,7 +521,7 @@ describe('a preset upload that removes a template', () => {
     // #then: the new digest goes with the new counts, for the next confirmation.
     expect({
       diff: [found.count, found.sheets],
-      rejection: gm.store.$rejections.get().get(id),
+      rejection: refusal(gm, id),
       stored: storedRecord(gm, 'preset'),
     }).toEqual({
       diff: [2, 1],
@@ -559,7 +556,7 @@ describe('a preset upload that removes a template', () => {
 
     // #then
     expect({
-      rejection: gm.store.$rejections.get().get(id),
+      rejection: refusal(gm, id),
       sheet: storedRecord(gm, 'sheet:anya'),
     }).toEqual({
       rejection: {
@@ -600,7 +597,7 @@ describe('a preset upload that removes a template', () => {
       link: storedRecord(gm, 'link:t1')?.d,
       block: storedRecord(gm, block.k),
     }).toEqual({
-      result: { t: 'preset-uploaded', id, count: 0, sheets: 0 },
+      result: { count: 0, sheets: 0 },
       link: null,
       block,
     });
@@ -859,13 +856,7 @@ function uploadOf(
 }
 
 function requestDiff(client: Client, preset: Preset): string {
-  const sent = client.window.requestPresetDiff(encodePreset(preset));
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the diff: ${sent.error}`);
-  }
-
-  return sent.value;
+  return requestPresetDiff(client, encodePreset(preset));
 }
 
 // A message from the GM client the test speaks for.
@@ -930,5 +921,7 @@ function copiedBlocks(client: Client): JsonValue[] {
 }
 
 function result(client: Client, id: string): JsonValue | undefined {
-  return client.store.$presetResults.get().get(id);
+  const settled = outcome(client, id);
+
+  return settled?.kind === 'answered' ? settled.answer : undefined;
 }

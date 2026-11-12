@@ -89,6 +89,20 @@ type ClientOptions = {
 const roomRig = createRoomRig({ seeded: SEEDED });
 
 describe('a token deleted from the open scene', () => {
+  test('an engine-made scene command sends no command-done to windows', async () => {
+    // #given
+    const room = openRoom(['t1']);
+    const client = await startClient(room, 'gm-a');
+
+    // #when
+    client.platform.removeSceneItems(['t1']);
+    await waitUntil(() => committed(room, 'gm-a').length === 1);
+    await pause(SETTLE_MS);
+
+    // #then
+    expect(client.local.filter((message) => Object(message).t === 'command-done').length).toBe(0);
+  });
+
   test('tombstones its link through the GM command path: saved, sent, shown, menu updated', async () => {
     // #given
     const room = openRoom(['t1', 't2', 't3', 'map']);

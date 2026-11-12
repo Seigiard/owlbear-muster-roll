@@ -1,5 +1,4 @@
-import { useStore } from '@nanostores/react';
-import { createContext, useContext, useId, useState } from 'react';
+import { createContext, useContext, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import type { DicePlace } from '@/core/dice-roll';
@@ -7,7 +6,6 @@ import type { FieldPatchTarget } from '@/core/field-patch';
 import type { RollOutcome } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { Pressable } from '@/ui/primitives/button';
-import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
 import { shownForRoll, type LocalFieldValues } from './local-field-values';
@@ -18,7 +16,6 @@ const DICE_BUTTON_CLASS = 'rounded-sm border border-accent px-2 text-label-sm te
 // What every dice button of a window shares. A player rolls too, so this is not `FieldEditing`.
 export type DiceRolling = {
   requestRoll: ReplicaClient['requestRoll'];
-  $rollOutcomes: ProjectionStore['$rollOutcomes'];
   localValues: LocalFieldValues;
 };
 
@@ -63,25 +60,19 @@ export function DiceButton({
 }: DiceButtonProps): ReactNode {
   const messageId = useId();
   const sheet = useDiceSheet();
-  const outcomes = useStore(sheet.$rollOutcomes);
-  const [requestId, setRequestId] = useState<string | null>(null);
+  const [rolling, setRolling] = useState(false);
+  const [waitingForGm, setWaitingForGm] = useState(false);
   const [message, setMessage] = useState<ShownMessage | null>(null);
-  const outcome = requestId === null ? undefined : outcomes.get(requestId)?.outcome;
-  const waitingForGm = outcome?.code === 'waiting-access';
+  const latestSignature = useRef(sheet.valuesSignature);
 
-  // The signature is taken when the outcome lands, so a field patch the press itself saved, whose
-  // delta comes before the outcome, does not clear the message. Waiting for the GM is no outcome.
-  if (outcome !== undefined && !waitingForGm) {
-    const text = outcomeText(outcome);
+  latestSignature.current = sheet.valuesSignature;
 
-    setRequestId(null);
-    setMessage(text === null ? null : { text, signature: sheet.valuesSignature });
-  } else if (message !== null && message.signature !== sheet.valuesSignature) {
+  if (message !== null && message.signature !== sheet.valuesSignature) {
     setMessage(null);
   }
 
   function roll(): void {
-    if (requestId !== null) {
+    if (rolling) {
       return;
     }
 
@@ -96,17 +87,35 @@ export function DiceButton({
 
     const shown = shownForRoll(sheet.localValues.read(row.sheetId), row.target, row.fieldIds);
 
-    const sent = sheet.requestRoll({
-      sheetId: row.sheetId,
-      place,
-      shown: Object.fromEntries(shown),
-    });
+    setRolling(true);
+    setWaitingForGm(false);
 
-    if (sent.ok) {
-      setRequestId(sent.value);
-    } else {
-      setMessage({ text: copy.rollFailed, signature: sheet.valuesSignature });
-    }
+    const outcome = sheet.requestRoll(
+      {
+        sheetId: row.sheetId,
+        place,
+        shown: Object.fromEntries(shown),
+      },
+      () => {
+        setWaitingForGm(true);
+      },
+    );
+
+    void outcome
+      .then((result) => {
+        setRolling(false);
+        setWaitingForGm(false);
+
+        const text = result.kind === 'answered' ? outcomeText(result.answer) : copy.rollFailed;
+
+        setMessage(text === null ? null : { text, signature: latestSignature.current });
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not settle a roll', error);
+        setRolling(false);
+        setWaitingForGm(false);
+        setMessage({ text: copy.rollFailed, signature: latestSignature.current });
+      });
   }
 
   return (
@@ -125,13 +134,9 @@ export function DiceButton({
       <span
         id={messageId}
         aria-live="polite"
-        className={`text-label-sm ${requestId === null ? 'text-danger-text' : 'text-text-muted'}`}
+        className={`text-label-sm ${rolling ? 'text-text-muted' : 'text-danger-text'}`}
       >
-        {requestId === null
-          ? (message?.text ?? '')
-          : waitingForGm
-            ? copy.rollWaitingForGm
-            : copy.rolling}
+        {!rolling ? (message?.text ?? '') : waitingForGm ? copy.rollWaitingForGm : copy.rolling}
       </span>
     </div>
   );

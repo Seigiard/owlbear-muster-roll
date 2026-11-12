@@ -1,17 +1,20 @@
 import { nanoid } from 'nanoid';
 
-import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { fitsOneMessage } from '@/core/message-size';
-import { err, ok, type Result } from '@/core/result';
 import type { Timing } from '@/core/timing';
 import {
   parseEngineMessage,
   UI_CHANNEL,
   type Command,
+  type CommandRejectedMessage,
   type DeltaMessage,
   type EngineMessage,
+  type PresetDiffResultMessage,
+  type PresetUploadedMessage,
   type ProjectionMessage,
   type RollRequestMessage,
+  type RollOutcome,
+  type SnapshotCheckResultMessage,
   type WindowMessage,
 } from '@/core/ui-messages';
 import type { BroadcastOptions, BroadcastPort } from '@/platform/ports';
@@ -19,10 +22,6 @@ import type { SendQueue } from '@/platform/send-queue';
 import type { ProjectionStore } from '@/ui/projection-store';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
-
-const OWN_COMMAND_ID_LIMIT = 256;
-
-const OWN_ROLL_ID_LIMIT = 256;
 
 type Phase = 'requesting' | 'assembling' | 'live';
 
@@ -33,24 +32,65 @@ type Assembly = {
   parts: Map<number, ProjectionMessage>;
 };
 
-export type CommandFailure = 'too-large';
-
 // `urgent` skips the spacing queue, for a window that is closing.
 export type SendCommandOptions = { urgent?: boolean };
 
 // A roll request as a view makes it. The client adds the id.
 export type RollRequest = Omit<RollRequestMessage, 't' | 'id'>;
 
+export type CommandOutcome<Answer> =
+  | { kind: 'answered'; answer: Answer }
+  | { kind: 'refused'; rejection: CommandRejectedMessage }
+  | { kind: 'timed-out' };
+
+export type ErasedCounts = { count: number; sheets: number; digest: string };
+
+export type CommandOutcomePromise<Answer> = {
+  then: Promise<CommandOutcome<Answer>>['then'];
+  catch: Promise<CommandOutcome<Answer>>['catch'];
+  finally: Promise<CommandOutcome<Answer>>['finally'];
+  readonly [Symbol.toStringTag]: string;
+};
+
+type AnswerFor<CommandType extends Command> = CommandType extends {
+  type: 'preset-upload';
+}
+  ? Pick<PresetUploadedMessage, 'count' | 'sheets'>
+  : undefined;
+
+type FinalRollOutcome = Exclude<RollOutcome, { code: 'waiting-access' }>;
+
+type AnswerMessage =
+  | Extract<EngineMessage, { t: 'command-rejected' }>
+  | Extract<EngineMessage, { t: 'command-done' }>
+  | PresetDiffResultMessage
+  | PresetUploadedMessage
+  | SnapshotCheckResultMessage
+  | Extract<EngineMessage, { t: 'snapshot-imported' | 'wiped' }>
+  | Extract<EngineMessage, { t: 'roll-outcome' }>;
+
+type PendingOutcome = {
+  resolve: (outcome: CommandOutcome<unknown>) => void;
+  timer: ReturnType<typeof setTimeout>;
+  onWaitingAccess?: () => void;
+};
+
 export type ReplicaClient = {
-  sendCommand: (command: Command, options?: SendCommandOptions) => Result<string, CommandFailure>;
+  sendCommand: <C extends Command>(
+    command: C,
+    options?: SendCommandOptions,
+  ) => CommandOutcomePromise<AnswerFor<C>>;
   // AD-14: asks how many stored values the preset in `data` would erase. The answer and any
-  // refusal come by the id it returns.
-  requestPresetDiff: (data: string) => Result<string, CommandFailure>;
+  // refusal come by the id hidden inside the returned promise.
+  requestPresetDiff: (data: string) => Promise<CommandOutcome<ErasedCounts>>;
   // AD-9: asks how many values of the snapshot file in `data` the current preset would drop. The
-  // answer and any refusal come by the id it returns.
-  requestSnapshotCheck: (data: string) => Result<string, CommandFailure>;
+  // answer and any refusal come by the id hidden inside the returned promise.
+  requestSnapshotCheck: (data: string) => Promise<CommandOutcome<ErasedCounts>>;
   // Through the same queue as commands, so a field patch sent before it reaches the engine first.
-  requestRoll: (request: RollRequest) => Result<string, CommandFailure>;
+  requestRoll: (
+    request: RollRequest,
+    onWaitingAccess?: () => void,
+  ) => CommandOutcomePromise<FinalRollOutcome>;
   // FR14: tells the engine this window took the open request with this id, so no window gets it
   // again.
   acknowledgeOpen: (id: string) => void;
@@ -66,13 +106,12 @@ export function startReplicaClient(
   timing: Timing,
   newId: () => string = nanoid,
 ): ReplicaClient {
-  const ownCommandIds = createBoundedIdSet(OWN_COMMAND_ID_LIMIT);
-  const ownRollIds = createBoundedIdSet(OWN_ROLL_ID_LIMIT);
+  const pending = new Map<string, PendingOutcome>();
   let phase: Phase = 'requesting';
   let nonce = newId();
   let queuedNonce: string | null = null;
   let assembly: Assembly | null = null;
-  let buffered: DeltaMessage[] = [];
+  let buffered: Array<DeltaMessage | AnswerMessage> = [];
   let liveEngine = '';
   let lastSeq = 0;
   let repeatTimer: ReturnType<typeof setTimeout> | undefined;
@@ -109,7 +148,7 @@ export function startReplicaClient(
     phase = 'requesting';
     nonce = newId();
     assembly = null;
-    buffered = [];
+    buffered = buffered.filter(isAnswerMessage);
     sendRequest();
   }
 
@@ -171,10 +210,14 @@ export function startReplicaClient(
 
     buffered = [];
 
-    for (const delta of waiting) {
-      applyLiveDelta(delta);
+    for (const [index, message] of waiting.entries()) {
+      applyLiveMessage(message);
 
       if (phase !== 'live') {
+        // `applyLiveDelta` can restart the projection while replaying this local list. Keep every
+        // later answer, but drop the old stream's remaining deltas.
+        buffered.push(...waiting.slice(index + 1).filter(isAnswerMessage));
+
         return;
       }
     }
@@ -204,25 +247,116 @@ export function startReplicaClient(
     store.setParty(delta.party);
   }
 
+  function applyLiveMessage(message: DeltaMessage | AnswerMessage): void {
+    if (message.t === 'delta') {
+      applyLiveDelta(message);
+    } else {
+      handleAnswer(message);
+    }
+  }
+
+  function handleAnswer(message: AnswerMessage): void {
+    const waiting = pending.get(message.id);
+
+    if (waiting === undefined) {
+      return;
+    }
+
+    if (message.t === 'roll-outcome' && message.outcome.code === 'waiting-access') {
+      try {
+        waiting.onWaitingAccess?.();
+      } catch (error) {
+        console.error('Muster Roll could not report that a roll waits for the GM', error);
+      }
+
+      return;
+    }
+
+    pending.delete(message.id);
+    clearTimeout(waiting.timer);
+
+    if (message.t === 'command-rejected') {
+      waiting.resolve({ kind: 'refused', rejection: message });
+    } else if (
+      message.t === 'command-done' ||
+      message.t === 'snapshot-imported' ||
+      message.t === 'wiped'
+    ) {
+      waiting.resolve({ kind: 'answered', answer: undefined });
+    } else if (message.t === 'preset-diff-result' || message.t === 'snapshot-check-result') {
+      const { id: _id, t: _type, ...answer } = message;
+      waiting.resolve({ kind: 'answered', answer });
+    } else if (message.t === 'preset-uploaded') {
+      waiting.resolve({
+        kind: 'answered',
+        answer: { count: message.count, sheets: message.sheets },
+      });
+    } else if (message.t === 'roll-outcome') {
+      waiting.resolve({ kind: 'answered', answer: message.outcome });
+    }
+  }
+
+  function waitFor<Answer>(
+    id: string,
+    timeoutMs: number,
+    sendMessage: () => Promise<void>,
+    onWaitingAccess?: () => void,
+    sendImmediately = false,
+  ): Promise<CommandOutcome<Answer>> {
+    const promise = new Promise<CommandOutcome<unknown>>((resolve) => {
+      const timer = setTimeout(() => {
+        const waiting = pending.get(id);
+
+        if (waiting === undefined) {
+          return;
+        }
+
+        pending.delete(id);
+        resolve({ kind: 'timed-out' });
+      }, timeoutMs);
+
+      pending.set(id, { resolve, timer, onWaitingAccess });
+    });
+
+    const sendRequest = (): void => {
+      sendMessage().catch((error) => {
+        console.error('Muster Roll could not send a window request', error);
+      });
+    };
+
+    if (sendImmediately) {
+      sendRequest();
+    } else {
+      queueMicrotask(sendRequest);
+    }
+
+    // SAFETY: `pending` resolves this promise only with `CommandOutcome<Answer>`; the unknown
+    // resolver type prevents a generic promise from being assigned without this boundary cast.
+    return promise as CommandOutcomePromise<Answer>;
+  }
+
+  function timeoutForCommand(command: Command): number {
+    switch (command.type) {
+      case 'preset-upload':
+        return timing.presetRequestTimeoutMs;
+      case 'snapshot-import':
+        return timing.snapshotImportTimeoutMs;
+      case 'wipe':
+        return timing.wipeTimeoutMs;
+      case 'acl-set':
+      case 'owner-set':
+        return timing.accessChangeTimeoutMs;
+      case 'link-set':
+      case 'link-clear':
+        return timing.linkSetTimeoutMs;
+      default:
+        return timing.commandTimeoutMs;
+    }
+  }
+
   function handleMessage(message: EngineMessage): void {
     if (message.t === 'projection') {
       receiveProjectionPart(message);
-    } else if (message.t === 'command-rejected') {
-      if (ownCommandIds.has(message.id)) {
-        store.setRejection(message);
-      }
-    } else if (message.t === 'preset-diff-result' || message.t === 'preset-uploaded') {
-      if (ownCommandIds.has(message.id)) {
-        store.setPresetResult(message);
-      }
-    } else if (message.t === 'snapshot-check-result' || message.t === 'snapshot-imported') {
-      if (ownCommandIds.has(message.id)) {
-        store.setSnapshotResult(message);
-      }
-    } else if (message.t === 'roll-outcome') {
-      if (ownRollIds.has(message.id)) {
-        store.setRollOutcome(message);
-      }
     } else if (message.t === 'open-sheet') {
       // Only a window that holds the records can find the sheet. The engine sends the request
       // again after the projection this window waits for.
@@ -233,9 +367,11 @@ export function startReplicaClient(
           instanceId: message.instanceId,
         });
       }
-    } else if (message.t === 'wiped') {
-      if (ownCommandIds.has(message.id)) {
-        store.setWipeResult(message);
+    } else if (isAnswerMessage(message)) {
+      if (phase === 'live') {
+        handleAnswer(message);
+      } else {
+        buffered.push(message);
       }
     } else if (phase === 'live') {
       applyLiveDelta(message);
@@ -256,71 +392,73 @@ export function startReplicaClient(
   sendRequest();
 
   return {
-    sendCommand: (command, options) => {
+    // SAFETY: the implementation handles every `Command` with its corresponding `AnswerFor`
+    // result; this assertion exposes that relationship through the generic public method.
+    sendCommand: ((command: Command, options?: SendCommandOptions) => {
       const id = newId();
       const message: WindowMessage = { t: 'command', id, command };
 
       if (!fitsOneMessage(message)) {
-        return err('too-large');
+        const outcome = Promise.resolve({
+          kind: 'refused',
+          rejection: { t: 'command-rejected', id, reason: 'too-large' },
+        });
+
+        return outcome;
       }
 
-      ownCommandIds.add(id);
-
-      const sent =
-        options?.urgent === true ? sendQueue.sendNow(UI_CHANNEL, message, LOCAL) : send(message);
-
-      sent.catch((error) => {
-        console.error('Muster Roll could not send a command', error);
-      });
-
-      return ok(id);
-    },
+      return waitFor<AnswerFor<typeof command>>(
+        id,
+        timeoutForCommand(command),
+        () =>
+          options?.urgent === true ? sendQueue.sendNow(UI_CHANNEL, message, LOCAL) : send(message),
+        undefined,
+        options?.urgent === true,
+      );
+    }) as ReplicaClient['sendCommand'],
     requestPresetDiff: (data) => {
       const id = newId();
       const message: WindowMessage = { t: 'preset-diff', id, data };
 
       if (!fitsOneMessage(message)) {
-        return err('too-large');
+        return Promise.resolve({
+          kind: 'refused',
+          rejection: { t: 'command-rejected', id, reason: 'too-large' },
+        });
       }
 
-      // A refusal comes as a command's does, so the id counts as one.
-      ownCommandIds.add(id);
-      send(message).catch((error) => {
-        console.error('Muster Roll could not ask for a preset diff', error);
-      });
-
-      return ok(id);
+      return waitFor<ErasedCounts>(id, timing.presetRequestTimeoutMs, () => send(message));
     },
     requestSnapshotCheck: (data) => {
       const id = newId();
       const message: WindowMessage = { t: 'snapshot-check', id, data };
 
       if (!fitsOneMessage(message)) {
-        return err('too-large');
+        return Promise.resolve({
+          kind: 'refused',
+          rejection: { t: 'command-rejected', id, reason: 'too-large' },
+        });
       }
 
-      // A refusal comes as a command's does, so the id counts as one.
-      ownCommandIds.add(id);
-      send(message).catch((error) => {
-        console.error('Muster Roll could not ask for a snapshot check', error);
-      });
-
-      return ok(id);
+      return waitFor<ErasedCounts>(id, timing.presetRequestTimeoutMs, () => send(message));
     },
-    requestRoll: (roll) => {
+    requestRoll: (roll, onWaitingAccess) => {
       const id = newId();
       const message: WindowMessage = { t: 'roll-request', id, ...roll };
 
       if (!fitsOneMessage(message)) {
-        return err('too-large');
+        return Promise.resolve({
+          kind: 'refused',
+          rejection: { t: 'command-rejected', id, reason: 'too-large' },
+        });
       }
 
-      ownRollIds.add(id);
-      send(message).catch((error) => {
-        console.error('Muster Roll could not request a roll', error);
-      });
-
-      return ok(id);
+      return waitFor<FinalRollOutcome>(
+        id,
+        timing.rollTimeoutMs,
+        () => send(message),
+        onWaitingAccess,
+      );
     },
     acknowledgeOpen: (id) => {
       send({ t: 'open-sheet-ack', id }).catch((error) => {
@@ -329,9 +467,28 @@ export function startReplicaClient(
     },
     flushNow: sendQueue.flushNow,
     stop: () => {
+      for (const [id, waiting] of pending) {
+        pending.delete(id);
+        clearTimeout(waiting.timer);
+        waiting.resolve({ kind: 'timed-out' });
+      }
+
       unsubscribe();
       clearTimeout(repeatTimer);
       clearTimeout(incompleteTimer);
     },
   };
+}
+
+function isAnswerMessage(message: EngineMessage): message is AnswerMessage {
+  return (
+    message.t === 'command-rejected' ||
+    message.t === 'command-done' ||
+    message.t === 'preset-diff-result' ||
+    message.t === 'preset-uploaded' ||
+    message.t === 'snapshot-check-result' ||
+    message.t === 'snapshot-imported' ||
+    message.t === 'wiped' ||
+    message.t === 'roll-outcome'
+  );
 }

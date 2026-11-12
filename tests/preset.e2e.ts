@@ -9,11 +9,18 @@ import type { JsonValue } from '@/core/json';
 import { MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 
 import { cssValue, renderedColor } from './support/colors';
-import { EXAMPLE_PRESET_TEXT, openBackground, presetRecord, STORAGE_PREFIX } from './support/room';
+import {
+  ABSENT,
+  EXAMPLE_PRESET_TEXT,
+  openBackground,
+  roomKeys,
+  seedRecords,
+  seedStorage,
+  storedData,
+  type StoredRecord,
+} from './support/room';
 
 const CHANNEL = 'app.muster-roll/ui';
-const PRESET_KEY = `${STORAGE_PREFIX}preset`;
-const SHEET_KEY = `${STORAGE_PREFIX}sheet:saved`;
 const UPLOAD = 'Загрузить пресет';
 const DOWNLOAD = 'Скачать пресет';
 const SETTINGS = 'Настройки';
@@ -27,12 +34,12 @@ const RECORD_REFUSAL_MAX_DATA_BYTES = MESSAGE_BYTE_LIMIT - 200;
 
 const EXAMPLE: JsonValue = z.json().parse(JSON.parse(EXAMPLE_PRESET_TEXT));
 
-const SAVED_SHEET = JSON.stringify({
+const SAVED_SHEET: StoredRecord = {
   k: 'sheet:saved',
   d: { set: 'pc', order: 0 },
   c: 1,
   a: 'mock-connection',
-});
+};
 
 const BAD_FILES: readonly (readonly [string, string, string])[] = [
   ['a file that is not JSON', '{"v": 1,', 'это не JSON'],
@@ -319,7 +326,7 @@ test('a preset whose record cannot fit one message is refused by the replica', a
 
   // #then: the message comes from the rejection, which the replica sends instead of a write.
   await expect(page.getByText(TOO_LARGE)).toBeVisible();
-  expect(await storedKeys(page)).toEqual([]);
+  expect(await roomKeys(page)).toEqual([]);
 });
 
 test('a preset too large for one command is refused in the window', async ({ page, context }) => {
@@ -360,7 +367,7 @@ test('a rejection of an earlier upload goes once the next upload starts', async 
 }) => {
   // #given
   await page.goto('/index.html');
-  await seedStorage(page, PRESET_KEY, presetRecord(fileText({ rows: [] })));
+  await seedStorage(page, [], fileText({ rows: [] }));
   await openBackground(context);
   await page.getByRole('tab', { name: SETTINGS }).click();
   await uploadFile(page, fileJustOverTheRecordLimit());
@@ -429,7 +436,7 @@ test('the downloaded preset holds the structure at the current v and loads in an
 test('while a sheet exists the upload stays enabled in both places', async ({ page, context }) => {
   // #given
   await page.goto('/index.html');
-  await seedStorage(page, SHEET_KEY, SAVED_SHEET);
+  await seedRecords(page, [SAVED_SHEET]);
   await openBackground(context);
 
   // #when
@@ -453,8 +460,7 @@ test('with a preset and a sheet, Settings enables the upload and the download', 
 }) => {
   // #given
   await page.goto('/index.html');
-  await seedStorage(page, SHEET_KEY, SAVED_SHEET);
-  await seedStorage(page, PRESET_KEY, presetRecord(EXAMPLE_PRESET_TEXT));
+  await seedStorage(page, [SAVED_SHEET], EXAMPLE_PRESET_TEXT);
   await openBackground(context);
 
   // #when
@@ -545,24 +551,16 @@ async function uploadFile(page: Page, text: string): Promise<void> {
   });
 }
 
-async function seedStorage(page: Page, key: string, value: string): Promise<void> {
-  await page.evaluate(
-    ([storageKey, text]) => {
-      localStorage.setItem(storageKey ?? '', text ?? '');
-    },
-    [key, value],
-  );
-}
-
-async function storedKeys(page: Page): Promise<string[]> {
-  return page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('mr2:')));
-}
-
 async function storedPreset(page: Page): Promise<JsonValue> {
-  const text = await page.evaluate((key) => localStorage.getItem(key), PRESET_KEY);
-  const record = z.object({ d: z.string() }).parse(JSON.parse(text ?? 'null'));
+  const data = await storedData(page, 'preset');
 
-  return z.json().parse(JSON.parse(strFromU8(inflateSync(Buffer.from(record.d, 'base64')))));
+  if (data === ABSENT) {
+    return ABSENT;
+  }
+
+  return z
+    .json()
+    .parse(JSON.parse(strFromU8(inflateSync(Buffer.from(z.string().parse(data), 'base64')))));
 }
 
 async function watchWire(page: Page): Promise<void> {
@@ -583,7 +581,7 @@ async function wireCount(page: Page, type: string): Promise<number> {
 
 // A refusal in the window means no command went out, so nothing can reach storage later.
 async function windowSideRefusal(page: Page): Promise<{ commands: number; stored: string[] }> {
-  return { commands: await wireCount(page, 'command'), stored: await storedKeys(page) };
+  return { commands: await wireCount(page, 'command'), stored: await roomKeys(page) };
 }
 
 // Lets React commit what the last message changed.

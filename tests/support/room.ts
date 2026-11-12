@@ -41,6 +41,7 @@ export const EXAMPLE_PRESET_TEXT = readFileSync(
 export const ADD = 'Добавить: Персонажи';
 
 const CHANNEL = 'app.muster-roll/ui';
+const ROOM_STORAGE_PREFIX = 'mr2:';
 
 // A command id `afterSettling` sends, so a watched window can tell its probes from real commands.
 const PROBE_PREFIX = 'probe-';
@@ -56,6 +57,10 @@ export const storedRecordSchema = z.object({
 });
 
 export type StoredRecord = { k: string; d: JsonValue; c: number; a: string };
+
+export type StorageGeneration = { n: number; a: string };
+
+export type StorageKeyParts = { generation: StorageGeneration; recordKey: string };
 
 // Records by key, so a comparison does not depend on the order the storage lists its keys in.
 export type Keyed = Record<string, StoredRecord>;
@@ -185,17 +190,20 @@ export async function seedStorage(
   device = '',
 ): Promise<void> {
   const prefix = `${deviceStoragePrefix(device)}${STORAGE_PREFIX}`;
-
-  const entries: (readonly [string, string])[] = [
+  await writeStorageEntries(page, [
     [`${prefix}preset`, presetRecord(presetText)],
-    ...records.map((one) => [`${prefix}${one.k}`, JSON.stringify(one)] as const),
-  ];
+    ...recordEntries(records, prefix),
+  ]);
+}
 
-  await page.evaluate((seeded) => {
-    for (const [key, value] of seeded) {
-      localStorage.setItem(key, value);
-    }
-  }, entries);
+// Seeds records under generation 0 without adding a preset.
+export async function seedRecords(
+  page: Page,
+  records: readonly StoredRecord[],
+  device = '',
+): Promise<void> {
+  const prefix = `${deviceStoragePrefix(device)}${STORAGE_PREFIX}`;
+  await writeStorageEntries(page, recordEntries(records, prefix));
 }
 
 export function connectionIdOf(params: ClientParams): string {
@@ -308,7 +316,7 @@ export async function addPartyMember(
 
 export async function storedData(page: Page, key: string): Promise<JsonValue> {
   const text = await page.evaluate(
-    (storageKey) => localStorage.getItem(storageKey),
+    (storageEntryKey) => localStorage.getItem(storageEntryKey),
     storageKeyForPage(page, key),
   );
 
@@ -327,6 +335,62 @@ export async function storedRecords(page: Page, prefix = ''): Promise<StoredReco
   );
 
   return texts.map((text) => storedRecordSchema.parse(JSON.parse(text)));
+}
+
+// Builds a record's room storage key under a generation, defaulting to generation 0.
+export function storageKey(key: string, generation: StorageGeneration = { n: 0, a: '' }): string {
+  return `mr2:${MOCK_ROOM_ID}:${generation.n}:${generation.a}:${key}`;
+}
+
+// Reads every room storage key on this page's device, across all room ids.
+export async function roomKeys(page: Page): Promise<string[]> {
+  const device = new URL(page.url()).searchParams.get(DEVICE_PARAM) ?? '';
+  const devicePrefix = deviceStoragePrefix(device);
+
+  return page.evaluate(
+    ({ devicePrefix: currentDevicePrefix, roomPrefix }) =>
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith(`${currentDevicePrefix}${roomPrefix}`))
+        .map((key) => key.slice(currentDevicePrefix.length)),
+    { devicePrefix, roomPrefix: ROOM_STORAGE_PREFIX },
+  );
+}
+
+// Splits a room storage key into its generation and record key.
+export function storageKeyParts(key: string): StorageKeyParts {
+  const match = /^mr2:([^:]+):(\d+):([^:]*):(.*)$/.exec(key);
+
+  if (match === null) {
+    throw new Error(`not a room storage key: ${key}`);
+  }
+
+  return {
+    generation: { n: Number(match[2]), a: match[3] ?? '' },
+    recordKey: match[4] ?? '',
+  };
+}
+
+// Tells whether a mock room storage key belongs to a generation.
+export function isStorageKeyInGeneration(key: string, generation: StorageGeneration): boolean {
+  return key.startsWith(storageKey('', generation));
+}
+
+function recordEntries(
+  records: readonly StoredRecord[],
+  prefix: string,
+): (readonly [string, string])[] {
+  return records.map((one) => [`${prefix}${one.k}`, JSON.stringify(one)] as const);
+}
+
+async function writeStorageEntries(
+  page: Page,
+  entries: readonly (readonly [string, string])[],
+): Promise<void> {
+  await page.evaluate((seeded) => {
+    for (const [key, value] of seeded) {
+      localStorage.setItem(key, value);
+    }
+  }, entries);
 }
 
 function storageKeyForPage(page: Page, key: string): string {

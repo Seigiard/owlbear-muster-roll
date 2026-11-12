@@ -7,7 +7,6 @@ import type { RoomCopyStatus } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { PresetDownload, uploadDisabledReason, usePresetUpload } from '@/ui/preset-actions';
 import { SECONDARY_BUTTON_CLASS } from '@/ui/primitives/button';
-import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 import { roomCopyText } from '@/ui/settings/room-copy-text';
 import { useSnapshotActions } from '@/ui/settings/snapshot-actions';
@@ -23,10 +22,6 @@ type SettingsViewProps = {
   catchingUp: boolean;
   roomCopy: RoomCopyStatus;
   client: Pick<ReplicaClient, 'sendCommand' | 'requestPresetDiff' | 'requestSnapshotCheck'>;
-  store: Pick<
-    ProjectionStore,
-    '$rejections' | '$presetResults' | '$snapshotResults' | '$wipeResults'
-  >;
 };
 
 // Sections come in the order Пресет, Снимок, Копия в комнате, Очистка. In each section the first
@@ -39,7 +34,6 @@ export function SettingsView({
   catchingUp,
   roomCopy,
   client,
-  store,
 }: SettingsViewProps): ReactNode {
   const headingId = useId();
   const snapshotHeadingId = useId();
@@ -49,13 +43,12 @@ export function SettingsView({
 
   const { confirmation, upload } = usePresetUpload({
     client,
-    store,
     catchingUp,
     disabledReason: uploadDisabledReason(catchingUp),
   });
 
-  const snapshot = useSnapshotActions({ records, preset, catchingUp, client, store });
-  const wipe = useWipeActions({ catchingUp, client, store });
+  const snapshot = useSnapshotActions({ records, preset, catchingUp, client });
+  const wipe = useWipeActions({ catchingUp, client });
 
   return (
     <div className="flex flex-col gap-4">

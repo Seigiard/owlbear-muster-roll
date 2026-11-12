@@ -628,6 +628,23 @@ describe('token menu', () => {
     });
   });
 
+  test('an engine-made menu command sends no command-done to windows', async () => {
+    // #given
+    const room = roomRig.openRoom();
+
+    const client = await startClient(room, 'gm-a', {
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+    });
+
+    // #when
+    client.platform.clickContextMenuItem(UNLINK_ITEM, ['t1']);
+    await waitUntil(() => committed(room, 'gm-a').length === 1);
+    await pause(20);
+
+    // #then
+    expect(client.local.filter((message) => Object(message).t === 'command-done').length).toBe(0);
+  });
+
   test('shows a notification when the engine refuses "Отвязать лист"', async () => {
     // #given: Owlbear would not show the item on t2, which has no link, but a press can race one.
     const room = roomRig.openRoom();

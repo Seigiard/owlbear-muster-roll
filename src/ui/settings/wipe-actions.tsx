@@ -1,13 +1,10 @@
-import { useStore } from '@nanostores/react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
-import { WIPE_TIMEOUT_MS } from '@/core/timing';
 import type { RejectionReason } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
-import type { ProjectionStore } from '@/ui/projection-store';
-import type { ReplicaClient } from '@/ui/replica-client';
+import type { CommandOutcomePromise, ReplicaClient } from '@/ui/replica-client';
 
 // AD-9, kept in this window only, so a window that closes, or a GM who leaves Settings, forgets it
 // and writes nothing. `asking` shows the block, `wiping` waits for the answer. `ask` counts the
@@ -16,12 +13,11 @@ import type { ReplicaClient } from '@/ui/replica-client';
 type WipeState =
   | { phase: 'idle'; message: string | null; untilCatchUpEnds?: boolean; ask: number }
   | { phase: 'asking'; ask: number }
-  | { phase: 'wiping'; commandId: string; ask: number };
+  | { phase: 'wiping'; outcome: CommandOutcomePromise<undefined>; ask: number };
 
 type WipeActionsOptions = {
   catchingUp: boolean;
   client: Pick<ReplicaClient, 'sendCommand'>;
-  store: Pick<ProjectionStore, '$rejections' | '$wipeResults'>;
 };
 
 type WipeActionsParts = {
@@ -35,19 +31,13 @@ type WipeActionsParts = {
 // works with or without a preset, also in a room whose data has an older format. Cancel, Escape,
 // leaving Settings, closing the window and the start of catch-up close the block, and nothing is
 // written. During catch-up the button waits, and the replica refuses a wipe as well.
-export function useWipeActions({
-  catchingUp,
-  client,
-  store,
-}: WipeActionsOptions): WipeActionsParts {
+export function useWipeActions({ catchingUp, client }: WipeActionsOptions): WipeActionsParts {
   const [state, setState] = useState<WipeState>({ phase: 'idle', message: null, ask: 0 });
-  const rejections = useStore(store.$rejections);
-  const results = useStore(store.$wipeResults);
   const buttonRef = useRef<HTMLButtonElement>(null);
   // Set on confirm: the button waits while the wipe does, so it takes the focus again after.
   const refocus = useRef(false);
   const { sendCommand } = client;
-  const waitingId = state.phase === 'wiping' ? state.commandId : null;
+  const waiting = state.phase === 'wiping';
 
   // The catch-up state this render last saw, so its end clears a message that only held during it.
   const [seenCatchingUp, setSeenCatchingUp] = useState(catchingUp);
@@ -64,39 +54,40 @@ export function useWipeActions({
     }
   }
 
-  if (waitingId !== null) {
-    const rejection = rejections.get(waitingId);
-
-    if (rejection !== undefined) {
-      setState({
-        phase: 'idle',
-        message: wipeRejectionText(rejection.reason),
-        untilCatchUpEnds: rejection.reason === 'catching-up',
-        ask: state.ask,
-      });
-    } else if (results.has(waitingId)) {
-      setState({ phase: 'idle', message: null, ask: state.ask });
-    }
-  }
-
-  // With no answer in time the wipe may still have happened, and the room then shows it.
   useEffect(() => {
-    if (waitingId === null) {
-      return undefined;
+    if (!waiting) {
+      return;
     }
 
-    const timer = setTimeout(() => {
-      setState((current) =>
-        current.phase === 'wiping' && current.commandId === waitingId
-          ? { phase: 'idle', message: copy.wipeFailed, ask: current.ask }
-          : current,
-      );
-    }, WIPE_TIMEOUT_MS);
+    const current = state;
 
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [waitingId]);
+    void current.outcome
+      .then((outcome) => {
+        setState((shown) => {
+          if (shown !== current) {
+            return shown;
+          }
+
+          if (outcome.kind === 'answered') {
+            return { phase: 'idle', message: null, ask: current.ask };
+          }
+
+          if (outcome.kind === 'timed-out') {
+            return { phase: 'idle', message: copy.wipeFailed, ask: current.ask };
+          }
+
+          return {
+            phase: 'idle',
+            message: wipeRejectionText(outcome.rejection.reason),
+            untilCatchUpEnds: outcome.rejection.reason === 'catching-up',
+            ask: current.ask,
+          };
+        });
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not settle a wipe', error);
+      });
+  }, [state, waiting]);
 
   function backToButton(): void {
     buttonRef.current?.focus();
@@ -110,11 +101,7 @@ export function useWipeActions({
           const sent = sendCommand({ type: 'wipe' });
 
           refocus.current = true;
-          setState(
-            sent.ok
-              ? { phase: 'wiping', commandId: sent.value, ask: state.ask }
-              : { phase: 'idle', message: copy.wipeFailed, ask: state.ask },
-          );
+          setState({ phase: 'wiping', outcome: sent, ask: state.ask });
           backToButton();
         }}
         onCancel={() => {
@@ -124,7 +111,7 @@ export function useWipeActions({
       />
     ) : null;
 
-  const reason = catchingUp || waitingId !== null ? copy.loading : undefined;
+  const reason = catchingUp || waiting ? copy.loading : undefined;
   const message = state.phase === 'idle' ? state.message : null;
   const buttonEnabled = reason === undefined;
 

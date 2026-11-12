@@ -51,4 +51,23 @@ describe('timing constants', () => {
     // #then
     expect(TIMING.snapshotImportTimeoutMs).toBe(60000);
   });
+
+  test('gives ordinary commands 15 s, and access and link changes 5 s', () => {
+    // #then
+    expect([
+      TIMING.commandTimeoutMs,
+      TIMING.accessChangeTimeoutMs,
+      TIMING.linkSetTimeoutMs,
+    ]).toEqual([15000, 5000, 5000]);
+  });
+
+  test('gives wipe the same 60 s as snapshot import', () => {
+    // #then
+    expect([TIMING.wipeTimeoutMs, TIMING.snapshotImportTimeoutMs]).toEqual([60000, 60000]);
+  });
+
+  test('gives a roll 90 s for the dice extension and the GM answer', () => {
+    // #then
+    expect(TIMING.rollTimeoutMs).toBe(90000);
+  });
 });
