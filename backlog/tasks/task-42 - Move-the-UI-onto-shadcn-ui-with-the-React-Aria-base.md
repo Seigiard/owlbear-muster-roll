@@ -1,10 +1,11 @@
 ---
 id: TASK-42
 title: Move the UI onto shadcn/ui with the React Aria base
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-11T21:56:00Z'
-updated_date: '2026-11-11T22:08:00Z'
+updated_date: '2026-11-12T01:13:00Z'
 labels:
   - v2
 dependencies:
@@ -37,9 +38,25 @@ Start with a spike in a branch: init, version compatibility, Owlbear theme mappe
 - [ ] #3 The existing primitives (button, chip, field, banner) are replaced by shadcn components, and all lint, typecheck, unit and e2e checks pass
 - [ ] #4 DESIGN.md names the shadcn tokens and states which components come from shadcn and which stay custom (the builder tree)
 - [ ] #5 Keyboard and focus behaviour of every replaced control is unchanged or better, checked against the EXPERIENCE.md Accessibility Floor
-- [ ] #6 Theme fallbacks in src/preview/themes.ts, the mock platform, tests/support/colors.ts and DESIGN.md hex values are the live Owlbear values, so the preview and e2e tests show the colours players see
-- [ ] #7 In the light theme, accent text on the surface and text on the accent reach 4.5:1, raised through color-mix from the Owlbear theme colours rather than new fixed hex values or other theme fields
+- [x] #6 Theme fallbacks in src/preview/themes.ts, the mock platform, tests/support/colors.ts and DESIGN.md hex values are the live Owlbear values, so the preview and e2e tests show the colours players see
+- [x] #7 In the light theme, accent text on the surface and text on the accent reach 4.5:1, raised through color-mix from the Owlbear theme colours rather than new fixed hex values or other theme fields
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+PART A (to master): 1. AC6: put the live Owlbear theme values into the mock theme, the preview themes, tests/support/colors.ts and DESIGN.md; update the e2e colour expectations and the build leak check. 2. AC7: in light mode map --mr-accent and --mr-focus to color-mix(in srgb, primary.main 65%, text.primary); prove the ratios with an e2e test that composites the tokens in Chromium. 3. Full check, focused commits on 0e64ed6.
+PART B (separate branch, not merged): 1. Spike shadcn init --base aria on Tailwind 4 / React 19 / Vite; map shadcn CSS variables onto --mr-* tokens; port button, chip, field, banner plus a dialog/menu/tab slice. 2. Judge bundle size, a11y parity (e2e), code weight. 3. Migrate the rest only if the spike holds. 4. Review, full check, commit. Record the verdict in the notes.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+PART A (commits 686c3ca, 2990dd6 on 0e64ed6, for master).
+AC6: the mock theme (src/platform/mock/index.ts), src/preview/themes.ts (preview and builder), tests/support/colors.ts LIGHT_THEME and the DESIGN.md front matter now hold the live Owlbear values from comment #1. DESIGN.md hex values are the dark theme; the colour-mix tokens were read from Chromium (surface-tab #383C4D, stripe #222638, line #4E5161, line-strong #91939C); text-muted #FFFFFFB3 and accent-contrast #000000DE keep Owlbear's alpha. The test colour helpers paint over the window surface, because Owlbear text colours carry alpha. The build leak check lists the new hexes (white left out: Tailwind's ring offset ships #fff).
+AC7: light mode maps --mr-accent and --mr-focus to color-mix(in srgb, primary.main 65%, text.primary) (src/ui/theme.ts); dark keeps primary.main. Evidence: tests/window.e2e.ts 'the light theme gives text 4.5:1 and the focus outline 3:1 on every surface' composites the tokens in Chromium. Before (same test with 100%): accent on surface 3.32, on surface-bar 2.82, on surface-tab 2.74, on stripe 3.29; white on accent 3.68; focus on bar 2.82. After: accent on surface 5.55, bar 4.77, tab 4.64, stripe 5.49; white on accent 6.16; focus 4.64 or more. Dark unchanged: accent 6.49 on surface, 4.74 on tab; contrast text on accent 7.85.
+Full check on 2990dd6: oxfmt clean, lint 0 errors, typecheck clean, bun test 2557 pass, test:browser 466 pass, build ok.
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 
