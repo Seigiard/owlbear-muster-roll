@@ -1,9 +1,11 @@
 ---
 id: TASK-57
 title: Let a Dice+ caller choose where the dicex fork rolls
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T11:57:00Z'
+updated_date: '2026-11-12T12:46:00Z'
 labels: []
 dependencies:
   - TASK-54
@@ -20,10 +22,30 @@ TASK-54 made the dicex fork pick the roll place by itself: the Dicex window when
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A Dice+ roll request may carry `rollIn`: "auto", "window" or "tray"; a request without it, or with an unknown value, rolls exactly as after TASK-54 ("auto")
-- [ ] #2 "window" rolls in the Dicex window and opens it first when it is closed
+- [x] #1 A Dice+ roll request may carry `rollIn`: "auto", "window" or "tray"; a request without it, or with an unknown value, rolls exactly as after TASK-54 ("auto")
+- [x] #2 "window" rolls in the Dicex window and opens it first when it is closed
 - [ ] #3 "tray" rolls in the popover tray even when the Dicex window is open, and falls back to the window when the tray does not answer in time
-- [ ] #4 The isReady answer tells a caller that this dicex understands `rollIn`, so it can tell the fork from original Dice+
-- [ ] #5 The dicex Dice+ protocol docs describe `rollIn`, its default and its fallbacks
-- [ ] #6 dicex tests and build pass, and PR #2 carries the change
+- [x] #4 The isReady answer tells a caller that this dicex understands `rollIn`, so it can tell the fork from original Dice+
+- [x] #5 The dicex Dice+ protocol docs describe `rollIn`, its default and its fallbacks
+- [x] #6 dicex tests and build pass, and PR #2 carries the change
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Build spec: _bmad-output/implementation-artifacts/spec-task-57-choose-where-dicex-rolls.md. Code lives in the dicex fork worktree /Users/seigiard/Projects/dicex-task-54, branch dice-plus-roll-without-action (PR #2), base 52f7410.
+1. dicePlusProtocol.ts: optional rollIn on RollRequest, a resolver (absent/unknown -> auto), features on IsReadyResponse.
+2. relayRollRequest routes by rollIn: auto = TASK-54 routing; window = open the action and relay there; tray = popover handshake even when the window is open, fall back to the action on timeout.
+3. isReady replies carry features: ["rollIn"].
+4. README Dice+ section documents rollIn, its default, fallbacks and the isReady advertisement.
+5. Tests beside the changed modules; yarn test + yarn build; push the branch so PR #2 updates; update the PR text; draft the upstream PR text.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Build 2026-11-12 in the dicex fork (worktree /Users/seigiard/Projects/dicex-task-54, branch dice-plus-roll-without-action, on TASK-54 tip 52f7410). A Dice+ roll request may carry rollIn?: "auto" | "window" | "tray"; resolveRollIn turns absent or unknown values into "auto" (TASK-54 routing). "window" opens the action and relays there; "tray" uses the popover handshake even with the window open and falls back to the action route after 2 s. Every isReady reply carries features: ["rollIn"]; permitted stays only with source. README Dice+ section documents both. Commits 8e67c10, dfda172, 48bcadf, a1d2557, ad58473; pushed to origin, PR #2 https://github.com/Seigiard/dicex/pull/2 updated (title and body), CI test job passed on ad58473. Not merged: merging deploys GitHub Pages, the owner's step.
+Checks at ad58473: npx yarn@1.22.22 test 40 files / 333 tests pass; npx yarn@1.22.22 build exit 0. Mutation calibration: unknown->tray, unknown->window, window->popover-first, tray->action-direct and isRollRequest rejecting unknown rollIn each turn their owner test red. Review: revmux mixed-terra 9/9 sources, 1 minor (rejected as low, listed in the PR), 3 immaterial. Run dir ~/.claude/artifacts/tdd-20261112-130019/task-57-choose-where-dicex-rolls/.
+AC evidence: #1 coordinator tests 'keeps an unknown string rollIn on the action route when the action is open', 'keeps a numeric rollIn on the ready popover route when the action is closed', the four TASK-54 routing tests unchanged, and protocol test 'accepts unknown rollIn values'. #2 'uses the action route for window rollIn when the action is closed' (action.open 1, internal roll = payload, no popover ping) and '... when the action is open'. #4 dicePlusIsReady 'responds with its rollIn feature on the same channel' and dicePlusAccess 'keeps permitted absent and advertises rollIn without source' / 'reports permitted: true for an allowed source' (features = ["rollIn"]). #5 README 'Choose where to roll' and 'Check without asking' bullets. #6 test/build above and PR #2 CI. #3 routing is proven by 'uses the ready popover route for tray rollIn when the action is open' (popover roll only, action.open 0, no internal ping/roll) and both 'falls back from a silent tray rollIn' tests; left unchecked until the owner sees a tray roll with the Dicex window open in a live room (one roll, the window shows none, one result).
+Known limit (review, rejected as low): with "tray" and the window open, a hand roll in the window at the same moment makes remote trays show whichever roll wrote player metadata last; the roll-result stays correct.
+<!-- SECTION:NOTES:END -->
