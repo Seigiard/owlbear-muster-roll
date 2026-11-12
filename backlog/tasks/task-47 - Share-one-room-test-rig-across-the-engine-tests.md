@@ -1,9 +1,11 @@
 ---
 id: TASK-47
 title: Share one room test rig across the engine tests
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T02:11:00Z'
+updated_date: '2026-11-12T02:39:00Z'
 labels: []
 dependencies: []
 references:
@@ -27,3 +29,13 @@ Each of the 18 `src/replica/engine-*.test.ts` files wires the mock platform, the
 - [ ] #3 Default timing lives in the rig; a test states only the timings it changes
 - [ ] #4 Every test that passed before still passes with the same assertions; no test is skipped or weakened
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Spec: _bmad-output/implementation-artifacts/spec-task-47-shared-engine-test-rig.md (rig API, timing deltas, rules).
+2. Add src/replica/room-rig.ts (rooms, GM and player clients, default timing, AD-11 key format, shared helpers); export createMemoryBacking from the mock.
+3. Move the 18 engine test files onto the rig in slices; compare each slice with the junit baseline (658 tests, 662 assertions).
+4. Prove no weakening: same test names and per-test assertion counts; mutations in engine.ts turn the same tests red before and after.
+5. Review, full check, merge master, full check again.
+<!-- SECTION:PLAN:END -->
