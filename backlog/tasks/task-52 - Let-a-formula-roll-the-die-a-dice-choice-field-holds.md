@@ -1,11 +1,11 @@
 ---
 id: TASK-52
 title: Let a formula roll the die a dice-choice field holds
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-12T02:15:00Z'
-updated_date: '2026-11-12T07:05:00Z'
+updated_date: '2026-11-12T13:56:00Z'
 labels:
   - v2
 dependencies:
@@ -30,7 +30,7 @@ A formula needs literal dice sizes (`1d8`), so a die cannot come from a field. I
 - [x] #2 A dice cell formula can roll the die chosen in a dice-choice field of its scope, with a count and arithmetic around it, for example one die of the chosen size plus a bonus field
 - [x] #3 A roll with no die chosen fails with the field error that names the field, as a roll with an empty number field does
 - [x] #4 The preset check refuses a formula that uses a dice-choice field where a number is expected, or a number field where a die is expected, and names the cell
-- [ ] #5 The roll result and the Owlbear dice extension roll show the die that was rolled
+- [x] #5 The roll result and the Owlbear dice extension roll show the die that was rolled
 - [x] #6 presets/cairn-2e.json gives each weapon and each NPC attack one dice-choice field and one damage dice cell, and the deferred-work entry about die sizes from a field is closed
 - [x] #7 docs/preset-format.md, the spec copy of the format and docs/example-preset.json describe the field and the formula syntax; the example parse test passes
 <!-- AC:END -->
@@ -45,4 +45,12 @@ Build through bmad-build: spec _bmad-output/implementation-artifacts/spec-task-5
 
 <!-- SECTION:NOTES:BEGIN -->
 Built on branch worktree-agent-ae8e52c72e538da97 (HEAD 6f2396d) through bmad-build: implement (tdd chain, 3 batches, every calibration entry calibrated) and code-review (2 revmux rounds; round 1: 1 major + 2 minor, all fixed; round 2: 0). Full check at 6f2396d: oxfmt clean, lint exit 0, typecheck exit 0, bun test 2621/0, test:browser 480 passed, build ok. Evidence: AC1 tests/dice-choice-field.e2e.ts (picker) + preset.test; AC2/AC3 src/core/dice-roll.test.ts, formula.test.ts, e2e 'empty dice-choice field shows its labelled field error'; AC4 preset.test (die-field-as-number, field-not-die); AC6 preset.test parses presets/cairn-2e.json, deferred-work entry marked resolved; AC7 docs + example parse test. AC5 is open: the mock proves the notification names 1d8; the 3D roll in Dice+/dicex needs the owner's live check. Cairn: one dice-choice field per weapon (weapon_die) and per NPC attack (attack_1_die, attack_2_die), options d4..d12; the damage cell rolls 1d(<die>). Impaired/enhanced = the player picks d4 or d12 in the same field.
+
+2026-11-12: deployed to production (Cloudflare version 377c6501, master 7b05722) with the owner's approval; the owner checked it in a live room with docs/example-preset.json and presets/cairn-2e.json: «всё работает».
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+A formula can now roll the die a dice-choice field holds: Nd(id), such as 1d(weapon_die) + bonus. A dice-choice field is a select field whose options are die sizes (d1 to d1000; the builder offers d4 to d20). The roll label names the die that was rolled, such as «Урон (1d8)», and the dice extension rolls that die in 3D. Formulas still run only through src/core/formula.ts. Verified by the full check and the owner's live-room check in production with the Cairn 2e preset.
+<!-- SECTION:FINAL_SUMMARY:END -->

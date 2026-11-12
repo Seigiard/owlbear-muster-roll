@@ -4,8 +4,6 @@ import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { z } from 'zod';
 
-import type { JsonValue } from '@/core/json';
-
 import { cssValue, renderedColor } from './support/colors';
 import {
   ADD,
@@ -13,6 +11,7 @@ import {
   afterSettling,
   connectionIdOf,
   EXAMPLE_PRESET_TEXT,
+  isStorageKeyInGeneration,
   openBackground,
   openClientBackground,
   openClientWindow,
@@ -20,7 +19,10 @@ import {
   openRoom,
   pcSheet,
   record,
+  roomKeys,
   seedStorage,
+  storageKey,
+  storageKeyParts,
   storedRecords,
   watchCommands,
   type ClientParams,
@@ -47,8 +49,6 @@ const NOT_JSON = 'Файл не подошёл: это не JSON. Ничего �
 const NEWER = 'Файл из более новой версии. Перезагрузите страницу.';
 const ASK_DROPS_SHEETS = `${ASK} Не войдут значения удалённых полей: 1. Не войдут листы: 2.`;
 const UNSUPPORTED = 'Файл не подошёл: неподдерживаемая версия формата. Ничего не изменено.';
-const MOCK_ROOM = 'mr2:mock-room:';
-const FIRST_GENERATION = `${MOCK_ROOM}0::`;
 const SILENT_GM = 'silent-gm';
 const OPEN_ITEM = 'app.muster-roll/open-sheet';
 const ACCENT: readonly [number, number, number] = [187, 153, 255];
@@ -331,8 +331,8 @@ test('a file sheet of a template the preset lacks is dropped, counted, and stays
   // The old generation goes once the new one is complete, so only the import's keys stay.
   await expect
     .poll(async () =>
-      (await keysUnder(page, MOCK_ROOM))
-        .map((key) => key.slice(key.indexOf(':', key.indexOf(':', MOCK_ROOM.length) + 1) + 1))
+      (await roomKeys(page))
+        .map((key) => storageKeyParts(key).recordKey)
         .filter((key) => key.startsWith('link:') || key.startsWith('sheet:'))
         .sort(),
     )
@@ -345,7 +345,7 @@ test('"Отменить" and Escape close the block and write nothing', async ({
   await page.getByRole('tab', { name: SETTINGS }).click();
   await watchCommands(page);
 
-  const keysBefore = await keysUnder(page, MOCK_ROOM);
+  const keysBefore = await roomKeys(page);
 
   await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
 
@@ -364,12 +364,12 @@ test('"Отменить" and Escape close the block and write nothing', async ({
   // #then
   await expect(confirmation(page)).toHaveCount(0);
   const commands = (await afterSettling(page)).commands;
-  const keys = await keysUnder(page, MOCK_ROOM);
+  const keys = await roomKeys(page);
 
   expect({
     commands,
     keys,
-    onlyFirstGeneration: keys.every((key) => key.startsWith(FIRST_GENERATION)),
+    onlyFirstGeneration: keys.every((key) => isStorageKeyInGeneration(key, { n: 0, a: '' })),
   }).toEqual({ commands: [], keys: keysBefore, onlyFirstGeneration: true });
 });
 
@@ -400,9 +400,9 @@ test('a confirm after the preset changed asks again with the new count, focused 
     `${ASK} Не войдут значения удалённых полей: 2.`,
   );
   await expect(confirmation(page).getByRole('button', { name: CANCEL })).toBeFocused();
-  expect((await keysUnder(page, MOCK_ROOM)).every((key) => key.startsWith(FIRST_GENERATION))).toBe(
-    true,
-  );
+  expect(
+    (await roomKeys(page)).every((key) => isStorageKeyInGeneration(key, { n: 0, a: '' })),
+  ).toBe(true);
 
   // #when
   await confirmation(page).getByRole('button', { name: UPLOAD }).click();
@@ -421,7 +421,7 @@ test('a catch-up closes an open confirmation, writes nothing, and the focus come
 
   await page.getByRole('tab', { name: SETTINGS }).click();
 
-  const keysBefore = await keysUnder(page, MOCK_ROOM);
+  const keysBefore = await roomKeys(page);
 
   await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
   await expect(confirmation(page)).toBeVisible();
@@ -435,10 +435,10 @@ test('a catch-up closes an open confirmation, writes nothing, and the focus come
   // #then
   await expect(confirmation(page)).toHaveCount(0);
   await expect(importButton(page)).toHaveAccessibleDescription('Загрузка…');
-  expect(await keysUnder(page, MOCK_ROOM)).toEqual(keysBefore);
+  expect(await roomKeys(page)).toEqual(keysBefore);
   // The button takes the focus again once catch-up gives up on the silent GM.
   await expect(importButton(page)).toBeFocused({ timeout: 10000 });
-  expect(await keysUnder(page, MOCK_ROOM)).toEqual(keysBefore);
+  expect(await roomKeys(page)).toEqual(keysBefore);
 });
 
 test('after an import a link to a token in the room opens its sheet, and one to an absent token stays inert', async ({
@@ -499,14 +499,14 @@ test('a confirmed import replaces the room on every client: another GM and a pla
   await expect.poll(() => shownNotifications(player)).toEqual([DATA_REPLACED]);
   expect(await shownNotifications(gm)).toEqual([]);
   // The old generation goes once the new one is complete.
-  const imported = `${MOCK_ROOM}1:${gm.connectionId}:`;
+  const imported = { n: 1, a: gm.connectionId };
 
   await expect
     .poll(async () =>
-      (await keysUnder(gm.window, MOCK_ROOM)).every((key) => key.startsWith(imported)),
+      (await roomKeys(gm.window)).every((key) => isStorageKeyInGeneration(key, imported)),
     )
     .toBe(true);
-  expect(await keysUnder(gm.window, imported)).toContain(`${imported}sheet:mira`);
+  expect(await roomKeys(gm.window)).toContain(storageKey('sheet:mira', imported));
 });
 
 async function openGm(context: BrowserContext, params: ClientParams): Promise<RoomClient> {
@@ -562,15 +562,6 @@ async function chooseSnapshot(page: Page, text: string): Promise<void> {
 // The background shows the notifications of its client.
 async function shownNotifications(client: RoomClient): Promise<string[]> {
   return client.background.evaluate(() => window.mockPlatform.shownNotifications());
-}
-
-async function keysUnder(page: Page, prefix: string): Promise<string[]> {
-  const keys: JsonValue = await page.evaluate(
-    (start) => Object.keys(localStorage).filter((key) => key.startsWith(start)),
-    prefix,
-  );
-
-  return z.array(z.string()).parse(keys);
 }
 
 function snapshotSection(page: Page): Locator {

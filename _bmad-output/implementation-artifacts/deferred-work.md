@@ -226,6 +226,12 @@
   summary: Mutation M9 (a stale answer rebases on `current` alone) survived every engine test at the baseline; only the new unit test kills it.
   evidence: ticket.md calibration in the TASK-45 run directory: M9 fails 0 tests at the baseline and after phase A, 1 test after phase B (`a stale answer below the edit rebuilds over the newest known record, not only the answer`). No engine-level or e2e test covers it.
 
+## Deferred from: build of spec-task-54-roll-without-closing-the-window (2026-11-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-54-roll-without-closing-the-window.md`
+  summary: In the dicex fork, a remote player's tray can cover the roller's own Dice+ tray in the bottom-right popover.
+  evidence: `src/plugin/PopoverTrays.tsx` (branch `dice-plus-roll-without-action`) renders the roller's tray and every remote `PopoverTray` at the same absolute spot (`right=16 bottom=16`). The later sibling covers the earlier one when two rolls show at once. Remote trays already overlap this way on base 47cd243. A fix needs a stacking or layout decision. Code-review finding bugs+impl-terra-2 (revmux round 1).
+
 ## Deferred from: build of spec-task-46-command-outcomes (2026-11-12)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-46-command-outcomes.md`
