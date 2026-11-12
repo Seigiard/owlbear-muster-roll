@@ -91,7 +91,7 @@ graph TD
 
 - **Binds:** CAP-3, CAP-15
 - **Prevents:** Unchecked player edits, lost fast edits, and two GM clients producing different records from one edit.
-- **Rule, player:** A player never merges its own edit. `src/replica` owns the pending queue and exposes it in the projection. The queue has at most one entry per key, holding a field patch. A newer edit updates the entry and raises `c`. For each key, only the newest version of its entry is sent, as `propose`, and it is resent with backoff until answered. An edit is identified by `(k, c, a)`.
+- **Rule, player:** A player never merges its own edit. `src/replica` owns the pending queue and exposes it in the projection. Every decision about a pending edit lives in `src/replica/pending-edits`: the write access pre-check, combining patches, the hold during catch-up, the rebase on `stale`, the strip to the template, the move after a preset change and the denied notice. The engine passes it events and runs what it returns. The queue has at most one entry per key, holding a field patch. A newer edit updates the entry and raises `c`. For each key, only the newest version of its entry is sent, as `propose`, and it is resent with backoff until answered. An edit is identified by `(k, c, a)`.
 - **Rule, GM client:** A GM client validates only when it is not `catching-up`. An unknown sender never reaches `core/access`, because the AD-5 gate drops it. `core/access` passes a `row:` or `rep:` record only on a sheet of a visible template (AD-18), and judges only the field values that differ from the current record: each must be a field of the template with its type. A proposal that carries another field id absent from the template gets `reject stale` with the current record, not `denied`. A sheet of a sheet set must be live and hold a live `acl:` of the player. A single sheet must be player-editable (`players: edit`). It refuses any key form that AD-2 reserves for the GM.
   - On pass with `c` above the current `c`, or with a record identical to the current one, it merges the record with `c` and `a` unchanged and broadcasts `commit`, echoing `(k, c, a)`.
   - On a refused access it sends `reject` with reason `denied`. The player drops the entry and shows a notice.
@@ -312,7 +312,7 @@ A message with a higher generation also starts AD-9 adoption.
 ```text
 src/
   core/        # records, merge, access, visibility, preset, formula, snapshot, messages
-  replica/     # engine, pending queue, catch-up, snapshot writer, gmLink
+  replica/     # engine, pending queue, pending edits, catch-up, snapshot writer, gmLink
   platform/    # ports, send queue, obr/ adapter, mock/
   ui/          # React views, nanostores projection
   builder/     # preset builder page: store, document edits, tree, forms, preview
