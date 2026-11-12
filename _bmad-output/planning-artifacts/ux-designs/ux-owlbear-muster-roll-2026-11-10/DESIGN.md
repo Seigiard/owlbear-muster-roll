@@ -108,11 +108,13 @@ Colours follow `OBR.theme` at runtime and change when the Owlbear theme changes.
 | `{colors.surface-stripe}` | `color-mix(in srgb, theme.background.paper 92%, theme.background.default)` |
 | `{colors.line}` | `color-mix(in srgb, theme.background.paper 80%, theme.text.primary)` |
 | `{colors.line-strong}` | `color-mix(in srgb, theme.background.paper 50%, theme.text.primary)` |
-| `{colors.focus}` | `theme.primary.main` |
+| `{colors.focus}` | The same as `{colors.accent}` |
 | `{colors.text}` | `theme.text.primary` |
 | `{colors.text-muted}` | `theme.text.secondary` |
-| `{colors.accent}` | `theme.primary.main` |
+| `{colors.accent}` | Dark mode: `theme.primary.main`. Light mode: `color-mix(in srgb, theme.primary.main 65%, theme.text.primary)` |
 | `{colors.accent-contrast}` | `theme.primary.contrastText` |
+
+The light Owlbear primary gives 3.3:1 on the paper and 3.7:1 under its contrast text. Mixing in the text colour raises the light accent to 4.6:1 or more on every surface and 6.2:1 under the contrast text. The browser tests compute these ratios in both themes.
 
 Warning and danger colours do not come from Owlbear. In light mode use the `-light` tokens. They appear only as surface and text pairs, in the status banner and the pending mark. `{colors.text-muted}` is for hints, status chips and section captions.
 

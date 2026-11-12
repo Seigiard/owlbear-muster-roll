@@ -13,11 +13,14 @@ type MappedToken =
   | '--mr-accent'
   | '--mr-accent-contrast';
 
+const LIGHT_ACCENT_SHARE = '65%';
+
 export type ThemeTokens = Readonly<Record<MappedToken, string>>;
 
 export function themeTokens(theme: Theme): ThemeTokens {
   const paper = theme.background.paper;
   const text = theme.text.primary;
+  const accent = accentColor(theme);
 
   return {
     '--mr-surface': paper,
@@ -26,12 +29,22 @@ export function themeTokens(theme: Theme): ThemeTokens {
     '--mr-surface-stripe': `color-mix(in srgb, ${paper} 92%, ${theme.background.default})`,
     '--mr-line': `color-mix(in srgb, ${paper} 80%, ${text})`,
     '--mr-line-strong': `color-mix(in srgb, ${paper} 50%, ${text})`,
-    '--mr-focus': theme.primary.main,
+    '--mr-focus': accent,
     '--mr-text': text,
     '--mr-text-muted': theme.text.secondary,
-    '--mr-accent': theme.primary.main,
+    '--mr-accent': accent,
     '--mr-accent-contrast': theme.primary.contrastText,
   };
+}
+
+// Owlbear's light primary is too pale for text: 3.3:1 on the paper and 3.7:1 under its contrast
+// text. Mixing in the text colour darkens it past 4.5:1 on every surface it sits on.
+function accentColor(theme: Theme): string {
+  if (theme.mode === 'DARK') {
+    return theme.primary.main;
+  }
+
+  return `color-mix(in srgb, ${theme.primary.main} ${LIGHT_ACCENT_SHARE}, ${theme.text.primary})`;
 }
 
 export function applyTheme(theme: Theme, root: HTMLElement): void {

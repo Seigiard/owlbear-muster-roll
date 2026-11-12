@@ -44,6 +44,33 @@ export async function tokenColor(page: Page, token: string): Promise<Rgb> {
   return paintedColor(page, color);
 }
 
+// Paints the tokens one over the other, first at the bottom, and reads the colour that shows. A
+// token with alpha, such as a text colour from Owlbear, shows the layer under it.
+export function layeredColor(page: Page, tokens: readonly string[]): Promise<Rgb> {
+  return page.evaluate((names): Rgb => {
+    const context = document.createElement('canvas').getContext('2d');
+    const probe = document.createElement('div');
+
+    if (context === null) {
+      throw new Error('the page has no 2d canvas');
+    }
+
+    document.body.append(probe);
+
+    for (const name of names) {
+      probe.style.backgroundColor = `var(${name})`;
+      context.fillStyle = getComputedStyle(probe).backgroundColor;
+      context.fillRect(0, 0, 1, 1);
+    }
+
+    probe.remove();
+
+    const [red = 0, green = 0, blue = 0] = context.getImageData(0, 0, 1, 1).data;
+
+    return [red, green, blue];
+  }, tokens);
+}
+
 export function cssValue(locator: Locator, property: string): Promise<string> {
   return locator.evaluate(
     (element, name) => getComputedStyle(element).getPropertyValue(name),

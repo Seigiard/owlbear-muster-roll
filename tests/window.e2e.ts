@@ -1,7 +1,15 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 
-import { cssValue, LIGHT_THEME, renderedColor, setTheme, tokenColor } from './support/colors';
+import {
+  contrastRatio,
+  cssValue,
+  layeredColor,
+  LIGHT_THEME,
+  renderedColor,
+  setTheme,
+  tokenColor,
+} from './support/colors';
 import type { Rgb } from './support/colors';
 import { openRoom } from './support/room';
 
@@ -27,12 +35,33 @@ const LIGHT_TOKENS: ReadonlyMap<string, Rgb> = new Map<string, Rgb>([
   ['--color-surface-stripe', [239, 242, 248]],
   ['--color-line', [200, 202, 205]],
   ['--color-line-strong', [136, 138, 141]],
-  ['--color-focus', [153, 102, 255]],
+  ['--color-focus', [111, 78, 178]],
   ['--color-text', [32, 32, 33]],
   ['--color-text-muted', [96, 97, 100]],
-  ['--color-accent', [153, 102, 255]],
+  ['--color-accent', [111, 78, 178]],
   ['--color-accent-contrast', [255, 255, 255]],
 ]);
+
+// EXPERIENCE.md Accessibility Floor: text reaches 4.5:1 in both Owlbear themes. A focus outline is
+// not text, so WCAG 1.4.11 asks 3:1 of it.
+const MIN_TEXT_CONTRAST = 4.5;
+const MIN_FOCUS_CONTRAST = 3;
+
+// Each text token and the surfaces the window puts it on.
+const TEXT_PAIRS: ReadonlyArray<readonly [string, readonly string[]]> = [
+  [
+    '--color-text',
+    ['--color-surface', '--color-surface-bar', '--color-surface-tab', '--color-surface-stripe'],
+  ],
+  ['--color-text-muted', ['--color-surface', '--color-surface-bar', '--color-surface-stripe']],
+  [
+    '--color-accent',
+    ['--color-surface', '--color-surface-bar', '--color-surface-tab', '--color-surface-stripe'],
+  ],
+  ['--color-accent-contrast', ['--color-accent']],
+];
+
+const FOCUS_SURFACES = ['--color-surface', '--color-surface-bar', '--color-surface-tab'];
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
@@ -59,6 +88,47 @@ test('a theme change updates every mapped token', async ({ page }) => {
   // #then
   expect(await tokenColors(page, [...LIGHT_TOKENS.keys()])).toEqual(new Map(LIGHT_TOKENS));
 });
+
+for (const mode of ['dark', 'light'] as const) {
+  test(`the ${mode} theme gives text 4.5:1 and the focus outline 3:1 on every surface`, async ({
+    page,
+  }) => {
+    // #given
+    await openWindow(page);
+
+    if (mode === 'light') {
+      await setTheme(page, LIGHT_THEME);
+    }
+
+    // #when
+    const pairs = [
+      ...TEXT_PAIRS.flatMap(([text, surfaces]) =>
+        surfaces.map((surface) => ({ text, surface, minimum: MIN_TEXT_CONTRAST })),
+      ),
+      ...FOCUS_SURFACES.map((surface) => ({
+        text: '--color-focus',
+        surface,
+        minimum: MIN_FOCUS_CONTRAST,
+      })),
+    ];
+
+    const failing: string[] = [];
+
+    for (const { text, surface, minimum } of pairs) {
+      // Every surface sits on the window surface, so a translucent one shows it through.
+      const back = await layeredColor(page, ['--color-surface', surface]);
+      const front = await layeredColor(page, ['--color-surface', surface, text]);
+      const ratio = contrastRatio(front, back);
+
+      if (ratio < minimum) {
+        failing.push(`${text} on ${surface}: ${ratio.toFixed(2)}`);
+      }
+    }
+
+    // #then
+    expect(failing).toEqual([]);
+  });
+}
 
 test('a theme change does not reload the window', async ({ page }) => {
   // #given
