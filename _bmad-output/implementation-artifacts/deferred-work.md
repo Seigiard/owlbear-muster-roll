@@ -195,6 +195,10 @@
   summary: The sheet does not count used inventory slots, and a bulky item takes two slots only by hand.
   evidence: `presets/cairn-2e.json` gives each of the ten slots a text field and a Fatigue check; a formula cannot count filled fields, so the player writes a bulky item into two slots.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-53-cell-name.md`
+  summary: Name Cairn inventory slots and fatigue checks "1" through "10".
+  evidence: Those cell names are outside TASK-53's list; the current labels remain the visible slot numbers and the Fatigue column.
+
 ## Deferred from: code review of spec-task-42-shadcn-aria and spec-task-44-cairn-2e-preset (2026-11-12)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-42-shadcn-aria.md`

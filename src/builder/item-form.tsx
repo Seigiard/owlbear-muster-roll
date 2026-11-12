@@ -497,6 +497,21 @@ function CellForm({ store, template, origin, cell, path }: CellFormProps): React
         <p id={formulaHintId} className={HINT_CLASS}>
           {form.formulaHint}
         </p>
+        <TextInput
+          label={form.name}
+          hint={form.nameHint}
+          value={cell.name ?? ''}
+          onChange={(name) => {
+            update(
+              (current) =>
+                current.kind === 'dice'
+                  ? withOption(current, 'name', name.trim() === '' ? undefined : name)
+                  : current,
+              `${uid}:name`,
+            );
+          }}
+          onBlur={store.endRun}
+        />
       </div>
     );
   }
@@ -549,6 +564,21 @@ function CellForm({ store, template, origin, cell, path }: CellFormProps): React
           onBlur={store.endRun}
         />
       ) : null}
+      <TextInput
+        label={form.name}
+        hint={form.nameHint}
+        value={cell.name ?? ''}
+        onChange={(name) => {
+          update(
+            (current) =>
+              current.kind === 'field'
+                ? withOption(current, 'name', name.trim() === '' ? undefined : name)
+                : current,
+            `${uid}:name`,
+          );
+        }}
+        onBlur={store.endRun}
+      />
       <IdInput
         label={form.fieldId}
         id={cell.id}
@@ -636,12 +666,14 @@ function normalizedOptions(text: string): string[] {
 type TextInputProps = {
   label: string;
   value: string;
+  hint?: string;
   onChange: (value: string) => void;
   onBlur: () => void;
 };
 
-function TextInput({ label, value, onChange, onBlur }: TextInputProps): ReactNode {
+function TextInput({ label, value, hint, onChange, onBlur }: TextInputProps): ReactNode {
   const id = useId();
+  const hintId = useId();
 
   return (
     <div className="flex flex-col gap-1">
@@ -652,12 +684,18 @@ function TextInput({ label, value, onChange, onBlur }: TextInputProps): ReactNod
         id={id}
         type="text"
         className={INPUT_CLASS}
+        aria-describedby={hint === undefined ? undefined : hintId}
         value={value}
         onChange={(event) => {
           onChange(event.target.value);
         }}
         onBlur={onBlur}
       />
+      {hint === undefined ? null : (
+        <p id={hintId} className={HINT_CLASS}>
+          {hint}
+        </p>
+      )}
     </div>
   );
 }

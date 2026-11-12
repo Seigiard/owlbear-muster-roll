@@ -1,4 +1,4 @@
-import type { WINDOW_SIZE_LIMITS } from '@/core/preset';
+import { CELL_NAME_MAX_CHARACTERS, type WINDOW_SIZE_LIMITS } from '@/core/preset';
 
 // A window size bound from the preset rules, so the message names the range the parser checks.
 type WindowRange = (typeof WINDOW_SIZE_LIMITS)[keyof typeof WINDOW_SIZE_LIMITS];
@@ -139,6 +139,10 @@ export const copy = {
     blankOption: (field: string): string => `пустой вариант в поле «${field}»`,
     duplicateOption: (option: string, field: string): string =>
       `вариант «${option}» повторяется в поле «${field}»`,
+    blankName: (cell: 'field' | 'dice', detail: string): string =>
+      `пустое название у ${cell === 'field' ? 'поля' : 'кубика'} «${detail}»`,
+    longName: (cell: 'field' | 'dice', detail: string): string =>
+      `название ${cell === 'field' ? 'поля' : 'кубика'} «${detail}» длиннее ${CELL_NAME_MAX_CHARACTERS} символов`,
     badDieOption: (option: string, field: string): string =>
       `вариант «${option}» в поле «${field}» не кубик вида d6`,
     dieFieldAsNumber: (formula: string, field: string): string =>
@@ -285,6 +289,8 @@ export const copy = {
       typeSelect: 'Список',
       typeDiceChoice: 'Выбор кубика',
       selectOptions: 'Варианты — по одному в строке',
+      name: 'Название',
+      nameHint: 'Видно в подсказке. Пусто — ячейку называет подпись перед ней.',
       defaultSelectOptionOne: 'Вариант 1',
       defaultSelectOptionTwo: 'Вариант 2',
       defaultDiceOptions: 'd4\nd6\nd8\nd10\nd12\nd20',

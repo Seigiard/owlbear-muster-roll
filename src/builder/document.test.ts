@@ -167,6 +167,87 @@ describe('fromPreset and toPreset', () => {
     // #then
     expect(back).toEqual(preset);
   });
+
+  test('keeps field and dice cell names through the builder document', () => {
+    // #given
+    const preset: Preset = {
+      v: 2,
+      templates: [
+        {
+          id: 'pc',
+          kind: 'single',
+          title: 'Лист',
+          sections: [
+            {
+              rows: [
+                [
+                  {
+                    kind: 'field',
+                    type: 'number',
+                    id: 'hp_max',
+                    name: 'HP, максимум',
+                  },
+                  {
+                    kind: 'dice',
+                    formula: '1d20 <= hp_max',
+                    name: 'Спасбросок HP',
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    // #when
+    const back = toPreset(fromPreset(preset));
+
+    // #then
+    expect(back).toEqual(preset);
+  });
+
+  test('puts a blank field name problem on that field in the builder', () => {
+    // #given
+    const preset: Preset = {
+      v: 2,
+      templates: [
+        {
+          id: 'pc',
+          kind: 'single',
+          title: 'Лист',
+          sections: [
+            {
+              rows: [
+                [
+                  {
+                    kind: 'field',
+                    type: 'number',
+                    id: 'hp',
+                    name: '  ',
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const document = fromPreset(preset);
+
+    // #when
+    const problems = builderProblems(document);
+    const actual: unknown = problems;
+
+    // #then
+    expect(actual).toEqual([
+      {
+        uid: uid(document, 0, 0, 0, 0),
+        failure: { code: 'blank-name', detail: 'hp', cell: 'field' },
+      },
+    ]);
+  });
 });
 
 describe('addTemplate', () => {

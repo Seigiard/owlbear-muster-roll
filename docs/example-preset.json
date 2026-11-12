@@ -41,13 +41,18 @@
             [
               { "kind": "text", "text": "Сила" },
               { "kind": "field", "type": "number", "id": "str" },
-              { "kind": "field", "type": "check", "id": "str_tired" },
+              { "kind": "field", "type": "check", "id": "str_tired", "name": "Сила: усталость" },
               { "kind": "dice", "formula": "1d20 <= str - 2*str_tired" }
             ],
             [
               { "kind": "text", "text": "Ловкость" },
               { "kind": "field", "type": "number", "id": "dex" },
-              { "kind": "field", "type": "check", "id": "dex_tired" },
+              {
+                "kind": "field",
+                "type": "check",
+                "id": "dex_tired",
+                "name": "Ловкость: усталость"
+              },
               { "kind": "dice", "formula": "1d20 <= dex - 2*dex_tired" }
             ],
             [
@@ -64,7 +69,7 @@
               { "kind": "text", "text": "Хиты" },
               { "kind": "field", "type": "number", "id": "hp" },
               { "kind": "text", "text": "из" },
-              { "kind": "field", "type": "number", "id": "hp_max" }
+              { "kind": "field", "type": "number", "id": "hp_max", "name": "Хиты, максимум" }
             ],
             [
               { "kind": "text", "text": "Отдых" },

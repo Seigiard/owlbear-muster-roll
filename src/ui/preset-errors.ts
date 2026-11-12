@@ -75,6 +75,10 @@ export function badFileReason(failure: Exclude<PresetFailure, { code: 'newer-ver
       return reason.blankOption(failure.field);
     case 'duplicate-option':
       return reason.duplicateOption(failure.detail, failure.field);
+    case 'blank-name':
+      return reason.blankName(failure.cell, failure.detail);
+    case 'long-name':
+      return reason.longName(failure.cell, failure.detail);
     case 'bad-die-option':
       return reason.badDieOption(failure.detail, failure.field);
     case 'die-field-as-number':
