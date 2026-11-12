@@ -4,12 +4,11 @@ title: Build presets without writing JSON by hand
 status: To Do
 assignee: []
 created_date: '2026-11-11T11:15:00Z'
-updated_date: '2026-11-11T21:56:00Z'
+updated_date: '2026-11-12T00:00:00Z'
 labels:
   - v2
 dependencies:
   - TASK-41
-  - TASK-42
 ordinal: 38000
 ---
 
@@ -30,4 +29,6 @@ Today a GM describes a sheet only by writing preset JSON by hand, which needs kn
 
 <!-- SECTION:NOTES:BEGIN -->
 Forge session 2026-11-11 hardened the builder's shape: _bmad-output/forge/preset-builder/forged-idea.md. Next: bmad-spec update of SPEC.md, then bmad-ux.
+
+2026-11-12: the owner agreed to build TASK-38 before the shadcn move (TASK-42), so the TASK-42 dependency is dropped; the shadcn branch will cover the builder afterwards.
 <!-- SECTION:NOTES:END -->
