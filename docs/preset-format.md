@@ -17,7 +17,7 @@ Window   = { width, height }
 Template = { id, kind: "set", title, nameField, visibility?, tokens?, sections: Section[] }
          | { id, kind: "single", title, visibility?, players?, tokens?, sections: Section[] }
 Section  = { title?, width?, columns?, repeat?, tokens?, rows: Cell[][] }
-Cell     = { kind: "text", text } | { kind: "field", type, id, options? } | { kind: "dice", formula }
+Cell     = { kind: "text", text } | { kind: "field", type, id, name?, options? } | { kind: "dice", formula, name? }
 ```
 
 Every object is strict. A key that is not in this document makes the file invalid.
@@ -60,9 +60,9 @@ Every object is strict. A key that is not in this document makes the file invali
 
 | `kind` | Other keys | Meaning |
 | --- | --- | --- |
-| `"text"` | `text`: string | A fixed label. It has no value. |
-| `"field"` | `type`: `"text"`, `"number"`, `"check"`, `"select"` or `"dice-choice"`; `id`: string | A value that the GM fills in. The `id` is the key of its value. A `select` or `dice-choice` field also has required `options`: a non-empty list of distinct, non-blank strings. |
-| `"dice"` | `formula`: string | A dice cell that rolls the formula. It has no value. |
+| `"text"` | `text`: string | A fixed label. It has no value. A label cannot have `name`. |
+| `"field"` | `type`: `"text"`, `"number"`, `"check"`, `"select"` or `"dice-choice"`; `id`: string; `name?`: string | A value that the GM fills in. The `id` is the key of its value. A `select` or `dice-choice` field also has required `options`: a non-empty list of distinct, non-blank strings. |
+| `"dice"` | `formula`: string; `name?`: string | A dice cell that rolls the formula. It has no value. |
 
 A `select` field offers the empty choice «—» followed by its `options` in order. The empty choice
 clears the field. Stored values are strings; a value that is no longer in `options` remains visible
@@ -71,6 +71,25 @@ until the picker replaces it.
 A `dice-choice` field is a select field whose options are die sizes. Each option is `d` followed by
 an integer from 1 to 1000, with no leading zero, such as `d4`, `d20` or `d100`. Its picker, empty
 choice, stale values and option rules are the same as for a `select` field.
+
+### Cell names
+
+The optional `name` key gives a field or dice cell a stable name in compact layouts. It is the
+accessible name of a field, the accessible name and tooltip text of a dice cell, and the name shown
+for the cell in a roll. A label (`text`) cannot have this key.
+
+The value must contain a non-space character and be no longer than 60 Unicode characters. The
+preset check refuses an empty or spaces-only value, and a value over 60 characters. The refusal
+message names a field by its `id` and a dice cell by its `formula`.
+
+The cell's label is its name, then the nearest preceding label with visible text in the same row,
+then the field `id` or the dice `formula`. A named field or dice cell shows its name in a tooltip on
+pointer hover and keyboard, pointer or touch focus. The tooltip stays outside the control. A named
+read-only value is a Tab stop. The dice button's visible text does not change: it still shows the
+preceding label or its formula.
+
+For accessibility, start a dice name with the text visible on its button. This follows WCAG 2.5.3:
+the accessible name starts with the visible label, so speech input users can activate the button.
 
 ## Ids
 
@@ -140,6 +159,7 @@ An upload over existing sheets keeps values by field id. One confirmation names 
 | Add a field | The field is empty |
 | Remove a field | Its values are erased |
 | Rename a field label (same id) | Keeps its values |
+| Add, change or remove a cell name | Keeps its values |
 | Change only a select field's `options` (same id and type) | Keeps its values |
 | Change only a dice-choice field's `options` (same id and type) | Keeps its values |
 | Change a field's type (same id) | Counts as a removal: its values are erased |
@@ -153,6 +173,7 @@ An upload over existing sheets keeps values by field id. One confirmation names 
 - A file over 1 MiB is refused before it is read.
 - The preset is stored deflated and base64-encoded in one record. A preset that cannot fit one message after that is refused as too large.
 - `window.width` is from 360 to 1440 px, and `window.height` is from 360 to 1080 px. Both bounds are inclusive.
+- A cell name is at most 60 Unicode characters. It must contain a non-space character.
 
 ## Versions
 
@@ -179,6 +200,8 @@ A refused file changes nothing. The message under the button names the first pro
 | A select field has an empty or spaces-only option | пустой вариант в поле «{id}» |
 | A select field repeats an option | вариант «{option}» повторяется в поле «{id}» |
 | A dice-choice field has an option that is not `d1` to `d1000` | вариант «{option}» в поле «{id}» не кубик вида d6 |
+| A field or dice cell has an empty or spaces-only name | пустое название у поля «{id}» or пустое название у кубика «{formula}» |
+| A field or dice cell has a name over 60 Unicode characters | название поля «{id}» or название кубика «{formula}» длиннее 60 символов |
 | A `repeat` section without a row with a field | в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем |
 | Two `repeat` sections start with one id | две повторяемые секции с id «{id}» |
 | A row has more cells than `columns` | в строке больше ячеек, чем колонок |
@@ -248,10 +271,10 @@ This walks through `docs/example-preset.json`.
             [
               { "kind": "text", "text": "Сила" },
               { "kind": "field", "type": "number", "id": "str" },
-              { "kind": "field", "type": "check", "id": "str_tired" }, // counts as 0 or 1 in a formula
+              { "kind": "field", "type": "check", "id": "str_tired", "name": "Сила: усталость" }, // counts as 0 or 1 in a formula
               { "kind": "dice", "formula": "1d20 <= str - 2*str_tired" }, // a roll-under check
             ],
-            // ... "Ловкость" in the same layout ...
+            // ... "Ловкость" in the same layout, with dex_tired named "Ловкость: усталость" ...
             [
               { "kind": "text", "text": "Удача" },
               { "kind": "dice", "formula": "2D6+1" }, // two cells: the last two grid cells stay empty
@@ -267,7 +290,7 @@ This walks through `docs/example-preset.json`.
               { "kind": "text", "text": "Хиты" },
               { "kind": "field", "type": "number", "id": "hp" },
               { "kind": "text", "text": "из" },
-              { "kind": "field", "type": "number", "id": "hp_max" },
+              { "kind": "field", "type": "number", "id": "hp_max", "name": "Хиты, максимум" },
             ],
             [
               { "kind": "text", "text": "Отдых" },
