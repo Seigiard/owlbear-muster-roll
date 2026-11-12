@@ -171,7 +171,7 @@ _Avoid_: reset, clear, purge
 ## Builder
 
 **Builder**:
-A separate page of the deployed site where a GM makes or changes a preset without writing JSON, then downloads it.
+A separate page of the deployed site where a GM makes or changes a preset without writing JSON, then downloads it. In the interface: «Конструктор пресетов».
 _Avoid_: editor, configurator, constructor, designer
 
 **Preview**:
@@ -179,5 +179,5 @@ A sheet drawn from a preset that is not in a room, with sample or empty values, 
 _Avoid_: mockup, render
 
 **Draft**:
-The one unfinished preset the builder keeps by itself and offers to continue on the next visit.
+The one unfinished preset the builder keeps by itself and opens again on the next visit, with no prompt.
 _Avoid_: autosave, work in progress
