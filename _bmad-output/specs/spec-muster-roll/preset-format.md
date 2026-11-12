@@ -16,7 +16,7 @@ A preset is a JSON file that lists the templates of one room. Each template is a
 
 | Template property | Effect |
 | --- | --- |
-| Name field (sheet set only, required) | A field of type `text` outside repeat sections of the template. Its value names each sheet in the sidebar, in token labels and in rolls. It may sit on any tab. Anyone with write access may edit it |
+| Name field (sheet set only, required) | A field of type `text` outside repeat sections of the template. Its value names each sheet in the sidebar, in token labels and in rolls. It may sit on any tab. On a hidden tab, players read the name and do not edit it. Anyone with write access may edit it |
 | Visibility | Players see it (default), or only GMs. A hidden template's sheets show only to GMs, their rolls show only on GM clients, and players get no token menu on them. Hiding is in the interface only |
 | Player-editable (single sheet only) | Every player may edit the single sheet, with no per-player write access. Without it, players read it only. A sheet of a sheet set takes per-player write access and an owner instead |
 | Linkable | A token can link to the whole sheet, such as a chest token that opens a shared inventory |

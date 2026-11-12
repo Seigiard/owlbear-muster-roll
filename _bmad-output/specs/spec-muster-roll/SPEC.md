@@ -192,7 +192,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - A single sheet's sidebar entry is its preset `title`.
 - A player's edit of a field on a hidden tab is refused by the GM client's access check, as for a hidden template.
 - A sheet opens on its first tab the role can see. The chosen tab is local to the client and is not stored in the room.
-- A sheet set's name field may sit on any tab, a hidden one included. The sheet's name still shows in the sidebar.
+- A sheet set's name field may sit on any tab, a hidden one included. The sheet's name still shows in the sidebar. On a hidden tab it is read-only for players (owner's decision).
 - A visible dice cell whose formula names a field on a hidden tab shows that value in the roll. Hiding is in the interface only.
 - A joining client gets current data from an online GM client, otherwise from the last room copy.
 - The interface text is Russian in v1.
@@ -204,4 +204,3 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 ## Open Questions
 
 - Can the Owlbear extension iframe open a new tab? The v2 settings button (CAP-21) depends on it, and the extension opens no tab today.
-- `ARCHITECTURE-SPINE.md` AD-18, the one visibility resolver, needs the tab level and the access rule for fields on a hidden tab (bmad-architecture).
