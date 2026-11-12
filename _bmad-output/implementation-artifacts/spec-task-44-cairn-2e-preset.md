@@ -45,7 +45,7 @@ context:
 
 Code review of `0e64ed6..8dcae04` on 2026-11-12.
 
-- [ ] [Review][Decision] Each attack rolls one of five generic dice, not its own damage formula — AC #4 and #5 ask for "attacks with damage dice" and "a dice cell for its damage formula". Every attack row (`weapon`, `attack_1`, `attack_2`) has `1d4` to `1d12`, and the player picks the die. The format gap is recorded, but the owner has not accepted this reading of AC #5.
+- [x] [Review][Decision] Each attack rolls one of five generic dice, not its own damage formula — AC #4 and #5 ask for "attacks with damage dice" and "a dice cell for its damage formula". Every attack row (`weapon`, `attack_1`, `attack_2`) has `1d4` to `1d12`, and the player picks the die. The format gap is recorded, but the owner has not accepted this reading of AC #5. Resolved 2026-11-12: the owner wants a select field type (TASK-51) and a dice-choice field a formula can roll (TASK-52), which fixes the Cairn weapons.
 - [ ] [Review][Decision] Some fields get a wrong or English accessible name — `cellLabel` names a field after the nearest text cell before it in its row, else after its id. A screen reader says `weapon`, `npc_name`, `attack_1` and `attack_2`; `str_max`, `dex_max` and `wil_max` share the name of `str`, `dex` and `wil`; `hp_max` is «из». A fix adds text cells and changes the layout.
 - [ ] [Review][Decision] The NPC section is titled «Противники» but holds every NPC — allies, retainers and hirelings go there too.
 - [x] [Review][Patch] No check that a formula names a field its dice cell can read [src/core/preset.test.ts:1104]
