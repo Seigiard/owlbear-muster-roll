@@ -272,7 +272,7 @@ test('builds, previews and downloads a select field, then drops its options on a
     .evaluateAll((options) => options.map((option) => option.textContent));
 
   // #then
-  expect(typeNames).toEqual(['Текст', 'Число', 'Флажок', 'Список']);
+  expect(typeNames).toEqual(['Текст', 'Число', 'Флажок', 'Список', 'Выбор кубика']);
 
   // #when
   await type.selectOption({ label: 'Список' });
@@ -338,6 +338,56 @@ test('builds, previews and downloads a select field, then drops its options on a
   expect(textFile.templates[0]?.sections[0]?.rows[0]).toEqual([
     { kind: 'text', text: 'Броня' },
     { kind: 'field', type: 'text', id: 'bronya' },
+  ]);
+});
+
+test('switches a field to dice-choice with the standard dice and downloads its tree type', async ({
+  page,
+}) => {
+  // #given
+  await page.goto(PAGE);
+  await pick(item(page, builder.addSingle));
+  await pick(item(page, builder.addRow));
+  await pick(item(page, builder.addLabel));
+  await form(page).getByRole('textbox', { name: builder.form.text }).fill('Урон');
+  await pick(item(page, builder.addField));
+
+  const type = form(page).getByRole('combobox', { name: builder.form.fieldType });
+
+  // #when
+  const typeNames = await type
+    .locator('option')
+    .evaluateAll((options) => options.map((option) => option.textContent));
+
+  // #then
+  expect(typeNames).toEqual(['Текст', 'Число', 'Флажок', 'Список', 'Выбор кубика']);
+
+  // #when
+  await type.selectOption({ label: 'Выбор кубика' });
+
+  // #then
+  await expect(
+    form(page).getByRole('textbox', { name: 'Варианты — по одному в строке' }),
+  ).toHaveValue('d4\nd6\nd8\nd10\nd12\nd20');
+  await expect(item(page, 'uron · Выбор кубика')).toBeVisible();
+
+  // #when
+  const downloading = page.waitForEvent('download');
+
+  await downloadButton(page).click();
+
+  const path = await (await downloading).path();
+  const file = JSON.parse(readFileSync(path, 'utf8'));
+
+  // #then
+  expect(file.templates[0]?.sections[0]?.rows[0]).toEqual([
+    { kind: 'text', text: 'Урон' },
+    {
+      kind: 'field',
+      type: 'dice-choice',
+      id: 'uron',
+      options: ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'],
+    },
   ]);
 });
 

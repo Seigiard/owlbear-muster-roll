@@ -402,6 +402,7 @@ const FIELD_TYPE_NAMES = {
   number: copy.builder.form.typeNumber,
   check: copy.builder.form.typeCheck,
   select: copy.builder.form.typeSelect,
+  'dice-choice': copy.builder.form.typeDiceChoice,
 } as const;
 
 // A label shows its text, a field its id and type, a dice cell its formula.

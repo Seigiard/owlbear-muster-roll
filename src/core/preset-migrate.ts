@@ -654,7 +654,9 @@ export function sectionTarget(
         (other) =>
           other.id === field.id &&
           (other.type === field.type ||
-            (allowTextForSelect && field.type === 'text' && other.type === 'select')),
+            (allowTextForSelect &&
+              field.type === 'text' &&
+              (other.type === 'select' || other.type === 'dice-choice'))),
       ),
     ).length;
 

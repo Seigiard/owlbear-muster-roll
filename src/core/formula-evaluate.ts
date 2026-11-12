@@ -37,6 +37,10 @@ export type EvaluationFailure = { code: 'field'; fieldId: string } | { code: 'ar
 // The number an id stands for, or `null` when it gives the field error.
 export type FieldLookup = (id: string) => number | null;
 
+// The number of sides chosen by a dice-choice field, or `null` for an unknown, empty, non-die or
+// differently typed value. A stale value that is still a die size remains usable.
+export type DiceFieldLookup = (id: string) => number | null;
+
 // A value in [0, 1), as `Math.random` returns.
 export type RandomSource = () => number;
 
@@ -90,6 +94,10 @@ export function evaluateFormula(
       const value = lookup(expression.id);
 
       return value === null ? err({ code: 'field', fieldId: expression.id }) : ok(value);
+    }
+
+    if (expression.kind === 'dice-field') {
+      return err({ code: 'field', fieldId: expression.id });
     }
 
     if (expression.kind === 'call') {
@@ -211,6 +219,7 @@ export function formulaDiceTerms(tree: FormulaTree): DiceTerm[] {
         return;
       case 'integer':
       case 'field':
+      case 'dice-field':
         return;
       default:
         expression satisfies never;
@@ -220,6 +229,96 @@ export function formulaDiceTerms(tree: FormulaTree): DiceTerm[] {
   walk(tree);
 
   return terms;
+}
+
+// The dice-choice lookup for a dice cell in the row at `from`. It uses the same repeat-block-first
+// scope as `formulaFieldLookup`, but accepts only a field of type `dice-choice` and a value d1..d1000.
+export function formulaDiceFieldLookup(
+  layout: TemplateLayout,
+  from: TemplateRowPlace,
+  sheetRow: SheetRowValues,
+  ownBlock: FieldValues = NO_VALUES,
+): DiceFieldLookup {
+  const section = layout.sections[from.sectionIndex];
+
+  return (id) => {
+    const reference = resolveFieldReference(layout, from, id);
+
+    if (reference === null || section === undefined) {
+      return null;
+    }
+
+    const cell =
+      reference.scope === 'block'
+        ? fieldIn(section.rows, id)
+        : fieldIn([plainRow(layout, reference.rowId) ?? []], id);
+
+    if (cell === null || cell.type !== 'dice-choice') {
+      return null;
+    }
+
+    const values = reference.scope === 'block' ? ownBlock : sheetRow(reference.rowId);
+
+    return diceChoiceSides(valueText(values.get(id)));
+  };
+}
+
+// Replaces every dice-choice node with a literal dice node before terms are listed or the tree is
+// evaluated. Unknown, empty and non-die values stay roll-time field errors; a stale die-size value
+// is resolved and rolled even when it is no longer one of the field's options.
+export function resolveFormulaDiceFields(
+  tree: FormulaTree,
+  lookup: DiceFieldLookup,
+): Result<FormulaTree, Extract<EvaluationFailure, { code: 'field' }>> {
+  function resolveExpression(
+    expression: FormulaExpression,
+  ): Result<FormulaExpression, Extract<EvaluationFailure, { code: 'field' }>> {
+    if (expression.kind === 'dice-field') {
+      const sides = lookup(expression.id);
+
+      return sides === null
+        ? err({ code: 'field', fieldId: expression.id })
+        : ok({ kind: 'dice', count: expression.count, sides });
+    }
+
+    if (
+      expression.kind === 'integer' ||
+      expression.kind === 'dice' ||
+      expression.kind === 'field'
+    ) {
+      return ok(expression);
+    }
+
+    if (expression.kind === 'call') {
+      const argument = resolveExpression(expression.argument);
+
+      return argument.ok ? ok({ ...expression, argument: argument.value }) : argument;
+    }
+
+    const left = resolveExpression(expression.left);
+
+    if (!left.ok) {
+      return left;
+    }
+
+    const right = resolveExpression(expression.right);
+
+    return right.ok ? ok({ ...expression, left: left.value, right: right.value }) : right;
+  }
+
+  if (tree.kind === 'comparison') {
+    const left = resolveExpression(tree.left);
+
+    if (!left.ok) {
+      return left;
+    }
+
+    const right = resolveExpression(tree.right);
+
+    return right.ok ? ok({ ...tree, left: left.value, right: right.value }) : right;
+  }
+
+  return resolveExpression(tree);
 }
 
 // The lookup for a dice cell in the row at `from`. `sheetRow` reads rows of the same sheet only, so
@@ -268,6 +367,12 @@ function fieldNumber(cell: PresetFieldCell, value: FieldValue | undefined): numb
   const parsed = parseNumberInput(valueText(value));
 
   return parsed.ok ? parsed.value : null;
+}
+
+function diceChoiceSides(value: string): number | null {
+  const match = /^d([1-9][0-9]{0,2}|1000)$/.exec(value);
+
+  return match === null ? null : Number(match[1]);
 }
 
 function arithmetic(

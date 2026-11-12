@@ -61,12 +61,16 @@ Every object is strict. A key that is not in this document makes the file invali
 | `kind` | Other keys | Meaning |
 | --- | --- | --- |
 | `"text"` | `text`: string | A fixed label. It has no value. |
-| `"field"` | `type`: `"text"`, `"number"`, `"check"` or `"select"`; `id`: string | A value that the GM fills in. The `id` is the key of its value. A `select` field also has required `options`: a non-empty list of distinct, non-blank strings. |
+| `"field"` | `type`: `"text"`, `"number"`, `"check"`, `"select"` or `"dice-choice"`; `id`: string | A value that the GM fills in. The `id` is the key of its value. A `select` or `dice-choice` field also has required `options`: a non-empty list of distinct, non-blank strings. |
 | `"dice"` | `formula`: string | A dice cell that rolls the formula. It has no value. |
 
 A `select` field offers the empty choice «—» followed by its `options` in order. The empty choice
 clears the field. Stored values are strings; a value that is no longer in `options` remains visible
 until the picker replaces it.
+
+A `dice-choice` field is a select field whose options are die sizes. Each option is `d` followed by
+an integer from 1 to 1000, with no leading zero, such as `d4`, `d20` or `d100`. Its picker, empty
+choice, stale values and option rules are the same as for a `select` field.
 
 ## Ids
 
@@ -98,6 +102,8 @@ A formula holds:
 - `+`, `-`, `*`, `/` and parentheses;
 - `floor(...)` and `ceil(...)`;
 - dice terms `NdM` or `NDM`, with a literal `N` from 1 to 100 and a literal `M` from 1 to 1000;
+- dice-choice terms `Nd(id)` or `ND(id)`, with a literal `N` from 1 to 100 and optional spaces around
+  the field id;
 - at most one comparison from `<=`, `<`, `>=`, `>`, outside parentheses. A comparison makes the roll a check: success when it holds.
 
 Grammar:
@@ -106,7 +112,7 @@ Grammar:
 comparison = sum [('<=' | '<' | '>=' | '>') sum]
 sum        = product (('+' | '-') product)*
 product    = atom (('*' | '/') atom)*
-atom       = integer | dice | id | call | '(' sum ')'
+atom       = integer | dice | dice-choice | id | call | '(' sum ')'
 call       = ('floor' | 'ceil') '(' sum ')'
 ```
 
@@ -116,7 +122,14 @@ call       = ('floor' | 'ceil') '(' sum ')'
 - A check field counts as 0 or 1.
 - A formula can name any valid id. An id that is not on the sheet is an error when the GM rolls, not at upload.
 
-Examples: `1d20 <= str - 2*str_tired`, `floor(a/2)+ceil(b)`, `2D6+1`.
+Examples: `1d20 <= str - 2*str_tired`, `floor(a/2)+ceil(b)`, `2D6+1`, `1d(weapon_die) + bonus`.
+
+Before a roll, `Nd(id)` becomes the literal `NdM` from the selected dice-choice field. An empty or
+non-die value, such as `Меч`, shows a field error and does not roll. A stale value that is still a
+die size, such as `d8` after it was removed from the options, still rolls that die. A formula that
+uses a dice-choice field outside `Nd(id)`, or uses another field type inside `Nd(id)`, is refused
+when the preset is uploaded. An unknown id inside `Nd(id)` is accepted and gives a field error only
+when rolled.
 
 ## Preset changes
 
@@ -128,7 +141,9 @@ An upload over existing sheets keeps values by field id. One confirmation names 
 | Remove a field | Its values are erased |
 | Rename a field label (same id) | Keeps its values |
 | Change only a select field's `options` (same id and type) | Keeps its values |
+| Change only a dice-choice field's `options` (same id and type) | Keeps its values |
 | Change a field's type (same id) | Counts as a removal: its values are erased |
+| Change `select` to `dice-choice`, or `dice-choice` to `select` | Counts as a removal: its values are erased |
 | Add a template | A single sheet tab appears empty; a sheet set shows its "+" |
 | Remove a template, or change its `id` or `kind` | Its sheets are deleted with their values, token links, owners and write access |
 | Remove `tokens`, or the repeat block or sheet a token links to | That token link is removed. It is not counted in the confirmation |
@@ -163,10 +178,13 @@ A refused file changes nothing. The message under the button names the first pro
 | A select field has no options | у поля «{id}» нет вариантов |
 | A select field has an empty or spaces-only option | пустой вариант в поле «{id}» |
 | A select field repeats an option | вариант «{option}» повторяется в поле «{id}» |
+| A dice-choice field has an option that is not `d1` to `d1000` | вариант «{option}» в поле «{id}» не кубик вида d6 |
 | A `repeat` section without a row with a field | в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем |
 | Two `repeat` sections start with one id | две повторяемые секции с id «{id}» |
 | A row has more cells than `columns` | в строке больше ячеек, чем колонок |
 | A formula breaks the formula rules | ошибка в формуле «{formula}» |
+| A formula uses a dice-choice field as a number outside `Nd(id)` | в формуле «{formula}» поле «{id}» — выбор кубика, бросайте его как 1d({id}) |
+| A formula uses a non-dice field inside `Nd(id)` | в формуле «{formula}» поле «{id}» не выбор кубика |
 | The file or the stored preset is too large | файл слишком большой |
 
 ## Build a preset without JSON
@@ -269,6 +287,11 @@ This walks through `docs/example-preset.json`.
               { "kind": "field", "type": "number", "id": "bonus" },
               { "kind": "text", "text": "Бросок" },
               { "kind": "dice", "formula": "1d20 + bonus" }, // "bonus" resolves inside the repeat block first
+            ],
+            [
+              { "kind": "text", "text": "Урон" },
+              { "kind": "field", "type": "dice-choice", "id": "damage_die", "options": ["d4", "d6", "d8", "d10", "d12"] },
+              { "kind": "dice", "formula": "1d(damage_die) + bonus" }, // the chosen die is written into the roll label
             ],
           ],
         },

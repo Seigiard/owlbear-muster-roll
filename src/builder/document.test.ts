@@ -132,6 +132,41 @@ describe('fromPreset and toPreset', () => {
       ],
     });
   });
+
+  test('keeps a dice-choice field and its options through the builder document', () => {
+    // #given
+    const preset: Preset = {
+      v: 2,
+      templates: [
+        {
+          id: 'weapons',
+          kind: 'single',
+          title: 'Оружие',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Урон' },
+                  {
+                    kind: 'field',
+                    type: 'dice-choice',
+                    id: 'weapon_die',
+                    options: ['d4', 'd6', 'd8'],
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    // #when
+    const back = toPreset(fromPreset(preset));
+
+    // #then
+    expect(back).toEqual(preset);
+  });
 });
 
 describe('addTemplate', () => {

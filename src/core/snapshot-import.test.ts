@@ -378,6 +378,58 @@ describe('importSnapshot', () => {
     });
   });
 
+  test('matches a snapshot text value to a current dice-choice field', () => {
+    // #given
+    const preset: Preset = {
+      v: 2,
+      templates: [
+        {
+          id: 'inventory',
+          kind: 'single',
+          title: 'Инвентарь',
+          sections: [
+            {
+              rows: [
+                [
+                  {
+                    kind: 'field',
+                    type: 'dice-choice',
+                    id: 'weapon_die',
+                    options: ['d6', 'd8'],
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const input = file([single('inventory', { rows: { weapon_die: { weapon_die: 'd8' } } })]);
+
+    // #when
+    const actual = (() => {
+      try {
+        const result = importSnapshot(input, { preset, data: CURRENT.data }, AUTHOR);
+
+        return result.ok
+          ? {
+              row: dataOf(
+                new Map(result.value.records.map((record) => [record.k, record])),
+                'row:inventory:weapon_die',
+              ),
+              count: result.value.count,
+            }
+          : result;
+      } catch (error) {
+        return { threw: error instanceof Error ? error.message : String(error) };
+      }
+    })();
+
+    // #then
+    expect(actual).toEqual({ row: { weapon_die: 'd8' }, count: 0 });
+  });
+
   test('maps a section the template does not name to the one that holds most of its field ids', () => {
     // #given: `gear` is no section id now; `item` and `weight` are in the `item` section.
     const input = file([

@@ -137,8 +137,8 @@ function cellToPreset(cell: DocCell): PresetCell {
   }
 
   if (cell.kind === 'field') {
-    return cell.type === 'select'
-      ? { kind: 'field', type: 'select', id: cell.id, options: cell.options }
+    return cell.type === 'select' || cell.type === 'dice-choice'
+      ? { kind: 'field', type: cell.type, id: cell.id, options: cell.options }
       : { kind: 'field', type: cell.type, id: cell.id };
   }
 
@@ -149,20 +149,23 @@ export function withFieldType(
   field: Extract<DocCell, { kind: 'field' }>,
   type: Extract<PresetFieldCell, { kind: 'field' }>['type'],
 ): Extract<DocCell, { kind: 'field' }> {
-  if (type === 'select') {
-    return field.type === 'select'
+  if (type === 'select' || type === 'dice-choice') {
+    return field.type === type
       ? field
       : {
           ...field,
-          type: 'select',
-          options: [
-            copy.builder.form.defaultSelectOptionOne,
-            copy.builder.form.defaultSelectOptionTwo,
-          ],
+          type,
+          options:
+            type === 'dice-choice'
+              ? copy.builder.form.defaultDiceOptions.split('\n')
+              : [
+                  copy.builder.form.defaultSelectOptionOne,
+                  copy.builder.form.defaultSelectOptionTwo,
+                ],
         };
   }
 
-  if (field.type !== 'select') {
+  if (field.type !== 'select' && field.type !== 'dice-choice') {
     return { ...field, type };
   }
 

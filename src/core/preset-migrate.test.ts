@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-
 import type {
   Preset,
   PresetCell,
@@ -29,6 +28,10 @@ function check(id: string): PresetFieldCell {
 
 function select(id: string, options: string[]): PresetFieldCell {
   return { kind: 'field', type: 'select', id, options };
+}
+
+function diceChoice(id: string, options: string[]): PresetFieldCell {
+  return { kind: 'field', type: 'dice-choice', id, options };
 }
 
 function rows(...cells: PresetCell[][]): PresetSection {
@@ -290,6 +293,48 @@ describe('presetDiff', () => {
       result: { count: 0, sheets: 0, removed: {}, first: [], last: [] },
     });
   });
+
+  test('keeps a dice-choice value when only its options change', () => {
+    // #given
+    const old = preset([rows([diceChoice('weapon_die', ['d6', 'd8'])])]);
+    const next = preset([rows([diceChoice('weapon_die', ['d8', 'd10'])])]);
+    const records = replica(sheet('brok'), row('brok', 'weapon_die', { weapon_die: 'd6' }));
+
+    // #when
+    const migration = capture(() => summary(presetDiff(records, old, next)));
+
+    // #then
+    expect(migration).toEqual({
+      result: { count: 0, sheets: 0, removed: {}, first: [], last: [] },
+    });
+  });
+
+  test.each([
+    ['select to dice-choice', select('weapon_die', ['d6']), diceChoice('weapon_die', ['d6'])],
+    ['dice-choice to select', diceChoice('weapon_die', ['d6']), select('weapon_die', ['d6'])],
+  ] as const)(
+    'erases and counts a value when its type changes from %s',
+    (_name, oldField, nextField) => {
+      // #given
+      const old = preset([rows([oldField])]);
+      const next = preset([rows([nextField])]);
+      const records = replica(sheet('brok'), row('brok', 'weapon_die', { weapon_die: 'd6' }));
+
+      // #when
+      const migration = capture(() => summary(presetDiff(records, old, next)));
+
+      // #then
+      expect(migration).toEqual({
+        result: {
+          count: 1,
+          sheets: 0,
+          removed: { pc: ['weapon_die'] },
+          first: [],
+          last: ['row:brok:weapon_die={}'],
+        },
+      });
+    },
+  );
 
   test('erases and counts a text value when the field becomes a select', () => {
     // #given

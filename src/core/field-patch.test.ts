@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { PresetFieldCell, TemplateLayout } from '@/core/preset';
 import type { FieldValue, VersionedRecord } from '@/core/records';
 
@@ -23,6 +22,10 @@ const ARMOR = selectField('armor', ['Кожаная', 'Кольчуга']);
 
 function selectField(id: string, options: string[]): PresetFieldCell {
   return { kind: 'field', type: 'select', id, options };
+}
+
+function diceChoiceField(id: string, options: string[]): PresetFieldCell {
+  return { kind: 'field', type: 'dice-choice', id, options };
 }
 
 const TEMPLATE: TemplateLayout = {
@@ -174,6 +177,27 @@ describe('acceptedFieldValue', () => {
         empty: { result: { ok: false, error: 'invalid-value' } },
         number: { result: { ok: false, error: 'invalid-value' } },
       },
+    });
+  });
+
+  test('a dice-choice field accepts any non-empty string without checking option membership', () => {
+    // #given
+    const field = diceChoiceField('weapon_die', ['d6', 'd8']);
+
+    // #when
+    const results = {
+      listed: capture(() => acceptedFieldValue(field, 'd8')),
+      stale: capture(() => acceptedFieldValue(field, 'd12')),
+      empty: capture(() => acceptedFieldValue(field, '')),
+      number: capture(() => acceptedFieldValue(field, 8)),
+    };
+
+    // #then
+    expect(results).toEqual({
+      listed: { result: { ok: true, value: 'd8' } },
+      stale: { result: { ok: true, value: 'd12' } },
+      empty: { result: { ok: false, error: 'invalid-value' } },
+      number: { result: { ok: false, error: 'invalid-value' } },
     });
   });
 });

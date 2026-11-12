@@ -49,6 +49,13 @@ const SELECT_FIELD = (id: string, options: string[]): JsonObject => ({
   options,
 });
 
+const DICE_CHOICE_FIELD = (id: string, options: string[]): JsonObject => ({
+  kind: 'field',
+  type: 'dice-choice',
+  id,
+  options,
+});
+
 const LABEL: JsonObject = { kind: 'text', text: 'Сила' };
 
 type SelectFailure =
@@ -159,6 +166,17 @@ describe('parsePresetFile', () => {
   test('accepts a select field with its options in preset order', () => {
     // #given
     const text = fileOf([{ rows: [[SELECT_FIELD('armor', ['Нет', 'Кожаная', 'Кольчуга'])]] }]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+  });
+
+  test('accepts a dice-choice field with die options in preset order', () => {
+    // #given
+    const text = fileOf([{ rows: [[DICE_CHOICE_FIELD('weapon_die', ['d1', 'd4', 'd1000'])]] }]);
 
     // #when
     const parsed = parsePresetFile(text);
@@ -457,6 +475,64 @@ describe('parsePresetFile', () => {
     expect(actual).toEqual({ ok: false, error });
   });
 
+  test.each([
+    ['a number without d', ['d8', '8'], '8'],
+    ['a leading zero', ['d04'], 'd04'],
+    ['zero sides', ['d0'], 'd0'],
+    ['more than 1000 sides', ['d1001'], 'd1001'],
+  ] as const)('refuses a dice-choice field with %s', (_name, options, detail) => {
+    // #given
+    const text = fileOf([{ rows: [[DICE_CHOICE_FIELD('weapon_die', [...options])]] }]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+    const actual: unknown = parsed;
+
+    // #then
+    expect(actual).toEqual({
+      ok: false,
+      error: { code: 'bad-die-option', detail, field: 'weapon_die' },
+    });
+  });
+
+  test.each([
+    [
+      'a dice-choice field used as a number',
+      [DICE_CHOICE_FIELD('weapon_die', ['d8']), { kind: 'dice', formula: '1d20 + weapon_die' }],
+      {
+        code: 'die-field-as-number',
+        detail: '1d20 + weapon_die',
+        field: 'weapon_die',
+      },
+    ],
+    [
+      'a number field used as a die',
+      [NUMBER_FIELD('bonus'), { kind: 'dice', formula: '1d(bonus)' }],
+      { code: 'field-not-die', detail: '1d(bonus)', field: 'bonus' },
+    ],
+  ] as const)('refuses %s at the dice cell', (_name, row, error) => {
+    // #given
+    const text = fileOf([{ rows: [[...row]] }]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+    const actual: unknown = parsed;
+
+    // #then
+    expect(actual).toEqual({ ok: false, error });
+  });
+
+  test('accepts an unknown id in a dice-choice slot for a roll-time field error', () => {
+    // #given
+    const text = fileOf([{ rows: [[{ kind: 'dice', formula: '1d(nothing)' }]] }]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+  });
+
   test.each<[string, string]>([
     ['two words', 'two words'],
     ['1st', '1st'],
@@ -680,19 +756,29 @@ describe('parsePresetFile', () => {
     expect(parsed).toEqual({ ok: false, error: { code: 'row-too-wide' } });
   });
 
-  test.each(['1d20 <', 'sqrt(str)', '0d6', '101d6', '1d0', '1d1001', 'a < b < c', '(a < b)'])(
-    'refuses the formula %j',
-    (formula) => {
-      // #given
-      const text = fileOf([{ rows: [[{ kind: 'dice', formula }]] }]);
+  test.each([
+    '1d20 <',
+    'sqrt(str)',
+    '0d6',
+    '101d6',
+    '1d0',
+    '1d1001',
+    'a < b < c',
+    '(a < b)',
+    '1d(d6)',
+    '1d(D20)',
+    '1d(floor)',
+    '1d(constructor)',
+  ])('refuses the formula %j', (formula) => {
+    // #given
+    const text = fileOf([{ rows: [[{ kind: 'dice', formula }]] }]);
 
-      // #when
-      const parsed = parsePresetFile(text);
+    // #when
+    const parsed = parsePresetFile(text);
 
-      // #then
-      expect(parsed).toEqual({ ok: false, error: { code: 'bad-formula', detail: formula } });
-    },
-  );
+    // #then
+    expect(parsed).toEqual({ ok: false, error: { code: 'bad-formula', detail: formula } });
+  });
 
   test('refuses a formula over 200 characters and shortens it in the detail', () => {
     // #given: 201 characters, valid in every other way.
@@ -1260,9 +1346,12 @@ describe('the preset files in presets/', () => {
   }
 });
 
-function formulaFieldIds(tree: FormulaTree): string[] {
+type FormulaDiceField = { kind: 'dice-field'; count: number; id: string };
+
+function formulaFieldIds(tree: FormulaTree | FormulaDiceField): string[] {
   switch (tree.kind) {
     case 'field':
+    case 'dice-field':
       return [tree.id];
     case 'call':
       return formulaFieldIds(tree.argument);
@@ -1273,6 +1362,19 @@ function formulaFieldIds(tree: FormulaTree): string[] {
       return [];
   }
 }
+
+describe('formulaFieldIds test helper', () => {
+  test('includes a dice-choice slot and excludes a literal die', () => {
+    // #when
+    const ids = [
+      formulaFieldIds({ kind: 'dice-field', count: 1, id: 'weapon_die' }),
+      formulaFieldIds({ kind: 'dice', count: 1, sides: 8 }),
+    ];
+
+    // #then
+    expect(ids).toEqual([['weapon_die'], []]);
+  });
+});
 
 // A preset that passes the structure check, for the rule checks alone.
 function structureOf(text: string): Preset {
@@ -1292,6 +1394,63 @@ describe('presetProblems', () => {
 
     // #then
     expect(problems).toEqual([]);
+  });
+
+  test('points dice-choice option and formula type failures at their owning cells', () => {
+    // #given
+    const preset: Preset = {
+      v: 2,
+      templates: [
+        {
+          id: 'notes',
+          kind: 'single',
+          title: 'Заметки',
+          sections: [
+            {
+              rows: [
+                [
+                  {
+                    kind: 'field',
+                    type: 'dice-choice',
+                    id: 'weapon_die',
+                    options: ['d8', '8'],
+                  },
+                  { kind: 'dice', formula: '1d20 + weapon_die' },
+                ],
+                [
+                  { kind: 'field', type: 'number', id: 'bonus' },
+                  { kind: 'dice', formula: '1d(bonus)' },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    // #when
+    const problems = presetProblems(preset);
+    const actual: unknown = problems;
+
+    // #then
+    expect(actual).toEqual([
+      {
+        failure: { code: 'bad-die-option', detail: '8', field: 'weapon_die' },
+        path: [0, 0, 0, 0],
+      },
+      {
+        failure: {
+          code: 'die-field-as-number',
+          detail: '1d20 + weapon_die',
+          field: 'weapon_die',
+        },
+        path: [0, 0, 0, 1],
+      },
+      {
+        failure: { code: 'field-not-die', detail: '1d(bonus)', field: 'bonus' },
+        path: [0, 0, 1, 1],
+      },
+    ]);
   });
 
   test('lists every problem with the path of its item, in the order the upload checks', () => {
