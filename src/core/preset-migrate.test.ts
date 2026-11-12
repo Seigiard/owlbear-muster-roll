@@ -28,12 +28,7 @@ function check(id: string): PresetFieldCell {
 }
 
 function select(id: string, options: string[]): PresetFieldCell {
-  const field: PresetFieldCell = { kind: 'field', type: 'text', id };
-
-  Reflect.set(field, 'type', 'select');
-  Reflect.set(field, 'options', options);
-
-  return field;
+  return { kind: 'field', type: 'select', id, options };
 }
 
 function rows(...cells: PresetCell[][]): PresetSection {

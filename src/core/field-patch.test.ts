@@ -22,12 +22,7 @@ const RANGE: PresetFieldCell = { kind: 'field', type: 'number', id: 'range' };
 const ARMOR = selectField('armor', ['Кожаная', 'Кольчуга']);
 
 function selectField(id: string, options: string[]): PresetFieldCell {
-  const field: PresetFieldCell = { kind: 'field', type: 'text', id };
-
-  Reflect.set(field, 'type', 'select');
-  Reflect.set(field, 'options', options);
-
-  return field;
+  return { kind: 'field', type: 'select', id, options };
 }
 
 const TEMPLATE: TemplateLayout = {

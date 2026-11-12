@@ -94,28 +94,30 @@ function fileOf(sections: JsonValue[]): string {
 }
 
 function presetWithSelect(options: string[]): Preset {
-  const preset: Preset = {
+  return {
     v: 2,
     templates: [
       {
         id: 'notes',
         kind: 'single',
         title: 'Заметки',
-        sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'armor' }]] }],
+        sections: [
+          {
+            rows: [
+              [
+                {
+                  kind: 'field',
+                  type: 'select',
+                  id: 'armor',
+                  options,
+                },
+              ],
+            ],
+          },
+        ],
       },
     ],
   };
-
-  const field = preset.templates[0]?.sections[0]?.rows[0]?.[0];
-
-  if (field?.kind !== 'field') {
-    throw new Error('the fixture needs its armor field');
-  }
-
-  Reflect.set(field, 'type', 'select');
-  Reflect.set(field, 'options', options);
-
-  return preset;
 }
 
 function decodeIndependently(data: string): JsonValue {

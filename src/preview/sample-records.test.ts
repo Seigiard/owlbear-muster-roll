@@ -15,12 +15,7 @@ const REPOSITORY_ROOT = join(import.meta.dir, '../..');
 const ARMOR = selectField('armor', ['Кожаная', 'Кольчуга']);
 
 function selectField(id: string, options: string[]): PresetFieldCell {
-  const field: PresetFieldCell = { kind: 'field', type: 'text', id };
-
-  Reflect.set(field, 'type', 'select');
-  Reflect.set(field, 'options', options);
-
-  return field;
+  return { kind: 'field', type: 'select', id, options };
 }
 
 // A sheet set first, then a hidden single sheet whose repeat section spans two rows.

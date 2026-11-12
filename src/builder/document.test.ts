@@ -87,7 +87,12 @@ describe('fromPreset and toPreset', () => {
               rows: [
                 [
                   { kind: 'text', text: 'Броня' },
-                  { kind: 'field', type: 'text', id: 'armor' },
+                  {
+                    kind: 'field',
+                    type: 'select',
+                    id: 'armor',
+                    options: ['Без доспеха', 'Кожаная'],
+                  },
                 ],
               ],
             },
@@ -95,15 +100,6 @@ describe('fromPreset and toPreset', () => {
         },
       ],
     };
-
-    const field = preset.templates[0]?.sections[0]?.rows[0]?.[1];
-
-    if (field?.kind !== 'field') {
-      throw new Error('the fixture needs its armor field');
-    }
-
-    Reflect.set(field, 'type', 'select');
-    Reflect.set(field, 'options', ['Без доспеха', 'Кожаная']);
 
     // #when
     const back = toPreset(fromPreset(preset));
