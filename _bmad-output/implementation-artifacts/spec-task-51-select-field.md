@@ -2,7 +2,7 @@
 title: 'TASK-51 Add a select field type to presets'
 type: 'feature'
 created: '2026-11-12'
-status: 'in-review'
+status: 'done'
 baseline_commit: '6f1901a1d25fcfb00c4d7221cab092357958ff19'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -101,7 +101,7 @@ Step 04 ran only the `code-review-carryover` layer (blind-hunter, edge-case-hunt
 | Finding (code-review id) | Verdict | Evidence | Route |
 |---|---|---|---|
 | Builder trims or splits existing options with edge spaces or newlines (bugs+impl-terra-1), `src/builder/item-form.tsx` | low | Real: re-saving such a file through the builder normalizes those options. Only a hand-written file has them, and keeping raw lines needs a second editing path. | reject (low, rare, fix adds complexity) |
-| `Reflect.set` type workaround in five select fixtures (arch+quality-claude-6), `src/core/preset.test.ts:115` and four more | low | Real: the fixtures bypass type checking, so `tsc` cannot flag them when the select shape changes. Fix is a direct replacement with typed literals. | patch (tdd batch 3) |
+| `Reflect.set` type workaround in five select fixtures (arch+quality-claude-6), `src/core/preset.test.ts:115` and four more | low | Real: the fixtures bypass type checking, so `tsc` cannot flag them when the select shape changes. Fix is a direct replacement with typed literals. | patch (tdd batch 3, fixed in 7fb5bda) |
 | Unmount save of a text draft lands in a field that just became a select (bugs+impl-codex-2), `src/ui/sheet/preset-cell.tsx` | low | Real: needs one GM typing while another uploads a type change; the result is a visible stale value, not data loss. The fix changes the save-on-unmount contract of every field type. | reject (low, rare, fix adds complexity) |
 | A too-large error on a pick fails silently (bugs+impl-codex-4), `src/ui/sheet/use-field-edit.ts` | low | Real only for an option near 15000 characters; the check field has the same silent path. A message needs new copy and a UX rule. | reject (low, rare, fix adds complexity) |
 
