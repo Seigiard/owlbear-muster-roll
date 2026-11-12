@@ -1,9 +1,11 @@
 ---
 id: TASK-46
 title: 'Give each window command one outcome: answered, refused or timed out'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T02:11:00Z'
+updated_date: '2026-11-12T10:36:00Z'
 labels: []
 dependencies: []
 references:
