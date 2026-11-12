@@ -1,62 +1,29 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
-import { deflateSync, strToU8 } from 'fflate';
-
-import type { JsonObject, JsonValue } from '@/core/json';
+import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { SYNC_CHANNEL } from '@/core/room-messages';
 import { encodeStateRecords } from '@/core/state-records';
 import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
 import type { RoomCopyStatus, SyncState } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
+import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine, type ReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
-
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  // Short, so a player alone in the room is live soon.
-  catchUpTimeoutMs: 100,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 5,
-  // Far past any test, unless a test wants the link to drop.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
+import {
+  copyValue,
+  createRoomRig,
+  lastRequest,
+  pause,
+  requestsOf,
+  sync,
+  type RigClient,
+  type RigRoom,
+  waitUntil,
+} from '@/replica/room-rig';
 
 // The key of the 2.5 spec, written out by hand.
 const KEY = 'app.muster-roll/snapshot';
 
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
 const INITIAL: Generation = { n: 0, a: '' };
 const GHOST = 'ghost-gm';
 const PLAYER = 'player-p';
@@ -101,34 +68,13 @@ type ClientOptions = {
   role?: PlayerRole;
   seeded?: readonly VersionedRecord[];
   timing?: Partial<Timing>;
-  untilLive?: boolean;
+  until?: 'loaded' | 'live';
   platform?: (platform: MockPlatform) => MockPlatform;
 };
 
-type Client = {
-  connectionId: string;
-  engine: ReplicaEngine;
-  store: ProjectionStore;
-  window: ReplicaClient;
-};
+type Client = RigClient;
 
-type Heard = { from: string; data: JsonValue };
-
-type Room = {
-  room: MockRoom;
-  heard: Heard[];
-  post: (from: string, data: JsonValue) => void;
-};
-
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  mock.restore();
-
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
+type Room = RigRoom;
 
 function sheet(id: string): VersionedRecord {
   return { k: `sheet:${id}`, d: { set: 'pc', order: 0 }, c: 1, a: 'seed' };
@@ -138,139 +84,31 @@ function nameRow(id: string, name: string, c = 1, a = 'seed'): VersionedRecord {
   return { k: `row:${id}:name`, d: { name }, c, a };
 }
 
-// The stored room copy as the 2.5 spec describes it, built by hand with fflate.
-function copyValue(g: Generation, records: readonly VersionedRecord[], v = 2): JsonObject {
-  const deflated = deflateSync(strToU8(JSON.stringify({ g, records })));
+const roomRig = createRoomRig({
+  seeded: [PRESET_RECORD, BROK],
+  timing: { catchUpTimeoutMs: 100, stateAnswerDelayMaxMs: 5 },
+});
 
-  return { v, data: Buffer.from(deflated).toString('base64') };
-}
-
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
-}
-
-function openRoom(): Room {
-  const room = createMemoryRoom();
-
-  const observer = createMockPlatform(createMemoryBus(), createBacking(), {
-    room,
-    connectionId: 'observer',
-    playerId: 'observer',
-    name: 'observer',
-    role: 'PLAYER',
-  });
-
-  const heard: Heard[] = [];
-
-  cleanups.push(
-    observer.broadcast.onMessage(SYNC_CHANNEL, (event) => {
-      heard.push({ from: event.connectionId, data: event.data });
-    }),
-  );
-
-  return {
-    room,
-    heard,
-    post: (from, data) => {
-      observer.sendRemoteAs(from, SYNC_CHANNEL, data);
-    },
-  };
-}
-
-// A party member with no engine behind it. The test speaks for it.
-function joinAs(room: Room, connectionId: string, role: PlayerRole): void {
-  room.room.join({ id: connectionId, connectionId, name: connectionId, role });
-}
+const emptyRig = createRoomRig();
 
 async function startClient(
   room: Room,
   connectionId: string,
   options: ClientOptions = {},
 ): Promise<Client> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
-
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: connectionId,
-    role: options.role ?? 'GM',
-  };
-
-  const created = createMockPlatform(bus, backing, identity);
-  const platform = options.platform?.(created) ?? created;
-
-  for (const record of options.seeded ?? [PRESET_RECORD, BROK]) {
-    backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  created.joinParty();
-
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: { ...TIMING, ...options.timing },
-    random: () => 0,
+  return roomRig.startClient(room, connectionId, {
+    ...options,
+    engine: { random: () => 0 },
   });
-
-  const store = createProjectionStore();
-
-  const window = startReplicaClient(
-    createMockPlatform(bus, backing, identity).broadcast,
-    createSendQueue(platform.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-  await waitUntil(() => store.$loaded.get());
-
-  if (options.untilLive === true) {
-    await waitUntil(() => store.$sync.get().state === 'live');
-  }
-
-  return { connectionId, engine, store, window };
 }
 
 // A player alone in the room: its start catch-up times out with nobody to answer.
 async function playerAlone(room: Room, timing: Partial<Timing> = {}): Promise<Client> {
-  return startClient(room, PLAYER, { role: 'PLAYER', seeded: [], timing, untilLive: true });
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
-}
-
-function pause(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  return startClient(room, PLAYER, { role: 'PLAYER', seeded: [], timing, until: 'live' });
 }
 
 function keysOf(client: Client): string[] {
   return [...client.store.$records.get().keys()].sort();
-}
-
-function sync(client: Client): SyncState {
-  return client.store.$sync.get();
 }
 
 function roomCopy(client: Client): RoomCopyStatus {
@@ -281,24 +119,6 @@ function typesFrom(room: Room, from: string): string[] {
   return room.heard.flatMap((message) =>
     message.from === from ? [String(Object(message.data).t)] : [],
   );
-}
-
-function requestsOf(room: Room, from: string): string[] {
-  return room.heard.flatMap((message) =>
-    message.from === from && Object(message.data).t === 'state-request'
-      ? [String(Object(message.data).r)]
-      : [],
-  );
-}
-
-function lastRequest(room: Room, from: string): string {
-  const nonce = requestsOf(room, from).at(-1);
-
-  if (nonce === undefined) {
-    throw new Error(`${from} has asked for no state`);
-  }
-
-  return nonce;
 }
 
 function stateMessage(r: string, records: readonly VersionedRecord[]): JsonValue {
@@ -324,7 +144,7 @@ const ALONE: Omit<SyncState, 'role'> = {
 describe('a player alone reads the room copy', () => {
   test('a readable copy: every visible sheet, no record of a hidden single sheet, outcome read, still no GM', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({
       [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK, BROK_NAME, BROK_STR, GOBLIN_HP]),
@@ -345,7 +165,7 @@ describe('a player alone reads the room copy', () => {
 
   test('a readable copy with a preset and no visible sheet: outcome read, the preset only', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, GOBLIN_HP]) });
 
@@ -361,7 +181,7 @@ describe('a player alone reads the room copy', () => {
 
   test('a readable copy with no preset: outcome read, no preset', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [BROK]) });
 
@@ -377,7 +197,7 @@ describe('a player alone reads the room copy', () => {
 
   test('no copy: outcome none, nothing held', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({ 'other.extension/data': 'x' });
 
@@ -395,7 +215,7 @@ describe('a player alone reads the room copy', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 3) });
 
@@ -414,7 +234,7 @@ describe('a player alone reads the room copy', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 1) });
 
@@ -433,7 +253,7 @@ describe('a player alone reads the room copy', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({ [KEY]: { v: 2, data: 'bm90IGRlZmxhdGU=' } });
 
@@ -451,7 +271,8 @@ describe('a player alone reads the room copy', () => {
 
   test('before any catch-up read the outcome is unknown', async () => {
     // #given: the window's store before its first projection.
-    const store = createProjectionStore();
+    const rig = emptyRig;
+    const store = rig.createClient(rig.openRoom(), 'probe').openWindow().store;
 
     // #then
     expect(store.$roomCopy.get().outcome).toBeNull();
@@ -459,7 +280,7 @@ describe('a player alone reads the room copy', () => {
 
   test('sends no commit and no edit: only state-request reaches the room, and edits are refused', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK]) });
 
@@ -493,14 +314,14 @@ describe('a player alone reads the room copy', () => {
 describe('a GM returns', () => {
   test('the first GM-origin message while live sends a player to catching-up with a new r, and a complete answer brings current data', async () => {
     // #given: the player reads the copy with no GM.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK]) });
 
     const player = await playerAlone(room, { catchUpTimeoutMs: 400 });
     const first = lastRequest(room, PLAYER);
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     // #when
     room.post(GHOST, commit([MIRA]));
@@ -530,9 +351,9 @@ describe('a GM returns', () => {
 
   test('a GM that speaks again after the link went offline starts another catch-up with a new r', async () => {
     // #given: the ghost was heard during the start catch-up, then went quiet past the timeout.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const player = await startClient(room, PLAYER, {
       role: 'PLAYER',
@@ -561,9 +382,9 @@ describe('a GM returns', () => {
 
   test('a GM heard during the start catch-up is asked again with the same r, and no new one', async () => {
     // #given: the start request went out before any GM was there.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const player = await startClient(room, PLAYER, {
       role: 'PLAYER',
@@ -596,7 +417,7 @@ describe('a GM returns', () => {
 
   test('a GM joining during a player start catch-up answers it once its own catch-up ends', async () => {
     // #given: the player asks with nobody there, and a silent GM keeps the joining GM catching up.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const player = await startClient(room, PLAYER, {
       role: 'PLAYER',
@@ -605,7 +426,7 @@ describe('a GM returns', () => {
     });
 
     await waitUntil(() => requestsOf(room, PLAYER).length === 1);
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     // #when
     const renamed = nameRow('brok', 'Брок Смелый', 2, 'gm-a');
@@ -626,10 +447,10 @@ describe('a GM returns', () => {
 
   test('a player gm-return request that reaches a GM still in its start catch-up is answered once that ends', async () => {
     // #given: the player is live with no GM, and a silent GM keeps the joining GM catching up.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const player = await playerAlone(room, { catchUpTimeoutMs: 1500 });
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     // #when
     const renamed = nameRow('brok', 'Брок Смелый', 2, 'gm-a');
@@ -656,10 +477,10 @@ describe('a GM returns', () => {
 
   test('a live GM that hears a new GM tab stays live and asks for nothing', async () => {
     // #given: gm-a is live and alone.
-    const room = openRoom();
-    const gmA = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const gmA = await startClient(room, 'gm-a', { until: 'live' });
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     // #when: the ghost asks for state, as a GM tab that just opened does.
     room.post(GHOST, { v: 2, g: INITIAL, t: 'state-request', r: 'ghost-r' });
@@ -681,9 +502,9 @@ describe('a GM returns', () => {
 
   test('a GM-origin message while the link is online starts no catch-up', async () => {
     // #given: the player heard the ghost answer its start catch-up.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const player = await startClient(room, PLAYER, {
       role: 'PLAYER',
@@ -709,9 +530,9 @@ describe('a GM returns', () => {
 
   test('a complete answer after the timeout from a GM not heard before counts, and starts no catch-up', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const player = await playerAlone(room);
 
@@ -733,13 +554,13 @@ describe('outcomes with nothing to read', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     // #when
     const player = await startClient(room, PLAYER, {
       role: 'PLAYER',
       seeded: [],
-      untilLive: true,
+      until: 'live',
       platform: (platform) => ({
         ...platform,
         metadata: {
@@ -755,9 +576,9 @@ describe('outcomes with nothing to read', () => {
 
   test('a player that holds records adopts a copy of a higher generation in place of them', async () => {
     // #given: the player holds records of its own generation from a GM commit.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const player = await startClient(room, PLAYER, {
       role: 'PLAYER',

@@ -1,55 +1,16 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import type { RollOutcome } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
+import type { MockRoom } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine, type ReplicaEngine } from '@/replica/engine';
+import { createRoomRig, type RigClient, waitUntil } from '@/replica/room-rig';
 import { copy } from '@/ui/copy';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient, type RollRequest } from '@/ui/replica-client';
+import type { RollRequest } from '@/ui/replica-client';
 
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 200,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 5,
-  // Far past any test, so no ping goes out unless a test asks for one.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
-
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
 const GHOST = 'ghost-gm';
 
 // The name the party lists for the ghost connection.
@@ -173,13 +134,7 @@ const STRENGTH_TEXT = 'Мастер: Брок, Сила — 7, успех';
 
 type ClientOptions = { role?: PlayerRole; name?: string; timing?: Partial<Timing> };
 
-type Client = {
-  platform: MockPlatform;
-  backing: MockStorageBacking;
-  engine: ReplicaEngine;
-  store: ProjectionStore;
-  window: ReplicaClient;
-};
+type Client = RigClient;
 
 type Room = {
   room: MockRoom;
@@ -188,57 +143,24 @@ type Room = {
   post: (from: string, data: JsonValue) => void;
 };
 
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
+const roomRig = createRoomRig({
+  seeded: SEEDED,
+  timing: { catchUpTimeoutMs: 200, stateAnswerDelayMaxMs: 5 },
+  until: 'live',
 });
-
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
-}
 
 // A connection in the room and not in the party: it hears every roll and speaks for others.
 function openRoom(): Room {
-  const room = createMemoryRoom();
-
-  const observer = createMockPlatform(createMemoryBus(), createBacking(), {
-    room,
-    connectionId: 'observer',
-    playerId: 'observer',
-    name: 'observer',
-    role: 'PLAYER',
-  });
-
-  const rolls: Room['rolls'] = [];
-
-  cleanups.push(
-    observer.broadcast.onMessage(SYNC_CHANNEL, (event) => {
-      if (Object(event.data).t === 'roll') {
-        rolls.push({ from: event.connectionId, data: event.data });
-      }
-    }),
-  );
+  const rigRoom = roomRig.openRoom();
 
   return {
-    room,
-    rolls,
-    post: (from, data) => {
-      observer.sendRemoteAs(from, SYNC_CHANNEL, data);
+    room: rigRoom.room,
+    get rolls() {
+      return rigRoom.heard.flatMap((message) =>
+        Object(message.data).t === 'roll' ? [{ from: message.from, data: message.data }] : [],
+      );
     },
+    post: rigRoom.post,
   };
 }
 
@@ -249,61 +171,10 @@ async function startClient(
   connectionId: string,
   options: ClientOptions = {},
 ): Promise<Client> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
-  const role = options.role ?? 'GM';
-
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: options.name ?? connectionId,
-    role,
-  };
-
-  const platform = createMockPlatform(bus, backing, identity);
-
-  for (const record of SEEDED) {
-    backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  platform.joinParty();
-
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: { ...TIMING, ...options.timing },
-    random: SEVEN,
-    rollCopy: copy,
+  return roomRig.startClient(room.room, connectionId, {
+    ...options,
+    engine: { random: SEVEN, rollCopy: copy },
   });
-
-  const store = createProjectionStore();
-  // A page of its own, so a send failure set on the background meets the background's sends only.
-  const windowPlatform = createMockPlatform(bus, backing, identity);
-
-  const window = startReplicaClient(
-    windowPlatform.broadcast,
-    createSendQueue(windowPlatform.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-  await waitUntil(() => store.$loaded.get() && store.$sync.get().state === 'live');
-
-  return { platform, backing, engine, store, window };
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
 }
 
 // Requests a roll from the client's window and waits for the engine's answer.

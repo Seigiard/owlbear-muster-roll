@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import { deflateToBase64 } from '@/core/deflate';
 import type { JsonValue } from '@/core/json';
@@ -12,53 +12,22 @@ import {
 } from '@/core/preset';
 import { NOTHING_ERASED, presetDiff } from '@/core/preset-migrate';
 import { recordSchema, type VersionedRecord } from '@/core/records';
-import { SYNC_CHANNEL } from '@/core/room-messages';
-import type { Timing } from '@/core/timing';
 import type { Command } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine, type ReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
+import {
+  createRoomRig,
+  heardOf,
+  pause,
+  rejection,
+  send,
+  shown,
+  storageKey,
+  storedRecord,
+  type RigClient,
+  type RigRoom,
+  waitUntil,
+} from '@/replica/room-rig';
 
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 400,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 0,
-  // Far past any test, so no ping goes out and no GM goes offline unless a test asks for it.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  // Far past any test, so a proposal goes out once unless a test asks for resends.
-  proposeResendStartMs: 60000,
-  proposeResendMaxMs: 60000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
-
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
 const GENERATION = { n: 0, a: '' };
 const DENIED = 'Нет прав на правку';
 const PLAYER_ID = 'player-a';
@@ -207,38 +176,26 @@ const BASE: readonly VersionedRecord[] = [
   SWORD,
 ];
 
-type Client = {
-  platform: MockPlatform;
-  backing: MockStorageBacking;
-  // Every key the storage set, in order.
-  writes: string[];
-  engine: ReplicaEngine;
-  store: ProjectionStore;
-  window: ReplicaClient;
-};
+type Client = RigClient;
 
-type Heard = { from: string; data: JsonValue };
-
-type Room = { room: MockRoom; heard: Heard[] };
+type Room = RigRoom;
 
 type ClientOptions = {
   role?: PlayerRole;
   seeded?: readonly VersionedRecord[];
-  awaitLive?: boolean;
+  until?: 'loaded' | 'live';
 };
 
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
+const roomRig = createRoomRig({
+  seeded: BASE,
+  timing: { proposeResendStartMs: 60000, proposeResendMaxMs: 60000 },
+  until: 'live',
 });
 
 describe('a preset diff', () => {
   test('answers with the count of stored values the preset erases, and writes nothing', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const writesBefore = gm.writes.length;
 
@@ -261,11 +218,11 @@ describe('a preset diff', () => {
 
   test('is refused while the GM client is catching up', async () => {
     // #given: another GM tab that never answers keeps the catch-up open.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    room.room.join({ id: 'gm-x', connectionId: 'gm-x', name: 'X', role: 'GM' });
+    room.join('gm-x', 'GM', 'X');
 
-    const gm = await startClient(room, 'gm-a', { awaitLive: false });
+    const gm = await startClient(room, 'gm-a', { until: 'loaded' });
 
     // #when
     const diff = requestDiff(gm, MOVED);
@@ -277,13 +234,13 @@ describe('a preset diff', () => {
     expect({
       diff: rejection(gm, diff),
       upload: rejection(gm, upload),
-      stored: stored(gm, 'preset'),
+      stored: storedRecord(gm, 'preset'),
     }).toEqual({ diff: 'catching-up', upload: 'catching-up', stored: PRESET_RECORD });
   });
 
   test("is refused to a player's window", async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     await startClient(room, 'gm-a');
 
@@ -306,7 +263,7 @@ describe('a preset diff', () => {
       a: 'seed',
     };
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a', { seeded: [...BASE.slice(1), newer] });
 
     // #when
@@ -319,7 +276,7 @@ describe('a preset diff', () => {
     expect({
       diff: rejection(gm, diff),
       upload: rejection(gm, upload),
-      stored: stored(gm, 'preset'),
+      stored: storedRecord(gm, 'preset'),
     }).toEqual({ diff: 'preset-unreadable', upload: 'preset-unreadable', stored: newer });
   });
 });
@@ -327,7 +284,7 @@ describe('a preset diff', () => {
 describe('a preset upload', () => {
   test('writes and sends new-key rows, then the preset, then tombstones, in that order', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const writesBefore = gm.writes.length;
 
@@ -343,9 +300,9 @@ describe('a preset upload', () => {
       commits: heardOf(room, 'gm-a', 'commit').map(keysOf),
       generations: heardOf(room, 'gm-a', 'commit').map((data) => Object(data).g),
       writes: gm.writes.slice(writesBefore),
-      note: stored(gm, 'row:brok:note')?.d,
-      label: stored(gm, 'rep:brok:label:r1')?.d,
-      gone: [stored(gm, STR_ROW.k)?.d, stored(gm, SWORD.k)?.d],
+      note: storedRecord(gm, 'row:brok:note')?.d,
+      label: storedRecord(gm, 'rep:brok:label:r1')?.d,
+      gone: [storedRecord(gm, STR_ROW.k)?.d, storedRecord(gm, SWORD.k)?.d],
     }).toEqual({
       result: { t: 'preset-uploaded', id, count: 1, sheets: 0 },
       commits: [
@@ -356,11 +313,11 @@ describe('a preset upload', () => {
       // AD-14: the generation does not change, so the storage keys keep theirs too.
       generations: [GENERATION, GENERATION, GENERATION],
       writes: [
-        `${STORAGE_PREFIX}row:brok:note`,
-        `${STORAGE_PREFIX}rep:brok:label:r1`,
-        `${STORAGE_PREFIX}preset`,
-        `${STORAGE_PREFIX}row:brok:str`,
-        `${STORAGE_PREFIX}rep:brok:item:r1`,
+        storageKey('row:brok:note'),
+        storageKey('rep:brok:label:r1'),
+        storageKey('preset'),
+        storageKey('row:brok:str'),
+        storageKey('rep:brok:item:r1'),
       ],
       note: { str: 10 },
       label: { order: 0, cells: {} },
@@ -370,7 +327,7 @@ describe('a preset upload', () => {
 
   test('sends the commits it held before the batch first', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
 
     // #when
@@ -384,7 +341,7 @@ describe('a preset upload', () => {
 
   test('refuses a count that changed, with the new count, and writes nothing', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const writesBefore = gm.writes.length;
 
@@ -413,7 +370,7 @@ describe('a preset upload', () => {
 
   test('refuses an upload that erases other values than the diff, though the count is the same', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
 
     // #when
@@ -423,7 +380,7 @@ describe('a preset upload', () => {
     // #then
     expect({
       rejection: gm.store.$rejections.get().get(id),
-      stored: stored(gm, 'preset'),
+      stored: storedRecord(gm, 'preset'),
     }).toEqual({
       rejection: {
         t: 'command-rejected',
@@ -439,17 +396,15 @@ describe('a preset upload', () => {
 
   test('stops at a failed write and leaves the old preset and keys in place', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const setItem = gm.platform.storage.setItem;
 
-    const failing = spyOn(gm.platform.storage, 'setItem').mockImplementation((key, value) =>
-      key === `${STORAGE_PREFIX}row:brok:note`
+    spyOn(gm.platform.storage, 'setItem').mockImplementation((key, value) =>
+      key === storageKey('row:brok:note')
         ? err({ operation: 'write', reason: 'quota' })
         : setItem(key, value),
     );
-
-    cleanups.push(() => failing.mockRestore());
 
     // #when
     const id = send(gm, uploadOf(MOVED, 1));
@@ -459,8 +414,8 @@ describe('a preset upload', () => {
     // #then
     expect({
       rejection: rejection(gm, id),
-      stored: stored(gm, 'preset'),
-      old: [stored(gm, STR_ROW.k), stored(gm, SWORD.k)],
+      stored: storedRecord(gm, 'preset'),
+      old: [storedRecord(gm, STR_ROW.k), storedRecord(gm, SWORD.k)],
       commits: heardOf(room, 'gm-a', 'commit').map(keysOf),
       result: result(gm, id),
     }).toEqual({
@@ -474,7 +429,7 @@ describe('a preset upload', () => {
 
   test('applies a confirmed upload whose count is 0 now', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
 
     // #when
@@ -482,7 +437,7 @@ describe('a preset upload', () => {
     await waitUntil(() => result(gm, id) !== undefined);
 
     // #then
-    expect({ result: result(gm, id), stored: stored(gm, 'preset')?.d }).toEqual({
+    expect({ result: result(gm, id), stored: storedRecord(gm, 'preset')?.d }).toEqual({
       result: { t: 'preset-uploaded', id, count: 0, sheets: 0 },
       stored: encodePreset(RELABELLED),
     });
@@ -492,7 +447,7 @@ describe('a preset upload', () => {
 describe('a preset upload that removes a template', () => {
   test('reports the sheets of the sheet set it deletes and, confirmed, tombstones each with its dependents', async () => {
     // #given: three sheets of the set, with str 10, "Меч" and str 12 shown on them.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const gm = await startClient(room, 'gm-a', {
       seeded: [
@@ -534,7 +489,7 @@ describe('a preset upload that removes a template', () => {
     expect({
       diff: [found.count, found.sheets],
       result: result(gm, id),
-      gone: gone.map((key) => stored(gm, key)?.d),
+      gone: gone.map((key) => storedRecord(gm, key)?.d),
     }).toEqual({
       diff: [3, 3],
       result: { t: 'preset-uploaded', id, count: 3, sheets: 3 },
@@ -544,7 +499,7 @@ describe('a preset upload that removes a template', () => {
 
   test('refuses with count-changed when a sheet was added since the diff', async () => {
     // #given: the diff saw one sheet of the set to delete.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const diff = requestDiff(gm, NO_PC);
 
@@ -570,7 +525,7 @@ describe('a preset upload that removes a template', () => {
     expect({
       diff: [found.count, found.sheets],
       rejection: gm.store.$rejections.get().get(id),
-      stored: stored(gm, 'preset'),
+      stored: storedRecord(gm, 'preset'),
     }).toEqual({
       diff: [2, 1],
       rejection: {
@@ -587,7 +542,7 @@ describe('a preset upload that removes a template', () => {
 
   test('that deletes only an empty sheet refuses an upload sent as 0 and 0, and deletes nothing', async () => {
     // #given: one sheet of the set, with no values.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const empty: VersionedRecord = { k: 'sheet:anya', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' };
     const gm = await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, empty] });
 
@@ -605,7 +560,7 @@ describe('a preset upload that removes a template', () => {
     // #then
     expect({
       rejection: gm.store.$rejections.get().get(id),
-      sheet: stored(gm, 'sheet:anya'),
+      sheet: storedRecord(gm, 'sheet:anya'),
     }).toEqual({
       rejection: {
         t: 'command-rejected',
@@ -621,7 +576,7 @@ describe('a preset upload that removes a template', () => {
 
   test('that makes a repeat section unlinkable tombstones its links with no count', async () => {
     // #given: a token linked to a repeat block of the NPC single sheet.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const block: VersionedRecord = {
       k: 'rep:npc:mob:m1',
@@ -642,8 +597,8 @@ describe('a preset upload that removes a template', () => {
     // #then
     expect({
       result: result(gm, id),
-      link: stored(gm, 'link:t1')?.d,
-      block: stored(gm, block.k),
+      link: storedRecord(gm, 'link:t1')?.d,
+      block: storedRecord(gm, block.k),
     }).toEqual({
       result: { t: 'preset-uploaded', id, count: 0, sheets: 0 },
       link: null,
@@ -655,7 +610,7 @@ describe('a preset upload that removes a template', () => {
 describe('a write after an upload', () => {
   test('of a GM field strips the values its row no longer has', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const gm = await startClient(room, 'gm-a', {
       seeded: withRecord({ ...STR_ROW, d: { str: 10, gone: 1, note: 5 } }),
@@ -663,15 +618,15 @@ describe('a write after an upload', () => {
 
     // #when
     send(gm, strEdit('str', 11));
-    await waitUntil(() => stored(gm, STR_ROW.k)?.c === 3);
+    await waitUntil(() => storedRecord(gm, STR_ROW.k)?.c === 3);
 
     // #then
-    expect(stored(gm, STR_ROW.k)?.d).toEqual({ str: 11 });
+    expect(storedRecord(gm, STR_ROW.k)?.d).toEqual({ str: 11 });
   });
 
   test('of a repeat block duplicate holds only the cells its repeat section has', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const gm = await startClient(room, 'gm-a', {
       seeded: withRecord({ ...SWORD, d: { order: 0, cells: { item: 'Меч 1', qty: 2, gone: 3 } } }),
@@ -832,7 +787,7 @@ describe("a player's pending edit when the preset changes", () => {
 
   test('does not show the denied notification from a GM it reached', async () => {
     // #given: a live GM that commits the upload.
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const player = await startClient(room, PLAYER_ID, { role: 'PLAYER', seeded: [] });
 
@@ -855,7 +810,7 @@ describe("a player's pending edit when the preset changes", () => {
 async function playerWithSilentGm(
   seeded: readonly VersionedRecord[] = BASE,
 ): Promise<{ room: Room; player: Client }> {
-  const room = openRoom();
+  const room = roomRig.openRoom();
   const gm = await startClient(room, 'gm-a', { seeded });
   const player = await startClient(room, PLAYER_ID, { role: 'PLAYER', seeded: [] });
 
@@ -870,63 +825,11 @@ async function startClient(
   connectionId: string,
   options: ClientOptions = {},
 ): Promise<Client> {
-  const writes: string[] = [];
-  const backing = createBacking(writes);
-  const bus = createMemoryBus();
-  const role = options.role ?? 'GM';
-
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: connectionId,
-    role,
-  };
-
-  const platform = createMockPlatform(bus, backing, identity);
-
-  for (const record of options.seeded ?? BASE) {
-    backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  writes.length = 0;
-  platform.joinParty();
-
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: TIMING,
-    editDenied: DENIED,
+  return roomRig.startClient(room, connectionId, {
+    ...options,
+    until: options.until ?? 'live',
+    engine: { editDenied: DENIED },
   });
-
-  const store = createProjectionStore();
-
-  const window = startReplicaClient(
-    createMockPlatform(bus, backing, identity).broadcast,
-    createSendQueue(platform.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-
-  await waitUntil(
-    () =>
-      store.$loaded.get() && (options.awaitLive === false || store.$sync.get().state === 'live'),
-  );
-
-  return { platform, backing, writes, engine, store, window };
-}
-
-function openRoom(): Room {
-  const room = createMemoryRoom();
-  const heard: Heard[] = [];
-
-  cleanups.push(
-    room.onRemote(SYNC_CHANNEL, 'observer', (event) => {
-      heard.push({ from: event.connectionId, data: event.data });
-    }),
-  );
-
-  return { room, heard };
 }
 
 function withRecord(record: VersionedRecord): VersionedRecord[] {
@@ -967,7 +870,7 @@ function requestDiff(client: Client, preset: Preset): string {
 
 // A message from the GM client the test speaks for.
 function answer(room: Room, data: JsonValue): void {
-  room.room.postRemote(SYNC_CHANNEL, data, 'gm-a');
+  room.post('gm-a', data);
 }
 
 function commit(records: VersionedRecord[]): JsonValue {
@@ -986,13 +889,6 @@ function strEdit(fieldId: string, value: JsonValue): Command {
     fieldId,
     value,
   };
-}
-
-// The messages of one type one client sent to the room, in send order.
-function heardOf(room: Room, from: string, t: string): JsonValue[] {
-  return room.heard.flatMap((message) =>
-    message.from === from && Object(message.data).t === t ? [message.data] : [],
-  );
 }
 
 // The keys of the records one commit carries, in order.
@@ -1027,75 +923,12 @@ function pendingKeys(client: Client): string[] {
 function copiedBlocks(client: Client): JsonValue[] {
   return client.backing
     .keys()
-    .filter(
-      (key) =>
-        key.startsWith(`${STORAGE_PREFIX}rep:brok:item:`) && key !== `${STORAGE_PREFIX}${SWORD.k}`,
-    )
+    .filter((key) => key.startsWith(storageKey('rep:brok:item:')) && key !== storageKey(SWORD.k))
     .map(
       (key) => Object(recordSchema.parse(JSON.parse(client.backing.get(key) ?? 'null')).d).cells,
     );
 }
 
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await pause(POLL_MS);
-  }
-}
-
-function pause(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-function send(client: Client, command: Command): string {
-  const sent = client.window.sendCommand(command);
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the command: ${sent.error}`);
-  }
-
-  return sent.value;
-}
-
-function rejection(client: Client, id: string): string | undefined {
-  return client.store.$rejections.get().get(id)?.reason;
-}
-
 function result(client: Client, id: string): JsonValue | undefined {
   return client.store.$presetResults.get().get(id);
-}
-
-function shown(client: Client, key: string): VersionedRecord | undefined {
-  return client.store.$records.get().get(key);
-}
-
-function stored(client: Client, key: string): VersionedRecord | null {
-  const text = client.backing.get(`${STORAGE_PREFIX}${key}`);
-
-  return text === null ? null : recordSchema.parse(JSON.parse(text));
-}
-
-function createBacking(writes: string[]): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      writes.push(key);
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
 }

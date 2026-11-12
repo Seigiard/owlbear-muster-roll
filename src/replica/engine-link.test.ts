@@ -1,54 +1,22 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
-import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
-import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import type { Command } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
 import type { ContextMenuIconFilter, PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
+import {
+  createRoomRig,
+  pause,
+  rejection,
+  send,
+  shown,
+  storedRecord,
+  type RigClient,
+  type RigRoom,
+  waitUntil,
+} from '@/replica/room-rig';
 
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 400,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 0,
-  // Far past any test, so no ping goes out unless a test asks for one.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
-
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
 const GHOST = 'ghost-gm';
 const LINK_ITEM = 'app.muster-roll/link-sheet';
 const UNLINK_ITEM = 'app.muster-roll/unlink-sheet';
@@ -134,17 +102,9 @@ const LINK_ANY: ContextMenuIconFilter = {
   every: [{ key: 'layer', value: 'CHARACTER' }],
 };
 
-type Client = {
-  platform: MockPlatform;
-  stop: () => void;
-  backing: MockStorageBacking;
-  store: ProjectionStore;
-  window: ReplicaClient;
-};
+type Client = RigClient;
 
-type Heard = { from: string; data: JsonValue };
-
-type Room = { room: MockRoom; heard: Heard[] };
+type Room = RigRoom;
 
 type ClientOptions = {
   // Port calls that fail from the start, before the first catch-up creates the menu.
@@ -160,18 +120,12 @@ type OwlbearMenuItem = {
   icons: { label: string; filter: ContextMenuIconFilter | null }[];
 };
 
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
+const roomRig = createRoomRig({ seeded: BASE });
 
 describe('link-set', () => {
   test('writes link:{tokenId} with the sheet id at c: 1 by this connection, saved and sent', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
 
     // #when
@@ -183,14 +137,14 @@ describe('link-set', () => {
 
     expect({
       shown: shown(client, 'link:t1'),
-      stored: stored(client, 'link:t1'),
+      stored: storedRecord(client, 'link:t1'),
       sent: committed(room, 'gm-a'),
     }).toEqual({ shown: expected, stored: expected, sent: [expected] });
   });
 
   test('keeps two tokens linked to one sheet, and a token picked again holds only the new sheet', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 3, a: 'seed' }],
@@ -211,7 +165,7 @@ describe('link-set', () => {
 
   test('writes a link to a repeat block of a linkable section with the sheet and instance ids', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
 
     // #when
@@ -221,7 +175,7 @@ describe('link-set', () => {
     // #then
     const expected: VersionedRecord = { k: 'link:t1', d: { s: 'npc', i: 'sk1' }, c: 1, a: 'gm-a' };
 
-    expect({ stored: stored(client, 'link:t1'), sent: committed(room, 'gm-a') }).toEqual({
+    expect({ stored: storedRecord(client, 'link:t1'), sent: committed(room, 'gm-a') }).toEqual({
       stored: expected,
       sent: [expected],
     });
@@ -240,7 +194,7 @@ describe('link-set', () => {
   ] as const) {
     test(`refuses a link to "${sheetId}" block ${JSON.stringify(instanceId)} with "${reason}" and writes nothing`, async () => {
       // #given
-      const room = openRoom();
+      const room = roomRig.openRoom();
       const client = await startClient(room, 'gm-a');
 
       // #when
@@ -251,14 +205,14 @@ describe('link-set', () => {
       expect({
         reason: rejection(client, id),
         shown: shown(client, 'link:t1'),
-        stored: stored(client, 'link:t1'),
+        stored: storedRecord(client, 'link:t1'),
       }).toEqual({ reason, shown: undefined, stored: null });
     });
   }
 
   test('refuses a token id a link key cannot hold', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
 
     // #when
@@ -277,7 +231,7 @@ describe('link-set', () => {
 
   test('refuses a player', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
 
     // #when
@@ -292,7 +246,7 @@ describe('link-set', () => {
 describe('link-clear', () => {
   test('tombstones the link and keeps the sheet', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 2, a: 'seed' }],
@@ -304,8 +258,8 @@ describe('link-clear', () => {
 
     // #then
     expect({
-      link: stored(client, 'link:t1'),
-      sheet: stored(client, 'sheet:brok'),
+      link: storedRecord(client, 'link:t1'),
+      sheet: storedRecord(client, 'sheet:brok'),
     }).toEqual({
       link: { k: 'link:t1', d: null, c: 3, a: 'gm-a' },
       sheet: { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
@@ -314,7 +268,7 @@ describe('link-clear', () => {
 
   test('refuses a token with no link', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'link:t1', d: null, c: 2, a: 'seed' }],
@@ -325,7 +279,7 @@ describe('link-clear', () => {
     await waitUntil(() => rejection(client, id) !== undefined);
 
     // #then
-    expect({ reason: rejection(client, id), stored: stored(client, 'link:t1')?.c }).toEqual({
+    expect({ reason: rejection(client, id), stored: storedRecord(client, 'link:t1')?.c }).toEqual({
       reason: 'unknown-link',
       stored: 2,
     });
@@ -335,7 +289,7 @@ describe('link-clear', () => {
 describe('a repeat block removal', () => {
   test('tombstones the links to the repeat block in the same commit, and keeps other links', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [
@@ -358,7 +312,7 @@ describe('a repeat block removal', () => {
     // #then
     expect({
       sent: commits(room, 'gm-a'),
-      kept: stored(client, 'link:t3'),
+      kept: storedRecord(client, 'link:t3'),
       menu: menuOf(client).map((item) => item.id),
     }).toEqual({
       sent: [
@@ -377,7 +331,7 @@ describe('a repeat block removal', () => {
 describe('token menu', () => {
   test('gives a GM with no link only "Привязать лист…", for one token of the character layer', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     // #when
     const client = await startClient(room, 'gm-a');
@@ -390,7 +344,7 @@ describe('token menu', () => {
 
   test('keeps a linked token out of "Привязать лист…" and shows "Открыть лист" and "Отвязать лист" only on it', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     // #when
     const client = await startClient(room, 'gm-a', {
@@ -457,7 +411,7 @@ describe('token menu', () => {
 
   test('treats a link to a deleted sheet as no link', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     // #when
     const client = await startClient(room, 'gm-a', {
@@ -472,7 +426,7 @@ describe('token menu', () => {
 
   test('re-creates every item when a link is written', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
     const before = client.platform.contextMenuCalls().length;
 
@@ -490,7 +444,7 @@ describe('token menu', () => {
 
   test('re-creates nothing for a change that leaves the filters as they were', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
@@ -521,7 +475,7 @@ describe('token menu', () => {
 
   test('removes "Отвязать лист" and frees the token when the linked sheet is deleted', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
@@ -532,7 +486,7 @@ describe('token menu', () => {
     await waitUntil(() => client.platform.contextMenuItems().length === 1);
 
     // #then
-    expect({ link: stored(client, 'link:t1')?.d, menu: menuOf(client) }).toEqual({
+    expect({ link: storedRecord(client, 'link:t1')?.d, menu: menuOf(client) }).toEqual({
       link: null,
       menu: [{ id: LINK_ITEM, icons: [{ label: 'Привязать лист…', filter: LINK_ANY }] }],
     });
@@ -540,7 +494,7 @@ describe('token menu', () => {
 
   test('follows a link another GM client commits', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
     const other = await startClient(room, 'gm-b');
 
@@ -575,7 +529,7 @@ describe('token menu', () => {
 
   test('gives a player with no link no item', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     // #when
     const client = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
@@ -586,7 +540,7 @@ describe('token menu', () => {
 
   test('removes the GM items when the GM becomes a player, and keeps "Открыть лист"', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
@@ -613,9 +567,9 @@ describe('token menu', () => {
 
   test('makes no item before the first catch-up ends, and makes them when it ends', async () => {
     // #given: a GM in the party that never answers holds the catch-up open.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 300 } });
 
@@ -637,7 +591,7 @@ describe('token menu', () => {
 
   test('"Привязать лист…" opens the link picker for the token, anchored to the pressed entry', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
 
     // #when
@@ -657,7 +611,7 @@ describe('token menu', () => {
 
   test('"Отвязать лист" tombstones the token\'s link', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
@@ -668,7 +622,7 @@ describe('token menu', () => {
     await waitUntil(() => committed(room, 'gm-a').length === 1);
 
     // #then
-    expect({ link: stored(client, 'link:t1'), sent: committed(room, 'gm-a') }).toEqual({
+    expect({ link: storedRecord(client, 'link:t1'), sent: committed(room, 'gm-a') }).toEqual({
       link: { k: 'link:t1', d: null, c: 2, a: 'gm-a' },
       sent: [{ k: 'link:t1', d: null, c: 2, a: 'gm-a' }],
     });
@@ -676,7 +630,7 @@ describe('token menu', () => {
 
   test('shows a notification when the engine refuses "Отвязать лист"', async () => {
     // #given: Owlbear would not show the item on t2, which has no link, but a press can race one.
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
@@ -694,7 +648,7 @@ describe('token menu', () => {
 
   test('creates an item again on the next change after its create failed', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a', { failMenuCalls: ['create'] });
 
     await pause(20);
@@ -714,7 +668,7 @@ describe('token menu', () => {
 
   test('removes an item again on the next change after its remove failed', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
@@ -743,7 +697,7 @@ describe('token menu', () => {
 
   test('stop() takes every item back out of Owlbear', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
@@ -765,7 +719,7 @@ describe('token menu', () => {
 
   test('creates the items when a player becomes GM', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
 
     // #when
@@ -780,7 +734,7 @@ describe('token menu', () => {
 
   test('ignores a press for more than one token', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
@@ -795,7 +749,7 @@ describe('token menu', () => {
     // #then
     expect({
       popovers: client.platform.openedPopovers(),
-      link: stored(client, 'link:t1')?.d,
+      link: storedRecord(client, 'link:t1')?.d,
       actionOpens: client.platform.actionOpens(),
       openRequest: client.store.$openRequest.get(),
     }).toEqual({ popovers: [], link: { s: 'brok' }, actionOpens: 0, openRequest: null });
@@ -807,60 +761,15 @@ async function startClient(
   connectionId: string,
   options: ClientOptions = {},
 ): Promise<Client> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
-  const role = options.role ?? 'GM';
+  return roomRig.startClient(room, connectionId, {
+    ...options,
+    engine: { menuCopy: MENU_COPY },
+    platform: (platform) => {
+      platform.failNextContextMenuCalls(options.failMenuCalls ?? []);
 
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: connectionId,
-    role,
-  };
-
-  const platform = createMockPlatform(bus, backing, identity);
-
-  for (const record of options.seeded ?? BASE) {
-    backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  platform.joinParty();
-  platform.failNextContextMenuCalls(options.failMenuCalls ?? []);
-
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: { ...TIMING, ...options.timing },
-    menuCopy: MENU_COPY,
+      return platform;
+    },
   });
-
-  const store = createProjectionStore();
-
-  const window = startReplicaClient(
-    createMockPlatform(bus, backing, identity).broadcast,
-    createSendQueue(platform.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-  await waitUntil(() => store.$loaded.get());
-
-  return { platform, stop: engine.stop, backing, store, window };
-}
-
-function openRoom(): Room {
-  const room = createMemoryRoom();
-  const heard: Heard[] = [];
-
-  room.onRemote(SYNC_CHANNEL, 'observer', (event) => {
-    heard.push({ from: event.connectionId, data: event.data });
-  });
-
-  return { room, heard };
-}
-
-function joinAs(room: Room, connectionId: string, role: PlayerRole): void {
-  room.room.join({ id: connectionId, connectionId, name: connectionId, role });
 }
 
 // The records of each commit one client sent to the room, one list per message, in send order.
@@ -894,63 +803,4 @@ function menuOf(client: Client): OwlbearMenuItem[] {
     id: item.id,
     icons: item.icons.map((icon) => ({ label: icon.label, filter: icon.filter ?? null })),
   }));
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await pause(POLL_MS);
-  }
-}
-
-function pause(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-function send(client: Client, command: Command): string {
-  const sent = client.window.sendCommand(command);
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the command: ${sent.error}`);
-  }
-
-  return sent.value;
-}
-
-function rejection(client: Client, id: string): string | undefined {
-  return client.store.$rejections.get().get(id)?.reason;
-}
-
-function shown(client: Client, key: string): VersionedRecord | undefined {
-  return client.store.$records.get().get(key);
-}
-
-function stored(client: Client, key: string): VersionedRecord | null {
-  const text = client.backing.get(`${STORAGE_PREFIX}${key}`);
-
-  return text === null ? null : recordSchema.parse(JSON.parse(text));
-}
-
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
 }

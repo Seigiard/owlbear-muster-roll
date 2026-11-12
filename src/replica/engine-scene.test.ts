@@ -1,54 +1,22 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type LinkData, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
-import { UI_CHANNEL, type Command } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
+import { UI_CHANNEL } from '@/core/ui-messages';
 import type { ContextMenuKeyFilter, PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
-
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 400,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 0,
-  // Far past any test, so no ping goes out unless a test asks for one.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
-
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
+import {
+  createRoomRig,
+  pause,
+  send,
+  shown,
+  storedRecord,
+  type RigClient,
+  type RigRoom,
+  waitUntil,
+} from '@/replica/room-rig';
 
 // Long enough for a removal to reach the room through the paced queues if it were sent.
 const SETTLE_MS = 40;
@@ -103,20 +71,14 @@ const SEEDED: readonly VersionedRecord[] = [
   { k: 'link:t3', d: SKEL, c: 1, a: 'seed' },
 ];
 
-type Client = {
-  platform: MockPlatform;
-  backing: MockStorageBacking;
-  store: ProjectionStore;
-  window: ReplicaClient;
+type Client = RigClient & {
   // Every `command-rejected` the engine sent on the LOCAL channel.
   rejections: string[];
   // How many times the engine called the scene port, subscriptions included.
   sceneCalls: () => number;
 };
 
-type Heard = { from: string; data: JsonValue };
-
-type Room = { room: MockRoom; heard: Heard[] };
+type Room = RigRoom;
 
 type ClientOptions = {
   role?: PlayerRole;
@@ -124,13 +86,7 @@ type ClientOptions = {
   timing?: Partial<Timing>;
 };
 
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
+const roomRig = createRoomRig({ seeded: SEEDED });
 
 describe('a token deleted from the open scene', () => {
   test('tombstones its link through the GM command path: saved, sent, shown, menu updated', async () => {
@@ -150,9 +106,9 @@ describe('a token deleted from the open scene', () => {
     await waitUntil(() => shown(client, 'link:t1')?.d === null);
     expect({
       sent: committed(room, 'gm-a'),
-      stored: stored(client, 'link:t1'),
+      stored: storedRecord(client, 'link:t1'),
       shown: shown(client, 'link:t1'),
-      others: [stored(client, 'link:t2')?.d, stored(client, 'link:t3')?.d],
+      others: [storedRecord(client, 'link:t2')?.d, storedRecord(client, 'link:t3')?.d],
       unlinkFilter: unlinkIds(client),
     }).toEqual({
       sent: [tombstone],
@@ -178,7 +134,7 @@ describe('a token deleted from the open scene', () => {
     // #then
     expect({
       sent: committed(room, 'gm-a').map((record) => [record.k, record.d]),
-      kept: stored(client, 'link:t2')?.d,
+      kept: storedRecord(client, 'link:t2')?.d,
     }).toEqual({
       sent: [
         ['link:t1', null],
@@ -200,7 +156,7 @@ describe('a token deleted from the open scene', () => {
     // #then
     expect({
       sent: committed(room, 'gm-a'),
-      links: ['t1', 't2', 't3'].map((tokenId) => stored(client, `link:${tokenId}`)?.d),
+      links: ['t1', 't2', 't3'].map((tokenId) => storedRecord(client, `link:${tokenId}`)?.d),
     }).toEqual({ sent: [], links: [BROK, BROK, SKEL] });
   });
 
@@ -227,7 +183,7 @@ describe('a token deleted from the open scene', () => {
     // #then
     expect({
       sent: committed(room, 'gm-a'),
-      links: ['t1', 't2', 't3'].map((tokenId) => stored(client, `link:${tokenId}`)?.d),
+      links: ['t1', 't2', 't3'].map((tokenId) => storedRecord(client, `link:${tokenId}`)?.d),
     }).toEqual({ sent: [], links: [BROK, BROK, SKEL] });
   });
 
@@ -251,7 +207,7 @@ describe('a token deleted from the open scene', () => {
     expect({
       whileLoading,
       sent: committed(room, 'gm-a').map((record) => record.k),
-      t1: stored(client, 'link:t1')?.d,
+      t1: storedRecord(client, 'link:t1')?.d,
     }).toEqual({ whileLoading: [], sent: ['link:t2'], t1: BROK });
   });
 
@@ -268,7 +224,10 @@ describe('a token deleted from the open scene', () => {
     await pause(SETTLE_MS);
 
     // #then
-    expect({ sent: committed(room, 'gm-a').length, link: stored(client, 'link:t1')?.d }).toEqual({
+    expect({
+      sent: committed(room, 'gm-a').length,
+      link: storedRecord(client, 'link:t1')?.d,
+    }).toEqual({
       sent: 1,
       link: null,
     });
@@ -315,7 +274,7 @@ describe('a token deleted from the open scene', () => {
     expect({
       beforeRemoval,
       sent: committed(room, 'client-a').map((record) => record.k),
-      t1: stored(client, 'link:t1')?.d,
+      t1: storedRecord(client, 'link:t1')?.d,
     }).toEqual({ beforeRemoval: [], sent: ['link:t2'], t1: BROK });
   });
 });
@@ -325,7 +284,7 @@ describe('the watch', () => {
     // #given: a catch-up held open keeps the removal of t1 waiting.
     const room = openRoom(['t1', 't2']);
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 300 } });
 
@@ -352,7 +311,7 @@ describe('the watch', () => {
     expect({
       callsAsPlayer,
       sent: room.heard.filter((message) => message.from === 'gm-a' && isEdit(message.data)),
-      links: [stored(client, 'link:t1')?.d, stored(client, 'link:t2')?.d],
+      links: [storedRecord(client, 'link:t1')?.d, storedRecord(client, 'link:t2')?.d],
     }).toEqual({ callsAsPlayer: 0, sent: [], links: [BROK, BROK] });
   });
 
@@ -383,7 +342,7 @@ describe('during catch-up', () => {
     // of the link to t1 only after t1 was deleted.
     const room = openRoom(['t1', 't2']);
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', {
       timing: { catchUpTimeoutMs: 300 },
@@ -393,7 +352,7 @@ describe('during catch-up', () => {
     // #when
     client.platform.removeSceneItems(['t1']);
     post(room, GHOST, commit([{ k: 'link:t1', d: BROK, c: 1, a: 'seed' }]));
-    await waitUntil(() => sameData(stored(client, 'link:t1'), BROK));
+    await waitUntil(() => sameData(storedRecord(client, 'link:t1'), BROK));
     await pause(SETTLE_MS);
 
     const during = { state: client.store.$sync.get().state, sent: committed(room, 'gm-a') };
@@ -404,7 +363,7 @@ describe('during catch-up', () => {
     expect({
       during,
       sent: committed(room, 'gm-a').map((record) => [record.k, record.d]),
-      kept: stored(client, 'link:t2')?.d,
+      kept: storedRecord(client, 'link:t2')?.d,
     }).toEqual({
       during: { state: 'catching-up', sent: [] },
       sent: [['link:t1', null]],
@@ -416,13 +375,13 @@ describe('during catch-up', () => {
     // #given
     const room = openRoom(['t1']);
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 300 } });
 
     client.platform.removeSceneItems(['t1']);
     post(room, GHOST, commit([{ k: 'link:t1', d: null, c: 2, a: GHOST }]));
-    await waitUntil(() => stored(client, 'link:t1')?.d === null);
+    await waitUntil(() => storedRecord(client, 'link:t1')?.d === null);
 
     // #when
     await waitUntil(() => client.store.$sync.get().state === 'live');
@@ -431,7 +390,7 @@ describe('during catch-up', () => {
     // #then
     expect({
       sent: committed(room, 'gm-a'),
-      link: stored(client, 'link:t1'),
+      link: storedRecord(client, 'link:t1'),
       rejections: client.rejections,
       notifications: client.platform.shownNotifications(),
     }).toEqual({
@@ -452,16 +411,16 @@ describe('two GM clients', () => {
 
     await waitUntil(() => isLive(second));
     first.platform.removeSceneItems(['t1']);
-    await waitUntil(() => stored(second, 'link:t1')?.d === null);
+    await waitUntil(() => storedRecord(second, 'link:t1')?.d === null);
 
     // #when
     send(second, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
-    await waitUntil(() => stored(second, 'link:t1')?.c === 4);
+    await waitUntil(() => storedRecord(second, 'link:t1')?.c === 4);
 
     // #then
     expect({
-      first: stored(first, 'link:t1')?.d,
-      second: stored(second, 'link:t1')?.d,
+      first: storedRecord(first, 'link:t1')?.d,
+      second: storedRecord(second, 'link:t1')?.d,
       cleared: committed(room, 'gm-a').filter((record) => record.c === 4),
     }).toEqual({
       first: null,
@@ -478,17 +437,20 @@ describe('two GM clients', () => {
 
     await waitUntil(() => isLive(second));
     first.platform.removeSceneItems(['t1']);
-    await waitUntil(() => stored(first, 'link:t1')?.d === null);
+    await waitUntil(() => storedRecord(first, 'link:t1')?.d === null);
     first.platform.addSceneItems(['t1']);
     await pause(SETTLE_MS);
 
     // #when
     send(second, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
-    await waitUntil(() => sameData(stored(first, 'link:t1'), SKEL));
+    await waitUntil(() => sameData(storedRecord(first, 'link:t1'), SKEL));
     await pause(SETTLE_MS);
 
     // #then
-    expect({ first: stored(first, 'link:t1')?.d, second: stored(second, 'link:t1')?.d }).toEqual({
+    expect({
+      first: storedRecord(first, 'link:t1')?.d,
+      second: storedRecord(second, 'link:t1')?.d,
+    }).toEqual({
       first: SKEL,
       second: SKEL,
     });
@@ -513,8 +475,8 @@ describe('two GM clients', () => {
     const winner: VersionedRecord = { k: 'link:t1', d: null, c: 2, a: 'gm-b' };
 
     expect({
-      first: stored(first, 'link:t1'),
-      second: stored(second, 'link:t1'),
+      first: storedRecord(first, 'link:t1'),
+      second: storedRecord(second, 'link:t1'),
       rejections: [...first.rejections, ...second.rejections],
       notifications: [
         ...first.platform.shownNotifications(),
@@ -528,98 +490,63 @@ async function startClient(
   room: Room,
   connectionId: string,
   options: ClientOptions = {},
-): Promise<Client & { stop: () => void }> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
-  const role = options.role ?? 'GM';
-
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: connectionId,
-    role,
-  };
-
-  const platform = createMockPlatform(bus, backing, identity);
-  const scene = platform.scene;
+): Promise<Client> {
   let sceneCalls = 0;
-
-  platform.scene = {
-    isReady: () => {
-      sceneCalls += 1;
-
-      return scene.isReady();
-    },
-    onReadyChange: (callback) => {
-      sceneCalls += 1;
-
-      return scene.onReadyChange(callback);
-    },
-    getItemIds: () => {
-      sceneCalls += 1;
-
-      return scene.getItemIds();
-    },
-    onItemsChange: (callback) => {
-      sceneCalls += 1;
-
-      return scene.onItemsChange(callback);
-    },
-    getItemLabel: (itemId) => {
-      sceneCalls += 1;
-
-      return scene.getItemLabel(itemId);
-    },
-    setItemLabel: (itemId, label) => {
-      sceneCalls += 1;
-
-      return scene.setItemLabel(itemId, label);
-    },
-  };
-
-  // A player reads none of it until it becomes GM.
-  for (const record of options.seeded ?? SEEDED) {
-    backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  platform.joinParty();
-
   const rejections: string[] = [];
 
-  cleanups.push(
-    platform.broadcast.onMessage(UI_CHANNEL, (event) => {
-      const data = Object(event.data);
+  const client = await roomRig.startClient(room, connectionId, {
+    ...options,
+    engine: { menuCopy: MENU_COPY },
+    platform: (platform) => {
+      const scene = platform.scene;
 
-      if (data.t === 'command-rejected') {
-        rejections.push(String(data.id));
-      }
-    }),
-  );
+      platform.scene = {
+        isReady: () => {
+          sceneCalls += 1;
 
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: { ...TIMING, ...options.timing },
-    menuCopy: MENU_COPY,
+          return scene.isReady();
+        },
+        onReadyChange: (callback) => {
+          sceneCalls += 1;
+
+          return scene.onReadyChange(callback);
+        },
+        getItemIds: () => {
+          sceneCalls += 1;
+
+          return scene.getItemIds();
+        },
+        onItemsChange: (callback) => {
+          sceneCalls += 1;
+
+          return scene.onItemsChange(callback);
+        },
+        getItemLabel: (itemId) => {
+          sceneCalls += 1;
+
+          return scene.getItemLabel(itemId);
+        },
+        setItemLabel: (itemId, label) => {
+          sceneCalls += 1;
+
+          return scene.setItemLabel(itemId, label);
+        },
+      };
+
+      roomRig.cleanup(
+        platform.broadcast.onMessage(UI_CHANNEL, (event) => {
+          if (Object(event.data).t === 'command-rejected') {
+            rejections.push(String(Object(event.data).id));
+          }
+        }),
+      );
+
+      return platform;
+    },
   });
 
-  const store = createProjectionStore();
-
-  const window = startReplicaClient(
-    createMockPlatform(bus, backing, identity).broadcast,
-    createSendQueue(platform.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-  await waitUntil(() => store.$loaded.get());
-
   return {
-    platform,
-    stop: engine.stop,
-    backing,
-    store,
-    window,
+    ...client,
     rejections,
     sceneCalls: () => sceneCalls,
   };
@@ -627,20 +554,7 @@ async function startClient(
 
 // A room whose open scene holds these items.
 function openRoom(itemIds: string[], ready = true): Room {
-  const room = createMemoryRoom();
-  const heard: Heard[] = [];
-
-  room.setScene({ ready, itemIds, labels: {} }, 'items');
-  room.onRemote(SYNC_CHANNEL, 'observer', (event) => {
-    heard.push({ from: event.connectionId, data: event.data });
-  });
-
-  return { room, heard };
-}
-
-// A party member that never answers by itself. The test speaks for it.
-function joinAs(room: Room, connectionId: string, role: PlayerRole): void {
-  room.room.join({ id: connectionId, connectionId, name: connectionId, role });
+  return roomRig.openRoom({ itemIds, ready });
 }
 
 function post(room: Room, from: string, data: JsonValue): void {
@@ -649,14 +563,6 @@ function post(room: Room, from: string, data: JsonValue): void {
 
 function commit(records: VersionedRecord[]): JsonValue {
   return { v: 2, g: INITIAL, t: 'commit', records };
-}
-
-function send(client: Client, command: Command): void {
-  const sent = client.window.sendCommand(command);
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the command: ${sent.error}`);
-  }
 }
 
 function isLive(client: Client): boolean {
@@ -691,52 +597,7 @@ function unlinkIds(client: Client): ContextMenuKeyFilter[] {
   return item?.icons[0]?.filter?.some ?? [];
 }
 
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await pause(POLL_MS);
-  }
-}
-
-function pause(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
 // Records hold their data as JSON, so two equal links are two objects.
 function sameData(record: VersionedRecord | null | undefined, d: JsonValue): boolean {
   return JSON.stringify(record?.d) === JSON.stringify(d);
-}
-
-function shown(client: Client, key: string): VersionedRecord | undefined {
-  return client.store.$records.get().get(key);
-}
-
-function stored(client: Client, key: string): VersionedRecord | null {
-  const text = client.backing.get(`${STORAGE_PREFIX}${key}`);
-
-  return text === null ? null : recordSchema.parse(JSON.parse(text));
-}
-
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
 }

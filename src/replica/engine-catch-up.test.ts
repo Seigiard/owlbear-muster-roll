@@ -1,57 +1,31 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
-import { SYNC_CHANNEL } from '@/core/room-messages';
 import { decodeStateRecords, encodeStateRecords } from '@/core/state-records';
 import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
 import type { Command, SyncState } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockPlatform,
-  type MockRoom,
-  type MockStorageBacking,
-} from '@/platform/current';
+import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine, type ReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
+import {
+  createRoomRig,
+  heardOf,
+  lastRequest,
+  pause,
+  rejection,
+  requestsOf,
+  send,
+  shown,
+  storageKey,
+  storedRecord,
+  sync,
+  type RigClient,
+  type RigRoom,
+  waitUntil,
+} from '@/replica/room-rig';
 
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  // Long enough for a test to act while a client waits, short enough to see it end.
-  catchUpTimeoutMs: 400,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 5,
-  // Far past any test, so no ping goes out unless a test asks for one.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
-
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
 const INITIAL: Generation = { n: 0, a: '' };
 const ROW_STR = { kind: 'row', rowId: 'str' } as const;
 const ROW_NOTES = { kind: 'row', rowId: 'notes' } as const;
@@ -127,209 +101,37 @@ type ClientOptions = {
   timing?: Partial<Timing>;
   random?: () => number;
   // Wait until the client is live before the test goes on.
-  untilLive?: boolean;
+  until?: 'loaded' | 'live';
   platform?: (platform: MockPlatform) => MockPlatform;
 };
 
-type Client = {
-  connectionId: string;
-  platform: MockPlatform;
-  backing: MockStorageBacking;
-  engine: ReplicaEngine;
-  store: ProjectionStore;
-  window: ReplicaClient;
-};
-
-type Heard = { from: string; data: JsonValue };
+type Client = RigClient;
 
 // A connection in the room that hears every REMOTE message and posts as any connection.
-type Room = {
-  room: MockRoom;
-  heard: Heard[];
-  post: (from: string, data: JsonValue) => void;
-};
-
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  mock.restore();
-
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
+type Room = RigRoom;
 
 function sheet(id: string, c = 1, a = 'seed'): VersionedRecord {
   return { k: `sheet:${id}`, d: { set: 'pc', order: 0 }, c, a };
 }
 
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
-}
-
-function openRoom(): Room {
-  const room = createMemoryRoom();
-
-  const observer = createMockPlatform(createMemoryBus(), createBacking(), {
-    room,
-    connectionId: 'observer',
-    playerId: 'observer',
-    name: 'observer',
-    role: 'PLAYER',
-  });
-
-  const heard: Heard[] = [];
-
-  cleanups.push(
-    observer.broadcast.onMessage(SYNC_CHANNEL, (event) => {
-      heard.push({ from: event.connectionId, data: event.data });
-    }),
-  );
-
-  return {
-    room,
-    heard,
-    post: (from, data) => {
-      observer.sendRemoteAs(from, SYNC_CHANNEL, data);
-    },
-  };
-}
-
-// A party member that never answers by itself. The test speaks for it.
-function joinAs(room: Room, connectionId: string, role: PlayerRole): void {
-  room.room.join({ id: connectionId, connectionId, name: connectionId, role });
-}
+const roomRig = createRoomRig({
+  seeded: [PRESET_RECORD, BROK],
+  timing: { catchUpTimeoutMs: 400, stateAnswerDelayMaxMs: 5 },
+});
 
 async function startClient(
   room: Room,
   connectionId: string,
   options: ClientOptions = {},
 ): Promise<Client> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
-  const role = options.role ?? 'GM';
-
-  const identity = {
-    room: room.room,
-    connectionId,
-    playerId: connectionId,
-    name: connectionId,
-    role,
-  };
-
-  const created = createMockPlatform(bus, backing, identity);
-  const platform = options.platform?.(created) ?? created;
-
-  for (const record of options.seeded ?? [PRESET_RECORD, BROK]) {
-    backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  created.joinParty();
-
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: { ...TIMING, ...options.timing },
-    random: options.random,
+  return roomRig.startClient(room, connectionId, {
+    ...options,
+    engine: { random: options.random },
   });
-
-  const store = createProjectionStore();
-
-  const window = startReplicaClient(
-    createMockPlatform(bus, backing, identity).broadcast,
-    createSendQueue(created.broadcast, TIMING),
-    store,
-    TIMING,
-  );
-
-  cleanups.push(engine.stop, window.stop);
-  await waitUntil(() => store.$loaded.get());
-
-  if (options.untilLive === true) {
-    await waitUntil(() => store.$sync.get().state === 'live');
-  }
-
-  return { connectionId, platform: created, backing, engine, store, window };
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
-}
-
-function pause(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-function send(client: Client, command: Command): string {
-  const sent = client.window.sendCommand(command);
-
-  if (!sent.ok) {
-    throw new Error(`the window refused the command: ${sent.error}`);
-  }
-
-  return sent.value;
 }
 
 function patch(target: typeof ROW_STR | typeof ROW_NOTES, fieldId: string, value: JsonValue) {
   return { type: 'field-patch', sheetId: 'brok', target, fieldId, value } satisfies Command;
-}
-
-function shown(client: Client, key: string): VersionedRecord | undefined {
-  return client.store.$records.get().get(key);
-}
-
-function stored(client: Client, key: string): VersionedRecord | null {
-  const text = client.backing.get(`${STORAGE_PREFIX}${key}`);
-
-  return text === null ? null : recordSchema.parse(JSON.parse(text));
-}
-
-function sync(client: Client): SyncState {
-  return client.store.$sync.get();
-}
-
-function rejection(client: Client, id: string): string | undefined {
-  return client.store.$rejections.get().get(id)?.reason;
-}
-
-function heardOf(room: Room, from: string, t: string): JsonValue[] {
-  return room.heard.flatMap((message) =>
-    message.from === from && Object(message.data).t === t ? [message.data] : [],
-  );
-}
-
-// The nonces a client has asked with, in order.
-function requestsOf(room: Room, from: string): string[] {
-  return heardOf(room, from, 'state-request').map((message) => String(Object(message).r));
-}
-
-function lastRequest(room: Room, from: string): string {
-  const nonce = requestsOf(room, from).at(-1);
-
-  if (nonce === undefined) {
-    throw new Error(`${from} has asked for no state`);
-  }
-
-  return nonce;
 }
 
 function stateMessage(
@@ -351,10 +153,10 @@ function commit(records: VersionedRecord[], g: Generation = INITIAL): JsonValue 
 async function catchingUpAgain(room: Room, connectionId: string): Promise<Client> {
   const client = await startClient(room, connectionId, {
     timing: { catchUpTimeoutMs: 1500 },
-    untilLive: true,
+    until: 'live',
   });
 
-  joinAs(room, GHOST, 'GM');
+  room.join(GHOST, 'GM');
   client.engine.catchUp();
   await waitUntil(
     () => sync(client).state === 'catching-up' && requestsOf(room, connectionId).length === 2,
@@ -366,9 +168,9 @@ async function catchingUpAgain(room: Room, connectionId: string): Promise<Client
 describe('start', () => {
   test('a GM client enters catching-up with its persisted records and asks with a nonce', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     // #when
     const client = await startClient(room, 'gm-b');
@@ -395,9 +197,9 @@ describe('start', () => {
 
   test('a GM client whose party read shows no other GM leaves at once, with no timeout wait', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, 'player-p', 'PLAYER');
+    room.join('player-p', 'PLAYER');
 
     // #when
     const started = Date.now();
@@ -414,7 +216,7 @@ describe('start', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const failingParty = (platform: MockPlatform): MockPlatform => ({
       ...platform,
@@ -442,18 +244,18 @@ describe('start', () => {
 
   test('a late GM client gets the records of a live GM client and persists them', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const liza = sheet('liza', 3, 'gm-a');
 
-    await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, BROK, liza], untilLive: true });
+    await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, BROK, liza], until: 'live' });
 
     // #when
-    const late = await startClient(room, 'gm-b', { seeded: [], untilLive: true });
+    const late = await startClient(room, 'gm-b', { seeded: [], until: 'live' });
 
     // #then
     expect({
       shown: [shown(late, BROK.k), shown(late, liza.k), shown(late, 'preset')],
-      stored: [stored(late, BROK.k), stored(late, liza.k)],
+      stored: [storedRecord(late, BROK.k), storedRecord(late, liza.k)],
     }).toEqual({ shown: [BROK, liza, PRESET_RECORD], stored: [BROK, liza] });
   });
 });
@@ -461,17 +263,17 @@ describe('start', () => {
 describe('answer', () => {
   test('a live GM answers after a delay in its range with numbered state parts of all its records', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const gone: VersionedRecord = { k: 'row:brok:str', d: null, c: 2, a: 'gm-a' };
 
     await startClient(room, 'gm-a', {
       seeded: [PRESET_RECORD, BROK, gone],
       timing: { stateAnswerDelayMinMs: 60, stateAnswerDelayMaxMs: 100 },
       random: () => 0.5,
-      untilLive: true,
+      until: 'live',
     });
 
-    joinAs(room, ASKER, 'PLAYER');
+    room.join(ASKER, 'PLAYER');
 
     // #when
     const asked = Date.now();
@@ -495,15 +297,15 @@ describe('answer', () => {
 
   test('a live GM sends nothing when another answer to the same nonce arrives during its delay', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     await startClient(room, 'gm-a', {
       timing: { stateAnswerDelayMinMs: 80, stateAnswerDelayMaxMs: 80 },
-      untilLive: true,
+      until: 'live',
     });
 
-    joinAs(room, ASKER, 'PLAYER');
-    joinAs(room, GHOST, 'GM');
+    room.join(ASKER, 'PLAYER');
+    room.join(GHOST, 'GM');
 
     // #when
     room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
@@ -516,10 +318,10 @@ describe('answer', () => {
 
   test('a GM client in catching-up does not answer', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
-    joinAs(room, ASKER, 'PLAYER');
+    room.join(GHOST, 'GM');
+    room.join(ASKER, 'PLAYER');
 
     const client = await startClient(room, 'gm-b');
 
@@ -536,10 +338,10 @@ describe('answer', () => {
 
   test('a player client does not answer', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, ASKER, 'PLAYER');
-    await startClient(room, 'player-p', { role: 'PLAYER', seeded: [], untilLive: true });
+    room.join(ASKER, 'PLAYER');
+    await startClient(room, 'player-p', { role: 'PLAYER', seeded: [], until: 'live' });
 
     // #when
     room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
@@ -553,7 +355,7 @@ describe('answer', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const failingReads = (platform: MockPlatform): MockPlatform => {
       platform.setFailingStorageOperations(['read', 'list']);
@@ -561,8 +363,8 @@ describe('answer', () => {
       return platform;
     };
 
-    await startClient(room, 'gm-a', { platform: failingReads, untilLive: true });
-    joinAs(room, ASKER, 'PLAYER');
+    await startClient(room, 'gm-a', { platform: failingReads, until: 'live' });
+    room.join(ASKER, 'PLAYER');
 
     // #when
     room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
@@ -576,15 +378,15 @@ describe('answer', () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     await startClient(room, 'gm-a', {
       timing: { stateAnswerDelayMinMs: 60, stateAnswerDelayMaxMs: 60 },
-      untilLive: true,
+      until: 'live',
     });
 
-    joinAs(room, ASKER, 'PLAYER');
-    joinAs(room, GHOST, 'GM');
+    room.join(ASKER, 'PLAYER');
+    room.join(GHOST, 'GM');
 
     // #when
     room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
@@ -605,10 +407,10 @@ describe('answer', () => {
 
   test('a request again for one nonce is answered again, as the asker missed the first answer', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    await startClient(room, 'gm-a', { untilLive: true });
-    joinAs(room, ASKER, 'PLAYER');
+    await startClient(room, 'gm-a', { until: 'live' });
+    room.join(ASKER, 'PLAYER');
     room.post(ASKER, { v: 2, g: INITIAL, t: 'state-request', r: 'r-asker' });
     await waitUntil(() => heardOf(room, 'gm-a', 'state').length === 1);
 
@@ -627,10 +429,10 @@ describe('answer', () => {
 describe('exit', () => {
   test('a partial answer is merged, and catch-up ends only when all n parts of one responder are in', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
-    joinAs(room, 'ghost-gm-2', 'GM');
+    room.join(GHOST, 'GM');
+    room.join('ghost-gm-2', 'GM');
 
     const client = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 1500 } });
     const r = lastRequest(room, 'gm-b');
@@ -654,9 +456,9 @@ describe('exit', () => {
 
   test('a client with no complete answer leaves catching-up on the timeout', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const started = Date.now();
     const client = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 150 } });
@@ -675,13 +477,13 @@ describe('exit', () => {
 
   test('a state for an old nonce, or one that comes while live, is still merged', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, 'player-p', 'PLAYER');
+    room.join('player-p', 'PLAYER');
 
-    const client = await startClient(room, 'gm-a', { untilLive: true });
+    const client = await startClient(room, 'gm-a', { until: 'live' });
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const liza = sheet('liza', 1, GHOST);
 
@@ -692,7 +494,7 @@ describe('exit', () => {
     // #then
     expect({
       shown: shown(client, liza.k),
-      stored: stored(client, liza.k),
+      stored: storedRecord(client, liza.k),
       sync: sync(client),
     }).toEqual({ shown: liza, stored: liza, sync: { ...LIVE, gmLink: 'online' } });
   });
@@ -701,11 +503,11 @@ describe('exit', () => {
 describe('re-entry', () => {
   test('a return while live asks again with a new nonce', async () => {
     // #given
-    const room = openRoom();
-    const client = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const client = await startClient(room, 'gm-a', { until: 'live' });
     const first = lastRequest(room, 'gm-a');
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     // #when
     client.engine.catchUp();
@@ -726,7 +528,7 @@ describe('re-entry', () => {
 
   test('a return while catching up keeps the nonce, and asks again only while nothing answered it', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await catchingUpAgain(room, 'gm-a');
     const r = lastRequest(room, 'gm-a');
     const asked = requestsOf(room, 'gm-a').length;
@@ -749,14 +551,14 @@ describe('re-entry', () => {
 
   test('returns while catching up do not put the timeout off', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       timing: { catchUpTimeoutMs: 300 },
-      untilLive: true,
+      until: 'live',
     });
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     // #when
     const started = Date.now();
@@ -774,8 +576,8 @@ describe('re-entry', () => {
 
   test('a role change with no party change asks with a new nonce', async () => {
     // #given
-    const room = openRoom();
-    const client = await startClient(room, 'gm-a', { untilLive: true });
+    const room = roomRig.openRoom();
+    const client = await startClient(room, 'gm-a', { until: 'live' });
 
     // #when
     client.platform.setRole('PLAYER', { rejoin: false });
@@ -787,9 +589,9 @@ describe('re-entry', () => {
 
   test('a role change asks with a new nonce and drops the parts of the old answer', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 1500 } });
     const old = lastRequest(room, 'gm-b');
@@ -811,9 +613,9 @@ describe('re-entry', () => {
 
   test('a higher generation from a GM asks with a new nonce, once per generation', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 1500 } });
     const old = lastRequest(room, 'gm-b');
@@ -838,7 +640,7 @@ describe('re-entry', () => {
 describe('pending queue', () => {
   test('a GM edit shows at once, is not saved or sent, and takes c on exit', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await catchingUpAgain(room, 'gm-a');
 
     // #when
@@ -847,7 +649,7 @@ describe('pending queue', () => {
 
     const during = {
       shown: shown(client, 'row:brok:str')?.d,
-      stored: stored(client, 'row:brok:str'),
+      stored: storedRecord(client, 'row:brok:str'),
       commits: heardOf(room, 'gm-a', 'commit'),
     };
 
@@ -861,7 +663,7 @@ describe('pending queue', () => {
       during,
       after: {
         shown: shown(client, written.k),
-        stored: stored(client, written.k),
+        stored: storedRecord(client, written.k),
         commits: heardOf(room, 'gm-a', 'commit'),
       },
     }).toEqual({
@@ -872,7 +674,7 @@ describe('pending queue', () => {
 
   test('two edits of one row combine into one entry, and both fields apply with one version', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await catchingUpAgain(room, 'gm-a');
 
     // #when
@@ -892,7 +694,7 @@ describe('pending queue', () => {
 
   test('a create shows its sheet at once, and create, rename, patch and block add replay in order', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await catchingUpAgain(room, 'gm-a');
 
     // #when
@@ -936,10 +738,10 @@ describe('pending queue', () => {
 
     expect({
       createdAtOnce,
-      sheet: stored(client, 'sheet:liza')?.d,
-      name: stored(client, 'row:liza:name')?.d,
-      notes: stored(client, 'row:liza:notes')?.d,
-      block: stored(client, 'rep:liza:attack:i1')?.d,
+      sheet: storedRecord(client, 'sheet:liza')?.d,
+      name: storedRecord(client, 'row:liza:name')?.d,
+      notes: storedRecord(client, 'row:liza:notes')?.d,
+      block: storedRecord(client, 'rep:liza:attack:i1')?.d,
       keys,
     }).toEqual({
       createdAtOnce: { set: 'pc', order: 1 },
@@ -958,7 +760,7 @@ describe('pending queue', () => {
 
   test('an intent the pending view refuses is rejected at once, and so is a preset upload', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await catchingUpAgain(room, 'gm-a');
 
     // #when
@@ -984,7 +786,7 @@ describe('pending queue', () => {
 
   test('a replay refusal sends a rejection with the original command id', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await catchingUpAgain(room, 'gm-a');
     const sent = send(client, patch(ROW_STR, 'str', 12));
 
@@ -1000,7 +802,7 @@ describe('pending queue', () => {
     // #then
     expect({
       reason: rejection(client, sent),
-      stored: stored(client, 'row:brok:str'),
+      stored: storedRecord(client, 'row:brok:str'),
       commits: heardOf(room, 'gm-a', 'commit'),
     }).toEqual({ reason: 'deleted-sheet', stored: null, commits: [] });
   });
@@ -1008,15 +810,15 @@ describe('pending queue', () => {
   test('a key that leaves the pending view shows its replica record again while catching up', async () => {
     // #given
     const seededStr: VersionedRecord = { k: 'row:brok:str', d: { str: 3 }, c: 1, a: 'seed' };
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [PRESET_RECORD, BROK, seededStr],
       timing: { catchUpTimeoutMs: 1500 },
-      untilLive: true,
+      until: 'live',
     });
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
     client.engine.catchUp();
     await waitUntil(() => requestsOf(room, 'gm-a').length === 2);
     send(client, patch(ROW_STR, 'str', 12));
@@ -1039,7 +841,7 @@ describe('pending queue', () => {
 
   test('a closing page applies and sends the pending intents before its queues flush', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await catchingUpAgain(room, 'gm-a');
 
     send(client, patch(ROW_STR, 'str', 12));
@@ -1052,14 +854,15 @@ describe('pending queue', () => {
     // #then
     const written = { k: 'row:brok:str', d: { str: 12 }, c: 1, a: 'gm-a' };
 
-    expect({ stored: stored(client, written.k), commits: heardOf(room, 'gm-a', 'commit') }).toEqual(
-      { stored: written, commits: [commit([written])] },
-    );
+    expect({
+      stored: storedRecord(client, written.k),
+      commits: heardOf(room, 'gm-a', 'commit'),
+    }).toEqual({ stored: written, commits: [commit([written])] });
   });
 
   test('a GM made a player during catch-up gets not-allowed for each pending intent', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await catchingUpAgain(room, 'gm-a');
     const edit = send(client, patch(ROW_STR, 'str', 12));
 
@@ -1078,7 +881,7 @@ describe('pending queue', () => {
     expect({
       reasons: [rejection(client, edit), rejection(client, create)],
       shown: [shown(client, 'row:brok:str'), shown(client, 'sheet:liza')],
-      stored: [stored(client, 'row:brok:str'), stored(client, 'sheet:liza')],
+      stored: [storedRecord(client, 'row:brok:str'), storedRecord(client, 'sheet:liza')],
       commits: heardOf(room, 'gm-a', 'commit'),
     }).toEqual({
       reasons: ['not-allowed', 'not-allowed'],
@@ -1090,18 +893,15 @@ describe('pending queue', () => {
 
   test('a window that opens during catch-up gets the pending view in its projection', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await catchingUpAgain(room, 'gm-a');
 
     send(client, patch(ROW_STR, 'str', 12));
     await waitUntil(() => shown(client, 'row:brok:str') !== undefined);
 
     // #when
-    const store = createProjectionStore();
-    const bus = client.platform.broadcast;
-    const window = startReplicaClient(bus, createSendQueue(bus, TIMING), store, TIMING);
-
-    cleanups.push(window.stop);
+    const page = client.openWindow();
+    const { store } = page;
     await waitUntil(() => store.$loaded.get());
 
     // #then
@@ -1112,15 +912,15 @@ describe('pending queue', () => {
 describe('role and generation', () => {
   test('a player made GM catches up and then persists every held record under its generation', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
       seeded: [],
       timing: { catchUpTimeoutMs: 100 },
-      untilLive: true,
+      until: 'live',
     });
 
     room.post(GHOST, commit([PRESET_RECORD, BROK]));
@@ -1136,26 +936,26 @@ describe('role and generation', () => {
     // #then
     expect({
       storedAsPlayer,
-      stored: [stored(client, 'preset'), stored(client, BROK.k)],
+      stored: [storedRecord(client, 'preset'), storedRecord(client, BROK.k)],
     }).toEqual({ storedAsPlayer: [], stored: [PRESET_RECORD, BROK] });
   });
 
   test('a player made GM opens the highest generation in its storage', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const higher = { n: 2, a: 'imp' };
     const liza = sheet('liza');
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
       seeded: [],
       timing: { catchUpTimeoutMs: 100 },
-      untilLive: true,
+      until: 'live',
     });
 
-    client.backing.set(`mr2:mock-room:2:imp:${liza.k}`, JSON.stringify(liza));
+    client.backing.set(storageKey(liza.k, { n: 2, a: 'imp' }), JSON.stringify(liza));
 
     // #when
     client.platform.setRole('GM');
@@ -1172,10 +972,10 @@ describe('role and generation', () => {
 
   test('a player at the initial generation takes the generation of the answer to its own request', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const higher = { n: 2, a: 'imp' };
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
@@ -1201,11 +1001,11 @@ describe('role and generation', () => {
 
   test('a GM client adopts a complete state of a higher generation that answers its request', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const higher = { n: 1, a: 'x' };
     const liza = sheet('liza');
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 1500 } });
 
@@ -1222,16 +1022,19 @@ describe('role and generation', () => {
     }).toEqual({
       liza,
       brok: null,
-      stored: ['mr2:mock-room:1:x:#generation', 'mr2:mock-room:1:x:sheet:liza'],
+      stored: [
+        storageKey('#generation', { n: 1, a: 'x' }),
+        storageKey('sheet:liza', { n: 1, a: 'x' }),
+      ],
     });
   });
 });
 
 test('a complete answer ends the first catch-up, and the window learns it', async () => {
   // #given
-  const room = openRoom();
+  const room = roomRig.openRoom();
 
-  joinAs(room, GHOST, 'GM');
+  room.join(GHOST, 'GM');
 
   const client = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 1500 } });
   const before = sync(client);
@@ -1270,7 +1073,7 @@ describe('player visibility', () => {
 
   // A player that a GM answered with a sheet of the visible sheet set and the hidden single sheet.
   async function answeredPlayer(room: Room, catchUpTimeoutMs = 1500): Promise<Client> {
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
@@ -1289,7 +1092,7 @@ describe('player visibility', () => {
 
   test('a player window gets the preset and the visible sheets with their rows, and no hidden sheet', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     // #when
     const client = await answeredPlayer(room);
@@ -1306,7 +1109,7 @@ describe('player visibility', () => {
 
   test('a sheet a GM creates in a hidden sheet set, and a hidden single sheet edit, never reach a player window', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await answeredPlayer(room);
     const edited: VersionedRecord = { ...brokStr, d: { str: 16 }, c: 2, a: GHOST };
 
@@ -1326,11 +1129,11 @@ describe('player visibility', () => {
 
   test('a GM made a player gets a fresh projection with no hidden sheet in it', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
       seeded: [PRESET_RECORD, BROK, skeletonHp, goblin, goblinName],
-      untilLive: true,
+      until: 'live',
     });
 
     const before = [shown(client, skeletonHp.k), shown(client, goblin.k)];
@@ -1350,7 +1153,7 @@ describe('player visibility', () => {
 
   test('a player made GM gets a fresh projection with the hidden sheets in it', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await answeredPlayer(room);
 
     // #when
@@ -1363,16 +1166,16 @@ describe('player visibility', () => {
 
   test('a catch-up that ends by timeout leaves gmAnswered false', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     // #when
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
       seeded: [],
       timing: { catchUpTimeoutMs: 100 },
-      untilLive: true,
+      until: 'live',
     });
 
     // #then
@@ -1381,9 +1184,9 @@ describe('player visibility', () => {
 
   test('a two-part answer with rows before their sheets shows the visible rows and no hidden record', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
@@ -1410,9 +1213,9 @@ describe('player visibility', () => {
 
   test('a link that a GM points from a visible sheet to a hidden one leaves the player window', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
@@ -1439,7 +1242,7 @@ describe('player visibility', () => {
 
   test('gmAnswered stays true during and after a later catch-up that times out', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
     const client = await answeredPlayer(room, 300);
 
     // #when
@@ -1456,15 +1259,15 @@ describe('player visibility', () => {
 
   test('a catch-up answered after an earlier one timed out sets gmAnswered', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
       seeded: [],
       timing: { catchUpTimeoutMs: 100 },
-      untilLive: true,
+      until: 'live',
     });
 
     const before = sync(client).gmAnswered;
@@ -1484,15 +1287,15 @@ describe('player visibility', () => {
 
   test('a complete answer that comes after the timeout sets gmAnswered', async () => {
     // #given
-    const room = openRoom();
+    const room = roomRig.openRoom();
 
-    joinAs(room, GHOST, 'GM');
+    room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'player-p', {
       role: 'PLAYER',
       seeded: [],
       timing: { catchUpTimeoutMs: 100 },
-      untilLive: true,
+      until: 'live',
     });
 
     const before = sync(client).gmAnswered;

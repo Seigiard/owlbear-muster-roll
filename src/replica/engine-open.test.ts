@@ -1,52 +1,21 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type { Timing } from '@/core/timing';
 import { UI_CHANNEL, type Command, type OpenSheetRequest } from '@/core/ui-messages';
-import {
-  createMemoryBus,
-  createMemoryRoom,
-  createMockPlatform,
-  type MockClient,
-  type MockPlatform,
-  type MockStorageBacking,
-} from '@/platform/current';
+import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createSendQueue } from '@/platform/send-queue';
-import { startReplicaEngine } from '@/replica/engine';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
-
-const TIMING: Timing = {
-  sendSpacingMs: 0,
-  rateLimitBackoffStartMs: 1,
-  rateLimitBackoffMaxMs: 2,
-  projectionRequestRepeatMs: 25,
-  projectionIncompleteTimeoutMs: 80,
-  fieldSavePauseMs: 1,
-  catchUpTimeoutMs: 400,
-  stateAnswerDelayMinMs: 0,
-  stateAnswerDelayMaxMs: 0,
-  // Far past any test, so no ping goes out unless a test asks for one.
-  gmLinkTimeoutMs: 60000,
-  // Far past any test, so no room copy is written unless a test asks for one.
-  snapshotPauseMs: 60000,
-  snapshotJitterMs: 0,
-  openRequestTtlMs: 15000,
-  proposeResendStartMs: 2000,
-  proposeResendMaxMs: 30000,
-  editDeniedQuietMs: 2000,
-  pendingMarkDelayMs: 1000,
-  presetRequestTimeoutMs: 15000,
-  incompleteRequestStartMs: 2000,
-  incompleteRequestMaxMs: 30000,
-  snapshotImportTimeoutMs: 60000,
-};
-
-const STORAGE_PREFIX = 'mr2:mock-room:0::';
-const WAIT_LIMIT_MS = 2000;
-const POLL_MS = 2;
+import {
+  createRoomRig,
+  pause,
+  type RigClient,
+  type RigPage,
+  type RigRoom,
+  waitUntil,
+} from '@/replica/room-rig';
+import type { ProjectionStore } from '@/ui/projection-store';
+import type { ReplicaClient } from '@/ui/replica-client';
 
 // Long enough for every queued LOCAL message to land.
 const SETTLE_MS = 30;
@@ -111,22 +80,15 @@ const ROOM: readonly VersionedRecord[] = [
 // One client's background, with no window until a test opens one. `requests` holds every open
 // request the engine has put on the client's LOCAL bus, in order.
 type Background = {
+  room: RigRoom;
+  client: RigClient;
   platform: MockPlatform;
-  bus: ReturnType<typeof createMemoryBus>;
-  identity: MockClient;
-  backing: MockStorageBacking;
-  requests: OpenSheetRequest[];
+  readonly requests: OpenSheetRequest[];
 };
 
 type Window = { store: ProjectionStore; client: ReplicaClient };
 
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
+const roomRig = createRoomRig({ seeded: ROOM });
 
 describe('open from token', () => {
   test('with the window closed, a GM press opens the action window and the window that connects gets the character', async () => {
@@ -430,98 +392,51 @@ async function startBackground(
   role: PlayerRole,
   timing: Partial<Timing> = {},
 ): Promise<Background> {
-  const backing = createBacking();
-  const bus = createMemoryBus();
-
-  const identity: MockClient = {
-    room: createMemoryRoom(),
-    connectionId: 'client-a',
-    playerId: 'client-a',
-    name: 'client-a',
-    role,
-  };
-
-  const platform = createMockPlatform(bus, backing, identity);
+  const room = roomRig.openRoom();
 
   // A GM loads the room from its storage. A player loads nothing and gets it from a GM peer.
-  if (role === 'GM') {
-    for (const record of ROOM) {
-      backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-    }
-  } else {
-    await startGmPeer(identity.room);
+  if (role === 'PLAYER') {
+    const peer = roomRig.createClient(room, 'gm-peer');
+    await peer.startEngine();
   }
 
-  platform.joinParty();
-
-  const requests: OpenSheetRequest[] = [];
-
-  cleanups.push(
-    bus.subscribe(UI_CHANNEL, (event) => {
-      const message = Object(event.data);
-
-      if (message.t === 'open-sheet') {
-        requests.push({
-          id: String(message.id),
-          sheetId: String(message.sheetId),
-          instanceId: message.instanceId === null ? null : String(message.instanceId),
-        });
-      }
-    }),
-  );
-
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: { ...TIMING, ...timing },
-    menuCopy: MENU_COPY,
+  const client = roomRig.createClient(room, 'client-a', {
+    role,
+    seeded: role === 'GM' ? ROOM : [],
+    timing,
+    engine: { menuCopy: MENU_COPY },
   });
 
-  cleanups.push(engine.stop);
-  await waitUntil(() => platform.contextMenuItems().some((item) => item.id === OPEN_ITEM));
+  await client.startEngine();
+  await waitUntil(() => client.platform.contextMenuItems().some((item) => item.id === OPEN_ITEM));
 
-  return { platform, bus, identity, backing, requests };
-}
-
-// A GM client of the same room that answers the player's catch-up with the room's records.
-async function startGmPeer(room: MockClient['room']): Promise<void> {
-  const backing = createBacking();
-
-  for (const record of ROOM) {
-    backing.set(`${STORAGE_PREFIX}${record.k}`, JSON.stringify(record));
-  }
-
-  const identity: MockClient = {
+  return {
     room,
-    connectionId: 'gm-peer',
-    playerId: 'gm-peer',
-    name: 'gm-peer',
-    role: 'GM',
+    client,
+    platform: client.platform,
+    get requests() {
+      return client.local.flatMap((data) =>
+        Object(data).t === 'open-sheet'
+          ? [
+              {
+                id: String(Object(data).id),
+                sheetId: String(Object(data).sheetId),
+                instanceId:
+                  Object(data).instanceId === null ? null : String(Object(data).instanceId),
+              },
+            ]
+          : [],
+      );
+    },
   };
-
-  const platform = createMockPlatform(createMemoryBus(), backing, identity);
-
-  platform.joinParty();
-
-  const engine = await startReplicaEngine(platform, createSendQueue(platform.broadcast, TIMING), {
-    timing: TIMING,
-  });
-
-  cleanups.push(engine.stop);
 }
 
 async function openWindow(background: Background): Promise<Window> {
-  const store = createProjectionStore();
+  const page: RigPage = background.client.openWindow();
 
-  const client = startReplicaClient(
-    createMockPlatform(background.bus, background.backing, background.identity).broadcast,
-    createSendQueue(background.platform.broadcast, TIMING),
-    store,
-    TIMING,
-  );
+  await waitUntil(() => page.store.$loaded.get());
 
-  cleanups.push(client.stop);
-  await waitUntil(() => store.$loaded.get());
-
-  return { store, client };
+  return { store: page.store, client: page.window };
 }
 
 // The sheet and repeat block the engine sent in the request the window holds.
@@ -547,39 +462,4 @@ function command(background: Background, intent: Command): void {
     { t: 'command', id: `test-${Date.now()}`, command: intent },
     { destination: 'LOCAL' },
   );
-}
-
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + WAIT_LIMIT_MS;
-
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('the condition never became true');
-    }
-
-    // Polling is the point here: each round has to let the paced queues run.
-    // oxlint-disable-next-line no-await-in-loop
-    await pause(POLL_MS);
-  }
-}
-
-function pause(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-function createBacking(): MockStorageBacking {
-  const entries = new Map<string, string>();
-
-  return {
-    get: (key) => entries.get(key) ?? null,
-    set: (key, value) => {
-      entries.set(key, value);
-    },
-    remove: (key) => {
-      entries.delete(key);
-    },
-    keys: () => [...entries.keys()],
-  };
 }
