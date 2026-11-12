@@ -9,6 +9,7 @@ sources:
   - ../../../specs/spec-muster-roll/preset-format.md
   - ../../../specs/spec-muster-roll/storage-and-sync.md
   - ../../architecture/architecture-owlbear-muster-roll-2026-11-10/ARCHITECTURE-SPINE.md
+  - ../../../forge/sidebar-tabs-layout/forged-idea.md
 colors:
   surface: '#222639'
   surface-bar: '#1E2231'
@@ -61,6 +62,15 @@ spacing:
   '3': 12px
   '4': 16px
 components:
+  sidebar:
+    background: '{colors.surface-bar}'
+    border: '{colors.line}'
+  sidebar-entry:
+    foreground: '{colors.text}'
+    radius: '{rounded.md}'
+  sidebar-entry-active:
+    background: '{colors.surface}'
+    foreground: '{colors.accent}'
   tab:
     background: '{colors.surface-tab}'
     foreground: '{colors.text}'
@@ -94,7 +104,7 @@ components:
 
 ## Brand & Style
 
-Muster Roll is a tool on the table, not a product with a personality. It looks like part of Owlbear. It takes its density and section structure from DummySheet (`imports/dummysheet-hero.png`): titled sections, label on the left, value on the right, no decoration. The layout reference is `mockups/shell.html`.
+Muster Roll is a tool on the table, not a product with a personality. It looks like part of Owlbear. It takes its density and section structure from DummySheet (`imports/dummysheet-hero.png`): titled sections, label on the left, value on the right, no decoration. The layout reference is `mockups/shell.html` for the sheet, and `imports/sidebar-tabs-sketch.png` for the sidebar and the tab row; the mock's tab bar of sheets is out of date.
 
 ## Colors
 
@@ -124,7 +134,7 @@ System font only, because a window loads inside Owlbear and must render at once.
 
 ## Layout & Spacing
 
-The window has the tab bar, an optional banner and one scrolling content area with padding of `{spacing.3}`. Sections take the preset's section width and wrap as whole sections. Below 480 px each section takes the full width. Inside a `columns` section, the rows always share one grid. If the grid does not fit, the section scrolls horizontally. Gaps use `{spacing.1}` inside a row, `{spacing.2}` between controls and `{spacing.4}` between sections.
+The window has the sidebar at the left, about 8.5 rem wide and always shown, and the content column at the right. The content column has an optional banner, the sheet header, the tab row when the sheet has more than one tab, and one scrolling content area with padding of `{spacing.3}`. Sections take the preset's section width and wrap as whole sections. Below 480 px of content width each section takes the full width. Inside a `columns` section, the rows always share one grid. If the grid does not fit, the section scrolls horizontally. Gaps use `{spacing.1}` inside a row, `{spacing.2}` between controls and `{spacing.4}` between sections.
 
 ## Elevation & Depth
 
@@ -132,13 +142,14 @@ No shadows inside the window. Layers differ by tone: `{colors.surface-bar}` behi
 
 ## Shapes
 
-Tabs use `{rounded.md}` on the top corners. The window uses `{rounded.lg}`. Chips use `{rounded.full}`. Buttons use `{rounded.sm}`.
+Tabs use `{rounded.md}` on the top corners. Sidebar entries use `{rounded.md}`. The window uses `{rounded.lg}`. Chips use `{rounded.full}`. Buttons use `{rounded.sm}`.
 
 ## Components
 
 | Component | Visual rule |
 | --- | --- |
-| Tab bar | `{components.tab}` for each tab. The active tab uses `{components.tab-active}` and joins the content area |
+| Sidebar | `{components.sidebar}` with a right rule. Entries in `{typography.body}` with `{components.sidebar-entry}`, padding `{spacing.1}` `{spacing.2}`, one line, cut short with an ellipsis. The active entry uses `{components.sidebar-entry-active}`. A sheet set heading in `{typography.label-sm}` `{colors.text-muted}`; its entries indented `{spacing.2}`. "+ Добавить" in `{colors.text-muted}`. A divider is a `{colors.line}` rule with `{spacing.2}` above and below. The Settings entry, the gear and "Настройки", sits at the bottom over a `{colors.line}` rule [ASSUMPTION] |
+| Tab row | Under the sheet header. `{components.tab}` for each tab; the active tab uses `{components.tab-active}` and joins the content area |
 | Sheet header | Name or single sheet title in `{typography.sheet-title}`, chips after it, `⋯` at the end, bottom rule in `{colors.line}` |
 | Field value | Arrangement comes from the preset. Even preset rows use `{colors.surface-stripe}`. An editable value has a dotted underline in `{colors.line-strong}` |
 | Pending mark | Text "Ожидает" in `{typography.label-sm}`, as the warning surface and text pair, after the value |
@@ -146,10 +157,10 @@ Tabs use `{rounded.md}` on the top corners. The window uses `{rounded.lg}`. Chip
 | Chip | `{components.chip}`, `{typography.label-sm}` |
 | Dice button | `{components.dice-button}`, `{typography.label-sm}` |
 | Tooltip | A cell name in `{typography.label-sm}` `{colors.text}` on `{colors.surface-tab}`, with a `{colors.line}` border, `{rounded.sm}` and padding `{spacing.1}` `{spacing.2}`. One line up to the window width, then it wraps. It sits `{spacing.1}` above the control, or below it when there is no room above |
-| Status banner | `{components.banner-warning}` or `{components.banner-danger}`, full window width |
+| Status banner | `{components.banner-warning}` or `{components.banner-danger}`, the width of the content column, at its top [ASSUMPTION] |
 | Access panel, duplicate count, Confirmation | Inline block on `{colors.surface-bar}` with a `{colors.line}` border and `{rounded.md}` |
 | Repeat block | The block's rows, then its controls in `{typography.label-sm}`. Blocks are separated by a `{colors.line}` rule |
-| Selection mark | On a tab, a 6 px `{colors.accent}` dot with `{rounded.full}` after the name and its mark. On a repeat block, a 3 px `{colors.accent}` bar on its left edge. The tab bar has no room for a word, and the accessible name carries it |
+| Selection mark | On a sidebar entry or a tab, a 6 px `{colors.accent}` dot with `{rounded.full}` after the name and its mark. On a repeat block, a 3 px `{colors.accent}` bar on its left edge. An entry or a tab has no room for a word, and the accessible name carries it |
 | Map toggle | "Выделить на карте" as `{components.button-secondary}`. Pressed: `{colors.accent}` border and text |
 | Settings actions | First action `{components.button-primary}`, the others `{components.button-secondary}` |
 | Focus | 2 px outline in `{colors.focus}` on every control. Never removed |

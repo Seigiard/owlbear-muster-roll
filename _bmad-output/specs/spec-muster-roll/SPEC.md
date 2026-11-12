@@ -204,5 +204,4 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 ## Open Questions
 
 - Can the Owlbear extension iframe open a new tab? The v2 settings button (CAP-21) depends on it, and the extension opens no tab today.
-- `EXPERIENCE.md` and `DESIGN.md` describe the tab bar. They need the sidebar and tabs (bmad-ux) before CAP-33 to CAP-35 are built.
 - `ARCHITECTURE-SPINE.md` AD-18, the one visibility resolver, needs the tab level and the access rule for fields on a hidden tab (bmad-architecture).
