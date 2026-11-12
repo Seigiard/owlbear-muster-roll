@@ -2,7 +2,7 @@
 title: 'TASK-53 Let a preset name a field and a dice cell, and show the name on hover'
 type: 'feature'
 created: '2026-11-12'
-status: 'in-review'
+status: 'done'
 baseline_commit: 'cf8eab9e5aa3404689a53666abaac5729d3919e9'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -84,9 +84,20 @@ Decisions (owner said "работай автономно"; recorded in the spec,
 
 ## Implementation Notes
 
+- Built through the `implement` skill: a `tdd` chain of OpenCode children (test writers and implementers) and a `code-review` loop of four revmux rounds (round 1 `mixed-terra`, rounds 2-4 `final`). Run directory: `~/.claude/artifacts/tdd-20261112-081707/task-53-cell-name/`.
+- The tooltip is `src/ui/primitives/tooltip.tsx` (`CellTooltip`). It drives the react-aria `Tooltip` through `isOpen`, with no `react-stately` import. It opens on hover after 250 ms, and at once on focus or on a touch `pointerdown`. It stays open while the pointer or focus is inside, or after a touch tap until dismissal. It closes on `Esc` (window listener, capture phase), on blur, and on a `pointerdown` outside the cell. Pointer-down is heard in the capture phase, because react-aria's `usePress` stops its propagation on the dice button.
+- Review fixes beyond the first build: a focused field keeps its tooltip when the mouse leaves; `Esc` closes a tooltip whatever has focus and whatever stops the event; a touch tap opens the tooltip on controls that get no focus on iOS Safari (native checkbox, dice button); a dice name equal to its unresolved formula keeps the «name (written)» roll label; the builder reuses `withOption`; the cell-kind words and the 60 limit live in `copy.ts`; tooltip text wraps with `overflow-wrap: anywhere`.
+- `cellVisibleLabel` keeps the dice button's visible text on the old rule.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+Step 04 ran the `code-review-carryover` layer only (the owner's override). code-review left no open decision, no unresolved critical or major, and no corrected criterion. One deferred finding came in:
+
+| Finding | Verdict | Evidence | Route |
+|---|---|---|---|
+| lean-codex-1 E2E test duplicates the Cairn str_max check (`tests/cell-name.e2e.ts`) | low | The test 'the shipped Cairn str_max field has its name and tooltip when reached by Tab' made the same Cairn Tab path and the same three assertions as 'a named writer field shows one non-overlapping tooltip on Tab, hover and pointer focus'. Harm: every browser run paid for it, and a change to that name had to be made twice. | patch: removed in `ca74090` (tdd batch 5, test writer re-lock); the full check passes after it |
 
 ## Verification
 
@@ -95,3 +106,5 @@ Decisions (owner said "работай автономно"; recorded in the spec,
 
 **Manual checks (if no CLI):**
 - Owner, live room on a tablet and a laptop: a named field's tooltip shows on hover, on Tab and on tap, and does not hide the value being typed; VoiceOver reads «STR, максимум» once.
+
+**Results (merged tip after master 49a427b):** oxfmt exit 0 (282 files); lint exit 0 (existing warnings only); typecheck exit 0; `bun test` 2646 pass, 0 fail; `bun run test:browser` 492 pass; build exit 0.
