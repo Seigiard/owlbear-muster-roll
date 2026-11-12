@@ -83,7 +83,7 @@ Short and literal. Commands are perfective verbs. Places are nouns. Statuses are
 | Bad file | "Файл не подошёл: {reason}. Ничего не изменено." |
 | Newer file | "Файл из более новой версии. Перезагрузите страницу." |
 | No preset for a snapshot | "Сначала загрузите пресет." |
-| Roll | "{roller}: {sheet}, {cell} — {result}". `{sheet}` is the sheet's name. `{cell}` is the dice cell's label; for a formula that rolls a dice-choice field it writes out the chosen die: "1d8 + bonus" for a cell named by its formula, "Урон (1d8)" for a cell named by a label. `{result}` is the rolled number, and for a comparison also "успех" or "провал" |
+| Roll | "{roller}: {sheet}, {cell} — {result}". `{sheet}` is the sheet's name. `{cell}` is the dice cell's label; for a formula that rolls a dice-choice field it writes out the chosen die: `1d8 + bonus` for a cell named by its formula, `Урон (1d8)` for a cell named by a label. `{result}` is the rolled number, and for a comparison also "успех" or "провал" |
 | Edit denied | "Нет прав на правку" |
 | Data replaced | "Данные комнаты заменены" |
 | Guest note | "Гость привязан к своему браузеру. Из другого браузера доступ придётся выдать снова." |
