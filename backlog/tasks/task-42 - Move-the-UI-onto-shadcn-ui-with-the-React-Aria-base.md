@@ -1,11 +1,11 @@
 ---
 id: TASK-42
 title: Move the UI onto shadcn/ui with the React Aria base
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-11T21:56:00Z'
-updated_date: '2026-11-12T01:13:00Z'
+updated_date: '2026-11-12T01:49:00Z'
 labels:
   - v2
 dependencies:
@@ -33,13 +33,9 @@ Start with a spike in a branch: init, version compatibility, Owlbear theme mappe
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A spike result records whether shadcn with the React Aria base works with the project react-aria-components version and Tailwind 4, with the evidence
-- [ ] #2 The shadcn CSS variables take their values from the live Owlbear theme in dark and light mode, and the window looks the same density as before in a side-by-side screenshot
-- [ ] #3 The existing primitives (button, chip, field, banner) are replaced by shadcn components, and all lint, typecheck, unit and e2e checks pass
-- [ ] #4 DESIGN.md names the shadcn tokens and states which components come from shadcn and which stay custom (the builder tree)
-- [ ] #5 Keyboard and focus behaviour of every replaced control is unchanged or better, checked against the EXPERIENCE.md Accessibility Floor
-- [x] #6 Theme fallbacks in src/preview/themes.ts, the mock platform, tests/support/colors.ts and DESIGN.md hex values are the live Owlbear values, so the preview and e2e tests show the colours players see
-- [x] #7 In the light theme, accent text on the surface and text on the accent reach 4.5:1, raised through color-mix from the Owlbear theme colours rather than new fixed hex values or other theme fields
+- [x] #1 A spike result records whether shadcn with the React Aria base works with the project react-aria-components version and Tailwind 4, with the evidence
+- [x] #2 Theme fallbacks in src/preview/themes.ts, the mock platform, tests/support/colors.ts and DESIGN.md hex values are the live Owlbear values, so the preview and e2e tests show the colours players see
+- [x] #3 In the light theme, accent text on the surface and text on the accent reach 4.5:1, raised through color-mix from the Owlbear theme colours rather than new fixed hex values or other theme fields
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -56,6 +52,8 @@ PART A (commits 686c3ca, 2990dd6 on 0e64ed6, for master).
 AC6: the mock theme (src/platform/mock/index.ts), src/preview/themes.ts (preview and builder), tests/support/colors.ts LIGHT_THEME and the DESIGN.md front matter now hold the live Owlbear values from comment #1. DESIGN.md hex values are the dark theme; the colour-mix tokens were read from Chromium (surface-tab #383C4D, stripe #222638, line #4E5161, line-strong #91939C); text-muted #FFFFFFB3 and accent-contrast #000000DE keep Owlbear's alpha. The test colour helpers paint over the window surface, because Owlbear text colours carry alpha. The build leak check lists the new hexes (white left out: Tailwind's ring offset ships #fff).
 AC7: light mode maps --mr-accent and --mr-focus to color-mix(in srgb, primary.main 65%, text.primary) (src/ui/theme.ts); dark keeps primary.main. Evidence: tests/window.e2e.ts 'the light theme gives text 4.5:1 and the focus outline 3:1 on every surface' composites the tokens in Chromium. Before (same test with 100%): accent on surface 3.32, on surface-bar 2.82, on surface-tab 2.74, on stripe 3.29; white on accent 3.68; focus on bar 2.82. After: accent on surface 5.55, bar 4.77, tab 4.64, stripe 5.49; white on accent 6.16; focus 4.64 or more. Dark unchanged: accent 6.49 on surface, 4.74 on tab; contrast text on accent 7.85.
 Full check on 2990dd6: oxfmt clean, lint 0 errors, typecheck clean, bun test 2557 pass, test:browser 466 pass, build ok.
+
+2026-11-12: the owner closed the shadcn move after the spike verdict. The spike branch is kept as spike/task-42-shadcn (not merged). The migration criteria (shadcn variables, primitives replaced, DESIGN.md naming, keyboard parity) are dropped with that decision.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -74,3 +72,9 @@ Report (expires 2026-12-09): https://reports.1218217.xyz/reports/owlbear-muster-
 
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Part A landed on master (b67d996): the mock, preview, test colours and DESIGN.md use the live Owlbear theme values, and the light accent and focus colour are color-mix(primary 65%, text.primary), lifting accent on surface from 3.32 to 5.55:1 and white on accent from 3.68 to 6.16:1, with an e2e test that computes the ratios. Part B, the shadcn/ui React Aria spike, works on the project stack (shadcn 4.23.0, RAC 1.22.1, Tailwind 4) but cost +16.3% gzip on the window chunk, broke 8 e2e tests through its defaults and added more wrapper code than it replaced, with no visible gain; the verdict is in _bmad-output/implementation-artifacts/spec-task-42-shadcn-aria.md. The owner chose to keep growing the RAC primitives instead; the spike branch spike/task-42-shadcn is kept unmerged for reference.
+<!-- SECTION:FINAL_SUMMARY:END -->
