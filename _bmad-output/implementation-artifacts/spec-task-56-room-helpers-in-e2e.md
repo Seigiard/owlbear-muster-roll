@@ -2,7 +2,7 @@
 title: 'TASK-56: read and write room data in three e2e files through the room helpers'
 type: 'refactor'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '7b05722e217be9c4e0b5c899add901c5cb5f732f'
@@ -47,8 +47,8 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `tests/support/room.ts` -- add the missing helpers: a storage key of a record under a given generation (default generation 0); a read of the room's storage keys on a page's device that can serve each old filter exactly; a way to tell a key's generation and its record key; seeding of records with no preset (let `seedStorage` reuse it). Names and shapes are the implementer's, in the file's style, each with a one-line comment. -- one owner of the key format.
-- [ ] `tests/preset.e2e.ts`, `tests/preset-change.e2e.ts`, `tests/snapshot.e2e.ts` -- move every key build, seed and key read onto `tests/support/room.ts` helpers; drop the local storage helpers and the `STORAGE_PREFIX` import they no longer need.
+- [x] `tests/support/room.ts` -- add the missing helpers: a storage key of a record under a given generation (default generation 0); a read of the room's storage keys on a page's device that can serve each old filter exactly; a way to tell a key's generation and its record key; seeding of records with no preset (let `seedStorage` reuse it). Names and shapes are the implementer's, in the file's style, each with a one-line comment. -- one owner of the key format.
+- [x] `tests/preset.e2e.ts`, `tests/preset-change.e2e.ts`, `tests/snapshot.e2e.ts` -- move every key build, seed and key read onto `tests/support/room.ts` helpers; drop the local storage helpers and the `STORAGE_PREFIX` import they no longer need.
 
 **Acceptance Criteria:**
 - Given the three files, when searched, then none contains `mr2:`, `STORAGE_PREFIX` or `localStorage`.
@@ -66,4 +66,17 @@ context:
 - Full check from CLAUDE.md: `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run test:browser` (outside the sandbox), `bun run build` -- expected: all pass.
 
 ## Implementation Notes
+
+- Built through `implement` → `tdd` (checks-only path, no new tests): batch 1 (implementer turns 1-2) and batch 2 (review fixes, turns 1-2), all on tier low+. Run directory: `~/.claude/artifacts/tdd-20261112-142811/task-56-room-helpers-in-e2e/`; its `ticket.md` records each rejected attempt (D1-D5) and its evidence.
+- Helpers added to `tests/support/room.ts`: `storageKey(key, generation = { n: 0, a: '' })`, `roomKeys(page)` (every `mr2:` key on the page's device, any room id, in storage order), `storageKeyParts(key)` (generation and record key), `isStorageKeyInGeneration(key, generation)` (the base prefix test `startsWith(storageKey('', generation))`, so a key of another room belongs to no generation), `seedRecords(page, records, device)` (records under generation 0 with no preset; `seedStorage` shares its writer and keeps the preset-first order). Types `StorageGeneration`, `StorageKeyParts`.
+- Rejected attempts, each fixed before acceptance: D1 the last snapshot assertion had dropped the generation from `sheet:mira`; D2 the first equivalence probe compared `roomKeys` with its own prefix; D3 `seedStorage` had reversed the seed order; D4 an unused `prefix` option; D5 the generation check ignored the room id, which let `otherGenerations` skip a generation-0 key of another room.
+- Test-body edits outside the allowed kinds: none. One seed order differs from the base by design: `tests/preset.e2e.ts` "with a preset and a sheet…" wrote the sheet, then the preset; it now goes through `seedStorage`, which writes the preset first. Both land before the background starts (round 1 judged this immaterial).
+- `storedPreset` in `tests/preset.e2e.ts` now reads through `storedData` (as `tests/preset-change.e2e.ts` already did): an absent preset gives `ABSENT` instead of a parse throw, and the assertions fail either way.
+- No-weakening controls, base `f1724df`: JUnit list of the three files equal (60 tests, 0 skipped, 0 failed); per-test `expect` call sites equal (39 test blocks, 165 in total with `tests/support/room.ts`); a temporary probe compared every `roomKeys` result with raw `Object.keys(localStorage).filter((key) => key.startsWith('mr2:'))` in all 60 tests: no difference, non-empty reads of 6, 8 and 16 keys behind `every(...)` and `toEqual(keysBefore)`.
+- Full check on the merged state `7b8e642`: oxfmt check pass, `bun run lint` exit 0 (warnings only, none on a changed line), `bun run typecheck` pass, `bun test` 2655 pass / 0 fail, `bun run test:browser` 492 passed, `bun run build` pass.
+- Commits: the chain's four commits were reorganized into one test slice, `6df2c39` (chain kept at `refs/tdd/tdd-20261112-142811/task-56-room-helpers-in-e2e/chain`). Master `dcc2fce` merged in as `7b8e642`.
+
+## Review Triage Log
+
+- Active layer: `code-review-carryover` only (blind-hunter, edge-case-hunter, verification-gap are off). Code-review rounds 01-initial (mixed-terra, 9/9 sources, 3 minor: narrowed key reads, a pasted generation lambda, a wrong `seedRecords` comment; all fixed in batch 2) and 02-after-fix (final, 2/2 sources, no findings). Carry-over: no open decision, no unresolved critical or major, no finding deferred by code-review, no criterion corrected by code-review. Empty list.
 
