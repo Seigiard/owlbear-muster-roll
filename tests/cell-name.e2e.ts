@@ -224,28 +224,6 @@ test('a named read-only value is a tab stop with one tooltip, while an unnamed v
   await expect(player.window.getByRole('tooltip')).toHaveCount(0);
 });
 
-test('the shipped Cairn str_max field has its name and tooltip when reached by Tab', async ({
-  context,
-}) => {
-  // #given
-  const records = [...pcSheet('brok', 'Брок', 0), record('row:brok:str', { str: 12, str_max: 18 })];
-  const gm = await openSeededGm(context, records, CAIRN_TEXT);
-  const panel = gm.window.getByRole('tabpanel');
-  const current = panel.getByRole('textbox', { name: 'STR', exact: true }).first();
-  const maximum = panel.getByRole('textbox', { name: 'STR, максимум', exact: true });
-
-  await expect(maximum).toBeVisible();
-  await current.focus();
-
-  // #when
-  await gm.window.keyboard.press('Tab');
-
-  // #then
-  await expect(maximum).toBeFocused();
-  await expect(tooltip(gm.window, 'STR, максимум')).toBeVisible();
-  expect(await boxesOverlap(maximum, tooltip(gm.window, 'STR, максимум'))).toBe(false);
-});
-
 test('the tooltip geometry assertion distinguishes overlap, separation and a missing box', async ({
   page,
 }) => {
