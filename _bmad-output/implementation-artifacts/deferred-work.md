@@ -154,3 +154,24 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-41-sheet-sets-and-single-sheets.md`
   summary: A live `sheet:` whose `set` names no sheet set of the preset (a create racing an upload) is never tombstoned or counted.
   evidence: `presetDiff` walks only the old preset's templates; the race needs a sheet-create to reach a GM after an upload that removed its set.
+
+## From spec-task-38 (preset builder)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-38-preset-builder.md`
+  summary: No test proves that Ctrl/Cmd+Z inside a builder text input leaves the store's undo stack alone.
+  evidence: The undo e2e presses the keys only with focus on the tree; removing the `isTextInput` guard passes every test. Add one press inside the title input when that test is next touched.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-38-preset-builder.md`
+  summary: Renaming a field after renaming its template, in a preset opened from a file, shows no «Значения поля … будут стёрты» warning.
+  evidence: `item-form.tsx` finds the origin template by the current `template.id`; a fix tracks each template's origin id per uid.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-38-preset-builder.md`
+  summary: A problem inside a collapsed tree container shows no mark until the container is expanded.
+  evidence: `structure-tree.tsx` marks only the problem's own uid; the counter still reaches it. A fix marks collapsed ancestors.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-38-preset-builder.md`
+  summary: Two rows of one plain section that start with the same field id give duplicate React keys in the builder preview.
+  evidence: `plainRows` in `preset-section.tsx` keys rows by row id; only an invalid builder draft reaches it, and changing the keys touches how the window keeps field state across preset changes.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-38-preset-builder.md`
+  summary: Builder form inputs set no `aria-invalid` and do not point at their problem messages through `aria-describedby`.
+  evidence: `FormulaInput` always gets `invalid={false}`; the form's problem list is not referenced by its inputs.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-38-preset-builder.md`
+  summary: The build test's theme-hex check skips every `builder-*` chunk, not only the preview theme values.
+  evidence: `BUILDER_CHUNK` in `tests/build.test.ts`; narrowing it needs `src/preview/themes.ts` in a named chunk of its own.

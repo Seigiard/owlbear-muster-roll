@@ -14,7 +14,9 @@ import {
   firstFieldId,
   formatPresetFile,
   parsePresetFile,
+  parsePresetStructure,
   plainRowIdOf,
+  presetProblems,
   repeatSectionId,
   resolveFieldReference,
   templateById,
@@ -1074,4 +1076,101 @@ describe('the e2e preset fixtures', () => {
       expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
     });
   }
+});
+
+// A preset that passes the structure check, for the rule checks alone.
+function structureOf(text: string): Preset {
+  const preset = parsePresetStructure(z.json().parse(JSON.parse(text)));
+
+  if (preset === null) {
+    throw new Error('The test preset fails the structure check');
+  }
+
+  return preset;
+}
+
+describe('presetProblems', () => {
+  test('is empty for a preset the upload accepts', () => {
+    // #when
+    const problems = presetProblems(structureOf(EXAMPLE_TEXT));
+
+    // #then
+    expect(problems).toEqual([]);
+  });
+
+  test('lists every problem with the path of its item, in the order the upload checks', () => {
+    // #given
+    const text = presetOf(
+      setOf('pc', [
+        {
+          columns: 1,
+          rows: [[NUMBER_FIELD('hp'), NUMBER_FIELD('d20')], [{ kind: 'dice', formula: '1d20+' }]],
+        },
+        { repeat: true, rows: [[LABEL]] },
+      ]),
+      setOf('pc', [{ rows: [[NUMBER_FIELD('name')]] }], 'nope'),
+      singleOf('1bad', [
+        { repeat: true, rows: [[NUMBER_FIELD('item')]] },
+        { repeat: true, rows: [[NUMBER_FIELD('item'), NUMBER_FIELD('item')]] },
+      ]),
+    );
+
+    // #when
+    const problems = presetProblems(structureOf(text));
+
+    // #then
+    expect(problems).toEqual([
+      { failure: { code: 'row-too-wide' }, path: [0, 1, 0] },
+      { failure: { code: 'invalid-id', detail: 'd20' }, path: [0, 1, 0, 1] },
+      { failure: { code: 'bad-formula', detail: '1d20+' }, path: [0, 1, 1, 0] },
+      { failure: { code: 'bad-repeat' }, path: [0, 2] },
+      { failure: { code: 'duplicate-template', detail: 'pc' }, path: [1] },
+      { failure: { code: 'duplicate-id', detail: 'name' }, path: [1, 1, 0, 0] },
+      { failure: { code: 'bad-name-field', detail: 'pc', field: 'nope' }, path: [1] },
+      { failure: { code: 'invalid-template-id', detail: '1bad' }, path: [2] },
+      { failure: { code: 'duplicate-id', detail: 'item' }, path: [2, 1, 0, 1] },
+      { failure: { code: 'duplicate-section', detail: 'item' }, path: [2, 1] },
+    ]);
+  });
+
+  test('starts with the failure the upload refuses the file for', () => {
+    // #given
+    const text = presetOf(
+      singleOf('notes', [{ rows: [[{ kind: 'dice', formula: '(' }], [NUMBER_FIELD('d6')]] }]),
+    );
+
+    // #when
+    const problems = presetProblems(structureOf(text));
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(problems.length).toBeGreaterThan(1);
+    expect(parsed.ok ? null : parsed.error).toEqual(problems[0]?.failure ?? null);
+  });
+});
+
+describe('parsePresetStructure', () => {
+  test('keeps a preset with no templates and a window out of range', () => {
+    // #given
+    const draft: Preset = { v: 2, window: { width: 200, height: 2000 }, templates: [] };
+
+    // #when
+    const preset = parsePresetStructure(draft);
+
+    // #then
+    expect(preset).toEqual(draft);
+  });
+
+  test.each<[string, JsonValue]>([
+    ['an unknown key', { v: 2, templates: [], extra: 1 }],
+    ['another version', { v: 1, templates: [] }],
+    ['a window of fractions', { v: 2, window: { width: 600.5, height: 600 }, templates: [] }],
+    ['a cell of no kind', { v: 2, templates: [singleOf('a', [{ rows: [[{ text: 'x' }]] }])] }],
+  ])('is null for %s', (_name, candidate) => {
+    // #when
+    const preset = parsePresetStructure(candidate);
+
+    // #then
+    expect(preset).toBeNull();
+  });
 });

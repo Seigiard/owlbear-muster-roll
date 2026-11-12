@@ -181,3 +181,7 @@ _Avoid_: mockup, render
 **Draft**:
 The one unfinished preset the builder keeps by itself and opens again on the next visit, with no prompt.
 _Avoid_: autosave, work in progress
+
+**Problem**:
+One reason the builder's preset would be refused as a file, tied to the tree item it comes from. Its text is the bad file message for that reason. Download stays off while one is left. In the interface: «Проблема».
+_Avoid_: issue, warning, validation error

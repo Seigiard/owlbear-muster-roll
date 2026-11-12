@@ -4,6 +4,7 @@ import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 import { isFieldId, isTemplateId } from '@/core/field-id';
 import { FORMAT_VERSION } from '@/core/format-version';
 import { parseFormula } from '@/core/formula';
+import type { JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
 
 // Refused before parsing, so a huge file cannot hang the window.
@@ -78,6 +79,13 @@ const presetSchema = z.strictObject({
   v: z.literal(FORMAT_VERSION),
   window: windowSchema.optional(),
   templates: z.array(templateSchema).min(1),
+});
+
+// The builder's draft (AD-21): the preset structure, where a window out of range and no templates
+// are rule problems the builder shows, not a broken structure.
+const presetStructureSchema = presetSchema.extend({
+  window: z.strictObject({ width: z.number().int(), height: z.number().int() }).optional(),
+  templates: z.array(templateSchema),
 });
 
 const fileObjectSchema = z.looseObject({ v: z.unknown().optional() });
@@ -186,6 +194,14 @@ export function parsePresetFile(text: string): Result<Preset, PresetFailure> {
   const failure = presetRulesFailure(preset.data);
 
   return failure === null ? ok(preset.data) : err(failure);
+}
+
+// The preset structure of a builder draft, or `null` for anything else. It checks no rule, so the
+// draft keeps the problems it had.
+export function parsePresetStructure(candidate: JsonValue): Preset | null {
+  const preset = presetStructureSchema.safeParse(candidate);
+
+  return preset.success ? preset.data : null;
 }
 
 // The `preset` record data: the preset JSON, deflated and base64-encoded.
@@ -312,30 +328,50 @@ export function resolveFieldReference(
   return rowId === null ? null : { scope: 'sheet', rowId };
 }
 
-// Rules in list order: the template id, then its sections, then its name field. Each template is a
-// scope of its own, so one field id can occur in two templates.
-function presetRulesFailure(preset: Preset): PresetFailure | null {
+// A rule failure and the item that fails the check, as an index path: template, then section, row
+// and cell, as deep as that item. An id or a formula names its cell, a too-wide row its row,
+// `bad-repeat` its section, a repeated id its second occurrence, and `bad-name-field` and an invalid
+// template id their template.
+export type PresetProblem = { failure: PresetFailure; path: readonly number[] };
+
+// Every rule failure, in the order `parsePresetFile` checks: per template its id, then its
+// sections, then its name field. Each template is a scope of its own, so one field id can occur in
+// two templates.
+export function presetProblems(preset: Preset): PresetProblem[] {
+  const problems: PresetProblem[] = [];
   const templateIds = new Set<string>();
 
-  for (const template of preset.templates) {
+  preset.templates.forEach((template, templateIndex) => {
+    const path = [templateIndex];
+
     if (!isTemplateId(template.id)) {
-      return { code: 'invalid-template-id', detail: shortDetail(template.id) };
+      problems.push({
+        failure: { code: 'invalid-template-id', detail: shortDetail(template.id) },
+        path,
+      });
+    } else if (templateIds.has(template.id)) {
+      problems.push({
+        failure: { code: 'duplicate-template', detail: shortDetail(template.id) },
+        path,
+      });
+    } else {
+      templateIds.add(template.id);
     }
 
-    if (templateIds.has(template.id)) {
-      return { code: 'duplicate-template', detail: shortDetail(template.id) };
+    problems.push(...sectionsProblems(template, path));
+
+    const nameFailure = nameFieldFailure(template);
+
+    if (nameFailure !== null) {
+      problems.push({ failure: nameFailure, path });
     }
+  });
 
-    templateIds.add(template.id);
+  return problems;
+}
 
-    const failure = sectionsFailure(template) ?? nameFieldFailure(template);
-
-    if (failure !== null) {
-      return failure;
-    }
-  }
-
-  return null;
+function presetRulesFailure(preset: Preset): PresetFailure | null {
+  return presetProblems(preset)[0]?.failure ?? null;
 }
 
 // A sheet set names each sheet by a `text` field outside its repeat sections.
@@ -364,81 +400,80 @@ function nameFieldFailure(template: Template): PresetFailure | null {
 }
 
 // All non-repeat fields of one template are one scope, and each repeat section is its own.
-function sectionsFailure(layout: TemplateLayout): PresetFailure | null {
+function sectionsProblems(
+  layout: TemplateLayout,
+  templatePath: readonly number[],
+): PresetProblem[] {
   const templateScope = new Set<string>();
   const sectionIds = new Set<string>();
 
-  for (const section of layout.sections) {
-    const failure =
-      section.repeat === true
-        ? repeatSectionFailure(section, sectionIds)
-        : rowsFailure(section, templateScope);
+  return layout.sections.flatMap((section, sectionIndex) => {
+    const path = [...templatePath, sectionIndex];
 
-    if (failure !== null) {
-      return failure;
-    }
-  }
-
-  return null;
+    return section.repeat === true
+      ? repeatSectionProblems(section, sectionIds, path)
+      : rowsProblems(section, templateScope, path);
+  });
 }
 
 // All rows of a repeat section form one repeat block, so its fields share one scope.
-function repeatSectionFailure(
+function repeatSectionProblems(
   section: PresetSection,
   sectionIds: Set<string>,
-): PresetFailure | null {
+  path: readonly number[],
+): PresetProblem[] {
   const sectionId = repeatSectionId(section);
 
   if (sectionId === null) {
-    return { code: 'bad-repeat' };
+    return [{ failure: { code: 'bad-repeat' }, path }];
   }
 
-  const failure = rowsFailure(section, new Set());
-
-  if (failure !== null) {
-    return failure;
-  }
+  const problems = rowsProblems(section, new Set(), path);
 
   if (sectionIds.has(sectionId)) {
-    return { code: 'duplicate-section', detail: shortDetail(sectionId) };
+    problems.push({
+      failure: { code: 'duplicate-section', detail: shortDetail(sectionId) },
+      path,
+    });
   }
 
   sectionIds.add(sectionId);
 
-  return null;
+  return problems;
 }
 
-function rowsFailure(section: PresetSection, scope: Set<string>): PresetFailure | null {
-  for (const row of section.rows) {
-    const failure = rowFailure(section, row, scope);
-
-    if (failure !== null) {
-      return failure;
-    }
-  }
-
-  return null;
+function rowsProblems(
+  section: PresetSection,
+  scope: Set<string>,
+  sectionPath: readonly number[],
+): PresetProblem[] {
+  return section.rows.flatMap((row, rowIndex) =>
+    rowProblems(section, row, scope, [...sectionPath, rowIndex]),
+  );
 }
 
 // A row shorter than `columns` is fine: the trailing grid cells stay empty.
-function rowFailure(
+function rowProblems(
   section: PresetSection,
   row: readonly PresetCell[],
   scope: Set<string>,
-): PresetFailure | null {
+  path: readonly number[],
+): PresetProblem[] {
+  const problems: PresetProblem[] = [];
+
   if (section.columns !== undefined && row.length > section.columns) {
-    return { code: 'row-too-wide' };
+    problems.push({ failure: { code: 'row-too-wide' }, path });
   }
 
-  for (const cell of row) {
+  row.forEach((cell, cellIndex) => {
     const failure = cellFailure(cell, scope);
 
     if (failure !== null) {
-      return failure;
+      problems.push({ failure, path: [...path, cellIndex] });
     }
-  }
+  });
 
-  return null;
+  return problems;
 }
 
 // A formula may name any valid id. An id absent from the sheet is a roll-time error.

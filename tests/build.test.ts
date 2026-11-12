@@ -12,6 +12,8 @@ const BUILD_TIMEOUT_MS = 120_000;
 const DESIGN_PATH =
   '_bmad-output/planning-artifacts/ux-designs/ux-owlbear-muster-roll-2026-11-10/DESIGN.md';
 
+const BUILDER_CHUNK = /^builder-/;
+
 const HASHED_ASSET = /^.+-[A-Za-z0-9_-]{8}\.(?:js|css)$/;
 
 // Every DESIGN.md theme-mapped hex, with the short forms a minifier can write.
@@ -112,7 +114,14 @@ describe('default-mode vite build', () => {
 
   test('emits every entry page, the manifest and the headers file', () => {
     // #given
-    const required = ['index.html', 'background.html', 'picker.html', 'manifest.json', '_headers'];
+    const required = [
+      'index.html',
+      'background.html',
+      'picker.html',
+      'builder.html',
+      'manifest.json',
+      '_headers',
+    ];
 
     // #when
     const missing = required.filter((name) => !existsSync(join(outDir, name)));
@@ -169,14 +178,32 @@ describe('default-mode vite build', () => {
 
   test('ships no hex value of a theme-mapped token', () => {
     // #when
-    const leaking = scriptsAndStyles(outDir).flatMap((name) =>
-      [...readFileSync(join(outDir, 'assets', name), 'utf8').matchAll(MAPPED_HEX)].map(
-        (match) => `${name}: ${match[0]}`,
-      ),
-    );
+    // AD-20: the builder page runs outside Owlbear, so its own entry chunk carries the fixed
+    // themes of the preset preview.
+    const leaking = scriptsAndStyles(outDir)
+      .filter((name) => !BUILDER_CHUNK.test(name))
+      .flatMap((name) =>
+        [...readFileSync(join(outDir, 'assets', name), 'utf8').matchAll(MAPPED_HEX)].map(
+          (match) => `${name}: ${match[0]}`,
+        ),
+      );
 
     // #then
     expect(leaking).toEqual([]);
+  });
+
+  test('loads no Owlbear adapter chunk in the builder page', () => {
+    // #given
+    const page = readFileSync(join(outDir, 'builder.html'), 'utf8');
+    const entry = /src="\/assets\/(builder-[^"]+\.js)"/.exec(page)?.[1] ?? '';
+
+    // #when
+    const imported = chunkImports(outDir, entry);
+
+    // #then
+    expect(entry).not.toBe('');
+    expect([...imported].filter((name) => name.startsWith('obr-'))).toEqual([]);
+    expect(page).not.toContain('obr-');
   });
 
   test('ships the fixed warning and danger hex values', () => {
@@ -297,6 +324,31 @@ function compileMainCss(): ReturnType<typeof compile> {
       });
     },
   });
+}
+
+// Every chunk an entry chunk loads, as its imports name them: `from"./x.js"`, a side-effect
+// `import"./x.js"` and a dynamic `import("./x.js")`.
+function chunkImports(outDir: string, entry: string): Set<string> {
+  const seen = new Set<string>();
+  const queue = [entry];
+
+  while (queue.length > 0) {
+    const name = queue.pop() ?? '';
+
+    if (name === '' || seen.has(name)) {
+      continue;
+    }
+
+    seen.add(name);
+
+    const code = readFileSync(join(outDir, 'assets', name), 'utf8');
+
+    for (const [, imported = ''] of code.matchAll(/(?:from|import)\(?"\.\/([^"]+\.js)"/g)) {
+      queue.push(imported);
+    }
+  }
+
+  return seen;
 }
 
 function scriptsAndStyles(outDir: string): string[] {
