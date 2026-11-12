@@ -132,12 +132,13 @@ A message with a higher generation also starts AD-9 adoption.
 
 - **Binds:** CAP-10, CAP-15
 - **Prevents:** A frozen Chrome tab counting as online, and a false offline status in a quiet room.
-- **Rule:** `replica` alone owns `gmLink`. It is `online` when a GM-origin message arrived within the timeout, otherwise `offline`, which shows "no connection to GM". A client with no GM-origin message for half the timeout sends `ping`. A GM client that is not `catching-up` answers `alive` on receipt, with no timer of its own. The party list never sets `gmLink`. A hidden tab that still responds counts as online, because a frozen tab cannot respond.
+- **Rule:** `src/replica/catch-up` alone owns `gmLink`. It is `online` when a GM-origin message arrived within the timeout, otherwise `offline`, which shows "no connection to GM". A client with no GM-origin message for half the timeout sends `ping`. A GM client that is not `catching-up` answers `alive` on receipt, with no timer of its own. The party list never sets `gmLink`. A hidden tab that still responds counts as online, because a frozen tab cannot respond.
 
 ### AD-7 — Catch-up is full state [ADOPTED]
 
 - **Binds:** CAP-1, CAP-9, CAP-10, CAP-11
 - **Prevents:** Per-row diff protocols, a stale tab editing or validating on old data, a partial answer counting as complete, and missed `commit`s staying missed.
+- **Rule:** Every decision about catch-up and the GM link lives in `src/replica/catch-up`: entry, answer, exit, drift, adoption gate and liveness. The engine passes it events and runs what it returns.
 - **Rule, entry:** A client enters `catching-up` on start, when a page becomes visible, on Page Lifecycle `resume`, on the browser `online` event, on a role change, on a higher generation, and when `alive` from one GM client shows a different digest twice in a row. The digest is the XOR of a hash of `(k, c, a)` over all records, and `alive` carries it with the generation.
 - **Rule, steps:** A GM client first merges all its persisted records of the current generation. The client then merges the snapshot and broadcasts `state-request` with a nonce `r`.
 - **Rule, answer:** A GM client that is not `catching-up` answers after a random short delay, unless it has already seen an answer to `r`. `state` echoes `r` and carries `i of n`. Its records are deflated. Every `state` message holds complete records, and a client merges it whenever it arrives, in any state.
