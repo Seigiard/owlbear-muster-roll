@@ -190,3 +190,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-44-cairn-2e-preset.md`
   summary: A repeat block holds no list of its own, so a Cairn NPC gets two fixed attack rows.
   evidence: ADR 0001 makes an NPC a repeat block; a third attack goes into the notes.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-44-cairn-2e-preset.md`
+  summary: The sheet does not count used inventory slots, and a bulky item takes two slots only by hand.
+  evidence: `presets/cairn-2e.json` gives each of the ten slots a text field and a Fatigue check; a formula cannot count filled fields, so the player writes a bulky item into two slots.
+
+## Deferred from: code review of spec-task-42-shadcn-aria and spec-task-44-cairn-2e-preset (2026-11-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-42-shadcn-aria.md`
+  summary: The build leak check matches hex values only, so a theme text colour hard-coded as an `rgba()` string in JS ships unnoticed.
+  evidence: `MAPPED_HEX` in `tests/build.test.ts`. Lightning CSS turns `rgba()` in CSS into the hex forms it lists; only inline JS strings such as `rgba(255, 255, 255, 0.7)` get through.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-42-shadcn-aria.md`
+  summary: The three copies of the live Owlbear themes can drift apart, and no test compares them.
+  evidence: `MOCK_THEME` in `src/platform/mock/index.ts`, `PREVIEW_THEMES` in `src/preview/themes.ts` and `LIGHT_THEME` in `tests/support/colors.ts`. The builder page shows `PREVIEW_THEMES`, and the contrast test reads only `LIGHT_THEME`. A unit test that compares them needs the mock theme exported.

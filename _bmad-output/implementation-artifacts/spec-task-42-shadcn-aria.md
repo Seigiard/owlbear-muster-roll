@@ -113,3 +113,20 @@ Decisions taken without the owner (he asked for autonomous work and reviews the 
 **Commands:**
 - `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run test:browser`, `bun run build` -- all pass
 - `bun run build` -- compare asset sizes with the baseline at `e318b16`
+
+### Review Findings
+
+Code review of `0e64ed6..8dcae04` (PART A on master) on 2026-11-12.
+
+- [x] [Review][Patch] The spike branch `spike/task-42-shadcn` named in the task notes and this spec did not exist; `dc6839e` was unreachable and `git gc` would drop it [git ref]
+- [x] [Review][Patch] The contrast test skipped muted text on `--color-surface-tab` (tab marks) and the focus outline on `--color-surface-stripe` (striped rows) [tests/window.e2e.ts:59]
+- [x] [Review][Patch] The build leak check left out the light secondary text `rgba(0, 0, 0, 0.6)` in its hex forms `#00000099` and `#0009` [tests/build.test.ts:22]
+- [x] [Review][Patch] The light accent is about 95% opaque, and the comment did not say so [src/ui/theme.ts:42]
+- [x] [Review][Defer] The build leak check matches hex only, so an `rgba()` string in JS is not caught [tests/build.test.ts:22] — deferred: narrow; CSS `rgba()` minifies to the listed hex forms
+- [x] [Review][Defer] Three copies of the live Owlbear themes can drift, and no test compares them [src/preview/themes.ts:7] — deferred: needs the mock theme exported; the builder theme was not the subject of this change
+
+Rejected:
+- low: `paintedColor` paints every colour over the window surface, so the primary button's contrast text is expected as `[4, 5, 7]`, not the `[24, 20, 33]` on the button, and a lost background reads as the surface. Fixing it means compositing over each element's real background.
+- low: contrast text on the accent is measured only over `--color-surface`. The accent is 95% opaque, so the bar and tab under it move the ratio by a fraction.
+- low: DESIGN.md gives computed token values for the dark theme only. `LIGHT_TOKENS` in `tests/window.e2e.ts` holds the light ones.
+- low: the Intent and the task notes still use the old AC numbers (AC6, AC7). The fix edits this spec.
