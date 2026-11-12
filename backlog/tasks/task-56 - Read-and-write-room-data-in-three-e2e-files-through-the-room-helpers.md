@@ -1,9 +1,11 @@
 ---
 id: TASK-56
 title: Read and write room data in three e2e files through the room helpers
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T07:50:00Z'
+updated_date: '2026-11-12T13:27:00Z'
 labels: []
 dependencies:
   - TASK-47
@@ -26,3 +28,12 @@ TASK-47 moved the engine unit tests onto one room rig, so the storage key format
 - [ ] #2 In e2e tests the key format appears only in tests/support/room.ts and tests/wipe.e2e.ts
 - [ ] #3 Every e2e test that passed before still passes with the same assertions; none is skipped or weakened
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Spec _bmad-output/implementation-artifacts/spec-task-56-room-helpers-in-e2e.md (bmad-build, dispatch route).
+2. Add key and seed helpers to tests/support/room.ts.
+3. Move preset.e2e.ts, preset-change.e2e.ts and snapshot.e2e.ts onto them.
+4. Prove same JUnit names, same per-test expect counts, and an equivalence probe of the key reads; full check.
+<!-- SECTION:PLAN:END -->
