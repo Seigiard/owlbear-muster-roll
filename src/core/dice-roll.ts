@@ -164,7 +164,7 @@ export function prepareDiceRoll(
 
   const label =
     writtenFormula !== cell.formula
-      ? cellText === cell.formula
+      ? cell.name === undefined && cellText === cell.formula
         ? writtenFormula
         : `${cellText} (${writtenFormula})`
       : cellText;

@@ -68,13 +68,25 @@ export function repeatBlocks(
 }
 
 // `before` holds the cells before this one in its row. A `text` cell shows its own text. A field's
-// accessible name and a dice cell's label are the nearest preceding `text` cell with visible text,
-// otherwise the field's id or the dice formula, so neither is ever blank.
+// accessible name and a dice cell's label are its name, then the nearest preceding `text` cell with
+// visible text, otherwise the field's id or the dice formula, so neither is ever blank.
 export function cellLabel(cell: PresetCell, before: readonly PresetCell[]): string {
   if (cell.kind === 'text') {
     return cell.text;
   }
 
+  if (cell.name !== undefined) {
+    return cell.name;
+  }
+
+  return cellVisibleLabel(cell, before);
+}
+
+// The dice button keeps its old visible label even when its accessible name is a cell name.
+export function cellVisibleLabel(
+  cell: Exclude<PresetCell, { kind: 'text' }>,
+  before: readonly PresetCell[],
+): string {
   for (let index = before.length - 1; index >= 0; index -= 1) {
     const other = before[index];
 

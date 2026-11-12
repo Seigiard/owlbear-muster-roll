@@ -391,6 +391,63 @@ test('switches a field to dice-choice with the standard dice and downloads its t
   ]);
 });
 
+test('sets and clears field and dice cell names, with the hint, in the downloaded preset', async ({
+  page,
+}) => {
+  // #given
+  await page.goto(PAGE);
+  await pick(item(page, builder.addSingle));
+  await pick(item(page, builder.addRow));
+  await pick(item(page, builder.addField));
+
+  const name = form(page).getByRole('textbox', { name: 'Название', exact: true });
+  const hint = 'Видно в подсказке. Пусто — ячейку называет подпись перед ней.';
+
+  await expect(name).toBeVisible();
+
+  // #when
+  await name.fill('HP, максимум');
+  await pick(item(page, builder.addDice));
+
+  // #then
+  await expect(form(page).getByText(hint, { exact: true })).toBeVisible();
+
+  // #when
+  await form(page).getByRole('textbox', { name: 'Название', exact: true }).fill('Спасбросок HP');
+
+  const namedDownloading = page.waitForEvent('download');
+
+  await downloadButton(page).click();
+
+  const namedPath = await (await namedDownloading).path();
+  const namedFile = JSON.parse(readFileSync(namedPath, 'utf8'));
+
+  // #then
+  expect(namedFile.templates[0]?.sections[0]?.rows[0]).toEqual([
+    { kind: 'field', type: 'number', id: 'field', name: 'HP, максимум' },
+    { kind: 'dice', formula: '1d20', name: 'Спасбросок HP' },
+  ]);
+
+  // #when
+  await pick(item(page, `field · ${builder.form.typeNumber}`));
+  await form(page).getByRole('textbox', { name: 'Название', exact: true }).fill('   ');
+  await pick(item(page, '1d20'));
+  await form(page).getByRole('textbox', { name: 'Название', exact: true }).fill('');
+
+  const clearedDownloading = page.waitForEvent('download');
+
+  await downloadButton(page).click();
+
+  const clearedPath = await (await clearedDownloading).path();
+  const clearedFile = JSON.parse(readFileSync(clearedPath, 'utf8'));
+
+  // #then
+  expect(clearedFile.templates[0]?.sections[0]?.rows[0]).toEqual([
+    { kind: 'field', type: 'number', id: 'field' },
+    { kind: 'dice', formula: '1d20' },
+  ]);
+});
+
 test('opens the draft again after a reload, with no prompt', async ({ page }) => {
   // #given
   await page.goto(PAGE);

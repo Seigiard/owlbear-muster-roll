@@ -137,12 +137,16 @@ function cellToPreset(cell: DocCell): PresetCell {
   }
 
   if (cell.kind === 'field') {
+    const named = cell.name === undefined ? {} : { name: cell.name };
+
     return cell.type === 'select' || cell.type === 'dice-choice'
-      ? { kind: 'field', type: cell.type, id: cell.id, options: cell.options }
-      : { kind: 'field', type: cell.type, id: cell.id };
+      ? { kind: 'field', type: cell.type, id: cell.id, ...named, options: cell.options }
+      : { kind: 'field', type: cell.type, id: cell.id, ...named };
   }
 
-  return { kind: 'dice', formula: cell.formula };
+  return cell.name === undefined
+    ? { kind: 'dice', formula: cell.formula }
+    : { kind: 'dice', formula: cell.formula, name: cell.name };
 }
 
 export function withFieldType(

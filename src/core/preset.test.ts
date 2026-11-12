@@ -27,6 +27,7 @@ import {
   type TemplateLayout,
   type WindowSize,
 } from './preset';
+import { cellLabel } from './sheet-values';
 
 const EXAMPLE_PATH = join(import.meta.dir, '../../docs/example-preset.json');
 
@@ -203,6 +204,125 @@ describe('parsePresetFile', () => {
 
     // #then
     expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+  });
+
+  test('accepts a cell name on every field type and on a dice cell', () => {
+    // #given
+    const text = fileOf([
+      {
+        rows: [
+          [
+            { ...TEXT_FIELD('notes'), name: 'Заметки' },
+            { ...NUMBER_FIELD('hp'), name: 'Хиты' },
+            { kind: 'field', type: 'check', id: 'tired', name: 'Усталость' },
+            {
+              ...SELECT_FIELD('armor', ['Нет', 'Кожаная']),
+              name: 'Доспех',
+            },
+            {
+              ...DICE_CHOICE_FIELD('damage_die', ['d6', 'd8']),
+              name: 'Кубик урона',
+            },
+            { kind: 'dice', formula: '1d20 <= hp', name: 'Проверка хитов' },
+          ],
+        ],
+      },
+    ]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+  });
+
+  test('refuses a name on a text cell as an invalid structure', () => {
+    // #given
+    const text = fileOf([{ rows: [[{ kind: 'text', text: 'Сила', name: 'STR' }]] }]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: false, error: { code: 'invalid-structure' } });
+  });
+
+  test.each([
+    [
+      'an empty field name',
+      { ...NUMBER_FIELD('hp'), name: '' },
+      { code: 'blank-name', detail: 'hp', cell: 'field' },
+    ],
+    [
+      'a spaces-only field name',
+      { ...NUMBER_FIELD('hp'), name: '  ' },
+      { code: 'blank-name', detail: 'hp', cell: 'field' },
+    ],
+    [
+      'an empty dice name',
+      { kind: 'dice', formula: '1d20', name: '' },
+      { code: 'blank-name', detail: '1d20', cell: 'dice' },
+    ],
+    [
+      'a spaces-only dice name',
+      { kind: 'dice', formula: '1d20', name: '\t ' },
+      { code: 'blank-name', detail: '1d20', cell: 'dice' },
+    ],
+  ] as const)('refuses %s and names its cell', (_name, cell, error) => {
+    // #given
+    const text = fileOf([{ rows: [[cell]] }]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+    const actual: unknown = parsed;
+
+    // #then
+    expect(actual).toEqual({ ok: false, error });
+  });
+
+  test('accepts a field and a dice name of exactly 60 Unicode code points', () => {
+    // #given
+    const name = '😀'.repeat(60);
+
+    const text = fileOf([
+      {
+        rows: [
+          [
+            { ...NUMBER_FIELD('hp'), name },
+            { kind: 'dice', formula: '1d20', name },
+          ],
+        ],
+      },
+    ]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+  });
+
+  test.each([
+    [
+      'field',
+      { ...NUMBER_FIELD('hp'), name: '😀'.repeat(61) },
+      { code: 'long-name', detail: 'hp', cell: 'field' },
+    ],
+    [
+      'dice cell',
+      { kind: 'dice', formula: '1d20', name: '😀'.repeat(61) },
+      { code: 'long-name', detail: '1d20', cell: 'dice' },
+    ],
+  ] as const)('refuses a 61-code-point name on a %s', (_name, cell, error) => {
+    // #given
+    const text = fileOf([{ rows: [[cell]] }]);
+
+    // #when
+    const parsed = parsePresetFile(text);
+    const actual: unknown = parsed;
+
+    // #then
+    expect(actual).toEqual({ ok: false, error });
   });
 
   test('accepts every template property the format names', () => {
@@ -1298,6 +1418,80 @@ describe('the preset files in presets/', () => {
   test('include the Cairn 2e preset', () => {
     // #then
     expect(names).toContain('cairn-2e.json');
+  });
+
+  test('the Cairn controls have the specified accessible labels and no id or «из» fallback', () => {
+    // #given
+    const text = readFileSync(join(PRESET_DIR, 'cairn-2e.json'), 'utf8');
+    const parsed = parsePresetFile(text);
+
+    if (!parsed.ok) {
+      throw new Error('the Cairn preset must parse');
+    }
+
+    // #when
+    const labels = new Map<string, string>();
+    const badFallbacks: string[] = [];
+
+    for (const template of parsed.value.templates) {
+      for (const section of template.sections) {
+        for (const row of section.rows) {
+          row.forEach((cell, index) => {
+            if (cell.kind === 'text') {
+              return;
+            }
+
+            const key = `${template.id}:${cell.kind === 'field' ? cell.id : cell.formula}`;
+            const label = cellLabel(cell, row.slice(0, index));
+
+            labels.set(key, label);
+
+            if (label === (cell.kind === 'field' ? cell.id : cell.formula) || label === 'из') {
+              badFallbacks.push(key);
+            }
+          });
+        }
+      }
+    }
+
+    // #then
+    expect({
+      named: Object.fromEntries(
+        [
+          'pc:weapon',
+          'pc:str_max',
+          'pc:dex_max',
+          'pc:wil_max',
+          'pc:hp_max',
+          'npc:npc_name',
+          'npc:hp_max',
+          'npc:attack_1',
+          'npc:attack_1_die',
+          'npc:1d(attack_1_die)',
+          'npc:attack_2',
+          'npc:attack_2_die',
+          'npc:1d(attack_2_die)',
+        ].map((key) => [key, labels.get(key)]),
+      ),
+      badFallbacks,
+    }).toEqual({
+      named: {
+        'pc:weapon': 'Оружие',
+        'pc:str_max': 'STR, максимум',
+        'pc:dex_max': 'DEX, максимум',
+        'pc:wil_max': 'WIL, максимум',
+        'pc:hp_max': 'HP, максимум',
+        'npc:npc_name': 'Имя NPC',
+        'npc:hp_max': 'HP, максимум',
+        'npc:attack_1': 'Атака 1',
+        'npc:attack_1_die': 'Урон атаки 1',
+        'npc:1d(attack_1_die)': 'Урон атаки 1',
+        'npc:attack_2': 'Атака 2',
+        'npc:attack_2_die': 'Урон атаки 2',
+        'npc:1d(attack_2_die)': 'Урон атаки 2',
+      },
+      badFallbacks: [],
+    });
   });
 
   for (const name of names) {

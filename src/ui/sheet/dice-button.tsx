@@ -39,6 +39,7 @@ export type DiceRow = {
 // `disabledReasonId` names the text that says why the button is off, as a removed row's mark.
 type DiceButtonProps = {
   label: string;
+  accessibleName: string;
   row: DiceRow;
   cellIndex: number;
   disabledReasonId?: string;
@@ -55,6 +56,7 @@ export const DiceSheetContext = createContext<DiceSheet | null>(null);
 // and for the GM's answer when the dice extension waits for it.
 export function DiceButton({
   label,
+  accessibleName,
   row,
   cellIndex,
   disabledReasonId,
@@ -111,6 +113,7 @@ export function DiceButton({
     <div className="flex min-w-[0] flex-col items-start">
       <Pressable
         className={DICE_BUTTON_CLASS}
+        accessibleName={accessibleName}
         onPress={roll}
         describedBy={message === null ? undefined : messageId}
         disabledReasonId={disabledReasonId}

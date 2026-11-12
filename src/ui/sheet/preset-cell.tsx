@@ -2,8 +2,15 @@ import { createContext, useContext, useId } from 'react';
 import type { ReactNode } from 'react';
 
 import type { PresetCell, PresetFieldCell } from '@/core/preset';
-import { cellLabel, isChecked, valueText, type FieldValues } from '@/core/sheet-values';
+import {
+  cellLabel,
+  cellVisibleLabel,
+  isChecked,
+  valueText,
+  type FieldValues,
+} from '@/core/sheet-values';
 import { copy } from '@/ui/copy';
+import { CellTooltip } from '@/ui/primitives/tooltip';
 
 import { DiceButton, type DiceRow } from './dice-button';
 import { PendingMark } from './pending-mark';
@@ -50,7 +57,7 @@ const VALUE_CLASS =
   'touch-target min-w-[3rem] max-w-full resize-none border-b border-dotted border-line-strong bg-transparent px-1 text-text [field-sizing:content] [overflow-wrap:anywhere]';
 
 // A read-only value takes the place and size of the control, with no dotted line, so a sheet looks
-// the same for both roles. It is no form control, so Tab skips it.
+// the same for both roles. It is no form control, so only a named value is a Tab stop.
 const READ_ONLY_VALUE_CLASS =
   'touch-target inline-flex min-w-[3rem] max-w-full items-center whitespace-pre-wrap border-b border-transparent px-1 text-text [overflow-wrap:anywhere]';
 
@@ -113,34 +120,45 @@ function CellContent({
   pending,
 }: SheetCellProps): ReactNode {
   const label = cellLabel(cell, before);
+  let content: ReactNode;
 
   // Anyone who sees a sheet rolls it, with or without write access.
   // A row whose removal waits rolls nothing: its mark, shown at once, says why.
   if (cell.kind === 'dice') {
-    return (
+    content = (
       <DiceButton
-        label={label}
+        label={cellVisibleLabel(cell, before)}
+        accessibleName={label}
         row={row}
         cellIndex={cellIndex}
         disabledReasonId={pending.disabled ? (pending.rowMarkId ?? undefined) : undefined}
       />
     );
+  } else if (cell.kind !== 'field' || place === null) {
+    content = <span>{label}</span>;
+  } else if (readOnly) {
+    content = <ReadOnlyValue field={cell} label={label} values={values} />;
+  } else {
+    content =
+      cell.type === 'check' ? (
+        <CheckField field={cell} label={label} values={values} place={place} pending={pending} />
+      ) : cell.type === 'select' || cell.type === 'dice-choice' ? (
+        <SelectField field={cell} label={label} values={values} place={place} pending={pending} />
+      ) : (
+        <TextValueField
+          field={cell}
+          label={label}
+          values={values}
+          place={place}
+          pending={pending}
+        />
+      );
   }
 
-  if (cell.kind !== 'field' || place === null) {
-    return <span>{label}</span>;
-  }
-
-  if (readOnly) {
-    return <ReadOnlyValue field={cell} label={label} values={values} />;
-  }
-
-  return cell.type === 'check' ? (
-    <CheckField field={cell} label={label} values={values} place={place} pending={pending} />
-  ) : cell.type === 'select' || cell.type === 'dice-choice' ? (
-    <SelectField field={cell} label={label} values={values} place={place} pending={pending} />
+  return cell.kind === 'text' || cell.name === undefined ? (
+    content
   ) : (
-    <TextValueField field={cell} label={label} values={values} place={place} pending={pending} />
+    <CellTooltip name={cell.name}>{content}</CellTooltip>
   );
 }
 
@@ -155,6 +173,7 @@ function ReadOnlyValue({ field, label, values }: Omit<FieldProps, 'place' | 'pen
       <span
         role="img"
         aria-label={checked ? copy.label.checked(label) : copy.label.unchecked(label)}
+        tabIndex={field.name === undefined ? undefined : 0}
         className={READ_ONLY_CHECK_CLASS}
         data-read-only-value
       >
@@ -167,7 +186,13 @@ function ReadOnlyValue({ field, label, values }: Omit<FieldProps, 'place' | 'pen
   const text = valueText(value);
 
   return (
-    <span role="group" aria-label={label} className={READ_ONLY_VALUE_CLASS} data-read-only-value>
+    <span
+      role="group"
+      aria-label={label}
+      tabIndex={field.name === undefined ? undefined : 0}
+      className={READ_ONLY_VALUE_CLASS}
+      data-read-only-value
+    >
       {text === '' && preview !== null ? <span className="text-text-muted">{field.id}</span> : text}
     </span>
   );
