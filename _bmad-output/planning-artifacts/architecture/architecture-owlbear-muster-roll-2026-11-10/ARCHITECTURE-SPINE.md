@@ -4,11 +4,11 @@ type: architecture-spine
 purpose: build-substrate
 altitude: feature
 paradigm: 'Replicated state (state-based LWW CRDT per record) over a functional core with ports and adapters'
-scope: 'The Muster Roll v1 Owlbear Rodeo extension, with no own server'
+scope: 'The Muster Roll Owlbear Rodeo extension, with no own server, and its v2 preset builder page'
 status: final
 created: '2026-11-10'
 updated: '2026-11-12'
-binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-17, CAP-18, CAP-19, CAP-29, CAP-30, CAP-31, CAP-32]
+binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-17, CAP-18, CAP-19, CAP-20, CAP-21, CAP-22, CAP-23, CAP-24, CAP-25, CAP-26, CAP-27, CAP-28, CAP-29, CAP-30, CAP-31, CAP-32]
 sources:
   - ../../../specs/spec-muster-roll/SPEC.md
   - ../../../specs/spec-muster-roll/preset-format.md
@@ -32,6 +32,7 @@ Code is a functional core with ports and adapters:
 | Replica | `src/replica` | The engine in the background page. Owns the replica, protocol, catch-up and snapshot timing |
 | Platform | `src/platform` | Ports for broadcast, metadata, party, player, map selection, storage, context menu, popover, action, notification, scene and theme. The Owlbear adapter and the test mock |
 | UI | `src/ui` | React views and nanostores. A projection of the replica |
+| Builder | `src/builder` | The preset builder page (v2): its store, document edits, tree, forms and preview. No replica and no platform |
 
 ```mermaid
 graph TD
@@ -42,6 +43,8 @@ graph TD
   UI --> Ports
   Adapter[src/platform/obr and mock] --> Ports
   Adapter --> SDK["@owlbear-rodeo/sdk"]
+  Builder[src/builder] --> Core
+  Builder -->|sheet components only| UI
 ```
 
 ## Invariants & Rules
@@ -218,6 +221,46 @@ A message with a higher generation also starts AD-9 adoption.
 - **Prevents:** Two clients disagreeing on whether a token opens a removed repeat block, or a link surviving where the preset no longer allows it.
 - **Rule:** A link is live only while its sheet is live, its repeat block is live when it names one, and the template (for a sheet link) or the repeat section (for a repeat block link) is linkable (`tokens`). Any other link is inert: every view and the token menu treat it as no link. Only the GM composes `link:`, and the composer refuses a target that is not live. The GM client that composes a repeat block removal, or commits a player's repeat block removal, tombstones the live links to that repeat block in the next batch.
 
+### AD-20 — The builder is its own page with no platform
+
+- **Binds:** CAP-20, CAP-21, CAP-22
+- **Prevents:** The Owlbear SDK or the engine starting in a tab outside Owlbear, and a second sheet renderer.
+- **Rule:** `builder.html` is a Vite build input with the entry `src/builder/main.tsx`. `src/builder` imports `src/core` and only the sheet, shell, primitive, theme and copy modules of `src/ui`. It never imports `@/platform/current`, `src/replica`, the replica client or the projection store at runtime. A type-only import, as `src/ui/sheet` makes, is allowed. The builder and the room exchange a preset by file only, because the iframe's storage is partitioned from a top-level tab. The extension Settings holds a plain link, `<a href="/builder.html" target="_blank" rel="noopener">`, and `public/_headers` serves the page with no-cache. If a live room shows that the iframe blocks the tab, the owner decides the other route; no build picks one.
+
+### AD-21 — One builder store, and undo is a stack of documents
+
+- **Binds:** CAP-22, CAP-26, CAP-27
+- **Prevents:** An edit kind that undo misses, a form that changes the preset past the store, and two sources of truth for the draft.
+- **Rule:** One nanostores store owns the builder document. Its shape lives in `src/builder/document.ts` with the only `fromPreset` and `toPreset`: `{ window?, templates }`, where a template is its preset keys with `uid` and `sections`, a section is its preset keys with `uid` and `rows`, a row is `{ uid, cells }`, and a cell is its preset cell with `uid`. Uids never reach a file or the draft.
+  - Every change is a pure function from document to document in `src/builder`, applied through one `apply`: add, remove, a form change, a move, a rename with all its formula rewrites, and opening a preset. It pushes the previous step on the undo stack and clears redo. A step is the document with the origin and the name, so undoing an open restores the old draft whole.
+  - A coalesce key is the item uid and the property. An edit with the same key as the step before replaces that step, so typing in one input is one step. Undo, redo, a selection change and a blur end the run.
+  - Undo and redo swap whole steps. The selection is not in a step: after undo or redo it moves to the changed item, or to its nearest live parent. Forms, tree drops, preview clicks and file opens change the document only through the store. The preview reads the store with no debounce.
+  - After each change the store writes the draft to one `localStorage` key of the builder page: the preset, the preset of the opened file (its origin) and the name. The page reads it once on open. A draft that fails the preset structure schema is dropped, and the page opens on the empty preset. Uids are minted again on load. Two open builder tabs are not coordinated: the last change written wins.
+
+### AD-22 — The builder checks with the upload's check
+
+- **Binds:** CAP-20, CAP-28
+- **Prevents:** A downloaded file that the upload refuses, and builder messages that drift from the upload's.
+- **Rule:** `core/preset` exposes `presetProblems`: every rule failure with its index path (template, section, row, cell), in the order `parsePresetFile` checks. `parsePresetFile` returns the first of them. A problem's path names the item that fails the check: an id or formula names its cell, a too-wide row its row, `bad-repeat` its section, a repeated field id, repeat section id or template id the second occurrence, and `bad-name-field` and an invalid template id the template. The builder adds only the structure problems it can produce, no templates (at the preset root) and a window out of range (at the window item), under the existing failure codes, and every form keeps the rest of the structure valid. The problem counter goes to the first problem in tree order. Messages come from `ui/preset-errors`. "Скачать пресет" is enabled only when `parsePresetFile(formatPresetFile(preset))` is ok, and the file is that text. A file opens only when `parsePresetFile` accepts it.
+
+### AD-23 — The preview is the window's sheet components
+
+- **Binds:** CAP-22, CAP-23, CAP-28
+- **Prevents:** A second renderer that draws a preset differently from the window, and preview code that changes the window's DOM.
+- **Rule:** The preview draws `TabBar`, `SheetHeader` and `SheetBody` from `src/ui`, read-only, with records from a pure builder function: a `sheet:` record for a sheet set's sample sheet and one empty `rep:` record per repeat section. It passes `editing: null`, `pending: null`, no block tools, and a stub rolling that never rolls. The sheet components have one hook for it, a `CellPreviewContext` that is `null` in the window. When set, each cell sits in a `display: contents` element with `data-cell="{section}.{row}.{cell}"`, and an empty field shows its placeholder. Sections and rows carry `data-section-index` and `data-row-index`. Click-to-select, selection marks and problem marks resolve through these index paths to document uids.
+
+### AD-24 — Field ids and renames follow the parser's scopes
+
+- **Binds:** CAP-24, CAP-25
+- **Prevents:** The builder renaming a reference that the parser resolves to another field, or making an id the checks refuse.
+- **Rule:** A new field's label is the nearest `text` cell with text before it in its row, as `cellLabel` reads it, at the moment the field is added; with none the id is `field`. `core/field-id-suggest` makes the id: transliterated, passing `isFieldId`, unique in the field's scope with a numeric suffix. The id never follows a later label change. `core/formula-rename` rewrites an id by whole word only in formulas whose row resolves that id to the renamed field through `resolveFieldReference`, and returns the count. A sheet set's `nameField` follows a rename of its field. A rename to an id the scope already holds is applied and shows as a problem. The values warning compares only ids: a rename of a field id, or a template id, that the opened file had in that template. Values a move or a delete would erase on upload get no warning.
+
+### AD-25 — Tree moves keep the preset shape
+
+- **Binds:** CAP-22, CAP-23
+- **Prevents:** A drop that makes a document no preset can hold, such as a row inside a cell.
+- **Rule:** The tree is react-aria-components `Tree` with `useDragAndDrop` and `onMove`. Tree keys are document uids. Each node kind has its own drag type, and `getDropOperation` accepts a drop only into or beside a container of the right kind: a cell into a row, a row into a section, a section into a template, a template among templates. A drop that breaks a preset rule, such as a field moved into a scope that holds its id or a row moved under fewer `columns`, is accepted and shows as a problem. A move is one store edit.
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -271,7 +314,9 @@ src/
   replica/     # engine, pending queue, catch-up, snapshot writer, gmLink
   platform/    # ports, send queue, obr/ adapter, mock/
   ui/          # React views, nanostores projection
+  builder/     # preset builder page: store, document edits, tree, forms, preview
 index.html       # popover and sheet views
+builder.html     # preset builder page
 background.html  # replica host
 public/manifest.json
 public/_headers
@@ -309,12 +354,21 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 | CAP-17 | core, replica, ui | AD-2, AD-5, AD-10, AD-18, Sheet names convention |
 | CAP-18 | replica, ui, platform | AD-2, AD-5, AD-10, AD-19 |
 | CAP-19 | core/access, replica, ui | AD-2, AD-5, AD-10 |
+| CAP-20 | builder, core/preset | AD-20, AD-22 |
+| CAP-21 | builder, ui/settings | AD-20 |
+| CAP-22 | builder, ui | AD-20, AD-21, AD-23, AD-25 |
+| CAP-23 | builder | AD-23, AD-25 |
+| CAP-24 | core, builder | AD-24 |
+| CAP-25 | core, builder | AD-24 |
+| CAP-26 | builder | AD-21 |
+| CAP-27 | builder | AD-21 |
+| CAP-28 | core/preset, builder | AD-22, AD-23 |
 | CAP-29 | core, ui | AD-2, AD-18 |
 | CAP-30 | core, replica, ui | AD-2, AD-10, AD-19 |
 | CAP-31 | replica, ui | AD-9, AD-11, AD-12 |
 | CAP-32 | core, ui, platform | AD-19, Visibility convention, SDK boundary |
 
-CAP-16 is retired. CAP-20 to CAP-28 belong to the v2 builder, which this spine does not cover yet.
+CAP-16 is retired.
 
 ## Deferred
 
@@ -329,6 +383,11 @@ CAP-16 is retired. CAP-20 to CAP-28 belong to the v2 builder, which this spine d
 | Protection from modified clients | v1 protects honest clients only | The v2 GM write key |
 | Server storage, D1 | Non-goal in v1. Records map to rows with version-checked writes | v2 |
 | Monitoring and error reporting | No backend in v1 | After the first real session |
+| The room's preset in the settings link fragment | The way in is a file today. `encodePreset` already makes the fragment | After v2, once the owner confirms the iframe may open a tab |
+| A direct write from the builder to the room | Needs the v2 server | v2 server |
+| Undo stack depth | One owner, `src/builder`. Documents are small | If memory shows in a long session |
+| A warning for values a move or a delete erases on upload | CAP-25 asks only for the id rename warning; a moved first field renames a `row:` or `rep:` record too | After the owner tries the builder on a live room |
+| Two builder tabs on one draft | One GM, one tab in practice; the last change wins | If a GM loses a draft this way |
 
 Facts still not measured. None changes a rule today:
 

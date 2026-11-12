@@ -14,9 +14,9 @@ sources:
 
 ## Foundation
 
-One surface: the action window of an Owlbear Rodeo extension, on a laptop or a tablet. Phones are out of scope. Components use react-aria. `DESIGN.md` is the visual identity reference. The interface is Russian in v1.
+Two surfaces: the action window of an Owlbear Rodeo extension, on a laptop or a tablet, and the preset builder (v2), a top-level page of the deployed site, on a laptop or a landscape tablet. Phones are out of scope. Components use react-aria. `DESIGN.md` is the visual identity reference. The interface is Russian in v1.
 
-The extension is system-agnostic. The preset decides which sheets exist, their content and its arrangement. This document fixes only the shell around that content. The preset builder (v2, TASK-38) is a separate page and is not covered here.
+The extension is system-agnostic. The preset decides which sheets exist, their content and its arrangement. This document fixes only the shell around that content. The preset builder (v2, CAP-20 to CAP-28) has its own section, [Preset builder](#preset-builder), and the rules of the window sections apply to it only where that section says so.
 
 `mockups/shell.html` shows the shell, and this document and `DESIGN.md` win on conflict with it. The mock predates sheet sets and single sheets: it shows a fixed NPC tab and a sheet per NPC, which no longer exist. It also treats an owner as an editor, shows the sheet name in a roll, asks for a count with a browser dialog, and uses older labels.
 
@@ -43,6 +43,7 @@ Never call a sheet set "character sheets" in the interface. Its sheets are named
 | Access panel | GM | "Доступ" chip in a visible sheet of a sheet set's header | Who owns the sheet and who may edit it |
 | Token menu | GM, player | Owlbear's menu on a token | Open a linked sheet or repeat block, link or unlink one |
 | Link picker | GM | Token menu | Choose the sheet or repeat block for a token |
+| Preset builder | GM | "Конструктор пресетов" link in Settings, or its address | Make or change a preset and download it (see [Preset builder](#preset-builder)) |
 
 There is one window. Every sheet has its own tab. Opening a target from a token opens the window on its tab, and for a repeat block scrolls to that repeat block. Settings replaces the content area (`imports/gm-nav-sketch-settings.png`).
 
@@ -106,7 +107,7 @@ A sheet's name is the value of its sheet set's name field, a single sheet's name
 | Roll result | Global | Owlbear notification, so it shows when the window is closed. A roll from a hidden sheet shows only on GM clients |
 | Token menu | Owlbear | GM on a token with no link: "Привязать лист…". GM on a linked token: "Открыть лист" and "Отвязать лист". Player: "Открыть лист" only on tokens linked to a visible sheet or a repeat block of one. One token links to one sheet or repeat block. One target can have many tokens. The token status in the window is read-only |
 | Link picker | Token menu | Small Owlbear popover. Groups in preset order, one per sheet set, single sheet or `repeat` section that sets `tokens`. A sheet set lists its sheets, a single sheet lists itself, and a section lists its repeat blocks by sheet name and the repeat block's first field. In each group, targets with no token come first. With no target: "Сначала создайте лист". Linking offers the target's name as the token label (a repeat block's first field) |
-| Settings | Gear | Sections in this order: Пресет, Снимок, Копия в комнате, Очистка. Results and file errors appear under the button that caused them. "Копия в комнате" shows "Сохранена" and the used and available size, "Не сохранена" with no room copy yet, or the not-saved message. With no preset, "Скачать пресет", "Скачать снимок" and "Загрузить снимок" are disabled with "Сначала загрузите пресет." "Очистить всё" is enabled with or without a preset |
+| Settings | Gear | Sections in this order: Пресет, Снимок, Копия в комнате, Очистка. Пресет ends with the "Конструктор пресетов" link, which opens the builder in a new tab, and its hint (CAP-21). Results and file errors appear under the button that caused them. "Копия в комнате" shows "Сохранена" and the used and available size, "Не сохранена" with no room copy yet, or the not-saved message. With no preset, "Скачать пресет", "Скачать снимок" and "Загрузить снимок" are disabled with "Сначала загрузите пресет." "Очистить всё" is enabled with or without a preset |
 | Map selection | Tab bar, repeat block, GM header | CAP-32. Marks follow this client's own map selection through live token links of the sheets this role sees, and clear when the selection clears. "Выделить на карте" is a toggle button, GM only, pressed while every linked token of its sheet or repeat block on the open scene is selected. Pressing it adds those tokens to the map selection, or removes them when it is pressed. Tokens on other scenes are skipped. It never switches tabs or scrolls |
 | Status banner | Under tab bar | One banner, only when something is wrong. Priority: local save failed, room copy not saved, room copy of an older format, new version, no GM |
 | Confirmation | Upload, import, delete, wipe | One inline block for the whole action, at the top of the content area. Focus moves to "Отменить". Never one per field |
@@ -138,7 +139,7 @@ A sheet's name is the value of its sheet set's name field, a single sheet's name
 - Tab order: tab bar, header, then fields in preset order.
 - `Enter` commits a `number` field and a single-line `text` field. `Shift+Enter` adds a line in `text`.
 - `Esc` cancels an unsaved edit and returns the current value.
-- No drag in v1.
+- No drag in the window. The builder's tree is the only place with drag (see [Preset builder](#preset-builder)).
 
 ## Accessibility Floor
 
@@ -215,9 +216,105 @@ Failure path: if he presses "Отменить", nothing changes.
 
 Failure path: with no room copy, she sees "ГМ ещё не заходил. Листов пока нет."
 
+## Preset builder
+
+The builder is a top-level page of the deployed site (`/builder.html`), outside the Owlbear iframe (CAP-20). A GM makes or changes a preset in it, sees the preset as the window draws it, and downloads a file that "Загрузить пресет" accepts. The builder and the room exchange a preset only by file (CAP-21). The layout reference is variant B of `.working/builder-layouts.html`. This section and `DESIGN.md` win on conflict with it. Its top bar, labels and colours are placeholders.
+
+### Builder surfaces
+
+| Surface | Place | Purpose |
+| --- | --- | --- |
+| Top bar | Full width, top | Page name, draft status, undo and redo, problem counter, "Открыть…", theme switch, "Скачать пресет" |
+| Confirmation | Under the top bar | The one confirmation before the draft is replaced |
+| Structure tree | Left column, top | The preset as a tree: the window, then templates, sections, rows and cells (CAP-22) |
+| Form | Left column, under the tree | The properties of the item selected in the tree |
+| Preview | Right column | The selected template drawn by the window's own sheet components, in a frame of the preset's window size |
+
+The page opens straight into the editor, on the draft if one exists, otherwise on the empty preset (CAP-26). There is no start screen and no draft prompt.
+
+### Builder copy
+
+| Job | Copy |
+| --- | --- |
+| Page name | "Конструктор пресетов" |
+| Settings link in the window | "Конструктор пресетов", with the hint "Откроется в новой вкладке. Готовый файл загрузите кнопкой «Загрузить пресет»." |
+| Draft status | "Черновик сохранён"; when browser storage fails, "Черновик не сохраняется в этом браузере" |
+| Undo, redo | "Отменить правку", "Повторить правку" |
+| Problem counter | "Проблем: {n}", accessible name "Проблем: {n}. Перейти к первой"; with no problem, "Проблем нет" |
+| Open menu | "Открыть…" with "Пустой пресет", "Пример: персонажи, NPC, инвентарь", "Пример: d20", "Пример: пул d6", "Файл…" |
+| Theme | "Светлая тема" switch |
+| Download | "Скачать пресет"; disabled with "Скачать можно, когда проблем нет." |
+| Draft replacement | "Черновик будет заменён. Открыть «{name}»?" with "Открыть" and "Отменить" |
+| File that fails the checks | The upload's own message, "Файл не подошёл: {reason}. Ничего не изменено.", or "Файл из более новой версии. Перезагрузите страницу." |
+| Pane names | "Структура", "Превью · окно {width} × {height}" |
+| Add items | "Добавить набор", "Добавить одиночный лист", "Добавить секцию", "Добавить строку", "Добавить подпись", "Добавить поле", "Добавить кубик" |
+| Remove | "Удалить" at the end of each form |
+| Empty preset | "Добавьте набор или одиночный лист." |
+| Problem at an item | The reason of the upload's refusal message for that problem, such as "ошибка в формуле «1d20+dx»" |
+| Rename result | "Формулы изменены: {n}." |
+| Rename warning, preset from a file | "Значения поля «{id}» в комнате будут стёрты при загрузке пресета." For a template id: "Листы «{id}» в комнате будут удалены при загрузке пресета." |
+
+Form labels, by item:
+
+| Item | Labels |
+| --- | --- |
+| Window | "Свой размер окна"; "Ширина, px"; "Высота, px"; hint "Ширина от 360 до 1440, высота от 360 до 1080. Без своего размера окно 600 × 600." |
+| Template | "Заголовок"; "Id"; "Вид": "Набор" or "Одиночный лист"; "Поле имени" (sheet set); "Видят": "Все" or "Только ГМ"; "Игроки могут править" (single sheet); "Можно привязать токен" |
+| Section | "Заголовок"; "Ширина": "Вся", "1/2", "1/3"; "Колонки", empty for inline flow; "Повторяемая"; "Можно привязать токен к блоку" (repeat section only) |
+| Label | "Текст" |
+| Field | "Тип": "Текст", "Число", "Флажок"; "Id — имя для формул"; hint "Встречается в формулах: {n}." |
+| Dice cell | "Формула"; hint "Например: 1d20 + str"; completion list "Поля" |
+
+### Builder components
+
+| Component | Behavioral rules |
+| --- | --- |
+| Structure tree | react-aria `Tree`. The window is the first item. Templates follow in preset order, and each holds its sections, rows and cells. A template shows its title and its kind, a section its title or "Секция", a row "Строка {n}", a label its text, a field its id and type, a dice cell its formula. Each container ends with full-width add items that name what they add. The add items for a template sit at the end of the tree. A new item starts with defaults that pass the checks where it can, and becomes the selected item, so its form opens |
+| Reorder | Drag in the tree only, with no move buttons. A section, row or cell may move into another container of its kind, including into another template. Keyboard and touch drag come from react-aria. A drop that breaks the preset rules is allowed and shows as a problem |
+| Form | The form of the selected item. A change applies at once and the preview redraws at once (CAP-22). "Удалить" ends each form and asks nothing, because undo restores the item |
+| Field id | A new field takes an id from the label before it in its row, transliterated and made to follow the id rules, unique in its scope, or "field" with a number (CAP-24). A label change keeps the id. The id input commits on `Enter` or when the focus leaves it. A commit renames the field: every formula that resolves to it is rewritten by whole word, a sheet set's name field follows, and "Формулы изменены: {n}." shows under the input (CAP-25). In a preset opened from a file, renaming an id that the file had adds the rename warning. `Esc` returns the input to the current id |
+| Formula input | Offers the field ids the formula can resolve as completions: the ids of its own repeat section first, then the template's ids outside repeat sections. The list filters by the word at the caret. Arrow keys move in it, `Enter` or `Tab` inserts the id, `Esc` closes it |
+| Preview | Tabs in preset order, as in the window. The template that holds the selected tree item is open. A sheet set shows one sample sheet with no "+", and its tab shows its name field's placeholder. A single sheet shows itself by its `title`. Each repeat section shows one sample repeat block. Fields are empty, read-only and show their placeholder. Dice cells take no roll. A click on a cell, row or section selects its item in the tree, and a click on a tab selects that template (CAP-22). The selected item is outlined |
+| Empty-value placeholder | An empty field shows its field id in muted text, because the id is the name formulas use. A check shows its empty box. A sheet set's sample tab shows its name field's id, or "Без имени" when the name field names no text field |
+| Problems | The builder runs the upload's checks on every change and lists every problem, not only the first. Each problem marks its tree item and its preview cell, row or section, and the form of that item shows its message. The problem counter selects the first problem in preset order and moves the focus to its tree item (CAP-28) |
+| Download | "Скачать пресет" is enabled only when `parsePresetFile` accepts the preset (CAP-28). The file is `{name}-{YYYY-MM-DD-HHmm}.json`. `{name}` is the opened file's or example's name with no earlier time suffix, or "preset" for a blank start |
+| Open | "Открыть…" opens a menu. An example or a file replaces the draft after the one confirmation. The confirmation is skipped while the draft is still the empty preset, because nothing is lost. A file that fails the checks does not open and shows the upload's message under the top bar, and the draft does not change (CAP-20). Opening is one undo step |
+| Draft | The builder saves the draft in its own browser storage after every change, with no command (CAP-26). It keeps one draft only. The page reads no storage of the window, which is partitioned from it |
+| Undo and redo | Every change is one step: add, remove, a form change, a move, a rename with its formula rewrites, and opening (CAP-27). Typing in one input is one step until the focus leaves it or another item changes. `Ctrl`/`Cmd`+`Z` undoes and `Shift`+`Ctrl`/`Cmd`+`Z` redoes outside text inputs. Undo and redo select the changed item |
+| Theme | Follows the system colour scheme on open. "Светлая тема" overrides it, and the browser remembers the choice. The preview uses the page theme |
+
+### Builder states
+
+| State | Treatment |
+| --- | --- |
+| First visit | The empty preset: the window item and the two template add items in the tree, "Добавьте набор или одиночный лист." in the preview, and one problem, so download is off |
+| Return visit | The draft as it was left, with the first template selected |
+| Invalid preset | Allowed. Problems show, download is off with its reason, and the preview still draws what it can |
+| Draft storage fails | The draft status says so. Editing goes on |
+
+### Builder interaction and platform
+
+- Laptop and landscape tablet. Layout B from about 1000 px wide. Below that the preview frame scales down and keeps its proportions. No phone or portrait tablet.
+- Touch works, and no action needs hover.
+- Tab order: top bar, tree, form, preview.
+- Tree keys come from react-aria: arrows move and expand, `Enter` acts on an add item.
+
+### Oleg builds a preset for a second system (CAP-20 to CAP-28)
+
+1. Oleg opens "Настройки" in the window and follows "Конструктор пресетов". The builder opens in a new tab on the empty preset.
+2. He adds a sheet set "Экипаж", a section "Характеристики" with three columns, and a row with the label "Сила", a field and a dice cell. The field takes the id `sila`. The preview draws the sheet as he goes.
+3. He renames `sila` to `str`. The dice cell formula `1d20 <= sila` becomes `1d20 <= str`, and "Формулы изменены: 1." shows.
+4. He adds a single sheet "Инвентарь" with a repeat section of items, and drags the row "Деньги" out of the repeat section.
+5. He mistypes a formula. The counter shows one problem, the cell is marked in the tree and the preview, and download is off. He presses the counter, lands on the cell and fixes it.
+6. **Climax:** he presses "Скачать пресет", then "Загрузить пресет" in the window, and the room accepts the file.
+
+Failure path: a file from another tool that fails the checks shows the upload's message, and his draft stays.
+
 ## Inspiration & Anti-patterns
 
 - **Lifted from DummySheet:** titled sections side by side, editing by clicking a value (`imports/dummysheet-hero.png`).
 - **Rejected:** a hard-coded arrangement of stats or sheets, because the preset owns it.
 - **Rejected:** a fixed NPC tab. NPC is an ordinary single sheet.
 - **Rejected:** an edit mode, and a confirmation per field.
+- **Rejected in the builder:** editing in place on the sheet, a text markup in place of JSON, hidden field ids, and blocking edits that make the preset invalid (SPEC Non-goals).
+- **From dummy-sheet, ideas only:** new items start with defaults, an add item closes each container and names what it adds, and the download name holds the preset name and the time.

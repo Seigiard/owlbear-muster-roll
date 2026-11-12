@@ -152,9 +152,27 @@ Tabs use `{rounded.md}` on the top corners. The window uses `{rounded.lg}`. Chip
 | Focus | 2 px outline in `{colors.focus}` on every control. Never removed |
 | Disabled | Control at 50% opacity, with a text reason near it |
 
+### Preset builder
+
+The builder is a top-level page, not inside Owlbear, so no live Owlbear theme exists. It takes the two Owlbear theme copies in `src/preview/themes.ts` (dark and light) through the same token mapping as the window. It opens in the system colour scheme, and the "Светлая тема" switch overrides it. Layout reference: variant B of `.working/builder-layouts.html`.
+
+| Component | Visual rule |
+| --- | --- |
+| Page | `{colors.surface-bar}` behind the panes. Full viewport height. No page scroll: each pane scrolls inside |
+| Top bar | 44 px high, `{colors.surface-bar}`, bottom rule in `{colors.line}`. Page name in `{typography.section-heading}`, draft status in `{typography.label-sm}` `{colors.text-muted}`. "Скачать пресет" is `{components.button-primary}`; the other controls are `{components.button-secondary}` |
+| Problem counter | A chip with `{rounded.full}`: the danger surface and text pair while problems exist, `{components.chip}` with none |
+| Left column | 420 px wide, `{colors.surface}`, right rule in `{colors.line}`. The tree takes the upper part and the form the lower part, split by a `{colors.line}` rule, each scrolling on its own |
+| Pane title | `{typography.label-sm}` in `{colors.text-muted}`, padding `{spacing.2}` `{spacing.3}` |
+| Tree item | `{typography.body}` at 13 px, 28 px high, `{rounded.sm}`, indented 14 px per level. A kind tag in `{typography.label-sm}` `{colors.text-muted}` with a `{colors.line}` border. Ids in a monospace font, `{colors.text-muted}`. Selected: `{colors.accent}` background and `{colors.accent-contrast}` text. A problem: a "!" chip in the danger pair at the row end. Add items: `{colors.text-muted}`, "+" before the text |
+| Drop indicator | A 2 px `{colors.accent}` line between items, or a `{colors.accent}` outline on the target container |
+| Form | Padding `{spacing.3}`, `{spacing.3}` between controls. Labels above inputs in `{typography.label-sm}` `{colors.text-muted}`. Inputs on `{colors.surface-bar}` with a `{colors.line}` border and `{rounded.sm}`; ids and formulas in a monospace font. A segmented choice for 2–3 options, the chosen one on `{colors.surface-tab}` in `{colors.accent}`. Messages: hints in `{colors.text-muted}`, problems and warnings in the danger and warning pairs |
+| Preview pane | `{colors.surface-bar}`, the frame centred at the top with `{spacing.4}` around it. The frame is the window at the preset's size with `{rounded.lg}` and a `{colors.line}` border. It scales down with its proportions when the pane is narrower |
+| Preview marks | Selected item: 2 px solid `{colors.accent}` outline, offset 1 px. Problem: 2 px dashed `{colors.danger-text}` outline. Placeholder: the field id in `{colors.text-muted}` |
+| Confirmation and file message | The window's inline confirmation block, full width under the top bar |
+
 ## Do's and Don'ts
 
-- Do follow the Owlbear theme in every window.
+- Do follow the Owlbear theme in every window. The builder follows its Owlbear theme copies.
 - Do let the preset decide the arrangement of sheet content.
 - Don't add colour coding for game concepts. The extension does not know what a stat means.
 - Don't add icons where a word fits, except the gear.
