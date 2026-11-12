@@ -1,9 +1,11 @@
 ---
 id: TASK-45
 title: Move the pending edit policy out of the replica engine
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-12T02:11:00Z'
+updated_date: '2026-11-12T07:28:00Z'
 labels: []
 dependencies: []
 references:
@@ -28,3 +30,9 @@ The player side of AD-4 is split across a seam that does not hold. `src/replica/
 - [ ] #3 `engine-propose.test.ts` keeps only round-trip tests that need two engines; every behavior it covered before is still covered
 - [ ] #4 `core/access` stays the only judge of write access, and AD-4, AD-7 and AD-14 behavior is unchanged: the full check in CLAUDE.md passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. bmad-build spec _bmad-output/implementation-artifacts/spec-task-45-pending-edits-module.md (module interface, decisions matrix, test split, proof of unchanged behaviour). 2. implement skill: phase A extracts src/replica/pending-edits.ts and rewires engine.ts with every test untouched; phase B adds pending-edits.test.ts and thins engine-propose.test.ts. 3. code-review against the spec. 4. Architecture spine names the module (own docs commit). 5. Full check, merge master, check again.
+<!-- SECTION:PLAN:END -->
