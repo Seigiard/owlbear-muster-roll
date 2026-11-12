@@ -1,11 +1,11 @@
 ---
 id: TASK-58
 title: Split each sheet into tabs with preset format v3
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-12T18:50:00Z'
-updated_date: '2026-11-12T19:34:00Z'
+updated_date: '2026-11-12T21:52:00Z'
 labels:
   - v3
 dependencies: []
@@ -45,6 +45,8 @@ Spec: _bmad-output/implementation-artifacts/spec-task-58-tabs-format-v3.md. 1. c
 
 <!-- SECTION:NOTES:BEGIN -->
 Evidence: preset.test.ts (tabs, untitled-tab, cross-tab ids and formulas, width 479/480), snapshot/engine tests refuse v1 and v2, preset-migrate.test.ts (move section between tabs keeps keys, removed tab counted), dice-roll.test.ts cross-tab field, formula-rename and document tests across tabs, tests/tabs.e2e.ts (tab switch kept across sheets, one tab no row, arrows, cross-tab roll, token opens tab 2 scrolled to block), builder.e2e.ts multi-tab flow, preview.e2e.ts frame tab switch. Full check: format, lint, typecheck, build clean; bun test 2720 pass, 1 fail (copy catalog "+ Добавить", red since 6c8785b, deferred to TASK-60); test:browser 499 pass.
+
+Owner (2026-11-12): "давай дальше без остановок, проверять буду уже финальный результат в main" - the live-room check moves to the end of TASK-60.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

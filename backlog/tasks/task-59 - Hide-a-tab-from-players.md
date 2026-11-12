@@ -1,10 +1,11 @@
 ---
 id: TASK-59
 title: Hide a tab from players
-status: To Do
+status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-12T18:50:00Z'
+updated_date: '2026-11-12T21:52:00Z'
 labels:
   - v3
 dependencies:
