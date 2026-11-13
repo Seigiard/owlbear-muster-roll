@@ -22,10 +22,16 @@ const PC: Template = {
   tokens: true,
   tabs: [
     {
+      title: 'Основное',
       sections: [
         { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
         { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] },
       ],
+    },
+    {
+      title: 'Заметки мастера',
+      visibility: 'gm',
+      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'secret' }]] }],
     },
   ],
 };
@@ -75,6 +81,7 @@ const BROK = record('sheet:brok', { set: 'pc', order: 1 });
 const LIZA = record('sheet:liza', { set: 'pc', order: 0 });
 const BROK_ROW = record('row:brok:name', { name: 'Брок' });
 const BROK_REP = record('rep:brok:attack:i1', { order: 0, cells: {} });
+const BROK_SECRET = record('row:brok:secret', { secret: 'Уязвим к серебру' });
 const BROK_ACL = record('acl:brok:p1', { name: 'Оля' });
 const BROK_LINK = record('link:token-1', { s: 'brok' });
 const NPC_ROW = record('row:npc:hp', { hp: 7 });
@@ -101,6 +108,7 @@ const ROOM: VersionedRecord[] = [
   LIZA,
   BROK_ROW,
   BROK_REP,
+  BROK_SECRET,
   BROK_ACL,
   BROK_LINK,
   NPC_ROW,
@@ -168,12 +176,21 @@ describe('visibleRecords', () => {
       LIZA,
       BROK_ROW,
       BROK_REP,
+      BROK_SECRET,
       BROK_ACL,
       BROK_LINK,
       INVENTORY_ROW,
       NPCX,
       NPCX_ROW,
     ]);
+  });
+
+  test('keeps a row on a hidden tab in a player projection', () => {
+    // #when
+    const visible = visibleRecords('PLAYER', PRESET, [BROK_SECRET], KNOWN);
+
+    // #then
+    expect(visible).toEqual([BROK_SECRET]);
   });
 
   test('keeps only the preset record for a player with no decoded preset', () => {
@@ -246,6 +263,7 @@ describe('visibleRecordMap', () => {
       'sheet:liza',
       'row:brok:name',
       'rep:brok:attack:i1',
+      'row:brok:secret',
       'acl:brok:p1',
       'link:token-1',
       'row:inventory:items',

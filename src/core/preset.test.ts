@@ -1016,6 +1016,24 @@ describe('parsePresetFile with tabs', () => {
     expect(parsed.ok).toBe(true);
   });
 
+  test('accepts a visible template whose every tab is hidden from players', () => {
+    // #given
+    const text = presetOf(
+      tabbedSet([
+        {
+          visibility: 'gm',
+          sections: [{ rows: [[TEXT_FIELD('name'), TEXT_FIELD('notes')]] }],
+        },
+      ]),
+    );
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+  });
+
   test.each<[string, JsonObject]>([
     ['no title', {}],
     ['a blank title', { title: '  ' }],

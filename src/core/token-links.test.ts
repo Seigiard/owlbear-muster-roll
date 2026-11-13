@@ -34,7 +34,13 @@ const PC: Template = {
   title: 'Персонажи',
   nameField: 'name',
   tokens: true,
-  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, PET_SECTION] }],
+  tabs: [
+    {
+      title: 'Основное',
+      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+    },
+    { title: 'Заметки мастера', visibility: 'gm', sections: [PET_SECTION] },
+  ],
 };
 
 const NPC_SECTION: PresetSection = {
@@ -371,6 +377,34 @@ describe('tokenMenuEntries', () => {
     ]);
   });
 
+  test('gives no player open icon for a repeat block on a hidden tab of a visible sheet', () => {
+    // #given
+    const records = byKey([
+      ...pc('brok', 'Брок', 0),
+      block('brok', 'pet', 'wolf', 0, { pet: 'Волк' }),
+      link('t-sheet', 'brok'),
+      link('t-hidden-block', 'brok', 'wolf'),
+    ]);
+
+    // #when
+    const open = tokenMenuEntries(records, PRESET, 'PLAYER').find(
+      (entry) => entry.action === 'open',
+    );
+
+    // #then
+    expect(open?.filters).toEqual([
+      {
+        ...GM_ONE_TOKEN,
+        every: [LAYER],
+        some: [
+          { key: 'id', value: 't-hidden-block', coordinator: '||' },
+          { key: 'id', value: 't-sheet' },
+        ],
+      },
+      { ...PLAYER_ONE_TOKEN, every: [LAYER], some: [{ key: 'id', value: 't-sheet' }] },
+    ]);
+  });
+
   test('leaves the player icon out when every link names a hidden template', () => {
     // #given
     const records = byKey([
@@ -431,6 +465,8 @@ describe('openTarget', () => {
     block('npc', 'npc_name', 's1', 0, { npc_name: 'Скелет' }),
     record('sheet:gone', null),
     link('t-pc', 'brok'),
+    block('brok', 'pet', 'wolf', 0, { pet: 'Волк' }),
+    link('t-hidden-block', 'brok', 'wolf'),
     link('t-npc', 'npc', 's1'),
     link('t-inventory', 'inventory'),
     link('t-journal', 'journal'),
@@ -441,6 +477,8 @@ describe('openTarget', () => {
   test.each<[string, 'GM' | 'PLAYER', LinkTarget | null]>([
     ['t-pc', 'GM', { sheetId: 'brok', instanceId: null }],
     ['t-pc', 'PLAYER', { sheetId: 'brok', instanceId: null }],
+    ['t-hidden-block', 'GM', { sheetId: 'brok', instanceId: 'wolf' }],
+    ['t-hidden-block', 'PLAYER', null],
     ['t-npc', 'GM', { sheetId: 'npc', instanceId: 's1' }],
     ['t-npc', 'PLAYER', null],
     ['t-inventory', 'PLAYER', { sheetId: 'inventory', instanceId: null }],

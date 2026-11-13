@@ -70,6 +70,7 @@ const PRESET: Preset = {
       nameField: 'name',
       tabs: [
         {
+          title: 'Основное',
           sections: [
             {
               rows: [
@@ -137,6 +138,21 @@ const PRESET: Preset = {
             { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
           ],
         },
+        {
+          title: 'Заметки мастера',
+          visibility: 'gm',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Секрет' },
+                  { kind: 'field', type: 'number', id: 'secret' },
+                  { kind: 'dice', formula: '1d20 + secret' },
+                ],
+              ],
+            },
+          ],
+        },
       ],
     },
     {
@@ -169,6 +185,7 @@ const SEEDED: VersionedRecord[] = [
   { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
   { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
   { k: 'row:brok:str', d: { str: 14, str_tired: true }, c: 1, a: 'seed' },
+  { k: 'row:brok:secret', d: { secret: 4 }, c: 1, a: 'seed' },
   { k: 'row:npc:hp', d: { hp: 5 }, c: 1, a: 'seed' },
 ];
 
@@ -176,6 +193,12 @@ const SEEDED: VersionedRecord[] = [
 const HIT_POINTS: RollRequest = {
   sheetId: 'npc',
   place: { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: null },
+  shown: {},
+};
+
+const HIDDEN_SECRET: RollRequest = {
+  sheetId: 'brok',
+  place: { tabIndex: 1, sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: null },
   shown: {},
 };
 
@@ -403,7 +426,7 @@ describe('a roll with a dice extension in the client', () => {
     // #when
     const outcome = await roll(gm, STRIKE);
 
-    await waitUntil(() => shown(player).length === 1);
+    await waitUntil(() => shown(player).includes('Мастер: Брок, Удар — 31'));
 
     // #then: 17 + str 14.
     expect({ outcome, requests: requests(gm), shown: [gm, player].map(shown) }).toEqual({
@@ -438,7 +461,7 @@ describe('a roll with a dice extension in the client', () => {
     // #when: the sheet set roll after it reaches the player after it.
     await roll(gm, HIT_POINTS);
     await roll(gm, STRIKE);
-    await waitUntil(() => shown(player).length === 1);
+    await waitUntil(() => shown(player).includes('Мастер: Брок, Удар — 31'));
 
     // #then
     expect({
@@ -447,6 +470,35 @@ describe('a roll with a dice extension in the client', () => {
     }).toEqual({
       targets: ['gm_only', 'everyone'],
       shown: [['Мастер: NPC, Хиты — 22', 'Мастер: Брок, Удар — 31'], ['Мастер: Брок, Удар — 31']],
+    });
+  });
+
+  test('from a hidden tab sends gm_only to the dice extension and no notification to a player', async () => {
+    // #given
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+    });
+
+    const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
+
+    // #when: the visible roll after it proves the player handled the hidden roll first.
+    await roll(gm, HIDDEN_SECRET);
+    await roll(gm, STRIKE);
+    await waitUntil(() => shown(player).includes('Мастер: Брок, Удар — 31'));
+
+    // #then
+    expect({
+      targets: requests(gm).map((request) => Object(request).rollTarget),
+      shown: [gm, player].map(shown),
+    }).toEqual({
+      targets: ['gm_only', 'everyone'],
+      shown: [
+        ['Мастер: Брок, Секрет — 21', 'Мастер: Брок, Удар — 31'],
+        ['Мастер: Брок, Удар — 31'],
+      ],
     });
   });
 

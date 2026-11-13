@@ -4,9 +4,8 @@ import { aclKey, plinkKey } from '@/core/access';
 import { FORMAT_VERSION } from '@/core/format-version';
 import type { Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { resolveSheet, type SheetPolicy } from '@/core/sheets';
 
-import { playerMayEdit, sheetTabs, tabEntries, type TabEntry } from './sheet-tabs';
+import { sheetTabs, tabEntries, type TabEntry } from './sheet-tabs';
 
 const PLAYER = 'p1';
 
@@ -68,16 +67,6 @@ function summary(entries: readonly TabEntry[]): string[] {
   );
 }
 
-function policyOf(sheetId: string): SheetPolicy {
-  const policy = resolveSheet(RECORDS, PRESET, sheetId);
-
-  if (policy === null) {
-    throw new Error(`no policy for ${sheetId}`);
-  }
-
-  return policy;
-}
-
 describe('tabEntries', () => {
   test('a GM gets every template in preset order, each sheet set followed by its "+", even with no sheet', () => {
     // #when
@@ -117,17 +106,5 @@ describe('tabEntries', () => {
 
     // #then
     expect(tabs.map((tab) => tab.sheetId)).toEqual(['arag', 'frodo', 'npc', 'loot']);
-  });
-});
-
-describe('playerMayEdit', () => {
-  test.each<[string, string, boolean]>([
-    ["a sheet of a set with the player's live acl", 'frodo', true],
-    ['a sheet of a set with no acl', 'arag', false],
-    ['a single sheet with players: edit', 'loot', true],
-    ['a hidden single sheet', 'npc', false],
-  ])('%s: %p', (_name, sheetId, expected) => {
-    // #then
-    expect(playerMayEdit(policyOf(sheetId), RECORDS, PLAYER)).toBe(expected);
   });
 });

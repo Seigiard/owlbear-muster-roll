@@ -29,6 +29,7 @@ const PRESET: Preset = {
       nameField: 'name',
       tabs: [
         {
+          title: 'Основное',
           sections: [
             {
               rows: [
@@ -46,6 +47,10 @@ const PRESET: Preset = {
                 [
                   { kind: 'text', text: 'Деление' },
                   { kind: 'dice', formula: 'str / (str - str)' },
+                ],
+                [
+                  { kind: 'text', text: 'Чтение' },
+                  { kind: 'dice', formula: '1d1 + secret' },
                 ],
               ],
             },
@@ -65,6 +70,21 @@ const PRESET: Preset = {
                 [
                   { kind: 'text', text: 'Имя' },
                   { kind: 'field', type: 'text', id: 'name' },
+                ],
+              ],
+            },
+          ],
+        },
+        {
+          title: 'Заметки мастера',
+          visibility: 'gm',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Секрет' },
+                  { kind: 'field', type: 'number', id: 'secret' },
+                  { kind: 'dice', formula: '1d20 + secret' },
                 ],
               ],
             },
@@ -102,6 +122,7 @@ const SEEDED: VersionedRecord[] = [
   { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
   { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
   { k: 'row:brok:str', d: { str: 14, str_tired: true }, c: 1, a: 'seed' },
+  { k: 'row:brok:secret', d: { secret: 4 }, c: 1, a: 'seed' },
   { k: 'rep:brok:attack:i1', d: { order: 0, cells: { attack: 'Меч', bonus: 3 } }, c: 1, a: 'seed' },
   { k: 'sheet:liza', d: { set: 'pc', order: 1 }, c: 1, a: 'seed' },
   { k: 'row:liza:str', d: { str: 14, str_tired: true }, c: 1, a: 'seed' },
@@ -122,6 +143,16 @@ const DEXTERITY: RollRequest = {
 const DIVISION: RollRequest = {
   ...STRENGTH,
   place: { ...STRENGTH.place, rowIndex: 2, cellIndex: 1 },
+};
+
+const READ_SECRET: RollRequest = {
+  ...STRENGTH,
+  place: { ...STRENGTH.place, rowIndex: 3, cellIndex: 1 },
+};
+
+const HIDDEN_SECRET: RollRequest = {
+  ...STRENGTH,
+  place: { tabIndex: 1, sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: null },
 };
 
 const ATTACK: RollRequest = {
@@ -324,6 +355,32 @@ describe('a roll', () => {
     });
   });
 
+  test('from a hidden tab of a visible sheet goes out hidden and shows on GM clients only', async () => {
+    // #given
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
+    const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
+
+    // #when: the visible roll after it proves the player handled the hidden roll first.
+    const outcome = await roll(gm, HIDDEN_SECRET);
+    await roll(gm, READ_SECRET);
+    await waitUntil(() => shown(player).includes('Мастер: Брок, Чтение — 5'));
+
+    // #then
+    expect({
+      outcome,
+      sent: room.rolls.map((one) => Object(one.data).hidden),
+      shown: [gm, player].map(shown),
+    }).toEqual({
+      outcome: { code: 'rolled' },
+      sent: [true, false],
+      shown: [
+        ['Мастер: Брок, Секрет — 11', 'Мастер: Брок, Чтение — 5'],
+        ['Мастер: Брок, Чтение — 5'],
+      ],
+    });
+  });
+
   test('of a sheet with an empty name field goes out with an empty name and shows the fallback label', async () => {
     // #given
     const room = openRoom();
@@ -354,13 +411,32 @@ describe('a roll', () => {
     const outcome = await roll(player, HIT_POINTS);
 
     await roll(player, STRENGTH);
-    await waitUntil(() => shown(gm).length === 1);
+    await waitUntil(() => shown(gm).includes('player: Брок, Сила — 7, успех'));
 
     // #then
     expect({ outcome, rolls: room.rolls.length, shown: [gm, player].map(shown) }).toEqual({
       outcome: { code: 'refused' },
       rolls: 1,
       shown: [['player: Брок, Сила — 7, успех'], ['player: Брок, Сила — 7, успех']],
+    });
+  });
+
+  test('from a hidden tab requested by a player is refused and sends nothing', async () => {
+    // #given
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a');
+    const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
+
+    // #when: the visible roll after it proves the hidden request sent no roll.
+    const outcome = await roll(player, HIDDEN_SECRET);
+    await roll(player, READ_SECRET);
+    await waitUntil(() => shown(gm).includes('Лиза: Брок, Чтение — 5'));
+
+    // #then
+    expect({ outcome, rolls: room.rolls.length, shown: [gm, player].map(shown) }).toEqual({
+      outcome: { code: 'refused' },
+      rolls: 1,
+      shown: [['Лиза: Брок, Чтение — 5'], ['Лиза: Брок, Чтение — 5']],
     });
   });
 

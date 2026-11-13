@@ -44,6 +44,7 @@ const PRESET: Preset = {
       nameField: 'name',
       tabs: [
         {
+          title: 'Основное',
           sections: [
             {
               rows: [
@@ -64,6 +65,14 @@ const PRESET: Preset = {
                 ],
               ],
             },
+          ],
+        },
+        {
+          title: 'Заметки мастера',
+          visibility: 'gm',
+          sections: [
+            { rows: [[{ kind: 'field', type: 'text', id: 'secret' }]] },
+            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'secret_item' }]] },
           ],
         },
       ],
@@ -210,6 +219,19 @@ describe('a GM client answers a proposal', () => {
 
   test.each<[string, VersionedRecord]>([
     ['an edit of a sheet with no access', { k: 'row:kira:str', d: { str: 1 }, c: 1, a: S }],
+    [
+      'a row field on a hidden tab of a visible sheet with access',
+      { k: 'row:brok:secret', d: { secret: 'Лич' }, c: 1, a: S },
+    ],
+    [
+      'a repeat field on a hidden tab of a visible sheet with access',
+      {
+        k: 'rep:brok:secret_item:s1',
+        d: { order: 0, cells: { secret_item: 'Ключ' } },
+        c: 1,
+        a: S,
+      },
+    ],
     // AD-4: `players: "edit"` gives no write on a sheet only GMs see.
     ['an edit of a single sheet only GMs see', { k: 'row:npc:str', d: { str: 1 }, c: 1, a: S }],
     [
@@ -235,7 +257,9 @@ describe('a GM client answers a proposal', () => {
 
     // #when
     propose(room, record);
-    await waitUntil(() => heardOf(room, 'gm-a', 'reject').length === 1);
+    await waitUntil(
+      () => heardOf(room, 'gm-a', 'reject').length + heardOf(room, 'gm-a', 'commit').length === 1,
+    );
 
     // #then
     expect({
