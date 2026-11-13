@@ -3,7 +3,14 @@ import { describe, expect, test } from 'bun:test';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type { Timing } from '@/core/timing';
-import { UI_CHANNEL, type Command, type OpenSheetRequest } from '@/core/ui-messages';
+import {
+  parseEngineMessage,
+  UI_CHANNEL,
+  type Command,
+  type EngineMessage,
+  type OpenSheetRequest,
+} from '@/core/ui-messages';
+import type { JsonValue } from '@/core/json';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
 import {
@@ -120,6 +127,31 @@ describe('open from token', () => {
 
     // #then
     expect(target(background, window)).toEqual({ sheetId: 'npc', instanceId: 'skel' });
+  });
+
+  test('reprojects before it re-sends a held open request after the stream restarts', async () => {
+    // #given
+    const background = await startBackground('GM');
+    const window = await openWindow(background);
+    click(background, 't-pc');
+    await waitUntil(() => window.store.$openRequest.get() !== null);
+    const sent = background.client.local.length;
+
+    // #when
+    background.platform.setRole('PLAYER');
+    await waitUntil(() => window.store.$sync.get().role === 'PLAYER');
+    await waitUntil(
+      () => localEngineMessageTypes(background.client.local.slice(sent)).at(-1) === 'open-sheet',
+    );
+
+    // #then
+    expect({
+      messages: localEngineMessageTypes(background.client.local.slice(sent)),
+      target: target(background, window),
+    }).toEqual({
+      messages: ['delta', 'projection', 'open-sheet'],
+      target: { sheetId: 'brok', instanceId: null },
+    });
   });
 
   test('a player press on a character token reaches the window', async () => {
@@ -447,6 +479,14 @@ function target(background: Background, window: Window): Omit<OpenSheetRequest, 
   return request === undefined
     ? null
     : { sheetId: request.sheetId, instanceId: request.instanceId };
+}
+
+function localEngineMessageTypes(messages: readonly JsonValue[]): EngineMessage['t'][] {
+  return messages.flatMap((message) => {
+    const parsed = parseEngineMessage(message);
+
+    return parsed.ok ? [parsed.value.t] : [];
+  });
 }
 
 function click(background: Background, tokenId: string): void {
