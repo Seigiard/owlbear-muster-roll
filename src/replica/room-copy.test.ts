@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { FORMAT_VERSION } from '@/core/format-version';
 import type { JsonObject } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
 import { encodeSnapshot, readSnapshot, SNAPSHOT_KEY } from '@/core/snapshot';
@@ -343,9 +344,24 @@ test('higher copy at the write read is adopted and never overwritten', async () 
 });
 
 test.each([
-  ['invalid', { [SNAPSHOT_KEY]: { v: 2, data: 'not-deflate' } }, 'failed', ['room-copy-not-saved']],
-  ['newer', { [SNAPSHOT_KEY]: { v: 3, data: 'newer' } }, 'failed', ['room-copy-not-saved']],
-  ['older', { [SNAPSHOT_KEY]: { v: 1, data: 'older' } }, 'none', ['room-copy-older-format']],
+  [
+    'invalid',
+    { [SNAPSHOT_KEY]: { v: FORMAT_VERSION, data: 'not-deflate' } },
+    'failed',
+    ['room-copy-not-saved'],
+  ],
+  [
+    'newer',
+    { [SNAPSHOT_KEY]: { v: FORMAT_VERSION + 1, data: 'newer' } },
+    'failed',
+    ['room-copy-not-saved'],
+  ],
+  [
+    'older',
+    { [SNAPSHOT_KEY]: { v: FORMAT_VERSION - 1, data: 'older' } },
+    'none',
+    ['room-copy-older-format'],
+  ],
 ] as const)(
   'unreadable %s copy has its literal GM status and notice',
   async (_kind, metadata, state, notices) => {
@@ -538,7 +554,7 @@ test('a gate that closes during the held read-back leaves the status unchanged a
 test('an unreadable copy fails and stays owed for the next catch-up write', async () => {
   // #given
   const subject = createSubject();
-  subject.room.setMetadata({ [SNAPSHOT_KEY]: { v: 2, data: 'not-deflate' } });
+  subject.room.setMetadata({ [SNAPSHOT_KEY]: { v: FORMAT_VERSION, data: 'not-deflate' } });
 
   // #when
   await subject.read();
@@ -635,7 +651,7 @@ test('import waits for a write and saves its generation over a lower copy', asyn
 test('import keeps a newer-build copy and raises its literal notice', async () => {
   // #given
   const subject = createSubject();
-  const newer = { v: 3, data: 'newer' };
+  const newer = { v: FORMAT_VERSION + 1, data: 'newer' };
   subject.room.setMetadata({ [SNAPSHOT_KEY]: newer });
 
   // #when
@@ -816,7 +832,7 @@ test.each([
 test.each([
   [
     'invalid',
-    { [SNAPSHOT_KEY]: { v: 2, data: 'not-deflate' } },
+    { [SNAPSHOT_KEY]: { v: FORMAT_VERSION, data: 'not-deflate' } },
     'failed',
     ['room-copy-not-saved'],
     'unreadable',
@@ -824,7 +840,7 @@ test.each([
   ],
   [
     'newer',
-    { [SNAPSHOT_KEY]: { v: 3, data: 'newer' } },
+    { [SNAPSHOT_KEY]: { v: FORMAT_VERSION + 1, data: 'newer' } },
     'failed',
     ['room-copy-not-saved'],
     'newer',
@@ -832,7 +848,7 @@ test.each([
   ],
   [
     'older',
-    { [SNAPSHOT_KEY]: { v: 1, data: 'older' } },
+    { [SNAPSHOT_KEY]: { v: FORMAT_VERSION - 1, data: 'older' } },
     'none',
     ['room-copy-older-format'],
     'older',
@@ -931,7 +947,7 @@ test('demotion and stop clear scheduled work and block later write effects', asy
 test('demotion clears a failed notice and its owed catch-up write', async () => {
   // #given
   const subject = createSubject();
-  subject.room.setMetadata({ [SNAPSHOT_KEY]: { v: 2, data: 'not-deflate' } });
+  subject.room.setMetadata({ [SNAPSHOT_KEY]: { v: FORMAT_VERSION, data: 'not-deflate' } });
   await subject.read();
 
   // #when
