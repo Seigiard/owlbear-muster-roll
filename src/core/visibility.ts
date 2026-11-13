@@ -1,5 +1,14 @@
-import { blockIndex, linkTargetOf, liveLinkTarget } from '@/core/link-target';
-import type { Preset, SheetSetTemplate, SingleSheetTemplate, Template } from '@/core/preset';
+import { blockIndex, linkTargetOf, liveLinkTarget, type LiveLinkTarget } from '@/core/link-target';
+import {
+  firstFieldId,
+  placedSections,
+  repeatSectionId,
+  repeatSectionPlace,
+  type Preset,
+  type SheetSetTemplate,
+  type SingleSheetTemplate,
+  type Template,
+} from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import {
   dependentSheetId,
@@ -12,7 +21,9 @@ import {
 
 export type PlayerRole = 'GM' | 'PLAYER';
 
-// One template as the tab bar lists it: a sheet set with its live sheets, or a single sheet, whose
+type FieldVisibilityTarget = { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string };
+
+// One template as the sidebar lists it: a sheet set with its live sheets, or a single sheet, whose
 // sheet id is its template id.
 export type VisibleTemplate =
   | { kind: 'set'; template: SheetSetTemplate; sheets: SheetSummary[] }
@@ -24,6 +35,47 @@ export type VisibleSheets = VisibleTemplate[];
 // CAP-2: a GM sees every template, a player only those with `visibility` other than "gm".
 export function templateShownTo(role: PlayerRole, template: Template): boolean {
   return role === 'GM' || template.visibility !== 'gm';
+}
+
+// AD-18: visibility narrows from the template to a tab. A GM sees every tab; a player sees a tab
+// only when both its template and the tab are visible.
+export function tabShownTo(role: PlayerRole, template: Template, tabIndex: number): boolean {
+  const tab = template.tabs[tabIndex];
+
+  return (
+    tab !== undefined &&
+    templateShownTo(role, template) &&
+    (role === 'GM' || tab.visibility !== 'gm')
+  );
+}
+
+// AD-4 and AD-18: a field target belongs to one tab, so the same visibility rule can guard every
+// field in its row or repeat block.
+export function fieldTargetShownTo(
+  role: PlayerRole,
+  template: Template,
+  target: FieldVisibilityTarget,
+): boolean {
+  const tabIndex = fieldTargetTabIndex(template, target);
+
+  return tabIndex !== null && tabShownTo(role, template, tabIndex);
+}
+
+// AD-19: a sheet link is governed by its template; a repeat-block link is also governed by the tab
+// that holds its repeat section.
+export function linkTargetShownTo(role: PlayerRole, live: LiveLinkTarget): boolean {
+  if (!templateShownTo(role, live.policy.template)) {
+    return false;
+  }
+
+  if (live.section === null) {
+    return true;
+  }
+
+  const sectionId = repeatSectionId(live.section);
+  const place = sectionId === null ? null : repeatSectionPlace(live.policy.template, sectionId);
+
+  return place !== null && tabShownTo(role, live.policy.template, place.place.tabIndex);
 }
 
 // True while a template owns `sheetId` and this role sees that template.
@@ -73,7 +125,7 @@ export function visibleRecords(
       const target = linkTargetOf(record.d);
       const live = target === null ? null : liveLinkTarget(known, preset, target, blocks);
 
-      return live !== null && templateShownTo(role, live.policy.template);
+      return live !== null && linkTargetShownTo(role, live);
     }
 
     if (!isDependentKey(record.k)) {
@@ -129,4 +181,18 @@ export function visibleSheets(
 // AD-13: a player shows only a roll from a visible sheet. It still receives a hidden one.
 export function rollShownTo(role: PlayerRole, hidden: boolean): boolean {
   return role === 'GM' || !hidden;
+}
+
+function fieldTargetTabIndex(template: Template, target: FieldVisibilityTarget): number | null {
+  if (target.kind === 'rep') {
+    return repeatSectionPlace(template, target.sectionId)?.place.tabIndex ?? null;
+  }
+
+  for (const { place, section } of placedSections(template)) {
+    if (section.repeat !== true && section.rows.some((row) => firstFieldId(row) === target.rowId)) {
+      return place.tabIndex;
+    }
+  }
+
+  return null;
 }

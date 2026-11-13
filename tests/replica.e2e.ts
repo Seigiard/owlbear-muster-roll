@@ -11,14 +11,14 @@ const LOCAL_SAVE_FAILED = 'Не удалось сохранить в брауз�
 
 // One sheet set, so a `sheet-create` names a sheet set the engine knows.
 const PRESET_TEXT = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
   ],
 });
@@ -222,7 +222,7 @@ test('a background restart over the same storage shows the same records', async 
   expect(await projectedSheets(page, 'restart-final')).toEqual(['sheet:restart']);
 });
 
-test('a failed write keeps the value and shows the banner at full width as a live region', async ({
+test('a failed write keeps the value and shows the banner across the content column as a live region', async ({
   page,
   context,
 }) => {
@@ -245,7 +245,10 @@ test('a failed write keeps the value and shows the banner at full width as a liv
   expect({
     sheets: await projectedSheets(page, 'after-failure'),
     width: (await page.getByRole('status').boundingBox())?.width,
-  }).toEqual({ sheets: ['sheet:failed-write'], width: 600 });
+  }).toEqual({
+    sheets: ['sheet:failed-write'],
+    width: (await page.getByRole('tabpanel').boundingBox())?.width,
+  });
 });
 
 test('the banner goes when the notices clear', async ({ page }) => {

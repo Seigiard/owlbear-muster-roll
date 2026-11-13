@@ -157,7 +157,7 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
       )}
       <Banner message={fileMessage} />
       <div className="grid flex-1 grid-cols-[minmax(300px,380px)_minmax(0,1fr)] items-start gap-4 p-4">
-        <div className="flex min-w-[0] flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <section
             aria-labelledby={structureHeadingId}
             className="flex flex-col gap-2 rounded-md bg-surface p-2"
@@ -356,7 +356,7 @@ function OpenConfirmation({ label, onConfirm, onCancel }: OpenConfirmationProps)
       onKeyDown={handleKeyDown}
       className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface p-2"
     >
-      <p id={textId} className="min-w-[0] flex-1 text-text">
+      <p id={textId} className="min-w-0 flex-1 text-text">
         {copy.builder.replaceDraft(label)}
       </p>
       <div className="flex gap-2">

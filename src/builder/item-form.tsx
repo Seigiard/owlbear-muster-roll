@@ -2,7 +2,12 @@ import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { fieldFormulaCount } from '@/core/formula-rename';
-import { DEFAULT_WINDOW_SIZE, type Preset, type PresetSection } from '@/core/preset';
+import {
+  DEFAULT_WINDOW_SIZE,
+  layoutSections,
+  type Preset,
+  type PresetSection,
+} from '@/core/preset';
 import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
 
@@ -18,6 +23,7 @@ import {
   templateToPreset,
   updateCell,
   updateSection,
+  updateTab,
   updateTemplate,
   withOption,
   withFieldType,
@@ -26,6 +32,7 @@ import {
   type BuilderDocument,
   type DocCell,
   type DocSection,
+  type DocTab,
   type DocTemplate,
   type ItemPath,
 } from './document';
@@ -127,7 +134,22 @@ function FormBody({ store, document, origin, uid, path }: FormBodyProps): ReactN
     );
   }
 
-  const section = template.sections[path.section];
+  const tab = template.tabs[path.tab];
+
+  if (tab === undefined) {
+    return null;
+  }
+
+  if (path.kind === 'tab') {
+    return (
+      <>
+        <TabForm store={store} tab={tab} />
+        {remove}
+      </>
+    );
+  }
+
+  const section = tab.sections[path.section];
 
   if (section === undefined) {
     return null;
@@ -175,7 +197,15 @@ function formHeading(document: BuilderDocument, path: ItemPath): string {
       : template.title;
   }
 
-  const section = template?.sections[path.section];
+  const tab = template?.tabs[path.tab];
+
+  if (path.kind === 'tab') {
+    return tab?.title === undefined || tab.title.trim() === ''
+      ? copy.builder.untitledTab
+      : tab.title;
+  }
+
+  const section = tab?.sections[path.section];
 
   if (path.kind === 'section') {
     return section?.title === undefined || section.title.trim() === ''
@@ -366,6 +396,46 @@ function TemplateForm({ store, template, origin }: TemplateFormProps): ReactNode
   );
 }
 
+// CAP-34: a tab's title, which a template with one tab may leave empty, and who sees it. `gm` hides
+// the tab from players; the key is kept.
+function TabForm({ store, tab }: { store: BuilderStore; tab: DocTab }): ReactNode {
+  const { uid } = tab;
+  const form = copy.builder.form;
+
+  function update(change: (current: DocTab) => DocTab, coalesce?: string): void {
+    store.edit((document) => updateTab(document, uid, change), coalesce);
+  }
+
+  return (
+    <>
+      <TextInput
+        label={form.title}
+        value={tab.title ?? ''}
+        onChange={(title) => {
+          update(
+            (current) => withOption(current, 'title', title === '' ? undefined : title),
+            `${uid}:title`,
+          );
+        }}
+        onBlur={store.endRun}
+      />
+      <SelectInput
+        label={form.visibility}
+        value={tab.visibility === 'gm' ? 'gm' : 'all'}
+        options={[
+          { value: 'all', label: form.visibilityAll },
+          { value: 'gm', label: form.visibilityGm },
+        ]}
+        onChange={(visibility) => {
+          update((current) =>
+            withOption(current, 'visibility', visibility === 'gm' ? 'gm' : undefined),
+          );
+        }}
+      />
+    </>
+  );
+}
+
 const WIDTHS: readonly { value: NonNullable<PresetSection['width']>; label: string }[] = [
   { value: 'full', label: copy.builder.form.widthFull },
   { value: '1/2', label: copy.builder.form.widthHalf },
@@ -483,7 +553,7 @@ function CellForm({ store, template, origin, cell, path }: CellFormProps): React
         <FormulaInput
           id={formulaId}
           value={cell.formula}
-          fieldIds={formulaFieldIds(template, path.section)}
+          fieldIds={formulaFieldIds(template, path)}
           describedBy={formulaHintId}
           invalid={false}
           onChange={(formula) => {
@@ -517,6 +587,7 @@ function CellForm({ store, template, origin, cell, path }: CellFormProps): React
   }
 
   const uses = fieldFormulaCount(templateToPreset(template), {
+    tabIndex: path.tab,
     sectionIndex: path.section,
     rowIndex: path.row,
     cellIndex: path.cell,
@@ -593,9 +664,11 @@ function CellForm({ store, template, origin, cell, path }: CellFormProps): React
 
           store.edit(() => renamed);
 
-          const fromFile = origin?.templates
-            .find((other) => other.id === template.id)
-            ?.sections.some((section) =>
+          const fileTemplate = origin?.templates.find((other) => other.id === template.id);
+
+          const fromFile =
+            fileTemplate !== undefined &&
+            layoutSections(fileTemplate).some((section) =>
               section.rows.some((row) =>
                 row.some((other) => other.kind === 'field' && other.id === oldId),
               ),
@@ -603,7 +676,7 @@ function CellForm({ store, template, origin, cell, path }: CellFormProps): React
 
           return [
             copy.builder.formulasChanged(renamed.formulas),
-            ...(fromFile === true ? [copy.builder.fieldValuesErased(oldId)] : []),
+            ...(fromFile ? [copy.builder.fieldValuesErased(oldId)] : []),
           ];
         }}
       />

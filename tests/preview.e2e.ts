@@ -32,7 +32,7 @@ test.beforeEach(async ({ page }) => {
 function launchText(title: string, window?: { width: number; height: number }): string {
   const preset = JSON.parse(D20_TEXT);
 
-  preset.templates[0].sections[0].title = title;
+  preset.templates[0].tabs[0].sections[0].title = title;
 
   const file = window === undefined ? preset : { v: preset.v, window, ...preset };
 
@@ -106,10 +106,14 @@ test('lists the launch file first, marked, then the repository presets, and show
     'Журнал, 600 × 600 px',
     'Заметки ГМ, 600 × 600 px',
   ]);
-  // A sample sheet of a sheet set is named by its name field, which shows its label "Имя". A single
-  // sheet is named by its title.
-  await expect(characterFrame(page).getByRole('tab', { name: 'Имя' })).toBeVisible();
-  await expect(npcFrame(page).getByRole('tab', { name: 'NPC' })).toBeVisible();
+  // A sample sheet of a sheet set is named by its name field, which shows its label "Имя" in the
+  // sidebar. A single sheet entry is named by its title.
+  await expect(
+    characterFrame(page).getByRole('tablist').first().getByRole('tab', { name: 'Имя' }),
+  ).toBeVisible();
+  await expect(
+    npcFrame(page).getByRole('tablist').first().getByRole('tab', { name: 'NPC' }),
+  ).toBeVisible();
   await expect(npcFrame(page).getByRole('heading', { name: 'NPC', level: 1 })).toBeVisible();
   await expect(characterFrame(page).getByText(copy.status.readOnly)).toBeVisible();
   await expect(inventoryFrame(page).getByText(copy.status.canEdit)).toBeVisible();
@@ -238,7 +242,9 @@ test('shows two rows per repeat section with sample values, and none when empty'
 
   // #then
   await expect(attackRolls).toHaveCount(0);
-  await expect(characterFrame(page).getByRole('tab', { name: 'Без имени' })).toBeVisible();
+  await expect(
+    characterFrame(page).getByRole('tablist').first().getByRole('tab', { name: 'Без имени' }),
+  ).toBeVisible();
 });
 
 test('a dice press settles at once and shows no message', async ({ page }) => {
@@ -254,4 +260,55 @@ test('a dice press settles at once and shows no message', async ({ page }) => {
   await expect(characterFrame(page).getByText(copy.rolling)).toHaveCount(0);
   await expect(characterFrame(page).getByText(copy.rollFailed)).toHaveCount(0);
   await expect(dice).toBeEnabled();
+});
+
+test('a frame switches the tabs of a sheet with two tabs', async ({ page }) => {
+  // #given: the sheet set's sections split into two titled tabs, "Персонаж" alone on the second.
+  const preset = JSON.parse(launchText('Launch section'));
+  const [first, ...rest] = preset.templates[0].tabs[0].sections;
+
+  preset.templates[0].tabs = [
+    { title: 'Основное', sections: rest },
+    { title: 'Анкета', sections: [first] },
+  ];
+  writeLaunchFile(JSON.stringify(preset, null, 2));
+  await page.goto(PAGE);
+
+  const tabs = characterFrame(page).getByRole('tablist', { name: copy.label.sheetTabs });
+
+  await expect(tabs.getByRole('tab', { name: 'Основное' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(characterFrame(page).getByText('Launch section')).toHaveCount(0);
+
+  // #when
+  await tabs.getByRole('tab', { name: 'Анкета' }).click();
+
+  // #then
+  await expect(tabs.getByRole('tab', { name: 'Анкета' })).toHaveAttribute('aria-selected', 'true');
+  await expect(characterFrame(page).getByText('Launch section')).toBeVisible();
+});
+
+test('a preview frame lists templates in its sidebar and a sidebar click selects one', async ({
+  page,
+}) => {
+  // #given
+  writeLaunchFile(D20_TEXT);
+  await page.goto(PAGE);
+
+  const preview = page.locator('[data-preview-frame]').first();
+  const sidebar = preview.getByRole('tablist').first();
+
+  // #when
+  const entries = await sidebar.getByRole('tab').allTextContents();
+
+  // #then
+  expect(entries).toEqual(['Имя', 'NPC', 'Инвентарь', 'Журнал', 'Заметки ГМ']);
+
+  // #when
+  await sidebar.getByRole('tab', { name: 'NPC', exact: true }).click();
+
+  // #then
+  await expect(preview.getByRole('heading', { name: 'NPC', level: 1 })).toBeVisible();
 });

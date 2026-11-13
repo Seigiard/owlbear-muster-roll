@@ -54,24 +54,28 @@ const OTHER_PLAYER: ClientParams = {
 // A sheet set, the hidden single sheet NPC and a visible single sheet, so a player's tab bar holds
 // both sheets of a sheet set and a single sheet.
 const PRESET_TEXT = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -81,13 +85,17 @@ const PRESET_TEXT = JSON.stringify({
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Хиты' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Хиты' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -96,13 +104,17 @@ const PRESET_TEXT = JSON.stringify({
       id: 'inventory',
       kind: 'single',
       title: 'Инвентарь',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Золото' },
-              { kind: 'field', type: 'number', id: 'gold' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Золото' },
+                  { kind: 'field', type: 'number', id: 'gold' },
+                ],
+              ],
+            },
           ],
         },
       ],

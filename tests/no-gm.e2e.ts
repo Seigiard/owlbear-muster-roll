@@ -51,28 +51,32 @@ const SILENT_GM = 'mock-connection-silent';
 const OBSERVER: ClientParams = { client: 'o', role: 'PLAYER', player: 'olga', device: 'o' };
 
 const PRESET = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-          ],
-        },
-        {
-          rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+              ],
+            },
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -82,14 +86,18 @@ const PRESET = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'npc_name' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
+          sections: [
+            {
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'npc_name' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -180,7 +188,7 @@ test('a room copy of a newer build is not read: the new-version banner shows and
   context,
 }) => {
   // #when
-  const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, ...BROK], 3));
+  const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, ...BROK], 4));
 
   // #then
   await expect(player.window.getByRole('status')).toHaveText(NEW_VERSION);
@@ -190,7 +198,7 @@ test('a room copy of a newer build is not read: the new-version banner shows and
 
 test('a room copy that does not decode says so, with the no-GM banner', async ({ context }) => {
   // #when
-  const player = await openPlayerAlone(context, { v: 2, data: 'bm90IGRlZmxhdGU=' });
+  const player = await openPlayerAlone(context, { v: 3, data: 'bm90IGRlZmxhdGU=' });
 
   // #then
   await expect(
@@ -267,7 +275,7 @@ test('a player alone with no copy keeps loading once a GM speaks without answeri
   await addPartyMember(player.window, SILENT_GM, 'GM');
 
   // #when: a GM-origin message, and no complete state.
-  await postRemote(player.window, SILENT_GM, { v: 2, g: { n: 0, a: '' }, t: 'ping' });
+  await postRemote(player.window, SILENT_GM, { v: 3, g: { n: 0, a: '' }, t: 'ping' });
 
   // #then: a GM is online but has not said what the room holds.
   await expect(player.window.getByRole('status')).toBeEmpty();
@@ -346,7 +354,7 @@ async function openPlayerAlone(
 }
 
 // The stored room copy as the 2.5 spec describes it, built by hand with fflate.
-function copyValue(records: readonly StoredRecord[], v = 2): JsonValue {
+function copyValue(records: readonly StoredRecord[], v = 3): JsonValue {
   const content = JSON.stringify({ g: { n: 0, a: '' }, records: sortedByKey(records) });
 
   return { v, data: Buffer.from(deflateSync(strToU8(content))).toString('base64') };

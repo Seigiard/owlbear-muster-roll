@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 import {
   contrastRatio,
@@ -153,12 +153,12 @@ test('a theme change does not reload the window', async ({ page }) => {
   );
 });
 
-test('before any data the shell shows only the gear and the loading text', async ({ page }) => {
+test('before any data the shell shows only Settings and the loading text', async ({ page }) => {
   // #when
   await openWindow(page);
 
-  // #then: no tab is fixed in code, so with no preset known only the gear shows.
-  await expect(page.getByRole('tab')).toHaveText(['⚙︎']);
+  // #then: no sheet is fixed in code, so with no preset known only Settings shows.
+  await expect(page.getByRole('tab')).toHaveCount(1);
   await expect(page.getByRole('tab', { name: 'Настройки' })).toHaveCount(1);
   await expect(page.getByRole('tabpanel')).toHaveText('Загрузка…');
 });
@@ -172,7 +172,7 @@ test('the window has no visible banner while nothing is wrong', async ({ page })
   await expect(page.getByRole('status')).toHaveJSProperty('offsetHeight', 0);
 });
 
-test('the shell uses the DESIGN.md radii and content padding', async ({ page, context }) => {
+test('the frame uses the DESIGN.md radii and content padding', async ({ page, context }) => {
   // #given
   await openRoom(page, context);
 
@@ -182,14 +182,10 @@ test('the shell uses the DESIGN.md radii and content padding', async ({ page, co
     cssValue(page.getByRole('tab', { name: 'NPC' }), 'border-top-left-radius'),
     cssValue(page.getByRole('tab', { name: 'NPC' }), 'border-bottom-left-radius'),
     cssValue(page.getByRole('tabpanel'), 'padding-top'),
-    gapBetween(
-      page.getByRole('tab', { name: 'NPC' }),
-      page.getByRole('tab', { name: 'Инвентарь' }),
-    ),
   ]);
 
   // #then
-  expect(layout).toEqual(['8px', '6px', '0px', '12px', '8px']);
+  expect(layout).toEqual(['8px', '6px', '6px', '12px']);
 });
 
 test('the window uses the system font', async ({ page }) => {
@@ -203,7 +199,7 @@ test('the window uses the system font', async ({ page }) => {
   expect(fontFamily).toBe('system-ui, sans-serif');
 });
 
-test('the content area is the only part of the window that scrolls', async ({ page }) => {
+test('the content area scrolls without scrolling the page', async ({ page }) => {
   // #given
   await openWindow(page);
 
@@ -226,10 +222,7 @@ test('the content area is the only part of the window that scrolls', async ({ pa
   ).toEqual({ contentScrolls: true, pageScrolls: false });
 });
 
-test('the selected tab takes the active colors and joins the content area', async ({
-  page,
-  context,
-}) => {
+test('the selected sidebar entry takes the active colors', async ({ page, context }) => {
   // #given: NPC is the first tab of the example preset with no sheet.
   await openRoom(page, context);
 
@@ -245,7 +238,7 @@ test('the selected tab takes the active colors and joins the content area', asyn
   ]);
 });
 
-test('an unselected tab takes the tab colors', async ({ page, context }) => {
+test('an unselected sidebar entry takes the sidebar colors', async ({ page, context }) => {
   // #given
   await openRoom(page, context);
 
@@ -264,13 +257,13 @@ test('an unselected tab takes the tab colors', async ({ page, context }) => {
   ]);
 });
 
-test('arrow keys move the selection between tabs', async ({ page, context }) => {
+test('Down moves the selection between sidebar entries', async ({ page, context }) => {
   // #given
   await openRoom(page, context);
   await page.getByRole('tab', { name: 'NPC' }).click();
 
   // #when
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowDown');
 
   // #then
   await expect(page.getByRole('tab', { name: 'Инвентарь' })).toHaveAttribute(
@@ -300,7 +293,7 @@ test('a failed theme read still renders the window and logs the error', async ({
   ]);
 });
 
-test('a failed theme read keeps the outline on a focused tab and an opaque window', async ({
+test('a failed theme read keeps the outline on a focused sidebar entry and an opaque window', async ({
   page,
 }) => {
   // #given
@@ -346,7 +339,10 @@ test('color-scheme follows the theme on main and leaves the iframe root alone', 
   ]).toEqual(['dark', 'light', 'normal']);
 });
 
-test('a focused tab shows a 2 px solid outline in the focus color', async ({ page, context }) => {
+test('a focused sidebar entry shows a 2 px solid outline in the focus color', async ({
+  page,
+  context,
+}) => {
   // #given: the first tab is selected only once the preset arrives, and Tab still enters there.
   await openRoom(page, context);
 
@@ -364,7 +360,7 @@ test('a focused tab shows a 2 px solid outline in the focus color', async ({ pag
   }).toEqual({ focused: true, style: 'solid', width: '2px', color: [187, 153, 255] });
 });
 
-test('a tab is at least 32 px high', async ({ page, context }) => {
+test('a sidebar entry is at least 32 px high', async ({ page, context }) => {
   // #given
   await openRoom(page, context);
 
@@ -410,12 +406,6 @@ test('the theme mode is on the root element when main is first inserted', async 
   // #then
   await expect(page.locator('html')).toHaveAttribute('data-mode-at-first-main', 'DARK');
 });
-
-async function gapBetween(left: Locator, right: Locator): Promise<string> {
-  const [leftBox, rightBox] = await Promise.all([left.boundingBox(), right.boundingBox()]);
-
-  return `${(rightBox?.x ?? 0) - ((leftBox?.x ?? 0) + (leftBox?.width ?? 0))}px`;
-}
 
 async function openWindow(page: Page): Promise<void> {
   await page.goto('/index.html');

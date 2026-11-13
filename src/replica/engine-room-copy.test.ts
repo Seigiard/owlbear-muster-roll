@@ -36,18 +36,22 @@ const GHOST = 'ghost-gm';
 const ROW_STR = { kind: 'row', rowId: 'str' } as const;
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [{ kind: 'field', type: 'number', id: 'str' }],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [{ kind: 'field', type: 'number', id: 'str' }],
+              ],
+            },
           ],
         },
       ],
@@ -57,7 +61,7 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
     },
   ],
 };
@@ -208,7 +212,7 @@ describe('writer triggers', () => {
     expect({ beforePause, copy: roomCopyOf(room) }).toEqual({
       beforePause: null,
       copy: {
-        v: 2,
+        v: 3,
         g: INITIAL,
         records: [
           ACL,
@@ -318,7 +322,7 @@ describe('writer read and merge', () => {
 
     // #then
     expect({ copy: roomCopyOf(room), mira: shown(client, MIRA.k) ?? null }).toEqual({
-      copy: { v: 2, g: HIGHER, records: [PRESET_RECORD, BROK] },
+      copy: { v: 3, g: HIGHER, records: [PRESET_RECORD, BROK] },
       mira: null,
     });
   });
@@ -346,8 +350,8 @@ describe('writer read and merge', () => {
   });
 
   test.each<[string, JsonValue, Notice[]]>([
-    ['a higher v', { v: 3, data: 'from a newer build' }, ['room-copy-not-saved', 'new-version']],
-    ['data that does not decode', { v: 2, data: 'bm90IGRlZmxhdGU=' }, ['room-copy-not-saved']],
+    ['a higher v', { v: 4, data: 'from a newer build' }, ['room-copy-not-saved', 'new-version']],
+    ['data that does not decode', { v: 3, data: 'bm90IGRlZmxhdGU=' }, ['room-copy-not-saved']],
   ])(
     'a copy with %s stops the write, keeps the copy and raises its notices',
     async (_name, value, expectedNotices) => {
@@ -376,67 +380,73 @@ describe('writer read and merge', () => {
 // AD-12, CAP-31: no migration reads a copy of an older format. Only a wipe or an import replaces
 // it.
 describe('a room copy of an older format', () => {
-  test('a GM that reads it at catch-up shows the older-format notice and outcome older, and its writes never replace it', async () => {
-    // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
+  test.each([1, 2])(
+    'format %i: a GM that reads it at catch-up shows the older-format notice and outcome older, and its writes never replace it',
+    async (format) => {
+      // #given
+      spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = roomRig.openRoom();
-    const gate = createGate();
-    const older = copyValue(INITIAL, [MIRA], 1);
+      const room = roomRig.openRoom();
+      const gate = createGate();
+      const older = copyValue(INITIAL, [MIRA], format);
 
-    room.room.setMetadata({ [KEY]: older });
+      room.room.setMetadata({ [KEY]: older });
 
-    const client = await startClient(room, 'gm-a', {
-      platform: gated(gate),
-      timing: SHORT_PAUSE,
-      until: 'live',
-    });
+      const client = await startClient(room, 'gm-a', {
+        platform: gated(gate),
+        timing: SHORT_PAUSE,
+        until: 'live',
+      });
 
-    // #when: an edit after the pause and a hidden page each try a write.
-    send(client, setStr(14));
-    client.engine.pageHidden();
-    await waitUntil(() => shown(client, 'row:brok:str') !== undefined);
-    await pause(150);
+      // #when: an edit after the pause and a hidden page each try a write.
+      send(client, setStr(14));
+      client.engine.pageHidden();
+      await waitUntil(() => shown(client, 'row:brok:str') !== undefined);
+      await pause(150);
 
-    // #then
-    expect({
-      writes: gate.writes,
-      copy: room.room.getMetadata()[KEY],
-      notices: notices(client),
-      status: roomCopyStatus(client),
-      mira: shown(client, MIRA.k) ?? null,
-    }).toEqual({
-      writes: 0,
-      copy: older,
-      notices: ['room-copy-older-format'],
-      status: expect.objectContaining({ state: 'none', outcome: 'older' }),
-      mira: null,
-    });
-  });
+      // #then
+      expect({
+        writes: gate.writes,
+        copy: room.room.getMetadata()[KEY],
+        notices: notices(client),
+        status: roomCopyStatus(client),
+        mira: shown(client, MIRA.k) ?? null,
+      }).toEqual({
+        writes: 0,
+        copy: older,
+        notices: ['room-copy-older-format'],
+        status: expect.objectContaining({ state: 'none', outcome: 'older' }),
+        mira: null,
+      });
+    },
+  );
 
-  test('a player with no GM gets outcome older and no older-format notice', async () => {
-    // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
+  test.each([1, 2])(
+    'format %i: a player with no GM gets outcome older and no older-format notice',
+    async (format) => {
+      // #given
+      spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = roomRig.openRoom();
+      const room = roomRig.openRoom();
 
-    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 1) });
+      room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], format) });
 
-    // #when
-    const client = await startClient(room, 'player-p', {
-      role: 'PLAYER',
-      seeded: [],
-      timing: { catchUpTimeoutMs: 100 },
-      until: 'live',
-    });
+      // #when
+      const client = await startClient(room, 'player-p', {
+        role: 'PLAYER',
+        seeded: [],
+        timing: { catchUpTimeoutMs: 100 },
+        until: 'live',
+      });
 
-    // #then
-    expect({
-      outcome: roomCopyStatus(client).outcome,
-      notices: notices(client),
-      brok: shown(client, BROK.k) ?? null,
-    }).toEqual({ outcome: 'older', notices: [], brok: null });
-  });
+      // #then
+      expect({
+        outcome: roomCopyStatus(client).outcome,
+        notices: notices(client),
+        brok: shown(client, BROK.k) ?? null,
+      }).toEqual({ outcome: 'older', notices: [], brok: null });
+    },
+  );
 });
 
 describe('size check', () => {
@@ -939,7 +949,7 @@ describe('review cases', () => {
 
     const room = roomRig.openRoom();
 
-    room.room.setMetadata({ [KEY]: { v: 2, data: 'bm90IGRlZmxhdGU=' } });
+    room.room.setMetadata({ [KEY]: { v: 3, data: 'bm90IGRlZmxhdGU=' } });
 
     // #when
     const client = await startClient(room, 'gm-a', { until: 'live' });

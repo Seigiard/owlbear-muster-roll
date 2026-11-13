@@ -10,7 +10,7 @@ import type { JsonObject } from '@/core/json';
 import { fitsOneMessage, recordFitsOneMessage } from '@/core/message-size';
 import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
 import { listedFaces, randomFaces, type FaceSource } from '@/core/formula-evaluate';
-import { blockIndex, linkTargetKey, type LinkTarget } from '@/core/link-target';
+import { liveLinkTarget, type LinkTarget } from '@/core/link-target';
 import { decodePreset, windowSizeOf, type Preset } from '@/core/preset';
 import { NOTHING_ERASED } from '@/core/preset-migrate';
 import { parseRepKey, presetDataSchema, type VersionedRecord } from '@/core/records';
@@ -80,7 +80,7 @@ import {
   type RoomCopyStatus,
   type SnapshotCheckMessage,
 } from '@/core/ui-messages';
-import { rollShownTo, sheetShownTo, type PlayerRole } from '@/core/visibility';
+import { linkTargetShownTo, rollShownTo, tabShownTo, type PlayerRole } from '@/core/visibility';
 import type { BroadcastEvent, BroadcastOptions, Platform } from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
 import {
@@ -715,12 +715,11 @@ export async function startReplicaEngine(
     }
   }
 
-  // The sheet is one this role sees, and the repeat block, when the request names one, is live.
+  // The sheet is one this role sees, and a repeat block, when named, is live on a tab this role sees.
   function openTargetShown(target: LinkTarget): boolean {
-    return (
-      sheetShownTo(replica, presetOf(replica.get('preset')), target.sheetId, role) &&
-      (target.instanceId === null || blockIndex(replica.values()).has(linkTargetKey(target)))
-    );
+    const live = liveLinkTarget(replica, presetOf(replica.get('preset')), target);
+
+    return live !== null && linkTargetShownTo(role, live);
   }
 
   function dropOpen(id: string): void {
@@ -1761,14 +1760,17 @@ export async function startReplicaEngine(
     void rollWithDice(message.id, prepared.value, local.value);
   }
 
-  // AD-13, AD-18: `hidden` is computed once here, from the sheet's template, and every output of
-  // the roll uses it. A player never rolls a hidden sheet, as it never sees one.
+  // AD-13, AD-18: `hidden` is computed once here from the sheet's template and the dice cell's tab;
+  // every output of the roll uses it. A player's replica refuses a hidden roll.
   function prepareRoll(message: RollRequestMessage): Result<PreparedRoll, RollOutcome> {
     const view = pendingView();
     const preset = presetOf(view.get('preset'));
     const policy = resolveSheet(view, preset, message.sheetId);
 
-    if (policy === null || !rollShownTo(role, policy.hidden)) {
+    const hidden =
+      policy !== null && !tabShownTo('PLAYER', policy.template, message.place.tabIndex);
+
+    if (policy === null || !rollShownTo(role, hidden)) {
       return err({ code: 'refused' });
     }
 
@@ -1786,7 +1788,7 @@ export async function startReplicaEngine(
 
     return ok({
       sheetId: message.sheetId,
-      hidden: policy.hidden,
+      hidden,
       // "" for an empty name: every client shows the fallback label.
       sheetName: sheetName(view, preset, message.sheetId) ?? '',
       dice: dice.value,

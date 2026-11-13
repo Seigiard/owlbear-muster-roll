@@ -29,22 +29,26 @@ const GHOST = 'ghost-gm';
 // number. "pc" is a sheet set with a repeat section of its own, and "camp" a single sheet every
 // player edits.
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
-        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+      tabs: [
         {
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'field', type: 'number', id: 'bonus' },
-            ],
+          sections: [
+            { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+            {
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'attack' },
+                  { kind: 'field', type: 'number', id: 'bonus' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -54,23 +58,27 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
-        { rows: [[{ kind: 'field', type: 'text', id: 'notes' }]] },
+      tabs: [
         {
-          repeat: true,
-          tokens: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'mob' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
-            [
-              { kind: 'field', type: 'check', id: 'elite' },
-              { kind: 'field', type: 'text', id: 'tactics' },
-            ],
+          sections: [
+            { rows: [[{ kind: 'field', type: 'text', id: 'notes' }]] },
+            {
+              repeat: true,
+              tokens: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'mob' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                ],
+                [
+                  { kind: 'field', type: 'check', id: 'elite' },
+                  { kind: 'field', type: 'text', id: 'tactics' },
+                ],
+              ],
+            },
+            { repeat: true, rows: [[{ kind: 'field', type: 'number', id: 'gold' }]] },
           ],
         },
-        { repeat: true, rows: [[{ kind: 'field', type: 'number', id: 'gold' }]] },
       ],
     },
     {
@@ -78,7 +86,9 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'Лагерь',
       players: 'edit',
-      sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'cart' }]] }],
+      tabs: [
+        { sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'cart' }]] }] },
+      ],
     },
   ],
 };
@@ -611,7 +621,7 @@ function lastKeySegment(record: Pick<VersionedRecord, 'k'>): string {
 
 function stateMessage(r: string, records: readonly VersionedRecord[]): JsonValue {
   return {
-    v: 2,
+    v: 3,
     g: { n: 0, a: '' },
     t: 'state',
     r,

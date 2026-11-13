@@ -30,18 +30,22 @@ const WIPED: Generation = { n: 1, a: 'gm-a' };
 const GHOST = 'ghost-gm';
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [{ kind: 'field', type: 'number', id: 'str' }],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [{ kind: 'field', type: 'number', id: 'str' }],
+              ],
+            },
           ],
         },
       ],
@@ -170,9 +174,9 @@ describe('a wipe', () => {
     }).toEqual({
       answer: { kind: 'answered' },
       shown: [],
-      copy: { v: 2, g: WIPED, records: [] },
+      copy: { v: 3, g: WIPED, records: [] },
       events: ['copy', 'reset'],
-      reset: [{ v: 2, g: WIPED, t: 'reset' }],
+      reset: [{ v: 3, g: WIPED, t: 'reset' }],
     });
   });
 
@@ -240,7 +244,7 @@ describe('a wipe', () => {
     // #then
     expect({ shown: shownKeys(reloaded), copy: roomCopyOf(room) }).toEqual({
       shown: [],
-      copy: { v: 2, g: WIPED, records: [] },
+      copy: { v: 3, g: WIPED, records: [] },
     });
   });
 

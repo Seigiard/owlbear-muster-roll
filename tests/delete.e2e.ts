@@ -22,7 +22,7 @@ const DELETE = 'Удалить';
 const CANCEL = 'Отменить';
 const NAME_FIELD = 'Имя листа';
 const UNNAMED = 'Без имени';
-const GEAR = '⚙︎';
+const SETTINGS = 'Настройки';
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
@@ -326,7 +326,7 @@ test('a deleted sheet does not return after a reload', async ({ page, context })
   await expect(page.getByRole('button', { name: ADD })).toBeVisible();
 
   // #then
-  await expect(page.getByRole('tab')).toHaveText(['Лиза', 'NPC', 'Инвентарь', GEAR]);
+  await expect(page.getByRole('tab')).toHaveText(['Лиза', 'NPC', 'Инвентарь', SETTINGS]);
 });
 
 test('deleting the selected sheet selects the first tab, not its neighbour', async ({
@@ -359,7 +359,7 @@ test('deleting the last sheet of the set selects the first tab, NPC', async ({ p
   await page.getByRole('button', { name: DELETE, exact: true }).click();
 
   // #then
-  await expect(page.getByRole('tab')).toHaveText(['NPC', 'Инвентарь', GEAR]);
+  await expect(page.getByRole('tab')).toHaveText(['NPC', 'Инвентарь', SETTINGS]);
   await expect(page.getByRole('tab', { name: 'NPC' })).toHaveAttribute('aria-selected', 'true');
 });
 

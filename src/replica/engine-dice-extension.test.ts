@@ -61,78 +61,98 @@ const rollOutcomeMessageSchema = z.strictObject({
 const LOCAL_RANDOM = (): number => 0.3;
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'str_tired' },
-              { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
-            ],
-            [
-              { kind: 'text', text: 'Ловкость' },
-              { kind: 'field', type: 'number', id: 'dex' },
-              { kind: 'dice', formula: '1d20 + dex' },
-            ],
-            [
-              { kind: 'text', text: 'Удар' },
-              { kind: 'dice', formula: '1d20 + str' },
-            ],
-            [
-              { kind: 'text', text: 'Залп' },
-              { kind: 'dice', formula: '2d6 + 1d8 - 1d4' },
-            ],
-            [
-              { kind: 'text', text: 'Число' },
-              { kind: 'dice', formula: 'str + 2' },
-            ],
-            [
-              { kind: 'text', text: 'Тройка' },
-              { kind: 'dice', formula: '1d3 + str' },
-            ],
-            [
-              { kind: 'text', text: 'Тысяча' },
-              { kind: 'dice', formula: '1d1000' },
-            ],
-            [
-              { kind: 'text', text: 'Тридцать' },
-              { kind: 'dice', formula: '30d6' },
-            ],
-            [
-              { kind: 'text', text: 'Шестьдесят' },
-              { kind: 'dice', formula: '20d6 + 20d6 + 20d6' },
-            ],
-            [
-              { kind: 'text', text: 'Кости' },
-              { kind: 'dice', formula: '1d20 + 1d4' },
-            ],
-            [
-              { kind: 'text', text: 'Смесь' },
-              { kind: 'dice', formula: '2d6 + 1d8 - 1d6' },
-            ],
-            [
-              { kind: 'text', text: 'Десятка' },
-              { kind: 'dice', formula: '1d10' },
-            ],
-            [
-              { kind: 'text', text: 'Сотня' },
-              { kind: 'dice', formula: '1d100' },
-            ],
-            [
-              { kind: 'text', text: 'Деление' },
-              { kind: 'dice', formula: '10 / (1d6 - 3)' },
-            ],
+          title: 'Основное',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'str_tired' },
+                  { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
+                ],
+                [
+                  { kind: 'text', text: 'Ловкость' },
+                  { kind: 'field', type: 'number', id: 'dex' },
+                  { kind: 'dice', formula: '1d20 + dex' },
+                ],
+                [
+                  { kind: 'text', text: 'Удар' },
+                  { kind: 'dice', formula: '1d20 + str' },
+                ],
+                [
+                  { kind: 'text', text: 'Залп' },
+                  { kind: 'dice', formula: '2d6 + 1d8 - 1d4' },
+                ],
+                [
+                  { kind: 'text', text: 'Число' },
+                  { kind: 'dice', formula: 'str + 2' },
+                ],
+                [
+                  { kind: 'text', text: 'Тройка' },
+                  { kind: 'dice', formula: '1d3 + str' },
+                ],
+                [
+                  { kind: 'text', text: 'Тысяча' },
+                  { kind: 'dice', formula: '1d1000' },
+                ],
+                [
+                  { kind: 'text', text: 'Тридцать' },
+                  { kind: 'dice', formula: '30d6' },
+                ],
+                [
+                  { kind: 'text', text: 'Шестьдесят' },
+                  { kind: 'dice', formula: '20d6 + 20d6 + 20d6' },
+                ],
+                [
+                  { kind: 'text', text: 'Кости' },
+                  { kind: 'dice', formula: '1d20 + 1d4' },
+                ],
+                [
+                  { kind: 'text', text: 'Смесь' },
+                  { kind: 'dice', formula: '2d6 + 1d8 - 1d6' },
+                ],
+                [
+                  { kind: 'text', text: 'Десятка' },
+                  { kind: 'dice', formula: '1d10' },
+                ],
+                [
+                  { kind: 'text', text: 'Сотня' },
+                  { kind: 'dice', formula: '1d100' },
+                ],
+                [
+                  { kind: 'text', text: 'Деление' },
+                  { kind: 'dice', formula: '10 / (1d6 - 3)' },
+                ],
+              ],
+            },
+            { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
           ],
         },
-        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+        {
+          title: 'Заметки мастера',
+          visibility: 'gm',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Секрет' },
+                  { kind: 'field', type: 'number', id: 'secret' },
+                  { kind: 'dice', formula: '1d20 + secret' },
+                ],
+              ],
+            },
+          ],
+        },
       ],
     },
     {
@@ -140,14 +160,18 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Хиты' },
-              { kind: 'field', type: 'number', id: 'hp' },
-              { kind: 'dice', formula: '1d20 + hp' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Хиты' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                  { kind: 'dice', formula: '1d20 + hp' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -161,13 +185,20 @@ const SEEDED: VersionedRecord[] = [
   { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
   { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
   { k: 'row:brok:str', d: { str: 14, str_tired: true }, c: 1, a: 'seed' },
+  { k: 'row:brok:secret', d: { secret: 4 }, c: 1, a: 'seed' },
   { k: 'row:npc:hp', d: { hp: 5 }, c: 1, a: 'seed' },
 ];
 
 // A roll of the GM-only single sheet "npc".
 const HIT_POINTS: RollRequest = {
   sheetId: 'npc',
-  place: { sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: null },
+  place: { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: null },
+  shown: {},
+};
+
+const HIDDEN_SECRET: RollRequest = {
+  sheetId: 'brok',
+  place: { tabIndex: 1, sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: null },
   shown: {},
 };
 
@@ -304,7 +335,7 @@ async function startClient(
 function characterRow(rowIndex: number, cellIndex: number): RollRequest {
   return {
     sheetId: 'brok',
-    place: { sectionIndex: 0, rowIndex, cellIndex, instanceId: null },
+    place: { tabIndex: 0, sectionIndex: 0, rowIndex, cellIndex, instanceId: null },
     shown: {},
   };
 }
@@ -395,7 +426,7 @@ describe('a roll with a dice extension in the client', () => {
     // #when
     const outcome = await roll(gm, STRIKE);
 
-    await waitUntil(() => shown(player).length === 1);
+    await waitUntil(() => shown(player).includes('Мастер: Брок, Удар — 31'));
 
     // #then: 17 + str 14.
     expect({ outcome, requests: requests(gm), shown: [gm, player].map(shown) }).toEqual({
@@ -430,7 +461,7 @@ describe('a roll with a dice extension in the client', () => {
     // #when: the sheet set roll after it reaches the player after it.
     await roll(gm, HIT_POINTS);
     await roll(gm, STRIKE);
-    await waitUntil(() => shown(player).length === 1);
+    await waitUntil(() => shown(player).includes('Мастер: Брок, Удар — 31'));
 
     // #then
     expect({
@@ -439,6 +470,35 @@ describe('a roll with a dice extension in the client', () => {
     }).toEqual({
       targets: ['gm_only', 'everyone'],
       shown: [['Мастер: NPC, Хиты — 22', 'Мастер: Брок, Удар — 31'], ['Мастер: Брок, Удар — 31']],
+    });
+  });
+
+  test('from a hidden tab sends gm_only to the dice extension and no notification to a player', async () => {
+    // #given
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      name: 'Мастер',
+      dice: { kind: 'faces', faces: [17] },
+    });
+
+    const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
+
+    // #when: the visible roll after it proves the player handled the hidden roll first.
+    await roll(gm, HIDDEN_SECRET);
+    await roll(gm, STRIKE);
+    await waitUntil(() => shown(player).includes('Мастер: Брок, Удар — 31'));
+
+    // #then
+    expect({
+      targets: requests(gm).map((request) => Object(request).rollTarget),
+      shown: [gm, player].map(shown),
+    }).toEqual({
+      targets: ['gm_only', 'everyone'],
+      shown: [
+        ['Мастер: Брок, Секрет — 21', 'Мастер: Брок, Удар — 31'],
+        ['Мастер: Брок, Удар — 31'],
+      ],
     });
   });
 

@@ -205,7 +205,7 @@ test('builds a preset with the tree and the forms, and the window loads the down
   expect(parsePresetFile(text)).toEqual({
     ok: true,
     value: {
-      v: 2,
+      v: 3,
       window: { width: 800, height: 600 },
       templates: [
         {
@@ -213,24 +213,28 @@ test('builds a preset with the tree and the forms, and the window loads the down
           kind: 'set',
           title: 'Экипаж',
           nameField: 'imya',
-          sections: [
+          tabs: [
             {
-              rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'imya' },
-                ],
-              ],
-            },
-            {
-              title: 'Характеристики',
-              columns: 3,
-              rows: [
-                [
-                  { kind: 'text', text: 'Мощь' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'dice', formula: '1d20 <= str' },
-                ],
+              sections: [
+                {
+                  rows: [
+                    [
+                      { kind: 'text', text: 'Имя' },
+                      { kind: 'field', type: 'text', id: 'imya' },
+                    ],
+                  ],
+                },
+                {
+                  title: 'Характеристики',
+                  columns: 3,
+                  rows: [
+                    [
+                      { kind: 'text', text: 'Мощь' },
+                      { kind: 'field', type: 'number', id: 'str' },
+                      { kind: 'dice', formula: '1d20 <= str' },
+                    ],
+                  ],
+                },
               ],
             },
           ],
@@ -311,7 +315,7 @@ test('builds, previews and downloads a select field, then drops its options on a
   const selectFile = JSON.parse(readFileSync(selectPath, 'utf8'));
 
   // #then
-  expect(selectFile.templates[0]?.sections[0]?.rows[0]).toEqual([
+  expect(selectFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
     { kind: 'text', text: 'Броня' },
     {
       kind: 'field',
@@ -335,7 +339,7 @@ test('builds, previews and downloads a select field, then drops its options on a
   await expect(
     form(page).getByRole('textbox', { name: 'Варианты — по одному в строке' }),
   ).toHaveCount(0);
-  expect(textFile.templates[0]?.sections[0]?.rows[0]).toEqual([
+  expect(textFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
     { kind: 'text', text: 'Броня' },
     { kind: 'field', type: 'text', id: 'bronya' },
   ]);
@@ -380,7 +384,7 @@ test('switches a field to dice-choice with the standard dice and downloads its t
   const file = JSON.parse(readFileSync(path, 'utf8'));
 
   // #then
-  expect(file.templates[0]?.sections[0]?.rows[0]).toEqual([
+  expect(file.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
     { kind: 'text', text: 'Урон' },
     {
       kind: 'field',
@@ -423,7 +427,7 @@ test('sets and clears field and dice cell names, with the hint, in the downloade
   const namedFile = JSON.parse(readFileSync(namedPath, 'utf8'));
 
   // #then
-  expect(namedFile.templates[0]?.sections[0]?.rows[0]).toEqual([
+  expect(namedFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
     { kind: 'field', type: 'number', id: 'field', name: 'HP, максимум' },
     { kind: 'dice', formula: '1d20', name: 'Спасбросок HP' },
   ]);
@@ -442,7 +446,7 @@ test('sets and clears field and dice cell names, with the hint, in the downloade
   const clearedFile = JSON.parse(readFileSync(clearedPath, 'utf8'));
 
   // #then
-  expect(clearedFile.templates[0]?.sections[0]?.rows[0]).toEqual([
+  expect(clearedFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
     { kind: 'field', type: 'number', id: 'field' },
     { kind: 'dice', formula: '1d20' },
   ]);
@@ -564,7 +568,7 @@ test('each problem marks its tree item and preview cell, and the counter goes to
   await expect(item(page, '1d20+')).toHaveAttribute('data-problem', 'true');
   await expect(form(page).getByText('ошибка в формуле «1d20+»')).toBeVisible();
 
-  const cell = preview(page).locator('[data-cell="1.0.3"] > *');
+  const cell = preview(page).locator('[data-cell="0.1.0.3"] > *');
 
   await expect(cell).toHaveCSS('box-shadow', /.+px/);
 
@@ -598,7 +602,7 @@ test('a too-wide row is marked in the preview, and a click on a section heading 
   await preview(page).getByRole('heading', { name: 'Хиты' }).click();
 
   // #then: the section, not its label of the same text.
-  await expect(item(page, 'Хиты').and(page.locator('[aria-level="2"]'))).toHaveAttribute(
+  await expect(item(page, 'Хиты').and(page.locator('[aria-level="3"]'))).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -648,6 +652,33 @@ test('a click on a preview cell selects its tree item', async ({ page }) => {
     'true',
   );
   await expect(preview(page).getByRole('heading', { name: 'NPC', level: 1 })).toBeVisible();
+});
+
+test('the preview sidebar lists templates in order and selects a template in the tree', async ({
+  page,
+}) => {
+  // #given
+  await page.goto(PAGE);
+  await openFromMenu(page, builder.openD20);
+
+  const shown = preview(page);
+  const sidebar = shown.getByRole('tablist').first();
+
+  // #when
+  const entries = await sidebar.getByRole('tab').allTextContents();
+
+  // #then
+  await expect(shown.getByRole('heading', { name: 'Персонажи', exact: true })).toBeVisible();
+  expect(entries).toEqual(['name', 'NPC', 'Инвентарь', 'Журнал', 'Заметки ГМ']);
+
+  // #when
+  await sidebar.getByRole('tab', { name: 'NPC', exact: true }).click();
+
+  // #then
+  await expect(item(page, `NPC · ${builder.form.kindSingle}`)).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
 });
 
 test('undo and redo each change, and typing in one input is one step', async ({ page }) => {
@@ -769,12 +800,106 @@ test('drags a row out of a repeat section, and the emptied repeat section shows 
   await expect(item(page, 'Вещи')).toHaveAttribute('data-problem', 'true');
 });
 
+test('adds a tab, drags a section into it, and the preview shows the tab of the selected cell', async ({
+  page,
+}) => {
+  // #given
+  await page.goto(PAGE);
+  await openFromMenu(page, builder.openD20);
+  await expect(page.getByText(builder.noProblems)).toBeVisible();
+
+  // #when: a second tab on the first template. Two tabs need titles, so both are problems.
+  await pick(item(page, builder.addTab).first());
+
+  // #then
+  await expect(problemCounter(page, 2)).toBeVisible();
+
+  // #when
+  await form(page).getByRole('textbox', { name: builder.form.title }).fill('Бой');
+  await pick(item(page, builder.untitledTab).first());
+  await form(page).getByRole('textbox', { name: builder.form.title }).fill('Основное');
+
+  // #then: the tree shows the tab level under the template.
+  await expect(page.getByText(builder.noProblems)).toBeVisible();
+  await expect(item(page, 'Основное')).toHaveAttribute('aria-level', '2');
+  await expect(item(page, 'Бой')).toHaveAttribute('aria-level', '2');
+
+  // #when: "Атаки", the last section of "Основное", goes into "Бой", away from the tree's edges.
+  await item(page, 'Атаки').evaluate((element) => {
+    const scroller = element.closest('[data-builder-tree]');
+
+    if (scroller instanceof HTMLElement && element instanceof HTMLElement) {
+      scroller.scrollTop = element.offsetTop - scroller.offsetTop;
+    }
+  });
+  await dragOnto(page, item(page, 'Атаки'), item(page, 'Бой'));
+
+  // #then
+  const names = await rowNames(page);
+
+  expect(names.slice(names.indexOf('Бой'), names.indexOf('Бой') + 2)).toEqual(['Бой', 'Атаки']);
+
+  // #when: a cell on the moved section is selected.
+  await pick(item(page, '1d20+bonus').first());
+
+  // #then: the preview shows the tab that holds it.
+  await expect(preview(page).getByRole('tab', { name: 'Бой' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(preview(page).getByRole('heading', { name: 'Атаки' })).toBeVisible();
+  await expect(preview(page).getByRole('heading', { name: 'Характеристики' })).toHaveCount(0);
+
+  // #when: a click on a section heading of the shown tab.
+  await pick(item(page, builder.windowItem(600, 600)));
+  await preview(page).getByRole('tab', { name: 'Бой' }).click();
+  await preview(page).getByRole('heading', { name: 'Атаки' }).click();
+
+  // #then
+  await expect(item(page, 'Атаки').first()).toHaveAttribute('aria-selected', 'true');
+
+  // #when: a click on the other tab in the preview selects that tab.
+  await preview(page).getByRole('tab', { name: 'Основное' }).click();
+
+  // #then
+  await expect(item(page, 'Основное')).toHaveAttribute('aria-selected', 'true');
+  await expect(preview(page).getByRole('heading', { name: 'Характеристики' })).toBeVisible();
+  await expect(preview(page).getByRole('heading', { name: 'Атаки' })).toHaveCount(0);
+
+  // #when
+  const downloading = page.waitForEvent('download');
+
+  await downloadButton(page).click();
+
+  const parsed = parsePresetFile(readFileSync(await (await downloading).path(), 'utf8'));
+
+  // #then
+  const tabs = parsed.ok ? parsed.value.templates[0]?.tabs : null;
+
+  expect(tabs?.map((tab) => tab.title)).toEqual(['Основное', 'Бой']);
+  expect(tabs?.[1]?.sections.map((section) => section.title)).toEqual(['Атаки']);
+
+  // #when: "Персонаж", section 0 of "Основное", gets fewer columns than its rows have cells.
+  await pick(item(page, 'Персонаж'));
+  await form(page).getByRole('textbox', { name: builder.form.columns }).fill('1');
+
+  const firstRow = preview(page).locator('[data-section-index="0"] [data-row-index="0"]').first();
+
+  await expect(firstRow).toHaveCSS('box-shadow', /2px/);
+  await preview(page).getByRole('tab', { name: 'Бой' }).click();
+
+  // #then: "Атаки", section 0 of "Бой", carries no mark.
+  await expect(preview(page).getByRole('heading', { name: 'Атаки' })).toBeVisible();
+  await expect(firstRow).toBeVisible();
+  await expect(firstRow).not.toHaveCSS('box-shadow', /2px/);
+});
+
 test('Settings in the window links to the builder in a new tab', async ({ page, context }) => {
   // #given
   await openWindowAndBackground(page, context);
 
   // #when
-  await page.getByRole('button', { name: copy.place.settings }).click();
+  await page.getByRole('tab', { name: copy.place.settings }).click();
 
   // #then
   const link = page.getByRole('link', { name: builder.settingsLink });

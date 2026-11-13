@@ -35,28 +35,32 @@ const PLAYER: ClientParams = {
 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-          ],
-        },
-        {
-          rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+              ],
+            },
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -66,7 +70,7 @@ const PRESET_TEXT = JSON.stringify({
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
     },
   ],
 });
@@ -163,7 +167,7 @@ test('a new version shows over the no-GM banner', async ({ context }) => {
   await expect(player.window.getByRole('status')).toHaveText(NO_GM);
 
   // #when
-  await postRemote(player.window, 'mock-connection-newer', { v: 3, t: 'ping' });
+  await postRemote(player.window, 'mock-connection-newer', { v: 4, t: 'ping' });
 
   // #then
   await expect(player.window.getByRole('status')).toHaveText(NEW_VERSION);

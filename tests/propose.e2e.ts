@@ -49,35 +49,39 @@ const PLAYER: ClientParams = {
 
 // A sheet set, a player-editable single sheet and a single sheet players only read.
 const PRESET_TEXT = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          title: 'Основное',
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-            ],
-          ],
-        },
-        {
-          title: 'Атаки',
-          repeat: true,
-          rows: [
-            [
-              { kind: 'text', text: 'Атака' },
-              { kind: 'field', type: 'text', id: 'attack' },
-            ],
+          sections: [
+            {
+              title: 'Основное',
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                ],
+              ],
+            },
+            {
+              title: 'Атаки',
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'text', text: 'Атака' },
+                  { kind: 'field', type: 'text', id: 'attack' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -87,14 +91,18 @@ const PRESET_TEXT = JSON.stringify({
       kind: 'single',
       title: 'Инвентарь',
       players: 'edit',
-      sections: [
+      tabs: [
         {
-          title: 'Деньги',
-          rows: [
-            [
-              { kind: 'text', text: 'Золото' },
-              { kind: 'field', type: 'number', id: 'gold' },
-            ],
+          sections: [
+            {
+              title: 'Деньги',
+              rows: [
+                [
+                  { kind: 'text', text: 'Золото' },
+                  { kind: 'field', type: 'number', id: 'gold' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -103,14 +111,18 @@ const PRESET_TEXT = JSON.stringify({
       id: 'journal',
       kind: 'single',
       title: 'Журнал',
-      sections: [
+      tabs: [
         {
-          title: 'Записи',
-          rows: [
-            [
-              { kind: 'text', text: 'Запись' },
-              { kind: 'field', type: 'text', id: 'entry' },
-            ],
+          sections: [
+            {
+              title: 'Записи',
+              rows: [
+                [
+                  { kind: 'text', text: 'Запись' },
+                  { kind: 'field', type: 'text', id: 'entry' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -195,7 +207,7 @@ test('a denied edit puts the value back and says "Нет прав на прав�
 
   // #when: the seeded record has c 1, so the proposal has c 2.
   await postRemote(gm.window, gm.connectionId, {
-    v: 2,
+    v: 3,
     g: { n: 0, a: '' },
     t: 'reject',
     k: 'row:brok:str',
@@ -252,7 +264,7 @@ test('a single sheet with no players: edit is read-only for a player, and a forg
 
   // #when: a modified client proposes the record anyway.
   await postRemote(player.window, player.connectionId, {
-    v: 2,
+    v: 3,
     g: { n: 0, a: '' },
     t: 'propose',
     records: [{ k: 'row:journal:entry', d: { entry: 'Подделка' }, c: 2, a: player.connectionId }],

@@ -63,7 +63,9 @@ export type BlockTools = {
 
 type SheetSectionProps = {
   section: PresetSection;
-  // The section's position in its template, which a roll request names.
+  // The section's position in its template, its tab and its index within that tab, which a roll
+  // request names.
+  tabIndex: number;
   sectionIndex: number;
   // The title of the section's template, which names an untitled repeat section's "Добавить".
   templateTitle: string;
@@ -102,6 +104,7 @@ type ReadOnlyRepeatContentProps = Omit<RepeatContentProps, 'templateTitle'>;
 
 export function SheetSection({
   section,
+  tabIndex,
   sectionIndex,
   templateTitle,
   sheetId,
@@ -115,12 +118,13 @@ export function SheetSection({
   const sectionId = repeatSectionId(section);
 
   const className = [
-    'min-w-[0] shrink-0 grow-0 basis-full border-l-2 border-line pl-2',
+    'min-w-0 shrink-0 grow-0 basis-full border-l-2 border-line pl-2',
     WIDTH_CLASSES[section.width ?? 'full'],
   ].join(' ');
 
   const repeatProps = {
     section,
+    tabIndex,
     sectionIndex,
     sheetId,
     records,
@@ -132,6 +136,7 @@ export function SheetSection({
     sectionId === null ? (
       <PlainContent
         section={section}
+        tabIndex={tabIndex}
         sectionIndex={sectionIndex}
         sheetId={sheetId}
         records={records}
@@ -178,6 +183,7 @@ function Body({ children }: { children: ReactNode }): ReactNode {
 
 function PlainContent({
   section,
+  tabIndex,
   sectionIndex,
   sheetId,
   records,
@@ -185,8 +191,8 @@ function PlainContent({
   pending,
 }: PlainContentProps): ReactNode {
   const rows = useMemo(
-    () => plainRows(section, sectionIndex, sheetId, records, pending),
-    [section, sectionIndex, sheetId, records, pending],
+    () => plainRows(section, tabIndex, sectionIndex, sheetId, records, pending),
+    [section, tabIndex, sectionIndex, sheetId, records, pending],
   );
 
   return (
@@ -200,6 +206,7 @@ function PlainContent({
 // "Добавить".
 function ReadOnlyRepeatContent({
   section,
+  tabIndex,
   sectionIndex,
   sheetId,
   records,
@@ -208,8 +215,8 @@ function ReadOnlyRepeatContent({
   blockTools,
 }: ReadOnlyRepeatContentProps): ReactNode {
   const blocks = useMemo(
-    () => repeatBlocksOf(section, sectionIndex, sectionId, sheetId, records, pending),
-    [section, sectionIndex, sectionId, sheetId, records, pending],
+    () => repeatBlocksOf(section, tabIndex, sectionIndex, sectionId, sheetId, records, pending),
+    [section, tabIndex, sectionIndex, sectionId, sheetId, records, pending],
   );
 
   return (
@@ -232,6 +239,7 @@ function ReadOnlyRepeatContent({
 // template's, so the buttons of two sections differ.
 function RepeatContent({
   section,
+  tabIndex,
   sectionIndex,
   templateTitle,
   sheetId,
@@ -241,8 +249,8 @@ function RepeatContent({
   blockTools,
 }: RepeatContentProps): ReactNode {
   const blocks = useMemo(
-    () => repeatBlocksOf(section, sectionIndex, sectionId, sheetId, records, pending),
-    [section, sectionIndex, sectionId, sheetId, records, pending],
+    () => repeatBlocksOf(section, tabIndex, sectionIndex, sectionId, sheetId, records, pending),
+    [section, tabIndex, sectionIndex, sectionId, sheetId, records, pending],
   );
 
   // A repeat block whose removal waits for a GM counts as gone: its "Удалить" is gone, so the focus
@@ -607,6 +615,7 @@ function Cells({
 
 function plainRows(
   section: PresetSection,
+  tabIndex: number,
   sectionIndex: number,
   sheetId: string,
   records: ReadonlyMap<string, VersionedRecord>,
@@ -629,6 +638,7 @@ function plainRows(
       place: target === null ? null : placeOf(records, sheetId, target),
       dice: {
         sheetId,
+        tabIndex,
         sectionIndex,
         rowIndex: index,
         instanceId: null,
@@ -643,6 +653,7 @@ function plainRows(
 // writes the block's one `rep:` record, and a formula in any of them reaches every field of it.
 function repeatBlocksOf(
   section: PresetSection,
+  tabIndex: number,
   sectionIndex: number,
   sectionId: string,
   sheetId: string,
@@ -668,6 +679,7 @@ function repeatBlocksOf(
         pending: blockPending,
         dice: {
           sheetId,
+          tabIndex,
           sectionIndex,
           rowIndex,
           instanceId: block.instanceId,

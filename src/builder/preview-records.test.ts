@@ -9,10 +9,14 @@ const SET: Template = {
   kind: 'set',
   title: 'Экипаж',
   nameField: 'name',
-  sections: [
-    { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
-    { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
-    { repeat: true, rows: [[{ kind: 'text', text: 'Нет поля' }]] },
+  tabs: [
+    {
+      sections: [
+        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
+        { repeat: true, rows: [[{ kind: 'text', text: 'Нет поля' }]] },
+      ],
+    },
   ],
 };
 
@@ -30,7 +34,12 @@ describe('previewRecords', () => {
 
   test('gives a single sheet no sheet record', () => {
     // #when
-    const records = previewRecords({ id: 'npc', kind: 'single', title: 'NPC', sections: [] });
+    const records = previewRecords({
+      id: 'npc',
+      kind: 'single',
+      title: 'NPC',
+      tabs: [{ sections: [] }],
+    });
 
     // #then
     expect(records.size).toBe(0);
@@ -47,7 +56,7 @@ describe('previewSheetName', () => {
     ],
     [
       'a single sheet by its title',
-      { id: 'npc', kind: 'single', title: 'NPC', sections: [] },
+      { id: 'npc', kind: 'single', title: 'NPC', tabs: [{ sections: [] }] },
       'NPC',
     ],
   ])('names %s', (_name, template, expected) => {

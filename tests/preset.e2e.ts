@@ -80,7 +80,9 @@ const BAD_FILES: readonly (readonly [string, string, string])[] = [
         kind: 'set',
         title: 'Персонажи',
         nameField: 'attack',
-        sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] }],
+        tabs: [
+          { sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] }] },
+        ],
       },
     ]),
     'в наборе «pc» нет текстового поля «attack» вне повторяемых секций',
@@ -128,7 +130,11 @@ const BAD_FILES: readonly (readonly [string, string, string])[] = [
   ],
   [
     'a version 1 preset with character and npc',
-    JSON.stringify({ v: 1, character: { sections: [] }, npc: { sections: [] } }),
+    JSON.stringify({
+      v: 1,
+      character: { tabs: [{ sections: [] }] },
+      npc: { tabs: [{ sections: [] }] },
+    }),
     'неподдерживаемая версия формата',
   ],
   ['a file over 1 MiB', ' '.repeat(1024 * 1024 + 1), 'файл слишком большой'],
@@ -157,7 +163,7 @@ test('before the first projection the GM sees the loading text and no upload', a
   await expect(page.getByRole('button', { name: UPLOAD })).toHaveCount(0);
 });
 
-test('a GM in a room with no preset sees the upload and the gear, and no NPC tab', async ({
+test('a GM in a room with no preset sees the upload and Settings, and no sheet entry', async ({
   page,
   context,
 }) => {
@@ -166,32 +172,28 @@ test('a GM in a room with no preset sees the upload and the gear, and no NPC tab
 
   // #then
   await expect(page.getByRole('button', { name: UPLOAD })).toBeVisible();
-  await expect(page.getByRole('button', { name: SETTINGS })).toHaveAttribute(
-    'aria-pressed',
-    'false',
-  );
-  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: SETTINGS })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab')).toHaveText([SETTINGS]);
 });
 
-test('the gear replaces the content with Settings and a second press brings it back', async ({
+test('the Settings sidebar entry keeps Settings open when selected again', async ({
   page,
   context,
 }) => {
   // #given
   await openWindowAndBackground(page, context);
 
-  const gear = page.getByRole('button', { name: SETTINGS });
+  const settings = page.getByRole('tab', { name: SETTINGS });
 
-  await gear.click();
+  await settings.click();
   await expect(page.getByRole('heading', { name: 'Пресет' })).toBeVisible();
 
   // #when
-  await gear.click();
+  await settings.click();
 
   // #then
-  await expect(page.getByRole('heading', { name: 'Пресет' })).toHaveCount(0);
-  await expect(gear).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.getByRole('button', { name: UPLOAD })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Пресет' })).toBeVisible();
+  await expect(settings).toHaveAttribute('aria-selected', 'true');
 });
 
 test('Settings with no preset puts the primary upload first and disables the download', async ({
@@ -202,7 +204,7 @@ test('Settings with no preset puts the primary upload first and disables the dow
   await openWindowAndBackground(page, context);
 
   // #when
-  await page.getByRole('button', { name: SETTINGS }).click();
+  await page.getByRole('tab', { name: SETTINGS }).click();
 
   // #then
   const section = page.getByRole('region', { name: 'Пресет' });
@@ -244,6 +246,7 @@ test('a valid file is stored deflated and base64-encoded and stays after a reloa
 
   await uploadFile(page, EXAMPLE_PRESET_TEXT);
   await expect(page.getByRole('tab', { name: SETTINGS })).toHaveAttribute('aria-selected', 'true');
+  await expect.poll(() => storedPreset(page)).toEqual(EXAMPLE);
 
   // #when: the window reloads first, so it sees the projection that the new background sends.
   await background.close();
@@ -307,7 +310,7 @@ test('a file from a newer version asks for a reload and changes nothing', async 
   await watchWire(page);
 
   // #when
-  await uploadFile(page, JSON.stringify({ v: 3, anything: [] }));
+  await uploadFile(page, JSON.stringify({ v: 4, anything: [] }));
 
   // #then
   await expect(page.getByText('Файл из более новой версии. Перезагрузите страницу.')).toBeVisible();
@@ -423,6 +426,7 @@ test('the downloaded preset holds the structure at the current v and loads in an
     'aria-selected',
     'true',
   );
+  await expect.poll(() => storedPreset(otherPage)).toEqual(EXAMPLE);
 
   // #then
   expect({
@@ -443,7 +447,7 @@ test('while a sheet exists the upload stays enabled in both places', async ({ pa
   const main = page.getByRole('button', { name: UPLOAD });
 
   await expect(main).toBeEnabled();
-  await page.getByRole('button', { name: SETTINGS }).click();
+  await page.getByRole('tab', { name: SETTINGS }).click();
 
   // #then
   const inSettings = page.getByRole('region', { name: 'Пресет' }).getByRole('button', {
@@ -482,7 +486,7 @@ function fileText(section: JsonValue): string {
 }
 
 function templatesText(templates: readonly JsonValue[]): string {
-  return JSON.stringify({ v: 2, templates });
+  return JSON.stringify({ v: 3, templates });
 }
 
 function setTemplate(id: string, sections: readonly JsonValue[]) {
@@ -491,12 +495,12 @@ function setTemplate(id: string, sections: readonly JsonValue[]) {
     kind: 'set',
     title: 'Персонажи',
     nameField: 'name',
-    sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, ...sections],
+    tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, ...sections] }],
   };
 }
 
 function singleTemplate(id: string) {
-  return { id, kind: 'single', title: 'Заметки', sections: [] };
+  return { id, kind: 'single', title: 'Заметки', tabs: [{ sections: [] }] };
 }
 
 function randomLabel(length: number): string {

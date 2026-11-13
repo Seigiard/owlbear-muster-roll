@@ -31,21 +31,21 @@ const NAME_SECTION: PresetSection = { rows: [[{ kind: 'field', type: 'text', id:
 const STR_SECTION: PresetSection = { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] };
 
 const PLAIN: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [NAME_SECTION, STR_SECTION],
+      tabs: [{ sections: [NAME_SECTION, STR_SECTION] }],
     },
     {
       id: 'npc',
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
     },
   ],
 };
@@ -57,7 +57,7 @@ const SIZED_RETITLED: Preset = {
   ...SIZED,
   templates: SIZED.templates.map((template) =>
     template.id === 'pc'
-      ? { ...template, sections: [NAME_SECTION, { ...STR_SECTION, title: 'Сила' }] }
+      ? { ...template, tabs: [{ sections: [NAME_SECTION, { ...STR_SECTION, title: 'Сила' }] }] }
       : template,
   ),
 };
@@ -223,7 +223,7 @@ describe('the window size after a preset change', () => {
 
     const newer: VersionedRecord = {
       k: 'preset',
-      d: deflateToBase64(JSON.stringify({ v: 3, layout: 'unknown' })),
+      d: deflateToBase64(JSON.stringify({ v: 4, layout: 'unknown' })),
       c: 2,
       a: 'gm-x',
     };
@@ -231,7 +231,7 @@ describe('the window size after a preset change', () => {
     room.join({ id: 'gm-x', connectionId: 'gm-x', name: 'gm-x', role: 'GM' });
 
     // #when
-    room.postRemote(SYNC_CHANNEL, { v: 2, g: GENERATION, t: 'commit', records: [newer] }, 'gm-x');
+    room.postRemote(SYNC_CHANNEL, { v: 3, g: GENERATION, t: 'commit', records: [newer] }, 'gm-x');
     await waitUntil(() => gm.store.$records.get().get('preset')?.c === 2);
     await pause(20);
 

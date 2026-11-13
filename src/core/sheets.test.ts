@@ -25,15 +25,19 @@ const PC: Template = {
   title: 'Персонажи',
   nameField: 'name',
   tokens: true,
-  sections: [
+  tabs: [
     {
-      rows: [
-        [
-          { kind: 'text', text: 'Уровень' },
-          { kind: 'field', type: 'number', id: 'level' },
-          { kind: 'text', text: 'Имя' },
-          { kind: 'field', type: 'text', id: 'name' },
-        ],
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Уровень' },
+              { kind: 'field', type: 'number', id: 'level' },
+              { kind: 'text', text: 'Имя' },
+              { kind: 'field', type: 'text', id: 'name' },
+            ],
+          ],
+        },
       ],
     },
   ],
@@ -56,7 +60,7 @@ const NPC: Template = {
   kind: 'single',
   title: 'НПС',
   visibility: 'gm',
-  sections: [NPC_SECTION],
+  tabs: [{ sections: [NPC_SECTION] }],
 };
 
 const INVENTORY: Template = {
@@ -65,14 +69,14 @@ const INVENTORY: Template = {
   title: 'Инвентарь',
   players: 'edit',
   tokens: true,
-  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'items' }]] }],
+  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'items' }]] }] }],
 };
 
 const JOURNAL: Template = {
   id: 'journal',
   kind: 'single',
   title: 'Журнал',
-  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }],
+  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }] }],
 };
 
 const VILLAINS: Template = {
@@ -81,10 +85,10 @@ const VILLAINS: Template = {
   title: 'Злодеи',
   nameField: 'villain',
   visibility: 'gm',
-  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }],
+  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }] }],
 };
 
-const PRESET: Preset = { v: 2, templates: [PC, NPC, INVENTORY, JOURNAL, VILLAINS] };
+const PRESET: Preset = { v: 3, templates: [PC, NPC, INVENTORY, JOURNAL, VILLAINS] };
 
 function record(k: string, d: JsonValue): VersionedRecord {
   // SAFETY: some cases build a record no schema takes on purpose, so the code under test meets it.

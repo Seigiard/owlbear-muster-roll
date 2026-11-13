@@ -28,22 +28,26 @@ const ROW_NAME = { kind: 'row', rowId: 'name' } as const;
 
 // A sheet set with a name row, a plain row with a number and a check, and a text row of its own.
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'str_tired' },
-            ],
-            [{ kind: 'field', type: 'text', id: 'notes' }],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'str_tired' },
+                ],
+                [{ kind: 'field', type: 'text', id: 'notes' }],
+              ],
+            },
           ],
         },
       ],
@@ -53,7 +57,7 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
     },
   ],
 };
@@ -156,7 +160,7 @@ function rename(sheetId: string, name: string) {
   } satisfies Command;
 }
 
-function commit(records: VersionedRecord[], g = INITIAL, v = 2): JsonValue {
+function commit(records: VersionedRecord[], g = INITIAL, v = 3): JsonValue {
   return { v, g, t: 'commit', records };
 }
 
@@ -549,7 +553,7 @@ describe('gate', () => {
     await startClient(room, 'gm-b');
 
     // #when
-    wire.post('gm-b', { v: 3, t: 'commit', unread: 'a field of a newer build' });
+    wire.post('gm-b', { v: 4, t: 'commit', unread: 'a field of a newer build' });
     await waitUntil(() => gm.store.$notices.get().includes('new-version'));
     await afterMarker(wire.post, 'gm-b', gm);
 
@@ -562,8 +566,8 @@ describe('gate', () => {
 
   test.each<[string, JsonValue]>([
     ['a record that fails its schema', commit([{ ...sheet('lisa'), c: 0 }])],
-    ['an unknown type', { v: 2, g: INITIAL, t: 'shout', records: [] }],
-    ['a type with no handler yet', { v: 2, g: INITIAL, t: 'ping' }],
+    ['an unknown type', { v: 3, g: INITIAL, t: 'shout', records: [] }],
+    ['a type with no handler yet', { v: 3, g: INITIAL, t: 'ping' }],
     ['no envelope at all', 'commit'],
   ])('drops a message with the right v and %s, and throws nothing', async (_name, message) => {
     // #given

@@ -101,7 +101,7 @@ export function SheetHeader({
         />
       </FieldEditingContext>
     ) : (
-      <h1 className={`min-w-[0] flex-1 px-1 text-text [overflow-wrap:anywhere] ${NAME_CLASS}`}>
+      <h1 className={`min-w-0 flex-1 px-1 text-text [overflow-wrap:anywhere] ${NAME_CLASS}`}>
         {name === '' ? copy.unnamed : name}
       </h1>
     );
@@ -232,7 +232,7 @@ function NameInput({
   }, [focusName, onNameFocused]);
 
   return (
-    <div className="flex min-w-[0] flex-1 flex-col gap-1">
+    <div className="flex min-w-0 flex-1 flex-col gap-1">
       <input
         ref={inputRef}
         type="text"

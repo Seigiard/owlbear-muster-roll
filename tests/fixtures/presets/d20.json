@@ -1,5 +1,5 @@
 {
-  "v": 2,
+  "v": 3,
   "templates": [
     {
       "id": "pc",
@@ -7,138 +7,142 @@
       "title": "Персонажи",
       "nameField": "name",
       "tokens": true,
-      "sections": [
+      "tabs": [
         {
-          "title": "Персонаж",
-          "columns": 4,
-          "rows": [
-            [
-              {
-                "kind": "text",
-                "text": "Имя"
-              },
-              {
-                "kind": "field",
-                "type": "text",
-                "id": "name"
-              }
-            ],
-            [
-              {
-                "kind": "text",
-                "text": "Класс"
-              },
-              {
-                "kind": "field",
-                "type": "text",
-                "id": "class"
-              },
-              {
-                "kind": "text",
-                "text": "Уровень"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "level"
-              }
-            ]
-          ]
-        },
-        {
-          "title": "Характеристики",
-          "width": "1/2",
-          "columns": 4,
-          "rows": [
-            [
-              {
-                "kind": "text",
-                "text": "Сила"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "str"
-              },
-              {
-                "kind": "field",
-                "type": "check",
-                "id": "str_save"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d20+str"
-              }
-            ],
-            [
-              {
-                "kind": "text",
-                "text": "Ловкость"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "dex"
-              },
-              {
-                "kind": "field",
-                "type": "check",
-                "id": "dex_save"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d20+dex"
-              }
-            ]
-          ]
-        },
-        {
-          "title": "Хиты",
-          "width": "1/2",
-          "rows": [
-            [
-              {
-                "kind": "text",
-                "text": "Хиты"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "hp"
-              },
-              {
-                "kind": "text",
-                "text": "из"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "hp_max"
-              }
-            ]
-          ]
-        },
-        {
-          "title": "Атаки",
-          "columns": 3,
-          "repeat": true,
-          "rows": [
-            [
-              {
-                "kind": "field",
-                "type": "text",
-                "id": "attack"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "bonus"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d20+bonus"
-              }
-            ]
+          "sections": [
+            {
+              "title": "Персонаж",
+              "columns": 4,
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Имя"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "name"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "text": "Класс"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "class"
+                  },
+                  {
+                    "kind": "text",
+                    "text": "Уровень"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "level"
+                  }
+                ]
+              ]
+            },
+            {
+              "title": "Характеристики",
+              "width": "1/2",
+              "columns": 4,
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Сила"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "str"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "check",
+                    "id": "str_save"
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "1d20+str"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "text": "Ловкость"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "dex"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "check",
+                    "id": "dex_save"
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "1d20+dex"
+                  }
+                ]
+              ]
+            },
+            {
+              "title": "Хиты",
+              "width": "1/2",
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Хиты"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "hp"
+                  },
+                  {
+                    "kind": "text",
+                    "text": "из"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "hp_max"
+                  }
+                ]
+              ]
+            },
+            {
+              "title": "Атаки",
+              "columns": 3,
+              "repeat": true,
+              "rows": [
+                [
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "attack"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "bonus"
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "1d20+bonus"
+                  }
+                ]
+              ]
+            }
           ]
         }
       ]
@@ -148,78 +152,82 @@
       "kind": "single",
       "title": "NPC",
       "visibility": "gm",
-      "sections": [
+      "tabs": [
         {
-          "title": "Противники",
-          "columns": 5,
-          "repeat": true,
-          "tokens": true,
-          "rows": [
-            [
-              {
-                "kind": "field",
-                "type": "text",
-                "id": "npc_name"
-              },
-              {
-                "kind": "text",
-                "text": "КД"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "ac"
-              },
-              {
-                "kind": "text",
-                "text": "Хиты"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "hp"
-              }
-            ],
-            [
-              {
-                "kind": "text",
-                "text": "Сила"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "str"
-              },
-              {
-                "kind": "field",
-                "type": "check",
-                "id": "elite"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d20+str"
-              }
-            ],
-            [
-              {
-                "kind": "text",
-                "text": "Атака"
-              },
-              {
-                "kind": "field",
-                "type": "text",
-                "id": "attack"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "bonus"
-              },
-              {
-                "kind": "dice",
-                "formula": "1d20+bonus"
-              }
-            ]
+          "sections": [
+            {
+              "title": "Противники",
+              "columns": 5,
+              "repeat": true,
+              "tokens": true,
+              "rows": [
+                [
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "npc_name"
+                  },
+                  {
+                    "kind": "text",
+                    "text": "КД"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "ac"
+                  },
+                  {
+                    "kind": "text",
+                    "text": "Хиты"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "hp"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "text": "Сила"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "str"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "check",
+                    "id": "elite"
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "1d20+str"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "text": "Атака"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "attack"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "bonus"
+                  },
+                  {
+                    "kind": "dice",
+                    "formula": "1d20+bonus"
+                  }
+                ]
+              ]
+            }
           ]
         }
       ]
@@ -230,48 +238,52 @@
       "title": "Инвентарь",
       "players": "edit",
       "tokens": true,
-      "sections": [
+      "tabs": [
         {
-          "title": "Вещи",
-          "columns": 4,
-          "repeat": true,
-          "rows": [
-            [
-              {
-                "kind": "text",
-                "text": "Вещь"
-              },
-              {
-                "kind": "field",
-                "type": "text",
-                "id": "item"
-              },
-              {
-                "kind": "text",
-                "text": "Количество"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "qty"
-              }
-            ]
-          ]
-        },
-        {
-          "title": "Деньги",
-          "rows": [
-            [
-              {
-                "kind": "text",
-                "text": "Золото"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "gold"
-              }
-            ]
+          "sections": [
+            {
+              "title": "Вещи",
+              "columns": 4,
+              "repeat": true,
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Вещь"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "item"
+                  },
+                  {
+                    "kind": "text",
+                    "text": "Количество"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "qty"
+                  }
+                ]
+              ]
+            },
+            {
+              "title": "Деньги",
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Золото"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "gold"
+                  }
+                ]
+              ]
+            }
           ]
         }
       ]
@@ -280,29 +292,33 @@
       "id": "journal",
       "kind": "single",
       "title": "Журнал",
-      "sections": [
+      "tabs": [
         {
-          "title": "Записи",
-          "repeat": true,
-          "rows": [
-            [
-              {
-                "kind": "text",
-                "text": "Сессия"
-              },
-              {
-                "kind": "field",
-                "type": "number",
-                "id": "session"
-              }
-            ],
-            [
-              {
-                "kind": "field",
-                "type": "text",
-                "id": "entry"
-              }
-            ]
+          "sections": [
+            {
+              "title": "Записи",
+              "repeat": true,
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Сессия"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "session"
+                  }
+                ],
+                [
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "entry"
+                  }
+                ]
+              ]
+            }
           ]
         }
       ]
@@ -312,20 +328,24 @@
       "kind": "single",
       "title": "Заметки ГМ",
       "visibility": "gm",
-      "sections": [
+      "tabs": [
         {
-          "rows": [
-            [
-              {
-                "kind": "text",
-                "text": "Сюжет"
-              },
-              {
-                "kind": "field",
-                "type": "text",
-                "id": "plot"
-              }
-            ]
+          "sections": [
+            {
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Сюжет"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "text",
+                    "id": "plot"
+                  }
+                ]
+              ]
+            }
           ]
         }
       ]

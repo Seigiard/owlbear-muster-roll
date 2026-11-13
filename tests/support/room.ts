@@ -30,7 +30,7 @@ import {
 } from '@/platform/mock/client-params';
 
 // The mock room's storage before any import: generation 0 with no author.
-export const STORAGE_PREFIX = `mr2:${MOCK_ROOM_ID}:0::`;
+export const STORAGE_PREFIX = `mr3:${MOCK_ROOM_ID}:0::`;
 
 export const EXAMPLE_PRESET_TEXT = readFileSync(
   new URL('../../docs/example-preset.json', import.meta.url),
@@ -41,7 +41,7 @@ export const EXAMPLE_PRESET_TEXT = readFileSync(
 export const ADD = 'Добавить: Персонажи';
 
 const CHANNEL = 'app.muster-roll/ui';
-const ROOM_STORAGE_PREFIX = 'mr2:';
+const ROOM_STORAGE_PREFIX = 'mr3:';
 
 // A command id `afterSettling` sends, so a watched window can tell its probes from real commands.
 const PROBE_PREFIX = 'probe-';
@@ -339,7 +339,7 @@ export async function storedRecords(page: Page, prefix = ''): Promise<StoredReco
 
 // Builds a record's room storage key under a generation, defaulting to generation 0.
 export function storageKey(key: string, generation: StorageGeneration = { n: 0, a: '' }): string {
-  return `mr2:${MOCK_ROOM_ID}:${generation.n}:${generation.a}:${key}`;
+  return `mr3:${MOCK_ROOM_ID}:${generation.n}:${generation.a}:${key}`;
 }
 
 // Reads every room storage key on this page's device, across all room ids.
@@ -358,7 +358,7 @@ export async function roomKeys(page: Page): Promise<string[]> {
 
 // Splits a room storage key into its generation and record key.
 export function storageKeyParts(key: string): StorageKeyParts {
-  const match = /^mr2:([^:]+):(\d+):([^:]*):(.*)$/.exec(key);
+  const match = /^mr3:([^:]+):(\d+):([^:]*):(.*)$/.exec(key);
 
   if (match === null) {
     throw new Error(`not a room storage key: ${key}`);

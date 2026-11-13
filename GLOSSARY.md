@@ -31,7 +31,7 @@ The file that sets the structure of every sheet in a room as a list of templates
 _Avoid_: template file, schema, config, system
 
 **Template**:
-One entry of a preset: a sheet set or a single sheet, with its title and its sections.
+One entry of a preset: a sheet set or a single sheet, with its title and its tabs.
 _Avoid_: layout, form, blank, sheet kind
 
 **Sheet set**:
@@ -58,8 +58,24 @@ _Avoid_: shared, public, open sheet
 A sheet set, single sheet or repeat section whose sheets or repeat blocks tokens may link to.
 _Avoid_: token-enabled, bindable
 
+**Tab**:
+  A titled group of sections inside a sheet. A template has at least one tab, and a sheet shows one tab at a time. A template with one tab draws no tab row. Each client keeps the open tab of each sheet for itself. Tabs change only the layout: field id scopes, formulas and stored values span all tabs of a template. In the interface: «Вкладка».
+_Avoid_: page, sheet tab
+
+**Sidebar**:
+The column at the left of the window that lists the sheets and Settings.
+_Avoid_: sheet tab bar, navigation bar
+
+**Sidebar entry**:
+One item in the sidebar: a sheet, or Settings. A sheet set's «+ Добавить» is the add control of its group.
+_Avoid_: sheet tab, menu item
+
+**Hidden tab**:
+A tab whose `visibility` is `"gm"`. A GM sees its tab and sections; a player sees neither, and cannot roll from it, edit its fields, or open its repeat blocks from token links. Its records stay in every replica, so visible tabs can read its values and the sheet name can still show.
+_Avoid_: secret sheet, private page
+
 **Section**:
-A titled block of a template that holds rows.
+A titled block of a tab that holds rows.
 _Avoid_: group, panel, block
 
 **Repeat section**:

@@ -47,7 +47,7 @@ const ROOM: readonly StoredRecord[] = [
 
 // A preset whose one linkable template has no sheet yet.
 const NO_TARGET_PRESET = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
@@ -55,7 +55,7 @@ const NO_TARGET_PRESET = JSON.stringify({
       title: 'Персонажи',
       nameField: 'name',
       tokens: true,
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
   ],
 });

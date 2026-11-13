@@ -83,11 +83,11 @@ function createHarness(
 }
 
 function state(r: string, i = 1, n = 1, g: Generation = INITIAL): StateMessage {
-  return { v: 2, g, t: 'state', r, i, n, records: 'eA==' };
+  return { v: 3, g, t: 'state', r, i, n, records: 'eA==' };
 }
 
 function alive(digest: number): AliveMessage {
-  return { v: 2, g: INITIAL, t: 'alive', digest };
+  return { v: 3, g: INITIAL, t: 'alive', digest };
 }
 
 function start(harness: Harness): string {

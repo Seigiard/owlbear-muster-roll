@@ -53,26 +53,30 @@ const NPC: Template = {
   kind: 'single',
   title: 'NPC',
   visibility: 'gm',
-  sections: [
+  tabs: [
     {
-      repeat: true,
-      tokens: true,
-      rows: [
-        [
-          { kind: 'field', type: 'text', id: 'mob' },
-          { kind: 'field', type: 'number', id: 'hp' },
-        ],
+      sections: [
+        {
+          repeat: true,
+          tokens: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'mob' },
+              { kind: 'field', type: 'number', id: 'hp' },
+            ],
+          ],
+        },
       ],
     },
   ],
 };
 
 function pcTemplate(sections: PresetSection[]): Template {
-  return { id: 'pc', kind: 'set', title: 'Персонажи', nameField: 'name', sections };
+  return { id: 'pc', kind: 'set', title: 'Персонажи', nameField: 'name', tabs: [{ sections }] };
 }
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     pcTemplate([
       {
@@ -93,7 +97,7 @@ const PRESET: Preset = {
 // The row of `str` is named by `note` now, and the repeat section by `label`, which replaces
 // `item`.
 const MOVED: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     pcTemplate([
       {
@@ -121,7 +125,7 @@ const MOVED: Preset = {
 
 // Only a label is new, so nothing moves or goes.
 const RELABELLED: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     pcTemplate([
       {
@@ -142,7 +146,7 @@ const RELABELLED: Preset = {
 
 // `note` goes from the row of `str`.
 const NO_NOTE: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     pcTemplate([{ rows: [NAME_ROW, [{ kind: 'field', type: 'number', id: 'str' }]] }, ITEMS]),
     NPC,
@@ -150,14 +154,20 @@ const NO_NOTE: Preset = {
 };
 
 // The sheet set goes, with every sheet of it.
-const NO_PC: Preset = { v: 2, templates: [NPC] };
+const NO_PC: Preset = { v: 3, templates: [NPC] };
 
 // The NPC repeat section is no longer linkable.
 const NO_TOKENS: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     PRESET.templates[0] ?? NPC,
-    { ...NPC, sections: NPC.sections.map(({ tokens: _tokens, ...section }) => section) },
+    {
+      ...NPC,
+      tabs: NPC.tabs.map((tab) => ({
+        ...tab,
+        sections: tab.sections.map(({ tokens: _tokens, ...section }) => section),
+      })),
+    },
   ],
 };
 
@@ -255,7 +265,7 @@ describe('a preset diff', () => {
     // #given: a preset a newer build wrote.
     const newer: VersionedRecord = {
       k: 'preset',
-      d: deflateToBase64(JSON.stringify({ ...PRESET, v: 3 })),
+      d: deflateToBase64(JSON.stringify({ ...PRESET, v: 4 })),
       c: 1,
       a: 'seed',
     };
@@ -865,11 +875,11 @@ function answer(room: Room, data: JsonValue): void {
 }
 
 function commit(records: VersionedRecord[]): JsonValue {
-  return { v: 2, g: GENERATION, t: 'commit', records };
+  return { v: 3, g: GENERATION, t: 'commit', records };
 }
 
 function reject(edit: { k: string; c: number; a: string }, reason: 'denied' | 'stale'): JsonValue {
-  return { v: 2, g: GENERATION, t: 'reject', k: edit.k, c: edit.c, a: edit.a, reason };
+  return { v: 3, g: GENERATION, t: 'reject', k: edit.k, c: edit.c, a: edit.a, reason };
 }
 
 function strEdit(fieldId: string, value: JsonValue): Command {

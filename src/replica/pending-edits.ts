@@ -1,4 +1,4 @@
-import { canEdit, proposalAllowed, type ProposalContext } from '@/core/access';
+import { playerMayEdit, proposalAllowed, type ProposalContext } from '@/core/access';
 import type { FieldPatchTarget } from '@/core/field-patch';
 import { counterAbove, mergeRecords, type Version } from '@/core/merge';
 import { recordFitsOneMessage } from '@/core/message-size';
@@ -93,7 +93,9 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     }
 
     // No access refuses before the field is checked, so a read-only sheet says why.
-    if (!playerMayEdit(view, command.sheetId)) {
+    const policy = resolveSheet(view, presetOf(view.get('preset')), command.sheetId);
+
+    if (policy === null || !playerMayEdit(policy, view, options.playerId)) {
       return err('not-allowed');
     }
 
@@ -342,18 +344,6 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     const stripped = strippedProposal(made.value);
 
     return recordFitsOneMessage(stripped) ? ok(stripped) : err('too-large');
-  }
-
-  // AD-4, AD-18: the sheet's template lets this player edit it: a sheet of a sheet set it holds a
-  // live `acl:` of, or a player-editable single sheet. A hidden template takes no player edit.
-  function playerMayEdit(view: ReadonlyMap<string, VersionedRecord>, sheetId: string): boolean {
-    const policy = resolveSheet(view, presetOf(view.get('preset')), sheetId);
-
-    return (
-      policy !== null &&
-      (policy.write === 'players-edit' ||
-        (policy.write === 'per-player' && canEdit(view, sheetId, options.playerId)))
-    );
   }
 
   // AD-14: a player's version keeps no value the template of its sheet no longer has in its row or

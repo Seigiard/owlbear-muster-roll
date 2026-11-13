@@ -27,31 +27,35 @@ const PRESET: Preset = {
       kind: 'set',
       title: 'Characters',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          title: 'Stats',
-          rows: [
-            [
-              { kind: 'text', text: 'Name' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-            [
-              { kind: 'text', text: 'Strength' },
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'str_tired' },
-              { kind: 'dice', formula: '1d20 <= str' },
-            ],
-            [
-              { kind: 'text', text: 'Dexterity' },
-              { kind: 'field', type: 'number', id: 'dex' },
-              { kind: 'field', type: 'check', id: 'dex_tired' },
-            ],
-            [{ kind: 'text', text: 'Броня' }, ARMOR],
-            [{ kind: 'dice', formula: '1d6' }],
-            [
-              { kind: 'text', text: '  ' },
-              { kind: 'field', type: 'text', id: 'motto' },
-            ],
+          sections: [
+            {
+              title: 'Stats',
+              rows: [
+                [
+                  { kind: 'text', text: 'Name' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+                [
+                  { kind: 'text', text: 'Strength' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'str_tired' },
+                  { kind: 'dice', formula: '1d20 <= str' },
+                ],
+                [
+                  { kind: 'text', text: 'Dexterity' },
+                  { kind: 'field', type: 'number', id: 'dex' },
+                  { kind: 'field', type: 'check', id: 'dex_tired' },
+                ],
+                [{ kind: 'text', text: 'Броня' }, ARMOR],
+                [{ kind: 'dice', formula: '1d6' }],
+                [
+                  { kind: 'text', text: '  ' },
+                  { kind: 'field', type: 'text', id: 'motto' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -61,19 +65,23 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPCs',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          title: 'Foes',
-          repeat: true,
-          rows: [
-            [
-              { kind: 'text', text: 'Foe' },
-              { kind: 'field', type: 'text', id: 'foe' },
-            ],
-            [
-              { kind: 'field', type: 'number', id: 'hp' },
-              { kind: 'dice', formula: '1d20 + hp' },
-            ],
+          sections: [
+            {
+              title: 'Foes',
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'text', text: 'Foe' },
+                  { kind: 'field', type: 'text', id: 'foe' },
+                ],
+                [
+                  { kind: 'field', type: 'number', id: 'hp' },
+                  { kind: 'dice', formula: '1d20 + hp' },
+                ],
+              ],
+            },
           ],
         },
       ],
