@@ -255,3 +255,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-48-catch-up-state-machine.md`
   summary: Under mutation M5, several two-GM engine tests pass or fail from run to run, so M5's failing set is not a stable calibration signal.
   evidence: Three runs on each side varied in `engine-import :: adoption guards :: an adopter whose save fails…`, `engine-import :: adoption :: a second GM adopts on reset alone…`, `engine-import :: two imports at once end with every client on the higher one`, `engine-propose :: on two GM clients: both store the same record and both commit its echo`, `engine-scene :: two GM clients :: both clear the link…`, `engine-sync :: two GM clients :: settle on the record with the higher (c, a)…` and `engine-wipe :: a wipe :: another GM adopts the empty room…`. The 13 failures stable on all runs match on both sides.
+
+## Deferred from: build of spec-task-50-room-copy-module (2026-11-13)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-50-room-copy-module.md`
+  summary: An import keeps writing its room copy after its client loses the GM role during the import's metadata read, and the engine then sends `reset` from what is now a player.
+  evidence: The engine's `importSuperseded` (`src/replica/engine.ts`) checks only stop, adoption and generation, at the baseline `17f80f3` and after TASK-50; `changeRole` calls `roomCopy.demoted()`, which does not stop an import in flight. Code review round 1 of TASK-50, finding `bugs+impl-codex-2`, raised it as pre-existing. A fix changes the import contract (what a demoted importer reports), so it needs its own task.

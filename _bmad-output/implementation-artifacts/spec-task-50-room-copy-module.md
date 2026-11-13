@@ -2,7 +2,7 @@
 title: 'TASK-50: move the room copy write loop out of the replica engine'
 type: 'refactor'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '17f80f328ad789f0f0df63a7cd6d8e4159d08010'
@@ -77,12 +77,12 @@ Line numbers are at `17f80f3` (master with TASK-49 merged in).
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Baseline -- at `17f80f3` (master with TASK-49 merged in): junit list, per-file wall time, e2e count, and mutations R1-R16 again (the design-pass probe ran at `a514082`).
-- [ ] `src/replica/room-copy.ts` -- create the module per Design Notes from the moved code -- phase A.
-- [ ] `src/replica/engine.ts` -- route every call site in the Code Map and delete the moved code -- phase A. Commit when the junit list equals the baseline.
-- [ ] `src/replica/room-copy.test.ts` -- one test per matrix row and per error case, over `createMemoryRoom` and a fault gate -- phase B.
-- [ ] `src/replica/engine-room-copy.test.ts`, `src/replica/engine-import.test.ts` -- retire only the tests whose whole assertion a module test now owns; in the notes map each to its owner -- phase C.
-- [ ] Spine -- the structural seed names `room copy` in place of `snapshot writer`, and AD-8 names `src/replica/room-copy` as the owner of the write loop. Its own commit.
+- [x] Baseline -- at `17f80f3` (master with TASK-49 merged in): junit list, per-file wall time, e2e count, and mutations R1-R16 again (the design-pass probe ran at `a514082`).
+- [x] `src/replica/room-copy.ts` -- create the module per Design Notes from the moved code -- phase A.
+- [x] `src/replica/engine.ts` -- route every call site in the Code Map and delete the moved code -- phase A. Commit when the junit list equals the baseline.
+- [x] `src/replica/room-copy.test.ts` -- one test per matrix row and per error case, over `createMemoryRoom` and a fault gate -- phase B.
+- [x] `src/replica/engine-room-copy.test.ts`, `src/replica/engine-import.test.ts` -- retire only the tests whose whole assertion a module test now owns; in the notes map each to its owner -- phase C.
+- [x] Spine -- the structural seed names `room copy` in place of `snapshot writer`, and AD-8 names `src/replica/room-copy` as the owner of the write loop. Its own commit.
 
 **Acceptance Criteria:**
 - Given phase A, when `bun test` runs, then its junit list equals the baseline.
@@ -130,9 +130,25 @@ createRoomCopy(options: {
 
 ## Implementation Notes
 
+- Run directory: `~/.claude/artifacts/tdd-20261113-053405/task-50-room-copy-module/` (`ticket.md`, `controls/`, `review-01.md`, `review-02.md`).
+- Baseline at `17f80f3`: `bun test` junit list of 2794 lines; `bun run test:browser` 492 pass. Mutations over `bun test`: R1, R2, R9, R12, R13 and R16 fail 1-2 tests each; R3-R8, R10, R11, R14 and R15 fail none, as the design pass found.
+- Phase A (`42eb75d` on the chain): the junit list equals the baseline, e2e passes with the same 492 names, and each of R1-R16, rewritten for `room-copy.ts`, fails the same tests as at the baseline. The acceptance `rg` over `engine.ts` finds nothing.
+- Phase B: `room-copy.test.ts` holds every matrix row and its error cases, 39 tests over the mock metadata port and a fault gate, with no engine, no `room-rig` and no real-time wait. At the final state each of R1-R16 fails at least one of them.
+- Phase C: no engine test is retired. Each candidate in `engine-room-copy.test.ts` and `engine-import.test.ts` also asserts engine wiring, projection, persistence, traffic or catch-up, which no module test holds.
+- Baseline defect fixed (matrix row "Import rerun"): at the baseline, a trigger during an import write was lost when the import copy was verified, because that path returned before the rerun. Now one routine write follows the import on both paths. It starts without being awaited, as the baseline's failed path did, so the import resets the room without waiting for it.
+- Wall time, baseline -> final: `engine-room-copy.test.ts` 3.07s -> 2.96s, `engine-import.test.ts` 2.12s -> 1.73s, `engine-wipe.test.ts` 0.36s -> 0.20s; `room-copy.test.ts` runs in 0.11s.
+- Code review: round 1 (`mixed-terra`, 9/9 sources) found one major: the import awaited its follow-up write, which delayed `reset` and kept edits rejected as importing. It also found six minors: a test that checked only the end state, a pause test that did not check the cancel, untested matrix cases (superseded import, read outcomes older, newer and rejected, the gate closing at read-back), two misplaced comments and an inlined helper. All were fixed through the tdd chain. Round 2 (`final`, 2/2) found nothing.
+- Full check at the final state: oxfmt, lint, typecheck, `bun test` (2785 pass), `bun run test:browser` (492 pass), `bun run build`.
+
 ## Spec Change Log
 
 - Refresh after TASK-49 (before approval): the Code Map is at `17f80f3`; `changed` is `publisher.publish()`; the matrix row "Change signal" no longer asks the module to compare its own state, because the publisher's header diff drops a delta that changes nothing.
 - `baseline_commit` moves from `a514082` (the design pass) to `17f80f3`, the master merge with TASK-49 that phase 2 starts from; no code was built at `a514082`.
 
 ## Review Triage Log
+
+- Step 04 ran only the `code-review-carryover` layer. It returned one finding: code review's pre-existing `bugs+impl-codex-2`, an import that keeps writing after its client loses the GM role.
+
+| Finding | Verdict | Evidence | Route |
+|---|---|---|---|
+| Import keeps writing after the client loses the GM role (code review round 1, pre-existing) | medium | The engine's `importSuperseded` checks only stop, adoption and generation, at `17f80f3` and now, so a client demoted during the import's metadata read still writes the import copy and sends `reset`. | defer |
