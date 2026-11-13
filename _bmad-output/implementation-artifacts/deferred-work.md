@@ -249,3 +249,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-58-tabs-format-v3.md`
   summary: src/ui/copy.test.ts "Add a sheet of a sheet set" fails because EXPERIENCE.md asks for "+ Добавить" and copy.addSign is "+".
   evidence: Fails at 411b3d0 before TASK-58; the label belongs to the sidebar (TASK-60), which also updates the "+" assertions in tests/characters.e2e.ts.
+
+## Deferred from: code review of TASK-59 hidden tabs (2026-11-13)
+
+- source_spec: backlog TASK-59
+  summary: No test covers the tab check in the engine's deferred `openTargetShown` recheck of a held open request.
+  evidence: Review round 1 (revmux owlbear-task-59/01-initial, docs+tests-codex-1). A player press on a hidden-tab repeat block is refused earlier in `openTarget`, so only a GM who becomes a player within `openRequestTtlMs` reaches the recheck. The code handles it; only the regression test is missing.
+- source_spec: backlog TASK-59
+  summary: No e2e covers a template whose first tab is GM-only and whose second tab is visible, or a player reopening a tab chosen before it was hidden.
+  evidence: Review round 2 (revmux owlbear-task-59/02-after-fix, docs+tests-terra-1, lean-codex-1, docs+tests-codex-1). `openTabIndex(layout, chosen, shown)` picks the first tab the role sees; every new scenario starts on visible tab 0.
