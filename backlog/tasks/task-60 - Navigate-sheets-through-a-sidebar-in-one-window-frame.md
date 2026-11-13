@@ -1,11 +1,11 @@
 ---
 id: TASK-60
 title: Navigate sheets through a sidebar in one window frame
-status: To Do
+status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-12T18:50:00Z'
-updated_date: '2026-11-12T19:21:00Z'
+updated_date: '2026-11-13T00:34:00Z'
 labels:
   - v3
 dependencies:
