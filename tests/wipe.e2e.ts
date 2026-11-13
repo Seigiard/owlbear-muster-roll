@@ -125,7 +125,7 @@ test('with no preset, "Очистить всё" in Settings asks once, focused o
   const gm = await openGm(context, GM, null);
   const keysBefore = await allKeys(gm.window);
 
-  await gm.window.getByRole('button', { name: SETTINGS }).click();
+  await gm.window.getByRole('tab', { name: SETTINGS }).click();
 
   // #when
   await wipeButton(gm.window).click();
@@ -153,7 +153,7 @@ test('with no preset and Settings open, a confirmed wipe ends with "Очисти
   // #given
   const gm = await openGm(context, GM, null);
 
-  await gm.window.getByRole('button', { name: SETTINGS }).click();
+  await gm.window.getByRole('tab', { name: SETTINGS }).click();
   await wipeButton(gm.window).click();
 
   // #when
@@ -212,7 +212,7 @@ test('a confirmed wipe of a room with a version 1 copy empties it on every clien
     // oxlint-disable-next-line no-await-in-loop
     await expect(client.window.getByRole('button', { name: UPLOAD })).toBeVisible();
     // oxlint-disable-next-line no-await-in-loop
-    await expect(client.window.getByRole('tab')).toHaveCount(0);
+    await expect(client.window.getByRole('tab')).toHaveText([SETTINGS]);
     // oxlint-disable-next-line no-await-in-loop
     await expect(client.window.getByRole('status')).toHaveText('');
   }

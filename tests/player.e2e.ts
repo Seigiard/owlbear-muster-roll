@@ -346,23 +346,23 @@ test('a GM rename and then deletion of the character a player has open reach the
   await expect(player.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
 });
 
-test('a GM in Settings with no preset made a player and back starts with the gear off', async ({
+test('a GM in Settings with no preset made a player and back keeps Settings selected', async ({
   context,
 }) => {
   // #given
   const gm = await openClient(context, GM, null);
-  const gear = gm.window.getByRole('button', { name: SETTINGS });
+  const settings = gm.window.getByRole('tab', { name: SETTINGS });
 
-  await gear.click();
-  await expect(gear).toHaveAttribute('aria-pressed', 'true');
+  await settings.click();
+  await expect(settings).toHaveAttribute('aria-selected', 'true');
 
   // #when
   await setRole(gm, 'PLAYER');
-  await expect(gear).toHaveCount(0);
+  await expect(settings).toHaveCount(0);
   await setRole(gm, 'GM');
 
   // #then
-  await expect(gear).toHaveAttribute('aria-pressed', 'false');
+  await expect(settings).toHaveAttribute('aria-selected', 'true');
   await expect(gm.window.getByRole('button', { name: LOAD_PRESET })).toBeVisible();
 });
 
@@ -420,7 +420,7 @@ test('a GM with a delete confirmation open made a player sees it close on the sa
   await expect(confirmation(gm.window, 'Брок')).toHaveCount(0);
 });
 
-test('a player made GM gets the NPC tab, the gear and "+"', async ({ context }) => {
+test('a player made GM gets the NPC entry, Settings and the add control', async ({ context }) => {
   // #given
   await openGm(context, RECORDS);
 
@@ -432,7 +432,7 @@ test('a player made GM gets the NPC tab, the gear and "+"', async ({ context }) 
   await setRole(player, 'GM');
 
   // #then
-  await expect(player.window.getByRole('tab')).toHaveText([...CHARACTER_TABS, 'NPC', '⚙︎']);
+  await expect(player.window.getByRole('tab')).toHaveText([...CHARACTER_TABS, 'NPC', SETTINGS]);
   await expect(player.window.getByRole('button', { name: ADD })).toBeVisible();
   await player.window.getByRole('tab', { name: 'NPC' }).click();
   await expect(npcNames(player.window)).toHaveValue('Скелет');

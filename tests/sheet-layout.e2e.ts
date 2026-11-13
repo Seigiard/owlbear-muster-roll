@@ -134,7 +134,7 @@ const RECORDS = [
 ] as const;
 
 test.beforeEach(async ({ page }) => {
-  await page.setViewportSize({ width: 600, height: 800 });
+  await page.setViewportSize({ width: 760, height: 800 });
 });
 
 test('a section with columns puts its rows on one grid, and the short row leaves its last cell empty', async ({

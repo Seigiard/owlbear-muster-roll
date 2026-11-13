@@ -47,7 +47,7 @@ const PLAYER: ClientParams = {
 };
 
 // A visible sheet set, the hidden single sheet NPC, a visible single sheet, and a hidden sheet set.
-const PRESET_TEXT = JSON.stringify({
+const ACCESS_PRESET = {
   v: 3,
   templates: [
     {
@@ -57,6 +57,7 @@ const PRESET_TEXT = JSON.stringify({
       nameField: 'name',
       tabs: [
         {
+          title: 'Основное',
           sections: [
             {
               rows: [
@@ -138,6 +139,34 @@ const PRESET_TEXT = JSON.stringify({
         },
       ],
     },
+  ],
+} as const;
+
+const PRESET_TEXT = JSON.stringify(ACCESS_PRESET);
+
+const TABBED_PRESET_TEXT = JSON.stringify({
+  ...ACCESS_PRESET,
+  templates: [
+    {
+      ...ACCESS_PRESET.templates[0],
+      tabs: [
+        ...ACCESS_PRESET.templates[0].tabs,
+        {
+          title: 'Дополнительно',
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Заметка' },
+                  { kind: 'field', type: 'text', id: 'note' },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    ...ACCESS_PRESET.templates.slice(1),
   ],
 });
 
@@ -285,6 +314,96 @@ test('a player who joins while the panel is open gets a row', async ({ context }
   await expect(accessPanel(gm.window).getByRole('group')).toHaveText([`Лиза${MAY_EDIT}`]);
 });
 
+test('every access row and sheet field stays reachable on a two-tab sheet at minimum height', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context, RECORDS, TABBED_PRESET_TEXT);
+
+  await gm.window.setViewportSize({ width: 600, height: 360 });
+  await addPartyMember(gm.window, 'mock-connection-anna', 'PLAYER', {
+    id: 'anna',
+    name: 'Анна',
+  });
+  await addPartyMember(gm.window, 'mock-connection-boris', 'PLAYER', {
+    id: 'boris',
+    name: 'Борис',
+  });
+  await addPartyMember(gm.window, 'mock-connection-vera', 'PLAYER', {
+    id: 'vera',
+    name: 'Вера',
+  });
+  await addPartyMember(gm.window, 'mock-connection-yana', 'PLAYER', {
+    id: 'yana',
+    name: 'Яна',
+  });
+  await accessChip(gm.window).click();
+
+  const lastPlayerControl = accessPanel(gm.window).getByRole('checkbox').last();
+  const sheetField = gm.window.getByRole('textbox', { name: 'Сила', exact: true });
+
+  await expect(lastPlayerControl).toHaveAccessibleName('Яна: может править');
+
+  // #when
+  await lastPlayerControl.focus();
+
+  // #then
+  await expect(lastPlayerControl).toBeFocused();
+  await expect.soft(lastPlayerControl).toBeInViewport();
+
+  // #when
+  await sheetField.focus();
+
+  // #then
+  await expect(sheetField).toBeFocused();
+  await expect(sheetField).toBeInViewport();
+});
+
+test('every access row and sheet field stays reachable on a single-tab sheet at minimum height', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openGm(context, RECORDS);
+
+  await gm.window.setViewportSize({ width: 600, height: 360 });
+  await addPartyMember(gm.window, 'mock-connection-anna', 'PLAYER', {
+    id: 'anna',
+    name: 'Анна',
+  });
+  await addPartyMember(gm.window, 'mock-connection-boris', 'PLAYER', {
+    id: 'boris',
+    name: 'Борис',
+  });
+  await addPartyMember(gm.window, 'mock-connection-vera', 'PLAYER', {
+    id: 'vera',
+    name: 'Вера',
+  });
+  await addPartyMember(gm.window, 'mock-connection-yana', 'PLAYER', {
+    id: 'yana',
+    name: 'Яна',
+  });
+  await accessChip(gm.window).click();
+
+  const lastPlayerControl = accessPanel(gm.window).getByRole('checkbox').last();
+  const sheetField = gm.window.getByRole('textbox', { name: 'Сила', exact: true });
+
+  await expect(lastPlayerControl).toHaveAccessibleName('Яна: может править');
+
+  // #when
+  await lastPlayerControl.focus();
+
+  // #then
+  await expect(lastPlayerControl).toBeFocused();
+  await expect(lastPlayerControl).toBeInViewport();
+
+  // #when
+  await sheetField.focus();
+
+  // #then
+  await expect(sheetField).toBeFocused();
+  await expect(sheetField).toBeInViewport();
+});
+
 test('"Может править" writes acl: at once and the player header turns to "Можно править", and back', async ({
   context,
 }) => {
@@ -399,8 +518,9 @@ test('a change with no answer is dropped after 5 s and says so in the panel', as
 async function openGm(
   context: BrowserContext,
   records: readonly StoredRecord[],
+  presetText = PRESET_TEXT,
 ): Promise<RoomClient> {
-  const gm = await openClient(context, GM, records);
+  const gm = await openClient(context, GM, records, presetText);
 
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
 
@@ -412,11 +532,12 @@ async function openClient(
   context: BrowserContext,
   params: ClientParams,
   records: readonly StoredRecord[] | null,
+  presetText = PRESET_TEXT,
 ): Promise<RoomClient> {
   const window = await openClientWindow(context, params);
 
   if (records !== null) {
-    await seedStorage(window, records, PRESET_TEXT, params.device);
+    await seedStorage(window, records, presetText, params.device);
   }
 
   const background = await openClientBackground(context, params);

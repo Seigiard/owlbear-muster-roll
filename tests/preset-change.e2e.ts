@@ -126,8 +126,6 @@ const RECORDS: StoredRecord[] = [
   record('rep:brok:bonus:i1', { order: 0, cells: { bonus: 2 } }),
 ];
 
-const GEAR = '⚙︎';
-
 const WITH_CREW = presetText(
   [
     labelled('Сила', number('str'), { kind: 'dice', formula: '1d1 + str' }),
@@ -421,7 +419,7 @@ test('an upload that drops a sheet set with three sheets names the deleted sheet
     sheet: await storedData(gm.window, 'sheet:ivan'),
   }).toEqual({
     preset: JSON.parse(WITH_CREW),
-    tabs: ['Брок', 'NPC', 'Иван', 'Пётр', 'Яна', GEAR],
+    tabs: ['Брок', 'NPC', 'Иван', 'Пётр', 'Яна', SETTINGS],
     sheet: { set: 'crew', order: 0 },
   });
 });
@@ -442,7 +440,7 @@ test('a confirmed upload that drops a sheet set deletes its sheets on every clie
 
   // #then
   await expect(block(gm.window)).toHaveCount(0);
-  await expect(gm.window.getByRole('tab')).toHaveText(['Брок', 'NPC', GEAR]);
+  await expect(gm.window.getByRole('tab')).toHaveText(['Брок', 'NPC', SETTINGS]);
   await expect(player.window.getByRole('tab')).toHaveText(['Брок', 'NPC']);
   expect(
     await Promise.all(

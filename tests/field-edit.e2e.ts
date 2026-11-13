@@ -619,7 +619,7 @@ test('passing through a number field that holds a string or an exponent form cha
   }).toEqual({ messages: 0, str: 'много', dex: '1e+21', sent: 0 });
 });
 
-test('Tab goes through the tab bar, the header, then every field and repeat block control in preset order', async ({
+test('Tab goes through the sidebar, the header, then every field and repeat block control in preset order', async ({
   page,
   context,
 }) => {

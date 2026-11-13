@@ -222,7 +222,7 @@ test('a background restart over the same storage shows the same records', async 
   expect(await projectedSheets(page, 'restart-final')).toEqual(['sheet:restart']);
 });
 
-test('a failed write keeps the value and shows the banner at full width as a live region', async ({
+test('a failed write keeps the value and shows the banner across the content column as a live region', async ({
   page,
   context,
 }) => {
@@ -245,7 +245,10 @@ test('a failed write keeps the value and shows the banner at full width as a liv
   expect({
     sheets: await projectedSheets(page, 'after-failure'),
     width: (await page.getByRole('status').boundingBox())?.width,
-  }).toEqual({ sheets: ['sheet:failed-write'], width: 600 });
+  }).toEqual({
+    sheets: ['sheet:failed-write'],
+    width: (await page.getByRole('tabpanel').boundingBox())?.width,
+  });
 });
 
 test('the banner goes when the notices clear', async ({ page }) => {

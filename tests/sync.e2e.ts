@@ -32,6 +32,7 @@ const DELETE = 'Удалить';
 const UNNAMED = 'Без имени';
 const SHEET_NAME = 'Имя листа';
 const ADD_ENEMY = 'Добавить в «Противники»';
+const SETTINGS = 'Настройки';
 const GM_A: ClientParams = { client: 'a' };
 const GM_B: ClientParams = { client: 'b' };
 const PLAYER: ClientParams = { client: 'p', role: 'PLAYER', player: 'lisa', device: 'p' };
@@ -214,7 +215,7 @@ test('a sheet created, renamed and deleted on one GM client shows on the other',
   await a.window.getByRole('textbox', { name: SHEET_NAME }).press('Enter');
 
   // #then
-  await expect(b.window.getByRole('tab')).toHaveText(['Брок', 'Лиза', 'Гимли', 'NPC', '⚙︎']);
+  await expect(b.window.getByRole('tab')).toHaveText(['Брок', 'Лиза', 'Гимли', 'NPC', SETTINGS]);
 
   // #when: an NPC repeat block is added and named.
   await a.window.getByRole('tab', { name: 'NPC' }).click();
@@ -232,7 +233,7 @@ test('a sheet created, renamed and deleted on one GM client shows on the other',
   await deleteShownSheet(a.window);
 
   // #then
-  await expect(b.window.getByRole('tab')).toHaveText(['Брок', 'Лиза', 'NPC', '⚙︎']);
+  await expect(b.window.getByRole('tab')).toHaveText(['Брок', 'Лиза', 'NPC', SETTINGS]);
 });
 
 test('a remote delete of the active sheet opens the first tab and closes its confirmation', async ({

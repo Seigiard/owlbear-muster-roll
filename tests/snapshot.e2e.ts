@@ -191,7 +191,7 @@ test('with no preset, both snapshot buttons are disabled with the preset-first r
   await expect(page.getByRole('button', { name: LOAD_PRESET })).toBeVisible();
 
   // #when
-  await page.getByRole('button', { name: SETTINGS }).click();
+  await page.getByRole('tab', { name: SETTINGS }).click();
 
   // #then
   const download = snapshotSection(page).getByRole('button', { name: DOWNLOAD });
@@ -326,7 +326,7 @@ test('a file sheet of a template the preset lacks is dropped, counted, and stays
 
   // #then
   await expect(page.getByRole('tab', { name: 'Мира' })).toBeVisible();
-  await expect(page.getByRole('tab')).toHaveText(['Мира', 'NPC', 'Инвентарь', '⚙︎']);
+  await expect(page.getByRole('tab')).toHaveText(['Мира', 'NPC', 'Инвентарь', SETTINGS]);
 
   // The old generation goes once the new one is complete, so only the import's keys stay.
   await expect

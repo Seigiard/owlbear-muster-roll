@@ -654,6 +654,33 @@ test('a click on a preview cell selects its tree item', async ({ page }) => {
   await expect(preview(page).getByRole('heading', { name: 'NPC', level: 1 })).toBeVisible();
 });
 
+test('the preview sidebar lists templates in order and selects a template in the tree', async ({
+  page,
+}) => {
+  // #given
+  await page.goto(PAGE);
+  await openFromMenu(page, builder.openD20);
+
+  const shown = preview(page);
+  const sidebar = shown.getByRole('tablist').first();
+
+  // #when
+  const entries = await sidebar.getByRole('tab').allTextContents();
+
+  // #then
+  await expect(shown.getByRole('heading', { name: 'Персонажи', exact: true })).toBeVisible();
+  expect(entries).toEqual(['name', 'NPC', 'Инвентарь', 'Журнал', 'Заметки ГМ']);
+
+  // #when
+  await sidebar.getByRole('tab', { name: 'NPC', exact: true }).click();
+
+  // #then
+  await expect(item(page, `NPC · ${builder.form.kindSingle}`)).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+});
+
 test('undo and redo each change, and typing in one input is one step', async ({ page }) => {
   // #given
   await page.goto(PAGE);
@@ -872,7 +899,7 @@ test('Settings in the window links to the builder in a new tab', async ({ page, 
   await openWindowAndBackground(page, context);
 
   // #when
-  await page.getByRole('button', { name: copy.place.settings }).click();
+  await page.getByRole('tab', { name: copy.place.settings }).click();
 
   // #then
   const link = page.getByRole('link', { name: builder.settingsLink });
