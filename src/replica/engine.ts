@@ -1,18 +1,13 @@
 import { nanoid } from 'nanoid';
 
-import { checkProposal, partyEntries, type PartyEntry, type ProposalContext } from '@/core/access';
+import { checkProposal, partyEntries, type ProposalContext } from '@/core/access';
 import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { dicePlusDice, dicePlusTarget } from '@/core/dice-plus';
 import { prepareDiceRoll, type DiceRollFailure, type PreparedDiceRoll } from '@/core/dice-roll';
 import { recordDigest } from '@/core/digest';
 import { newRecordId, type RecordIdKind } from '@/core/ids';
 import type { JsonObject } from '@/core/json';
-import {
-  fitsOneMessage,
-  jsonByteLength,
-  recordFitsOneMessage,
-  splitBatch,
-} from '@/core/message-size';
+import { fitsOneMessage, recordFitsOneMessage } from '@/core/message-size';
 import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
 import { listedFaces, randomFaces, type FaceSource } from '@/core/formula-evaluate';
 import { blockIndex, linkTargetKey, type LinkTarget } from '@/core/link-target';
@@ -74,12 +69,10 @@ import {
   UI_CHANNEL,
   type Command,
   type CommandMessage,
-  type DeltaMessage,
   type EngineMessage,
   type Notice,
   type OpenSheetRequest,
   type PresetDiffMessage,
-  type ProjectionMessage,
   type RejectionReason,
   type RollOutcome,
   type RollRequestMessage,
@@ -87,7 +80,7 @@ import {
   type RoomCopyStatus,
   type SnapshotCheckMessage,
 } from '@/core/ui-messages';
-import { rollShownTo, sheetShownTo, visibleRecords, type PlayerRole } from '@/core/visibility';
+import { rollShownTo, sheetShownTo, type PlayerRole } from '@/core/visibility';
 import type { BroadcastEvent, BroadcastOptions, Platform } from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
 import {
@@ -112,6 +105,7 @@ import { watchSceneRemovals, type SceneWatch } from '@/replica/scene-watch';
 import { createTokenMenu, type TokenMenuCopy } from '@/replica/token-menu';
 import { createVersionMinter } from '@/replica/version-minter';
 import { createWindowSizer } from '@/replica/window-size';
+import { createWindowPublisher, type WindowPublisher } from '@/replica/window-publisher';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
 
@@ -212,14 +206,6 @@ type LoadedReplica = {
   persistence: Persistence | null;
 };
 
-// A delta or projection part: records of the replica, or records of the pending view.
-type Part = { records: VersionedRecord[]; pending: VersionedRecord[] };
-
-type PendingChanges = { records: VersionedRecord[]; withdrawn: string[] };
-
-// What one delta carries: replica records, pending view records, and keys the windows drop.
-type DeltaContent = Part & { withdrawn: string[] };
-
 // A roll evaluated in this client, before it has an id and the roller's name.
 type EvaluatedRoll = Omit<RollContent, 'id' | 'roller'>;
 
@@ -253,10 +239,6 @@ export async function startReplicaEngine(
   const loaded = loadReplica(platform, startRole);
   const replica = new Map<string, VersionedRecord>();
   const problemKeys = loaded.problemKeys;
-  // Names the stream of projections and deltas. A role change starts a new stream, so every window
-  // asks for a fresh projection: visibility changes the record set, and a delta cannot take a
-  // record out of a window.
-  let engineId = newId();
   const minter = createVersionMinter(connectionId);
   const composers = createComposers(connectionId);
   const recentCommandIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
@@ -273,7 +255,6 @@ export async function startReplicaEngine(
     sizedFor = null;
   });
 
-  const answeringNonces = new Set<string>();
   const pending = createPendingQueue();
   // The ids each pending intent has made so far, by command id and then by role, until the queue
   // is replayed.
@@ -315,7 +296,6 @@ export async function startReplicaEngine(
       ),
   });
 
-  let sequence = 0;
   // AD-12: once a newer build has spoken in the room, the banner stays until a reload.
   let newerVersionSeen = false;
   // AD-10: the background owns the token menu. "Отвязать лист" runs as a GM command of this
@@ -368,21 +348,13 @@ export async function startReplicaEngine(
 
   // AD-11: a client that became GM persists every held record when its catch-up ends.
   let persistAllOnExit = false;
-  // The pending view by key, as the windows last got it.
-  let shownPending = new Map<string, VersionedRecord>();
   let roleReads = 0;
-  // A window ignores deltas until its first projection, so none is worth sending before one.
-  let projectionSent = false;
-  // The party as the windows last got it, as JSON, so a party change that changes nothing they show
-  // sends no delta.
-  let shownParty = '[]';
-  // Made after `stopped` and `projectionSent`, which its callback reads.
+  // Made after `stopped`, which its callback reads, and before `publisher`, which it also reads.
+  // Its first replace follows the asynchronous party read; no await falls between this and the
+  // publisher assignment.
   const roster = createPartyRoster(platform.party, followParty);
   // The digest of the replica, until the replica changes.
   let cachedDigest: number | null = null;
-  // A player's windows hold the replica records visible when they were last sent. Each delta sends
-  // the records that became visible and withdraws the keys that no longer are.
-  let sentVisible = new Set<string>();
   // AD-8 room copy. The notice stays until the next verified write.
   let roomCopyNotSaved = false;
   // A readable room copy of this client's generation was last read or written.
@@ -426,12 +398,30 @@ export async function startReplicaEngine(
     saveAdoption: saveAdoptionData,
   });
 
+  let publisher: WindowPublisher;
+
   for (const record of loaded.records) {
     merge(record);
   }
 
   // TASK-33: a saved preset sizes the window before the first catch-up ends.
   followWindowSize();
+
+  publisher = createWindowPublisher({
+    send,
+    newId,
+    presetOf,
+    state: () => ({
+      role,
+      replica,
+      pendingView: pendingViewRecords(),
+      notices: currentNotices(),
+      sync: catchUp.view(),
+      roomCopy: roomCopyStatus(),
+      // UX-DR12: only a GM's access panel lists the party, so a player's windows get none.
+      party: role === 'GM' ? partyEntries(roster.entries()) : [],
+    }),
+  });
 
   function merge(record: VersionedRecord): VersionedRecord {
     const current = replica.get(record.k);
@@ -524,11 +514,11 @@ export async function startReplicaEngine(
           disarmCatchUpTimer(decision.timer);
           break;
         case 'entered': {
-          const changed = decision.trigger === 'start' ? [] : mergePersisted();
-
-          if (decision.trigger !== 'start' && (decision.fresh || changed.length > 0)) {
-            emitDelta(changed);
+          if (decision.trigger !== 'start') {
+            mergePersisted();
           }
+
+          publisher.publish();
 
           break;
         }
@@ -609,9 +599,7 @@ export async function startReplicaEngine(
           performCaughtUp(decision.exit);
           break;
         case 'show':
-          if (!decision.projectedOnly || projectionSent) {
-            emitDelta([]);
-          }
+          publisher.publish();
 
           break;
 
@@ -631,7 +619,7 @@ export async function startReplicaEngine(
           }
 
           if (decision.keepNonce) {
-            emitDelta([]);
+            publisher.publish();
           }
 
           break;
@@ -678,65 +666,6 @@ export async function startReplicaEngine(
     send({ t: 'command-done', id }).catch((error) => {
       console.error('Muster Roll could not answer a command', error);
     });
-  }
-
-  function sendProjection(nonce: string): void {
-    // A window repeats its request until the first part arrives, so one already answered
-    // and still in the queue must not be answered twice.
-    if (answeringNonces.has(nonce)) {
-      return;
-    }
-
-    const shownRecords = [...shownPending.values()];
-    // GM visibility is the identity, so a GM builds no view to judge templates by.
-    const known = role === 'GM' ? replica : shownView();
-    const preset = presetOf(known.get('preset'));
-    const records = visibleRecords(role, preset, [...replica.values()], known);
-    const pendingRecords = visibleRecords(role, preset, shownRecords, known);
-    const largestCount = records.length + pendingRecords.length + 1;
-
-    const envelope: ProjectionMessage = {
-      t: 'projection',
-      nonce,
-      engine: engineId,
-      seq: sequence,
-      i: largestCount,
-      n: largestCount,
-      records: [],
-      pending: [],
-      notices: currentNotices(),
-      sync: { ...catchUp.view(), role },
-      roomCopy: roomCopyStatus(),
-      party: windowParty(),
-    };
-
-    const parts = splitParts(records, pendingRecords, jsonByteLength(envelope));
-
-    if (parts === null) {
-      console.error('Muster Roll could not split a projection');
-
-      return;
-    }
-
-    answeringNonces.add(nonce);
-    projectionSent = true;
-    sentVisible = role === 'GM' ? new Set() : new Set(records.map((record) => record.k));
-
-    const sends = parts.map((part, index) =>
-      send({ ...envelope, i: index + 1, n: parts.length, ...part }),
-    );
-
-    Promise.all(sends)
-      .then(() => {
-        answeringNonces.delete(nonce);
-      })
-      .catch((error) => {
-        console.error('Muster Roll could not send a projection', error);
-      });
-
-    // A window that just connected may be the one Owlbear opened for the request. It goes after the
-    // projection in the same queue, so the window holds the sheet when the request arrives.
-    deliverOpen();
   }
 
   // UX-DR21: a press on a token whose target this role cannot see opens nothing. Owlbear's filter
@@ -800,75 +729,13 @@ export async function startReplicaEngine(
     }
   }
 
-  // The records as the windows show them: the replica, with the pending view over it. A sheet's
-  // template is read from here, so a row is judged by its sheet even when the sheet is not in the
-  // batch.
-  function shownView(): Map<string, VersionedRecord> {
-    const view = new Map(replica);
-
-    for (const [key, record] of shownPending) {
-      view.set(key, record);
-    }
-
-    return view;
-  }
-
-  function emitDelta(records: readonly VersionedRecord[]): void {
-    const changes = pendingViewChanges();
-    const content = role === 'GM' ? gmDelta(records, changes) : playerDelta(records, changes);
-
-    const envelope: DeltaMessage = {
-      t: 'delta',
-      engine: engineId,
-      seq: sequence + content.records.length + content.pending.length + 1,
-      records: [],
-      pending: [],
-      withdrawn: content.withdrawn,
-      notices: currentNotices(),
-      sync: { ...catchUp.view(), role },
-      roomCopy: roomCopyStatus(),
-      party: windowParty(),
-    };
-
-    const parts = splitParts(content.records, content.pending, jsonByteLength(envelope));
-
-    if (parts === null) {
-      console.error('Muster Roll could not split a delta');
-
-      return;
-    }
-
-    for (const [index, part] of parts.entries()) {
-      sequence += 1;
-
-      // A window drops the withdrawn keys before it takes the records, so only the first part
-      // withdraws: a later one would drop records an earlier part brought.
-      const withdrawn = index === 0 ? content.withdrawn : [];
-
-      send({ ...envelope, seq: sequence, withdrawn, ...part }).catch((error) => {
-        console.error('Muster Roll could not send a delta', error);
-      });
-    }
-  }
-
-  // UX-DR12: only a GM's access panel lists the party, so a player's windows get none.
-  function windowParty(): PartyEntry[] {
-    const party = role === 'GM' ? partyEntries(roster.entries()) : [];
-
-    shownParty = JSON.stringify(party);
-
-    return party;
-  }
-
   // A party change reaches a GM's windows at once, so the access panel lists who is in the room.
   function followParty(): void {
-    if (stopped || !projectionSent || role !== 'GM') {
+    if (stopped) {
       return;
     }
 
-    if (JSON.stringify(partyEntries(roster.entries())) !== shownParty) {
-      emitDelta([]);
-    }
+    publisher.publish();
   }
 
   // AD-2: the menu follows every change of the replica or the role, once the first catch-up has
@@ -975,66 +842,6 @@ export async function startReplicaEngine(
       sceneCommandIds.add(id);
       runCommand(id, { type: 'link-clear', tokenId });
     }
-  }
-
-  // A window drops a withdrawn key from its replica too, so a key that leaves the pending view comes
-  // with the replica's record again.
-  function gmDelta(records: readonly VersionedRecord[], changes: PendingChanges): DeltaContent {
-    const sent = new Map(records.map((record) => [record.k, record]));
-
-    for (const key of changes.withdrawn) {
-      const record = replica.get(key);
-
-      if (record !== undefined) {
-        sent.set(key, record);
-      }
-    }
-
-    return { records: [...sent.values()], pending: changes.records, withdrawn: changes.withdrawn };
-  }
-
-  // A record can become visible or stop being visible without changing itself: a sheet's rows when
-  // its sheet arrives, a link that now points to a hidden sheet, every sheet when the preset hides
-  // its template. So a player's delta compares the whole visible set with the one the windows hold.
-  function playerDelta(records: readonly VersionedRecord[], changes: PendingChanges): DeltaContent {
-    const known = shownView();
-    const preset = presetOf(known.get('preset'));
-
-    const visibleNow = new Map(
-      visibleRecords(role, preset, [...replica.values()], known).map((record) => [
-        record.k,
-        record,
-      ]),
-    );
-
-    const sent = new Map<string, VersionedRecord>();
-
-    for (const key of [...records.map((record) => record.k), ...changes.withdrawn]) {
-      const record = visibleNow.get(key);
-
-      if (record !== undefined) {
-        sent.set(key, record);
-      }
-    }
-
-    // Before the first projection no window holds anything to compare with.
-    if (projectionSent) {
-      for (const [key, record] of visibleNow) {
-        if (!sentVisible.has(key)) {
-          sent.set(key, record);
-        }
-      }
-    }
-
-    const gone = projectionSent ? [...sentVisible].filter((key) => !visibleNow.has(key)) : [];
-
-    sentVisible = new Set(visibleNow.keys());
-
-    return {
-      records: [...sent.values()],
-      pending: visibleRecords(role, preset, changes.records, known),
-      withdrawn: [...new Set([...changes.withdrawn, ...gone])],
-    };
   }
 
   function persist(record: VersionedRecord): Persisted {
@@ -1197,8 +1004,8 @@ export async function startReplicaEngine(
 
     const applied = apply(composed.value);
 
-    // Sent even when empty, so the window still learns of the notice.
-    emitDelta(applied);
+    // A notice change reaches the window even when the command applied nothing.
+    publisher.publish();
     commandDone(id);
     sendCommits(applied);
 
@@ -1278,7 +1085,7 @@ export async function startReplicaEngine(
       }
     }
 
-    emitDelta(applied);
+    publisher.publish();
 
     if (applied.length > 0) {
       scheduleRoomCopy();
@@ -1483,7 +1290,7 @@ export async function startReplicaEngine(
         console.error('Muster Roll could not remove a part saved generation', removed.error);
       }
 
-      emitDelta([]);
+      publisher.publish();
       reject(id, 'write-failed');
 
       return false;
@@ -1495,7 +1302,7 @@ export async function startReplicaEngine(
     catchUp.replicaReplaced();
     // Live, so no intent waits. A GM has no pending edits.
     pendingEdits.clear();
-    emitDelta([]);
+    publisher.publish();
 
     try {
       await writeImportCopy(generation);
@@ -1609,8 +1416,7 @@ export async function startReplicaEngine(
       merge(record);
     }
 
-    engineId = newId();
-    sequence = 0;
+    publisher.restart();
     dropStaleOpen();
     followReplica();
   }
@@ -1624,8 +1430,6 @@ export async function startReplicaEngine(
       await roomCopyRun;
     }
 
-    const before = roomCopySignature();
-
     roomCopyWriting = true;
 
     try {
@@ -1638,14 +1442,14 @@ export async function startReplicaEngine(
       if (verified !== null) {
         roomCopyOwed = false;
         roomCopyNotSaved = false;
-        noteRoomCopy(verified, true, before);
+        noteRoomCopy(verified, true);
 
         return;
       }
 
       roomCopyNotSaved = true;
       roomCopyOwed = true;
-      await removeLowerCopy(generation, before);
+      await removeLowerCopy(generation);
     } finally {
       roomCopyWriting = false;
     }
@@ -1723,11 +1527,11 @@ export async function startReplicaEngine(
   }
 
   // A copy this build cannot read stays: it may be a newer build's.
-  async function removeLowerCopy(generation: Generation, before: string): Promise<void> {
+  async function removeLowerCopy(generation: Generation): Promise<void> {
     const metadata = await readMetadata(platform);
 
     if (metadata === null || importSuperseded(generation)) {
-      emitRoomCopyChange(before);
+      publisher.publish();
 
       return;
     }
@@ -1735,7 +1539,7 @@ export async function startReplicaEngine(
     const read = readSnapshot(metadata);
 
     if (!read.ok || read.value === null || compareGenerations(read.value.g, generation) >= 0) {
-      noteRoomCopy(metadata, false, before);
+      noteRoomCopy(metadata, false);
 
       return;
     }
@@ -1749,12 +1553,12 @@ export async function startReplicaEngine(
     const after = await readMetadata(platform);
 
     if (after === null || stopped) {
-      emitRoomCopyChange(before);
+      publisher.publish();
 
       return;
     }
 
-    noteRoomCopy(after, false, before);
+    noteRoomCopy(after, false);
   }
 
   // AD-4: the pending-edits module checks and queues a player's edit. The engine reports only the
@@ -1774,7 +1578,7 @@ export async function startReplicaEngine(
       notifyDenied();
     }
 
-    emitDelta([]);
+    publisher.publish();
     commandDone(id);
   }
 
@@ -1820,11 +1624,13 @@ export async function startReplicaEngine(
     switch (verdict.kind) {
       case 'commit': {
         const before = replica.get(record.k);
-        const applied = apply([record]);
+        apply([record]);
         const winner = replica.get(record.k) ?? record;
+        const changed = winner !== before;
 
-        if (winner !== before) {
-          emitDelta(applied);
+        publisher.publish();
+
+        if (changed) {
           scheduleRoomCopy();
         }
 
@@ -1872,7 +1678,7 @@ export async function startReplicaEngine(
     const applied = apply(blockLinkTombstones(liveContext(), parts.sheetId, parts.instanceId));
 
     if (applied.length > 0) {
-      emitDelta(applied);
+      publisher.publish();
       sendCommits(applied);
       scheduleRoomCopy();
     }
@@ -1909,7 +1715,7 @@ export async function startReplicaEngine(
     const changed = result.merge === null ? [] : receiveRecords([result.merge]);
 
     if (changed.length === 0) {
-      emitDelta([]);
+      publisher.publish();
     }
   }
 
@@ -2224,7 +2030,7 @@ export async function startReplicaEngine(
     }
 
     pending.add(id, command);
-    emitDelta([]);
+    publisher.publish();
   }
 
   // The replica with every pending intent applied by the same composers, minting nothing, and every
@@ -2260,38 +2066,12 @@ export async function startReplicaEngine(
     return record === null ? [] : [record];
   }
 
-  // The pending view records the windows do not have yet, and the keys the view no longer
-  // changes, which the windows withdraw so the replica's record shows again: when catch-up ends,
-  // and when a player's proposal is answered.
-  function pendingViewChanges(): PendingChanges {
-    if (pending.entries().length === 0 && pendingEdits.size() === 0) {
-      const withdrawn = [...shownPending.keys()];
+  // The publisher compares this pending view with what windows hold. Keys equal to the replica are
+  // omitted, so a pending record never masks an applied record without a visible change.
+  function pendingViewRecords(): Map<string, VersionedRecord> {
+    const view = pendingView();
 
-      shownPending = new Map();
-
-      return { records: [], withdrawn };
-    }
-
-    const next = new Map<string, VersionedRecord>();
-    const records: VersionedRecord[] = [];
-
-    for (const [key, record] of pendingView()) {
-      if (record !== replica.get(key)) {
-        const shown = shownPending.get(key);
-
-        next.set(key, record);
-
-        if (shown === undefined || JSON.stringify(shown) !== JSON.stringify(record)) {
-          records.push(record);
-        }
-      }
-    }
-
-    const withdrawn = [...shownPending.keys()].filter((key) => !next.has(key));
-
-    shownPending = next;
-
-    return { records, withdrawn };
+    return new Map([...view].filter(([key, record]) => record !== replica.get(key)));
   }
 
   // AD-7 replay: every pending intent runs for real in arrival order. A refusal now goes to the
@@ -2343,9 +2123,9 @@ export async function startReplicaEngine(
   }
 
   // A GM client merges what it and the other tabs of its browser saved. A player persists nothing.
-  function mergePersisted(): VersionedRecord[] {
+  function mergePersisted(): void {
     if (persistence === null || role !== 'GM') {
-      return [];
+      return;
     }
 
     const load = persistence.store.loadGeneration(persistence.generation);
@@ -2353,14 +2133,12 @@ export async function startReplicaEngine(
     if (!load.ok) {
       console.error('Muster Roll could not read the saved records', load.error);
 
-      return [];
+      return;
     }
 
     for (const key of load.value.corruptKeys) {
       problemKeys.add(key);
     }
-
-    const changed: VersionedRecord[] = [];
 
     for (const record of load.value.records) {
       // A record too large for a message could never reach a window, so it counts as corrupt.
@@ -2369,17 +2147,10 @@ export async function startReplicaEngine(
         continue;
       }
 
-      const before = replica.get(record.k);
-      const winner = merge(record);
-
-      if (winner !== before) {
-        changed.push(winner);
-      }
+      merge(record);
     }
 
     followReplica();
-
-    return changed;
   }
 
   function enterCatchUp(
@@ -2396,19 +2167,17 @@ export async function startReplicaEngine(
   // adopted, as at start a client takes the highest one it knows. A lower one is left alone. `null`
   // is a failed read, which proves nothing.
   function mergeRoomCopy(metadata: JsonObject | null): void {
-    const before = roomCopySignature();
-
     if (metadata === null) {
       // A player alone would load forever with no outcome; a known one stays.
       roomCopyOutcome ??= 'unreadable';
-      emitRoomCopyChange(before);
+      publisher.publish();
 
       return;
     }
 
     mergeReadRoomCopy(metadata);
     // The windows learn the outcome even when nothing else they show changed.
-    emitRoomCopyChange(before);
+    publisher.publish();
   }
 
   function mergeReadRoomCopy(metadata: JsonObject): void {
@@ -2607,11 +2376,9 @@ export async function startReplicaEngine(
       return;
     }
 
-    const before = roomCopySignature();
-
     roomCopyOwed = false;
     roomCopyNotSaved = false;
-    noteRoomCopy(readBack, true, before);
+    noteRoomCopy(readBack, true);
   }
 
   // AD-9 and gap 12: any client that reads a room copy of a higher generation adopts it, and a
@@ -2715,7 +2482,7 @@ export async function startReplicaEngine(
           console.error('Muster Roll could not remove a part saved generation', removed.error);
         }
 
-        emitDelta([]);
+        publisher.publish();
 
         return false;
       }
@@ -2738,7 +2505,7 @@ export async function startReplicaEngine(
     // A copy read before was of the old generation.
     roomCopyExists = fromCopy;
 
-    emitDelta([]);
+    publisher.publish();
 
     return true;
   }
@@ -2760,15 +2527,13 @@ export async function startReplicaEngine(
 
   // `null` keeps the sizes last read.
   function failRoomCopy(metadata: JsonObject | null): void {
-    const before = roomCopySignature();
-
     roomCopyNotSaved = true;
     roomCopyOwed = true;
 
     if (metadata === null) {
-      emitRoomCopyChange(before);
+      publisher.publish();
     } else {
-      noteRoomCopy(metadata, roomCopyExists, before);
+      noteRoomCopy(metadata, roomCopyExists);
     }
   }
 
@@ -2790,9 +2555,8 @@ export async function startReplicaEngine(
     noteRoomCopy(metadata, copy !== null && compareGenerations(copy.g, ownGeneration) === 0);
   }
 
-  // Takes the sizes from the metadata just read, and tells the windows when anything they show
-  // changed.
-  function noteRoomCopy(metadata: JsonObject, exists: boolean, before = roomCopySignature()): void {
+  // Takes the sizes from the metadata just read. The publisher compares the resulting header.
+  function noteRoomCopy(metadata: JsonObject, exists: boolean): void {
     const usage = roomCopyUsage(metadata);
     const read = readSnapshot(metadata);
 
@@ -2800,17 +2564,7 @@ export async function startReplicaEngine(
     roomCopyExists = exists;
     roomCopyUsed = usage.usedBytes;
     roomCopyFree = usage.freeBytes;
-    emitRoomCopyChange(before);
-  }
-
-  function emitRoomCopyChange(before: string): void {
-    if (projectionSent && roomCopySignature() !== before) {
-      emitDelta([]);
-    }
-  }
-
-  function roomCopySignature(): string {
-    return JSON.stringify([roomCopyStatus(), currentNotices()]);
+    publisher.publish();
   }
 
   function roomCopyStatus(): RoomCopyStatus {
@@ -2820,8 +2574,6 @@ export async function startReplicaEngine(
   }
 
   function performCaughtUp(_exit: 'answered' | 'unanswered'): void {
-    const changed: VersionedRecord[] = [];
-
     if (persistAllOnExit) {
       persistAllOnExit = false;
 
@@ -2838,17 +2590,12 @@ export async function startReplicaEngine(
 
       for (const record of replica.values()) {
         // The store can hold a newer record from another tab of this browser.
-        const winner = merge(persist(record).record);
-
-        if (winner !== record) {
-          changed.push(winner);
-        }
+        merge(persist(record).record);
       }
     }
 
     const replayed = replayPending();
 
-    changed.push(...replayed.applied);
     const pendingDenial = pendingEdits.caughtUp();
 
     if (pendingDenial.notify) {
@@ -2857,11 +2604,7 @@ export async function startReplicaEngine(
 
     // Sent in `live`, so the windows drop the pending view in the same step. With no window yet,
     // the view is still brought up to date, as the first projection sends it.
-    if (projectionSent || changed.length > 0) {
-      emitDelta(changed);
-    } else {
-      pendingViewChanges();
-    }
+    publisher.publish();
 
     for (const id of replayed.completed) {
       commandDone(id);
@@ -2882,7 +2625,6 @@ export async function startReplicaEngine(
   // A GM client persists each record that changes its replica. A player client persists nothing.
   // A remote record is never sent on again.
   function receiveRecords(records: readonly VersionedRecord[]): VersionedRecord[] {
-    const noticesBefore = currentNotices().join();
     const presetBefore = replica.get('preset');
     const changed: VersionedRecord[] = [];
 
@@ -2911,9 +2653,7 @@ export async function startReplicaEngine(
       }
     }
 
-    if (changed.length > 0 || currentNotices().join() !== noticesBefore) {
-      emitDelta(changed);
-    }
+    publisher.publish();
 
     // Another GM client may link a token this client saw deleted.
     if (changed.length > 0) {
@@ -2998,8 +2738,7 @@ export async function startReplicaEngine(
     catchUp.replicaReplaced();
     // A new stream: the catch-up entry below sends a delta, and each window that gets it from a
     // new engine id asks for a projection of the records the new role sees.
-    engineId = newId();
-    sequence = 0;
+    publisher.restart();
     persistAllOnExit = false;
     persistence = null;
     // Only a GM client writes the room copy, so a demoted one drops what it owed and its notice.
@@ -3043,7 +2782,7 @@ export async function startReplicaEngine(
     }
 
     newerVersionSeen = true;
-    emitDelta([]);
+    publisher.publish();
   }
 
   // AD-5: `v`, then the schema, then the gate, and only then a handler.
@@ -3116,7 +2855,7 @@ export async function startReplicaEngine(
         if (receiveRecords(message.records).length > 0) {
           scheduleRoomCopy();
         } else if (cleared) {
-          emitDelta([]);
+          publisher.publish();
         }
 
         break;
@@ -3180,7 +2919,11 @@ export async function startReplicaEngine(
     }
 
     if (parsed.value.t === 'projection-request') {
-      sendProjection(parsed.value.nonce);
+      if (publisher.project(parsed.value.nonce)) {
+        // A window that just connected may be the one Owlbear opened for the request. It goes after
+        // the projection in the same queue, so the window holds the sheet when the request arrives.
+        deliverOpen();
+      }
     } else if (parsed.value.t === 'preset-diff') {
       handlePresetDiff(parsed.value);
     } else if (parsed.value.t === 'roll-request') {
@@ -3258,26 +3001,6 @@ export async function startReplicaEngine(
       void writeRoomCopy();
     },
   };
-}
-
-// Records first, then the pending view, each split under the message limit. `null` when a record
-// cannot fit one message.
-function splitParts(
-  records: readonly VersionedRecord[],
-  pendingView: readonly VersionedRecord[],
-  envelopeBytes: number,
-): Part[] | null {
-  const recordParts = splitBatch(records, envelopeBytes);
-  const pendingParts = pendingView.length === 0 ? null : splitBatch(pendingView, envelopeBytes);
-
-  if (!recordParts.ok || (pendingParts !== null && !pendingParts.ok)) {
-    return null;
-  }
-
-  return [
-    ...recordParts.value.map((part) => ({ records: part, pending: [] })),
-    ...(pendingParts?.value ?? []).map((part) => ({ records: [], pending: part })),
-  ];
 }
 
 // Resolves when `work` settles or after `milliseconds`, whichever comes first, and never rejects.
