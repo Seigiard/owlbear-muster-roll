@@ -258,3 +258,18 @@
 - source_spec: backlog TASK-59
   summary: No e2e covers a template whose first tab is GM-only and whose second tab is visible, or a player reopening a tab chosen before it was hidden.
   evidence: Review round 2 (revmux owlbear-task-59/02-after-fix, docs+tests-terra-1, lean-codex-1, docs+tests-codex-1). `openTabIndex(layout, chosen, shown)` picks the first tab the role sees; every new scenario starts on visible tab 0.
+
+## Deferred from: code review of TASK-60 sidebar (2026-11-13)
+
+- source_spec: backlog TASK-60
+  summary: CellTooltip keeps one module-wide open tooltip, so a hover tooltip blocks a focus tooltip elsewhere, and a mouse `pointerleave` no longer hides it when the pointer leaves the iframe.
+  evidence: Review round 1 (revmux owlbear-task-60/01-initial, bugs+impl-codex-5, adversarial-claude-4). The lock and the touch-only leave rule came with the sidebar tooltip; changing them needs a choice about which tooltip wins and when one closes.
+- source_spec: backlog TASK-60
+  summary: The `sidebarOrder` helper in `tests/templates.e2e.ts` sorts by the `style.order` WindowFrame writes and puts Settings last, and no test checks the visible text of a sidebar group heading (it comes from a CSS `::before`).
+  evidence: Review round 1 (docs+tests-codex-2, docs+tests-terra-1). Test-only gaps; the rendered order and the heading's accessible name are correct.
+- source_spec: backlog TASK-60
+  summary: `preview.html` loads its preset list with a synchronous XHR during the first render, then fetches it again.
+  evidence: Review round 1 (lean-terra-1). Dev-only page; works, but blocks the first render.
+- source_spec: backlog TASK-60
+  summary: The sidebar's right edge is an inset `box-shadow` with a physical offset, so it would sit on the wrong side in a right-to-left layout.
+  evidence: good-css check, round 1 (good-css-3). The interface is Russian-only and left-to-right today.
