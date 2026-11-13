@@ -282,3 +282,9 @@
 - source_spec: backlog TASK-60
   summary: The sidebar's right edge is an inset `box-shadow` with a physical offset, so it would sit on the wrong side in a right-to-left layout.
   evidence: good-css check, round 1 (good-css-3). The interface is Russian-only and left-to-right today.
+
+## Deferred from: build of spec-task-50-room-copy-module (2026-11-13)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-50-room-copy-module.md`
+  summary: An import keeps writing its room copy after its client loses the GM role during the import's metadata read, and the engine then sends `reset` from what is now a player.
+  evidence: The engine's `importSuperseded` (`src/replica/engine.ts`) checks only stop, adoption and generation, at the baseline `17f80f3` and after TASK-50; `changeRole` calls `roomCopy.demoted()`, which does not stop an import in flight. Code review round 1 of TASK-50, finding `bugs+impl-codex-2`, raised it as pre-existing. A fix changes the import contract (what a demoted importer reports), so it needs its own task.

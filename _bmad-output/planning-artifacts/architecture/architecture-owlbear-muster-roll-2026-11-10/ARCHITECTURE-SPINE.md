@@ -157,6 +157,7 @@ A message with a higher generation also starts AD-9 adoption.
   3. Encode every record, tombstones and versions included, with the generation, sorted by key, deflated and base64-encoded, using `core/snapshot`.
   4. Compute the UTF-8 JSON size of all room metadata with this key replaced. Over 15500 bytes, skip the write and raise the notice. The previous snapshot stays.
   5. Write and read back at once. The check passes when the decoded result holds every written record at an equal or higher version, or has a higher generation. Otherwise raise the same notice.
+- **Rule, owner:** `src/replica/room-copy` alone owns the room copy: the write loop, the catch-up read, the import write, and their status and notices. The engine passes it events and the gate, and it reads and writes room metadata for no one else.
 
 ### AD-9 — Generation replaces room data
 
@@ -326,7 +327,7 @@ A message with a higher generation also starts AD-9 adoption.
 ```text
 src/
   core/        # records, merge, access, visibility, preset, formula, snapshot, messages
-  replica/     # engine, pending queue, pending edits, catch-up, snapshot writer, gmLink
+  replica/     # engine, pending queue, pending edits, catch-up, room copy, gmLink
   platform/    # ports, send queue, obr/ adapter, mock/
   ui/          # React views, nanostores projection
   builder/     # preset builder page: store, document edits, tree, forms, preview
