@@ -29,18 +29,22 @@ const GHOST = 'ghost-gm';
 const PLAYER = 'player-p';
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [{ kind: 'field', type: 'number', id: 'str' }],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [{ kind: 'field', type: 'number', id: 'str' }],
+              ],
+            },
           ],
         },
       ],
@@ -50,7 +54,7 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
     },
   ],
 };
@@ -122,15 +126,15 @@ function typesFrom(room: Room, from: string): string[] {
 }
 
 function stateMessage(r: string, records: readonly VersionedRecord[]): JsonValue {
-  return { v: 2, g: INITIAL, t: 'state', r, i: 1, n: 1, records: encodeStateRecords(records) };
+  return { v: 3, g: INITIAL, t: 'state', r, i: 1, n: 1, records: encodeStateRecords(records) };
 }
 
 function commit(records: readonly VersionedRecord[]): JsonValue {
-  return { v: 2, g: INITIAL, t: 'commit', records: [...records] };
+  return { v: 3, g: INITIAL, t: 'commit', records: [...records] };
 }
 
 function ping(): JsonValue {
-  return { v: 2, g: INITIAL, t: 'ping' };
+  return { v: 3, g: INITIAL, t: 'ping' };
 }
 
 // What a player alone in the room shows once its start catch-up timed out.
@@ -217,7 +221,7 @@ describe('a player alone reads the room copy', () => {
 
     const room = roomRig.openRoom();
 
-    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 3) });
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 4) });
 
     // #when
     const player = await playerAlone(room);
@@ -230,24 +234,27 @@ describe('a player alone reads the room copy', () => {
     }).toEqual({ keys: [], outcome: 'newer', notices: ['new-version'] });
   });
 
-  test('a copy of an older format: outcome older, no notice for a player, nothing read', async () => {
-    // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
+  test.each([1, 2])(
+    'a copy of the older format %i: outcome older, no notice for a player, nothing read',
+    async (format) => {
+      // #given
+      spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const room = roomRig.openRoom();
+      const room = roomRig.openRoom();
 
-    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 1) });
+      room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], format) });
 
-    // #when
-    const player = await playerAlone(room);
+      // #when
+      const player = await playerAlone(room);
 
-    // #then
-    expect({
-      keys: keysOf(player),
-      outcome: roomCopy(player).outcome,
-      notices: player.store.$notices.get(),
-    }).toEqual({ keys: [], outcome: 'older', notices: [] });
-  });
+      // #then
+      expect({
+        keys: keysOf(player),
+        outcome: roomCopy(player).outcome,
+        notices: player.store.$notices.get(),
+      }).toEqual({ keys: [], outcome: 'older', notices: [] });
+    },
+  );
 
   test('a copy that does not decode: outcome unreadable, no notice for a player', async () => {
     // #given
@@ -255,7 +262,7 @@ describe('a player alone reads the room copy', () => {
 
     const room = roomRig.openRoom();
 
-    room.room.setMetadata({ [KEY]: { v: 2, data: 'bm90IGRlZmxhdGU=' } });
+    room.room.setMetadata({ [KEY]: { v: 3, data: 'bm90IGRlZmxhdGU=' } });
 
     // #when
     const player = await playerAlone(room);
@@ -484,7 +491,7 @@ describe('a GM returns', () => {
     room.join(GHOST, 'GM');
 
     // #when: the ghost asks for state, as a GM tab that just opened does.
-    room.post(GHOST, { v: 2, g: INITIAL, t: 'state-request', r: 'ghost-r' });
+    room.post(GHOST, { v: 3, g: INITIAL, t: 'state-request', r: 'ghost-r' });
     await waitUntil(() =>
       room.heard.some(
         (message) =>

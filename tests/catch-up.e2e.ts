@@ -20,7 +20,6 @@ import {
 
 const LOADING = 'Загрузка…';
 const READ_ONLY = 'Только чтение';
-const GEAR = '⚙︎';
 const SETTINGS = 'Настройки';
 const LOAD_PRESET = 'Загрузить пресет';
 const DOWNLOAD_PRESET = 'Скачать пресет';
@@ -36,28 +35,32 @@ type Return = 'online' | 'resume' | 'visibilitychange';
 const SILENT_GM = 'mock-connection-silent';
 
 const PRESET = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-          ],
-        },
-        {
-          rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+              ],
+            },
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -67,7 +70,7 @@ const PRESET = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
     },
   ],
 };
@@ -105,7 +108,7 @@ test('a GM on a new device gets the sheets a live GM holds and saves them', asyn
   );
 });
 
-test('until its first catch-up ends, a window shows the known tabs and the loading text, then the sheets', async ({
+test('until its first catch-up ends, a window shows the known sidebar entries and the loading text, then the sheets', async ({
   context,
 }) => {
   // #given: another GM is listed and never answers, so catch-up ends on its timeout.
@@ -119,7 +122,7 @@ test('until its first catch-up ends, a window shows the known tabs and the loadi
   await openClientBackground(context, params);
 
   // #then
-  await expect(window.getByRole('tab')).toHaveText(['Брок', 'NPC', GEAR]);
+  await expect(window.getByRole('tab')).toHaveText(['Брок', 'NPC', SETTINGS]);
   await expect(window.getByRole('tabpanel')).toHaveText(LOADING);
   await expect(window.getByRole('button', { name: ADD })).toHaveCount(0);
   await expect(window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible({

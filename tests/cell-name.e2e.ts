@@ -26,34 +26,38 @@ const PLAYER: ClientParams = {
 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-            [
-              { kind: 'text', text: 'STR' },
-              { kind: 'field', type: 'number', id: 'str', name: 'STR, максимум' },
-            ],
-            [
-              { kind: 'text', text: 'DEX' },
-              { kind: 'field', type: 'number', id: 'dex' },
-            ],
-            [{ kind: 'field', type: 'check', id: 'ready', name: 'Готовность' }],
-            [
-              { kind: 'dice', formula: '1d20 <= str', name: 'Спасбросок STR' },
-              { kind: 'dice', formula: '1d20 <= dex' },
-            ],
-            [{ kind: 'dice', formula: '1d1', name: 'Монета' }],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+                [
+                  { kind: 'text', text: 'STR' },
+                  { kind: 'field', type: 'number', id: 'str', name: 'STR, максимум' },
+                ],
+                [
+                  { kind: 'text', text: 'DEX' },
+                  { kind: 'field', type: 'number', id: 'dex' },
+                ],
+                [{ kind: 'field', type: 'check', id: 'ready', name: 'Готовность' }],
+                [
+                  { kind: 'dice', formula: '1d20 <= str', name: 'Спасбросок STR' },
+                  { kind: 'dice', formula: '1d20 <= dex' },
+                ],
+                [{ kind: 'dice', formula: '1d1', name: 'Монета' }],
+              ],
+            },
           ],
         },
       ],

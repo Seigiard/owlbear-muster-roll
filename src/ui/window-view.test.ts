@@ -9,7 +9,7 @@ import { createProjectionStore, type ProjectionStore } from '@/ui/projection-sto
 import { useWindowView, type WindowView, windowViewOf } from '@/ui/window-view';
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'party',
@@ -17,7 +17,7 @@ const PRESET: Preset = {
       title: 'Party',
       nameField: 'name',
       tokens: true,
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
     {
       id: 'secret',
@@ -25,7 +25,7 @@ const PRESET: Preset = {
       title: 'Secret',
       visibility: 'gm',
       tokens: true,
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'note' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'note' }]] }] }],
     },
   ],
 };

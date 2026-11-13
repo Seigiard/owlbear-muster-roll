@@ -3,18 +3,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { playerMayEdit, playerMayEditField } from '@/core/access';
 import { newSheetId } from '@/core/ids';
-import { type SheetSetTemplate } from '@/core/preset';
+import { openTabIndex, type SheetSetTemplate } from '@/core/preset';
 import { isSheetSet, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
-import { linkTargetKey, type LinkTarget } from '@/core/link-target';
+import { linkTargetKey, repeatBlockTabIndex, type LinkTarget } from '@/core/link-target';
 import {
   selectionMarks,
   selectionStep,
   tokensByTarget,
   type SelectionStep,
 } from '@/core/token-selection';
-import type { PlayerRole } from '@/core/visibility';
+import { tabShownTo, type PlayerRole } from '@/core/visibility';
 import { platform } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { bannerFor } from '@/ui/banner-message';
@@ -38,16 +39,21 @@ import type { BlockTools } from '@/ui/sheet/preset-section';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { SheetHeader } from '@/ui/sheet/sheet-header';
 import { createFieldFlushes, type FieldEditing } from '@/ui/sheet/use-field-edit';
-import { playerMayEdit, sheetTabs, tabEntries, type SheetTab } from '@/ui/sheet-tabs';
-import { focusTab, revealTab, type ShellBarItem } from '@/ui/shell/tab-bar';
-import { WindowShell, type ShellLayout } from '@/ui/shell/window-shell';
+import { sidebarEntries, type SidebarEntries, type SidebarSheet } from '@/ui/shell/sidebar-entries';
+import {
+  focusSidebarEntry,
+  revealSidebarEntry,
+  templateIndexFromKey,
+  templateTabKey,
+  templateTabLabel,
+  type WindowFrameLayout,
+} from '@/ui/shell/window-frame';
+import type { ShellTab } from '@/ui/shell/tab-bar';
+import { WindowFrame } from '@/ui/shell/window-frame';
 import { followTheme } from '@/ui/theme';
 import { useWindowView } from '@/ui/window-view';
 
 import './main.css';
-
-// U+FE0E keeps the gear a text glyph, because some platforms would draw a color emoji.
-const GEAR = '⚙︎';
 
 const SETTINGS_TAB = 'settings';
 
@@ -90,6 +96,8 @@ type WindowRootProps = {
   requestRoll: ReplicaClient['requestRoll'];
   acknowledgeOpen: ReplicaClient['acknowledgeOpen'];
 };
+
+type SheetFrameParts = { header: ReactNode; body: ReactNode };
 
 const container = document.getElementById('root');
 
@@ -179,24 +187,7 @@ function WindowRoot({
   const marked = useStore(marks.$marked);
   const openRequest = useStore(projection.$openRequest);
 
-  // UX: tabs in preset order, each sheet set's "+" after its last sheet for the GM, and a player's
-  // own sheets first, marked "вы" (FR19).
-  const entries = useMemo(
-    () => tabEntries(role, preset, records, playerId),
-    [role, preset, records, playerId],
-  );
-
-  const tabs = useMemo(() => sheetTabs(entries), [entries]);
-  const tabIds = tabs.map((tab) => tab.id);
-
-  // UX-DR28: each sheet gets only its own waiting edits and marks.
-  const pendingBySheet = useMemo(() => {
-    const pending: SheetPending = { entries: pendingEntries, marked };
-
-    return new Map(tabs.map((tab) => [tab.sheetId, sheetPendingOf(pending, tab.sheetId)]));
-  }, [pendingEntries, marked, tabs]);
-
-  // AD-7: until the first catch-up ends, no data counts as the room's. The tab bar shows what is
+  // AD-7: until the first catch-up ends, no data counts as the room's. The sidebar shows what is
   // known and every panel says "Загрузка…", so no empty or no-preset state shows too early.
   const ready = loaded && sync.firstCatchUpDone;
   const catchingUp = sync.state === 'catching-up';
@@ -208,7 +199,6 @@ function WindowRoot({
   // it must still select the first tab.
   const [seenPresetState, setSeenPresetState] = useState<PresetState>('unknown');
   const [selectedTab, setSelectedTab] = useState(SETTINGS_TAB);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   // A sheet this window created, until its record arrives and its tab can open.
   const [created, setCreated] = useState<CreatedSheet | null>(null);
   const [focusNameOf, setFocusNameOf] = useState<string | null>(null);
@@ -223,12 +213,41 @@ function WindowRoot({
   const [takenOpen, setTakenOpen] = useState<string | null>(null);
   const [tabReveal, setTabReveal] = useState<TabReveal | null>(null);
   const [blockReveal, setBlockReveal] = useState<BlockRevealRequest | null>(null);
+
+  // CAP-34, AD-26: the template tab this window chose on each sheet, by the sheet's tab id. It is
+  // client UI state: it never enters a record, a message or a snapshot.
+  const [chosenTemplateTabs, setChosenTemplateTabs] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+
   const targetTokens = useMemo(() => tokensByTarget(links), [links]);
   const linkedTargets = useMemo(() => new Set(targetTokens.keys()), [targetTokens]);
   const mapSelected = useStore(mapSelection.$selection);
   const sceneItems = useStore(mapSelection.$sceneItems);
   // CAP-32: the marks follow this client's own selection through the links this role sees.
   const mapMarks = useMemo(() => selectionMarks(links, mapSelected), [links, mapSelected]);
+
+  const sidebar = useMemo<SidebarEntries>(
+    () => sidebarEntries(role, preset, records, playerId, mapMarks.sheetIds),
+    [role, preset, records, playerId, mapMarks.sheetIds],
+  );
+
+  const tabs = useMemo(
+    () =>
+      sidebar.sections.flatMap((section) =>
+        section.kind === 'single' ? [section.sheet] : [...section.sheets],
+      ),
+    [sidebar],
+  );
+
+  const tabIds = tabs.map((tab) => tab.id);
+
+  // UX-DR28: each sheet gets only its own waiting edits and marks.
+  const pendingBySheet = useMemo(() => {
+    const pending: SheetPending = { entries: pendingEntries, marked };
+
+    return new Map(tabs.map((tab) => [tab.sheetId, sheetPendingOf(pending, tab.sheetId)]));
+  }, [pendingEntries, marked, tabs]);
 
   const mapView = useMemo<MapSelectionView>(
     () => ({
@@ -285,7 +304,7 @@ function WindowRoot({
     [sendCommand, linkedTargets],
   );
 
-  // A GM with no sheet tab lands on Settings. A player with none has no tab bar.
+  // A GM with no sheet lands on Settings. A player with none has no sidebar entry.
   const firstTab = tabIds[0] ?? SETTINGS_TAB;
   const pinnedTabIds = isGm ? [SETTINGS_TAB] : [];
 
@@ -301,8 +320,8 @@ function WindowRoot({
     setBlockReveal(null);
   }, []);
 
-  // The tab that shows a sheet, or `null` for a sheet that is not listed. Every sheet has its own
-  // tab.
+  // The sidebar entry that shows a sheet, or `null` for a sheet that is not listed. Every sheet has
+  // its own entry.
   function tabOf(sheet: string): string | null {
     return tabIds.includes(sheet) ? sheet : null;
   }
@@ -321,7 +340,7 @@ function WindowRoot({
   }
 
   // A player creates and deletes nothing, so a demotion drops what this window waited for and
-  // meant to focus, and a later promotion starts clean, with the gear toggle off.
+  // meant to focus, and a later promotion starts clean.
   const awaitedCreate = isGm ? created : null;
   const awaitedDelete = isGm ? deleting : null;
 
@@ -372,13 +391,8 @@ function WindowRoot({
 
   if (
     !isGm &&
-    (settingsOpen ||
-      created !== null ||
-      deleting !== null ||
-      focusNameOf !== null ||
-      focusActionsOf !== null)
+    (created !== null || deleting !== null || focusNameOf !== null || focusActionsOf !== null)
   ) {
-    setSettingsOpen(false);
     setCreated(null);
     setDeleting(null);
     setFocusNameOf(null);
@@ -417,6 +431,18 @@ function WindowRoot({
 
       setTabReveal({ tab, focus: focus && block === null });
       setBlockReveal(block === null ? null : { sheet, instanceId: block, focus });
+
+      // A repeat block opens on the template tab that holds its repeat section.
+      const template = tabs.find((listed) => listed.id === tab)?.policy.template;
+
+      const blockTab =
+        block === null || template === undefined
+          ? null
+          : repeatBlockTabIndex(records.values(), template, openRequest.sheetId, block);
+
+      if (blockTab !== null) {
+        chooseTemplateTab(tab, blockTab);
+      }
 
       // A name on another tab would take the focus away from the opened sheet.
       if (nameFocus !== null && nameFocus !== tab) {
@@ -467,7 +493,7 @@ function WindowRoot({
     }
 
     if (focusAfterLoss.kind === 'tab') {
-      focusTab(shownTab);
+      focusSidebarEntry(shownTab);
     } else if (focusAfterLoss.tab === shownTab) {
       setFocusActionsOf(focusAfterLoss.sheet);
     }
@@ -487,13 +513,46 @@ function WindowRoot({
     }
 
     setTabReveal(null);
-    revealTab(tabReveal.tab);
+    revealSidebarEntry(tabReveal.tab);
 
     // The tab switched under the focus, so the focus follows it and the tab is announced.
     if (tabReveal.focus) {
-      focusTab(tabReveal.tab, { preventScroll: true });
+      focusSidebarEntry(tabReveal.tab, { preventScroll: true });
     }
   }, [tabReveal]);
+
+  function chooseTemplateTab(sheet: string, index: number): void {
+    setChosenTemplateTabs((current) => new Map(current).set(sheet, index));
+  }
+
+  // AD-26: the chosen tab stays while this role sees it; otherwise the first tab this role sees, else
+  // none.
+  function visibleTemplateTabIndexes(tab: SidebarSheet): number[] {
+    return tab.policy.template.tabs.flatMap((_tab, index) =>
+      tabShownTo(role, tab.policy.template, index) ? [index] : [],
+    );
+  }
+
+  function openTemplateTab(tab: SidebarSheet): number | null {
+    return openTabIndex(tab.policy.template, chosenTemplateTabs.get(tab.id), (index) =>
+      tabShownTo(role, tab.policy.template, index),
+    );
+  }
+
+  function templateTabHasSelection(tab: SidebarSheet, index: number): boolean {
+    return [...links.values()].some(
+      (live) =>
+        live.target.sheetId === tab.sheetId &&
+        live.target.instanceId !== null &&
+        mapMarks.targets.has(linkTargetKey(live.target)) &&
+        repeatBlockTabIndex(
+          records.values(),
+          tab.policy.template,
+          tab.sheetId,
+          live.target.instanceId,
+        ) === index,
+    );
+  }
 
   function askDelete(sheet: string): void {
     // A new request remounts the block, so a repeated "Удалить" takes the focus again.
@@ -505,7 +564,7 @@ function WindowRoot({
     setFocusActionsOf(sheet);
   }
 
-  function confirmDelete(tab: SheetTab): void {
+  function confirmDelete(tab: SidebarSheet): void {
     // Closed at once, so a second press sends no second command.
     setDeleteAsk(null);
 
@@ -532,7 +591,7 @@ function WindowRoot({
   }
 
   // The open confirmation, when it asks about `tab`.
-  function confirmationFor(tab: SheetTab): ReactNode {
+  function confirmationFor(tab: SidebarSheet): ReactNode {
     if (deleteAsk?.sheet !== tab.id) {
       return null;
     }
@@ -555,41 +614,46 @@ function WindowRoot({
 
   // A GM edits every sheet. A sheet of a sheet set has the access panel when its template is
   // visible, and "Удалить". A linkable template shows its token status.
-  function gmSheetContent(tab: SheetTab): ReactNode {
+  function gmSheetParts(tab: SidebarSheet, openTab: number | null): SheetFrameParts {
     const { policy } = tab;
     const ofSet = isSheetSet(policy.template);
 
-    return (
-      <>
-        {confirmationFor(tab)}
-        <SheetHeader
-          key={tab.id}
-          sheetId={tab.sheetId}
-          name={tab.name}
-          nameField={policy.nameField}
-          records={records}
-          editing={editing}
-          status={null}
-          gm={{
-            playerId,
-            access: ofSet && !policy.hidden,
-            tokenLinked: policy.linkable ? linkedTargets.has(tab.sheetId) : null,
-            onDelete: ofSet
-              ? () => {
-                  askDelete(tab.id);
-                }
-              : null,
-            focusActions: focusActionsOf === tab.id,
-            onActionsFocused: clearActionsFocus,
-            sendCommand,
-            store: projection,
-          }}
-          focusName={focusNameOf === tab.id}
-          onNameFocused={clearNameFocus}
-        />
+    return {
+      header: (
+        <>
+          {confirmationFor(tab)}
+          <SheetHeader
+            key={tab.id}
+            sheetId={tab.sheetId}
+            name={tab.name}
+            nameField={policy.nameField}
+            records={records}
+            editing={editing}
+            status={null}
+            gm={{
+              playerId,
+              access: ofSet && !policy.hidden,
+              tokenLinked: policy.linkable ? linkedTargets.has(tab.sheetId) : null,
+              onDelete: ofSet
+                ? () => {
+                    askDelete(tab.id);
+                  }
+                : null,
+              focusActions: focusActionsOf === tab.id,
+              onActionsFocused: clearActionsFocus,
+              sendCommand,
+              store: projection,
+            }}
+            focusName={focusNameOf === tab.id}
+            onNameFocused={clearNameFocus}
+          />
+        </>
+      ),
+      body: (
         <SheetBody
           template={policy.template}
           sheetId={tab.sheetId}
+          openTab={openTab}
           records={records}
           editing={editing}
           rolling={rolling}
@@ -598,32 +662,43 @@ function WindowRoot({
           reveal={blockReveal?.sheet === tab.id ? blockReveal : null}
           onRevealed={clearBlockReveal}
         />
-      </>
-    );
+      ),
+    };
   }
 
   // FR3: a live `acl:`, or a player-editable single sheet, makes the fields editable and shows the
   // repeat block controls. Each edit waits for a GM client's check (AD-4), and the pending view
   // shows it meanwhile.
-  function playerSheetContent(tab: SheetTab): ReactNode {
+  function playerSheetParts(tab: SidebarSheet, openTab: number | null): SheetFrameParts {
     const mayEdit = playerMayEdit(tab.policy, records, playerId);
 
-    return (
-      <>
+    const headerMayEdit =
+      tab.policy.nameField !== null &&
+      playerMayEditField(tab.policy, records, playerId, {
+        kind: 'row',
+        rowId: tab.policy.nameField.rowId,
+      });
+
+    return {
+      header: (
         <SheetHeader
+          key={tab.id}
           sheetId={tab.sheetId}
           name={tab.name}
           nameField={tab.policy.nameField}
           records={records}
-          editing={mayEdit ? editing : null}
+          editing={headerMayEdit ? editing : null}
           status={mayEdit ? 'can-edit' : 'read-only'}
           gm={null}
           focusName={false}
           onNameFocused={clearNameFocus}
         />
+      ),
+      body: (
         <SheetBody
           template={tab.policy.template}
           sheetId={tab.sheetId}
+          openTab={openTab}
           records={records}
           editing={mayEdit ? editing : null}
           rolling={rolling}
@@ -631,51 +706,8 @@ function WindowRoot({
           reveal={blockReveal?.sheet === tab.id ? blockReveal : null}
           onRevealed={clearBlockReveal}
         />
-      </>
-    );
-  }
-
-  // One item per entry, in the entries' order. A sheet set's "+" shows only once the first catch-up
-  // has ended with a preset, so the loading bar holds the known tabs and no command.
-  function barItems(content: (tab: SheetTab) => ReactNode): ShellBarItem[] {
-    return entries.flatMap((entry): ShellBarItem[] => {
-      if (entry.kind === 'add') {
-        if (presetState !== 'present') {
-          return [];
-        }
-
-        const { set } = entry;
-
-        return [
-          {
-            kind: 'action',
-            id: `add:${set.id}`,
-            action: {
-              label: copy.addSign,
-              accessibleName: copy.label.addToSet(set.title),
-              onPress: () => {
-                addSheet(set);
-              },
-            },
-          },
-        ];
-      }
-
-      const { tab } = entry;
-
-      return [
-        {
-          kind: 'tab',
-          tab: {
-            id: tab.id,
-            label: tab.name === '' ? copy.unnamed : tab.name,
-            mark: tab.owned ? copy.ownMark : undefined,
-            selectedOnMap: mapMarks.sheetIds.has(tab.sheetId),
-            content: !ready || preset === null ? loading : content(tab),
-          },
-        },
-      ];
-    });
+      ),
+    };
   }
 
   const settings = (
@@ -687,48 +719,6 @@ function WindowRoot({
       client={presetClient}
     />
   );
-
-  const layout = ((): ShellLayout => {
-    if (!isGm) {
-      return playerLayout();
-    }
-
-    if (presetState === 'absent') {
-      return {
-        kind: 'toggle',
-        toggle: {
-          label: GEAR,
-          accessibleName: copy.place.settings,
-          isPressed: settingsOpen,
-          onToggle: setSettingsOpen,
-        },
-        content: settingsOpen ? (
-          settings
-        ) : (
-          <PresetUpload
-            client={presetClient}
-            catchingUp={catchingUp}
-            disabledReason={uploadDisabledReason(catchingUp)}
-          />
-        ),
-      };
-    }
-
-    return {
-      kind: 'tabs',
-      selectedTab: shownTab,
-      onSelectTab: setSelectedTab,
-      items: barItems(gmSheetContent),
-      pinnedTabs: [
-        {
-          id: SETTINGS_TAB,
-          label: GEAR,
-          accessibleName: copy.place.settings,
-          content: presetState === 'unknown' ? loading : settings,
-        },
-      ],
-    };
-  })();
 
   // UX-DR10, UX-DR27: the visible tabs, each read-only unless the player may edit it. Both
   // empty-state texts need a data source, `dataSourceKnown`.
@@ -752,34 +742,101 @@ function WindowRoot({
     return loading;
   }
 
-  function playerLayout(): ShellLayout {
-    if (ready && preset === null) {
-      return {
-        kind: 'plain',
-        content: dataSourceKnown ? <p>{copy.playerNoPreset}</p> : noSourceContent(),
-      };
-    }
+  function frameLayout(): WindowFrameLayout {
+    const sheet = tabs.find((tab) => tab.id === shownTab) ?? null;
+    const settingsSelected = isGm && shownTab === SETTINGS_TAB;
+    const contentFor = isGm ? gmSheetParts : playerSheetParts;
+    const openTab = sheet === null ? null : openTemplateTab(sheet);
+    const visibleIndexes = sheet === null ? [] : visibleTemplateTabIndexes(sheet);
 
-    // A preset from a partial answer proves no GM said there are no sheets.
-    if (tabs.length === 0) {
-      return {
-        kind: 'plain',
-        content: ready && dataSourceKnown ? <p>{copy.playerNoSheets}</p> : noSourceContent(),
-      };
+    const shellTabs: ShellTab[] =
+      sheet === null
+        ? []
+        : visibleIndexes.map((index) => {
+            const templateTab = sheet.policy.template.tabs[index];
+
+            return {
+              id: templateTabKey(index),
+              label: templateTabLabel(templateTab?.title),
+              selectedOnMap: templateTabHasSelection(sheet, index),
+            };
+          });
+
+    const sheetParts =
+      sheet === null || !ready || preset === null ? null : contentFor(sheet, openTab);
+
+    let content: ReactNode;
+
+    if (settingsSelected) {
+      content = presetState === 'unknown' ? loading : settings;
+    } else if (sheet !== null) {
+      content = sheetParts?.body ?? loading;
+    } else if (isGm) {
+      content =
+        presetState === 'absent' ? (
+          <PresetUpload
+            client={presetClient}
+            catchingUp={catchingUp}
+            disabledReason={uploadDisabledReason(catchingUp)}
+          />
+        ) : (
+          settings
+        );
+    } else if (ready && preset === null) {
+      content = dataSourceKnown ? <p>{copy.playerNoPreset}</p> : noSourceContent();
+    } else {
+      content =
+        tabs.length === 0 && ready && dataSourceKnown ? (
+          <p>{copy.playerNoSheets}</p>
+        ) : (
+          noSourceContent()
+        );
     }
 
     return {
-      kind: 'tabs',
-      selectedTab: shownTab,
-      onSelectTab: setSelectedTab,
-      items: barItems(playerSheetContent),
-      pinnedTabs: [],
+      sidebar,
+      selectedSidebarEntry: shownTab,
+      onSelectSidebarEntry: (id) => {
+        setSelectedTab(id === SETTINGS_TAB ? SETTINGS_TAB : id);
+      },
+      onAddSidebarEntry:
+        isGm && presetState === 'present'
+          ? (setId) => {
+              const set = preset?.templates.find(
+                (template): template is SheetSetTemplate =>
+                  template.id === setId && isSheetSet(template),
+              );
+
+              if (set !== undefined) {
+                addSheet(set);
+              }
+            }
+          : undefined,
+      settings: isGm
+        ? {
+            id: SETTINGS_TAB,
+            label: copy.place.settings,
+            accessibleName: copy.place.settings,
+          }
+        : undefined,
+      tabs: shellTabs,
+      selectedTab: openTab === null ? null : templateTabKey(openTab),
+      onSelectTab: (id) => {
+        const index = templateIndexFromKey(id);
+
+        if (sheet !== null && index !== null && tabShownTo(role, sheet.policy.template, index)) {
+          chooseTemplateTab(sheet.id, index);
+        }
+      },
+      panelLabel: sheet === null ? undefined : sheet.name === '' ? copy.unnamed : sheet.name,
+      header: sheetParts?.header,
+      content,
     };
   }
 
   return (
     <MapSelectionContext value={mapView}>
-      <WindowShell layout={layout} banner={bannerFor(notices, sync)} />
+      <WindowFrame layout={frameLayout()} banner={bannerFor(notices, sync)} />
     </MapSelectionContext>
   );
 }

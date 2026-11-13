@@ -8,13 +8,14 @@ scope: 'The Muster Roll Owlbear Rodeo extension, with no own server, and its v2 
 status: final
 created: '2026-11-10'
 updated: '2026-11-12'
-binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-17, CAP-18, CAP-19, CAP-20, CAP-21, CAP-22, CAP-23, CAP-24, CAP-25, CAP-26, CAP-27, CAP-28, CAP-29, CAP-30, CAP-31, CAP-32]
+binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-17, CAP-18, CAP-19, CAP-20, CAP-21, CAP-22, CAP-23, CAP-24, CAP-25, CAP-26, CAP-27, CAP-28, CAP-29, CAP-30, CAP-31, CAP-32, CAP-33, CAP-34, CAP-35]
 sources:
   - ../../../specs/spec-muster-roll/SPEC.md
   - ../../../specs/spec-muster-roll/preset-format.md
   - ../../../specs/spec-muster-roll/storage-and-sync.md
   - ../../../specs/spec-muster-roll/stack.md
   - ../../ux-designs/ux-owlbear-muster-roll-2026-11-10/EXPERIENCE.md
+  - ../../../forge/sidebar-tabs-layout/forged-idea.md
 companions: []
 ---
 
@@ -89,13 +90,14 @@ graph TD
 
 ### AD-4 — A GM client validates player edits [ADOPTED]
 
-- **Binds:** CAP-3, CAP-15
-- **Prevents:** Unchecked player edits, lost fast edits, and two GM clients producing different records from one edit.
+- **Binds:** CAP-3, CAP-15, CAP-35
+- **Prevents:** Unchecked player edits, a header and an access check disagreeing on one field, lost fast edits, and two GM clients producing different records from one edit.
 - **Rule, player:** A player never merges its own edit. `src/replica` owns the pending queue and exposes it in the projection. Every decision about a pending edit lives in `src/replica/pending-edits`: the write access pre-check, combining patches, the hold during catch-up, the rebase on `stale`, the strip to the template, the move after a preset change and the denied notice. The engine passes it events and runs what it returns. The queue has at most one entry per key, holding a field patch. A newer edit updates the entry and raises `c`. For each key, only the newest version of its entry is sent, as `propose`, and it is resent with backoff until answered. An edit is identified by `(k, c, a)`.
-- **Rule, GM client:** A GM client validates only when it is not `catching-up`. An unknown sender never reaches `core/access`, because the AD-5 gate drops it. `core/access` passes a `row:` or `rep:` record only on a sheet of a visible template (AD-18), and judges only the field values that differ from the current record: each must be a field of the template with its type. A proposal that carries another field id absent from the template gets `reject stale` with the current record, not `denied`. A sheet of a sheet set must be live and hold a live `acl:` of the player. A single sheet must be player-editable (`players: edit`). It refuses any key form that AD-2 reserves for the GM.
+- **Rule, GM client:** A GM client validates only when it is not `catching-up`. An unknown sender never reaches `core/access`, because the AD-5 gate drops it. `core/access` passes a `row:` or `rep:` record only on a sheet of a visible template whose row or repeat section is on a visible tab (AD-18), and judges only the field values that differ from the current record: each must be a field of the template with its type. A proposal that carries another field id absent from the template gets `reject stale` with the current record, not `denied`. A sheet of a sheet set must be live and hold a live `acl:` of the player. A single sheet must be player-editable (`players: edit`). It refuses any key form that AD-2 reserves for the GM.
   - On pass with `c` above the current `c`, or with a record identical to the current one, it merges the record with `c` and `a` unchanged and broadcasts `commit`, echoing `(k, c, a)`.
   - On a refused access it sends `reject` with reason `denied`. The player drops the entry and shows a notice.
   - On a low `c` it sends `reject` with reason `stale` and the current record. The player applies its patch to that record, takes `c` + 1 and proposes again.
+- **Rule, one edit check:** One `core/access` function answers whether a player may edit a field of a sheet. The sheet header, the fields, the repeat block tools and the pending-edit pre-check read only it. A field on a hidden tab is read-only for a player, the sheet set's name field included: the header then shows the name with no input.
 - **Rule, races:** `commit` beats `reject` when both arrive. A proposal that crosses a revoke in flight is an accepted race.
 - **Rule, GM edit:** A GM client's own edit takes a new `c`, merges, persists and goes out as `commit`.
 
@@ -184,7 +186,7 @@ A message with a higher generation also starts AD-9 adoption.
 
 - **Binds:** CAP-1, CAP-9
 - **Prevents:** Two tabs of one browser overwriting each other's whole copy, rooms mixing data, and a build unable to read the only full copy.
-- **Rule:** A GM client persists a record under `mr2:{roomId}:{n}:{a}:{k}`, where `n` and `a` are the generation and `2` is the format version. A client reads only keys of the current format, and of a lower one only through a migration in `core`. No migration from `mr1` exists. A write reads that key, merges and sets it in one synchronous step. This guards against stale tabs, not against a race inside one millisecond. Merge on load repairs that case. A failed write raises a notice. Player clients do not persist.
+- **Rule:** A GM client persists a record under `mr3:{roomId}:{n}:{a}:{k}`, where `n` and `a` are the generation and `3` is the format version. A client reads only keys of the current format, and of a lower one only through a migration in `core`. No migration from `mr1` or `mr2` exists. A write reads that key, merges and sets it in one synchronous step. This guards against stale tabs, not against a race inside one millisecond. Merge on load repairs that case. A failed write raises a notice. Player clients do not persist.
 
 ### AD-12 — One wire protocol, paced and under the limit
 
@@ -193,19 +195,19 @@ A message with a higher generation also starts AD-9 adoption.
 - **Rule, envelope:** Room traffic uses `{ v, g, t, ... }`. `t` is one of `commit`, `propose`, `reject`, `ping`, `alive`, `state-request`, `state`, `reset`, `roll`. `core` owns the zod schemas, and every inbound message, snapshot and file is parsed through them.
 - **Rule, size:** One function splits batches so that each message on either channel is under 15000 UTF-8 bytes of JSON. A record that cannot fit one message is refused at input with an error.
 - **Rule, pacing:** Every send on both channels goes through one serial queue with spacing between sends. A closing window's last field patch goes ahead of the queue. `RateLimitHit` is waited out with backoff. Pending `commit` batches are coalesced by key.
-- **Rule, versions:** `v` changes with any change to a message, snapshot or stored record format. The current `v` is 2. A message with another `v` is dropped, and a higher one makes the UI ask for a reload. A snapshot or file with a higher `v` is neither read nor overwritten. A lower one is read only through a migration in `core`. No migration from `v: 1` exists: a v1 file is refused. Reading a room copy tells three failures apart: newer version, older version and unreadable. An older-version copy is not read, raises the GM's "older format" notice, and is replaced only as AD-9 allows, in practice by a wipe.
+- **Rule, versions:** `v` changes with any change to a message, snapshot or stored record format. The current `v` is 3. A message with another `v` is dropped, and a higher one makes the UI ask for a reload. A snapshot or file with a higher `v` is neither read nor overwritten. A lower one is read only through a migration in `core`. No migration from `v: 1` or `v: 2` exists: such a file is refused. Reading a room copy tells three failures apart: newer version, older version and unreadable. An older-version copy is not read, raises the GM's "older format" notice, and is replaced only as AD-9 allows, in practice by a wipe.
 
 ### AD-13 — Rolls are events, not state
 
 - **Binds:** CAP-6, CAP-7
 - **Prevents:** A roll made twice, a hidden sheet's roll shown to a player, or a roll persisted through the replica.
-- **Rule:** A window sends a roll request. The roller's `replica` evaluates the formula once with `core/formula` and sends one `roll` with `{ id, sheetId, hidden, roller, sheetName, cell, result }`. `hidden` is computed once, from the sheet's template, when the replica accepts the roll request (AD-18). Every output of that roll, the `roll` message and the dice-extension target (`everyone` or `gm_only`), uses that value. Receivers do not recompute and deduplicate by `id`. The names in the message are shown. Each client shows a result through the notification port, so it appears with the window closed. A player shows only `hidden: false`, and a GM client treats a player's `hidden: true` roll as forged. Rolls never enter records, storage or snapshots. No message is sent when evaluation fails.
+- **Rule:** A window sends a roll request. The roller's `replica` evaluates the formula once with `core/formula` and sends one `roll` with `{ id, sheetId, hidden, roller, sheetName, cell, result }`. `hidden` is computed once, from the sheet's template and the tab of the dice cell's address (AD-18), when the replica accepts the roll request. The roll request carries that address, tab index included. A player's replica refuses a roll request whose `hidden` is true and sends nothing. Every output of that roll, the `roll` message and the dice-extension target (`everyone` or `gm_only`), uses that value. Receivers do not recompute and deduplicate by `id`. The names in the message are shown. Each client shows a result through the notification port, so it appears with the window closed. A player shows only `hidden: false`, and a GM client treats a player's `hidden: true` roll as forged. Rolls never enter records, storage or snapshots. No message is sent when evaluation fails.
 
 ### AD-14 — A preset upload rewrites values in one pass
 
 - **Binds:** CAP-4, CAP-8, CAP-12
 - **Prevents:** Values lost on a moved field, erased values returning, and two diffs of one upload.
-- **Rule:** Preset upload and preset import are the same path, and neither changes the generation. In `replica`, not while `catching-up`, one `core/preset` diff runs over the full replica, template by template. A template is matched by its `id` and `kind`. The diff returns removed field ids that hold a value and the count of deleted sheets. A key present with `false` holds a value. A field moved across a `repeat` boundary counts as removed. A template that is gone, or changed in `id` or `kind`, deletes its sheets: a sheet set's `sheet:` records with all their dependents, a single sheet's `row:`, `rep:` and `link:` records. Deleted sheets are the sheets of such templates and such single sheets that hold a value. If any value or sheet is lost, the UI asks one confirmation, otherwise it shows the short notice. The diff runs again only when the replica changed before the confirm press. The batch then writes `preset`, moves values by field id to the row that now holds them, strips removed ids, and tombstones records of rows that no longer exist. New-key rows go first, then `preset`, then the tombstones of old keys, deleted sheets, stripped rows and links whose target AD-19 no longer allows. Link tombstones are not counted. Every later write that mints a new `c` strips field ids absent from the template of the record's sheet. If the uploader closes mid-batch, an erased value can return only when the same field id is added again, which is an accepted loss.
+- **Rule:** Preset upload and preset import are the same path, and neither changes the generation. In `replica`, not while `catching-up`, one `core/preset` diff runs over the full replica, template by template. A template is matched by its `id` and `kind`. The diff returns removed field ids that hold a value and the count of deleted sheets. A key present with `false` holds a value. A field moved across a `repeat` boundary counts as removed. A template that is gone, or changed in `id` or `kind`, deletes its sheets: a sheet set's `sheet:` records with all their dependents, a single sheet's `row:`, `rep:` and `link:` records. Deleted sheets are the sheets of such templates and such single sheets that hold a value. If any value or sheet is lost, the UI asks one confirmation, otherwise it shows the short notice. The diff runs again only when the replica changed before the confirm press. The batch then writes `preset`, moves values by field id to the row that now holds them, strips removed ids, and tombstones records of rows that no longer exist. New-key rows go first, then `preset`, then the tombstones of old keys, deleted sheets, stripped rows and links whose target AD-19 no longer allows. Link tombstones are not counted. Tabs never enter a record key: moving a section or row to another tab keeps every key and value, and removing a tab removes its fields. Every later write that mints a new `c` strips field ids absent from the template of the record's sheet. If the uploader closes mid-batch, an erased value can return only when the same field id is added again, which is an accepted loss.
 
 ### AD-17 — The production origin is permanent
 
@@ -215,43 +217,44 @@ A message with a higher generation also starts AD-9 adoption.
 
 ### AD-18 — One template owns every sheet
 
-- **Binds:** CAP-2, CAP-3, CAP-4, CAP-6, CAP-17, CAP-29
-- **Prevents:** Views, access checks and rolls choosing different templates, names or rules for one sheet.
+- **Binds:** CAP-2, CAP-3, CAP-4, CAP-6, CAP-17, CAP-29, CAP-34, CAP-35
+- **Prevents:** Views, access checks and rolls choosing different templates, names, rules or visible tabs for one sheet.
 - **Rule:** A sheet's template is found by one function in `core`: a live `sheet:` record's `set` names a sheet set, and a `sheetId` equal to a single sheet id names that single sheet. Template ids are unique in a preset. A `sheetId` equal to any template id is that template's single sheet or nothing: a `sheet:` record with such an id, or whose `set` names no template of kind `set`, resolves to no template, and an import drops such a sheet and counts it. A sheet whose template is absent is not shown and takes no edit. The resolver returns the sheet's policy: template, visibility, write rule (per-player write access, player-editable, or none), name source and linkable (`tokens`). Only the resolver reads a template's `kind`. No record, message or view carries a sheet kind.
+- **Rule, tabs:** A tab is addressed by its index in the template's `tabs`. A cell is addressed by `{ tab, section, row, cell }`, where `section` counts within the tab; the roll request, `data-cell`, problem paths and `resolveFieldReference` use this one form, and one `core` function maps an address to its tab. A record is placed by its key: `core` locates a `row:` record's row by its first field id, and a `rep:` record's repeat section by its id, in exactly one tab, because ids are unique in their template scope. A tab is hidden when its template or the tab has `visibility: "gm"`. One `core/visibility` function answers whether a role sees a sheet, a tab or a link target. Views, `core/access`, rolls, the token menu (`core/token-links`), the open-sheet path and selection marks read only it.
 
 ### AD-19 — A token link targets a sheet or a repeat block
 
 - **Binds:** CAP-14, CAP-18, CAP-30
 - **Prevents:** Two clients disagreeing on whether a token opens a removed repeat block, or a link surviving where the preset no longer allows it.
-- **Rule:** A link is live only while its sheet is live, its repeat block is live when it names one, and the template (for a sheet link) or the repeat section (for a repeat block link) is linkable (`tokens`). Any other link is inert: every view and the token menu treat it as no link. Only the GM composes `link:`, and the composer refuses a target that is not live. The GM client that composes a repeat block removal, or commits a player's repeat block removal, tombstones the live links to that repeat block in the next batch.
+- **Rule:** A link is live only while its sheet is live, its repeat block is live when it names one, and the template (for a sheet link) or the repeat section (for a repeat block link) is linkable (`tokens`). Any other link is inert: every view and the token menu treat it as no link. For a player, a live link to a repeat block on a hidden tab is no link as well: no token menu entry, no open, no selection mark (AD-18). Only the GM composes `link:`, and the composer refuses a target that is not live. The GM client that composes a repeat block removal, or commits a player's repeat block removal, tombstones the live links to that repeat block in the next batch.
 
 ### AD-20 — The builder is its own page with no platform
 
 - **Binds:** CAP-20, CAP-21, CAP-22
 - **Prevents:** The Owlbear SDK or the engine starting in a tab outside Owlbear, and a second sheet renderer.
-- **Rule:** `builder.html` is a Vite build input with the entry `src/builder/main.tsx`. `src/builder` imports `src/core` and only the sheet, shell, primitive, theme and copy modules of `src/ui`. It never imports `@/platform/current`, `src/replica`, the replica client or the projection store at runtime. A type-only import, as `src/ui/sheet` makes, is allowed. The builder and the room exchange a preset by file only, because the iframe's storage is partitioned from a top-level tab. The extension Settings holds a plain link, `<a href="/builder.html" target="_blank" rel="noopener">`, and `public/_headers` serves the page with no-cache. If a live room shows that the iframe blocks the tab, the owner decides the other route; no build picks one.
+- **Rule:** `builder.html` is a Vite build input with the entry `src/builder/main.tsx`. `src/builder` imports `src/core`, `src/preview`, and only the sheet, shell, primitive, theme, copy, download and preset-errors modules of `src/ui`. It never imports `@/platform/current`, `src/replica`, the replica client or the projection store at runtime. A type-only import, as `src/ui/sheet` makes, is allowed. The builder and the room exchange a preset by file only, because the iframe's storage is partitioned from a top-level tab. The extension Settings holds a plain link, `<a href="/builder.html" target="_blank" rel="noopener">`, and `public/_headers` serves the page with no-cache. If a live room shows that the iframe blocks the tab, the owner decides the other route; no build picks one.
 
 ### AD-21 — One builder store, and undo is a stack of documents
 
 - **Binds:** CAP-22, CAP-26, CAP-27
 - **Prevents:** An edit kind that undo misses, a form that changes the preset past the store, and two sources of truth for the draft.
-- **Rule:** One nanostores store owns the builder document. Its shape lives in `src/builder/document.ts` with the only `fromPreset` and `toPreset`: `{ window?, templates }`, where a template is its preset keys with `uid` and `sections`, a section is its preset keys with `uid` and `rows`, a row is `{ uid, cells }`, and a cell is its preset cell with `uid`. Uids never reach a file or the draft.
+- **Rule:** One nanostores store owns the builder document. Its shape lives in `src/builder/document.ts` with the only `fromPreset` and `toPreset`: `{ window?, templates }`, where a template is its preset keys with `uid` and `tabs`, a tab is its preset keys with `uid` and `sections`, a section is its preset keys with `uid` and `rows`, a row is `{ uid, cells }`, and a cell is its preset cell with `uid`. Uids never reach a file or the draft.
   - Every change is a pure function from document to document in `src/builder`, applied through one `apply`: add, remove, a form change, a move, a rename with all its formula rewrites, and opening a preset. It pushes the previous step on the undo stack and clears redo. A step is the document with the origin and the name, so undoing an open restores the old draft whole.
   - A coalesce key is the item uid and the property. An edit with the same key as the step before replaces that step, so typing in one input is one step. Undo, redo, a selection change and a blur end the run.
   - Undo and redo swap whole steps. The selection is not in a step: after undo or redo it moves to the changed item, or to its nearest live parent. Forms, tree drops, preview clicks and file opens change the document only through the store. The preview reads the store with no debounce.
-  - After each change the store writes the draft to one `localStorage` key of the builder page: the preset, the preset of the opened file (its origin) and the name. The page reads it once on open. A draft that fails the preset structure schema is dropped, and the page opens on the empty preset. Uids are minted again on load. Two open builder tabs are not coordinated: the last change written wins.
+  - After each change the store writes the draft to one `localStorage` key of the builder page: the preset, the preset of the opened file (its origin) and the name. The page reads it once on open. A draft that fails the preset structure schema is dropped, and the page opens on the empty preset. That schema accepts a template with no tabs, which is a problem (AD-22), not a drop. Uids are minted again on load. Two open builder tabs are not coordinated: the last change written wins.
 
 ### AD-22 — The builder checks with the upload's check
 
 - **Binds:** CAP-20, CAP-28
 - **Prevents:** A downloaded file that the upload refuses, and builder messages that drift from the upload's.
-- **Rule:** `core/preset` exposes `presetProblems`: every rule failure with its index path (template, section, row, cell), in the order `parsePresetFile` checks. `parsePresetFile` returns the first of them. A problem's path names the item that fails the check: an id or formula names its cell, a too-wide row its row, `bad-repeat` its section, a repeated field id, repeat section id or template id the second occurrence, and `bad-name-field` and an invalid template id the template. The builder adds only the structure problems it can produce, no templates (at the preset root) and a window out of range (at the window item), under the existing failure codes, and every form keeps the rest of the structure valid. The problem counter goes to the first problem in tree order. Messages come from `ui/preset-errors`. "Скачать пресет" is enabled only when `parsePresetFile(formatPresetFile(preset))` is ok, and the file is that text. A file opens only when `parsePresetFile` accepts it.
+- **Rule:** `core/preset` exposes `presetProblems`: every rule failure with its index path (template, tab, section, row, cell), in the order `parsePresetFile` checks. `parsePresetFile` returns the first of them. A problem's path names the item that fails the check: an id or formula names its cell, a too-wide row its row, `bad-repeat` its section, a missing tab title in a template with more than one tab its tab, a repeated field id, repeat section id or template id the second occurrence, and `bad-name-field` and an invalid template id the template. The builder adds only the structure problems it can produce, no templates (at the preset root), a template with no tabs (at the template) and a window out of range (at the window item), under the existing failure codes, and every form keeps the rest of the structure valid. The problem counter goes to the first problem in tree order. Messages come from `ui/preset-errors`. "Скачать пресет" is enabled only when `parsePresetFile(formatPresetFile(preset))` is ok, and the file is that text. A file opens only when `parsePresetFile` accepts it.
 
 ### AD-23 — The preview is the window's sheet components
 
 - **Binds:** CAP-22, CAP-23, CAP-28
 - **Prevents:** A second renderer that draws a preset differently from the window, and preview code that changes the window's DOM.
-- **Rule:** The preview draws `TabBar`, `SheetHeader` and `SheetBody` from `src/ui`, read-only, with records from a pure builder function: a `sheet:` record for a sheet set's sample sheet and one empty `rep:` record per repeat section. It passes `editing: null`, `pending: null`, no block tools, and a stub rolling that never rolls. The sheet components have one hook for it, a `CellPreviewContext` that is `null` in the window. When set, each cell sits in a `display: contents` element with `data-cell="{section}.{row}.{cell}"`, and an empty field shows its placeholder. Sections and rows carry `data-section-index` and `data-row-index`. Click-to-select, selection marks and problem marks resolve through these index paths to document uids.
+- **Rule:** The preview draws the AD-26 window frame with `SheetHeader` and `SheetBody` from `src/ui`, read-only. The builder preview and `preview.html` list every tab, hidden ones included, and show one at a time. In the builder preview the shown tab follows the store selection: the tab that holds the selected item, else the tab shown before. It draws with records from a pure builder function: a `sheet:` record for a sheet set's sample sheet and one empty `rep:` record per repeat section. It passes `editing: null`, `pending: null`, no block tools, and a stub rolling that never rolls. The sheet components have one hook for it, a `CellPreviewContext` that is `null` in the window. When set, each cell sits in a `display: contents` element with `data-cell="{tab}.{section}.{row}.{cell}"`, and an empty field shows its placeholder. Tabs, sections and rows carry `data-tab-index`, `data-section-index` and `data-row-index`. A click on a tab selects the tab, and a click on a sidebar entry selects the template. Click-to-select, selection marks and problem marks resolve through these index paths to document uids.
 
 ### AD-24 — Field ids and renames follow the parser's scopes
 
@@ -263,15 +266,23 @@ A message with a higher generation also starts AD-9 adoption.
 
 - **Binds:** CAP-22, CAP-23
 - **Prevents:** A drop that makes a document no preset can hold, such as a row inside a cell.
-- **Rule:** The tree is react-aria-components `Tree` with `useDragAndDrop` and `onMove`. Tree keys are document uids. Each node kind has its own drag type, and `getDropOperation` accepts a drop only into or beside a container of the right kind: a cell into a row, a row into a section, a section into a template, a template among templates. A drop that breaks a preset rule, such as a field moved into a scope that holds its id or a row moved under fewer `columns`, is accepted and shows as a problem. A move is one store edit.
+- **Rule:** The tree is react-aria-components `Tree` with `useDragAndDrop` and `onMove`. Tree keys are document uids. Each node kind has its own drag type, and `getDropOperation` accepts a drop only into or beside a container of the right kind: a cell into a row, a row into a section, a section into a tab, a tab into a template, a template among templates. The tree shows the tab level for every template, a one-tab template included, so a drop into a tab is always reachable. A drop that breaks a preset rule, such as a field moved into a scope that holds its id or a row moved under fewer `columns`, is accepted and shows as a problem. A move is one store edit.
+
+### AD-26 — One window frame
+
+- **Binds:** CAP-22, CAP-33, CAP-34
+- **Prevents:** The window, the preview page and the builder preview each laying out the sidebar and tabs their own way, and two orders of sidebar entries.
+- **Rule:** `src/ui/shell` owns one frame component, `WindowFrame`. It takes a navigation model: the sidebar entries (sheets, each set's "+", Settings, selection marks), the tabs of the open sheet with their marks, the selected sheet and tab, and the content. It lays out the sidebar, the banner, the sheet header, the tab row and the content area. The window's `WindowShell`, `preview.html` and the builder preview render through it, and no other module lays these out.
+- **Rule, sidebar:** Only `ui/shell/sidebar-entries` groups and orders the sidebar, from `core/visibility`, `core/sheets` and `core/access` (`ownedSheetIds` for a player's own sheets first in their group). It replaces `ui/sheet-tabs.ts`; `playerMayEdit` moves with it.
+- **Rule, open tab:** The chosen tab of each sheet is a tab index, held as client UI state: it never enters a record, a message or a snapshot. One function picks the open tab: the chosen one if the role sees it, else the first tab the role sees, else none. The content area draws only the open tab.
 
 ## Consistency Conventions
 
 | Concern | Convention |
 | --- | --- |
 | SDK boundary | Only `src/platform/obr` imports `@owlbear-rodeo/sdk`. A lint rule enforces this. Tests use the mock adapter of the same ports |
-| Visibility | Views get sheets only through `core/visibility`, which takes the role and the decoded preset. A player sees the preset, the sheets of visible templates with their dependents, and live links to them. With no decoded preset a player sees only the `preset` record. Players hold hidden records too, and hiding is at the interface only. A window derives its view once, in `src/ui/window-view` |
-| Sheet names | Only `core` names a sheet: a sheet of a sheet set by its name field value, a single sheet by its `title`, and an empty name by one fallback label. Tabs, headers, roll messages, token labels and the link picker read that function. A repeat block is named by its first field's value, with the same fallback |
+| Visibility | Views get sheets and their tabs only through `core/visibility`, which takes the role and the decoded preset. A player sees the preset, the sheets of visible templates with their dependents, and live links to them. Records are filtered by template only: `row:` and `rep:` records on a hidden tab stay in a player's projection, so names and rolls read them; a hidden tab is simply not listed or drawn. Only links to repeat blocks are filtered by tab. With no decoded preset a player sees only the `preset` record. Players hold hidden records too, and hiding is at the interface only. A window derives its view once, in `src/ui/window-view` |
+| Sheet names | Only `core` names a sheet: a sheet of a sheet set by its name field value, a single sheet by its `title`, and an empty name by one fallback label. Sidebar entries, headers, roll messages, token labels and the link picker read that function. A repeat block is named by its first field's value, with the same fallback |
 | Cell labels | Only `core/sheet-values` names a cell: its cell name, otherwise the nearest preceding `text` cell with text in its row, otherwise the field id or the formula. Accessible names, a roll's `{cell}`, field errors and preview samples read it. A dice button's visible text skips the cell name. A cell name is preset structure only: values and preset changes ignore it |
 | Formulas | Only the parser in `core/formula`. Never `eval` or `new Function`. A die chosen in a dice-choice field (`Nd(id)`) is resolved to a literal `NdM` before dice terms are listed or the tree is evaluated |
 | Errors | `core` returns results and does not throw for expected failures. `replica` reports them through notices |
@@ -322,6 +333,8 @@ src/
   builder/     # preset builder page: store, document edits, tree, forms, preview
 index.html       # popover and sheet views
 builder.html     # preset builder page
+preview.html     # dev-only preset preview (src/preview)
+picker.html      # link picker popover
 background.html  # replica host
 public/manifest.json
 public/_headers
@@ -342,7 +355,7 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 | Capability | Lives in | Governed by |
 | --- | --- | --- |
 | CAP-1 | replica, ui | AD-1, AD-2, AD-7, AD-10, AD-11, AD-17 |
-| CAP-2 | core/visibility | AD-5, AD-18, Visibility convention |
+| CAP-2 | core/visibility | AD-5, AD-18, AD-26, Visibility convention |
 | CAP-3 | core/access, replica | AD-2, AD-4, AD-5, AD-18 |
 | CAP-4 | core/preset, ui | AD-12, AD-14, AD-18 |
 | CAP-5 | core/preset, ui | AD-2 |
@@ -371,7 +384,10 @@ One production URL, no staging and no backend. A tunnel URL changes on each star
 | CAP-29 | core, ui | AD-2, AD-18 |
 | CAP-30 | core, replica, ui | AD-2, AD-10, AD-19 |
 | CAP-31 | replica, ui | AD-9, AD-11, AD-12 |
-| CAP-32 | core, ui, platform | AD-19, Visibility convention, SDK boundary |
+| CAP-32 | core, ui, platform | AD-19, AD-26, Visibility convention, SDK boundary |
+| CAP-33 | ui/shell, ui | AD-26, Visibility convention, Sheet names convention |
+| CAP-34 | core/preset, ui, builder | AD-14, AD-18, AD-21, AD-22, AD-23, AD-25, AD-26 |
+| CAP-35 | core/visibility, core/access, core/token-links, replica | AD-4, AD-13, AD-18, AD-19, Visibility convention |
 
 CAP-16 is retired.
 
@@ -392,6 +408,7 @@ CAP-16 is retired.
 | A direct write from the builder to the room | Needs the v2 server | v2 server |
 | Undo stack depth | One owner, `src/builder`. Documents are small | If memory shows in a long session |
 | A warning for values a move or a delete erases on upload | CAP-25 asks only for the id rename warning; a moved first field renames a `row:` or `rep:` record too | After the owner tries the builder on a live room |
+| Collapsing the sidebar | Later, by the owner's call. The chosen state is client UI state, as the chosen tab | When the owner asks |
 | Two builder tabs on one draft | One GM, one tab in practice; the last change wins | If a GM loses a draft this way |
 
 Facts still not measured. None changes a rule today:

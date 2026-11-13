@@ -21,7 +21,6 @@ const NAME_FIELD = 'Имя листа';
 const UNNAMED = 'Без имени';
 const TOO_LONG = 'Слишком длинно';
 const SETTINGS = 'Настройки';
-const GEAR = '⚙︎';
 const LINE: readonly [number, number, number] = [78, 81, 97];
 const LINE_STRONG: readonly [number, number, number] = [145, 147, 156];
 
@@ -51,8 +50,6 @@ type Delta = z.infer<typeof deltaSchema>;
 
 type Saved = { commands: number; names: string[] };
 
-type PinnedBoxes = { gearX: number; gearRight: number; npcX: number };
-
 declare global {
   interface Window {
     wireTypes: string[];
@@ -64,7 +61,7 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
 });
 
-test('with a preset and no sheet the bar shows the single sheets, the gear and "+" of the sheet set', async ({
+test('with a preset and no sheet the sheet set add control reads "+ Добавить"', async ({
   page,
   context,
 }) => {
@@ -72,11 +69,10 @@ test('with a preset and no sheet the bar shows the single sheets, the gear and "
   await openWithSheets(page, context);
 
   // #then
-  await expect(page.getByRole('tab')).toHaveText(['NPC', 'Инвентарь', GEAR]);
-  await expect(page.getByRole('button', { name: ADD })).toHaveText('+');
+  await expect(page.getByRole('button', { name: ADD })).toHaveText('+ Добавить');
 });
 
-test('"+" creates a sheet with an empty name, selects its tab "Без имени" and focuses its name', async ({
+test('"+" creates a sheet with an empty name, selects its sidebar entry "Без имени" and focuses its name', async ({
   page,
   context,
 }) => {
@@ -104,7 +100,7 @@ test('"+" creates a sheet with an empty name, selects its tab "Без имени
   }).toEqual({ key: true, data: { set: 'pc', order: 0 }, name: ABSENT });
 });
 
-test('a new sheet gets the next order and its tab goes after the others of its sheet set', async ({
+test('a new sheet gets the next order and its sidebar entry goes after the others of its sheet set', async ({
   page,
   context,
 }) => {
@@ -116,13 +112,13 @@ test('a new sheet gets the next order and its tab goes after the others of its s
   await expect(page.getByRole('tab', { name: UNNAMED })).toBeVisible();
 
   // #then
-  await expect(page.getByRole('tab')).toHaveText(['Брок', UNNAMED, 'NPC', 'Инвентарь', GEAR]);
+  await expectSidebarEntryNames(page, ['Брок', UNNAMED, 'NPC', 'Инвентарь', SETTINGS]);
   const created = (await storedSheets(page)).find((sheet) => sheet.k !== 'sheet:brok');
 
   expect(created?.d.order).toBe(4);
 });
 
-test('a name changed and left shows in the tab, the header and the name field, and stays after a reload', async ({
+test('a name changed and left shows in the sidebar entry, the header and the name field, and stays after a reload', async ({
   page,
   context,
 }) => {
@@ -142,7 +138,10 @@ test('a name changed and left shows in the tab, the header and the name field, a
   expect(await storedData(page, 'row:brok:name')).toEqual({ name: 'Лиза' });
 });
 
-test('the name field in the sheet renames the tab and the header', async ({ page, context }) => {
+test('the name field in the sheet renames the sidebar entry and the header', async ({
+  page,
+  context,
+}) => {
   // #given
   await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
 
@@ -184,7 +183,7 @@ test('Escape returns the old name and saves nothing', async ({ page, context }) 
   expect(await savedAfterSettling(page)).toEqual({ commands: 0, names: ['Брок'] });
 });
 
-test('an emptied name is cleared, and the tab and the header show "Без имени"', async ({
+test('an emptied name is cleared, and the sidebar entry and the header show "Без имени"', async ({
   page,
   context,
 }) => {
@@ -359,7 +358,7 @@ test('a refused creation does not take the selection when its record shows up la
   await expect(page.getByRole('tab', { name: 'Лиза' })).toHaveAttribute('aria-selected', 'true');
 });
 
-test('tabs sort by order, then by sheetId in code unit order, the same after a reload', async ({
+test('sidebar entries sort by order, then by sheetId in code unit order, the same after a reload', async ({
   page,
   context,
 }) => {
@@ -371,19 +370,16 @@ test('tabs sort by order, then by sheetId in code unit order, the same after a r
     { id: 'z', name: 'Зет', order: 0 },
   ]);
 
-  const before = await page.getByRole('tab').allTextContents();
+  await expectSidebarEntryNames(page, ['Зет', 'А', 'Бэ', 'NPC', 'Инвентарь', SETTINGS]);
 
   // #when
   await reloadRoom(page, context, background);
 
   // #then
-  expect({ before, after: await page.getByRole('tab').allTextContents() }).toEqual({
-    before: ['Зет', 'А', 'Бэ', 'NPC', 'Инвентарь', GEAR],
-    after: ['Зет', 'А', 'Бэ', 'NPC', 'Инвентарь', GEAR],
-  });
+  await expectSidebarEntryNames(page, ['Зет', 'А', 'Бэ', 'NPC', 'Инвентарь', SETTINGS]);
 });
 
-test('after the projection the first tab is selected', async ({ page, context }) => {
+test('after the projection the first sidebar entry is selected', async ({ page, context }) => {
   // #when
   await openWithSheets(page, context, [
     { id: 'b', name: 'Бэ', order: 1 },
@@ -394,7 +390,7 @@ test('after the projection the first tab is selected', async ({ page, context })
   await expect(page.getByRole('tab', { name: 'Зет' })).toHaveAttribute('aria-selected', 'true');
 });
 
-test('a window opened while the background runs selects the first tab', async ({
+test('a window opened while the background runs selects the first sidebar entry', async ({
   page,
   context,
 }) => {
@@ -411,56 +407,6 @@ test('a window opened while the background runs selects the first tab', async ({
 
   // #then
   await expect(second.getByRole('tab', { name: 'Зет' })).toHaveAttribute('aria-selected', 'true');
-});
-
-test('the tab list holds only tabs and "+" is a named button outside it', async ({
-  page,
-  context,
-}) => {
-  // #when
-  await openWithSheets(page, context, [{ id: 'brok', name: 'Брок', order: 0 }]);
-
-  // #then
-  await expect(page.getByRole('tablist')).toMatchAriaSnapshot(`
-    - tablist:
-      - tab "Брок" [selected]
-      - tab "NPC"
-      - tab "Инвентарь"
-      - tab "${SETTINGS}"
-  `);
-  expect({
-    children: await page
-      .getByRole('tablist')
-      .evaluate((list) => [...list.children].map((child) => child.getAttribute('role'))),
-    addInList: await page.getByRole('tablist').getByRole('button').count(),
-    add: await page.getByRole('button', { name: ADD }).count(),
-  }).toEqual({ children: ['tab', 'tab', 'tab', 'tab'], addInList: 0, add: 1 });
-});
-
-test('arrow keys move focus through every tab, the single sheets and the gear included', async ({
-  page,
-  context,
-}) => {
-  // #given
-  await openWithSheets(page, context, [
-    { id: 'a', name: 'Брок', order: 0 },
-    { id: 'b', name: 'Лиза', order: 1 },
-  ]);
-  await page.getByRole('tab', { name: 'Брок' }).focus();
-
-  const focused: string[] = [];
-
-  // #when
-  for (let step = 0; step < 5; step += 1) {
-    // Each step reads the focus the previous key left.
-    // oxlint-disable-next-line no-await-in-loop
-    focused.push(await focusedText(page));
-    // oxlint-disable-next-line no-await-in-loop
-    await page.keyboard.press('ArrowRight');
-  }
-
-  // #then
-  expect(focused).toEqual(['Брок', 'Лиза', 'NPC', 'Инвентарь', GEAR]);
 });
 
 test('the header shows the name in sheet-title over a bottom rule in line', async ({
@@ -494,168 +440,6 @@ test('the header shows the name in sheet-title over a bottom rule in line', asyn
     ruleColor: LINE,
     underline: 'dotted',
     underlineColor: LINE_STRONG,
-  });
-});
-
-test('a long name is cut with an ellipsis and stays whole as the accessible name', async ({
-  page,
-  context,
-}) => {
-  // #given
-  const longName = 'Эльверанха Длинноименная из Дома Бесконечных Имён';
-
-  // #when
-  await openWithSheets(page, context, [{ id: 'long', name: longName, order: 0 }]);
-
-  // #then
-  const tab = page.getByRole('tab', { name: longName });
-  const label = tab.locator('span');
-
-  expect({
-    width: (await tab.boundingBox())?.width,
-    overflow: await cssValue(label, 'text-overflow'),
-    cut: await label.evaluate((element) => element.scrollWidth > element.clientWidth),
-  }).toEqual({ width: 160, overflow: 'ellipsis', cut: true });
-});
-
-test.describe('with more sheets than fit', () => {
-  const many: SeededSheet[] = Array.from({ length: 12 }, (_unused, index) => ({
-    id: `s${String(index).padStart(2, '0')}`,
-    name: `Персонаж ${index + 1}`,
-    order: index,
-  }));
-
-  test('a vertical wheel over the bar scrolls the tabs sideways', async ({ page, context }) => {
-    // #given
-    await openWithSheets(page, context, many);
-    await page.getByRole('tab', { name: 'Персонаж 1', exact: true }).hover();
-
-    // #when
-    await page.mouse.wheel(0, 120);
-
-    // #then
-    await expect.poll(() => scrollLeftOf(page)).toBe(120);
-  });
-
-  test('a wheel that counts lines scrolls 20 px per line', async ({ page, context }) => {
-    // #given
-    await openWithSheets(page, context, many);
-
-    // #when
-    await page
-      .getByRole('tab', { name: 'Персонаж 1', exact: true })
-      .evaluate((tab) =>
-        tab.dispatchEvent(new WheelEvent('wheel', { deltaY: 3, deltaMode: 1, bubbles: true })),
-      );
-
-    // #then
-    await expect.poll(() => scrollLeftOf(page)).toBe(60);
-  });
-
-  test('a horizontal gesture scrolls the tabs', async ({ page, context }) => {
-    // #given
-    await openWithSheets(page, context, many);
-    await page.getByRole('tab', { name: 'Персонаж 1', exact: true }).hover();
-
-    // #when
-    await page.mouse.wheel(90, 0);
-
-    // #then
-    await expect.poll(() => scrollLeftOf(page)).toBe(90);
-  });
-
-  test('only the gear stays at the right, and the single sheet tabs scroll with the rest', async ({
-    page,
-    context,
-  }) => {
-    // #given
-    await openWithSheets(page, context, many);
-
-    const before = await pinnedBoxes(page);
-
-    // #when
-    await scrollBarTo(page, 150);
-
-    // #then
-    const after = await pinnedBoxes(page);
-
-    expect({
-      gearX: after.gearX,
-      gearRight: after.gearRight,
-      npcMoved: before.npcX - after.npcX,
-    }).toEqual({
-      gearX: before.gearX,
-      // The bar has 8 px of padding inside the 600 px window.
-      gearRight: 592,
-      npcMoved: 150,
-    });
-  });
-
-  test('"+" follows the last sheet of its set and scrolls with the tabs', async ({
-    page,
-    context,
-  }) => {
-    // #given
-    await openWithSheets(page, context, many);
-
-    const add = page.getByRole('button', { name: ADD });
-    const startX = (await add.boundingBox())?.x ?? 0;
-
-    // #when
-    await scrollBarTo(page, 100);
-
-    // #then
-    const last = await page.getByRole('tab', { name: 'Персонаж 12' }).boundingBox();
-    const scrolled = await add.boundingBox();
-
-    expect({
-      moved: startX - (scrolled?.x ?? 0),
-      gap: (scrolled?.x ?? 0) - ((last?.x ?? 0) + (last?.width ?? 0)),
-    }).toEqual({ moved: 100, gap: 8 });
-  });
-
-  test('at the end of the scroll the last tab is clear of the gear', async ({ page, context }) => {
-    // #given
-    await openWithSheets(page, context, many);
-
-    // #when
-    await scrollBarTo(page, 100_000);
-
-    // #then
-    const last = await page.getByRole('tab', { name: 'Инвентарь' }).boundingBox();
-    const gear = await page.getByRole('tab', { name: SETTINGS }).boundingBox();
-
-    // A fractional scroll offset leaves a fraction of a pixel.
-    expect(Math.round((gear?.x ?? 0) - ((last?.x ?? 0) + (last?.width ?? 0)))).toBe(8);
-  });
-
-  test('"+" opens the new tab after the last sheet and scrolls it into view', async ({
-    page,
-    context,
-  }) => {
-    // #given
-    await openWithSheets(page, context, many);
-
-    // #when
-    await scrollBarTo(page, 100_000);
-    await page.getByRole('button', { name: ADD }).click();
-
-    // #then
-    await expect(page.getByRole('tab', { name: UNNAMED })).toHaveAttribute('aria-selected', 'true');
-    await expect(nameField(page)).toBeFocused();
-
-    const created = await page.getByRole('tab', { name: UNNAMED }).boundingBox();
-    const gear = await page.getByRole('tab', { name: SETTINGS }).boundingBox();
-
-    expect({
-      tabs: (await page.getByRole('tab').allTextContents()).slice(-4),
-      clearOfGear: (created?.x ?? 0) + (created?.width ?? 0) <= (gear?.x ?? 0),
-      inView: (created?.x ?? -1) >= 0,
-    }).toEqual({
-      tabs: [UNNAMED, 'NPC', 'Инвентарь', GEAR],
-      clearOfGear: true,
-      inView: true,
-    });
   });
 });
 
@@ -772,31 +556,11 @@ async function savedAfterSettling(page: Page): Promise<Saved> {
   };
 }
 
-async function focusedText(page: Page): Promise<string> {
-  return page.evaluate(() => document.activeElement?.textContent ?? '');
-}
+async function expectSidebarEntryNames(page: Page, names: readonly string[]): Promise<void> {
+  const entries = page.getByRole('tab');
 
-function barScroller(page: Page): Locator {
-  return page.locator('[data-tab-scroller]');
-}
-
-async function scrollLeftOf(page: Page): Promise<number> {
-  return barScroller(page).evaluate((element) => element.scrollLeft);
-}
-
-async function scrollBarTo(page: Page, left: number): Promise<void> {
-  await barScroller(page).evaluate((element, target) => {
-    element.scrollLeft = target;
-  }, left);
-}
-
-async function pinnedBoxes(page: Page): Promise<PinnedBoxes> {
-  const npc = await page.getByRole('tab', { name: 'NPC' }).boundingBox();
-  const gear = await page.getByRole('tab', { name: SETTINGS }).boundingBox();
-
-  return {
-    gearX: gear?.x ?? 0,
-    gearRight: (gear?.x ?? 0) + (gear?.width ?? 0),
-    npcX: npc?.x ?? 0,
-  };
+  await expect(entries).toHaveCount(names.length);
+  await Promise.all(
+    names.map((name, index) => expect(entries.nth(index)).toHaveAccessibleName(name)),
+  );
 }

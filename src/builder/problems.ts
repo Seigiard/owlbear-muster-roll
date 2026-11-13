@@ -27,7 +27,8 @@ export type BuilderProblem = { uid: string; failure: BuilderFailure };
 
 // Every problem of the document, in tree order: the window first, then each template with its
 // items, and "no templates" last, where the tree's add items for templates sit. The upload's checks
-// give all but the two structure problems a form can make: a window out of range and no templates.
+// give all but the three structure problems a form can make: a window out of range, no templates,
+// and a template with no tabs, which shows at the template as the upload's structure refusal.
 export function builderProblems(document: BuilderDocument): BuilderProblem[] {
   const problems: BuilderProblem[] = [];
 
@@ -37,11 +38,17 @@ export function builderProblems(document: BuilderDocument): BuilderProblem[] {
 
   const order = new Map(treeOrder(document).map((uid, index) => [uid, index]));
 
-  const rules = presetProblems(toPreset(document)).flatMap((problem) => {
+  const rules: BuilderProblem[] = presetProblems(toPreset(document)).flatMap((problem) => {
     const uid = uidAt(document, problem.path);
 
     return uid === null ? [] : [{ uid, failure: problem.failure }];
   });
+
+  for (const template of document.templates) {
+    if (template.tabs.length === 0) {
+      rules.push({ uid: template.uid, failure: { code: 'invalid-structure' } });
+    }
+  }
 
   // A stable sort, so problems of one item keep the upload's order.
   rules.sort((first, second) => (order.get(first.uid) ?? 0) - (order.get(second.uid) ?? 0));

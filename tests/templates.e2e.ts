@@ -18,7 +18,6 @@ const UPLOAD = 'Загрузить пресет';
 const NAME_FIELD = 'Имя листа';
 const UNNAMED = 'Без имени';
 const SETTINGS = 'Настройки';
-const GEAR = '⚙︎';
 const ADD_CREW = 'Добавить: Экипаж';
 const ADD_CHARACTER = 'Добавить: Персонажи';
 const ADD_SHIP = 'Добавить: Корабли';
@@ -27,33 +26,33 @@ const D6_POOL = readFileSync(new URL('fixtures/presets/d6-pool.json', import.met
 
 // Two sheet sets between two single sheets, so each "+" has a neighbour on both sides.
 const TWO_SETS = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
     {
       id: 'inv',
       kind: 'single',
       title: 'Инвентарь',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'gold' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'gold' }]] }] }],
     },
     {
       id: 'ship',
       kind: 'set',
       title: 'Корабли',
       nameField: 'ship_name',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'ship_name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'ship_name' }]] }] }],
     },
     {
       id: 'log',
       kind: 'single',
       title: 'Журнал',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }] }],
     },
   ],
 });
@@ -68,7 +67,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('a second system with no code change (CAP-4)', () => {
-  test('an uploaded d6 pool preset gives one tab per single sheet and "+" for its sheet set', async ({
+  test('an uploaded d6 pool preset gives one sidebar entry per single sheet and an add control for its sheet set', async ({
     page,
     context,
   }) => {
@@ -79,9 +78,15 @@ test.describe('a second system with no code change (CAP-4)', () => {
     await uploadPreset(page, D6_POOL);
 
     // #then
-    await expect(page.getByRole('button', { name: ADD_CREW })).toHaveText('+');
-    await expect(page.getByRole('tab')).toHaveText(['NPC', 'Инвентарь', 'Список заклинаний', GEAR]);
-    expect(await barOrder(page)).toEqual([
+    await expect(page.getByRole('button', { name: ADD_CREW })).toHaveText('+ Добавить');
+    await expect(page.getByRole('tab')).toHaveText([
+      'NPC',
+      'Инвентарь',
+      'Список заклинаний',
+      SETTINGS,
+    ]);
+    expect(await sidebarOrder(page)).toEqual([
+      'Экипаж',
       ADD_CREW,
       'NPC',
       'Инвентарь',
@@ -142,7 +147,7 @@ test.describe('a second system with no code change (CAP-4)', () => {
         await panelField(page, 'effect').inputValue(),
       ],
     }).toEqual({
-      tabs: ['Лиза', 'NPC', 'Инвентарь', 'Список заклинаний', GEAR],
+      tabs: ['Лиза', 'NPC', 'Инвентарь', 'Список заклинаний', SETTINGS],
       sheet: { set: 'pc', order: 0 },
       name: { name: 'Лиза' },
       spell: ['Огонь', '8', 'Жжёт'],
@@ -150,7 +155,7 @@ test.describe('a second system with no code change (CAP-4)', () => {
   });
 });
 
-test('the bar lists templates in preset order, each sheet set\'s "+" after its last sheet, the gear last', async ({
+test('the sidebar lists templates in preset order, each sheet set add control after its last sheet, Settings last', async ({
   page,
   context,
 }) => {
@@ -159,11 +164,13 @@ test('the bar lists templates in preset order, each sheet set\'s "+" after its l
 
   // #then
   await expect(page.getByRole('button', { name: ADD_SHIP })).toBeVisible();
-  expect(await barOrder(page)).toEqual([
+  expect(await sidebarOrder(page)).toEqual([
+    'Персонажи',
     'Аня',
     'Брок',
     ADD_CHARACTER,
     'Инвентарь',
+    'Корабли',
     'Ладья',
     ADD_SHIP,
     'Журнал',
@@ -171,24 +178,29 @@ test('the bar lists templates in preset order, each sheet set\'s "+" after its l
   ]);
 });
 
-test('a sheet set with no sheets keeps its "+" in its place', async ({ page, context }) => {
+test('a sheet set with no sheets keeps its heading and add control in place', async ({
+  page,
+  context,
+}) => {
   // #when
   await openRoom(page, context, PARTY, TWO_SETS);
 
   // #then
   await expect(page.getByRole('button', { name: ADD_SHIP })).toBeVisible();
-  expect(await barOrder(page)).toEqual([
+  expect(await sidebarOrder(page)).toEqual([
+    'Персонажи',
     'Аня',
     'Брок',
     ADD_CHARACTER,
     'Инвентарь',
+    'Корабли',
     ADD_SHIP,
     'Журнал',
     SETTINGS,
   ]);
 });
 
-test('the "+" of a second sheet set adds a sheet of that set at its end, named "Без имени"', async ({
+test('the add control of a second sheet set adds a sheet of that set at its end, named "Без имени"', async ({
   page,
   context,
 }) => {
@@ -206,12 +218,14 @@ test('the "+" of a second sheet set adds a sheet of that set at its end, named "
     (one) => !['sheet:anya', 'sheet:brok', 'sheet:ladya'].includes(one.k),
   );
 
-  expect({ bar: await barOrder(page), created: created?.d }).toEqual({
-    bar: [
+  expect({ sidebar: await sidebarOrder(page), created: created?.d }).toEqual({
+    sidebar: [
+      'Персонажи',
       'Аня',
       'Брок',
       ADD_CHARACTER,
       'Инвентарь',
+      'Корабли',
       'Ладья',
       UNNAMED,
       ADD_SHIP,
@@ -222,7 +236,10 @@ test('the "+" of a second sheet set adds a sheet of that set at its end, named "
   });
 });
 
-test('a single sheet tab shows its title, read-only, with no delete', async ({ page, context }) => {
+test('a single sheet sidebar entry shows its title, read-only, with no delete', async ({
+  page,
+  context,
+}) => {
   // #given
   await openRoom(page, context, [...PARTY, record('row:inv:gold', { gold: 12 })], TWO_SETS);
 
@@ -277,18 +294,23 @@ function panelField(page: Page, name: string): ReturnType<Page['getByRole']> {
   return page.getByRole('tabpanel').getByRole('textbox', { name, exact: true });
 }
 
-// Every tab and button of the bar, by its accessible name, in the order they show from left to
-// right. The "+" buttons sit outside the tab list in the DOM, so only their position tells.
-async function barOrder(page: Page): Promise<string[]> {
-  return page.locator('[data-tab-scroller]').evaluate((scroller) =>
-    [...scroller.querySelectorAll<HTMLElement>('[role="tab"], button')]
+// Headings and add controls sit outside the tab list, so their CSS order gives the one visual list.
+async function sidebarOrder(page: Page): Promise<string[]> {
+  return page.locator('[data-sidebar-root]').evaluate((sidebar) =>
+    [
+      ...sidebar.querySelectorAll<HTMLElement>(
+        '[data-sidebar-heading], [data-sidebar-entry], button[aria-label^="Добавить:"]',
+      ),
+    ]
       .map((element) => ({
-        x: element.getBoundingClientRect().x,
+        order:
+          element.getAttribute('aria-label') === 'Настройки'
+            ? Number.MAX_SAFE_INTEGER
+            : Number(element.style.order),
         name: element.getAttribute('aria-label') ?? element.textContent ?? '',
       }))
-      // A fresh array from `map`, so sorting it in place changes nothing else.
       // oxlint-disable-next-line no-array-sort
-      .sort((first, second) => first.x - second.x)
+      .sort((first, second) => first.order - second.order)
       .map((element) => element.name),
   );
 }

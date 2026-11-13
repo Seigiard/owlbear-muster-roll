@@ -23,7 +23,7 @@ import { createProjectionStore, type ProjectionStore } from '@/ui/projection-sto
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'party',
@@ -31,14 +31,14 @@ const PRESET: Preset = {
       title: 'Party',
       nameField: 'name',
       tokens: true,
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
     {
       id: 'secret',
       kind: 'single',
       title: 'Secret',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'note' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'note' }]] }] }],
     },
   ],
 };

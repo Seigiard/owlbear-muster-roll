@@ -36,21 +36,25 @@ const PRESET: Preset = {
       title: 'Персонажи',
       nameField: 'name',
       tokens: true,
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     },
     {
       id: 'npc',
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          title: 'Противники',
-          repeat: true,
-          tokens: true,
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'npc_name' }],
-            [{ kind: 'field', type: 'number', id: 'hp' }],
+          sections: [
+            {
+              title: 'Противники',
+              repeat: true,
+              tokens: true,
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'npc_name' }],
+                [{ kind: 'field', type: 'number', id: 'hp' }],
+              ],
+            },
           ],
         },
       ],

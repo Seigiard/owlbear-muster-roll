@@ -53,6 +53,8 @@ export function badFileReason(failure: Exclude<PresetFailure, { code: 'newer-ver
       return reason.invalidTemplateId(failure.detail);
     case 'duplicate-template':
       return reason.duplicateTemplate(failure.detail);
+    case 'untitled-tab':
+      return reason.untitledTab(failure.detail);
     case 'bad-name-field':
       return reason.badNameField(failure.detail, failure.field);
     case 'invalid-id':

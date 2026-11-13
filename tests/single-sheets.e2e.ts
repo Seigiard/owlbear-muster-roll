@@ -30,7 +30,6 @@ const ACTIONS = 'Действия с листом';
 const ACCESS = 'Доступ';
 const NO_TOKEN = 'Нет токена';
 const UPLOAD = 'Загрузить пресет';
-const GEAR = '⚙︎';
 
 // TASK-37: a new instance id is 8 characters of the URL-safe nanoid alphabet.
 const NANOID_PATTERN = /^[A-Za-z0-9_-]{8}$/;
@@ -41,27 +40,31 @@ const D6_POOL_PRESET = fixture('d6-pool');
 // A sheet set whose repeat section "Атаки" is linkable, so a player with write access can remove a
 // repeat block that tokens link to.
 const LINKABLE_ATTACKS_PRESET = JSON.stringify({
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+              ],
+            },
+            {
+              title: 'Атаки',
+              repeat: true,
+              tokens: true,
+              rows: [[{ kind: 'field', type: 'text', id: 'attack' }]],
+            },
           ],
-        },
-        {
-          title: 'Атаки',
-          repeat: true,
-          tokens: true,
-          rows: [[{ kind: 'field', type: 'text', id: 'attack' }]],
         },
       ],
     },
@@ -93,7 +96,7 @@ type BlockControls = {
   dice: string;
 };
 
-type GameSystem = { label: string; preset: string; tabs: string[]; npc: BlockControls };
+type GameSystem = { label: string; preset: string; npc: BlockControls };
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 800 });
@@ -344,7 +347,6 @@ test.describe('two game systems with no code change', () => {
     {
       label: 'the d20 preset',
       preset: D20_PRESET,
-      tabs: [UNNAMED, 'NPC', 'Инвентарь', 'Журнал', 'Заметки ГМ', GEAR],
       npc: {
         tab: 'NPC',
         section: 'Противники',
@@ -360,7 +362,6 @@ test.describe('two game systems with no code change', () => {
     {
       label: 'the d6 pool preset',
       preset: D6_POOL_PRESET,
-      tabs: [UNNAMED, 'NPC', 'Инвентарь', 'Список заклинаний', GEAR],
       npc: {
         tab: 'NPC',
         section: 'Противники',
@@ -422,14 +423,11 @@ test.describe('two game systems with no code change', () => {
       await expect(page.getByRole('tab', { name: system.npc.tab })).toBeVisible();
 
       // #then
-      const tabs = await page.getByRole('tab').allTextContents();
-
       await page.getByRole('tab', { name: system.npc.tab }).click();
 
       const after = block(page, 'Страж');
 
       expect({
-        tabs,
         field: await after
           .getByRole('textbox', { name: system.npc.field, exact: true })
           .inputValue(),
@@ -437,7 +435,7 @@ test.describe('two game systems with no code change', () => {
           .getByRole('checkbox', { name: system.npc.check, exact: true })
           .isChecked(),
         dice: await after.getByRole('button', { name: system.npc.dice, exact: true }).count(),
-      }).toEqual({ tabs: system.tabs, field: '7', checked: true, dice: 1 });
+      }).toEqual({ field: '7', checked: true, dice: 1 });
     });
   }
 });

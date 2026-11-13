@@ -174,7 +174,7 @@ describe('replica client command outcomes', () => {
     const roll = Promise.resolve(
       harness.client.requestRoll({
         sheetId: 'npc',
-        place: { sectionIndex: 0, rowIndex: 0, cellIndex: 0, instanceId: null },
+        place: { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 0, instanceId: null },
         shown: {},
       }),
     );
@@ -415,7 +415,7 @@ describe('replica client command outcomes', () => {
       harness.client.requestRoll(
         {
           sheetId: 'npc',
-          place: { sectionIndex: 0, rowIndex: 0, cellIndex: 0, instanceId: null },
+          place: { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 0, instanceId: null },
           shown: {},
         },
         () => {
@@ -448,7 +448,7 @@ describe('replica client command outcomes', () => {
     const roll = Promise.resolve(
       harness.client.requestRoll({
         sheetId: 'npc',
-        place: { sectionIndex: 0, rowIndex: 0, cellIndex: 0, instanceId: null },
+        place: { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 0, instanceId: null },
         shown: {},
       }),
     );
@@ -582,7 +582,7 @@ const TIMEOUT_CASES: readonly {
     begin: (client) =>
       client.requestRoll({
         sheetId: 'npc',
-        place: { sectionIndex: 0, rowIndex: 0, cellIndex: 0, instanceId: null },
+        place: { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 0, instanceId: null },
         shown: {},
       }),
   },

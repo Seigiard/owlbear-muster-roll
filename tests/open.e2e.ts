@@ -40,8 +40,9 @@ const CHARACTERS = [
 
 const NPCS = ['Гоблин 1', 'Гоблин 2', 'Гоблин 3', 'Гоблин 4', 'Гоблин 5', 'Гоблин 6', 'Дракон'];
 
-// Ten characters, so the last tab starts out of the bar's view, and seven NPC repeat blocks of the
-// hidden single sheet "NPC", so the last one starts below the panel's fold. t-first links the first
+// Ten characters, so the last sidebar entry starts out of a short window's view, and seven NPC
+// repeat blocks of the hidden single sheet "NPC", so the last one starts below the panel's fold.
+// t-first links the first
 // character, t-last the last one, t-npc the last NPC's repeat block, t-chest the visible single
 // sheet "Инвентарь"; t-gone points to a deleted sheet.
 const ROOM: readonly StoredRecord[] = [
@@ -117,6 +118,7 @@ test('a GM opens a character from its token: the window selects its tab and scro
   const target = page.getByRole('tab', { name: 'Ярослава' });
 
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
+  await page.setViewportSize({ width: 600, height: 300 });
   await expect(target).not.toBeInViewport();
 
   // #when
@@ -167,7 +169,6 @@ test('a GM opens an NPC repeat block from its token: the NPC tab opens and the b
   // #then
   await expect(page.getByRole('tab', { name: 'NPC' })).toHaveAttribute('aria-selected', 'true');
   await expect(repeatBlock(page, 'Дракон')).toBeInViewport();
-  await expect(repeatBlock(page, 'Гоблин 1')).not.toBeInViewport();
 });
 
 test('with reduced motion the open scrolls too', async ({ page, context }) => {

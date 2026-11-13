@@ -88,7 +88,7 @@ function row(id: string, c: number, value: string | number = c): VersionedRecord
 function commit(records: VersionedRecord[]): Sent {
   return {
     channel: SYNC_CHANNEL,
-    data: { v: 2, g: GENERATION, t: 'commit', records },
+    data: { v: 3, g: GENERATION, t: 'commit', records },
     options: { destination: 'REMOTE' },
   };
 }
@@ -214,7 +214,7 @@ describe('commit outbox', () => {
     expect(rig.sent.slice(1)).toEqual([
       {
         ...commit([row('str', 5)]),
-        data: { v: 2, g: GENERATION, t: 'commit', records: [row('str', 5)], acks: [ack] },
+        data: { v: 3, g: GENERATION, t: 'commit', records: [row('str', 5)], acks: [ack] },
       },
     ]);
   });

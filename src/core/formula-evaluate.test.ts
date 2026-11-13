@@ -20,52 +20,56 @@ import type { FieldValues } from '@/core/sheet-values';
 // Sections: 0 the sheet grid, 1 attacks (repeat), 2 inventory (repeat), 3 a dice row with no field.
 // `bonus` sits in the attack row and in the grid row named `level`. `weight` only in inventory.
 const TEMPLATE: TemplateLayout = {
-  sections: [
+  tabs: [
     {
-      rows: [
-        [
-          { kind: 'text', text: 'Сила' },
-          { kind: 'field', type: 'number', id: 'str' },
-        ],
-        [{ kind: 'field', type: 'number', id: 'str_tired' }],
-        [{ kind: 'field', type: 'number', id: 'dex' }],
-        [{ kind: 'field', type: 'number', id: 'big' }],
-        [{ kind: 'field', type: 'check', id: 'bless' }],
-        [{ kind: 'field', type: 'text', id: 'note' }],
-        [
-          { kind: 'field', type: 'number', id: 'level' },
-          { kind: 'field', type: 'number', id: 'bonus' },
-        ],
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+            ],
+            [{ kind: 'field', type: 'number', id: 'str_tired' }],
+            [{ kind: 'field', type: 'number', id: 'dex' }],
+            [{ kind: 'field', type: 'number', id: 'big' }],
+            [{ kind: 'field', type: 'check', id: 'bless' }],
+            [{ kind: 'field', type: 'text', id: 'note' }],
+            [
+              { kind: 'field', type: 'number', id: 'level' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+            ],
+          ],
+        },
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+              { kind: 'dice', formula: '1d20+bonus' },
+            ],
+          ],
+        },
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'item' },
+              { kind: 'field', type: 'number', id: 'weight' },
+            ],
+          ],
+        },
+        { rows: [[{ kind: 'dice', formula: '1d20 <= str - 2*str_tired' }]] },
       ],
     },
-    {
-      repeat: true,
-      rows: [
-        [
-          { kind: 'field', type: 'text', id: 'attack' },
-          { kind: 'field', type: 'number', id: 'bonus' },
-          { kind: 'dice', formula: '1d20+bonus' },
-        ],
-      ],
-    },
-    {
-      repeat: true,
-      rows: [
-        [
-          { kind: 'field', type: 'text', id: 'item' },
-          { kind: 'field', type: 'number', id: 'weight' },
-        ],
-      ],
-    },
-    { rows: [[{ kind: 'dice', formula: '1d20 <= str - 2*str_tired' }]] },
   ],
 };
 
-const DICE_ROW: TemplateRowPlace = { sectionIndex: 3, rowIndex: 0 };
+const DICE_ROW: TemplateRowPlace = { tabIndex: 0, sectionIndex: 3, rowIndex: 0 };
 
-const ATTACK_ROW: TemplateRowPlace = { sectionIndex: 1, rowIndex: 0 };
+const ATTACK_ROW: TemplateRowPlace = { tabIndex: 0, sectionIndex: 1, rowIndex: 0 };
 
-const LEVEL_ROW: TemplateRowPlace = { sectionIndex: 0, rowIndex: 6 };
+const LEVEL_ROW: TemplateRowPlace = { tabIndex: 0, sectionIndex: 0, rowIndex: 6 };
 
 const NO_VALUES: FieldValues = new Map();
 
@@ -322,18 +326,22 @@ describe('evaluateFormula', () => {
   test('a dice cell in the second row of a repeat block reads a field from the first row of its block', () => {
     // #given a two-row repeat section; the block holds bonus 3 in row one and range 2 in row two
     const layout: TemplateLayout = {
-      sections: [
+      tabs: [
         {
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'field', type: 'number', id: 'bonus' },
-            ],
-            [
-              { kind: 'field', type: 'number', id: 'range' },
-              { kind: 'dice', formula: '1d20+bonus+range' },
-            ],
+          sections: [
+            {
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'attack' },
+                  { kind: 'field', type: 'number', id: 'bonus' },
+                ],
+                [
+                  { kind: 'field', type: 'number', id: 'range' },
+                  { kind: 'dice', formula: '1d20+bonus+range' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -345,7 +353,12 @@ describe('evaluateFormula', () => {
       ['range', 2],
     ]);
 
-    const lookup = formulaFieldLookup(layout, { sectionIndex: 0, rowIndex: 1 }, sheetRow, block);
+    const lookup = formulaFieldLookup(
+      layout,
+      { tabIndex: 0, sectionIndex: 0, rowIndex: 1 },
+      sheetRow,
+      block,
+    );
 
     // #when
     const result = evaluateAt('1d20 + bonus + range', lookup, [0.3]);

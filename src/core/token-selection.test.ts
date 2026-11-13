@@ -13,7 +13,7 @@ const PC: Template = {
   title: 'Персонажи',
   nameField: 'name',
   tokens: true,
-  sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
 };
 
 // Hidden, and only its repeat blocks are linkable.
@@ -22,12 +22,16 @@ const NPC: Template = {
   kind: 'single',
   title: 'НПС',
   visibility: 'gm',
-  sections: [
-    { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'npc_name' }]] },
+  tabs: [
+    {
+      sections: [
+        { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'npc_name' }]] },
+      ],
+    },
   ],
 };
 
-const PRESET: Preset = { v: 2, templates: [PC, NPC] };
+const PRESET: Preset = { v: 3, templates: [PC, NPC] };
 
 // t-brok and t-brok-2 link Брок, t-vera links Вера, t-skel links the skeleton's repeat block,
 // t-gone links a deleted sheet, so its link is inert.

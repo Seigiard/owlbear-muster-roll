@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { PresetCell, PresetSection, Template } from '@/core/preset';
+import { layoutSections, type PresetCell, type PresetSection, type Template } from '@/core/preset';
 
 import { fieldFormulaCount, formulaNames, renameFieldId } from './formula-rename';
 
-const FIRST_CELL = { sectionIndex: 0, rowIndex: 0, cellIndex: 0 };
+const FIRST_CELL = { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 0 };
 
 function field(id: string): PresetCell {
   return { kind: 'field', type: 'number', id };
@@ -19,11 +19,11 @@ function diceChoice(id: string): PresetCell {
 }
 
 function single(sections: PresetSection[]): Template {
-  return { id: 'npc', kind: 'single', title: 'NPC', sections };
+  return { id: 'npc', kind: 'single', title: 'NPC', tabs: [{ sections }] };
 }
 
 function formulas(template: Template): string[] {
-  return template.sections.flatMap((section) =>
+  return layoutSections(template).flatMap((section) =>
     section.rows.flatMap((row) =>
       row.flatMap((cell) => (cell.kind === 'dice' ? [cell.formula] : [])),
     ),
@@ -53,7 +53,7 @@ describe('renameFieldId', () => {
       '1d6+strength+strength',
       '1d20',
     ]);
-    expect(renamed.template.sections[0]?.rows[0]?.[0]).toEqual(field('strength'));
+    expect(renamed.template.tabs[0]?.sections[0]?.rows[0]?.[0]).toEqual(field('strength'));
   });
 
   test('renames only the field when the new id is not a valid id', () => {
@@ -66,7 +66,7 @@ describe('renameFieldId', () => {
     // #then
     expect(renamed.formulas).toBe(0);
     expect(formulas(renamed.template)).toEqual(['1d20+str']);
-    expect(renamed.template.sections[0]?.rows[0]?.[0]).toEqual(field('2str'));
+    expect(renamed.template.tabs[0]?.sections[0]?.rows[0]?.[0]).toEqual(field('2str'));
   });
 
   test("renames only the field and the name field when the field's scope holds the new id", () => {
@@ -76,11 +76,17 @@ describe('renameFieldId', () => {
       kind: 'set',
       title: 'Экипаж',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          rows: [[{ kind: 'field', type: 'text', id: 'name' }, field('dex'), dice('1d20+name')]],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }, field('dex'), dice('1d20+name')],
+              ],
+            },
+            { repeat: true, rows: [[field('item')]] },
+          ],
         },
-        { repeat: true, rows: [[field('item')]] },
       ],
     };
 
@@ -91,7 +97,7 @@ describe('renameFieldId', () => {
     expect(renamed.formulas).toBe(0);
     expect(formulas(renamed.template)).toEqual(['1d20+name']);
     expect(renamed.template).toMatchObject({ nameField: 'dex' });
-    expect(renamed.template.sections[0]?.rows[0]?.[0]).toEqual({
+    expect(renamed.template.tabs[0]?.sections[0]?.rows[0]?.[0]).toEqual({
       kind: 'field',
       type: 'text',
       id: 'dex',
@@ -144,7 +150,7 @@ describe('renameFieldId', () => {
     // #when
     const renamed = renameFieldId(
       template,
-      { sectionIndex: 1, rowIndex: 0, cellIndex: 1 },
+      { tabIndex: 0, sectionIndex: 1, rowIndex: 0, cellIndex: 1 },
       'bonus',
       'item_bonus',
     );
@@ -177,7 +183,7 @@ describe('renameFieldId', () => {
     // #when
     const renamed = renameFieldId(
       template,
-      { sectionIndex: 0, rowIndex: 1, cellIndex: 0 },
+      { tabIndex: 0, sectionIndex: 0, rowIndex: 1, cellIndex: 0 },
       'hp',
       'hp_max',
     );
@@ -194,7 +200,7 @@ describe('renameFieldId', () => {
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
     };
 
     // #when
@@ -204,7 +210,7 @@ describe('renameFieldId', () => {
     expect(renamed.template).toEqual({
       ...template,
       nameField: 'imya',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'imya' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'imya' }]] }] }],
     });
   });
 
@@ -215,7 +221,7 @@ describe('renameFieldId', () => {
     // #when
     const renamed = renameFieldId(
       template,
-      { sectionIndex: 0, rowIndex: 0, cellIndex: 1 },
+      { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 1 },
       'hp',
       'x',
     );
@@ -238,6 +244,40 @@ describe('fieldFormulaCount', () => {
 
     // #then
     expect(count).toBe(1);
+  });
+});
+
+describe('renameFieldId and fieldFormulaCount across tabs', () => {
+  // CAP-34: "str" sits on tab 1 and "dex" at the same section, row and cell indexes on tab 2; each
+  // tab's dice cell names the field of the other tab.
+  const TABBED: Template = {
+    id: 'pc',
+    kind: 'single',
+    title: 'PC',
+    tabs: [
+      { title: 'Основное', sections: [{ rows: [[field('str'), dice('1d20+dex')]] }] },
+      { title: 'Бой', sections: [{ rows: [[field('dex'), dice('1d20+str')]] }] },
+    ],
+  };
+
+  test('renames a field of tab 1 in a formula of tab 2, and leaves the cell of tab 2 at its indexes', () => {
+    // #when
+    const renamed = renameFieldId(TABBED, FIRST_CELL, 'str', 'strength');
+
+    // #then
+    expect(renamed.formulas).toBe(1);
+    expect(renamed.template.tabs).toEqual([
+      { title: 'Основное', sections: [{ rows: [[field('strength'), dice('1d20+dex')]] }] },
+      { title: 'Бой', sections: [{ rows: [[field('dex'), dice('1d20+strength')]] }] },
+    ]);
+  });
+
+  test('counts the formula of the other tab for the field of each tab', () => {
+    // #when
+    const counts = [0, 1].map((tabIndex) => fieldFormulaCount(TABBED, { ...FIRST_CELL, tabIndex }));
+
+    // #then
+    expect(counts).toEqual([1, 1]);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   ownedSheetIds,
   PARTY_LIMIT,
   partyEntries,
+  playerMayEdit,
   playerName,
   plinkKey,
   PROPOSE_C_MAX_STEP,
@@ -17,8 +18,10 @@ import {
   type ProposalContext,
   type ProposalSender,
 } from '@/core/access';
+import { FORMAT_VERSION } from '@/core/format-version';
 import type { Preset, Template } from '@/core/preset';
 import { playerIdSchema, recordKeySchema, type VersionedRecord } from '@/core/records';
+import { resolveSheet, type SheetPolicy } from '@/core/sheets';
 
 // The GM's own player id, which never gets a row.
 const OWN = 'p-own';
@@ -378,6 +381,73 @@ describe('plinkKey', () => {
   });
 });
 
+const PLAYER = 'p1';
+
+// A sheet set, a hidden single sheet, a player-editable single sheet, and a second sheet set.
+const PRESET: Preset = {
+  v: FORMAT_VERSION,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Characters',
+      nameField: 'name',
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+    },
+    {
+      id: 'npc',
+      kind: 'single',
+      title: 'NPCs',
+      visibility: 'gm',
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+    },
+    {
+      id: 'loot',
+      kind: 'single',
+      title: 'Loot',
+      players: 'edit',
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'gold' }]] }] }],
+    },
+    {
+      id: 'ship',
+      kind: 'set',
+      title: 'Ships',
+      nameField: 'hull',
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'hull' }]] }] }],
+    },
+  ],
+};
+
+const RECORDS: ReadonlyMap<string, VersionedRecord> = byKey([
+  { k: 'sheet:arag', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
+  { k: 'row:arag:name', d: { name: 'Арагорн' }, c: 1, a: 'seed' },
+  { k: 'sheet:frodo', d: { set: 'pc', order: 1 }, c: 1, a: 'seed' },
+  plink('frodo', PLAYER, 'Player'),
+  acl('frodo', PLAYER, 'Player'),
+]);
+
+function policyOf(sheetId: string): SheetPolicy {
+  const policy = resolveSheet(RECORDS, PRESET, sheetId);
+
+  if (policy === null) {
+    throw new Error(`no policy for ${sheetId}`);
+  }
+
+  return policy;
+}
+
+describe('playerMayEdit', () => {
+  test.each<[string, string, boolean]>([
+    ["a sheet of a set with the player's live acl", 'frodo', true],
+    ['a sheet of a set with no acl', 'arag', false],
+    ['a single sheet with players: edit', 'loot', true],
+    ['a hidden single sheet', 'npc', false],
+  ])('%s: %p', (_name, sheetId, expected) => {
+    // #then
+    expect(playerMayEdit(policyOf(sheetId), RECORDS, PLAYER)).toBe(expected);
+  });
+});
+
 // The sheet set "pc" has a plain row "str" with a note and a check, and a two-row repeat section
 // "item", whose one repeat block holds `item`, `qty` and `weight`.
 const PC: Template = {
@@ -385,31 +455,44 @@ const PC: Template = {
   kind: 'set',
   title: 'Персонажи',
   nameField: 'note',
-  sections: [
+  tabs: [
     {
-      rows: [
-        [
-          { kind: 'field', type: 'number', id: 'str' },
-          { kind: 'field', type: 'text', id: 'note' },
-          { kind: 'field', type: 'check', id: 'tired' },
-        ],
+      title: 'Основное',
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'text', id: 'note' },
+              { kind: 'field', type: 'check', id: 'tired' },
+            ],
+          ],
+        },
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'field', type: 'text', id: 'item' },
+              { kind: 'field', type: 'number', id: 'qty' },
+            ],
+            [{ kind: 'field', type: 'number', id: 'weight' }],
+          ],
+        },
       ],
     },
     {
-      repeat: true,
-      rows: [
-        [
-          { kind: 'field', type: 'text', id: 'item' },
-          { kind: 'field', type: 'number', id: 'qty' },
-        ],
-        [{ kind: 'field', type: 'number', id: 'weight' }],
+      title: 'Заметки мастера',
+      visibility: 'gm',
+      sections: [
+        { rows: [[{ kind: 'field', type: 'text', id: 'secret' }]] },
+        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'secret_item' }]] },
       ],
     },
   ],
 };
 
 const PROPOSAL_PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     PC,
     // Hidden, so its `players: "edit"` lets no player edit it.
@@ -419,24 +502,28 @@ const PROPOSAL_PRESET: Preset = {
       title: 'НПС',
       visibility: 'gm',
       players: 'edit',
-      sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] }],
     },
     {
       id: 'inventory',
       kind: 'single',
       title: 'Инвентарь',
       players: 'edit',
-      sections: [
-        { rows: [[{ kind: 'field', type: 'text', id: 'items' }]] },
-        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'gear' }]] },
-        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'tool' }]] },
+      tabs: [
+        {
+          sections: [
+            { rows: [[{ kind: 'field', type: 'text', id: 'items' }]] },
+            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'gear' }]] },
+            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'tool' }]] },
+          ],
+        },
       ],
     },
     {
       id: 'journal',
       kind: 'single',
       title: 'Журнал',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }] }],
     },
     {
       id: 'villains',
@@ -444,7 +531,7 @@ const PROPOSAL_PRESET: Preset = {
       title: 'Злодеи',
       nameField: 'villain',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }],
+      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }] }],
     },
   ],
 };
@@ -616,6 +703,19 @@ describe('checkProposal', () => {
     ],
     ['a removal of a plain row', { ...STR_ROW, d: null, c: 4, a: 'p-conn' }],
     ['a sheet with no access', { k: 'row:kira:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
+    [
+      'a plain row on a hidden tab of a visible sheet with access',
+      { k: 'row:brok:secret', d: { secret: 'Лич' }, c: 1, a: 'p-conn' },
+    ],
+    [
+      'a repeat block on a hidden tab of a visible sheet with access',
+      {
+        k: 'rep:brok:secret_item:s1',
+        d: { order: 0, cells: { secret_item: 'Ключ' } },
+        c: 1,
+        a: 'p-conn',
+      },
+    ],
     ['the GM key form sheet:', { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 2, a: 'p-conn' }],
     ['the GM key form acl:', { k: 'acl:kira:p-oly', d: { name: 'Оля' }, c: 1, a: 'p-conn' }],
     ['the GM key form plink:', { k: 'plink:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'p-conn' }],
@@ -777,6 +877,33 @@ describe('proposalAllowed', () => {
 
     // #then
     expect(allowed).toBe(true);
+  });
+
+  test('refuses plain and repeat fields on a hidden tab while keeping a visible field writable', () => {
+    // #when
+    const allowed = [
+      proposalAllowed(PROPOSAL_CONTEXT, 'p-oly', {
+        ...STR_ROW,
+        d: { str: 6 },
+        c: 4,
+        a: 'p-conn',
+      }),
+      proposalAllowed(PROPOSAL_CONTEXT, 'p-oly', {
+        k: 'row:brok:secret',
+        d: { secret: 'Лич' },
+        c: 1,
+        a: 'p-conn',
+      }),
+      proposalAllowed(PROPOSAL_CONTEXT, 'p-oly', {
+        k: 'rep:brok:secret_item:s1',
+        d: { order: 0, cells: { secret_item: 'Ключ' } },
+        c: 1,
+        a: 'p-conn',
+      }),
+    ];
+
+    // #then
+    expect(allowed).toEqual([true, false, false]);
   });
 });
 

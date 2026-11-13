@@ -1,5 +1,6 @@
 import {
   firstFieldId,
+  layoutSections,
   repeatSectionId,
   type Preset,
   type PresetCell,
@@ -85,7 +86,7 @@ function addSampleValues(
 ): void {
   const counters: ValueCounters = { number: 0, check: 0 };
 
-  for (const section of template.sections) {
+  for (const section of layoutSections(template)) {
     const sectionId = repeatSectionId(section);
 
     // All rows of a repeat section form one repeat block, with one record.

@@ -1,5 +1,11 @@
 import type { JsonValue } from '@/core/json';
-import { repeatSectionById, type Preset, type PresetSection } from '@/core/preset';
+import {
+  repeatSectionById,
+  repeatSectionPlace,
+  type Preset,
+  type PresetSection,
+  type TemplateLayout,
+} from '@/core/preset';
 import {
   linkDataSchema,
   parseRepKey,
@@ -74,6 +80,21 @@ export function blockIndex(records: Iterable<VersionedRecord>): BlockIndex {
   }
 
   return index;
+}
+
+// The tab that holds a live repeat block of a sheet: the tab of the repeat section its `rep:` key
+// names. `null` when the block is gone or its section is not in the template.
+export function repeatBlockTabIndex(
+  records: Iterable<VersionedRecord>,
+  layout: TemplateLayout,
+  sheetId: string,
+  instanceId: string,
+): number | null {
+  const sectionId = blockIndex(records).get(blockIndexKey(sheetId, instanceId));
+
+  return sectionId === undefined
+    ? null
+    : (repeatSectionPlace(layout, sectionId)?.place.tabIndex ?? null);
 }
 
 // AD-19: a link is live only while its sheet is live, its repeat block is live when it names one,

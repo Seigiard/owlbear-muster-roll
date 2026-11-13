@@ -33,7 +33,7 @@ const MENU_COPY = {
 // "pc" links whole sheets and has a repeat section a token cannot link to. "npc" links only its
 // repeat blocks.
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
@@ -41,14 +41,18 @@ const PRESET: Preset = {
       title: 'Персонажи',
       nameField: 'name',
       tokens: true,
-      sections: [
+      tabs: [
         {
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'name' }],
-            [{ kind: 'field', type: 'number', id: 'str' }],
+          sections: [
+            {
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'name' }],
+                [{ kind: 'field', type: 'number', id: 'str' }],
+              ],
+            },
+            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
           ],
         },
-        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
       ],
     },
     {
@@ -56,15 +60,19 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          repeat: true,
-          tokens: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'mob' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
+          sections: [
+            {
+              repeat: true,
+              tokens: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'mob' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                ],
+              ],
+            },
           ],
         },
       ],

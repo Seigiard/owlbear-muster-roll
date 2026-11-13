@@ -15,6 +15,7 @@ import {
   plainRow,
   repeatSectionId,
   resolveFieldReference,
+  sectionAt,
   type PresetCell,
   type PresetSection,
   type TemplateLayout,
@@ -30,8 +31,10 @@ export const shownValueSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('error') }),
 ]);
 
-// A dice cell by position in its template. `instanceId` names the repeat block, `null` a plain row.
+// A dice cell by position in its template: its tab, its section within that tab, row and cell.
+// `instanceId` names the repeat block, `null` a plain row.
 export const dicePlaceSchema = z.strictObject({
+  tabIndex: z.number().int().nonnegative(),
   sectionIndex: z.number().int().nonnegative(),
   rowIndex: z.number().int().nonnegative(),
   cellIndex: z.number().int().nonnegative(),
@@ -93,13 +96,13 @@ export function prepareDiceRoll(
   place: DicePlace,
   shown: ShownValues,
 ): Result<PreparedDiceRoll, DiceRollFailure> {
-  const section = layout.sections[place.sectionIndex];
+  const section = sectionAt(layout, place);
   const row = section?.rows[place.rowIndex];
   const cell = row?.[place.cellIndex];
   const repeat = section?.repeat === true;
 
   if (
-    section === undefined ||
+    section === null ||
     row === undefined ||
     cell?.kind !== 'dice' ||
     repeat !== (place.instanceId !== null)
@@ -107,7 +110,12 @@ export function prepareDiceRoll(
     return err({ code: 'not-dice' });
   }
 
-  const from: TemplateRowPlace = { sectionIndex: place.sectionIndex, rowIndex: place.rowIndex };
+  const from: TemplateRowPlace = {
+    tabIndex: place.tabIndex,
+    sectionIndex: place.sectionIndex,
+    rowIndex: place.rowIndex,
+  };
+
   let ownBlock: FieldValues | undefined;
 
   if (place.instanceId !== null) {
@@ -239,7 +247,7 @@ function fieldLabel(layout: TemplateLayout, from: TemplateRowPlace, id: string):
     reference === null
       ? []
       : reference.scope === 'block'
-        ? (layout.sections[from.sectionIndex]?.rows ?? [])
+        ? (sectionAt(layout, from)?.rows ?? [])
         : [plainRow(layout, reference.rowId) ?? []];
 
   for (const row of rows) {

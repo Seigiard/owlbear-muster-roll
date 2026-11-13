@@ -6,6 +6,7 @@ import type {
   PresetCell,
   PresetFieldCell,
   PresetSection,
+  PresetTab,
   SheetSetTemplate,
   SingleSheetTemplate,
   Template,
@@ -13,8 +14,8 @@ import type {
 } from '@/core/preset';
 import { copy } from '@/ui/copy';
 
-// AD-21: the builder document. It is the preset with a uid on every template, section, row and
-// cell, so tree keys, the selection and expansion survive moves. Uids never reach a file or the
+// AD-21: the builder document. It is the preset with a uid on every template, tab, section, row
+// and cell, so tree keys, the selection and expansion survive moves. Uids never reach a file or the
 // draft: `toPreset` drops them, and `fromPreset` mints new ones.
 
 export type DocCell = PresetCell & { uid: string };
@@ -23,14 +24,16 @@ export type DocRow = { uid: string; cells: readonly DocCell[] };
 
 export type DocSection = Omit<PresetSection, 'rows'> & { uid: string; rows: readonly DocRow[] };
 
-export type DocSheetSet = Omit<SheetSetTemplate, 'sections'> & {
+export type DocTab = Omit<PresetTab, 'sections'> & { uid: string; sections: readonly DocSection[] };
+
+export type DocSheetSet = Omit<SheetSetTemplate, 'tabs'> & {
   uid: string;
-  sections: readonly DocSection[];
+  tabs: readonly DocTab[];
 };
 
-export type DocSingleSheet = Omit<SingleSheetTemplate, 'sections'> & {
+export type DocSingleSheet = Omit<SingleSheetTemplate, 'tabs'> & {
   uid: string;
-  sections: readonly DocSection[];
+  tabs: readonly DocTab[];
 };
 
 export type DocTemplate = DocSheetSet | DocSingleSheet;
@@ -51,9 +54,10 @@ export const PRESET_UID = 'preset';
 export type ItemPath =
   | { kind: 'window' }
   | { kind: 'template'; template: number }
-  | { kind: 'section'; template: number; section: number }
-  | { kind: 'row'; template: number; section: number; row: number }
-  | { kind: 'cell'; template: number; section: number; row: number; cell: number };
+  | { kind: 'tab'; template: number; tab: number }
+  | { kind: 'section'; template: number; tab: number; section: number }
+  | { kind: 'row'; template: number; tab: number; section: number; row: number }
+  | { kind: 'cell'; template: number; tab: number; section: number; row: number; cell: number };
 
 export type ItemKind = ItemPath['kind'];
 
@@ -81,7 +85,7 @@ export function fromPreset(preset: Pick<Preset, 'window' | 'templates'>): Builde
   const templates = preset.templates.map((template): DocTemplate => ({
     ...template,
     uid: mintUid(),
-    sections: template.sections.map(sectionFromPreset),
+    tabs: template.tabs.map(tabFromPreset),
   }));
 
   return preset.window === undefined ? { templates } : { window: preset.window, templates };
@@ -96,21 +100,31 @@ export function toPreset(document: BuilderDocument): Preset {
 }
 
 export function templateToPreset(template: DocTemplate): Template {
-  const sections = template.sections.map(sectionToPreset);
+  const tabs = template.tabs.map(tabToPreset);
 
   if (template.kind === 'set') {
-    const { uid: _uid, sections: _sections, ...rest } = template;
+    const { uid: _uid, tabs: _tabs, ...rest } = template;
 
-    return { ...rest, sections };
+    return { ...rest, tabs };
   }
 
-  const { uid: _uid, sections: _sections, ...rest } = template;
+  const { uid: _uid, tabs: _tabs, ...rest } = template;
 
-  return { ...rest, sections };
+  return { ...rest, tabs };
 }
 
 export function isEmptyDocument(document: BuilderDocument): boolean {
   return document.window === undefined && document.templates.length === 0;
+}
+
+function tabFromPreset(tab: PresetTab): DocTab {
+  return { ...tab, uid: mintUid(), sections: tab.sections.map(sectionFromPreset) };
+}
+
+function tabToPreset(tab: DocTab): PresetTab {
+  const { uid: _uid, sections, ...rest } = tab;
+
+  return { ...rest, sections: sections.map(sectionToPreset) };
 }
 
 function sectionFromPreset(section: PresetSection): DocSection {
@@ -190,20 +204,26 @@ export function locate(document: BuilderDocument, uid: string): ItemPath | null 
       return { kind: 'template', template };
     }
 
-    for (const [section, docSection] of docTemplate.sections.entries()) {
-      if (docSection.uid === uid) {
-        return { kind: 'section', template, section };
+    for (const [tab, docTab] of docTemplate.tabs.entries()) {
+      if (docTab.uid === uid) {
+        return { kind: 'tab', template, tab };
       }
 
-      for (const [row, docRow] of docSection.rows.entries()) {
-        if (docRow.uid === uid) {
-          return { kind: 'row', template, section, row };
+      for (const [section, docSection] of docTab.sections.entries()) {
+        if (docSection.uid === uid) {
+          return { kind: 'section', template, tab, section };
         }
 
-        const cell = docRow.cells.findIndex((docCell) => docCell.uid === uid);
+        for (const [row, docRow] of docSection.rows.entries()) {
+          if (docRow.uid === uid) {
+            return { kind: 'row', template, tab, section, row };
+          }
 
-        if (cell !== -1) {
-          return { kind: 'cell', template, section, row, cell };
+          const cell = docRow.cells.findIndex((docCell) => docCell.uid === uid);
+
+          if (cell !== -1) {
+            return { kind: 'cell', template, tab, section, row, cell };
+          }
         }
       }
     }
@@ -212,16 +232,23 @@ export function locate(document: BuilderDocument, uid: string): ItemPath | null 
   return null;
 }
 
-// The uid of the item at an index path of template, section, row and cell, as deep as the path.
+// The uid of the item at an index path of template, tab, section, row and cell, as deep as the
+// path.
 export function uidAt(document: BuilderDocument, path: readonly number[]): string | null {
-  const [template, section, row, cell] = path;
+  const [template, tab, section, row, cell] = path;
   const docTemplate = template === undefined ? undefined : document.templates[template];
 
-  if (docTemplate === undefined || section === undefined) {
+  if (docTemplate === undefined || tab === undefined) {
     return docTemplate?.uid ?? null;
   }
 
-  const docSection = docTemplate.sections[section];
+  const docTab = docTemplate.tabs[tab];
+
+  if (docTab === undefined || section === undefined) {
+    return docTab?.uid ?? null;
+  }
+
+  const docSection = docTab.sections[section];
 
   if (docSection === undefined || row === undefined) {
     return docSection?.uid ?? null;
@@ -236,19 +263,21 @@ export function uidAt(document: BuilderDocument, path: readonly number[]): strin
   return docRow.cells[cell]?.uid ?? null;
 }
 
-// The index path of an item: template, section, row and cell, as deep as the item.
+// The index path of an item: template, tab, section, row and cell, as deep as the item.
 export function indexPath(path: ItemPath): readonly number[] {
   switch (path.kind) {
     case 'window':
       return [];
     case 'template':
       return [path.template];
+    case 'tab':
+      return [path.template, path.tab];
     case 'section':
-      return [path.template, path.section];
+      return [path.template, path.tab, path.section];
     case 'row':
-      return [path.template, path.section, path.row];
+      return [path.template, path.tab, path.section, path.row];
     case 'cell':
-      return [path.template, path.section, path.row, path.cell];
+      return [path.template, path.tab, path.section, path.row, path.cell];
     default:
       return unknownPath(path);
   }
@@ -270,18 +299,23 @@ export function ancestorUids(document: BuilderDocument, uid: string): string[] {
     .filter((found) => found !== null);
 }
 
-// Every item in tree order: the window, then each template with its sections, rows and cells.
+// Every item in tree order: the window, then each template with its tabs, sections, rows and
+// cells.
 export function treeOrder(document: BuilderDocument): string[] {
   const order = [WINDOW_UID];
 
   for (const template of document.templates) {
     order.push(template.uid);
 
-    for (const section of template.sections) {
-      order.push(section.uid);
+    for (const tab of template.tabs) {
+      order.push(tab.uid);
 
-      for (const row of section.rows) {
-        order.push(row.uid, ...row.cells.map((cell) => cell.uid));
+      for (const section of tab.sections) {
+        order.push(section.uid);
+
+        for (const row of section.rows) {
+          order.push(row.uid, ...row.cells.map((cell) => cell.uid));
+        }
       }
     }
   }
@@ -301,45 +335,62 @@ export function findTemplate(document: BuilderDocument, uid: string): DocTemplat
   return document.templates.find((template) => template.uid === uid) ?? null;
 }
 
+export function findTab(document: BuilderDocument, uid: string): DocTab | null {
+  const path = locate(document, uid);
+
+  return path?.kind === 'tab' ? (document.templates[path.template]?.tabs[path.tab] ?? null) : null;
+}
+
 export function findSection(document: BuilderDocument, uid: string): DocSection | null {
   const path = locate(document, uid);
 
-  return path?.kind === 'section'
-    ? (document.templates[path.template]?.sections[path.section] ?? null)
-    : null;
+  return path?.kind === 'section' ? sectionOf(document.templates[path.template], path) : null;
 }
 
 export function findCell(document: BuilderDocument, uid: string): DocCell | null {
   const path = locate(document, uid);
 
   return path?.kind === 'cell'
-    ? (document.templates[path.template]?.sections[path.section]?.rows[path.row]?.cells[
-        path.cell
-      ] ?? null)
+    ? (sectionOf(document.templates[path.template], path)?.rows[path.row]?.cells[path.cell] ?? null)
     : null;
 }
 
-// The field ids of the scope of section `sectionIndex`: the section itself when it repeats,
-// otherwise every section of its template that does not repeat. `except` leaves one cell out.
+// A section of a template by its tab and its index in that tab.
+export type SectionSpot = { tab: number; section: number };
+
+export function sectionOf(template: DocTemplate | undefined, spot: SectionSpot): DocSection | null {
+  return template?.tabs[spot.tab]?.sections[spot.section] ?? null;
+}
+
+// Every section of a template across its tabs, in tab order.
+export function templateSections(template: DocTemplate): DocSection[] {
+  return template.tabs.flatMap((tab) => tab.sections);
+}
+
+// The field ids of the scope of the section at `spot`: the section itself when it repeats,
+// otherwise every section of its template, on any tab, that does not repeat. `except` leaves one
+// cell out.
 export function scopeFieldIds(
   template: DocTemplate,
-  sectionIndex: number,
+  spot: SectionSpot,
   except: string | null = null,
 ): Set<string> {
-  const own = template.sections[sectionIndex];
+  const own = sectionOf(template, spot);
 
   const sections =
-    own?.repeat === true ? [own] : template.sections.filter((section) => section.repeat !== true);
+    own?.repeat === true
+      ? [own]
+      : templateSections(template).filter((section) => section.repeat !== true);
 
   return new Set(sections.flatMap((section) => sectionFieldIds(section, except)));
 }
 
-// The field ids a formula in a row of section `sectionIndex` can read, for completion: its own
-// repeat section's ids first, then the template's ids outside repeat sections.
-export function formulaFieldIds(template: DocTemplate, sectionIndex: number): string[] {
-  const own = template.sections[sectionIndex];
+// The field ids a formula in a row of the section at `spot` can read, for completion: its own
+// repeat section's ids first, then the template's ids outside repeat sections, on any tab.
+export function formulaFieldIds(template: DocTemplate, spot: SectionSpot): string[] {
+  const own = sectionOf(template, spot);
 
-  const outside = template.sections.flatMap((section) =>
+  const outside = templateSections(template).flatMap((section) =>
     section.repeat === true ? [] : sectionFieldIds(section, null),
   );
 
@@ -377,15 +428,20 @@ function newSheetSet(uid: string, taken: ReadonlySet<string>): DocSheetSet {
     title,
     nameField,
     uid,
-    sections: [
+    tabs: [
       {
         uid: mintUid(),
-        rows: [
+        sections: [
           {
             uid: mintUid(),
-            cells: [
-              { kind: 'text', text: copy.builder.newNameLabel, uid: mintUid() },
-              { kind: 'field', type: 'text', id: nameField, uid: mintUid() },
+            rows: [
+              {
+                uid: mintUid(),
+                cells: [
+                  { kind: 'text', text: copy.builder.newNameLabel, uid: mintUid() },
+                  { kind: 'field', type: 'text', id: nameField, uid: mintUid() },
+                ],
+              },
             ],
           },
         ],
@@ -402,16 +458,28 @@ function newSingleSheet(uid: string, taken: ReadonlySet<string>): DocSingleSheet
     kind: 'single',
     title,
     uid,
-    sections: [{ uid: mintUid(), rows: [] }],
+    tabs: [{ uid: mintUid(), sections: [{ uid: mintUid(), rows: [] }] }],
   };
 }
 
-export function addSection(document: BuilderDocument, templateUid: string): DocumentEdit | null {
+// A new tab has no title, which is a problem while its template has another tab.
+export function addTab(document: BuilderDocument, templateUid: string): DocumentEdit | null {
   const uid = mintUid();
 
   const next = mapTemplate(document, templateUid, (template) => ({
     ...template,
-    sections: [...template.sections, { uid, rows: [] }],
+    tabs: [...template.tabs, { uid, sections: [] }],
+  }));
+
+  return next === null ? null : { document: next, changed: uid };
+}
+
+export function addSection(document: BuilderDocument, tabUid: string): DocumentEdit | null {
+  const uid = mintUid();
+
+  const next = mapTab(document, tabUid, (tab) => ({
+    ...tab,
+    sections: [...tab.sections, { uid, rows: [] }],
   }));
 
   return next === null ? null : { document: next, changed: uid };
@@ -442,7 +510,7 @@ export function addCell(
   }
 
   const template = document.templates[path.template];
-  const row = template?.sections[path.section]?.rows[path.row];
+  const row = sectionOf(template, path)?.rows[path.row];
 
   if (template === undefined || row === undefined) {
     return null;
@@ -465,7 +533,7 @@ export function addCell(
     cell = {
       kind: 'field',
       type: 'number',
-      id: suggestFieldId(text, scopeFieldIds(template, path.section)),
+      id: suggestFieldId(text, scopeFieldIds(template, path)),
       uid,
     };
   }
@@ -495,6 +563,16 @@ export function updateTemplate(
   return next === null ? null : { document: next, changed: uid };
 }
 
+export function updateTab(
+  document: BuilderDocument,
+  uid: string,
+  update: (tab: DocTab) => DocTab,
+): DocumentEdit | null {
+  const next = mapTab(document, uid, update);
+
+  return next === null ? null : { document: next, changed: uid };
+}
+
 export function updateSection(
   document: BuilderDocument,
   uid: string,
@@ -516,7 +594,7 @@ export function updateCell(
     return null;
   }
 
-  const rowUid = uidAt(document, [path.template, path.section, path.row]);
+  const rowUid = uidAt(document, [path.template, path.tab, path.section, path.row]);
 
   const next =
     rowUid === null
@@ -548,9 +626,9 @@ export function withTemplateKind(template: DocTemplate, kind: TemplateKind): Doc
   return { ...rest, kind: 'set', nameField };
 }
 
-// The text fields outside repeat sections, which may name a sheet of a sheet set.
+// The text fields outside repeat sections, on any tab, which may name a sheet of a sheet set.
 export function nameFieldCandidates(template: DocTemplate): string[] {
-  return template.sections.flatMap((section) =>
+  return templateSections(template).flatMap((section) =>
     section.repeat === true
       ? []
       : section.rows.flatMap((row) =>
@@ -604,7 +682,8 @@ export function removeItem(document: BuilderDocument, uid: string): DocumentEdit
 }
 
 // AD-25: a move keeps the preset form: a cell goes into a row, a row into a section, a section into
-// a template, and a template among templates. A move that breaks a preset rule is allowed.
+// a tab, a tab into a template, and a template among templates. A move that breaks a preset rule is
+// allowed.
 export function moveItem(
   document: BuilderDocument,
   uid: string,
@@ -647,7 +726,8 @@ export function acceptsDrop(document: BuilderDocument, kind: ItemKind, spot: Dro
 const PARENT_KIND: Readonly<Record<ItemKind, ItemKind | null | 'none'>> = {
   window: 'none',
   template: null,
-  section: 'template',
+  tab: 'template',
+  section: 'tab',
   row: 'section',
   cell: 'row',
 };
@@ -673,7 +753,7 @@ export function renameField(
 
   const renamed = renameFieldId(
     templateToPreset(template),
-    { sectionIndex: path.section, rowIndex: path.row, cellIndex: path.cell },
+    { tabIndex: path.tab, sectionIndex: path.section, rowIndex: path.row, cellIndex: path.cell },
     cell.id,
     newId,
   );
@@ -686,29 +766,33 @@ export function renameField(
 // The preset template's content in the document template, which has the same items in the same
 // places, so every uid stays.
 function withContent(template: DocTemplate, content: Template): DocTemplate {
-  const sections = template.sections.map((section, sectionIndex): DocSection => {
-    const presetSection = content.sections[sectionIndex];
+  const tabs = template.tabs.map((tab, tabIndex): DocTab => ({
+    ...tab,
+    sections: tab.sections.map((section, sectionIndex): DocSection => {
+      const presetSection = content.tabs[tabIndex]?.sections[sectionIndex];
 
-    return {
-      ...section,
-      rows: section.rows.map((row, rowIndex) => ({
-        ...row,
-        cells: row.cells.map((cell, cellIndex) => {
-          const presetCell = presetSection?.rows[rowIndex]?.[cellIndex];
+      return {
+        ...section,
+        rows: section.rows.map((row, rowIndex) => ({
+          ...row,
+          cells: row.cells.map((cell, cellIndex) => {
+            const presetCell = presetSection?.rows[rowIndex]?.[cellIndex];
 
-          return presetCell === undefined ? cell : { ...presetCell, uid: cell.uid };
-        }),
-      })),
-    };
-  });
+            return presetCell === undefined ? cell : { ...presetCell, uid: cell.uid };
+          }),
+        })),
+      };
+    }),
+  }));
 
   return content.kind === 'set' && template.kind === 'set'
-    ? { ...template, nameField: content.nameField, sections }
-    : { ...template, sections };
+    ? { ...template, nameField: content.nameField, tabs }
+    : { ...template, tabs };
 }
 
 type MovedItem =
   | { kind: 'template'; item: DocTemplate }
+  | { kind: 'tab'; item: DocTab }
   | { kind: 'section'; item: DocSection }
   | { kind: 'row'; item: DocRow }
   | { kind: 'cell'; item: DocCell };
@@ -724,7 +808,13 @@ function itemAt(document: BuilderDocument, path: ItemPath): MovedItem | null {
     return template === undefined ? null : { kind: 'template', item: template };
   }
 
-  const section = template?.sections[path.section];
+  const tab = template?.tabs[path.tab];
+
+  if (path.kind === 'tab') {
+    return tab === undefined ? null : { kind: 'tab', item: tab };
+  }
+
+  const section = tab?.sections[path.section];
 
   if (path.kind === 'section') {
     return section === undefined ? null : { kind: 'section', item: section };
@@ -758,10 +848,17 @@ function withoutItem(document: BuilderDocument, uid: string): BuilderDocument | 
     return null;
   }
 
-  if (path.kind === 'section') {
+  if (path.kind === 'tab') {
     return mapTemplate(document, parent, (template) => ({
       ...template,
-      sections: template.sections.filter((item) => item.uid !== uid),
+      tabs: template.tabs.filter((item) => item.uid !== uid),
+    }));
+  }
+
+  if (path.kind === 'section') {
+    return mapTab(document, parent, (tab) => ({
+      ...tab,
+      sections: tab.sections.filter((item) => item.uid !== uid),
     }));
   }
 
@@ -793,10 +890,17 @@ function insertItem(
     return null;
   }
 
-  if (moved.kind === 'section') {
+  if (moved.kind === 'tab') {
     return mapTemplate(document, parent, (template) => ({
       ...template,
-      sections: placed(template.sections, moved.item, spot),
+      tabs: placed(template.tabs, moved.item, spot),
+    }));
+  }
+
+  if (moved.kind === 'section') {
+    return mapTab(document, parent, (tab) => ({
+      ...tab,
+      sections: placed(tab.sections, moved.item, spot),
     }));
   }
 
@@ -853,13 +957,13 @@ function mapTemplate(
   };
 }
 
-function mapSection(
+function mapTab(
   document: BuilderDocument,
   uid: string,
-  update: (section: DocSection) => DocSection,
+  update: (tab: DocTab) => DocTab,
 ): BuilderDocument | null {
   const path = locate(document, uid);
-  const template = path?.kind === 'section' ? document.templates[path.template] : undefined;
+  const template = path?.kind === 'tab' ? document.templates[path.template] : undefined;
 
   if (template === undefined) {
     return null;
@@ -867,9 +971,25 @@ function mapSection(
 
   return mapTemplate(document, template.uid, (docTemplate) => ({
     ...docTemplate,
-    sections: docTemplate.sections.map((section) =>
-      section.uid === uid ? update(section) : section,
-    ),
+    tabs: docTemplate.tabs.map((tab) => (tab.uid === uid ? update(tab) : tab)),
+  }));
+}
+
+function mapSection(
+  document: BuilderDocument,
+  uid: string,
+  update: (section: DocSection) => DocSection,
+): BuilderDocument | null {
+  const path = locate(document, uid);
+  const tab = path?.kind === 'section' ? uidAt(document, [path.template, path.tab]) : null;
+
+  if (tab === null) {
+    return null;
+  }
+
+  return mapTab(document, tab, (docTab) => ({
+    ...docTab,
+    sections: docTab.sections.map((section) => (section.uid === uid ? update(section) : section)),
   }));
 }
 
@@ -879,7 +999,9 @@ function mapRow(
   update: (row: DocRow) => DocRow,
 ): BuilderDocument | null {
   const path = locate(document, uid);
-  const section = path?.kind === 'row' ? uidAt(document, [path.template, path.section]) : null;
+
+  const section =
+    path?.kind === 'row' ? uidAt(document, [path.template, path.tab, path.section]) : null;
 
   if (section === null) {
     return null;

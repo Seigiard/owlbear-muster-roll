@@ -37,7 +37,7 @@ const MENU_COPY = {
 };
 
 const PRESET: Preset = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
@@ -45,9 +45,25 @@ const PRESET: Preset = {
       title: 'Персонажи',
       nameField: 'name',
       tokens: true,
-      sections: [
-        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
-        { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] },
+      tabs: [
+        {
+          title: 'Основное',
+          sections: [
+            { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+            { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] },
+          ],
+        },
+        {
+          title: 'Заметки мастера',
+          visibility: 'gm',
+          sections: [
+            {
+              repeat: true,
+              tokens: true,
+              rows: [[{ kind: 'field', type: 'text', id: 'secret' }]],
+            },
+          ],
+        },
       ],
     },
     {
@@ -55,15 +71,19 @@ const PRESET: Preset = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          repeat: true,
-          tokens: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'foe' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
+          sections: [
+            {
+              repeat: true,
+              tokens: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'foe' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -77,9 +97,16 @@ const ROOM: readonly VersionedRecord[] = [
   { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
   { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
   { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
+  {
+    k: 'rep:brok:secret:hidden',
+    d: { order: 0, cells: { secret: 'Лич' } },
+    c: 1,
+    a: 'seed',
+  },
   { k: 'rep:npc:foe:skel', d: { order: 0, cells: { foe: 'Скелет', hp: 7 } }, c: 1, a: 'seed' },
   { k: 'sheet:liza', d: null, c: 2, a: 'seed' },
   { k: 'link:t-pc', d: { s: 'brok' }, c: 1, a: 'seed' },
+  { k: 'link:t-secret', d: { s: 'brok', i: 'hidden' }, c: 1, a: 'seed' },
   { k: 'link:t-npc', d: { s: 'npc', i: 'skel' }, c: 1, a: 'seed' },
   { k: 'link:t-gone', d: { s: 'liza' }, c: 1, a: 'seed' },
 ];
@@ -129,6 +156,19 @@ describe('open from token', () => {
     expect(target(background, window)).toEqual({ sheetId: 'npc', instanceId: 'skel' });
   });
 
+  test('a GM press on a repeat block on a hidden tab reaches the window', async () => {
+    // #given
+    const background = await startBackground('GM');
+    const window = await openWindow(background);
+
+    // #when
+    click(background, 't-secret');
+    await waitUntil(() => window.store.$openRequest.get() !== null);
+
+    // #then
+    expect(target(background, window)).toEqual({ sheetId: 'brok', instanceId: 'hidden' });
+  });
+
   test('reprojects before it re-sends a held open request after the stream restarts', async () => {
     // #given
     const background = await startBackground('GM');
@@ -172,6 +212,7 @@ describe('open from token', () => {
 
   for (const [role, tokenId] of [
     ['PLAYER', 't-npc'],
+    ['PLAYER', 't-secret'],
     ['GM', 't-gone'],
     ['GM', 't-none'],
   ] as const) {

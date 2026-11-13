@@ -10,53 +10,57 @@ import { prepareDiceRoll, rollDiceCell, type DicePlace, type ShownValue } from '
 const SEVEN = (): number => 0.3;
 
 const TEMPLATE: TemplateLayout = {
-  sections: [
+  tabs: [
     {
-      rows: [
-        [
-          { kind: 'text', text: 'Сила' },
-          { kind: 'field', type: 'number', id: 'str' },
-          { kind: 'field', type: 'check', id: 'str_tired' },
-          { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
-        ],
-        [
-          { kind: 'field', type: 'number', id: 'dex' },
-          { kind: 'dice', formula: '1d20 + dex' },
-        ],
-        [
-          { kind: 'text', text: 'Деление' },
-          { kind: 'dice', formula: 'str / (str - str)' },
-        ],
-        [
-          { kind: 'text', text: 'Чужое' },
-          { kind: 'dice', formula: '1d20 + bonus' },
-        ],
-      ],
-    },
-    {
-      repeat: true,
-      rows: [
-        [
-          { kind: 'text', text: 'Атака' },
-          { kind: 'field', type: 'text', id: 'attack' },
-          { kind: 'field', type: 'number', id: 'bonus' },
-          { kind: 'dice', formula: '1d20 + bonus + str' },
-        ],
-      ],
-    },
-    {
-      repeat: true,
-      rows: [
-        [
-          { kind: 'text', text: 'Заклинание' },
-          { kind: 'field', type: 'text', id: 'spell' },
-          { kind: 'field', type: 'number', id: 'power' },
-        ],
-        [
-          { kind: 'text', text: 'Дальность' },
-          { kind: 'field', type: 'number', id: 'range' },
-          { kind: 'dice', formula: '1d20 + power + range' },
-        ],
+      sections: [
+        {
+          rows: [
+            [
+              { kind: 'text', text: 'Сила' },
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'check', id: 'str_tired' },
+              { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
+            ],
+            [
+              { kind: 'field', type: 'number', id: 'dex' },
+              { kind: 'dice', formula: '1d20 + dex' },
+            ],
+            [
+              { kind: 'text', text: 'Деление' },
+              { kind: 'dice', formula: 'str / (str - str)' },
+            ],
+            [
+              { kind: 'text', text: 'Чужое' },
+              { kind: 'dice', formula: '1d20 + bonus' },
+            ],
+          ],
+        },
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'text', text: 'Атака' },
+              { kind: 'field', type: 'text', id: 'attack' },
+              { kind: 'field', type: 'number', id: 'bonus' },
+              { kind: 'dice', formula: '1d20 + bonus + str' },
+            ],
+          ],
+        },
+        {
+          repeat: true,
+          rows: [
+            [
+              { kind: 'text', text: 'Заклинание' },
+              { kind: 'field', type: 'text', id: 'spell' },
+              { kind: 'field', type: 'number', id: 'power' },
+            ],
+            [
+              { kind: 'text', text: 'Дальность' },
+              { kind: 'field', type: 'number', id: 'range' },
+              { kind: 'dice', formula: '1d20 + power + range' },
+            ],
+          ],
+        },
       ],
     },
   ],
@@ -77,11 +81,29 @@ const RECORDS: ReadonlyMap<string, VersionedRecord> = new Map(
   ROWS.map((record) => [record.k, record]),
 );
 
-const STRENGTH: DicePlace = { sectionIndex: 0, rowIndex: 0, cellIndex: 3, instanceId: null };
+const STRENGTH: DicePlace = {
+  tabIndex: 0,
+  sectionIndex: 0,
+  rowIndex: 0,
+  cellIndex: 3,
+  instanceId: null,
+};
 
-const ATTACK: DicePlace = { sectionIndex: 1, rowIndex: 0, cellIndex: 3, instanceId: 'i1' };
+const ATTACK: DicePlace = {
+  tabIndex: 0,
+  sectionIndex: 1,
+  rowIndex: 0,
+  cellIndex: 3,
+  instanceId: 'i1',
+};
 
-const SPELL_RANGE: DicePlace = { sectionIndex: 2, rowIndex: 1, cellIndex: 2, instanceId: 's1' };
+const SPELL_RANGE: DicePlace = {
+  tabIndex: 0,
+  sectionIndex: 2,
+  rowIndex: 1,
+  cellIndex: 2,
+  instanceId: 's1',
+};
 
 function roll(place: DicePlace, shown: [string, ShownValue][] = []) {
   return rollDiceCell(TEMPLATE, RECORDS, 'brok', place, new Map(shown), randomFaces(SEVEN));
@@ -103,13 +125,13 @@ function diceChoiceRoll(
     cells.unshift({ kind: 'text', text: label });
   }
 
-  const section: TemplateLayout['sections'][number] = { rows: [cells] };
+  const section: TemplateLayout['tabs'][number]['sections'][number] = { rows: [cells] };
 
   if (repeat) {
     section.repeat = true;
   }
 
-  const layout: TemplateLayout = { sections: [section] };
+  const layout: TemplateLayout = { tabs: [{ sections: [section] }] };
 
   const key = repeat ? 'rep:brok:weapon_die:i1' : 'row:brok:weapon_die';
 
@@ -127,6 +149,7 @@ function diceChoiceRoll(
   ]);
 
   const place: DicePlace = {
+    tabIndex: 0,
     sectionIndex: 0,
     rowIndex: 0,
     cellIndex: label === null ? 2 : 3,
@@ -253,16 +276,20 @@ describe('rollDiceCell', () => {
   test('names a roll by the dice cell name while keeping the formula as the roll expression', () => {
     // #given
     const layout: TemplateLayout = {
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              {
-                kind: 'dice',
-                formula: '1d20 <= 10',
-                name: 'Спасбросок STR',
-              },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  {
+                    kind: 'dice',
+                    formula: '1d20 <= 10',
+                    name: 'Спасбросок STR',
+                  },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -273,7 +300,7 @@ describe('rollDiceCell', () => {
       layout,
       new Map(),
       'brok',
-      { sectionIndex: 0, rowIndex: 0, cellIndex: 0, instanceId: null },
+      { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 0, instanceId: null },
       new Map(),
     );
 
@@ -284,22 +311,26 @@ describe('rollDiceCell', () => {
   test('adds the written chosen die to a named Nd field roll', () => {
     // #given
     const layout: TemplateLayout = {
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              {
-                kind: 'field',
-                type: 'dice-choice',
-                id: 'attack_1_die',
-                options: ['d6', 'd8'],
-              },
-              {
-                kind: 'dice',
-                formula: '1d(attack_1_die)',
-                name: 'Урон атаки 1',
-              },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  {
+                    kind: 'field',
+                    type: 'dice-choice',
+                    id: 'attack_1_die',
+                    options: ['d6', 'd8'],
+                  },
+                  {
+                    kind: 'dice',
+                    formula: '1d(attack_1_die)',
+                    name: 'Урон атаки 1',
+                  },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -322,7 +353,7 @@ describe('rollDiceCell', () => {
       layout,
       records,
       'brok',
-      { sectionIndex: 0, rowIndex: 0, cellIndex: 1, instanceId: null },
+      { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 1, instanceId: null },
       new Map(),
     );
 
@@ -333,22 +364,26 @@ describe('rollDiceCell', () => {
   test('keeps a named Nd field roll label when the name equals the unresolved formula', () => {
     // #given
     const layout: TemplateLayout = {
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              {
-                kind: 'field',
-                type: 'dice-choice',
-                id: 'damage',
-                options: ['d6', 'd8'],
-              },
-              {
-                kind: 'dice',
-                formula: '1d(damage)',
-                name: '1d(damage)',
-              },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  {
+                    kind: 'field',
+                    type: 'dice-choice',
+                    id: 'damage',
+                    options: ['d6', 'd8'],
+                  },
+                  {
+                    kind: 'dice',
+                    formula: '1d(damage)',
+                    name: '1d(damage)',
+                  },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -371,7 +406,7 @@ describe('rollDiceCell', () => {
       layout,
       records,
       'brok',
-      { sectionIndex: 0, rowIndex: 0, cellIndex: 1, instanceId: null },
+      { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 1, instanceId: null },
       new Map(),
     );
 
@@ -382,13 +417,17 @@ describe('rollDiceCell', () => {
   test('names an empty formula field by its cell name', () => {
     // #given
     const layout: TemplateLayout = {
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'field', type: 'number', id: 'hp_max', name: 'HP, максимум' },
-              { kind: 'dice', formula: '1d20 <= hp_max' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'field', type: 'number', id: 'hp_max', name: 'HP, максимум' },
+                  { kind: 'dice', formula: '1d20 <= hp_max' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -399,7 +438,7 @@ describe('rollDiceCell', () => {
       layout,
       new Map([['row:brok:hp_max', { k: 'row:brok:hp_max', d: { hp_max: 10 }, c: 1, a: 'gm' }]]),
       'brok',
-      { sectionIndex: 0, rowIndex: 0, cellIndex: 1, instanceId: null },
+      { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 1, instanceId: null },
       new Map([['hp_max', { kind: 'text', text: '' }]]),
     );
 
@@ -503,6 +542,72 @@ describe('rollDiceCell', () => {
   ])('refuses %s', (_name, place) => {
     // #when
     const rolled = roll(place);
+
+    // #then
+    expect(rolled).toEqual({ ok: false, error: { code: 'not-dice' } });
+  });
+});
+
+describe('rollDiceCell across tabs', () => {
+  // CAP-34: the dice cell sits on the second tab, the field it names on the first.
+  const TABBED: TemplateLayout = {
+    tabs: [
+      {
+        title: 'Основное',
+        sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }],
+      },
+      {
+        title: 'Бой',
+        sections: [
+          { rows: [[{ kind: 'text', text: 'Удар' }]] },
+          {
+            rows: [
+              [
+                { kind: 'text', text: 'Сила' },
+                { kind: 'dice', formula: '1d20 + str' },
+              ],
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  test('reads a field of another tab of the same sheet', () => {
+    // #given
+    const place: DicePlace = {
+      tabIndex: 1,
+      sectionIndex: 1,
+      rowIndex: 0,
+      cellIndex: 1,
+      instanceId: null,
+    };
+
+    // #when
+    const rolled = rollDiceCell(TABBED, RECORDS, 'brok', place, new Map(), randomFaces(SEVEN));
+
+    // #then
+    expect(rolled).toEqual({
+      ok: true,
+      value: {
+        cell: 'Сила',
+        result: { roll: 21, faces: [7], target: null, targetFaces: [], outcome: null },
+      },
+    });
+  });
+
+  test('finds no dice cell at a section index counted across the whole sheet', () => {
+    // #given: section 2 of the sheet is section 1 of the second tab.
+    const place: DicePlace = {
+      tabIndex: 0,
+      sectionIndex: 2,
+      rowIndex: 0,
+      cellIndex: 1,
+      instanceId: null,
+    };
+
+    // #when
+    const rolled = rollDiceCell(TABBED, RECORDS, 'brok', place, new Map(), randomFaces(SEVEN));
 
     // #then
     expect(rolled).toEqual({ ok: false, error: { code: 'not-dice' } });

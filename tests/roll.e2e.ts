@@ -35,55 +35,59 @@ const PLAYER: ClientParams = {
 // Every `1d1` shows 1, so each roll has one known result. "Персонажи" and "Журнал" are visible,
 // "NPC" is hidden, and its NPCs are repeat blocks.
 const PRESET = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          title: 'Основное',
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'tired' },
-              { kind: 'dice', formula: '1d1 + str - 2*tired' },
-            ],
-            [
-              { kind: 'text', text: 'Ловкость' },
-              { kind: 'field', type: 'number', id: 'dex' },
-              { kind: 'dice', formula: '1d1 + dex' },
-            ],
-            [
-              { kind: 'text', text: 'Деление' },
-              { kind: 'dice', formula: 'str / (str - str)' },
-            ],
-            [
-              { kind: 'text', text: 'Удача' },
-              { kind: 'dice', formula: '1d1 > str' },
-            ],
-            [
-              { kind: 'text', text: 'Монета' },
-              { kind: 'dice', formula: '1d1' },
-            ],
-          ],
-        },
-        {
-          title: 'Атаки',
-          repeat: true,
-          rows: [
-            [
-              { kind: 'text', text: 'Атака' },
-              { kind: 'field', type: 'number', id: 'bonus' },
-              { kind: 'dice', formula: '1d1 + bonus' },
-            ],
+          sections: [
+            {
+              title: 'Основное',
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'tired' },
+                  { kind: 'dice', formula: '1d1 + str - 2*tired' },
+                ],
+                [
+                  { kind: 'text', text: 'Ловкость' },
+                  { kind: 'field', type: 'number', id: 'dex' },
+                  { kind: 'dice', formula: '1d1 + dex' },
+                ],
+                [
+                  { kind: 'text', text: 'Деление' },
+                  { kind: 'dice', formula: 'str / (str - str)' },
+                ],
+                [
+                  { kind: 'text', text: 'Удача' },
+                  { kind: 'dice', formula: '1d1 > str' },
+                ],
+                [
+                  { kind: 'text', text: 'Монета' },
+                  { kind: 'dice', formula: '1d1' },
+                ],
+              ],
+            },
+            {
+              title: 'Атаки',
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'text', text: 'Атака' },
+                  { kind: 'field', type: 'number', id: 'bonus' },
+                  { kind: 'dice', formula: '1d1 + bonus' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -93,17 +97,21 @@ const PRESET = {
       kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      sections: [
+      tabs: [
         {
-          title: 'Противники',
-          repeat: true,
-          rows: [
-            [{ kind: 'field', type: 'text', id: 'npc_name' }],
-            [
-              { kind: 'text', text: 'Хиты' },
-              { kind: 'field', type: 'number', id: 'hp' },
-              { kind: 'dice', formula: '1d1 + hp' },
-            ],
+          sections: [
+            {
+              title: 'Противники',
+              repeat: true,
+              rows: [
+                [{ kind: 'field', type: 'text', id: 'npc_name' }],
+                [
+                  { kind: 'text', text: 'Хиты' },
+                  { kind: 'field', type: 'number', id: 'hp' },
+                  { kind: 'dice', formula: '1d1 + hp' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -112,13 +120,17 @@ const PRESET = {
       id: 'journal',
       kind: 'single',
       title: 'Журнал',
-      sections: [
+      tabs: [
         {
-          rows: [
-            [
-              { kind: 'text', text: 'Погода' },
-              { kind: 'dice', formula: '1d1 + 1' },
-            ],
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Погода' },
+                  { kind: 'dice', formula: '1d1 + 1' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -366,7 +378,7 @@ async function openGm(context: BrowserContext): Promise<RoomClient> {
 // A roll as a player's client would send it, with `hidden` as given.
 function forgedRoll(id: string, hidden: boolean): JsonValue {
   return {
-    v: 2,
+    v: 3,
     g: { n: 0, a: '' },
     t: 'roll',
     id,

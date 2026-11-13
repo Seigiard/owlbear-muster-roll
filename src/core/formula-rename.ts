@@ -1,10 +1,13 @@
 import { isFieldId } from '@/core/field-id';
 import {
+  placedSections,
   resolveFieldReference,
+  sectionAt,
   type PresetCell,
   type Template,
   type TemplateLayout,
   type TemplateRowPlace,
+  type TemplateSectionPlace,
 } from '@/core/preset';
 
 // CAP-25, AD-24: a field id rename and the formulas that follow it.
@@ -41,36 +44,35 @@ export function renameFieldId(
   const rewrites = isFieldId(newId) && !scopeHolds(template, newId, place);
   let formulas = 0;
 
-  const sections = template.sections.map((section, sectionIndex) => ({
-    ...section,
-    rows: section.rows.map((row, rowIndex) => {
-      const from = { sectionIndex, rowIndex };
-      const reaches = resolvesToField(template, from, oldId, place);
+  const tabs = template.tabs.map((tab, tabIndex) => ({
+    ...tab,
+    sections: tab.sections.map((section, sectionIndex) => ({
+      ...section,
+      rows: section.rows.map((row, rowIndex) => {
+        const from = { tabIndex, sectionIndex, rowIndex };
+        const reaches = resolvesToField(template, from, oldId, place);
 
-      return row.map((other, cellIndex): PresetCell => {
-        if (
-          sectionIndex === place.sectionIndex &&
-          rowIndex === place.rowIndex &&
-          cellIndex === place.cellIndex
-        ) {
-          return { ...cell, id: newId };
-        }
+        return row.map((other, cellIndex): PresetCell => {
+          if (samePlace({ ...from, cellIndex }, place)) {
+            return { ...cell, id: newId };
+          }
 
-        if (other.kind !== 'dice' || !reaches || !rewrites) {
-          return other;
-        }
+          if (other.kind !== 'dice' || !reaches || !rewrites) {
+            return other;
+          }
 
-        const formula = replaceWord(other.formula, oldId, newId);
+          const formula = replaceWord(other.formula, oldId, newId);
 
-        if (formula === null) {
-          return other;
-        }
+          if (formula === null) {
+            return other;
+          }
 
-        formulas += 1;
+          formulas += 1;
 
-        return { ...other, formula };
-      });
-    }),
+          return { ...other, formula };
+        });
+      }),
+    })),
   }));
 
   const namesSheets =
@@ -80,8 +82,8 @@ export function renameFieldId(
 
   const renamed: Template =
     template.kind === 'set'
-      ? { ...template, nameField: namesSheets ? newId : template.nameField, sections }
-      : { ...template, sections };
+      ? { ...template, nameField: namesSheets ? newId : template.nameField, tabs }
+      : { ...template, tabs };
 
   return { template: renamed, formulas };
 }
@@ -96,9 +98,9 @@ export function fieldFormulaCount(template: TemplateLayout, place: TemplateCellP
 
   let count = 0;
 
-  template.sections.forEach((section, sectionIndex) => {
+  placedSections(template).forEach(({ place: sectionPlace, section }) => {
     section.rows.forEach((row, rowIndex) => {
-      if (!resolvesToField(template, { sectionIndex, rowIndex }, cell.id, place)) {
+      if (!resolvesToField(template, { ...sectionPlace, rowIndex }, cell.id, place)) {
         return;
       }
 
@@ -119,7 +121,15 @@ export function formulaNames(formula: string, id: string): boolean {
 }
 
 function cellAt(layout: TemplateLayout, place: TemplateCellPlace): PresetCell | undefined {
-  return layout.sections[place.sectionIndex]?.rows[place.rowIndex]?.[place.cellIndex];
+  return sectionAt(layout, place)?.rows[place.rowIndex]?.[place.cellIndex];
+}
+
+function sameSection(a: TemplateSectionPlace, b: TemplateSectionPlace): boolean {
+  return a.tabIndex === b.tabIndex && a.sectionIndex === b.sectionIndex;
+}
+
+function samePlace(a: TemplateCellPlace, b: TemplateCellPlace): boolean {
+  return sameSection(a, b) && a.rowIndex === b.rowIndex && a.cellIndex === b.cellIndex;
 }
 
 // Whether a formula in the row at `from` reads `id` from the field at `field`. The parser reads the
@@ -137,7 +147,7 @@ function resolvesToField(
   }
 
   if (reference.scope === 'block') {
-    return from.sectionIndex === field.sectionIndex && isFirstHolder(layout, id, field, true);
+    return sameSection(from, field) && isFirstHolder(layout, id, field, true);
   }
 
   return isFirstHolder(layout, id, field, false);
@@ -146,11 +156,11 @@ function resolvesToField(
 // Whether a field of `field`'s scope is `id`: its own repeat section, or every section that does not
 // repeat.
 function scopeHolds(layout: TemplateLayout, id: string, field: TemplateCellPlace): boolean {
-  const block = layout.sections[field.sectionIndex]?.repeat === true;
+  const block = sectionAt(layout, field)?.repeat === true;
 
-  return layout.sections.some(
-    (section, sectionIndex) =>
-      (block ? sectionIndex === field.sectionIndex : section.repeat !== true) &&
+  return placedSections(layout).some(
+    ({ place, section }) =>
+      (block ? sameSection(place, field) : section.repeat !== true) &&
       section.rows.some((row) => row.some((cell) => cell.kind === 'field' && cell.id === id)),
   );
 }
@@ -163,14 +173,14 @@ function isFirstHolder(
   field: TemplateCellPlace,
   block: boolean,
 ): boolean {
-  const own = layout.sections[field.sectionIndex];
+  const own = sectionAt(layout, field);
 
-  if (own === undefined || (own.repeat === true) !== block) {
+  if (own === null || (own.repeat === true) !== block) {
     return false;
   }
 
-  for (const [sectionIndex, section] of layout.sections.entries()) {
-    const inScope = block ? sectionIndex === field.sectionIndex : section.repeat !== true;
+  for (const { place, section } of placedSections(layout)) {
+    const inScope = block ? sameSection(place, field) : section.repeat !== true;
 
     if (!inScope) {
       continue;
@@ -180,11 +190,7 @@ function isFirstHolder(
       const cellIndex = row.findIndex((cell) => cell.kind === 'field' && cell.id === id);
 
       if (cellIndex !== -1) {
-        return (
-          sectionIndex === field.sectionIndex &&
-          rowIndex === field.rowIndex &&
-          cellIndex === field.cellIndex
-        );
+        return samePlace({ ...place, rowIndex, cellIndex }, field);
       }
     }
   }

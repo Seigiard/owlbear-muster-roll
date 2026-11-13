@@ -8,6 +8,7 @@ import { parseNumberInput } from '@/core/number-input';
 import {
   plainRow,
   resolveFieldReference,
+  sectionAt,
   type PresetCell,
   type PresetFieldCell,
   type TemplateLayout,
@@ -239,12 +240,12 @@ export function formulaDiceFieldLookup(
   sheetRow: SheetRowValues,
   ownBlock: FieldValues = NO_VALUES,
 ): DiceFieldLookup {
-  const section = layout.sections[from.sectionIndex];
+  const section = sectionAt(layout, from);
 
   return (id) => {
     const reference = resolveFieldReference(layout, from, id);
 
-    if (reference === null || section === undefined) {
+    if (reference === null || section === null) {
       return null;
     }
 
@@ -331,12 +332,12 @@ export function formulaFieldLookup(
   sheetRow: SheetRowValues,
   ownBlock: FieldValues = NO_VALUES,
 ): FieldLookup {
-  const section = layout.sections[from.sectionIndex];
+  const section = sectionAt(layout, from);
 
   return (id) => {
     const reference = resolveFieldReference(layout, from, id);
 
-    if (reference === null || section === undefined) {
+    if (reference === null || section === null) {
       return null;
     }
 

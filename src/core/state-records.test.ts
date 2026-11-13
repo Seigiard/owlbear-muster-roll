@@ -72,7 +72,7 @@ describe('stateAnswer', () => {
       skipped: answer.skipped,
     }).toEqual({
       messages: [
-        { v: 2, g: GENERATION, t: 'state', r: 'r1', i: 1, n: 1, records: { ok: true, value: [] } },
+        { v: 3, g: GENERATION, t: 'state', r: 'r1', i: 1, n: 1, records: { ok: true, value: [] } },
       ],
       skipped: [],
     });

@@ -60,7 +60,14 @@ function sheetSet(
   sections: PresetSection[],
   extra: Partial<SheetSetTemplate> = {},
 ): SheetSetTemplate {
-  return { id: 'pc', kind: 'set', title: 'Персонажи', nameField: 'notes', sections, ...extra };
+  return {
+    id: 'pc',
+    kind: 'set',
+    title: 'Персонажи',
+    nameField: 'notes',
+    tabs: [{ sections }],
+    ...extra,
+  };
 }
 
 function single(
@@ -68,11 +75,11 @@ function single(
   sections: PresetSection[],
   extra: Partial<SingleSheetTemplate> = {},
 ): SingleSheetTemplate {
-  return { id, kind: 'single', title: id, sections, ...extra };
+  return { id, kind: 'single', title: id, tabs: [{ sections }], ...extra };
 }
 
 function presetOf(...templates: Template[]): Preset {
-  return { v: 2, templates };
+  return { v: 3, templates };
 }
 
 // A preset whose only template is the sheet set `pc` with these sections.
@@ -160,6 +167,83 @@ describe('presetDiff', () => {
       first: [],
       last: [],
     });
+  });
+
+  test('keeps every value and key when sections move to another tab', () => {
+    // #given: the same sections, split over two titled tabs.
+    const [first, second, third] = BASE_SECTIONS;
+
+    const split = presetOf(
+      sheetSet([], {
+        tabs: [
+          { title: 'Основное', sections: first === undefined ? [] : [first] },
+          {
+            title: 'Бой',
+            sections: [second, third].filter((section) => section !== undefined),
+          },
+        ],
+      }),
+    );
+
+    const records = replica(
+      sheet('brok'),
+      row('brok', 'str', { str: 12, str_tired: false }),
+      row('brok', 'hp', { hp: 9 }),
+      rep('brok', 'attack', 'i1', { attack: 'Меч', bonus: 3 }),
+    );
+
+    // #when
+    const migration = presetDiff(records, BASE, split);
+
+    // #then
+    expect(summary(migration)).toEqual({
+      count: 0,
+      sheets: 0,
+      removed: {},
+      first: [],
+      last: [],
+    });
+  });
+
+  test('counts the values of a removed tab', () => {
+    // #given: two tabs, then the second one removed with its repeat section.
+    const [first, second, third] = BASE_SECTIONS;
+
+    const twoTabs = presetOf(
+      sheetSet([], {
+        tabs: [
+          {
+            title: 'Основное',
+            sections: [first, second].filter((section) => section !== undefined),
+          },
+          { title: 'Бой', sections: third === undefined ? [] : [third] },
+        ],
+      }),
+    );
+
+    const oneTab = presetOf(
+      sheetSet([], {
+        tabs: [
+          {
+            title: 'Основное',
+            sections: [first, second].filter((section) => section !== undefined),
+          },
+        ],
+      }),
+    );
+
+    const records = replica(
+      sheet('brok'),
+      row('brok', 'str', { str: 12, str_tired: false }),
+      rep('brok', 'attack', 'i1', { attack: 'Меч', bonus: 3 }),
+    );
+
+    // #when
+    const migration = presetDiff(records, twoTabs, oneTab);
+
+    // #then
+    expect(migration.count).toBe(2);
+    expect(migration.removed).toEqual({ pc: ['attack', 'bonus'] });
   });
 
   test('keeps every value when only a label changes', () => {
@@ -979,7 +1063,7 @@ describe('presetDiff', () => {
       kind: 'set',
       title: 'NPC',
       nameField: 'name',
-      sections: [rows([text('name'), number('hp')])],
+      tabs: [{ sections: [rows([text('name'), number('hp')])] }],
     });
 
     const records = replica(row('npc', 'name', { name: 'Волк', hp: 5 }));

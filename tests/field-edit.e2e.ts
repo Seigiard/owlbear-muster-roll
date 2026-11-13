@@ -27,64 +27,68 @@ const PAST_PAUSE_MS = 1300;
 const WITHIN_PAUSE_MS = 300;
 
 const PRESET = {
-  v: 2,
+  v: 3,
   templates: [
     {
       id: 'pc',
       kind: 'set',
       title: 'Персонажи',
       nameField: 'name',
-      sections: [
+      tabs: [
         {
-          title: 'Сетка',
-          columns: 3,
-          rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'str_tired' },
-            ],
-            [
-              { kind: 'text', text: 'Ловкость' },
-              { kind: 'field', type: 'number', id: 'dex' },
-            ],
-          ],
-        },
-        {
-          title: 'Строки',
-          rows: [
-            [
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
-            [
-              { kind: 'text', text: 'Заметки' },
-              { kind: 'field', type: 'text', id: 'notes' },
-            ],
-            [
-              { kind: 'text', text: 'Девиз' },
-              { kind: 'field', type: 'text', id: 'motto' },
-            ],
-          ],
-        },
-        {
-          title: 'Атаки',
-          columns: 2,
-          repeat: true,
-          rows: [
-            [
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'field', type: 'number', id: 'bonus' },
-            ],
-          ],
-        },
-        {
-          title: 'Отметки',
-          rows: [
-            [
-              { kind: 'text', text: 'Отдых' },
-              { kind: 'field', type: 'check', id: 'rested' },
-            ],
+          sections: [
+            {
+              title: 'Сетка',
+              columns: 3,
+              rows: [
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'str_tired' },
+                ],
+                [
+                  { kind: 'text', text: 'Ловкость' },
+                  { kind: 'field', type: 'number', id: 'dex' },
+                ],
+              ],
+            },
+            {
+              title: 'Строки',
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+                [
+                  { kind: 'text', text: 'Заметки' },
+                  { kind: 'field', type: 'text', id: 'notes' },
+                ],
+                [
+                  { kind: 'text', text: 'Девиз' },
+                  { kind: 'field', type: 'text', id: 'motto' },
+                ],
+              ],
+            },
+            {
+              title: 'Атаки',
+              columns: 2,
+              repeat: true,
+              rows: [
+                [
+                  { kind: 'field', type: 'text', id: 'attack' },
+                  { kind: 'field', type: 'number', id: 'bonus' },
+                ],
+              ],
+            },
+            {
+              title: 'Отметки',
+              rows: [
+                [
+                  { kind: 'text', text: 'Отдых' },
+                  { kind: 'field', type: 'check', id: 'rested' },
+                ],
+              ],
+            },
           ],
         },
       ],
@@ -615,7 +619,7 @@ test('passing through a number field that holds a string or an exponent form cha
   }).toEqual({ messages: 0, str: 'много', dex: '1e+21', sent: 0 });
 });
 
-test('Tab goes through the tab bar, the header, then every field and repeat block control in preset order', async ({
+test('Tab goes through the sidebar, the header, then every field and repeat block control in preset order', async ({
   page,
   context,
 }) => {

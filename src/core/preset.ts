@@ -78,35 +78,54 @@ const sectionSchema = z
 
 const visibilitySchema = z.enum(['all', 'gm']).optional();
 
-const sheetSetTemplateSchema = z.strictObject({
-  id: z.string(),
-  kind: z.literal('set'),
-  title: z.string(),
-  nameField: z.string(),
+// A tab of a template: a group of sections a sheet shows one at a time. Its `visibility` is kept,
+// and hides the tab from players when it is `gm`.
+const tabSchema = z.strictObject({
+  title: z.string().optional(),
   visibility: visibilitySchema,
-  tokens: z.literal(true).optional(),
   sections: z.array(sectionSchema),
 });
 
-const singleSheetTemplateSchema = z.strictObject({
-  id: z.string(),
-  kind: z.literal('single'),
-  title: z.string(),
-  visibility: visibilitySchema,
-  players: z.literal('edit').optional(),
-  tokens: z.literal(true).optional(),
-  sections: z.array(sectionSchema),
-});
+// A file holds at least one tab per template. The builder's draft may hold none, which it shows as
+// a problem at the template (AD-21, AD-22).
+function templateSchemas(tabs: z.ZodArray<typeof tabSchema>) {
+  const sheetSet = z.strictObject({
+    id: z.string(),
+    kind: z.literal('set'),
+    title: z.string(),
+    nameField: z.string(),
+    visibility: visibilitySchema,
+    tokens: z.literal(true).optional(),
+    tabs,
+  });
 
-const templateSchema = z.discriminatedUnion('kind', [
-  sheetSetTemplateSchema,
-  singleSheetTemplateSchema,
-]);
+  const single = z.strictObject({
+    id: z.string(),
+    kind: z.literal('single'),
+    title: z.string(),
+    visibility: visibilitySchema,
+    players: z.literal('edit').optional(),
+    tokens: z.literal(true).optional(),
+    tabs,
+  });
 
-// TASK-33: the action window size a preset may set, in px, inclusive. The lower bound keeps the
-// narrowest sheet layout usable; the upper bound keeps the window on a laptop screen.
+  return { sheetSet, single, template: z.discriminatedUnion('kind', [sheetSet, single]) };
+}
+
+const fileTemplates = templateSchemas(z.array(tabSchema).min(1));
+
+const draftTemplates = templateSchemas(z.array(tabSchema));
+
+const sheetSetTemplateSchema = fileTemplates.sheetSet;
+
+const singleSheetTemplateSchema = fileTemplates.single;
+
+const templateSchema = fileTemplates.template;
+
+// TASK-33: the action window size a preset may set, in px, inclusive. The lower width bound fits the
+// sidebar and a sheet side by side; the upper bound keeps the window on a laptop screen.
 export const WINDOW_SIZE_LIMITS = {
-  width: { min: 360, max: 1440 },
+  width: { min: 480, max: 1440 },
   height: { min: 360, max: 1080 },
 } as const;
 
@@ -125,7 +144,7 @@ const presetSchema = z.strictObject({
 // are rule problems the builder shows, not a broken structure.
 const presetStructureSchema = presetSchema.extend({
   window: z.strictObject({ width: z.number().int(), height: z.number().int() }).optional(),
-  templates: z.array(templateSchema),
+  templates: z.array(draftTemplates.template),
 });
 
 const fileObjectSchema = z.looseObject({ v: z.unknown().optional() });
@@ -144,8 +163,10 @@ export type SheetSetTemplate = z.infer<typeof sheetSetTemplateSchema>;
 
 export type SingleSheetTemplate = z.infer<typeof singleSheetTemplateSchema>;
 
-// What lays a sheet out. A template is one, and so is any object with its sections.
-export type TemplateLayout = Pick<Template, 'sections'>;
+// What lays a sheet out. A template is one, and so is any object with its tabs.
+export type TemplateLayout = Pick<Template, 'tabs'>;
+
+export type PresetTab = z.infer<typeof tabSchema>;
 
 export type PresetSection = z.infer<typeof sectionSchema>;
 
@@ -159,8 +180,11 @@ export type WindowSize = z.infer<typeof windowSchema>;
 // the window at this size before any background page runs, so the two must agree.
 export const DEFAULT_WINDOW_SIZE: WindowSize = { width: 600, height: 600 };
 
+// A section of a template by position: its tab, then its index within that tab (AD-18).
+export type TemplateSectionPlace = { tabIndex: number; sectionIndex: number };
+
 // A row of a template by position, so a row with no field, as a dice row, can be named too.
-export type TemplateRowPlace = { sectionIndex: number; rowIndex: number };
+export type TemplateRowPlace = TemplateSectionPlace & { rowIndex: number };
 
 // `block`: the same repeat block. `sheet`: the `row:` record of `rowId` on the same sheet. The
 // caller reads values only from the sheet the cell is on.
@@ -173,6 +197,7 @@ export type PresetFailure =
   | { code: 'unsupported-version' }
   | { code: 'invalid-structure' }
   | { code: 'invalid-template-id'; detail: string }
+  | { code: 'untitled-tab'; detail: string }
   | { code: 'duplicate-template'; detail: string }
   | { code: 'bad-name-field'; detail: string; field: string }
   | { code: 'invalid-id'; detail: string }
@@ -312,14 +337,81 @@ export function repeatSectionId(section: PresetSection): string | null {
   return section.repeat === true ? (sectionFirstField(section)?.id ?? null) : null;
 }
 
+// Every section of a template across its tabs, in tab order. Field id scopes, record placement and
+// value diffs read the whole sheet, since tabs never enter a record key (AD-14).
+export function layoutSections(layout: TemplateLayout): PresetSection[] {
+  return layout.tabs.flatMap((tab) => tab.sections);
+}
+
+// The one map from an address to its section (AD-18): `sectionIndex` counts within the tab.
+export function sectionAt(
+  layout: TemplateLayout,
+  place: TemplateSectionPlace,
+): PresetSection | null {
+  return layout.tabs[place.tabIndex]?.sections[place.sectionIndex] ?? null;
+}
+
+// Every section of a template with its address, in tab order.
+export function placedSections(
+  layout: TemplateLayout,
+): { place: TemplateSectionPlace; section: PresetSection }[] {
+  return layout.tabs.flatMap((tab, tabIndex) =>
+    tab.sections.map((section, sectionIndex) => ({ place: { tabIndex, sectionIndex }, section })),
+  );
+}
+
+// AD-26: the tab a sheet shows, from the tab this client chose for it. With `shown`, the chosen tab
+// is kept only when this role sees it, then the first tab it sees is used, or none. The choice is
+// client UI state only.
+export function openTabIndex(layout: TemplateLayout, chosen: number | undefined): number;
+export function openTabIndex(
+  layout: TemplateLayout,
+  chosen: number | undefined,
+  shown: (index: number) => boolean,
+): number | null;
+export function openTabIndex(
+  layout: TemplateLayout,
+  chosen: number | undefined,
+  shown?: (index: number) => boolean,
+): number | null {
+  if (
+    chosen !== undefined &&
+    Number.isInteger(chosen) &&
+    chosen >= 0 &&
+    chosen < layout.tabs.length &&
+    (shown === undefined || shown(chosen))
+  ) {
+    return chosen;
+  }
+
+  if (shown === undefined) {
+    return 0;
+  }
+
+  const firstShown = layout.tabs.findIndex((_tab, index) => shown(index));
+
+  return firstShown === -1 ? null : firstShown;
+}
+
 // The repeat section of a template that `sectionId` names.
 export function repeatSectionById(layout: TemplateLayout, sectionId: string): PresetSection | null {
-  return layout.sections.find((section) => repeatSectionId(section) === sectionId) ?? null;
+  return repeatSectionPlace(layout, sectionId)?.section ?? null;
+}
+
+// The repeat section `sectionId` names, with its address. Repeat section ids are unique in a
+// template, so it sits in exactly one tab.
+export function repeatSectionPlace(
+  layout: TemplateLayout,
+  sectionId: string,
+): { place: TemplateSectionPlace; section: PresetSection } | null {
+  return (
+    placedSections(layout).find(({ section }) => repeatSectionId(section) === sectionId) ?? null
+  );
 }
 
 // The non-repeat row whose first field is `rowId`, the row a `row:` record of that id holds.
 export function plainRow(layout: TemplateLayout, rowId: string): readonly PresetCell[] | null {
-  for (const section of layout.sections) {
+  for (const section of layoutSections(layout)) {
     if (section.repeat === true) {
       continue;
     }
@@ -337,7 +429,7 @@ export function plainRow(layout: TemplateLayout, rowId: string): readonly Preset
 // The id of the non-repeat row that holds the field `fieldId`, which is the row's first field id.
 // Non-repeat field ids are unique in a template, so at most one row holds it.
 export function plainRowIdOf(layout: TemplateLayout, fieldId: string): string | null {
-  for (const section of layout.sections) {
+  for (const section of layoutSections(layout)) {
     if (section.repeat === true) {
       continue;
     }
@@ -353,15 +445,15 @@ export function plainRowIdOf(layout: TemplateLayout, fieldId: string): string | 
 }
 
 // Where `id` resolves from a cell of the row at `from`: the cell's own repeat block first, then the
-// template's non-repeat scope. A field of a repeat section is reachable only from inside its own
-// repeat block, so an id found only in another repeat section, or only in another template,
-// resolves to `null`.
+// template's non-repeat scope, across all its tabs. A field of a repeat section is reachable only
+// from inside its own repeat block, so an id found only in another repeat section, or only in
+// another template, resolves to `null`.
 export function resolveFieldReference(
   layout: TemplateLayout,
   from: TemplateRowPlace,
   id: string,
 ): FieldReference | null {
-  const section = layout.sections[from.sectionIndex];
+  const section = sectionAt(layout, from);
 
   if (section?.rows[from.rowIndex] === undefined) {
     return null;
@@ -376,15 +468,15 @@ export function resolveFieldReference(
   return rowId === null ? null : { scope: 'sheet', rowId };
 }
 
-// A rule failure and the item that fails the check, as an index path: template, then section, row
-// and cell, as deep as that item. An id or a formula names its cell, a too-wide row its row,
-// `bad-repeat` its section, a repeated id its second occurrence, and `bad-name-field` and an invalid
-// template id their template.
+// A rule failure and the item that fails the check, as an index path: template, then tab, section,
+// row and cell, as deep as that item. An id or a formula names its cell, a too-wide row its row,
+// `bad-repeat` its section, a missing tab title its tab, a repeated id its second occurrence, and
+// `bad-name-field` and an invalid template id their template.
 export type PresetProblem = { failure: PresetFailure; path: readonly number[] };
 
-// Every rule failure, in the order `parsePresetFile` checks: per template its id, then its
-// sections, then its name field. Each template is a scope of its own, so one field id can occur in
-// two templates.
+// Every rule failure, in the order `parsePresetFile` checks: per template its id, then its tab
+// titles, then its sections, then its name field. Each template is a scope of its own, so one field
+// id can occur in two templates.
 export function presetProblems(preset: Preset): PresetProblem[] {
   const problems: PresetProblem[] = [];
   const templateIds = new Set<string>();
@@ -406,6 +498,7 @@ export function presetProblems(preset: Preset): PresetProblem[] {
       templateIds.add(template.id);
     }
 
+    problems.push(...tabTitleProblems(template, path));
     problems.push(...sectionsProblems(template, path));
     problems.push(...formulaTypeProblems(template, path));
 
@@ -429,7 +522,7 @@ function nameFieldFailure(template: Template): PresetFailure | null {
     return null;
   }
 
-  const named = template.sections.some(
+  const named = layoutSections(template).some(
     (section) =>
       section.repeat !== true &&
       section.rows.some((row) =>
@@ -448,7 +541,26 @@ function nameFieldFailure(template: Template): PresetFailure | null {
       };
 }
 
-// All non-repeat fields of one template are one scope, and each repeat section is its own.
+// A template with more than one tab names each tab in its tab row. A blank title names nothing.
+function tabTitleProblems(template: Template, templatePath: readonly number[]): PresetProblem[] {
+  if (template.tabs.length < 2) {
+    return [];
+  }
+
+  return template.tabs.flatMap((tab, tabIndex) =>
+    tab.title === undefined || tab.title.trim() === ''
+      ? [
+          {
+            failure: { code: 'untitled-tab' as const, detail: shortDetail(template.id) },
+            path: [...templatePath, tabIndex],
+          },
+        ]
+      : [],
+  );
+}
+
+// All non-repeat fields of one template are one scope across its tabs, and each repeat section is
+// its own.
 function sectionsProblems(
   layout: TemplateLayout,
   templatePath: readonly number[],
@@ -456,8 +568,8 @@ function sectionsProblems(
   const templateScope = new Set<string>();
   const sectionIds = new Set<string>();
 
-  return layout.sections.flatMap((section, sectionIndex) => {
-    const path = [...templatePath, sectionIndex];
+  return placedSections(layout).flatMap(({ place, section }) => {
+    const path = [...templatePath, place.tabIndex, place.sectionIndex];
 
     return section.repeat === true
       ? repeatSectionProblems(section, sectionIds, path)
@@ -608,7 +720,7 @@ function selectOptionsFailure(
 function formulaTypeProblems(template: Template, templatePath: readonly number[]): PresetProblem[] {
   const problems: PresetProblem[] = [];
 
-  template.sections.forEach((section, sectionIndex) => {
+  placedSections(template).forEach(({ place, section }) => {
     section.rows.forEach((row, rowIndex) => {
       row.forEach((cell, cellIndex) => {
         if (cell.kind !== 'dice') {
@@ -618,13 +730,13 @@ function formulaTypeProblems(template: Template, templatePath: readonly number[]
         const parsed = parseFormula(cell.formula);
 
         const failure = parsed.ok
-          ? formulaTypeFailure(template, { sectionIndex, rowIndex }, parsed.value, cell.formula)
+          ? formulaTypeFailure(template, { ...place, rowIndex }, parsed.value, cell.formula)
           : null;
 
         if (failure !== null) {
           problems.push({
             failure,
-            path: [...templatePath, sectionIndex, rowIndex, cellIndex],
+            path: [...templatePath, place.tabIndex, place.sectionIndex, rowIndex, cellIndex],
           });
         }
       });
@@ -696,7 +808,7 @@ function fieldReference(
 
   const rows =
     reference.scope === 'block'
-      ? (template.sections[from.sectionIndex]?.rows ?? [])
+      ? (sectionAt(template, from)?.rows ?? [])
       : [plainRow(template, reference.rowId) ?? []];
 
   for (const row of rows) {

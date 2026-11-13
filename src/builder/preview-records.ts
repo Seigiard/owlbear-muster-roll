@@ -1,4 +1,4 @@
-import { repeatSectionId, type Template } from '@/core/preset';
+import { layoutSections, repeatSectionId, type Template } from '@/core/preset';
 import { repKey, type VersionedRecord } from '@/core/records';
 import { sheetKey } from '@/core/sheets';
 import { copy } from '@/ui/copy';
@@ -31,7 +31,7 @@ export function previewRecords(template: Template): Map<string, VersionedRecord>
     });
   }
 
-  for (const section of template.sections) {
+  for (const section of layoutSections(template)) {
     const sectionId = repeatSectionId(section);
 
     if (sectionId !== null) {
@@ -51,13 +51,13 @@ export function previewRecords(template: Template): Map<string, VersionedRecord>
 
 // The name a template's preview tab and header show. A single sheet shows its `title`. A sheet
 // set's sample sheet has an empty name, so it shows its name field's placeholder, the field id, or
-// "Без имени" when the name field names no text field outside repeat sections.
+// "Без имени" when the name field names no text field outside repeat sections on any tab.
 export function previewSheetName(template: Template): string {
   if (template.kind === 'single') {
     return template.title;
   }
 
-  const named = template.sections.some(
+  const named = layoutSections(template).some(
     (section) =>
       section.repeat !== true &&
       section.rows.some((row) =>
