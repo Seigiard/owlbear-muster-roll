@@ -1,0 +1,66 @@
+[
+  {
+    "id": "M1",
+    "rule": "Seeing a newer build publishes the resulting notice change.",
+    "file": "src/replica/engine.ts",
+    "find": "    newerVersionSeen = true;\n    publisher.publish();\n",
+    "replace": "    newerVersionSeen = true;\n",
+    "test": ["src/replica/"]
+  },
+  {
+    "id": "M2",
+    "rule": "Applying a GM command publishes the resulting change.",
+    "file": "src/replica/engine.ts",
+    "find": "    const applied = apply(composed.value);\n\n    // A notice change reaches the window even when the command applied nothing.\n    publisher.publish();\n    commandDone(id);\n",
+    "replace": "    const applied = apply(composed.value);\n\n    // A notice change reaches the window even when the command applied nothing.\n    commandDone(id);\n",
+    "test": ["src/replica/"]
+  },
+  {
+    "id": "M3",
+    "rule": "A player delta withdraws record keys that are no longer visible.",
+    "file": "src/replica/window-publisher.ts",
+    "find": "  return [\n    ...new Set([\n      ...[...previous.pending.keys()].filter((key) => !current.pending.has(key)),\n      ...[...previous.records.keys()].filter((key) => !current.records.has(key)),\n    ]),\n  ];\n",
+    "replace": "  return [...previous.pending.keys()].filter((key) => !current.pending.has(key));\n",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "M4",
+    "rule": "A withdrawn pending key is sent again as its replica record.",
+    "file": "src/replica/window-publisher.ts",
+    "find": "    const records = [...current.records.values()].filter((record) => {\n      const previous = previousHeld.records.get(record.k);\n\n      return withdrawn.includes(record.k) || !sameRecord(previous, record);\n    });\n",
+    "replace": "    const records = [...current.records.values()].filter((record) => {\n      const previous = previousHeld.records.get(record.k);\n\n      return !sameRecord(previous, record);\n    });\n",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "M5",
+    "rule": "Only the first part of a split delta carries withdrawn keys.",
+    "file": "src/replica/window-publisher.ts",
+    "find": "      const withdrawn = index === 0 ? content.withdrawn : [];\n",
+    "replace": "      const withdrawn = content.withdrawn;\n",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "M6",
+    "rule": "A repeated projection nonce is answered only once.",
+    "file": "src/replica/window-publisher.ts",
+    "find": "    if (answeringNonces.has(nonce)) {\n      return false;\n    }\n\n",
+    "replace": "",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "M7",
+    "rule": "Restarting a stream assigns a new engine id.",
+    "file": "src/replica/window-publisher.ts",
+    "find": "    engineId = options.newId();\n",
+    "replace": "",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "M8",
+    "rule": "A record with a changed version is sent even when its key is already held.",
+    "file": "src/replica/window-publisher.ts",
+    "find": "    const records = [...current.records.values()].filter((record) => {\n      const previous = previousHeld.records.get(record.k);\n\n      return withdrawn.includes(record.k) || !sameRecord(previous, record);\n    });\n",
+    "replace": "    const records = [...current.records.values()].filter((record) => {\n      const previous = previousHeld.records.get(record.k);\n\n      return withdrawn.includes(record.k) || previous === undefined;\n    });\n",
+    "test": ["src/replica/window-publisher.test.ts"]
+  }
+]
