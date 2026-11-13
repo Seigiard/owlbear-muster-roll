@@ -250,6 +250,15 @@
   summary: src/ui/copy.test.ts "Add a sheet of a sheet set" fails because EXPERIENCE.md asks for "+ Добавить" and copy.addSign is "+".
   evidence: Fails at 411b3d0 before TASK-58; the label belongs to the sidebar (TASK-60), which also updates the "+" assertions in tests/characters.e2e.ts.
 
+## Deferred from: build of spec-task-48-catch-up-state-machine (2026-11-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-48-catch-up-state-machine.md`
+  summary: Under calibration mutation M5 (a GM client also catches up on a GM return), `src/replica/engine-sync.test.ts :: remote record :: that loses to the local one sends no delta and writes nothing` fails by a timing race, on the baseline engine and on the catch-up module alike.
+  evidence: The focused test failed 17 of 20 runs on the baseline engine and 18 of 20 on the module. Both timelines show the same order: the marker delta, then the empty delta of the late complete state answer. `afterMarker` waits for the marker only, so the randomly delayed answer can land inside the test window. Unmutated, the test passes, because a GM does not catch up on a GM return. Evidence: `controls/d11-*` in the TASK-48 tdd run directory.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-48-catch-up-state-machine.md`
+  summary: Under mutation M5, several two-GM engine tests pass or fail from run to run, so M5's failing set is not a stable calibration signal.
+  evidence: Three runs on each side varied in `engine-import :: adoption guards :: an adopter whose save fails…`, `engine-import :: adoption :: a second GM adopts on reset alone…`, `engine-import :: two imports at once end with every client on the higher one`, `engine-propose :: on two GM clients: both store the same record and both commit its echo`, `engine-scene :: two GM clients :: both clear the link…`, `engine-sync :: two GM clients :: settle on the record with the higher (c, a)…` and `engine-wipe :: a wipe :: another GM adopts the empty room…`. The 13 failures stable on all runs match on both sides.
+
 ## Deferred from: code review of TASK-59 hidden tabs (2026-11-13)
 
 - source_spec: backlog TASK-59

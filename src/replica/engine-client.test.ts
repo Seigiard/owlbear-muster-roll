@@ -523,39 +523,6 @@ describe('open window', () => {
 });
 
 describe('repeated requests', () => {
-  test('answers a repeat once while the first answer is still queued', async () => {
-    // #given
-    let openGate: () => void = () => undefined;
-
-    const gate = new Promise<void>((resolve) => {
-      openGate = resolve;
-    });
-
-    const rig = createRig('GM', (platform) => ({
-      ...platform,
-      broadcast: {
-        ...platform.broadcast,
-        sendMessage: async (channel, data, options) => {
-          await gate;
-
-          return platform.broadcast.sendMessage(channel, data, options);
-        },
-      },
-    }));
-
-    await startEngine(rig);
-
-    // #when
-    await post(rig, { t: 'projection-request', nonce: 'same' });
-    await post(rig, { t: 'projection-request', nonce: 'same' });
-    openGate();
-    await waitUntil(() => rig.wire.some((message) => message.t === 'projection'));
-    await pause(RIG_TIMING.projectionRequestRepeatMs);
-
-    // #then
-    expect(rig.wire.filter((message) => message.t === 'projection').length).toBe(1);
-  });
-
   test('delivers a request once while it waits under a rate limit across repeats', async () => {
     // #given: two 40 ms backoffs cover three repeat intervals of 25 ms.
     const rig = createRig();

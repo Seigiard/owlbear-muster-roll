@@ -5,19 +5,17 @@ import { createRoot } from 'react-dom/client';
 
 import { playerMayEdit, playerMayEditField } from '@/core/access';
 import { newSheetId } from '@/core/ids';
-import { decodePreset, openTabIndex, type Preset, type SheetSetTemplate } from '@/core/preset';
-import { presetDataSchema, type VersionedRecord } from '@/core/records';
+import { openTabIndex, type SheetSetTemplate } from '@/core/preset';
 import { isSheetSet, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
 import { linkTargetKey, repeatBlockTabIndex, type LinkTarget } from '@/core/link-target';
-import { liveLinks } from '@/core/token-links';
 import {
   selectionMarks,
   selectionStep,
   tokensByTarget,
   type SelectionStep,
 } from '@/core/token-selection';
-import { tabShownTo, visibleRecordMap, type PlayerRole } from '@/core/visibility';
+import { tabShownTo, type PlayerRole } from '@/core/visibility';
 import { platform } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { bannerFor } from '@/ui/banner-message';
@@ -53,6 +51,7 @@ import {
 import type { ShellTab } from '@/ui/shell/tab-bar';
 import { WindowFrame } from '@/ui/shell/window-frame';
 import { followTheme } from '@/ui/theme';
+import { useWindowView } from '@/ui/window-view';
 
 import './main.css';
 
@@ -181,19 +180,8 @@ function WindowRoot({
   const loaded = useStore(projection.$loaded);
   const sync = useStore(projection.$sync);
   const roomCopy = useStore(projection.$roomCopy);
-  // The engine re-reads the role on every party change, so the window follows it.
-  const role = loaded ? sync.role : initialRole;
+  const { role, preset, records, links } = useWindowView(projection, initialRole);
   const isGm = role === 'GM';
-  const allRecords = useStore(projection.$records);
-  const presetData = presetDataOf(allRecords);
-  const preset = useMemo(() => decodedPreset(presetData), [presetData]);
-
-  // Every view reads the records and the sheets through visibility, so no view filters by template
-  // or role on its own.
-  const records = useMemo(
-    () => visibleRecordMap(role, preset, allRecords),
-    [role, preset, allRecords],
-  );
 
   const pendingEntries = useStore(projection.$pending);
   const marked = useStore(marks.$marked);
@@ -232,9 +220,6 @@ function WindowRoot({
     () => new Map(),
   );
 
-  // The token status reads `link:` records only, never the scene (FR18), and AD-19 drops an inert
-  // link.
-  const links = useMemo(() => liveLinks(records, preset), [records, preset]);
   const targetTokens = useMemo(() => tokensByTarget(links), [links]);
   const linkedTargets = useMemo(() => new Set(targetTokens.keys()), [targetTokens]);
   const mapSelected = useStore(mapSelection.$selection);
@@ -861,21 +846,4 @@ function focusInWindow(): boolean {
   const active = document.activeElement;
 
   return active !== null && active !== document.body && active !== document.documentElement;
-}
-
-function presetDataOf(records: ReadonlyMap<string, VersionedRecord>): string | null {
-  const data = presetDataSchema.safeParse(records.get('preset')?.d);
-
-  return data.success ? data.data : null;
-}
-
-// The engine validates before it stores, so a preset that does not decode counts as none.
-function decodedPreset(data: string | null): Preset | null {
-  if (data === null) {
-    return null;
-  }
-
-  const decoded = decodePreset(data);
-
-  return decoded.ok ? decoded.value : null;
 }
