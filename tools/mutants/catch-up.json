@@ -1,0 +1,98 @@
+[
+  {
+    "id": "M1",
+    "rule": "A GM in catch-up holds a state request it cannot answer until the catch-up ends.",
+    "file": "src/replica/catch-up.ts",
+    "find": "        // A request heard while this GM cannot answer waits until its catch-up ends. It answers the\n        // ones still unanswered because nobody asks again.\n        heldRequests.delete(r);\n        heldRequests.add(r);\n\n        for (const oldest of heldRequests) {\n          if (heldRequests.size <= RECENT_NONCE_LIMIT) {\n            break;\n          }\n\n          heldRequests.delete(oldest);\n        }\n\n",
+    "replace": "",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M2",
+    "rule": "Held requests are not answered when an answer to that nonce was seen before the catch-up exit.",
+    "file": "src/replica/catch-up.ts",
+    "find": "      if (!answeredNonces.has(r)) {\n        decisions.push(...scheduleAnswer(r));\n      }\n",
+    "replace": "      decisions.push(...scheduleAnswer(r));\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M3",
+    "rule": "A catching-up client asks again with the same nonce when a GM comes online before an answer arrives.",
+    "file": "src/replica/catch-up.ts",
+    "find": "    if (\n      next === 'online' &&\n      !answersOwn &&\n      state.state === 'catching-up' &&\n      ownNonce !== null &&\n      sentNonce === ownNonce &&\n      !answerSeen\n    ) {\n      decisions.push(request(ownNonce));\n    }\n\n",
+    "replace": "",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M4",
+    "rule": "A late complete answer to the last own nonce does not start a GM-return catch-up.",
+    "file": "src/replica/catch-up.ts",
+    "find": "        ? [...watch(), ...setGmLink('online', message.t === 'state' && message.r === lastNonce)]\n",
+    "replace": "        ? [...watch(), ...setGmLink('online', false)]\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M5",
+    "rule": "A GM client does not enter a GM-return catch-up.",
+    "file": "src/replica/catch-up.ts",
+    "find": "    if (next === 'online' && !answersOwn && options.role() !== 'GM' && state.state === 'live') {\n",
+    "replace": "    if (next === 'online' && !answersOwn && state.state === 'live') {\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M6",
+    "rule": "The catch-up timeout does not end catch-up while a generation is being adopted.",
+    "file": "src/replica/catch-up.ts",
+    "find": "          if (adoptionTarget !== null) {\n",
+    "replace": "          if (false) {\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M7",
+    "rule": "While adopting a generation, answers of another generation do not count.",
+    "file": "src/replica/catch-up.ts",
+    "find": "      if (\n        message.r !== lastNonce ||\n        (adoptionTarget !== null && compareGenerations(message.g, adoptionTarget) !== 0)\n      ) {\n",
+    "replace": "      if (message.r !== lastNonce) {\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M8",
+    "rule": "Differing alive messages from one burst count only once.",
+    "file": "src/replica/catch-up.ts",
+    "find": "      if (counted !== undefined && now - counted.at < options.timing.gmLinkTimeoutMs / 2) {\n        return [];\n      }\n\n",
+    "replace": "",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M9",
+    "rule": "An answered exit ignores the drift starter as well as the responder.",
+    "file": "src/replica/catch-up.ts",
+    "find": "      for (const gm of [responder, driftStarter]) {\n",
+    "replace": "      for (const gm of [responder]) {\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M10",
+    "rule": "A GM in a drift catch-up can answer state requests.",
+    "file": "src/replica/catch-up.ts",
+    "find": "      (state.state === 'live' || catchUpTrigger === 'drift')\n",
+    "replace": "      state.state === 'live'\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M11",
+    "rule": "A GM in catch-up does not answer pings.",
+    "file": "src/replica/catch-up.ts",
+    "find": "    pingReceived: () => (canAnswer() && state.state === 'live' ? [{ type: 'alive' }] : []),\n",
+    "replace": "    pingReceived: () => (canAnswer() ? [{ type: 'alive' }] : []),\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M12",
+    "rule": "A page return while catching up keeps the existing nonce.",
+    "file": "src/replica/catch-up.ts",
+    "find": "    const keepsNonce =\n      trigger === 'page-return' && state.state === 'catching-up' && ownNonce !== null;\n",
+    "replace": "    const keepsNonce = false;\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  }
+]
