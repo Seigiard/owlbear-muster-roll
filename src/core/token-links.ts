@@ -18,7 +18,7 @@ import {
 import type { VersionedRecord } from '@/core/records';
 import { repeatBlocks } from '@/core/sheet-values';
 import { repeatBlockName, sheetName, templateSheetIds } from '@/core/sheets';
-import { templateShownTo, type PlayerRole } from '@/core/visibility';
+import { linkTargetShownTo, type PlayerRole } from '@/core/visibility';
 
 // The layer Owlbear puts tokens on.
 const TOKEN_LAYER = 'CHARACTER';
@@ -220,8 +220,8 @@ export function pickerGroups(
 // from the records of the moment. Every item applies to one token of the character layer. A GM gets
 // "Привязать лист…" on a token no live link names, and "Отвязать лист" only on a token a live link
 // names, so with no link that item has no entry: a filter cannot match an empty set. "Открыть лист"
-// shows on the tokens whose target's template the viewer's role may see. Token ids are sorted, so
-// the same records always give the same filters.
+// shows on tokens whose target's template the viewer's role may see, and whose repeat block is on a
+// tab that role may see. Token ids are sorted, so the same records always give the same filters.
 export function tokenMenuEntries(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset | null,
@@ -235,8 +235,8 @@ export function tokenMenuEntries(
   return [link, open, unlink].filter((entry) => entry !== undefined && entry !== null);
 }
 
-// The target a token's live link names, when this role may see its template, or `null`. A player
-// opens only a visible sheet or a repeat block of one (CAP-14).
+// The target a token's live link names, when this role may see its template and, for a repeat block,
+// its tab, or `null`. A player opens only a visible sheet or a repeat block of one (CAP-14).
 export function openTarget(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset | null,
@@ -250,7 +250,7 @@ export function openTarget(
   const target = linkTargetOf(records.get(linkKey(tokenId))?.d ?? null);
   const live = target === null ? null : liveLinkTarget(records, preset, target);
 
-  return live !== null && templateShownTo(role, live.policy.template) ? live.target : null;
+  return live !== null && linkTargetShownTo(role, live) ? live.target : null;
 }
 
 function linkEntries(links: ReadonlyMap<string, LiveLinkTarget>): TokenMenuEntry[] {
@@ -283,12 +283,12 @@ function linkEntries(links: ReadonlyMap<string, LiveLinkTarget>): TokenMenuEntry
 }
 
 // One item with an icon per role. The GM icon names every token with a live link, the player icon
-// only the tokens whose live link names a target of a visible template. An icon with no token is
-// left out, and an item with no icon has no entry.
+// only the tokens whose live link names a target of a visible template, with repeat blocks also on a
+// visible tab. An icon with no token is left out, and an item with no icon has no entry.
 function openEntry(links: ReadonlyMap<string, LiveLinkTarget>): TokenMenuEntry | null {
   const filters = OPEN_ROLES.flatMap((role): TokenMenuFilter[] => {
     const tokenIds = [...links]
-      .flatMap(([tokenId, live]) => (templateShownTo(role, live.policy.template) ? [tokenId] : []))
+      .flatMap(([tokenId, live]) => (linkTargetShownTo(role, live) ? [tokenId] : []))
       .sort();
 
     return tokenIds.length === 0

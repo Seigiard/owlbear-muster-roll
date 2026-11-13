@@ -53,7 +53,7 @@ A tab («Вкладка» in the interface) is a titled group of sections inside
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `title` | string, optional | The tab's name in the tab row. Required, and not blank, when the template has more than one tab. |
-| `visibility` | `"all"` or `"gm"`, optional | Kept in the file. This version does not hide a tab yet: every tab shows to everyone who sees the sheet. |
+| `visibility` | `"all"` or `"gm"`, optional | `"all"` (the default): players see the tab. `"gm"`: only GMs see the tab and its sections; rolls from it show only to GMs, and players get no token menu or open action for its repeat blocks. Hiding is in the interface only: its records stay in every replica. |
 | `sections` | Section array, required | The sections of the tab, in display order. |
 
 Tabs change only the layout. Field id scopes, the name field, formulas, repeat section ids and stored values are the same for the whole template, across all its tabs. A formula on one tab can use a field on another tab. A section can move to another tab, and its values stay.

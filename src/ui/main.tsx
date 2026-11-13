@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { playerMayEdit, playerMayEditField } from '@/core/access';
 import { newSheetId } from '@/core/ids';
 import { decodePreset, openTabIndex, type Preset, type SheetSetTemplate } from '@/core/preset';
 import { presetDataSchema, type VersionedRecord } from '@/core/records';
@@ -16,7 +17,7 @@ import {
   tokensByTarget,
   type SelectionStep,
 } from '@/core/token-selection';
-import { visibleRecordMap, type PlayerRole } from '@/core/visibility';
+import { tabShownTo, visibleRecordMap, type PlayerRole } from '@/core/visibility';
 import { platform } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { bannerFor } from '@/ui/banner-message';
@@ -40,7 +41,7 @@ import type { BlockTools } from '@/ui/sheet/preset-section';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { SheetHeader } from '@/ui/sheet/sheet-header';
 import { createFieldFlushes, type FieldEditing } from '@/ui/sheet/use-field-edit';
-import { playerMayEdit, sheetTabs, tabEntries, type SheetTab } from '@/ui/sheet-tabs';
+import { sheetTabs, tabEntries, type SheetTab } from '@/ui/sheet-tabs';
 import { focusTab, revealTab, type ShellBarItem } from '@/ui/shell/tab-bar';
 import { WindowShell, type ShellLayout } from '@/ui/shell/window-shell';
 import { followTheme } from '@/ui/theme';
@@ -533,13 +534,24 @@ function WindowRoot({
     setChosenTemplateTabs((current) => new Map(current).set(sheet, index));
   }
 
-  // The template tab a sheet shows: the one this window chose while the template has it, else the
-  // first.
+  // AD-26: the chosen tab stays while this role sees it; otherwise the first tab this role sees, else
+  // none.
   function templateTabProps(tab: SheetTab) {
+    const visibleTabIndexes = tab.policy.template.tabs.flatMap((_tab, index) =>
+      tabShownTo(role, tab.policy.template, index) ? [index] : [],
+    );
+
+    const chosen = chosenTemplateTabs.get(tab.id);
+
     return {
-      openTab: openTabIndex(tab.policy.template, chosenTemplateTabs.get(tab.id)),
+      openTab: openTabIndex(tab.policy.template, chosen, (index) =>
+        tabShownTo(role, tab.policy.template, index),
+      ),
+      visibleTabIndexes,
       onOpenTab: (index: number) => {
-        chooseTemplateTab(tab.id, index);
+        if (tabShownTo(role, tab.policy.template, index)) {
+          chooseTemplateTab(tab.id, index);
+        }
       },
     };
   }
@@ -658,6 +670,13 @@ function WindowRoot({
   function playerSheetContent(tab: SheetTab): ReactNode {
     const mayEdit = playerMayEdit(tab.policy, records, playerId);
 
+    const headerMayEdit =
+      tab.policy.nameField !== null &&
+      playerMayEditField(tab.policy, records, playerId, {
+        kind: 'row',
+        rowId: tab.policy.nameField.rowId,
+      });
+
     return (
       <>
         <SheetHeader
@@ -665,7 +684,7 @@ function WindowRoot({
           name={tab.name}
           nameField={tab.policy.nameField}
           records={records}
-          editing={mayEdit ? editing : null}
+          editing={headerMayEdit ? editing : null}
           status={mayEdit ? 'can-edit' : 'read-only'}
           gm={null}
           focusName={false}

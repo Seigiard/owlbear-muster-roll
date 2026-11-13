@@ -15,6 +15,9 @@ const SCROLLER_CLASS =
 
 type TabRowProps = {
   tabs: readonly PresetTab[];
+  // The room window may omit tabs hidden from this role. Indexes stay in preset space, so cell
+  // addresses and repeat-block reveals continue to use the original tab index.
+  visibleTabIndexes?: readonly number[];
   openTab: number;
   // `undefined` keeps the open tab fixed, as for a caller that shows one tab only.
   onOpenTab?: (index: number) => void;
@@ -24,8 +27,16 @@ type TabRowProps = {
 // CAP-34: the tabs of a sheet's template in preset order, with the open tab's content under them. A
 // template with one tab draws no row. The row scrolls sideways when it overflows, also with a
 // vertical mouse wheel; `Left` and `Right` move between tabs.
-export function TabRow({ tabs, openTab, onOpenTab, children }: TabRowProps): ReactNode {
-  if (tabs.length < 2) {
+export function TabRow({
+  tabs,
+  visibleTabIndexes,
+  openTab,
+  onOpenTab,
+  children,
+}: TabRowProps): ReactNode {
+  const shownIndexes = visibleTabIndexes ?? tabs.map((_tab, index) => index);
+
+  if (shownIndexes.length < 2) {
     return children;
   }
 
@@ -38,11 +49,15 @@ export function TabRow({ tabs, openTab, onOpenTab, children }: TabRowProps): Rea
     >
       <div className={SCROLLER_CLASS} onWheel={scrollSideways}>
         <TabList aria-label={copy.label.sheetTabs} className="flex gap-2">
-          {tabs.map((tab, index) => (
-            <Tab key={index} id={tabKey(index)} data-tab-index={index} className={TAB_CLASS}>
-              <span className="min-w-[0] truncate">{tabTitle(tab)}</span>
-            </Tab>
-          ))}
+          {shownIndexes.map((index) => {
+            const tab = tabs[index];
+
+            return tab === undefined ? null : (
+              <Tab key={index} id={tabKey(index)} data-tab-index={index} className={TAB_CLASS}>
+                <span className="min-w-[0] truncate">{tabTitle(tab)}</span>
+              </Tab>
+            );
+          })}
         </TabList>
       </div>
       <TabPanel id={tabKey(openTab)} className="-outline-offset-2">

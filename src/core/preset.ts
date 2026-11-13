@@ -79,7 +79,7 @@ const sectionSchema = z
 const visibilitySchema = z.enum(['all', 'gm']).optional();
 
 // A tab of a template: a group of sections a sheet shows one at a time. Its `visibility` is kept,
-// and hides nothing yet (TASK-59).
+// and hides the tab from players when it is `gm`.
 const tabSchema = z.strictObject({
   title: z.string().optional(),
   visibility: visibilitySchema,
@@ -360,15 +360,37 @@ export function placedSections(
   );
 }
 
-// AD-26: the tab a sheet shows, from the tab this client chose for it: the chosen one while the
-// template has it, else the first tab. The choice is client UI state only.
-export function openTabIndex(layout: TemplateLayout, chosen: number | undefined): number {
-  return chosen !== undefined &&
+// AD-26: the tab a sheet shows, from the tab this client chose for it. With `shown`, the chosen tab
+// is kept only when this role sees it, then the first tab it sees is used, or none. The choice is
+// client UI state only.
+export function openTabIndex(layout: TemplateLayout, chosen: number | undefined): number;
+export function openTabIndex(
+  layout: TemplateLayout,
+  chosen: number | undefined,
+  shown: (index: number) => boolean,
+): number | null;
+export function openTabIndex(
+  layout: TemplateLayout,
+  chosen: number | undefined,
+  shown?: (index: number) => boolean,
+): number | null {
+  if (
+    chosen !== undefined &&
     Number.isInteger(chosen) &&
     chosen >= 0 &&
-    chosen < layout.tabs.length
-    ? chosen
-    : 0;
+    chosen < layout.tabs.length &&
+    (shown === undefined || shown(chosen))
+  ) {
+    return chosen;
+  }
+
+  if (shown === undefined) {
+    return 0;
+  }
+
+  const firstShown = layout.tabs.findIndex((_tab, index) => shown(index));
+
+  return firstShown === -1 ? null : firstShown;
 }
 
 // The repeat section of a template that `sectionId` names.

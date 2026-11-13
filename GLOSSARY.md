@@ -62,6 +62,10 @@ _Avoid_: token-enabled, bindable
 A titled group of sections inside a sheet. A template has at least one tab, and a sheet shows one tab at a time. A template with one tab draws no tab row. Each client keeps the open tab of each sheet for itself. Tabs change only the layout: field id scopes, formulas and stored values span all tabs of a template. In the interface: «Вкладка».
 _Avoid_: page, sheet tab (the sheet's own entry in the window's tab bar)
 
+**Hidden tab**:
+A tab whose `visibility` is `"gm"`. A GM sees its tab and sections; a player sees neither, and cannot roll from it, edit its fields, or open its repeat blocks from token links. Its records stay in every replica, so visible tabs can read its values and the sheet name can still show.
+_Avoid_: secret sheet, private page
+
 **Section**:
 A titled block of a tab that holds rows.
 _Avoid_: group, panel, block

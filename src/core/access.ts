@@ -11,8 +11,8 @@ import {
   type FieldValues,
   type VersionedRecord,
 } from '@/core/records';
-import { resolveSheet, sortSheets, type SheetSummary } from '@/core/sheets';
-import type { PlayerRole } from '@/core/visibility';
+import { resolveSheet, sortSheets, type SheetPolicy, type SheetSummary } from '@/core/sheets';
+import { fieldTargetShownTo, type PlayerRole } from '@/core/visibility';
 
 // One party member as the access panel needs it.
 export type PartyEntry = { id: string; name: string; role: PlayerRole };
@@ -98,6 +98,37 @@ export function canEdit(
   return record !== undefined && record.d !== null;
 }
 
+export type PlayerEditTarget = { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string };
+
+// AD-4, one edit check: this three-argument form answers only the player's sheet-level right. Field
+// checks use playerMayEditField, which requires an explicit row or repeat-section target so the
+// target tab is judged too.
+export function playerMayEdit(
+  policy: SheetPolicy,
+  records: ReadonlyMap<string, VersionedRecord>,
+  playerId: string,
+): boolean {
+  const writable =
+    policy.write === 'players-edit' ||
+    (policy.write === 'per-player' && canEdit(records, policy.sheetId, playerId));
+
+  return writable;
+}
+
+// AD-4: the target is explicit because a field is either a plain row or a repeat section. The
+// player's sheet right and the target tab are judged together here.
+export function playerMayEditField(
+  policy: SheetPolicy,
+  records: ReadonlyMap<string, VersionedRecord>,
+  playerId: string,
+  target: PlayerEditTarget,
+): boolean {
+  return (
+    playerMayEdit(policy, records, playerId) &&
+    fieldTargetShownTo('PLAYER', policy.template, target)
+  );
+}
+
 // AD-4: the most a proposal's `c` may run ahead of the current record's. A higher one would leave
 // the key with a counter no later mint can pass within the safe integers.
 export const PROPOSE_C_MAX_STEP = 1_000_000;
@@ -123,7 +154,7 @@ export type ProposalVerdict =
 // Where a player's record lands: a plain row or a repeat block of one sheet.
 type ProposalPlace = {
   sheetId: string;
-  target: { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string };
+  target: PlayerEditTarget;
 };
 
 // `unknown-field`: the record passes every check but one: it sets a field id its row or repeat
@@ -305,12 +336,12 @@ function heldRight(record: VersionedRecord, sheetId: string): HeldRight | null {
   return null;
 }
 
-// AD-4, AD-18: the key is a `row:` or `rep:` of a sheet whose template is visible. A sheet of a
-// sheet set must be live, and the player must hold a live `acl:` of it. A single sheet must be
-// player-editable. Only the values the record sets or changes against the current record of its key
-// are judged: each must be a field of its row or repeat block with the field's JSON type, so a
-// value an older preset left keeps no edit of its row out. `d: null` is a repeat block's removal
-// only.
+// AD-4, AD-18: the key is a `row:` or `rep:` of a sheet whose template is visible and whose row or
+// repeat section is on a tab players see. A sheet of a sheet set must be live, and the player must
+// hold a live `acl:` of it. A single sheet must be player-editable. Only the values the record sets
+// or changes against the current record of its key are judged: each must be a field of its row or
+// repeat block with the field's JSON type, so a value an older preset left keeps no edit of its row
+// out. `d: null` is a repeat block's removal only.
 function proposalJudgement(
   context: ProposalContext,
   playerId: string,
@@ -324,17 +355,13 @@ function proposalJudgement(
 
   const policy = resolveSheet(context.records, context.preset, place.sheetId);
 
-  if (policy === null || policy.hidden) {
+  if (policy === null || !playerMayEditField(policy, context.records, playerId, place.target)) {
     return 'denied';
   }
 
-  const writable =
-    policy.write === 'players-edit' ||
-    (policy.write === 'per-player' && canEdit(context.records, place.sheetId, playerId));
-
   const fields = targetFields(policy.template, place.target);
 
-  if (!writable || fields === null) {
+  if (fields === null) {
     return 'denied';
   }
 

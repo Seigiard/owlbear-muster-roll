@@ -396,8 +396,8 @@ function TemplateForm({ store, template, origin }: TemplateFormProps): ReactNode
   );
 }
 
-// CAP-34: a tab's title, which a template with one tab may leave empty, and who sees it. Hiding by
-// `visibility` comes with TASK-59; the key is kept.
+// CAP-34: a tab's title, which a template with one tab may leave empty, and who sees it. `gm` hides
+// the tab from players; the key is kept.
 function TabForm({ store, tab }: { store: BuilderStore; tab: DocTab }): ReactNode {
   const { uid } = tab;
   const form = copy.builder.form;

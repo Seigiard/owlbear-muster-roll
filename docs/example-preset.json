@@ -9,6 +9,7 @@
       "tokens": true,
       "tabs": [
         {
+          "visibility": "all",
           "sections": [
             {
               "title": "Персонаж",

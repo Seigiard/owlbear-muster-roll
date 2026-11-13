@@ -27,9 +27,11 @@ type SheetBodyProps = {
   // The title names an untitled repeat section's "Добавить".
   template: Pick<Template, 'tabs' | 'title'>;
   sheetId: string;
-  // The tab this sheet shows, as `openTabIndex` picks it. The tab row reports a choice through
-  // `onOpenTab`; without it the row shows the tab and keeps it.
-  openTab: number;
+  // The tab this sheet shows, as the caller's one AD-26 open-tab check picks it. The tab row reports
+  // a choice through `onOpenTab`; without it the row shows the tab and keeps it.
+  openTab: number | null;
+  // A room player gets only tabs visible to the role. Omitted indexes keep preset-space addresses.
+  visibleTabIndexes?: readonly number[];
   onOpenTab?: (index: number) => void;
   records: ReadonlyMap<string, VersionedRecord>;
   // `null` shows every value read-only, with no row controls: a player with no access to the sheet.
@@ -49,6 +51,7 @@ export function SheetBody({
   template,
   sheetId,
   openTab,
+  visibleTabIndexes,
   onOpenTab,
   records,
   editing,
@@ -58,8 +61,11 @@ export function SheetBody({
   reveal = null,
   onRevealed,
 }: SheetBodyProps): ReactNode {
+  const shownTabIndexes = visibleTabIndexes ?? template.tabs.map((_tab, index) => index);
+
   const body = useRef<HTMLDivElement>(null);
   const shownRecords = useMemo(() => withRemovedRows(records, pending), [records, pending]);
+
   const localChanges = useStore(rolling.localValues.$changes).get(sheetId) ?? 0;
 
   const valuesSignature = useMemo(
@@ -76,7 +82,7 @@ export function SheetBody({
   // its repeat block, finds that block. A repeat block that is gone shows nothing, and the request
   // still ends.
   useEffect(() => {
-    if (reveal === null) {
+    if (reveal === null || openTab === null) {
       return;
     }
 
@@ -92,12 +98,21 @@ export function SheetBody({
     }
 
     onRevealed?.();
-  }, [reveal, onRevealed]);
+  }, [reveal, openTab, onRevealed]);
+
+  if (openTab === null) {
+    return null;
+  }
 
   return (
     <FieldEditingContext value={editing}>
       <DiceSheetContext value={diceSheet}>
-        <TabRow tabs={template.tabs} openTab={openTab} onOpenTab={onOpenTab}>
+        <TabRow
+          tabs={template.tabs}
+          visibleTabIndexes={shownTabIndexes}
+          openTab={openTab}
+          onOpenTab={onOpenTab}
+        >
           <div className="@container">
             <div
               ref={body}

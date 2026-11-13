@@ -1,4 +1,4 @@
-import { canEdit, ownedSheetIds } from '@/core/access';
+import { ownedSheetIds } from '@/core/access';
 import type { Preset, SheetSetTemplate } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { resolveSheet, sheetKey, sheetName, type SheetPolicy } from '@/core/sheets';
@@ -66,20 +66,6 @@ export function tabEntries(
 // The sheet tabs of the entries, in their order.
 export function sheetTabs(entries: readonly TabEntry[]): SheetTab[] {
   return entries.flatMap((entry) => (entry.kind === 'sheet' ? [entry.tab] : []));
-}
-
-// AD-4: whether a player may edit a sheet. A sheet of a sheet set takes the player's live `acl:`,
-// and a single sheet the template's `players: edit`. A hidden template takes no player edit.
-export function playerMayEdit(
-  policy: SheetPolicy,
-  records: ReadonlyMap<string, VersionedRecord>,
-  playerId: string,
-): boolean {
-  if (policy.write === 'players-edit') {
-    return true;
-  }
-
-  return policy.write === 'per-player' && canEdit(records, policy.sheetId, playerId);
 }
 
 // AD-18: the one resolver gives the sheet's policy. `null` for a sheet no template owns.
