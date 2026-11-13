@@ -2,7 +2,7 @@
 title: 'TASK-49: publish window deltas from one change signal and derive the window view once'
 type: 'refactor'
 created: '2026-11-12'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'a514082e5e368ecd813b01d6bb773019ea8f236d'
@@ -74,13 +74,13 @@ Line numbers are at `a514082`.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Baseline -- calibrate mutations M1-M8 (Verification) on the baseline engine where a twin exists, saving each failing test list.
-- [ ] `src/replica/window-publisher.ts` -- create the module per Design Notes from the moved code -- phase A.
-- [ ] `src/replica/engine.ts` -- wire the publisher, replace each `emitDelta` with `publish()`, delete the moved code and the dropped guards -- phase A.
-- [ ] `src/ui/window-view.ts` -- create the shared derivation; `src/ui/main.tsx` and `src/ui/picker/link-picker.tsx` read it and lose their own -- phase A. Commit phase A when the junit list equals the baseline and e2e passes.
-- [ ] `src/replica/window-publisher.test.ts` -- one pair test per matrix row and error case -- phase B.
-- [ ] `src/ui/window-view.test.ts` -- GM sees every record; a player sees only visible templates and their live links; a preset that does not decode counts as none; before the first projection the role is the initial role; an unchanged preset string keeps the same decoded preset object -- phase B.
-- [ ] `src/replica/engine-client.test.ts` -- retire the phase C candidates that a pair test now owns; map each in the notes -- phase C.
+- [x] Baseline -- calibrate mutations M1-M8 (Verification) on the baseline engine where a twin exists, saving each failing test list.
+- [x] `src/replica/window-publisher.ts` -- create the module per Design Notes from the moved code -- phase A.
+- [x] `src/replica/engine.ts` -- wire the publisher, replace each `emitDelta` with `publish()`, delete the moved code and the dropped guards -- phase A.
+- [x] `src/ui/window-view.ts` -- create the shared derivation; `src/ui/main.tsx` and `src/ui/picker/link-picker.tsx` read it and lose their own -- phase A. Commit phase A when the junit list equals the baseline and e2e passes.
+- [x] `src/replica/window-publisher.test.ts` -- one pair test per matrix row and error case -- phase B.
+- [x] `src/ui/window-view.test.ts` -- GM sees every record; a player sees only visible templates and their live links; a preset that does not decode counts as none; before the first projection the role is the initial role; an unchanged preset string keeps the same decoded preset object -- phase B.
+- [x] `src/replica/engine-client.test.ts` -- retire the phase C candidates that a pair test now owns; map each in the notes -- phase C.
 
 **Acceptance Criteria:**
 - Given the branch, when `rg -n "emitDelta|sentVisible|shownPending|shownParty|projectionSent|answeringNonces|engineId|sequence" src/replica/engine.ts` runs, then nothing matches.
@@ -126,6 +126,22 @@ createWindowPublisher(options: {
 
 ## Implementation Notes
 
+- Run directory: `~/.claude/artifacts/tdd-20261112-193352/task-49-window-publisher/` (`ticket.md`, `controls/`, `review-01.md` to `review-03.md`).
+- Baseline at `a514082`: `bun test` 2721 pass, 8843 assertions, 95 files; `bun run test:browser` 492 pass.
+- Phase A (`8e1ee0d`): the junit list of the whole `bun test` equals the baseline, and e2e passes with the same 492 names. No phase A exception was used.
+- Mutations at the baseline and after phase A: M1, M3, M4, M6 fail the same tests on both sides. M5 survived on both sides. M8 has no twin. M2 (83 at the baseline, 76 after) and M7 (26 and 26, other tests) differ in a stable way. Neither difference is an order change. Under M2 the next change signal repairs the dropped one, because a delta is a diff against what windows hold; the 7 baseline-only failures are this gain. Under M7 the baseline mutant keeps sending deltas under the kept id after a restart, and the publisher mutant sends one cue and then nothing until a projection.
+- Phase B: `window-publisher.test.ts` holds the matrix rows and their error cases as pair tests; `window-view.test.ts` holds the five window view cases. At the final state M1-M8 each fail at least one test (M1 and M2 an engine test, M3-M8 a pair test). M5 is now killed.
+- Phase C, retired tests and their owners:
+  - `engine-client › repeated requests › answers a repeat once while the first answer is still queued` -> `window publisher › answers a projection nonce once while its first projection is queued`.
+  - The other phase C candidates stay, because no pair test holds their engine-level assertion. `window lifecycle › re-requests a projection when a restarted engine starts sending deltas` stays as the observer of the corrected "Before any window" row (see the Spec Change Log).
+- Code review: round 1 (`mixed-terra`, 9/9 sources) found 13 minors, among them five tests that did not check what their names said, dead publisher state and stale comments. All were fixed through the tdd chain. Round 2 (`mixed-terra`, 9/9) found one major: after a delta that could not be split, the publisher kept its held state, so no later change reached the windows. The publisher now logs the failed delta, sends nothing and takes the current state as held, as `emitDelta` dropped only the failed delta. Round 2 also removed the publisher's own send queue, because the engine's `SendQueue` already keeps `delta`, projection, `open-sheet` in order, and added an engine test of that order on a restart. Round 3 (`final`, 2/2) found nothing.
+- Full check at the final state: oxfmt, lint, typecheck, `bun test` (2746 pass), `bun run test:browser` (492 pass), `bun run build`.
+
 ## Spec Change Log
 
+- Matrix row "Before any window" and the error case "before any projection: no delta" of row "Restart" (frozen) are corrected. Until the first projection of a stream, `publish()` compares the visible records and pending with the last comparison (the construction or restart snapshot first). When they differ, it sends one delta with no records, no pending and no withdrawn under the current engine id, so a window of an older stream asks again. A header-only change, or no change, sends nothing. Reason: with "nothing on the bus", a window open across a background restart keeps the old stream and never asks again, and `engine-client › window lifecycle › re-requests a projection when a restarted engine starts sending deltas` fails. The base and phase A both sent such deltas. Verdict D3 in the run directory's `ticket.md`.
+- Matrix row "Large delta", error case: "what windows hold unchanged" stays true, because nothing is sent. The publisher also takes the current state as held, so later changes still go out (code review round 2).
+
 ## Review Triage Log
+
+- Step 04 ran only the `code-review-carryover` layer, because the override turns the BMAD reviewer layers off. It returned one finding: the corrected criterion 13 (D3), filed as a deviation from the spec. It is recorded in the Spec Change Log above, and the code follows the corrected text. code-review has no open decision, no unresolved critical or major, and no deferred finding (`review-01.md` to `review-03.md`).
