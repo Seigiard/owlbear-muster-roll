@@ -1,154 +1,73 @@
 import { useContext, useEffect } from 'react';
 import type { ReactNode, WheelEvent as ReactWheelEvent } from 'react';
-import { Button, Tab, TabList, TabListStateContext, ToggleButton } from 'react-aria-components';
+import { Tab, TabList, TabListStateContext } from 'react-aria-components';
 
 import { copy } from '@/ui/copy';
-import { revealElement } from '@/ui/reveal';
-
-const BAR_CLASS = 'flex justify-end gap-2 bg-surface-bar px-2 pt-2';
-
-const SCROLLER_CLASS =
-  'flex min-w-[0] flex-1 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+import { CellTooltip } from '@/ui/primitives/tooltip';
 
 const TAB_CLASS =
-  'touch-target inline-flex shrink-0 items-center rounded-t-md bg-surface-tab px-3 text-text -outline-offset-2';
+  'touch-target inline-flex min-w-[0] shrink-0 items-center gap-1 rounded-t-md border border-b-0 border-transparent bg-surface-tab px-3 text-text -outline-offset-2 data-selected:border-line data-selected:bg-surface data-selected:text-accent';
 
-const SELECTABLE_CLASS = 'data-selected:bg-surface data-selected:text-accent';
+const SCROLLER_CLASS =
+  'flex min-w-[0] gap-2 overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
 
-// A long name is cut with an ellipsis. The text in the DOM stays whole, so the accessible name
-// still holds the whole name.
-const SCROLLING_TAB_CLASS = `${TAB_CLASS} ${SELECTABLE_CLASS} max-w-[160px]`;
-
-// Pinned tabs come after every other item and stick to the right edge. The pseudo-element fills the
-// gap before each one with the bar color, so a tab scrolled under them never shows through the gap.
-const PINNED_TAB_CLASS = `${TAB_CLASS} ${SELECTABLE_CLASS} sticky before:absolute before:inset-y-0 before:-left-2 before:w-2 before:bg-surface-bar`;
-
-// The window's line height, for a wheel that reports lines instead of pixels.
-const WHEEL_LINE_PX = 20;
-
-// `mark` shows after the label and is never cut, such as "вы" on a player's own sheet. The tab bar
-// then names the tab "{label}, {mark}", so the name does not run the two words together.
-// `selectedOnMap` shows a dot after both, and the name says it (CAP-32).
+// The tab row of the selected sheet. Its parent WindowFrame owns the Tabs state and panel.
 export type ShellTab = {
   id: string;
   label: string;
-  mark?: string;
   selectedOnMap?: boolean;
-  accessibleName?: string;
-  content: ReactNode;
+  dataTabIndex?: number;
 };
 
-export type ShellToggle = {
-  label: string;
-  accessibleName: string;
-  isPressed: boolean;
-  onToggle: (isPressed: boolean) => void;
-};
+type TabBarProps = { tabs: readonly ShellTab[] };
 
-export type ShellAction = { label: string; accessibleName: string; onPress: () => void };
-
-// One item of the scrolling row, in the order it shows: a tab, or a button such as a sheet set's
-// "+", which sits after that sheet set's last tab.
-export type ShellBarItem =
-  | { kind: 'tab'; tab: ShellTab }
-  | { kind: 'action'; id: string; action: ShellAction };
-
-type TabBarProps = {
-  items: readonly ShellBarItem[];
-  pinnedTabs: readonly ShellTab[];
-};
-
-// The tabs of a bar's items, in their order.
-export function itemTabs(items: readonly ShellBarItem[]): ShellTab[] {
-  return items.flatMap((item) => (item.kind === 'tab' ? [item.tab] : []));
-}
-
-// One tab list holds every tab, so the arrow keys cross every tab and the gear. It renders as
-// `display: contents`, so its tabs and the buttons share one scrolling row while each button stays
-// outside the list. The flex `order` of each item puts a button after the tabs it follows, and the
-// pinned tabs after everything.
-export function TabBar({ items, pinnedTabs }: TabBarProps): ReactNode {
+export function TabBar({ tabs }: TabBarProps): ReactNode {
   useTabKeyEntersAtSelection();
 
   return (
-    <div className="bg-surface-bar px-2 pt-2">
-      <div data-tab-scroller className={SCROLLER_CLASS} onWheel={scrollSideways}>
-        <TabList className="contents">
-          {items.map((item, index) =>
-            item.kind === 'tab' ? (
-              <Tab
-                key={item.tab.id}
-                id={item.tab.id}
-                aria-label={tabName(item.tab)}
-                ref={revealIfSelected}
-                className={SCROLLING_TAB_CLASS}
-                style={{ order: index }}
-              >
-                <span className="min-w-[0] truncate">{item.tab.label}</span>
-                {item.tab.mark === undefined ? null : (
-                  <span className="ml-1 shrink-0 text-label-sm text-text-muted">
-                    {item.tab.mark}
-                  </span>
-                )}
-                {item.tab.selectedOnMap === true ? (
-                  <span
-                    aria-hidden
-                    data-map-mark
-                    className="ml-1 size-[6px] shrink-0 rounded-full border-3 border-accent"
-                  />
-                ) : null}
-              </Tab>
-            ) : null,
-          )}
-          {pinnedTabs.map((tab, index) => (
+    <div className="bg-surface-bar px-2 pt-2" onWheel={scrollSideways}>
+      <div data-tab-scroller className={SCROLLER_CLASS}>
+        <TabList aria-label={copy.label.sheetTabs} className="flex gap-2">
+          {tabs.map((tab) => (
             <Tab
               key={tab.id}
               id={tab.id}
-              aria-label={tab.accessibleName}
-              ref={watchPinned}
-              data-pinned
-              className={index === 0 ? `${PINNED_TAB_CLASS} ml-auto` : PINNED_TAB_CLASS}
-              style={{ order: items.length + index }}
+              aria-label={tabName(tab)}
+              data-frame-tab
+              data-tab-index={tab.dataTabIndex}
+              className={TAB_CLASS}
             >
-              {tab.label}
+              <span className="min-w-[0] truncate">
+                <CellTooltip name={tab.label}>
+                  <span className="truncate">{tab.label}</span>
+                </CellTooltip>
+              </span>
+              {tab.selectedOnMap === true ? (
+                <span
+                  aria-hidden
+                  data-map-mark
+                  className="size-[6px] shrink-0 rounded-full bg-accent"
+                />
+              ) : null}
             </Tab>
           ))}
         </TabList>
-        {items.map((item, index) =>
-          item.kind === 'action' ? (
-            <Button
-              key={item.id}
-              aria-label={item.action.accessibleName}
-              onPress={item.action.onPress}
-              className={TAB_CLASS}
-              style={{ order: index }}
-            >
-              {item.action.label}
-            </Button>
-          ) : null,
-        )}
       </div>
     </div>
   );
 }
 
-// The text and the mark of a tab, as one name with the words apart. A tab with neither takes its
-// own accessible name, or its text.
 function tabName(tab: ShellTab): string | undefined {
-  const named = tab.mark === undefined ? tab.label : `${tab.label}, ${tab.mark}`;
-
   if (tab.selectedOnMap === true) {
-    return copy.label.selectedOnMap(named);
+    return copy.label.selectedOnMap(tab.label);
   }
 
-  return tab.mark === undefined ? tab.accessibleName : named;
+  return tab.label;
 }
 
-// The Tab key enters a tab list at its focused key. React Aria moves that key to the selected tab
-// only in the commit the selection changes, and skips a tab that is not in the collection yet. A
-// tab mounts a commit after its selection, as the first tab does when the preset arrives, so the
-// key would stay on the tab selected before, such as the gear.
-function useTabKeyEntersAtSelection(): void {
+// React Aria moves focus to the selected tab after a selection change. This also handles a tab row
+// that mounts after the first preset arrives, when the old focus was on Settings.
+export function useTabKeyEntersAtSelection(): void {
   const state = useContext(TabListStateContext);
 
   useEffect(() => {
@@ -158,7 +77,15 @@ function useTabKeyEntersAtSelection(): void {
 
     const { selectedKey, selectionManager, collection } = state;
 
+    const active = document.activeElement;
+
+    const canEnterFromFocus =
+      active === document.body ||
+      active === document.documentElement ||
+      active?.closest('[role="tablist"]') !== null;
+
     if (
+      canEnterFromFocus &&
       !selectionManager.isFocused &&
       selectedKey !== null &&
       selectionManager.focusedKey !== selectedKey &&
@@ -169,36 +96,6 @@ function useTabKeyEntersAtSelection(): void {
   });
 }
 
-// React Aria marks each tab with its key, and the app gives a tab no id of its own in the DOM.
-export function focusTab(id: string, options?: FocusOptions): void {
-  tabElement(id)?.focus(options);
-}
-
-// Scrolls a tab of the bar into view, as for a sheet opened from its token.
-export function revealTab(id: string): void {
-  revealElement(tabElement(id));
-}
-
-function tabElement(id: string): HTMLElement | null {
-  return document.querySelector<HTMLElement>(`[role="tab"][data-key="${CSS.escape(id)}"]`);
-}
-
-// A tab bar with one tab could never switch away, so a lone gear is a toggle button instead.
-export function ToggleBar({ toggle }: { toggle: ShellToggle }): ReactNode {
-  return (
-    <div className={BAR_CLASS}>
-      <ToggleButton
-        aria-label={toggle.accessibleName}
-        isSelected={toggle.isPressed}
-        onChange={toggle.onToggle}
-        className={`${TAB_CLASS} ${SELECTABLE_CLASS}`}
-      >
-        {toggle.label}
-      </ToggleButton>
-    </div>
-  );
-}
-
 // A mouse wheel has only a vertical delta. A trackpad or a tilt wheel that has a horizontal one
 // already scrolls the row by itself.
 export function scrollSideways(event: ReactWheelEvent<HTMLDivElement>): void {
@@ -206,76 +103,18 @@ export function scrollSideways(event: ReactWheelEvent<HTMLDivElement>): void {
     return;
   }
 
-  const scroller = event.currentTarget;
+  const scroller = event.currentTarget.firstElementChild;
+
+  if (!(scroller instanceof HTMLElement)) {
+    return;
+  }
 
   const unit =
     event.deltaMode === WheelEvent.DOM_DELTA_LINE
-      ? WHEEL_LINE_PX
+      ? 20
       : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
         ? scroller.clientWidth
         : 1;
 
   scroller.scrollLeft += event.deltaY * unit;
-}
-
-let pinObserver: ResizeObserver | null = null;
-
-// React Aria renders the tabs once more in a hidden pass and gives the real tabs the refs from that
-// pass, so the ref must not reach any state of this component. Each tab finds its own scroller.
-// The observer also fires once for every element it starts to watch.
-function watchPinned(element: HTMLElement | null): (() => void) | undefined {
-  if (element === null) {
-    return undefined;
-  }
-
-  pinObserver ??= new ResizeObserver((entries) => {
-    const scrollers = new Set(
-      entries.map((entry) => entry.target.closest<HTMLElement>('[data-tab-scroller]')),
-    );
-
-    for (const scroller of scrollers) {
-      if (scroller !== null) {
-        pinToRightEdge(scroller);
-      }
-    }
-  });
-
-  const observer = pinObserver;
-
-  observer.observe(element);
-
-  return () => {
-    observer.unobserve(element);
-  };
-}
-
-// A tab that mounts already selected is the one a "+" has just created, so it scrolls into view.
-// React Aria adds a tab in a later commit than the one that selects it, so an effect would miss it.
-function revealIfSelected(element: HTMLElement | null): void {
-  if (element?.getAttribute('aria-selected') === 'true') {
-    element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }
-}
-
-function pinnedElements(scroller: HTMLElement): HTMLElement[] {
-  return [...scroller.querySelectorAll<HTMLElement>('[data-pinned]')];
-}
-
-// Each pinned tab sticks at the summed width of the pinned tabs after it, so they never overlap.
-function pinToRightEdge(scroller: HTMLElement): void {
-  const gap = Number.parseFloat(getComputedStyle(scroller).columnGap) || 0;
-  const pinned = pinnedElements(scroller);
-  let right = 0;
-
-  for (let index = pinned.length - 1; index >= 0; index -= 1) {
-    const element = pinned[index];
-
-    if (element !== undefined) {
-      element.style.right = `${right}px`;
-      right += element.getBoundingClientRect().width + gap;
-    }
-  }
-
-  // A tab scrolled into view, by focus or on creation, then stops clear of the pinned tabs.
-  scroller.style.scrollPaddingInlineEnd = `${right}px`;
 }

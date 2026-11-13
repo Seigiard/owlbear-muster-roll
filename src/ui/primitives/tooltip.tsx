@@ -5,18 +5,25 @@ import { Tooltip, TooltipTriggerStateContext } from 'react-aria-components';
 type CellTooltipProps = {
   name: string;
   children: ReactNode;
+  className?: string;
 };
 
 const TOOLTIP_DELAY = 250;
 
+let activeTooltip: { id: symbol; hide: () => void } | null = null;
+let scheduledTooltip: symbol | null = null;
+let scrollTooltip: symbol | null = null;
+let scrollLockUntil = 0;
+
 // A cell name is an accessible name, not a description. The standalone RAC Tooltip keeps the
 // visible hint out of aria-describedby, while this wrapper owns the hover, focus and touch paths.
-export function CellTooltip({ name, children }: CellTooltipProps): ReactNode {
+export function CellTooltip({ name, children, className }: CellTooltipProps): ReactNode {
   const triggerRef = useRef<HTMLSpanElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointerInside = useRef(false);
   const focusInside = useRef(false);
   const touchTapOpen = useRef(false);
+  const tooltipId = useRef(Symbol());
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -27,25 +34,15 @@ export function CellTooltip({ name, children }: CellTooltipProps): ReactNode {
     };
   }, []);
 
-  const show = useCallback((immediate: boolean): void => {
-    if (timer.current !== null) {
-      clearTimeout(timer.current);
-      timer.current = null;
-    }
-
-    if (immediate) {
-      setIsOpen(true);
-
-      return;
-    }
-
-    timer.current = setTimeout(() => {
-      timer.current = null;
-      setIsOpen(true);
-    }, TOOLTIP_DELAY);
-  }, []);
-
   const hide = useCallback((): void => {
+    if (activeTooltip?.id === tooltipId.current) {
+      activeTooltip = null;
+    }
+
+    if (scheduledTooltip === tooltipId.current) {
+      scheduledTooltip = null;
+    }
+
     if (timer.current !== null) {
       clearTimeout(timer.current);
       timer.current = null;
@@ -54,6 +51,46 @@ export function CellTooltip({ name, children }: CellTooltipProps): ReactNode {
     touchTapOpen.current = false;
     setIsOpen(false);
   }, []);
+
+  const show = useCallback(
+    (immediate: boolean): void => {
+      if (Date.now() >= scrollLockUntil) {
+        scrollTooltip = null;
+      }
+
+      if (scrollTooltip !== null && scrollTooltip !== tooltipId.current) {
+        return;
+      }
+
+      if (activeTooltip !== null && activeTooltip.id !== tooltipId.current) {
+        return;
+      }
+
+      if (timer.current !== null) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
+
+      const open = (): void => {
+        scheduledTooltip = null;
+        activeTooltip = { id: tooltipId.current, hide };
+        setIsOpen(true);
+      };
+
+      if (immediate) {
+        open();
+
+        return;
+      }
+
+      scheduledTooltip = tooltipId.current;
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        open();
+      }, TOOLTIP_DELAY);
+    },
+    [hide],
+  );
 
   const hideIfInactive = useCallback((): void => {
     if (!pointerInside.current && !focusInside.current) {
@@ -76,12 +113,34 @@ export function CellTooltip({ name, children }: CellTooltipProps): ReactNode {
       }
     }
 
+    function onWindowPointerMove(event: globalThis.PointerEvent): void {
+      const target = event.target;
+
+      if (
+        (activeTooltip?.id === tooltipId.current || scheduledTooltip === tooltipId.current) &&
+        !focusInside.current &&
+        (!(target instanceof Node) || !triggerRef.current?.contains(target))
+      ) {
+        hide();
+      }
+    }
+
+    function onWindowScroll(): void {
+      scrollTooltip = activeTooltip?.id ?? scheduledTooltip;
+      scrollLockUntil = Date.now() + 1000;
+    }
+
     window.addEventListener('keydown', onWindowKeyDown, true);
     window.addEventListener('pointerdown', onWindowPointerDown, true);
+    window.addEventListener('pointermove', onWindowPointerMove, true);
+    window.addEventListener('scroll', onWindowScroll, true);
 
     return () => {
       window.removeEventListener('keydown', onWindowKeyDown, true);
       window.removeEventListener('pointerdown', onWindowPointerDown, true);
+      window.removeEventListener('pointermove', onWindowPointerMove, true);
+      window.removeEventListener('scroll', onWindowScroll, true);
+      hide();
     };
   }, [hide]);
 
@@ -118,7 +177,13 @@ export function CellTooltip({ name, children }: CellTooltipProps): ReactNode {
       return;
     }
 
-    hideIfInactive();
+    if (scrollTooltip === tooltipId.current && Date.now() < scrollLockUntil) {
+      return;
+    }
+
+    if (_event.pointerType === 'touch') {
+      hideIfInactive();
+    }
   }
 
   function onPointerDown(event: PointerEvent<HTMLSpanElement>): void {
@@ -138,7 +203,7 @@ export function CellTooltip({ name, children }: CellTooltipProps): ReactNode {
   return (
     <span
       ref={triggerRef}
-      className="inline-flex min-w-0"
+      className={`inline-flex min-w-[0] ${className ?? ''}`}
       onFocusCapture={onFocus}
       onBlurCapture={onBlur}
       onPointerEnter={onPointerEnter}
@@ -157,7 +222,13 @@ export function CellTooltip({ name, children }: CellTooltipProps): ReactNode {
       >
         <Tooltip
           isOpen={isOpen}
-          onOpenChange={setIsOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setIsOpen(true);
+            } else if (scrollTooltip !== tooltipId.current || Date.now() >= scrollLockUntil) {
+              hide();
+            }
+          }}
           triggerRef={triggerRef}
           placement="top"
           offset={8}

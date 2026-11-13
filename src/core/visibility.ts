@@ -23,7 +23,7 @@ export type PlayerRole = 'GM' | 'PLAYER';
 
 type FieldVisibilityTarget = { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string };
 
-// One template as the tab bar lists it: a sheet set with its live sheets, or a single sheet, whose
+// One template as the sidebar lists it: a sheet set with its live sheets, or a single sheet, whose
 // sheet id is its template id.
 export type VisibleTemplate =
   | { kind: 'set'; template: SheetSetTemplate; sheets: SheetSummary[] }

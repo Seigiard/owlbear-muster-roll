@@ -1,6 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { TabPanel, Tabs } from 'react-aria-components';
 
 import {
   openTabIndex,
@@ -10,14 +9,20 @@ import {
   type WindowSize,
 } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { sheetName, sheetPolicy } from '@/core/sheets';
+import { sheetKey, sheetName, sheetPolicy } from '@/core/sheets';
 import { copy } from '@/ui/copy';
 import { presetFailureMessage } from '@/ui/preset-errors';
 import type { DiceRolling } from '@/ui/sheet/dice-button';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { SheetHeader } from '@/ui/sheet/sheet-header';
-import { TabBar, type ShellTab } from '@/ui/shell/tab-bar';
-import { CONTENT_CLASS } from '@/ui/shell/window-shell';
+import { previewSidebarEntries, sidebarSheetId } from '@/ui/shell/sidebar-entries';
+import {
+  templateIndexFromKey,
+  templateTabKey,
+  templateTabLabel,
+  WindowFrame,
+} from '@/ui/shell/window-frame';
+import type { ShellTab } from '@/ui/shell/tab-bar';
 import { applyTheme } from '@/ui/theme';
 
 import { addressSearch, readAddress, type PreviewAddress } from './address';
@@ -172,10 +177,11 @@ function PresetFrames({ preset, address }: { preset: Preset; address: PreviewAdd
     <div className="flex flex-wrap items-start gap-4">
       {preview.sheets.map((sheet) => (
         <SheetFrame
-          key={sheet.template.id}
+          key={sheet.sheetId}
           preset={preset}
           size={size}
-          sheet={sheet}
+          initialSheet={sheet}
+          sheets={preview.sheets}
           records={preview.records}
           rolling={stubRolling}
         />
@@ -187,26 +193,77 @@ function PresetFrames({ preset, address }: { preset: Preset; address: PreviewAdd
 type SheetFrameProps = {
   preset: Preset;
   size: WindowSize;
-  sheet: PreviewSheet;
+  initialSheet: PreviewSheet;
+  sheets: readonly PreviewSheet[];
   records: ReadonlyMap<string, VersionedRecord>;
   rolling: DiceRolling;
 };
 
-// One frame per template: the window at the preset's window size, laid out as `WindowShell` lays
-// out its tabs, with the tab bar holding the sheet's tab, then the content area that scrolls
-// inside. The read-only view a player gets: no edit inputs and no repeat block controls, and the
-// status a player with no write access sees. A hidden template is drawn too, with no status, as no
-// player sees it. Each frame switches its tabs on its own, and every tab shows, hidden ones too.
-function SheetFrame({ preset, size, sheet, records, rolling }: SheetFrameProps): ReactNode {
-  const [chosenTab, setChosenTab] = useState<number | undefined>(undefined);
+// One frame per initial template: the frame lists every template in its sidebar, and clicking a
+// sidebar entry selects the template shown in that frame. The content is read-only and uses the
+// same SheetHeader and SheetBody as the room window.
+function SheetFrame({
+  preset,
+  size,
+  initialSheet,
+  sheets,
+  records,
+  rolling,
+}: SheetFrameProps): ReactNode {
+  const [selectedSheetId, setSelectedSheetId] = useState(initialSheet.sheetId);
+  const [chosenTabs, setChosenTabs] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const sheet = sheets.find((candidate) => candidate.sheetId === selectedSheetId) ?? initialSheet;
   const policy = sheetPolicy(sheet.template, sheet.sheetId);
   const name = sheetName(records, preset, sheet.sheetId) ?? '';
 
-  const tab: ShellTab = {
-    id: sheet.sheetId,
-    label: name === '' ? copy.unnamed : name,
-    content: null,
-  };
+  const sidebar = previewSidebarEntries(
+    sheets.map((candidate) => ({
+      template: candidate.template,
+      sheetId: candidate.sheetId,
+      name: sheetName(records, preset, candidate.sheetId) ?? '',
+    })),
+  );
+
+  const visibleIndexes = sheet.template.tabs.map((_tab, index) => index);
+
+  const openTab = openTabIndex(sheet.template, chosenTabs.get(sheet.sheetId));
+
+  const tabs: ShellTab[] = visibleIndexes.map((index) => {
+    const templateTab = sheet.template.tabs[index];
+
+    return {
+      id: templateTabKey(index),
+      label: templateTabLabel(templateTab?.title),
+    };
+  });
+
+  const header = (
+    <SheetHeader
+      sheetId={sheet.sheetId}
+      name={name}
+      nameField={policy.nameField}
+      records={records}
+      editing={null}
+      status={policy.hidden ? null : policy.write === 'players-edit' ? 'can-edit' : 'read-only'}
+      gm={null}
+      focusName={false}
+      onNameFocused={noop}
+    />
+  );
+
+  const content = (
+    <SheetBody
+      template={sheet.template}
+      sheetId={sheet.sheetId}
+      openTab={openTab}
+      records={records}
+      editing={null}
+      rolling={rolling}
+      pending={null}
+    />
+  );
+
+  const selectedSidebarEntry = sheetKey(sheet.sheetId);
 
   return (
     <figure className="flex shrink-0 flex-col gap-1">
@@ -214,38 +271,36 @@ function SheetFrame({ preset, size, sheet, records, rolling }: SheetFrameProps):
         {sheet.template.title}, {size.width} × {size.height} px
       </figcaption>
       <div
-        className="flex flex-col overflow-hidden rounded-lg bg-surface text-body text-text"
+        className="h-full overflow-clip rounded-lg bg-surface text-body text-text"
         style={{ width: size.width, height: size.height }}
         data-preview-frame
       >
-        <Tabs className="flex min-h-[0] flex-1 flex-col" selectedKey={tab.id}>
-          <TabBar items={[{ kind: 'tab', tab }]} pinnedTabs={[]} />
-          <TabPanel id={tab.id} className={CONTENT_CLASS}>
-            <SheetHeader
-              sheetId={sheet.sheetId}
-              name={name}
-              nameField={policy.nameField}
-              records={records}
-              editing={null}
-              status={
-                policy.hidden ? null : policy.write === 'players-edit' ? 'can-edit' : 'read-only'
+        <WindowFrame
+          layout={{
+            sidebar,
+            selectedSidebarEntry,
+            onSelectSidebarEntry: (id) => {
+              const selected = sidebarSheetId(sidebar, id);
+
+              if (selected !== null) {
+                setSelectedSheetId(selected);
               }
-              gm={null}
-              focusName={false}
-              onNameFocused={noop}
-            />
-            <SheetBody
-              template={sheet.template}
-              sheetId={sheet.sheetId}
-              openTab={openTabIndex(sheet.template, chosenTab)}
-              onOpenTab={setChosenTab}
-              records={records}
-              editing={null}
-              rolling={rolling}
-              pending={null}
-            />
-          </TabPanel>
-        </Tabs>
+            },
+            tabs,
+            selectedTab: openTab === null ? null : templateTabKey(openTab),
+            onSelectTab: (id) => {
+              const index = templateIndexFromKey(id);
+
+              if (index !== null) {
+                setChosenTabs((current) => new Map(current).set(sheet.sheetId, index));
+              }
+            },
+            panelLabel: name === '' ? copy.unnamed : name,
+            header,
+            content,
+            frameClassName: 'h-full',
+          }}
+        />
       </div>
     </figure>
   );
@@ -258,7 +313,7 @@ function noop(): void {
 // The list loads once, and again on each change the dev server reports. An older answer that lands
 // after a newer one is dropped.
 function usePresetList(): ListState {
-  const [state, setState] = useState<ListState>({ kind: 'loading' });
+  const [state, setState] = useState<ListState>(initialPresetList);
 
   useEffect(() => {
     let latest = 0;
@@ -300,6 +355,26 @@ async function fetchPresetList(): Promise<ListState> {
     }
 
     const parsed = presetListSchema.safeParse(await response.json());
+
+    return parsed.success ? { kind: 'loaded', entries: parsed.data } : { kind: 'failed' };
+  } catch {
+    return { kind: 'failed' };
+  }
+}
+
+function initialPresetList(): ListState {
+  try {
+    const request = new XMLHttpRequest();
+
+    request.open('GET', PRESET_LIST_PATH, false);
+    request.send();
+
+    if (request.status < 200 || request.status >= 300) {
+      return { kind: 'failed' };
+    }
+
+    const responseBody: unknown = JSON.parse(request.responseText);
+    const parsed = presetListSchema.safeParse(responseBody);
 
     return parsed.success ? { kind: 'loaded', entries: parsed.data } : { kind: 'failed' };
   } catch {

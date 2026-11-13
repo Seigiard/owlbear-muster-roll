@@ -3,13 +3,12 @@ import { describe, expect, test } from 'bun:test';
 import { aclKey, plinkKey } from '@/core/access';
 import { FORMAT_VERSION } from '@/core/format-version';
 import type { Preset } from '@/core/preset';
-import type { VersionedRecord } from '@/core/records';
+import { recordSchema, type VersionedRecord } from '@/core/records';
 
-import { sheetTabs, tabEntries, type TabEntry } from './sheet-tabs';
+import { sidebarEntries } from './sidebar-entries';
 
 const PLAYER = 'p1';
 
-// A sheet set, a hidden single sheet, a player-editable single sheet, and a second sheet set.
 const PRESET: Preset = {
   v: FORMAT_VERSION,
   templates: [
@@ -45,8 +44,7 @@ const PRESET: Preset = {
 };
 
 function record(k: string, d: VersionedRecord['d']): [string, VersionedRecord] {
-  // SAFETY: every record built here holds data of the schema its key form names.
-  return [k, { k, d, c: 1, a: 'seed' } as VersionedRecord];
+  return [k, recordSchema.parse({ k, d, c: 1, a: 'seed' })];
 }
 
 const RECORDS: ReadonlyMap<string, VersionedRecord> = new Map([
@@ -57,54 +55,64 @@ const RECORDS: ReadonlyMap<string, VersionedRecord> = new Map([
   record(aclKey('frodo', PLAYER), { name: 'Player' }),
 ]);
 
-// Each entry as one short line: a sheet tab by its id, name and owner mark, a "+" by its set. A
-// single sheet is named by its template's title.
-function summary(entries: readonly TabEntry[]): string[] {
-  return entries.map((entry) =>
-    entry.kind === 'add'
-      ? `+${entry.set.id}`
-      : `${entry.tab.id} "${entry.tab.name}"${entry.tab.owned ? ' owned' : ''}`,
-  );
+function summary(role: 'GM' | 'PLAYER'): string[] {
+  return sidebarEntries(role, PRESET, RECORDS, PLAYER).sections.flatMap((section) => {
+    if (section.kind === 'single') {
+      return [`${section.sheet.id} "${section.sheet.name}"`];
+    }
+
+    const result = [`[${section.id}]`];
+
+    result.push(
+      ...section.sheets.map((sheet) => `${sheet.id} "${sheet.name}"${sheet.owned ? ' owned' : ''}`),
+    );
+
+    if (section.canAdd) {
+      result.push(`+${section.id}`);
+    }
+
+    return result;
+  });
 }
 
-describe('tabEntries', () => {
-  test('a GM gets every template in preset order, each sheet set followed by its "+", even with no sheet', () => {
+describe('sidebarEntries', () => {
+  test('a GM gets groups and singles in preset order, including empty groups', () => {
     // #when
-    const entries = tabEntries('GM', PRESET, RECORDS, PLAYER);
+    const entries = summary('GM');
 
     // #then
-    expect(summary(entries)).toEqual([
+    expect(entries).toEqual([
+      '[pc]',
       'sheet:arag "Арагорн"',
       'sheet:frodo ""',
       '+pc',
       'sheet:npc "NPCs"',
       'sheet:loot "Loot"',
+      '[ship]',
       '+ship',
     ]);
   });
 
-  test('a player gets the visible templates with no "+", and the own sheets first', () => {
+  test('a player gets visible sections with own sheets first and no add controls', () => {
     // #when
-    const entries = tabEntries('PLAYER', PRESET, RECORDS, PLAYER);
+    const entries = summary('PLAYER');
 
     // #then
-    expect(summary(entries)).toEqual([
+    expect(entries).toEqual([
+      '[pc]',
       'sheet:frodo "" owned',
       'sheet:arag "Арагорн"',
       'sheet:loot "Loot"',
     ]);
   });
 
-  test('with no preset there is no tab', () => {
+  test('a player does not get an empty group', () => {
     // #then
-    expect(tabEntries('GM', null, RECORDS, PLAYER)).toEqual([]);
+    expect(summary('PLAYER')).not.toContain('[ship]');
   });
 
-  test('sheetTabs keeps the sheet tabs in order and drops the "+"', () => {
-    // #when
-    const tabs = sheetTabs(tabEntries('GM', PRESET, RECORDS, PLAYER));
-
+  test('with no preset there are no sidebar sections', () => {
     // #then
-    expect(tabs.map((tab) => tab.sheetId)).toEqual(['arag', 'frodo', 'npc', 'loot']);
+    expect(sidebarEntries('GM', null, RECORDS, PLAYER)).toEqual({ sections: [] });
   });
 });

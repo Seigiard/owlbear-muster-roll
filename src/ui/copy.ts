@@ -26,7 +26,7 @@ export const copy = {
     cancel: 'Отменить',
   },
   label: {
-    // The accessible name of a sheet set's "+", by the sheet set's `title`.
+    // The accessible name of a sheet set's «+ Добавить», by the sheet set's `title`.
     addToSet: (title: string): string => `Добавить: ${title}`,
     // The accessible name of a repeat section's "Добавить", by the section's title.
     addToSection: (title: string): string => `Добавить в «${title}»`,
@@ -40,8 +40,8 @@ export const copy = {
     deleteBlock: (n: number): string => `Удалить блок ${n}`,
     duplicateBlock: (n: number): string => `Дублировать блок ${n}…`,
     selectBlockOnMap: (n: number): string => `Выделить блок ${n} на карте`,
-    // CAP-32: the accessible name of a tab or a repeat block whose linked token is selected on the
-    // map. The mark itself is a dot or a bar, so the word lives in the name only.
+    // CAP-32: the accessible name of a sidebar entry, tab or repeat block whose linked token is
+    // selected on the map. The mark itself is a dot or a bar, so the word lives in the name only.
     selectedOnMap: (name: string): string => `${name}, токен выделен`,
     // The accessible name of a read-only check mark: its field's label and its state.
     checked: (name: string): string => `${name}: отмечено`,
@@ -56,12 +56,13 @@ export const copy = {
     noOwner: 'Никто',
     // CAP-34: the accessible name of a sheet's tab row.
     sheetTabs: 'Вкладки листа',
+    sidebar: 'Листы',
   },
   // A tab with no title in the tab row, as a builder draft may hold one.
   untitledTab: 'Вкладка',
-  // After the name on the tab of a sheet the player owns (UX-DR8).
+  // After the name on the sidebar entry of a sheet the player owns (UX-DR8).
   ownMark: 'вы',
-  addSign: '+',
+  addSign: '+ Добавить',
   place: {
     settings: 'Настройки',
     access: 'Доступ',

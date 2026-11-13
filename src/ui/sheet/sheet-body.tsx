@@ -15,7 +15,6 @@ import { revealElement } from '@/ui/reveal';
 import { DiceSheetContext, type DiceRolling, type DiceSheet } from './dice-button';
 import { withRemovedRows, type SheetPending } from './pending-mark';
 import { SheetSection, type BlockTools } from './preset-section';
-import { TabRow } from './tab-row';
 import { FieldEditingContext, type FieldEditing } from './use-field-edit';
 
 // FR14: the repeat block "Открыть лист" asked for. It scrolls into view once, and takes the focus
@@ -27,12 +26,8 @@ type SheetBodyProps = {
   // The title names an untitled repeat section's "Добавить".
   template: Pick<Template, 'tabs' | 'title'>;
   sheetId: string;
-  // The tab this sheet shows, as the caller's one AD-26 open-tab check picks it. The tab row reports
-  // a choice through `onOpenTab`; without it the row shows the tab and keeps it.
+  // The tab this sheet shows, as the caller's one AD-26 open-tab check picks it.
   openTab: number | null;
-  // A room player gets only tabs visible to the role. Omitted indexes keep preset-space addresses.
-  visibleTabIndexes?: readonly number[];
-  onOpenTab?: (index: number) => void;
   records: ReadonlyMap<string, VersionedRecord>;
   // `null` shows every value read-only, with no row controls: a player with no access to the sheet.
   editing: FieldEditing | null;
@@ -51,8 +46,6 @@ export function SheetBody({
   template,
   sheetId,
   openTab,
-  visibleTabIndexes,
-  onOpenTab,
   records,
   editing,
   rolling,
@@ -61,8 +54,6 @@ export function SheetBody({
   reveal = null,
   onRevealed,
 }: SheetBodyProps): ReactNode {
-  const shownTabIndexes = visibleTabIndexes ?? template.tabs.map((_tab, index) => index);
-
   const body = useRef<HTMLDivElement>(null);
   const shownRecords = useMemo(() => withRemovedRows(records, pending), [records, pending]);
 
@@ -83,21 +74,30 @@ export function SheetBody({
   // still ends.
   useEffect(() => {
     if (reveal === null || openTab === null) {
-      return;
+      return undefined;
     }
 
-    const block = body.current?.querySelector<HTMLElement>(
-      `[data-repeat-block="${CSS.escape(reveal.instanceId)}"]`,
-    );
+    const frame = requestAnimationFrame(() => {
+      const block = body.current?.querySelector<HTMLElement>(
+        `[data-repeat-block="${CSS.escape(reveal.instanceId)}"]`,
+      );
 
-    revealElement(block);
+      revealElement(block);
+      onRevealed?.();
 
-    // The tab switched under the focus, so the focus goes to the repeat block, which names itself.
-    if (reveal.focus) {
-      block?.focus({ preventScroll: true });
-    }
+      // The tab switched under the focus, so the focus goes to the repeat block, which names itself.
+      if (reveal.focus) {
+        setTimeout(() => {
+          body.current
+            ?.querySelector<HTMLElement>(`[data-repeat-block="${CSS.escape(reveal.instanceId)}"]`)
+            ?.focus({ preventScroll: true });
+        });
+      }
+    });
 
-    onRevealed?.();
+    return () => {
+      cancelAnimationFrame(frame);
+    };
   }, [reveal, openTab, onRevealed]);
 
   if (openTab === null) {
@@ -107,36 +107,24 @@ export function SheetBody({
   return (
     <FieldEditingContext value={editing}>
       <DiceSheetContext value={diceSheet}>
-        <TabRow
-          tabs={template.tabs}
-          visibleTabIndexes={shownTabIndexes}
-          openTab={openTab}
-          onOpenTab={onOpenTab}
-        >
-          <div className="@container">
-            <div
-              ref={body}
-              className="flex flex-wrap gap-4"
-              data-sheet-body
-              data-tab-index={openTab}
-            >
-              {(template.tabs[openTab]?.sections ?? []).map((section, index) => (
-                <SheetSection
-                  key={`${openTab}.${index}`}
-                  section={section}
-                  tabIndex={openTab}
-                  sectionIndex={index}
-                  templateTitle={template.title}
-                  sheetId={sheetId}
-                  records={shownRecords}
-                  readOnly={editing === null}
-                  pending={pending}
-                  blockTools={blockTools}
-                />
-              ))}
-            </div>
+        <div className="@container">
+          <div ref={body} className="flex flex-wrap gap-4" data-sheet-body data-tab-index={openTab}>
+            {(template.tabs[openTab]?.sections ?? []).map((section, index) => (
+              <SheetSection
+                key={`${openTab}.${index}`}
+                section={section}
+                tabIndex={openTab}
+                sectionIndex={index}
+                templateTitle={template.title}
+                sheetId={sheetId}
+                records={shownRecords}
+                readOnly={editing === null}
+                pending={pending}
+                blockTools={blockTools}
+              />
+            ))}
           </div>
-        </TabRow>
+        </div>
       </DiceSheetContext>
     </FieldEditingContext>
   );

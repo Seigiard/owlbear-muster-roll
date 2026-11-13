@@ -72,6 +72,10 @@
     outline: 2px solid var(--color-focus);
     outline-offset: 1px;
   }
+
+  [data-sidebar-heading]::before {
+    content: attr(data-sidebar-heading);
+  }
 }
 
 @utility touch-target {

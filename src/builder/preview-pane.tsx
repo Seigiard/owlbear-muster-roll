@@ -1,15 +1,22 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
-import { TabPanel, Tabs } from 'react-aria-components';
 
 import { DEFAULT_WINDOW_SIZE, openTabIndex } from '@/core/preset';
+import type { VersionedRecord } from '@/core/records';
+import { sheetKey } from '@/core/sheets';
 import { createStubRolling } from '@/preview/stub-rolling';
 import { copy } from '@/ui/copy';
 import { CellPreviewContext, type CellPreview } from '@/ui/sheet/preset-cell';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { SheetHeader } from '@/ui/sheet/sheet-header';
-import { TabBar, type ShellBarItem } from '@/ui/shell/tab-bar';
-import { CONTENT_CLASS } from '@/ui/shell/window-shell';
+import { previewSidebarEntries, sidebarSheetId } from '@/ui/shell/sidebar-entries';
+import {
+  templateIndexFromKey,
+  templateTabKey,
+  templateTabLabel,
+  WindowFrame,
+} from '@/ui/shell/window-frame';
+import type { ShellTab } from '@/ui/shell/tab-bar';
 
 import type { BuilderStore } from './builder-store';
 import {
@@ -48,7 +55,7 @@ const MIN_FRAME_PX = 120;
 // CAP-22, AD-23: the template that holds the selected item, drawn by the window's own sheet
 // components in a frame of the preset's window size, on the tab that holds the selected item, else
 // on the tab shown before. Read-only, with every field empty. A click on a cell, row, section, tab
-// or sheet tab selects its item.
+// or sidebar entry selects its item.
 export function PreviewPane({ store, document, selection, problems }: PreviewPaneProps): ReactNode {
   const headingId = useId();
   const area = useRef<HTMLDivElement>(null);
@@ -85,13 +92,42 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
 
   const scale = areaWidth === null ? 1 : Math.min(1, areaWidth / width);
 
-  const items: ShellBarItem[] = document.templates.map((other) => ({
-    kind: 'tab',
-    tab: { id: other.uid, label: previewSheetName(templateToPreset(other)), content: null },
-  }));
+  const sidebar = previewSidebarEntries(
+    document.templates.map((other) => ({
+      template: templateToPreset(other),
+      sheetId: other.uid,
+      name: previewSheetName(templateToPreset(other)),
+    })),
+  );
+
+  const visibleIndexes = template?.tabs.map((_tab, index) => index) ?? [];
+
+  const tabs: ShellTab[] = visibleIndexes.map((index) => {
+    const templateTab = template?.tabs[index];
+
+    return {
+      id: templateTabKey(index),
+      label: templateTabLabel(templateTab?.title),
+      dataTabIndex: index,
+    };
+  });
+
+  const header =
+    template === null || records === null ? null : (
+      <PreviewHeader template={template} records={records} />
+    );
+
+  const content =
+    template === null || records === null ? null : (
+      <PreviewBody template={template} records={records} openTab={openTab} />
+    );
 
   function handleClick(event: MouseEvent<HTMLDivElement>): void {
     if (docTemplate === null || !(event.target instanceof Element)) {
+      return;
+    }
+
+    if (event.target.closest('[data-sidebar-entry]') !== null) {
       return;
     }
 
@@ -118,54 +154,44 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
         ) : (
           <div style={{ width: width * scale, height: height * scale }}>
             <div
-              className="flex origin-top-left flex-col overflow-hidden rounded-lg bg-surface text-body text-text"
+              className="origin-top-left overflow-clip rounded-lg bg-surface text-body text-text"
               style={{ width, height, transform: scale === 1 ? undefined : `scale(${scale})` }}
               onClickCapture={handleClick}
               data-preview-frame
             >
-              <Tabs
-                className="flex min-h-[0] flex-1 flex-col"
-                selectedKey={docTemplate.uid}
-                onSelectionChange={(key) => {
-                  store.select(String(key));
-                }}
-              >
-                <TabBar items={items} pinnedTabs={[]} />
-                <TabPanel id={docTemplate.uid} className={CONTENT_CLASS}>
-                  <CellPreviewContext value={CELL_PREVIEW}>
-                    <SheetHeader
-                      sheetId={PREVIEW_SHEET_ID}
-                      name={previewSheetName(template)}
-                      nameField={null}
-                      records={records}
-                      editing={null}
-                      status={null}
-                      gm={null}
-                      focusName={false}
-                      onNameFocused={noop}
-                    />
-                    <SheetBody
-                      template={template}
-                      sheetId={PREVIEW_SHEET_ID}
-                      openTab={openTab}
-                      onOpenTab={(index) => {
-                        const uid = uidAt(document, [
-                          templateIndexOf(document, docTemplate.uid),
-                          index,
-                        ]);
+              <WindowFrame
+                layout={{
+                  sidebar,
+                  selectedSidebarEntry: sheetKey(docTemplate.uid),
+                  onSelectSidebarEntry: (id) => {
+                    const uid = sidebarSheetId(sidebar, id);
 
-                        if (uid !== null) {
-                          store.select(uid);
-                        }
-                      }}
-                      records={records}
-                      editing={null}
-                      rolling={stubRolling}
-                      pending={null}
-                    />
-                  </CellPreviewContext>
-                </TabPanel>
-              </Tabs>
+                    if (
+                      uid !== null &&
+                      document.templates.some((candidate) => candidate.uid === uid)
+                    ) {
+                      store.select(uid);
+                    }
+                  },
+                  tabs,
+                  selectedTab: openTab === null ? null : templateTabKey(openTab),
+                  onSelectTab: (id) => {
+                    const index = templateIndexFromKey(id);
+
+                    const uid =
+                      index === null
+                        ? null
+                        : uidAt(document, [templateIndexOf(document, docTemplate.uid), index]);
+
+                    if (uid !== null) {
+                      store.select(uid);
+                    }
+                  },
+                  header,
+                  content,
+                  frameClassName: 'h-full',
+                }}
+              />
             </div>
           </div>
         )}
@@ -176,6 +202,54 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
 
 function noop(): void {
   // The preview focuses no name.
+}
+
+function PreviewHeader({
+  template,
+  records,
+}: {
+  template: ReturnType<typeof templateToPreset>;
+  records: ReadonlyMap<string, VersionedRecord>;
+}): ReactNode {
+  return (
+    <CellPreviewContext value={CELL_PREVIEW}>
+      <SheetHeader
+        sheetId={PREVIEW_SHEET_ID}
+        name={previewSheetName(template)}
+        nameField={null}
+        records={records}
+        editing={null}
+        status={null}
+        gm={null}
+        focusName={false}
+        onNameFocused={noop}
+      />
+    </CellPreviewContext>
+  );
+}
+
+function PreviewBody({
+  template,
+  records,
+  openTab,
+}: {
+  template: ReturnType<typeof templateToPreset>;
+  records: ReadonlyMap<string, VersionedRecord>;
+  openTab: number | null;
+}): ReactNode {
+  return (
+    <CellPreviewContext value={CELL_PREVIEW}>
+      <SheetBody
+        template={template}
+        sheetId={PREVIEW_SHEET_ID}
+        openTab={openTab}
+        records={records}
+        editing={null}
+        rolling={stubRolling}
+        pending={null}
+      />
+    </CellPreviewContext>
+  );
 }
 
 // The tab the preview shows for a template, kept while the selection leaves the template's tabs.
@@ -198,9 +272,8 @@ function templateIndexOf(document: BuilderDocument, templateUid: string): number
   return document.templates.findIndex((template) => template.uid === templateUid);
 }
 
-// The item a click in the frame lands on: a template tab of the shown template, a sheet tab's
-// template, or the cell, row or section of the shown tab. A template tab carries its index, and a
-// sheet tab the template uid as its key, so the two never mix.
+// The item a click in the frame lands on: an inner tab, a cell, row, section or field of the shown
+// template. Sidebar clicks are handled by WindowFrame itself.
 function clickedUid(
   document: BuilderDocument,
   templateUid: string,
@@ -212,12 +285,6 @@ function clickedUid(
 
   if (templateTab !== null) {
     return uidAt(document, [templateIndex, Number(templateTab.getAttribute('data-tab-index'))]);
-  }
-
-  const sheetTab = target.closest('[role="tab"][data-key]');
-
-  if (sheetTab !== null) {
-    return sheetTab.getAttribute('data-key');
   }
 
   const cell = target.closest('[data-cell]')?.getAttribute('data-cell');
@@ -289,17 +356,19 @@ function markSelector(
 
   if (document.templates[path.template]?.uid !== templateUid) {
     // A template's own item is its tab, which every template shows.
-    return path.kind === 'template' ? `${scope} [role="tab"][data-key="${CSS.escape(uid)}"]` : null;
+    return path.kind === 'template'
+      ? `${scope} [data-sidebar-entry][data-key="${CSS.escape(sheetKey(uid))}"]`
+      : null;
   }
 
   if (path.kind === 'template') {
-    return `${scope} [role="tab"][data-key="${CSS.escape(uid)}"]`;
+    return `${scope} [data-sidebar-entry][data-key="${CSS.escape(sheetKey(uid))}"]`;
   }
 
   const [, tab, section, row, cell] = indexPath(path);
 
   if (path.kind === 'tab') {
-    return `${scope} [role="tab"][data-tab-index="${tab}"]`;
+    return `${scope} [role="tab"][data-frame-tab][data-tab-index="${tab}"]`;
   }
 
   if (tab !== openTab) {

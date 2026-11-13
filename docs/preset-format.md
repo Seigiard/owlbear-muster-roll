@@ -177,7 +177,7 @@ An upload over existing sheets keeps values by field id. One confirmation names 
 | Change only a dice-choice field's `options` (same id and type) | Keeps its values |
 | Change a field's type (same id) | Counts as a removal: its values are erased |
 | Change `select` to `dice-choice`, or `dice-choice` to `select` | Counts as a removal: its values are erased |
-| Add a template | A single sheet tab appears empty; a sheet set shows its "+" |
+| Add a template | A single sheet's sidebar entry appears empty; a sheet set shows its «+ Добавить» |
 | Remove a template, or change its `id` or `kind` | Its sheets are deleted with their values, token links, owners and write access |
 | Remove `tokens`, or the repeat block or sheet a token links to | That token link is removed. It is not counted in the confirmation |
 
@@ -238,7 +238,7 @@ bun run preview [path/to/preset.json]
 
 The command starts the dev server in the mock mode and opens `/preview.html`. The page lists `docs/example-preset.json`, `tests/fixtures/presets/*.json` and `presets/*.json`. Only the `.json` files right in each folder are listed, not those in subfolders. A path given to the command can be anywhere on disk. It joins the list, is marked "(launch file)", and opens first. A relative path is read from the repository root. A path with no file stops the command with an error.
 
-The page draws one sheet of each template read-only, as a player sees it, each in a frame of the preset's window size. A hidden template is drawn too, so its author can see it. Each frame shows the window's tab bar with the sheet's tab, so the sheet gets the same room as in the window. A sheet with more than one tab shows its tab row, and a click switches the tab in that frame. "Sample values" fills every field and gives each repeat section two blocks; off, the sheets are empty, as just after they are added. "Light theme" switches from Owlbear's dark theme. The page address keeps the chosen file and both switches. The address names a launch file by its absolute path, so a link to it works only on the same machine.
+The page draws one sheet of each template read-only, as a player sees it, each in a frame of the preset's window size. A hidden template is drawn too, so its author can see it. Each frame shows the sidebar with every template, and a click on an entry shows that template in the frame. A sheet with more than one tab shows its tab row, and a click switches the tab in that frame. "Sample values" fills every field and gives each repeat section two blocks; off, the sheets are empty, as just after they are added. "Light theme" switches from Owlbear's dark theme. The page address keeps the chosen file and both switches. The address names a launch file by its absolute path, so a link to it works only on the same machine.
 
 Each save of a listed file draws the page again. A file that fails the checks shows the same message as an upload, and the next good save draws the sheets again. Dice cells do not roll. The page never writes to a file.
 
