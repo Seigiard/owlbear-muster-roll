@@ -4,8 +4,7 @@ import type { ReactNode } from 'react';
 import { Button as AriaButton, Checkbox } from 'react-aria-components';
 
 import { linkTargetKey, linkTargetOf, sameLinkTarget, type LinkTarget } from '@/core/link-target';
-import { decodePreset, repeatSectionId, type Preset } from '@/core/preset';
-import { presetDataSchema } from '@/core/records';
+import { repeatSectionId } from '@/core/preset';
 import { sectionTitle } from '@/core/sheet-values';
 import { LINK_PICKER_TIMING, type LinkPickerTiming } from '@/core/timing';
 import {
@@ -16,11 +15,11 @@ import {
   type PickerTarget,
 } from '@/core/token-links';
 import type { Command } from '@/core/ui-messages';
-import { visibleRecordMap } from '@/core/visibility';
 import type { NotificationPort, ScenePort } from '@/platform/ports';
 import { copy } from '@/ui/copy';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
+import { useWindowView } from '@/ui/window-view';
 
 type LinkPickerProps = {
   tokenId: string;
@@ -69,8 +68,8 @@ export function LinkPicker({
 }: LinkPickerProps): ReactNode {
   const loaded = useStore(store.$loaded);
   const sync = useStore(store.$sync);
-  const allRecords = useStore(store.$records);
   const replica = useStore(store.$replica);
+  const view = useWindowView(store, 'PLAYER');
   const [sent, setSent] = useState<Sent | null>(null);
   const [failed, setFailed] = useState(false);
   const [currentLabel, setCurrentLabel] = useState<CurrentLabel>({ state: 'reading' });
@@ -84,16 +83,12 @@ export function LinkPicker({
   const labelHintId = useId();
   const validToken = tokenIdSchema.safeParse(tokenId).success;
   // Only a GM links tokens, so only a GM reads the label, and only once the room is loaded.
-  const mayReadLabel = validToken && loaded && sync.firstCatchUpDone && sync.role === 'GM';
-  const presetData = presetDataSchema.safeParse(allRecords.get('preset')?.d).data ?? null;
-  const preset = useMemo(() => decodedPreset(presetData), [presetData]);
+  const mayReadLabel = validToken && loaded && sync.firstCatchUpDone && view.role === 'GM';
 
-  const records = useMemo(
-    () => visibleRecordMap(sync.role, preset, allRecords),
-    [sync.role, preset, allRecords],
+  const groups = useMemo(
+    () => pickerGroups(view.records, view.preset),
+    [view.records, view.preset],
   );
-
-  const groups = useMemo(() => pickerGroups(records, preset), [records, preset]);
 
   // A pending view can still be refused when catch-up ends, so only the replica counts.
   const arrivedTarget = linkTargetOf(replica.get(linkKey(tokenId))?.d ?? null);
@@ -102,8 +97,8 @@ export function LinkPicker({
     sent !== null && arrivedTarget !== null && sameLinkTarget(arrivedTarget, sent.target);
 
   useEffect(() => {
-    role.current = sync.role;
-  }, [sync.role]);
+    role.current = view.role;
+  }, [view.role]);
 
   useEffect(() => {
     if (!mayReadLabel || labelReadStarted.current) {
@@ -376,17 +371,6 @@ export function targetAccessibleName(choice: PickerTarget): string {
 // The one fallback label of an empty name.
 function shownName(name: string): string {
   return name === '' ? copy.unnamed : name;
-}
-
-// The engine validates before it stores, so a preset that does not decode counts as none.
-function decodedPreset(data: string | null): Preset | null {
-  if (data === null) {
-    return null;
-  }
-
-  const decoded = decodePreset(data);
-
-  return decoded.ok ? decoded.value : null;
 }
 
 // Rejects when `work` has not settled after `ms`, so a port call that never answers cannot hold the
