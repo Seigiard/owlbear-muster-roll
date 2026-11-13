@@ -10,15 +10,15 @@ import { TabBar, useTabKeyEntersAtSelection } from './tab-bar';
 import type { ShellTab } from './tab-bar';
 import type { SidebarEntries, SidebarSheet } from './sidebar-entries';
 
-export const CONTENT_CLASS = 'min-h-[0] flex-1 overflow-auto p-3 -outline-offset-2';
+export const CONTENT_CLASS = 'min-h-0 flex-1 overflow-auto p-3 -outline-offset-2';
 
 const MULTI_TAB_CONTENT_CLASS = 'p-3 -outline-offset-2';
 
 const SIDEBAR_TAB_CLASS =
-  'touch-target inline-flex min-w-[0] w-full items-center gap-1 rounded-md bg-surface-tab px-2 text-start text-text -outline-offset-2 data-selected:bg-surface data-selected:text-accent';
+  'touch-target inline-flex min-w-0 w-full items-center gap-1 rounded-md bg-surface-tab px-2 text-start text-text -outline-offset-2 data-selected:bg-surface data-selected:text-accent';
 
 const SIDEBAR_SCROLLER_CLASS =
-  'min-h-[0] flex-1 overflow-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+  'min-h-0 flex-1 overflow-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
 
 const SIDEBAR_FLOW_CLASS = 'flex min-h-full flex-col gap-1';
 
@@ -68,13 +68,13 @@ export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
     layout.tabs.length > 1 ? (
       <Tabs
         key={layout.selectedSidebarEntry}
-        className="flex min-h-[0] flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col"
         selectedKey={layout.selectedTab ?? undefined}
         onSelectionChange={(key: Key) => {
           layout.onSelectTab(String(key));
         }}
       >
-        <div role="tabpanel" className="flex min-h-[0] flex-1 flex-col overflow-auto">
+        <div role="tabpanel" className="flex min-h-0 flex-1 flex-col overflow-auto">
           {layout.header === undefined ? null : (
             <div className="shrink-0 p-3 pb-0">{layout.header}</div>
           )}
@@ -110,7 +110,7 @@ export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
 
   return (
     <main
-      className={`flex ${layout.frameClassName ?? 'h-dvh'} min-w-[0] overflow-clip rounded-lg bg-surface text-body text-text`}
+      className={`flex ${layout.frameClassName ?? 'h-dvh'} min-w-0 overflow-clip rounded-lg bg-surface text-body text-text`}
     >
       <Sidebar
         entries={layout.sidebar}
@@ -119,7 +119,7 @@ export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
         onAdd={layout.onAddSidebarEntry}
         settings={layout.settings}
       />
-      <div className="flex min-w-[0] min-h-[0] flex-1 flex-col">
+      <div className="flex min-w-0 min-h-0 flex-1 flex-col">
         <Banner message={banner} />
         {content}
       </div>
@@ -213,7 +213,7 @@ function Sidebar({ entries, selected, onSelect, onAdd, settings }: SidebarProps)
     <Tabs
       orientation="vertical"
       data-sidebar-root
-      className="relative flex min-h-[0] w-[10rem] shrink-0 flex-col bg-surface-bar shadow-[inset_-1px_0_0_var(--color-line)]"
+      className="relative flex min-h-0 w-[10rem] shrink-0 flex-col bg-surface-bar shadow-[inset_-1px_0_0_var(--color-line)]"
       selectedKey={selected}
       onSelectionChange={(key: Key) => {
         onSelect(String(key));
@@ -291,11 +291,11 @@ function SidebarTab({
       className={SIDEBAR_TAB_CLASS}
     >
       {selected ? (
-        <CellTooltip name={label} className="min-w-[0] flex-1 truncate">
+        <CellTooltip name={label} className="min-w-0 flex-1 truncate">
           <span className="block truncate">{label}</span>
         </CellTooltip>
       ) : (
-        <span className="min-w-[0] flex-1 truncate" title={label}>
+        <span className="min-w-0 flex-1 truncate" title={label}>
           {label}
         </span>
       )}

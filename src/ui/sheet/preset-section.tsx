@@ -118,7 +118,7 @@ export function SheetSection({
   const sectionId = repeatSectionId(section);
 
   const className = [
-    'min-w-[0] shrink-0 grow-0 basis-full border-l-2 border-line pl-2',
+    'min-w-0 shrink-0 grow-0 basis-full border-l-2 border-line pl-2',
     WIDTH_CLASSES[section.width ?? 'full'],
   ].join(' ');
 

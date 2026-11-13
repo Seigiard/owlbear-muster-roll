@@ -141,14 +141,14 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
   return (
     <section
       aria-labelledby={headingId}
-      className="flex min-w-[0] flex-col gap-2"
+      className="flex min-w-0 flex-col gap-2"
       data-builder-preview
     >
       <h2 id={headingId} className="text-section-heading">
         {copy.builder.preview(size.width, size.height)}
       </h2>
       <style>{markRules(document, templateUid, openTab, selection, problems)}</style>
-      <div ref={area} className="min-w-[0]">
+      <div ref={area} className="min-w-0">
         {docTemplate === null || template === null || records === null ? (
           <p className="text-text-muted">{copy.builder.emptyPreset}</p>
         ) : (

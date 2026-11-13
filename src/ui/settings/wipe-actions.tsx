@@ -188,7 +188,7 @@ function WipeConfirmation({ onConfirm, onCancel }: WipeConfirmationProps): React
       onKeyDown={handleKeyDown}
       className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface-bar p-2"
     >
-      <p id={textId} className="min-w-[0] flex-1 text-text">
+      <p id={textId} className="min-w-0 flex-1 text-text">
         {copy.wipeConfirmation}
       </p>
       <div className="flex gap-2">

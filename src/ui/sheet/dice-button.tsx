@@ -121,7 +121,7 @@ export function DiceButton({
   }
 
   return (
-    <div className="flex min-w-[0] flex-col items-start">
+    <div className="flex min-w-0 flex-col items-start">
       <Pressable
         className={DICE_BUTTON_CLASS}
         accessibleName={accessibleName}

@@ -322,7 +322,7 @@ function TextValueField({ field, label, values, place, pending }: FieldProps): R
   };
 
   return (
-    <div className="flex min-w-[0] flex-col">
+    <div className="flex min-w-0 flex-col">
       {field.type === 'number' ? (
         <input
           {...common}

@@ -203,7 +203,7 @@ export function CellTooltip({ name, children, className }: CellTooltipProps): Re
   return (
     <span
       ref={triggerRef}
-      className={`inline-flex min-w-[0] ${className ?? ''}`}
+      className={`inline-flex min-w-0 ${className ?? ''}`}
       onFocusCapture={onFocus}
       onBlurCapture={onBlur}
       onPointerEnter={onPointerEnter}

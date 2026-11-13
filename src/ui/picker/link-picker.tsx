@@ -234,7 +234,7 @@ export function LinkPicker({
               aria-label={targetAccessibleName(choice)}
               className="touch-target flex w-full items-center gap-2 rounded-sm px-3 text-left text-text data-disabled:opacity-50 data-hovered:bg-surface-tab data-pressed:bg-surface-tab"
             >
-              <span className="min-w-[0] flex-1 [overflow-wrap:anywhere]">
+              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                 {shownName(choice.blockName ?? choice.sheetName)}
                 {choice.blockName === null ? null : (
                   <span className="ml-2 text-label-sm text-text-muted">

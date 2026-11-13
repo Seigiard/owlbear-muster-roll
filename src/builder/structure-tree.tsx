@@ -228,7 +228,7 @@ function Item({ uid, label, problem, movable, children }: ItemProps): ReactNode 
       <TreeItemContent>
         {({ hasChildItems, isExpanded, level }) => (
           <div
-            className="flex min-w-[0] flex-1 items-center gap-1 pr-1"
+            className="flex min-w-0 flex-1 items-center gap-1 pr-1"
             style={{ paddingInlineStart: (level - 1) * INDENT_PX }}
           >
             {hasChildItems ? (
@@ -242,7 +242,7 @@ function Item({ uid, label, problem, movable, children }: ItemProps): ReactNode 
             ) : (
               <span className="size-[24px] shrink-0" />
             )}
-            <span className="min-w-[0] flex-1 truncate">{label}</span>
+            <span className="min-w-0 flex-1 truncate">{label}</span>
             {problem ? (
               <span className="shrink-0 text-danger-text">
                 <span aria-hidden>!</span>

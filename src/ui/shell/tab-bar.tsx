@@ -6,10 +6,10 @@ import { copy } from '@/ui/copy';
 import { CellTooltip } from '@/ui/primitives/tooltip';
 
 const TAB_CLASS =
-  'touch-target inline-flex min-w-[0] shrink-0 items-center gap-1 rounded-t-md border border-b-0 border-transparent bg-surface-tab px-3 text-text -outline-offset-2 data-selected:border-line data-selected:bg-surface data-selected:text-accent';
+  'touch-target inline-flex min-w-0 shrink-0 items-center gap-1 rounded-t-md border border-b-0 border-transparent bg-surface-tab px-3 text-text -outline-offset-2 data-selected:border-line data-selected:bg-surface data-selected:text-accent';
 
 const SCROLLER_CLASS =
-  'flex min-w-[0] gap-2 overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+  'flex min-w-0 gap-2 overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
 
 // The tab row of the selected sheet. Its parent WindowFrame owns the Tabs state and panel.
 export type ShellTab = {
@@ -37,7 +37,7 @@ export function TabBar({ tabs }: TabBarProps): ReactNode {
               data-tab-index={tab.dataTabIndex}
               className={TAB_CLASS}
             >
-              <span className="min-w-[0] truncate">
+              <span className="min-w-0 truncate">
                 <CellTooltip name={tab.label}>
                   <span className="truncate">{tab.label}</span>
                 </CellTooltip>
