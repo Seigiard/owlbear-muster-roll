@@ -2,10 +2,10 @@
 title: 'TASK-50: move the room copy write loop out of the replica engine'
 type: 'refactor'
 created: '2026-11-12'
-status: 'draft'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
-baseline_commit: 'a514082e5e368ecd813b01d6bb773019ea8f236d'
+baseline_commit: '17f80f328ad789f0f0df63a7cd6d8e4159d08010'
 context:
   - '{project-root}/CLAUDE.md'
   - '{project-root}/GLOSSARY.md'
@@ -57,26 +57,27 @@ Each row is a group of tests in `room-copy.test.ts`. "Saved", "failed" and "none
 | Catch-up read | `read()` | outcome `none` / `read` (records received after the outcome) / `unreadable` (other generation) / `older` / `newer`; higher: `adopt`, then `read` when it completed | the read rejects: `unreadable` unless an outcome is known |
 | Watch | `followed(metadata)` | sizes update; own generation: saved, not merged; higher: `adopt` | N/A |
 | Role and stop | `demoted()` / `stop()` | timer, owed and notice cleared / nothing written, merged or adopted after, even from a read in flight | N/A |
-| Change signal | any call | `changed()` once when `status()` or `notices()` changed | no change: no call |
+| Change signal | a call that sets `status()` or `notices()` | `changed()` after it | N/A: the publisher sends no delta when the header did not change |
 
 </frozen-after-approval>
 
 ## Code Map
 
-Line numbers are at `a514082`.
+Line numbers are at `17f80f3` (master with TASK-49 merged in).
 
-- `src/replica/engine.ts` -- to move: variables 386-408 (`roomCopyNotSaved` to `roomCopyRun`, with `pageChanges`); `writeImportCopy`, `importCopyVerified`, `adoptedHigherCopy`, `removeLowerCopy` 1618-1758; `mergeRoomCopy`, `mergeReadRoomCopy`, `scheduleRoomCopy`, `writeRoomCopy`, `runRoomCopyWrite`, `verifyRoomCopyWrite` 2395-2615; `unreadableRoomCopy`, `failRoomCopy`, `followMetadata`, `noteRoomCopy`, `emitRoomCopyChange`, `roomCopySignature`, `roomCopyStatus` 2746-2820; module-scope `outcomeOf` 3322.
-- `src/replica/engine.ts` -- call sites that become one module call: `currentNotices` 446, the `read-room-copy` decision 535-549, projection 709 and delta 829 (`status()`), the five `scheduleRoomCopy()` after applied edits (1206, 1284, 1828, 1877, commit 3117), `replaceGeneration` 1501, `saveAdoptionData` 2739 (`replaced(fromCopy)`), `performCaughtUp` 2877 (`caughtUp(applied)`), `rereadRole` 3006-3008 (`demoted()`), `onMetadataChange` 3220, `stop` 3222, `catchUp` 3249, `pageHidden` 3256.
-- `src/replica/engine.ts` -- stays: `canWriteRoomCopy` 2472 (becomes the `writable` option), `adoptFromCopy`, `receiveRecords`, `raiseNewerVersion` 3038, `importSuperseded`. `readMetadata` 3301 moves: the engine reads no metadata after the change.
+- `src/replica/engine.ts` -- to move: variables 359-380 (`roomCopyNotSaved` to `roomCopyRun`, with `pageChanges`); `writeImportCopy`, `importCopyVerified`, `adoptedHigherCopy`, `removeLowerCopy` 1428-1562; `mergeRoomCopy`, `mergeReadRoomCopy`, `scheduleRoomCopy`, `writeRoomCopy`, `runRoomCopyWrite`, `verifyRoomCopyWrite` 2169-2382 (without `canWriteRoomCopy` 2241); `unreadableRoomCopy`, `failRoomCopy`, `followMetadata`, `noteRoomCopy`, `roomCopyStatus` 2516-2574; module-scope `readMetadata` 3024-3032 and `outcomeOf` 3045-3051.
+- `src/replica/engine.ts` -- call sites that become one module call: `currentNotices` 436-447 (`notices()`); the `read-room-copy` decision 526-537 (`read()`); `roomCopy: roomCopyStatus()` in the publisher's `state` 420 (`status()`); the five `scheduleRoomCopy()` after applied edits 1013, 1091, 1634, 1683, 2856 (`edited()`); `replaceGeneration` 1308 (`writeImport`); `saveAdoptionData` 2506 (`replaced(fromCopy)`); `performCaughtUp` 2619-2622 (`caughtUp(applied)`); `rereadRole` 2744-2747 (`demoted()`); `onMetadataChange` 2949 (`followed`); `stop` 2965 (`stop()`); the returned `catchUp` 2995-2997 (`pageReturned()`) and `pageHidden` 2999-3002 (`pageHidden()`).
+- `src/replica/engine.ts` -- stays: `canWriteRoomCopy` 2241 (becomes the `writable` option), `adoptFromCopy` 2387, `receiveRecords` 2627, `raiseNewerVersion` 2779, `importSuperseded` 1343, `publisher` (TASK-49; its `publish()` becomes the `changed` option).
+- `src/replica/window-publisher.ts` -- TASK-49. Its header signature holds notices, sync, room copy status and party, so `publish()` sends nothing when none of them changed. Unchanged.
 - `src/core/snapshot.ts` -- `encodeSnapshot`, `readSnapshot`, `roomMetadataBytes`, `roomCopyUsage`, `readBackHolds`, `ROOM_METADATA_BYTE_LIMIT`, `SNAPSHOT_KEY`. Unchanged.
 - `src/platform/mock/room.ts` -- `createMemoryRoom`: the metadata adapter for module tests. `src/platform/ports.ts` -- `MetadataPort`.
-- `src/replica/catch-up.ts`, `src/replica/pending-edits.ts` -- the precedent: injected queries, small results.
-- Tests that stay as evidence: `engine-room-copy.test.ts` (37 tests, 2.96 s), `engine-import.test.ts` (34, 1.72 s), `engine-wipe.test.ts` (8, 0.22 s), `tests/room-copy.e2e.ts`, `tests/snapshot.e2e.ts`, `tests/wipe.e2e.ts`, `tests/no-gm.e2e.ts`.
+- `src/replica/catch-up.ts`, `src/replica/pending-edits.ts`, `src/replica/window-publisher.ts` -- the precedent: injected queries, small results, pair or module tests with no engine.
+- Tests that stay as evidence: `engine-room-copy.test.ts`, `engine-import.test.ts`, `engine-wipe.test.ts`, `tests/room-copy.e2e.ts`, `tests/snapshot.e2e.ts`, `tests/wipe.e2e.ts`, `tests/no-gm.e2e.ts`.
 
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Baseline -- after the merge of master with TASK-49: junit list, per-file wall time, e2e count, and mutations R1-R16 again (the design-pass probe ran at `a514082`).
+- [ ] Baseline -- at `17f80f3` (master with TASK-49 merged in): junit list, per-file wall time, e2e count, and mutations R1-R16 again (the design-pass probe ran at `a514082`).
 - [ ] `src/replica/room-copy.ts` -- create the module per Design Notes from the moved code -- phase A.
 - [ ] `src/replica/engine.ts` -- route every call site in the Code Map and delete the moved code -- phase A. Commit when the junit list equals the baseline.
 - [ ] `src/replica/room-copy.test.ts` -- one test per matrix row and per error case, over `createMemoryRoom` and a fault gate -- phase B.
@@ -113,12 +114,11 @@ createRoomCopy(options: {
 ```
 
 - `adopt` may finish an adoption at once and change `generation()`. `read` asks `generation()` again after it.
-- `changed()` compares the module's own `[status(), notices()]`. Today the signature also holds the engine's notices; a delta that only repeated an identical state may go. Phase A records any such test, and nothing else may differ.
-- The engine's `changed` sends `emitDelta([])` when a projection was sent.
+- `changed()` is the engine's `publisher.publish()`. The module calls it after each step that sets its status or notices, as the engine does today, and keeps no comparison of its own: the publisher compares the header and sends nothing when it did not change.
 
 **Why it pays (design pass, AC #1).** The interface is 25 names, each a one-line call with one ordering fact (`adopt` may change `generation()`). Behind it sit about 300 code lines (463 with comments), 16 matrix rows and 15 engine sites. The width TASK-50 feared came from `adoptTarget` and the catch-up state; TASK-48 reduced them to `writable()`. The mutation probe at the baseline (`bun test src/replica`, 822 tests; the probe ran no e2e test, and no e2e test name covers these rules) shows the gap. R1, R2, R9, R12, R13 and R16 fail 1-2 tests each. R3, R4, R5, R6, R7, R8, R10, R11, R14 and R15 fail none. R3 (an older-generation write lands after the import copy) and R15 (an import that a higher copy replaced still counts as saved) break AD-9. R5 is near-equivalent: `writeRoomCopy` sets owed before the write.
 
-**TASK-49 overlap.** TASK-49 replaces `emitDelta([])` with one change signal and one publisher. Here that touches `emitRoomCopyChange`, `roomCopySignature`, the `projectionSent` check, `roomCopyStatus()` in the projection and delta, and `currentNotices`. After TASK-49 merges, refresh this spec: `changed` maps to its signal, and the module keeps its own comparison only if the publisher does not diff. The `emitDelta([])` calls in `replaceGeneration` stay in the engine.
+**TASK-49 overlap (resolved).** TASK-49 merged at `17f80f3`. It removed `emitRoomCopyChange` and `roomCopySignature`; the room copy code calls `publisher.publish()`, and the projection and deltas take `roomCopyStatus()` through the publisher's `state`. So `changed` maps to `publisher.publish()`, and `status()` feeds that `state`.
 
 ## Verification
 
@@ -131,5 +131,8 @@ createRoomCopy(options: {
 ## Implementation Notes
 
 ## Spec Change Log
+
+- Refresh after TASK-49 (before approval): the Code Map is at `17f80f3`; `changed` is `publisher.publish()`; the matrix row "Change signal" no longer asks the module to compare its own state, because the publisher's header diff drops a delta that changes nothing.
+- `baseline_commit` moves from `a514082` (the design pass) to `17f80f3`, the master merge with TASK-49 that phase 2 starts from; no code was built at `a514082`.
 
 ## Review Triage Log
