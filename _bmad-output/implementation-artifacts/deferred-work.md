@@ -300,3 +300,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-61.6-second-ui-flow.md`
   summary: Settings and the other open UI coverage rows still need research; navigation and picker do not justify a shared runner or event bus.
   evidence: Navigation uses React effects and fresh sheet keys; picker needs scoped attempt ids and sequential item-label ports. H3/H6 support is bounded to these examples; the experiment makes no settings, builder or shared-renderer migration claim. Live Owlbear label/close behavior remains the owner's check.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-62-ime-safe-enter-submit.md`
+  summary: Keep an IME Escape key from closing the duplicate-count form through its group handler.
+  evidence: The unchanged `handleKeyDown` in `src/ui/sheet/duplicate-count.tsx` calls `onCancel` for every bubbling Escape, including composing events that the input ignores. This path exists before TASK-62 and is separate from its Enter-confirmation fix.
