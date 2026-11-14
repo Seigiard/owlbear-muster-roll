@@ -1,6 +1,11 @@
 name = "muster-roll"
 compatibility_date = "2026-11-09"
 
+# The Worker has no workers.dev route, so Version URLs and Preview URLs start disabled. This turns
+# them on: each Preview and each uploaded version gets its own `*.workers.dev` address. Production
+# traffic stays on the custom domain below.
+preview_urls = true
+
 [build]
 command = "bun run build"
 
