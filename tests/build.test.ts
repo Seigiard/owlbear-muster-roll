@@ -177,6 +177,14 @@ describe('default-mode vite build', () => {
     expect(leaking).toEqual([]);
   });
 
+  test('ships no dev-only local room page', () => {
+    // #when
+    const leaking = outputFiles(outDir).filter((path) => path.endsWith('room.html'));
+
+    // #then
+    expect(leaking).toEqual([]);
+  });
+
   test('ships no hex value of a theme-mapped token', () => {
     // #when
     // AD-20: the builder page runs outside Owlbear, so its own entry chunk carries the fixed
