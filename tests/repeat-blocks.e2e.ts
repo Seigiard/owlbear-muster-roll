@@ -296,16 +296,19 @@ test('deleting the last repeat block moves the focus to "Добавить"', asy
   await expect(addButton(page, 'Атаки')).toBeFocused();
 });
 
-test('each "Удалить" shows the command and is named by its repeat block position from 1', async ({
+test('each "Удалить" is an icon with the command in its tooltip, named by its repeat block position from 1', async ({
   page,
   context,
 }) => {
   // #given
   await openSheet(page, context);
 
+  // #when
+  await deleteButton(page, 1).hover();
+
   // #then
-  await expect(deleteButton(page, 1)).toHaveText('Удалить');
-  await expect(deleteButton(page, 2)).toHaveText('Удалить');
+  await expect(page.getByRole('tooltip', { name: 'Удалить' })).toBeVisible();
+  await expect(deleteButton(page, 1)).toHaveText('');
   expect(await deleteButtonNames(region(page, 'Атаки'))).toEqual([
     'Удалить блок 1',
     'Удалить блок 2',

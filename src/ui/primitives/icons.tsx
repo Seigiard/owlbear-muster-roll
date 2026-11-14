@@ -50,3 +50,13 @@ export function TrashIcon(): ReactNode {
     </svg>
   );
 }
+
+// Two stacked sheets, for a copy.
+export function DuplicateIcon(): ReactNode {
+  return (
+    <svg {...ICON_PROPS}>
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+      <path d="M10.5 3.5V3A1 1 0 0 0 9.5 2H3a1 1 0 0 0-1 1v6.5a1 1 0 0 0 1 1h.5" />
+    </svg>
+  );
+}

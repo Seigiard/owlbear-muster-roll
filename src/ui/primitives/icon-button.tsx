@@ -19,6 +19,9 @@ type IconButtonProps = Omit<PressableProps, 'children' | 'accessibleName'> & {
   icon: ReactNode;
   // The name a screen reader says and the tooltip shows, as no word is visible.
   label: string;
+  // A shorter tooltip where the name carries context that sight takes from the layout, such as a
+  // repeat block's position.
+  tooltip?: string;
   pressed?: boolean;
   tone?: 'neutral' | 'danger';
 };
@@ -26,6 +29,7 @@ type IconButtonProps = Omit<PressableProps, 'children' | 'accessibleName'> & {
 export function IconButton({
   icon,
   label,
+  tooltip = label,
   pressed = false,
   tone = 'neutral',
   ...pressable
@@ -37,7 +41,7 @@ export function IconButton({
       : ICON_BUTTON_HOVER_CLASS;
 
   return (
-    <CellTooltip name={label} className="shrink-0">
+    <CellTooltip name={tooltip} className="shrink-0">
       <Pressable
         className={`${ICON_BUTTON_CLASS} ${toneClass}`}
         accessibleName={label}
@@ -50,13 +54,23 @@ export function IconButton({
 }
 
 // An icon that states a fact and does nothing, such as the token status. It is an image with a
-// name, so a screen reader says the fact, and a tooltip shows it to sight.
-export function IconStatus({ icon, label }: { icon: ReactNode; label: string }): ReactNode {
+// name, so a screen reader says the fact, and a tooltip shows it to sight. `hidden` keeps it from
+// assistive tech where the fact is already said beside it.
+export function IconStatus({
+  icon,
+  label,
+  hidden = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  hidden?: boolean;
+}): ReactNode {
   return (
     <CellTooltip name={label} className="shrink-0">
       <span
-        role="img"
-        aria-label={label}
+        role={hidden ? undefined : 'img'}
+        aria-label={hidden ? undefined : label}
+        aria-hidden={hidden || undefined}
         className="inline-flex size-[32px] items-center justify-center text-text-muted"
       >
         {icon}

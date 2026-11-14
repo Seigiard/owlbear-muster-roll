@@ -81,15 +81,19 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 800 });
 });
 
-test('each NPC repeat block offers the GM "Дублировать…", named by its position from 1', async ({
+test('each NPC repeat block offers the GM a "Дублировать…" icon, named by its position from 1', async ({
   page,
   context,
 }) => {
-  // #when
+  // #given
   await openNpcTab(page, context, SKELETON);
 
-  // #then
-  await expect(duplicateButton(page, 1)).toHaveText(DUPLICATE);
+  // #when
+  await duplicateButton(page, 1).hover();
+
+  // #then: the tooltip gives sight the short name, and the accessible name adds the position.
+  await expect(page.getByRole('tooltip', { name: DUPLICATE })).toBeVisible();
+  await expect(duplicateButton(page, 1)).toHaveText('');
   expect(
     await page
       .getByRole('tabpanel')

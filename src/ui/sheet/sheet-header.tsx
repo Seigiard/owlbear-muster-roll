@@ -4,13 +4,13 @@ import type { ReactNode } from 'react';
 import { fieldValuesSchema, rowKey, type VersionedRecord } from '@/core/records';
 import type { NameField } from '@/core/sheets';
 import { copy } from '@/ui/copy';
-import { IconButton, IconStatus } from '@/ui/primitives/icon-button';
-import { AccessIcon, TokenIcon, TrashIcon } from '@/ui/primitives/icons';
+import { IconButton } from '@/ui/primitives/icon-button';
+import { AccessIcon, TrashIcon } from '@/ui/primitives/icons';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
 import { AccessPanel } from './access-panel';
-import { MapToggle } from './map-toggle';
+import { TokenControl } from './map-toggle';
 import { FieldEditingContext, useTextFieldEdit, type FieldEditing } from './use-field-edit';
 
 const HEADER_CLASS = 'mb-6 flex items-center gap-1';
@@ -112,7 +112,7 @@ export function SheetHeader({
           </span>
         )}
         {gm === null || gm.tokenLinked === null ? null : (
-          <TokenControl sheetId={sheetId} linked={gm.tokenLinked} />
+          <TokenControl target={{ sheetId, instanceId: null }} linked={gm.tokenLinked} />
         )}
         {gm?.access === true ? (
           <IconButton
@@ -148,23 +148,6 @@ export function SheetHeader({
         />
       ) : null}
     </>
-  );
-}
-
-// The token as one icon: while a linked token is on the open scene, the toggle that selects it on
-// the map; otherwise the token status.
-function TokenControl({ sheetId, linked }: { sheetId: string; linked: boolean }): ReactNode {
-  const status = (
-    <IconStatus
-      icon={<TokenIcon linked={linked} />}
-      label={linked ? copy.status.tokenLinked : copy.status.noToken}
-    />
-  );
-
-  return linked ? (
-    <MapToggle target={{ sheetId, instanceId: null }} appearance="icon" fallback={status} />
-  ) : (
-    status
   );
 }
 

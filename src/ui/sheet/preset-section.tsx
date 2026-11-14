@@ -16,12 +16,13 @@ import { repeatBlocks, rowValues, sectionTitle, type FieldValues } from '@/core/
 import type { Command } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
-import { Chip } from '@/ui/primitives/chip';
+import { IconButton } from '@/ui/primitives/icon-button';
+import { DuplicateIcon, TrashIcon } from '@/ui/primitives/icons';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
 
 import type { DiceRow } from './dice-button';
 import { DuplicateCount } from './duplicate-count';
-import { MapSelectionContext, MapToggle } from './map-toggle';
+import { MapSelectionContext, TokenControl } from './map-toggle';
 import { PendingMark, rowPending, type RowPending, type SheetPending } from './pending-mark';
 import { SheetCell } from './preset-cell';
 import type { FieldPlace } from './use-field-edit';
@@ -542,44 +543,47 @@ function BlockSlot({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-x-2"
+      className="flex flex-wrap items-center gap-x-1"
       style={column === undefined ? undefined : { gridColumnStart: column }}
       aria-live="polite"
       data-row-control
     >
       {block.pending.rowMarked ? <PendingMark id={markId} /> : null}
       {linked === null ? null : (
-        <Chip>{linked ? copy.status.tokenLinked : copy.status.noToken}</Chip>
+        <>
+          {/* The live region says a link change. The icon swaps between the status and the toggle as
+          the open scene changes, which is no news to announce, so it sits out of the region. */}
+          <span className="sr-only">{linked ? copy.status.tokenLinked : copy.status.noToken}</span>
+          <span aria-live="off" className="contents">
+            <TokenControl
+              target={{ sheetId, instanceId }}
+              linked={linked}
+              toggleName={copy.label.selectBlockOnMap(index + 1)}
+              statusHidden
+            />
+          </span>
+        </>
       )}
-      {linked === true ? (
-        // The toggle comes and goes with the open scene, which is no news to announce, so it sits out
-        // of the slot's live region. The wrapper mounts with the token status, as a link does.
-        <span aria-live="off" className="contents">
-          <MapToggle
-            target={{ sheetId, instanceId }}
-            accessibleName={copy.label.selectBlockOnMap(index + 1)}
-          />
-        </span>
-      ) : null}
       {tools === null || block.pending.removed ? null : (
-        <Button
+        <IconButton
           ref={duplicateButton}
-          accessibleName={copy.label.duplicateBlock(index + 1)}
+          icon={<DuplicateIcon />}
+          label={copy.label.duplicateBlock(index + 1)}
+          tooltip={copy.command.duplicate}
           onPress={onDuplicate}
-        >
-          {copy.command.duplicate}
-        </Button>
+        />
       )}
       {controls === undefined || block.pending.removed ? null : (
-        <Button
+        <IconButton
           ref={controls.deleteButton(instanceId)}
-          accessibleName={copy.label.deleteBlock(index + 1)}
+          icon={<TrashIcon />}
+          label={copy.label.deleteBlock(index + 1)}
+          tooltip={copy.command.delete}
+          tone="danger"
           onPress={() => {
             controls.remove(instanceId);
           }}
-        >
-          {copy.command.delete}
-        </Button>
+        />
       )}
     </div>
   );

@@ -5,8 +5,7 @@ import { ToggleButton } from 'react-aria-components';
 import type { LinkTarget } from '@/core/link-target';
 import type { SelectionStep } from '@/core/token-selection';
 import { copy } from '@/ui/copy';
-import { SECONDARY_BUTTON_CLASS } from '@/ui/primitives/button';
-import { ICON_BUTTON_CLASS } from '@/ui/primitives/icon-button';
+import { ICON_BUTTON_CLASS, IconStatus } from '@/ui/primitives/icon-button';
 import { TokenIcon } from '@/ui/primitives/icons';
 import { CellTooltip } from '@/ui/primitives/tooltip';
 
@@ -32,24 +31,46 @@ export const MapSelectionContext = createContext<MapSelectionView>({
 const ICON_TOGGLE_STATE_CLASS =
   '[&[data-hovered]:not([data-selected])]:bg-fill [&[data-hovered]:not([data-selected])]:text-text data-selected:border-accent/40 data-selected:bg-accent-soft data-selected:text-accent-ink';
 
-type MapToggleProps = {
+type TokenControlProps = {
   target: LinkTarget;
-  // Names a repeat block's toggle, as several share the visible label.
-  accessibleName?: string;
-  // The sheet header draws the toggle as the token icon, and shows `fallback`, the token status,
-  // while no linked token is on the open scene.
-  appearance?: 'text' | 'icon';
-  fallback?: ReactNode;
+  linked: boolean;
+  // A repeat block names its toggle by its position, as several share the icon.
+  toggleName?: string;
+  // A repeat block says its token status in its own live region, so the icon hides it from
+  // assistive tech and keeps it for sight.
+  statusHidden?: boolean;
 };
 
-// Pressed while every linked token of the target on the open scene is selected. It shows only while
-// one of them is on the open scene, so a press always reaches a token.
-export function MapToggle({
+// CAP-18, CAP-32: the GM's token as one icon. While a linked token of the target is on the open
+// scene, it is the toggle that selects them on the map; otherwise it shows the token status.
+export function TokenControl({
   target,
-  accessibleName,
-  appearance = 'text',
-  fallback = null,
-}: MapToggleProps): ReactNode {
+  linked,
+  toggleName = copy.command.selectOnMap,
+  statusHidden = false,
+}: TokenControlProps): ReactNode {
+  const status = (
+    <IconStatus
+      icon={<TokenIcon linked={linked} />}
+      label={linked ? copy.status.tokenLinked : copy.status.noToken}
+      hidden={statusHidden}
+    />
+  );
+
+  return linked ? <MapToggle target={target} name={toggleName} fallback={status} /> : status;
+}
+
+// Pressed while every linked token of the target on the open scene is selected. It shows only while
+// one of them is on the open scene, so a press always reaches a token, and `fallback` otherwise.
+function MapToggle({
+  target,
+  name,
+  fallback,
+}: {
+  target: LinkTarget;
+  name: string;
+  fallback: ReactNode;
+}): ReactNode {
   const { selector } = useContext(MapSelectionContext);
   const step = selector?.stepFor(target) ?? null;
 
@@ -57,35 +78,18 @@ export function MapToggle({
     return fallback;
   }
 
-  if (appearance === 'icon') {
-    const name = accessibleName ?? copy.command.selectOnMap;
-
-    return (
-      <CellTooltip name={name} className="shrink-0">
-        <ToggleButton
-          aria-label={name}
-          isSelected={step.kind === 'deselect'}
-          onChange={() => {
-            selector.take(step);
-          }}
-          className={`press inline-flex items-center justify-center ${ICON_BUTTON_CLASS} ${ICON_TOGGLE_STATE_CLASS}`}
-        >
-          <TokenIcon linked />
-        </ToggleButton>
-      </CellTooltip>
-    );
-  }
-
   return (
-    <ToggleButton
-      aria-label={accessibleName}
-      isSelected={step.kind === 'deselect'}
-      onChange={() => {
-        selector.take(step);
-      }}
-      className={`${SECONDARY_BUTTON_CLASS} shrink-0 data-selected:border-accent/40 data-selected:bg-accent-soft data-selected:text-accent-ink`}
-    >
-      {copy.command.selectOnMap}
-    </ToggleButton>
+    <CellTooltip name={name} className="shrink-0">
+      <ToggleButton
+        aria-label={name}
+        isSelected={step.kind === 'deselect'}
+        onChange={() => {
+          selector.take(step);
+        }}
+        className={`press inline-flex items-center justify-center ${ICON_BUTTON_CLASS} ${ICON_TOGGLE_STATE_CLASS}`}
+      >
+        <TokenIcon linked />
+      </ToggleButton>
+    </CellTooltip>
   );
 }
