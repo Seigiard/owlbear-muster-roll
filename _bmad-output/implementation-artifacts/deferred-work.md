@@ -326,3 +326,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-61.11-preset-upload-confirmation.md`
   summary: An older preset file read can replace a newer file selection.
   evidence: `choose(file)` resets to idle, awaits `readPreset(file)`, then unconditionally dispatches `file-error` or `diff-requested`; the current refactor preserves that ordering. No user incident was demonstrated. A future fix needs an attempt identity check and is outside this task.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.8-link-picker.md`
+  summary: Verify the intermediate role-delivery race between selecting a label write and calling `setItemLabel`.
+  evidence: This interval is unverified, and no reproduced defect is claimed. The exact control is to deliver the role update after the reducer selects the writing phase but before `setItemLabel`, then observe whether the write is called while the role is `PLAYER`; any fix requires a separate contract decision.
