@@ -73,6 +73,10 @@ Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you w
 - The mock proves app logic only. Behavior in a live Owlbear room needs the owner's check.
 </important>
 
+<important if="you are moving UI behavior out of a React component or separating rules from rendering">
+- One shape for every UI flow, set by `docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md`: a pure reducer in its own module, `useReducer` in the component, and the commands, ports and browser effects in that same component, one `useEffect` per state field. `src/ui/navigation.ts` with `src/ui/main.tsx` is the model. The caller in `prototypes/ui-second-flow/` is a test harness.
+</important>
+
 <important if="you are implementing a backlog task or a feature">
 - Work goes through the `bmad-build` skill and ends on the full check. Its spec lives in `_bmad-output/implementation-artifacts/spec-*.md`; deferred findings go to `deferred-work.md` beside it.
 </important>

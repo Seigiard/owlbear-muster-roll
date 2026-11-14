@@ -3,7 +3,7 @@ id: doc-1
 title: 'Epic: framework-independent UI behavior and simple rendering'
 type: specification
 created_date: '2026-11-13T09:43:00Z'
-updated_date: '2026-11-14T07:28:00Z'
+updated_date: '2026-11-14T08:20:00Z'
 tags:
   - epic
   - architecture
@@ -161,9 +161,9 @@ Pure `picker-flow.ts` owns readiness, defaults, matching-replica-arrival priorit
 
 Final isolated verification passed 58 cases: 57 behavioral cases and one absent-DOM environment precondition. Eight deliberate defects produced behavioral assertion failures; exact source restoration returned the caller checks to green. These checks run without React, DOM, Owlbear or replica startup and prove caller decisions, not SDK behavior or production lifecycle equivalence. Review corrected effects continuing after synchronous disposal and added checks for late command failures, deadline timing, timer cleanup and retry combinations.
 
-H3 is supported for inbound scoped event delivery within these two flows. The picker caller has a state getter but no async view publication or render subscription API; outbound delivery requirements remain untested. H6 is supported for executable picker decisions: pure rules, supplied facts and external effects transfer, not renderer publication or production lifecycle. Navigation uses fresh sheet keys and React effects; picker retries need a new local attempt id and sequential platform-port stages. A shared runner, machine helper or library is rejected for now because these two uses do not have matching execution requirements. Experimental caller machinery is not an approved production seam.
+H3 is supported for inbound scoped event delivery within these two flows. The picker caller has a state getter but no async view publication or render subscription API; outbound delivery requirements remain untested. H6 is supported for executable picker decisions: pure rules, supplied facts and external effects transfer, not renderer publication or production lifecycle. Navigation uses fresh sheet keys and React effects; picker retries need a new local attempt id and sequential platform-port stages. A shared runner, machine helper or library is rejected for now because these two uses do not have matching execution requirements. In production the picker takes navigation's shape, set in ADR 0002: a pure reducer, `useReducer` and effects in `link-picker.tsx`; the prototype's caller is a test harness.
 
-Final project checks passed: format, lint, typecheck, 2920 unit cases (plus one skipped prototype-only environment precondition), all 512 Chromium browser cases and build. Explicit prototype lint/format/typecheck passed. The normal browser rerun reached 502 passes before a native Node v26.13.0 V8 crash; the complete passing rerun used a temporary node launcher with --no-turbo-fast-api-calls. Repository runtime settings and tests were unchanged. Application source/tests and dependencies match the baseline, so full checks prove that application, not a migrated picker. No live-room calls or deployment ran.
+Final project checks passed: format, lint, typecheck, 2920 unit cases (plus one skipped prototype-only environment precondition), all 512 Chromium browser cases and build. Explicit prototype lint/format/typecheck passed. The browser run needed a local Node workaround, recorded in the prototype README; repository settings and tests were unchanged. Application source/tests and dependencies match the baseline, so full checks prove that application, not a migrated picker. No live-room calls or deployment ran.
 
 Facts and returned state are borrowed immutable snapshots, including nested objects; mutations outside events are unsupported. Scheduling/cancellation callbacks must not throw. Answered-without-arrival and unresolved close can wait indefinitely, as in the baseline; only label read/write/notification waits are bounded. No scheduler-exception machinery, second command timer or close timeout was added.
 
