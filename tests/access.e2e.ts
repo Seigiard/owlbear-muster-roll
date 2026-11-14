@@ -181,7 +181,7 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
 });
 
-test('"Доступ" opens the panel inline under the header on surface-bar, with a line border and rounded-md', async ({
+test('"Доступ" opens the panel inline under the header on surface-raised, with a hairline border and rounded-lg', async ({
   context,
 }) => {
   // #given
@@ -208,10 +208,10 @@ test('"Доступ" opens the panel inline under the header on surface-bar, wit
     radius: await cssValue(panel, 'border-top-left-radius'),
   }).toEqual({
     afterHeader: 'HEADER',
-    background: await tokenColor(gm.window, '--color-surface-bar'),
-    border: await tokenColor(gm.window, '--color-line'),
+    background: await tokenColor(gm.window, '--color-surface-raised'),
+    border: await tokenColor(gm.window, '--color-hairline'),
     borderStyle: 'solid',
-    radius: '6px',
+    radius: '8px',
   });
 });
 
@@ -225,12 +225,15 @@ test('the open chip shows its pressed state, and a second press closes the panel
 
   // #when
   await chip.click();
+  // The pressed fill fades in over 150 ms, so the check waits for it to settle.
+  await expect
+    .poll(() => renderedColor(chip, 'background-color'))
+    .toEqual(await tokenColor(gm.window, '--color-accent-soft'));
   const openBackground = await renderedColor(chip, 'background-color');
 
   await chip.click();
 
   // #then
-  expect(openBackground).toEqual(await tokenColor(gm.window, '--color-surface-tab'));
   expect(openBackground).not.toEqual(closedBackground);
   await expect(accessPanel(gm.window)).toHaveCount(0);
   await expect(chip).toHaveAttribute('aria-expanded', 'false');
@@ -467,8 +470,7 @@ test('a sheet delete tombstones its acl: records', async ({ context }) => {
   const gm = await openGm(context, [...RECORDS, record('acl:brok:vova', { name: 'Вова' })]);
 
   // #when
-  await gm.window.getByRole('button', { name: 'Действия с листом' }).click();
-  await gm.window.getByRole('menuitem', { name: 'Удалить' }).click();
+  await gm.window.getByRole('button', { name: 'Удалить лист' }).click();
   await gm.window.getByRole('button', { name: 'Удалить', exact: true }).click();
 
   // #then

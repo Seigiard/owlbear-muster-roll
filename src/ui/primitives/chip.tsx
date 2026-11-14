@@ -2,7 +2,7 @@ import type { ReactNode, Ref } from 'react';
 
 import { Pressable } from './button';
 
-const CHIP_CLASS = 'touch-target rounded-full border px-2 text-label-sm';
+const CHIP_CLASS = 'touch-target-compact rounded-full border px-2 text-caption';
 
 type StatusChipProps = {
   children: ReactNode;
@@ -36,7 +36,9 @@ export function Chip({
 }: StatusChipProps | PressableChipProps): ReactNode {
   if (onPress === undefined) {
     return (
-      <span className={`inline-flex items-center border-line text-text-muted ${CHIP_CLASS}`}>
+      <span
+        className={`inline-flex items-center border-hairline bg-fill text-text-muted ${CHIP_CLASS}`}
+      >
         {children}
       </span>
     );
@@ -45,7 +47,7 @@ export function Chip({
   return (
     <Pressable
       ref={ref}
-      className={`text-text ${CHIP_CLASS} ${pressed ? 'border-line-strong bg-surface-tab' : 'border-line'}`}
+      className={`${CHIP_CLASS} ${pressed ? 'border-accent/40 bg-accent-soft text-accent-ink' : 'border-hairline bg-fill text-text-muted data-hovered:bg-fill-strong data-hovered:text-text'}`}
       onPress={onPress}
       disabledReason={disabledReason}
       expanded={expanded}

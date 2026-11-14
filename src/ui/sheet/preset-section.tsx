@@ -16,12 +16,13 @@ import { repeatBlocks, rowValues, sectionTitle, type FieldValues } from '@/core/
 import type { Command } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
-import { Chip } from '@/ui/primitives/chip';
+import { IconButton } from '@/ui/primitives/icon-button';
+import { DuplicateIcon, TrashIcon } from '@/ui/primitives/icons';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
 
 import type { DiceRow } from './dice-button';
 import { DuplicateCount } from './duplicate-count';
-import { MapSelectionContext, MapToggle } from './map-toggle';
+import { MapSelectionContext, TokenControl } from './map-toggle';
 import { PendingMark, rowPending, type RowPending, type SheetPending } from './pending-mark';
 import { SheetCell } from './preset-cell';
 import type { FieldPlace } from './use-field-edit';
@@ -35,9 +36,11 @@ const WIDTH_CLASSES: Record<NonNullable<PresetSection['width']>, string> = {
   full: '',
 };
 
-const ROW_CLASS = 'touch-target items-center gap-x-2 px-1';
+// A row lights up under the pointer, so the eye can follow it across a wide grid.
+const ROW_CLASS = 'touch-target items-center gap-x-2 rounded-md px-1 hover:bg-fill';
 
-const STRIPE_CLASS = 'bg-surface-stripe';
+// Repeat blocks after the first sit under a hairline, so each block reads as one.
+const BLOCK_RULE_CLASS = 'border-t border-hairline';
 
 // CAP-32: a repeat block whose linked token is selected on the map, as a bar on its left edge.
 // Forced colors drop shadows, so there it is an outline.
@@ -118,7 +121,7 @@ export function SheetSection({
   const sectionId = repeatSectionId(section);
 
   const className = [
-    'min-w-0 shrink-0 grow-0 basis-full border-l-2 border-line pl-2',
+    'min-w-0 shrink-0 grow-0 basis-full',
     WIDTH_CLASSES[section.width ?? 'full'],
   ].join(' ');
 
@@ -164,7 +167,10 @@ export function SheetSection({
       data-section
       data-section-index={sectionIndex}
     >
-      <h2 id={headingId} className="mb-1 text-section-heading text-accent">
+      <h2
+        id={headingId}
+        className="mb-1 border-b border-hairline px-1 pb-2 text-section-heading text-text-muted"
+      >
         {title}
       </h2>
       {content}
@@ -290,8 +296,7 @@ function RepeatContent({
 }
 
 // Keyed by row id or field id where one exists, so the state a field keeps stays with that field
-// when the preset changes around it. Rows count from 1, so the second, fourth and later even rows
-// stripe.
+// when the preset changes around it.
 function PlainRows({
   section,
   rows,
@@ -305,7 +310,7 @@ function PlainRows({
     return rows.map((row, index) => (
       <div
         key={row.key}
-        className={`flex flex-wrap gap-y-1 ${ROW_CLASS} ${stripe(index)}`}
+        className={`flex flex-wrap gap-y-1 ${ROW_CLASS}`}
         data-row
         data-row-index={index}
       >
@@ -314,7 +319,7 @@ function PlainRows({
     ));
   }
 
-  // Each row is a subgrid over all tracks, so its cells align with every other row and its stripe
+  // Each row is a subgrid over all tracks, so its cells align with every other row and its hover
   // spans the whole grid. A short row leaves its last tracks empty.
   return (
     <div
@@ -324,7 +329,7 @@ function PlainRows({
       {rows.map((row, index) => (
         <div
           key={row.key}
-          className={`col-span-full grid grid-cols-subgrid ${ROW_CLASS} ${stripe(index)}`}
+          className={`col-span-full grid grid-cols-subgrid ${ROW_CLASS}`}
           data-row
           data-row-index={index}
         >
@@ -349,8 +354,8 @@ type BlocksProps = {
 // pressed, so its field takes the focus again.
 type DuplicateAsk = { instanceId: string; request: number };
 
-// Every repeat block in order, each holding all rows of the section. Repeat blocks count from 1, so
-// the second, fourth and later even ones stripe. The block's control slot sits in its first row.
+// Every repeat block in order, each holding all rows of the section. The block's control slot sits
+// in its first row.
 function Blocks({
   section,
   sheetId,
@@ -476,7 +481,7 @@ function Blocks({
         role="group"
         aria-label={onMap ? copy.label.selectedOnMap(name) : name}
         tabIndex={-1}
-        className={`${columns === undefined ? '' : 'col-span-full grid grid-cols-subgrid'} ${stripe(index)} ${onMap ? MAP_MARK_CLASS : ''}`}
+        className={`${columns === undefined ? '' : 'col-span-full grid grid-cols-subgrid'} ${index > 0 ? BLOCK_RULE_CLASS : ''} ${onMap ? MAP_MARK_CLASS : ''}`}
         data-repeat-block={block.instanceId}
       >
         {rows}
@@ -538,51 +543,50 @@ function BlockSlot({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-x-2"
+      className="flex flex-wrap items-center gap-x-1"
       style={column === undefined ? undefined : { gridColumnStart: column }}
       aria-live="polite"
       data-row-control
     >
       {block.pending.rowMarked ? <PendingMark id={markId} /> : null}
       {linked === null ? null : (
-        <Chip>{linked ? copy.status.tokenLinked : copy.status.noToken}</Chip>
+        <>
+          {/* The live region says a link change. The icon swaps between the status and the toggle as
+          the open scene changes, which is no news to announce, so it sits out of the region. */}
+          <span className="sr-only">{linked ? copy.status.tokenLinked : copy.status.noToken}</span>
+          <span aria-live="off" className="contents">
+            <TokenControl
+              target={{ sheetId, instanceId }}
+              linked={linked}
+              toggleName={copy.label.selectBlockOnMap(index + 1)}
+              statusHidden
+            />
+          </span>
+        </>
       )}
-      {linked === true ? (
-        // The toggle comes and goes with the open scene, which is no news to announce, so it sits out
-        // of the slot's live region. The wrapper mounts with the token status, as a link does.
-        <span aria-live="off" className="contents">
-          <MapToggle
-            target={{ sheetId, instanceId }}
-            accessibleName={copy.label.selectBlockOnMap(index + 1)}
-          />
-        </span>
-      ) : null}
       {tools === null || block.pending.removed ? null : (
-        <Button
+        <IconButton
           ref={duplicateButton}
-          accessibleName={copy.label.duplicateBlock(index + 1)}
+          icon={<DuplicateIcon />}
+          label={copy.label.duplicateBlock(index + 1)}
+          tooltip={copy.command.duplicate}
           onPress={onDuplicate}
-        >
-          {copy.command.duplicate}
-        </Button>
+        />
       )}
       {controls === undefined || block.pending.removed ? null : (
-        <Button
+        <IconButton
           ref={controls.deleteButton(instanceId)}
-          accessibleName={copy.label.deleteBlock(index + 1)}
+          icon={<TrashIcon />}
+          label={copy.label.deleteBlock(index + 1)}
+          tooltip={copy.command.delete}
+          tone="danger"
           onPress={() => {
             controls.remove(instanceId);
           }}
-        >
-          {copy.command.delete}
-        </Button>
+        />
       )}
     </div>
   );
-}
-
-function stripe(index: number): string {
-  return index % 2 === 1 ? STRIPE_CLASS : '';
 }
 
 function Cells({

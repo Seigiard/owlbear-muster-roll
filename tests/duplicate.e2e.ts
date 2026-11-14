@@ -81,15 +81,19 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 800 });
 });
 
-test('each NPC repeat block offers the GM "Дублировать…", named by its position from 1', async ({
+test('each NPC repeat block offers the GM a "Дублировать…" icon, named by its position from 1', async ({
   page,
   context,
 }) => {
-  // #when
+  // #given
   await openNpcTab(page, context, SKELETON);
 
-  // #then
-  await expect(duplicateButton(page, 1)).toHaveText(DUPLICATE);
+  // #when
+  await duplicateButton(page, 1).hover();
+
+  // #then: the tooltip gives sight the short name, and the accessible name adds the position.
+  await expect(page.getByRole('tooltip', { name: DUPLICATE })).toBeVisible();
+  await expect(duplicateButton(page, 1)).toHaveText('');
   expect(
     await page
       .getByRole('tabpanel')
@@ -119,7 +123,7 @@ test('"Дублировать…" opens a count of 1 in its repeat block, focuse
   }).toEqual({ blocks: 1, inSource: 1, value: '1', controls: [CONFIRM, CANCEL], error: 0 });
 });
 
-test('the count block sits on surface-bar with a line border and rounded-md', async ({
+test('the count block sits on surface-raised with a hairline border and rounded-lg', async ({
   page,
   context,
 }) => {
@@ -138,10 +142,10 @@ test('the count block sits on surface-bar with a line border and rounded-md', as
     borderStyle: await cssValue(shown, 'border-top-style'),
     radius: await cssValue(shown, 'border-top-left-radius'),
   }).toEqual({
-    background: await tokenColor(page, '--color-surface-bar'),
-    border: await tokenColor(page, '--color-line'),
+    background: await tokenColor(page, '--color-surface-raised'),
+    border: await tokenColor(page, '--color-hairline'),
     borderStyle: 'solid',
-    radius: '6px',
+    radius: '8px',
   });
 });
 

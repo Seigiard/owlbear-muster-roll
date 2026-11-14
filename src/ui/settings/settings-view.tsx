@@ -51,12 +51,15 @@ export function SettingsView({
   const wipe = useWipeActions({ catchingUp, client });
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       {confirmation}
       {snapshot.confirmation}
       {wipe.confirmation}
       <section aria-labelledby={headingId} className="flex flex-col gap-2">
-        <h2 id={headingId} className="text-section-heading">
+        <h2
+          id={headingId}
+          className="border-b border-hairline pb-2 text-section-heading text-text-muted"
+        >
           {copy.section.preset}
         </h2>
         <div className="flex flex-wrap items-start gap-2">
@@ -80,19 +83,28 @@ export function SettingsView({
         </div>
       </section>
       <section aria-labelledby={snapshotHeadingId} className="flex flex-col gap-2">
-        <h2 id={snapshotHeadingId} className="text-section-heading">
+        <h2
+          id={snapshotHeadingId}
+          className="border-b border-hairline pb-2 text-section-heading text-text-muted"
+        >
           {copy.section.snapshot}
         </h2>
         <div className="flex flex-wrap items-start gap-2">{snapshot.actions}</div>
       </section>
       <section aria-labelledby={roomCopyHeadingId} className="flex flex-col gap-2">
-        <h2 id={roomCopyHeadingId} className="text-section-heading">
+        <h2
+          id={roomCopyHeadingId}
+          className="border-b border-hairline pb-2 text-section-heading text-text-muted"
+        >
           {copy.section.roomCopy}
         </h2>
         <p>{roomCopyText(roomCopy)}</p>
       </section>
       <section aria-labelledby={wipeHeadingId} className="flex flex-col gap-2">
-        <h2 id={wipeHeadingId} className="text-section-heading">
+        <h2
+          id={wipeHeadingId}
+          className="border-b border-hairline pb-2 text-section-heading text-text-muted"
+        >
           {copy.section.wipe}
         </h2>
         <div className="flex flex-wrap items-start gap-2">{wipe.action}</div>

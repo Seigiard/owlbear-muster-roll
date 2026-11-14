@@ -25,6 +25,7 @@ const OPEN_ITEM = 'app.muster-roll/open-sheet';
 const PICKER_POPOVER = 'app.muster-roll/link-picker';
 const TOKEN_LINKED = 'Токен привязан';
 const NO_TOKEN = 'Нет токена';
+const SELECT_ON_MAP = 'Выделить на карте';
 const NO_SHEETS = 'Сначала создайте лист';
 const LINK_FAILED = 'Не удалось привязать. Попробуйте ещё раз.';
 const UI_CHANNEL = 'app.muster-roll/ui';
@@ -135,7 +136,7 @@ test('a pick writes the link, closes the popover, and both headers show the stat
 
   // #then
   await page.getByRole('tab', { name: 'Брок' }).click();
-  await expect(headerOf(page).getByText(TOKEN_LINKED)).toBeVisible();
+  await expect(headerOf(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
   expect({ before, link: await storedData(page, 'link:tok-new') }).toEqual({
     before: NO_TOKEN,
     link: { s: 'brok' },
@@ -184,13 +185,13 @@ test('"Отвязать лист" tombstones the link and the header shows "Не
   const background = await openRoom(page, context, ROOM);
 
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
-  await expect(headerOf(page).getByText(TOKEN_LINKED)).toBeVisible();
+  await expect(headerOf(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
 
   // #when
   await clickMenuItem(background, UNLINK_ITEM, 't-anya');
 
   // #then
-  await expect(headerOf(page).getByText(NO_TOKEN)).toBeVisible();
+  await expect(headerOf(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
   expect({
     link: await storedData(page, 'link:t-anya'),
     sheet: await storedData(page, 'sheet:anya'),
@@ -253,13 +254,13 @@ test(`a token deleted from the scene clears its link, and the header shows "${NO
 
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
   await changeScene(background, [{ add: ['t-anya', 't-gob', 'map'] }]);
-  await expect(headerOf(page).getByText(TOKEN_LINKED)).toBeVisible();
+  await expect(headerOf(page).getByRole('button', { name: SELECT_ON_MAP })).toBeVisible();
 
   // #when
   await changeScene(background, [{ remove: ['t-anya'] }]);
 
   // #then
-  await expect(headerOf(page).getByText(NO_TOKEN)).toBeVisible();
+  await expect(headerOf(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
   expect({
     link: await storedData(page, 'link:t-anya'),
     other: await storedData(page, 'link:t-gob'),
@@ -287,7 +288,7 @@ test('a scene change keeps the links of the scene left behind', async ({ page, c
 
   // #then
   await page.getByRole('tab', { name: 'Аня' }).click();
-  await expect(headerOf(page).getByText(TOKEN_LINKED)).toBeVisible();
+  await expect(headerOf(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
   expect({
     anya: await storedData(page, 'link:t-anya'),
     goblin: await storedData(page, 'link:t-gob'),
@@ -414,7 +415,7 @@ test('"Отвязать лист" leaves the token label as it is', async ({ pag
 
   // #when
   await clickMenuItem(background, UNLINK_ITEM, 't-anya');
-  await expect(headerOf(page).getByText(NO_TOKEN)).toBeVisible();
+  await expect(headerOf(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
 
   // #then
   expect({
@@ -556,11 +557,13 @@ function headerOf(page: Page): Locator {
 async function headerStatus(page: Page): Promise<string> {
   await page.getByRole('tab', { name: 'Брок' }).click();
 
-  const status = headerOf(page).getByText(new RegExp(`^(${TOKEN_LINKED}|${NO_TOKEN})$`));
+  const status = headerOf(page).getByRole('img', {
+    name: new RegExp(`^(${TOKEN_LINKED}|${NO_TOKEN})$`),
+  });
 
   await expect(status).toBeVisible();
 
-  return status.innerText();
+  return (await status.getAttribute('aria-label')) ?? '';
 }
 
 // A target by its shown text, as the text keeps the two names apart with a comma.

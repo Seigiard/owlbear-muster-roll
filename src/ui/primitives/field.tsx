@@ -15,7 +15,7 @@ export function Field({ accessibleName, disabledReason, ...fieldProps }: FieldPr
       isDisabled={disabledReason !== undefined}
       {...fieldProps}
     >
-      <Input className="touch-target w-full border-b border-dotted border-line-strong bg-transparent px-1 text-text data-disabled:opacity-50" />
+      <Input className="touch-target field-ghost w-full px-2 text-text data-disabled:opacity-50" />
       {disabledReason === undefined ? null : (
         <Text slot="description" className="text-label-sm text-text-muted">
           {disabledReason}

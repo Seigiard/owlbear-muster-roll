@@ -38,7 +38,7 @@ export function SnapshotConfirmation({
       role="group"
       aria-labelledby={textId}
       onKeyDown={handleKeyDown}
-      className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface-bar p-2"
+      className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-hairline bg-surface-raised p-2"
     >
       <p id={textId} className="min-w-0 flex-1 text-text">
         {text}

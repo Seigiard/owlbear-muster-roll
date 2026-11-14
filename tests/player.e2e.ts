@@ -25,7 +25,7 @@ const NO_GM_NO_DATA = 'ГМ ещё не заходил. Листов пока н
 const ADD = 'Добавить: Персонажи';
 const ADD_NPC = 'Добавить в «Противники»';
 const SETTINGS = 'Настройки';
-const ACTIONS = 'Действия с листом';
+const ACTIONS = 'Удалить лист';
 const LOAD_PRESET = 'Загрузить пресет';
 
 // A GM listed in the party with no page behind it: it never answers a request.
@@ -338,7 +338,6 @@ test('a GM rename and then deletion of the character a player has open reach the
 
   // #when
   await gm.window.getByRole('button', { name: ACTIONS }).click();
-  await gm.window.getByRole('menuitem', { name: 'Удалить' }).click();
   await gm.window.getByRole('group').getByRole('button', { name: 'Удалить' }).click();
 
   // #then
@@ -405,7 +404,6 @@ test('a GM with a delete confirmation open made a player sees it close on the sa
   const gm = await openGm(context, RECORDS);
 
   await gm.window.getByRole('button', { name: ACTIONS }).click();
-  await gm.window.getByRole('menuitem', { name: 'Удалить' }).click();
   await expect(confirmation(gm.window, 'Брок')).toBeVisible();
 
   // #when

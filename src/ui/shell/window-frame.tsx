@@ -14,13 +14,15 @@ export const CONTENT_CLASS = 'min-h-0 flex-1 overflow-auto p-3 -outline-offset-2
 
 const MULTI_TAB_CONTENT_CLASS = 'p-3 -outline-offset-2';
 
+// Navigation is neutral: muted at rest, lit under the pointer, a stronger fill when selected. The
+// accent stays for rolls and the map.
 const SIDEBAR_TAB_CLASS =
-  'touch-target inline-flex min-w-0 w-full items-center gap-1 rounded-md bg-surface-tab px-2 text-start text-text -outline-offset-2 data-selected:bg-surface data-selected:text-accent';
+  'touch-target inline-flex min-w-0 w-full items-center gap-1 rounded-md px-2 text-start text-text-muted -outline-offset-2 data-hovered:text-text [&[data-hovered]:not([data-selected])]:bg-fill data-selected:bg-fill-strong data-selected:font-medium data-selected:text-text';
 
 const SIDEBAR_SCROLLER_CLASS =
-  'min-h-0 flex-1 overflow-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+  'min-h-0 flex-1 overflow-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
 
-const SIDEBAR_FLOW_CLASS = 'flex min-h-full flex-col gap-1';
+const SIDEBAR_FLOW_CLASS = 'flex min-h-full flex-col gap-px';
 
 type SidebarSettings = { id: string; label: string; accessibleName: string };
 
@@ -152,7 +154,7 @@ function Sidebar({ entries, selected, onSelect, onAdd, settings }: SidebarProps)
           aria-label={section.title}
           data-sidebar-heading={section.title}
           style={{ order }}
-          className="px-2 pt-1 text-label-sm text-text-muted"
+          className="px-2 pt-2 pb-1 text-caption text-text-muted"
         ></h2>,
       );
       order += 1;
@@ -192,7 +194,7 @@ function Sidebar({ entries, selected, onSelect, onAdd, settings }: SidebarProps)
           key={`divider:${section.id}`}
           aria-hidden
           style={{ order }}
-          className="my-2 h-px shrink-0 bg-line"
+          className="mx-2 my-2 h-px shrink-0 bg-hairline"
         />,
       );
       order += 1;
@@ -213,7 +215,7 @@ function Sidebar({ entries, selected, onSelect, onAdd, settings }: SidebarProps)
     <Tabs
       orientation="vertical"
       data-sidebar-root
-      className="relative flex min-h-0 w-[10rem] shrink-0 flex-col bg-surface-bar shadow-[inset_-1px_0_0_var(--color-line)]"
+      className="relative flex min-h-0 w-[10rem] shrink-0 flex-col bg-surface-bar shadow-[inset_-1px_0_0_var(--color-hairline)]"
       selectedKey={selected}
       onSelectionChange={(key: Key) => {
         onSelect(String(key));
@@ -249,8 +251,13 @@ function SidebarContents({
                 id={settings.id}
                 aria-label={settings.accessibleName}
                 data-sidebar-entry
-                style={{ position: 'absolute', insetInline: 0, insetBlockEnd: 0 }}
-                className={`${SIDEBAR_TAB_CLASS} border-bs border-line px-3`}
+                style={{
+                  position: 'absolute',
+                  insetInline: 'var(--spacing-2)',
+                  insetBlockEnd: 'var(--spacing-2)',
+                  width: 'auto',
+                }}
+                className={SIDEBAR_TAB_CLASS}
               >
                 {settings.label}
               </Tab>
@@ -260,7 +267,7 @@ function SidebarContents({
         </div>
       </div>
       {settings === undefined ? null : (
-        <div aria-hidden className="h-[2rem] shrink-0 border-bs border-line" />
+        <div aria-hidden className="h-[3rem] shrink-0 border-bs border-hairline" />
       )}
     </>
   );

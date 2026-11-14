@@ -103,14 +103,13 @@ test('the GM sidebar groups sheets, keeps singles plain and pins Settings at 10 
 
   expect(settingsElement).not.toBeNull();
 
+  // The sidebar is the element that holds both its heading and Settings; its padding insets them.
   const width = await heading.evaluate((element, settingsTab) => {
-    let ancestor = element.parentElement;
+    const sidebar = element.closest('[data-sidebar-root]');
 
-    while (ancestor !== null && !ancestor.contains(settingsTab)) {
-      ancestor = ancestor.parentElement;
-    }
-
-    return Math.round(ancestor?.getBoundingClientRect().width ?? 0);
+    return sidebar?.contains(settingsTab) === true
+      ? Math.round(sidebar.getBoundingClientRect().width)
+      : 0;
   }, settingsElement);
 
   // #then

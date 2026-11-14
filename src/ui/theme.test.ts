@@ -36,19 +36,26 @@ describe('themeTokens', () => {
     expect(tokens).toEqual({
       '--mr-surface': '#404142',
       '--mr-surface-bar': '#303132',
+      '--mr-surface-raised': 'color-mix(in srgb, #404142 94%, #fff)',
       '--mr-surface-tab': 'color-mix(in srgb, #404142 90%, #505152)',
-      '--mr-surface-stripe': 'color-mix(in srgb, #404142 92%, #303132)',
+      '--mr-surface-stripe':
+        'color-mix(in srgb, color-mix(in srgb, #404142 94%, #fff) 96%, #505152)',
+      '--mr-fill': 'color-mix(in srgb, #505152 8%, transparent)',
+      '--mr-fill-strong': 'color-mix(in srgb, #505152 14%, transparent)',
       '--mr-line': 'color-mix(in srgb, #404142 80%, #505152)',
+      '--mr-hairline': 'color-mix(in srgb, #505152 10%, transparent)',
       '--mr-line-strong': 'color-mix(in srgb, #404142 50%, #505152)',
       '--mr-focus': '#101112',
       '--mr-text': '#505152',
       '--mr-text-muted': '#606162',
       '--mr-accent': '#101112',
+      '--mr-accent-soft': 'color-mix(in srgb, #101112 18%, transparent)',
+      '--mr-accent-ink': 'color-mix(in srgb, #101112 65%, #fff)',
       '--mr-accent-contrast': '#202122',
     });
   });
 
-  test('darkens the light accent and focus with the text colour', () => {
+  test('darkens the light accent, focus and ink with the text colour', () => {
     // #when
     const tokens = themeTokens(LIGHT);
 
@@ -56,10 +63,12 @@ describe('themeTokens', () => {
     expect({
       accent: tokens['--mr-accent'],
       focus: tokens['--mr-focus'],
+      ink: tokens['--mr-accent-ink'],
       contrast: tokens['--mr-accent-contrast'],
     }).toEqual({
       accent: 'color-mix(in srgb, #A0A1A2 65%, #E0E1E2)',
       focus: 'color-mix(in srgb, #A0A1A2 65%, #E0E1E2)',
+      ink: 'color-mix(in srgb, color-mix(in srgb, #A0A1A2 65%, #E0E1E2) 80%, #E0E1E2)',
       contrast: '#B0B1B2',
     });
   });

@@ -27,7 +27,7 @@ import {
 } from './support/room';
 
 const NEW_VERSION = 'Вышла новая версия. Перезагрузите страницу.';
-const ACTIONS = 'Действия с листом';
+const ACTIONS = 'Удалить лист';
 const DELETE = 'Удалить';
 const UNNAMED = 'Без имени';
 const SHEET_NAME = 'Имя листа';
@@ -244,7 +244,6 @@ test('a remote delete of the active sheet opens the first tab and closes its con
 
   await b.window.getByRole('tab', { name: 'Лиза' }).click();
   await b.window.getByRole('button', { name: ACTIONS }).click();
-  await b.window.getByRole('menuitem', { name: DELETE }).click();
   await expect(confirmation(b.window)).toBeVisible();
 
   // #when
@@ -390,7 +389,6 @@ function confirmation(page: Page): Locator {
 
 async function deleteShownSheet(page: Page): Promise<void> {
   await page.getByRole('tabpanel').getByRole('button', { name: ACTIONS }).click();
-  await page.getByRole('menuitem', { name: DELETE }).click();
   await confirmation(page).getByRole('button', { name: DELETE }).click();
 }
 

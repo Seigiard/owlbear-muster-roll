@@ -108,7 +108,12 @@ export function SheetBody({
     <FieldEditingContext value={editing}>
       <DiceSheetContext value={diceSheet}>
         <div className="@container">
-          <div ref={body} className="flex flex-wrap gap-4" data-sheet-body data-tab-index={openTab}>
+          <div
+            ref={body}
+            className="flex flex-wrap gap-x-4 gap-y-6"
+            data-sheet-body
+            data-tab-index={openTab}
+          >
             {(template.tabs[openTab]?.sections ?? []).map((section, index) => (
               <SheetSection
                 key={`${openTab}.${index}`}
