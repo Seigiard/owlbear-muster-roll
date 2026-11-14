@@ -1,9 +1,11 @@
 ---
 id: TASK-63.3
 title: Bind catch-up and adoption data to their valid phases
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@opencode'
 created_date: '2026-11-14T14:10:00Z'
+updated_date: '2026-11-14T21:34:00Z'
 labels:
   - architecture
   - state-model
@@ -37,3 +39,11 @@ CAP-3. TASK-48 already made catch-up, GM liveness, drift and the adoption gate o
 - [ ] #4 GM link remains an independent dimension; held requests, drift-answer eligibility, digest suppression and GM-return re-request rules retain AD-6/AD-7 behavior.
 - [ ] #5 The synchronous CatchUp interface and engine ownership of timers, staged records, persistence and replica swap remain intact; existing deterministic and integration checks plus the project full check pass, with before/after invariants and TASK-48 oracle evidence recorded.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Refactor only src/replica/catch-up.ts into explicit initialization and phase-owned ordinary/adopting state, with independent GM link and late-answer history.
+2. Reuse unchanged deterministic and engine catch-up/liveness/no-GM/import/wipe suites; run TASK-48 M1-M12 before and after, refreshing only source anchors.
+3. Run all six project full checks, record invariants and caller knowledge in spec-task-63.3-catch-up-phases.md, then merge into the TASK-63 integration branch for combined review and one auto-merge PR.
+<!-- SECTION:PLAN:END -->
