@@ -322,3 +322,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-61.10-wipe-confirmation.md`
   summary: Clear a catching-up refusal delivered after catch-up ends instead of leaving its loading message until the next action.
   evidence: Review-1 separate pre-existing finding (`adversarial-2`) records this late-refusal edge, notes that the same behavior exists in the base, and routes it outside the preservation repair for later decision.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.11-preset-upload-confirmation.md`
+  summary: An older preset file read can replace a newer file selection.
+  evidence: `choose(file)` resets to idle, awaits `readPreset(file)`, then unconditionally dispatches `file-error` or `diff-requested`; the current refactor preserves that ordering. No user incident was demonstrated. A future fix needs an attempt identity check and is outside this task.
