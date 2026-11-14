@@ -110,11 +110,9 @@ export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
       </div>
     );
 
-  // The edge is an inset outline in the sidebar divider's color: it draws above the sidebar fill and
-  // follows the radius, so the window stands apart from a busy map.
   return (
     <main
-      className={`flex ${layout.frameClassName ?? 'h-dvh'} min-w-0 overflow-clip rounded-window bg-surface text-body text-text outline-1 -outline-offset-1 outline-hairline`}
+      className={`window-edge flex ${layout.frameClassName ?? 'h-dvh'} min-w-0 overflow-clip rounded-window bg-surface text-body text-text`}
     >
       <Sidebar
         entries={layout.sidebar}
