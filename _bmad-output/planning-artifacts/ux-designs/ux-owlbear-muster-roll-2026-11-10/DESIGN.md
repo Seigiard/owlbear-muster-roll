@@ -223,7 +223,7 @@ A compact control draws 24 px and keeps a 32 px touch target through a transpare
 | Tooltip | A cell name in `{typography.caption}` `{colors.text}` on `{colors.surface-raised}`, with the floating shadow, `{rounded.md}` and padding `{spacing.1}` `{spacing.2}`. One line up to the window width, then it wraps. It sits `{spacing.1}` above the control, or below it when there is no room above |
 | Status banner | `{components.banner-warning}` or `{components.banner-danger}`, the width of the content column, at its top [ASSUMPTION] |
 | Access panel, duplicate count, Confirmation | `{components.panel}`, inline |
-| Repeat block | The block's rows, then its controls in `{typography.label-sm}`. Blocks after the first sit under a `{colors.hairline}` rule |
+| Repeat block | The block's rows, then its controls as icons, as the header icons are: token, "Дублировать…", "Удалить". A tooltip shows the command's short name, and the accessible name adds the block's position. Blocks after the first sit under a `{colors.hairline}` rule |
 | Selection mark | On a sidebar entry or a tab, a 6 px `{colors.accent}` dot with `{rounded.full}` after the name and its mark. On a repeat block, a 3 px `{colors.accent}` bar on its left edge. An entry or a tab has no room for a word, and the accessible name carries it |
 | Map toggle | "Выделить на карте" as `{components.button-secondary}`. Pressed: `{colors.accent-soft}` background, a 40% `{colors.accent}` edge and `{colors.accent-ink}` text |
 | Settings | Sections like preset sections, `{spacing.6}` apart. First action `{components.button-primary}`, the others `{components.button-secondary}` |
@@ -256,4 +256,4 @@ The builder is a top-level page, not inside Owlbear, so no live Owlbear theme ex
 - Don't put the accent on navigation or headings. It marks a roll and the map selection.
 - Do let the preset decide the arrangement of sheet content.
 - Don't add colour coding for game concepts. The extension does not know what a stat means.
-- Don't add icons where a word fits. The exceptions are the GM's header controls, each with a name and a tooltip.
+- Don't add icons where a word fits. The exceptions are the controls of a sheet header and of a repeat block, each with a name and a tooltip.
