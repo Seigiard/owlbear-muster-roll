@@ -12,6 +12,7 @@ At acceptance, the window mixed navigation rules with React rendering and effect
 - The window reads room data from the existing atoms and `useWindowView`, sends commands in its handlers, and performs browser effects in the window. There is no pending-operation identity, effect-consumption interface or flow-specific integration layer.
 - Browser code applies focus and scrolling when their targets mount. Core remains the owner of visibility and sheet policy; replica remains the owner of room data.
 - This chooses an architectural shape, not an implementation library, registry, generic emitter or shared machine runtime. TASK-61.5 records the reducer boundary and supersedes the earlier projection, lifecycle and effect-consumption interface design.
+- The same shape applies to every UI flow that leaves React: a pure reducer in its own module, `useReducer` in the component, and the commands, ports and browser effects in that component. The TASK-61.6 picker experiment (`prototypes/ui-second-flow/`) showed the rules transfer; its effect-running caller is a test harness, not a production layer.
 - Navigation is the first implemented validation slice of the wider UI-separation epic, not its completion. The existing window now uses this design; the remaining UI flows have not migrated.
 
 ## Considered options

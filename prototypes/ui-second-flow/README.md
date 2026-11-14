@@ -116,7 +116,7 @@ These eight mutation cases are calibrated against deliberate defects. Other asse
 | Facts instead of importing runtime owners | Window supplies committed view facts | Caller supplies readiness, role and replica target | Transfers; no new projection or store |
 | Direct events, not a general bus | Handler and command outcomes reach the reducer | Facts, user choices and scoped async results reach this flow | Supported for inbound scoped event delivery; picker render publication is not exercised |
 | Domain key as operation identity | Fresh create sheet key; accepted same-sheet delete retry limit in ADR 0002 | Target is not fresh; close retry can pick the same target | Does not transfer; picker uses a local monotonic attempt id |
-| Effect execution shape | `useReducer` plus React effects; no integration layer or effect ids | Experimental caller executes effect data and waits for several external ports | Flow-specific; not a proposal to retrofit navigation |
+| Effect execution shape | `useReducer` plus React effects; no integration layer or effect ids | Experimental caller executes effect data and waits for several external ports | Prototype-only. In production the picker takes navigation's shape: `useReducer` plus effects in the component; this caller is a test harness |
 | Completion priority | Projection and create/delete outcomes select navigation state | Matching replica arrival wins over later command failure; write/notify/close run once | Principle transfers; exact rules do not |
 | Runtime requirements | Pure navigation reducer tests; browser tests for mounted focus/reveal | Pure flow plus controlled promises and scheduler; no mounted UI | Both permit isolated rules; browser/lifecycle obligations remain separate |
 
