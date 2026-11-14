@@ -1,9 +1,9 @@
 ---
 name: Muster Roll
-description: Plain, dense sheets inside an Owlbear Rodeo window. Colours come from the live Owlbear theme; the hex values are its dark theme, the fallback for tests and mocks.
+description: Dense sheets inside an Owlbear Rodeo window, with a palette derived from the live Owlbear theme and one visual rule per kind of element; the hex values are the dark theme, the fallback for tests and mocks.
 status: final
 created: 2026-11-10
-updated: 2026-11-12
+updated: 2026-11-14
 sources:
   - ../../../specs/spec-muster-roll/SPEC.md
   - ../../../specs/spec-muster-roll/preset-format.md
@@ -13,11 +13,16 @@ sources:
 colors:
   surface: '#222639'
   surface-bar: '#1E2231'
+  surface-raised: '#2F3345'
   surface-tab: '#383C4D'
-  surface-stripe: '#222638'
+  surface-stripe: '#383B4C'
+  fill: '#FFFFFF14'
+  fill-strong: '#FFFFFF24'
   text: '#FFFFFF'
   text-muted: '#FFFFFFB3'
   accent: '#BB99FF'
+  accent-soft: '#BB99FF2E'
+  accent-ink: '#D3BDFF'
   accent-contrast: '#000000DE'
   line: '#4E5161'
   line-strong: '#91939C'
@@ -48,13 +53,14 @@ typography:
     lineHeight: '1.4'
   sheet-title:
     fontFamily: 'system-ui, sans-serif'
-    fontSize: 16px
+    fontSize: 18px
     fontWeight: '600'
     lineHeight: '1.3'
 rounded:
   sm: 4px
   md: 6px
   lg: 8px
+  xl: 12px
   full: 9999px
 spacing:
   '1': 4px
@@ -67,33 +73,50 @@ components:
     border: '{colors.line}'
   sidebar-entry:
     foreground: '{colors.text}'
+    hover: '{colors.fill}'
     radius: '{rounded.md}'
   sidebar-entry-active:
-    background: '{colors.surface}'
-    foreground: '{colors.accent}'
+    background: '{colors.accent-soft}'
+    foreground: '{colors.accent-ink}'
   tab:
-    background: '{colors.surface-tab}'
-    foreground: '{colors.text}'
-    radius: '{rounded.md}'
+    foreground: '{colors.text-muted}'
   tab-active:
-    background: '{colors.surface}'
-    foreground: '{colors.accent}'
+    foreground: '{colors.accent-ink}'
+    underline: '{colors.accent}'
+  section:
+    background: '{colors.surface-raised}'
+    radius: '{rounded.xl}'
+  value-well:
+    background: '{colors.fill}'
+    hover: '{colors.fill-strong}'
+    underline: '{colors.line-strong}'
+    radius: '{rounded.sm}'
   chip:
     foreground: '{colors.text}'
     border: '{colors.line}'
     radius: '{rounded.full}'
+  chip-pressed:
+    background: '{colors.accent-soft}'
+    foreground: '{colors.accent-ink}'
+    border: '{colors.accent}'
   button-primary:
     background: '{colors.accent}'
     foreground: '{colors.accent-contrast}'
-    radius: '{rounded.sm}'
+    radius: '{rounded.md}'
   button-secondary:
+    background: '{colors.fill}'
+    hover: '{colors.fill-strong}'
     foreground: '{colors.text}'
-    border: '{colors.line}'
-    radius: '{rounded.sm}'
+    radius: '{rounded.md}'
   dice-button:
-    foreground: '{colors.accent}'
-    border: '{colors.accent}'
-    radius: '{rounded.sm}'
+    background: '{colors.accent-soft}'
+    foreground: '{colors.accent-ink}'
+    hover-background: '{colors.accent}'
+    hover-foreground: '{colors.accent-contrast}'
+    radius: '{rounded.md}'
+  popover:
+    background: '{colors.surface-raised}'
+    radius: '{rounded.lg}'
   banner-warning:
     background: '{colors.warning-surface}'
     foreground: '{colors.warning-text}'
@@ -104,7 +127,7 @@ components:
 
 ## Brand & Style
 
-Muster Roll is a tool on the table, not a product with a personality. It looks like part of Owlbear. It takes its density and section structure from DummySheet (`imports/dummysheet-hero.png`): titled sections, label on the left, value on the right, no decoration. The layout reference is `mockups/shell.html` for the sheet, and `imports/sidebar-tabs-sketch.png` for the sidebar and the tab row; the mock's tab bar of sheets is out of date.
+Muster Roll is a tool on the table. It sits inside Owlbear and takes its hues from Owlbear's theme, but it has its own palette derived from them, and one visual rule for each kind of element, so a glance tells a value from a command and a roll from navigation. It takes its density and section structure from DummySheet (`imports/dummysheet-hero.png`): titled sections, label on the left, value on the right, no decoration. The layout reference is `mockups/shell.html` for the sheet, and `imports/sidebar-tabs-sketch.png` for the sidebar and the tab row; the mock's tab bar of sheets is out of date.
 
 ## Colors
 
@@ -114,17 +137,26 @@ Colours follow `OBR.theme` at runtime and change when the Owlbear theme changes.
 | --- | --- |
 | `{colors.surface}` | `theme.background.paper` |
 | `{colors.surface-bar}` | `theme.background.default` |
-| `{colors.surface-tab}` | `color-mix(in srgb, theme.background.paper 90%, theme.text.primary)` |
-| `{colors.surface-stripe}` | `color-mix(in srgb, theme.background.paper 92%, theme.background.default)` |
+| `{colors.surface-raised}` | Dark mode: `color-mix(in srgb, theme.background.paper 94%, #fff)`. Light mode: `color-mix(in srgb, theme.background.paper 35%, #fff)` |
+| `{colors.surface-tab}` | `color-mix(in srgb, theme.background.paper 90%, theme.text.primary)`. The preset builder only |
+| `{colors.surface-stripe}` | `color-mix(in srgb, {colors.surface-raised} 96%, theme.text.primary)` |
+| `{colors.fill}` | `color-mix(in srgb, theme.text.primary 8%, transparent)` |
+| `{colors.fill-strong}` | `color-mix(in srgb, theme.text.primary 14%, transparent)` |
 | `{colors.line}` | `color-mix(in srgb, theme.background.paper 80%, theme.text.primary)` |
 | `{colors.line-strong}` | `color-mix(in srgb, theme.background.paper 50%, theme.text.primary)` |
 | `{colors.focus}` | The same as `{colors.accent}` |
 | `{colors.text}` | `theme.text.primary` |
 | `{colors.text-muted}` | `theme.text.secondary` |
 | `{colors.accent}` | Dark mode: `theme.primary.main`. Light mode: `color-mix(in srgb, theme.primary.main 65%, theme.text.primary)` |
+| `{colors.accent-soft}` | `color-mix(in srgb, {colors.accent} 18%, transparent)` in dark mode, `12%` in light mode |
+| `{colors.accent-ink}` | Dark mode: `color-mix(in srgb, {colors.accent} 65%, #fff)`. Light mode: `color-mix(in srgb, {colors.accent} 80%, theme.text.primary)` |
 | `{colors.accent-contrast}` | `theme.primary.contrastText` |
 
-The light Owlbear primary gives 3.3:1 on the paper and 3.7:1 under its contrast text. Mixing in the text colour raises the light accent to 4.6:1 or more on every surface and 6.2:1 under the contrast text. The browser tests compute these ratios in both themes.
+The light Owlbear primary gives 3.3:1 on the paper and 3.7:1 under its contrast text. Mixing in the text colour raises the light accent to 4.6:1 or more on every surface and 6.2:1 under the contrast text. The dark primary gives only 3.9:1 on its own tint, so accent text uses `{colors.accent-ink}`: 4.5:1 or more on every plain surface and on `{colors.accent-soft}` over each of them, a striped row included. The ink never sits on a neutral fill: a selected entry shows no hover. The browser tests compute these ratios in both themes.
+
+The fills and `{colors.accent-soft}` are translucent, so one control reads the same on the paper, a card and a stripe.
+
+The accent has two jobs. `{colors.accent}` fills and draws: primary buttons, the selected tab's underline, the focus ring, the selection mark. `{colors.accent-ink}` writes: the selected sidebar entry, the selected tab, a pressed chip and a dice button. The accent means "selected" or "roll", and nothing else: section headings and plain values never take it.
 
 Warning and danger colours do not come from Owlbear. In light mode use the `-light` tokens. They appear only as surface and text pairs, in the status banner and the pending mark. `{colors.text-muted}` is for hints, status chips and section captions.
 
@@ -138,31 +170,46 @@ The window has the sidebar at the left, 10 rem wide and always shown, and the co
 
 ## Elevation & Depth
 
-No shadows inside the window. Layers differ by tone: `{colors.surface-bar}` behind `{colors.surface}`.
+Three layers differ by tone: `{colors.surface-bar}` (the sidebar), `{colors.surface}` (the content column) and `{colors.surface-raised}` (section cards, panels). Only floating layers, the menu and the tooltip, take a shadow: `0 0 0 1px {colors.line}, 0 8px 24px rgb(0 0 0 / 0.24), 0 2px 6px rgb(0 0 0 / 0.16)`, over a transparent 1 px border for forced colours.
 
 ## Shapes
 
-Tabs use `{rounded.md}` on the top corners. Sidebar entries use `{rounded.md}`. The window uses `{rounded.lg}`. Chips use `{rounded.full}`. Buttons use `{rounded.sm}`.
+Sidebar entries, buttons and dice buttons use `{rounded.md}`. A value well uses `{rounded.sm}` on its top corners. Stripes use `{rounded.sm}`. A section card and an inline panel use `{rounded.xl}`: the stripe's radius plus the card's `{spacing.2}` padding. The window and a menu use `{rounded.lg}`. Chips use `{rounded.full}`. Tabs have no shape: they are text with an underline.
+
+## Element language
+
+| Kind | Look | Elements |
+| --- | --- | --- |
+| Navigation | No fill at rest, `{colors.fill}` on hover; selected takes the tonal accent | Sidebar entries, tabs |
+| Editable value | A well: `{colors.fill}`, solid `{colors.line-strong}` underline | Text, number and select fields, the sheet name, the duplicate count |
+| Read-only value | Plain text in the same box, no well | A player's view, a field with no write access |
+| Command | Filled, never outlined: `{colors.fill}`, or `{colors.accent}` for the main action | Buttons, the map toggle |
+| Roll | `{colors.accent-soft}` with `{colors.accent-ink}`, solid accent on hover | Dice buttons |
+| Status | Outlined pill, `{typography.label-sm}` | Chips |
+| Group | Card on `{colors.surface-raised}` | Preset sections, Settings sections, inline panels |
+
+A pressed button scales to 0.96 over 150 ms with `ease-out`, only when the person has not asked for reduced motion.
 
 ## Components
 
 | Component | Visual rule |
 | --- | --- |
-| Sidebar | `{components.sidebar}` with a right rule. Entries in `{typography.body}` with `{components.sidebar-entry}`, padding `{spacing.1}` `{spacing.2}`, one line, cut short with an ellipsis. The active entry uses `{components.sidebar-entry-active}`. A sheet set heading in `{typography.label-sm}` `{colors.text-muted}`; its entries indented `{spacing.2}`. "+ Добавить" in `{colors.text-muted}`. A divider is a `{colors.line}` rule with `{spacing.2}` above and below. The Settings entry, the gear and "Настройки", sits at the bottom over a `{colors.line}` rule [ASSUMPTION] |
-| Tab row | Under the sheet header. `{components.tab}` for each tab; the active tab uses `{components.tab-active}` and joins the content area |
-| Sheet header | Name or single sheet title in `{typography.sheet-title}`, chips after it, `⋯` at the end, bottom rule in `{colors.line}` |
-| Field value | Arrangement comes from the preset. Even preset rows use `{colors.surface-stripe}`. An editable value has a dotted underline in `{colors.line-strong}` |
+| Sidebar | `{components.sidebar}` with a right rule and `{spacing.2}` padding. Entries in `{typography.body}` with `{components.sidebar-entry}`, padding-inline `{spacing.2}`, one line, cut short with an ellipsis. The active entry uses `{components.sidebar-entry-active}` in medium weight. A sheet set heading in `{typography.label-sm}` semibold `{colors.text-muted}`. "+ Добавить" in `{colors.text-muted}`. A divider is a `{colors.line}` rule with `{spacing.2}` above and below. The Settings entry sits at the bottom, `{spacing.2}` from the edges, under a `{colors.line}` rule [ASSUMPTION] |
+| Tab row | Under the sheet header, on `{colors.surface}`, over a `{colors.line}` rule. `{components.tab}` for each tab; the active tab uses `{components.tab-active}` in medium weight with a 2 px underline |
+| Sheet header | Name or single sheet title in `{typography.sheet-title}`, chips after it, `⋯` at the end, bottom rule in `{colors.line}`. An editable name is a `{components.value-well}` |
+| Field value | Arrangement comes from the preset. Even preset rows use `{colors.surface-stripe}` with `{rounded.sm}`. An editable value is a `{components.value-well}` with padding-inline `{spacing.2}`; a read-only value keeps the same box without the well |
 | Pending mark | Text "Ожидает" in `{typography.label-sm}`, as the warning surface and text pair, after the value |
-| Section | `{typography.section-heading}` in `{colors.accent}`, with a left rule in `{colors.line}` |
-| Chip | `{components.chip}`, `{typography.label-sm}` |
-| Dice button | `{components.dice-button}`, `{typography.label-sm}` |
-| Tooltip | A cell name in `{typography.label-sm}` `{colors.text}` on `{colors.surface-tab}`, with a `{colors.line}` border, `{rounded.sm}` and padding `{spacing.1}` `{spacing.2}`. One line up to the window width, then it wraps. It sits `{spacing.1}` above the control, or below it when there is no room above |
+| Section | `{components.section}` with `{spacing.2}` padding. `{typography.section-heading}` in `{colors.text}` |
+| Chip | `{components.chip}`, `{typography.label-sm}`. A pressed chip uses `{components.chip-pressed}` |
+| Dice button | `{components.dice-button}`, `{typography.label-sm}` in medium weight |
+| Menu | `{components.popover}` with the floating shadow and `{spacing.1}` padding. Items `{rounded.sm}`, `{colors.fill}` when focused |
+| Tooltip | A cell name in `{typography.label-sm}` `{colors.text}` on `{colors.surface-raised}`, with the floating shadow, `{rounded.md}` and padding `{spacing.1}` `{spacing.2}`. One line up to the window width, then it wraps. It sits `{spacing.1}` above the control, or below it when there is no room above |
 | Status banner | `{components.banner-warning}` or `{components.banner-danger}`, the width of the content column, at its top [ASSUMPTION] |
-| Access panel, duplicate count, Confirmation | Inline block on `{colors.surface-bar}` with a `{colors.line}` border and `{rounded.md}` |
+| Access panel, duplicate count, Confirmation | Inline block on `{colors.surface-raised}` with a `{colors.line}` border and `{rounded.xl}` |
 | Repeat block | The block's rows, then its controls in `{typography.label-sm}`. Blocks are separated by a `{colors.line}` rule |
 | Selection mark | On a sidebar entry or a tab, a 6 px `{colors.accent}` dot with `{rounded.full}` after the name and its mark. On a repeat block, a 3 px `{colors.accent}` bar on its left edge. An entry or a tab has no room for a word, and the accessible name carries it |
-| Map toggle | "Выделить на карте" as `{components.button-secondary}`. Pressed: `{colors.accent}` border and text |
-| Settings actions | First action `{components.button-primary}`, the others `{components.button-secondary}` |
+| Map toggle | "Выделить на карте" as `{components.button-secondary}`. Pressed: `{colors.accent-soft}` background and `{colors.accent-ink}` text |
+| Settings | Each section is a `{components.section}` with `{spacing.3}` padding. First action `{components.button-primary}`, the others `{components.button-secondary}` |
 | Focus | 2 px outline in `{colors.focus}` on every control. Never removed |
 | Disabled | Control at 50% opacity, with a text reason near it |
 
@@ -186,7 +233,9 @@ The builder is a top-level page, not inside Owlbear, so no live Owlbear theme ex
 
 ## Do's and Don'ts
 
-- Do follow the Owlbear theme in every window. The builder follows its Owlbear theme copies.
+- Do derive every colour from the Owlbear theme in every window. The builder follows its Owlbear theme copies.
+- Do keep one look per kind of element (see Element language). A new control takes the look of its kind.
+- Don't outline a command. An outline belongs to a status chip; a value's boundary is its underline.
 - Do let the preset decide the arrangement of sheet content.
 - Don't add colour coding for game concepts. The extension does not know what a stat means.
 - Don't add icons where a word fits, except the gear.
