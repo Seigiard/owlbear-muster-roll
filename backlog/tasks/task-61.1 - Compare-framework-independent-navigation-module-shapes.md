@@ -1,11 +1,11 @@
 ---
 id: TASK-61.1
 title: Compare framework-independent navigation module shapes
-status: In Progress
+status: Done
 assignee:
   - '@opencode'
 created_date: '2026-11-13T09:44:00Z'
-updated_date: '2026-11-13T09:57:00Z'
+updated_date: '2026-11-14T06:23:00Z'
 labels:
   - architecture
   - ui-decoupling
@@ -34,11 +34,11 @@ The owner selected framework-independent behavior with React retained for render
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The epic compares at least three materially different module shapes by interface knowledge, depth, locality, leverage and lifecycle cost.
-- [ ] #2 Each option accounts for projection/outcome order, stale async completions, repeated open requests, demotion, disposal and render replay.
-- [ ] #3 State and effects are separated without moving DOM, React or replica ownership into the navigation core.
-- [ ] #4 H1/H2/H3 verdicts distinguish source-grounded feasibility from behavior not yet demonstrated by a pilot; generic event delivery is justified or explicitly unnecessary.
-- [ ] #5 The recommendation states what transfers to the remaining UI and what the pilot cannot prove; owner approval remains a separate gate.
+- [x] #1 The epic compares at least three materially different module shapes by interface knowledge, depth, locality, leverage and lifecycle cost.
+- [x] #2 Each option accounts for projection/outcome order, stale async completions, repeated open requests, demotion, disposal and render replay.
+- [x] #3 State and effects are separated without moving DOM, React or replica ownership into the navigation core.
+- [x] #4 H1/H2/H3 verdicts distinguish source-grounded feasibility from behavior not yet demonstrated by a pilot; generic event delivery is justified or explicitly unnecessary.
+- [x] #5 The recommendation states what transfers to the remaining UI and what the pilot cannot prove; owner approval remains a separate gate.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -53,4 +53,12 @@ The owner selected framework-independent behavior with React retained for render
 2026-11-13: three fresh-context, read-only explorations compared pure transitions with an external runner, an active event-driven module, and an existing-store-centered presenter. Preliminary differences and unresolved choices are recorded in doc-1. No tests or pilot ran; H1-H6 remain untested. Detailed recommendation and owner approval are still pending; no task acceptance criteria are marked complete.
 
 2026-11-13: doc-2 now preserves the detailed source-grounded comparison and recommendation: pure rules inside a flow-specific headless module, reusing current host infrastructure where useful. An executed observation on the real ProjectionStore shows raw atom listeners receiving intermediate combinations of records, sync role and loaded; this constrains input publication but is not evidence of a broken React window. Lifecycle/effect reconciliation and owner review remain open. Storybook, registry and full UI audit have not been tested.
+
+2026-11-14: closed against the evidence that exists. #1 and #5: doc-2 compares pure transitions, an active module and a store-centered presenter by depth, locality, leverage, cost and constraints, names what transfers and what a pilot cannot prove, and left approval to the owner (ADR 0002). #2: doc-2 covers projection/outcome order (AD-10, the raw-atom observation) and stale identity; the TASK-61.5 reducer tests cover stale outcomes, repeated open requests and demotion; disposal and render replay do not arise in the reducer shape, where a React effect feeds facts after a committed render. #3: the reducer in src/ui/navigation.ts imports only types; DOM, React and replica ownership stayed in the window, core and replica. #4: doc-1 records H1/H2 as supported for navigation and H3 as needing no general bus, with the pilot's bounds.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Compared three module shapes for window navigation in doc-2 (pure transitions, active event-driven module, store-centered presenter). The owner chose pure transitions with React rendering (ADR 0002); the TASK-61.5 pilot implemented it as one reducer and showed H1/H2 supported for navigation and no need for a general event bus (H3). What transfers to other flows and what the pilot cannot prove are recorded in doc-1; H6 stays for TASK-61.6.
+<!-- SECTION:FINAL_SUMMARY:END -->

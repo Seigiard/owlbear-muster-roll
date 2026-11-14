@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@opencode'
 created_date: '2026-11-13T09:43:00Z'
-updated_date: '2026-11-14T05:51:00Z'
+updated_date: '2026-11-14T06:23:00Z'
 labels:
   - epic
   - architecture
@@ -57,4 +57,6 @@ Before TASK-61.5, window navigation combined workflow state, command outcomes, f
 2026-11-13: ADR-0002 records the accepted navigation shape. The 64-module functional audit is complete (TASK-61.2 Done). Storybook capability was demonstrated within the documented fixture limits; registry is unnecessary for current scope. An independent review of the research returned corrections, all accepted; the verdicts and the unchanged experiment evidence are preserved in the HTML report and doc-3. TASK-61.3 AC#4 remains open for comparative catalogue maintenance fit; no production migration or catalogue adoption was approved.
 
 2026-11-14: TASK-61.5 navigation pilot is Done on pull request #1 (`refactor/navigation-machine`). The window runs navigation through one pure reducer in `src/ui/navigation.ts`, with `useReducer`, command handlers and browser effects in `WindowRoot`. Full checks: 2863 unit tests, 512 browser tests, format, lint, types and build. Doc-1 records before/after ownership, the rejected machinery and the bounded evidence. This does not complete TASK-61; second-flow validation, Storybook fit and remaining UI coverage stay open.
+
+2026-11-14: TASK-61.1 closed on doc-2, ADR 0002 and the pilot. TASK-61.3 closed: Storybook rejected for the current scope by the owner, the preview host stays the catalogue; H4 rejected, H5 closed. Open children: TASK-61.6 (second flow, unblocked) and TASK-61.7.
 <!-- SECTION:NOTES:END -->

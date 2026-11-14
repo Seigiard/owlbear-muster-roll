@@ -3,7 +3,7 @@ id: doc-3
 title: 'Audit and experiment: UI ownership, Storybook and registry'
 type: specification
 created_date: '2026-11-13T10:10:00Z'
-updated_date: '2026-11-13T10:40:00Z'
+updated_date: '2026-11-14T06:23:00Z'
 tags:
   - architecture
   - ui-decoupling
@@ -25,7 +25,7 @@ Two read-only audits examined window workflows and builder/picker/preview workfl
 - **H1/H2:** the navigation shape is accepted as direction, not yet behaviorally validated. The pilot remains TASK-61.5.
 - **H3:** no general event bus is justified by this audit. Keep semantic events scoped to a flow; reconsider shared delivery only after the second flow supplies evidence.
 - **H4:** reject a runtime visual registry for the present scope on source-audit grounds. `preset-cell.tsx:130-172,301-326` dispatches on the closed `cell.kind` / `field.type` union owned by core; no plugin/discovery requirement was found. The registry story holds the identical three component references, so its equal browser result is true by construction, not evidence for this verdict.
-- **H5:** capability supported for the sampled frame/sheet and components reacting to a refused promise; fit and comparative maintenance cost are not judged. Storybook 10.6.7 built without live-room runtime imports. Editable views still depend on hooks, contexts, stores and an artificial fixture; they are not production states expressed as data/events-only.
+- **H5:** capability supported for the sampled frame/sheet and components reacting to a refused promise. Storybook 10.6.7 built without live-room runtime imports. Editable views still depend on hooks, contexts, stores and an artificial fixture; they are not production states expressed as data/events-only. Adoption verdict, 2026-11-14: rejected for the current scope. The existing preview host exercises the same modules with no added dependency, and the states a catalogue would add need record-update fixtures that Storybook does not supply; see Practical outcome for the measured cost.
 - **H6:** untested. Link picker is the preferred preliminary candidate; settings confirmations are an alternative. Selection remains deferred until after the navigation pilot under TASK-61.6 AC#1. Neither was extracted or executed in Storybook.
 
 ## Ownership matrix
@@ -102,9 +102,9 @@ No real roll, picker, settings, builder interaction, accessibility audit or full
 
 ## Practical outcome
 
-Use Storybook as a candidate interactive catalogue, with direct imports and explicit fixtures. It can exercise current real modules without a live room today. Do not require every module to be moved to a new registry or every hook to disappear before this is useful.
+Storybook was evaluated as a candidate interactive catalogue, with direct imports and explicit fixtures. It can exercise current real modules without a live room today. Do not require every module to be moved to a new registry or every hook to disappear before this is useful.
 
-Before adoption, compare the catalogue's maintenance cost with the existing preview and primitives fixture; that fit decision remains open. The scratch lockfile adds 180 package entries, including optional bindings and Babel packages, and re-hoists two existing transitive packages while preserving their prior nested versions. This count is a lockfile delta, not the installer total or a production bundle increase. Capability is supported; comparative fit is inconclusive. Keep flow tests headless and browser checks for actual DOM behavior.
+The fit decision was taken on 2026-11-14: Storybook is not adopted for the current scope, and the existing preview (`preview.html`) and primitives fixture remain the catalogue. They exercise the same modules with no added dependency, and the states a catalogue would add, an answered command and a real GM, need record-update fixtures that Storybook does not supply. The cost that weighed against it: The scratch lockfile adds 180 package entries, including optional bindings and Babel packages, and re-hoists two existing transitive packages while preserving their prior nested versions. This count is a lockfile delta, not the installer total or a production bundle increase. Capability is supported; adoption is rejected for the current scope. Keep flow tests headless and browser checks for actual DOM behavior.
 
 ## Evidence and validation
 
