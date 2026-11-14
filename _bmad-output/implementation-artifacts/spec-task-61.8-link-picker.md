@@ -2,7 +2,7 @@
 title: 'Run the link picker through a pure reducer'
 type: 'refactor'
 created: '2026-11-14'
-status: 'in-progress'
+status: 'done'
 route: 'oneshot'
 review_loop_iteration: 0
 context: []
@@ -22,7 +22,7 @@ context: []
 
 - The prototype caller stays historical. It is not copied into production, and production uses semantic reducer state rather than a generic effect list or effect ids.
 - Existing component and browser tests remain unchanged. The adjacent reducer tests migrate the TASK-61.6 rule matrix with literal expectations and mutation controls.
-- The batch-2 terminal-eligibility fix is complete for agent-owned work: successful close now makes `canPick` and `canOffer` false, and rendered target/label controls use those selectors. A rejected close still clears the attempt and permits a same-target retry. The task stays in progress because the owner-only live Owlbear AC5 check is pending; no live room was used here.
+- The batch-2 terminal-eligibility fix is complete: successful close now makes `canPick` and `canOffer` false, and rendered target/label controls use those selectors. A rejected close still clears the attempt and permits a same-target retry. At that stage, AC5 still required the owner's live Owlbear check; the later owner-reported results below complete it.
 
 ### Review Triage Log
 
@@ -33,11 +33,17 @@ context: []
 - Blind-review disposition 3 (demotion between arrival render and label write): deferred as unverified. No defect is claimed. The exact control is recorded in `deferred-work.md`: deliver the role update after the reducer selects writing but before `setItemLabel`, then observe whether a write occurs while the role is `PLAYER`.
 - Blind-review disposition 4 (direct offer-event unit cases): rejected as unnecessary. The unchanged component suite covers explicit offer toggles, missing/unreadable labels and suppression; no behavior gap was demonstrated.
 - Blind-review disposition 5 (command-rejection console diagnostic): deferred as polish. The component already handles rejected command outcomes, and no user-facing gap was shown.
-- Blind-review disposition 6 (live Owlbear AC5): a verification limit, not a code defect. The owner must check label persistence and popover close in a live room; AC5 remains unchecked.
+- Blind-review disposition 6 (live Owlbear AC5): a verification limit at review time, not a code defect. The later owner-reported live checks below satisfied AC5.
 
 ### Verification Record
 
 - Focused `herdr-run task618-attempt2-focused --wait -- bun test src/ui/picker/`: exit 0, 49 passed, 0 failed, 81 expectations. This includes the successful-close `canPick`/`canOffer` regression and the unchanged close-rejection retry control.
 - Full `herdr-run task618-attempt2-full --wait -- /Users/seigiard/.claude/artifacts/tdd-20261114-618/61.8/controls/run-full-check.sh`: exit 0. Format, lint, typecheck, unit, browser and build each exited 0. Unit: 2992 passed, 1 environment-only skip, 0 failed, 2993 tests across 108 files, 9143 expectations. Browser: 520 passed. Lint reported 169 existing warnings and 0 errors. Durable log: `/Users/seigiard/.cache/herdr-run/task618-attempt2-full.log`.
 - Fresh mutation controls were run from `controls/run-reducer-mutations.py`. `early-arrival-finish`, `demotion-gm-gate`, `stale-attempt-identity`, `notification-before-close` and `close-retry-allowed` each failed their focused behavioral assertion with exit 1. Logs and git-apply-compatible patches are in `/Users/seigiard/.claude/artifacts/tdd-20261114-618/61.8/controls/`; the reducer was restored exactly (`sha256 4f32f6abd23f9937e21200fbd9b95215f507b5af7f3b5c73c853d7131dea7a61`).
-- The locked `src/ui/picker/link-picker-reducer.test.ts` remained byte-identical to lock commit `9ca2d305020a3a06bf728f6242f99a0962e34fff`. Existing `src/ui/picker/link-picker.test.tsx` and `tests/link.e2e.ts` remained untouched. No live Owlbear room was used; owner AC5 is still pending.
+- The locked `src/ui/picker/link-picker-reducer.test.ts` remained byte-identical to lock commit `9ca2d305020a3a06bf728f6242f99a0962e34fff`. Existing `src/ui/picker/link-picker.test.tsx` and `tests/link.e2e.ts` remained untouched. No live Owlbear room was used in that automated run; the owner supplied the separate live evidence below.
+
+### Owner Live Verification and Completion
+
+- Implementation PR #18 merged. TASK-61.8 records the owner's successful checks for an empty token label receiving the sheet name, an existing label staying unchanged, explicit replacement after checking the offer, and a repeat block supplying its own name. Each scenario included saving the token link and automatic popover closure.
+- These are owner-reported live Owlbear results, not mock results or a new agent-run live check. Documentation PR #20 completed AC5 and marked TASK-61.8 Done with all five criteria checked.
+- The checkbox default remains unchanged: checked for an empty readable label, unchecked for an existing label, with manual override. The stable-prop lifetime assumption and unverified intermediate role-delivery interval remain documented limits; the four checks do not prove every SDK or lifecycle behavior.

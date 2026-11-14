@@ -3,7 +3,7 @@ id: doc-1
 title: 'Epic: framework-independent UI behavior and simple rendering'
 type: specification
 created_date: '2026-11-13T09:43:00Z'
-updated_date: '2026-11-14T08:29:00Z'
+updated_date: '2026-11-14T20:29:00Z'
 tags:
   - epic
   - architecture
@@ -16,7 +16,7 @@ tags:
 
 Muster Roll separates UI behavior from rendering across the room window, builder, picker and shared previews. A visual module receives explicit display data and reports user events. Workflow state, transitions and asynchronous outcome rules can run without React, DOM, Owlbear or replica startup.
 
-React remains the rendering technology. Navigation is the first validation slice, not the scope of the final goal. The epic stays open after that slice.
+React remains the rendering technology. Navigation supplied the first validation slice; completion also required the later owner-approved migrations. Those migrations and the approved coverage dispositions are now complete.
 
 The intended benefit is less caller knowledge: a change to one interaction should not require reconstructing rules scattered through render, effects and command callbacks. A smaller useState count or more files does not prove that benefit.
 
@@ -25,7 +25,7 @@ The intended benefit is less caller knowledge: a change to one interaction shoul
 - Parent: **TASK-61**. This document holds the overall goal, hypotheses, decisions and coverage map. Child tasks hold their own acceptance criteria and researched plans.
 - Owner-confirmed on 2026-11-13: make behavior framework-independent; retain React for rendering; validate navigation first; preserve the overall goal in a Backlog epic with tasks and hypotheses.
 - Accepted direction on 2026-11-13: pure transitions inside a separate navigation module; React remains rendering. See `docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md`.
-- Current stage: TASK-61.7 is Done. Every coverage row has a disposition. Open migrations: TASK-61.8 (link picker), TASK-61.9 (builder preview tab), TASK-61.10 (wipe probe for the settings flows). Field editing, repeat blocks, tree collapse, rename consequences and the small integration cleanups are excluded by the owner, 2026-11-14.
+- Current stage: TASK-61 is complete. All 11 current child tasks are Done, including the picker, builder preview, wipe, preset-upload and snapshot-import migrations. TASK-61.8 records the owner's four successful live Owlbear checks. Field editing, repeat blocks, tree collapse, rename consequences and the small integration cleanups retain their explicit owner exclusions from 2026-11-14.
 - Existing domain names come from `GLOSSARY.md`. Existing architecture decisions remain authoritative until explicitly revised.
 - Before starting or resuming a child task, read this document. After its evidence changes a hypothesis or coverage row, update this document through the Backlog CLI.
 
@@ -63,10 +63,10 @@ Statuses are **untested**, **supported**, **rejected** or **inconclusive**. Reco
 | --- | --- | --- | --- |
 | H1 | A framework-independent module can own a UI flow while rendering only consumes a coherent view and forwards events. | Exercise the navigation flow without React or DOM. Reject the proposed seam if transition ordering or workflow state remains in rendering, or tests still require mounting the window. | TASK-61.1, TASK-61.5 / supported for navigation; see the pilot outcome and its bounds below |
 | H2 | Explicit state transitions simplify navigation more than the current render/effect chain. | Compare pure transitions, an active module and an existing-store-centered presenter. Pilot the approved choice. Reject any choice that merely moves the old chain, exposes many setters, or introduces more caller knowledge. A machine library must justify its own cost. | TASK-61.1, TASK-61.5 / supported for navigation; see the pilot outcome and its bounds below |
-| H3 | A small, scoped event interface is enough; a general emitter may be unnecessary. | Trace projection updates, user events, command outcomes, open acknowledgments and DOM intents. Check stale completions and disposal. Add a general emitter only if actual delivery needs remain unmet; reject it if direct events and the existing subscription mechanism suffice. | TASK-61.1, TASK-61.6 / supported for inbound scoped event delivery within navigation and the executable picker experiment, including stale results and disposal. The prototype has no async view publication/render subscription API; outbound requirements remain untested. Shared command runner rejected because execution requirements differ; see the second-flow outcome |
+| H3 | A small, scoped event interface is enough; a general emitter may be unnecessary. | Trace projection updates, user events, command outcomes, open acknowledgments and DOM intents. Check stale completions and disposal. Add a general emitter only if actual delivery needs remain unmet; reject it if direct events and the existing subscription mechanism suffice. | TASK-61.1, TASK-61.6 / supported for inbound scoped event delivery within navigation and the executable picker experiment, including stale results and disposal. Production picker migration also uses direct reducer actions (TASK-61.8). The prototype has no async view publication/render subscription API; no general outbound-publication claim is made. Shared command runner rejected because execution requirements differ; see the second-flow and production outcomes |
 | H4 | A registry makes isolated visual modules easier to select, compose or discover than plain imports. | Compare both against a representative frame and sheet view. Require a concrete lookup or composition need. Reject the registry if it only renames imports or requires broad shared context. | TASK-61.3 / rejected for current scope by the source audit of closed-union dispatch/no discovery need; equal-by-construction stories are not evidence |
 | H5 | Storybook gives useful isolated state and interaction checks without Owlbear or replica startup. | Exercise real visual modules with explicit fixtures and events. Compare the dependency/configuration cost with the existing preview host. Reject tool-only setup as evidence; static stories alone do not prove asynchronous behavior. | TASK-61.3 / capability supported; adoption rejected for the current scope on 2026-11-14. The existing preview host shows the same modules with no new dependency, and the states a catalogue would add (an answered command, a real GM) need fixture work Storybook does not remove. Cost measured: two dev dependencies, 180 lock entries, a second Vite config, a 7 MB static catalogue. See doc-3 |
-| H6 | The separation learned from navigation transfers to a materially different UI flow. | Choose a second flow after the pilot. Record what transfers and what stays specific. Reject a shared mechanism if the second use needs flags, duplicated state or a larger interface than separate modules. | TASK-61.6 / supported for the executable picker experiment, not a production migration; pure rules/facts/external effects transfer, but attempt identity, sequential ports and lifecycle stay flow-specific; see the second-flow outcome |
+| H6 | The separation learned from navigation transfers to a materially different UI flow. | Choose a second flow after the pilot. Record what transfers and what stays specific. Reject a shared mechanism if the second use needs flags, duplicated state or a larger interface than separate modules. | TASK-61.6 / supported by the executable picker experiment and the completed production picker migration (TASK-61.8); pure rules/facts/external effects transfer, while attempt identity, sequential ports and lifecycle stay flow-specific. The owner confirmed the four live label/popover scenarios; the caller and deferred limits remain explicit |
 
 ## Navigation alternatives and accepted direction
 
@@ -86,22 +86,22 @@ Questions that were open before approval: who builds the coherent display snapsh
 
 ## End-state coverage map
 
-The functional audit is recorded in [doc-3](<doc-3 - Audit-and-experiment-UI-ownership-Storybook-and-registry.md>), including detailed inputs, state, effects, test surfaces, file-group mapping and explicit unresolved questions. The summary below records its current dispositions, not completed migrations. The review corrections to the audit are preserved there.
+The functional audit is recorded in [doc-3](<doc-3 - Audit-and-experiment-UI-ownership-Storybook-and-registry.md>), including detailed inputs, state, effects, test surfaces, file-group mapping and explicit unresolved questions. The summary below records final dispositions and completed migration owners. The review corrections and starting ownership map remain historical evidence in doc-3.
 
-| UI flow | Starting evidence | Next disposition |
+| UI flow | Starting evidence | Final disposition |
 | --- | --- | --- |
 | Window navigation | `src/ui/main.tsx` owns workflow and reads DOM focus; `sheet-body.tsx:72-101` consumes reveal after mount | **Meets goal**: TASK-61.5, one pure reducer in `src/ui/navigation.ts`, `useReducer` and browser effects in the window; ADR 0002 |
 | Window frame and sidebar/tab drawing | WindowFrame has a data/callback model; direct imports work in the isolated host | **Meets goal**: existing seam; Storybook rejected (TASK-61.3), the preview host remains the catalogue |
 | Field editing and repeat-block actions | Draft/save/outcome rules span hooks and local values; repeat focus shares mount-dependent intents | **Owner exclusion** (2026-11-14): `use-field-edit.ts` carries IME, blur and pagehide behavior under browser tests; a migration is reopened only by a field bug that the current shape causes |
 | Dice interaction in the window | Evaluation/policy already outside React; button owns its visual request state | **Meets goal**: evaluation and visibility live in core and replica; the button keeps only its shown state |
-| Settings upload, import and wipe confirmations | `src/ui/settings/`, `src/ui/preset-actions.tsx` own file/check/confirm/outcome workflows | **Requires migration**: TASK-61.10 runs the wipe confirmation through a reducer as the probe; preset upload and snapshot import get tasks or an exclusion from its result |
-| Token picker | React effects own link-arrival, label ports, timeout and close/retry | **Requires migration**: TASK-61.8, the rules of `prototypes/ui-second-flow/picker-flow.ts` in `link-picker.tsx` through `useReducer`, ports in the component, attempt identity for same-target retries; owner live-room check of the label ports |
+| Settings upload, import and wipe confirmations | `src/ui/settings/`, `src/ui/preset-actions.tsx` own file/check/confirm/outcome workflows | **Meets goal**: TASK-61.10, TASK-61.11 and TASK-61.12 are Done. Pure `wipe-actions-reducer.ts`, `preset-upload-reducer.ts` and `snapshot-actions-reducer.ts` own transitions; their components retain commands and browser effects. The wipe probe led to the two separate migrations, not a shared framework |
+| Token picker | React effects own link-arrival, label ports, timeout and close/retry | **Meets goal**: TASK-61.8 is Done. `src/ui/picker/link-picker-reducer.ts` owns the rules, `link-picker.tsx` holds `useReducer` and the ports, and local attempt identity protects same-target retries. The owner confirmed label writes and automatic popover closure in all four live scenarios; notes are in TASK-61.8 |
 | Map-selection interaction in the window | Headless observation exists; main still supplies platform selection effects | **Meets goal**: `map-selection.ts` owns observation lifetime and stale reads; the select/deselect calls in `main.tsx` are the component's effects, as the shape prescribes |
 | Builder document, draft and undo | Document/store already separate edits/history/draft from React | **Meets goal**: `document.ts` and `builder-store.ts` own edits, history and draft without React |
-| Builder tree, forms and preview selection | Rename consequences and shown-tab rule remain candidates; tree-collapse oracle not located | **Requires migration** for the preview shown tab only: TASK-61.9. **Owner exclusion** (2026-11-14) for tree collapse and rename consequences: no located oracle, no user-visible gain |
+| Builder tree, forms and preview selection | Rename consequences and shown-tab rule remain candidates; tree-collapse oracle not located | **Meets goal** for the preview shown tab: TASK-61.9, `src/builder/preview-navigation.ts`; `PreviewPane` no longer updates state during render. **Owner exclusion** (2026-11-14) for tree collapse and rename consequences: no located oracle, no user-visible gain |
 | Standalone preview and shared sheet rendering | One renderer retained; four contexts carry implicit cell inputs; pure cell-kind dispatch has no plugin lookup need | **Meets goal**: one renderer; its reveal consumer entered the navigation pilot |
 
-Each row must finish as **meets goal with evidence**, **requires linked migration**, or **owner-approved exclusion**. An unaudited row is not an exclusion.
+Every row now finishes as **meets goal with evidence** or **owner-approved exclusion**. No required migration remains open. An unaudited row is not an exclusion.
 
 ## Work graph
 
@@ -111,14 +111,16 @@ Each row must finish as **meets goal with evidence**, **requires linked migratio
 | TASK-61.2 | Verify ownership and coverage across all UI flows | Completed functional audit, review corrections accepted |
 | TASK-61.3 | Test visual isolation, registry and Storybook hypotheses | Done; registry and Storybook rejected for the current scope |
 | TASK-61.4 | Owner-approved separation contract and pilot scope | Superseded by the owner's direct approval of the pilot; archived |
-| TASK-61.5 | Production navigation pilot with behavioral evidence | TASK-61.2; owner explicitly approved implementation, superseding the earlier prototype gate |
-| TASK-61.6 | Executable picker experiment; bounded H3/H6 support, shared machinery rejected for now; production unchanged | TASK-61.5 |
+| TASK-61.5 | Done; production navigation pilot with behavioral evidence | TASK-61.2; owner explicitly approved implementation, superseding the earlier prototype gate |
+| TASK-61.6 | Done; executable picker experiment, bounded H3/H6 support; production was unchanged by that experiment | TASK-61.5 |
 | TASK-61.7 | Done; every coverage row disposed, three migration tasks created, the rest excluded by the owner on 2026-11-14 | TASK-61.6 |
-| TASK-61.8 | Link picker runs through a pure reducer in `link-picker.tsx` | TASK-61.7 |
-| TASK-61.9 | Builder preview decides its shown tab outside render | TASK-61.7 |
-| TASK-61.10 | Wipe confirmation runs through a pure reducer; verdict for preset upload and snapshot import | TASK-61.7 |
+| TASK-61.8 | Done; production picker reducer and owner-confirmed live label/popover checks | TASK-61.7 |
+| TASK-61.9 | Done; builder preview decides its shown tab outside render | TASK-61.7 |
+| TASK-61.10 | Done; wipe reducer probe supported separate preset-upload and snapshot-import migrations | TASK-61.7 |
+| TASK-61.11 | Done; preset-upload confirmation uses its own pure reducer | TASK-61.10 |
+| TASK-61.12 | Done; snapshot-import confirmation uses its own pure reducer | TASK-61.10 |
 
-TASK-61.7 produced the three migration tasks above; it did not finish those migrations. Those tasks remain children of TASK-61. Create their plans only after researching the actual current code. A failed hypothesis can change or remove proposed work without changing the overall goal.
+TASK-61.7 identified three migrations. The wipe probe then produced TASK-61.11 and TASK-61.12, each with its own reducer. All five production migrations are now Done. TASK-63 concerns projection, room-copy and catch-up state in a separate epic; it is not unfinished UI-separation scope.
 
 ## Evidence and completion
 
@@ -133,7 +135,7 @@ Close TASK-61 only when its acceptance criteria are verified: the owner has conf
 
 ## Epic closeout checklist
 
-TASK-61 closes when every line below holds. The list stays incomplete while a migration task is open.
+All closeout items below are verified. This closes the owner-approved scope, including its exclusions, rather than claiming that all React state or all deferred issues have been removed.
 
 - [x] Owner confirmed the end state (2026-11-13) and the shape for every flow (ADR 0002, CLAUDE.md block, 2026-11-14).
 - [x] H1-H6 carry evidence-backed verdicts: see *Hypotheses and falsification*.
@@ -141,9 +143,28 @@ TASK-61 closes when every line below holds. The list stays incomplete while a mi
 - [x] A second flow supplied evidence: TASK-61.6, `prototypes/ui-second-flow/README.md`.
 - [x] Visual isolation demonstrated and the Storybook/registry hypotheses closed: TASK-61.3, doc-3.
 - [x] Every coverage row has a final disposition: *End-state coverage map*, TASK-61.7.
-- [ ] TASK-61.8 link picker: Done, with the owner's live-room check in its notes.
-- [ ] TASK-61.9 builder preview tab: Done.
-- [ ] TASK-61.10 wipe probe: Done, with the verdict for preset upload and snapshot import recorded here and, if they become tasks, those tasks Done.
+- [x] TASK-61.8 link picker: Done, with the owner's four live-room checks in its notes (implementation PR #18, closeout PR #20).
+- [x] TASK-61.9 builder preview tab: Done.
+- [x] TASK-61.10 wipe probe: Done; the shape paid off and led to separate TASK-61.11 and TASK-61.12 migrations.
+- [x] TASK-61.11 preset-upload confirmation and TASK-61.12 snapshot-import confirmation: both Done.
+
+## Epic closeout outcome
+
+All 11 current child tasks are Done and have complete acceptance criteria. TASK-61.4 remains archived because direct owner approval superseded that gate.
+
+| Epic criterion | Completion evidence |
+| --- | --- |
+| 1. Owner-confirmed end state | Owner confirmation and target ownership above; ADR 0002 and the project instructions retain React rendering with flow-specific pure reducers. |
+| 2. Hypotheses and consequences | H1-H6 have bounded verdicts above. Registry and Storybook adoption are rejected for the accepted scope; untested publication requirements remain explicit. |
+| 3. Navigation production pilot | TASK-61.5, `src/ui/navigation.ts`, unchanged browser contracts and the recorded passing checks in its task notes. |
+| 4. Transfer to a second flow | TASK-61.6 experiment, followed by TASK-61.8 production integration and owner-confirmed label/popover behavior. |
+| 5. Visual isolation | TASK-61.3 and doc-3: real visual modules exercised without Owlbear or replica; the preview host remains the catalogue. |
+| 6. Complete coverage dispositions | The final coverage map above; required migrations TASK-61.8 through TASK-61.12 are Done, and other retained React behavior has explicit owner exclusions or already-separated owners. |
+| 7. Consistent architecture and remaining work | ADR 0002, the completed picker spec, direct reducer tests and browser-effect ownership agree. Existing glossary terms remain unchanged; deferred issues stay in `deferred-work.md`. |
+
+Per-child verification results belong to their recorded code states; this documentation closeout claims no new runtime test run. The owner-reported live checks cover the four picker label/popover scenarios, not every SDK behavior or lifecycle interval.
+
+The stable-prop assumption in the picker, the unverified intermediate role-delivery interval, and pre-existing overlapping file-read candidates remain documented limits. Closing this epic neither fixes them nor widens the accepted scope. Owner exclusions for field editing, repeat blocks, tree collapse, rename consequences and small integration cleanups remain in force.
 
 ## Durable references
 
@@ -167,7 +188,7 @@ The pilot rejected its own first answers to the open questions above. A coherent
 
 Validation on the final branch: 2863 unit tests and all 512 Chromium browser tests passed with `tests/` unchanged from `master`; format, lint, typecheck and build passed. A live Owlbear room was not checked; browser tests use the mock platform. No deployment ran.
 
-H1 is supported for navigation. H2 is supported: render-phase state updates are gone and the caller no longer knows transition ordering; line counts were not the measure. At the navigation pilot, H3 remained inconclusive across flows and H6 was untested. H4 is rejected and H5 is closed: capability supported, adoption rejected for the current scope. The second-flow outcome below updates H3/H6 without changing the navigation design. TASK-61 stays open; remaining coverage rows and any production migration require further bounded work.
+H1 is supported for navigation. H2 is supported: render-phase state updates are gone and the caller no longer knows transition ordering; line counts were not the measure. At the navigation pilot, H3 remained inconclusive across flows and H6 was untested. H4 is rejected and H5 is closed: capability supported, adoption rejected for the current scope. The second-flow outcome below updates H3/H6 without changing the navigation design. At the navigation pilot's close, TASK-61 remained open for the remaining coverage rows and production migrations. Their subsequent completion is recorded in the closeout outcome above.
 
 
 ## Second-flow outcome: picker experiment (TASK-61.6)
@@ -184,4 +205,4 @@ Final project checks passed: format, lint, typecheck, 2920 unit cases (plus one 
 
 Facts and returned state are borrowed immutable snapshots, including nested objects; mutations outside events are unsupported. Scheduling/cancellation callbacks must not throw. Answered-without-arrival and unresolved close can wait indefinitely, as in the baseline; only label read/write/notification waits are bounded. No scheduler-exception machinery, second command timer or close timeout was added.
 
-Production picker migration stays open under TASK-61.7 and needs separate research and approval. Its real React lifetime, replica subscription, SDK label writes and popover close remain integration obligations. Settings, field editing, builder behavior and shared rendering gaps above remain open; this experiment does not settle them or close TASK-61. Further limits are appended to `_bmad-output/implementation-artifacts/deferred-work.md`.
+At the end of TASK-61.6, production picker migration remained open and required separate approval and integration evidence. TASK-61.8 subsequently supplied the production integration and owner-confirmed label/popover checks. The experiment alone did not settle the other coverage rows or close TASK-61; completed migrations and owner exclusions are recorded above. Remaining limits stay in `_bmad-output/implementation-artifacts/deferred-work.md`.
