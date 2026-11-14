@@ -2,7 +2,7 @@
 title: 'Make room-copy write phases and deferred work explicit'
 type: 'refactor'
 created: '2026-11-14'
-status: 'in-progress'
+status: 'in-review'
 route: 'oneshot'
 review_loop_iteration: 0
 context: []
@@ -29,3 +29,5 @@ context: []
 - Phase invariants: at most one active lifecycle has a completion handle; an import awaits that handle before starting; a trigger during an active lifecycle sets one deferred rerun; ordinary verification clears owed work only after read-back holds, while import verification keeps AD-9 replacement and supersession rules. `stopped` retains an already-started operation reference without claiming to cancel its metadata call.
 - Caller knowledge before/after: callers know only the existing `RoomCopy` methods and the injected gate, role, generation and records queries before and after this slice. They do not inspect lifecycle or deferred state, and no public interface, message, storage or timeout contract changed. The superseded-import early return still exits before the follow-up tail; the documented import-after-demotion limitation remains unchanged.
 - Mutation evidence: the baseline at `3163867e49ac1015f0fee273636f7911d510ea87` killed TASK-50 R1-R16 (16/16). The final run uses the refreshed anchors in `tools/mutants/room-copy.json` and must report behavioral assertion failures for every mutant, not compilation failures.
+- Final validation at `bfff746ba23d4fa2728c768af965ac4136ed4298`: focused 120 pass; full unit 3009 pass, 1 environment-only DOM skip; browser 520 pass; format, lint, typecheck and build exit 0. Baseline and final mutation runs each killed all R1-R16 on behavioral assertions, with no stale controls. Tests remain unchanged. Evidence: `/Users/seigiard/.claude/artifacts/tdd-20261114-220338/63.2/implementer-1.report.md` and its named command/exit/log files.
+- Integration: the user requested TASK-63.3 and closure of TASK-63 in one PR. Both slices receive one closing code review on the integration branch; this slice has passed its chain validation.

@@ -1,9 +1,11 @@
 ---
 id: TASK-63
 title: 'Epic: make projection, room-copy and catch-up operation state explicit'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@opencode'
 created_date: '2026-11-14T14:09:00Z'
+updated_date: '2026-11-14T21:32:00Z'
 labels:
   - architecture
   - state-model
@@ -33,3 +35,11 @@ Maintainers currently reconstruct valid operation phases from separate flags and
 - [ ] #3 Picker remains owned by TASK-61.8; settings decisions remain owned by TASK-61.10; accepted dice and excluded UI dispositions remain intact.
 - [ ] #4 The work preserves module interfaces, room protocol, storage formats and existing async guarantees without adding a shared state-machine runtime.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Preserve the completed TASK-63.1 projection delivery work.
+2. Complete TASK-63.2 room-copy phase ownership, then TASK-63.3 catch-up/adoption phase ownership in dependency order.
+3. Validate both slices, run the closing combined review, close all TASK-63 criteria, and publish one PR with auto-merge as requested.
+<!-- SECTION:PLAN:END -->

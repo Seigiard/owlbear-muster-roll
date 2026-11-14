@@ -1,11 +1,11 @@
 ---
 id: TASK-63.2
 title: Make room-copy write phases and deferred work explicit
-status: In Progress
+status: Done
 assignee:
   - '@opencode'
 created_date: '2026-11-14T14:10:00Z'
-updated_date: '2026-11-14T21:04:00Z'
+updated_date: '2026-11-14T21:32:00Z'
 labels:
   - architecture
   - state-model
@@ -31,11 +31,11 @@ CAP-2. TASK-50 already placed room-copy policy behind RoomCopy. Inside that modu
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 One production state owns the active write phase and ordinary/import mode; deferred work and rerun requests have an explicit owner; saved-copy status remains independent of an in-flight operation.
-- [ ] #2 At most one ordinary/import metadata write lifecycle owns the write slot; an import waits for the preceding ordinary write, and triggers during a write produce the existing follow-up write rather than being lost.
-- [ ] #3 A write reports saved only after read-back verification; read, encoding, capacity, write and verification failures preserve the previous copy and required notices according to AD-8/AD-9.
-- [ ] #4 Visibility/resume changes, catch-up gating, higher generations, unreadable/older/newer copies and replacement preserve current behavior; stop and demotion retain their current guarantees without pretending to cancel a port call already started.
-- [ ] #5 Room-copy and import/wipe integration checks plus the project full check pass; task evidence records phase invariants and caller knowledge, and reuses TASK-50 behavioral/mutation oracles where applicable.
+- [x] #1 One production state owns the active write phase and ordinary/import mode; deferred work and rerun requests have an explicit owner; saved-copy status remains independent of an in-flight operation.
+- [x] #2 At most one ordinary/import metadata write lifecycle owns the write slot; an import waits for the preceding ordinary write, and triggers during a write produce the existing follow-up write rather than being lost.
+- [x] #3 A write reports saved only after read-back verification; read, encoding, capacity, write and verification failures preserve the previous copy and required notices according to AD-8/AD-9.
+- [x] #4 Visibility/resume changes, catch-up gating, higher generations, unreadable/older/newer copies and replacement preserve current behavior; stop and demotion retain their current guarantees without pretending to cancel a port call already started.
+- [x] #5 Room-copy and import/wipe integration checks plus the project full check pass; task evidence records phase invariants and caller knowledge, and reuses TASK-50 behavioral/mutation oracles where applicable.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -45,3 +45,9 @@ CAP-2. TASK-50 already placed room-copy policy behind RoomCopy. Inside that modu
 2. Reuse unchanged room-copy and engine room-copy/import/wipe tests plus applicable TASK-50 mutation controls. Preserve the documented import-after-demotion limitation.
 3. Run the six project full checks, record phase invariants and before/after caller knowledge in spec-task-63.2-room-copy-phases.md, then run blind review and code review.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+RoomCopy now owns the active ordinary/import lifecycle and completion in WriteLifecycle, with DeferredWork separate from saved-copy status. Existing interfaces and documented limitations are unchanged. Verified: focused 120 pass; unit 3009 pass/1 environment-only skip; browser 520 pass; format/lint/typecheck/build pass; baseline and final R1-R16 mutation controls all killed. Evidence is recorded in spec-task-63.2-room-copy-phases.md. Closing review will cover this slice together with TASK-63.3 in the requested single PR.
+<!-- SECTION:FINAL_SUMMARY:END -->
