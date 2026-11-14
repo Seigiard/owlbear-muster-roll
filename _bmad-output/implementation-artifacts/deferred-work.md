@@ -327,6 +327,10 @@
   summary: An older preset file read can replace a newer file selection.
   evidence: `choose(file)` resets to idle, awaits `readPreset(file)`, then unconditionally dispatches `file-error` or `diff-requested`; the current refactor preserves that ordering. No user incident was demonstrated. A future fix needs an attempt identity check and is outside this task.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.8-link-picker.md`
+  summary: Verify the intermediate role-delivery race between selecting a label write and calling `setItemLabel`.
+  evidence: This interval is unverified, and no reproduced defect is claimed. The exact control is to deliver the role update after the reducer selects the writing phase but before `setItemLabel`, then observe whether the write is called while the role is `PLAYER`; any fix requires a separate contract decision.
+
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-61.12-snapshot-import-confirmation.md`
   summary: An older snapshot file read can replace a newer file selection.
   evidence: Focused review pre-existing finding `adversarial-1` points to `choose(file)` resetting to idle, awaiting `readSnapshotFile(file)`, then unconditionally dispatching `file-error` or requesting a check. The same ordering exists at preservation baseline `840ed10a0e799e800551a75916c481283ec2f9a8`. No user incident was reproduced; this race candidate remains outside the behavior-preserving reducer extraction.

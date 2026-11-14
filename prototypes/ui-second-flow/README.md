@@ -2,17 +2,17 @@
 
 ## Result and scope
 
-Pure decisions transfer from navigation to the picker. A flow-specific caller can execute label ports and report outcomes without React, DOM, Owlbear or replica startup. This is executable prototype evidence, not a production migration or an approved caller interface.
+Pure decisions transfer from navigation to the picker. A flow-specific caller can execute label ports and report outcomes without React, DOM, Owlbear or replica startup. This remains historical executable prototype evidence; its caller is not a production interface.
 
 The picker was selected over settings because its link → replica arrival → optional item-label write → close sequence adds external effects, bounded platform waits and same-target close retry. Settings confirmation would repeat more of navigation's confirmation pattern. Settings remains untested by this experiment.
 
 Baseline: `fd7ed425e88d344e1217bf559c0c9b31888ff568` (full `git rev-parse HEAD` at execution).
 
-No production source, application tests, dependencies, protocol, storage, copy or ADR 0002 changes are part of this experiment. Production picker behavior remains in `src/ui/picker/link-picker.tsx`.
+The production owner is now `src/ui/picker/link-picker-reducer.ts`, with `useReducer` and all commands, ports and browser effects in `src/ui/picker/link-picker.tsx`. This prototype keeps the independent experiment and caller for historical evidence; it is not the production runner.
 
 ## Files and ownership
 
-- `picker-flow.ts`: pure state transitions, read eligibility, offer defaults, arrival priority, role checks, sequence and attempt identity. It contains no promises, timers or platform calls.
+- `picker-flow.ts`: historical pure state transitions, read eligibility, offer defaults, arrival priority, role checks, sequence and attempt identity. It contains no promises, timers or platform calls. The production rules now belong to `src/ui/picker/link-picker-reducer.ts`.
 - `picker-caller.ts`: experiment-only caller. It supplies facts, invokes injected ports, schedules bounded label waits and reports outcomes. It does not decide when arrival wins, whether to write or when to close.
 - `picker-flow.test.ts`: pure rules and an isolated-environment precondition.
 - `picker-caller.test.ts`: observable port calls, controlled promise completions and controlled time.
