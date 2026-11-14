@@ -212,7 +212,8 @@ A compact control draws 24 px and keeps a 32 px touch target through a transpare
 | --- | --- |
 | Sidebar | `{components.sidebar}` with a `{colors.hairline}` right rule and `{spacing.2}` padding. Entries 1 px apart, in `{typography.body}` with `{components.sidebar-entry}`, padding-inline `{spacing.2}`, one line, cut short with an ellipsis. The active entry uses `{components.sidebar-entry-active}` in medium weight. A sheet set heading in `{typography.caption}` `{colors.text-muted}`. "+ Добавить" like an entry. A divider is a `{colors.hairline}` rule with `{spacing.2}` above and below. The Settings entry sits at the bottom, `{spacing.2}` from the edges, under a `{colors.hairline}` rule [ASSUMPTION] |
 | Tab row | Under the sheet header, on `{colors.surface}`, over a `{colors.hairline}` rule. `{components.tab}` for each tab; the active tab uses `{components.tab-active}` in medium weight with a 2 px underline |
-| Sheet header | Name or single sheet title in `{typography.sheet-title}`, chips after it, `⋯` in `{colors.text-muted}` at the end, `{spacing.6}` above the first section, no rule. An editable name is a `{components.value-ghost}` |
+| Sheet header | Name or single sheet title in `{typography.sheet-title}`, the GM's icon controls after it, `{spacing.6}` above the first section, no rule. An editable name is a `{components.value-ghost}` |
+| Header icons | In this order: token, "Доступ", "Удалить лист". Each is a 16 px outline icon in `{colors.text-muted}` with a 1.5 px stroke, in a 32 px square with `{rounded.md}`, `{colors.fill}` and `{colors.text}` under the pointer. A pressed one ("Доступ" while its panel is open, the token while its tokens are selected on the map) uses `{colors.accent-soft}`, a 40% `{colors.accent}` edge and `{colors.accent-ink}`. "Удалить лист" takes the danger pair under the pointer. The token icon is a diamond: struck through with no token, with a dot when linked; it is the "Выделить на карте" toggle while a linked token is on the open scene, and an image with the status as its name otherwise. Every icon shows its name in a tooltip on hover and focus |
 | Field value | Arrangement comes from the preset. Rows do not stripe. An editable value is a `{components.value-ghost}` with padding-inline `{spacing.2}`; a read-only value keeps the same box |
 | Pending mark | Text "Ожидает" in `{typography.label-sm}`, as the warning surface and text pair, after the value |
 | Section | `{typography.section-heading}` in `{components.section-heading}`, `{spacing.2}` under the heading and above its rule. No box |
@@ -255,4 +256,4 @@ The builder is a top-level page, not inside Owlbear, so no live Owlbear theme ex
 - Don't put the accent on navigation or headings. It marks a roll and the map selection.
 - Do let the preset decide the arrangement of sheet content.
 - Don't add colour coding for game concepts. The extension does not know what a stat means.
-- Don't add icons where a word fits, except the gear.
+- Don't add icons where a word fits. The exceptions are the GM's header controls, each with a name and a tooltip.
