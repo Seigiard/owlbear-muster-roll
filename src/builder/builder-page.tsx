@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useStore } from '@nanostores/react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
@@ -246,7 +247,7 @@ function TopBar({
         </span>
       ) : (
         <AriaButton
-          className={`${TOP_BUTTON_CLASS} text-danger-text`}
+          className={clsx(TOP_BUTTON_CLASS, 'text-danger-text')}
           aria-label={copy.builder.problemsName(problemCount)}
           onPress={onFirstProblem}
           data-problem-count={problemCount}

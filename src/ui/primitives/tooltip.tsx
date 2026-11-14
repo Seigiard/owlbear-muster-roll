@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, PointerEvent, FocusEvent, KeyboardEvent } from 'react';
 import { Tooltip, TooltipTriggerStateContext } from 'react-aria-components';
@@ -203,7 +204,7 @@ export function CellTooltip({ name, children, className }: CellTooltipProps): Re
   return (
     <span
       ref={triggerRef}
-      className={`inline-flex min-w-0 ${className ?? ''}`}
+      className={clsx('inline-flex min-w-0', className)}
       onFocusCapture={onFocus}
       onBlurCapture={onBlur}
       onPointerEnter={onPointerEnter}
@@ -232,7 +233,7 @@ export function CellTooltip({ name, children, className }: CellTooltipProps): Re
           triggerRef={triggerRef}
           placement="top"
           offset={8}
-          className="max-w-[100vw] rounded-md border border-transparent bg-surface-raised px-2 py-1 text-caption text-text shadow-popover [overflow-wrap:anywhere]"
+          className="max-w-[100vw] rounded-md border border-transparent bg-surface-raised px-2 py-1 text-caption [overflow-wrap:anywhere] text-text shadow-popover"
         >
           {name}
         </Tooltip>

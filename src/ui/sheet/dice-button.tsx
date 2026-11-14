@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { createContext, useContext, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -138,7 +139,10 @@ export function DiceButton({
       <span
         id={messageId}
         aria-live="polite"
-        className={`text-label-sm ${rolling ? 'text-text-muted' : 'text-danger-text'}`}
+        className={clsx('text-label-sm', {
+          'text-text-muted': rolling,
+          'text-danger-text': !rolling,
+        })}
       >
         {!rolling ? (message?.text ?? '') : waitingForGm ? copy.rollWaitingForGm : copy.rolling}
       </span>

@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefCallback } from 'react';
 
@@ -119,11 +120,9 @@ export function SheetSection({
   const headingId = useId();
   const title = sectionTitle(section);
   const sectionId = repeatSectionId(section);
+  const widthClass = section.width ? WIDTH_CLASSES[section.width] : WIDTH_CLASSES.full;
 
-  const className = [
-    'min-w-0 shrink-0 grow-0 basis-full',
-    WIDTH_CLASSES[section.width ?? 'full'],
-  ].join(' ');
+  const className = clsx('min-w-0 shrink-0 grow-0 basis-full', widthClass);
 
   const repeatProps = {
     section,
@@ -310,7 +309,7 @@ function PlainRows({
     return rows.map((row, index) => (
       <div
         key={row.key}
-        className={`flex flex-wrap gap-y-1 ${ROW_CLASS}`}
+        className={clsx('flex flex-wrap gap-y-1', ROW_CLASS)}
         data-row
         data-row-index={index}
       >
@@ -329,7 +328,7 @@ function PlainRows({
       {rows.map((row, index) => (
         <div
           key={row.key}
-          className={`col-span-full grid grid-cols-subgrid ${ROW_CLASS}`}
+          className={clsx('col-span-full grid grid-cols-subgrid', ROW_CLASS)}
           data-row
           data-row-index={index}
         >
@@ -418,7 +417,6 @@ function Blocks({
   const blockNodes = blocks.map((block, index) => {
     const markId = `${markPrefix}${block.instanceId}`;
     const rowMarkId = block.pending.rowMarked ? markId : null;
-    const removed = block.pending.removed ? REMOVED_ROW_CLASS : '';
 
     const slot = slotted ? (
       <BlockSlot
@@ -443,11 +441,14 @@ function Blocks({
     const rows = block.rows.map((row, rowIndex) => (
       <div
         key={row.key}
-        className={
-          columns === undefined
-            ? `flex flex-wrap gap-y-1 ${ROW_CLASS} ${removed}`
-            : `col-span-full grid grid-cols-subgrid ${ROW_CLASS} ${removed}`
-        }
+        className={clsx(
+          {
+            'flex flex-wrap gap-y-1': columns === undefined,
+            'col-span-full grid grid-cols-subgrid': columns !== undefined,
+          },
+          ROW_CLASS,
+          { [REMOVED_ROW_CLASS]: block.pending.removed },
+        )}
         data-row
         data-row-index={rowIndex}
       >
@@ -458,7 +459,12 @@ function Blocks({
 
     const duplicate =
       tools !== null && duplicateAsk?.instanceId === block.instanceId ? (
-        <div className={columns === undefined ? 'px-1 pt-1' : 'col-span-full px-1 pt-1'}>
+        <div
+          className={clsx({
+            'px-1 pt-1': columns === undefined,
+            'col-span-full px-1 pt-1': columns !== undefined,
+          })}
+        >
           <DuplicateCount
             sheetId={sheetId}
             sectionId={sectionId}
@@ -481,7 +487,11 @@ function Blocks({
         role="group"
         aria-label={onMap ? copy.label.selectedOnMap(name) : name}
         tabIndex={-1}
-        className={`${columns === undefined ? '' : 'col-span-full grid grid-cols-subgrid'} ${index > 0 ? BLOCK_RULE_CLASS : ''} ${onMap ? MAP_MARK_CLASS : ''}`}
+        className={clsx({
+          'col-span-full grid grid-cols-subgrid': columns !== undefined,
+          [BLOCK_RULE_CLASS]: index > 0,
+          [MAP_MARK_CLASS]: onMap,
+        })}
         data-repeat-block={block.instanceId}
       >
         {rows}

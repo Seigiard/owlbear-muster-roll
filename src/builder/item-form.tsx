@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -816,7 +817,7 @@ function IdInput({ label, id, hint, onCommit }: IdInputProps): ReactNode {
         aria-describedby={[hint === null ? null : hintId, messagesId]
           .filter((part) => part !== null)
           .join(' ')}
-        className={`${INPUT_CLASS} font-[ui-monospace,monospace]`}
+        className={clsx(INPUT_CLASS, 'font-[ui-monospace,monospace]')}
         value={text}
         onChange={(event) => {
           setText(event.target.value);
@@ -892,7 +893,7 @@ function IntegerInput({
         type="text"
         inputMode="numeric"
         aria-describedby={describedBy}
-        className={`${INPUT_CLASS} max-w-[120px]`}
+        className={clsx(INPUT_CLASS, 'max-w-[120px]')}
         value={text}
         onChange={(event) => {
           const next = event.target.value.trim();
@@ -937,7 +938,7 @@ function SelectInput({ label, value, options, onChange }: SelectInputProps): Rea
       </label>
       <select
         id={id}
-        className={`${SELECT_CLASS} self-start`}
+        className={clsx(SELECT_CLASS, 'self-start')}
         value={value}
         onChange={(event) => {
           onChange(event.target.value);

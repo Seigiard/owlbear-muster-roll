@@ -148,7 +148,7 @@ export function DuplicateCount({
                 confirm();
               }
             }}
-            className="touch-target field-ghost w-20 px-2 text-text"
+            className="touch-target field-ghost px-2 text-text"
           />
           <Button variant="primary" onPress={confirm}>
             {copy.command.confirmDuplicate}

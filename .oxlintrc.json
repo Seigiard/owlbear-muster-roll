@@ -26,7 +26,19 @@
     ".windsurf/**",
     "tools/oxlint/anti-slop/**"
   ],
-  "jsPlugins": [{ "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }],
+  "jsPlugins": [
+    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" },
+    { "name": "muster-roll", "specifier": "./tools/oxlint/muster-roll/index.ts" },
+    "eslint-plugin-better-tailwindcss"
+  ],
+  "settings": {
+    "better-tailwindcss": {
+      "entryPoint": "src/ui/main.css",
+      "selectors": {
+        "extends": [{ "kind": "variable", "name": "^.*_CLASS$" }]
+      }
+    }
+  },
   "rules": {
     "no-restricted-imports": [
       "error",
@@ -83,7 +95,16 @@
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-readable-spacing": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "error"
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "muster-roll/no-hand-assembled-classname": "error",
+    "better-tailwindcss/no-unknown-classes": "error",
+    "better-tailwindcss/no-conflicting-classes": "error",
+    "better-tailwindcss/no-concatenated-classes": "error",
+    "better-tailwindcss/no-duplicate-classes": "warn",
+    "better-tailwindcss/no-unnecessary-whitespace": "warn",
+    "better-tailwindcss/no-deprecated-classes": "warn",
+    "better-tailwindcss/enforce-canonical-classes": "warn",
+    "better-tailwindcss/enforce-consistent-variant-order": "warn"
   },
   "overrides": [
     {

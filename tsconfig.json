@@ -16,5 +16,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "tests", "scripts", "*.ts"]
+  "include": ["src", "tests", "scripts", "tools/oxlint/muster-roll", "*.ts"]
 }
