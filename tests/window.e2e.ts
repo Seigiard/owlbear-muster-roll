@@ -218,7 +218,7 @@ test('the frame uses the DESIGN.md radii and content padding', async ({ page, co
   ]);
 
   // #then
-  expect(layout).toEqual(['8px', '6px', '6px', '12px']);
+  expect(layout).toEqual(['16px', '6px', '6px', '12px']);
 });
 
 test('the window uses the system font', async ({ page }) => {

@@ -68,6 +68,7 @@ rounded:
   md: 6px
   lg: 8px
   xl: 12px
+  window: 16px
   full: 9999px
 spacing:
   '1': 4px
@@ -189,7 +190,7 @@ Three layers differ by tone: `{colors.surface-bar}` (the sidebar), `{colors.surf
 
 ## Shapes
 
-Sidebar entries, rows, buttons and dice buttons use `{rounded.md}`. A value uses `{rounded.sm}`. The window, a menu and an inline panel use `{rounded.lg}`. Chips use `{rounded.full}`. Tabs have no shape: they are text with an underline. `{rounded.xl}` is kept for the preset builder.
+Sidebar entries, rows, buttons and dice buttons use `{rounded.md}`. A value uses `{rounded.sm}`. The window uses `{rounded.window}`, the radius of Owlbear's own popover, and a 1 px `{colors.hairline}` edge drawn inside it, so it stands apart from a busy map. A menu and an inline panel use `{rounded.lg}`. Chips use `{rounded.full}`. Tabs have no shape: they are text with an underline. `{rounded.xl}` is kept for the preset builder.
 
 ## Element language
 
@@ -244,7 +245,7 @@ The builder is a top-level page, not inside Owlbear, so no live Owlbear theme ex
 | Tree item | `{typography.body}` at 13 px, 28 px high, `{rounded.sm}`, indented 14 px per level. A kind tag in `{typography.label-sm}` `{colors.text-muted}` with a `{colors.line}` border. Ids in a monospace font, `{colors.text-muted}`. Selected: `{colors.accent}` background and `{colors.accent-contrast}` text. A problem: a "!" chip in the danger pair at the row end. Add items: `{colors.text-muted}`, "+" before the text |
 | Drop indicator | A 2 px `{colors.accent}` line between items, or a `{colors.accent}` outline on the target container |
 | Form | Padding `{spacing.3}`, `{spacing.3}` between controls. Labels above inputs in `{typography.label-sm}` `{colors.text-muted}`. Inputs on `{colors.surface-bar}` with a `{colors.line}` border and `{rounded.sm}`; ids and formulas in a monospace font. A segmented choice for 2–3 options, the chosen one on `{colors.surface-tab}` in `{colors.accent}`. Messages: hints in `{colors.text-muted}`, problems and warnings in the danger and warning pairs |
-| Preview pane | `{colors.surface-bar}`, the frame centred at the top with `{spacing.4}` around it. The frame is the window at the preset's size with `{rounded.lg}` and a `{colors.line}` border. It scales down with its proportions when the pane is narrower |
+| Preview pane | `{colors.surface-bar}`, the frame centred at the top with `{spacing.4}` around it. The frame is the window at the preset's size with `{rounded.window}` and a `{colors.line}` border. It scales down with its proportions when the pane is narrower |
 | Preview marks | Selected item: 2 px solid `{colors.accent}` outline, offset 1 px. Problem: 2 px dashed `{colors.danger-text}` outline. Placeholder: the field id in `{colors.text-muted}` |
 | Confirmation and file message | The window's inline confirmation block, full width under the top bar |
 

@@ -170,7 +170,7 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
         ) : (
           <div style={{ width: width * scale, height: height * scale }}>
             <div
-              className="origin-top-left overflow-clip rounded-lg bg-surface text-body text-text"
+              className="origin-top-left overflow-clip rounded-window bg-surface text-body text-text"
               style={{ width, height, transform: scale === 1 ? undefined : `scale(${scale})` }}
               onClickCapture={handleClick}
               data-preview-frame

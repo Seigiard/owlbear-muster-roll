@@ -260,7 +260,7 @@ function SheetFrame({
         {sheet.template.title}, {size.width} × {size.height} px
       </figcaption>
       <div
-        className="h-full overflow-clip rounded-lg bg-surface text-body text-text"
+        className="h-full overflow-clip rounded-window bg-surface text-body text-text"
         style={{ width: size.width, height: size.height }}
         data-preview-frame
       >
