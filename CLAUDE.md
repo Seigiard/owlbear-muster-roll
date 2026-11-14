@@ -28,14 +28,13 @@ Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you w
 
 - `bun run dev` serves the Owlbear adapter and needs a tunnel for a live room; `bun run dev:mock` needs no Owlbear.
 - `bun run preview [path]` adds that preset file to the preview's list and opens it first.
-- The full check before a commit: `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run test:browser`, `bun run build`. Lefthook runs only lint and format on staged files, so the rest of the check is yours.
+- The full check before a commit: `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run test:browser`, `bun run build`. Lefthook runs only lint and format on staged files, and CI (`.github/workflows/ci.yml`) runs everything but `bun run test:browser`, so the browser tests are yours.
 - `bun run test:browser` needs Chromium. Run it outside the sandbox.
 </important>
 
 <important if="you are about to deploy, release, push, or touch wrangler.toml or the production URL">
 
-- Deploying is the owner's step. Your part ends at `bun run build` and a local commit.
-- The repository has no remote, so work ends at a local commit.
+- Deploying is the owner's step. Your part ends at `bun run build` and a commit on a branch other than `master`.
 - The production origin stays `https://musterroll.2249364.xyz/`: it scopes each GM's `localStorage`, the only full copy of their data.
 </important>
 
