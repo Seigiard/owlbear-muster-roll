@@ -26,22 +26,11 @@ import type { ShellTab } from '@/ui/shell/tab-bar';
 import { applyTheme } from '@/ui/theme';
 
 import { addressSearch, readAddress, type PreviewAddress } from './address';
-import {
-  PRESET_LIST_PATH,
-  PRESETS_CHANGED_EVENT,
-  presetListSchema,
-  type PresetListEntry,
-} from './protocol';
+import type { PresetListEntry } from './protocol';
+import { CONTROL_CLASS, type ListState, usePresetList } from './preset-list';
 import { previewSheets, type PreviewSheet } from './sample-records';
 import { createStubRolling } from './stub-rolling';
 import { PREVIEW_THEMES } from './themes';
-
-type ListState =
-  | { kind: 'loading' }
-  | { kind: 'failed' }
-  | { kind: 'loaded'; entries: readonly PresetListEntry[] };
-
-const CONTROL_CLASS = 'touch-target rounded-sm border border-line bg-surface px-2 text-text';
 
 const SWITCH_CLASS = 'flex items-center gap-2';
 
@@ -52,7 +41,7 @@ const stubRolling = createStubRolling();
 // each save. It has no Owlbear, no background page and no engine.
 export function PreviewPage(): ReactNode {
   const [address, setAddress] = useState(() => readAddress(window.location.search));
-  const list = usePresetList();
+  const list = usePresetList(import.meta.hot);
   const presetSelectId = useId();
 
   useEffect(() => {
@@ -308,76 +297,4 @@ function SheetFrame({
 
 function noop(): void {
   // The preview focuses no name.
-}
-
-// The list loads once, and again on each change the dev server reports. An older answer that lands
-// after a newer one is dropped.
-function usePresetList(): ListState {
-  const [state, setState] = useState<ListState>(initialPresetList);
-
-  useEffect(() => {
-    let latest = 0;
-    let active = true;
-
-    const load = (): void => {
-      latest += 1;
-
-      const request = latest;
-
-      void fetchPresetList().then((next) => {
-        if (active && request === latest) {
-          setState(next);
-        }
-      });
-    };
-
-    load();
-
-    const hot = import.meta.hot;
-
-    hot?.on(PRESETS_CHANGED_EVENT, load);
-
-    return () => {
-      active = false;
-      hot?.off(PRESETS_CHANGED_EVENT, load);
-    };
-  }, []);
-
-  return state;
-}
-
-async function fetchPresetList(): Promise<ListState> {
-  try {
-    const response = await fetch(PRESET_LIST_PATH, { cache: 'no-store' });
-
-    if (!response.ok) {
-      return { kind: 'failed' };
-    }
-
-    const parsed = presetListSchema.safeParse(await response.json());
-
-    return parsed.success ? { kind: 'loaded', entries: parsed.data } : { kind: 'failed' };
-  } catch {
-    return { kind: 'failed' };
-  }
-}
-
-function initialPresetList(): ListState {
-  try {
-    const request = new XMLHttpRequest();
-
-    request.open('GET', PRESET_LIST_PATH, false);
-    request.send();
-
-    if (request.status < 200 || request.status >= 300) {
-      return { kind: 'failed' };
-    }
-
-    const responseBody: unknown = JSON.parse(request.responseText);
-    const parsed = presetListSchema.safeParse(responseBody);
-
-    return parsed.success ? { kind: 'loaded', entries: parsed.data } : { kind: 'failed' };
-  } catch {
-    return { kind: 'failed' };
-  }
 }

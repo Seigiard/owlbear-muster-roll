@@ -214,6 +214,10 @@ _Avoid_: editor, configurator, constructor, designer
 A sheet drawn from a preset that is not in a room, with sample or empty values, so a GM sees the preset as the extension draws it.
 _Avoid_: mockup, render
 
+**Local room**:
+A dev-only page opened by `bun run room` that seeds a mock room and shows its GM and player windows together.
+_Avoid_: local preview
+
 **Draft**:
 The one unfinished preset the builder keeps by itself and opens again on the next visit, with no prompt.
 _Avoid_: autosave, work in progress
