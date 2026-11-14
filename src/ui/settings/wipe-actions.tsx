@@ -1,19 +1,13 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useReducer, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
-import type { RejectionReason } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { Button } from '@/ui/primitives/button';
-import type { CommandOutcomePromise, ReplicaClient } from '@/ui/replica-client';
+import type { ReplicaClient } from '@/ui/replica-client';
 
-// AD-9, kept in this window only, so a window that closes, or a GM who leaves Settings, forgets it
-// and writes nothing. `asking` shows the block, `wiping` waits for the answer. `ask` counts the
-// questions, so a new one remounts the block and its focus goes to "Отменить" again.
-// `untilCatchUpEnds` marks a message that holds only while catch-up runs, so its end clears it.
-type WipeState =
-  | { phase: 'idle'; message: string | null; untilCatchUpEnds?: boolean; ask: number }
-  | { phase: 'asking'; ask: number }
-  | { phase: 'wiping'; outcome: CommandOutcomePromise<undefined>; ask: number };
+import { initialWipeState, wipeReducer } from './wipe-actions-reducer';
+
+export { wipeRejectionText } from './wipe-actions-reducer';
 
 type WipeActionsOptions = {
   catchingUp: boolean;
@@ -32,7 +26,7 @@ type WipeActionsParts = {
 // leaving Settings, closing the window and the start of catch-up close the block, and nothing is
 // written. During catch-up the button waits, and the replica refuses a wipe as well.
 export function useWipeActions({ catchingUp, client }: WipeActionsOptions): WipeActionsParts {
-  const [state, setState] = useState<WipeState>({ phase: 'idle', message: null, ask: 0 });
+  const [state, dispatch] = useReducer(wipeReducer, initialWipeState);
   const buttonRef = useRef<HTMLButtonElement>(null);
   // Set on confirm: the button waits while the wipe does, so it takes the focus again after.
   const refocus = useRef(false);
@@ -43,14 +37,14 @@ export function useWipeActions({ catchingUp, client }: WipeActionsOptions): Wipe
   const [seenCatchingUp, setSeenCatchingUp] = useState(catchingUp);
 
   if (catchingUp && state.phase === 'asking') {
-    setState({ phase: 'idle', message: null, ask: state.ask });
+    dispatch({ type: 'catch-up-started' });
   }
 
   if (catchingUp !== seenCatchingUp) {
     setSeenCatchingUp(catchingUp);
 
     if (!catchingUp && state.phase === 'idle' && state.untilCatchUpEnds) {
-      setState({ phase: 'idle', message: null, ask: state.ask });
+      dispatch({ type: 'catch-up-ended' });
     }
   }
 
@@ -63,26 +57,7 @@ export function useWipeActions({ catchingUp, client }: WipeActionsOptions): Wipe
 
     void current.outcome
       .then((outcome) => {
-        setState((shown) => {
-          if (shown !== current) {
-            return shown;
-          }
-
-          if (outcome.kind === 'answered') {
-            return { phase: 'idle', message: null, ask: current.ask };
-          }
-
-          if (outcome.kind === 'timed-out') {
-            return { phase: 'idle', message: copy.wipeFailed, ask: current.ask };
-          }
-
-          return {
-            phase: 'idle',
-            message: wipeRejectionText(outcome.rejection.reason),
-            untilCatchUpEnds: outcome.rejection.reason === 'catching-up',
-            ask: current.ask,
-          };
-        });
+        dispatch({ type: 'outcome', request: current.outcome, result: outcome });
       })
       .catch((error) => {
         console.error('Muster Roll could not settle a wipe', error);
@@ -101,11 +76,11 @@ export function useWipeActions({ catchingUp, client }: WipeActionsOptions): Wipe
           const sent = sendCommand({ type: 'wipe' });
 
           refocus.current = true;
-          setState({ phase: 'wiping', outcome: sent, ask: state.ask });
+          dispatch({ type: 'confirm', outcome: sent });
           backToButton();
         }}
         onCancel={() => {
-          setState({ phase: 'idle', message: null, ask: state.ask });
+          dispatch({ type: 'cancel' });
           backToButton();
         }}
       />
@@ -137,7 +112,7 @@ export function useWipeActions({ catchingUp, client }: WipeActionsOptions): Wipe
           ref={buttonRef}
           disabledReason={reason}
           onPress={() => {
-            setState((current) => ({ phase: 'asking', ask: current.ask + 1 }));
+            dispatch({ type: 'ask', catchingUp });
           }}
         >
           {copy.command.wipe}
@@ -148,23 +123,6 @@ export function useWipeActions({ catchingUp, client }: WipeActionsOptions): Wipe
       </div>
     ),
   };
-}
-
-// What the window says under "Очистить всё" for a refused wipe. A reason no case names, such as a
-// failed write, is a failed wipe.
-export function wipeRejectionText(reason: RejectionReason): string {
-  switch (reason) {
-    case 'not-allowed':
-      return copy.wipeNotAllowed;
-    case 'catching-up':
-      return copy.loading;
-    case 'importing':
-      return copy.wipeAfterImport;
-    case 'data-replaced':
-      return copy.snapshotDataReplaced;
-    default:
-      return copy.wipeFailed;
-  }
 }
 
 type WipeConfirmationProps = { onConfirm: () => void; onCancel: () => void };
