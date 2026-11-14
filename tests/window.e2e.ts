@@ -59,6 +59,9 @@ const NEUTRAL_SURFACES: readonly (readonly string[])[] = [
   ['--color-surface-raised'],
   ['--color-surface-raised', '--color-surface-stripe'],
   ['--color-surface-bar', '--color-fill'],
+  // A selected sidebar entry, a hovered row, a value being edited.
+  ['--color-surface-bar', '--color-fill-strong'],
+  ['--color-surface', '--color-fill'],
   ['--color-surface', '--color-fill-strong'],
   ['--color-surface-raised', '--color-fill'],
   ['--color-surface-raised', '--color-surface-stripe', '--color-fill-strong'],
@@ -263,12 +266,15 @@ test('the selected sidebar entry takes the active colors', async ({ page, contex
 
   // #then
   expect(active).toEqual([
-    await tokenColor(page, '--color-accent-soft'),
-    await tokenColor(page, '--color-accent-ink'),
+    await tokenColor(page, '--color-fill-strong'),
+    await tokenColor(page, '--color-text'),
   ]);
 });
 
-test('an unselected sidebar entry has no fill and the text color', async ({ page, context }) => {
+test('an unselected sidebar entry has no fill and the muted text color', async ({
+  page,
+  context,
+}) => {
   // #given
   await openRoom(page, context);
 
@@ -278,7 +284,7 @@ test('an unselected sidebar entry has no fill and the text color', async ({ page
   const inactive = [await cssValue(gear, 'background-color'), await renderedColor(gear, 'color')];
 
   // #then
-  expect(inactive).toEqual(['rgba(0, 0, 0, 0)', [255, 255, 255]]);
+  expect(inactive).toEqual(['rgba(0, 0, 0, 0)', await tokenColor(page, '--color-text-muted')]);
 });
 
 test('Down moves the selection between sidebar entries', async ({ page, context }) => {
@@ -395,7 +401,7 @@ test('a sidebar entry is at least 32 px high', async ({ page, context }) => {
   expect(box?.height ?? 0).toBeGreaterThanOrEqual(32);
 });
 
-test('the window text is 14 px', async ({ page }) => {
+test('the window text is 13 px', async ({ page }) => {
   // #given
   await openWindow(page);
 
@@ -403,7 +409,7 @@ test('the window text is 14 px', async ({ page }) => {
   const fontSize = await cssValue(page.locator('#root > main'), 'font-size');
 
   // #then
-  expect(fontSize).toBe('14px');
+  expect(fontSize).toBe('13px');
 });
 
 test('the theme mode is on the root element when main is first inserted', async ({ page }) => {

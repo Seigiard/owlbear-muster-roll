@@ -17,7 +17,7 @@ const DELETE_ACTION = 'delete';
 
 const MORE = '⋯';
 
-const HEADER_CLASS = 'mb-3 flex items-start gap-2 border-b border-line pb-2';
+const HEADER_CLASS = 'mb-6 flex items-center gap-2';
 
 const NAME_CLASS = 'text-sheet-title';
 
@@ -167,7 +167,7 @@ function SheetActions({
       <AriaButton
         ref={actionsRef}
         aria-label={copy.label.sheetActions}
-        className="touch-target press inline-flex shrink-0 items-center justify-center rounded-md px-3 text-text data-hovered:bg-fill"
+        className="touch-target press inline-flex shrink-0 items-center justify-center rounded-md px-2 text-text-muted data-hovered:bg-fill data-hovered:text-text"
       >
         {MORE}
       </AriaButton>
@@ -247,7 +247,7 @@ function NameInput({
         onChange={(event) => {
           edit.onChange(event.target.value);
         }}
-        className={`touch-target field-well w-full px-2 text-text placeholder:text-text-muted ${NAME_CLASS}`}
+        className={`touch-target field-ghost w-full px-2 text-text placeholder:text-text-muted ${NAME_CLASS}`}
       />
       <span id={errorId} aria-live="polite" className="text-label-sm text-danger-text empty:hidden">
         {edit.error === 'too-long' ? copy.valueTooLong : ''}

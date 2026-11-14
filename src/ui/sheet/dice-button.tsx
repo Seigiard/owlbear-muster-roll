@@ -13,7 +13,7 @@ import { shownForRoll, type LocalFieldValues } from './local-field-values';
 // `dice-button`: accent text and border, `sm` radius, `label-sm`.
 // A roll is the one action in the accent: tonal at rest, solid under the pointer.
 const DICE_BUTTON_CLASS =
-  'rounded-md bg-accent-soft px-2 text-label-sm font-medium text-accent-ink data-hovered:bg-accent data-hovered:text-accent-contrast';
+  'touch-target-compact rounded-md border border-accent/30 bg-accent-soft px-2 text-label-sm font-medium text-accent-ink data-hovered:border-accent data-hovered:bg-accent data-hovered:text-accent-contrast';
 
 // What every dice button of a window shares. A player rolls too, so this is not `FieldEditing`.
 export type DiceRolling = {

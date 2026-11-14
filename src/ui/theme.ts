@@ -9,6 +9,7 @@ type MappedToken =
   | '--mr-fill'
   | '--mr-fill-strong'
   | '--mr-line'
+  | '--mr-hairline'
   | '--mr-line-strong'
   | '--mr-focus'
   | '--mr-text'
@@ -46,6 +47,8 @@ export function themeTokens(theme: Theme): ThemeTokens {
     '--mr-fill': `color-mix(in srgb, ${text} 8%, transparent)`,
     '--mr-fill-strong': `color-mix(in srgb, ${text} 14%, transparent)`,
     '--mr-line': `color-mix(in srgb, ${paper} 80%, ${text})`,
+    // A hairline divides without drawing attention: section rules, separators, chip edges.
+    '--mr-hairline': `color-mix(in srgb, ${text} 10%, transparent)`,
     '--mr-line-strong': `color-mix(in srgb, ${paper} 50%, ${text})`,
     '--mr-focus': accent,
     '--mr-text': text,

@@ -119,7 +119,7 @@ test('"Дублировать…" opens a count of 1 in its repeat block, focuse
   }).toEqual({ blocks: 1, inSource: 1, value: '1', controls: [CONFIRM, CANCEL], error: 0 });
 });
 
-test('the count block sits on surface-raised with a line border and rounded-xl', async ({
+test('the count block sits on surface-raised with a hairline border and rounded-lg', async ({
   page,
   context,
 }) => {
@@ -139,9 +139,9 @@ test('the count block sits on surface-raised with a line border and rounded-xl',
     radius: await cssValue(shown, 'border-top-left-radius'),
   }).toEqual({
     background: await tokenColor(page, '--color-surface-raised'),
-    border: await tokenColor(page, '--color-line'),
+    border: await tokenColor(page, '--color-hairline'),
     borderStyle: 'solid',
-    radius: '12px',
+    radius: '8px',
   });
 });
 

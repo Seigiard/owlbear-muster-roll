@@ -181,7 +181,7 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
 });
 
-test('"Доступ" opens the panel inline under the header on surface-raised, with a line border and rounded-xl', async ({
+test('"Доступ" opens the panel inline under the header on surface-raised, with a hairline border and rounded-lg', async ({
   context,
 }) => {
   // #given
@@ -209,9 +209,9 @@ test('"Доступ" opens the panel inline under the header on surface-raised, 
   }).toEqual({
     afterHeader: 'HEADER',
     background: await tokenColor(gm.window, '--color-surface-raised'),
-    border: await tokenColor(gm.window, '--color-line'),
+    border: await tokenColor(gm.window, '--color-hairline'),
     borderStyle: 'solid',
-    radius: '12px',
+    radius: '8px',
   });
 });
 

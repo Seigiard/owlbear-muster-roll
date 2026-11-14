@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import type { JsonValue } from '@/core/json';
 
-import { cssValue, renderedColor } from './support/colors';
+import { cssValue } from './support/colors';
 import {
   ABSENT,
   ADD,
@@ -21,8 +21,6 @@ const NAME_FIELD = 'Имя листа';
 const UNNAMED = 'Без имени';
 const TOO_LONG = 'Слишком длинно';
 const SETTINGS = 'Настройки';
-const LINE: readonly [number, number, number] = [78, 81, 97];
-const LINE_STRONG: readonly [number, number, number] = [145, 147, 156];
 
 // A value whose `row:` record cannot fit one message, as `field-edit.e2e.ts` measures it.
 const TOO_LONG_NAME = 'ы'.repeat(7400);
@@ -409,7 +407,7 @@ test('a window opened while the background runs selects the first sidebar entry'
   await expect(second.getByRole('tab', { name: 'Зет' })).toHaveAttribute('aria-selected', 'true');
 });
 
-test('the header shows the name in sheet-title over a bottom rule in line', async ({
+test('the header shows the name in sheet-title, quiet at rest, with no rule', async ({
   page,
   context,
 }) => {
@@ -422,24 +420,18 @@ test('the header shows the name in sheet-title over a bottom rule in line', asyn
   const style = {
     fontSize: await cssValue(nameField(page), 'font-size'),
     fontWeight: await cssValue(nameField(page), 'font-weight'),
-    lineHeight: await cssValue(nameField(page), 'line-height'),
-    rule: await cssValue(header, 'border-bottom-style'),
+    letterSpacing: await cssValue(nameField(page), 'letter-spacing'),
     ruleWidth: await cssValue(header, 'border-bottom-width'),
-    ruleColor: await renderedColor(header, 'border-bottom-color'),
-    underline: await cssValue(nameField(page), 'border-bottom-style'),
-    underlineColor: await renderedColor(nameField(page), 'border-bottom-color'),
+    edge: await cssValue(nameField(page), 'border-bottom-color'),
   };
 
   // #then
   expect(style).toEqual({
-    fontSize: '18px',
+    fontSize: '22px',
     fontWeight: '600',
-    lineHeight: '23.4px',
-    rule: 'solid',
-    ruleWidth: '1px',
-    ruleColor: LINE,
-    underline: 'solid',
-    underlineColor: LINE_STRONG,
+    letterSpacing: '-0.55px',
+    ruleWidth: '0px',
+    edge: 'rgba(0, 0, 0, 0)',
   });
 });
 

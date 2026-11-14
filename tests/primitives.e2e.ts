@@ -11,6 +11,8 @@ import {
 } from './support/colors';
 import type { Rgb } from './support/colors';
 
+const TRANSPARENT = 'rgba(0, 0, 0, 0)';
+
 const MIN_CONTRAST = 4.5;
 const MIN_TOUCH_TARGET_PX = 32;
 const MAX_TAB_PRESSES = 20;
@@ -80,15 +82,26 @@ for (const { name, locate } of [
     }).toEqual({ style: 'solid', width: '2px', color: DARK_FOCUS });
   });
 
-  test(`a ${name} is at least 32 px high`, async ({ page }) => {
+  test(`a ${name} takes a press anywhere in a 32 px high touch target`, async ({ page }) => {
     // #given
     await openFixture(page);
 
-    // #when
-    const box = await locate(page).boundingBox();
+    // #when: a compact control draws smaller than its target, so the check presses the target's
+    // top and bottom edges, not the drawn box.
+    const hits = await locate(page).evaluate((element, target) => {
+      const box = element.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const middle = box.top + box.height / 2;
+
+      return [middle - target / 2 + 1, middle + target / 2 - 1].map((y) => {
+        const hit = document.elementFromPoint(x, y);
+
+        return hit !== null && element.contains(hit);
+      });
+    }, MIN_TOUCH_TARGET_PX);
 
     // #then
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    expect(hits).toEqual([true, true]);
   });
 }
 
@@ -141,7 +154,7 @@ test('the radii follow DESIGN.md for buttons and chips', async ({ page }) => {
   expect(radii).toEqual(['6px', '9999px']);
 });
 
-test('a status chip is not a button and renders muted at 12 px', async ({ page }) => {
+test('a status chip is not a button and renders muted at 11 px', async ({ page }) => {
   // #given
   await openFixture(page);
 
@@ -155,7 +168,7 @@ test('a status chip is not a button and renders muted at 12 px', async ({ page }
   };
 
   // #then
-  expect(rendered).toEqual({ buttons: 0, color: [189, 190, 196], fontSize: '12px' });
+  expect(rendered).toEqual({ buttons: 0, color: [189, 190, 196], fontSize: '11px' });
 });
 
 test('typing in a Field reaches onChange and leaving it fires onBlur', async ({ page }) => {
@@ -196,7 +209,9 @@ test('a primary Button renders the accent background and contrast text', async (
 });
 
 for (const name of ['Secondary', 'Default']) {
-  test(`a ${name} Button renders the text color on the fill, with no border`, async ({ page }) => {
+  test(`a ${name} Button renders the text color on the fill, with a hairline border`, async ({
+    page,
+  }) => {
     // #given
     await openFixture(page);
 
@@ -206,6 +221,7 @@ for (const name of ['Secondary', 'Default']) {
     const rendered = {
       color: await renderedColor(button, 'color'),
       background: await renderedColor(button, 'background-color'),
+      border: await renderedColor(button, 'border-top-color'),
       borderWidth: await cssValue(button, 'border-top-width'),
     };
 
@@ -213,34 +229,31 @@ for (const name of ['Secondary', 'Default']) {
     expect(rendered).toEqual({
       color: [255, 255, 255],
       background: await tokenColor(page, '--color-fill'),
-      borderWidth: '0px',
+      border: await tokenColor(page, '--color-hairline'),
+      borderWidth: '1px',
     });
   });
 }
 
-test('a Field sits in a fill well with a solid underline in the strong line color', async ({
-  page,
-}) => {
+test('a Field is quiet at rest and shows a line edge under the pointer', async ({ page }) => {
   // #given
   await openFixture(page);
 
   const field = page.getByRole('textbox', { name: 'Enabled field' });
 
-  // #when
-  const underline = {
-    style: await cssValue(field, 'border-bottom-style'),
-    width: await cssValue(field, 'border-bottom-width'),
-    color: await renderedColor(field, 'border-bottom-color'),
-    well: await renderedColor(field, 'background-color'),
+  const atRest = {
+    background: await cssValue(field, 'background-color'),
+    edge: await cssValue(field, 'border-bottom-color'),
   };
 
-  // #then
-  expect(underline).toEqual({
-    style: 'solid',
-    width: '1px',
-    color: [145, 147, 156],
-    well: await tokenColor(page, '--color-fill'),
-  });
+  // #when
+  await field.hover();
+
+  // #then: the edge fades in over 150 ms, so the check waits for it to settle.
+  expect(atRest).toEqual({ background: TRANSPARENT, edge: TRANSPARENT });
+  await expect
+    .poll(() => renderedColor(field, 'border-bottom-color'))
+    .toEqual(await tokenColor(page, '--color-line'));
 });
 
 test('the shell banner slot renders the banner as a live region', async ({ page }) => {

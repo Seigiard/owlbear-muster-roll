@@ -340,37 +340,46 @@ test("the other character's tab shows its own instances and values only", async 
   ]);
 });
 
-test('rows 2 and 4 of a section use surface-stripe, rows 1 and 3 do not', async ({
+test('rows do not stripe, and a row under the pointer takes the fill', async ({
   page,
   context,
 }) => {
   // #given
   await openSheet(page, context);
   const rows = rowsOf(region(page, 'Строки'));
-  const stripe = await tokenColor(page, '--color-surface-stripe');
 
-  // #then
-  expect({
-    first: await cssValue(rows.nth(0), 'background-color'),
-    second: await renderedColor(rows.nth(1), 'background-color'),
-    third: await cssValue(rows.nth(2), 'background-color'),
-    fourth: await renderedColor(rows.nth(3), 'background-color'),
-  }).toEqual({ first: TRANSPARENT, second: stripe, third: TRANSPARENT, fourth: stripe });
+  const atRest = await rows.evaluateAll((elements) =>
+    elements.map((element) => getComputedStyle(element).backgroundColor),
+  );
+
+  // #when
+  await rows.nth(1).hover();
+
+  // #then: the fill fades in over 150 ms, so the check waits for it to settle.
+  expect(atRest).toEqual(atRest.map(() => TRANSPARENT));
+  await expect
+    .poll(() => renderedColor(rows.nth(1), 'background-color'))
+    .toEqual(await tokenColor(page, '--color-fill'));
 });
 
-test('repeat blocks stripe the same way, each block as one', async ({ page, context }) => {
-  // #given: all rows of a repeat section form one repeat block (CAP-5), so the block stripes.
+test('repeat blocks after the first sit under a hairline', async ({ page, context }) => {
+  // #given: all rows of a repeat section form one repeat block (CAP-5).
   await openSheet(page, context);
-  const rows = region(page, 'Атаки').locator('[data-repeat-block]');
+  const blocks = region(page, 'Атаки').locator('[data-repeat-block]');
 
   // #then
   expect({
-    first: await cssValue(rows.nth(0), 'background-color'),
-    second: await renderedColor(rows.nth(1), 'background-color'),
-  }).toEqual({ first: TRANSPARENT, second: await tokenColor(page, '--color-surface-stripe') });
+    first: await cssValue(blocks.nth(0), 'border-top-width'),
+    second: await cssValue(blocks.nth(1), 'border-top-width'),
+    secondColor: await renderedColor(blocks.nth(1), 'border-top-color'),
+  }).toEqual({
+    first: '0px',
+    second: '1px',
+    secondColor: await tokenColor(page, '--color-hairline'),
+  });
 });
 
-test('a titled section is a raised card with a section-heading in the text color', async ({
+test('a titled section has a muted section-heading over a hairline and no box', async ({
   page,
   context,
 }) => {
@@ -384,21 +393,18 @@ test('a titled section is a raised card with a section-heading in the text color
     size: await cssValue(heading, 'font-size'),
     weight: await cssValue(heading, 'font-weight'),
     color: await renderedColor(heading, 'color'),
-    card: await renderedColor(section, 'background-color'),
-    radius: await cssValue(section, 'border-top-left-radius'),
+    rule: await renderedColor(heading, 'border-bottom-color'),
+    box: await cssValue(section, 'background-color'),
   }).toEqual({
-    size: '14px',
-    weight: '600',
-    color: await tokenColor(page, '--color-text'),
-    card: await tokenColor(page, '--color-surface-raised'),
-    radius: '12px',
+    size: '12px',
+    weight: '500',
+    color: await tokenColor(page, '--color-text-muted'),
+    rule: await tokenColor(page, '--color-hairline'),
+    box: TRANSPARENT,
   });
 });
 
-test('a section with no title has no heading and stays a raised card', async ({
-  page,
-  context,
-}) => {
+test('a section with no title has no heading and no box', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
 
@@ -409,11 +415,11 @@ test('a section with no title has no heading and stays a raised card', async ({
   // #then
   expect({
     headings: await section.getByRole('heading').count(),
-    card: await renderedColor(section, 'background-color'),
-  }).toEqual({ headings: 0, card: await tokenColor(page, '--color-surface-raised') });
+    box: await cssValue(section, 'background-color'),
+  }).toEqual({ headings: 0, box: TRANSPARENT });
 });
 
-test('a value sits in a fill well with a solid line-strong underline, and every row is at least 32 px high', async ({
+test('a value is quiet at rest, and every row is at least 32 px high', async ({
   page,
   context,
 }) => {
@@ -431,15 +437,13 @@ test('a value sits in a fill well with a solid line-strong underline, and every 
 
   // #then
   expect({
-    style: await cssValue(value, 'border-bottom-style'),
-    color: await renderedColor(value, 'border-bottom-color'),
-    well: await renderedColor(value, 'background-color'),
+    edge: await cssValue(value, 'border-bottom-color'),
+    background: await cssValue(value, 'background-color'),
     rows: heights.flat().length,
     shortRows: heights.flat().filter((height) => height < 32),
   }).toEqual({
-    style: 'solid',
-    color: await tokenColor(page, '--color-line-strong'),
-    well: await tokenColor(page, '--color-fill'),
+    edge: TRANSPARENT,
+    background: TRANSPARENT,
     rows: 11,
     shortRows: [],
   });

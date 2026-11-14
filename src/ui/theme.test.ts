@@ -43,6 +43,7 @@ describe('themeTokens', () => {
       '--mr-fill': 'color-mix(in srgb, #505152 8%, transparent)',
       '--mr-fill-strong': 'color-mix(in srgb, #505152 14%, transparent)',
       '--mr-line': 'color-mix(in srgb, #404142 80%, #505152)',
+      '--mr-hairline': 'color-mix(in srgb, #505152 10%, transparent)',
       '--mr-line-strong': 'color-mix(in srgb, #404142 50%, #505152)',
       '--mr-focus': '#101112',
       '--mr-text': '#505152',

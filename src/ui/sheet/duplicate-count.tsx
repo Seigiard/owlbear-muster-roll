@@ -117,7 +117,7 @@ export function DuplicateCount({
       role="group"
       aria-labelledby={labelId}
       onKeyDown={handleKeyDown}
-      className="mb-3 rounded-xl border border-line bg-surface-raised p-2"
+      className="mb-3 rounded-lg border border-hairline bg-surface-raised p-2"
     >
       <TextField
         autoFocus
@@ -144,7 +144,7 @@ export function DuplicateCount({
                 confirm();
               }
             }}
-            className="touch-target field-well w-20 px-2 text-text"
+            className="touch-target field-ghost w-20 px-2 text-text"
           />
           <Button variant="primary" onPress={confirm}>
             {copy.command.confirmDuplicate}

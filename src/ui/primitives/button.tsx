@@ -2,13 +2,14 @@ import { useId } from 'react';
 import type { ReactNode, Ref } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 
-// Commands are filled, never outlined: an outline is the boundary of a value or a chip.
 const VARIANT_CLASS = {
-  primary: 'bg-accent font-medium text-accent-contrast data-hovered:bg-accent/90',
-  secondary: 'bg-fill text-text data-hovered:bg-fill-strong',
+  primary: 'touch-target bg-accent font-medium text-accent-contrast data-hovered:bg-accent/90',
+  secondary:
+    'touch-target border border-hairline bg-fill font-medium text-text data-hovered:bg-fill-strong',
 } as const;
 
-const BASE_CLASS = 'touch-target press inline-flex items-center justify-center';
+// The caller sets the touch target, so a compact control can draw smaller than it.
+const BASE_CLASS = 'press inline-flex items-center justify-center';
 
 // The look of a secondary button, for a control that is not a `Button`, such as a toggle.
 export const SECONDARY_BUTTON_CLASS = `${BASE_CLASS} rounded-md px-3 ${VARIANT_CLASS.secondary}`;
