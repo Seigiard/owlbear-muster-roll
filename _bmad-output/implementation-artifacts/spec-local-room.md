@@ -2,7 +2,7 @@
 title: 'Local Room: Look at the Whole Extension Without Owlbear'
 type: 'feature'
 created: '2026-11-14'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '566221b19c04b06630cddcb276b8a1c98a32b3bb'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -66,13 +66,13 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/preview/room-seed.ts` -- pure function: preset text → storage entries (key, value) -- testable without a browser.
-- [ ] `src/preview/room-seed.test.ts` -- keys parse with `parseStorageKey`, the `preset` value inflates back to the preset, every `previewSheets` record present.
-- [ ] `room.html`, `src/preview/room-main.tsx`, `src/preview/room-page.tsx` -- host page per Boundaries.
-- [ ] `scripts/room.ts` + `package.json` `room` script -- `bun run room` opens `/room.html`; share the launch code with `scripts/preview.ts` where it fits.
-- [ ] `tests/room.e2e.ts` -- first open, reload keeps an edit, reset, light theme, player window loads.
-- [ ] `tests/build.test.ts` -- `dist/` holds no room page.
-- [ ] `CLAUDE.md`, `GLOSSARY.md` (term **Local room**), `docs/preset-format.md` preview note -- one line each on `bun run room`.
+- [x] `src/preview/room-seed.ts` -- pure function: preset text → storage entries (key, value) -- testable without a browser.
+- [x] `src/preview/room-seed.test.ts` -- keys parse with `parseStorageKey`, the `preset` value inflates back to the preset, every `previewSheets` record present.
+- [x] `room.html`, `src/preview/room-main.tsx`, `src/preview/room-page.tsx` -- host page per Boundaries.
+- [x] `scripts/room.ts` + `package.json` `room` script -- `bun run room` opens `/room.html`; share the launch code with `scripts/preview.ts` where it fits.
+- [x] `tests/room.e2e.ts` -- first open, reload keeps an edit, reset, light theme, player window loads.
+- [x] `tests/build.test.ts` -- `dist/` holds no room page.
+- [x] `CLAUDE.md`, `GLOSSARY.md` (term **Local room**), `docs/preset-format.md` preview note -- one line each on `bun run room`.
 
 **Acceptance Criteria:**
 - Given a fresh checkout, when the owner runs `bun run room`, then the browser opens one page with a working GM window and player window, no manual upload or extra tab.
