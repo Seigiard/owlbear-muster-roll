@@ -300,3 +300,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-61.6-second-ui-flow.md`
   summary: Settings and the other open UI coverage rows still need research; navigation and picker do not justify a shared runner or event bus.
   evidence: Navigation uses React effects and fresh sheet keys; picker needs scoped attempt ids and sequential item-label ports. H3/H6 support is bounded to these examples; the experiment makes no settings, builder or shared-renderer migration claim. Live Owlbear label/close behavior remains the owner's check.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.9-preview-navigation.md`
+  summary: Add optional unit coverage for nonempty cross-template isolation and a foreign selected tab.
+  evidence: Review triage judged this minor and deferred it; the reducer compares template UIDs in both relevant branches, with no behavior defect demonstrated.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.9-preview-navigation.md`
+  summary: Add optional unit coverage for a null initial state, including first-tab and selected-tab opening.
+  evidence: Review triage judged this minor and deferred it; reducer initialization resolves these cases and the unchanged browser suite covers opening behavior.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.9-preview-navigation.md`
+  summary: Add optional composition coverage for a stale shown-tab index after a same-template tab removal.
+  evidence: Review triage judged this minor and deferred it; existing open-tab fallback owns index normalization and no behavior defect was demonstrated.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.9-preview-navigation.md`
+  summary: Add optional browser coverage that retains the reducer-selected tab after selecting a window.
+  evidence: Review triage judged this minor and deferred it; the current browser test chooses the target tab again, while reducer retention was calibrated and 519 browser tests passed unchanged.
