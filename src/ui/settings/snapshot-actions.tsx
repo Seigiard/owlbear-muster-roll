@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { FileTrigger } from 'react-aria-components';
 
@@ -14,27 +14,12 @@ import {
 import { copy } from '@/ui/copy';
 import { downloadJsonFile } from '@/ui/download';
 import { Button } from '@/ui/primitives/button';
-import type {
-  CommandOutcome,
-  CommandOutcomePromise,
-  ErasedCounts,
-  ReplicaClient,
-} from '@/ui/replica-client';
+import type { ReplicaClient } from '@/ui/replica-client';
 import { SnapshotConfirmation } from '@/ui/settings/snapshot-confirmation';
-import { fileFailureText, snapshotRejectionText } from '@/ui/settings/snapshot-text';
+import { initialSnapshotState, snapshotReducer } from '@/ui/settings/snapshot-actions-reducer';
+import { fileFailureText } from '@/ui/settings/snapshot-text';
 
 const ACCEPTED_FILE_TYPES = ['.json', 'application/json'];
-
-// AD-9, kept in this window only, so a window that closes, or a GM who leaves Settings, forgets it
-// and writes nothing. `checking` waits for the count, `asking` shows the block, `importing` waits
-// for the import. `ask` counts the questions, so a new count remounts the block and its focus goes
-// to "Отменить" again. `digest` names the values and the sheets the GM was told about, so the
-// import drops only those.
-type ImportState =
-  | { phase: 'idle'; message: string | null; ask: number }
-  | { phase: 'checking'; data: string; outcome: Promise<CommandOutcome<ErasedCounts>>; ask: number }
-  | { phase: 'asking'; data: string; count: number; sheets: number; digest: string; ask: number }
-  | { phase: 'importing'; data: string; outcome: CommandOutcomePromise<undefined>; ask: number };
 
 type SnapshotActionsOptions = {
   records: ReadonlyMap<string, VersionedRecord>;
@@ -62,7 +47,7 @@ export function useSnapshotActions({
   catchingUp,
   client,
 }: SnapshotActionsOptions): SnapshotActionsParts {
-  const [state, setState] = useState<ImportState>({ phase: 'idle', message: null, ask: 0 });
+  const [state, dispatch] = useReducer(snapshotReducer, initialSnapshotState);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
   const { sendCommand, requestSnapshotCheck } = client;
@@ -70,17 +55,8 @@ export function useSnapshotActions({
 
   if (catchingUp && state.phase === 'asking') {
     refocus.current = true;
-    setState({ phase: 'idle', message: null, ask: state.ask });
+    dispatch({ type: 'catch-up-started' });
   }
-
-  const startImport = useCallback(
-    (data: string, expectedDigest: string, ask: number): ImportState => {
-      const sent = sendCommand({ type: 'snapshot-import', data, expectedDigest });
-
-      return { phase: 'importing', data, outcome: sent, ask };
-    },
-    [sendCommand],
-  );
 
   useEffect(() => {
     if (!waiting) {
@@ -91,7 +67,7 @@ export function useSnapshotActions({
 
     void current.outcome
       .then((outcome) => {
-        setState((shown) => (shown === current ? settled(current, outcome) : shown));
+        dispatch({ type: 'outcome', state: current, request: current.outcome, result: outcome });
       })
       .catch((error) => {
         console.error('Muster Roll could not settle a snapshot request', error);
@@ -99,24 +75,19 @@ export function useSnapshotActions({
   }, [state, waiting]);
 
   async function choose(file: File): Promise<void> {
-    setState((current) => ({ phase: 'idle', message: null, ask: current.ask }));
+    dispatch({ type: 'reset' });
 
     const data = await readSnapshotFile(file);
 
     if (!data.ok) {
-      setState((current) => ({ phase: 'idle', message: data.error, ask: current.ask }));
+      dispatch({ type: 'file-error', message: data.error });
 
       return;
     }
 
     const requested = requestSnapshotCheck(data.value);
 
-    setState((current) => ({
-      phase: 'checking',
-      data: data.value,
-      outcome: requested,
-      ask: current.ask,
-    }));
+    dispatch({ type: 'check-requested', data: data.value, outcome: requested });
   }
 
   function backToButton(): void {
@@ -130,12 +101,18 @@ export function useSnapshotActions({
         count={state.count}
         sheets={state.sheets}
         onConfirm={() => {
+          const sent = sendCommand({
+            type: 'snapshot-import',
+            data: state.data,
+            expectedDigest: state.digest,
+          });
+
           refocus.current = true;
-          setState(startImport(state.data, state.digest, state.ask));
+          dispatch({ type: 'confirm', outcome: sent });
           backToButton();
         }}
         onCancel={() => {
-          setState({ phase: 'idle', message: null, ask: state.ask });
+          dispatch({ type: 'cancel' });
           backToButton();
         }}
       />
@@ -245,55 +222,4 @@ async function readSnapshotFile(file: File): Promise<Result<string, string>> {
   const parsed = parseSnapshotFile(text);
 
   return parsed.ok ? ok(encodeSnapshotFileData(parsed.value)) : err(fileFailureText(parsed.error));
-}
-
-// What the answer to the check or the import leads to.
-function settled(
-  state: Extract<ImportState, { phase: 'checking' | 'importing' }>,
-  outcome: CommandOutcome<ErasedCounts | undefined>,
-): ImportState {
-  if (outcome.kind === 'timed-out') {
-    return {
-      phase: 'idle',
-      message:
-        state.phase === 'importing' ? copy.snapshotImportNoAnswer : copy.snapshotImportFailed,
-      ask: state.ask,
-    };
-  }
-
-  if (outcome.kind === 'refused' && outcome.rejection.reason === 'count-changed') {
-    return {
-      phase: 'asking',
-      data: state.data,
-      count: outcome.rejection.count,
-      sheets: outcome.rejection.sheets,
-      digest: outcome.rejection.digest,
-      ask: state.ask + 1,
-    };
-  }
-
-  if (outcome.kind === 'refused') {
-    return {
-      phase: 'idle',
-      message: snapshotRejectionText(outcome.rejection.reason),
-      ask: state.ask,
-    };
-  }
-
-  if (state.phase === 'checking') {
-    if (outcome.answer === undefined) {
-      return { phase: 'idle', message: copy.snapshotImportFailed, ask: state.ask };
-    }
-
-    return {
-      phase: 'asking',
-      data: state.data,
-      count: outcome.answer.count,
-      sheets: outcome.answer.sheets,
-      digest: outcome.answer.digest,
-      ask: state.ask + 1,
-    };
-  }
-
-  return { phase: 'idle', message: null, ask: state.ask };
 }
