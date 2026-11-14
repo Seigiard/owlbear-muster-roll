@@ -334,3 +334,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-61.12-snapshot-import-confirmation.md`
   summary: An older snapshot file read can replace a newer file selection.
   evidence: Focused review pre-existing finding `adversarial-1` points to `choose(file)` resetting to idle, awaiting `readSnapshotFile(file)`, then unconditionally dispatching `file-error` or requesting a check. The same ordering exists at preservation baseline `840ed10a0e799e800551a75916c481283ec2f9a8`. No user incident was reproduced; this race candidate remains outside the behavior-preserving reducer extraction.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-63.1-projection-delivery.md`
+  summary: A fully synchronous replacement projection during old-buffer replay can return delivery to `live` and let old-stream deltas continue.
+  evidence: This conditional scenario is unverified and is also possible in the base; no actual production regression or verified fix is claimed. The current OBR and queue path does not establish a producer that fully completes replacement inline inside `request()` during replay, and no existing production producer was demonstrated. Proof needed: identify that real producer, then show a remaining old-stream delta or answer applied after replacement. Do not change this behavior in TASK-63.1.
