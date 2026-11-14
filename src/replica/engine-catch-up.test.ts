@@ -25,7 +25,7 @@ import {
   type RigClient,
   type RigRoom,
   waitUntil,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 const INITIAL: Generation = { n: 0, a: '' };
 const ROW_STR = { kind: 'row', rowId: 'str' } as const;

@@ -23,6 +23,7 @@ import {
   type MockRoom,
 } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
+import { copy } from '@/copy';
 import {
   createRoomRig,
   outcome,
@@ -30,8 +31,7 @@ import {
   requestRoll as trackedRoll,
   waitUntil,
   type RigClient,
-} from '@/replica/room-rig';
-import { copy } from '@/copy';
+} from '../../tests/support/room-rig';
 
 // Waits far past any test unless a test shortens one.
 const DICE_TIMING: DiceExtensionTiming = {

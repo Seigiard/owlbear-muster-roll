@@ -7,8 +7,8 @@ import type { Timing } from '@/core/timing';
 import type { RollOutcome } from '@/core/ui-messages';
 import type { MockRoom } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
-import { createRoomRig, type RigClient, waitUntil } from '@/replica/room-rig';
 import { copy } from '@/copy';
+import { createRoomRig, type RigClient, waitUntil } from '../../tests/support/room-rig';
 
 const GHOST = 'ghost-gm';
 

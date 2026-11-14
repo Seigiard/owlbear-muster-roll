@@ -21,7 +21,7 @@ import {
   type RigClient,
   type RigRoom,
   waitUntil,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 // Short enough to see the write, long enough to see that nothing was written before it.
 const SHORT_PAUSE: Partial<Timing> = { snapshotPauseMs: 60, snapshotJitterMs: 0 };

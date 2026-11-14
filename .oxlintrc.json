@@ -199,45 +199,6 @@
       }
     },
     {
-      "files": ["src/replica/room-rig.ts"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "paths": [
-              {
-                "name": "@owlbear-rodeo/sdk",
-                "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
-              }
-            ],
-            "patterns": [
-              {
-                "group": ["@owlbear-rodeo/sdk/**"],
-                "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
-              },
-              {
-                "group": [
-                  "**/platform/obr",
-                  "**/platform/obr/**",
-                  "**/platform/mock",
-                  "**/platform/mock/**",
-                  "./obr",
-                  "./obr/**",
-                  "../obr",
-                  "../obr/**",
-                  "./mock",
-                  "./mock/**",
-                  "../mock",
-                  "../mock/**"
-                ],
-                "message": "Import the adapter through @/platform/current, so the build mode picks it."
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "files": ["src/platform/**"],
       "rules": {
         "no-restricted-imports": [

@@ -13,7 +13,7 @@ import {
   waitUntil,
   type RigClient,
   type RigRoom,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 const PRESET: Preset = {
   v: 3,

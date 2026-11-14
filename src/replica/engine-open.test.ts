@@ -20,7 +20,7 @@ import {
   type RigPage,
   type RigRoom,
   waitUntil,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 // Long enough for every queued LOCAL message to land.
 const SETTLE_MS = 30;

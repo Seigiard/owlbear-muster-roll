@@ -17,7 +17,7 @@ import {
   shown,
   type RigClient,
   type RigRoom,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 const WAIT_LIMIT_MS = 3000;
 const POLL_MS = 2;

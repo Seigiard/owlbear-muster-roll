@@ -19,7 +19,11 @@ import {
   type WindowPublisher,
   type WindowPublisherState,
 } from '@/replica/window-publisher';
-import { createProjectionStore, startReplicaClient, type RigPage } from '@/replica/room-rig';
+import {
+  createProjectionStore,
+  startReplicaClient,
+  type RigPage,
+} from '../../tests/support/room-rig';
 
 const PRESET: Preset = {
   v: 3,

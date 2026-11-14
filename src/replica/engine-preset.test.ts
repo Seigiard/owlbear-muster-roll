@@ -29,7 +29,7 @@ import {
   type RigClient,
   type RigRoom,
   waitUntil,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 const GENERATION = { n: 0, a: '' };
 const DENIED = 'Нет прав на правку';

@@ -9,7 +9,7 @@ Muster Roll is an Owlbear Rodeo extension that keeps the sheets of one room, suc
 - `src/platform/` - ports, plus the `obr/` adapter (Owlbear SDK) and the `mock/` adapter (dev and tests)
 - `src/ui/` - the React window, token picker and settings
 - `src/preview/`, `scripts/`, `preview.html` - the dev-only preset preview
-- `tests/` - Playwright e2e (`*.e2e.ts`) and helpers in `tests/support/`
+- `tests/` - Playwright e2e (`*.e2e.ts`) plus shared support; `tests/support/room-rig.ts` is Bun-only and `tests/support/room.ts` is browser support
 - `docs/` - the user-facing preset format and example; decisions in `docs/adr/`
 - `presets/` - preset files the preview lists
 - `public/` - `manifest.json` and `_headers`
@@ -68,8 +68,8 @@ Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you w
 <important if="you are writing or changing tests">
 
 - Unit tests sit beside their source as `*.test.ts` and use `bun:test` with `#given` / `#when` / `#then` comments.
-- Engine tests (`src/replica/engine-*.test.ts`) build rooms, clients, storage keys and timing with `src/replica/room-rig.ts`. A file states only the timings and the wait limit it changes.
-- E2E tests run the app on the mock adapter. URL parameters in `src/platform/mock/client-params.ts` set the role, the player and faults; `tests/support/room.ts` seeds rooms.
+- Engine tests (`src/replica/engine-*.test.ts`) build rooms, clients, storage keys and timing with the Bun-only `tests/support/room-rig.ts`. A file states only the timings and the wait limit it changes.
+- E2E tests run the app on the mock adapter. URL parameters in `src/platform/mock/client-params.ts` set the role, the player and faults; the browser-side `tests/support/room.ts` seeds rooms.
 - The mock proves app logic only. Behavior in a live Owlbear room needs the owner's check.
 </important>
 

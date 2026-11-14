@@ -22,7 +22,7 @@ import {
   type RigClient,
   type RigPage,
   waitUntil,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 // Two sheet sets, so a new sheet's order counts only its own set, and a hidden single sheet.
 const PRESET: Preset = {
