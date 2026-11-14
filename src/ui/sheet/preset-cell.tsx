@@ -9,7 +9,7 @@ import {
   valueText,
   type FieldValues,
 } from '@/core/sheet-values';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { CellTooltip } from '@/ui/primitives/tooltip';
 
 import { DiceButton, type DiceRow } from './dice-button';

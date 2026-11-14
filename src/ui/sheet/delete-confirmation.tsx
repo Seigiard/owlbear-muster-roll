@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { Button } from '@/ui/primitives/button';
 
 type DeleteConfirmationProps = {

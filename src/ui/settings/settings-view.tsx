@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import type { Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type { RoomCopyStatus } from '@/core/ui-messages';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { PresetDownload, uploadDisabledReason, usePresetUpload } from '@/ui/preset-actions';
 import { SECONDARY_BUTTON_CLASS } from '@/ui/primitives/button';
 import type { ReplicaClient } from '@/ui/replica-client';

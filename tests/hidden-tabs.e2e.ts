@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 
 import {
   ADD,

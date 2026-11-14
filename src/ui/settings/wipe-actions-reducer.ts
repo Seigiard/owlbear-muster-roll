@@ -1,5 +1,5 @@
 import type { RejectionReason } from '@/core/ui-messages';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import type { CommandOutcome, CommandOutcomePromise } from '@/ui/replica-client';
 
 // AD-9, kept in this window only, so a window that closes, or a GM who leaves Settings, forgets it

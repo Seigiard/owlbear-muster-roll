@@ -8,8 +8,7 @@ import type { RollOutcome } from '@/core/ui-messages';
 import type { MockRoom } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
 import { createRoomRig, type RigClient, waitUntil } from '@/replica/room-rig';
-import { copy } from '@/ui/copy';
-import type { RollRequest } from '@/ui/replica-client';
+import { copy } from '@/copy';
 
 const GHOST = 'ghost-gm';
 
@@ -174,6 +173,8 @@ const STRENGTH_TEXT = 'Мастер: Брок, Сила — 7, успех';
 type ClientOptions = { role?: PlayerRole; name?: string; timing?: Partial<Timing> };
 
 type Client = RigClient;
+
+type RollRequest = Parameters<RigClient['window']['requestRoll']>[0];
 
 type Room = {
   room: MockRoom;

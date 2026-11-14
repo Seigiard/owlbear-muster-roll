@@ -1,6 +1,6 @@
 import type { SnapshotFileFailure } from '@/core/snapshot-import';
 import type { RejectionReason } from '@/core/ui-messages';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 
 // What the window says under "Загрузить снимок" for a file it refused, or for a refused check or
 // import.

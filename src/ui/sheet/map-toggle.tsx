@@ -4,7 +4,7 @@ import { ToggleButton } from 'react-aria-components';
 
 import type { LinkTarget } from '@/core/link-target';
 import type { SelectionStep } from '@/core/token-selection';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { ICON_BUTTON_CLASS, IconStatus } from '@/ui/primitives/icon-button';
 import { TokenIcon } from '@/ui/primitives/icons';
 import { CellTooltip } from '@/ui/primitives/tooltip';

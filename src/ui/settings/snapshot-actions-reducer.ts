@@ -1,4 +1,4 @@
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import type { CommandOutcome, CommandOutcomePromise, ErasedCounts } from '@/ui/replica-client';
 import { snapshotRejectionText } from '@/ui/settings/snapshot-text';
 

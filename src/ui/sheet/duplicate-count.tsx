@@ -4,7 +4,7 @@ import { FieldError, Input, Label, TextField } from 'react-aria-components';
 
 import type { Command } from '@/core/ui-messages';
 import { DUPLICATE_COUNT_MIN, parseDuplicateCount } from '@/core/repeat-block-duplicate';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { Button } from '@/ui/primitives/button';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
 

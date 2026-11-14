@@ -11,7 +11,7 @@ import {
   parseSnapshotFile,
   SNAPSHOT_FILE_BYTE_LIMIT,
 } from '@/core/snapshot-import';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { downloadJsonFile } from '@/ui/download';
 import { Button } from '@/ui/primitives/button';
 import type { ReplicaClient } from '@/ui/replica-client';

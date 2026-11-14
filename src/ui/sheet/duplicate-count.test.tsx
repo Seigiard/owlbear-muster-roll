@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 
 import type { VersionedRecord } from '@/core/records';
 import type { Command, SyncState } from '@/core/ui-messages';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { createProjectionStore } from '@/ui/projection-store';
 
 import { DuplicateCount } from './duplicate-count';

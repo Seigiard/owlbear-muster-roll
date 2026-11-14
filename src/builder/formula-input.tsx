@@ -1,7 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 
 type FormulaInputProps = {
   id: string;

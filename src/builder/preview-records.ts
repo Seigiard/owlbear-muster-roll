@@ -1,7 +1,7 @@
 import { layoutSections, repeatSectionId, type Template } from '@/core/preset';
 import { repKey, type VersionedRecord } from '@/core/records';
 import { sheetKey } from '@/core/sheets';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 
 // AD-23: the records the builder's preview draws one template with. No value is set, so every field
 // shows its placeholder.

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 
 import { fieldValuesSchema, rowKey, type VersionedRecord } from '@/core/records';
 import type { NameField } from '@/core/sheets';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { IconButton } from '@/ui/primitives/icon-button';
 import { AccessIcon, TrashIcon } from '@/ui/primitives/icons';
 import type { ProjectionStore } from '@/ui/projection-store';

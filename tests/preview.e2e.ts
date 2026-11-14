@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 
 import { presetFailureMessage } from '@/ui/preset-errors';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 
 import { listPresetFiles } from '../scripts/preview-plugin';
 

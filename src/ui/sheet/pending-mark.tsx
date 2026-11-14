@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 import { dependentSheetId } from '@/core/sheets';
 import type { VersionedRecord } from '@/core/records';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { fieldUnit, recordUnit, unitKey } from '@/ui/pending-marks';
 import type { PendingEntry } from '@/ui/projection-store';
 

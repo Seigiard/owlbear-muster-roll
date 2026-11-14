@@ -19,7 +19,7 @@ import { tabShownTo, type PlayerRole } from '@/core/visibility';
 import { platform } from '@/platform/current';
 import { createSendQueue } from '@/platform/send-queue';
 import { bannerFor } from '@/ui/banner-message';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { watchMapSelection, type MapSelection } from '@/ui/map-selection';
 import { createPendingMarks, type PendingMarks } from '@/ui/pending-marks';
 import { PresetUpload, uploadDisabledReason } from '@/ui/preset-actions';

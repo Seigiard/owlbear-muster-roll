@@ -21,8 +21,6 @@ import {
   type RigRoom,
   waitUntil,
 } from '@/replica/room-rig';
-import type { ProjectionStore } from '@/ui/projection-store';
-import type { ReplicaClient } from '@/ui/replica-client';
 
 // Long enough for every queued LOCAL message to land.
 const SETTLE_MS = 30;
@@ -120,7 +118,7 @@ type Background = {
   readonly requests: OpenSheetRequest[];
 };
 
-type Window = { store: ProjectionStore; client: ReplicaClient };
+type Window = { store: RigPage['store']; client: RigPage['window'] };
 
 const roomRig = createRoomRig({ seeded: ROOM });
 

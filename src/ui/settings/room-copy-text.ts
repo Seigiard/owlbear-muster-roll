@@ -1,5 +1,5 @@
 import type { RoomCopyStatus } from '@/core/ui-messages';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 
 // UX-DR23: what Settings says about the room copy.
 export function roomCopyText(roomCopy: RoomCopyStatus): string {

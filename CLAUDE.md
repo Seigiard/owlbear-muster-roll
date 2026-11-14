@@ -62,7 +62,7 @@ Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you w
 </important>
 
 <important if="you are writing or changing interface text">
-- Interface text is Russian and lives in `src/ui/copy.ts`.
+- Interface text is Russian and lives in `src/copy.ts`, shared by the UI and background replica.
 </important>
 
 <important if="you are writing or changing tests">

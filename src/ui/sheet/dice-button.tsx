@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import type { DicePlace } from '@/core/dice-roll';
 import type { FieldPatchTarget } from '@/core/field-patch';
 import type { RollOutcome } from '@/core/ui-messages';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { Pressable } from '@/ui/primitives/button';
 import type { ReplicaClient } from '@/ui/replica-client';
 

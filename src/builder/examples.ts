@@ -2,7 +2,7 @@ import exampleText from '../../docs/example-preset.json?raw';
 import d20Text from '../../tests/fixtures/presets/d20.json?raw';
 import d6PoolText from '../../tests/fixtures/presets/d6-pool.json?raw';
 
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 
 // The repository presets the builder offers under "Открыть…". `name` starts the download file name.
 export type BuilderExample = { key: string; label: string; name: string; text: string };

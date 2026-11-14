@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { parsePresetFile, PRESET_FILE_BYTE_LIMIT, type Preset } from '@/core/preset';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 
 import {
   addTab,

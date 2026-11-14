@@ -11,7 +11,7 @@ import {
   type DropTarget,
 } from 'react-aria-components';
 
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 
 import type { BuilderStore } from './builder-store';
 import {

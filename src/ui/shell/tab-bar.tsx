@@ -2,7 +2,7 @@ import { useContext, useEffect } from 'react';
 import type { ReactNode, WheelEvent as ReactWheelEvent } from 'react';
 import { Tab, TabList, TabListStateContext } from 'react-aria-components';
 
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { CellTooltip } from '@/ui/primitives/tooltip';
 
 // The selected tab is underlined in the text color; forced colors drop the shadow, so there it is

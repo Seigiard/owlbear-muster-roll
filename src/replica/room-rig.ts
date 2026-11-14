@@ -27,8 +27,11 @@ import {
 import type { PlayerRole } from '@/platform/ports';
 import { createSendQueue, type Wait } from '@/platform/send-queue';
 import { startReplicaEngine } from '@/replica/engine';
+// TASK-64.2: move this test rig out of src/replica and remove its file-level lint exemption.
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
+
+export { createProjectionStore, startReplicaClient };
 
 const RIG_ROOM_ID = 'mock-room';
 const RIG_FORMAT = FORMAT_VERSION;

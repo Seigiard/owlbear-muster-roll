@@ -19,8 +19,7 @@ import {
   type WindowPublisher,
   type WindowPublisherState,
 } from '@/replica/window-publisher';
-import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
+import { createProjectionStore, startReplicaClient, type RigPage } from '@/replica/room-rig';
 
 const PRESET: Preset = {
   v: 3,
@@ -57,7 +56,7 @@ type Harness = {
   source: WindowPublisherState;
   publisher: WindowPublisher;
   messages: EngineMessage[];
-  openWindow: (id: string) => { client: ReplicaClient; store: ProjectionStore };
+  openWindow: (id: string) => { client: RigPage['window']; store: RigPage['store'] };
   stopRequests: () => void;
   stop: () => void;
 };
