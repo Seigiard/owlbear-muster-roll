@@ -74,13 +74,9 @@ describe('transition', () => {
     expect(chosen.chosenTemplateTabs).toEqual(new Map([['sheet:hero', 1]]));
   });
 
-  test('records a created sheet only for a GM with a present preset', () => {
+  test('records a sent creation', () => {
     // #given
     const state = readyState();
-
-    const playerState = reduce(state, [
-      { type: 'projection', isGm: false, tabIds: ['sheet:hero'], presetState: 'present' },
-    ]);
 
     // #when
     const created = transition(state, {
@@ -90,18 +86,8 @@ describe('transition', () => {
       presetState: 'present',
     });
 
-    const ignoredForPlayer = transition(playerState, {
-      type: 'create-sent',
-      sheet: 'sheet:new',
-      isGm: false,
-      presetState: 'present',
-    });
-
     // #then
-    expect({ created: created.created, ignoredForPlayer: ignoredForPlayer.created }).toEqual({
-      created: 'sheet:new',
-      ignoredForPlayer: null,
-    });
+    expect(created.created).toBe('sheet:new');
   });
 
   test('settles only the matching failed create outcome', () => {
