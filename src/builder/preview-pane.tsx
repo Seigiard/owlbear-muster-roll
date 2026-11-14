@@ -1,7 +1,7 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 
-import { DEFAULT_WINDOW_SIZE, openTabIndex } from '@/core/preset';
+import { DEFAULT_WINDOW_SIZE } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { sheetKey } from '@/core/sheets';
 import { createStubRolling } from '@/preview/stub-rolling';
@@ -28,6 +28,12 @@ import {
   type BuilderDocument,
 } from './document';
 import { previewRecords, previewSheetName, PREVIEW_SHEET_ID } from './preview-records';
+import {
+  previewNavigationReducer,
+  type PreviewNavigationAction,
+  type PreviewNavigationTemplate,
+  type ShownTab,
+} from './preview-navigation';
 import type { BuilderProblem } from './problems';
 
 type PreviewPaneProps = {
@@ -73,22 +79,32 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
   );
 
   const records = useMemo(() => (template === null ? null : previewRecords(template)), [template]);
-  const [shownTab, setShownTab] = useState<ShownTab | null>(null);
-  const selectedTab = selection === null ? null : tabIndexOf(document, selection);
+  const [shownTab, dispatch] = useReducer(previewNavigationReducer, null);
+
+  const selectedTab = useMemo(
+    () => (selection === null ? null : tabIndexOf(document, selection)),
+    [document, selection],
+  );
+
+  const navigationTemplate = useMemo<PreviewNavigationTemplate | null>(
+    () =>
+      docTemplate === null || template === null ? null : { uid: docTemplate.uid, ...template },
+    [docTemplate, template],
+  );
+
+  const navigationAction = useMemo<PreviewNavigationAction>(
+    () => ({ type: 'selection-changed', template: navigationTemplate, selectedTab }),
+    [navigationTemplate, selectedTab],
+  );
+
+  const nextShownTab = previewNavigationReducer(shownTab, navigationAction);
+
+  useEffect(() => {
+    dispatch(navigationAction);
+  }, [navigationAction]);
+
   const templateUid = docTemplate?.uid ?? null;
-
-  const chosenTab =
-    selectedTab?.template === templateUid
-      ? selectedTab.tab
-      : shownTab?.template === templateUid
-        ? shownTab.tab
-        : undefined;
-
-  const openTab = template === null ? 0 : openTabIndex(template, chosenTab);
-
-  if (templateUid !== null && (shownTab?.template !== templateUid || shownTab.tab !== openTab)) {
-    setShownTab({ template: templateUid, tab: openTab });
-  }
+  const openTab = template === null ? 0 : (nextShownTab?.tab ?? 0);
 
   const scale = areaWidth === null ? 1 : Math.min(1, areaWidth / width);
 
@@ -251,9 +267,6 @@ function PreviewBody({
     </CellPreviewContext>
   );
 }
-
-// The tab the preview shows for a template, kept while the selection leaves the template's tabs.
-type ShownTab = { template: string; tab: number };
 
 // The template and tab that hold an item, `null` for the window, a template or an unknown uid.
 function tabIndexOf(document: BuilderDocument, uid: string): ShownTab | null {
