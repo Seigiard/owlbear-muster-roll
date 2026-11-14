@@ -20,6 +20,8 @@
   "dependencies": {
     "@nanostores/react": "2.0.1",
     "@owlbear-rodeo/sdk": "3.1.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
     "fflate": "0.8.3",
     "nanoid": "6.0.2",
     "nanostores": "1.5.5",
@@ -37,6 +39,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.3.0",
+    "eslint-plugin-better-tailwindcss": "4.11.0",
     "fast-check": "4.10.2",
     "happy-dom": "21.0.4",
     "lefthook": "2.2.2",

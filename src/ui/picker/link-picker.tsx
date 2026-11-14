@@ -297,7 +297,7 @@ export function LinkPicker({
                 pick(choice);
               }}
               aria-label={targetAccessibleName(choice)}
-              className="touch-target flex w-full items-center gap-2 rounded-sm px-3 text-left text-text data-disabled:opacity-50 data-hovered:bg-fill data-pressed:bg-fill-strong"
+              className="flex touch-target w-full items-center gap-2 rounded-sm px-3 text-left text-text data-disabled:opacity-50 data-hovered:bg-fill data-pressed:bg-fill-strong"
             >
               <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                 {shownName(choice.blockName ?? choice.sheetName)}
@@ -339,7 +339,7 @@ export function LinkPicker({
             dispatch({ type: 'offer', wanted });
           }}
           aria-describedby={hint === null ? undefined : labelHintId}
-          className="group touch-target col-span-2 grid grid-cols-subgrid items-center text-text data-disabled:opacity-50"
+          className="group col-span-2 grid touch-target grid-cols-subgrid items-center text-text data-disabled:opacity-50"
         >
           {({ isSelected }) => (
             <>
@@ -356,7 +356,7 @@ export function LinkPicker({
         {hint === null ? null : (
           <p
             id={labelHintId}
-            className="col-start-2 text-label-sm text-text-muted [overflow-wrap:anywhere]"
+            className="col-start-2 text-label-sm [overflow-wrap:anywhere] text-text-muted"
           >
             {hint}
           </p>

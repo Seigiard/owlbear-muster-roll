@@ -1,3 +1,4 @@
+import { cva } from 'class-variance-authority';
 import type { ReactNode } from 'react';
 
 import { Pressable, type PressableProps } from './button';
@@ -14,6 +15,16 @@ export const ICON_BUTTON_HOVER_CLASS = 'data-hovered:bg-fill data-hovered:text-t
 const PRESSED_CLASS = 'border-accent/40 bg-accent-soft text-accent-ink';
 
 const DANGER_CLASS = 'data-hovered:bg-danger-surface data-hovered:text-danger-text';
+
+const ICON_BUTTON_TONE_CLASS = cva(ICON_BUTTON_CLASS, {
+  variants: {
+    tone: {
+      neutral: ICON_BUTTON_HOVER_CLASS,
+      danger: DANGER_CLASS,
+      pressed: PRESSED_CLASS,
+    },
+  },
+});
 
 type IconButtonProps = Omit<PressableProps, 'children' | 'accessibleName'> & {
   icon: ReactNode;
@@ -34,16 +45,12 @@ export function IconButton({
   tone = 'neutral',
   ...pressable
 }: IconButtonProps): ReactNode {
-  const toneClass = pressed
-    ? PRESSED_CLASS
-    : tone === 'danger'
-      ? DANGER_CLASS
-      : ICON_BUTTON_HOVER_CLASS;
+  const iconButtonTone = pressed ? 'pressed' : tone;
 
   return (
     <CellTooltip name={tooltip} className="shrink-0">
       <Pressable
-        className={`${ICON_BUTTON_CLASS} ${toneClass}`}
+        className={ICON_BUTTON_TONE_CLASS({ tone: iconButtonTone })}
         accessibleName={label}
         {...pressable}
       >

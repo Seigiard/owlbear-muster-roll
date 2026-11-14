@@ -65,6 +65,11 @@ Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you w
 - Interface text is Russian and lives in `src/ui/copy.ts`.
 </important>
 
+<important if="you are writing or changing UI components">
+- Build conditional `className` values with `clsx`; define named control variants with `cva`.
+- Follow `muster-roll/no-hand-assembled-classname`, which enforces this `className` assembly rule.
+</important>
+
 <important if="you are writing or changing tests">
 
 - Unit tests sit beside their source as `*.test.ts` and use `bun:test` with `#given` / `#when` / `#then` comments.

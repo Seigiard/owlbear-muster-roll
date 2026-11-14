@@ -1,8 +1,20 @@
+import { cva } from 'class-variance-authority';
 import type { ReactNode, Ref } from 'react';
 
 import { Pressable } from './button';
 
-const CHIP_CLASS = 'touch-target-compact rounded-full border px-2 text-caption';
+const CHIP_CLASS = cva('', {
+  variants: {
+    variant: {
+      status:
+        'touch-target-compact inline-flex items-center rounded-full border border-hairline bg-fill px-2 text-caption text-text-muted',
+      default:
+        'touch-target-compact rounded-full border border-hairline bg-fill px-2 text-caption text-text-muted data-hovered:bg-fill-strong data-hovered:text-text',
+      pressed:
+        'touch-target-compact rounded-full border border-accent/40 bg-accent-soft px-2 text-caption text-accent-ink',
+    },
+  },
+});
 
 type StatusChipProps = {
   children: ReactNode;
@@ -35,19 +47,15 @@ export function Chip({
   ref,
 }: StatusChipProps | PressableChipProps): ReactNode {
   if (onPress === undefined) {
-    return (
-      <span
-        className={`inline-flex items-center border-hairline bg-fill text-text-muted ${CHIP_CLASS}`}
-      >
-        {children}
-      </span>
-    );
+    return <span className={CHIP_CLASS({ variant: 'status' })}>{children}</span>;
   }
+
+  const chipVariant = pressed ? 'pressed' : 'default';
 
   return (
     <Pressable
       ref={ref}
-      className={`${CHIP_CLASS} ${pressed ? 'border-accent/40 bg-accent-soft text-accent-ink' : 'border-hairline bg-fill text-text-muted data-hovered:bg-fill-strong data-hovered:text-text'}`}
+      className={CHIP_CLASS({ variant: chipVariant })}
       onPress={onPress}
       disabledReason={disabledReason}
       expanded={expanded}

@@ -2,6 +2,10 @@
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "singleQuote": true,
   "printWidth": 100,
+  "sortTailwindcss": {
+    "stylesheet": "src/ui/main.css",
+    "functions": ["clsx", "cva"]
+  },
   "semi": true,
   "trailingComma": "all",
   "ignorePatterns": [

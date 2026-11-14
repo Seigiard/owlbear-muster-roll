@@ -330,7 +330,7 @@ function OwnerGroup({ options, checked, onPick }: OwnerGroupProps): ReactNode {
             role="radio"
             aria-checked={isChecked}
             tabIndex={index === tabStop ? 0 : -1}
-            className="touch-target inline-flex items-center gap-2 self-start text-left"
+            className="inline-flex touch-target items-center gap-2 self-start text-left"
             onFocus={() => {
               setFocused(index);
             }}
@@ -374,7 +374,7 @@ function AccessRowItem({ row, checked, onChange }: AccessRowItemProps): ReactNod
         <span id={nameId} className="min-w-0 [overflow-wrap:anywhere]">
           {name}
         </span>
-        <label className="touch-target inline-flex shrink-0 items-center gap-2">
+        <label className="inline-flex touch-target shrink-0 items-center gap-2">
           <input
             type="checkbox"
             className="size-4"

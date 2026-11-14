@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import type { Key, ReactNode } from 'react';
 import { Button, Tab, TabList, Tabs } from 'react-aria-components';
 
@@ -112,7 +113,11 @@ export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
 
   return (
     <main
-      className={`window-edge flex ${layout.frameClassName ?? 'h-dvh'} min-w-0 overflow-clip rounded-window bg-surface text-body text-text`}
+      className={clsx(
+        'window-edge flex',
+        layout.frameClassName ?? 'h-dvh',
+        'min-w-0 overflow-clip rounded-window bg-surface text-body text-text',
+      )}
     >
       <Sidebar
         entries={layout.sidebar}
@@ -121,7 +126,7 @@ export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
         onAdd={layout.onAddSidebarEntry}
         settings={layout.settings}
       />
-      <div className="flex min-w-0 min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Banner message={banner} />
         {content}
       </div>
@@ -181,7 +186,7 @@ function Sidebar({ entries, selected, onSelect, onAdd, settings }: SidebarProps)
               onAdd(section.id);
             }}
             style={{ order }}
-            className={`${SIDEBAR_TAB_CLASS} text-text-muted`}
+            className={clsx(SIDEBAR_TAB_CLASS, 'text-text-muted')}
           >
             {copy.addSign}
           </Button>,

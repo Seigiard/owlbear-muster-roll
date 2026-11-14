@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
@@ -124,7 +125,7 @@ export function FormulaInput({
         aria-invalid={invalid || undefined}
         autoComplete="off"
         spellCheck={false}
-        className={`${INPUT_CLASS} font-[ui-monospace,monospace]`}
+        className={clsx(INPUT_CLASS, 'font-[ui-monospace,monospace]')}
         value={value}
         onChange={(event) => {
           setOpen(true);
@@ -159,7 +160,10 @@ export function FormulaInput({
               id={`${optionPrefix}-${index}`}
               role="option"
               aria-selected={index === activeIndex}
-              className={`touch-target flex cursor-default items-center rounded-sm px-2 font-[ui-monospace,monospace] ${index === activeIndex ? 'bg-surface-tab' : ''}`}
+              className={clsx(
+                'flex touch-target cursor-default items-center rounded-sm px-2 font-[ui-monospace,monospace]',
+                { 'bg-surface-tab': index === activeIndex },
+              )}
               // The input keeps the focus, so the list stays open until the id is in.
               onMouseDown={(event) => {
                 event.preventDefault();
