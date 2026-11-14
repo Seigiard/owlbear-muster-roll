@@ -6,12 +6,13 @@ import { resolve } from 'node:path';
 
 import { err, ok, type Result } from '../src/core/result';
 import { LAUNCH_FILE_VARIABLE } from '../src/preview/protocol';
+import { runDevServer, type DevServerEnvironment, type DevServerLaunch } from './dev-server';
 
 const PREVIEW_PAGE = '/preview.html';
 
-export type Environment = Readonly<Record<string, string | undefined>>;
+export type Environment = DevServerEnvironment;
 
-export type PreviewLaunch = { cmd: string[]; env: Environment };
+export type PreviewLaunch = DevServerLaunch;
 
 // The dev server command and its environment, or the message to stop with. A launch variable the
 // shell passed down is dropped, so only the path given here is listed.
@@ -59,19 +60,5 @@ if (import.meta.main) {
     process.exit(1);
   }
 
-  const server = Bun.spawn({
-    cmd: launch.value.cmd,
-    env: launch.value.env,
-    stdio: ['inherit', 'inherit', 'inherit'],
-  });
-
-  // A terminal's Ctrl-C reaches both processes, but a plain `kill` of this one would leave the
-  // server.
-  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
-    process.on(signal, () => {
-      server.kill(signal);
-    });
-  }
-
-  process.exit(await server.exited);
+  process.exit(await runDevServer(launch.value));
 }

@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:mock": "vite --mode mock",
     "preview": "bun scripts/preview.ts",
+    "room": "bun scripts/room.ts",
     "build": "vite build",
     "lint": "oxlint --type-aware",
     "format": "oxfmt --ignore-path .gitignore .",

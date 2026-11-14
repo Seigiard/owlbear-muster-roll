@@ -240,6 +240,8 @@ The command starts the dev server in the mock mode and opens `/preview.html`. Th
 
 The page draws one sheet of each template read-only, as a player sees it, each in a frame of the preset's window size. A hidden template is drawn too, so its author can see it. Each frame shows the sidebar with every template, and a click on an entry shows that template in the frame. A sheet with more than one tab shows its tab row, and a click switches the tab in that frame. "Sample values" fills every field and gives each repeat section two blocks; off, the sheets are empty, as just after they are added. "Light theme" switches from Owlbear's dark theme. The page address keeps the chosen file and both switches. The address names a launch file by its absolute path, so a link to it works only on the same machine.
 
+To inspect a seeded mock room with GM and player windows together, run `bun run room`.
+
 Each save of a listed file draws the page again. A file that fails the checks shows the same message as an upload, and the next good save draws the sheets again. Dice cells do not roll. The page never writes to a file.
 
 ## Annotated example
