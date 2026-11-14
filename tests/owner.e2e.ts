@@ -322,8 +322,7 @@ test('a sheet delete tombstones its plink: records', async ({ context }) => {
   const gm = await openGm(context, [...RECORDS, record('plink:brok:vova', { name: 'Вова' })]);
 
   // #when
-  await gm.window.getByRole('button', { name: 'Действия с листом' }).click();
-  await gm.window.getByRole('menuitem', { name: 'Удалить' }).click();
+  await gm.window.getByRole('button', { name: 'Удалить лист' }).click();
   await gm.window.getByRole('button', { name: 'Удалить', exact: true }).click();
 
   // #then

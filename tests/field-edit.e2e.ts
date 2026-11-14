@@ -644,7 +644,7 @@ test('Tab goes through the sidebar, the header, then every field and repeat bloc
     'button Добавить: Персонажи',
     'textbox Имя листа',
     'button Доступ',
-    'button Действия с листом',
+    'button Удалить лист',
     'textbox Сила',
     'checkbox Сила',
     'textbox Ловкость',

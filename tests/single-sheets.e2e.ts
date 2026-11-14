@@ -26,7 +26,7 @@ import {
 const ADD_NPC = 'Добавить в «Противники»';
 const UNNAMED = 'Без имени';
 const SHEET_NAME = 'Имя листа';
-const ACTIONS = 'Действия с листом';
+const ACTIONS = 'Удалить лист';
 const ACCESS = 'Доступ';
 const NO_TOKEN = 'Нет токена';
 const UPLOAD = 'Загрузить пресет';
@@ -120,7 +120,7 @@ test('a single sheet\'s header shows its title, not editable, with no "Дост�
     nameFields: await panel.getByRole('textbox', { name: SHEET_NAME }).count(),
     access: await panel.getByRole('button', { name: ACCESS }).count(),
     actions: await panel.getByRole('button', { name: ACTIONS }).count(),
-    tokenStatus: await panel.getByText(NO_TOKEN).count(),
+    tokenStatus: await panel.getByRole('img', { name: NO_TOKEN }).count(),
   }).toEqual({ nameFields: 0, access: 0, actions: 0, tokenStatus: 0 });
 });
 
@@ -136,7 +136,10 @@ test('a linkable single sheet shows the GM its token status in the header', asyn
 
   // #then
   await expect(
-    page.getByRole('tabpanel', { name: 'Инвентарь' }).locator('header').getByText(NO_TOKEN),
+    page
+      .getByRole('tabpanel', { name: 'Инвентарь' })
+      .locator('header')
+      .getByRole('img', { name: NO_TOKEN }),
   ).toBeVisible();
 });
 

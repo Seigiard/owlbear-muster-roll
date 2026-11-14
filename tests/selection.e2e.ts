@@ -177,7 +177,7 @@ test('a sheet whose linked tokens are all on another scene offers no selection',
   await page.getByRole('tab', { name: 'Вера' }).click();
 
   // #then: the token status still says it is linked.
-  await expect(page.getByText('Токен привязан')).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Токен привязан' })).toBeVisible();
   await expect(page.getByRole('button', { name: SELECT_ON_MAP })).toHaveCount(0);
 });
 

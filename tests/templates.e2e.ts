@@ -252,7 +252,7 @@ test('a single sheet sidebar entry shows its title, read-only, with no delete', 
   expect({
     title: await panel.getByRole('heading', { level: 1 }).textContent(),
     nameFields: await panel.getByRole('textbox', { name: NAME_FIELD }).count(),
-    actions: await panel.getByRole('button', { name: 'Действия с листом' }).count(),
+    actions: await panel.getByRole('button', { name: 'Удалить лист' }).count(),
     gold: await panel.getByRole('textbox', { name: 'gold' }).inputValue(),
   }).toEqual({ title: 'Инвентарь', nameFields: 0, actions: 0, gold: '12' });
 });

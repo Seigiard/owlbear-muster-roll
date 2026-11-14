@@ -35,6 +35,7 @@ const CATALOG_BY_JOB: ReadonlyMap<string, readonly string[]> = new Map<string, r
       copy.command.add,
       copy.command.duplicate,
       copy.command.delete,
+      copy.command.deleteSheet,
       copy.command.linkSheet,
       copy.command.unlinkSheet,
       copy.command.openSheet,

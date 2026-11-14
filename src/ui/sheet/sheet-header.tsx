@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import type { ReactNode, RefObject } from 'react';
-import { Button as AriaButton, Menu, MenuItem, MenuTrigger, Popover } from 'react-aria-components';
+import type { ReactNode } from 'react';
 
 import { fieldValuesSchema, rowKey, type VersionedRecord } from '@/core/records';
 import type { NameField } from '@/core/sheets';
 import { copy } from '@/ui/copy';
-import { Chip } from '@/ui/primitives/chip';
+import { IconButton, IconStatus } from '@/ui/primitives/icon-button';
+import { AccessIcon, TokenIcon, TrashIcon } from '@/ui/primitives/icons';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
@@ -13,20 +13,16 @@ import { AccessPanel } from './access-panel';
 import { MapToggle } from './map-toggle';
 import { FieldEditingContext, useTextFieldEdit, type FieldEditing } from './use-field-edit';
 
-const DELETE_ACTION = 'delete';
-
-const MORE = '⋯';
-
-const HEADER_CLASS = 'mb-6 flex items-center gap-2';
+const HEADER_CLASS = 'mb-6 flex items-center gap-1';
 
 const NAME_CLASS = 'text-sheet-title';
 
 // A player's status beside the name (UX-DR10).
 export type HeaderStatus = 'can-edit' | 'read-only';
 
-// What a GM gets in the header. `access` shows the "Доступ" chip, on a visible sheet of a sheet
+// What a GM gets in the header, as icons. `access` shows "Доступ", on a visible sheet of a sheet
 // set. `tokenLinked` is the token status of a linkable template, `null` for one that is not.
-// `onDelete` shows "⋯" with "Удалить", on a sheet of a sheet set only.
+// `onDelete` shows "Удалить лист", on a sheet of a sheet set only.
 export type GmHeader = {
   playerId: string;
   access: boolean;
@@ -115,29 +111,30 @@ export function SheetHeader({
             {status === 'can-edit' ? copy.status.canEdit : copy.status.readOnly}
           </span>
         )}
-        {gm?.access === true ? (
-          <span className="shrink-0">
-            <Chip
-              ref={accessRef}
-              pressed={accessOpen}
-              expanded={accessOpen}
-              controls={accessOpen ? accessPanelId : undefined}
-              onPress={() => {
-                setAccessOpen((open) => !open);
-              }}
-            >
-              {copy.place.access}
-            </Chip>
-          </span>
-        ) : null}
         {gm === null || gm.tokenLinked === null ? null : (
-          <span className="shrink-0">
-            <Chip>{gm.tokenLinked ? copy.status.tokenLinked : copy.status.noToken}</Chip>
-          </span>
+          <TokenControl sheetId={sheetId} linked={gm.tokenLinked} />
         )}
-        {gm?.tokenLinked === true ? <MapToggle target={{ sheetId, instanceId: null }} /> : null}
+        {gm?.access === true ? (
+          <IconButton
+            ref={accessRef}
+            icon={<AccessIcon />}
+            label={copy.place.access}
+            pressed={accessOpen}
+            expanded={accessOpen}
+            controls={accessOpen ? accessPanelId : undefined}
+            onPress={() => {
+              setAccessOpen((open) => !open);
+            }}
+          />
+        ) : null}
         {gm === null || gm.onDelete === null ? null : (
-          <SheetActions actionsRef={actionsRef} onDelete={gm.onDelete} />
+          <IconButton
+            ref={actionsRef}
+            icon={<TrashIcon />}
+            label={copy.command.deleteSheet}
+            tone="danger"
+            onPress={gm.onDelete}
+          />
         )}
       </header>
       {gm?.access === true && accessOpen ? (
@@ -154,43 +151,20 @@ export function SheetHeader({
   );
 }
 
-// "⋯" with "Удалить".
-function SheetActions({
-  actionsRef,
-  onDelete,
-}: {
-  actionsRef: RefObject<HTMLButtonElement | null>;
-  onDelete: () => void;
-}): ReactNode {
-  return (
-    <MenuTrigger>
-      <AriaButton
-        ref={actionsRef}
-        aria-label={copy.label.sheetActions}
-        className="touch-target press inline-flex shrink-0 items-center justify-center rounded-md px-2 text-text-muted data-hovered:bg-fill data-hovered:text-text"
-      >
-        {MORE}
-      </AriaButton>
-      <Popover
-        placement="bottom end"
-        className="rounded-lg border border-transparent bg-surface-raised p-1 text-body text-text shadow-popover"
-      >
-        <Menu
-          onAction={(action) => {
-            if (action === DELETE_ACTION) {
-              onDelete();
-            }
-          }}
-        >
-          <MenuItem
-            id={DELETE_ACTION}
-            className="touch-target flex cursor-default items-center rounded-sm px-3 data-focused:bg-fill"
-          >
-            {copy.command.delete}
-          </MenuItem>
-        </Menu>
-      </Popover>
-    </MenuTrigger>
+// The token as one icon: while a linked token is on the open scene, the toggle that selects it on
+// the map; otherwise the token status.
+function TokenControl({ sheetId, linked }: { sheetId: string; linked: boolean }): ReactNode {
+  const status = (
+    <IconStatus
+      icon={<TokenIcon linked={linked} />}
+      label={linked ? copy.status.tokenLinked : copy.status.noToken}
+    />
+  );
+
+  return linked ? (
+    <MapToggle target={{ sheetId, instanceId: null }} appearance="icon" fallback={status} />
+  ) : (
+    status
   );
 }
 

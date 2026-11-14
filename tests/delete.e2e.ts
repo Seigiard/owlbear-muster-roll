@@ -17,7 +17,7 @@ import {
   watchCommands,
 } from './support/room';
 
-const ACTIONS = 'Действия с листом';
+const ACTIONS = 'Удалить лист';
 const DELETE = 'Удалить';
 const CANCEL = 'Отменить';
 const NAME_FIELD = 'Имя листа';
@@ -91,17 +91,27 @@ test('the block sits on surface-raised with a hairline border and rounded-lg', a
   });
 });
 
-test('the keyboard opens the menu, picks "Удалить" and lands on "Отменить"', async ({
+test('"Удалить лист" is an icon that shows its name in a tooltip under the pointer', async ({
   page,
   context,
 }) => {
   // #given
   await openRoom(page, context, pcSheet('brok', 'Брок', 0));
+
+  // #when
+  await actionsButton(page).hover();
+
+  // #then: the icon has no visible word, so the tooltip names it.
+  await expect(page.getByRole('tooltip')).toHaveText(ACTIONS);
+  await expect(actionsButton(page)).toHaveText('');
+});
+
+test('the keyboard presses "Удалить лист" and lands on "Отменить"', async ({ page, context }) => {
+  // #given
+  await openRoom(page, context, pcSheet('brok', 'Брок', 0));
   await actionsButton(page).focus();
 
   // #when
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('menuitem', { name: DELETE })).toBeFocused();
   await page.keyboard.press('Enter');
 
   // #then
@@ -418,6 +428,5 @@ function nameField(page: Page): Locator {
 
 async function askDelete(page: Page): Promise<void> {
   await actionsButton(page).click();
-  await page.getByRole('menuitem', { name: DELETE }).click();
   await expect(confirmation(page)).toBeVisible();
 }

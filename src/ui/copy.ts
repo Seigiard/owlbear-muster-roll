@@ -17,6 +17,8 @@ export const copy = {
     // further step follows.
     confirmDuplicate: 'Дублировать',
     delete: 'Удалить',
+    // The trash icon in the header of a sheet of a sheet set.
+    deleteSheet: 'Удалить лист',
     linkSheet: 'Привязать лист…',
     unlinkSheet: 'Отвязать лист',
     openSheet: 'Открыть лист',
@@ -32,7 +34,6 @@ export const copy = {
     addToSection: (title: string): string => `Добавить в «${title}»`,
     // The name in the header of a sheet of a sheet set, which edits its name field.
     sheetName: 'Имя листа',
-    sheetActions: 'Действия с листом',
     // The range is in the label, so sight and assistive tech both get it.
     duplicateCount: 'Количество копий (1–50)',
     // The accessible names of a repeat block's "Удалить" and "Дублировать…", with the repeat
