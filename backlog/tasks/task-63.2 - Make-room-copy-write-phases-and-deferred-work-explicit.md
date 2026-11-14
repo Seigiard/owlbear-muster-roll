@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@opencode'
 created_date: '2026-11-14T14:10:00Z'
-updated_date: '2026-11-14T21:32:00Z'
+updated_date: '2026-11-14T22:14:00Z'
 labels:
   - architecture
   - state-model
@@ -49,5 +49,5 @@ CAP-2. TASK-50 already placed room-copy policy behind RoomCopy. Inside that modu
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-RoomCopy now owns the active ordinary/import lifecycle and completion in WriteLifecycle, with DeferredWork separate from saved-copy status. Existing interfaces and documented limitations are unchanged. Verified: focused 120 pass; unit 3009 pass/1 environment-only skip; browser 520 pass; format/lint/typecheck/build pass; baseline and final R1-R16 mutation controls all killed. Evidence is recorded in spec-task-63.2-room-copy-phases.md. Closing review will cover this slice together with TASK-63.3 in the requested single PR.
+RoomCopy now owns ordinary/import phase and completion in WriteLifecycle, with DeferredWork separate from saved-copy status. Interfaces and documented limitations stay unchanged. Verification: focused 120 pass; full unit 3009 pass/1 environment-only DOM skip; browser 520 pass; format/lint/typecheck/build pass. Baseline and final R1-R16 controls all killed; closing review restored the original dual-reset R13 mutation. Combined review: mixed 6/6, final 2/2, no blocking findings. An unverified direct-call import/pageHidden interleaving is deferred with its proof requirement. Evidence: spec-task-63.2-room-copy-phases.md. PR: https://github.com/Seigiard/owlbear-muster-roll/pull/26.
 <!-- SECTION:FINAL_SUMMARY:END -->

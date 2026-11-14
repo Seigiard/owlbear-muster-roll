@@ -337,3 +337,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-63.1-projection-delivery.md`
   summary: A fully synchronous replacement projection during old-buffer replay can return delivery to `live` and let old-stream deltas continue.
   evidence: This conditional scenario is unverified and is also possible in the base; no actual production regression or verified fix is claimed. The current OBR and queue path does not establish a producer that fully completes replacement inline inside `request()` during replay, and no existing production producer was demonstrated. Proof needed: identify that real producer, then show a remaining old-stream delta or answer applied after replacement. Do not change this behavior in TASK-63.1.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-63.2-room-copy-phases.md`
+  summary: Verify whether a real engine producer can start an ordinary write between an idle import wait and acquisition of its write slot.
+  evidence: Blind review constructed `writeImport()` followed synchronously by `pageHidden()`. The await/acquire shape also exists in the base. No current engine event trace producing this interleaving was demonstrated, so no runtime defect or fix is claimed. Establish that producer before changing serialization policy.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-63.3-catch-up-phases.md`
+  summary: Reconsider timer-dispatch exhaustiveness when adding another CatchUpTimer variant.
+  evidence: The current switch handles every timer variant and then returns an empty decision list. A future unhandled variant could take that fallback without a type error. No current timer or behavior gap was demonstrated; this is deferred maintenance polish, not a runtime defect.

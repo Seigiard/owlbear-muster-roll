@@ -2,7 +2,7 @@
 title: 'Make room-copy write phases and deferred work explicit'
 type: 'refactor'
 created: '2026-11-14'
-status: 'in-review'
+status: 'done'
 route: 'oneshot'
 review_loop_iteration: 0
 context: []
@@ -32,3 +32,12 @@ context: []
 - Mutation evidence: the baseline at `3163867e49ac1015f0fee273636f7911d510ea87` killed TASK-50 R1-R16 (16/16). The final run uses the refreshed anchors in `tools/mutants/room-copy.json` and must report behavioral assertion failures for every mutant, not compilation failures.
 - Final validation at `bfff746ba23d4fa2728c768af965ac4136ed4298`: focused 120 pass; full unit 3009 pass, 1 environment-only DOM skip; browser 520 pass; format, lint, typecheck and build exit 0. Baseline and final mutation runs each killed all R1-R16 on behavioral assertions, with no stale controls. Tests remain unchanged. Evidence: `/Users/seigiard/.claude/artifacts/tdd-20261114-220338/63.2/implementer-1.report.md` and its named command/exit/log files.
 - Integration: the user requested TASK-63.3 and closure of TASK-63 in one PR. Both slices receive one closing code review on the integration branch; this slice has passed its chain validation.
+- Closing review: `mixed` reported 6/6 sources and one minor control defect. R13 now removes both demotion resets, preserving the original mutation. The repaired R1-R16 run killed all controls on behavioral assertions. The `final` confirmation reported 2/2 sources with no blocking findings; runtime source and existing tests stayed unchanged. PR: https://github.com/Seigiard/owlbear-muster-roll/pull/26.
+
+## Review Triage Log
+
+- R13 covered only the owed reset — confirmed minor, patched in `d0b201d7935b6fafe5d7f7b69874ae3b3f572b3e`; its unique anchor now removes both owed and not-saved resets.
+- Import-slot acquisition after an idle await — unverified construction, deferred. The same shape exists in the base; no current engine producer for synchronous import/pageHidden interleaving was demonstrated.
+- Stop relies on the injected writable gate — unchanged dependency, documented in Implementation Notes. The production engine includes stopped in that gate.
+- Stored mode is not read by helpers — rejected as a defect. The criterion requires explicit mode ownership; active state and its completion drive production serialization. No wrong-mode producer was demonstrated.
+- Local evidence paths — retained limitation, not a blocking defect. The repository has no raw-log hosting requirement; commands and outcomes are recorded here.

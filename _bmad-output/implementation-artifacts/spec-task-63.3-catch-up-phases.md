@@ -2,7 +2,7 @@
 title: 'Bind catch-up and adoption data to their valid phases'
 type: 'refactor'
 created: '2026-11-14'
-status: 'in-progress'
+status: 'done'
 route: 'oneshot'
 review_loop_iteration: 0
 context: []
@@ -31,3 +31,10 @@ context: []
 - Baseline mutation control: `bun run mutants catch-up`, exit 0 on `9b1bf3d3ba366f8c0de2407cd622752e6e975fcd`, killed M1-M12 with 0 survived and 0 stale. Evidence: `~/.claude/artifacts/tdd-20261114-220338/63.3/controls/baseline-mutations.log`.
 - Focused final control: `bun test src/replica/catch-up.test.ts src/replica/engine-catch-up.test.ts src/replica/engine-liveness.test.ts src/replica/engine-no-gm.test.ts src/replica/engine-import.test.ts src/replica/engine-wipe.test.ts` passed 172 tests and 175 assertions on production revision `7ecbc983ca2129c9c41e59ec7ab45f1cb70d6bd7`; the unchanged deterministic suite passed 48 tests and 48 assertions. The final mutation control killed M1-M12 with 0 survived and 0 stale on the same revision. Evidence: `~/.claude/artifacts/tdd-20261114-220338/63.3/controls/final-mutations.log`.
 - Full checks: on `7ecbc983ca2129c9c41e59ec7ab45f1cb70d6bd7`, `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run test:browser` and `bun run build` all exited 0. Format matched 337 files; lint reported 169 warnings and 0 errors; unit tests reported 3009 pass, 1 environment skip, 0 fail and 9160 assertions; browser tests reported 520 passed; Vite built 1673 modules. Evidence: `~/.claude/artifacts/tdd-20261114-220338/63.3/controls/full-format.log`, `full-lint.log`, `full-typecheck.log`, `full-unit.log`, `full-browser.log` and `full-build.log`.
+- Closing review: both slices were reviewed together against `e5868f534a71f5f8aa5b00bd31f7494ac8601195`. The `mixed` round reported 6/6 sources; the contained R13 control repair was followed by a `final` round with 2/2 sources and no blocking findings. Runtime checks remain valid because subsequent repairs changed only mutation configuration and Markdown. PR: https://github.com/Seigiard/owlbear-muster-roll/pull/26.
+
+## Review Triage Log
+
+- Empty fallback after timer dispatch — minor future-extension polish, deferred. All current timer variants are handled; this ticket adds no timer variant.
+- Undefined “named six-suite command” — corrected to the exact command in Implementation Notes.
+- Raw-log portability — retained limitation, not a new infrastructure requirement. Local logs are not claimed as accessible from a clean checkout.
