@@ -1,11 +1,11 @@
 ---
 id: TASK-61.8
 title: Run the link picker through a pure reducer
-status: In Progress
+status: Done
 assignee:
   - '@opencode'
 created_date: '2026-11-14T08:28:00Z'
-updated_date: '2026-11-14T18:21:00Z'
+updated_date: '2026-11-14T19:52:00Z'
 labels:
   - architecture
   - ui-decoupling
@@ -17,6 +17,7 @@ references:
   - docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md
   - >-
     _bmad-output/implementation-artifacts/spec-4-7-offer-the-sheet-name-as-the-token-label.md
+  - https://github.com/Seigiard/owlbear-muster-roll/pull/18
 parent_task_id: TASK-61
 type: task
 ordinal: 68000
@@ -34,7 +35,7 @@ The link picker in src/ui/picker/link-picker.tsx keeps its rules in four effects
 - [x] #2 link-picker.tsx holds the reducer with useReducer; the label read, link command, label write, failure notice and close, with their two bounded waits, run in the component's handlers and effects; there is no caller or runner module and no effect ids
 - [x] #3 tests/link.e2e.ts and src/ui/picker/link-picker.test.tsx pass unchanged; reducer unit tests cover the TASK-61.6 matrix: arrival before answer, refused link, label write failure, demotion before the write, close rejection with a same-target retry, and a stale completion from an earlier attempt
 - [x] #4 prototypes/ui-second-flow/README.md names the production module as the owner of the rules, or the prototype is removed
-- [ ] #5 The owner checked label write and popover close in a live Owlbear room and the result is in the task notes
+- [x] #5 The owner checked label write and popover close in a live Owlbear room and the result is in the task notes
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -57,10 +58,12 @@ Batch 2 review fix is limited to successful-close terminal eligibility; the lock
 Batch 2 terminal-eligibility fix is verified: canPick and canOffer are false after successful close, rendered target and label controls use those selectors, and rejected close still permits same-target retry. Focused picker suite passed 49 tests; full six checks passed with durable log /Users/seigiard/.cache/herdr-run/task618-attempt2-full.log. Fresh five mutation controls all failed their intended assertions and restored the reducer exactly; logs and git-apply-compatible patches are in /Users/seigiard/.claude/artifacts/tdd-20261114-618/61.8/controls/. Review triage, the stable-prop lifetime limitation, and the unverified demotion interval are recorded in the task spec/deferred-work. AC5 remains pending the owner live Owlbear check; no live room was used.
 
 Final confirming review completed on 33c6c4461b1f6eeedee736ce37ef3f8459ebbb67: focused round found the successful-close eligibility regression, the locked regression test failed before the fix and passed after it, and final-profile review reported no blocking findings with 2/2 sources and no degraded coverage. The stable-prop limitation and unverified intermediate role-delivery interval remain documented. AC5 still requires the owner to verify token label persistence and popover closure in a live Owlbear room; no deployment or live-room write was performed.
+
+Owner live verification after merged PR #18: the owner reported “1 работает”, “2 работает”, “3 работает”, and “4 работает” against the four-case Owlbear checklist. The cases covered an empty token label receiving the sheet name, an existing label remaining unchanged with the offer unchecked, explicit replacement after checking the offer, and a repeat block supplying its own name. Each case included saving the link and automatic popover closure. This is owner-reported live evidence, not a mock result. The owner then withdrew the request to change the checkbox default after noticing that the token already had a label, and confirmed that the current behavior is correct. AC5 is satisfied; no code or checkbox-default change is part of this update.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-The production link picker now runs its rules through a pure reducer while React keeps commands, ports and bounded waits. Existing component and e2e tests are unchanged. The full check passed: 2992 unit tests, one environment-only skip, 520 browser tests, format, lint, types and build. Five mutation controls failed the intended assertions and restored the source. The review-found post-close eligibility regression is fixed and final review reported no blocking findings. AC1-AC4 are verified; AC5 remains unchecked and the task stays In Progress pending the owner live Owlbear check. Stable-prop lifetime and the unverified intermediate demotion interval are documented limits.
+The link-picker reducer extraction was merged in PR #18. The owner confirmed all four live Owlbear label and popover-close checks, completing AC5; all five acceptance criteria are now verified and TASK-61.8 is Done. The existing checkbox default remains unchanged: checked for an empty readable label, unchecked for an existing label, with manual override. Automated verification on the merged implementation passed format, lint, types, build, 3009 unit tests (one environment-only skip) and 520 browser tests. Documented deferred limits remain separate from this completed task.
 <!-- SECTION:FINAL_SUMMARY:END -->
