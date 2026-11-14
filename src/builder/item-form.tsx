@@ -822,6 +822,10 @@ function IdInput({ label, id, hint, onCommit }: IdInputProps): ReactNode {
           setText(event.target.value);
         }}
         onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || event.keyCode === 229) {
+            return;
+          }
+
           if (event.key === 'Enter') {
             event.preventDefault();
             commit();

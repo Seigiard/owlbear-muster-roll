@@ -312,3 +312,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-61.9-preview-navigation.md`
   summary: Add optional browser coverage that retains the reducer-selected tab after selecting a window.
   evidence: Review triage judged this minor and deferred it; the current browser test chooses the target tab again, while reducer retention was calibrated and 519 browser tests passed unchanged.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-62-ime-safe-enter-submit.md`
+  summary: Keep an IME Escape key from closing the duplicate-count form through its group handler.
+  evidence: The unchanged `handleKeyDown` in `src/ui/sheet/duplicate-count.tsx` calls `onCancel` for every bubbling Escape, including composing events that the input ignores. This path exists before TASK-62 and is separate from its Enter-confirmation fix.

@@ -81,6 +81,10 @@ export function FormulaInput({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) {
+      return;
+    }
+
     if (!shown) {
       return;
     }
