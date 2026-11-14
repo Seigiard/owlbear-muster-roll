@@ -334,3 +334,13 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-61.12-snapshot-import-confirmation.md`
   summary: An older snapshot file read can replace a newer file selection.
   evidence: Focused review pre-existing finding `adversarial-1` points to `choose(file)` resetting to idle, awaiting `readSnapshotFile(file)`, then unconditionally dispatching `file-error` or requesting a check. The same ordering exists at preservation baseline `840ed10a0e799e800551a75916c481283ec2f9a8`. No user incident was reproduced; this race candidate remains outside the behavior-preserving reducer extraction.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-64.1-layer-dependency-rules.md`
+  summary: Extend layer import restrictions to catch relative paths that bypass the alias-only dependency rules.
+  evidence: Review 01, `bugs-2` / Blind Hunter 1: ACs name alias specifiers, the current cross-layer source has no relative-path violation, and broader resolved-import enforcement is outside TASK-64.1.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-64.1-layer-dependency-rules.md`
+  summary: Add a builder UI-entrypoint allowlist to restrict which UI modules the builder may import.
+  evidence: Review 01, Blind Hunter 3: AC4 names only replica and platform restrictions, and no changed runtime UI import establishes an occurrence. Parent accepted this polish as out of scope.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-64.1-layer-dependency-rules.md`
+  summary: Forbid additional React wrappers in core beyond `react` and `react-dom`.
+  evidence: Review 01, Blind Hunter 4: AC1 names `react` and `react-dom`, and no current core wrapper violation is reported. Parent accepted this polish as out of scope.
