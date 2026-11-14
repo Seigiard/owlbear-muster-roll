@@ -316,3 +316,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-62-ime-safe-enter-submit.md`
   summary: Keep an IME Escape key from closing the duplicate-count form through its group handler.
   evidence: The unchanged `handleKeyDown` in `src/ui/sheet/duplicate-count.tsx` calls `onCancel` for every bubbling Escape, including composing events that the input ignores. This path exists before TASK-62 and is separate from its Enter-confirmation fix.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.10-wipe-confirmation.md`
+  summary: Add optional unit coverage for stale or foreign wipe outcomes and further outcome-identity polish.
+  evidence: Review-1 finding 4 says the reducer's request-identity guard is correct and shows no regression occurrence; this test-only polish is deferred rather than expanded into the TASK-61.10 repair.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.10-wipe-confirmation.md`
+  summary: Clear a catching-up refusal delivered after catch-up ends instead of leaving its loading message until the next action.
+  evidence: Review-1 separate pre-existing finding (`adversarial-2`) records this late-refusal edge, notes that the same behavior exists in the base, and routes it outside the preservation repair for later decision.
