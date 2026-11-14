@@ -3,7 +3,7 @@ id: doc-1
 title: 'Epic: framework-independent UI behavior and simple rendering'
 type: specification
 created_date: '2026-11-13T09:43:00Z'
-updated_date: '2026-11-14T08:20:00Z'
+updated_date: '2026-11-14T08:29:00Z'
 tags:
   - epic
   - architecture
@@ -25,7 +25,7 @@ The intended benefit is less caller knowledge: a change to one interaction shoul
 - Parent: **TASK-61**. This document holds the overall goal, hypotheses, decisions and coverage map. Child tasks hold their own acceptance criteria and researched plans.
 - Owner-confirmed on 2026-11-13: make behavior framework-independent; retain React for rendering; validate navigation first; preserve the overall goal in a Backlog epic with tasks and hypotheses.
 - Accepted direction on 2026-11-13: pure transitions inside a separate navigation module; React remains rendering. See `docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md`.
-- Current stage: TASK-61.5 is Done. Navigation runs through one pure reducer in `src/ui/navigation.ts`. TASK-61.6 is Done with executable picker evidence in `prototypes/ui-second-flow/`; production picker code remains unmigrated. TASK-61.7 must turn remaining gaps into separately approved bounded migration tasks. The wider epic remains open. Storybook is not adopted; the existing preview host stays the catalogue (TASK-61.3, 2026-11-14).
+- Current stage: TASK-61.7 is Done. Every coverage row has a disposition. Open migrations: TASK-61.8 (link picker), TASK-61.9 (builder preview tab), TASK-61.10 (wipe probe for the settings flows). Field editing, repeat blocks, tree collapse, rename consequences and the small integration cleanups are excluded by the owner, 2026-11-14.
 - Existing domain names come from `GLOSSARY.md`. Existing architecture decisions remain authoritative until explicitly revised.
 - Before starting or resuming a child task, read this document. After its evidence changes a hypothesis or coverage row, update this document through the Backlog CLI.
 
@@ -90,16 +90,16 @@ The functional audit is recorded in [doc-3](<doc-3 - Audit-and-experiment-UI-own
 
 | UI flow | Starting evidence | Next disposition |
 | --- | --- | --- |
-| Window navigation | `src/ui/main.tsx` owns workflow and reads DOM focus; `sheet-body.tsx:72-101` consumes reveal after mount | Implemented pilot TASK-61.5: one pure reducer, `useReducer` and browser effects in the window; see ADR 0002 |
-| Window frame and sidebar/tab drawing | WindowFrame has a data/callback model; direct imports work in the isolated host | Existing seam retained; Storybook rejected for the current scope, the preview host remains the catalogue |
-| Field editing and repeat-block actions | Draft/save/outcome rules span hooks and local values; repeat focus shares mount-dependent intents | Field ownership open after H6; repeat intent is a later candidate, TASK-61.7 |
-| Dice interaction in the window | Evaluation/policy already outside React; button owns its visual request state | Separated enough for current scope; retain |
-| Settings upload, import and wipe confirmations | `src/ui/settings/`, `src/ui/preset-actions.tsx` own file/check/confirm/outcome workflows | Not selected for H6: confirmation overlaps navigation more than picker port sequencing. Still requires researched bounded migration under TASK-61.7; no settings experiment or migration claimed |
-| Token picker | React effects own link-arrival, label ports, timeout and close/retry | Selected H6 experiment executed in `prototypes/ui-second-flow/`; pure sequence and controlled caller checked. Production picker remains unmigrated; TASK-61.7 must research a bounded migration. Owner live-room port check remains |
-| Map-selection interaction in the window | Headless observation exists; main still supplies platform selection effects | Retain existing seam; small later integration cleanup candidate |
-| Builder document, draft and undo | Document/store already separate edits/history/draft from React | Meets separation goal at this seam; reuse |
-| Builder tree, forms and preview selection | Rename consequences and shown-tab rule remain candidates; tree-collapse oracle not located | Mixed candidate/open; retain local widget and DOM adapters, TASK-61.7 |
-| Standalone preview and shared sheet rendering | One renderer retained; four contexts carry implicit cell inputs; pure cell-kind dispatch has no plugin lookup need | Shared renderer retained, not data/events-only; include reveal consumer in navigation pilot |
+| Window navigation | `src/ui/main.tsx` owns workflow and reads DOM focus; `sheet-body.tsx:72-101` consumes reveal after mount | **Meets goal**: TASK-61.5, one pure reducer in `src/ui/navigation.ts`, `useReducer` and browser effects in the window; ADR 0002 |
+| Window frame and sidebar/tab drawing | WindowFrame has a data/callback model; direct imports work in the isolated host | **Meets goal**: existing seam; Storybook rejected (TASK-61.3), the preview host remains the catalogue |
+| Field editing and repeat-block actions | Draft/save/outcome rules span hooks and local values; repeat focus shares mount-dependent intents | **Owner exclusion** (2026-11-14): `use-field-edit.ts` carries IME, blur and pagehide behavior under browser tests; a migration is reopened only by a field bug that the current shape causes |
+| Dice interaction in the window | Evaluation/policy already outside React; button owns its visual request state | **Meets goal**: evaluation and visibility live in core and replica; the button keeps only its shown state |
+| Settings upload, import and wipe confirmations | `src/ui/settings/`, `src/ui/preset-actions.tsx` own file/check/confirm/outcome workflows | **Requires migration**: TASK-61.10 runs the wipe confirmation through a reducer as the probe; preset upload and snapshot import get tasks or an exclusion from its result |
+| Token picker | React effects own link-arrival, label ports, timeout and close/retry | **Requires migration**: TASK-61.8, the rules of `prototypes/ui-second-flow/picker-flow.ts` in `link-picker.tsx` through `useReducer`, ports in the component, attempt identity for same-target retries; owner live-room check of the label ports |
+| Map-selection interaction in the window | Headless observation exists; main still supplies platform selection effects | **Meets goal**: `map-selection.ts` owns observation lifetime and stale reads; the select/deselect calls in `main.tsx` are the component's effects, as the shape prescribes |
+| Builder document, draft and undo | Document/store already separate edits/history/draft from React | **Meets goal**: `document.ts` and `builder-store.ts` own edits, history and draft without React |
+| Builder tree, forms and preview selection | Rename consequences and shown-tab rule remain candidates; tree-collapse oracle not located | **Requires migration** for the preview shown tab only: TASK-61.9. **Owner exclusion** (2026-11-14) for tree collapse and rename consequences: no located oracle, no user-visible gain |
+| Standalone preview and shared sheet rendering | One renderer retained; four contexts carry implicit cell inputs; pure cell-kind dispatch has no plugin lookup need | **Meets goal**: one renderer; its reveal consumer entered the navigation pilot |
 
 Each row must finish as **meets goal with evidence**, **requires linked migration**, or **owner-approved exclusion**. An unaudited row is not an exclusion.
 
@@ -113,9 +113,12 @@ Each row must finish as **meets goal with evidence**, **requires linked migratio
 | TASK-61.4 | Owner-approved separation contract and pilot scope | Superseded by the owner's direct approval of the pilot; archived |
 | TASK-61.5 | Production navigation pilot with behavioral evidence | TASK-61.2; owner explicitly approved implementation, superseding the earlier prototype gate |
 | TASK-61.6 | Executable picker experiment; bounded H3/H6 support, shared machinery rejected for now; production unchanged | TASK-61.5 |
-| TASK-61.7 | Bounded migration tasks for every remaining coverage gap | TASK-61.6 |
+| TASK-61.7 | Done; every coverage row disposed, three migration tasks created, the rest excluded by the owner on 2026-11-14 | TASK-61.6 |
+| TASK-61.8 | Link picker runs through a pure reducer in `link-picker.tsx` | TASK-61.7 |
+| TASK-61.9 | Builder preview decides its shown tab outside render | TASK-61.7 |
+| TASK-61.10 | Wipe confirmation runs through a pure reducer; verdict for preset upload and snapshot import | TASK-61.7 |
 
-TASK-61.7 produces the later migration tasks; it does not finish those migrations. Those tasks remain children of TASK-61. Create their plans only after researching the actual current code. A failed hypothesis can change or remove proposed work without changing the overall goal.
+TASK-61.7 produced the three migration tasks above; it did not finish those migrations. Those tasks remain children of TASK-61. Create their plans only after researching the actual current code. A failed hypothesis can change or remove proposed work without changing the overall goal.
 
 ## Evidence and completion
 
@@ -127,6 +130,20 @@ TASK-61.7 produces the later migration tasks; it does not finish those migration
 - At each stage, record whether H1-H6 changed and which coverage rows remain. Retire a test only with its protected contract and replacement named.
 
 Close TASK-61 only when its acceptance criteria are verified: the owner has confirmed the end state; hypotheses have evidence-backed verdicts; navigation and a second flow have supplied evidence; visual isolation has been demonstrated; every coverage row has a final disposition; and all required migration tasks are complete. A navigation demo, architecture diagram or Storybook installation alone cannot close the epic.
+
+## Epic closeout checklist
+
+TASK-61 closes when every line below holds. The list stays incomplete while a migration task is open.
+
+- [x] Owner confirmed the end state (2026-11-13) and the shape for every flow (ADR 0002, CLAUDE.md block, 2026-11-14).
+- [x] H1-H6 carry evidence-backed verdicts: see *Hypotheses and falsification*.
+- [x] Navigation supplied production evidence: TASK-61.5, `src/ui/navigation.ts`, ADR 0002.
+- [x] A second flow supplied evidence: TASK-61.6, `prototypes/ui-second-flow/README.md`.
+- [x] Visual isolation demonstrated and the Storybook/registry hypotheses closed: TASK-61.3, doc-3.
+- [x] Every coverage row has a final disposition: *End-state coverage map*, TASK-61.7.
+- [ ] TASK-61.8 link picker: Done, with the owner's live-room check in its notes.
+- [ ] TASK-61.9 builder preview tab: Done.
+- [ ] TASK-61.10 wipe probe: Done, with the verdict for preset upload and snapshot import recorded here and, if they become tasks, those tasks Done.
 
 ## Durable references
 
