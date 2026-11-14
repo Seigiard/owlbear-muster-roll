@@ -59,6 +59,7 @@
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 12px;
+  --radius-window: 16px;
   --radius-full: 9999px;
 
   --spacing-0: 0px;
@@ -105,6 +106,22 @@
 
 @utility touch-target {
   min-height: 32px;
+}
+
+/* The window's edge, in the sidebar divider's color, so the window stands apart from a busy map.
+   It is a layer after the content: an outline on the window would sit under the sidebar, which is
+   positioned. */
+@utility window-edge {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--color-hairline);
+    pointer-events: none;
+  }
 }
 
 /* A pressed control shrinks a little, so the press reads before its result arrives. */

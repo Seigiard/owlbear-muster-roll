@@ -245,7 +245,7 @@ function ClientFrame({
         ref={frameRef}
         width={size.width}
         height={size.height}
-        className="rounded-lg border-0"
+        className="rounded-window border-0"
         onLoad={() => {
           frameRef.current?.contentWindow?.setMockTheme?.(PREVIEW_THEMES[theme]);
         }}

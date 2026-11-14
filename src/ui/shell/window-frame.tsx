@@ -112,7 +112,7 @@ export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
 
   return (
     <main
-      className={`flex ${layout.frameClassName ?? 'h-dvh'} min-w-0 overflow-clip rounded-lg bg-surface text-body text-text`}
+      className={`window-edge flex ${layout.frameClassName ?? 'h-dvh'} min-w-0 overflow-clip rounded-window bg-surface text-body text-text`}
     >
       <Sidebar
         entries={layout.sidebar}
