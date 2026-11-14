@@ -12,3 +12,8 @@ html_handling = "none"
 [[routes]]
 pattern = "musterroll.2249364.xyz"
 custom_domain = true
+
+# Workers Builds deploys every branch other than master with `wrangler preview`, which needs this
+# block even when a Preview shares all of production's settings. Assets, compatibility and the
+# build command stay at the top level; the custom domain applies to production only.
+[previews]
