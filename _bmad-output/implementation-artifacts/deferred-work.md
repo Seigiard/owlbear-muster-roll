@@ -288,3 +288,21 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-50-room-copy-module.md`
   summary: An import keeps writing its room copy after its client loses the GM role during the import's metadata read, and the engine then sends `reset` from what is now a player.
   evidence: The engine's `importSuperseded` (`src/replica/engine.ts`) checks only stop, adoption and generation, at the baseline `17f80f3` and after TASK-50; `changeRole` calls `roomCopy.demoted()`, which does not stop an import in flight. Code review round 1 of TASK-50, finding `bugs+impl-codex-2`, raised it as pre-existing. A fix changes the import contract (what a demoted importer reports), so it needs its own task.
+
+## Deferred from: TASK-61.6 second-flow picker experiment (2026-11-14)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.6-second-ui-flow.md`
+  summary: Research a separately approved bounded production picker migration under TASK-61.7; do not adopt the experimental caller as a production interface.
+  evidence: `prototypes/ui-second-flow/README.md` records 48 isolated passing cases and four calibrated defects. Production `src/ui/picker/link-picker.tsx` remains unchanged; React lifetime, replica delivery and real port wiring are not exercised by that experiment.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.6-second-ui-flow.md`
+  summary: Keep cancellation and replica-arrival limits explicit in any later picker design.
+  evidence: Prototype disposal cancels scheduled callbacks and drops late completions, but cannot undo an in-flight SDK call. Matching-target arrival is not command provenance; a same-target close retry can finish against an already matching replica. A stronger guarantee needs separate contract research, not a protocol change in this spike.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.6-second-ui-flow.md`
+  summary: Settings and the other open UI coverage rows still need research; navigation and picker do not justify a shared runner or event bus.
+  evidence: Navigation uses React effects and fresh sheet keys; picker needs scoped attempt ids and sequential item-label ports. H3/H6 support is bounded to these examples; the experiment makes no settings, builder or shared-renderer migration claim. Live Owlbear label/close behavior remains the owner's check.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.6-second-ui-flow.md`
+  summary: Track the local Node v26.13.0 native V8 crash separately from application behavior if it recurs during browser verification.
+  evidence: Parent full check reached 502 browser passes before the Vite server aborted in Buffer.byteLength with "Lazy deopt after a fast API call with return value is unsupported"; ten remaining pages received ERR_CONNECTION_REFUSED. Application source and tests were unchanged. A supported NODE_OPTIONS=--jitless retry isolates JIT execution without changing application tests or dependencies; no upstream runtime fix is part of this spike.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-61.6-second-ui-flow.md`
+  summary: Preserve the final runtime-workaround evidence without treating it as an upstream fix.
+  evidence: The jitless probe above could not start Vite because WebAssembly was unavailable. A temporary node launcher using the --no-turbo-fast-api-calls CLI flag then passed all 512 browser tests; build and baseline diff guard passed afterward. Final isolated inventory is 58 cases with eight calibrated defects. No runtime setting, application code, dependency or test was changed in the repository; one successful workaround run does not confirm the upstream root cause.

@@ -3,7 +3,7 @@ id: doc-1
 title: 'Epic: framework-independent UI behavior and simple rendering'
 type: specification
 created_date: '2026-11-13T09:43:00Z'
-updated_date: '2026-11-14T06:23:00Z'
+updated_date: '2026-11-14T07:28:00Z'
 tags:
   - epic
   - architecture
@@ -25,7 +25,7 @@ The intended benefit is less caller knowledge: a change to one interaction shoul
 - Parent: **TASK-61**. This document holds the overall goal, hypotheses, decisions and coverage map. Child tasks hold their own acceptance criteria and researched plans.
 - Owner-confirmed on 2026-11-13: make behavior framework-independent; retain React for rendering; validate navigation first; preserve the overall goal in a Backlog epic with tasks and hypotheses.
 - Accepted direction on 2026-11-13: pure transitions inside a separate navigation module; React remains rendering. See `docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md`.
-- Current stage: TASK-61.5 is Done. The window runs navigation through one pure reducer in `src/ui/navigation.ts`; see the pilot outcome below. The wider epic remains open. Storybook is not adopted for the current scope; the existing preview host stays the catalogue (TASK-61.3, 2026-11-14).
+- Current stage: TASK-61.5 is Done. Navigation runs through one pure reducer in `src/ui/navigation.ts`. TASK-61.6 is Done with executable picker evidence in `prototypes/ui-second-flow/`; production picker code remains unmigrated. TASK-61.7 must turn remaining gaps into separately approved bounded migration tasks. The wider epic remains open. Storybook is not adopted; the existing preview host stays the catalogue (TASK-61.3, 2026-11-14).
 - Existing domain names come from `GLOSSARY.md`. Existing architecture decisions remain authoritative until explicitly revised.
 - Before starting or resuming a child task, read this document. After its evidence changes a hypothesis or coverage row, update this document through the Backlog CLI.
 
@@ -63,10 +63,10 @@ Statuses are **untested**, **supported**, **rejected** or **inconclusive**. Reco
 | --- | --- | --- | --- |
 | H1 | A framework-independent module can own a UI flow while rendering only consumes a coherent view and forwards events. | Exercise the navigation flow without React or DOM. Reject the proposed seam if transition ordering or workflow state remains in rendering, or tests still require mounting the window. | TASK-61.1, TASK-61.5 / supported for navigation; see the pilot outcome and its bounds below |
 | H2 | Explicit state transitions simplify navigation more than the current render/effect chain. | Compare pure transitions, an active module and an existing-store-centered presenter. Pilot the approved choice. Reject any choice that merely moves the old chain, exposes many setters, or introduces more caller knowledge. A machine library must justify its own cost. | TASK-61.1, TASK-61.5 / supported for navigation; see the pilot outcome and its bounds below |
-| H3 | A small, scoped event interface is enough; a general emitter may be unnecessary. | Trace projection updates, user events, command outcomes, open acknowledgments and DOM intents. Check stale completions and disposal. Add a general emitter only if actual delivery needs remain unmet; reject it if direct events and the existing subscription mechanism suffice. | TASK-61.1, TASK-61.6 / inconclusive; no general bus need found; test the shared command-settlement pattern on the second flow |
+| H3 | A small, scoped event interface is enough; a general emitter may be unnecessary. | Trace projection updates, user events, command outcomes, open acknowledgments and DOM intents. Check stale completions and disposal. Add a general emitter only if actual delivery needs remain unmet; reject it if direct events and the existing subscription mechanism suffice. | TASK-61.1, TASK-61.6 / supported for inbound scoped event delivery within navigation and the executable picker experiment, including stale results and disposal. The prototype has no async view publication/render subscription API; outbound requirements remain untested. Shared command runner rejected because execution requirements differ; see the second-flow outcome |
 | H4 | A registry makes isolated visual modules easier to select, compose or discover than plain imports. | Compare both against a representative frame and sheet view. Require a concrete lookup or composition need. Reject the registry if it only renames imports or requires broad shared context. | TASK-61.3 / rejected for current scope by the source audit of closed-union dispatch/no discovery need; equal-by-construction stories are not evidence |
 | H5 | Storybook gives useful isolated state and interaction checks without Owlbear or replica startup. | Exercise real visual modules with explicit fixtures and events. Compare the dependency/configuration cost with the existing preview host. Reject tool-only setup as evidence; static stories alone do not prove asynchronous behavior. | TASK-61.3 / capability supported; adoption rejected for the current scope on 2026-11-14. The existing preview host shows the same modules with no new dependency, and the states a catalogue would add (an answered command, a real GM) need fixture work Storybook does not remove. Cost measured: two dev dependencies, 180 lock entries, a second Vite config, a 7 MB static catalogue. See doc-3 |
-| H6 | The separation learned from navigation transfers to a materially different UI flow. | Choose a second flow after the pilot. Record what transfers and what stays specific. Reject a shared mechanism if the second use needs flags, duplicated state or a larger interface than separate modules. | TASK-61.6 / untested |
+| H6 | The separation learned from navigation transfers to a materially different UI flow. | Choose a second flow after the pilot. Record what transfers and what stays specific. Reject a shared mechanism if the second use needs flags, duplicated state or a larger interface than separate modules. | TASK-61.6 / supported for the executable picker experiment, not a production migration; pure rules/facts/external effects transfer, but attempt identity, sequential ports and lifecycle stay flow-specific; see the second-flow outcome |
 
 ## Navigation alternatives and accepted direction
 
@@ -94,8 +94,8 @@ The functional audit is recorded in [doc-3](<doc-3 - Audit-and-experiment-UI-own
 | Window frame and sidebar/tab drawing | WindowFrame has a data/callback model; direct imports work in the isolated host | Existing seam retained; Storybook rejected for the current scope, the preview host remains the catalogue |
 | Field editing and repeat-block actions | Draft/save/outcome rules span hooks and local values; repeat focus shares mount-dependent intents | Field ownership open after H6; repeat intent is a later candidate, TASK-61.7 |
 | Dice interaction in the window | Evaluation/policy already outside React; button owns its visual request state | Separated enough for current scope; retain |
-| Settings upload, import and wipe confirmations | `src/ui/settings/`, `src/ui/preset-actions.tsx` own file/check/confirm/outcome workflows | Candidates; settings is a preliminary second-flow alternative, selection after pilot |
-| Token picker | React effects own link-arrival, label ports, timeout and close/retry | Preferred preliminary H6 candidate, not yet selected; owner live-room check needed for ports |
+| Settings upload, import and wipe confirmations | `src/ui/settings/`, `src/ui/preset-actions.tsx` own file/check/confirm/outcome workflows | Not selected for H6: confirmation overlaps navigation more than picker port sequencing. Still requires researched bounded migration under TASK-61.7; no settings experiment or migration claimed |
+| Token picker | React effects own link-arrival, label ports, timeout and close/retry | Selected H6 experiment executed in `prototypes/ui-second-flow/`; pure sequence and controlled caller checked. Production picker remains unmigrated; TASK-61.7 must research a bounded migration. Owner live-room port check remains |
 | Map-selection interaction in the window | Headless observation exists; main still supplies platform selection effects | Retain existing seam; small later integration cleanup candidate |
 | Builder document, draft and undo | Document/store already separate edits/history/draft from React | Meets separation goal at this seam; reuse |
 | Builder tree, forms and preview selection | Rename consequences and shown-tab rule remain candidates; tree-collapse oracle not located | Mixed candidate/open; retain local widget and DOM adapters, TASK-61.7 |
@@ -112,7 +112,7 @@ Each row must finish as **meets goal with evidence**, **requires linked migratio
 | TASK-61.3 | Test visual isolation, registry and Storybook hypotheses | Done; registry and Storybook rejected for the current scope |
 | TASK-61.4 | Owner-approved separation contract and pilot scope | Superseded by the owner's direct approval of the pilot; archived |
 | TASK-61.5 | Production navigation pilot with behavioral evidence | TASK-61.2; owner explicitly approved implementation, superseding the earlier prototype gate |
-| TASK-61.6 | Second-flow experiment; validate transfer before sharing mechanisms | TASK-61.5 |
+| TASK-61.6 | Executable picker experiment; bounded H3/H6 support, shared machinery rejected for now; production unchanged | TASK-61.5 |
 | TASK-61.7 | Bounded migration tasks for every remaining coverage gap | TASK-61.6 |
 
 TASK-61.7 produces the later migration tasks; it does not finish those migrations. Those tasks remain children of TASK-61. Create their plans only after researching the actual current code. A failed hypothesis can change or remove proposed work without changing the overall goal.
@@ -150,4 +150,21 @@ The pilot rejected its own first answers to the open questions above. A coherent
 
 Validation on the final branch: 2863 unit tests and all 512 Chromium browser tests passed with `tests/` unchanged from `master`; format, lint, typecheck and build passed. A live Owlbear room was not checked; browser tests use the mock platform. No deployment ran.
 
-H1 is supported for navigation. H2 is supported: render-phase state updates are gone and the caller no longer knows transition ordering; line counts were not the measure. H3 needs no general bus and no integration layer for this flow but remains inconclusive across flows. H4 is rejected and H5 is closed: capability supported, adoption rejected for the current scope. H6 is untested. TASK-61 stays open; TASK-61.6 must select and validate a second flow before shared mechanisms or broader migrations are proposed.
+H1 is supported for navigation. H2 is supported: render-phase state updates are gone and the caller no longer knows transition ordering; line counts were not the measure. At the navigation pilot, H3 remained inconclusive across flows and H6 was untested. H4 is rejected and H5 is closed: capability supported, adoption rejected for the current scope. The second-flow outcome below updates H3/H6 without changing the navigation design. TASK-61 stays open; remaining coverage rows and any production migration require further bounded work.
+
+
+## Second-flow outcome: picker experiment (TASK-61.6)
+
+The executable experiment is `prototypes/ui-second-flow/`; its README records the full baseline revision `fd7ed425e88d344e1217bf559c0c9b31888ff568`, reproduction commands, independent oracles, caller knowledge, transfer table and limits. Picker was selected over settings because link arrival, item-label ports, bounded waits and same-target close retry differ from navigation confirmation.
+
+Pure `picker-flow.ts` owns readiness, defaults, matching-replica-arrival priority, role checks, label/notification/close sequence and retry identity. The experimental `picker-caller.ts` executes injected ports and scheduling, then reports outcomes. Core keeps token validation, target comparison and grouping policy; replica/client keeps records and command timeouts. No production interface or renderer changed.
+
+Final isolated verification passed 58 cases: 57 behavioral cases and one absent-DOM environment precondition. Eight deliberate defects produced behavioral assertion failures; exact source restoration returned the caller checks to green. These checks run without React, DOM, Owlbear or replica startup and prove caller decisions, not SDK behavior or production lifecycle equivalence. Review corrected effects continuing after synchronous disposal and added checks for late command failures, deadline timing, timer cleanup and retry combinations.
+
+H3 is supported for inbound scoped event delivery within these two flows. The picker caller has a state getter but no async view publication or render subscription API; outbound delivery requirements remain untested. H6 is supported for executable picker decisions: pure rules, supplied facts and external effects transfer, not renderer publication or production lifecycle. Navigation uses fresh sheet keys and React effects; picker retries need a new local attempt id and sequential platform-port stages. A shared runner, machine helper or library is rejected for now because these two uses do not have matching execution requirements. Experimental caller machinery is not an approved production seam.
+
+Final project checks passed: format, lint, typecheck, 2920 unit cases (plus one skipped prototype-only environment precondition), all 512 Chromium browser cases and build. Explicit prototype lint/format/typecheck passed. The normal browser rerun reached 502 passes before a native Node v26.13.0 V8 crash; the complete passing rerun used a temporary node launcher with --no-turbo-fast-api-calls. Repository runtime settings and tests were unchanged. Application source/tests and dependencies match the baseline, so full checks prove that application, not a migrated picker. No live-room calls or deployment ran.
+
+Facts and returned state are borrowed immutable snapshots, including nested objects; mutations outside events are unsupported. Scheduling/cancellation callbacks must not throw. Answered-without-arrival and unresolved close can wait indefinitely, as in the baseline; only label read/write/notification waits are bounded. No scheduler-exception machinery, second command timer or close timeout was added.
+
+Production picker migration stays open under TASK-61.7 and needs separate research and approval. Its real React lifetime, replica subscription, SDK label writes and popover close remain integration obligations. Settings, field editing, builder behavior and shared rendering gaps above remain open; this experiment does not settle them or close TASK-61. Further limits are appended to `_bmad-output/implementation-artifacts/deferred-work.md`.
