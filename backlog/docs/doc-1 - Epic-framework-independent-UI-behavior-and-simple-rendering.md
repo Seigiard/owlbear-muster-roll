@@ -3,7 +3,7 @@ id: doc-1
 title: 'Epic: framework-independent UI behavior and simple rendering'
 type: specification
 created_date: '2026-11-13T09:43:00Z'
-updated_date: '2026-11-13T14:39:00Z'
+updated_date: '2026-11-14T05:51:00Z'
 tags:
   - epic
   - architecture
@@ -25,7 +25,7 @@ The intended benefit is less caller knowledge: a change to one interaction shoul
 - Parent: **TASK-61**. This document holds the overall goal, hypotheses, decisions and coverage map. Child tasks hold their own acceptance criteria and researched plans.
 - Owner-confirmed on 2026-11-13: make behavior framework-independent; retain React for rendering; validate navigation first; preserve the overall goal in a Backlog epic with tasks and hypotheses.
 - Accepted direction on 2026-11-13: pure transitions inside a separate navigation module; React remains rendering. See `docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md`.
-- Current stage: the owner approved the real navigation state-machine pilot after the audit and rejected further toy-simulator UX reapproval. TASK-61.5 is Done on `refactor/navigation-machine`; the wider epic remains open. Preserve current behavior and verify transition completeness/noncontradiction. Storybook adoption and comparative catalogue maintenance fit remain separate and unresolved. The earlier Fable ACCEPT covers corrected research claims, not production code.
+- Current stage: TASK-61.5 is Done. The window runs navigation through one pure reducer in `src/ui/navigation.ts`; see the pilot outcome below. The wider epic remains open. Storybook adoption and comparative catalogue maintenance fit remain separate and unresolved.
 - Existing domain names come from `GLOSSARY.md`. Existing architecture decisions remain authoritative until explicitly revised.
 - Before starting or resuming a child task, read this document. After its evidence changes a hypothesis or coverage row, update this document through the Backlog CLI.
 
@@ -36,7 +36,7 @@ The intended benefit is less caller knowledge: a change to one interaction shoul
 | Room records, replication and command answers | Existing replica and client modules | Display data and outcomes through the established interface |
 | Visibility, sheet policy, formulas and preset rules | Existing `src/core` modules | Their resolved results; no copied policy |
 | UI workflow state and transitions | Flow-specific framework-independent module | Current view and user events, not transition ordering |
-| Commands, subscriptions and lifecycle | Explicit integration code around the flow | Its own lifetime; no startup hidden in visual imports |
+| Commands, subscriptions and lifecycle | The flow's caller; for navigation, the window's handlers and effects | Its own lifetime; no startup hidden in visual imports |
 | DOM focus, scrolling and mounted targets | Browser-side implementation | Semantic intent plus actual DOM availability |
 | Local widget interaction | Visual module or React Aria, where appropriate | Focus, hover and accessible interaction needed to draw the widget |
 | Visual examples and interactions | Isolated catalogue or preview host | Explicit fixtures and events, without a live room |
@@ -51,7 +51,7 @@ Use the architecture vocabulary consistently: a **module** hides implementation 
 - Reuse separation already present in core, replica, builder document/store and WindowFrame. A new directory is not a new responsibility.
 - Preserve current user behavior, access rules, hidden-tab behavior, preset and snapshot formats, room protocol and storage ownership.
 - Keep this work separate from a React replacement, replica rewrite, deployment or visual redesign.
-- Choose module shapes per flow. A successful navigation state machine does not require every widget to become a machine.
+- Choose module shapes per flow. A successful navigation reducer does not require every widget to become a reducer.
 - A registry, emitter, machine library or Storybook is a candidate mechanism, not an end-state acceptance criterion by itself.
 - Follow the project's required task-spec and implementation workflow before any production-code task starts. This epic does not replace those specs.
 
@@ -80,17 +80,17 @@ Detailed findings, the reconciled recommendation and a reproducible projection-s
 | Active event-driven module | State, subscriptions, serialized events, asynchronous command outcomes and disposal | One caller interface covers a full flow outside React | Queue and effect-consumption machinery may be more infrastructure than this flow needs. Coherent view publication must be demonstrated. |
 | Existing-store-centered presenter | State and flow rules in the current nanostores idiom, with commands and outcomes handled there | Small migration for the current caller; no new subscription library | Can remain coupled to projection-store shape. Whole-queue draining may lose mount-dependent focus intents. |
 
-The owner selected pure transitions inside a separate navigation module, retaining React rendering, after this comparison. The accepted shape combines pure rules with flow-specific integration; exact interfaces remain open. None of the alternatives established a need for a global bus, dynamic registry or new machine library.
+The owner selected pure transitions inside a separate navigation module, retaining React rendering, after this comparison. The implemented shape is pure rules with the window as their only caller; ADR 0002 records the interface. None of the alternatives established a need for a global bus, dynamic registry or new machine library.
 
-Resolve before approval: who builds the coherent display snapshot; how browser focus facts enter pure transitions without DOM reads inside them; how command completion relates to record appearance; how stale results become inert; when acknowledgments execute; and how focus/reveal intents survive until mount. Preserve existing client ordering guarantees.
+Questions that were open before approval: who builds the coherent display snapshot; how browser focus facts enter pure transitions without DOM reads inside them; how command completion relates to record appearance; how stale results become inert; when acknowledgments execute; and how focus/reveal intents survive until mount. The pilot outcome below records how each was answered.
 
 ## End-state coverage map
 
-The functional audit is recorded in [doc-3](<doc-3 - Audit-and-experiment-UI-ownership-Storybook-and-registry.md>), including detailed inputs, state, effects, test surfaces, file-group mapping and explicit unresolved questions. The summary below records its current dispositions, not completed migrations. Fable's initial REVISE and corrections are preserved there.
+The functional audit is recorded in [doc-3](<doc-3 - Audit-and-experiment-UI-ownership-Storybook-and-registry.md>), including detailed inputs, state, effects, test surfaces, file-group mapping and explicit unresolved questions. The summary below records its current dispositions, not completed migrations. The review corrections to the audit are preserved there.
 
 | UI flow | Starting evidence | Next disposition |
 | --- | --- | --- |
-| Window navigation | `src/ui/main.tsx` owns workflow and reads DOM focus; `sheet-body.tsx:72-101` consumes reveal after mount | Implemented pilot TASK-61.5; coherent input, browser facts and identified mount completion are explicit |
+| Window navigation | `src/ui/main.tsx` owns workflow and reads DOM focus; `sheet-body.tsx:72-101` consumes reveal after mount | Implemented pilot TASK-61.5: one pure reducer, `useReducer` and browser effects in the window; see ADR 0002 |
 | Window frame and sidebar/tab drawing | WindowFrame has a data/callback model; direct imports work in the isolated host | Existing seam retained; Storybook capability sampled, adoption fit open |
 | Field editing and repeat-block actions | Draft/save/outcome rules span hooks and local values; repeat focus shares mount-dependent intents | Field ownership open after H6; repeat intent is a later candidate, TASK-61.7 |
 | Dice interaction in the window | Evaluation/policy already outside React; button owns its visual request state | Separated enough for current scope; retain |
@@ -108,9 +108,9 @@ Each row must finish as **meets goal with evidence**, **requires linked migratio
 | Task | Outcome | Prerequisites |
 | --- | --- | --- |
 | TASK-61.1 | Compare navigation module shapes and H1/H2/H3 trade-offs | Current research; In Progress |
-| TASK-61.2 | Verify ownership and coverage across all UI flows | Completed functional audit, Fable corrections accepted |
+| TASK-61.2 | Verify ownership and coverage across all UI flows | Completed functional audit, review corrections accepted |
 | TASK-61.3 | Test visual isolation, registry and Storybook hypotheses | In Progress |
-| TASK-61.4 | Owner-approved separation contract and pilot scope | TASK-61.1, TASK-61.2, TASK-61.3 |
+| TASK-61.4 | Owner-approved separation contract and pilot scope | Superseded by the owner's direct approval of the pilot; archived |
 | TASK-61.5 | Production navigation pilot with behavioral evidence | TASK-61.2; owner explicitly approved implementation, superseding the earlier prototype gate |
 | TASK-61.6 | Second-flow experiment; validate transfer before sharing mechanisms | TASK-61.5 |
 | TASK-61.7 | Bounded migration tasks for every remaining coverage gap | TASK-61.6 |
@@ -138,20 +138,16 @@ Close TASK-61 only when its acceptance criteria are verified: the owner has conf
 
 ## Production pilot authorization
 
-The owner requested the existing window connected to an independent state machine, with current behavior preserved and checked. The owner also explicitly requested completeness and noncontradiction checks. This supersedes the earlier TASK-61.4 prototype walkthrough gate for this slice; it does not settle Storybook adoption or close the broader research tasks. TASK-61.5 records the implementation plan. The implementation must provide a coherent projection input, identity-safe command outcomes, sampled browser-focus facts, and mount-aware intent consumption. The original research remains intact in the main checkout.
+The owner asked for the existing window connected to an independent navigation module, with current behavior preserved and checked for completeness and noncontradiction. This superseded the TASK-61.4 prototype walkthrough gate for this slice; it did not settle Storybook adoption or close the broader research tasks. The first implementation added a coherent projection snapshot, an integration layer, effect objects with ids and sampled browser-focus events. The owner's review found that machinery larger than the rules it carried, and it was removed. ADR 0002 and the TASK-61.5 spec record the implemented shape.
 
 ## Navigation pilot outcome
 
-The real window now uses pure transitions in `src/ui/navigation-machine.ts`, an observable flow in `src/ui/navigation.ts`, and projection/command integration in `src/ui/navigation-integration.ts`. Implementation commit: `a0968d8c690f0b153f1c02be9e0789d3a2afd637` on `refactor/navigation-machine`. The existing renderer remains in use. The contract and transition table are `_bmad-output/implementation-artifacts/spec-task-61.5-navigation.md`.
+The window runs navigation through one pure reducer, `transition(state, event)` in `src/ui/navigation.ts`. `WindowRoot` in `src/ui/main.tsx` holds it with `useReducer`, sends sheet commands from its handlers, and performs browser effects (sidebar reveal, open acknowledgment, focus after a lost control) in effects keyed on one state field each. The projection store, replica client and `window-view.ts` are unchanged. The contract is `_bmad-output/implementation-artifacts/spec-task-61.5-navigation.md`; the code is pull request #1 on `refactor/navigation-machine`.
 
-Before the pilot, React owned preset-arrival priority, create/delete waits, selection fallback, operation outcomes and focus/reveal ordering. Now those workflow rules sit behind the navigation interface. The caller renders one coherent snapshot, forwards events and sampled browser focus, and applies claimed browser effects. Core still owns visibility and tab policy; replica still owns room data.
+Before the pilot, React owned preset-arrival priority, create/delete waits, selection fallback, operation outcomes and focus/reveal ordering during render, with no unit test. Now those rules have 23 reducer tests that run without React or the DOM. Browser tests keep owning mounted behavior, focus and scrolling. Core still owns visibility and tab policy; replica still owns room data.
 
-The pilot rejected three assumptions. Separate raw atom notifications were not a complete projection, so the store now publishes one completed snapshot. Sheet/block matching did not identify a particular mount request, so a reproduced same-target reopen led to reveal identity in the browser handshake. Re-deriving every view on each event repeatedly decoded the same preset, so the flow now keeps one bounded projection/preset cache.
+The pilot rejected its own first answers to the open questions above. A coherent projection snapshot published by the store, an integration layer that ran command effects, effect objects with ids and claim-once delivery, a browser-focus sampling round trip and reveal identity each solved a problem the reducer shape does not have. The reducer receives its facts from a React effect after a committed render, so React's batching is the complete input step. A sheet key identifies an in-flight create or delete, because a sheet id is fresh per creation and one delete per sheet is in flight. A state field read by one effect runs that effect once. An accepted limit: a refused delete followed by a second confirm of the same sheet within the command timeout does not move the focus after the second succeeds.
 
-Validation on clean candidate `18a2cf47de61b31438f25a7a059ee0ae072880a2`: 2869 unit tests and all 512 Chromium browser tests passed; format, lint, typecheck and build passed. The navigation/projection/integration group contains 45 tests. The earlier independent baseline passed 74 existing navigation browser contracts. Local commit packaging at `3e1808a4d74447c1b3c989bbee718bfba0da6d4e` has an identical tree to the validated candidate.
+Validation on the final branch: 2863 unit tests and all 512 Chromium browser tests passed with `tests/` unchanged from `master`; format, lint, typecheck and build passed. A live Owlbear room was not checked; browser tests use the mock platform. No deployment ran.
 
-The initial code review used six sources and found confirmation lifetime, preset derivation and several guard-check gaps. The routed fixes added observed-red regressions and corrected the false-green assertions. Confirming review used two sources with the final profile and reported no critical or major defect. This confirming profile does not claim to search for new minor issues. The owner-requested cleanup is complete in `930bb90ade3f82be8d8d582137961ef407d038af`: unused setters/re-exports and both unused state fields were removed. The remaining interfaces passed format, lint, typecheck, 2869 unit tests, 512 browser tests and build; no UX behavior was added. Final negative-control calibration made all six named guard/publication assertions fail under faithful temporary regressions, then restored the isolated checkout clean. Earlier controls also covered fallback, operation identity, last-id handling, effect claiming and stopped completions.
-
-Completeness has a stated bound: exhaustive handling of the closed event union, an explicit guard/transition/effect table, 8 length-three traces over two open ids, 4 mixed lifecycle traces, and focused guard/race regressions. These checks are not a mathematical proof over arbitrary ids, presets or record maps. A live Owlbear room was not checked; browser tests use the mock platform. No deployment ran.
-
-H1 is supported for the navigation interface. H2 has an executed caller comparison and source review, not a line-count or hook-count success claim. H3 needs no general bus for this flow but remains inconclusive across flows. H4/H5 are unchanged; Storybook adoption remains unresolved. H6 is untested. TASK-61 stays open; TASK-61.6 must select and validate a second flow before shared mechanisms or broader migrations are proposed.
+H1 is supported for navigation. H2 is supported: render-phase state updates are gone and the caller no longer knows transition ordering; line counts were not the measure. H3 needs no general bus and no integration layer for this flow but remains inconclusive across flows. H4/H5 are unchanged; Storybook adoption remains unresolved. H6 is untested. TASK-61 stays open; TASK-61.6 must select and validate a second flow before shared mechanisms or broader migrations are proposed.

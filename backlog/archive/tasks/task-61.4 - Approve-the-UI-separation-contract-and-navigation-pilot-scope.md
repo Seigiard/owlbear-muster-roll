@@ -4,7 +4,7 @@ title: Approve the UI separation contract and navigation pilot scope
 status: To Do
 assignee: []
 created_date: '2026-11-13T09:44:00Z'
-updated_date: '2026-11-13T11:37:00Z'
+updated_date: '2026-11-14T05:51:00Z'
 labels:
   - architecture
   - ui-decoupling
@@ -48,4 +48,6 @@ A small number of entry points does not by itself make a deep module. The owner 
 2026-11-13: owner chose an interactive single-HTML navigation state-machine prototype instead of deciding the contract through a long interview. It is a throwaway design tool: pure transitions, a thin DOM shell, manual projection/outcome delivery, guided edge cases and visible state/effects. Current behavior and proposed rules must be labeled separately. No production interface or behavior change is approved until the owner validates the walkthroughs.
 
 Later owner direction supersedes the prototype gate in the preceding note: preserve existing UX, implement the actual navigation state machine, check completeness/noncontradiction and connect it to the real window. The owner explicitly said to start and finish the work. No manual reapproval of old navigation rules or Storybook adoption is required for TASK-61.5. Keep unresolved wider research/fit decisions separate from the approved production pilot.
+
+2026-11-14: archived. The owner approved the navigation pilot directly, as the notes above record; the implemented contract is in ADR 0002 and the TASK-61.5 spec. The remaining research questions stay with TASK-61.3 and TASK-61.6.
 <!-- SECTION:NOTES:END -->

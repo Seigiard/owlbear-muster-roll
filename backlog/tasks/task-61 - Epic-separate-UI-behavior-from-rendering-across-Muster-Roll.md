@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@opencode'
 created_date: '2026-11-13T09:43:00Z'
-updated_date: '2026-11-13T14:12:00Z'
+updated_date: '2026-11-14T05:51:00Z'
 labels:
   - epic
   - architecture
@@ -35,7 +35,7 @@ ordinal: 60000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Window navigation currently combines workflow state, command outcomes, focus decisions and rendering in src/ui/main.tsx. The owner wants simpler rendering and framework-independent behavior across the UI, with isolated visual modules exercised outside a live room. The accepted direction in ADR-0002 is pure transitions inside a separate navigation module, retaining React rendering. Navigation is the first validation slice; its success alone does not finish the epic. Machine libraries, shared event delivery, a visual registry and Storybook adoption remain hypotheses or later decisions, not implied implementation choices. doc-1 preserves the overall goal and coverage; doc-3 records the full audit, experiment and Claude Fable validation.
+Before TASK-61.5, window navigation combined workflow state, command outcomes, focus decisions and rendering in src/ui/main.tsx. The owner wants simpler rendering and framework-independent behavior across the UI, with isolated visual modules exercised outside a live room. The accepted direction in ADR-0002 is pure transitions inside a separate navigation module, retaining React rendering. Navigation is the first validation slice; its success alone does not finish the epic. Machine libraries, shared event delivery, a visual registry and Storybook adoption remain hypotheses or later decisions, not implied implementation choices. doc-1 preserves the overall goal and coverage; doc-3 records the full audit, the experiment and the independent review of both.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
@@ -54,7 +54,7 @@ Window navigation currently combines workflow state, command outcomes, focus dec
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-13: recorded the owner-confirmed overall direction and navigation-first validation in doc-1. Created TASK-61.1 through TASK-61.7 with dependencies. Navigation success is explicitly insufficient for epic completion. Production-code implementation remains gated by TASK-61.4.
 
-2026-11-13: ADR-0002 records the accepted navigation shape. The 64-module functional audit is complete (TASK-61.2 Done). Storybook capability was demonstrated within the documented fixture limits; registry is unnecessary for current scope. Claude Fable returned REVISE, then ACCEPT on all five corrections with no blockers. Both verdicts and unchanged experiment evidence are preserved in the HTML report/doc-3. TASK-61.3 AC#4 remains open for comparative catalogue maintenance fit; no production migration or catalogue adoption was approved.
+2026-11-13: ADR-0002 records the accepted navigation shape. The 64-module functional audit is complete (TASK-61.2 Done). Storybook capability was demonstrated within the documented fixture limits; registry is unnecessary for current scope. An independent review of the research returned corrections, all accepted; the verdicts and the unchanged experiment evidence are preserved in the HTML report and doc-3. TASK-61.3 AC#4 remains open for comparative catalogue maintenance fit; no production migration or catalogue adoption was approved.
 
-TASK-61.5 navigation pilot is Done: implementation a0968d8c690f0b153f1c02be9e0789d3a2afd637, existing renderer connected to pure navigation transitions and headless integration. Full checks: 2869 unit tests, 512 browser tests, format/lint/types/build; confirming review 2/2 without blocking findings. Doc-1 records before/after ownership, failed assumptions and bounded evidence. This does not complete TASK-61; second-flow validation, Storybook fit and remaining UI coverage stay open.
+2026-11-14: TASK-61.5 navigation pilot is Done on pull request #1 (`refactor/navigation-machine`). The window runs navigation through one pure reducer in `src/ui/navigation.ts`, with `useReducer`, command handlers and browser effects in `WindowRoot`. Full checks: 2863 unit tests, 512 browser tests, format, lint, types and build. Doc-1 records before/after ownership, the rejected machinery and the bounded evidence. This does not complete TASK-61; second-flow validation, Storybook fit and remaining UI coverage stay open.
 <!-- SECTION:NOTES:END -->
