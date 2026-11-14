@@ -1,25 +1,21 @@
 import { useStore } from '@nanostores/react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useReducer, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Button as AriaButton, Checkbox } from 'react-aria-components';
 
-import { linkTargetKey, linkTargetOf, sameLinkTarget, type LinkTarget } from '@/core/link-target';
+import { linkTargetKey, linkTargetOf } from '@/core/link-target';
 import { repeatSectionId } from '@/core/preset';
 import { sectionTitle } from '@/core/sheet-values';
 import { LINK_PICKER_TIMING, type LinkPickerTiming } from '@/core/timing';
-import {
-  linkKey,
-  pickerGroups,
-  tokenIdSchema,
-  type PickerGroup,
-  type PickerTarget,
-} from '@/core/token-links';
+import { linkKey, pickerGroups, type PickerGroup, type PickerTarget } from '@/core/token-links';
 import type { Command } from '@/core/ui-messages';
 import type { NotificationPort, ScenePort } from '@/platform/ports';
 import { copy } from '@/ui/copy';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
 import { useWindowView } from '@/ui/window-view';
+
+import { canOffer, canPick, initialPickerState, pickerReducer } from './link-picker-reducer';
 
 type LinkPickerProps = {
   tokenId: string;
@@ -35,23 +31,6 @@ type LinkPickerProps = {
   // Tests pass shorter waits.
   timing?: LinkPickerTiming;
 };
-
-// The sent pick. `label` is the text to set under the token once the link is in, or `null` to leave
-// the label as it is.
-type Sent = {
-  outcome: CommandOutcomePromise<undefined>;
-  target: LinkTarget;
-  label: string | null;
-};
-
-// The token's label as the picker read it when it opened. `unlabelable` is an item that is missing
-// or has no label text, so no write could succeed. `unreadable` is a read that failed or got no
-// answer in time, so a write may still succeed.
-type CurrentLabel =
-  | { state: 'reading' }
-  | { state: 'read'; text: string }
-  | { state: 'unlabelable' }
-  | { state: 'unreadable' };
 
 // UX-DR22: the targets a token can link to, in groups in preset order: one per linkable sheet set
 // or single sheet, and one per linkable repeat section. In each group the targets with no token
@@ -70,20 +49,12 @@ export function LinkPicker({
   const sync = useStore(store.$sync);
   const replica = useStore(store.$replica);
   const view = useWindowView(store, 'PLAYER');
-  const [sent, setSent] = useState<Sent | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [currentLabel, setCurrentLabel] = useState<CurrentLabel>({ state: 'reading' });
-  const [labelWanted, setLabelWanted] = useState(false);
+  const [picker, dispatch] = useReducer(pickerReducer, tokenId, initialPickerState);
   const labelReadStarted = useRef(false);
-  // The pick whose label write and close have started, so they run once even when another GM relinks
-  // the token meanwhile.
-  const finishing = useRef<Sent | null>(null);
-  // The role when the label write starts, which may come after a role change.
-  const role = useRef(sync.role);
+  const labelWriteStarted = useRef<number | null>(null);
+  const notificationStarted = useRef<number | null>(null);
+  const closeStarted = useRef<number | null>(null);
   const labelHintId = useId();
-  const validToken = tokenIdSchema.safeParse(tokenId).success;
-  // Only a GM links tokens, so only a GM reads the label, and only once the room is loaded.
-  const mayReadLabel = validToken && loaded && sync.firstCatchUpDone && view.role === 'GM';
 
   const groups = useMemo(
     () => pickerGroups(view.records, view.preset),
@@ -91,17 +62,25 @@ export function LinkPicker({
   );
 
   // A pending view can still be refused when catch-up ends, so only the replica counts.
-  const arrivedTarget = linkTargetOf(replica.get(linkKey(tokenId))?.d ?? null);
-
-  const arrived =
-    sent !== null && arrivedTarget !== null && sameLinkTarget(arrivedTarget, sent.target);
-
-  useEffect(() => {
-    role.current = view.role;
-  }, [view.role]);
+  const arrivedTarget = useMemo(
+    () => linkTargetOf(replica.get(linkKey(tokenId))?.d ?? null),
+    [replica, tokenId],
+  );
 
   useEffect(() => {
-    if (!mayReadLabel || labelReadStarted.current) {
+    dispatch({
+      type: 'facts',
+      facts: {
+        loaded,
+        firstCatchUpDone: sync.firstCatchUpDone,
+        role: view.role,
+        arrived: arrivedTarget,
+      },
+    });
+  }, [arrivedTarget, loaded, sync.firstCatchUpDone, view.role]);
+
+  useEffect(() => {
+    if (picker.label.kind !== 'reading' || labelReadStarted.current) {
       return;
     }
 
@@ -109,89 +88,180 @@ export function LinkPicker({
 
     // The default never replaces a label the GM set by hand: the box starts checked only on a token
     // with no label. An answer after the timeout is dropped.
-    settleWithin(scene.getItemLabel(tokenId), timing.labelReadTimeoutMs).then(
+    let read: Promise<string | null>;
+
+    try {
+      read = scene.getItemLabel(tokenId);
+    } catch (error) {
+      console.error('Muster Roll could not read the token label', error);
+      dispatch({ type: 'label-read', result: { failed: true } });
+
+      return;
+    }
+
+    void settleWithin(read, timing.labelReadTimeoutMs).then(
       (text) => {
         if (text === null) {
           console.error('Muster Roll found no label to read on token', tokenId);
-          setCurrentLabel({ state: 'unlabelable' });
+          dispatch({ type: 'label-read', result: { text: null } });
 
           return;
         }
 
-        setCurrentLabel({ state: 'read', text });
-        setLabelWanted(text.trim() === '');
+        dispatch({ type: 'label-read', result: { text } });
       },
       (error) => {
         console.error('Muster Roll could not read the token label', error);
-        setCurrentLabel({ state: 'unreadable' });
+        dispatch({ type: 'label-read', result: { failed: true } });
       },
     );
-  }, [mayReadLabel, scene, tokenId, timing]);
+  }, [picker.label.kind, scene, tokenId, timing]);
 
   useEffect(() => {
-    if (sent === null) {
-      return;
+    const waiting = picker.attempt?.phase === 'waiting' ? picker.attempt : null;
+
+    if (waiting === null) {
+      return () => undefined;
     }
 
     let active = true;
 
-    void sent.outcome
+    void waiting.outcome
       .then((outcome) => {
-        if (active && finishing.current !== sent && outcome.kind !== 'answered') {
-          setSent(null);
-          setFailed(true);
+        if (active) {
+          dispatch({ type: 'command', id: waiting.id, outcome: outcome.kind });
         }
       })
-      .catch((error) => {
-        console.error('Muster Roll could not settle a token link', error);
+      .catch(() => {
+        if (active) {
+          dispatch({ type: 'command', id: waiting.id, outcome: 'failed' });
+        }
       });
 
     return () => {
       active = false;
     };
-  }, [sent]);
+  }, [picker.attempt]);
 
   useEffect(() => {
-    if (sent === null || !arrived || finishing.current === sent) {
-      return;
+    const writing = picker.attempt?.phase === 'writing' ? picker.attempt : null;
+
+    if (writing === null || labelWriteStarted.current === writing.id) {
+      return () => undefined;
     }
 
-    finishing.current = sent;
+    labelWriteStarted.current = writing.id;
+    let active = true;
+    let write: Promise<void>;
 
-    const label = sent.label;
+    try {
+      write = scene.setItemLabel(tokenId, writing.label);
+    } catch (error) {
+      console.error('Muster Roll could not set the token label', error);
+      dispatch({ type: 'label-written', id: writing.id, ok: false });
 
-    // The link comes first. The label is set only once the link is in, and the picker closes once
-    // the label write has settled either way.
-    async function finish(): Promise<void> {
-      // Only a GM labels tokens, and the role may have changed since the pick.
-      if (label !== null && role.current === 'GM') {
-        try {
-          await settleWithin(scene.setItemLabel(tokenId, label), timing.labelWriteTimeoutMs);
-        } catch (error) {
-          console.error('Muster Roll could not set the token label', error);
-          await settleWithin(
-            notification.show(copy.linkLabelFailed, 'ERROR'),
-            timing.labelWriteTimeoutMs,
-          ).catch((showError) => {
-            console.error('Muster Roll could not show a notification', showError);
-          });
+      return () => undefined;
+    }
+
+    void settleWithin(write, timing.labelWriteTimeoutMs).then(
+      () => {
+        if (active) {
+          dispatch({ type: 'label-written', id: writing.id, ok: true });
         }
-      }
+      },
+      (error) => {
+        if (active) {
+          console.error('Muster Roll could not set the token label', error);
+          dispatch({ type: 'label-written', id: writing.id, ok: false });
+        }
+      },
+    );
 
-      try {
-        await onLinked();
-      } catch (error) {
-        console.error('Muster Roll could not close the link picker', error);
-        finishing.current = null;
-        setSent(null);
-      }
+    return () => {
+      active = false;
+    };
+  }, [picker.attempt, scene, timing, tokenId]);
+
+  useEffect(() => {
+    const notifying = picker.attempt?.phase === 'notifying' ? picker.attempt : null;
+
+    if (notifying === null || notificationStarted.current === notifying.id) {
+      return () => undefined;
     }
 
-    void finish();
-  }, [arrived, sent, scene, notification, tokenId, onLinked, timing]);
+    notificationStarted.current = notifying.id;
+    let active = true;
+    let shown: Promise<string>;
+
+    try {
+      shown = notification.show(copy.linkLabelFailed, 'ERROR');
+    } catch (error) {
+      console.error('Muster Roll could not show a notification', error);
+      dispatch({ type: 'notified', id: notifying.id });
+
+      return () => undefined;
+    }
+
+    void settleWithin(shown, timing.labelWriteTimeoutMs).then(
+      () => {
+        if (active) {
+          dispatch({ type: 'notified', id: notifying.id });
+        }
+      },
+      (error) => {
+        if (active) {
+          console.error('Muster Roll could not show a notification', error);
+          dispatch({ type: 'notified', id: notifying.id });
+        }
+      },
+    );
+
+    return () => {
+      active = false;
+    };
+  }, [notification, picker.attempt, timing]);
+
+  useEffect(() => {
+    const closing = picker.attempt?.phase === 'closing' ? picker.attempt : null;
+
+    if (closing === null || closeStarted.current === closing.id) {
+      return () => undefined;
+    }
+
+    closeStarted.current = closing.id;
+    let active = true;
+    let close: Promise<void>;
+
+    try {
+      close = onLinked();
+    } catch (error) {
+      console.error('Muster Roll could not close the link picker', error);
+      dispatch({ type: 'closed', id: closing.id, ok: false });
+
+      return () => undefined;
+    }
+
+    void close.then(
+      () => {
+        if (active) {
+          dispatch({ type: 'closed', id: closing.id, ok: true });
+        }
+      },
+      (error) => {
+        if (active) {
+          console.error('Muster Roll could not close the link picker', error);
+          dispatch({ type: 'closed', id: closing.id, ok: false });
+        }
+      },
+    );
+
+    return () => {
+      active = false;
+    };
+  }, [onLinked, picker.attempt]);
 
   function pick(choice: PickerTarget): void {
-    if (sent !== null) {
+    if (!canPick(picker)) {
       return;
     }
 
@@ -208,12 +278,12 @@ export function LinkPicker({
     // name sets none.
     const name = choice.blockName ?? choice.sheetName;
 
-    setSent({
+    dispatch({
+      type: 'pick',
       outcome,
       target,
-      label: labelWanted && name !== '' ? name : null,
+      name,
     });
-    setFailed(false);
   }
 
   function list(group: PickerGroup): ReactNode {
@@ -222,7 +292,7 @@ export function LinkPicker({
         {group.targets.map((choice) => (
           <li key={linkTargetKey(choice.target)}>
             <AriaButton
-              isDisabled={sent !== null || currentLabel.state === 'reading'}
+              isDisabled={!canPick(picker)}
               onPress={() => {
                 pick(choice);
               }}
@@ -254,22 +324,20 @@ export function LinkPicker({
   // so it lines up with the label whatever the box size.
   function labelOffer(): ReactNode {
     const hint =
-      currentLabel.state !== 'read'
+      picker.label.kind !== 'read'
         ? null
-        : currentLabel.text.trim() === ''
+        : picker.label.text.trim() === ''
           ? copy.linkLabelNone
-          : copy.linkLabelNow(currentLabel.text);
+          : copy.linkLabelNow(picker.label.text);
 
     return (
       <div className="grid grid-cols-[auto_1fr] gap-x-2 px-3">
         <Checkbox
-          isSelected={labelWanted}
-          isDisabled={
-            currentLabel.state === 'reading' ||
-            currentLabel.state === 'unlabelable' ||
-            sent !== null
-          }
-          onChange={setLabelWanted}
+          isSelected={picker.wanted}
+          isDisabled={!canOffer(picker)}
+          onChange={(wanted) => {
+            dispatch({ type: 'offer', wanted });
+          }}
           aria-describedby={hint === null ? undefined : labelHintId}
           className="group touch-target col-span-2 grid grid-cols-subgrid items-center text-text data-disabled:opacity-50"
         >
@@ -299,7 +367,7 @@ export function LinkPicker({
 
   function content(): ReactNode {
     // No `link:` key can hold this token, so nothing could be picked for it.
-    if (!validToken) {
+    if (!picker.validToken) {
       return null;
     }
 
@@ -318,7 +386,7 @@ export function LinkPicker({
     }
 
     return (
-      <div aria-busy={sent !== null} className="flex flex-col gap-2">
+      <div aria-busy={picker.attempt !== null} className="flex flex-col gap-2">
         {labelOffer()}
         {groups.map((group) => {
           const heading = groupHeading(group);
@@ -342,7 +410,7 @@ export function LinkPicker({
     <main className="flex h-dvh flex-col gap-2 overflow-auto rounded-lg bg-surface p-2 text-body text-text">
       {content()}
       <p aria-live="polite" className="text-label-sm text-danger-text empty:hidden">
-        {failed || !validToken ? copy.linkFailed : null}
+        {picker.failed || !picker.validToken ? copy.linkFailed : null}
       </p>
     </main>
   );
