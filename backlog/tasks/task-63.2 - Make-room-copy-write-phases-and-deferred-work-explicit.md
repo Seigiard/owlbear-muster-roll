@@ -1,9 +1,11 @@
 ---
 id: TASK-63.2
 title: Make room-copy write phases and deferred work explicit
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@opencode'
 created_date: '2026-11-14T14:10:00Z'
+updated_date: '2026-11-14T21:04:00Z'
 labels:
   - architecture
   - state-model
@@ -35,3 +37,11 @@ CAP-2. TASK-50 already placed room-copy policy behind RoomCopy. Inside that modu
 - [ ] #4 Visibility/resume changes, catch-up gating, higher generations, unreadable/older/newer copies and replacement preserve current behavior; stop and demotion retain their current guarantees without pretending to cancel a port call already started.
 - [ ] #5 Room-copy and import/wipe integration checks plus the project full check pass; task evidence records phase invariants and caller knowledge, and reuses TASK-50 behavioral/mutation oracles where applicable.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Refactor only src/replica/room-copy.ts into phase-owned ordinary/import operation state and explicitly owned deferred work; preserve independent saved-copy status and the public interface.
+2. Reuse unchanged room-copy and engine room-copy/import/wipe tests plus applicable TASK-50 mutation controls. Preserve the documented import-after-demotion limitation.
+3. Run the six project full checks, record phase invariants and before/after caller knowledge in spec-task-63.2-room-copy-phases.md, then run blind review and code review.
+<!-- SECTION:PLAN:END -->
