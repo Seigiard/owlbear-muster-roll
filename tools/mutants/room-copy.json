@@ -99,7 +99,7 @@
     "id": "R13",
     "rule": "Demotion clears the owed room-copy write and its not-saved notice.",
     "file": "src/replica/room-copy.ts",
-    "find": "    demoted: () => {\n      cancelScheduledWrite();\n      deferred.owed = false;\n",
+    "find": "    demoted: () => {\n      cancelScheduledWrite();\n      deferred.owed = false;\n      notSaved = false;\n",
     "replace": "    demoted: () => {\n      cancelScheduledWrite();\n",
     "test": ["src/replica/room-copy.test.ts"]
   },
