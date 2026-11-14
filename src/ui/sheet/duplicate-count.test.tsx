@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
 import type { VersionedRecord } from '@/core/records';
-import type { SyncState } from '@/core/ui-messages';
+import type { Command, SyncState } from '@/core/ui-messages';
 import { copy } from '@/ui/copy';
 import { createProjectionStore } from '@/ui/projection-store';
 
@@ -142,6 +142,95 @@ describe('duplicate count outcomes', () => {
     });
   });
 });
+
+describe('duplicate count keyboard confirmation', () => {
+  test.each([
+    ['isComposing', { isComposing: true }],
+    ['legacy keyCode 229', { keyCode: 229 }],
+  ] as const)('ignores Enter with %s and confirms with plain Enter', async (_name, signal) => {
+    // #given
+    const form = await openDuplicateCount();
+
+    // #when
+    await pressKey(form.input, 'Enter', signal);
+    const afterComposition = [...form.commands];
+    await pressKey(form.input, 'Enter');
+
+    // #then
+    expect({ afterComposition, afterPlainEnter: form.commands }).toEqual({
+      afterComposition: [],
+      afterPlainEnter: [
+        {
+          type: 'repeat-block-duplicate',
+          sheetId: 'npc',
+          sectionId: 'name',
+          instanceId: 'source',
+          count: 1,
+        },
+      ],
+    });
+  });
+});
+
+type DuplicateForm = {
+  input: HTMLInputElement;
+  commands: Extract<Command, { type: 'repeat-block-duplicate' }>[];
+};
+
+async function openDuplicateCount(): Promise<DuplicateForm> {
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  const commands: DuplicateForm['commands'] = [];
+
+  document.body.append(container);
+  mounted.push(root);
+  await act(async () => {
+    root.render(
+      <DuplicateCount
+        sheetId="npc"
+        sectionId="name"
+        instanceId="source"
+        sendCommand={(command) => {
+          commands.push(command);
+
+          return Promise.resolve({ kind: 'answered', answer: undefined });
+        }}
+        focusRequest={0}
+        onDone={() => undefined}
+        onCancel={() => undefined}
+      />,
+    );
+  });
+
+  const input = container.querySelector('input');
+
+  if (input === null) {
+    throw new Error('the duplicate form has no count input');
+  }
+
+  return { input, commands };
+}
+
+async function pressKey(
+  element: HTMLElement,
+  key: string,
+  signal: { isComposing?: boolean; keyCode?: number } = {},
+): Promise<void> {
+  await act(async () => {
+    const event = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      isComposing: signal.isComposing,
+      key,
+    });
+
+    if (signal.keyCode !== undefined) {
+      Object.defineProperty(event, 'keyCode', { value: signal.keyCode });
+    }
+
+    element.dispatchEvent(event);
+  });
+}
 
 function confirmButton(container: HTMLElement): HTMLButtonElement {
   const button = [...container.querySelectorAll('button')].find((one) =>
