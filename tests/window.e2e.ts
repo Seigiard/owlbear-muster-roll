@@ -17,22 +17,25 @@ import { openRoom } from './support/room';
 const DARK_TOKENS: ReadonlyMap<string, Rgb> = new Map<string, Rgb>([
   ['--color-surface', [34, 38, 57]],
   ['--color-surface-bar', [30, 34, 49]],
+  ['--color-surface-raised', [47, 51, 69]],
   ['--color-surface-tab', [56, 60, 77]],
-  ['--color-surface-stripe', [34, 38, 56]],
+  ['--color-surface-stripe', [56, 59, 76]],
   ['--color-line', [78, 81, 97]],
   ['--color-line-strong', [145, 147, 156]],
   ['--color-focus', [187, 153, 255]],
   ['--color-text', [255, 255, 255]],
   ['--color-text-muted', [189, 190, 196]],
   ['--color-accent', [187, 153, 255]],
+  ['--color-accent-ink', [211, 189, 255]],
   ['--color-accent-contrast', [4, 5, 7]],
 ]);
 
 const LIGHT_TOKENS: ReadonlyMap<string, Rgb> = new Map<string, Rgb>([
   ['--color-surface', [241, 243, 249]],
   ['--color-surface-bar', [221, 225, 238]],
+  ['--color-surface-raised', [250, 251, 253]],
   ['--color-surface-tab', [220, 222, 227]],
-  ['--color-surface-stripe', [239, 242, 248]],
+  ['--color-surface-stripe', [241, 242, 244]],
   ['--color-line', [200, 202, 205]],
   ['--color-line-strong', [136, 138, 141]],
   ['--color-focus', [111, 78, 178]],
@@ -47,29 +50,56 @@ const LIGHT_TOKENS: ReadonlyMap<string, Rgb> = new Map<string, Rgb>([
 const MIN_TEXT_CONTRAST = 4.5;
 const MIN_FOCUS_CONTRAST = 3;
 
-// Each text token and the surfaces the window puts it on.
-const TEXT_PAIRS: ReadonlyArray<readonly [string, readonly string[]]> = [
-  [
-    '--color-text',
-    ['--color-surface', '--color-surface-bar', '--color-surface-tab', '--color-surface-stripe'],
-  ],
-  [
-    '--color-text-muted',
-    ['--color-surface', '--color-surface-bar', '--color-surface-tab', '--color-surface-stripe'],
-  ],
-  [
-    '--color-accent',
-    ['--color-surface', '--color-surface-bar', '--color-surface-tab', '--color-surface-stripe'],
-  ],
-  ['--color-accent-contrast', ['--color-accent']],
+// The surfaces the window paints, each as its layers from the bottom up. Fills and the tonal
+// accent are translucent, so they are checked over every layer they sit on.
+const NEUTRAL_SURFACES: readonly (readonly string[])[] = [
+  ['--color-surface'],
+  ['--color-surface-bar'],
+  ['--color-surface-tab'],
+  ['--color-surface-raised'],
+  ['--color-surface-raised', '--color-surface-stripe'],
+  ['--color-surface-bar', '--color-fill'],
+  ['--color-surface', '--color-fill-strong'],
+  ['--color-surface-raised', '--color-fill'],
+  ['--color-surface-raised', '--color-surface-stripe', '--color-fill-strong'],
 ];
 
-const FOCUS_SURFACES = [
-  '--color-surface',
-  '--color-surface-bar',
-  '--color-surface-tab',
-  '--color-surface-stripe',
+const ACCENT_SOFT_SURFACES: readonly (readonly string[])[] = [
+  ['--color-surface-bar', '--color-accent-soft'],
+  ['--color-surface', '--color-accent-soft'],
+  ['--color-surface-raised', '--color-accent-soft'],
+  ['--color-surface-raised', '--color-surface-stripe', '--color-accent-soft'],
 ];
+
+// Each text token and the surfaces the window puts it on.
+const TEXT_PAIRS: ReadonlyArray<readonly [string, readonly (readonly string[])[]]> = [
+  ['--color-text', NEUTRAL_SURFACES],
+  ['--color-text-muted', NEUTRAL_SURFACES],
+  // The preset builder writes in the accent; the window writes in the ink.
+  [
+    '--color-accent',
+    [
+      ['--color-surface'],
+      ['--color-surface-bar'],
+      ['--color-surface-tab'],
+      ['--color-surface-stripe'],
+    ],
+  ],
+  // The ink is the text of selected and roll controls, which never sit on a neutral fill.
+  [
+    '--color-accent-ink',
+    [
+      ['--color-surface'],
+      ['--color-surface-bar'],
+      ['--color-surface-raised'],
+      ['--color-surface-raised', '--color-surface-stripe'],
+      ...ACCENT_SOFT_SURFACES,
+    ],
+  ],
+  ['--color-accent-contrast', [['--color-accent']]],
+];
+
+const FOCUS_SURFACES = [...NEUTRAL_SURFACES, ...ACCENT_SOFT_SURFACES];
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
@@ -124,12 +154,12 @@ for (const mode of ['dark', 'light'] as const) {
 
     for (const { text, surface, minimum } of pairs) {
       // Every surface sits on the window surface, so a translucent one shows it through.
-      const back = await layeredColor(page, ['--color-surface', surface]);
-      const front = await layeredColor(page, ['--color-surface', surface, text]);
+      const back = await layeredColor(page, ['--color-surface', ...surface]);
+      const front = await layeredColor(page, ['--color-surface', ...surface, text]);
       const ratio = contrastRatio(front, back);
 
       if (ratio < minimum) {
-        failing.push(`${text} on ${surface}: ${ratio.toFixed(2)}`);
+        failing.push(`${text} on ${surface.join(' + ')}: ${ratio.toFixed(2)}`);
       }
     }
 
@@ -233,28 +263,22 @@ test('the selected sidebar entry takes the active colors', async ({ page, contex
 
   // #then
   expect(active).toEqual([
-    [34, 38, 57],
-    [187, 153, 255],
+    await tokenColor(page, '--color-accent-soft'),
+    await tokenColor(page, '--color-accent-ink'),
   ]);
 });
 
-test('an unselected sidebar entry takes the sidebar colors', async ({ page, context }) => {
+test('an unselected sidebar entry has no fill and the text color', async ({ page, context }) => {
   // #given
   await openRoom(page, context);
 
   const gear = page.getByRole('tab', { name: 'Настройки' });
 
   // #when
-  const inactive = [
-    await renderedColor(gear, 'background-color'),
-    await renderedColor(gear, 'color'),
-  ];
+  const inactive = [await cssValue(gear, 'background-color'), await renderedColor(gear, 'color')];
 
   // #then
-  expect(inactive).toEqual([
-    [56, 60, 77],
-    [255, 255, 255],
-  ]);
+  expect(inactive).toEqual(['rgba(0, 0, 0, 0)', [255, 255, 255]]);
 });
 
 test('Down moves the selection between sidebar entries', async ({ page, context }) => {

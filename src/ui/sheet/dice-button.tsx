@@ -11,7 +11,9 @@ import type { ReplicaClient } from '@/ui/replica-client';
 import { shownForRoll, type LocalFieldValues } from './local-field-values';
 
 // `dice-button`: accent text and border, `sm` radius, `label-sm`.
-const DICE_BUTTON_CLASS = 'rounded-sm border border-accent px-2 text-label-sm text-accent';
+// A roll is the one action in the accent: tonal at rest, solid under the pointer.
+const DICE_BUTTON_CLASS =
+  'rounded-md bg-accent-soft px-2 text-label-sm font-medium text-accent-ink data-hovered:bg-accent data-hovered:text-accent-contrast';
 
 // What every dice button of a window shares. A player rolls too, so this is not `FieldEditing`.
 export type DiceRolling = {

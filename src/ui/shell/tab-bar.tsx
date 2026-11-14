@@ -5,11 +5,13 @@ import { Tab, TabList, TabListStateContext } from 'react-aria-components';
 import { copy } from '@/ui/copy';
 import { CellTooltip } from '@/ui/primitives/tooltip';
 
+// The selected tab is underlined in the accent; forced colors drop the shadow, so there it is a
+// text underline.
 const TAB_CLASS =
-  'touch-target inline-flex min-w-0 shrink-0 items-center gap-1 rounded-t-md border border-b-0 border-transparent bg-surface-tab px-3 text-text -outline-offset-2 data-selected:border-line data-selected:bg-surface data-selected:text-accent';
+  'touch-target inline-flex min-w-0 shrink-0 items-center gap-1 px-3 text-text-muted -outline-offset-2 data-hovered:text-text data-selected:font-medium data-selected:text-accent-ink data-selected:shadow-[inset_0_-2px_0_var(--color-accent)] forced-colors:data-selected:underline';
 
 const SCROLLER_CLASS =
-  'flex min-w-0 gap-2 overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+  'flex min-w-0 gap-1 overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
 
 // The tab row of the selected sheet. Its parent WindowFrame owns the Tabs state and panel.
 export type ShellTab = {
@@ -25,9 +27,9 @@ export function TabBar({ tabs }: TabBarProps): ReactNode {
   useTabKeyEntersAtSelection();
 
   return (
-    <div className="bg-surface-bar px-2 pt-2" onWheel={scrollSideways}>
+    <div className="px-3 pt-1" onWheel={scrollSideways}>
       <div data-tab-scroller className={SCROLLER_CLASS}>
-        <TabList aria-label={copy.label.sheetTabs} className="flex gap-2">
+        <TabList aria-label={copy.label.sheetTabs} className="flex gap-1">
           {tabs.map((tab) => (
             <Tab
               key={tab.id}

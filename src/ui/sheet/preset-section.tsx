@@ -37,7 +37,7 @@ const WIDTH_CLASSES: Record<NonNullable<PresetSection['width']>, string> = {
 
 const ROW_CLASS = 'touch-target items-center gap-x-2 px-1';
 
-const STRIPE_CLASS = 'bg-surface-stripe';
+const STRIPE_CLASS = 'rounded-sm bg-surface-stripe';
 
 // CAP-32: a repeat block whose linked token is selected on the map, as a bar on its left edge.
 // Forced colors drop shadows, so there it is an outline.
@@ -118,7 +118,8 @@ export function SheetSection({
   const sectionId = repeatSectionId(section);
 
   const className = [
-    'min-w-0 shrink-0 grow-0 basis-full border-l-2 border-line pl-2',
+    // A section is a card: its radius is the stripe's plus its padding.
+    'min-w-0 shrink-0 grow-0 basis-full rounded-xl bg-surface-raised p-2',
     WIDTH_CLASSES[section.width ?? 'full'],
   ].join(' ');
 
@@ -164,7 +165,7 @@ export function SheetSection({
       data-section
       data-section-index={sectionIndex}
     >
-      <h2 id={headingId} className="mb-1 text-section-heading text-accent">
+      <h2 id={headingId} className="mb-1 px-1 text-section-heading text-text">
         {title}
       </h2>
       {content}

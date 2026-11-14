@@ -157,7 +157,7 @@ export function AccessPanel({
     <section
       id={id}
       aria-label={copy.place.access}
-      className="mb-3 flex flex-col gap-2 rounded-md border border-line bg-surface-bar p-2 text-body text-text"
+      className="mb-3 flex flex-col gap-2 rounded-xl border border-line bg-surface-raised p-2 text-body text-text"
       onKeyDown={handleKeyDown}
     >
       {rows.length === 0 ? (

@@ -101,7 +101,7 @@ export function SheetHeader({
         />
       </FieldEditingContext>
     ) : (
-      <h1 className={`min-w-0 flex-1 px-1 text-text [overflow-wrap:anywhere] ${NAME_CLASS}`}>
+      <h1 className={`min-w-0 flex-1 px-2 text-text [overflow-wrap:anywhere] ${NAME_CLASS}`}>
         {name === '' ? copy.unnamed : name}
       </h1>
     );
@@ -167,13 +167,13 @@ function SheetActions({
       <AriaButton
         ref={actionsRef}
         aria-label={copy.label.sheetActions}
-        className="touch-target inline-flex shrink-0 items-center justify-center rounded-sm px-3 text-text"
+        className="touch-target press inline-flex shrink-0 items-center justify-center rounded-md px-3 text-text data-hovered:bg-fill"
       >
         {MORE}
       </AriaButton>
       <Popover
         placement="bottom end"
-        className="rounded-md border border-line bg-surface-bar p-1 text-body text-text"
+        className="rounded-lg border border-transparent bg-surface-raised p-1 text-body text-text shadow-popover"
       >
         <Menu
           onAction={(action) => {
@@ -184,7 +184,7 @@ function SheetActions({
         >
           <MenuItem
             id={DELETE_ACTION}
-            className="touch-target flex cursor-default items-center rounded-sm px-3 data-focused:bg-surface-tab"
+            className="touch-target flex cursor-default items-center rounded-sm px-3 data-focused:bg-fill"
           >
             {copy.command.delete}
           </MenuItem>
@@ -247,7 +247,7 @@ function NameInput({
         onChange={(event) => {
           edit.onChange(event.target.value);
         }}
-        className={`touch-target w-full border-b border-dotted border-line-strong bg-transparent px-1 text-text placeholder:text-text-muted ${NAME_CLASS}`}
+        className={`touch-target field-well w-full px-2 text-text placeholder:text-text-muted ${NAME_CLASS}`}
       />
       <span id={errorId} aria-live="polite" className="text-label-sm text-danger-text empty:hidden">
         {edit.error === 'too-long' ? copy.valueTooLong : ''}

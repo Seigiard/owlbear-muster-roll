@@ -65,7 +65,7 @@ test('the block names the sheet by its current name', async ({ page, context }) 
   await expect(confirmation(page)).toHaveAccessibleName('Удалить «Лиза»? Это нельзя отменить.');
 });
 
-test('the block sits on surface-bar with a line border and rounded-md', async ({
+test('the block sits on surface-raised with a line border and rounded-xl', async ({
   page,
   context,
 }) => {
@@ -84,10 +84,10 @@ test('the block sits on surface-bar with a line border and rounded-md', async ({
     borderStyle: await cssValue(block, 'border-top-style'),
     radius: await cssValue(block, 'border-top-left-radius'),
   }).toEqual({
-    background: await tokenColor(page, '--color-surface-bar'),
+    background: await tokenColor(page, '--color-surface-raised'),
     border: await tokenColor(page, '--color-line'),
     borderStyle: 'solid',
-    radius: '6px',
+    radius: '12px',
   });
 });
 

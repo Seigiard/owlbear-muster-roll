@@ -14,11 +14,13 @@ export const CONTENT_CLASS = 'min-h-0 flex-1 overflow-auto p-3 -outline-offset-2
 
 const MULTI_TAB_CONTENT_CLASS = 'p-3 -outline-offset-2';
 
+// Navigation has no fill at rest. The selected entry takes the tonal accent, the same as a
+// pressed chip, so "selected" looks one way across the window.
 const SIDEBAR_TAB_CLASS =
-  'touch-target inline-flex min-w-0 w-full items-center gap-1 rounded-md bg-surface-tab px-2 text-start text-text -outline-offset-2 data-selected:bg-surface data-selected:text-accent';
+  'touch-target inline-flex min-w-0 w-full items-center gap-1 rounded-md px-2 text-start text-text -outline-offset-2 [&[data-hovered]:not([data-selected])]:bg-fill data-selected:bg-accent-soft data-selected:font-medium data-selected:text-accent-ink';
 
 const SIDEBAR_SCROLLER_CLASS =
-  'min-h-0 flex-1 overflow-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+  'min-h-0 flex-1 overflow-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
 
 const SIDEBAR_FLOW_CLASS = 'flex min-h-full flex-col gap-1';
 
@@ -152,7 +154,7 @@ function Sidebar({ entries, selected, onSelect, onAdd, settings }: SidebarProps)
           aria-label={section.title}
           data-sidebar-heading={section.title}
           style={{ order }}
-          className="px-2 pt-1 text-label-sm text-text-muted"
+          className="px-2 pt-1 text-label-sm font-semibold text-text-muted"
         ></h2>,
       );
       order += 1;
@@ -192,7 +194,7 @@ function Sidebar({ entries, selected, onSelect, onAdd, settings }: SidebarProps)
           key={`divider:${section.id}`}
           aria-hidden
           style={{ order }}
-          className="my-2 h-px shrink-0 bg-line"
+          className="mx-2 my-2 h-px shrink-0 bg-line"
         />,
       );
       order += 1;
@@ -249,8 +251,13 @@ function SidebarContents({
                 id={settings.id}
                 aria-label={settings.accessibleName}
                 data-sidebar-entry
-                style={{ position: 'absolute', insetInline: 0, insetBlockEnd: 0 }}
-                className={`${SIDEBAR_TAB_CLASS} border-bs border-line px-3`}
+                style={{
+                  position: 'absolute',
+                  insetInline: 'var(--spacing-2)',
+                  insetBlockEnd: 'var(--spacing-2)',
+                  width: 'auto',
+                }}
+                className={SIDEBAR_TAB_CLASS}
               >
                 {settings.label}
               </Tab>
@@ -260,7 +267,7 @@ function SidebarContents({
         </div>
       </div>
       {settings === undefined ? null : (
-        <div aria-hidden className="h-[2rem] shrink-0 border-bs border-line" />
+        <div aria-hidden className="h-[3rem] shrink-0 border-bs border-line" />
       )}
     </>
   );

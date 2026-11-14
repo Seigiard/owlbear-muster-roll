@@ -55,7 +55,10 @@ export function SettingsView({
       {confirmation}
       {snapshot.confirmation}
       {wipe.confirmation}
-      <section aria-labelledby={headingId} className="flex flex-col gap-2">
+      <section
+        aria-labelledby={headingId}
+        className="flex flex-col gap-2 rounded-xl bg-surface-raised p-3"
+      >
         <h2 id={headingId} className="text-section-heading">
           {copy.section.preset}
         </h2>
@@ -79,19 +82,28 @@ export function SettingsView({
           </span>
         </div>
       </section>
-      <section aria-labelledby={snapshotHeadingId} className="flex flex-col gap-2">
+      <section
+        aria-labelledby={snapshotHeadingId}
+        className="flex flex-col gap-2 rounded-xl bg-surface-raised p-3"
+      >
         <h2 id={snapshotHeadingId} className="text-section-heading">
           {copy.section.snapshot}
         </h2>
         <div className="flex flex-wrap items-start gap-2">{snapshot.actions}</div>
       </section>
-      <section aria-labelledby={roomCopyHeadingId} className="flex flex-col gap-2">
+      <section
+        aria-labelledby={roomCopyHeadingId}
+        className="flex flex-col gap-2 rounded-xl bg-surface-raised p-3"
+      >
         <h2 id={roomCopyHeadingId} className="text-section-heading">
           {copy.section.roomCopy}
         </h2>
         <p>{roomCopyText(roomCopy)}</p>
       </section>
-      <section aria-labelledby={wipeHeadingId} className="flex flex-col gap-2">
+      <section
+        aria-labelledby={wipeHeadingId}
+        className="flex flex-col gap-2 rounded-xl bg-surface-raised p-3"
+      >
         <h2 id={wipeHeadingId} className="text-section-heading">
           {copy.section.wipe}
         </h2>

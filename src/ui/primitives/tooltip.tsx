@@ -232,7 +232,7 @@ export function CellTooltip({ name, children, className }: CellTooltipProps): Re
           triggerRef={triggerRef}
           placement="top"
           offset={8}
-          className="max-w-[100vw] rounded-sm border border-line bg-surface-tab px-2 py-1 text-label-sm text-text [overflow-wrap:anywhere]"
+          className="max-w-[100vw] rounded-md border border-transparent bg-surface-raised px-2 py-1 text-label-sm text-text shadow-popover [overflow-wrap:anywhere]"
         >
           {name}
         </Tooltip>

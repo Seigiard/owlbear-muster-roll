@@ -5,11 +5,16 @@
 
   --color-surface: var(--mr-surface, Canvas);
   --color-surface-bar: var(--mr-surface-bar, Canvas);
+  --color-surface-raised: var(--mr-surface-raised, Canvas);
   --color-surface-tab: var(--mr-surface-tab, Canvas);
   --color-surface-stripe: var(--mr-surface-stripe, Canvas);
+  --color-fill: var(--mr-fill, transparent);
+  --color-fill-strong: var(--mr-fill-strong, transparent);
   --color-text: var(--mr-text, CanvasText);
   --color-text-muted: var(--mr-text-muted, CanvasText);
   --color-accent: var(--mr-accent, Highlight);
+  --color-accent-soft: var(--mr-accent-soft, transparent);
+  --color-accent-ink: var(--mr-accent-ink, LinkText);
   --color-accent-contrast: var(--mr-accent-contrast, HighlightText);
   --color-line: var(--mr-line, CanvasText);
   --color-line-strong: var(--mr-line-strong, CanvasText);
@@ -36,13 +41,19 @@
   --text-section-heading: 14px;
   --text-section-heading--line-height: 1.4;
   --text-section-heading--font-weight: 600;
-  --text-sheet-title: 16px;
+  --text-sheet-title: 18px;
   --text-sheet-title--line-height: 1.3;
   --text-sheet-title--font-weight: 600;
+
+  --ease-out: ease-out;
+
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
 
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
+  --radius-xl: 12px;
   --radius-full: 9999px;
 
   --spacing-0: 0px;
@@ -50,6 +61,9 @@
   --spacing-2: 8px;
   --spacing-3: 12px;
   --spacing-4: 16px;
+
+  --shadow-popover:
+    0 0 0 1px var(--color-line), 0 8px 24px rgb(0 0 0 / 0.24), 0 2px 6px rgb(0 0 0 / 0.16);
 }
 
 @layer base {
@@ -74,6 +88,10 @@
     outline-offset: 1px;
   }
 
+  input[type='checkbox'] {
+    accent-color: var(--color-accent);
+  }
+
   [data-sidebar-heading]::before {
     content: attr(data-sidebar-heading);
   }
@@ -81,4 +99,36 @@
 
 @utility touch-target {
   min-height: 32px;
+}
+
+/* A pressed control shrinks a little, so the press reads before its result arrives. */
+@utility press {
+  -webkit-tap-highlight-color: transparent;
+  transition-property: scale, background-color, color;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+
+  @media (prefers-reduced-motion: no-preference) {
+    &[data-pressed]:not([data-disabled]) {
+      scale: 0.96;
+    }
+  }
+}
+
+/* An editable value sits in a tinted well with a solid underline, so it reads apart from plain
+   text. The underline is the control's boundary and keeps 3:1. */
+@utility field-well {
+  border-start-start-radius: var(--radius-sm);
+  border-start-end-radius: var(--radius-sm);
+  border-block-end: 1px solid var(--color-line-strong);
+  background-color: var(--color-fill);
+  transition-property: background-color;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background-color: var(--color-fill-strong);
+    }
+  }
 }

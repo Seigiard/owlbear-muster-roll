@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { z } from 'zod';
 
-import { cssValue, renderedColor } from './support/colors';
+import { renderedColor, tokenColor } from './support/colors';
 import {
   ADD,
   addPartyMember,
@@ -202,7 +202,9 @@ test('with no preset, both snapshot buttons are disabled with the preset-first r
   await expect(upload).toBeDisabled();
   await expect(upload).toHaveAccessibleDescription(PRESET_REQUIRED);
   await expect(snapshotSection(page).getByRole('button')).toHaveText([DOWNLOAD, UPLOAD]);
-  expect(await cssValue(upload, 'border-top-width')).toBe('1px');
+  expect(await renderedColor(upload, 'background-color')).toEqual(
+    await tokenColor(page, '--color-fill'),
+  );
 });
 
 // The file of the 5.3 tests: one character the example preset places, and one value it has no

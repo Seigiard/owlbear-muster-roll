@@ -370,7 +370,7 @@ test('repeat blocks stripe the same way, each block as one', async ({ page, cont
   }).toEqual({ first: TRANSPARENT, second: await tokenColor(page, '--color-surface-stripe') });
 });
 
-test('a titled section has a section-heading in accent and a left rule in line', async ({
+test('a titled section is a raised card with a section-heading in the text color', async ({
   page,
   context,
 }) => {
@@ -384,18 +384,18 @@ test('a titled section has a section-heading in accent and a left rule in line',
     size: await cssValue(heading, 'font-size'),
     weight: await cssValue(heading, 'font-weight'),
     color: await renderedColor(heading, 'color'),
-    rule: await cssValue(section, 'border-left-style'),
-    ruleColor: await renderedColor(section, 'border-left-color'),
+    card: await renderedColor(section, 'background-color'),
+    radius: await cssValue(section, 'border-top-left-radius'),
   }).toEqual({
     size: '14px',
     weight: '600',
-    color: await tokenColor(page, '--color-accent'),
-    rule: 'solid',
-    ruleColor: await tokenColor(page, '--color-line'),
+    color: await tokenColor(page, '--color-text'),
+    card: await tokenColor(page, '--color-surface-raised'),
+    radius: '12px',
   });
 });
 
-test('a section with no title has no heading and keeps the left rule', async ({
+test('a section with no title has no heading and stays a raised card', async ({
   page,
   context,
 }) => {
@@ -409,12 +409,11 @@ test('a section with no title has no heading and keeps the left rule', async ({
   // #then
   expect({
     headings: await section.getByRole('heading').count(),
-    rule: await cssValue(section, 'border-left-style'),
-    ruleColor: await renderedColor(section, 'border-left-color'),
-  }).toEqual({ headings: 0, rule: 'solid', ruleColor: await tokenColor(page, '--color-line') });
+    card: await renderedColor(section, 'background-color'),
+  }).toEqual({ headings: 0, card: await tokenColor(page, '--color-surface-raised') });
 });
 
-test('a value has a dotted underline in line-strong, and every row is at least 32 px high', async ({
+test('a value sits in a fill well with a solid line-strong underline, and every row is at least 32 px high', async ({
   page,
   context,
 }) => {
@@ -434,11 +433,13 @@ test('a value has a dotted underline in line-strong, and every row is at least 3
   expect({
     style: await cssValue(value, 'border-bottom-style'),
     color: await renderedColor(value, 'border-bottom-color'),
+    well: await renderedColor(value, 'background-color'),
     rows: heights.flat().length,
     shortRows: heights.flat().filter((height) => height < 32),
   }).toEqual({
-    style: 'dotted',
+    style: 'solid',
     color: await tokenColor(page, '--color-line-strong'),
+    well: await tokenColor(page, '--color-fill'),
     rows: 11,
     shortRows: [],
   });

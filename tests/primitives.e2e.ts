@@ -1,7 +1,14 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 
-import { contrastRatio, cssValue, LIGHT_THEME, renderedColor, setTheme } from './support/colors';
+import {
+  contrastRatio,
+  cssValue,
+  LIGHT_THEME,
+  renderedColor,
+  setTheme,
+  tokenColor,
+} from './support/colors';
 import type { Rgb } from './support/colors';
 
 const MIN_CONTRAST = 4.5;
@@ -131,7 +138,7 @@ test('the radii follow DESIGN.md for buttons and chips', async ({ page }) => {
   ]);
 
   // #then
-  expect(radii).toEqual(['4px', '9999px']);
+  expect(radii).toEqual(['6px', '9999px']);
 });
 
 test('a status chip is not a button and renders muted at 12 px', async ({ page }) => {
@@ -189,7 +196,7 @@ test('a primary Button renders the accent background and contrast text', async (
 });
 
 for (const name of ['Secondary', 'Default']) {
-  test(`a ${name} Button renders the text color and a line border`, async ({ page }) => {
+  test(`a ${name} Button renders the text color on the fill, with no border`, async ({ page }) => {
     // #given
     await openFixture(page);
 
@@ -198,20 +205,22 @@ for (const name of ['Secondary', 'Default']) {
     // #when
     const rendered = {
       color: await renderedColor(button, 'color'),
-      border: await renderedColor(button, 'border-top-color'),
+      background: await renderedColor(button, 'background-color'),
       borderWidth: await cssValue(button, 'border-top-width'),
     };
 
     // #then
     expect(rendered).toEqual({
       color: [255, 255, 255],
-      border: [78, 81, 97],
-      borderWidth: '1px',
+      background: await tokenColor(page, '--color-fill'),
+      borderWidth: '0px',
     });
   });
 }
 
-test('a Field has a dotted underline in the strong line color', async ({ page }) => {
+test('a Field sits in a fill well with a solid underline in the strong line color', async ({
+  page,
+}) => {
   // #given
   await openFixture(page);
 
@@ -222,10 +231,16 @@ test('a Field has a dotted underline in the strong line color', async ({ page })
     style: await cssValue(field, 'border-bottom-style'),
     width: await cssValue(field, 'border-bottom-width'),
     color: await renderedColor(field, 'border-bottom-color'),
+    well: await renderedColor(field, 'background-color'),
   };
 
   // #then
-  expect(underline).toEqual({ style: 'dotted', width: '1px', color: [145, 147, 156] });
+  expect(underline).toEqual({
+    style: 'solid',
+    width: '1px',
+    color: [145, 147, 156],
+    well: await tokenColor(page, '--color-fill'),
+  });
 });
 
 test('the shell banner slot renders the banner as a live region', async ({ page }) => {

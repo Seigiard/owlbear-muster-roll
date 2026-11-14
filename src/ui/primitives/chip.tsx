@@ -45,7 +45,7 @@ export function Chip({
   return (
     <Pressable
       ref={ref}
-      className={`text-text ${CHIP_CLASS} ${pressed ? 'border-line-strong bg-surface-tab' : 'border-line'}`}
+      className={`${CHIP_CLASS} ${pressed ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line text-text data-hovered:bg-fill'}`}
       onPress={onPress}
       disabledReason={disabledReason}
       expanded={expanded}

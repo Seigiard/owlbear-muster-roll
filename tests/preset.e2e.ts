@@ -8,7 +8,7 @@ import { z } from 'zod';
 import type { JsonValue } from '@/core/json';
 import { MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 
-import { cssValue, renderedColor } from './support/colors';
+import { renderedColor, tokenColor } from './support/colors';
 import {
   ABSENT,
   EXAMPLE_PRESET_TEXT,
@@ -216,8 +216,11 @@ test('Settings with no preset puts the primary upload first and disables the dow
   );
   expect({
     upload: await renderedColor(section.getByRole('button', { name: UPLOAD }), 'background-color'),
-    download: await cssValue(section.getByRole('button', { name: DOWNLOAD }), 'border-top-width'),
-  }).toEqual({ upload: ACCENT, download: '1px' });
+    download: await renderedColor(
+      section.getByRole('button', { name: DOWNLOAD }),
+      'background-color',
+    ),
+  }).toEqual({ upload: ACCENT, download: await tokenColor(page, '--color-fill') });
 });
 
 test('a player sees only the loading text after the projection arrives', async ({

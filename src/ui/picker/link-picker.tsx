@@ -227,7 +227,7 @@ export function LinkPicker({
                 pick(choice);
               }}
               aria-label={targetAccessibleName(choice)}
-              className="touch-target flex w-full items-center gap-2 rounded-sm px-3 text-left text-text data-disabled:opacity-50 data-hovered:bg-surface-tab data-pressed:bg-surface-tab"
+              className="touch-target flex w-full items-center gap-2 rounded-sm px-3 text-left text-text data-disabled:opacity-50 data-hovered:bg-fill data-pressed:bg-fill-strong"
             >
               <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                 {shownName(choice.blockName ?? choice.sheetName)}

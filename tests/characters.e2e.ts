@@ -432,13 +432,13 @@ test('the header shows the name in sheet-title over a bottom rule in line', asyn
 
   // #then
   expect(style).toEqual({
-    fontSize: '16px',
+    fontSize: '18px',
     fontWeight: '600',
-    lineHeight: '20.8px',
+    lineHeight: '23.4px',
     rule: 'solid',
     ruleWidth: '1px',
     ruleColor: LINE,
-    underline: 'dotted',
+    underline: 'solid',
     underlineColor: LINE_STRONG,
   });
 });

@@ -47,7 +47,7 @@ export function MapToggle({ target, accessibleName }: MapToggleProps): ReactNode
       onChange={() => {
         selector.take(step);
       }}
-      className={`${SECONDARY_BUTTON_CLASS} shrink-0 data-selected:border-accent data-selected:text-accent`}
+      className={`${SECONDARY_BUTTON_CLASS} shrink-0 data-selected:bg-accent-soft data-selected:text-accent-ink`}
     >
       {copy.command.selectOnMap}
     </ToggleButton>
