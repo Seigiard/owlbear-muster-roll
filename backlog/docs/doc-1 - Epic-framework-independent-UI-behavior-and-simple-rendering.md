@@ -3,7 +3,7 @@ id: doc-1
 title: 'Epic: framework-independent UI behavior and simple rendering'
 type: specification
 created_date: '2026-11-13T09:43:00Z'
-updated_date: '2026-11-14T05:51:00Z'
+updated_date: '2026-11-14T06:23:00Z'
 tags:
   - epic
   - architecture
@@ -25,7 +25,7 @@ The intended benefit is less caller knowledge: a change to one interaction shoul
 - Parent: **TASK-61**. This document holds the overall goal, hypotheses, decisions and coverage map. Child tasks hold their own acceptance criteria and researched plans.
 - Owner-confirmed on 2026-11-13: make behavior framework-independent; retain React for rendering; validate navigation first; preserve the overall goal in a Backlog epic with tasks and hypotheses.
 - Accepted direction on 2026-11-13: pure transitions inside a separate navigation module; React remains rendering. See `docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md`.
-- Current stage: TASK-61.5 is Done. The window runs navigation through one pure reducer in `src/ui/navigation.ts`; see the pilot outcome below. The wider epic remains open. Storybook adoption and comparative catalogue maintenance fit remain separate and unresolved.
+- Current stage: TASK-61.5 is Done. The window runs navigation through one pure reducer in `src/ui/navigation.ts`; see the pilot outcome below. The wider epic remains open. Storybook is not adopted for the current scope; the existing preview host stays the catalogue (TASK-61.3, 2026-11-14).
 - Existing domain names come from `GLOSSARY.md`. Existing architecture decisions remain authoritative until explicitly revised.
 - Before starting or resuming a child task, read this document. After its evidence changes a hypothesis or coverage row, update this document through the Backlog CLI.
 
@@ -65,7 +65,7 @@ Statuses are **untested**, **supported**, **rejected** or **inconclusive**. Reco
 | H2 | Explicit state transitions simplify navigation more than the current render/effect chain. | Compare pure transitions, an active module and an existing-store-centered presenter. Pilot the approved choice. Reject any choice that merely moves the old chain, exposes many setters, or introduces more caller knowledge. A machine library must justify its own cost. | TASK-61.1, TASK-61.5 / supported for navigation; see the pilot outcome and its bounds below |
 | H3 | A small, scoped event interface is enough; a general emitter may be unnecessary. | Trace projection updates, user events, command outcomes, open acknowledgments and DOM intents. Check stale completions and disposal. Add a general emitter only if actual delivery needs remain unmet; reject it if direct events and the existing subscription mechanism suffice. | TASK-61.1, TASK-61.6 / inconclusive; no general bus need found; test the shared command-settlement pattern on the second flow |
 | H4 | A registry makes isolated visual modules easier to select, compose or discover than plain imports. | Compare both against a representative frame and sheet view. Require a concrete lookup or composition need. Reject the registry if it only renames imports or requires broad shared context. | TASK-61.3 / rejected for current scope by the source audit of closed-union dispatch/no discovery need; equal-by-construction stories are not evidence |
-| H5 | Storybook gives useful isolated state and interaction checks without Owlbear or replica startup. | Exercise real visual modules with explicit fixtures and events. Compare the dependency/configuration cost with the existing preview host. Reject tool-only setup as evidence; static stories alone do not prove asynchronous behavior. | TASK-61.3 / sampled capability supported; comparative fit inconclusive. Static-record/artificial-GM fixture cannot express success; 180 added lock entries. See doc-3 |
+| H5 | Storybook gives useful isolated state and interaction checks without Owlbear or replica startup. | Exercise real visual modules with explicit fixtures and events. Compare the dependency/configuration cost with the existing preview host. Reject tool-only setup as evidence; static stories alone do not prove asynchronous behavior. | TASK-61.3 / capability supported; adoption rejected for the current scope on 2026-11-14. The existing preview host shows the same modules with no new dependency, and the states a catalogue would add (an answered command, a real GM) need fixture work Storybook does not remove. Cost measured: two dev dependencies, 180 lock entries, a second Vite config, a 7 MB static catalogue. See doc-3 |
 | H6 | The separation learned from navigation transfers to a materially different UI flow. | Choose a second flow after the pilot. Record what transfers and what stays specific. Reject a shared mechanism if the second use needs flags, duplicated state or a larger interface than separate modules. | TASK-61.6 / untested |
 
 ## Navigation alternatives and accepted direction
@@ -91,7 +91,7 @@ The functional audit is recorded in [doc-3](<doc-3 - Audit-and-experiment-UI-own
 | UI flow | Starting evidence | Next disposition |
 | --- | --- | --- |
 | Window navigation | `src/ui/main.tsx` owns workflow and reads DOM focus; `sheet-body.tsx:72-101` consumes reveal after mount | Implemented pilot TASK-61.5: one pure reducer, `useReducer` and browser effects in the window; see ADR 0002 |
-| Window frame and sidebar/tab drawing | WindowFrame has a data/callback model; direct imports work in the isolated host | Existing seam retained; Storybook capability sampled, adoption fit open |
+| Window frame and sidebar/tab drawing | WindowFrame has a data/callback model; direct imports work in the isolated host | Existing seam retained; Storybook rejected for the current scope, the preview host remains the catalogue |
 | Field editing and repeat-block actions | Draft/save/outcome rules span hooks and local values; repeat focus shares mount-dependent intents | Field ownership open after H6; repeat intent is a later candidate, TASK-61.7 |
 | Dice interaction in the window | Evaluation/policy already outside React; button owns its visual request state | Separated enough for current scope; retain |
 | Settings upload, import and wipe confirmations | `src/ui/settings/`, `src/ui/preset-actions.tsx` own file/check/confirm/outcome workflows | Candidates; settings is a preliminary second-flow alternative, selection after pilot |
@@ -107,9 +107,9 @@ Each row must finish as **meets goal with evidence**, **requires linked migratio
 
 | Task | Outcome | Prerequisites |
 | --- | --- | --- |
-| TASK-61.1 | Compare navigation module shapes and H1/H2/H3 trade-offs | Current research; In Progress |
+| TASK-61.1 | Compare navigation module shapes and H1/H2/H3 trade-offs | Done; comparison in doc-2, decision in ADR 0002, behavior in the TASK-61.5 pilot |
 | TASK-61.2 | Verify ownership and coverage across all UI flows | Completed functional audit, review corrections accepted |
-| TASK-61.3 | Test visual isolation, registry and Storybook hypotheses | In Progress |
+| TASK-61.3 | Test visual isolation, registry and Storybook hypotheses | Done; registry and Storybook rejected for the current scope |
 | TASK-61.4 | Owner-approved separation contract and pilot scope | Superseded by the owner's direct approval of the pilot; archived |
 | TASK-61.5 | Production navigation pilot with behavioral evidence | TASK-61.2; owner explicitly approved implementation, superseding the earlier prototype gate |
 | TASK-61.6 | Second-flow experiment; validate transfer before sharing mechanisms | TASK-61.5 |
@@ -150,4 +150,4 @@ The pilot rejected its own first answers to the open questions above. A coherent
 
 Validation on the final branch: 2863 unit tests and all 512 Chromium browser tests passed with `tests/` unchanged from `master`; format, lint, typecheck and build passed. A live Owlbear room was not checked; browser tests use the mock platform. No deployment ran.
 
-H1 is supported for navigation. H2 is supported: render-phase state updates are gone and the caller no longer knows transition ordering; line counts were not the measure. H3 needs no general bus and no integration layer for this flow but remains inconclusive across flows. H4/H5 are unchanged; Storybook adoption remains unresolved. H6 is untested. TASK-61 stays open; TASK-61.6 must select and validate a second flow before shared mechanisms or broader migrations are proposed.
+H1 is supported for navigation. H2 is supported: render-phase state updates are gone and the caller no longer knows transition ordering; line counts were not the measure. H3 needs no general bus and no integration layer for this flow but remains inconclusive across flows. H4 is rejected and H5 is closed: capability supported, adoption rejected for the current scope. H6 is untested. TASK-61 stays open; TASK-61.6 must select and validate a second flow before shared mechanisms or broader migrations are proposed.
