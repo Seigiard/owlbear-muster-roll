@@ -124,34 +124,48 @@ type DigestMismatches = { count: number; at: number };
 
 type PartyMember = { connectionId: string; role: PlayerRole };
 
+type ActiveCatchUp = {
+  nonce: string;
+  trigger: CatchUpTrigger;
+  sentNonce: string | null;
+  answerSeen: boolean;
+};
+
+type CatchUpPhase =
+  | { kind: 'initializing' }
+  | { kind: 'live' }
+  | {
+      kind: 'catching-up';
+      active: ActiveCatchUp;
+      mode: { kind: 'ordinary' };
+    }
+  | {
+      kind: 'catching-up';
+      active: ActiveCatchUp;
+      mode: {
+        kind: 'adopting';
+        target: Generation;
+        retryMs: number;
+      };
+    };
+
 export function createCatchUp(options: CatchUpOptions): CatchUp {
   // AD-6: the catch-up module sets `gmLink` from GM-origin messages the engine admits, never from
   // the party.
   // Any admitted GM message counts, also one from a GM that is itself catching up, as the 2.4 spec
   // chooses: such a client still responds.
-  let state: CatchUpView = {
-    state: 'catching-up',
+  let phase: CatchUpPhase = { kind: 'initializing' };
+
+  let knowledge: Omit<CatchUpView, 'state'> = {
     firstCatchUpDone: false,
     gmAnswered: false,
     gmLink: 'offline',
   };
 
-  // AD-7 catch-up. `ownNonce` is set only while catching up.
-  let ownNonce: string | null = null;
   // The last `r` this client asked with. A complete answer to it that comes after a timeout still
   // shows that a GM client answered.
   let lastNonce: string | null = null;
   let answers = new Map<string, AnswerParts>();
-  // True once any `state` for `ownNonce` arrived, so a re-entry need not ask again.
-  let answerSeen = false;
-  let catchUpTrigger: CatchUpTrigger = 'start';
-  // The `r` of the last `state-request` sent, so a GM that comes online can be asked again.
-  let sentNonce: string | null = null;
-  // AD-9: the higher generation this client adopts, until it is complete. Its records gather in
-  // `incoming`, apart from the replica, which keeps the old data shown and saved until then.
-  let adoptionTarget: Generation | null = null;
-  // The wait before the next `state-request` of an incomplete generation, doubled after each.
-  let incompleteRetryMs = options.timing.incompleteRequestStartMs;
   // Every `r` this client has seen an answer to, or answered itself, since its last request.
   const answeredNonces = createBoundedIdSet(RECENT_NONCE_LIMIT);
   // Requests a GM client heard while it could not answer, oldest first. It answers the ones still
@@ -187,11 +201,18 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
   // other would otherwise both wait and time out, again and again.
   // AD-9: a client whose new generation is incomplete answers nothing.
   function canAnswer(): boolean {
+    if (options.role() !== 'GM' || !options.vouches()) {
+      return false;
+    }
+
+    if (phase.kind === 'live') {
+      return true;
+    }
+
     return (
-      options.role() === 'GM' &&
-      options.vouches() &&
-      adoptionTarget === null &&
-      (state.state === 'live' || catchUpTrigger === 'drift')
+      phase.kind === 'catching-up' &&
+      phase.mode.kind === 'ordinary' &&
+      phase.active.trigger === 'drift'
     );
   }
 
@@ -215,16 +236,30 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
   }
 
   function request(r: string): CatchUpDecision {
-    // `sentNonce` is set when the request decision is returned, not when a jittered timer is armed.
-    sentNonce = r;
+    if (phase.kind === 'catching-up' && phase.active.nonce === r) {
+      // `sentNonce` is set when the request decision is returned, not when a jittered timer is armed.
+      phase = {
+        ...phase,
+        active: { ...phase.active, sentNonce: r },
+      };
+    }
 
     return { type: 'request', r };
+  }
+
+  function markAnswerSeen(r: string): void {
+    if (phase.kind === 'catching-up' && phase.active.nonce === r) {
+      phase = {
+        ...phase,
+        active: { ...phase.active, answerSeen: true },
+      };
+    }
   }
 
   // Story 2.6: every player heard the same GM, so a `gm-return` request waits a random part of the
   // answer delay.
   function ask(r: string): CatchUpDecision[] {
-    if (catchUpTrigger !== 'gm-return') {
+    if (phase.kind !== 'catching-up' || phase.active.trigger !== 'gm-return') {
       return [request(r)];
     }
 
@@ -234,7 +269,7 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
   // `responder` is the GM client whose complete answer ended the catch-up. AD-9: a client whose new
   // generation is incomplete stays.
   function leave(exit: CatchUpExit, responder?: string): CatchUpDecision[] {
-    if (adoptionTarget !== null || state.state !== 'catching-up') {
+    if (phase.kind !== 'catching-up' || phase.mode.kind === 'adopting') {
       return [];
     }
 
@@ -253,13 +288,12 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
     }
 
     driftStarter = null;
-    state = {
-      state: 'live',
+    phase = { kind: 'live' };
+    knowledge = {
+      ...knowledge,
       firstCatchUpDone: true,
-      gmAnswered: state.gmAnswered || exit === 'answered',
-      gmLink: state.gmLink,
+      gmAnswered: knowledge.gmAnswered || exit === 'answered',
     };
-    ownNonce = null;
 
     const decisions: CatchUpDecision[] = [
       disarm({ kind: 'catch-up' }),
@@ -290,50 +324,73 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
     // `fromCopy`: the room copy completed it, so a copy of this generation is in the room. A save
     // that fails removes the part saved, keeps the old generation in storage and the adoption open,
     // so the next answer or copy tries again.
-    if (adoptionTarget === null || !options.saveAdoption(adoptionTarget, fromCopy)) {
+    if (phase.kind !== 'catching-up' || phase.mode.kind !== 'adopting') {
+      return [];
+    }
+
+    const target = phase.mode.target;
+
+    if (!options.saveAdoption(target, fromCopy)) {
       return [];
     }
 
     forgetDigests();
-    adoptionTarget = null;
-    incompleteRetryMs = options.timing.incompleteRequestStartMs;
+    phase = {
+      kind: 'catching-up',
+      active: phase.active,
+      mode: { kind: 'ordinary' },
+    };
     const decisions: CatchUpDecision[] = [];
 
-    if (state.state === 'catching-up') {
-      decisions.push(arm({ kind: 'catch-up' }, options.timing.catchUpTimeoutMs));
+    decisions.push(arm({ kind: 'catch-up' }, options.timing.catchUpTimeoutMs));
 
-      if (!fromCopy) {
-        decisions.push(...leave('answered', responder));
-      }
+    if (!fromCopy) {
+      decisions.push(...leave('answered', responder));
     }
 
     return decisions;
   }
 
-  function enter(trigger: CatchUpTrigger): CatchUpDecision[] {
+  function enter(
+    trigger: CatchUpTrigger,
+    adopting: { target: Generation; retryMs: number } | null = null,
+  ): CatchUpDecision[] {
     // AD-7 entry. A start, a role change and a higher generation always ask with a new `r` and drop
     // the answers to the old one. A return while catching up keeps `r`, and asks again only when
     // nothing has answered it yet. Returns decisions synchronously; the engine reads the party
     // separately.
-    const keepsNonce =
-      trigger === 'page-return' && state.state === 'catching-up' && ownNonce !== null;
+    const keepsNonce = trigger === 'page-return' && phase.kind === 'catching-up';
 
-    if (keepsNonce && ownNonce !== null) {
+    if (keepsNonce && phase.kind === 'catching-up') {
       // The timeout keeps running from the first request, so returns cannot put the exit off.
       return [
         { type: 'entered', trigger, fresh: false },
-        { type: 'read-room-copy', r: ownNonce, fresh: false },
+        { type: 'read-room-copy', r: phase.active.nonce, fresh: false },
       ];
     }
 
     const nonce = options.newId();
 
-    state = { ...state, state: 'catching-up' };
-    ownNonce = nonce;
+    const mode =
+      adopting ??
+      (phase.kind === 'catching-up' && phase.mode.kind === 'adopting'
+        ? { target: phase.mode.target, retryMs: phase.mode.retryMs }
+        : null);
+
+    phase =
+      mode === null
+        ? {
+            kind: 'catching-up',
+            active: { nonce, trigger, sentNonce: null, answerSeen: false },
+            mode: { kind: 'ordinary' },
+          }
+        : {
+            kind: 'catching-up',
+            active: { nonce, trigger, sentNonce: null, answerSeen: false },
+            mode: { kind: 'adopting', target: mode.target, retryMs: mode.retryMs },
+          };
     lastNonce = nonce;
     answers = new Map();
-    answerSeen = false;
-    catchUpTrigger = trigger;
     // A catch-up brings full state, so differences counted before it no longer say anything.
     digestMismatches.clear();
 
@@ -345,9 +402,9 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
       { type: 'entered', trigger, fresh: true },
       arm(
         { kind: 'catch-up' },
-        adoptionTarget === null
+        phase.mode.kind === 'ordinary'
           ? options.timing.catchUpTimeoutMs
-          : incompleteRetryMs - (options.random() * incompleteRetryMs) / 4,
+          : phase.mode.retryMs - (options.random() * phase.mode.retryMs) / 4,
       ),
       // Armed before the room copy read, so a read that never ends cannot hold catch-up open.
       { type: 'read-room-copy', r: nonce, fresh: true },
@@ -379,18 +436,18 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
     // same `r` if nothing answered it, as its request may have gone out before that GM was there.
     const decisions: CatchUpDecision[] = [];
 
-    if (state.gmLink === next) {
+    if (knowledge.gmLink === next) {
       return decisions;
     }
 
-    state = { ...state, gmLink: next };
+    knowledge = { ...knowledge, gmLink: next };
 
     if (next === 'online' && options.role() !== 'GM') {
       // A GM is back, so the edits that waited for one go out now, not after their backoff.
       decisions.push({ type: 'gm-back' });
     }
 
-    if (next === 'online' && !answersOwn && options.role() !== 'GM' && state.state === 'live') {
+    if (next === 'online' && !answersOwn && options.role() !== 'GM' && phase.kind === 'live') {
       // Its entry sends the delta that carries the new link.
       decisions.push(...enter('gm-return'));
 
@@ -400,12 +457,11 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
     if (
       next === 'online' &&
       !answersOwn &&
-      state.state === 'catching-up' &&
-      ownNonce !== null &&
-      sentNonce === ownNonce &&
-      !answerSeen
+      phase.kind === 'catching-up' &&
+      phase.active.sentNonce === phase.active.nonce &&
+      !phase.active.answerSeen
     ) {
-      decisions.push(request(ownNonce));
+      decisions.push(request(phase.active.nonce));
     }
 
     decisions.push({ type: 'show', projectedOnly: true });
@@ -414,32 +470,44 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
   }
 
   function enterFromGeneration(generation: Generation, keepNonce: boolean): CatchUpDecision[] {
-    if (compareGenerations(generation, adoptionTarget ?? options.generation()) <= 0) {
+    const currentAdoption =
+      phase.kind === 'catching-up' && phase.mode.kind === 'adopting' ? phase.mode : null;
+
+    if (compareGenerations(generation, currentAdoption?.target ?? options.generation()) <= 0) {
       return [];
     }
 
-    const previous = adoptionTarget;
+    const previous = currentAdoption?.target ?? null;
     // A client that showed nothing yet, as a player that just joined, has nothing replaced.
-    const hadData = options.hasData() || adoptionTarget !== null;
+    const hadData = options.hasData() || currentAdoption !== null;
 
     // AD-9: a generation above this client's own, and above the one it adopts, starts adoption. Its
     // pending queue, the GM intents and the player entries alike, drops with the notification, and
     // catch-up runs. The replica keeps the old data until the new generation is complete.
-    adoptionTarget = generation;
-    incompleteRetryMs = options.timing.incompleteRequestStartMs;
     // Answers of the old generation end nothing now.
     answers = new Map();
     forgetDigests();
 
-    if (keepNonce && state.state === 'catching-up' && ownNonce !== null) {
-      catchUpTrigger = 'generation';
+    if (keepNonce && phase.kind === 'catching-up') {
+      phase = {
+        kind: 'catching-up',
+        active: { ...phase.active, trigger: 'generation' },
+        mode: {
+          kind: 'adopting',
+          target: generation,
+          retryMs: options.timing.incompleteRequestStartMs,
+        },
+      };
 
       return [{ type: 'adopt', generation, previous, keepNonce: true, hadData }];
     }
 
     return [
       { type: 'adopt', generation, previous, keepNonce: false, hadData },
-      ...enter('generation'),
+      ...enter('generation', {
+        target: generation,
+        retryMs: options.timing.incompleteRequestStartMs,
+      }),
     ];
   }
 
@@ -450,13 +518,13 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
       // AD-7: the room copy merges after the persisted records and before the request. An alone GM
       // client so holds it before it leaves with no wait. `fresh` is a new `r`; a kept one is asked
       // again only when nothing has answered it during the read either.
-      if (ownNonce !== r) {
+      if (phase.kind !== 'catching-up' || phase.active.nonce !== r) {
         return [];
       }
 
       const decisions: CatchUpDecision[] = [];
 
-      if (fresh || !answerSeen) {
+      if (fresh || !phase.active.answerSeen) {
         decisions.push(...ask(r));
       }
 
@@ -472,10 +540,10 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
       // AD-9: an incomplete generation waits for a GM client or its room copy, alone or not.
       if (
         players === null ||
-        state.state !== 'catching-up' ||
-        ownNonce !== r ||
+        phase.kind !== 'catching-up' ||
+        phase.active.nonce !== r ||
         options.role() !== 'GM' ||
-        adoptionTarget !== null
+        phase.mode.kind === 'adopting'
       ) {
         return [];
       }
@@ -483,8 +551,7 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
       return players.some((player) => player.role === 'GM') ? [] : leave('unanswered');
     },
     generationHeard: enterFromGeneration,
-    generationRead: (generation) =>
-      enterFromGeneration(generation, state.state === 'catching-up' && ownNonce !== null),
+    generationRead: (generation) => enterFromGeneration(generation, phase.kind === 'catching-up'),
     adoptionStaged: () => finishAdoption(true),
     // `answersOwn` is a `state` for this client's last `r`: it counts as an answer, so it starts no
     // GM-return catch-up, which would drop that `r`.
@@ -520,7 +587,7 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
     },
     // AD-6: a GM client answers on receipt, with no timer of its own. It answers only when it could
     // answer a `state-request` too, so its digest stands for records it would send.
-    pingReceived: () => (canAnswer() && state.state === 'live' ? [{ type: 'alive' }] : []),
+    pingReceived: () => (canAnswer() && phase.kind === 'live' ? [{ type: 'alive' }] : []),
     aliveReceived: (message, sender, relation) => {
       // AD-7 drift. Only a digest of this client's own generation compares, and only while live: a
       // client in catch-up is about to get full state anyway.
@@ -531,7 +598,7 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
       lastAliveDigests.set(sender, message.digest);
 
       // A GM's own commits still on their way would show as a difference.
-      if (state.state !== 'live' || (options.role() === 'GM' && options.commitsUnsent())) {
+      if (phase.kind !== 'live' || (options.role() === 'GM' && options.commitsUnsent())) {
         return [];
       }
 
@@ -575,22 +642,22 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
       const decisions: CatchUpDecision[] = [];
 
       if (relation === 'higher') {
-        if (adoptionTarget === null || compareGenerations(message.g, adoptionTarget) !== 0) {
+        if (
+          phase.kind !== 'catching-up' ||
+          phase.mode.kind !== 'adopting' ||
+          compareGenerations(message.g, phase.mode.target) !== 0
+        ) {
           return [];
         }
 
-        if (message.r === ownNonce) {
-          answerSeen = true;
-        }
+        markAnswerSeen(message.r);
 
         // The adopted generation is staged by the engine before this event reaches the module.
       } else {
         answeredNonces.add(message.r);
         decisions.push(disarm({ kind: 'answer', r: message.r }));
 
-        if (message.r === ownNonce) {
-          answerSeen = true;
-        }
+        markAnswerSeen(message.r);
       }
 
       // A partial answer counts as no answer: only all `n` messages of one responder end catch-up.
@@ -599,7 +666,9 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
       // AD-9: while a generation is adopted, only its answers count.
       if (
         message.r !== lastNonce ||
-        (adoptionTarget !== null && compareGenerations(message.g, adoptionTarget) !== 0)
+        (phase.kind === 'catching-up' &&
+          phase.mode.kind === 'adopting' &&
+          compareGenerations(message.g, phase.mode.target) !== 0)
       ) {
         return decisions;
       }
@@ -614,16 +683,16 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
         return decisions;
       }
 
-      if (adoptionTarget !== null) {
+      if (phase.kind === 'catching-up' && phase.mode.kind === 'adopting') {
         return [...decisions, ...finishAdoption(false, sender)];
       }
 
-      if (state.state === 'catching-up') {
+      if (phase.kind === 'catching-up') {
         return [...decisions, ...leave('answered', sender)];
       }
 
-      if (!state.gmAnswered) {
-        state = { ...state, gmAnswered: true };
+      if (!knowledge.gmAnswered) {
+        knowledge = { ...knowledge, gmAnswered: true };
         decisions.push({ type: 'show', projectedOnly: false });
       }
 
@@ -634,23 +703,23 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
         case 'catch-up': {
           // AD-9: while the generation this client adopts is incomplete, the timeout does not end
           // catch-up. It reads the room copy and asks again, after a wait that doubles up to the max.
-          if (state.state !== 'catching-up' || ownNonce === null) {
+          if (phase.kind !== 'catching-up') {
             return [];
           }
 
-          if (adoptionTarget !== null) {
-            incompleteRetryMs = Math.min(
-              incompleteRetryMs * 2,
-              options.timing.incompleteRequestMaxMs,
-            );
+          if (phase.mode.kind === 'adopting') {
+            const retryMs = Math.min(phase.mode.retryMs * 2, options.timing.incompleteRequestMaxMs);
+            const nonce = phase.active.nonce;
+
+            phase = {
+              ...phase,
+              mode: { kind: 'adopting', target: phase.mode.target, retryMs },
+            };
 
             return [
               // The jitter keeps the clients that saw one `reset` from asking together.
-              arm(
-                { kind: 'catch-up' },
-                incompleteRetryMs - (options.random() * incompleteRetryMs) / 4,
-              ),
-              { type: 'read-room-copy', r: ownNonce, fresh: true },
+              arm({ kind: 'catch-up' }, retryMs - (options.random() * retryMs) / 4),
+              { type: 'read-room-copy', r: nonce, fresh: true },
             ];
           }
 
@@ -662,7 +731,9 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
         case 'gm-silence':
           return setGmLink('offline', false);
         case 'request':
-          return ownNonce === timer.r && state.state === 'catching-up' ? [request(timer.r)] : [];
+          return phase.kind === 'catching-up' && phase.active.nonce === timer.r
+            ? [request(timer.r)]
+            : [];
         case 'answer':
           armedAnswers.delete(timer.r);
 
@@ -670,9 +741,11 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
             ? (answeredNonces.add(timer.r), [{ type: 'answer', r: timer.r }])
             : [];
       }
+
+      return [];
     },
     closing: () =>
-      state.state === 'catching-up' && adoptionTarget === null ? leave('unanswered') : [],
+      phase.kind === 'catching-up' && phase.mode.kind === 'ordinary' ? leave('unanswered') : [],
     partyChanged: (players) => {
       // Connections that left the party will never send `alive` again.
       const present = new Set(players.map((player) => player.connectionId));
@@ -688,10 +761,14 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
     replicaReplaced: () => {
       forgetDigests();
     },
-    view: () => ({ ...state }),
-    live: () => state.state === 'live',
-    adopting: () => adoptionTarget,
-    answersOwn: (r) => r === ownNonce,
+    view: () => ({
+      state: phase.kind === 'live' ? 'live' : 'catching-up',
+      ...knowledge,
+    }),
+    live: () => phase.kind === 'live',
+    adopting: () =>
+      phase.kind === 'catching-up' && phase.mode.kind === 'adopting' ? phase.mode.target : null,
+    answersOwn: (r) => phase.kind === 'catching-up' && phase.active.nonce === r,
   };
 
   function forgetDigests(): void {
