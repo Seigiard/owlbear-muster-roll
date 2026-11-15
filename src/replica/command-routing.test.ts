@@ -1,14 +1,17 @@
 import { expect, test } from 'bun:test';
 
+import type { VersionedRecord } from '@/core/records';
 import type { Command, RejectionReason } from '@/core/ui-messages';
-import type { PlayerRole } from '@/core/visibility';
+import type { ComposeContext } from '@/replica/composers';
+import { createPendingQueue } from '@/replica/pending-queue';
 
 import {
+  createCommandRouting,
   decideCommandRoute,
   decidePresetDiffRoute,
-  replayPending,
   runPresetBatch,
   type CommandRouteContext,
+  type CommandRoutingPorts,
 } from './command-routing';
 
 type RouteCase = {
@@ -161,42 +164,94 @@ test('a complete preset batch applies every group in order', () => {
 
 test('pending replay continues after a partial entry and composes the next entry from updated records', () => {
   // #given
-  const records = new Map<string, string>();
-  const composeContexts: Array<readonly [string, string]> = [];
+  const firstA: VersionedRecord = { k: 'row:first:a', d: {}, c: 1, a: 'gm' };
+  const firstB: VersionedRecord = { k: 'row:first:b', d: {}, c: 1, a: 'gm' };
+
+  const secondAfterFirstA: VersionedRecord = {
+    k: 'row:second:after-first-a',
+    d: {},
+    c: 1,
+    a: 'gm',
+  };
+
+  const first: Command = { type: 'sheet-create', sheetId: 'first', set: 'pc' };
+  const second: Command = { type: 'sheet-create', sheetId: 'second', set: 'pc' };
+  const records = new Map<string, VersionedRecord>();
+  const composeContexts: string[][] = [];
   const appliedGroups: string[][] = [];
+  const pending = createPendingQueue();
 
-  // #when
-  const actual = replayPending(
-    [
-      { id: 'first', command: 'first' },
-      { id: 'second', command: 'second' },
-    ],
-    {
-      role: (): PlayerRole => 'GM',
-      context: () => new Map(records),
-      compose: (context, command) => {
-        composeContexts.push([...context]);
+  const context = (): ComposeContext => ({
+    records,
+    mint: () => ({ c: 1, a: 'gm' }),
+    newRecordId: () => 'unused',
+    isGmPlayer: () => true,
+  });
 
-        return command === 'first' ? ['first-a', 'first-b'] : ['second-after-first-a'];
-      },
-      apply: (group) => {
-        appliedGroups.push([...group]);
-        const applied = group[0] === 'first-a' ? group.slice(0, 1) : group;
+  pending.add('first', first);
+  pending.add('second', second);
 
-        for (const record of applied) {
-          records.set(record, record);
+  const routing = createCommandRouting({
+    role: () => 'GM',
+    importing: () => false,
+    live: () => true,
+    acceptCommand: () => true,
+    composers: {
+      compose: (current, command) => {
+        composeContexts.push([...current.records.keys()]);
+
+        if (command.type === 'sheet-create' && command.sheetId === 'first') {
+          return { ok: true, value: [firstA, firstB] };
         }
 
-        return applied;
+        return {
+          ok: true,
+          value: current.records.has(firstA.k) ? [secondAfterFirstA] : [],
+        };
       },
-      reject: () => undefined,
+      composePatches: () => ({ record: null, refusals: [] }),
+      composePresetUpload: () => ({ ok: false, error: { reason: 'invalid-preset' } }),
+      presetDiffResult: () => ({ ok: false, error: 'invalid-preset' }),
     },
-  );
+    records: () => records,
+    liveContext: context,
+    dryContext: context,
+    newRecordId: () => 'unused',
+    pending,
+    pendingEdits: {
+      edit: () => ({ ok: false, error: 'not-allowed' }),
+      overlay: () => undefined,
+    },
+    apply: (group) => {
+      appliedGroups.push(group.map((record) => record.k));
+      const applied = group[0]?.k === firstA.k ? group.slice(0, 1) : [...group];
+
+      for (const record of applied) {
+        records.set(record.k, record);
+      }
+
+      return applied;
+    },
+    reject: () => undefined,
+    commandDone: () => undefined,
+    notifyDenied: () => undefined,
+    publish: () => undefined,
+    hasPersistence: () => false,
+    flushOutbox: () => undefined,
+    addCommits: () => undefined,
+    roomCopyEdited: () => undefined,
+    importFromSnapshot: async () => undefined,
+    wipe: async () => undefined,
+    reply: () => undefined,
+  } satisfies CommandRoutingPorts);
+
+  // #when
+  const actual = routing.replayPending();
 
   // #then
   expect({ actual, appliedGroups, composeContexts }).toEqual({
-    actual: { applied: ['first-a', 'second-after-first-a'], completed: ['first', 'second'] },
-    appliedGroups: [['first-a', 'first-b'], ['second-after-first-a']],
-    composeContexts: [[], [['first-a', 'first-a']]],
+    actual: { applied: [firstA, secondAfterFirstA], completed: ['first', 'second'] },
+    appliedGroups: [['row:first:a', 'row:first:b'], ['row:second:after-first-a']],
+    composeContexts: [[], ['row:first:a']],
   });
 });
