@@ -398,3 +398,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-66-replica-mutation-gaps.md`
   summary: Investigate intermittent focus loss when a GM opens an NPC repeat block from its token.
   evidence: One post-review browser run at `44e21453d8146c43ca38e36bdeb24e7bfa2f7a13` passed 520 tests but failed `tests/open.e2e.ts:307`: the Dragon group was visible but inactive after five seconds. Ten exact-scenario serial repeats and a full unchanged 521-test recheck passed. No expectation, retry setting or application code changed; the cause is unverified. Original context is saved in the TASK-66 run's `browser-focus-diagnosis/original-failure/`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
+  summary: Remove the obsolete default-dev sentence when TASK-74 rewrites the dev instructions.
+  evidence: TASK-68 review found that CLAUDE.md still describes default dev as the Owlbear adapter beside its new builder description. Story 1 explicitly defers the old block rewrite to story 7.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
+  summary: Consider bounded shutdown escalation if a cloudflared child is observed not to terminate.
+  evidence: The launcher waits for cloudflared before signaling Vite and ignores repeated signals. The reviewer constructed an unresponsive child; no such occurrence was observed in the CLI test or live control.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
+  summary: Consider bounding the launcher parser buffer before the tunnel URL appears.
+  evidence: The buffer stops growing after the URL, but an indefinite pre-URL retry stream would keep growing. That startup failure was not observed; the real quick tunnel registered.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
+  summary: Consider a permanent missing-cloudflared launcher regression test.
+  evidence: TASK-68 has a direct missing-executable failure control and a cleanup catch path, but its permanent CLI test covers successful startup and termination only. Review established no production behavior gap.
