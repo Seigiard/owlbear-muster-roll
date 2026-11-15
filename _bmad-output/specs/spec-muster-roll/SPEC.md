@@ -5,6 +5,7 @@ companions:
   - storage-and-sync.md
   - stack.md
   - preset-builder.md
+  - builder-and-dev.md
   - ../../../docs/preset-format.md
   - ../../planning-artifacts/architecture/architecture-owlbear-muster-roll-2026-11-10/ARCHITECTURE-SPINE.md
   - ../../planning-artifacts/ux-designs/ux-owlbear-muster-roll-2026-11-10/DESIGN.md
@@ -13,6 +14,7 @@ sources:
   - ../../forge/muster-roll/forged-idea.md
   - ../../forge/preset-builder/forged-idea.md
   - ../../forge/sidebar-tabs-layout/forged-idea.md
+  - ../../forge/one-dev-entry/forged-idea.md
 ---
 
 > **Canonical contract.** This SPEC and the files in `companions:` are the complete, preservation-validated contract for what to build, test, and validate. Source documents listed in frontmatter are for traceability — consult them only if you need narrative rationale or prose color this contract intentionally omits.
@@ -21,7 +23,7 @@ sources:
 
 ## Why
 
-Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep the whole party, the NPCs and shared records such as an inventory in one room, for any game system. The simple sheet extension, dummy-sheet, stores each sheet in the player's browser. It has no room storage, no presets and no GM-owned sheets. Muster Roll gives one room GM-owned sheets that a preset defines. A preset is a list of templates: a sheet set gives any number of sheets, such as the party, and a single sheet exists once, such as NPCs, a shared inventory or a story log (`preset-format.md`, `docs/adr/0001-presets-are-lists-of-sheet-sets-and-single-sheets.md`). Version 1 is a POC without a server. It must prove that this model holds for a real session. During play, the GM and players open sheets to see current stats and inventory, and dice cells spare players from memorising the rules. Today a GM describes a sheet only by writing preset JSON, and nobody wants to. v2 adds a preset builder, so a GM builds a preset without JSON (`preset-builder.md`). Format version 3 changes the window: a sidebar lists the sheets, and a sheet splits its sections into tabs, so a long sheet and a GM-only part of a visible sheet fit one window.
+Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep the whole party, the NPCs and shared records such as an inventory in one room, for any game system. The simple sheet extension, dummy-sheet, stores each sheet in the player's browser. It has no room storage, no presets and no GM-owned sheets. Muster Roll gives one room GM-owned sheets that a preset defines. A preset is a list of templates: a sheet set gives any number of sheets, such as the party, and a single sheet exists once, such as NPCs, a shared inventory or a story log (`preset-format.md`, `docs/adr/0001-presets-are-lists-of-sheet-sets-and-single-sheets.md`). Version 1 is a POC without a server. It must prove that this model holds for a real session. During play, the GM and players open sheets to see current stats and inventory, and dice cells spare players from memorising the rules. Today a GM describes a sheet only by writing preset JSON, and nobody wants to. v2 adds a preset builder, so a GM builds a preset without JSON (`preset-builder.md`). Format version 3 changes the window: a sidebar lists the sheets, and a sheet splits its sections into tabs, so a long sheet and a GM-only part of a visible sheet fit one window. The builder then becomes the one editor, for the developer and for every GM: it edits the preset and a snapshot together, shows the window as the GM and as a player sees it, and reads and writes the preset and snapshot files on disk. One dev command opens it.
 
 ## Capabilities
 
@@ -83,11 +85,11 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **intent:** A GM can build a preset without writing JSON, on a separate page of the deployed site.
   - **success:** Starting blank, from a repository example or from a file, a GM makes a preset with its sheet sets and single sheets and downloads it with no JSON editing. A file that fails the preset checks does not open and shows the upload's message.
 - **CAP-21** (v2)
-  - **intent:** The room and the builder exchange a preset by file, and the extension settings open the builder.
-  - **success:** A preset downloaded from the extension opens in the builder. A file downloaded from the builder uploads through CAP-8. The settings button opens the builder in a new tab.
+  - **intent:** The room and the builder exchange the preset and the snapshot by file, and the extension settings open the builder.
+  - **success:** A preset and a snapshot downloaded from the extension open in the builder. A preset file from the builder uploads through CAP-8, and a snapshot file imports through CAP-13. The settings button opens the builder in a new tab.
 - **CAP-22** (v2)
   - **intent:** The GM edits the preset through a structure tree and a form, beside a live preview.
-  - **success:** A form edit redraws the preview at once, drawn by the extension's own sheet components. A click on a preview cell selects its item in the tree.
+  - **success:** A form edit redraws the preview at once, drawn by the extension's own sheet components. The first click on a preview cell selects its item in the tree. A second click or Enter types a value into the snapshot (CAP-36), and Esc leaves typing. A dice cell rolls on the second click.
 - **CAP-23** (v2)
   - **intent:** The builder covers the whole preset format.
   - **success:** Every sheet set and single sheet with its properties, tab `title` and `visibility`, section `title`, `width`, `columns`, `repeat` and linkable, every cell kind and `window` can each be set in the builder.
@@ -99,7 +101,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **success:** Renaming `str` rewrites `str` by whole word in every formula that resolves to that field, leaves `str_tired` unchanged and says how many formulas changed. In a preset opened from a file, a changed id warns that the field's stored values in the room will be erased.
 - **CAP-26** (v2)
   - **intent:** The builder keeps one draft by itself.
-  - **success:** After the page is closed and opened again, the builder opens straight into the editor on the draft, with no prompt. With no draft it opens on an empty preset.
+  - **success:** After the page is closed and opened again, the builder opens straight into the editor on the draft, with no prompt. The draft holds the preset and the snapshot while no file is attached. With no draft it opens on an empty preset.
 - **CAP-27** (v2)
   - **intent:** The GM can undo and redo every edit in the builder.
   - **success:** Each edit kind can be undone and then redone, and the preset returns to the same state each time.
@@ -128,6 +130,22 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **intent:** A preset can hide a tab from players.
   - **success:** On a visible sheet with a hidden tab «Заметки мастера», the GM sees the tab and a player does not. A roll from it shows only on GM clients, and players get no token menu on its linkable repeat blocks. A visible template whose every tab is hidden is accepted, and players see its sheets with no tab.
 
+- **CAP-36**
+  - **intent:** The builder edits a snapshot beside the preset: its preview is the extension window with the snapshot's sheets.
+  - **success:** With a preset and a snapshot of two characters, the window sidebar lists both sheets and the set's "+ Добавить". A value typed into a sheet lands in the snapshot, and the snapshot imports into a room through CAP-13 with the same values. A sheet set with no sheets shows a pale "Образец" whose cells still select tree items. When a preset change leaves a value no place, the value drops with no warning.
+- **CAP-37**
+  - **intent:** The builder preview switches between the GM's and a player's view of the same window.
+  - **success:** With "Игрок" chosen, GM-only sheet sets, single sheets and tabs disappear, and every sheet reads only except a player-editable single sheet. "Мастер" shows everything again. Both views draw the same records.
+- **CAP-38**
+  - **intent:** The builder reads and writes an attached preset file and snapshot file (`builder-and-dev.md`).
+  - **success:** In Chromium, a save of the attached file on disk redraws the preview with no reload, and an edit in the page is written to the file. When both changed, a prompt offers «Взять из файла» or «Оставить мои». In Safari and Firefox the builder opens a file and downloads, and neither writes nor follows it.
+- **CAP-39**
+  - **intent:** A file block per file in the builder's top bar shows its state and holds every file action (`builder-and-dev.md`).
+  - **success:** The block shows the file name and its status. Its menu shows the full path and the last sync time, and opens another file, saves as, downloads a copy, detaches and clears. Detach keeps the content as a draft and stops writing. Clear, after a confirmation that names the file, empties the page and the linked file, and undo restores both.
+- **CAP-40**
+  - **intent:** A developer opens the editor with one command, and a live Owlbear room with one other (`builder-and-dev.md`).
+  - **success:** `bun run dev` opens the builder on `localhost` with no Owlbear and no tunnel. `bun run dev:owlbear` serves the Owlbear adapter through a tunnel and prints the `manifest.json` URL to add.
+
 ## Constraints
 
 - No own server in v1. Live exchange needs a GM online. A hidden GM tab in Chrome stopped receiving edits after about 13 minutes, so a GM counts as online only when a GM client answers. A hidden tab that still answers counts as online, and a frozen one does not.
@@ -144,7 +162,9 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - The interface matches the simplicity of dummy-sheet. Muster Roll takes no code or storage from it.
 - The builder is a top-level page on the deployed site, outside the Owlbear iframe. The iframe's storage is partitioned from a top-level tab, so the extension and the builder exchange no data through storage.
 - The builder's preview uses the extension's own sheet components. No second sheet renderer exists.
-- The extension, the preview page and the builder preview draw the window, with its sidebar and tabs, through one frame component.
+- The extension and the builder preview draw the window, with its sidebar and tabs, through one frame component.
+- The builder preview runs no engine and no mock adapter. The player view filters the same records through `src/core/visibility.ts`.
+- File write and follow need the File System Access API. Without it the builder opens and downloads only.
 - The window is at least 480 px wide, so the sidebar and a sheet fit side by side. The sidebar is always shown, 10 rem wide.
 - A template's fields outside repeat sections are one id scope across all its tabs.
 - Visibility only narrows: a tab is hidden when its template or the tab is hidden.
@@ -166,9 +186,13 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - In v3: collapsing the sidebar, and a JSON Schema export of the preset format.
 - An in-extension preset editor and per-field confirmation of a preset upload. Presets are usually set before a game.
 - Past the POC: request-and-confirm write access, + and − buttons as a property of number fields, token-linked stats, guest "open this sheet".
-- In the builder: in-place editing on the sheet, a text markup in place of JSON, hidden field ids, blocking of edits that make the preset invalid, and repair of a file that fails the preset checks.
+- In the builder: in-place editing of structure on the sheet (values are typed in place, CAP-36), a text markup in place of JSON, hidden field ids, blocking of edits that make the preset invalid, and repair of a file that fails the preset checks.
 - After v2: the settings button passes the room's preset to the builder in the URL fragment, and the builder writes to the room directly. Direct write waits for the v2 server.
 - Merging two simultaneous edits of one row. Only the latest stays.
+- A live mock room (engine, two clients) in the builder. Sync is tested by e2e tests.
+- A player view per player in the builder: a snapshot holds no owners or write rights.
+- A guard or a count for values a preset change drops in the builder.
+- Writing or following files in browsers without the File System Access API.
 - Merging an imported snapshot into room data.
 - Player edits while no GM client responds, in v1. A server in v2 changes this.
 - Hiding hidden sheets from a modified client. Hidden sheets and their rolls are hidden in the interface only, and any client can read the room copy.
@@ -179,6 +203,7 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - One real session runs with the party and NPCs kept only in the extension, and no data is lost.
 - A preset for a second system, with a shared inventory and a spell list as single sheets, is built without code changes.
 - v2: a GM builds a second-system preset in the builder without editing JSON, and the extension accepts the downloaded file on upload.
+- A developer runs `bun run dev`, attaches `presets/cairn-2e.json` and a snapshot, edits the preset in a text editor and sees the change in the builder, fills a character in the builder and finds it in the snapshot file, and checks both the GM and the player view, with no other page.
 
 ## Assumptions
 
@@ -200,7 +225,11 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - The builder interface text is Russian, like the extension and the refusal messages it reuses.
 - Selecting from the window adds to the map selection. A linked token that is not on the open scene is skipped with no error, and the action shows only while at least one linked token is on the open scene.
 - The changed-id warning compares ids with the file the builder opened. A preset started blank or from an example shows no such warning.
+- The builder writes a preset to its file only while `parsePresetFile` accepts it. With problems the file block says the file is not saved, and writing resumes when they are fixed, so the file always uploads (CAP-28).
+- A followed file that fails the checks on disk does not replace the page. The file block shows the refusal message, and the page keeps the last good content.
+- The builder's player view reads every sheet of a sheet set only: a snapshot holds no owners or write rights.
 
 ## Open Questions
 
 - Can the Owlbear extension iframe open a new tab? The v2 settings button (CAP-21) depends on it, and the extension opens no tab today.
+- After a page reload, does the builder reattach the last files (Chrome asks for permission again) or open the draft?
