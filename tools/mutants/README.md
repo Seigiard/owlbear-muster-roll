@@ -1,6 +1,6 @@
 # Mutation controls
 
-A mutant is one small, intentional break to a rule that an existing test must detect. A killed mutant proves that its test fails when that rule is absent. A survived mutant means the selected tests did not detect the break. A stale mutant means its exact source anchor no longer identifies one location.
+A mutant is one small, intentional break to a rule that an existing test must detect. A killed mutant proves that its test fails when that rule is absent. A survived mutant means the selected tests did not detect the break. A stale mutant means its exact source anchor no longer identifies one location. For a stale mutant the runner prints the lines where the anchor matches, or the first anchor line that is gone from the file.
 
 Run every control with:
 
