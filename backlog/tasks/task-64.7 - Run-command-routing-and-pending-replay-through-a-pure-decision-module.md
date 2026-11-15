@@ -1,10 +1,10 @@
 ---
 id: TASK-64.7
 title: Run command routing and pending replay through a pure decision module
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T20:26:00Z'
-updated_date: '2026-11-15T08:13:00Z'
+updated_date: '2026-11-15T12:12:00Z'
 labels:
   - architecture
   - replica
@@ -29,3 +29,11 @@ The command/pending machine follows the TASK-64.4 map (`backlog/docs/doc-4 - TAS
 - [ ] #4 ARCHITECTURE-SPINE names the engine modules extracted so far in its replica row
 - [ ] #5 The full check passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Extract a command-routing module with pure explicit-context route decisions and injected effect ports.
+2. Keep scene eligibility in engine wiring while routing link-clear through the module.
+3. Add unit or seam tests, calibrate them, then run the required checks.
+<!-- SECTION:PLAN:END -->
