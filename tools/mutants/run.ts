@@ -23,7 +23,7 @@ const mutantSchema: z.ZodType<Mutant> = z.object({
 
 type MutantResult = 'killed' | 'survived' | 'stale';
 
-type RunningTest = { exited: Promise<number>; kill(signal: string): void };
+type RunningTest = Pick<ReturnType<typeof Bun.spawn>, 'exited' | 'kill'>;
 
 const mutantsDirectory = new URL('./', import.meta.url);
 let activeTest: RunningTest | null = null;
@@ -106,14 +106,17 @@ async function runMutant(
 
   try {
     await Bun.write(target, mutated);
-    activeTest = Bun.spawn({
+
+    const test = Bun.spawn({
       cmd: ['bun', 'test', '--bail', ...mutant.test],
       cwd: root,
       stdin: 'inherit',
       stdout: 'inherit',
       stderr: 'inherit',
     });
-    const exitCode = await activeTest.exited;
+
+    activeTest = test;
+    const exitCode = await test.exited;
 
     return { result: exitCode === 0 ? 'survived' : 'killed' };
   } finally {
@@ -147,7 +150,10 @@ async function moduleNames(): Promise<string[]> {
     new Bun.Glob('*.json').scan({ cwd: fileURLToPath(mutantsDirectory) }),
   );
 
-  return directory.map((file) => file.replace(/\.json$/, '')).sort();
+  return directory
+    .filter((file) => file !== 'probe-baseline.json')
+    .map((file) => file.replace(/\.json$/, ''))
+    .sort();
 }
 
 async function loadMutants(module: string): Promise<Mutant[]> {

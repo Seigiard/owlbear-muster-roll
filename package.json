@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "mutants": "bun tools/mutants/run.ts",
+    "probe": "bun tools/mutants/probe/run.ts",
     "test:browser": "playwright test",
     "prepare": "lefthook install"
   },

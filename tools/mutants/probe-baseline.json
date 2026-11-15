@@ -1,0 +1,614 @@
+[
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > disarm",
+    "op": "if→true",
+    "text": "timer.kind === 'answer'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Callers disarm only catch-up or answer timers; deleting undefined changes nothing."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > request",
+    "op": "&&→||",
+    "text": "phase.kind === 'catching-up' && phase.active.nonce === r",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Every caller already has an active catch-up with that nonce."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > enterFromGeneration",
+    "op": "drop statement",
+    "text": "forgetDigests();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Adoption reads no drift digest, and finishAdoption clears them before live operation."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > verifyRoomCopyWrite",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not write the room copy', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only diagnostic logging changes; status, notices and error handling remain."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > writeImportCopy",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not write the room copy', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only diagnostic logging changes; status, notices and error handling remain."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > importCopyVerified",
+    "op": "drop assignment",
+    "text": "operation.phase = 'reading';",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only isActiveWrite reads these phases, and reading, writing and verifying are all active."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > importCopyVerified",
+    "op": "drop assignment",
+    "text": "operation.phase = 'writing';",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only isActiveWrite reads these phases, and reading, writing and verifying are all active."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > removeLowerCopy",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not remove the replaced room copy', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only diagnostic logging changes; status, notices and error handling remain."
+  },
+  {
+    "file": "src/replica/window-publisher.ts",
+    "fn": "createWindowPublisher > sendDelta",
+    "op": "true→false",
+    "text": "true",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "No caller reads the return value."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > leave",
+    "op": "if→false",
+    "text": "phase.kind !== 'catching-up' || phase.mode.kind === 'adopting'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "All internal callers already establish ordinary catch-up."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > leave",
+    "op": "||→&&",
+    "text": "phase.kind !== 'catching-up' || phase.mode.kind === 'adopting'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "All internal callers already establish ordinary catch-up."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > partyRead",
+    "op": "||→&&",
+    "text": "players === null || phase.kind !== 'catching-up' || phase.active.nonce !== r || options.role() !== 'GM' || phase.mode.kind === 'adopting'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "leave still blocks adoption; a player emits no party read, and a role change changes the nonce."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > stateMerged",
+    "op": "||→&&",
+    "text": "phase.kind !== 'catching-up' || phase.mode.kind !== 'adopting'",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The engine supplies relation higher here only during adoption of this exact target."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > stateMerged",
+    "op": "if→true",
+    "text": "!knowledge.gmAnswered",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The extra publisher call emits nothing when visible state is unchanged."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > scheduleRoomCopy",
+    "op": "drop assignment",
+    "text": "deferred.scheduled = undefined;",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "writeRoomCopy immediately cancels and clears the fired scheduled handle."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > importCopyVerified",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not replace the room copy of a newer build');",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only diagnostic logging changes; status, notices and error handling remain."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > importCopyVerified",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not write the room copy', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only diagnostic logging changes; status, notices and error handling remain."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > removeLowerCopy",
+    "op": "drop assignment",
+    "text": "operation.phase = 'writing';",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only isActiveWrite reads these phases, and reading, writing and verifying are all active."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > stop",
+    "op": "===→!==",
+    "text": "active === undefined",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "After stop, only a waiting import reads active write state and then exits at its stopped guard."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > leave",
+    "op": "||→&&",
+    "text": "gm === undefined || gm === null",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "lastAliveDigests has neither a null nor an undefined key."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > leave",
+    "op": "&&→||",
+    "text": "gm !== undefined && gm !== null && digest !== undefined",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Ignored keys come from last-alive keys and are removed together; an absent digest produces no observable ignore."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > stateMerged",
+    "op": "if→false",
+    "text": "phase.kind !== 'catching-up' || phase.mode.kind !== 'adopting' || compareGenerations(message.g, phase.mode.target) !== 0",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The engine supplies relation higher here only during adoption of this exact target."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > stateMerged",
+    "op": "||→&&",
+    "text": "phase.kind !== 'catching-up' || phase.mode.kind !== 'adopting' || compareGenerations(message.g, phase.mode.target) !== 0",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The engine supplies relation higher here only during adoption of this exact target."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > fired",
+    "op": "false→true",
+    "text": "false",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "setGmLink consults answersOwn only for the online transition."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > partyChanged",
+    "op": "drop statement",
+    "text": "map.delete(connection);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Departed connection ids are not reused or read again under the existing connection-id contract."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > removeLowerCopy",
+    "op": "drop assignment",
+    "text": "operation.phase = 'reading';",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only isActiveWrite reads these phases, and reading, writing and verifying are all active."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > pageHidden",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not write the room copy', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only diagnostic logging changes; status, notices and error handling remain."
+  },
+  {
+    "file": "src/replica/window-publisher.ts",
+    "fn": "createWindowPublisher > project",
+    "op": "drop assignment",
+    "text": "restartPending = false;",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "project calls publish first, which clears the pending cue."
+  },
+  {
+    "file": "src/replica/window-publisher.ts",
+    "fn": "createWindowPublisher > restart",
+    "op": "drop assignment",
+    "text": "sequence = 0;",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The new engine id separates streams; clients compare deltas to the new projection's sequence."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > leave",
+    "op": "&&→||",
+    "text": "gm !== undefined && gm !== null",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Ignored keys come from last-alive keys and are removed together; an absent digest produces no observable ignore."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > leave",
+    "op": "drop assignment",
+    "text": "driftStarter = null;",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Entry or the next drift decision overwrites driftStarter before another read."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > partyChanged",
+    "op": "if→false",
+    "text": "!present.has(connection)",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Departed connection ids are not reused or read again under the existing connection-id contract."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > cancelScheduledWrite",
+    "op": "drop assignment",
+    "text": "deferred.scheduled = undefined;",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only cancellation reads the handle; recancelling a cancelled timer is harmless, and scheduling overwrites it."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > finishWrite",
+    "op": "&&→||",
+    "text": "lifecycle.phase === 'stopped' && lifecycle.active === operation",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The difference needs a different simultaneous operation; engine import exclusion and the serialized routine/rerun chain prevent it."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > mergeReadRoomCopy",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not read the room copy', read.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only diagnostic logging changes; status, notices and error handling remain."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > writeRoomCopy",
+    "op": "if→false",
+    "text": "lifecycle.phase === 'stopped'",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The engine's writable callback includes !stopped, set before roomCopy.stop()."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > writeImportCopy",
+    "op": "false→true",
+    "text": "false",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "await run overwrites the value before its only read."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > importCopyVerified",
+    "op": "drop assignment",
+    "text": "operation.phase = 'verifying';",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only isActiveWrite reads these phases, and reading, writing and verifying are all active."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > removeLowerCopy",
+    "op": "drop assignment",
+    "text": "operation.phase = 'verifying';",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only isActiveWrite reads these phases, and reading, writing and verifying are all active."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > replaced",
+    "op": "drop statement",
+    "text": "options.changed();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The only engine caller immediately invokes publisher.publish()."
+  },
+  {
+    "file": "src/replica/window-publisher.ts",
+    "fn": "createWindowPublisher > project",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not send a projection', error);",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The engine uses sendQueue.enqueue, which resolves even after delivery failure."
+  },
+  {
+    "file": "src/replica/window-publisher.ts",
+    "fn": "createWindowPublisher > visibleState",
+    "op": "if→true",
+    "text": "source.role !== 'GM'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "GM visibility returns every record; the pending overlay does not replace the preset."
+  },
+  {
+    "file": "src/replica/window-publisher.ts",
+    "fn": "createWindowPublisher > sendDelta",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not send a delta', error);",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The engine send queue does not reject asynchronously."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > leave",
+    "op": "if→true",
+    "text": "gm !== undefined && gm !== null && digest !== undefined",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Ignored keys come from last-alive keys and are removed together; an absent digest produces no observable ignore."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > finishAdoption",
+    "op": "if→false",
+    "text": "phase.kind !== 'catching-up' || phase.mode.kind !== 'adopting'",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The engine calls adoptionStaged only while adopting; the state-answer caller checks adoption too."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > finishAdoption",
+    "op": "||→&&",
+    "text": "phase.kind !== 'catching-up' || phase.mode.kind !== 'adopting'",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The engine calls adoptionStaged only while adopting; the state-answer caller checks adoption too."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > activeWrite",
+    "op": "===→!==",
+    "text": "lifecycle.phase === 'stopped'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "After stop, only a waiting import reads active write state and then exits at its stopped guard."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > mergeReadRoomCopy",
+    "op": "if→true",
+    "text": "compareGenerations(copy.g, options.generation()) > 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "adoptFromCopy does not change state for an equal or lower generation."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > mergeReadRoomCopy",
+    "op": ">→>=",
+    "text": "compareGenerations(copy.g, options.generation()) > 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "adoptFromCopy does not change state for an equal or lower generation."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > runRoomCopyWrite",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not read the room copy', read.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only diagnostic logging changes; status, notices and error handling remain."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > followMetadata",
+    "op": "if→false",
+    "text": "lifecycle.phase === 'stopped'",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "stop unsubscribes metadata synchronously; adoption also checks stopped."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > stop",
+    "op": "drop statement",
+    "text": "cancelScheduledWrite();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Any fired timer reaches writeRoomCopy and returns at the stopped guard."
+  },
+  {
+    "file": "src/replica/window-publisher.ts",
+    "fn": "createWindowPublisher > restart",
+    "op": "drop assignment",
+    "text": "lastComparison = visibleState();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The unconditional restart cue updates comparison before sending; later unchanged publishes stay silent."
+  },
+  {
+    "file": "src/replica/window-publisher.ts",
+    "fn": "createWindowPublisher > sendDelta",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not send a delta', error);",
+    "nth": 2,
+    "verdict": "unreachable",
+    "reason": "The engine send queue is async and cannot throw synchronously into the catch."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > request",
+    "op": "if→true",
+    "text": "phase.kind === 'catching-up' && phase.active.nonce === r",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Every caller already has an active catch-up with that nonce."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > enter",
+    "op": "if→false",
+    "text": "trigger !== 'drift'",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "Role and generation transitions forget digests before this could affect a drift exit."
+  },
+  {
+    "file": "src/replica/catch-up.ts",
+    "fn": "createCatchUp > enter",
+    "op": "drop assignment",
+    "text": "driftStarter = null;",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "Role and generation transitions forget digests before this could affect a drift exit."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > finishWrite",
+    "op": "if→true",
+    "text": "lifecycle.phase === 'stopped' && lifecycle.active === operation",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The difference needs a different simultaneous operation; engine import exclusion and the serialized routine/rerun chain prevent it."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > scheduleRoomCopy",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not write the room copy', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only diagnostic logging changes; status, notices and error handling remain."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > verifyRoomCopyWrite",
+    "op": "drop assignment",
+    "text": "operation.phase = 'writing';",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only isActiveWrite reads these phases, and reading, writing and verifying are all active."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > verifyRoomCopyWrite",
+    "op": "drop assignment",
+    "text": "operation.phase = 'verifying';",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only isActiveWrite reads these phases, and reading, writing and verifying are all active."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > writeImportCopy",
+    "op": "drop assignment",
+    "text": "operation.completion = run.then(() => undefined).catch(() => undefined);",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "Only a second import would wait on this completion; the engine refuses it while importing is set."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "readMetadata",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not read the room metadata', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only diagnostic logging changes; status, notices and error handling remain."
+  },
+  {
+    "file": "src/replica/window-publisher.ts",
+    "fn": "createWindowPublisher > project",
+    "op": "false→true",
+    "text": "false",
+    "nth": 3,
+    "verdict": "equivalent",
+    "reason": "The flag is read only before projection; the next restart overwrites it."
+  },
+  {
+    "file": "src/replica/window-publisher.ts",
+    "fn": "createWindowPublisher > sendDelta",
+    "op": "false→true",
+    "text": "false",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "No caller reads the return value."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > writeRoomCopy",
+    "op": "drop assignment",
+    "text": "deferred.rerun = false;",
+    "nth": 1,
+    "verdict": "timeout",
+    "reason": "Pass 1 timed out in the original probe because omitting the rerun guard causes an unbounded routine rerun."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > writeRoomCopy",
+    "op": "false→true",
+    "text": "false",
+    "nth": 1,
+    "verdict": "timeout",
+    "reason": "Pass 1 timed out in the original probe because omitting the rerun guard causes an unbounded routine rerun."
+  },
+  {
+    "file": "src/replica/room-copy.ts",
+    "fn": "createRoomCopy > writeRoomCopy",
+    "op": "if→true",
+    "text": "deferred.rerun",
+    "nth": 1,
+    "verdict": "timeout",
+    "reason": "Pass 1 timed out in the original probe because omitting the rerun guard causes an unbounded routine rerun."
+  }
+]
