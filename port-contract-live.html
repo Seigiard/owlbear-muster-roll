@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Проверка контракта портов</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        padding: 2rem;
+        background: #171a24;
+        color: #f4f4f5;
+      }
+
+      main {
+        max-width: 60rem;
+        margin: 0 auto;
+      }
+
+      button {
+        margin: 0.5rem 0.5rem 0 0;
+        padding: 0.6rem 0.8rem;
+      }
+
+      pre {
+        overflow: auto;
+        padding: 1rem;
+        background: #222639;
+      }
+
+      [data-state='error'] {
+        color: #ff9b9b;
+      }
+
+      [data-state='ready'] {
+        color: #9df0bb;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/tests/port-contract-live/main.ts"></script>
+  </body>
+</html>
