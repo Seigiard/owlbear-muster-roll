@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Конструктор: глазами игрока</title>
+<style>
+  :root {
+    --bg: #1b1f2c;
+    --paper: #222639;
+    --field: #2c3149;
+    --line: rgba(255, 255, 255, 0.12);
+    --accent: #bb99ff;
+    --accent-soft: rgba(187, 153, 255, 0.16);
+    --on-accent: #14101f;
+    --text: #ffffff;
+    --muted: rgba(255, 255, 255, 0.62);
+    --good: #7fd6a4;
+    --warn: #f0b36a;
+    --hatch: rgba(240, 179, 106, 0.10);
+    --radius: 6px;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #dde1ee;
+      --paper: #f1f3f9;
+      --field: #ffffff;
+      --line: rgba(0, 0, 0, 0.12);
+      --accent: #7a45f0;
+      --accent-soft: rgba(122, 69, 240, 0.12);
+      --on-accent: #ffffff;
+      --text: rgba(0, 0, 0, 0.87);
+      --muted: rgba(0, 0, 0, 0.58);
+      --good: #1d7a47;
+      --warn: #9a5a0c;
+      --hatch: rgba(154, 90, 12, 0.08);
+      color-scheme: light;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--paper); }
+  .bar h1 { font-size: 15px; font-weight: 650; margin: 0 12px 0 0; }
+  .bar .spacer { flex: 1; }
+  .btn { border: 1px solid var(--line); background: transparent; border-radius: var(--radius); padding: 5px 10px; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .ok { color: var(--good); font-size: 13px; }
+
+  .layout { display: grid; grid-template-columns: minmax(240px, 300px) 1fr; min-height: calc(100dvh - 52px); }
+  .left { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; }
+  .panel-title { font-size: 12px; color: var(--muted); padding: 12px 16px 6px; margin: 0; font-weight: 600; }
+  .tree { list-style: none; margin: 0; padding: 0 8px 12px; overflow: auto; max-height: 48vh; }
+  .tree li button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 3px 8px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tree li button:hover { background: var(--accent-soft); }
+  .tree li button[aria-current="true"] { background: var(--accent); color: var(--on-accent); }
+  .tree .kind { color: var(--muted); }
+  .tree li button[aria-current="true"] .kind { color: inherit; opacity: 0.7; }
+  .form { border-top: 1px solid var(--line); padding: 4px 16px 16px; }
+  .form label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  .form input, .form select { width: 100%; padding: 6px 8px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--field); }
+  .form .hint { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+
+  .right { min-width: 0; padding: 12px 16px 24px; position: relative; }
+  .preview-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .preview-head .panel-title { padding: 0; }
+  .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .segmented button { border: 0; background: transparent; padding: 4px 12px; cursor: pointer; }
+  .segmented button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .peek { border: 1px dashed var(--accent); color: var(--accent); background: transparent; border-radius: var(--radius); padding: 4px 12px; cursor: pointer; user-select: none; touch-action: none; }
+  .peek[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-style: solid; }
+
+  .stage { display: grid; gap: 12px; align-items: start; }
+  .stage.pair { grid-template-columns: 1fr 1fr; }
+  .who { font-size: 12px; font-weight: 650; color: var(--muted); margin: 0 0 6px; }
+  .window { display: grid; grid-template-columns: 150px 1fr; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; max-width: 760px; min-height: 380px; overflow: hidden; }
+  .sidebar { border-right: 1px solid var(--line); padding: 8px 6px; min-width: 0; overflow: auto; }
+  .sidebar h3 { font-size: 12px; color: var(--muted); margin: 8px 6px 4px; font-weight: 650; }
+  .sidebar button { display: flex; gap: 6px; align-items: baseline; width: 100%; text-align: left; border: 0; background: transparent; border-radius: 4px; padding: 4px 8px; cursor: pointer; min-width: 0; }
+  .sidebar button span.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar button:hover { background: var(--accent-soft); }
+  .sidebar button[aria-current="true"] { background: var(--accent-soft); font-weight: 600; }
+  .sidebar .plus { color: var(--accent); font-size: 13px; }
+  .content { padding: 12px; min-width: 0; }
+  .sheet-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0 0 8px; }
+  .sheet-name { font-size: 18px; font-weight: 650; margin: 0; }
+  .status { font-size: 12px; color: var(--muted); }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+  .tabs button { border: 0; background: transparent; padding: 6px 10px; cursor: pointer; border-bottom: 2px solid transparent; display: flex; gap: 6px; align-items: baseline; }
+  .tabs button[aria-current="true"] { border-bottom-color: var(--accent); font-weight: 600; }
+  .sections { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; container-type: inline-size; }
+  .section { grid-column: span 2; border: 1px solid var(--line); border-radius: 8px; padding: 8px; min-width: 0; }
+  .section.half { grid-column: span 1; }
+  @container (max-width: 440px) { .section.half { grid-column: span 2; } }
+  .section h2 { font-size: 12px; font-weight: 650; color: var(--muted); margin: 0 0 6px; }
+  .grid { display: grid; gap: 4px 6px; align-items: center; }
+  .block { padding: 6px 0; border-top: 1px dashed var(--line); }
+  .block:first-of-type { border-top: 0; }
+  .cell { position: relative; min-width: 0; border-radius: 4px; }
+  .cell.text { color: var(--muted); font-size: 13px; }
+  .cell input[type="text"], .cell input[type="number"] { width: 100%; min-width: 0; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--line); background: var(--field); }
+  .cell input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+  .cell .value { display: block; padding: 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dice { border: 1px solid var(--line); background: transparent; border-radius: 4px; padding: 3px 6px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+  .add { margin-top: 6px; }
+  .note { color: var(--muted); padding: 32px 12px; text-align: center; }
+  .empty-note { color: var(--muted); margin: 0 0 10px; font-size: 13px; }
+
+  /* GM window: double-click model. */
+  .gm .cell.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .gm .cell:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+  .gm .cell input { cursor: default; caret-color: transparent; }
+  .gm .cell.selected input { cursor: text; }
+  .gm .cell.editing input { caret-color: auto; box-shadow: 0 0 0 2px var(--accent); }
+
+  /* Design 3: marks of what players do not see, in the GM window. */
+  .badge { display: none; flex: none; font-size: 10px; font-weight: 650; line-height: 1; padding: 3px 5px; border-radius: 3px; color: var(--warn); border: 1px solid currentColor; white-space: nowrap; }
+  [data-design="marks"] .badge { display: inline-block; }
+  [data-design="marks"] .gm .hidden-for-players { background: repeating-linear-gradient(135deg, var(--hatch) 0 8px, transparent 8px 16px); }
+
+  /* Design 5: the player's window as a live thumbnail. */
+  .thumb { text-align: left; padding: 0; font: inherit; color: inherit; }
+  .thumb { position: fixed; left: calc(min(300px, 100vw) + 24px); bottom: 16px; width: 300px; height: 210px; overflow: hidden; border: 2px solid var(--accent); border-radius: 10px; background: var(--bg); cursor: zoom-in; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); z-index: 5; }
+  .thumb .scaled { transform: scale(0.4); transform-origin: 0 0; width: 250%; pointer-events: none; }
+  .thumb .who { position: absolute; top: 6px; left: 8px; z-index: 1; margin: 0; background: var(--accent); color: var(--on-accent); padding: 2px 6px; border-radius: 4px; }
+
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity 150ms ease-out; z-index: 9; }
+  .toast.on { opacity: 1; }
+
+  @media (max-width: 1100px) { .stage.pair { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; }
+    .left { border-right: 0; border-bottom: 1px solid var(--line); }
+    .tree { max-height: 32vh; }
+    .window { grid-template-columns: 1fr; }
+    .sidebar { border-right: 0; border-bottom: 1px solid var(--line); max-height: 160px; }
+    .thumb { left: 16px; width: 200px; height: 140px; }
+    .thumb .scaled { transform: scale(0.27); width: 370%; }
+  }
+</style>
+</head>
+<body>
+<header class="bar">
+  <h1>Конструктор пресетов</h1>
+  <button class="btn" type="button">Открыть…</button>
+  <button class="btn" type="button" aria-label="Отменить правку">↶</button>
+  <button class="btn" type="button" aria-label="Повторить правку">↷</button>
+  <span class="ok">Проблем нет</span>
+  <span class="spacer"></span>
+  <button class="btn" type="button">Скачать снимок</button>
+  <button class="btn primary" type="button">Скачать пресет</button>
+</header>
+
+<div class="layout">
+  <section class="left">
+    <h2 class="panel-title">Структура</h2>
+    <ul class="tree" id="tree"></ul>
+    <div class="form" id="form"></div>
+  </section>
+  <section class="right">
+    <div class="preview-head">
+      <h2 class="panel-title">Превью · окно 600 × 600</h2>
+      <div class="segmented" role="group" aria-label="Чьими глазами" data-for-design="switch">
+        <button type="button" data-role="gm">Мастер</button>
+        <button type="button" data-role="player">Игрок</button>
+      </div>
+      <button class="peek" type="button" data-for-design="peek" id="peek">Глазами игрока — держите</button>
+    </div>
+    <div class="stage" id="stage"></div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script type="application/json" id="grill-round">
+{
+  "question": "Как увидеть, что увидит игрок, не уходя из окна мастера?",
+  "designs": [
+    { "id": "switch", "name": "переключатель роли", "angle": "над окном «Мастер / Игрок»; одно окно перерисовывается целиком", "cost": "одновременно видишь только одну сторону, сравнивать приходится по памяти" },
+    { "id": "pair", "name": "два окна рядом", "angle": "окно мастера и окно игрока живут рядом, правка видна в обоих сразу", "cost": "каждое окно вдвое уже настоящего, на ноутбуке листы сжимаются" },
+    { "id": "marks", "name": "пометки", "angle": "окна игрока нет; в окне мастера помечено и заштриховано всё, что игрок не видит или не может править", "cost": "настоящий экран игрока не видишь никогда" },
+    { "id": "peek", "name": "подглядеть", "angle": "пока держишь кнопку «Глазами игрока», окно показывает игрока; отпустил — снова мастер", "cost": "смотреть и править одновременно нельзя, на телефоне держать неудобно" },
+    { "id": "thumb", "name": "миниатюра", "angle": "живая уменьшенная копия окна игрока в углу; клик меняет большое и малое местами", "cost": "мелкие детали в миниатюре не прочитать" }
+  ],
+  "states": [
+    { "id": "pc", "name": "открыт персонаж" },
+    { "id": "npc", "name": "открыт скрытый NPC" },
+    { "id": "inv", "name": "открыт общий инвентарь" }
+  ]
+}
+</script>
+<script>
+// grill-design picker: a draggable dock that switches the designs of one round.
+//
+// Inline this file into the round's HTML, after the round's JSON block: a
+// script element of type application/json with id grill-round, holding
+// { question, designs: [{ id, name, angle, cost }], states: [{ id, name }] }.
+// This file never spells out a closing script tag, because the HTML parser
+// would end the inline script at it.
+//
+// The live choice is written to data-design and data-state on the html
+// element, so each design styles itself under [data-design="<id>"]. Elements marked
+// data-for-design="<id> <id>" or data-for-state="<id>" are hidden unless the
+// live choice is listed. Every switch dispatches a "grill:change" event on
+// document with { design, state, replay } in detail.
+//
+// Ideas borrowed from the variate card (github.com/Nutlope/variate, MIT).
+
+(() => {
+  "use strict";
+
+  const source = document.getElementById("grill-round");
+  if (!source) {
+    console.error("grill-design picker: no application/json script with id grill-round");
+    return;
+  }
+  let round;
+  try {
+    round = JSON.parse(source.textContent);
+  } catch (error) {
+    console.error("grill-design picker: grill-round is not valid JSON", error);
+    return;
+  }
+  const designs = Array.isArray(round.designs) ? round.designs : [];
+  const states = Array.isArray(round.states) ? round.states : [];
+  if (!designs.length) {
+    console.error("grill-design picker: grill-round has no designs");
+    return;
+  }
+
+  const root = document.documentElement;
+  const POSITION_KEY = "grill-design:dock-position";
+
+  // localStorage throws in private windows and sandboxed previews; the dock
+  // must still work there, it only forgets where it was dragged.
+  const storage = {
+    get(key) { try { return JSON.parse(localStorage.getItem(key)); } catch (_) { return null; } },
+    set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {} },
+  };
+
+  const fromHash = () => {
+    const params = new URLSearchParams(location.hash.slice(1));
+    return { design: params.get("design"), state: params.get("state") };
+  };
+  const known = (list, id) => list.some((item) => item.id === id);
+
+  const initial = fromHash();
+  let design = known(designs, initial.design) ? initial.design : designs[0].id;
+  let state = states.length ? (known(states, initial.state) ? initial.state : states[0].id) : null;
+
+  function applyChoice(replay) {
+    root.dataset.design = design;
+    if (state) root.dataset.state = state; else delete root.dataset.state;
+    for (const node of document.querySelectorAll("[data-for-design]")) {
+      node.hidden = !node.dataset.forDesign.split(/\s+/).includes(design);
+    }
+    for (const node of document.querySelectorAll("[data-for-state]")) {
+      node.hidden = !node.dataset.forState.split(/\s+/).includes(state);
+    }
+    const hash = new URLSearchParams({ design, ...(state ? { state } : {}) });
+    history.replaceState(null, "", `#${hash}`);
+    document.dispatchEvent(new CustomEvent("grill:change", { detail: { design, state, replay } }));
+    render();
+  }
+
+  // Re-entering the same design restarts its CSS animations, so a round about
+  // motion can be watched more than once.
+  function replay() {
+    delete root.dataset.design;
+    void root.offsetWidth;
+    applyChoice(true);
+  }
+
+  function selectDesign(id) {
+    if (id === design) { replay(); return; }
+    design = id;
+    applyChoice(false);
+  }
+
+  function step(delta) {
+    const index = designs.findIndex((item) => item.id === design);
+    selectDesign(designs[(index + delta + designs.length) % designs.length].id);
+  }
+
+  // The dock lives in a shadow root reset with all: initial, so the designs
+  // under review cannot restyle it and it cannot leak into them.
+  const host = document.createElement("grill-picker");
+  const shadow = host.attachShadow({ mode: "open" });
+  shadow.innerHTML = `
+<style>
+:host { all: initial; display: block; position: fixed; right: 16px; bottom: 16px; z-index: 2147483646; }
+@media print { :host { display: none } }
+* { box-sizing: border-box; margin: 0; }
+.dock {
+  width: min(320px, calc(100vw - 32px));
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: #16181d;
+  color: #e8e9ed;
+  box-shadow: 0 8px 28px rgb(0 0 0 / .35), 0 0 0 1px rgb(255 255 255 / .08);
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+.grip {
+  display: flex; align-items: center; gap: 8px;
+  cursor: grab; touch-action: none; user-select: none;
+  color: #9a9ea8; font-size: 12px;
+}
+.grip:active { cursor: grabbing; }
+.grip::before { content: "⋮⋮"; letter-spacing: -2px; }
+.question { color: #e8e9ed; font-weight: 600; }
+.pager { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+button {
+  all: unset; box-sizing: border-box;
+  min-width: 28px; height: 28px; padding: 0 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; background: #23262d; color: #c9ccd3;
+  font: inherit; cursor: pointer; white-space: nowrap;
+}
+button:hover { background: #2d3139; }
+button:focus-visible { outline: 2px solid #7aa2ff; outline-offset: 1px; }
+button[aria-pressed="true"] { background: #e8e9ed; color: #16181d; font-weight: 600; }
+.detail { margin-top: 8px; color: #b4b8c1; }
+.detail b { color: #e8e9ed; font-weight: 600; }
+.cost { color: #f0b37e; }
+.states { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #2d3139; }
+.keys { margin-top: 8px; color: #6f7480; font-size: 11px; }
+</style>
+<div class="dock" role="region" aria-label="Design picker">
+  <div class="grip"><span class="question"></span></div>
+  <div class="pager" role="group" aria-label="Designs"></div>
+  <p class="detail" aria-live="polite"></p>
+  <div class="states" role="group" aria-label="States"></div>
+  <p class="keys">← → or 1–9 switch · click the current design to replay it</p>
+</div>`;
+
+  const dock = shadow.querySelector(".dock");
+  const grip = shadow.querySelector(".grip");
+  const pager = shadow.querySelector(".pager");
+  const detail = shadow.querySelector(".detail");
+  const stateBar = shadow.querySelector(".states");
+  shadow.querySelector(".question").textContent = round.question || "Pick a design";
+  if (!states.length) stateBar.remove();
+
+  const designButtons = designs.map((item, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.addEventListener("click", () => selectDesign(item.id));
+    button.dataset.number = String(index + 1);
+    pager.append(button);
+    return button;
+  });
+  const stateButtons = states.map((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item.name || item.id;
+    button.addEventListener("click", () => { state = item.id; applyChoice(false); });
+    stateBar.append(button);
+    return button;
+  });
+
+  function render() {
+    designs.forEach((item, index) => {
+      const live = item.id === design;
+      const button = designButtons[index];
+      // The live chip wears its name and the rest stay numbers, so the dock
+      // stays narrow while always saying what is on screen.
+      button.textContent = live ? `${index + 1} · ${item.name || item.id}` : String(index + 1);
+      button.setAttribute("aria-pressed", String(live));
+      button.title = [item.name, item.angle, item.cost && `cost: ${item.cost}`].filter(Boolean).join(" — ");
+    });
+    stateButtons.forEach((button, index) => {
+      button.setAttribute("aria-pressed", String(states[index].id === state));
+    });
+    const current = designs.find((item) => item.id === design);
+    detail.replaceChildren();
+    if (current.angle) {
+      const angle = document.createElement("b");
+      angle.textContent = current.angle;
+      detail.append(angle);
+    }
+    if (current.cost) {
+      const cost = document.createElement("span");
+      cost.className = "cost";
+      cost.textContent = `${current.angle ? " · " : ""}cost: ${current.cost}`;
+      detail.append(cost);
+    }
+    detail.hidden = !current.angle && !current.cost;
+  }
+
+  function onKey(event) {
+    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+    const target = event.composedPath()[0];
+    if (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    if (event.key === "ArrowRight") { step(1); event.preventDefault(); return; }
+    if (event.key === "ArrowLeft") { step(-1); event.preventDefault(); return; }
+    const number = Number(event.key);
+    if (Number.isInteger(number) && number >= 1 && number <= designs.length) {
+      selectDesign(designs[number - 1].id);
+      event.preventDefault();
+    }
+  }
+
+  function place(position) {
+    if (!position) return;
+    const maxX = Math.max(0, innerWidth - dock.offsetWidth);
+    const maxY = Math.max(0, innerHeight - dock.offsetHeight);
+    host.style.left = `${Math.min(Math.max(0, position.x), maxX)}px`;
+    host.style.top = `${Math.min(Math.max(0, position.y), maxY)}px`;
+    host.style.right = "auto";
+    host.style.bottom = "auto";
+  }
+
+  grip.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const box = host.getBoundingClientRect();
+    const offsetX = event.clientX - box.left;
+    const offsetY = event.clientY - box.top;
+    grip.setPointerCapture(event.pointerId);
+    const move = (moveEvent) => place({ x: moveEvent.clientX - offsetX, y: moveEvent.clientY - offsetY });
+    const end = () => {
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", end);
+      grip.removeEventListener("pointercancel", end);
+      const placed = host.getBoundingClientRect();
+      storage.set(POSITION_KEY, { x: placed.left, y: placed.top });
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+  });
+
+  addEventListener("keydown", onKey);
+  addEventListener("hashchange", () => {
+    const next = fromHash();
+    if (known(designs, next.design)) design = next.design;
+    if (known(states, next.state)) state = next.state;
+    applyChoice(false);
+  });
+  addEventListener("resize", () => { if (host.style.left) place({ x: parseFloat(host.style.left), y: parseFloat(host.style.top) }); });
+
+  document.body.append(host);
+  place(storage.get(POSITION_KEY));
+  applyChoice(false);
+})();
+
+</script>
+<script>
+(() => {
+  "use strict";
+  const root = document.documentElement;
+  let seq = 0;
+  const T = (text) => ({ uid: "t" + seq++, kind: "text", text });
+  const F = (id, type, name) => ({ uid: "f-" + id, kind: "field", id, type, name: name || "" });
+  const D = (formula) => ({ uid: "d" + seq++, kind: "dice", formula });
+
+  const TEMPLATES = [
+    { id: "pc", kind: "set", title: "Персонажи", visibility: "all", tabs: [
+      { uid: "tab-pc-0", title: "Лист", visibility: "all", sections: [
+        { uid: "s-char", title: "Персонаж", cols: 4, rows: [
+          [T("Имя"), F("name", "text"), T("Предыстория"), F("background", "text")],
+        ] },
+        { uid: "s-attr", title: "Характеристики", cols: 4, half: true, rows: [
+          [T(""), T("Тек."), T("Макс."), T("Спас")],
+          [T("STR"), F("str", "number"), F("str_max", "number"), D("1d20 <= str")],
+          [T("DEX"), F("dex", "number"), F("dex_max", "number"), D("1d20 <= dex")],
+          [T("WIL"), F("wil", "number"), F("wil_max", "number"), D("1d20 <= wil")],
+        ] },
+        { uid: "s-def", title: "Защита", cols: 4, half: true, rows: [
+          [T("HP"), F("hp", "number"), T("из"), F("hp_max", "number")],
+          [T("Броня"), F("armor", "number"), T("Лишения"), F("deprived", "check")],
+        ] },
+      ] },
+      { uid: "tab-pc-1", title: "Мастеру", visibility: "gm", sections: [
+        { uid: "s-secret", title: "Тайны", cols: 2, rows: [
+          [T("Тайна"), F("secret", "text")],
+          [T("Проклятие"), F("curse", "check")],
+        ] },
+      ] },
+    ] },
+    { id: "inv", kind: "single", title: "Общий инвентарь", visibility: "all", players: "edit", tabs: [
+      { uid: "tab-inv-0", title: "", visibility: "all", sections: [
+        { uid: "s-loot", title: "Добыча", cols: 4, repeat: true, rows: [
+          [T("Предмет"), F("item", "text"), T("Кол-во"), F("qty", "number")],
+        ] },
+      ] },
+    ] },
+    { id: "npc", kind: "single", title: "NPC", visibility: "gm", tabs: [
+      { uid: "tab-npc-0", title: "", visibility: "all", sections: [
+        { uid: "s-npc", title: "NPC", cols: 4, repeat: true, rows: [
+          [T("Имя"), F("npc_name", "text"), T("HP"), F("npc_hp", "number")],
+          [T("Броня"), F("npc_armor", "number"), T("Атака"), F("npc_attack", "text")],
+        ] },
+      ] },
+    ] },
+  ];
+  const TYPE_NAME = { text: "текст", number: "число", check: "флажок" };
+
+  const byUid = new Map();
+  const parentOf = new Map();
+  for (const tpl of TEMPLATES) {
+    byUid.set("tpl-" + tpl.id, { type: "template", node: tpl, tpl });
+    tpl.tabs.forEach((tab, tabIndex) => {
+      byUid.set(tab.uid, { type: "tab", node: tab, tpl, tabIndex });
+      parentOf.set(tab.uid, "tpl-" + tpl.id);
+      for (const section of tab.sections) {
+        byUid.set(section.uid, { type: "section", node: section, tpl, tabIndex });
+        parentOf.set(section.uid, tab.uid);
+        section.rows.forEach((row, index) => {
+          const rowUid = section.uid + "-r" + index;
+          byUid.set(rowUid, { type: "row", node: row, index, tpl, tabIndex });
+          parentOf.set(rowUid, section.uid);
+          for (const cell of row) {
+            byUid.set(cell.uid, { type: cell.kind, node: cell, tpl, tabIndex, section });
+            parentOf.set(cell.uid, rowUid);
+          }
+        });
+      }
+    });
+  }
+
+  function freshSheets() {
+    return [
+      { sid: "pc0", tpl: "pc", v: { name: "Ирма Солодовник", background: "Травница", str: 11, str_max: 12, dex: 14, dex_max: 14, wil: 9, wil_max: 10, hp: 3, hp_max: 4, armor: 1, deprived: false, secret: "Видела, кто поджёг мельницу", curse: true } },
+      { sid: "pc1", tpl: "pc", v: { name: "Борис Кожемяка", background: "Кузнец", str: 15, str_max: 15, dex: 9, dex_max: 9, wil: 10, wil_max: 10, hp: 5, hp_max: 6, armor: 2, deprived: true, secret: "Должен денег Чёрному рыцарю", curse: false } },
+      { sid: "inv", tpl: "inv", v: { "s-loot": [{ item: "Верёвка, 15 м", qty: 1 }, { item: "Факелы", qty: 4 }, { item: "Серебряная ложка", qty: 1 }] } },
+      { sid: "npc", tpl: "npc", v: { "s-npc": [{ npc_name: "Болотная ведьма", npc_hp: 9, npc_armor: 1, npc_attack: "Порча d8" }, { npc_name: "Чёрный рыцарь", npc_hp: 12, npc_armor: 3, npc_attack: "Меч d10" }] } },
+    ];
+  }
+
+  let sheets = freshSheets();
+  let current = "pc0";
+  let openTab = 0;
+  let selected = "f-hp";
+  let editing = null;
+  let role = "gm";        // switch and peek: who the one window shows
+  let swapped = false;    // thumb: the player's window is the big one
+  let addSeq = 0;
+
+  const design = () => root.dataset.design;
+  const tplById = (id) => TEMPLATES.find((t) => t.id === id);
+  const sheetById = (sid) => sheets.find((s) => s.sid === sid);
+  const sheetName = (sheet) => tplById(sheet.tpl).kind === "single" ? tplById(sheet.tpl).title : (sheet.v.name || "Без имени");
+  // The visibility rules of src/core/visibility.ts, as the preview needs them.
+  const templateShown = (r, tpl) => r === "gm" || tpl.visibility !== "gm";
+  const tabShown = (r, tpl, tab) => templateShown(r, tpl) && (r === "gm" || tab.visibility !== "gm");
+  const playerEdits = (tpl) => tpl.kind === "single" && tpl.players === "edit" && tpl.visibility !== "gm";
+
+  function el(tag, attrs, ...children) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs || {})) {
+      if (value === null || value === undefined || value === false) continue;
+      if (key === "class") node.className = value;
+      else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+      else if (key in node) node[key] = value;
+      else node.setAttribute(key, value === true ? "" : value);
+    }
+    for (const child of children.flat()) {
+      if (child !== null && child !== undefined && child !== false) node.append(child.nodeType ? child : String(child));
+    }
+    return node;
+  }
+  const badge = (text) => el("span", { class: "badge" }, text);
+
+  let toastTimer = 0;
+  function toast(text) {
+    const box = document.getElementById("toast");
+    box.textContent = text;
+    box.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => box.classList.remove("on"), 2200);
+  }
+
+  function select(uid) {
+    selected = uid;
+    editing = null;
+    const entry = byUid.get(uid);
+    const sheet = sheets.find((s) => s.tpl === entry.tpl.id);
+    if (sheet && sheetById(current)?.tpl !== entry.tpl.id) current = sheet.sid;
+    if (entry.tabIndex !== undefined) openTab = entry.tabIndex;
+    render();
+  }
+
+  // --- one window, for one role ---
+  function buildCell(cell, values, block, section, r, editable) {
+    const gm = r === "gm";
+    const key = cell.uid + "|" + (block ?? "");
+    const classes = ["cell", cell.kind];
+    if (gm && cell.uid === selected) classes.push("selected");
+    if (gm && editing === key) classes.push("editing");
+    const wrap = el("div", { class: classes.join(" ") });
+    const target = block === undefined ? values : values[section.uid][block];
+
+    if (cell.kind === "text") wrap.append(cell.text || " ");
+    if (cell.kind === "dice") wrap.append(el("button", { class: "dice", type: "button", title: cell.formula.replace("<=", "≤") }, "🎲 " + cell.formula.split(" ")[0]));
+    if (cell.kind === "field") {
+      const current = target[cell.id];
+      if (!editable) {
+        const shown = cell.type === "check" ? (current ? "✓" : "—") : (current ?? "—");
+        wrap.append(el("span", { class: "value" }, String(shown)));
+      } else if (cell.type === "check") {
+        const box = el("input", { type: "checkbox", checked: current === true, "aria-label": cell.id });
+        box.addEventListener("click", (event) => {
+          if (gm) { event.preventDefault(); return; }
+          target[cell.id] = box.checked;
+          render();
+        });
+        wrap.append(box);
+      } else {
+        const locked = gm && editing !== key;
+        const input = el("input", { type: cell.type, value: current ?? "", readOnly: locked, "aria-label": cell.id });
+        input.addEventListener("mousedown", (event) => { if (locked) event.preventDefault(); });
+        input.addEventListener("change", () => {
+          target[cell.id] = cell.type === "number" && input.value !== "" ? Number(input.value) : input.value;
+          if (!gm) render();
+          else renderOthers();
+        });
+        input.addEventListener("keydown", (event) => { if (event.key === "Escape") { editing = null; render(); } });
+        wrap.append(input);
+      }
+    }
+    if (gm) {
+      wrap.addEventListener("click", (event) => {
+        if (selected !== cell.uid) { event.preventDefault(); select(cell.uid); return; }
+        if (cell.kind === "dice") { toast(cell.formula.replace("<=", "≤") + " → " + (1 + Math.floor(Math.random() * 20))); return; }
+        if (cell.kind !== "field") return;
+        if (cell.type === "check") { target[cell.id] = target[cell.id] !== true; render(); return; }
+        editing = key;
+        render();
+        const input = document.querySelector(".gm .cell.editing input");
+        if (input) { input.focus(); input.select(); }
+      });
+    } else if (cell.kind === "dice") {
+      wrap.addEventListener("click", () => toast("Игрок бросил " + cell.formula.replace("<=", "≤") + " → " + (1 + Math.floor(Math.random() * 20))));
+    }
+    return wrap;
+  }
+
+  function buildWindow(r) {
+    const gm = r === "gm";
+    const win = el("div", { class: "window " + (gm ? "gm" : "player") });
+    const side = el("nav", { class: "sidebar", "aria-label": "Листы" });
+    for (const tpl of TEMPLATES) {
+      if (!templateShown(r, tpl)) continue;
+      const hiddenMark = gm && tpl.visibility === "gm" ? badge("только мастер") : null;
+      const list = sheets.filter((s) => s.tpl === tpl.id);
+      if (tpl.kind === "single") {
+        side.append(el("h3", {}, tpl.title));
+      } else {
+        side.append(el("h3", {}, tpl.title));
+      }
+      for (const sheet of list) {
+        side.append(el("button", { type: "button", "aria-current": String(sheet.sid === current), class: hiddenMark ? "hidden-for-players" : null, onclick: () => { current = sheet.sid; openTab = 0; editing = null; render(); } },
+          el("span", { class: "name" }, sheetName(sheet)), hiddenMark ? badge("только мастер") : null));
+      }
+      if (gm && tpl.kind === "set") side.append(el("button", { type: "button", class: "plus", onclick: () => { const sid = "new" + addSeq++; sheets.push({ sid, tpl: tpl.id, v: {} }); current = sid; render(); } }, "+ Добавить"));
+    }
+    win.append(side);
+
+    const sheet = sheetById(current);
+    const tpl = tplById(sheet.tpl);
+    const content = el("div", { class: "content" });
+    if (!templateShown(r, tpl)) {
+      content.append(el("p", { class: "note" }, "Игроки не видят «" + sheetName(sheet) + "». В их окне этого листа нет."));
+      win.append(content);
+      return win;
+    }
+    const editable = gm || playerEdits(tpl);
+    const head = el("div", { class: "sheet-head" }, el("p", { class: "sheet-name" }, sheetName(sheet)));
+    if (!gm) head.append(el("span", { class: "status" }, editable ? "Можно править" : "Только чтение"));
+    if (gm) head.append(tpl.visibility === "gm" ? badge("игроки не видят") : badge(playerEdits(tpl) ? "игроки правят" : "игроки только читают"));
+    content.append(head);
+
+    const tabs = tpl.tabs.map((tab, index) => ({ tab, index })).filter(({ tab }) => tabShown(r, tpl, tab));
+    let shownTab = tabs.find(({ index }) => index === openTab) ?? tabs[0];
+    if (tabs.length > 1) {
+      const bar = el("div", { class: "tabs", role: "tablist" });
+      for (const { tab, index } of tabs) {
+        bar.append(el("button", { type: "button", "aria-current": String(index === shownTab.index), class: gm && tab.visibility === "gm" ? "hidden-for-players" : null, onclick: () => { openTab = index; render(); } },
+          tab.title || "Вкладка", gm && tab.visibility === "gm" ? badge("только мастер") : null));
+      }
+      content.append(bar);
+    }
+    if (!gm && openTab !== shownTab.index) {
+      content.append(el("p", { class: "empty-note" }, "Вкладку «" + tpl.tabs[openTab].title + "» игроки не видят."));
+    }
+    const sections = el("div", { class: "sections" });
+    for (const section of shownTab.tab.sections) {
+      const hidden = shownTab.tab.visibility === "gm";
+      const sbox = el("div", { class: "section" + (section.half ? " half" : "") + (gm && hidden ? " hidden-for-players" : "") });
+      sbox.append(el("h2", {}, section.title));
+      const columns = "repeat(" + section.cols + ", minmax(0, 1fr))";
+      if (section.repeat) {
+        const blocks = sheet.v[section.uid] ?? (sheet.v[section.uid] = []);
+        blocks.forEach((_, block) => {
+          const grid = el("div", { class: "grid block" });
+          grid.style.gridTemplateColumns = columns;
+          for (const row of section.rows) for (const cell of row) grid.append(buildCell(cell, sheet.v, block, section, r, editable));
+          sbox.append(grid);
+        });
+        if (editable) sbox.append(el("button", { class: "btn add", type: "button", onclick: () => { blocks.push({}); render(); } }, "Добавить"));
+      } else {
+        const grid = el("div", { class: "grid" });
+        grid.style.gridTemplateColumns = columns;
+        for (const row of section.rows) for (const cell of row) grid.append(buildCell(cell, sheet.v, undefined, section, r, editable));
+        sbox.append(grid);
+      }
+      sections.append(sbox);
+    }
+    content.append(sections);
+    win.append(content);
+    return win;
+  }
+
+  // --- the stage, by design ---
+  function renderStage() {
+    const stage = document.getElementById("stage");
+    stage.replaceChildren();
+    stage.className = "stage";
+    document.querySelector(".thumb")?.remove();
+    const d = design();
+    for (const b of document.querySelectorAll("[data-role]")) b.setAttribute("aria-pressed", String(b.dataset.role === role));
+    document.getElementById("peek").setAttribute("aria-pressed", String(d === "peek" && role === "player"));
+
+    if (d === "pair") {
+      stage.classList.add("pair");
+      stage.append(el("div", {}, el("p", { class: "who" }, "Мастер"), buildWindow("gm")), el("div", {}, el("p", { class: "who" }, "Игрок"), buildWindow("player")));
+      return;
+    }
+    if (d === "thumb") {
+      const big = swapped ? "player" : "gm";
+      const small = swapped ? "gm" : "player";
+      stage.append(el("div", {}, el("p", { class: "who" }, big === "gm" ? "Мастер" : "Игрок"), buildWindow(big)));
+      const thumb = el("button", { class: "thumb", type: "button", "aria-label": "Поменять окна местами", onclick: () => { swapped = !swapped; editing = null; render(); } },
+        el("p", { class: "who" }, small === "gm" ? "Мастер" : "Игрок"), el("div", { class: "scaled" }, buildWindow(small)));
+      document.body.append(thumb);
+      return;
+    }
+    if (d === "marks") { stage.append(buildWindow("gm")); return; }
+    stage.append(buildWindow(role));
+  }
+  // A GM edit redraws the other window only, so the edited input keeps its focus.
+  function renderOthers() {
+    if (design() === "pair" || design() === "thumb") render();
+  }
+
+  // --- left panel ---
+  function treeLabel(uid) {
+    const entry = byUid.get(uid);
+    if (entry.type === "template") return [entry.node.title, entry.node.kind === "set" ? "набор" : "одиночный лист"];
+    if (entry.type === "tab") return [entry.node.title || "Вкладка", "вкладка"];
+    if (entry.type === "section") return [entry.node.title, entry.node.repeat ? "секция · повтор" : "секция"];
+    if (entry.type === "row") return ["Строка " + (entry.index + 1), ""];
+    if (entry.type === "text") return ["«" + (entry.node.text || "…") + "»", "подпись"];
+    if (entry.type === "dice") return [entry.node.formula, "кубик"];
+    return [entry.node.id, TYPE_NAME[entry.node.type]];
+  }
+
+  function renderLeft() {
+    const tree = document.getElementById("tree");
+    tree.replaceChildren();
+    const path = new Set();
+    for (let uid = selected; uid; uid = parentOf.get(uid)) path.add(uid);
+    const item = (uid, depth) => {
+      const [name, kind] = treeLabel(uid);
+      const node = byUid.get(uid).node;
+      const gmOnly = node.visibility === "gm" ? " · только мастер" : "";
+      const button = el("button", { type: "button", "aria-current": String(uid === selected), onclick: () => select(uid) }, name, el("span", { class: "kind" }, (kind ? " · " + kind : "") + gmOnly));
+      button.style.paddingLeft = 8 + depth * 14 + "px";
+      tree.append(el("li", {}, button));
+    };
+    for (const tpl of TEMPLATES) {
+      item("tpl-" + tpl.id, 0);
+      if (!path.has("tpl-" + tpl.id)) continue;
+      for (const tab of tpl.tabs) {
+        item(tab.uid, 1);
+        if (!path.has(tab.uid)) continue;
+        for (const section of tab.sections) {
+          item(section.uid, 2);
+          if (!path.has(section.uid)) continue;
+          section.rows.forEach((row, index) => {
+            const rowUid = section.uid + "-r" + index;
+            item(rowUid, 3);
+            if (path.has(rowUid)) for (const cell of row) item(cell.uid, 4);
+          });
+        }
+      }
+    }
+
+    const form = document.getElementById("form");
+    form.replaceChildren();
+    const entry = byUid.get(selected);
+    const [name, kind] = treeLabel(selected);
+    form.append(el("h2", { class: "panel-title", style: "padding:12px 0 0" }, name + (kind ? " · " + kind : "")));
+    const field = (label, input) => [el("label", {}, label), input];
+    const visibilitySelect = (node) => {
+      const select = el("select", { onchange: (e) => { node.visibility = e.target.value; render(); } },
+        el("option", { value: "all", selected: node.visibility !== "gm" }, "Все"),
+        el("option", { value: "gm", selected: node.visibility === "gm" }, "Только мастер"));
+      return select;
+    };
+    if (entry.type === "template") {
+      form.append(...field("Заголовок", el("input", { value: entry.node.title })));
+      form.append(...field("Видят", visibilitySelect(entry.node)));
+      if (entry.node.kind === "single") {
+        form.append(...field("Игроки", el("select", { onchange: (e) => { entry.node.players = e.target.value || undefined; render(); } },
+          el("option", { value: "", selected: entry.node.players !== "edit" }, "Только читают"),
+          el("option", { value: "edit", selected: entry.node.players === "edit" }, "Могут править"))));
+      }
+    } else if (entry.type === "tab") {
+      form.append(...field("Заголовок", el("input", { value: entry.node.title })));
+      form.append(...field("Видят", visibilitySelect(entry.node)));
+    } else if (entry.type === "field") {
+      form.append(...field("Id", el("input", { value: entry.node.id })));
+      form.append(...field("Тип", el("select", {}, el("option", {}, TYPE_NAME[entry.node.type]))));
+      form.append(el("p", { class: "hint" }, "Кто видит поле, решают его вкладка и шаблон."));
+    } else if (entry.type === "text") {
+      const input = el("input", { value: entry.node.text });
+      input.addEventListener("input", () => { entry.node.text = input.value; renderStage(); });
+      form.append(...field("Подпись", input));
+    } else if (entry.type === "section") {
+      form.append(...field("Заголовок", el("input", { value: entry.node.title })));
+    } else if (entry.type === "dice") {
+      form.append(...field("Формула", el("input", { value: entry.node.formula })));
+    }
+  }
+
+  function render() {
+    renderStage();
+    renderLeft();
+  }
+
+  for (const b of document.querySelectorAll("[data-role]")) b.addEventListener("click", () => { role = b.dataset.role; editing = null; render(); });
+  const peek = document.getElementById("peek");
+  const peekOn = (event) => { event.preventDefault(); if (role !== "player") { role = "player"; editing = null; render(); } };
+  const peekOff = () => { if (role !== "gm") { role = "gm"; render(); } };
+  peek.addEventListener("pointerdown", peekOn);
+  peek.addEventListener("pointerup", peekOff);
+  peek.addEventListener("pointerleave", peekOff);
+  peek.addEventListener("pointercancel", peekOff);
+  peek.addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") peekOn(e); });
+  peek.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") peekOff(); });
+  document.addEventListener("keydown", (event) => {
+    if (editing || event.key !== "Enter" || event.target.closest("input, select, button")) return;
+    const cell = document.querySelector(".gm .cell.selected");
+    if (cell) { event.preventDefault(); cell.click(); }
+  });
+
+  function reset() {
+    sheets = freshSheets();
+    for (const tpl of TEMPLATES) tpl.visibility = tpl.id === "npc" ? "gm" : "all";
+    TEMPLATES[0].tabs[1].visibility = "gm";
+    TEMPLATES[1].players = "edit";
+    const state = root.dataset.state || "pc";
+    current = state === "npc" ? "npc" : state === "inv" ? "inv" : "pc0";
+    selected = state === "npc" ? "f-npc_hp" : state === "inv" ? "f-item" : "f-hp";
+    openTab = 0;
+    role = "gm";
+    swapped = false;
+    editing = null;
+    render();
+  }
+  document.addEventListener("grill:change", reset);
+  reset();
+})();
+</script>
+</body>
+</html>

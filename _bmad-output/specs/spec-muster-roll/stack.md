@@ -19,6 +19,8 @@ The base is the sibling project `ttrpg-tools`, with Vite in place of Astro. No s
 | Logic tests | `bun test` with happy-dom | Same as `ttrpg-tools` |
 | Interface tests | Playwright with a mock Owlbear SDK | Owlbear cannot run in CI; the mock proves app logic only |
 | Hosting | Cloudflare static hosting through wrangler | Stable extension URL; v2 storage is on Cloudflare |
+| Builder files | File System Access API, progressive | Write and follow in Chromium; open and download elsewhere (`builder-and-dev.md`) |
+| Dev tunnel | `cloudflared` quick tunnel in `bun run dev:owlbear` | Owlbear loads the extension only over HTTPS |
 
 ## Rejected
 

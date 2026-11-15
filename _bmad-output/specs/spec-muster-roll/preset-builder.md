@@ -1,12 +1,12 @@
 # Preset builder (v2)
 
-A separate page on the deployed site (`musterroll.2249364.xyz`) where a GM builds or changes a preset without writing JSON. Every GM uses it, the owner included. Capabilities CAP-20 to CAP-28 in `SPEC.md`.
+A separate page on the deployed site (`musterroll.2249364.xyz`) where a GM builds or changes a preset without writing JSON. Every GM uses it, the owner included. Capabilities CAP-20 to CAP-28 in `SPEC.md`. The builder also edits a snapshot, switches GM and player views and reads and writes files: `builder-and-dev.md`, CAP-36 to CAP-40.
 
 ## Flow
 
-1. Start blank, from a repository example (`docs/example-preset.json`, `tests/fixtures/presets/d20.json`, `tests/fixtures/presets/d6-pool.json`) or from a file.
-2. Edit.
-3. Download. Upload the file in the extension (CAP-8).
+1. Start blank, from a repository example (`docs/example-preset.json`, `tests/fixtures/presets/d20.json`, `tests/fixtures/presets/d6-pool.json`) or from a file. Optionally open a snapshot.
+2. Edit the preset and the snapshot. An attached file is written as you edit (`builder-and-dev.md`).
+3. Upload the preset in the extension (CAP-8) and import the snapshot (CAP-13).
 
 The extension settings have a button that opens the builder in a new tab. Exchange with the room is by file only.
 
@@ -15,7 +15,7 @@ The extension settings have a button that opens the builder in a new tab. Exchan
 - A structure tree (templates, tabs, sections, rows, cells) with a form for the selected item.
 - A new template starts with one untitled tab. Sections drag between tabs. The tab form sets its title and visibility.
 - A live preview beside them, drawn by the extension's own sheet components.
-- A click on a preview cell selects its item in the tree.
+- The first click on a preview cell selects its item in the tree. A second click or Enter types a value into the snapshot (`builder-and-dev.md`).
 - The preview shows the tab that holds the item selected in the tree, and its tabs can be switched.
 
 ## Field ids
@@ -35,7 +35,7 @@ The extension settings have a button that opens the builder in a new tab. Exchan
 
 ## Draft, undo, validation
 
-- One draft, saved by itself in the builder page's browser storage. The builder opens straight into the editor: on the draft if one exists, otherwise on an empty preset. No draft prompt. The page is a top-level tab, not the Owlbear iframe.
+- One draft, saved by itself in the builder page's browser storage. It holds the preset and the snapshot while no file is attached. The builder opens straight into the editor: on the draft if one exists, otherwise on an empty preset. No draft prompt. The page is a top-level tab, not the Owlbear iframe.
 - Undo and redo for every edit.
 - A file that fails the preset checks does not open. It shows the upload's refusal message. Fixing broken JSON is not the builder's job.
 - Invalid states are allowed while editing. Each error shows at its tree item and its preview cell. A problem counter jumps to the first error.
@@ -59,13 +59,13 @@ The whole format of `docs/preset-format.md`:
 | `parsePresetFile` | `src/core/preset.ts` | Open check and download gate |
 | `encodePreset` | `src/core/preset.ts` | After v2: preset in the URL fragment |
 | `resolveFieldReference` | `src/core/preset.ts` | Rename scopes |
-| Preview page (TASK-40) | `src/preview/`, `bun run preview` | Base for the live preview |
+| Sample records | `src/preview/sample-records.ts` | Values for "Образец"; `preview.html` itself is removed |
 
 ## Rejected
 
 | Option | Reason |
 | --- | --- |
-| In-place editing on the sheet | Needs a second sheet renderer. `columns`, `width`, `repeat` and ids would still need a side panel |
+| In-place editing of structure on the sheet | Needs a second sheet renderer. `columns`, `width`, `repeat` and ids would still need a side panel. Values are typed in place (CAP-36) |
 | A text markup instead of JSON | It is still writing |
 | Hiding ids entirely | Formulas need a name for each field |
 | Blocking edits that make the preset invalid | Forces one edit order |
