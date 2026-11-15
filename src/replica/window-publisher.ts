@@ -192,13 +192,11 @@ export function createWindowPublisher(options: WindowPublisherOptions): WindowPu
   }
 
   function restart(): void {
-    const hadProjection = projected;
-
     engineId = options.newId();
     sequence = 0;
     projected = false;
     lastComparison = visibleState();
-    restartPending = hadProjection;
+    restartPending = true;
   }
 
   function visibleState(): VisibleState {
