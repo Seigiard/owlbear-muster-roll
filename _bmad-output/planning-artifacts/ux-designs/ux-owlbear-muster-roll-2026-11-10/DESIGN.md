@@ -146,7 +146,7 @@ Muster Roll is a tool on the table. It sits inside Owlbear and takes its hues fr
 
 ## Colors
 
-Colours follow `OBR.theme` at runtime and change when the Owlbear theme changes. The hex values above are the dark theme of a live Owlbear room, the fallback for tests and mocks. The light theme of a live room is: paper `#F1F3F9`, default `#DDE1EE`, text `rgba(0, 0, 0, 0.87)`, secondary text `rgba(0, 0, 0, 0.6)`, primary `#9966FF`, contrast text `#FFFFFF`. `src/preview/themes.ts` holds both.
+Colours follow `OBR.theme` at runtime and change when the Owlbear theme changes. The hex values above are the dark theme of a live Owlbear room, the fallback for tests and mocks. The light theme of a live room is: paper `#F1F3F9`, default `#DDE1EE`, text `rgba(0, 0, 0, 0.87)`, secondary text `rgba(0, 0, 0, 0.6)`, primary `#9966FF`, contrast text `#FFFFFF`. `src/ui/themes.ts` holds both.
 
 | Token | Runtime source |
 | --- | --- |
@@ -233,7 +233,7 @@ A compact control draws 24 px and keeps a 32 px touch target through a transpare
 
 ### Preset builder
 
-The builder is a top-level page, not inside Owlbear, so no live Owlbear theme exists. It takes the two Owlbear theme copies in `src/preview/themes.ts` (dark and light) through the same token mapping as the window. It opens in the system colour scheme, and the "Светлая тема" switch overrides it. Layout reference: variant B of `.working/builder-layouts.html`.
+The builder is a top-level page, not inside Owlbear, so no live Owlbear theme exists. It takes the two Owlbear theme copies in `src/ui/themes.ts` (dark and light) through the same token mapping as the window. It opens in the system colour scheme, and the "Светлая тема" switch overrides it. Layout reference: variant B of `.working/builder-layouts.html`.
 
 | Component | Visual rule |
 | --- | --- |
