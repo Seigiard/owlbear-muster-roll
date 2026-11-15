@@ -1,5 +1,5 @@
 import type { PreviewContent } from './sample-records';
-import type { PreviewThemeName } from './themes';
+import type { PreviewThemeName } from '@/ui/themes';
 
 // What the page address keeps, so a reload or a shared link shows the same view.
 export type PreviewAddress = {

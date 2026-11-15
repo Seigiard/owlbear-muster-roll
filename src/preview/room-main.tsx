@@ -5,7 +5,7 @@ import { applyTheme } from '@/ui/theme';
 
 import { readAddress } from './address';
 import { RoomPage } from './room-page';
-import { PREVIEW_THEMES } from './themes';
+import { PREVIEW_THEMES } from '@/ui/themes';
 
 const container = document.getElementById('root');
 
