@@ -389,6 +389,7 @@ function TextValueField({
       {field.type === 'number' ? (
         <input
           {...common}
+          role="spinbutton"
           type="text"
           inputMode="text"
           onChange={(event) => {
