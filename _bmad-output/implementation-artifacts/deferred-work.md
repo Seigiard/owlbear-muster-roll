@@ -370,3 +370,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-64.3-port-contract.md`
   summary: Keep the live harness's cross-client timing, host rate-limit or recovery, metadata capacity or silent-drop, global order, and injected-failure boundaries owner-verified.
   evidence: The original spec's local-versus-live proof boundary remains unchanged. The earlier note that no deferred adapter divergence was appended refers to D6 and D7, the only observed harness divergences, both fixed. These new entries are deliberate harness omissions from Batch 2, not newly discovered adapter divergences.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-64.8-shared-preview-helpers.md`
+  summary: Extend the alias-only layer restrictions to reject relative-path imports that bypass the configured aliases.
+  evidence: Review-01 Blind Hunter 1 identified a construction that predates TASK-64.8; no current offending relative import or runtime defect was demonstrated. The current task's contract names alias specifiers, so broader resolved-import enforcement remains deferred rather than treated as a bug.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-64.8-shared-preview-helpers.md`
+  summary: Add an independent assertion that the built-output dice smoke invokes the rolling callback.
+  evidence: Review-01 Blind Hunter 4 noted that the smoke's visible settled result and absence of a message would also pass with a no-op callback. The helper move is verbatim, no callback regression was demonstrated, and the smoke therefore records visible behavior only; callback-invocation coverage remains deferred rather than treated as a runtime bug.

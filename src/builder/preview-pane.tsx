@@ -4,7 +4,7 @@ import type { MouseEvent, ReactNode } from 'react';
 import { DEFAULT_WINDOW_SIZE } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { sheetKey } from '@/core/sheets';
-import { createStubRolling } from '@/preview/stub-rolling';
+import { createStubRolling } from '@/ui/stub-rolling';
 import { copy } from '@/copy';
 import { CellPreviewContext, type CellPreview } from '@/ui/sheet/preset-cell';
 import { SheetBody } from '@/ui/sheet/sheet-body';
