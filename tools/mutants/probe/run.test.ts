@@ -277,6 +277,56 @@ describe('probe CLI', () => {
     });
   }, 30_000);
 
+  test('prints zero new entries and exits 0 when every survivor and timeout is baselined', async () => {
+    // #given
+    const root = await createRepository({
+      baseline: JSON.stringify([
+        {
+          file: 'src/replica/sample.ts',
+          fn: '<module>',
+          op: 'false→true',
+          text: 'false',
+          nth: 1,
+          verdict: 'timeout',
+          reason: 'The fixture unit test intentionally waits for this mutation.',
+        },
+        {
+          file: 'src/replica/sample.ts',
+          fn: '<module>',
+          op: 'true→false',
+          text: 'true',
+          nth: 1,
+          verdict: 'equivalent',
+          reason: 'The fixture does not consume this exported value.',
+        },
+      ]),
+    });
+
+    // #when
+    const result = await runProbe(root, [
+      'sample',
+      '--jobs',
+      '1',
+      '--unit-timeout',
+      '2000',
+      '--replica-timeout',
+      '10000',
+    ]);
+
+    // #then
+    expect({
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+    }).toEqual({
+      exitCode: 0,
+      stdout: [
+        'sample: 4 mutations; 2 killed, 1 survived, 1 timed out.',
+        '0 new survivors, 0 new timeouts, 0 missing baseline entries.',
+        '',
+      ].join('\n'),
+    });
+  }, 30_000);
+
   test('reports a selected module baseline entry as missing when it yields no mutations', async () => {
     // #given
     const root = await createRepository({
