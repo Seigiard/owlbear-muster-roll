@@ -1082,13 +1082,13 @@ describe('window lifecycle', () => {
     // #when: the new engine replaces its replica after the old window received engine-1's projection.
     view.client.sendCommand({ type: 'snapshot-import', data, expectedDigest: check.answer.digest });
     await waitUntil(() => requests(rig).length > requestsBefore);
-    await waitUntil(() => keysOf(view.store).length === 2);
+    await waitUntil(() => keysOf(view.store).length === 3);
 
     // #then
     expect({
       requests: requests(rig).length - requestsBefore,
       records: keysOf(view.store),
-    }).toEqual({ requests: 1, records: ['row:after:name', 'sheet:after'] });
+    }).toEqual({ requests: 1, records: ['preset', 'row:after:name', 'sheet:after'] });
   });
 });
 
