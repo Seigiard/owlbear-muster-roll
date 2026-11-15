@@ -4,7 +4,7 @@ title: Run command routing and pending replay through a pure decision module
 status: In Progress
 assignee: []
 created_date: '2026-11-14T20:26:00Z'
-updated_date: '2026-11-15T12:12:00Z'
+updated_date: '2026-11-15T13:22:00Z'
 labels:
   - architecture
   - replica
@@ -37,3 +37,12 @@ The command/pending machine follows the TASK-64.4 map (`backlog/docs/doc-4 - TAS
 2. Keep scene eligibility in engine wiring while routing link-clear through the module.
 3. Add unit or seam tests, calibrate them, then run the required checks.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Worker validation passed on 6320626379b20af0c0d69fbd659f8a5272921338.
+Pure command routing and real pending replay are covered by calibrated module tests.
+Full unit suite: 3065 pass, 1 skip, 0 fail. Browser suite: 521 passed with Node 22.
+Awaiting parent acceptance, tracker finalization, and integration merge.
+<!-- SECTION:NOTES:END -->
