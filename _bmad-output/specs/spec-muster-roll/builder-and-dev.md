@@ -1,4 +1,4 @@
-# Builder as the one editor, and dev commands
+# The builder for preset and snapshot, and dev commands
 
 The builder edits the preset and a snapshot together, shows the window as a GM and as a player, and reads and writes the files on disk. It is the one page for the developer on `localhost` and for every GM on the deployed site. Capabilities CAP-36 to CAP-40 in `SPEC.md`. Prototypes: `../../forge/one-dev-entry/prototypes/round-1.html` to `round-5.html`.
 

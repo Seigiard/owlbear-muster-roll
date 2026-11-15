@@ -27,7 +27,9 @@
     окно всегда"). Reuse src/core/snapshot-file.ts and snapshot-import.ts for the file and for
     dropping values; the window draws through the one frame component (AD-26) and SheetBody,
     which already takes records. No engine and no mock adapter in the builder bundle. Values are
-    read-only in this story; typing is story 3. Interface text goes in src/copy.ts.
+    read-only in this story; typing is story 3. Interface text goes in src/copy.ts. GLOSSARY.md
+    changes here: Builder (also edits a snapshot), Draft (holds the snapshot too), Preview (the
+    builder's window of the snapshot's sheets); "editor" stays an avoided word.
 - id: "3"
   title: Type values in the preview with a double click
   description: >-
@@ -65,7 +67,8 @@
     Prototype: _bmad-output/forge/one-dev-entry/prototypes/round-5.html, design 2 ("блок — это
     кнопка"). The blocks replace the top bar's Открыть… and Скачать buttons. Clear asks one
     confirmation that names the linked file; undo restores. Labels and statuses go in
-    src/copy.ts; read ~/.claude/shared/interface-copy.md for their grammar.
+    src/copy.ts; read ~/.claude/shared/interface-copy.md for their grammar. Add File block to
+    GLOSSARY.md.
 - id: "6"
   title: Read, write and follow the attached files
   description: >-
@@ -90,6 +93,6 @@
   done_checkpoint: true
   invoke_dev_with: >-
     Update the project CLAUDE.md "dev, preview, or room scripts" block and the project map,
-    presets/README.md, docs/preset-format.md "Preview a preset", and GLOSSARY.md if it names
-    these pages. src/preview/sample-records.ts may still feed "Образец"; keep what the builder
+    presets/README.md, docs/preset-format.md "Preview a preset", and GLOSSARY.md: retire Local
+    room. src/preview/sample-records.ts may still feed "Образец"; keep what the builder
     imports. Run the full check.
