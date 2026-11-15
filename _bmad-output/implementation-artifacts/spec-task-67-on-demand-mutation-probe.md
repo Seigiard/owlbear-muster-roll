@@ -2,7 +2,7 @@
 title: 'TASK-67: Run the replica mutation probe on demand'
 type: 'feature'
 created: '2026-11-15'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '370b62b2fb6c7ab8b7c05d3305eb0761e76f30c9'
 review_loop_iteration: 0
@@ -62,14 +62,14 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `tools/mutants/probe/generate.ts` -- port the generator to the TS7 API; return mutations with file, line, function path, operation, start/end, replacement, normalized node text and `nth` -- one pure, testable inventory
-- [ ] `tools/mutants/probe/baseline.ts` -- zod schema, anchor key, and `compare(rows, baseline)` returning new survivors, new timeouts and missing entries -- pure logic for unit tests
-- [ ] `tools/mutants/probe/run.ts` -- CLI: module selection, dirty check, checkout pool, two passes, report, exit code, cleanup
-- [ ] `tools/mutants/probe-baseline.json` -- 65 survivors plus 3 timeouts with verdict and reason
-- [ ] `tools/mutants/probe/*.test.ts` -- unit tests for generation on a small fixture source and for `compare` (match, new, missing, `nth` ties)
-- [ ] `package.json` -- add `"probe": "bun tools/mutants/probe/run.ts"`
-- [ ] `tsconfig.json` -- include `tools/mutants`; fix any type errors this exposes in existing files
-- [ ] `tools/mutants/README.md` -- when to run (a new or rewritten `src/replica` module, before planning its tests), cost (about 13 min for the three baselined modules at 6 jobs; pass 2 costs about 50 s per mutation), and how to classify a new survivor (gap → write a test; equivalent/unreachable → add a baseline entry with a reason)
+- [x] `tools/mutants/probe/generate.ts` -- port the generator to the TS7 API; return mutations with file, line, function path, operation, start/end, replacement, normalized node text and `nth` -- one pure, testable inventory
+- [x] `tools/mutants/probe/baseline.ts` -- zod schema, anchor key, and `compare(rows, baseline)` returning new survivors, new timeouts and missing entries -- pure logic for unit tests
+- [x] `tools/mutants/probe/run.ts` -- CLI: module selection, dirty check, checkout pool, two passes, report, exit code, cleanup
+- [x] `tools/mutants/probe-baseline.json` -- 65 survivors plus 3 timeouts with verdict and reason
+- [x] `tools/mutants/probe/*.test.ts` -- unit tests for generation on a small fixture source and for `compare` (match, new, missing, `nth` ties)
+- [x] `package.json` -- add `"probe": "bun tools/mutants/probe/run.ts"`
+- [x] `tsconfig.json` -- include `tools/mutants`; fix any type errors this exposes in existing files
+- [x] `tools/mutants/README.md` -- when to run (a new or rewritten `src/replica` module, before planning its tests), cost (about 13 min for the three baselined modules at 6 jobs; pass 2 costs about 50 s per mutation), and how to classify a new survivor (gap → write a test; equivalent/unreachable → add a baseline entry with a reason)
 
 **Acceptance Criteria:**
 - Given this branch, when the generator runs on the three baselined modules, then it yields 788 mutations whose `(file, line, op, before)` multiset equals the reference `unit.jsonl`.
@@ -89,6 +89,12 @@ Anchor = `file` + `fn` + `op` + whitespace-collapsed full text of the mutated no
 
 ## Implementation Notes
 
+- Built through the tdd chain (run `tdd-20261115-181014/task-67-on-demand-mutation-probe`): 3 batches, 24 criteria. The generator inventory matches the TypeScript 5 reference (788/788 multiset). The baseline maps to exactly the 65 reference survivors and 3 timeouts.
+- An unmutated preflight runs before any mutation: an early run reported 788 killed because every test failed in the checkout.
+- Code review: round 01 (mixed, 6/6 sources) raised 11 findings, all fixed with tests or code; round 02 (final, 2/2 sources) raised none. Nothing deferred.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+- Step 04 code-review carry-over: no open decision, no unresolved critical or major, no deferred finding, no corrected criterion. Criterion 24 (exit 0 on a clean run) was added by the matrix audit for the Unchanged code row, not corrected.
