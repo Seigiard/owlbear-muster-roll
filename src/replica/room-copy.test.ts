@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { fileURLToPath } from 'node:url';
 
 import { FORMAT_VERSION } from '@/core/format-version';
 import type { JsonObject } from '@/core/json';
@@ -51,6 +52,11 @@ type Subject = ReturnType<typeof createRoomCopy> & {
   writable: (next: boolean) => void;
   gm: (next: boolean) => void;
   generation: (next: Generation) => void;
+};
+
+type StoppedWriteImportObservation = {
+  event: 'import-complete';
+  writes: number;
 };
 
 function createGate(): Gate {
@@ -276,6 +282,45 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 async function flush(): Promise<void> {
   for (let index = 0; index < 50; index += 1) {
     await Promise.resolve();
+  }
+}
+
+async function observeStoppedWriteImport(): Promise<StoppedWriteImportObservation> {
+  const child = Bun.spawn(
+    ['bun', fileURLToPath(new URL('../../tests/support/room-copy-observer.ts', import.meta.url))],
+    { stdout: 'pipe', stderr: 'pipe' },
+  );
+
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const output = await Promise.race([
+      new Response(child.stdout).text(),
+      new Promise<never>((_resolve, reject) => {
+        deadline = setTimeout(() => {
+          reject(new Error('observer did not report import completion before the 500 ms deadline'));
+        }, 500);
+      }),
+    ]);
+
+    const status = await child.exited;
+
+    if (status !== 0) {
+      throw new Error(`observer exited with status ${status}`);
+    }
+
+    // SAFETY: this fixture emits only its documented import-complete observation before it exits.
+    return JSON.parse(output) as StoppedWriteImportObservation;
+  } finally {
+    if (deadline !== undefined) {
+      clearTimeout(deadline);
+    }
+
+    if (child.exitCode === null) {
+      child.kill();
+    }
+
+    await child.exited;
   }
 }
 
@@ -685,6 +730,17 @@ test('an import waiting for a stopped write completes after that write settles',
     writes: 1,
     state: 'saved',
   });
+});
+
+test('a healthy observer receives stopped-write import completion before its deadline', async () => {
+  // #given
+  const expected: StoppedWriteImportObservation = { event: 'import-complete', writes: 1 };
+
+  // #when
+  const observed = await observeStoppedWriteImport();
+
+  // #then
+  expect(observed).toEqual(expected);
 });
 
 test('a stopped room copy does not merge records after its active write settles', async () => {
@@ -1410,7 +1466,12 @@ test('a superseded import does not start its deferred rerun', async () => {
   await flush();
 
   // #then
-  expect({ writes: subject.gate.writes, peakWrites: subject.gate.peakWrites }).toEqual({
+  expect({
+    reads: subject.gate.reads,
+    writes: subject.gate.writes,
+    peakWrites: subject.gate.peakWrites,
+  }).toEqual({
+    reads: 2,
     writes: 1,
     peakWrites: 1,
   });
