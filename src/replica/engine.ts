@@ -1,34 +1,25 @@
 import { nanoid } from 'nanoid';
 
-import { checkProposal, partyEntries, type ProposalContext } from '@/core/access';
+import { partyEntries } from '@/core/access';
 import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { recordDigest } from '@/core/digest';
 import { newRecordId, type RecordIdKind } from '@/core/ids';
-import { fitsOneMessage, recordFitsOneMessage } from '@/core/message-size';
+import { recordFitsOneMessage } from '@/core/message-size';
 import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
 import { liveLinkTarget, type LinkTarget } from '@/core/link-target';
 import { decodePreset, windowSizeOf, type Preset } from '@/core/preset';
 import { NOTHING_ERASED } from '@/core/preset-migrate';
-import { parseRepKey, presetDataSchema, type VersionedRecord } from '@/core/records';
+import { presetDataSchema, type VersionedRecord } from '@/core/records';
 import type { RollCopy } from '@/core/roll-text';
 import {
-  admitRoomMessage,
   aliveMessage,
-  editIdOf,
-  parseRoomMessage,
   pingMessage,
   proposeMessage,
-  rejectMessage,
   stateRequestMessage,
   SYNC_CHANNEL,
-  type GenerationRelation,
-  type ProposeMessage,
-  type RejectMessage,
-  type RoomMessage,
-  type StateMessage,
 } from '@/core/room-messages';
 import { openTarget, tokensToUnlink } from '@/core/token-links';
-import { decodeStateRecords, stateAnswer } from '@/core/state-records';
+import { stateAnswer } from '@/core/state-records';
 import type { Generation } from '@/core/storage-key';
 import {
   DICE_EXTENSION_TIMING,
@@ -45,7 +36,7 @@ import {
   type RejectionReason,
 } from '@/core/ui-messages';
 import { linkTargetShownTo, type PlayerRole } from '@/core/visibility';
-import type { BroadcastEvent, BroadcastOptions, Platform } from '@/platform/ports';
+import type { BroadcastOptions, Platform } from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
 import {
   createCatchUp,
@@ -54,26 +45,21 @@ import {
   type CatchUpTimer,
 } from '@/replica/catch-up';
 import { createCommitOutbox } from '@/replica/commit-outbox';
-import {
-  blockLinkTombstones,
-  createComposers,
-  type ComposeContext,
-  type PresetUploadLoss,
-} from '@/replica/composers';
+import { createComposers, type ComposeContext, type PresetUploadLoss } from '@/replica/composers';
 import { createDiceExtension } from '@/replica/dice-extension';
 import {
   createGenerationFlow,
-  generationRelation,
   type GenerationFlow,
   type GenerationPersistence,
 } from '@/replica/generation-flow';
-import { createPartyRoster, type RoomSender } from '@/replica/party-roster';
+import { createPartyRoster } from '@/replica/party-roster';
 import { createCommandRouting, type CommandRouting } from '@/replica/command-routing';
 import { createPendingQueue } from '@/replica/pending-queue';
 import { createPendingEdits } from '@/replica/pending-edits';
 import { createRecordStore } from '@/replica/record-store';
 import { createRoomCopy, type RoomCopy } from '@/replica/room-copy';
 import { createRollFlow } from '@/replica/roll-flow';
+import { createRoomProtocol } from '@/replica/room-protocol';
 import { watchSceneRemovals, type SceneWatch } from '@/replica/scene-watch';
 import { createTokenMenu, type TokenMenuCopy } from '@/replica/token-menu';
 import { createVersionMinter } from '@/replica/version-minter';
@@ -967,9 +953,12 @@ export async function startReplicaEngine(
 
   // AD-4: a GM edit goes to the room after it is merged, persisted and shown. A GM whose storage
   // could not be read minted without the saved state, so its records stay in this client.
-  function sendCommits(applied: readonly VersionedRecord[]): void {
+  function sendCommits(
+    applied: readonly VersionedRecord[],
+    acks: readonly { k: string; c: number; a: string }[] = [],
+  ): void {
     if (generationFlow.persistence() !== null) {
-      outbox.add(applied);
+      outbox.add(applied, acks);
     }
   }
 
@@ -994,150 +983,6 @@ export async function startReplicaEngine(
     publisher.restart();
     dropStaleOpen();
     followReplica();
-  }
-
-  function proposalContext(records: ReadonlyMap<string, VersionedRecord>): ProposalContext {
-    return { records, preset: presetOf(records.get('preset')) };
-  }
-
-  // AD-4: a GM client that is live and can vouch for its records checks a player's proposal in
-  // `core/access`. It merges a passed record unchanged and commits it, or the existing tombstone for
-  // a removal of a removed row, echoing the proposer's `(k, c, a)` either way; or it rejects with
-  // that echo. A GM in catch-up neither commits nor rejects: the player resends.
-  // `sender` is the connection the gate heard it from: the `a` that connection mints with.
-  function receiveProposal(
-    message: ProposeMessage,
-    sender: string,
-    member: RoomSender | null,
-  ): void {
-    if (
-      role !== 'GM' ||
-      !catchUp.live() ||
-      generationFlow.persistence() === null ||
-      member === null
-    ) {
-      return;
-    }
-
-    const [record] = message.records;
-
-    if (record === undefined) {
-      return;
-    }
-
-    const edit = editIdOf(record);
-
-    // No GM client could commit it, so the player hears now rather than resending forever.
-    if (!recordFitsOneMessage(record)) {
-      sendRoom(rejectMessage(generationFlow.generation(), edit, { reason: 'denied' }));
-
-      return;
-    }
-
-    const verdict = checkProposal(
-      proposalContext(replica),
-      { playerId: member.playerId, author: sender },
-      record,
-    );
-
-    switch (verdict.kind) {
-      case 'commit': {
-        const before = replica.get(record.k);
-        apply([record]);
-        const winner = replica.get(record.k) ?? record;
-        const changed = winner !== before;
-
-        publisher.publish();
-
-        if (changed) {
-          roomCopy.edited();
-        }
-
-        outbox.add([winner], [edit]);
-        unlinkRemovedBlock(winner);
-
-        break;
-      }
-
-      case 'commit-existing':
-        outbox.add([verdict.record], [edit]);
-        unlinkRemovedBlock(verdict.record);
-        break;
-      case 'denied':
-        sendRoom(rejectMessage(generationFlow.generation(), edit, { reason: 'denied' }));
-        break;
-      case 'stale': {
-        const stale = rejectMessage(generationFlow.generation(), edit, {
-          reason: 'stale',
-          current: verdict.current,
-        });
-
-        // A current record too large to go with the answer leaves the player nothing to rebase on.
-        sendRoom(
-          fitsOneMessage(stale)
-            ? stale
-            : rejectMessage(generationFlow.generation(), edit, { reason: 'denied' }),
-        );
-
-        break;
-      }
-
-      default:
-        unknownVerdict(verdict);
-    }
-  }
-
-  // AD-19: the GM client that commits a player's removal of a repeat block tombstones the links to
-  // it in the next batch.
-  function unlinkRemovedBlock(record: VersionedRecord): void {
-    const parts = record.d === null ? parseRepKey(record.k) : null;
-
-    if (parts === null) {
-      return;
-    }
-
-    const applied = apply(blockLinkTombstones(liveContext(), parts.sheetId, parts.instanceId));
-
-    if (applied.length > 0) {
-      publisher.publish();
-      sendCommits(applied);
-      roomCopy.edited();
-    }
-  }
-
-  function sendRoom(message: RejectMessage): void {
-    if (!fitsOneMessage(message)) {
-      console.error('Muster Roll built a rejection too large for one message', message.k);
-
-      return;
-    }
-
-    sendQueue.enqueue(SYNC_CHANNEL, message, REMOTE).catch((error) => {
-      console.error('Muster Roll could not answer a proposal', error);
-    });
-  }
-
-  function receiveReject(message: RejectMessage): void {
-    if (role === 'GM') {
-      return;
-    }
-
-    const result = pendingEdits.rejected(message);
-
-    if (result === null) {
-      return;
-    }
-
-    if (result.notify) {
-      notifyDenied();
-    }
-
-    // The GM's record merges too: it is newer than this client's.
-    const changed = result.merge === null ? [] : receiveRecords([result.merge]);
-
-    if (changed.length === 0) {
-      publisher.publish();
-    }
   }
 
   function notifyDenied(): void {
@@ -1331,39 +1176,6 @@ export async function startReplicaEngine(
     return cachedDigest;
   }
 
-  function receiveState(message: StateMessage, sender: string, relation: GenerationRelation): void {
-    const records = decodeStateRecords(message.records);
-
-    if (!records.ok) {
-      console.error('Muster Roll dropped a state message it could not read');
-
-      return;
-    }
-
-    if (relation === 'higher') {
-      // AD-9: the gate started adoption already. Only the generation adopted gathers, apart from
-      // the replica, and only its answers complete it.
-      const target = catchUp.adopting();
-
-      if (target === null || compareGenerations(message.g, target) !== 0) {
-        return;
-      }
-
-      generationFlow.stage(records.value);
-      void runCatchUp(catchUp.stateMerged(message, sender, relation)).catch((error) => {
-        console.error('Muster Roll could not process an adopted state answer', error);
-      });
-
-      return;
-    }
-
-    // Every `state` merges whenever it arrives, in any state.
-    receiveRecords(records.value);
-    void runCatchUp(catchUp.stateMerged(message, sender, relation)).catch((error) => {
-      console.error('Muster Roll could not process a state answer', error);
-    });
-  }
-
   async function rereadRole(): Promise<void> {
     roleReads += 1;
 
@@ -1448,136 +1260,42 @@ export async function startReplicaEngine(
     publisher.publish();
   }
 
-  // AD-5: `v`, then the schema, then the gate, and only then a handler.
-  async function handleRoomMessage(event: BroadcastEvent): Promise<void> {
-    const parsed = parseRoomMessage(event.data);
-
-    if (!parsed.ok) {
-      if (parsed.error === 'newer-version') {
-        raiseNewerVersion();
-      }
-
-      return;
-    }
-
-    const message = parsed.value;
-    const sender = await roster.senderOf(event.connectionId);
-
-    if (stopped) {
-      return;
-    }
-
-    const relation = generationRelation(message.g, generationFlow.generation());
-
-    // AD-5 and AD-9: a GM that speaks from a higher generation, by `reset` or any other message,
-    // starts adoption. An answer to this client's own request keeps that request.
-    if (relation === 'higher' && sender?.role === 'GM') {
-      void runCatchUp(
-        generationFlow.seeGeneration(
-          message.g,
-          message.t === 'state' && catchUp.answersOwn(message.r),
-        ),
-      ).catch((error) => {
-        console.error('Muster Roll could not start generation adoption', error);
-      });
-
-      // The gate takes a commit of its own generation only, so one of the generation adopted
-      // gathers here, or it would be lost until the next drift check.
-      if (
-        message.t === 'commit' &&
-        catchUp.adopting() !== null &&
-        compareGenerations(message.g, catchUp.adopting()!) === 0
-      ) {
-        generationFlow.stage(message.records);
-      }
-    }
-
-    if (!admitRoomMessage(message.t, sender?.role ?? null, relation)) {
-      return;
-    }
-
-    // AD-6: any admitted message from a GM sender shows that a GM client answers.
-    if (sender?.role === 'GM') {
-      void runCatchUp(catchUp.heard(sender.role, message)).catch((error) => {
-        console.error('Muster Roll could not update the GM link', error);
-      });
-    }
-
-    dispatchRoomMessage(message, event.connectionId, sender, relation);
-  }
-
-  // `member` is the party member behind `sender`, which the gate requires for every admitted type.
-  function dispatchRoomMessage(
-    message: RoomMessage,
-    sender: string,
-    member: RoomSender | null,
-    relation: GenerationRelation,
-  ): void {
-    switch (message.t) {
-      case 'commit': {
-        const cleared =
-          role === 'GM'
-            ? false
-            : pendingEdits.answered([...message.acks, ...message.records.map(editIdOf)]);
-
-        // AD-8: another GM's edit changed the replica, so this GM writes too. The jitter keeps
-        // GM clients from writing together.
-        if (receiveRecords(message.records).length > 0) {
-          roomCopy.edited();
-        } else if (cleared) {
-          publisher.publish();
-        }
-
-        break;
-      }
-
-      case 'propose':
-        receiveProposal(message, sender, member);
-        break;
-      case 'reject':
-        receiveReject(message);
-        break;
-      case 'state-request':
-        void runCatchUp(catchUp.stateRequested(message.r)).catch((error) => {
-          console.error('Muster Roll could not answer a state request', error);
-        });
-        break;
-      case 'state':
-        receiveState(message, sender, relation);
-        break;
-      case 'ping':
-        void runCatchUp(catchUp.pingReceived()).catch((error) => {
-          console.error('Muster Roll could not answer a ping', error);
-        });
-        break;
-      case 'alive':
-        void runCatchUp(catchUp.aliveReceived(message, sender, relation)).catch((error) => {
-          console.error('Muster Roll could not process a liveness message', error);
-        });
-        break;
-      case 'roll':
-        if (member !== null) {
-          rollFlow.receiveRoll(message, member);
-        }
-
-        break;
-      // AD-9: the gate admits only a higher generation from a GM, which started adoption above.
-      case 'reset':
-        break;
-      default:
-        unknownRoomMessage(message);
-    }
-  }
-
-  // One message at a time in arrival order, so a sender lookup never lets a later message overtake.
-  let roomMessages: Promise<void> = Promise.resolve();
+  const roomProtocol = createRoomProtocol({
+    senderOf: roster.senderOf,
+    role: () => role,
+    stopped: () => stopped,
+    generation: () => generationFlow.generation(),
+    catchUp: {
+      adopting: catchUp.adopting,
+      answersOwn: catchUp.answersOwn,
+      heard: catchUp.heard,
+      stateRequested: catchUp.stateRequested,
+      pingReceived: catchUp.pingReceived,
+      aliveReceived: catchUp.aliveReceived,
+      stateMerged: catchUp.stateMerged,
+    },
+    seeGeneration: generationFlow.seeGeneration,
+    stageGeneration: generationFlow.stage,
+    runCatchUp,
+    onNewerVersion: raiseNewerVersion,
+    records: () => replica,
+    presetOf,
+    live: catchUp.live,
+    hasPersistence: () => generationFlow.persistence() !== null,
+    apply,
+    liveContext,
+    receiveRecords,
+    pendingEdits,
+    publish: () => publisher.publish(),
+    roomCopyEdited: roomCopy.edited,
+    sendCommits,
+    sendRemote: (message) => sendQueue.enqueue(SYNC_CHANNEL, message, REMOTE).then(() => undefined),
+    notifyDenied,
+    rollFlow,
+  });
 
   const unsubscribeRoom = platform.broadcast.onMessage(SYNC_CHANNEL, (event) => {
-    roomMessages = roomMessages
-      .then(() => handleRoomMessage(event))
-      .catch((error) => {
-        console.error('Muster Roll could not handle a room message', error);
-      });
+    roomProtocol.receive(event);
   });
 
   const unsubscribeUi = platform.broadcast.onMessage(UI_CHANNEL, (event) => {
@@ -1691,16 +1409,6 @@ async function settledWithin(work: Promise<void>, milliseconds: number): Promise
 
 function higherGeneration(first: Generation, second: Generation): Generation {
   return compareGenerations(first, second) >= 0 ? first : second;
-}
-
-// `tsc` fails here when a proposal verdict has no case above.
-function unknownVerdict(verdict: never): never {
-  throw new Error(`Muster Roll has no case for the proposal verdict ${JSON.stringify(verdict)}`);
-}
-
-// `tsc` fails here when a parsed room message has no handler above.
-function unknownRoomMessage(message: never): never {
-  throw new Error(`Muster Roll has no handler for the room message ${JSON.stringify(message)}`);
 }
 
 function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedReplica {

@@ -1,10 +1,11 @@
 ---
 id: TASK-64.9
 title: Extract room protocol admission and proposal handling
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@seigiard'
 created_date: '2026-11-15T00:00:00Z'
-updated_date: '2026-11-15T08:13:00Z'
+updated_date: '2026-11-15T13:45:00Z'
 labels:
   - architecture
   - replica
@@ -33,6 +34,14 @@ The TASK-64.4 engine map assigns the room-protocol/proposal machine to this task
 - [ ] #6 The extracted module has independent unit tests for the existing sender-lookup arrival order, error continuation, and AD-5 admission rejects without handler effects; TASK-64.4 authors no tests
 - [ ] #7 ARCHITECTURE-SPINE names every engine module in its replica row and the layer table and diagram match the code, because this is the last engine extraction before the epic closes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Extract the serialized room-protocol adapter into the real replica module seam, retaining only the outer broadcast subscription in the engine.
+2. Add independent protocol-module tests for delayed sender lookup ordering, handler-error continuation, and all AD-5 rejects without handler effects.
+3. Calibrate initially-green module assertions with faithful temporary mutations, then run the full source, browser, build, format, backlog, and architecture checks.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 

@@ -30,14 +30,14 @@ Code is a functional core with ports and adapters:
 | Layer | Directory | Holds |
 | --- | --- | --- |
 | Core | `src/core` | Records, merge, access check, visibility, preset schema, formula parser, snapshot codec. Pure, with no DOM or SDK |
-| Replica | `src/replica` | The engine in the background page. Owns the replica, protocol, catch-up and snapshot timing. Extracted engine modules: `roll-flow`, `generation-flow` and `command-routing` |
+| Replica | `src/replica` | The engine in the background page. Owns the replica, protocol, catch-up and snapshot timing. Extracted engine modules: `command-routing`, `generation-flow`, `roll-flow` and `room-protocol` |
 | Platform | `src/platform` | Ports for broadcast, metadata, party, player, map selection, storage, context menu, popover, action, notification, scene and theme. The Owlbear adapter and the test mock |
 | UI | `src/ui` | React views and nanostores. A projection of the replica |
 | Builder | `src/builder` | The preset builder page (v2): its store, document edits, tree, forms and preview. No replica and no platform |
 
 ```mermaid
 graph TD
-  UI[src/ui] -->|LOCAL messages only| Replica[src/replica]
+  UI[src/ui] -->|LOCAL messages only| Replica[src/replica<br/>engine, command-routing,<br/>generation-flow, roll-flow,<br/>room-protocol]
   UI --> Core[src/core]
   Replica --> Core
   Replica --> Ports[src/platform ports]
@@ -327,7 +327,8 @@ A message with a higher generation also starts AD-9 adoption.
 ```text
 src/
   core/        # records, merge, access, visibility, preset, formula, snapshot, messages
-  replica/     # engine, pending queue, pending edits, catch-up, room copy, gmLink
+  replica/     # engine, command-routing, generation-flow, roll-flow, room-protocol,
+               # pending queue, pending edits, catch-up, room copy, gmLink
   platform/    # ports, send queue, obr/ adapter, mock/
   ui/          # React views, nanostores projection
   builder/     # preset builder page: store, document edits, tree, forms, preview
