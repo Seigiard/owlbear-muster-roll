@@ -1,5 +1,7 @@
+import clsx from 'clsx';
 import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
+import { Button as AriaButton } from 'react-aria-components';
 
 import { rollDiceCell } from '@/core/dice-roll';
 import type { Command, RollOutcome } from '@/core/ui-messages';
@@ -13,7 +15,9 @@ import { DEFAULT_WINDOW_SIZE } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { TIMING } from '@/core/timing';
 import { sheetName } from '@/core/sheets';
+import { tabShownTo, templateShownTo, visibleRecordMap, type PlayerRole } from '@/core/visibility';
 import { copy } from '@/copy';
+import { SECONDARY_BUTTON_CLASS } from '@/ui/primitives/button';
 import { CellPreviewContext, type CellPreview } from '@/ui/sheet/preset-cell';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { SheetHeader } from '@/ui/sheet/sheet-header';
@@ -93,13 +97,20 @@ export function PreviewPane({
   const headingId = useId();
   const area = useRef<HTMLDivElement>(null);
   const areaWidth = useWidth(area);
+  const [role, setRole] = useState<PlayerRole>('GM');
 
-  const records = useMemo(
+  const sourceRecords = useMemo(
     () => new Map(snapshotRecords.map((record) => [record.k, record])),
     [snapshotRecords],
   );
 
   const preset = useMemo(() => toPreset(document), [document]);
+
+  const records = useMemo(
+    () => visibleRecordMap(role, preset, sourceRecords),
+    [preset, role, sourceRecords],
+  );
+
   const localValues = useMemo(createLocalFieldValues, []);
   const pageHideFlushes = useMemo(createFieldFlushes, []);
 
@@ -113,6 +124,14 @@ export function PreviewPane({
         }
 
         const fieldTemplate = selection === null ? null : templateOf(document, selection);
+
+        const editable =
+          role === 'GM' || (fieldTemplate?.kind === 'single' && fieldTemplate.players === 'edit');
+
+        if (!editable) {
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
         const layout = fieldTemplate === null ? null : templateToPreset(fieldTemplate);
 
         const field =
@@ -157,7 +176,7 @@ export function PreviewPane({
       pageHideFlushes,
       localValues,
     }),
-    [document, localValues, pageHideFlushes, records, selection, snapshotRecords, store],
+    [document, localValues, pageHideFlushes, records, role, selection, snapshotRecords, store],
   );
 
   const size = document.window ?? DEFAULT_WINDOW_SIZE;
@@ -207,9 +226,20 @@ export function PreviewPane({
       builderSidebarEntries(
         preset,
         records,
-        document.templates.map((template) => template.uid),
+        document.templates.map((entry) => entry.uid),
+        role,
       ),
-    [document.templates, preset, records],
+    [document.templates, preset, records, role],
+  );
+
+  const allSidebar = useMemo(
+    () =>
+      builderSidebarEntries(
+        preset,
+        sourceRecords,
+        document.templates.map((entry) => entry.uid),
+      ),
+    [document.templates, preset, sourceRecords],
   );
 
   const [shownSheetId, dispatchSheet] = useReducer(previewSheetNavigationReducer, null);
@@ -225,22 +255,41 @@ export function PreviewPane({
 
   const selectedSheet = selectedSidebarSheet(sidebar, docTemplate?.uid ?? null, shownSheetId);
 
+  const selectedSourceSheet = selectedSidebarSheet(
+    allSidebar,
+    docTemplate?.uid ?? null,
+    shownSheetId,
+  );
+
   const sample = selectedSheet?.sample === true;
   const activeSheetId = selectedSheet?.sheetId ?? null;
   const renderSheetId = sample ? PREVIEW_SHEET_ID : activeSheetId;
+  const hiddenTemplate = role === 'PLAYER' && template !== null && !templateShownTo(role, template);
 
   const renderRecords = useMemo(
     () =>
-      template === null || renderSheetId === null
+      template === null
         ? null
-        : sample
-          ? previewRecords(template)
-          : records,
-    [records, renderSheetId, sample, template],
+        : renderSheetId === null
+          ? hiddenTemplate
+            ? records
+            : null
+          : sample
+            ? previewRecords(template)
+            : records,
+    [hiddenTemplate, records, renderSheetId, sample, template],
   );
+
+  const hiddenSheetNote =
+    hiddenTemplate && template !== null
+      ? copy.builder.hiddenSheet(sheetNameFor(selectedSourceSheet, sourceRecords, preset, template))
+      : null;
 
   const [shownTab, dispatch] = useReducer(previewNavigationReducer, null);
   const [editingUid, dispatchEditing] = useReducer(previewEditingReducer, null);
+
+  const canEdit =
+    role === 'GM' || (docTemplate?.kind === 'single' && docTemplate.players === 'edit');
 
   useEffect(() => {
     dispatchEditing({ type: 'selection-changed', uid: selection });
@@ -271,7 +320,7 @@ export function PreviewPane({
       }
 
       event.preventDefault();
-      dispatchEditing({ type: 'enter-pressed', uid: selection, editable: true });
+      dispatchEditing({ type: 'enter-pressed', uid: selection, editable: canEdit });
     }
 
     window.addEventListener('keydown', handleKeyDown);
@@ -279,11 +328,18 @@ export function PreviewPane({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [document, editingUid, selection]);
+  }, [canEdit, document, editingUid, selection]);
 
   const selectedTab = useMemo(
     () => (selection === null ? null : tabIndexOf(document, selection)),
     [document, selection],
+  );
+
+  const tabIsShown = useMemo(
+    () =>
+      (index: number): boolean =>
+        template === null || tabShownTo(role, template, index),
+    [role, template],
   );
 
   const navigationTemplate = useMemo<PreviewNavigationTemplate | null>(
@@ -293,8 +349,13 @@ export function PreviewPane({
   );
 
   const navigationAction = useMemo<PreviewNavigationAction>(
-    () => ({ type: 'selection-changed', template: navigationTemplate, selectedTab }),
-    [navigationTemplate, selectedTab],
+    () => ({
+      type: 'selection-changed',
+      template: navigationTemplate,
+      selectedTab,
+      tabShown: tabIsShown,
+    }),
+    [navigationTemplate, selectedTab, tabIsShown],
   );
 
   const nextShownTab = previewNavigationReducer(shownTab, navigationAction);
@@ -312,7 +373,7 @@ export function PreviewPane({
 
   const scale = areaWidth === null ? 1 : Math.min(1, areaWidth / width);
 
-  const visibleIndexes = template?.tabs.map((_tab, index) => index) ?? [];
+  const visibleIndexes = template?.tabs.map((_tab, index) => index).filter(tabIsShown) ?? [];
 
   const tabs: ShellTab[] = visibleIndexes.map((index) => {
     const templateTab = template?.tabs[index];
@@ -324,7 +385,7 @@ export function PreviewPane({
     };
   });
 
-  const activeEditingUid = editingUid === selection ? editingUid : null;
+  const activeEditingUid = canEdit && editingUid === selection ? editingUid : null;
 
   const preview = useMemo<CellPreview>(
     () => ({
@@ -387,7 +448,7 @@ export function PreviewPane({
             ?.cells[path.cell]
         : undefined;
 
-    const editable = !sample && cell?.kind === 'field';
+    const editable = !sample && cell?.kind === 'field' && canEdit;
 
     if (!selected) {
       store.select(uid);
@@ -433,57 +494,93 @@ export function PreviewPane({
         {docTemplate === null || template === null || renderRecords === null ? (
           <p className="text-text-muted">{copy.builder.emptyPreset}</p>
         ) : (
-          <div style={{ width: width * scale, height: height * scale }}>
-            <div
-              className="origin-top-left overflow-clip rounded-window bg-surface text-body text-text"
-              style={{ width, height, transform: scale === 1 ? undefined : `scale(${scale})` }}
-              onClickCapture={handleClick}
-              data-preview-frame
-            >
-              <WindowFrame
-                layout={{
-                  sidebar,
-                  selectedSidebarEntry: selectedSheet?.id ?? '',
-                  onSelectSidebarEntry: (id) => {
-                    const entry = findSidebarSheet(sidebar, id);
+          <div className="flex flex-col gap-2">
+            <PreviewRoleSwitch role={role} onRole={setRole} />
+            <div style={{ width: width * scale, height: height * scale }}>
+              <div
+                className="origin-top-left overflow-clip rounded-window bg-surface text-body text-text"
+                style={{ width, height, transform: scale === 1 ? undefined : `scale(${scale})` }}
+                onClickCapture={handleClick}
+                data-preview-frame
+              >
+                <WindowFrame
+                  layout={{
+                    sidebar,
+                    selectedSidebarEntry: selectedSheet?.id ?? '',
+                    onSelectSidebarEntry: (id) => {
+                      const entry = findSidebarSheet(sidebar, id);
 
-                    if (entry === null) {
-                      return;
-                    }
+                      if (entry === null) {
+                        return;
+                      }
 
-                    dispatchSheet({ type: 'sheet-selected', sheetId: entry.sheetId });
+                      dispatchSheet({ type: 'sheet-selected', sheetId: entry.sheetId });
 
-                    if (entry.templateUid !== undefined) {
-                      store.select(entry.templateUid);
-                    }
-                  },
-                  onAddSidebarEntry: (setId) => {
-                    store.addSheet(setId);
-                  },
-                  tabs,
-                  selectedTab: openTab === null ? null : templateTabKey(openTab),
-                  onSelectTab: (id) => {
-                    const index = templateIndexFromKey(id);
+                      if (entry.templateUid !== undefined) {
+                        store.select(entry.templateUid);
+                      }
+                    },
+                    onAddSidebarEntry: role === 'GM' ? (setId) => store.addSheet(setId) : undefined,
+                    tabs,
+                    selectedTab: openTab === null ? null : templateTabKey(openTab),
+                    onSelectTab: (id) => {
+                      const index = templateIndexFromKey(id);
 
-                    const uid =
-                      index === null
-                        ? null
-                        : uidAt(document, [templateIndexOf(document, docTemplate.uid), index]);
+                      const uid =
+                        index === null
+                          ? null
+                          : uidAt(document, [templateIndexOf(document, docTemplate.uid), index]);
 
-                    if (uid !== null) {
-                      store.select(uid);
-                    }
-                  },
-                  header,
-                  content,
-                  frameClassName: 'h-full',
-                }}
-              />
+                      if (uid !== null) {
+                        store.select(uid);
+                      }
+                    },
+                    header: hiddenSheetNote === null ? header : null,
+                    content: hiddenSheetNote === null ? content : <p>{hiddenSheetNote}</p>,
+                    frameClassName: 'h-full',
+                  }}
+                />
+              </div>
             </div>
           </div>
         )}
       </div>
     </section>
+  );
+}
+
+function PreviewRoleSwitch({
+  role,
+  onRole,
+}: {
+  role: PlayerRole;
+  onRole: (role: PlayerRole) => void;
+}): ReactNode {
+  return (
+    <div
+      role="group"
+      aria-label={copy.builder.previewRole}
+      className="flex flex-wrap items-center gap-1"
+    >
+      <AriaButton
+        className={clsx(SECONDARY_BUTTON_CLASS, role === 'GM' && 'bg-fill-strong')}
+        aria-pressed={role === 'GM'}
+        onPress={() => {
+          onRole('GM');
+        }}
+      >
+        {copy.builder.previewGm}
+      </AriaButton>
+      <AriaButton
+        className={clsx(SECONDARY_BUTTON_CLASS, role === 'PLAYER' && 'bg-fill-strong')}
+        aria-pressed={role === 'PLAYER'}
+        onPress={() => {
+          onRole('PLAYER');
+        }}
+      >
+        {copy.builder.previewPlayer}
+      </AriaButton>
+    </div>
   );
 }
 

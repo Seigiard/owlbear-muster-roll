@@ -11,6 +11,7 @@ export type PreviewNavigationAction = {
   type: 'selection-changed';
   template: PreviewNavigationTemplate | null;
   selectedTab: ShownTab | null;
+  tabShown?: (index: number) => boolean;
 };
 
 export type PreviewSheetNavigationState = string | null;
@@ -40,7 +41,12 @@ export function previewNavigationReducer(
         ? state.tab
         : undefined;
 
-  const tab = openTabIndex(action.template, chosenTab);
+  const shownTab =
+    action.tabShown === undefined
+      ? openTabIndex(action.template, chosenTab)
+      : openTabIndex(action.template, chosenTab, action.tabShown);
+
+  const tab = shownTab ?? 0;
 
   if (state?.template === action.template.uid && state.tab === tab) {
     return state;
