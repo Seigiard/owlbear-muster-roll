@@ -1,11 +1,11 @@
 ---
 id: TASK-66.4
 title: Cover the window-publisher behaviors that no test pins
-status: In Progress
+status: Done
 assignee:
   - '@seigiard'
 created_date: '2026-11-15T08:12:00Z'
-updated_date: '2026-11-15T11:43:00Z'
+updated_date: '2026-11-15T13:32:00Z'
 labels:
   - testing
   - replica
@@ -29,11 +29,11 @@ Cluster D is a defect in the restart cue, decided by the owner on 2026-11-15. `r
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Gap clusters A, B, C, E and F in the probe document each have a test that passes on the current code and fails under each mutant the cluster lists.
-- [ ] #2 After `restart()`, the next `publish()` sends exactly one record-free delta under the new engine id whether or not the publisher had sent a projection; after that cue, publishes before a projection keep the existing rule (a cue only when the visible records or pending change).
-- [ ] #3 An engine-level test shows that a window holding an older engine's stream asks for a new projection after the new engine replaces its replica before any projection; it fails on the current code.
-- [ ] #4 The test `stays silent after a restart with no earlier projection` in `src/replica/window-publisher.test.ts` is replaced, with the contract change stated in the commit.
-- [ ] #5 New mutation controls in `tools/mutants/window-publisher.json` cover clusters A, B, C and D, and `bun run mutants window-publisher` reports 0 survived and 0 stale.
+- [x] #1 Gap clusters A, B, C, E and F in the probe document each have a test that passes on the current code and fails under each mutant the cluster lists.
+- [x] #2 After `restart()`, the next `publish()` sends exactly one record-free delta under the new engine id whether or not the publisher had sent a projection; after that cue, publishes before a projection keep the existing rule (a cue only when the visible records or pending change).
+- [x] #3 An engine-level test shows that a window holding an older engine's stream asks for a new projection after the new engine replaces its replica before any projection; it fails on the current code.
+- [x] #4 The test `stays silent after a restart with no earlier projection` in `src/replica/window-publisher.test.ts` is replaced, with the contract change stated in the commit.
+- [x] #5 New mutation controls in `tools/mutants/window-publisher.json` cover clusters A, B, C and D, and `bun run mutants window-publisher` reports 0 survived and 0 stale.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -43,3 +43,15 @@ Cluster D is a defect in the restart cue, decided by the owner on 2026-11-15. `r
 2. Implement the unconditional one-shot restart cue and mutation controls A/B/C/D without changing locked tests.
 3. Calibrate every listed mutant, run targeted tests and selected checks, then record criterion evidence.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Validation: ticket suite 158 pass / 0 fail; window-publisher controls 18 killed / 0 survived / 0 stale; F35/F36/F66/F67/F68 behaviorally calibrated after an independent probe found the first F fixture masked them. Durable control verdict: task-66-4-final-controls-orch. Chain evidence: /Users/seigiard/.claude/artifacts/implement-spec-66-20261115-093432/66.4/chain.report.md.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added publisher tests for A/B/C/E/F and the settled restart cue. A restart now sends one record-free new-engine cue before any projection, which makes an old window request a fresh projection after an actual import replacement. Added controls A/B/C/D and separate real-byte F boundary tests. Ticket tests, mutation controls, and selected full checks passed. B38 is killed by its faithful no-fit runtime TypeError before its protected assertion; the chain report records that calibration limitation.
+<!-- SECTION:FINAL_SUMMARY:END -->
