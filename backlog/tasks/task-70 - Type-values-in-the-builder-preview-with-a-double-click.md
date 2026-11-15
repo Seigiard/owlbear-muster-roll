@@ -1,9 +1,11 @@
 ---
 id: TASK-70
 title: Type values in the builder preview with a double click
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@opencode'
 created_date: '2026-11-15T17:45:00Z'
+updated_date: '2026-11-15T21:49:00Z'
 labels:
   - one-editor
 dependencies:
@@ -27,3 +29,12 @@ With a snapshot in the window, a GM needs to fill values where the sheet is, and
 - [ ] #3 A second click on a dice cell rolls
 - [ ] #4 A structure edit applies to every sheet of its template
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Extend the existing preview interaction and builder-store seams for selected-cell snapshot editing and local dice rolls.
+2. Lock behavioral tests before production implementation through the tdd chain.
+3. Preserve selection, Escape behavior, template-wide structure edits and whole-step history.
+4. Run all changed-path checks and return the validated branch for integration; no per-ticket review.
+<!-- SECTION:PLAN:END -->
