@@ -232,6 +232,7 @@ export const copy = {
     confirmOpen: 'Открыть',
     structure: 'Структура',
     preview: (width: number, height: number): string => `Превью · окно ${width} × ${height}`,
+    previewSample: 'Образец',
     addSet: 'Добавить набор',
     addSingle: 'Добавить одиночный лист',
     addTab: 'Добавить вкладку',

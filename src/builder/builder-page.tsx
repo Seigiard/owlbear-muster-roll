@@ -11,17 +11,26 @@ import {
   type Preset,
   type PresetFailure,
 } from '@/core/preset';
+import { encodePreset } from '@/core/preset';
 import { err, type Result } from '@/core/result';
+import {
+  importSnapshot,
+  parseSnapshotFile,
+  SNAPSHOT_FILE_BYTE_LIMIT,
+  type SnapshotImportFailure,
+} from '@/core/snapshot-import';
+import { encodeSnapshotFile, formatSnapshotFile, snapshotFileName } from '@/core/snapshot-file';
 import { PREVIEW_THEMES, type PreviewThemeName } from '@/ui/themes';
 import { copy } from '@/copy';
 import { downloadJsonFile } from '@/ui/download';
 import { presetFailureMessage } from '@/ui/preset-errors';
+import { fileFailureText } from '@/ui/settings/snapshot-text';
 import { Banner, type BannerMessage } from '@/ui/primitives/banner';
 import { Button } from '@/ui/primitives/button';
 import { applyTheme } from '@/ui/theme';
 
 import { BLANK_NAME, type BuilderStore } from './builder-store';
-import { isEmptyDocument } from './document';
+import { isEmptyDocument, toPreset } from './document';
 import { BUILDER_EXAMPLES } from './examples';
 import { downloadFileName, nameFromFile } from './file-name';
 import { ItemForm } from './item-form';
@@ -102,6 +111,37 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
     });
   }
 
+  async function openSnapshotFile(file: File): Promise<void> {
+    const parsed =
+      file.size > SNAPSHOT_FILE_BYTE_LIMIT
+        ? err<'too-large'>('too-large')
+        : parseSnapshotFile(await file.text());
+
+    if (!parsed.ok) {
+      setFileMessage({ variant: 'danger', text: fileFailureText(parsed.error) });
+
+      return;
+    }
+
+    const step = store.$state.get().step;
+    const preset = toPreset(step.document);
+
+    const imported = importSnapshot(
+      parsed.value,
+      { preset, data: encodePreset(preset) },
+      'builder',
+    );
+
+    if (!imported.ok) {
+      setFileMessage({ variant: 'danger', text: snapshotImportFailureText(imported.error) });
+
+      return;
+    }
+
+    store.setSnapshot(imported.value.records);
+    setFileMessage(undefined);
+  }
+
   function openExample(key: string): void {
     const example = BUILDER_EXAMPLES.find((item) => item.key === key);
     const parsed = example === undefined ? null : parsePresetFile(example.text);
@@ -141,6 +181,11 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
         onOpenExample={openExample}
         onOpenFile={(file) => {
           void openFile(file);
+        }}
+        onOpenSnapshotFile={(file) => {
+          openSnapshotFile(file).catch(() => {
+            console.error('Muster Roll could not load a snapshot');
+          });
         }}
       />
       {request === null ? null : (
@@ -185,11 +230,18 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
         <PreviewPane
           store={store}
           document={document}
+          records={state.step.records}
           selection={state.selection}
           problems={problems}
         />
       </div>
     </main>
+  );
+}
+
+function snapshotImportFailureText(failure: SnapshotImportFailure): string {
+  return copy.badFile(
+    failure === 'too-large' ? copy.badFileReason.tooLarge : copy.badFileReason.invalidStructure,
   );
 }
 
@@ -203,6 +255,7 @@ type TopBarProps = {
   onOpenEmpty: () => void;
   onOpenExample: (key: string) => void;
   onOpenFile: (file: File) => void;
+  onOpenSnapshotFile: (file: File) => void;
 };
 
 function TopBar({
@@ -215,9 +268,24 @@ function TopBar({
   onOpenEmpty,
   onOpenExample,
   onOpenFile,
+  onOpenSnapshotFile,
 }: TopBarProps): ReactNode {
   const state = useStore(store.$state);
   const fileInput = useRef<HTMLInputElement>(null);
+  const snapshotFileInput = useRef<HTMLInputElement>(null);
+
+  const snapshot = useMemo(
+    () =>
+      problemCount === 0
+        ? formatSnapshotFile(
+            encodeSnapshotFile(
+              new Map(state.step.records.map((record) => [record.k, record])),
+              toPreset(state.step.document),
+            ),
+          )
+        : null,
+    [problemCount, state.step.document, state.step.records],
+  );
 
   return (
     <header className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2">
@@ -306,6 +374,31 @@ function TopBar({
           }
         }}
       />
+      <Button
+        disabledReason={isEmptyDocument(state.step.document) ? copy.presetRequired : undefined}
+        onPress={() => {
+          snapshotFileInput.current?.click();
+        }}
+      >
+        {copy.command.loadSnapshot}
+      </Button>
+      <input
+        ref={snapshotFileInput}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        aria-label={copy.command.loadSnapshot}
+        data-builder-snapshot-file-input
+        onChange={(event: ChangeEvent<HTMLInputElement>) => {
+          const file = event.target.files?.[0];
+
+          event.target.value = '';
+
+          if (file !== undefined) {
+            onOpenSnapshotFile(file);
+          }
+        }}
+      />
       <label className="flex items-center gap-2">
         <input
           type="checkbox"
@@ -319,6 +412,17 @@ function TopBar({
         {copy.builder.lightTheme}
       </label>
       <div className="ml-auto">
+        <Button
+          variant="primary"
+          disabledReason={snapshot === null ? copy.builder.downloadDisabled : undefined}
+          onPress={() => {
+            if (snapshot !== null) {
+              downloadJsonFile(snapshotFileName(new Date()), snapshot);
+            }
+          }}
+        >
+          {copy.command.downloadSnapshot}
+        </Button>
         <Button
           variant="primary"
           disabledReason={download === null ? copy.builder.downloadDisabled : undefined}

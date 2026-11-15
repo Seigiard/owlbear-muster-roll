@@ -1,7 +1,12 @@
 import { atom, type ReadableAtom } from 'nanostores';
+import { nanoid } from 'nanoid';
 import { z } from 'zod';
 
-import { parsePresetStructure, type Preset } from '@/core/preset';
+import { encodePreset, parsePresetStructure, type Preset } from '@/core/preset';
+import { recordSchema, templateIdSchema, type VersionedRecord } from '@/core/records';
+import { importSnapshot } from '@/core/snapshot-import';
+import { encodeSnapshotFile } from '@/core/snapshot-file';
+import { isSheetSet, liveSheets, sheetKey } from '@/core/sheets';
 
 import {
   ancestorUids,
@@ -24,6 +29,8 @@ export type BuilderStep = {
   origin: Preset | null;
   // The name the download file starts with.
   name: string;
+  // The builder's snapshot records, kept beside the preset and never written to a preset file.
+  records: readonly VersionedRecord[];
 };
 
 // The step before an edit, and the item the edit changed with its containers, nearest first, so
@@ -56,6 +63,8 @@ export type BuilderStore = {
   // A document edit, with the origin and the name kept.
   edit: (edit: (document: BuilderDocument) => DocumentEdit | null, coalesce?: string) => void;
   open: (preset: Preset, origin: Preset | null, name: string) => void;
+  setSnapshot: (records: readonly VersionedRecord[]) => void;
+  addSheet: (setId: string) => void;
   undo: () => void;
   redo: () => void;
   select: (uid: string | null) => void;
@@ -71,7 +80,10 @@ const draftSchema = z.object({
   preset: z.json(),
   origin: z.json().nullable(),
   name: z.string(),
+  records: z.array(recordSchema).optional(),
 });
+
+const BUILDER_AUTHOR = 'builder';
 
 export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
   const { step: loaded, readable } = readDraft(storage);
@@ -139,7 +151,18 @@ export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
 
         return result === null
           ? null
-          : { step: { ...step, document: result.document }, changed: result.changed };
+          : {
+              step: {
+                ...step,
+                document: result.document,
+                records: reconcileRecords(
+                  step.records,
+                  toPreset(step.document),
+                  toPreset(result.document),
+                ),
+              },
+              changed: result.changed,
+            };
       }, coalesce);
     },
     open: (preset, origin, name) => {
@@ -147,8 +170,57 @@ export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
         const document = fromPreset(preset);
 
         return {
-          step: { document, origin, name },
+          step: { document, origin, name, records: [] },
           changed: firstSelection(document) ?? WINDOW_UID,
+        };
+      });
+    },
+    setSnapshot: (records) => {
+      const selection = $state.get().selection ?? WINDOW_UID;
+
+      apply((step) => ({
+        step: { ...step, records: [...records] },
+        changed: selection,
+      }));
+    },
+    addSheet: (setId) => {
+      const selection = $state.get().selection ?? WINDOW_UID;
+
+      apply((step) => {
+        const preset = toPreset(step.document);
+
+        const template = preset.templates.find(
+          (candidate) => candidate.id === setId && isSheetSet(candidate),
+        );
+
+        if (template === undefined) {
+          return null;
+        }
+
+        if (!templateIdSchema.safeParse(setId).success) {
+          return null;
+        }
+
+        const used = new Set(step.records.map((record) => record.k));
+        let sheetId = nanoid(8);
+
+        while (used.has(sheetKey(sheetId))) {
+          sheetId = nanoid(8);
+        }
+
+        const sheets = liveSheets(step.records, preset, setId);
+        const order = sheets.reduce((highest, sheet) => Math.max(highest, sheet.order), -1) + 1;
+
+        const record = recordSchema.parse({
+          k: sheetKey(sheetId),
+          d: { set: setId, order },
+          c: 1,
+          a: BUILDER_AUTHOR,
+        });
+
+        return {
+          step: { ...step, records: [...step.records, record] },
+          changed: selection,
         };
       });
     },
@@ -197,7 +269,13 @@ type ReadDraft = { step: BuilderStep; readable: boolean };
 // The draft, or a blank step when there is none or it fails the preset structure check. Uids are
 // minted again. `readable` is false when the storage threw on the read.
 function readDraft(storage: DraftStorage | null): ReadDraft {
-  const blank: BuilderStep = { document: EMPTY_DOCUMENT, origin: null, name: BLANK_NAME };
+  const blank: BuilderStep = {
+    document: EMPTY_DOCUMENT,
+    origin: null,
+    name: BLANK_NAME,
+    records: [],
+  };
+
   let text: string | null = null;
 
   try {
@@ -229,6 +307,7 @@ function parseDraft(text: string, blank: BuilderStep): BuilderStep {
     document: fromPreset(preset),
     origin: draft.data.origin === null ? null : parsePresetStructure(draft.data.origin),
     name: draft.data.name,
+    records: draft.data.records ?? [],
   };
 }
 
@@ -240,11 +319,36 @@ function writeDraft(storage: DraftStorage | null, step: BuilderStep): DraftStatu
   try {
     storage.setItem(
       DRAFT_STORAGE_KEY,
-      JSON.stringify({ preset: toPreset(step.document), origin: step.origin, name: step.name }),
+      JSON.stringify({
+        preset: toPreset(step.document),
+        origin: step.origin,
+        name: step.name,
+        records: step.records,
+      }),
     );
 
     return 'saved';
   } catch {
     return 'failed';
   }
+}
+
+function reconcileRecords(
+  records: readonly VersionedRecord[],
+  before: Preset,
+  after: Preset,
+): readonly VersionedRecord[] {
+  if (records.length === 0) {
+    return records;
+  }
+
+  const file = encodeSnapshotFile(new Map(records.map((record) => [record.k, record])), before);
+
+  const imported = importSnapshot(
+    file,
+    { preset: after, data: encodePreset(after) },
+    BUILDER_AUTHOR,
+  );
+
+  return imported.ok ? imported.value.records : records;
 }
