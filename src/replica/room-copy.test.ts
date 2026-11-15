@@ -8,7 +8,6 @@ import {
   encodeSnapshot,
   readSnapshot,
   ROOM_METADATA_BYTE_LIMIT,
-  roomMetadataBytes,
   SNAPSHOT_KEY,
 } from '@/core/snapshot';
 import type { Generation } from '@/core/storage-key';
@@ -266,9 +265,13 @@ function metadataAtLimit(generation: Generation, records: readonly VersionedReco
   }
 
   const key = 'other.extension/data';
-  const base = roomMetadataBytes({ [key]: '' }, encoded.value);
+  const base = metadataJsonBytes({ [key]: '', [SNAPSHOT_KEY]: encoded.value });
 
   return { [key]: 'x'.repeat(ROOM_METADATA_BYTE_LIMIT - base) };
+}
+
+function metadataJsonBytes(metadata: JsonObject): number {
+  return new TextEncoder().encode(JSON.stringify(metadata)).length;
 }
 
 function decoded(room: ReturnType<typeof createMemoryRoom>) {
@@ -1476,10 +1479,7 @@ test.each([
 
     // #then
     expect({
-      bytes: roomMetadataBytes(
-        subject.room.getMetadata(),
-        subject.room.getMetadata()[SNAPSHOT_KEY],
-      ),
+      bytes: metadataJsonBytes(subject.room.getMetadata()),
       state: subject.status().state,
     }).toEqual({
       bytes: 15500,
