@@ -4,7 +4,7 @@ title: 'Epic: lock the layer boundaries and shrink the replica engine'
 status: To Do
 assignee: []
 created_date: '2026-11-14T20:25:00Z'
-updated_date: '2026-11-15T07:14:00Z'
+updated_date: '2026-11-15T08:13:00Z'
 labels:
   - epic
   - architecture
@@ -38,4 +38,6 @@ An architecture review on 2026-11-14 found the layering of Muster Roll healthy i
 2026-11-14: reconciled with TASK-63 (explicit operation state in replica-client, RoomCopy and CatchUp). No overlap for TASK-64.1, 64.2, 64.3, 64.5, 64.8. TASK-64.4 (the engine map spike) and so TASK-64.6 and 64.7 wait for TASK-63.2 and TASK-63.3, because both reshape the state the generation machine reads. TASK-64.6 keeps the TASK-63 phase models and interfaces and reuses its adoption-race tests. TASK-64.2 should land before TASK-63.2/63.3 branch, so the rig path moves once.
 
 2026-11-15: validated the epic against the code. Three tasks done (64.1, 64.2, 64.3). Found: `src/ui` has no lint override, so AC#1 is not met yet (added to TASK-64.8); AD-20 contradicts the spine tree on `src/preview` (TASK-64.8 fixes AD-20); TASK-64.7's 600-line target was not supported by the three planned machines (about 960 of about 2450 closure lines), so it became a qualitative criterion and TASK-64.4 may add extraction tasks; TASK-64.4 now weighs the injected-port module shape (`room-copy`, `pending-edits`) beside the two decision shapes.
+
+2026-11-15, second validation after the TASK-64.4 map: the map is complete and the task order matches it. The owner reopened the generation shape and chose the injected-port module for TASK-64.6 (doc-4 revised, performCaughtUp to wiring). TASK-64.7 AC#1 allows an effectful batch loop instead of a mandatory stepwise reducer. TASK-64.9 carries the final spine check, since it is now the last engine task. Correction: the earlier note's 282-line dispatchRoomMessage was a miscount; it is 60 lines, the protocol machine about 270.
 <!-- SECTION:NOTES:END -->

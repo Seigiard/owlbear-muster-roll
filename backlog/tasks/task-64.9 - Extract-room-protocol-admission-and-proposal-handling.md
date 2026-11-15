@@ -4,7 +4,7 @@ title: Extract room protocol admission and proposal handling
 status: To Do
 assignee: []
 created_date: '2026-11-15T00:00:00Z'
-updated_date: '2026-11-15T00:00:00Z'
+updated_date: '2026-11-15T08:13:00Z'
 labels:
   - architecture
   - replica
@@ -31,6 +31,7 @@ The TASK-64.4 engine map assigns the room-protocol/proposal machine to this task
 - [ ] #4 Existing engine sync, proposal, state, liveness and roll tests pass unchanged
 - [ ] #5 The full check passes
 - [ ] #6 The extracted module has independent unit tests for the existing sender-lookup arrival order, error continuation, and AD-5 admission rejects without handler effects; TASK-64.4 authors no tests
+- [ ] #7 ARCHITECTURE-SPINE names every engine module in its replica row and the layer table and diagram match the code, because this is the last engine extraction before the epic closes
 <!-- AC:END -->
 
 ## Implementation Notes
