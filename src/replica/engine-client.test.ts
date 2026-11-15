@@ -10,6 +10,8 @@ import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { encodePreset, parsePresetFile, type Preset } from '@/core/preset';
 import { presetDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
 import { err } from '@/core/result';
+import type { SnapshotFile } from '@/core/snapshot-file';
+import { encodeSnapshotFileData } from '@/core/snapshot-import';
 import { UI_CHANNEL, type Command } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole, SendResult } from '@/platform/ports';
@@ -1056,19 +1058,37 @@ describe('window lifecycle', () => {
     const engine = await startEngine(rig, ids('engine-1'));
     const view = await openAndLoad(rig);
     engine.stop();
-    seedRecords(rig, sheet('after'));
+
+    const replacement: SnapshotFile = {
+      v: 3,
+      type: 'muster-roll/snapshot',
+      sheets: [
+        { id: 'after', set: 'pc', order: 0, rows: { name: { name: 'После' } }, repeats: {} },
+      ],
+      links: [],
+    };
+
+    const data = encodeSnapshotFileData(replacement);
+
+    await startEngine(rig, ids('engine-2', 'engine-3'));
+    const check = await view.client.requestSnapshotCheck(data);
+
+    if (check.kind !== 'answered') {
+      throw new Error('the replacement snapshot check must answer');
+    }
+
     const requestsBefore = requests(rig).length;
 
-    // #when
-    await startEngine(rig, ids('engine-2'));
+    // #when: the new engine replaces its replica after the old window received engine-1's projection.
+    view.client.sendCommand({ type: 'snapshot-import', data, expectedDigest: check.answer.digest });
     await waitUntil(() => requests(rig).length > requestsBefore);
-    await waitUntil(() => recordsOf(view.store).length === 3);
+    await waitUntil(() => keysOf(view.store).length === 2);
 
     // #then
     expect({
       requests: requests(rig).length - requestsBefore,
       records: keysOf(view.store),
-    }).toEqual({ requests: 1, records: ['preset', 'sheet:after', 'sheet:before'] });
+    }).toEqual({ requests: 1, records: ['row:after:name', 'sheet:after'] });
   });
 });
 
