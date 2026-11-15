@@ -1,0 +1,40 @@
+---
+id: TASK-64.9
+title: Extract room protocol admission and proposal handling
+status: To Do
+assignee: []
+created_date: '2026-11-15T00:00:00Z'
+updated_date: '2026-11-15T00:00:00Z'
+labels:
+  - architecture
+  - replica
+  - protocol
+dependencies:
+  - TASK-64.7
+  - TASK-64.3
+parent_task_id: TASK-64
+type: task
+ordinal: 85000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+The TASK-64.4 engine map assigns the room-protocol/proposal machine to this task: `handleRoomMessage`, `dispatchRoomMessage`, `receiveProposal`, `receiveReject`, `receiveState`, `proposalContext`, `unlinkRemovedBlock`, `sendRoom` and their qualified callbacks. The machine owns the AD-5 admission boundary and the sender/generation/liveness routing around the existing `party-roster`, `CatchUp`, `core/access` and record-store seams. It owns the `roomMessages` promise, sequencing and recovery callbacks, including the nested `.then` at engine line 2466 and `.catch` at lines 2467-2469; the engine retains only the outer `onMessage` subscription forwarding callback at lines 2464-2470. It also owns the serialized room-message ingress adapter; it must not duplicate CatchUp or introduce a shared state-machine runtime. Use injected ports/callbacks because sender lookup and message handling are an asynchronous protocol adapter, not one pure synchronous reducer. The map leaves token menu, open requests, scene watch, timer interpretation and `runCatchUp` as retained wiring.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 A replica module owns the AD-5 admission and room-message dispatch decisions from explicit sender, role and generation inputs, with injected party and CatchUp seams and no platform-adapter imports
+- [ ] #2 Proposal, reject, state and roll routing move out of `startReplicaEngine`; the engine only executes the injected protocol effects
+- [ ] #3 AD-5 remains one gate, and TASK-63.3 `CatchUp` plus existing party-roster interfaces remain unchanged
+- [ ] #4 Existing engine sync, proposal, state, liveness and roll tests pass unchanged
+- [ ] #5 The full check passes
+- [ ] #6 The extracted module has independent unit tests for the existing sender-lookup arrival order, error continuation, and AD-5 admission rejects without handler effects; TASK-64.4 authors no tests
+<!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+This task starts only after the owner confirms the TASK-64.4 map and TASK-64.5 through TASK-64.7 finish in order. The qualified callback inventory and exact line spans are in the map. `roomMessages` is the only closure `let` assigned to this machine; it serializes ingress and is an adapter concern, not durable machine state. The nested `.then` and `.catch` callbacks at lines 2466-2469 move with that promise; only the outer subscription forwarding callback remains in engine wiring. The independent unit-test criterion preserves the current sender-lookup arrival order, error continuation and admission-reject/no-handler-effects behavior without adding guards.
+<!-- SECTION:NOTES:END -->
