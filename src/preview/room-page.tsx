@@ -19,7 +19,7 @@ import { addressSearch, readAddress, type PreviewAddress } from './address';
 import type { PresetListEntry } from './protocol';
 import { CONTROL_CLASS, type ListState, usePresetList } from './preset-list';
 import { roomSeed } from './room-seed';
-import { PREVIEW_THEMES } from './themes';
+import { PREVIEW_THEMES } from '@/ui/themes';
 
 const PLAYER_QUERY = new URLSearchParams([
   [CLIENT_PARAM, 'p'],

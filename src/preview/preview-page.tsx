@@ -29,8 +29,8 @@ import { addressSearch, readAddress, type PreviewAddress } from './address';
 import type { PresetListEntry } from './protocol';
 import { CONTROL_CLASS, type ListState, usePresetList } from './preset-list';
 import { previewSheets, type PreviewSheet } from './sample-records';
-import { createStubRolling } from './stub-rolling';
-import { PREVIEW_THEMES } from './themes';
+import { createStubRolling } from '@/ui/stub-rolling';
+import { PREVIEW_THEMES } from '@/ui/themes';
 
 const SWITCH_CLASS = 'flex items-center gap-2';
 

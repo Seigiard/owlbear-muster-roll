@@ -1,4 +1,4 @@
-import type { PreviewThemeName } from '@/preview/themes';
+import type { PreviewThemeName } from '@/ui/themes';
 
 // The builder follows the system colour scheme until the GM flips "Светлая тема". The browser keeps
 // that choice under this key.

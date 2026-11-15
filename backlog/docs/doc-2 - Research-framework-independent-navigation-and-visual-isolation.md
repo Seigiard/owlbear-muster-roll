@@ -3,7 +3,7 @@ id: doc-2
 title: 'Research: framework-independent navigation and visual isolation'
 type: guide
 created_date: '2026-11-13T09:51:00Z'
-updated_date: '2026-11-13T10:03:00Z'
+updated_date: '2026-11-15T07:11:00Z'
 tags:
   - epic
   - architecture
@@ -27,7 +27,7 @@ Source revision: `8c7a204`, inspected on 2026-11-13. Three fresh-context, read-o
 | Navigation decisions live inside rendering | `src/ui/main.tsx:329-522`: preset arrival, created/deleted sheet handling, open requests, fallback, acknowledgment and focus effects | Moving JSX alone will not produce depth. The new module must own transition ordering. |
 | A pure visible-view function already exists | `src/ui/window-view.ts:32-40`: `windowViewOf`; preset decoding and initial-role fallback currently live alongside the React hook at lines 21-29, 42-57 | Reuse the existing visibility owner. A headless caller still needs a deliberate projection-to-view step. |
 | WindowFrame already accepts data and callbacks | `src/ui/shell/window-frame.tsx:47-62`; current room and preview callers | A frame story need not start replica. Actual Storybook integration is untested. |
-| A read-only sheet can already render outside a room | `src/builder/preview-pane.tsx:207-251`, `src/preview/stub-rolling.ts` | Reuse the existing shared renderer and stub rolling rather than introducing a registry to achieve basic isolation. |
+| A read-only sheet can already render outside a room | `src/builder/preview-pane.tsx:207-251`, `src/ui/stub-rolling.ts` | Reuse the existing shared renderer and stub rolling rather than introducing a registry to achieve basic isolation. |
 | The editable GM header is not only display data | `src/ui/sheet/sheet-header.tsx:30-40, 143-150`: a projection-store slice and sendCommand reach AccessPanel | Isolating WindowFrame does not isolate the whole window. Separate later work must cover embedded workflow ownership. |
 | Focus/reveal depends on mounting | `src/ui/sheet/sheet-body.tsx:72-101`: requestAnimationFrame, target lookup, completion callback and later focus | A headless core should retain semantic intent until the browser-side implementation can apply or invalidate it. Draining every effect before a target mounts is unsafe as a design rule. |
 | Successful command answers have an ordering contract | Architecture AD-10; `src/replica/engine.ts:635-644`; `src/ui/replica-client.ts:226-255` | Keep effect delta before command-done. Do not justify a new queue by incorrectly claiming that production messages have arbitrary order. |

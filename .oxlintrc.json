@@ -348,8 +348,65 @@
                 "message": "Import the adapter through @/platform/current, so the build mode picks it."
               },
               {
-                "group": ["@/replica", "@/replica/**", "@/platform", "@/platform/**"],
-                "message": "The builder layer cannot depend on replica or platform."
+                "group": [
+                  "@/replica",
+                  "@/replica/**",
+                  "@/platform",
+                  "@/platform/**",
+                  "@/preview",
+                  "@/preview/**"
+                ],
+                "message": "The builder layer cannot depend on replica, platform or preview."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/ui/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@owlbear-rodeo/sdk",
+                "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@owlbear-rodeo/sdk/**"],
+                "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
+              },
+              {
+                "group": [
+                  "**/platform/obr",
+                  "**/platform/obr/**",
+                  "**/platform/mock",
+                  "**/platform/mock/**",
+                  "./obr",
+                  "./obr/**",
+                  "../obr",
+                  "../obr/**",
+                  "./mock",
+                  "./mock/**",
+                  "../mock",
+                  "../mock/**"
+                ],
+                "message": "Import the adapter through @/platform/current, so the build mode picks it."
+              },
+              {
+                "group": [
+                  "@/replica",
+                  "@/replica/**",
+                  "@/builder",
+                  "@/builder/**",
+                  "@/preview",
+                  "@/preview/**"
+                ],
+                "message": "The UI layer cannot depend on replica, builder or preview."
               }
             ]
           }

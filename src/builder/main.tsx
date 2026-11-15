@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 
 import '@/ui/main.css';
-import { PREVIEW_THEMES } from '@/preview/themes';
+import { PREVIEW_THEMES } from '@/ui/themes';
 import { applyTheme } from '@/ui/theme';
 
 import { BuilderPage } from './builder-page';

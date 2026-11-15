@@ -12,7 +12,7 @@ import {
   type PresetFailure,
 } from '@/core/preset';
 import { err, type Result } from '@/core/result';
-import { PREVIEW_THEMES, type PreviewThemeName } from '@/preview/themes';
+import { PREVIEW_THEMES, type PreviewThemeName } from '@/ui/themes';
 import { copy } from '@/copy';
 import { downloadJsonFile } from '@/ui/download';
 import { presetFailureMessage } from '@/ui/preset-errors';
