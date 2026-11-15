@@ -1,9 +1,11 @@
 ---
 id: TASK-71
 title: Switch the builder preview between the GM and a player
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@opencode'
 created_date: '2026-11-15T17:45:00Z'
+updated_date: '2026-11-15T22:43:00Z'
 labels:
   - one-editor
 dependencies:
@@ -27,3 +29,12 @@ A GM cannot check what players see before uploading a preset; today that needs r
 - [ ] #3 Sheets of a sheet set read only; a single sheet with players: "edit" stays editable
 - [ ] #4 A sheet the GM had open that players cannot see shows a note in its place
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Extend the integrated preview interaction with a GM/player view over the same snapshot records.
+2. Lock visibility, write-policy and hidden-sheet-note behavior before implementation.
+3. Reuse core visibility and preserve stable builder selection and whole-step history.
+4. Run the TDD chain validation and all changed-path checks; no per-ticket review.
+<!-- SECTION:PLAN:END -->

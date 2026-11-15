@@ -60,7 +60,7 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] TASK-70: preview/store, interaction module and tests — editing/rolls.
+- [x] TASK-70: preview/store, interaction module and tests — editing/rolls.
 - [ ] TASK-71: preview/navigation, copy and tests — role/visibility/write policy.
 - [ ] TASK-72: page, file-block component/state, history, copy, glossary and tests — file menus; define File block.
 - [ ] TASK-73: file-access port, browser implementation/fake, caller/reducer and tests — write/follow/refusal/conflicts.
@@ -74,6 +74,7 @@ context:
 ## Implementation Notes
 
 - The owner approved the complete plan and continued implementation on 2026-11-15.
+- TASK-70 adds selected-cell editing through the existing field-edit path and a pure preview reducer. Dice cells evaluate on second click. Validation passed: 3192 unit tests, one existing environment skip, 537 browser tests, formatting, lint, types and build. A separate real-preview control observed RNG consumption; no rendered numeric dice face is claimed.
 
 ## Spec Change Log
 

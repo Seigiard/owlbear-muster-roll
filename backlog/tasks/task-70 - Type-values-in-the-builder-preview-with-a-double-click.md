@@ -1,11 +1,11 @@
 ---
 id: TASK-70
 title: Type values in the builder preview with a double click
-status: In Progress
+status: Done
 assignee:
   - '@opencode'
 created_date: '2026-11-15T17:45:00Z'
-updated_date: '2026-11-15T21:49:00Z'
+updated_date: '2026-11-15T22:43:00Z'
 labels:
   - one-editor
 dependencies:
@@ -24,10 +24,10 @@ With a snapshot in the window, a GM needs to fill values where the sheet is, and
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The first click on a preview cell selects its tree item and the form shows it
-- [ ] #2 A second click or Enter on the selected cell types a value into the snapshot; Esc leaves typing and keeps the selection
-- [ ] #3 A second click on a dice cell rolls
-- [ ] #4 A structure edit applies to every sheet of its template
+- [x] #1 The first click on a preview cell selects its tree item and the form shows it
+- [x] #2 A second click or Enter on the selected cell types a value into the snapshot; Esc leaves typing and keeps the selection
+- [x] #3 A second click on a dice cell rolls
+- [x] #4 A structure edit applies to every sheet of its template
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -38,3 +38,15 @@ With a snapshot in the window, a GM needs to fill values where the sheet is, and
 3. Preserve selection, Escape behavior, template-wide structure edits and whole-step history.
 4. Run all changed-path checks and return the validated branch for integration; no per-ticket review.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+The TDD chain locked browser interactions before implementation. Final validation passed: 3192 unit tests (one existing environment skip), 537 browser tests, formatting, lint, typecheck and build. A real-preview deterministic RNG control confirmed the second-click dice route. The preview does not render a numeric dice face.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The builder selects cells on first click and edits snapshot values on second click or Enter. Escape leaves typing and keeps selection. Dice cells evaluate on second click, and structure edits still reach every template sheet. All required local checks passed.
+<!-- SECTION:FINAL_SUMMARY:END -->
