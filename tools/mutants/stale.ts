@@ -27,5 +27,5 @@ export function describeStale(source: string, find: string): string {
     return 'anchor not found; each of its lines exists, but not as one block';
   }
 
-  return `anchor not found; its line ${missing + 1} is gone: ${findLines[missing].trim()}`;
+  return `anchor not found; its line ${missing + 1} is gone: ${findLines[missing]?.trim() ?? ''}`;
 }

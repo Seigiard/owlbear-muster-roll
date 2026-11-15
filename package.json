@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --open /builder.html",
     "dev:mock": "vite --mode mock",
+    "dev:owlbear": "bun scripts/dev-owlbear.ts",
     "preview": "bun scripts/preview.ts",
     "port-contract:live": "bun scripts/port-contract-live.ts",
     "room": "bun scripts/room.ts",
@@ -15,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "mutants": "bun tools/mutants/run.ts",
+    "probe": "bun tools/mutants/probe/run.ts",
     "test:browser": "playwright test",
     "prepare": "lefthook install"
   },

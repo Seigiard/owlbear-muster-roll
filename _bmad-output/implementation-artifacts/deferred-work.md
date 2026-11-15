@@ -422,3 +422,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
   summary: Pin the snapshot policy for opening another preset before testing that policy.
   evidence: Review V2 found no test with a nonempty snapshot before preset replacement. The current open clears records; TASK-69 does not explicitly choose clearing versus reconciliation, so a new policy-specific test would assert an implementation choice.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
+  summary: Remove the obsolete default-dev sentence when TASK-74 rewrites the dev instructions.
+  evidence: TASK-68 review found that CLAUDE.md still describes default dev as the Owlbear adapter beside its new builder description. Story 1 explicitly defers the old block rewrite to story 7.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
+  summary: Consider bounded shutdown escalation if a cloudflared child is observed not to terminate.
+  evidence: The launcher waits for cloudflared before signaling Vite and ignores repeated signals. The reviewer constructed an unresponsive child; no such occurrence was observed in the CLI test or live control.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
+  summary: Consider bounding the launcher parser buffer before the tunnel URL appears.
+  evidence: The buffer stops growing after the URL, but an indefinite pre-URL retry stream would keep growing. That startup failure was not observed; the real quick tunnel registered.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
+  summary: Consider a permanent missing-cloudflared launcher regression test.
+  evidence: TASK-68 has a direct missing-executable failure control and a cleanup catch path, but its permanent CLI test covers successful startup and termination only. Review established no production behavior gap.
