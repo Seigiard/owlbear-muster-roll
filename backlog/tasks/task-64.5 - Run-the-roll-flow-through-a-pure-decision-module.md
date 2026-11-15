@@ -1,10 +1,10 @@
 ---
 id: TASK-64.5
 title: Extract the roll flow through an injected-port module
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T20:26:00Z'
-updated_date: '2026-11-15T08:13:00Z'
+updated_date: '2026-11-15T08:27:00Z'
 labels:
   - architecture
   - replica
@@ -29,3 +29,11 @@ The roll machine is the first extraction in the approved TASK-64.4 map (`backlog
 - [ ] #4 Every existing engine roll test passes unchanged
 - [ ] #5 The full check passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Extract the roll flow into a platform-free injected-port module and preserve the existing engine behavior and live getter read points.
+2. Add module-level unit tests for each roll outcome without the room rig; preserve all engine roll tests unchanged.
+3. Run focused and full project checks, including browser tests and build, then record verification evidence.
+<!-- SECTION:PLAN:END -->

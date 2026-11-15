@@ -1,0 +1,333 @@
+import { dicePlusDice, dicePlusTarget, type DicePlusTarget } from '@/core/dice-plus';
+import { createBoundedIdSet } from '@/core/bounded-id-set';
+import { fitsOneMessage } from '@/core/message-size';
+import {
+  listedFaces,
+  randomFaces,
+  type DiceTerm,
+  type DieFace,
+  type FaceSource,
+  type RandomSource,
+} from '@/core/formula-evaluate';
+import { rollNotificationText, type RollCopy } from '@/core/roll-text';
+import {
+  parseRoomMessage,
+  rollMessage,
+  type RollContent,
+  type RollMessage,
+} from '@/core/room-messages';
+import { prepareDiceRoll, type DiceRollFailure, type PreparedDiceRoll } from '@/core/dice-roll';
+import { resolveSheet, sheetName } from '@/core/sheets';
+import type { Preset } from '@/core/preset';
+import type { VersionedRecord } from '@/core/records';
+import { err, ok, type Result } from '@/core/result';
+import type { Generation } from '@/core/storage-key';
+import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
+import { rollShownTo, tabShownTo, type PlayerRole } from '@/core/visibility';
+
+const RECENT_REQUEST_ID_LIMIT = 256;
+
+const RECENT_ROLL_ID_LIMIT = 256;
+
+type EvaluatedRoll = Omit<RollContent, 'id' | 'roller'>;
+
+type PreparedRoll = Pick<EvaluatedRoll, 'sheetId' | 'hidden' | 'sheetName'> & {
+  dice: PreparedDiceRoll;
+};
+
+export type RollSender = {
+  role: PlayerRole;
+  name: string;
+};
+
+export type RollDiceReadiness = 'absent' | 'permitted' | 'pending' | 'unknown' | 'refused';
+
+export type RollDiceFailure = { code: 'failed'; reason: string } | { code: 'stopped' };
+
+export type RollDiceRequest = {
+  terms: readonly DiceTerm[];
+  notation: string;
+  playerId: string;
+  playerName: string;
+  rollTarget: DicePlusTarget;
+};
+
+export type RollDicePort = {
+  ready: () => Promise<RollDiceReadiness>;
+  roll: (request: RollDiceRequest) => Promise<Result<DieFace[], RollDiceFailure>>;
+};
+
+export type RollFlowPorts = {
+  pendingView: () => ReadonlyMap<string, VersionedRecord>;
+  presetOf: (record: VersionedRecord | undefined) => Preset | null;
+  role: () => PlayerRole;
+  stopped: () => boolean;
+  generation: () => Generation;
+  dice: RollDicePort;
+  gmInRoom: () => boolean;
+  playerId: string;
+  playerName: () => Promise<string>;
+  random: RandomSource;
+  newId: () => string;
+  sendRemote: (message: RollMessage) => Promise<boolean>;
+  replyOutcome: (requestId: string, outcome: RollOutcome) => void;
+  notify: (text: string) => void | Promise<void>;
+  rollCopy?: RollCopy;
+};
+
+export type RollFlow = {
+  handleRollRequest: (message: RollRequestMessage) => void;
+  receiveRoll: (message: RollMessage, sender: RollSender) => void;
+};
+
+// The roll pipeline is independent from the room, window, and platform adapters. The engine wires
+// these ports to its live state and transport.
+export function createRollFlow(ports: RollFlowPorts): RollFlow {
+  const recentRequestIds = createBoundedIdSet(RECENT_REQUEST_ID_LIMIT);
+  const recentRollIds = createBoundedIdSet(RECENT_ROLL_ID_LIMIT);
+
+  function handleRollRequest(message: RollRequestMessage): void {
+    if (recentRequestIds.has(message.id)) {
+      return;
+    }
+
+    recentRequestIds.add(message.id);
+
+    const prepared = prepareRoll(message);
+
+    if (!prepared.ok) {
+      ports.replyOutcome(message.id, prepared.error);
+
+      return;
+    }
+
+    const local = evaluatedWith(prepared.value, randomFaces(ports.random));
+
+    if (!local.ok) {
+      ports.replyOutcome(message.id, local.error);
+
+      return;
+    }
+
+    void rollWithDice(message.id, prepared.value, local.value);
+  }
+
+  function prepareRoll(message: RollRequestMessage): Result<PreparedRoll, RollOutcome> {
+    const view = ports.pendingView();
+    const preset = ports.presetOf(view.get('preset'));
+    const policy = resolveSheet(view, preset, message.sheetId);
+
+    const hidden =
+      policy !== null && !tabShownTo('PLAYER', policy.template, message.place.tabIndex);
+
+    if (policy === null || !rollShownTo(ports.role(), hidden)) {
+      return err({ code: 'refused' });
+    }
+
+    const dice = prepareDiceRoll(
+      policy.template,
+      view,
+      message.sheetId,
+      message.place,
+      new Map(Object.entries(message.shown)),
+    );
+
+    if (!dice.ok) {
+      return err(rollFailure(dice.error));
+    }
+
+    return ok({
+      sheetId: message.sheetId,
+      hidden,
+      // An empty name makes every client show the fallback label.
+      sheetName: sheetName(view, preset, message.sheetId) ?? '',
+      dice: dice.value,
+    });
+  }
+
+  async function rollWithDice(
+    requestId: string,
+    prepared: PreparedRoll,
+    local: EvaluatedRoll,
+  ): Promise<void> {
+    let roller: string;
+
+    try {
+      roller = await ports.playerName();
+    } catch (error) {
+      console.error('Muster Roll could not read the player name for a roll', error);
+      ports.replyOutcome(requestId, { code: 'failed' });
+
+      return;
+    }
+
+    const dice = dicePlusDice(prepared.dice.terms);
+
+    if (dice === null) {
+      console.info('Muster Roll rolled locally: unsupported dice');
+      await sendRoll(requestId, local, roller);
+
+      return;
+    }
+
+    const readiness = ports.stopped() ? 'absent' : await ports.dice.ready();
+    const stoppedAfterReadiness = ports.stopped();
+
+    if (!stoppedAfterReadiness && (readiness === 'absent' || readiness === 'refused')) {
+      console.info(
+        readiness === 'absent'
+          ? 'Muster Roll rolled locally: no dice extension answered'
+          : 'Muster Roll rolled locally: access refused',
+      );
+    }
+
+    if (
+      readiness === 'absent' ||
+      readiness === 'refused' ||
+      stoppedAfterReadiness ||
+      !rollShownTo(ports.role(), prepared.hidden)
+    ) {
+      await sendRoll(requestId, local, roller);
+
+      return;
+    }
+
+    if (readiness === 'pending' || (readiness === 'unknown' && ports.gmInRoom())) {
+      ports.replyOutcome(requestId, { code: 'waiting-access' });
+    }
+
+    const faces = await ports.dice.roll({
+      terms: prepared.dice.terms,
+      notation: dice.notation,
+      playerId: ports.playerId,
+      playerName: roller,
+      rollTarget: dicePlusTarget(prepared.hidden),
+    });
+
+    if (ports.stopped()) {
+      return;
+    }
+
+    if (!faces.ok) {
+      if (faces.error.code === 'stopped') {
+        return;
+      }
+
+      console.error(
+        'Muster Roll rolled locally, as the dice extension gave no faces:',
+        faces.error.reason,
+      );
+      console.info('Muster Roll rolled locally: the dice extension gave no faces');
+      await sendRoll(requestId, local, roller);
+
+      return;
+    }
+
+    console.info('Muster Roll rolled with the dice extension');
+
+    let evaluated: Result<EvaluatedRoll, RollOutcome>;
+
+    try {
+      evaluated = evaluatedWith(prepared, listedFaces(faces.value));
+    } catch (error) {
+      console.error('Muster Roll could not apply the dice extension faces', error);
+      ports.replyOutcome(requestId, { code: 'failed' });
+
+      return;
+    }
+
+    if (!evaluated.ok) {
+      ports.replyOutcome(requestId, evaluated.error);
+
+      return;
+    }
+
+    await sendRoll(requestId, evaluated.value, roller);
+  }
+
+  async function sendRoll(
+    requestId: string,
+    evaluated: EvaluatedRoll,
+    roller: string,
+  ): Promise<void> {
+    if (ports.stopped()) {
+      return;
+    }
+
+    if (!rollShownTo(ports.role(), evaluated.hidden)) {
+      ports.replyOutcome(requestId, { code: 'refused' });
+
+      return;
+    }
+
+    const message = rollMessage(ports.generation(), { id: ports.newId(), roller, ...evaluated });
+
+    if (!parseRoomMessage(message).ok || !fitsOneMessage(message)) {
+      console.error('Muster Roll built a roll the room would not take');
+      ports.replyOutcome(requestId, { code: 'failed' });
+
+      return;
+    }
+
+    const sent = await ports.sendRemote(message);
+
+    if (ports.stopped()) {
+      return;
+    }
+
+    if (!sent) {
+      ports.replyOutcome(requestId, { code: 'failed' });
+
+      return;
+    }
+
+    receiveRoll(message, { role: ports.role(), name: roller });
+    ports.replyOutcome(requestId, { code: 'rolled' });
+  }
+
+  function receiveRoll(message: RollMessage, sender: RollSender): void {
+    if (recentRollIds.has(message.id)) {
+      return;
+    }
+
+    recentRollIds.add(message.id);
+
+    const forged = sender.role !== 'GM' && message.hidden;
+
+    if (forged || !rollShownTo(ports.role(), message.hidden) || ports.rollCopy === undefined) {
+      return;
+    }
+
+    const roller = sender.name === '' ? message.roller : sender.name;
+    const text = rollNotificationText({ ...message, roller }, ports.rollCopy);
+
+    Promise.resolve(ports.notify(text)).catch(() => {
+      console.error('Muster Roll could not show a roll');
+    });
+  }
+
+  return { handleRollRequest, receiveRoll };
+}
+
+function rollFailure(failure: DiceRollFailure): RollOutcome {
+  return failure.code === 'not-dice' ? { code: 'refused' } : failure;
+}
+
+function evaluatedWith(
+  prepared: PreparedRoll,
+  faces: FaceSource,
+): Result<EvaluatedRoll, RollOutcome> {
+  const rolled = prepared.dice.roll(faces);
+
+  if (!rolled.ok) {
+    return err(rollFailure(rolled.error));
+  }
+
+  return ok({
+    sheetId: prepared.sheetId,
+    hidden: prepared.hidden,
+    sheetName: prepared.sheetName,
+    cell: prepared.dice.cell,
+    result: rolled.value,
+  });
+}
