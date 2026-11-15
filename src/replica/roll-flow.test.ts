@@ -307,18 +307,15 @@ test('reports failed when the remote roll send fails', async () => {
   });
 });
 
-test('does not continue after stopped before readiness, after readiness, or during the dice wait', async () => {
+test('does not ask readiness when already stopped', async () => {
   // #given
-  let stoppedBeforeReadyCalls = 0;
-  let stoppedAfterReady = false;
-  const diceResult = deferred<Result<DieFace[], RollDiceFailure>>();
-  let stoppedDuringDiceWait = false;
+  let readinessCalls = 0;
 
-  const beforeReady = createHarness({
+  const harness = createHarness({
     stopped: () => true,
     dice: {
       ready: async () => {
-        stoppedBeforeReadyCalls += 1;
+        readinessCalls += 1;
 
         return 'permitted';
       },
@@ -326,47 +323,92 @@ test('does not continue after stopped before readiness, after readiness, or duri
     },
   });
 
-  const afterReady = createHarness({
-    stopped: () => stoppedAfterReady,
+  const flow = createRollFlow(harness.ports);
+
+  // #when
+  flow.handleRollRequest({ ...REQUEST, id: 'stopped-before-ready' });
+  await drain();
+
+  // #then
+  expect({ readinessCalls, outcomes: harness.outcomes, sent: harness.sent }).toEqual({
+    readinessCalls: 0,
+    outcomes: [],
+    sent: [],
+  });
+});
+
+test('does not ask the dice port when stopped after readiness', async () => {
+  // #given
+  let stoppedAfterReadiness = false;
+  let stoppedDiceRolls = 0;
+  let permittedDiceRolls = 0;
+
+  const stoppedHarness = createHarness({
+    stopped: () => stoppedAfterReadiness,
     dice: {
       ready: async () => {
-        stoppedAfterReady = true;
+        stoppedAfterReadiness = true;
 
         return 'permitted';
       },
-      roll: async () => ok([{ sides: 20, face: 17 }]),
+      roll: async () => {
+        stoppedDiceRolls += 1;
+
+        return ok([{ sides: 20, face: 17 }]);
+      },
     },
   });
 
-  const duringDiceWait = createHarness({
-    stopped: () => stoppedDuringDiceWait,
+  const permittedHarness = createHarness({
+    dice: {
+      ready: async () => 'permitted',
+      roll: async () => {
+        permittedDiceRolls += 1;
+
+        return ok([{ sides: 20, face: 17 }]);
+      },
+    },
+  });
+
+  // #when
+  createRollFlow(stoppedHarness.ports).handleRollRequest({ ...REQUEST, id: 'stopped-after-ready' });
+  createRollFlow(permittedHarness.ports).handleRollRequest({
+    ...REQUEST,
+    id: 'permitted-dice-roll',
+  });
+  await drain();
+
+  // #then
+  expect({ stoppedDiceRolls, permittedDiceRolls }).toEqual({
+    stoppedDiceRolls: 0,
+    permittedDiceRolls: 1,
+  });
+});
+
+test('does not report a malformed dice result after stopped during the dice wait', async () => {
+  // #given
+  let stopped = false;
+  const diceResult = deferred<Result<DieFace[], RollDiceFailure>>();
+
+  const harness = createHarness({
+    stopped: () => stopped,
     dice: {
       ready: async () => 'permitted',
       roll: () => diceResult.promise,
     },
   });
 
+  const flow = createRollFlow(harness.ports);
+
   // #when
-  createRollFlow(beforeReady.ports).handleRollRequest({ ...REQUEST, id: 'stopped-before-ready' });
-  createRollFlow(afterReady.ports).handleRollRequest({ ...REQUEST, id: 'stopped-after-ready' });
-  createRollFlow(duringDiceWait.ports).handleRollRequest({ ...REQUEST, id: 'stopped-during-dice' });
+  flow.handleRollRequest({ ...REQUEST, id: 'stopped-during-dice' });
   await drain();
-  stoppedDuringDiceWait = true;
-  diceResult.resolve(ok([{ sides: 20, face: 17 }]));
+  stopped = true;
+  diceResult.resolve(ok([{ sides: 6, face: 1 }]));
   await drain();
 
   // #then
-  expect({
-    stoppedBeforeReadyCalls,
-    beforeReady: { outcomes: beforeReady.outcomes, sent: beforeReady.sent },
-    afterReady: { outcomes: afterReady.outcomes, sent: afterReady.sent },
-    duringDiceWait: { outcomes: duringDiceWait.outcomes, sent: duringDiceWait.sent },
-  }).toEqual({
-    stoppedBeforeReadyCalls: 0,
-    beforeReady: { outcomes: [], sent: [] },
-    afterReady: { outcomes: [], sent: [] },
-    duringDiceWait: { outcomes: [], sent: [] },
-  });
+  expect(harness.outcomes).toEqual([]);
 });
 
 test('uses the live role after readiness and again before it sends', async () => {
