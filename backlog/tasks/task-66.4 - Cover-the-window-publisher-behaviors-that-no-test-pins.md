@@ -1,10 +1,11 @@
 ---
 id: TASK-66.4
 title: Cover the window-publisher behaviors that no test pins
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@seigiard'
 created_date: '2026-11-15T08:12:00Z'
-updated_date: '2026-11-15T08:30:00Z'
+updated_date: '2026-11-15T11:43:00Z'
 labels:
   - testing
   - replica
@@ -34,3 +35,11 @@ Cluster D is a defect in the restart cue, decided by the owner on 2026-11-15. `r
 - [ ] #4 The test `stays silent after a restart with no earlier projection` in `src/replica/window-publisher.test.ts` is replaced, with the contract change stated in the commit.
 - [ ] #5 New mutation controls in `tools/mutants/window-publisher.json` cover clusters A, B, C and D, and `bun run mutants window-publisher` reports 0 survived and 0 stale.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Lock direct publisher and engine/client regressions for clusters A/B/C/E/F and the replacement restart-cue contract.
+2. Implement the unconditional one-shot restart cue and mutation controls A/B/C/D without changing locked tests.
+3. Calibrate every listed mutant, run targeted tests and selected checks, then record criterion evidence.
+<!-- SECTION:PLAN:END -->
