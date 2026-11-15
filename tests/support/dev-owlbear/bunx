@@ -1,0 +1,16 @@
+#!/bin/sh
+
+if [ "$1" != vite ]; then
+  exit 127
+fi
+
+exit_child() {
+  printf '%s\n' vite >> "$DEV_OWLBEAR_CHILD_EXIT_FILE"
+  exit 0
+}
+
+trap exit_child INT TERM HUP
+
+while true; do
+  sleep 1
+done

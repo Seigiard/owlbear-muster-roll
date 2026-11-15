@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --open /builder.html",
     "dev:mock": "vite --mode mock",
+    "dev:owlbear": "bun scripts/dev-owlbear.ts",
     "preview": "bun scripts/preview.ts",
     "port-contract:live": "bun scripts/port-contract-live.ts",
     "room": "bun scripts/room.ts",

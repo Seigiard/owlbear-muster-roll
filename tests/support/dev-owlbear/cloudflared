@@ -1,0 +1,17 @@
+#!/bin/sh
+
+exit_child() {
+  printf '%s\n' cloudflared >> "$DEV_OWLBEAR_CHILD_EXIT_FILE"
+  exit 0
+}
+
+trap exit_child INT TERM HUP
+
+printf '%s\n' '2026-11-15T17:57:24Z INF +--------------------------------------------------------------------------------------------+' >&2
+printf '%s\n' '2026-11-15T17:57:24Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |' >&2
+printf '2026-11-15T17:57:24Z INF |  %s  |\n' "$DEV_OWLBEAR_TUNNEL_URL" >&2
+printf '%s\n' '2026-11-15T17:57:24Z INF +--------------------------------------------------------------------------------------------+' >&2
+
+while true; do
+  sleep 1
+done
