@@ -91,53 +91,10 @@ export function runPresetBatch<RecordValue>(
   return { applied, complete: true };
 }
 
-export type PendingReplayEntry<CommandValue> = {
-  id: string;
-  command: CommandValue;
-};
-
-type ReplayContext = readonly [string, string];
-
-type ReplayContextSource<RecordValue> = ReplayContext | ReadonlyMap<string, RecordValue>;
-
-export type PendingReplayPorts<CommandValue, RecordValue> = {
-  role: () => PlayerRole;
-  context: () => ReplayContextSource<RecordValue>;
-  compose: (context: ReplayContext, command: CommandValue) => readonly RecordValue[];
-  apply: (records: readonly RecordValue[]) => readonly RecordValue[];
-  reject: (id: string) => void;
-};
-
-export type PendingReplayResult<RecordValue> = {
-  applied: RecordValue[];
+export type ReplayedPending = {
+  applied: VersionedRecord[];
   completed: string[];
 };
-
-export function replayPending<CommandValue, RecordValue>(
-  entries: readonly PendingReplayEntry<CommandValue>[],
-  ports: PendingReplayPorts<CommandValue, RecordValue>,
-): PendingReplayResult<RecordValue> {
-  const applied: RecordValue[] = [];
-  const completed: string[] = [];
-
-  for (const entry of entries) {
-    if (ports.role() !== 'GM') {
-      ports.reject(entry.id);
-
-      continue;
-    }
-
-    // SAFETY: the producer supplies the live map at runtime; the locked seam only needs its
-    // iterable context and types that iterable as a tuple for its snapshot assertion.
-    const composed = ports.compose(ports.context() as ReplayContext, entry.command);
-    const written = ports.apply(composed);
-
-    applied.push(...written);
-    completed.push(entry.id);
-  }
-
-  return { applied, completed };
-}
 
 export type CommandRoutingPorts = {
   role: () => PlayerRole;
@@ -174,8 +131,6 @@ export type CommandRoutingPorts = {
   wipe: (id: string) => Promise<void>;
   reply: (message: EngineMessage) => void;
 };
-
-export type ReplayedPending = PendingReplayResult<VersionedRecord>;
 
 export type CommandRouting = {
   handleCommand: (message: CommandMessage) => void;
