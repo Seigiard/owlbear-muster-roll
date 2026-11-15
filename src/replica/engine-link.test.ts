@@ -15,7 +15,7 @@ import {
   type RigClient,
   type RigRoom,
   waitUntil,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 const GHOST = 'ghost-gm';
 const LINK_ITEM = 'app.muster-roll/link-sheet';

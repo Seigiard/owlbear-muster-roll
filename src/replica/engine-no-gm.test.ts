@@ -19,7 +19,7 @@ import {
   type RigClient,
   type RigRoom,
   waitUntil,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 // The key of the 2.5 spec, written out by hand.
 const KEY = 'app.muster-roll/snapshot';

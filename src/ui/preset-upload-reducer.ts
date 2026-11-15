@@ -1,4 +1,4 @@
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { presetRejectionMessage } from '@/ui/preset-errors';
 import type { CommandOutcome, CommandOutcomePromise, ErasedCounts } from '@/ui/replica-client';
 

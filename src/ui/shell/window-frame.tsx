@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import type { Key, ReactNode } from 'react';
 import { Button, Tab, TabList, Tabs } from 'react-aria-components';
 
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { Banner } from '@/ui/primitives/banner';
 import type { BannerMessage } from '@/ui/primitives/banner';
 import { CellTooltip } from '@/ui/primitives/tooltip';

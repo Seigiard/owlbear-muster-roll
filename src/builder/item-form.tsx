@@ -9,7 +9,7 @@ import {
   type Preset,
   type PresetSection,
 } from '@/core/preset';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { Button } from '@/ui/primitives/button';
 
 import type { BuilderStore } from './builder-store';

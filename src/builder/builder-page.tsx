@@ -13,7 +13,7 @@ import {
 } from '@/core/preset';
 import { err, type Result } from '@/core/result';
 import { PREVIEW_THEMES, type PreviewThemeName } from '@/preview/themes';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { downloadJsonFile } from '@/ui/download';
 import { presetFailureMessage } from '@/ui/preset-errors';
 import { Banner, type BannerMessage } from '@/ui/primitives/banner';

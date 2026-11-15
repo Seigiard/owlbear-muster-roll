@@ -1,6 +1,6 @@
 import { WINDOW_SIZE_LIMITS, type PresetFailure } from '@/core/preset';
 import type { RejectionReason } from '@/core/ui-messages';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 
 export function presetFailureMessage(failure: PresetFailure): string {
   if (failure.code === 'newer-version') {

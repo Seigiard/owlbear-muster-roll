@@ -10,7 +10,7 @@ import {
 } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { sheetKey, sheetName, sheetPolicy } from '@/core/sheets';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { presetFailureMessage } from '@/ui/preset-errors';
 import type { DiceRolling } from '@/ui/sheet/dice-button';
 import { SheetBody } from '@/ui/sheet/sheet-body';

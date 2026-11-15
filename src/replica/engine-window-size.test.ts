@@ -18,7 +18,7 @@ import {
   waitUntil,
   type RigClient,
   type RigClientOptions,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 const SNAPSHOT_KEY = 'app.muster-roll/snapshot';
 const GENERATION: Generation = { n: 0, a: '' };

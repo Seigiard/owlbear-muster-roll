@@ -108,6 +108,170 @@
   },
   "overrides": [
     {
+      "files": ["src/core/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@owlbear-rodeo/sdk",
+                "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
+              },
+              {
+                "name": "react",
+                "message": "The core layer is framework-independent."
+              },
+              {
+                "name": "react-dom",
+                "message": "The core layer is framework-independent."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@owlbear-rodeo/sdk/**", "react/**", "react-dom/**"],
+                "message": "The core layer is framework-independent and cannot import platform SDKs."
+              },
+              {
+                "group": [
+                  "**/platform/obr",
+                  "**/platform/obr/**",
+                  "**/platform/mock",
+                  "**/platform/mock/**",
+                  "./obr",
+                  "./obr/**",
+                  "../obr",
+                  "../obr/**",
+                  "./mock",
+                  "./mock/**",
+                  "../mock",
+                  "../mock/**"
+                ],
+                "message": "Import the adapter through @/platform/current, so the build mode picks it."
+              },
+              {
+                "group": [
+                  "@/platform",
+                  "@/platform/**",
+                  "@/replica",
+                  "@/replica/**",
+                  "@/ui",
+                  "@/ui/**",
+                  "@/builder",
+                  "@/builder/**",
+                  "@/preview",
+                  "@/preview/**"
+                ],
+                "message": "The core layer cannot depend on application layers."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/replica/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@owlbear-rodeo/sdk",
+                "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@owlbear-rodeo/sdk/**"],
+                "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
+              },
+              {
+                "group": [
+                  "**/platform/obr",
+                  "**/platform/obr/**",
+                  "**/platform/mock",
+                  "**/platform/mock/**",
+                  "./obr",
+                  "./obr/**",
+                  "../obr",
+                  "../obr/**",
+                  "./mock",
+                  "./mock/**",
+                  "../mock",
+                  "../mock/**"
+                ],
+                "message": "Import the adapter through @/platform/current, so the build mode picks it."
+              },
+              {
+                "group": [
+                  "@/ui",
+                  "@/ui/**",
+                  "@/builder",
+                  "@/builder/**",
+                  "@/preview",
+                  "@/preview/**"
+                ],
+                "message": "The replica layer cannot depend on UI, builder or preview."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/platform/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@owlbear-rodeo/sdk",
+                "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@owlbear-rodeo/sdk/**"],
+                "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
+              },
+              {
+                "group": [
+                  "**/platform/obr",
+                  "**/platform/obr/**",
+                  "**/platform/mock",
+                  "**/platform/mock/**",
+                  "./obr",
+                  "./obr/**",
+                  "../obr",
+                  "../obr/**",
+                  "./mock",
+                  "./mock/**",
+                  "../mock",
+                  "../mock/**"
+                ],
+                "message": "Import the adapter through @/platform/current, so the build mode picks it."
+              },
+              {
+                "group": [
+                  "@/replica",
+                  "@/replica/**",
+                  "@/ui",
+                  "@/ui/**",
+                  "@/builder",
+                  "@/builder/**",
+                  "@/preview",
+                  "@/preview/**"
+                ],
+                "message": "The platform layer cannot depend on application layers."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["src/platform/obr/**"],
       "rules": {
         "no-restricted-imports": [
@@ -130,6 +294,62 @@
                   "../mock/**"
                 ],
                 "message": "Import the adapter through @/platform/current, so the build mode picks it."
+              },
+              {
+                "group": [
+                  "@/replica",
+                  "@/replica/**",
+                  "@/ui",
+                  "@/ui/**",
+                  "@/builder",
+                  "@/builder/**",
+                  "@/preview",
+                  "@/preview/**"
+                ],
+                "message": "The platform layer cannot depend on application layers."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/builder/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@owlbear-rodeo/sdk",
+                "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@owlbear-rodeo/sdk/**"],
+                "message": "Only src/platform/obr may import the Owlbear SDK. Use the ports in src/platform/ports.ts."
+              },
+              {
+                "group": [
+                  "**/platform/obr",
+                  "**/platform/obr/**",
+                  "**/platform/mock",
+                  "**/platform/mock/**",
+                  "./obr",
+                  "./obr/**",
+                  "../obr",
+                  "../obr/**",
+                  "./mock",
+                  "./mock/**",
+                  "../mock",
+                  "../mock/**"
+                ],
+                "message": "Import the adapter through @/platform/current, so the build mode picks it."
+              },
+              {
+                "group": ["@/replica", "@/replica/**", "@/platform", "@/platform/**"],
+                "message": "The builder layer cannot depend on replica or platform."
               }
             ]
           }

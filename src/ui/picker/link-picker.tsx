@@ -10,7 +10,7 @@ import { LINK_PICKER_TIMING, type LinkPickerTiming } from '@/core/timing';
 import { linkKey, pickerGroups, type PickerGroup, type PickerTarget } from '@/core/token-links';
 import type { Command } from '@/core/ui-messages';
 import type { NotificationPort, ScenePort } from '@/platform/ports';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
 import { useWindowView } from '@/ui/window-view';

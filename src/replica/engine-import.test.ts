@@ -30,7 +30,7 @@ import {
   type RigClient,
   type RigOutcome,
   type RigRoom,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 // The strings and keys of the 5.3 spec, written out by hand.
 const DATA_REPLACED = 'Данные комнаты заменены';

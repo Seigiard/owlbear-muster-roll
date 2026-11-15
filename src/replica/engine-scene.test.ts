@@ -16,7 +16,7 @@ import {
   type RigClient,
   type RigRoom,
   waitUntil,
-} from '@/replica/room-rig';
+} from '../../tests/support/room-rig';
 
 // Long enough for a removal to reach the room through the paced queues if it were sent.
 const SETTLE_MS = 40;

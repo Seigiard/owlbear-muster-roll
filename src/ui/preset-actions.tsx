@@ -11,7 +11,7 @@ import {
   type Preset,
 } from '@/core/preset';
 import { err, ok, type Result } from '@/core/result';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { downloadJsonFile } from '@/ui/download';
 import { presetFailureMessage } from '@/ui/preset-errors';
 import { Button } from '@/ui/primitives/button';

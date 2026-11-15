@@ -5,7 +5,7 @@ import { DEFAULT_WINDOW_SIZE } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { sheetKey } from '@/core/sheets';
 import { createStubRolling } from '@/preview/stub-rolling';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { CellPreviewContext, type CellPreview } from '@/ui/sheet/preset-cell';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { SheetHeader } from '@/ui/sheet/sheet-header';

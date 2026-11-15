@@ -23,6 +23,7 @@ import {
   type MockRoom,
 } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
+import { copy } from '@/copy';
 import {
   createRoomRig,
   outcome,
@@ -30,9 +31,7 @@ import {
   requestRoll as trackedRoll,
   waitUntil,
   type RigClient,
-} from '@/replica/room-rig';
-import { copy } from '@/ui/copy';
-import type { RollRequest } from '@/ui/replica-client';
+} from '../../tests/support/room-rig';
 
 // Waits far past any test unless a test shortens one.
 const DICE_TIMING: DiceExtensionTiming = {
@@ -227,6 +226,8 @@ type Client = Omit<RigClient, 'local'> & {
   // Every roll outcome the engine sent its windows, oldest first, by request id.
   outcomes: Map<string, RollOutcome[]>;
 };
+
+type RollRequest = Parameters<RigClient['window']['requestRoll']>[0];
 
 type Room = { room: MockRoom; rolls: JsonValue[] };
 

@@ -12,7 +12,7 @@ import type {
   Template,
   WindowSize,
 } from '@/core/preset';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 
 // AD-21: the builder document. It is the preset with a uid on every template, tab, section, row
 // and cell, so tree keys, the selection and expansion survive moves. Uids never reach a file or the

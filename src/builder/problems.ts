@@ -6,7 +6,7 @@ import {
   type PresetFailure,
   type WindowSize,
 } from '@/core/preset';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { badFileReason } from '@/ui/preset-errors';
 
 import {

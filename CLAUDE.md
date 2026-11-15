@@ -9,7 +9,7 @@ Muster Roll is an Owlbear Rodeo extension that keeps the sheets of one room, suc
 - `src/platform/` - ports, plus the `obr/` adapter (Owlbear SDK) and the `mock/` adapter (dev and tests)
 - `src/ui/` - the React window, token picker and settings
 - `src/preview/`, `scripts/`, `preview.html` - the dev-only preset preview
-- `tests/` - Playwright e2e (`*.e2e.ts`) and helpers in `tests/support/`
+- `tests/` - Playwright e2e (`*.e2e.ts`) plus shared support; `tests/support/room-rig.ts` is Bun-only and `tests/support/room.ts` is browser support
 - `docs/` - the user-facing preset format and example; decisions in `docs/adr/`
 - `presets/` - preset files the preview lists
 - `public/` - `manifest.json` and `_headers`
@@ -62,7 +62,7 @@ Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you w
 </important>
 
 <important if="you are writing or changing interface text">
-- Interface text is Russian and lives in `src/ui/copy.ts`.
+- Interface text is Russian and lives in `src/copy.ts`, shared by the UI and background replica.
 </important>
 
 <important if="you are writing or changing UI components">
@@ -73,9 +73,13 @@ Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you w
 <important if="you are writing or changing tests">
 
 - Unit tests sit beside their source as `*.test.ts` and use `bun:test` with `#given` / `#when` / `#then` comments.
-- Engine tests (`src/replica/engine-*.test.ts`) build rooms, clients, storage keys and timing with `src/replica/room-rig.ts`. A file states only the timings and the wait limit it changes.
-- E2E tests run the app on the mock adapter. URL parameters in `src/platform/mock/client-params.ts` set the role, the player and faults; `tests/support/room.ts` seeds rooms.
-- The mock proves app logic only. Behavior in a live Owlbear room needs the owner's check.
+- Engine tests (`src/replica/engine-*.test.ts`) build rooms, clients, storage keys and timing with the Bun-only `tests/support/room-rig.ts`. A file states only the timings and the wait limit it changes.
+- E2E tests run the app on the mock adapter. URL parameters in `src/platform/mock/client-params.ts` set the role, the player and faults; the browser-side `tests/support/room.ts` seeds rooms.
+- TASK-64.3's shared port contract runs named Storage, Broadcast and Metadata scenarios against the real mock adapter in Bun and against real Chromium storage in the browser suite. It proves the adapter-port behavior exercised by those fixtures, not Owlbear host behavior.
+- `bun run port-contract:live` serves an opt-in OBR harness. Install `tests/port-contract-live/manifest.json` through an HTTPS tunnel in two clients, use an empty test room, choose coordinator and peer with the same displayed run id, run the supported scenarios, and press cleanup. A normal browser tab is not an Owlbear host.
+- The live harness records Storage, LOCAL/REMOTE recipients, one-sender arrival order, metadata merge/delete and listener snapshots. LOCAL uses a separate same-client extension context opened through the coordinator's popover port, not a same-page subscription. It also does not prove injected failures, host rate-limit quota or recovery, metadata capacity or silent drops, cross-client timing, or global multi-sender order.
+- Live harness output is an observation report for manual comparison, not an automatic PASS/FAIL verdict. Compare it within the finite 2-second delivery wait and 100-ms quiet period, and inspect the coordinator, peer and hidden bridge iframe consoles. A missing observation can be a relay/control failure, so do not call it an Owlbear host defect without independent evidence. Wait for the peer before running, run one set at a time, avoid concurrent cleanup, keep both contexts open, and recreate paired actions after lifecycle or control trouble.
+- The mock proves app logic and the shared port contract only. Any other behavior in a live Owlbear room needs the owner's check.
 </important>
 
 <important if="you are moving UI behavior out of a React component or separating rules from rendering">

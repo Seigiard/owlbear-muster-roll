@@ -22,9 +22,7 @@ import {
   type RigClient,
   type RigPage,
   waitUntil,
-} from '@/replica/room-rig';
-import type { ProjectionStore } from '@/ui/projection-store';
-import type { ReplicaClient } from '@/ui/replica-client';
+} from '../../tests/support/room-rig';
 
 // Two sheet sets, so a new sheet's order counts only its own set, and a hidden single sheet.
 const PRESET: Preset = {
@@ -95,7 +93,7 @@ type Rig = {
   wire: WireMessage[];
 };
 
-type WindowView = { client: ReplicaClient; store: ProjectionStore };
+type WindowView = { client: RigPage['window']; store: RigPage['store'] };
 
 type Aftermath = { records: VersionedRecord[]; deltas: number };
 
@@ -187,12 +185,12 @@ function storedRecords(rig: Rig): VersionedRecord[] {
     });
 }
 
-function recordsOf(store: ProjectionStore): VersionedRecord[] {
+function recordsOf(store: RigPage['store']): VersionedRecord[] {
   return [...store.$records.get().values()];
 }
 
 // The names the window holds, in the order its records arrived. Records with no name are skipped.
-function namesOf(store: ProjectionStore): string[] {
+function namesOf(store: RigPage['store']): string[] {
   return recordsOf(store).flatMap((record) => {
     const data = record.d;
 
@@ -202,7 +200,7 @@ function namesOf(store: ProjectionStore): string[] {
   });
 }
 
-function keysOf(store: ProjectionStore): string[] {
+function keysOf(store: RigPage['store']): string[] {
   return recordsOf(store)
     .map((record) => record.k)
     .sort();

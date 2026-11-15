@@ -15,7 +15,7 @@ import type { VersionedRecord } from '@/core/records';
 import { repeatBlockName } from '@/core/sheets';
 import { repeatBlocks, rowValues, sectionTitle, type FieldValues } from '@/core/sheet-values';
 import type { Command } from '@/core/ui-messages';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import { Button } from '@/ui/primitives/button';
 import { IconButton } from '@/ui/primitives/icon-button';
 import { DuplicateIcon, TrashIcon } from '@/ui/primitives/icons';

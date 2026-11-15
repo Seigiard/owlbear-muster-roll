@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { copy } from './copy';
+import { copy } from '@/copy';
 
 const EXPERIENCE_PATH = join(
   import.meta.dir,

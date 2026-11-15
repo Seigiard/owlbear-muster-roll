@@ -1,5 +1,5 @@
 import type { Notice, SyncState } from '@/core/ui-messages';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import type { BannerMessage } from '@/ui/primitives/banner';
 
 // One banner at a time, by the UX-DR24 priority: local save failed, room copy not saved, room copy

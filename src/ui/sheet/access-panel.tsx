@@ -4,7 +4,7 @@ import type { FocusEvent, KeyboardEvent, ReactNode } from 'react';
 
 import { accessRows, canEdit, shownName, type AccessRow } from '@/core/access';
 import { ownersBySheet } from '@/core/merge';
-import { copy } from '@/ui/copy';
+import { copy } from '@/copy';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { CommandOutcome, CommandOutcomePromise, ReplicaClient } from '@/ui/replica-client';
 

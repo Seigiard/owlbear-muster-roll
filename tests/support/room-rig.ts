@@ -30,6 +30,8 @@ import { startReplicaEngine } from '@/replica/engine';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
 import { startReplicaClient, type ReplicaClient } from '@/ui/replica-client';
 
+export { createProjectionStore, startReplicaClient };
+
 const RIG_ROOM_ID = 'mock-room';
 const RIG_FORMAT = FORMAT_VERSION;
 const WAIT_LIMIT_MS = 2000;

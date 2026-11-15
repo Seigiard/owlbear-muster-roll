@@ -252,7 +252,11 @@ export function createMockPlatform(
       return err({ operation, reason: 'mock storage failure' });
     }
 
-    return ok(action());
+    try {
+      return ok(action());
+    } catch (cause) {
+      return err({ operation, reason: String(cause) });
+    }
   }
 
   function takeMenuFailure(kind: ContextMenuCall['kind']): boolean {

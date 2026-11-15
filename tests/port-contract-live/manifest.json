@@ -1,0 +1,15 @@
+{
+  "name": "Muster Roll port contract harness (dev)",
+  "version": "0.0.1",
+  "manifest_version": 2,
+  "description": "Owner-run Storage, Broadcast and Metadata port checks for a development room.",
+  "icon": "/icon.svg",
+  "background_url": "/port-contract-live-background.html",
+  "action": {
+    "title": "Port contract harness",
+    "icon": "/icon.svg",
+    "popover": "/port-contract-live.html",
+    "height": 720,
+    "width": 900
+  }
+}
