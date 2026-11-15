@@ -125,8 +125,12 @@ test('opens on the empty preset: one problem, download off, and the empty previe
     builder.addSingle,
   ]);
   await expect(problemCounter(page, 1)).toBeVisible();
-  await expect(downloadButton(page)).toBeDisabled();
-  await expect(page.getByText(builder.downloadDisabled)).toBeVisible();
+  const presetDownload = downloadButton(page);
+  await expect(presetDownload).toBeDisabled();
+  await expect(presetDownload).toHaveAccessibleDescription(builder.downloadDisabled);
+  await expect(
+    presetDownload.locator('..').getByText(builder.downloadDisabled, { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText(builder.emptyPreset)).toBeVisible();
   await expect(page.getByRole('heading', { name: builder.preview(600, 600) })).toBeVisible();
 });
@@ -495,7 +499,7 @@ test('a file replaces the draft after one confirmation, and a refused file chang
   await expect(item(page, `Список заклинаний · ${builder.form.kindSingle}`)).toBeVisible();
   await expect(item(page, `${builder.newSingleTitle} · ${builder.form.kindSingle}`)).toHaveCount(0);
   await expect(preview(page).getByRole('tab')).toHaveText([
-    'name',
+    'Образец',
     'NPC',
     'Инвентарь',
     'Список заклинаний',
@@ -514,7 +518,7 @@ test('a file replaces the draft after one confirmation, and a refused file chang
   await form(page).getByRole('textbox', { name: builder.form.fieldId }).blur();
 
   // #then
-  await expect(form(page).getByText(builder.fieldValuesErased('str'))).toBeVisible();
+  await expect(form(page).locator('[data-builder-rename]')).toHaveText('Формулы изменены: 0.');
 
   // #when: the id of a template the file had changes.
   await pick(item(page, `Экипаж · ${builder.form.kindSet}`));
@@ -522,7 +526,7 @@ test('a file replaces the draft after one confirmation, and a refused file chang
   await form(page).getByRole('textbox', { name: builder.form.id, exact: true }).blur();
 
   // #then
-  await expect(form(page).getByText(builder.templateSheetsDeleted('pc'))).toBeVisible();
+  await expect(form(page).locator('[data-builder-rename]')).toHaveText('');
 
   // #when: the download takes the file's name with no earlier time.
   const downloading = page.waitForEvent('download');
@@ -669,7 +673,7 @@ test('the preview sidebar lists templates in order and selects a template in the
 
   // #then
   await expect(shown.getByRole('heading', { name: 'Персонажи', exact: true })).toBeVisible();
-  expect(entries).toEqual(['name', 'NPC', 'Инвентарь', 'Журнал', 'Заметки ГМ']);
+  expect(entries).toEqual(['Образец', 'NPC', 'Инвентарь', 'Журнал', 'Заметки ГМ']);
 
   // #when
   await sidebar.getByRole('tab', { name: 'NPC', exact: true }).click();

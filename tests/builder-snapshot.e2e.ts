@@ -1,0 +1,539 @@
+import { readFileSync } from 'node:fs';
+
+import { expect, test } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+
+import { snapshotFileSchema, type SnapshotFile } from '@/core/snapshot-file';
+
+import { renderedColor, tokenColor } from './support/colors';
+
+const PAGE = '/builder.html';
+const DRAFT_STORAGE_KEY = 'muster-roll-builder-draft';
+const GENERATED_SHEET_ID = /^[A-Za-z0-9_-]{8}$/;
+
+const PRESET = {
+  v: 3,
+  templates: [
+    {
+      id: 'pc',
+      kind: 'set',
+      title: 'Экипаж',
+      nameField: 'name',
+      tokens: true,
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'name' },
+                ],
+                [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'field', type: 'number', id: 'str' },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'inventory',
+      kind: 'single',
+      title: 'Инвентарь',
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                [
+                  { kind: 'text', text: 'Золото' },
+                  { kind: 'field', type: 'number', id: 'gold' },
+                ],
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const SNAPSHOT = {
+  v: 3,
+  type: 'muster-roll/snapshot',
+  sheets: [
+    {
+      id: 'anya',
+      set: 'pc',
+      order: 0,
+      rows: { name: { name: 'Аня' }, str: { str: 12 } },
+      repeats: {},
+    },
+    {
+      id: 'brok',
+      set: 'pc',
+      order: 1,
+      rows: { name: { name: 'Брок' }, str: { str: 18 } },
+      repeats: {},
+    },
+    {
+      id: 'inventory',
+      rows: { gold: { gold: 7 } },
+      repeats: {},
+    },
+  ],
+  links: [{ tokenId: 'token-a', sheetId: 'anya' }],
+};
+
+const SNAPSHOT_WITHOUT_STRENGTH = {
+  ...SNAPSHOT,
+  sheets: [
+    {
+      id: 'anya',
+      set: 'pc',
+      order: 0,
+      rows: { name: { name: 'Аня' } },
+      repeats: {},
+    },
+    {
+      id: 'brok',
+      set: 'pc',
+      order: 1,
+      rows: { name: { name: 'Брок' } },
+      repeats: {},
+    },
+    SNAPSHOT.sheets[2],
+  ],
+};
+
+test.beforeEach(async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 1000 });
+});
+
+test('opens and downloads the snapshot with both set sheets, the single sheet, values and links', async ({
+  page,
+}) => {
+  // #given
+  await page.clock.setFixedTime(new Date(2026, 0, 5, 12, 0));
+  await openPreset(page);
+
+  // #when
+  await openSnapshot(page, JSON.stringify(SNAPSHOT));
+
+  // #then
+  expect(await sidebar(page).getByRole('tab').allTextContents()).toEqual([
+    'Аня',
+    'Брок',
+    'Инвентарь',
+  ]);
+  await expect(preview(page).getByRole('button', { name: 'Добавить: Экипаж' })).toHaveText(
+    '+ Добавить',
+  );
+  await expect(preview(page).getByRole('heading', { name: 'Аня', level: 1 })).toBeVisible();
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('12');
+
+  // #when
+  await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
+
+  // #then
+  await expect(preview(page).getByRole('heading', { name: 'Брок', level: 1 })).toBeVisible();
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
+
+  // #when
+  await sidebar(page).getByRole('tab', { name: 'Инвентарь', exact: true }).click();
+
+  // #then
+  await expect(preview(page).getByRole('heading', { name: 'Инвентарь', level: 1 })).toBeVisible();
+  await expect(preview(page).getByRole('group', { name: 'Золото' })).toHaveText('7');
+
+  // #when
+  const downloaded = await downloadSnapshot(page);
+
+  // #then
+  expect(downloaded).toEqual({
+    name: 'muster-roll-snapshot-2026-01-05.json',
+    file: SNAPSHOT,
+  });
+});
+
+test('an empty set has a pale selectable sample outside the file, and add creates a real sheet', async ({
+  page,
+}) => {
+  // #given
+  await openPreset(page);
+
+  const sample = sidebar(page).getByRole('tab', { name: 'Образец', exact: true });
+
+  // #then
+  await expect(sample).toHaveAttribute('aria-selected', 'true');
+  expect(await renderedColor(sample, 'color')).toEqual(
+    await tokenColor(page, '--color-text-muted'),
+  );
+  await expect(preview(page).getByRole('button', { name: 'Добавить: Экипаж' })).toHaveText(
+    '+ Добавить',
+  );
+  expect((await downloadSnapshot(page)).file).toEqual({
+    v: 3,
+    type: 'muster-roll/snapshot',
+    sheets: [{ id: 'inventory', rows: {}, repeats: {} }],
+    links: [],
+  });
+
+  // #when
+  await preview(page).getByRole('button', { name: 'Добавить: Экипаж' }).click();
+
+  // #then
+  await expect(sample).toHaveCount(0);
+  await expect(sidebar(page).getByRole('tab', { name: 'Без имени', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+
+  const added = (await downloadSnapshot(page)).file;
+
+  const normalizedSheets = added.sheets.map((sheet) => {
+    return sheet.set === 'pc' ? { ...sheet, id: '<generated>' } : sheet;
+  });
+
+  const generated = added.sheets.find((sheet: { set?: string }) => sheet.set === 'pc');
+
+  expect({
+    generatedId: GENERATED_SHEET_ID.test(generated?.id ?? ''),
+    sheets: normalizedSheets,
+  }).toEqual({
+    generatedId: true,
+    sheets: [
+      {
+        id: '<generated>',
+        set: 'pc',
+        order: 0,
+        rows: {},
+        repeats: {},
+      },
+      { id: 'inventory', rows: {}, repeats: {} },
+    ],
+  });
+});
+
+test('reload restores the preset and snapshot without a replacement prompt', async ({ page }) => {
+  // #given
+  await openPreset(page);
+  await openSnapshot(page, JSON.stringify(SNAPSHOT));
+  await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
+
+  // #when
+  await page.reload();
+
+  // #then
+  await expect(page.getByRole('row', { name: 'Экипаж · Набор', exact: true })).toBeVisible();
+  expect(await sidebar(page).getByRole('tab').allTextContents()).toEqual([
+    'Аня',
+    'Брок',
+    'Инвентарь',
+  ]);
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('12');
+  await expect(page.getByRole('group', { name: /Черновик будет заменён/ })).toHaveCount(0);
+});
+
+test('an old preset-only draft reopens with its preset and an empty snapshot', async ({ page }) => {
+  // #given
+  await page.goto(PAGE);
+  await page.evaluate(
+    ([key, value]) => {
+      window.localStorage.setItem(key, value);
+    },
+    [DRAFT_STORAGE_KEY, JSON.stringify({ preset: PRESET, origin: PRESET, name: 'crew' })] as const,
+  );
+
+  // #when
+  await page.reload();
+
+  // #then
+  await expect(page.getByRole('row', { name: 'Экипаж · Набор', exact: true })).toBeVisible();
+  await expect(sidebar(page).getByRole('tab', { name: 'Образец', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(sidebar(page).getByRole('tab', { name: 'Инвентарь', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: /Черновик будет заменён/ })).toHaveCount(0);
+});
+
+test('a preset edit drops values silently, and undo and redo restore the complete step', async ({
+  page,
+}) => {
+  // #given
+  await openPreset(page);
+  await openSnapshot(page, JSON.stringify(SNAPSHOT));
+  await page.getByRole('row', { name: 'str · Число', exact: true }).click();
+
+  const fieldId = page.getByRole('textbox', { name: 'Id — имя для формул' });
+
+  // #when
+  await fieldId.fill('power');
+  await fieldId.blur();
+
+  // #then
+  await expect(page.locator('[data-builder-rename]')).toHaveText('Формулы изменены: 0.');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('power');
+  expect((await downloadSnapshot(page)).file).toEqual(SNAPSHOT_WITHOUT_STRENGTH);
+
+  // #when
+  await page.getByRole('button', { name: 'Отменить правку' }).click();
+
+  // #then
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('12');
+  expect((await downloadSnapshot(page)).file).toEqual(SNAPSHOT);
+
+  // #when
+  await page.getByRole('button', { name: 'Повторить правку' }).click();
+
+  // #then
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('power');
+});
+
+test('an invalid template id keeps its structure selection and preview problem mark', async ({
+  page,
+}) => {
+  // #given
+  await openPreset(page);
+
+  const template = page.getByRole('row', { name: 'Экипаж · Набор', exact: true });
+
+  await template.click();
+
+  // #when
+  const templateId = page
+    .locator('[data-builder-form]')
+    .getByRole('textbox', { name: 'Id', exact: true });
+
+  await templateId.fill('bad id');
+  await templateId.blur();
+
+  // #then
+  await expect(template).toHaveAttribute('aria-selected', 'true');
+  await expect(template).toHaveAttribute('data-problem', 'true');
+
+  const sample = sidebar(page).getByRole('tab', { name: 'Образец', exact: true });
+
+  await expect(sample).toHaveAttribute('aria-selected', 'true');
+  await expect(sample).toHaveCSS('box-shadow', /2px/);
+});
+
+test('duplicate template ids keep each sidebar entry mapped to its document template', async ({
+  page,
+}) => {
+  // #given
+  await openPreset(page);
+  await page.getByRole('row', { name: 'Экипаж · Набор', exact: true }).click();
+
+  // #when
+  const templateId = page
+    .locator('[data-builder-form]')
+    .getByRole('textbox', { name: 'Id', exact: true });
+
+  await templateId.fill('inventory');
+  await templateId.blur();
+
+  // #then
+  expect(await sidebar(page).getByRole('tab').allTextContents()).toEqual(['Образец', 'Инвентарь']);
+
+  // #when
+  await sidebar(page).getByRole('tab', { name: 'Инвентарь', exact: true }).click();
+
+  // #then
+  await expect(
+    page.getByRole('row', { name: 'Инвентарь · Одиночный лист', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+});
+
+test('add on an invalid set id refuses without throwing or changing snapshot records', async ({
+  page,
+}) => {
+  // #given
+  await openPreset(page);
+  await page.getByRole('row', { name: 'Экипаж · Набор', exact: true }).click();
+
+  const templateId = page
+    .locator('[data-builder-form]')
+    .getByRole('textbox', { name: 'Id', exact: true });
+
+  await templateId.fill('bad id');
+  await templateId.blur();
+
+  const pageErrors: string[] = [];
+
+  page.on('pageerror', (error) => {
+    pageErrors.push(error.message);
+  });
+
+  const add = preview(page).getByRole('button', { name: 'Добавить: Экипаж' });
+
+  await expect(add).toBeEnabled();
+
+  const draftBefore = await page.evaluate(
+    (key) => window.localStorage.getItem(key),
+    DRAFT_STORAGE_KEY,
+  );
+
+  // #when
+  await add.click();
+
+  const draftAfter = await page.evaluate(
+    (key) => window.localStorage.getItem(key),
+    DRAFT_STORAGE_KEY,
+  );
+
+  // #then
+  expect({
+    draftPresent: draftBefore !== null,
+    draftUnchanged: draftAfter === draftBefore,
+    pageErrors,
+  }).toEqual({
+    draftPresent: true,
+    draftUnchanged: true,
+    pageErrors: [],
+  });
+});
+
+test('a bad snapshot is refused and preserves the current preset and snapshot', async ({
+  page,
+}) => {
+  // #given
+  await openPreset(page);
+  await openSnapshot(page, JSON.stringify(SNAPSHOT));
+  await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
+
+  // #when
+  await openSnapshot(page, '{');
+
+  // #then
+  await expect(page.getByText('Файл не подошёл: это не JSON. Ничего не изменено.')).toBeVisible();
+  await expect(sidebar(page).getByRole('tab', { name: 'Брок', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
+});
+
+test('a schema-valid snapshot with an oversized record is refused and preserves current data', async ({
+  page,
+}) => {
+  // #given
+  await openPreset(page);
+  await openSnapshot(page, JSON.stringify(SNAPSHOT));
+  await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
+
+  const oversized = {
+    ...SNAPSHOT,
+    sheets: SNAPSHOT.sheets.map((sheet) =>
+      sheet.id === 'anya'
+        ? {
+            ...sheet,
+            rows: { ...sheet.rows, name: { name: 'я'.repeat(9000) } },
+          }
+        : sheet,
+    ),
+  };
+
+  const oversizedText = JSON.stringify(snapshotFileSchema.parse(oversized));
+
+  // #when
+  await openSnapshot(page, oversizedText);
+
+  // #then
+  await expect(
+    page.getByText('Файл не подошёл: файл слишком большой. Ничего не изменено.'),
+  ).toBeVisible();
+  await expect(sidebar(page).getByRole('tab', { name: 'Брок', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
+  expect((await downloadSnapshot(page)).file).toEqual(SNAPSHOT);
+});
+
+test('a failed snapshot draft write uses the existing failed status', async ({ page }) => {
+  // #given
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = () => {
+      throw new DOMException('quota', 'QuotaExceededError');
+    };
+  });
+  await openPreset(page);
+
+  // #when
+  await openSnapshot(page, JSON.stringify(SNAPSHOT));
+
+  // #then
+  await expect(page.locator('header').getByRole('status')).toHaveText(
+    'Черновик не сохраняется в этом браузере',
+  );
+  await expect(sidebar(page).getByRole('tab', { name: 'Аня', exact: true })).toBeVisible();
+});
+
+function preview(page: Page): Locator {
+  return page.locator('[data-preview-frame]');
+}
+
+function sidebar(page: Page): Locator {
+  return preview(page).getByRole('tablist', { name: 'Листы' });
+}
+
+async function openPreset(page: Page): Promise<void> {
+  await page.goto(PAGE);
+
+  const choosing = page.waitForEvent('filechooser');
+
+  await page.getByRole('button', { name: 'Открыть…' }).click();
+  await page.getByRole('menuitem', { name: 'Файл…' }).click();
+
+  const chooser = await choosing;
+
+  await chooser.setFiles({
+    name: 'crew-preset.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(PRESET)),
+  });
+
+  await expect(page.getByRole('row', { name: 'Экипаж · Набор', exact: true })).toBeVisible();
+}
+
+async function openSnapshot(page: Page, text: string): Promise<void> {
+  const button = page.getByRole('button', { name: 'Загрузить снимок' });
+
+  await expect(button).toBeVisible();
+
+  const choosing = page.waitForEvent('filechooser');
+
+  await button.click();
+
+  const chooser = await choosing;
+
+  await chooser.setFiles({
+    name: 'crew-snapshot.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(text),
+  });
+}
+
+async function downloadSnapshot(page: Page): Promise<{ name: string; file: SnapshotFile }> {
+  const button = page.getByRole('button', { name: 'Скачать снимок' });
+
+  await expect(button).toBeVisible();
+
+  const downloading = page.waitForEvent('download');
+
+  await button.click();
+
+  const download = await downloading;
+
+  return {
+    name: download.suggestedFilename(),
+    file: snapshotFileSchema.parse(JSON.parse(readFileSync(await download.path(), 'utf8'))),
+  };
+}
