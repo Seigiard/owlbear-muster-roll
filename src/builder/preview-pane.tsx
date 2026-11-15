@@ -1,14 +1,26 @@
 import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 
+import { rollDiceCell } from '@/core/dice-roll';
+import type { Command, RollOutcome } from '@/core/ui-messages';
+import {
+  acceptedFieldValue,
+  findPatchField,
+  patchRecordKey,
+  patchedRecord,
+} from '@/core/field-patch';
 import { DEFAULT_WINDOW_SIZE } from '@/core/preset';
-import type { VersionedRecord } from '@/core/records';
+import { recordSchema, type VersionedRecord } from '@/core/records';
+import { TIMING } from '@/core/timing';
 import { sheetName } from '@/core/sheets';
-import { createStubRolling } from '@/ui/stub-rolling';
 import { copy } from '@/copy';
 import { CellPreviewContext, type CellPreview } from '@/ui/sheet/preset-cell';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { SheetHeader } from '@/ui/sheet/sheet-header';
+import type { DiceRolling } from '@/ui/sheet/dice-button';
+import { createFieldFlushes, type FieldEditing } from '@/ui/sheet/use-field-edit';
+import { createLocalFieldValues } from '@/ui/sheet/local-field-values';
+import type { ReplicaClient } from '@/ui/replica-client';
 import {
   builderSidebarEntries,
   type SidebarEntries,
@@ -43,6 +55,7 @@ import {
   type PreviewSheetNavigationAction,
   type ShownTab,
 } from './preview-navigation';
+import { previewEditingReducer } from './preview-editing';
 import type { BuilderProblem } from './problems';
 
 type PreviewPaneProps = {
@@ -53,8 +66,7 @@ type PreviewPaneProps = {
   problems: readonly BuilderProblem[];
 };
 
-// One stub for the page: the preview takes no roll.
-const stubRolling = createStubRolling();
+type PreviewRollOutcome = Exclude<RollOutcome, { code: 'waiting-access' }>;
 
 const CELL_PREVIEW: CellPreview = { placeholders: true };
 
@@ -70,8 +82,7 @@ const MIN_FRAME_PX = 120;
 
 // CAP-22, AD-23: the template that holds the selected item, drawn by the window's own sheet
 // components in a frame of the preset's window size, on the tab that holds the selected item, else
-// on the tab shown before. Read-only, with every field empty. A click on a cell, row, section, tab
-// or sidebar entry selects its item.
+// on the tab shown before. A click on a cell, row, section, tab or sidebar entry selects its item.
 export function PreviewPane({
   store,
   document,
@@ -89,6 +100,66 @@ export function PreviewPane({
   );
 
   const preset = useMemo(() => toPreset(document), [document]);
+  const localValues = useMemo(createLocalFieldValues, []);
+  const pageHideFlushes = useMemo(createFieldFlushes, []);
+
+  const fieldEditing = useMemo<FieldEditing>(
+    () => ({
+      // SAFETY: the preview sends only field patches; every other command is answered without side
+      // effects, and field patches always have an undefined answer.
+      sendCommand: ((command: Command) => {
+        if (command.type !== 'field-patch') {
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
+        const fieldTemplate = selection === null ? null : templateOf(document, selection);
+        const layout = fieldTemplate === null ? null : templateToPreset(fieldTemplate);
+
+        const field =
+          layout === null ? null : findPatchField(layout, command.target, command.fieldId);
+
+        const value = field === null ? null : acceptedFieldValue(field, command.value);
+
+        if (value === null || !value.ok) {
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
+        const key = patchRecordKey(command.sheetId, command.target);
+        const current = records.get(key);
+
+        const patched = patchedRecord(
+          command.sheetId,
+          command.target,
+          current,
+          command.fieldId,
+          value.value,
+        );
+
+        if (!patched.ok) {
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
+        const next = recordSchema.parse({
+          ...patched.value,
+          c: (current?.c ?? 0) + 1,
+          a: 'builder',
+        });
+
+        const nextRecords = snapshotRecords.some((record) => record.k === key)
+          ? snapshotRecords.map((record) => (record.k === key ? next : record))
+          : [...snapshotRecords, next];
+
+        store.setSnapshot(nextRecords);
+
+        return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+      }) as ReplicaClient['sendCommand'],
+      pauseMs: TIMING.fieldSavePauseMs,
+      pageHideFlushes,
+      localValues,
+    }),
+    [document, localValues, pageHideFlushes, records, selection, snapshotRecords, store],
+  );
+
   const size = document.window ?? DEFAULT_WINDOW_SIZE;
   const width = Math.max(size.width, MIN_FRAME_PX);
   const height = Math.max(size.height, MIN_FRAME_PX);
@@ -99,6 +170,36 @@ export function PreviewPane({
   const template = useMemo(
     () => (docTemplate === null ? null : templateToPreset(docTemplate)),
     [docTemplate],
+  );
+
+  const rolling = useMemo<DiceRolling>(
+    () => ({
+      requestRoll: (request) => {
+        const result =
+          template === null
+            ? { ok: false as const, error: { code: 'not-dice' as const } }
+            : rollDiceCell(
+                template,
+                records,
+                request.sheetId,
+                request.place,
+                new Map(Object.entries(request.shown)),
+                () => Math.random(),
+              );
+
+        const answer: PreviewRollOutcome = result.ok
+          ? { code: 'rolled' }
+          : result.error.code === 'field'
+            ? { code: 'field', field: result.error.field }
+            : result.error.code === 'arithmetic'
+              ? { code: 'arithmetic' }
+              : { code: 'refused' };
+
+        return Promise.resolve({ kind: 'answered' as const, answer });
+      },
+      localValues,
+    }),
+    [localValues, records, template],
   );
 
   const sidebar = useMemo(
@@ -139,6 +240,46 @@ export function PreviewPane({
   );
 
   const [shownTab, dispatch] = useReducer(previewNavigationReducer, null);
+  const [editingUid, dispatchEditing] = useReducer(previewEditingReducer, null);
+
+  useEffect(() => {
+    dispatchEditing({ type: 'selection-changed', uid: selection });
+  }, [selection]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (
+        event.key !== 'Enter' ||
+        editingUid !== null ||
+        isTextEntryTarget(event.target) ||
+        selection === null
+      ) {
+        return;
+      }
+
+      const path = locate(document, selection);
+
+      const cell =
+        path?.kind === 'cell'
+          ? document.templates[path.template]?.tabs[path.tab]?.sections[path.section]?.rows[
+              path.row
+            ]?.cells[path.cell]
+          : undefined;
+
+      if (cell?.kind !== 'field') {
+        return;
+      }
+
+      event.preventDefault();
+      dispatchEditing({ type: 'enter-pressed', uid: selection, editable: true });
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [document, editingUid, selection]);
 
   const selectedTab = useMemo(
     () => (selection === null ? null : tabIndexOf(document, selection)),
@@ -183,6 +324,22 @@ export function PreviewPane({
     };
   });
 
+  const activeEditingUid = editingUid === selection ? editingUid : null;
+
+  const preview = useMemo<CellPreview>(
+    () => ({
+      placeholders: true,
+      editableCell:
+        activeEditingUid === null
+          ? null
+          : previewCellKey(document, activeEditingUid, templateUid, openTab),
+      onEscape: () => {
+        dispatchEditing({ type: 'escape-pressed' });
+      },
+    }),
+    [activeEditingUid, document, openTab, templateUid],
+  );
+
   const header =
     template === null || renderRecords === null || renderSheetId === null ? null : (
       <PreviewHeader
@@ -199,6 +356,9 @@ export function PreviewPane({
         sheetId={renderSheetId}
         records={renderRecords}
         openTab={openTab}
+        editing={activeEditingUid === null ? null : fieldEditing}
+        rolling={rolling}
+        preview={preview}
       />
     );
 
@@ -213,8 +373,39 @@ export function PreviewPane({
 
     const uid = clickedUid(document, docTemplate.uid, openTab, event.target);
 
-    if (uid !== null) {
+    if (uid === null) {
+      return;
+    }
+
+    const cellTarget = event.target.closest('[data-cell]');
+    const selected = selection === uid;
+    const path = locate(document, uid);
+
+    const cell =
+      path?.kind === 'cell'
+        ? document.templates[path.template]?.tabs[path.tab]?.sections[path.section]?.rows[path.row]
+            ?.cells[path.cell]
+        : undefined;
+
+    const editable = !sample && cell?.kind === 'field';
+
+    if (!selected) {
       store.select(uid);
+      dispatchEditing({ type: 'cell-clicked', uid, selected: false, editable });
+
+      if (cellTarget !== null) {
+        event.stopPropagation();
+      }
+
+      return;
+    }
+
+    if (cell?.kind === 'field') {
+      dispatchEditing({ type: 'cell-clicked', uid, selected: true, editable });
+
+      if (cellTarget !== null) {
+        event.stopPropagation();
+      }
     }
   }
 
@@ -311,6 +502,37 @@ function sheetNameFor(
     : (sheetName(records, preset, selected.sheetId) ?? previewSheetName(template));
 }
 
+function previewCellKey(
+  document: BuilderDocument,
+  uid: string,
+  templateUid: string | null,
+  openTab: number,
+): string | null {
+  const path = locate(document, uid);
+
+  if (
+    path?.kind !== 'cell' ||
+    document.templates[path.template]?.uid !== templateUid ||
+    path.tab !== openTab
+  ) {
+    return null;
+  }
+
+  return `${path.tab}.${path.section}.${path.row}.${path.cell}`;
+}
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (target instanceof HTMLTextAreaElement) {
+    return true;
+  }
+
+  if (target instanceof HTMLInputElement) {
+    return true;
+  }
+
+  return target instanceof HTMLElement && target.isContentEditable;
+}
+
 function noop(): void {
   // The preview focuses no name.
 }
@@ -346,21 +568,27 @@ function PreviewBody({
   sheetId,
   records,
   openTab,
+  editing,
+  rolling,
+  preview,
 }: {
   template: ReturnType<typeof templateToPreset>;
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
   openTab: number | null;
+  editing: FieldEditing | null;
+  rolling: DiceRolling;
+  preview: CellPreview;
 }): ReactNode {
   return (
-    <CellPreviewContext value={CELL_PREVIEW}>
+    <CellPreviewContext value={preview}>
       <SheetBody
         template={template}
         sheetId={sheetId}
         openTab={openTab}
         records={records}
-        editing={null}
-        rolling={stubRolling}
+        editing={editing}
+        rolling={rolling}
         pending={null}
       />
     </CellPreviewContext>
