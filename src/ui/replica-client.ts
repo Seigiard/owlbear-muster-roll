@@ -23,8 +23,6 @@ import type { ProjectionStore } from '@/ui/projection-store';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
 
-type Phase = 'requesting' | 'assembling' | 'live';
-
 type Assembly = {
   engine: string;
   seq: number;
@@ -69,6 +67,24 @@ type AnswerMessage =
   | Extract<EngineMessage, { t: 'snapshot-imported' | 'wiped' }>
   | Extract<EngineMessage, { t: 'roll-outcome' }>;
 
+type DeliveryState =
+  | {
+      phase: 'requesting';
+      nonce: string;
+      buffered: AnswerMessage[];
+    }
+  | {
+      phase: 'assembling';
+      nonce: string;
+      assembly: Assembly;
+      buffered: Array<DeltaMessage | AnswerMessage>;
+    }
+  | {
+      phase: 'live';
+      engine: string;
+      seq: number;
+    };
+
 type PendingOutcome = {
   resolve: (outcome: CommandOutcome<unknown>) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -107,13 +123,8 @@ export function startReplicaClient(
   newId: () => string = nanoid,
 ): ReplicaClient {
   const pending = new Map<string, PendingOutcome>();
-  let phase: Phase = 'requesting';
-  let nonce = newId();
+  let delivery: DeliveryState = { phase: 'requesting', nonce: newId(), buffered: [] };
   let queuedNonce: string | null = null;
-  let assembly: Assembly | null = null;
-  let buffered: Array<DeltaMessage | AnswerMessage> = [];
-  let liveEngine = '';
-  let lastSeq = 0;
   let repeatTimer: ReturnType<typeof setTimeout> | undefined;
   let incompleteTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -126,8 +137,8 @@ export function startReplicaClient(
     repeatTimer = setTimeout(sendRequest, timing.projectionRequestRepeatMs);
 
     // Under a rate limit the previous repeat can still be queued. Another copy only adds load.
-    if (queuedNonce !== nonce) {
-      const requested = nonce;
+    if (delivery.phase !== 'live' && queuedNonce !== delivery.nonce) {
+      const requested = delivery.nonce;
 
       queuedNonce = requested;
       send({ t: 'projection-request', nonce: requested })
@@ -145,42 +156,64 @@ export function startReplicaClient(
   function request(): void {
     clearTimeout(repeatTimer);
     clearTimeout(incompleteTimer);
-    phase = 'requesting';
-    nonce = newId();
-    assembly = null;
-    buffered = buffered.filter(isAnswerMessage);
+
+    const answers: AnswerMessage[] =
+      delivery.phase === 'live'
+        ? []
+        : delivery.phase === 'requesting'
+          ? delivery.buffered
+          : delivery.buffered.filter((message): message is AnswerMessage =>
+              isAnswerMessage(message),
+            );
+
+    delivery = { phase: 'requesting', nonce: newId(), buffered: answers };
     sendRequest();
   }
 
-  function assemblyFor(part: ProjectionMessage): Assembly {
+  function assemblyFor(part: ProjectionMessage, current: Assembly | undefined): Assembly {
     if (
-      assembly !== null &&
-      assembly.engine === part.engine &&
-      assembly.seq === part.seq &&
-      assembly.n === part.n
+      current !== undefined &&
+      current.engine === part.engine &&
+      current.seq === part.seq &&
+      current.n === part.n
     ) {
-      return assembly;
+      return current;
     }
 
     return { engine: part.engine, seq: part.seq, n: part.n, parts: new Map() };
   }
 
+  function bufferAnswers(answers: readonly AnswerMessage[]): void {
+    if (delivery.phase !== 'live') {
+      delivery.buffered.push(...answers);
+    }
+  }
+
   function receiveProjectionPart(part: ProjectionMessage): void {
-    if (part.nonce !== nonce || phase === 'live') {
+    const current = delivery;
+
+    if (current.phase === 'live' || part.nonce !== current.nonce) {
       return;
     }
 
     clearTimeout(repeatTimer);
     clearTimeout(incompleteTimer);
-    phase = 'assembling';
 
-    const current = assemblyFor(part);
+    const assembly = assemblyFor(
+      part,
+      current.phase === 'assembling' ? current.assembly : undefined,
+    );
 
-    current.parts.set(part.i, part);
-    assembly = current;
+    delivery = {
+      phase: 'assembling',
+      nonce: current.nonce,
+      assembly,
+      buffered: current.buffered,
+    };
+    assembly.parts.set(part.i, part);
 
-    if (current.parts.size === current.n) {
-      completeAssembly(current, part);
+    if (assembly.parts.size === assembly.n) {
+      completeAssembly(assembly, part);
 
       return;
     }
@@ -201,22 +234,17 @@ export function startReplicaClient(
     );
     store.setRoomCopy(lastPart.roomCopy);
     store.setParty(lastPart.party);
-    liveEngine = complete.engine;
-    lastSeq = complete.seq;
-    phase = 'live';
-    assembly = null;
+    const waiting = delivery.phase === 'assembling' ? delivery.buffered : [];
 
-    const waiting = buffered;
-
-    buffered = [];
+    delivery = { phase: 'live', engine: complete.engine, seq: complete.seq };
 
     for (const [index, message] of waiting.entries()) {
       applyLiveMessage(message);
 
-      if (phase !== 'live') {
+      if (delivery.phase !== 'live') {
         // `applyLiveDelta` can restart the projection while replaying this local list. Keep every
         // later answer, but drop the old stream's remaining deltas.
-        buffered.push(...waiting.slice(index + 1).filter(isAnswerMessage));
+        bufferAnswers(waiting.slice(index + 1).filter(isAnswerMessage));
 
         return;
       }
@@ -224,24 +252,28 @@ export function startReplicaClient(
   }
 
   function applyLiveDelta(delta: DeltaMessage): void {
-    if (delta.engine !== liveEngine) {
+    if (delivery.phase !== 'live') {
+      return;
+    }
+
+    if (delta.engine !== delivery.engine) {
       // A restarted engine counts from zero again, so its sequence says nothing.
       request();
 
       return;
     }
 
-    if (delta.seq <= lastSeq) {
+    if (delta.seq <= delivery.seq) {
       return;
     }
 
-    if (delta.seq !== lastSeq + 1) {
+    if (delta.seq !== delivery.seq + 1) {
       request();
 
       return;
     }
 
-    lastSeq = delta.seq;
+    delivery = { ...delivery, seq: delta.seq };
     store.applyDelta(delta.records, delta.pending, delta.withdrawn, delta.notices, delta.sync);
     store.setRoomCopy(delta.roomCopy);
     store.setParty(delta.party);
@@ -360,7 +392,7 @@ export function startReplicaClient(
     } else if (message.t === 'open-sheet') {
       // Only a window that holds the records can find the sheet. The engine sends the request
       // again after the projection this window waits for.
-      if (phase === 'live') {
+      if (delivery.phase === 'live') {
         store.setOpenRequest({
           id: message.id,
           sheetId: message.sheetId,
@@ -368,15 +400,15 @@ export function startReplicaClient(
         });
       }
     } else if (isAnswerMessage(message)) {
-      if (phase === 'live') {
+      if (delivery.phase === 'live') {
         handleAnswer(message);
       } else {
-        buffered.push(message);
+        bufferAnswers([message]);
       }
-    } else if (phase === 'live') {
+    } else if (delivery.phase === 'live') {
       applyLiveDelta(message);
-    } else if (phase === 'assembling') {
-      buffered.push(message);
+    } else if (delivery.phase === 'assembling') {
+      delivery.buffered.push(message);
     }
   }
 

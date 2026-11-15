@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { FileTrigger } from 'react-aria-components';
@@ -207,7 +208,10 @@ export function usePresetUpload({
         )}
         <div
           aria-live="polite"
-          className={`text-label-sm ${message?.tone === 'result' ? 'text-text' : 'text-danger-text'}`}
+          className={clsx('text-label-sm', {
+            'text-text': message?.tone === 'result',
+            'text-danger-text': message?.tone !== 'result',
+          })}
         >
           {message?.text}
         </div>

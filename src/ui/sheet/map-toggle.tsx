@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
 import { ToggleButton } from 'react-aria-components';
@@ -86,7 +87,11 @@ function MapToggle({
         onChange={() => {
           selector.take(step);
         }}
-        className={`press inline-flex items-center justify-center ${ICON_BUTTON_CLASS} ${ICON_TOGGLE_STATE_CLASS}`}
+        className={clsx(
+          'inline-flex press items-center justify-center',
+          ICON_BUTTON_CLASS,
+          ICON_TOGGLE_STATE_CLASS,
+        )}
       >
         <TokenIcon linked />
       </ToggleButton>

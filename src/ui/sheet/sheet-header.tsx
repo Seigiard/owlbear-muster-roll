@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -97,7 +98,7 @@ export function SheetHeader({
         />
       </FieldEditingContext>
     ) : (
-      <h1 className={`min-w-0 flex-1 px-2 text-text [overflow-wrap:anywhere] ${NAME_CLASS}`}>
+      <h1 className={clsx('min-w-0 flex-1 px-2 [overflow-wrap:anywhere] text-text', NAME_CLASS)}>
         {name === '' ? copy.unnamed : name}
       </h1>
     );
@@ -204,7 +205,10 @@ function NameInput({
         onChange={(event) => {
           edit.onChange(event.target.value);
         }}
-        className={`touch-target field-ghost w-full px-2 text-text placeholder:text-text-muted ${NAME_CLASS}`}
+        className={clsx(
+          'touch-target w-full field-ghost px-2 text-text placeholder:text-text-muted',
+          NAME_CLASS,
+        )}
       />
       <span id={errorId} aria-live="polite" className="text-label-sm text-danger-text empty:hidden">
         {edit.error === 'too-long' ? copy.valueTooLong : ''}

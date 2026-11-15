@@ -4,11 +4,14 @@ title: 'Epic: lock the layer boundaries and shrink the replica engine'
 status: To Do
 assignee: []
 created_date: '2026-11-14T20:25:00Z'
+updated_date: '2026-11-14T20:34:00Z'
 labels:
   - epic
   - architecture
   - layer-boundaries
 dependencies: []
+references:
+  - TASK-63
 type: enhancement
 ordinal: 76000
 ---
@@ -28,3 +31,9 @@ An architecture review on 2026-11-14 found the layering of Muster Roll healthy i
 - [ ] #5 The shipped builder page no longer depends on dev-only preview code, or the spine and CLAUDE.md declare preview a shared module
 - [ ] #6 The ARCHITECTURE-SPINE layer table and diagram match the code at epic close
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-14: reconciled with TASK-63 (explicit operation state in replica-client, RoomCopy and CatchUp). No overlap for TASK-64.1, 64.2, 64.3, 64.5, 64.8. TASK-64.4 (the engine map spike) and so TASK-64.6 and 64.7 wait for TASK-63.2 and TASK-63.3, because both reshape the state the generation machine reads. TASK-64.6 keeps the TASK-63 phase models and interfaces and reuses its adoption-race tests. TASK-64.2 should land before TASK-63.2/63.3 branch, so the rig path moves once.
+<!-- SECTION:NOTES:END -->

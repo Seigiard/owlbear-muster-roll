@@ -3,7 +3,7 @@
     "id": "R1",
     "rule": "A trigger during a routine room-copy write schedules exactly one follow-up write.",
     "file": "src/replica/room-copy.ts",
-    "find": "      rerun = true;\n\n",
+    "find": "      deferred.rerun = true;\n\n",
     "replace": "",
     "test": ["src/replica/room-copy.test.ts"]
   },
@@ -35,7 +35,7 @@
     "id": "R5",
     "rule": "A failed room-copy operation leaves a write owed.",
     "file": "src/replica/room-copy.ts",
-    "find": "  function failRoomCopy(metadata: JsonObject | null): void {\n    notSaved = true;\n    owed = true;\n\n    if (metadata === null) {\n",
+    "find": "  function failRoomCopy(metadata: JsonObject | null): void {\n    notSaved = true;\n    deferred.owed = true;\n\n    if (metadata === null) {\n",
     "replace": "  function failRoomCopy(metadata: JsonObject | null): void {\n    notSaved = true;\n\n    if (metadata === null) {\n",
     "test": ["src/replica/room-copy.test.ts"]
   },
@@ -75,7 +75,7 @@
     "id": "R10",
     "rule": "A trigger during an import write schedules exactly one follow-up write.",
     "file": "src/replica/room-copy.ts",
-    "find": "    if (rerun) {\n      rerun = false;\n      void writeRoomCopy().catch((error) => {\n        console.error('Muster Roll could not write the room copy', error);\n      });\n    }\n",
+    "find": "    if (!supersededImport && deferred.rerun) {\n      deferred.rerun = false;\n      void writeRoomCopy().catch((error) => {\n        console.error('Muster Roll could not write the room copy', error);\n      });\n    }\n",
     "replace": "",
     "test": ["src/replica/room-copy.test.ts"]
   },
@@ -83,15 +83,15 @@
     "id": "R11",
     "rule": "A verified import clears the owed room-copy write.",
     "file": "src/replica/room-copy.ts",
-    "find": "        owed = false;\n",
-    "replace": "",
+    "find": "    if (verified !== null) {\n      deferred.owed = false;\n",
+    "replace": "    if (verified !== null) {\n",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
     "id": "R12",
     "rule": "Catch-up completion schedules a room-copy write when one is owed.",
     "file": "src/replica/room-copy.ts",
-    "find": "      if (owed || applied) {\n",
+    "find": "      if (deferred.owed || applied) {\n",
     "replace": "      if (applied) {\n",
     "test": ["src/replica/room-copy.test.ts"]
   },
@@ -99,8 +99,8 @@
     "id": "R13",
     "rule": "Demotion clears the owed room-copy write and its not-saved notice.",
     "file": "src/replica/room-copy.ts",
-    "find": "      owed = false;\n      notSaved = false;\n",
-    "replace": "",
+    "find": "    demoted: () => {\n      cancelScheduledWrite();\n      deferred.owed = false;\n      notSaved = false;\n",
+    "replace": "    demoted: () => {\n      cancelScheduledWrite();\n",
     "test": ["src/replica/room-copy.test.ts"]
   },
   {
@@ -123,8 +123,8 @@
     "id": "R16",
     "rule": "A failed import copy sets the not-saved notice.",
     "file": "src/replica/room-copy.ts",
-    "find": "        notSaved = true;\n",
-    "replace": "",
+    "find": "    } else {\n      notSaved = true;\n      deferred.owed = true;\n",
+    "replace": "    } else {\n      deferred.owed = true;\n",
     "test": ["src/replica/room-copy.test.ts"]
   }
 ]

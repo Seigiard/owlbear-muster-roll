@@ -1,18 +1,27 @@
+import clsx from 'clsx';
+import { cva, type VariantProps } from 'class-variance-authority';
 import { useId } from 'react';
 import type { ReactNode, Ref } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 
-const VARIANT_CLASS = {
-  primary: 'touch-target bg-accent font-medium text-accent-contrast data-hovered:bg-accent/90',
-  secondary:
-    'touch-target border border-hairline bg-fill font-medium text-text data-hovered:bg-fill-strong',
-} as const;
-
 // The caller sets the touch target, so a compact control can draw smaller than it.
 const BASE_CLASS = 'press inline-flex items-center justify-center';
 
+const BUTTON_CLASS = cva('rounded-md px-3', {
+  variants: {
+    variant: {
+      primary: 'touch-target bg-accent font-medium text-accent-contrast data-hovered:bg-accent/90',
+      secondary:
+        'touch-target border border-hairline bg-fill font-medium text-text data-hovered:bg-fill-strong',
+    },
+  },
+  defaultVariants: {
+    variant: 'secondary',
+  },
+});
+
 // The look of a secondary button, for a control that is not a `Button`, such as a toggle.
-export const SECONDARY_BUTTON_CLASS = `${BASE_CLASS} rounded-md px-3 ${VARIANT_CLASS.secondary}`;
+export const SECONDARY_BUTTON_CLASS = clsx(BASE_CLASS, BUTTON_CLASS({ variant: 'secondary' }));
 
 export type PressableProps = {
   children: ReactNode;
@@ -32,10 +41,12 @@ export type PressableProps = {
   ref?: Ref<HTMLButtonElement>;
 };
 
-type ButtonProps = PressableProps & { variant?: keyof typeof VARIANT_CLASS };
+type ButtonProps = PressableProps & {
+  variant?: NonNullable<VariantProps<typeof BUTTON_CLASS>['variant']>;
+};
 
-export function Button({ variant = 'secondary', ...pressable }: ButtonProps): ReactNode {
-  return <Pressable className={`rounded-md px-3 ${VARIANT_CLASS[variant]}`} {...pressable} />;
+export function Button({ variant, ...pressable }: ButtonProps): ReactNode {
+  return <Pressable className={BUTTON_CLASS({ variant })} {...pressable} />;
 }
 
 export function Pressable({
@@ -58,7 +69,7 @@ export function Pressable({
     <AriaButton
       ref={ref}
       aria-label={accessibleName}
-      className={`${BASE_CLASS} data-disabled:opacity-50 ${className}`}
+      className={clsx(BASE_CLASS, 'data-disabled:opacity-50', className)}
       isDisabled={isDisabled}
       onPress={onPress}
       autoFocus={autoFocus}
