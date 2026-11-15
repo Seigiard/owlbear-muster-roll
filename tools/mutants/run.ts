@@ -1,6 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
+import { anchorLines, describeStale } from './stale';
+
 type Mutant = {
   id: string;
   rule: string;
@@ -67,9 +69,13 @@ async function main(): Promise<number> {
         return 130;
       }
 
-      const result = await runMutant(root, mutant);
+      const { result, detail } = await runMutant(root, mutant);
       results[result] += 1;
       console.log(`${module} ${mutant.id}: ${result}`);
+
+      if (detail !== undefined) {
+        console.log(`  ${mutant.file}: ${detail}`);
+      }
 
       if (interrupted) {
         printSummary(results);
@@ -84,13 +90,15 @@ async function main(): Promise<number> {
   return results.stale > 0 || results.survived > 0 ? 1 : 0;
 }
 
-async function runMutant(root: string, mutant: Mutant): Promise<MutantResult> {
+async function runMutant(
+  root: string,
+  mutant: Mutant,
+): Promise<{ result: MutantResult; detail?: string }> {
   const target = `${root}/${mutant.file}`;
   const original = await Bun.file(target).text();
-  const matches = countOccurrences(original, mutant.find);
 
-  if (matches !== 1) {
-    return 'stale';
+  if (anchorLines(original, mutant.find).length !== 1) {
+    return { result: 'stale', detail: describeStale(original, mutant.find) };
   }
 
   const index = original.indexOf(mutant.find);
@@ -107,7 +115,7 @@ async function runMutant(root: string, mutant: Mutant): Promise<MutantResult> {
     });
     const exitCode = await activeTest.exited;
 
-    return exitCode === 0 ? 'survived' : 'killed';
+    return { result: exitCode === 0 ? 'survived' : 'killed' };
   } finally {
     activeTest = null;
     await Bun.write(target, original);
@@ -167,18 +175,6 @@ async function hasUncommittedChanges(root: string, file: string): Promise<boolea
   }
 
   return stdout.length > 0;
-}
-
-function countOccurrences(source: string, find: string): number {
-  let count = 0;
-  let index = 0;
-
-  while ((index = source.indexOf(find, index)) !== -1) {
-    count += 1;
-    index += find.length;
-  }
-
-  return count;
 }
 
 function printSummary(results: Record<MutantResult, number>): void {
