@@ -1,10 +1,11 @@
 ---
 id: TASK-64
 title: 'Epic: lock the layer boundaries and shrink the replica engine'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@opencode'
 created_date: '2026-11-14T20:25:00Z'
-updated_date: '2026-11-15T08:13:00Z'
+updated_date: '2026-11-15T08:26:00Z'
 labels:
   - epic
   - architecture
@@ -31,6 +32,16 @@ An architecture review on 2026-11-14 found the layering of Muster Roll healthy i
 - [ ] #5 The shipped builder page no longer depends on dev-only preview code, or the spine and CLAUDE.md declare preview a shared module
 - [ ] #6 The ARCHITECTURE-SPINE layer table and diagram match the code at epic close
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Complete TASK-64.5, 64.6, 64.7 and 64.9 in the owner-approved order through independent ticket TDD chains.
+2. Merge each validated ticket branch into epic-64-5-6-7 with --no-ff; preserve all existing engine tests.
+3. Reconcile the architecture spine and verify all epic acceptance criteria.
+4. Run applicable full checks on the integrated tip and one closing code-review.
+5. Open the PR to master, enable auto-merge as requested, and clean up ticket worktrees.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
