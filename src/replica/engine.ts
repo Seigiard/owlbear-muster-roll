@@ -10,18 +10,15 @@ import { liveLinkTarget, type LinkTarget } from '@/core/link-target';
 import { decodePreset, windowSizeOf, type Preset } from '@/core/preset';
 import { NOTHING_ERASED } from '@/core/preset-migrate';
 import { parseRepKey, presetDataSchema, type VersionedRecord } from '@/core/records';
-import { err, type Result } from '@/core/result';
 import type { RollCopy } from '@/core/roll-text';
 import {
   admitRoomMessage,
   aliveMessage,
   editIdOf,
-  generationRelation,
   parseRoomMessage,
   pingMessage,
   proposeMessage,
   rejectMessage,
-  resetMessage,
   stateRequestMessage,
   SYNC_CHANNEL,
   type GenerationRelation,
@@ -30,15 +27,9 @@ import {
   type RoomMessage,
   type StateMessage,
 } from '@/core/room-messages';
-import {
-  decodeSnapshotFileData,
-  importSnapshot,
-  type SnapshotImport,
-} from '@/core/snapshot-import';
 import { openTarget, tokensToUnlink } from '@/core/token-links';
 import { decodeStateRecords, stateAnswer } from '@/core/state-records';
-import { generationSchema, INITIAL_GENERATION, type Generation } from '@/core/storage-key';
-import type { Snapshot } from '@/core/snapshot';
+import type { Generation } from '@/core/storage-key';
 import {
   DICE_EXTENSION_TIMING,
   TIMING,
@@ -55,7 +46,6 @@ import {
   type OpenSheetRequest,
   type PresetDiffMessage,
   type RejectionReason,
-  type SnapshotCheckMessage,
 } from '@/core/ui-messages';
 import { linkTargetShownTo, type PlayerRole } from '@/core/visibility';
 import type { BroadcastEvent, BroadcastOptions, Platform } from '@/platform/ports';
@@ -74,10 +64,16 @@ import {
   type PresetUploadLoss,
 } from '@/replica/composers';
 import { createDiceExtension } from '@/replica/dice-extension';
+import {
+  createGenerationFlow,
+  generationRelation,
+  type GenerationFlow,
+  type GenerationPersistence,
+} from '@/replica/generation-flow';
 import { createPartyRoster, type RoomSender } from '@/replica/party-roster';
 import { createPendingQueue, type PendingEntry } from '@/replica/pending-queue';
 import { createPendingEdits } from '@/replica/pending-edits';
-import { createRecordStore, type RecordStore } from '@/replica/record-store';
+import { createRecordStore } from '@/replica/record-store';
 import { createRoomCopy, type RoomCopy } from '@/replica/room-copy';
 import { createRollFlow } from '@/replica/roll-flow';
 import { watchSceneRemovals, type SceneWatch } from '@/replica/scene-watch';
@@ -172,14 +168,12 @@ export type ReplicaEngine = {
   pageHidden: () => void;
 };
 
-type Persistence = { store: RecordStore; generation: Generation };
-
 type Persisted = { record: VersionedRecord; saved: boolean };
 
 type LoadedReplica = {
   records: VersionedRecord[];
   problemKeys: Set<string>;
-  persistence: Persistence | null;
+  persistence: GenerationPersistence | null;
 };
 
 // The decoded preset, kept while the `preset` record keeps its version.
@@ -223,12 +217,8 @@ export async function startReplicaEngine(
   const pendingIds = new Map<string, Map<string, string>>();
   // AD-5: re-read on every party change, and a change enters catch-up.
   let role = startRole;
-  let persistence = loaded.persistence;
-  // A player client has no room copy yet (Story 2.5). It takes a higher generation from a `state`
-  // that answers its own request.
-  let ownGeneration = persistence?.generation ?? INITIAL_GENERATION;
-  let highestSeenGeneration = ownGeneration;
-  const outbox = createCommitOutbox(sendQueue, () => ownGeneration);
+  let generationFlow: GenerationFlow;
+  const outbox = createCommitOutbox(sendQueue, () => generationFlow.generation());
   let stopped = false;
   let catchUp: CatchUp;
 
@@ -252,7 +242,7 @@ export async function startReplicaEngine(
 
           return record === null || stopped || role === 'GM'
             ? null
-            : proposeMessage(ownGeneration, record);
+            : proposeMessage(generationFlow.generation(), record);
         },
         REMOTE,
       ),
@@ -318,11 +308,7 @@ export async function startReplicaEngine(
   // The digest of the replica, until the replica changes.
   let cachedDigest: number | null = null;
   let roomCopy: RoomCopy;
-  // AD-9: records of the generation being adopted stay apart from the replica until complete.
-  let incoming = new Map<string, VersionedRecord>();
   const catchUpTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  // True while this client's own import writes the room copy and sends `reset`.
-  let importing = false;
 
   catchUp = createCatchUp({
     timing,
@@ -330,12 +316,12 @@ export async function startReplicaEngine(
     newId,
     now: () => Date.now(),
     role: () => role,
-    vouches: () => persistence !== null,
-    generation: () => ownGeneration,
+    vouches: () => generationFlow.persistence() !== null,
+    generation: () => generationFlow.generation(),
     digest: ownDigest,
     commitsUnsent: () => outbox.hasUnsent(),
     hasData: () => replica.size > 0 || pending.entries().length > 0 || pendingEdits.size() > 0,
-    saveAdoption: saveAdoptionData,
+    saveAdoption: (generation, fromCopy) => generationFlow.saveAdoption(generation, fromCopy),
   });
 
   let publisher: WindowPublisher;
@@ -358,10 +344,22 @@ export async function startReplicaEngine(
     },
     writable: canWriteRoomCopy,
     gm: () => role === 'GM',
-    generation: () => ownGeneration,
+    generation: () => generationFlow.generation(),
     records: () => [...replica.values()],
     receive: receiveRecords,
-    adopt: adoptFromCopy,
+    adopt: (copy) => {
+      const decisions = generationFlow.adoptFromCopy(copy);
+
+      void runCatchUp(decisions.generationRead).catch((error) => {
+        console.error('Muster Roll could not start adoption from the room copy', error);
+      });
+
+      if (decisions.adoptionStaged.length > 0) {
+        void runCatchUp(decisions.adoptionStaged).catch((error) => {
+          console.error('Muster Roll could not complete adoption from the room copy', error);
+        });
+      }
+    },
     newerVersion: raiseNewerVersion,
     changed: () => publisher.publish(),
   });
@@ -382,12 +380,65 @@ export async function startReplicaEngine(
     }),
   });
 
+  generationFlow = createGenerationFlow({
+    initialPersistence: loaded.persistence,
+    connectionId,
+    records: () => replica,
+    presetOf,
+    role: () => role,
+    stopped: () => stopped,
+    acceptCommand: (id) => {
+      if (recentCommandIds.has(id)) {
+        return false;
+      }
+
+      recentCommandIds.add(id);
+
+      return true;
+    },
+    catchUp,
+    roomCopy,
+    flush: outbox.flush,
+    dropOutbox: outbox.drop,
+    sendRemote: (message) => {
+      sendQueue.enqueue(SYNC_CHANNEL, message, REMOTE).catch((error) => {
+        console.error('Muster Roll could not send the reset', error);
+      });
+    },
+    replaceReplica: replaceReplicaRecords,
+    clearPendingEdits: pendingEdits.clear,
+    dropPendingWork: () => {
+      for (const entry of pending.takeAll()) {
+        const ids = entry.kind === 'intent' ? [entry.id] : entry.patches.map((patch) => patch.id);
+
+        for (const id of ids) {
+          reject(id, 'data-replaced');
+        }
+      }
+
+      pendingIds.clear();
+      pendingEdits.clear();
+    },
+    notifyDataReplaced,
+    markGenerationSaveFailed: () => {
+      problemKeys.add(GENERATION_SAVE_MARK);
+    },
+    publish: () => publisher.publish(),
+    clearDeletedLinks,
+    reject,
+    reply: (message) => {
+      send(message).catch((error) => {
+        console.error('Muster Roll could not report a generation result', error);
+      });
+    },
+  });
+
   const rollFlow = createRollFlow({
     pendingView,
     presetOf,
     role: () => role,
     stopped: () => stopped,
-    generation: () => ownGeneration,
+    generation: () => generationFlow.generation(),
     dice: diceExtension,
     gmInRoom,
     playerId: ownPlayerId,
@@ -535,13 +586,19 @@ export async function startReplicaEngine(
 
         case 'request':
           sendQueue
-            .enqueue(SYNC_CHANNEL, stateRequestMessage(ownGeneration, decision.r), REMOTE)
+            .enqueue(
+              SYNC_CHANNEL,
+              stateRequestMessage(generationFlow.generation(), decision.r),
+              REMOTE,
+            )
             .catch((error) => {
               console.error('Muster Roll could not ask for the room state', error);
             });
           break;
         case 'answer': {
-          const answer = stateAnswer(ownGeneration, decision.r, [...replica.values()]);
+          const answer = stateAnswer(generationFlow.generation(), decision.r, [
+            ...replica.values(),
+          ]);
 
           for (const key of answer.skipped) {
             console.error('Muster Roll left out a record too large for one state message', key);
@@ -558,15 +615,17 @@ export async function startReplicaEngine(
 
         case 'alive':
           sendQueue
-            .enqueue(SYNC_CHANNEL, aliveMessage(ownGeneration, ownDigest()), REMOTE)
+            .enqueue(SYNC_CHANNEL, aliveMessage(generationFlow.generation(), ownDigest()), REMOTE)
             .catch((error) => {
               console.error('Muster Roll could not answer a ping', error);
             });
           break;
         case 'ping':
-          sendQueue.enqueue(SYNC_CHANNEL, pingMessage(ownGeneration), REMOTE).catch((error) => {
-            console.error('Muster Roll could not ping the GM clients', error);
-          });
+          sendQueue
+            .enqueue(SYNC_CHANNEL, pingMessage(generationFlow.generation()), REMOTE)
+            .catch((error) => {
+              console.error('Muster Roll could not ping the GM clients', error);
+            });
           break;
 
         case 'caught-up':
@@ -582,20 +641,7 @@ export async function startReplicaEngine(
           pendingEdits.gmBack();
           break;
         case 'adopt':
-          incoming = new Map();
-          // A held commit composes with the generation of the moment it sends, so it would carry old
-          // records into the new generation.
-          outbox.drop();
-          dropPendingWork();
-
-          if (decision.hadData) {
-            notifyDataReplaced();
-          }
-
-          if (decision.keepNonce) {
-            publisher.publish();
-          }
-
+          generationFlow.clearStaged(decision.hadData, decision.keepNonce);
           break;
       }
     }
@@ -805,7 +851,7 @@ export async function startReplicaEngine(
   // `link-clear` per token, each with an id no window owns. Engine-made, so its id stays out of
   // `recentCommandIds`, which only guards against window repeats.
   function clearDeletedLinks(): void {
-    if (stopped || role !== 'GM' || !catchUp.live() || importing) {
+    if (stopped || role !== 'GM' || !catchUp.live() || generationFlow.importing()) {
       return;
     }
 
@@ -818,11 +864,13 @@ export async function startReplicaEngine(
   }
 
   function persist(record: VersionedRecord): Persisted {
-    if (persistence === null) {
+    const currentPersistence = generationFlow.persistence();
+
+    if (currentPersistence === null) {
       return { record, saved: true };
     }
 
-    const { store, generation } = persistence;
+    const { store, generation } = currentPersistence;
     const written = store.write(generation, record);
 
     if (written.ok) {
@@ -912,7 +960,7 @@ export async function startReplicaEngine(
   // AD-4: a GM edit goes to the room after it is merged, persisted and shown. A GM whose storage
   // could not be read minted without the saved state, so its records stay in this client.
   function sendCommits(applied: readonly VersionedRecord[]): void {
-    if (persistence !== null) {
+    if (generationFlow.persistence() !== null) {
       outbox.add(applied);
     }
   }
@@ -937,7 +985,7 @@ export async function startReplicaEngine(
     }
 
     // AD-9: until the importer's `reset` is out, no commit of the new generation may reach the room.
-    if (importing) {
+    if (generationFlow.importing()) {
       reject(id, 'importing');
 
       return;
@@ -956,13 +1004,13 @@ export async function startReplicaEngine(
     }
 
     if (command.type === 'snapshot-import') {
-      void importFromSnapshot(id, command);
+      void generationFlow.importFromSnapshot(id, command);
 
       return;
     }
 
     if (command.type === 'wipe') {
-      void wipeRoom(id);
+      void generationFlow.wipe(id);
 
       return;
     }
@@ -1035,7 +1083,7 @@ export async function startReplicaEngine(
       return;
     }
 
-    if (persistence !== null) {
+    if (generationFlow.persistence() !== null) {
       outbox.flush();
     }
 
@@ -1047,7 +1095,7 @@ export async function startReplicaEngine(
 
       applied.push(...written);
 
-      if (persistence !== null && written.length > 0) {
+      if (generationFlow.persistence() !== null && written.length > 0) {
         outbox.add(written);
         outbox.flush();
       }
@@ -1080,300 +1128,9 @@ export async function startReplicaEngine(
     });
   }
 
-  // AD-9: a window asks how many values of a snapshot file the current preset would drop before it
-  // asks the GM. A live GM client answers from its replica. The answer writes nothing.
-  function handleSnapshotCheck(message: SnapshotCheckMessage): void {
-    if (recentCommandIds.has(message.id)) {
-      return;
-    }
-
-    recentCommandIds.add(message.id);
-
-    if (role !== 'GM') {
-      reject(message.id, 'not-allowed');
-
-      return;
-    }
-
-    if (importing) {
-      reject(message.id, 'importing');
-
-      return;
-    }
-
-    if (!catchUp.live()) {
-      reject(message.id, 'catching-up');
-
-      return;
-    }
-
-    // A GM client whose storage could not be read cannot save a new generation.
-    if (persistence === null) {
-      reject(message.id, 'write-failed');
-
-      return;
-    }
-
-    const planned = planImport(message.data);
-
-    if (!planned.ok) {
-      reject(message.id, planned.error);
-
-      return;
-    }
-
-    const { count, sheets, digest } = planned.value;
-
-    send({ t: 'snapshot-check-result', id: message.id, count, sheets, digest }).catch((error) => {
-      console.error('Muster Roll could not answer a snapshot check', error);
-    });
-  }
-
-  // AD-9: the file read again and placed over the current preset. An import needs a preset.
-  function planImport(data: string): Result<SnapshotImport, RejectionReason> {
-    const file = decodeSnapshotFileData(data);
-
-    if (!file.ok) {
-      return err(file.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
-    }
-
-    const stored = replica.get('preset');
-    const presetData = presetDataSchema.safeParse(stored?.d);
-
-    if (!presetData.success) {
-      return err('preset-required');
-    }
-
-    const preset = presetOf(stored);
-
-    if (preset === null) {
-      return err('preset-unreadable');
-    }
-
-    const imported = importSnapshot(file.value, { preset, data: presetData.data }, connectionId);
-
-    if (!imported.ok) {
-      return err(imported.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
-    }
-
-    return imported;
-  }
-
-  // AD-9: the confirmed import runs the placement again: values it drops other than the confirmed
-  // ones ask again. The importer takes a generation above every one it knows, saves it, writes the
-  // room copy, and only then sends `reset`. A failed save stops before the copy and `reset`, and the
-  // part saved goes, so nothing changes. A copy that cannot be saved does not stop the import.
-  async function importFromSnapshot(
-    id: string,
-    command: Extract<Command, { type: 'snapshot-import' }>,
-  ): Promise<void> {
-    if (importing) {
-      reject(id, 'importing');
-
-      return;
-    }
-
-    if (persistence === null) {
-      reject(id, 'write-failed');
-
-      return;
-    }
-
-    const planned = planImport(command.data);
-
-    if (!planned.ok) {
-      reject(id, planned.error);
-
-      return;
-    }
-
-    const { records, count, sheets, digest } = planned.value;
-
-    if (digest !== command.expectedDigest) {
-      reject(id, 'count-changed', { count, sheets, digest });
-
-      return;
-    }
-
-    if (await replaceGeneration(id, records)) {
-      send({ t: 'snapshot-imported', id }).catch((error) => {
-        console.error('Muster Roll could not report a snapshot import', error);
-      });
-    }
-  }
-
-  // AD-9, CAP-31: a wipe is a generation change with no records, `preset` included. The window
-  // asked its one confirmation. It works in a room whose data has an older format too: the room
-  // copy of an older format is written over, and the local keys of every format go.
-  async function wipeRoom(id: string): Promise<void> {
-    if (importing) {
-      reject(id, 'importing');
-
-      return;
-    }
-
-    if (persistence === null) {
-      reject(id, 'write-failed');
-
-      return;
-    }
-
-    if (await replaceGeneration(id, [])) {
-      send({ t: 'wiped', id }).catch((error) => {
-        console.error('Muster Roll could not report a wipe', error);
-      });
-    }
-  }
-
-  // AD-9: the second half of an import, and all of a wipe. The client takes a generation above
-  // every one it knows, saves it, writes the room copy, and only then sends `reset`. A failed save
-  // stops before the copy and `reset`, and the part saved goes, so nothing changes. A copy that
-  // cannot be saved does not stop it. It also deletes this room's keys of older storage formats.
-  // True once the new generation is the room's.
-  async function replaceGeneration(
-    id: string,
-    records: readonly VersionedRecord[],
-  ): Promise<boolean> {
-    if (persistence === null) {
-      reject(id, 'write-failed');
-
-      return false;
-    }
-
-    const generation: Generation = {
-      n: Math.max(ownGeneration.n, highestSeenGeneration.n) + 1,
-      a: connectionId,
-    };
-
-    if (!generationSchema.safeParse(generation).success) {
-      reject(id, 'write-failed');
-
-      return false;
-    }
-
-    // The commits held so far belong to the old generation, so they go out under it.
-    outbox.flush();
-
-    const { store } = persistence;
-
-    if (!saveGeneration(store, generation, records)) {
-      const removed = store.removeGeneration(generation);
-
-      if (!removed.ok) {
-        console.error('Muster Roll could not remove a part saved generation', removed.error);
-      }
-
-      publisher.publish();
-      reject(id, 'write-failed');
-
-      return false;
-    }
-
-    importing = true;
-    persistence = { store, generation };
-    replaceReplica(generation, records);
-    catchUp.replicaReplaced();
-    // Live, so no intent waits. A GM has no pending edits.
-    pendingEdits.clear();
-    publisher.publish();
-
-    try {
-      await roomCopy.writeImport(generation, () => importSuperseded(generation));
-
-      if (stopped) {
-        return false;
-      }
-
-      // Another import of a higher generation won while the copy was written: this one is
-      // replaced, and its `reset` would only send the room after a generation already gone.
-      if (importSuperseded(generation)) {
-        reject(id, 'data-replaced');
-
-        return false;
-      }
-
-      sendQueue.enqueue(SYNC_CHANNEL, resetMessage(generation), REMOTE).catch((error) => {
-        console.error('Muster Roll could not send the reset', error);
-      });
-
-      const removed = store.removeGenerationsBelow(generation);
-
-      if (!removed.ok) {
-        console.error('Muster Roll could not remove the replaced records', removed.error);
-      }
-
-      removeOlderFormats(store);
-    } finally {
-      importing = false;
-      // Deletions that waited out the import, whether it finished, stopped or was replaced.
-      clearDeletedLinks();
-    }
-
-    return true;
-  }
-
-  // True once this client stopped, or left the generation it imports for a higher one.
-  function importSuperseded(generation: Generation): boolean {
-    return (
-      stopped || catchUp.adopting() !== null || compareGenerations(ownGeneration, generation) !== 0
-    );
-  }
-
-  // AD-9: the incomplete marker first, then the generation marker and every record, then the
-  // incomplete marker off. A failed write leaves the incomplete marker, so a start never reads the
-  // part that was written, and raises the local-save notice. The generation marker keeps a
-  // generation with no records, as after a wipe.
-  function saveGeneration(
-    store: RecordStore,
-    generation: Generation,
-    records: readonly VersionedRecord[],
-  ): boolean {
-    const marked = store.markIncomplete(generation);
-
-    if (!marked.ok) {
-      console.error('Muster Roll could not mark a new generation', marked.error);
-      problemKeys.add(GENERATION_SAVE_MARK);
-
-      return false;
-    }
-
-    const kept = store.markGeneration(generation);
-
-    if (!kept.ok) {
-      console.error('Muster Roll could not keep a new generation', kept.error);
-      problemKeys.add(GENERATION_SAVE_MARK);
-
-      return false;
-    }
-
-    for (const record of records) {
-      const written = store.write(generation, record);
-
-      if (!written.ok) {
-        console.error('Muster Roll could not save a record of a new generation', written.error);
-        problemKeys.add(GENERATION_SAVE_MARK);
-
-        return false;
-      }
-    }
-
-    const complete = store.markComplete(generation);
-
-    if (!complete.ok) {
-      console.error('Muster Roll could not mark a new generation complete', complete.error);
-      problemKeys.add(GENERATION_SAVE_MARK);
-
-      return false;
-    }
-
-    return true;
-  }
-
   // The replica becomes the new generation's records. The windows get a new stream, as a delta
   // cannot take the old records out of them: each asks for a fresh projection.
-  function replaceReplica(generation: Generation, records: readonly VersionedRecord[]): void {
-    ownGeneration = generation;
-    highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
+  function replaceReplicaRecords(records: readonly VersionedRecord[]): void {
     replica.clear();
     cachedDigest = null;
     decodedPreset = null;
@@ -1429,7 +1186,12 @@ export async function startReplicaEngine(
     sender: string,
     member: RoomSender | null,
   ): void {
-    if (role !== 'GM' || !catchUp.live() || persistence === null || member === null) {
+    if (
+      role !== 'GM' ||
+      !catchUp.live() ||
+      generationFlow.persistence() === null ||
+      member === null
+    ) {
       return;
     }
 
@@ -1443,7 +1205,7 @@ export async function startReplicaEngine(
 
     // No GM client could commit it, so the player hears now rather than resending forever.
     if (!recordFitsOneMessage(record)) {
-      sendRoom(rejectMessage(ownGeneration, edit, { reason: 'denied' }));
+      sendRoom(rejectMessage(generationFlow.generation(), edit, { reason: 'denied' }));
 
       return;
     }
@@ -1478,17 +1240,19 @@ export async function startReplicaEngine(
         unlinkRemovedBlock(verdict.record);
         break;
       case 'denied':
-        sendRoom(rejectMessage(ownGeneration, edit, { reason: 'denied' }));
+        sendRoom(rejectMessage(generationFlow.generation(), edit, { reason: 'denied' }));
         break;
       case 'stale': {
-        const stale = rejectMessage(ownGeneration, edit, {
+        const stale = rejectMessage(generationFlow.generation(), edit, {
           reason: 'stale',
           current: verdict.current,
         });
 
         // A current record too large to go with the answer leaves the player nothing to rebase on.
         sendRoom(
-          fitsOneMessage(stale) ? stale : rejectMessage(ownGeneration, edit, { reason: 'denied' }),
+          fitsOneMessage(stale)
+            ? stale
+            : rejectMessage(generationFlow.generation(), edit, { reason: 'denied' }),
         );
 
         break;
@@ -1708,11 +1472,13 @@ export async function startReplicaEngine(
 
   // A GM client merges what it and the other tabs of its browser saved. A player persists nothing.
   function mergePersisted(): void {
-    if (persistence === null || role !== 'GM') {
+    const currentPersistence = generationFlow.persistence();
+
+    if (currentPersistence === null || role !== 'GM') {
       return;
     }
 
-    const load = persistence.store.loadGeneration(persistence.generation);
+    const load = currentPersistence.store.loadGeneration(currentPersistence.generation);
 
     if (!load.ok) {
       console.error('Muster Roll could not read the saved records', load.error);
@@ -1750,63 +1516,7 @@ export async function startReplicaEngine(
   // AD-8: only a live GM client that can vouch for its records writes, as only such a client
   // answers a `state-request`. Checked again after every await.
   function canWriteRoomCopy(): boolean {
-    return !stopped && role === 'GM' && persistence !== null && catchUp.live();
-  }
-
-  // AD-9 and gap 12: any client that reads a room copy of a higher generation adopts it, and a
-  // decoded copy of the generation it adopts completes it at once. A copy of a generation lower
-  // than the one it adopts already is left alone.
-  function adoptFromCopy(copy: Snapshot): void {
-    if (stopped) {
-      return;
-    }
-
-    highestSeenGeneration = higherGeneration(highestSeenGeneration, copy.g);
-    const decisions = catchUp.generationRead(copy.g);
-
-    void runCatchUp(decisions).catch((error) => {
-      console.error('Muster Roll could not start adoption from the room copy', error);
-    });
-
-    const target = catchUp.adopting();
-
-    if (target !== null && compareGenerations(copy.g, target) === 0) {
-      stage(copy.records);
-      void runCatchUp(catchUp.adoptionStaged()).catch((error) => {
-        console.error('Muster Roll could not complete adoption from the room copy', error);
-      });
-    }
-  }
-
-  // AD-9: a generation above this client's own, and above the one it adopts, starts adoption. Its
-  // pending queue, the GM intents and the player entries alike, drops with the notification, and
-  // catch-up runs. The replica keeps the old data until the new generation is complete.
-  // `keepNonce`: the message that shows it answers this client's current request, so the catch-up
-  // in progress keeps its `r` and takes that answer.
-  function seeGeneration(generation: Generation, keepNonce: boolean): void {
-    if (stopped) {
-      return;
-    }
-
-    highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
-    void runCatchUp(catchUp.generationHeard(generation, keepNonce)).catch((error) => {
-      console.error('Muster Roll could not start generation adoption', error);
-    });
-  }
-
-  // UX-DR31: the intents made against the replaced data go, each refused to its window, and so do a
-  // player's edits.
-  function dropPendingWork(): void {
-    for (const entry of pending.takeAll()) {
-      const ids = entry.kind === 'intent' ? [entry.id] : entry.patches.map((patch) => patch.id);
-
-      for (const id of ids) {
-        reject(id, 'data-replaced');
-      }
-    }
-
-    pendingIds.clear();
-    pendingEdits.clear();
+    return !stopped && role === 'GM' && generationFlow.persistence() !== null && catchUp.live();
   }
 
   function notifyDataReplaced(): void {
@@ -1819,78 +1529,18 @@ export async function startReplicaEngine(
     });
   }
 
-  // Records of the generation this client adopts, kept apart from the replica until it is
-  // complete. Every one is complete, so any number of them merge.
-  function stage(records: readonly VersionedRecord[]): void {
-    for (const record of records) {
-      if (!recordFitsOneMessage(record)) {
-        console.error('Muster Roll dropped a remote record too large for one message', record.k);
-        continue;
-      }
-
-      const current = incoming.get(record.k);
-
-      incoming.set(record.k, current === undefined ? record : mergeRecords(current, record));
-    }
-  }
-
-  // AD-9: the new generation is complete. A GM client saves it under the new generation first and
-  // deletes the old one only once that save is complete. A save that fails keeps the old one and
-  // raises the local-save notice. The catch-up module continues after this synchronous callback
-  // succeeds.
-  // `fromCopy`: the room copy completed it, so a copy of this generation is in the room. A save
-  // that fails removes the part saved, keeps the old generation in storage and in the replica, and
-  // leaves the adoption open, so the next answer or copy tries again.
-  function saveAdoptionData(generation: Generation, fromCopy: boolean): boolean {
-    const records = [...incoming.values()];
-
-    if (persistence !== null) {
-      const { store } = persistence;
-
-      if (!saveGeneration(store, generation, records)) {
-        const removed = store.removeGeneration(generation);
-
-        if (!removed.ok) {
-          console.error('Muster Roll could not remove a part saved generation', removed.error);
-        }
-
-        publisher.publish();
-
-        return false;
-      }
-
-      persistence = { store, generation };
-
-      const removed = store.removeGenerationsBelow(generation);
-
-      if (!removed.ok) {
-        console.error('Muster Roll could not remove the replaced records', removed.error);
-      }
-
-      // AD-9: a GM client that adopts a new generation, as after a wipe, drops this room's keys of
-      // older storage formats too.
-      removeOlderFormats(store);
-    }
-
-    incoming = new Map();
-    replaceReplica(generation, records);
-    roomCopy.replaced(fromCopy);
-
-    publisher.publish();
-
-    return true;
-  }
-
   function performCaughtUp(_exit: 'answered' | 'unanswered'): void {
+    const currentPersistence = generationFlow.persistence();
+
     if (persistAllOnExit) {
       persistAllOnExit = false;
 
       // AD-9: a generation past the first is kept apart from its records, so one with no records
       // survives a reload too.
       const kept =
-        persistence === null || persistence.generation.n === 0
+        currentPersistence === null || currentPersistence.generation.n === 0
           ? undefined
-          : persistence.store.markGeneration(persistence.generation);
+          : currentPersistence.store.markGeneration(currentPersistence.generation);
 
       if (kept !== undefined && !kept.ok) {
         console.error('Muster Roll could not keep its generation', kept.error);
@@ -1993,7 +1643,7 @@ export async function startReplicaEngine(
         return;
       }
 
-      stage(records.value);
+      generationFlow.stage(records.value);
       void runCatchUp(catchUp.stateMerged(message, sender, relation)).catch((error) => {
         console.error('Muster Roll could not process an adopted state answer', error);
       });
@@ -2046,7 +1696,7 @@ export async function startReplicaEngine(
     // new engine id asks for a projection of the records the new role sees.
     publisher.restart();
     persistAllOnExit = false;
-    persistence = null;
+    generationFlow.roleChanged(null);
     // Only a GM client writes the room copy, so a demoted one drops what it owed and its notice.
     roomCopy.demoted();
 
@@ -2057,13 +1707,16 @@ export async function startReplicaEngine(
       // As at start: the highest generation of this client and of what the storage holds.
       const store = createRecordStore(platform.storage, platform.metadata.getRoomId());
       const stored = store.readHighestGeneration();
-      const generation = stored.ok ? higherGeneration(ownGeneration, stored.value) : ownGeneration;
+      const currentGeneration = generationFlow.generation();
+
+      const generation = stored.ok
+        ? higherGeneration(currentGeneration, stored.value)
+        : currentGeneration;
+
       const probe = stored.ok ? store.loadGeneration(generation) : stored;
 
       if (probe.ok) {
-        ownGeneration = generation;
-        highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
-        persistence = { store, generation };
+        generationFlow.roleChanged({ store, generation });
         persistAllOnExit = true;
       } else {
         console.error('Muster Roll could not read the saved records', probe.error);
@@ -2108,12 +1761,19 @@ export async function startReplicaEngine(
       return;
     }
 
-    const relation = generationRelation(message.g, ownGeneration);
+    const relation = generationRelation(message.g, generationFlow.generation());
 
     // AD-5 and AD-9: a GM that speaks from a higher generation, by `reset` or any other message,
     // starts adoption. An answer to this client's own request keeps that request.
     if (relation === 'higher' && sender?.role === 'GM') {
-      seeGeneration(message.g, message.t === 'state' && catchUp.answersOwn(message.r));
+      void runCatchUp(
+        generationFlow.seeGeneration(
+          message.g,
+          message.t === 'state' && catchUp.answersOwn(message.r),
+        ),
+      ).catch((error) => {
+        console.error('Muster Roll could not start generation adoption', error);
+      });
 
       // The gate takes a commit of its own generation only, so one of the generation adopted
       // gathers here, or it would be lost until the next drift check.
@@ -2122,7 +1782,7 @@ export async function startReplicaEngine(
         catchUp.adopting() !== null &&
         compareGenerations(message.g, catchUp.adopting()!) === 0
       ) {
-        stage(message.records);
+        generationFlow.stage(message.records);
       }
     }
 
@@ -2235,7 +1895,7 @@ export async function startReplicaEngine(
     } else if (parsed.value.t === 'open-sheet-ack') {
       dropOpen(parsed.value.id);
     } else if (parsed.value.t === 'snapshot-check') {
-      handleSnapshotCheck(parsed.value);
+      generationFlow.checkSnapshot(parsed.value);
     } else {
       handleCommand(parsed.value);
     }
@@ -2320,15 +1980,6 @@ async function settledWithin(work: Promise<void>, milliseconds: number): Promise
     console.error('Muster Roll could not start its catch-up', error);
   } finally {
     clearTimeout(timer);
-  }
-}
-
-// AD-9, AD-11: no migration reads an older storage format, so its keys of this room go.
-function removeOlderFormats(store: RecordStore): void {
-  const removed = store.removeOlderFormats();
-
-  if (!removed.ok) {
-    console.error('Muster Roll could not remove the records of an older format', removed.error);
   }
 }
 
