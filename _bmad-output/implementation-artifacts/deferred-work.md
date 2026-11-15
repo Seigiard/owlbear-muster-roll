@@ -398,6 +398,30 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-66-replica-mutation-gaps.md`
   summary: Investigate intermittent focus loss when a GM opens an NPC repeat block from its token.
   evidence: One post-review browser run at `44e21453d8146c43ca38e36bdeb24e7bfa2f7a13` passed 520 tests but failed `tests/open.e2e.ts:307`: the Dragon group was visible but inactive after five seconds. Ten exact-scenario serial repeats and a full unchanged 521-test recheck passed. No expectation, retry setting or application code changed; the cause is unverified. Original context is saved in the TASK-66 run's `browser-focus-diagnosis/original-failure/`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Decide whether Add should open a newly created sheet in a nonempty or different sheet set.
+  evidence: Review B4 found that creation succeeds without switching the current sheet. TASK-69 specifies creation and the empty-set sample transition, not this navigation policy.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Define builder reconciliation when a preset edit produces a record above the transport limit.
+  evidence: Review B5/E4 constructed a row regrouping of large text fields; importSnapshot rejects the new record and reconcileRecords retains the prior records. No affected user occurrence was supplied; changing rejection or data-loss policy needs its own contract.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Give snapshot file-read Promise rejection a user-visible refusal.
+  evidence: Review B6/E5 found that file.text rejection reaches a console-only catch. The approved malformed, unsupported and oversized file scenarios do not establish a read-failure occurrence or its message.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Define arbitration for overlapping snapshot reads and preset replacement during a read.
+  evidence: Review B7/E6 constructed reversed asynchronous completion; no request identity guard exists. No observed reversed completion was supplied.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Decide partial draft recovery when a snapshot record is corrupt but its preset is readable.
+  evidence: Review B8 found that the joint draft schema rejects the complete draft. TASK-69 preserves old drafts with a missing snapshot field; no app-produced corrupt-record occurrence or partial-recovery policy was supplied.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Guard generated builder sheet IDs against template IDs if a collision occurrence is found.
+  evidence: Review E2 constructed a nanoid result equal to a template ID that has no sheet record. The current guard checks existing sheet keys; no collision occurrence was supplied.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Define ordering for imported sheet orders too large to increase by one.
+  evidence: Review E3 constructed an unsafe numeric order for which highest + 1 equals highest. Ordinary builder creation starts at zero; no affected imported snapshot occurrence was supplied.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Pin the snapshot policy for opening another preset before testing that policy.
+  evidence: Review V2 found no test with a nonempty snapshot before preset replacement. The current open clears records; TASK-69 does not explicitly choose clearing versus reconciliation, so a new policy-specific test would assert an implementation choice.
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
   summary: Remove the obsolete default-dev sentence when TASK-74 rewrites the dev instructions.
   evidence: TASK-68 review found that CLAUDE.md still describes default dev as the Owlbear adapter beside its new builder description. Story 1 explicitly defers the old block rewrite to story 7.

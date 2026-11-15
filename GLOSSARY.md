@@ -207,11 +207,11 @@ _Avoid_: reset, clear, purge
 ## Builder
 
 **Builder**:
-A separate page of the deployed site where a GM makes or changes a preset without writing JSON, then downloads it. In the interface: «Конструктор пресетов».
+A separate page of the deployed site where a GM makes or changes a preset and its snapshot without writing JSON, then downloads either file. In the interface: «Конструктор пресетов».
 _Avoid_: editor, configurator, constructor, designer
 
 **Preview**:
-A sheet drawn from a preset that is not in a room, with sample or empty values, so a GM sees the preset as the extension draws it.
+A read-only extension window in the Builder that draws the sheets and values from its snapshot; an empty sheet set uses a pale «Образец» until a real sheet is added.
 _Avoid_: mockup, render
 
 **Local room**:
@@ -219,7 +219,7 @@ A dev-only page opened by `bun run room` that seeds a mock room and shows its GM
 _Avoid_: local preview
 
 **Draft**:
-The one unfinished preset the builder keeps by itself and opens again on the next visit, with no prompt.
+The one unfinished preset and snapshot the Builder keeps by itself and opens again on the next visit, with no prompt.
 _Avoid_: autosave, work in progress
 
 **Problem**:

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { parsePresetFile, type Preset } from '@/core/preset';
+import type { VersionedRecord } from '@/core/records';
 
 import {
   createBuilderStore,
@@ -163,6 +164,92 @@ describe('undo and redo', () => {
     expect(presetOf(store)).toEqual(draft);
     expect(store.$state.get().step.origin).toBeNull();
     expect(store.$state.get().step.name).toBe('preset');
+  });
+
+  test('replacing snapshot records is one complete step through undo and redo', () => {
+    // #given
+    const store = createBuilderStore(new MemoryStorage());
+
+    const before = [
+      { k: 'sheet:anya', d: { set: 'pc', order: 0 }, c: 1, a: 'test' },
+    ] satisfies VersionedRecord[];
+
+    const after = [
+      { k: 'sheet:brok', d: { set: 'pc', order: 1 }, c: 1, a: 'test' },
+    ] satisfies VersionedRecord[];
+
+    store.setSnapshot(before);
+
+    // #when
+    store.setSnapshot(after);
+    store.undo();
+
+    const undone = store.$state.get().step.records;
+
+    store.redo();
+
+    // #then
+    expect({ undone, redone: store.$state.get().step.records }).toEqual({
+      undone: before,
+      redone: after,
+    });
+  });
+
+  test('adding a sheet is one complete step through undo and redo', () => {
+    // #given
+    const store = createBuilderStore(new MemoryStorage());
+
+    store.open(D20, null, 'd20');
+
+    // #when
+    store.addSheet('pc');
+
+    const added = store.$state.get().step.records;
+
+    store.undo();
+
+    const undone = store.$state.get().step.records;
+
+    store.redo();
+
+    const redone = store.$state.get().step.records;
+
+    const normalizedAdded = added.map((record) =>
+      record.k.startsWith('sheet:') ? { ...record, k: 'sheet:<generated>' } : record,
+    );
+
+    const normalizedRedone = redone.map((record) =>
+      record.k.startsWith('sheet:') ? { ...record, k: 'sheet:<generated>' } : record,
+    );
+
+    // #then
+    expect({
+      added: normalizedAdded,
+      generatedId: /^sheet:[A-Za-z0-9_-]{8}$/.test(added[0]?.k ?? ''),
+      undone,
+      redone: normalizedRedone,
+      sameId: redone[0]?.k === added[0]?.k,
+    }).toEqual({
+      added: [
+        {
+          k: 'sheet:<generated>',
+          d: { set: 'pc', order: 0 },
+          c: 1,
+          a: 'builder',
+        },
+      ],
+      generatedId: true,
+      undone: [],
+      redone: [
+        {
+          k: 'sheet:<generated>',
+          d: { set: 'pc', order: 0 },
+          c: 1,
+          a: 'builder',
+        },
+      ],
+      sameId: true,
+    });
   });
 
   test('typing in one input is one step until the run ends', () => {

@@ -3,13 +3,17 @@ import type { MouseEvent, ReactNode } from 'react';
 
 import { DEFAULT_WINDOW_SIZE } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { sheetKey } from '@/core/sheets';
+import { sheetName } from '@/core/sheets';
 import { createStubRolling } from '@/ui/stub-rolling';
 import { copy } from '@/copy';
 import { CellPreviewContext, type CellPreview } from '@/ui/sheet/preset-cell';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { SheetHeader } from '@/ui/sheet/sheet-header';
-import { previewSidebarEntries, sidebarSheetId } from '@/ui/shell/sidebar-entries';
+import {
+  builderSidebarEntries,
+  type SidebarEntries,
+  type SidebarSheet,
+} from '@/ui/shell/sidebar-entries';
 import {
   templateIndexFromKey,
   templateTabKey,
@@ -24,14 +28,19 @@ import {
   locate,
   templateOf,
   templateToPreset,
+  toPreset,
   uidAt,
   type BuilderDocument,
 } from './document';
 import { previewRecords, previewSheetName, PREVIEW_SHEET_ID } from './preview-records';
 import {
+  findSidebarSheet,
   previewNavigationReducer,
+  previewSheetNavigationReducer,
+  selectedSidebarSheet,
   type PreviewNavigationAction,
   type PreviewNavigationTemplate,
+  type PreviewSheetNavigationAction,
   type ShownTab,
 } from './preview-navigation';
 import type { BuilderProblem } from './problems';
@@ -39,6 +48,7 @@ import type { BuilderProblem } from './problems';
 type PreviewPaneProps = {
   store: BuilderStore;
   document: BuilderDocument;
+  records: readonly VersionedRecord[];
   selection: string | null;
   problems: readonly BuilderProblem[];
 };
@@ -62,10 +72,23 @@ const MIN_FRAME_PX = 120;
 // components in a frame of the preset's window size, on the tab that holds the selected item, else
 // on the tab shown before. Read-only, with every field empty. A click on a cell, row, section, tab
 // or sidebar entry selects its item.
-export function PreviewPane({ store, document, selection, problems }: PreviewPaneProps): ReactNode {
+export function PreviewPane({
+  store,
+  document,
+  records: snapshotRecords,
+  selection,
+  problems,
+}: PreviewPaneProps): ReactNode {
   const headingId = useId();
   const area = useRef<HTMLDivElement>(null);
   const areaWidth = useWidth(area);
+
+  const records = useMemo(
+    () => new Map(snapshotRecords.map((record) => [record.k, record])),
+    [snapshotRecords],
+  );
+
+  const preset = useMemo(() => toPreset(document), [document]);
   const size = document.window ?? DEFAULT_WINDOW_SIZE;
   const width = Math.max(size.width, MIN_FRAME_PX);
   const height = Math.max(size.height, MIN_FRAME_PX);
@@ -78,7 +101,43 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
     [docTemplate],
   );
 
-  const records = useMemo(() => (template === null ? null : previewRecords(template)), [template]);
+  const sidebar = useMemo(
+    () =>
+      builderSidebarEntries(
+        preset,
+        records,
+        document.templates.map((template) => template.uid),
+      ),
+    [document.templates, preset, records],
+  );
+
+  const [shownSheetId, dispatchSheet] = useReducer(previewSheetNavigationReducer, null);
+
+  const sheetNavigationAction = useMemo<PreviewSheetNavigationAction>(
+    () => ({
+      type: 'template-changed',
+      templateUid: docTemplate?.uid ?? null,
+      entries: sidebar,
+    }),
+    [docTemplate?.uid, sidebar],
+  );
+
+  const selectedSheet = selectedSidebarSheet(sidebar, docTemplate?.uid ?? null, shownSheetId);
+
+  const sample = selectedSheet?.sample === true;
+  const activeSheetId = selectedSheet?.sheetId ?? null;
+  const renderSheetId = sample ? PREVIEW_SHEET_ID : activeSheetId;
+
+  const renderRecords = useMemo(
+    () =>
+      template === null || renderSheetId === null
+        ? null
+        : sample
+          ? previewRecords(template)
+          : records,
+    [records, renderSheetId, sample, template],
+  );
+
   const [shownTab, dispatch] = useReducer(previewNavigationReducer, null);
 
   const selectedTab = useMemo(
@@ -103,18 +162,14 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
     dispatch(navigationAction);
   }, [navigationAction]);
 
+  useEffect(() => {
+    dispatchSheet(sheetNavigationAction);
+  }, [sheetNavigationAction]);
+
   const templateUid = docTemplate?.uid ?? null;
   const openTab = template === null ? 0 : (nextShownTab?.tab ?? 0);
 
   const scale = areaWidth === null ? 1 : Math.min(1, areaWidth / width);
-
-  const sidebar = previewSidebarEntries(
-    document.templates.map((other) => ({
-      template: templateToPreset(other),
-      sheetId: other.uid,
-      name: previewSheetName(templateToPreset(other)),
-    })),
-  );
 
   const visibleIndexes = template?.tabs.map((_tab, index) => index) ?? [];
 
@@ -129,13 +184,22 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
   });
 
   const header =
-    template === null || records === null ? null : (
-      <PreviewHeader template={template} records={records} />
+    template === null || renderRecords === null || renderSheetId === null ? null : (
+      <PreviewHeader
+        sheetId={renderSheetId}
+        name={sheetNameFor(selectedSheet, records, preset, template)}
+        records={renderRecords}
+      />
     );
 
   const content =
-    template === null || records === null ? null : (
-      <PreviewBody template={template} records={records} openTab={openTab} />
+    template === null || renderRecords === null || renderSheetId === null ? null : (
+      <PreviewBody
+        template={template}
+        sheetId={renderSheetId}
+        records={renderRecords}
+        openTab={openTab}
+      />
     );
 
   function handleClick(event: MouseEvent<HTMLDivElement>): void {
@@ -163,9 +227,19 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
       <h2 id={headingId} className="text-section-heading">
         {copy.builder.preview(size.width, size.height)}
       </h2>
-      <style>{markRules(document, templateUid, openTab, selection, problems)}</style>
+      <style>
+        {markRules(
+          document,
+          sidebar,
+          templateUid,
+          selectedSheet?.id ?? null,
+          openTab,
+          selection,
+          problems,
+        )}
+      </style>
       <div ref={area} className="min-w-0">
-        {docTemplate === null || template === null || records === null ? (
+        {docTemplate === null || template === null || renderRecords === null ? (
           <p className="text-text-muted">{copy.builder.emptyPreset}</p>
         ) : (
           <div style={{ width: width * scale, height: height * scale }}>
@@ -178,16 +252,22 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
               <WindowFrame
                 layout={{
                   sidebar,
-                  selectedSidebarEntry: sheetKey(docTemplate.uid),
+                  selectedSidebarEntry: selectedSheet?.id ?? '',
                   onSelectSidebarEntry: (id) => {
-                    const uid = sidebarSheetId(sidebar, id);
+                    const entry = findSidebarSheet(sidebar, id);
 
-                    if (
-                      uid !== null &&
-                      document.templates.some((candidate) => candidate.uid === uid)
-                    ) {
-                      store.select(uid);
+                    if (entry === null) {
+                      return;
                     }
+
+                    dispatchSheet({ type: 'sheet-selected', sheetId: entry.sheetId });
+
+                    if (entry.templateUid !== undefined) {
+                      store.select(entry.templateUid);
+                    }
+                  },
+                  onAddSidebarEntry: (setId) => {
+                    store.addSheet(setId);
                   },
                   tabs,
                   selectedTab: openTab === null ? null : templateTabKey(openTab),
@@ -216,22 +296,39 @@ export function PreviewPane({ store, document, selection, problems }: PreviewPan
   );
 }
 
+function sheetNameFor(
+  selected: SidebarSheet | null,
+  records: ReadonlyMap<string, VersionedRecord>,
+  preset: ReturnType<typeof toPreset>,
+  template: ReturnType<typeof templateToPreset>,
+): string {
+  if (selected?.sample === true) {
+    return copy.builder.previewSample;
+  }
+
+  return selected === null
+    ? previewSheetName(template)
+    : (sheetName(records, preset, selected.sheetId) ?? previewSheetName(template));
+}
+
 function noop(): void {
   // The preview focuses no name.
 }
 
 function PreviewHeader({
-  template,
+  sheetId,
+  name,
   records,
 }: {
-  template: ReturnType<typeof templateToPreset>;
+  sheetId: string;
+  name: string;
   records: ReadonlyMap<string, VersionedRecord>;
 }): ReactNode {
   return (
     <CellPreviewContext value={CELL_PREVIEW}>
       <SheetHeader
-        sheetId={PREVIEW_SHEET_ID}
-        name={previewSheetName(template)}
+        sheetId={sheetId}
+        name={name}
         nameField={null}
         records={records}
         editing={null}
@@ -246,10 +343,12 @@ function PreviewHeader({
 
 function PreviewBody({
   template,
+  sheetId,
   records,
   openTab,
 }: {
   template: ReturnType<typeof templateToPreset>;
+  sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
   openTab: number | null;
 }): ReactNode {
@@ -257,7 +356,7 @@ function PreviewBody({
     <CellPreviewContext value={CELL_PREVIEW}>
       <SheetBody
         template={template}
-        sheetId={PREVIEW_SHEET_ID}
+        sheetId={sheetId}
         openTab={openTab}
         records={records}
         editing={null}
@@ -322,7 +421,9 @@ function clickedUid(
 // components stay as the window draws them.
 function markRules(
   document: BuilderDocument,
+  sidebar: SidebarEntries,
   templateUid: string | null,
+  selectedSidebarId: string | null,
   openTab: number,
   selection: string | null,
   problems: readonly BuilderProblem[],
@@ -334,14 +435,23 @@ function markRules(
   const rules: string[] = [];
 
   const selector =
-    selection === null ? null : markSelector(document, templateUid, openTab, selection);
+    selection === null
+      ? null
+      : markSelector(document, sidebar, templateUid, selectedSidebarId, openTab, selection);
 
   if (selector !== null) {
     rules.push(`${selector} { ${SELECTED_RULE} }`);
   }
 
   for (const problem of problems) {
-    const problemSelector = markSelector(document, templateUid, openTab, problem.uid);
+    const problemSelector = markSelector(
+      document,
+      sidebar,
+      templateUid,
+      selectedSidebarId,
+      openTab,
+      problem.uid,
+    );
 
     if (problemSelector !== null) {
       rules.push(`${problemSelector} { ${PROBLEM_RULE} }`);
@@ -355,7 +465,9 @@ function markRules(
 // row, which a template with one tab does not draw.
 function markSelector(
   document: BuilderDocument,
+  sidebar: SidebarEntries,
   templateUid: string,
+  selectedSidebarId: string | null,
   openTab: number,
   uid: string,
 ): string | null {
@@ -367,15 +479,26 @@ function markSelector(
 
   const scope = PREVIEW_SCOPE;
 
-  if (document.templates[path.template]?.uid !== templateUid) {
-    // A template's own item is its tab, which every template shows.
-    return path.kind === 'template'
-      ? `${scope} [data-sidebar-entry][data-key="${CSS.escape(sheetKey(uid))}"]`
-      : null;
+  if (path.kind === 'template') {
+    const targetTemplateUid = document.templates[path.template]?.uid;
+
+    if (targetTemplateUid === undefined) {
+      return null;
+    }
+
+    const entryId = sidebarEntryId(
+      sidebar,
+      targetTemplateUid,
+      targetTemplateUid === templateUid ? selectedSidebarId : null,
+    );
+
+    return entryId === null
+      ? null
+      : `${scope} [data-sidebar-entry][data-key="${CSS.escape(entryId)}"]`;
   }
 
-  if (path.kind === 'template') {
-    return `${scope} [data-sidebar-entry][data-key="${CSS.escape(sheetKey(uid))}"]`;
+  if (document.templates[path.template]?.uid !== templateUid) {
+    return null;
   }
 
   const [, tab, section, row, cell] = indexPath(path);
@@ -399,6 +522,22 @@ function markSelector(
   }
 
   return `${sectionSelector} [data-cell="${tab}.${section}.${row}.${cell}"] > *`;
+}
+
+function sidebarEntryId(
+  sidebar: SidebarEntries,
+  templateUid: string,
+  preferredId: string | null,
+): string | null {
+  const sheets = sidebar.sections.flatMap((section) =>
+    section.kind === 'single' ? [section.sheet] : section.sheets,
+  );
+
+  return (
+    sheets.find((sheet) => sheet.templateUid === templateUid && sheet.id === preferredId)?.id ??
+    sheets.find((sheet) => sheet.templateUid === templateUid)?.id ??
+    null
+  );
 }
 
 // The width of an element, followed as the page resizes, so the frame scales down to fit.

@@ -17,11 +17,14 @@ const PREVIEW_AUTHOR = 'builder';
 
 // A sheet set's sample sheet gets a `sheet:` record, and each repeat section one empty `rep:`
 // record, so it shows one sample repeat block.
-export function previewRecords(template: Template): Map<string, VersionedRecord> {
+export function previewRecords(
+  template: Template,
+  sheetId: string = PREVIEW_SHEET_ID,
+): Map<string, VersionedRecord> {
   const records = new Map<string, VersionedRecord>();
 
   if (template.kind === 'set') {
-    const key = sheetKey(PREVIEW_SHEET_ID);
+    const key = sheetKey(sheetId);
 
     records.set(key, {
       k: key,
@@ -35,7 +38,7 @@ export function previewRecords(template: Template): Map<string, VersionedRecord>
     const sectionId = repeatSectionId(section);
 
     if (sectionId !== null) {
-      const key = repKey(PREVIEW_SHEET_ID, sectionId, SAMPLE_INSTANCE_ID);
+      const key = repKey(sheetId, sectionId, SAMPLE_INSTANCE_ID);
 
       records.set(key, {
         k: key,
