@@ -16,4 +16,4 @@ bun run mutants catch-up room-copy
 
 Each module JSON file is an array of controls. Add a control with a unique `id`, a one-sentence `rule`, the repository-relative target `file`, a `find` string that occurs exactly once, its `replace` string, and the narrowest `test` path array that kills it. Run the new module and confirm every control is killed before committing.
 
-Run these controls once before merging a change to a covered module. The runner refuses to modify a target file with uncommitted changes and restores every mutation after its test, including after an interrupt.
+PR CI runs every control. Run them locally before pushing a change to a covered module. The runner refuses to modify a target file with uncommitted changes and restores every mutation after its test, including after an interrupt.
