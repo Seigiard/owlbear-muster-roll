@@ -47,6 +47,8 @@ export type GenerationFlowPorts = {
     | 'adoptionStaged'
     | 'live'
   >;
+  // Adoption must clear staged records synchronously before adoptFromCopy returns; detached async
+  // reads do not need to finish.
   interpretCatchUp: (decisions: readonly CatchUpDecision[]) => void;
   roomCopy: Pick<RoomCopy, 'writeImport' | 'replaced'>;
   flush: () => void;
@@ -68,7 +70,6 @@ export type GenerationFlowPorts = {
 };
 
 export type AdoptFromCopyDecisions = {
-  generationRead: CatchUpDecision[];
   adoptionStaged: CatchUpDecision[];
 };
 
@@ -129,6 +130,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
   let incoming = new Map<string, VersionedRecord>();
   let importing = false;
 
+  // AD-9: the file read again and placed over the current preset. An import needs a preset.
   function planImport(data: string): Result<SnapshotImport, RejectionReason> {
     const file = decodeSnapshotFileData(data);
 
@@ -165,6 +167,10 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     return imported;
   }
 
+  // AD-9: the confirmed import runs the placement again: values it drops other than the confirmed
+  // ones ask again. The importer takes a generation above every one it knows, saves it, writes the
+  // room copy, and only then sends `reset`. A failed save stops before the copy and `reset`, and the
+  // part saved goes, so nothing changes. A copy that cannot be saved does not stop the import.
   async function importFromSnapshot(
     id: string,
     command: Extract<Command, { type: 'snapshot-import' }>,
@@ -202,6 +208,9 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     }
   }
 
+  // AD-9, CAP-31: a wipe is a generation change with no records, `preset` included. The window
+  // asked its one confirmation. It works in a room whose data has an older format too: the room
+  // copy of an older format is written over, and the local keys of every format go.
   async function wipe(id: string): Promise<void> {
     if (importing) {
       ports.reject(id, 'importing');
@@ -220,6 +229,8 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     }
   }
 
+  // AD-9: a window asks how many values of a snapshot file the current preset would drop before it
+  // asks the GM. A live GM client answers from its replica. The answer writes nothing.
   function checkSnapshot(message: SnapshotCheckMessage): void {
     if (!ports.acceptCommand(message.id)) {
       return;
@@ -243,6 +254,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
       return;
     }
 
+    // A GM client whose storage could not be read cannot save a new generation.
     if (!persistence) {
       ports.reject(message.id, 'write-failed');
 
@@ -261,6 +273,11 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     ports.reply({ t: 'snapshot-check-result', id: message.id, count, sheets, digest });
   }
 
+  // AD-9: the second half of an import, and all of a wipe. The client takes a generation above
+  // every one it knows, saves it, writes the room copy, and only then sends `reset`. A failed save
+  // stops before the copy and `reset`, and the part saved goes, so nothing changes. A copy that
+  // cannot be saved does not stop it. It also deletes this room's keys of older storage formats.
+  // True once the new generation is the room's.
   async function replaceGeneration(
     id: string,
     records: readonly VersionedRecord[],
@@ -279,6 +296,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
       return false;
     }
 
+    // The commits held so far belong to the old generation, so they go out under it.
     ports.flush();
 
     const { store } = persistence;
@@ -314,6 +332,8 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
         return false;
       }
 
+      // Another import of a higher generation won while the copy was written: this one is
+      // replaced, and its `reset` would only send the room after a generation already gone.
       if (importSuperseded(ports.stopped(), ports.catchUp.adopting(), ownGeneration, generation)) {
         ports.reject(id, 'data-replaced');
 
@@ -331,15 +351,19 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
       removeOlderFormats(store);
     } finally {
       importing = false;
+      // Deletions that waited out the import, whether it finished, stopped or was replaced.
       ports.clearDeletedLinks();
     }
 
     return true;
   }
 
+  // AD-9 and gap 12: any client that reads a room copy of a higher generation adopts it, and a
+  // decoded copy of the generation it adopts completes it at once. A copy of a generation lower
+  // than the one it adopts already is left alone.
   function adoptFromCopy(copy: Snapshot): AdoptFromCopyDecisions {
     if (ports.stopped()) {
-      return { generationRead: [], adoptionStaged: [] };
+      return { adoptionStaged: [] };
     }
 
     highestSeenGeneration = higherGeneration(highestSeenGeneration, copy.g);
@@ -348,17 +372,21 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     const target = ports.catchUp.adopting();
 
     if (target === null || compareGenerations(copy.g, target) !== 0) {
-      return { generationRead: [], adoptionStaged: [] };
+      return { adoptionStaged: [] };
     }
 
     stage(copy.records);
 
     return {
-      generationRead: [],
       adoptionStaged: ports.catchUp.adoptionStaged(),
     };
   }
 
+  // AD-9: a generation above this client's own, and above the one it adopts, starts adoption. Its
+  // pending queue, the GM intents and the player entries alike, drops with the notification, and
+  // catch-up runs. The replica keeps the old data until the new generation is complete.
+  // `keepNonce`: the message that shows it answers this client's current request, so the catch-up
+  // in progress keeps its `r` and takes that answer.
   function seeGeneration(generation: Generation, keepNonce: boolean): CatchUpDecision[] {
     if (ports.stopped()) {
       return [];
@@ -369,6 +397,8 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     return ports.catchUp.generationHeard(generation, keepNonce);
   }
 
+  // Records of the generation this client adopts, kept apart from the replica until it is
+  // complete. Every one is complete, so any number of them merge.
   function stage(records: readonly VersionedRecord[]): void {
     for (const record of records) {
       if (!recordFitsOneMessage(record)) {
@@ -384,6 +414,8 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
 
   function clearStaged(hadData: boolean, keepNonce: boolean): void {
     incoming = new Map();
+    // A held commit composes with the generation of the moment it sends, so it would carry old
+    // records into the new generation.
     ports.dropOutbox();
     ports.dropPendingWork();
 
@@ -396,6 +428,13 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     }
   }
 
+  // AD-9: the new generation is complete. A GM client saves it under the new generation first and
+  // deletes the old one only once that save is complete. A save that fails keeps the old one and
+  // raises the local-save notice. The catch-up module continues after this synchronous callback
+  // succeeds.
+  // `fromCopy`: the room copy completed it, so a copy of this generation is in the room. A save
+  // that fails removes the part saved, keeps the old generation in storage and in the replica, and
+  // leaves the adoption open, so the next answer or copy tries again.
   function saveAdoption(generation: Generation, fromCopy: boolean): boolean {
     const records = [...incoming.values()];
 
@@ -422,6 +461,8 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
         console.error('Muster Roll could not remove the replaced records', removed.error);
       }
 
+      // AD-9: a GM client that adopts a new generation, as after a wipe, drops this room's keys of
+      // older storage formats too.
       removeOlderFormats(store);
     }
 
@@ -444,6 +485,10 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
     }
   }
 
+  // AD-9: the incomplete marker first, then the generation marker and every record, then the
+  // incomplete marker off. A failed write leaves the incomplete marker, so a start never reads the
+  // part that was written, and raises the local-save notice. The generation marker keeps a
+  // generation with no records, as after a wipe.
   function saveGeneration(
     store: RecordStore,
     generation: Generation,

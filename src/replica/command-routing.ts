@@ -36,6 +36,7 @@ export function decideCommandRoute(
   }
 
   if (context.importing) {
+    // AD-9: until the importer's `reset` is out, no commit of the new generation may reach the room.
     return { kind: 'reject', reason: 'importing' };
   }
 
@@ -169,6 +170,9 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
   }
 
   function runCommand(id: string, command: Command): void {
+    // AD-4: a player never merges its own edit, which would beat later GM edits of its key. Its
+    // field and repeat block edits wait for a GM client's check. Nothing else is a player's to
+    // write.
     const route = decideCommandRoute(
       {
         role: ports.role(),
@@ -220,6 +224,8 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     }
   }
 
+  // AD-14: a window asks how many stored values a preset would erase before it asks the GM. A GM
+  // client that is live answers with one diff over its full replica. The answer writes nothing.
   function handlePresetDiff(message: PresetDiffMessage): void {
     if (!ports.acceptCommand(message.id)) {
       return;
@@ -259,6 +265,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
 
     const applied = ports.apply(composed.value);
 
+    // A notice change reaches the window even when the command applied nothing.
     ports.publish();
     ports.commandDone(id);
     ports.addCommits(applied);
@@ -268,6 +275,11 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     }
   }
 
+  // AD-14: the diff runs again over the replica as it is now. The commits held so far go out
+  // first, then each group of the batch is saved and sent as commits of its own, in order: rows
+  // under new keys, `preset`, then tombstones of old keys and stripped rows. A failed write stops
+  // the batch there, so a closure or a failure at any point leaves values readable under one of
+  // the two presets. The generation does not change.
   function uploadPreset(id: string, command: Extract<Command, { type: 'preset-upload' }>): void {
     const batch = ports.composers.composePresetUpload(ports.liveContext(), command);
 
@@ -312,6 +324,8 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     });
   }
 
+  // AD-4: the pending-edits module checks and queues a player's edit. The engine reports only the
+  // immediate command rejection or the notification the module returns.
   function handlePlayerCommand(id: string, command: Command): void {
     const result = ports.pendingEdits.edit(command, pendingView());
 
@@ -329,6 +343,8 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     ports.commandDone(id);
   }
 
+  // AD-7: an intent made during catch-up waits and takes `c` on exit. It is checked now against the
+  // pending view, so a refusal comes at once.
   function queueIntent(id: string, command: Command): void {
     const dry = ports.composers.compose(
       { ...ports.dryContext(pendingView()), newRecordId: pendingIdsOf(id) },
@@ -346,6 +362,9 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     ports.publish();
   }
 
+  // The replica with every pending intent applied by the same composers, minting nothing, and every
+  // proposal of a player's edit over it (AD-4): the newest version sent, or one that waits for its
+  // `c`, as its patch makes it of the record it will be applied to.
   function pendingView(): Map<string, VersionedRecord> {
     const view = new Map(ports.records());
     const context = ports.dryContext(view);
@@ -376,12 +395,16 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     return record === null ? [] : [record];
   }
 
+  // The publisher compares this pending view with what windows hold. Keys equal to the replica are
+  // omitted, so a pending record never masks an applied record without a visible change.
   function pendingViewRecords(): Map<string, VersionedRecord> {
     const view = pendingView();
 
     return new Map([...view].filter(([key, record]) => record !== ports.records().get(key)));
   }
 
+  // AD-7 replay: every pending intent runs for real in arrival order. A refusal now goes to the
+  // window with the command id it came with.
   function replayQueuedPending(): ReplayedPending {
     const applied: VersionedRecord[] = [];
     const completed: string[] = [];
