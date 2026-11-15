@@ -531,43 +531,95 @@ describe('window publisher', () => {
     error.mockRestore();
   });
 
-  test('rejects counter-sized projection and delta messages that a smaller envelope would send', async () => {
+  test('rejects a counter-sized projection and sends the nearby fitting control', async () => {
     // #given
-    const counterRecords = Array.from({ length: 5 }, (_, index) =>
-      record(`row:counter:${String(index).padStart(5, '0')}`, { value: 'x'.repeat(9544) }),
-    );
-
-    const counterPending = Array.from({ length: 5 }, (_, index) =>
-      record(
-        `row:pending:${String(index).padStart(5, '0')}`,
-        { value: 'x'.repeat(9576) },
-        1,
-        'player',
-      ),
-    );
-
-    const projection = publisherHarness(source('GM', counterRecords, counterPending));
-    const delta = publisherHarness(source('GM'));
-    projection.source.party = party(100);
-    delta.source.party = party(100);
-    delta.publisher.project('ready');
-    await settle();
-    delta.source.replica = records(...counterRecords);
-    delta.source.pendingView = records(...counterPending);
+    const boundary = counterRecords(9544, 9540);
+    const fitting = counterRecords(9540, 9539);
+    const rejected = publisherHarness(source('GM', boundary.replica, boundary.pending));
+    const control = publisherHarness(source('GM', fitting.replica, fitting.pending));
+    rejected.source.party = party(100);
+    control.source.party = party(100);
     const error = spyOn(console, 'error').mockImplementation(() => undefined);
 
     // #when
-    const projected = projection.publisher.project('counter-projection');
-    delta.publisher.publish();
+    const rejectedAnswer = rejected.publisher.project('counter-projection');
+    const controlAnswer = control.publisher.project('counter-projectioz');
+    await settle();
+    await settle();
     await settle();
 
     // #then
+    const controlMessages = control.messages.filter(
+      (message): message is Extract<EngineMessage, { t: 'projection' }> =>
+        message.t === 'projection',
+    );
+
     expect({
-      projected,
       errors: error.mock.calls.length,
-      projectionMessages: projection.messages,
-      deltaMessages: deltas(delta.messages),
-    }).toEqual({ projected: false, errors: 2, projectionMessages: [], deltaMessages: [] });
+      rejected: { answer: rejectedAnswer, sends: rejected.messages.length },
+      control: {
+        answer: controlAnswer,
+        envelopeBytes: controlMessages.map(bodyFreeMessageBytes),
+        messageBytes: controlMessages.map(jsonByteLength),
+      },
+    }).toEqual({
+      errors: 1,
+      rejected: { answer: false, sends: 0 },
+      control: {
+        answer: true,
+        envelopeBytes: [5398, 5398, 5398, 5398, 5398, 5398, 5398, 5398, 5398, 5399],
+        messageBytes: [14995, 14995, 14995, 14995, 14995, 14998, 14998, 14998, 14998, 14999],
+      },
+    });
+    expect(controlMessages.every((message) => jsonByteLength(message) < 15000)).toBe(true);
+    error.mockRestore();
+  });
+
+  test('rejects a counter-sized delta and sends the nearby fitting control', async () => {
+    // #given
+    const boundary = counterRecords(9544, 9572);
+    const fitting = counterRecords(9544, 9571);
+    const rejected = publisherHarness(source('GM'));
+    const control = publisherHarness(source('GM'));
+    rejected.publisher.project('ready');
+    control.publisher.project('ready');
+    await settle();
+    rejected.source.party = party(100);
+    control.source.party = party(100);
+    rejected.source.replica = records(...boundary.replica);
+    rejected.source.pendingView = records(...boundary.pending);
+    control.source.replica = records(...fitting.replica);
+    control.source.pendingView = records(...fitting.pending);
+    const error = spyOn(console, 'error').mockImplementation(() => undefined);
+
+    // #when
+    rejected.publisher.publish();
+    control.publisher.publish();
+    await settle();
+    await settle();
+    await settle();
+
+    // #then
+    const controlMessages = control.messages.filter(
+      (message): message is Extract<EngineMessage, { t: 'delta' }> => message.t === 'delta',
+    );
+
+    expect({
+      errors: error.mock.calls.length,
+      rejected: { sends: deltas(rejected.messages).length },
+      control: {
+        envelopeBytes: controlMessages.map(bodyFreeMessageBytes),
+        messageBytes: controlMessages.map(jsonByteLength),
+      },
+    }).toEqual({
+      errors: 1,
+      rejected: { sends: 0 },
+      control: {
+        envelopeBytes: [5366, 5366, 5366, 5366, 5366, 5366, 5366, 5366, 5366, 5367],
+        messageBytes: [14967, 14967, 14967, 14967, 14967, 14998, 14998, 14998, 14998, 14999],
+      },
+    });
+    expect(controlMessages.every((message) => jsonByteLength(message) < 15000)).toBe(true);
     error.mockRestore();
   });
 
@@ -869,6 +921,28 @@ function party(count: number): WindowPublisherState['party'] {
     name: 'Player',
     role: 'PLAYER' as const,
   }));
+}
+
+function counterRecords(recordLength: number, pendingLength: number) {
+  return {
+    replica: Array.from({ length: 5 }, (_, index) =>
+      record(`row:counter:${String(index).padStart(5, '0')}`, { value: 'x'.repeat(recordLength) }),
+    ),
+    pending: Array.from({ length: 5 }, (_, index) =>
+      record(
+        `row:pending:${String(index).padStart(5, '0')}`,
+        { value: 'x'.repeat(pendingLength) },
+        1,
+        'player',
+      ),
+    ),
+  };
+}
+
+function bodyFreeMessageBytes(
+  message: Extract<EngineMessage, { t: 'projection' | 'delta' }>,
+): number {
+  return jsonByteLength({ ...message, records: [], pending: [] });
 }
 
 function deltas(
