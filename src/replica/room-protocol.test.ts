@@ -73,11 +73,119 @@ type AdmissionControl = {
   handlerEffects: string[];
 };
 
+type CoreAdmissionOwner = {
+  admission: AdmissionCase;
+  owner: string;
+  noTestReason: string;
+};
+
+const CORE_ADMISSION_OWNED_REJECTIONS: readonly CoreAdmissionOwner[] = [
+  {
+    admission: ['propose', 'PLAYER', 'lower'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > propose from PLAYER with a lower generation follows the AD-5 table',
+    noTestReason:
+      'The rejected proposal returns from receiveProposal without a handler or liveness effect.',
+  },
+  {
+    admission: ['propose', 'PLAYER', 'higher'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > propose from PLAYER with a higher generation follows the AD-5 table',
+    noTestReason:
+      'The rejected proposal returns from receiveProposal without a handler or liveness effect.',
+  },
+  {
+    admission: ['propose', null, 'lower'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > propose from null with a lower generation follows the AD-5 table',
+    noTestReason:
+      'The rejected proposal returns from receiveProposal without a handler or liveness effect.',
+  },
+  {
+    admission: ['propose', null, 'equal'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > propose from null with a equal generation follows the AD-5 table',
+    noTestReason:
+      'The rejected proposal returns from receiveProposal without a handler or liveness effect.',
+  },
+  {
+    admission: ['propose', null, 'higher'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > propose from null with a higher generation follows the AD-5 table',
+    noTestReason:
+      'The rejected proposal returns from receiveProposal without a handler or liveness effect.',
+  },
+  {
+    admission: ['reset', 'PLAYER', 'lower'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > reset from PLAYER with a lower generation follows the AD-5 table',
+    noTestReason: 'Reset dispatch has no handler or liveness effect for a player sender.',
+  },
+  {
+    admission: ['reset', 'PLAYER', 'equal'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > reset from PLAYER with a equal generation follows the AD-5 table',
+    noTestReason: 'Reset dispatch has no handler or liveness effect for a player sender.',
+  },
+  {
+    admission: ['reset', 'PLAYER', 'higher'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > reset from PLAYER with a higher generation follows the AD-5 table',
+    noTestReason: 'Reset dispatch has no handler or liveness effect for a player sender.',
+  },
+  {
+    admission: ['reset', null, 'lower'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > reset from null with a lower generation follows the AD-5 table',
+    noTestReason: 'Reset dispatch has no handler or liveness effect without a sender.',
+  },
+  {
+    admission: ['reset', null, 'equal'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > reset from null with a equal generation follows the AD-5 table',
+    noTestReason: 'Reset dispatch has no handler or liveness effect without a sender.',
+  },
+  {
+    admission: ['reset', null, 'higher'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > reset from null with a higher generation follows the AD-5 table',
+    noTestReason: 'Reset dispatch has no handler or liveness effect without a sender.',
+  },
+  {
+    admission: ['roll', null, 'lower'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > roll from null with a lower generation follows the AD-5 table',
+    noTestReason:
+      'Roll dispatch requires a member, so it has no handler or liveness effect without one.',
+  },
+  {
+    admission: ['roll', null, 'equal'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > roll from null with a equal generation follows the AD-5 table',
+    noTestReason:
+      'Roll dispatch requires a member, so it has no handler or liveness effect without one.',
+  },
+  {
+    admission: ['roll', null, 'higher'],
+    owner:
+      'src/core/room-messages.test.ts: admitRoomMessage > roll from null with a higher generation follows the AD-5 table',
+    noTestReason:
+      'Roll dispatch requires a member, so it has no handler or liveness effect without one.',
+  },
+];
+
 const REJECTED_CASES: AdmissionCase[] = TYPES.flatMap((type) =>
   SENDERS.flatMap((sender) =>
-    RELATIONS.flatMap((relation) =>
-      ADMITTED.has(`${type} ${sender} ${relation}`) ? [] : [[type, sender, relation] as const],
-    ),
+    RELATIONS.flatMap((relation) => {
+      const coreOwnsAdmission = CORE_ADMISSION_OWNED_REJECTIONS.some(
+        ({ admission }) =>
+          admission[0] === type && admission[1] === sender && admission[2] === relation,
+      );
+
+      return ADMITTED.has(`${type} ${sender} ${relation}`) || coreOwnsAdmission
+        ? []
+        : [[type, sender, relation] as const];
+    }),
   ),
 );
 
@@ -358,16 +466,25 @@ describe('createRoomProtocol', () => {
   test('drops a malformed room message before it reaches admission', async () => {
     // #given
     const handlerEffects: string[] = [];
+    const senderLookups: string[] = [];
     const malformed = { v: 3, g: OWN_GENERATION, t: 'state-request' };
-    const protocol = createRoomProtocol(createPorts(handlerEffects));
+
+    const protocol = createRoomProtocol(
+      createPorts(handlerEffects, async (connectionId) => {
+        senderLookups.push(connectionId);
+
+        return PLAYER;
+      }),
+    );
 
     // #when
     protocol.receive(event(malformed));
     await settleIngress();
 
     // #then
-    expect({ parsed: parseRoomMessage(malformed).ok, handlerEffects }).toEqual({
+    expect({ parsed: parseRoomMessage(malformed).ok, senderLookups, handlerEffects }).toEqual({
       parsed: false,
+      senderLookups: [],
       handlerEffects: [],
     });
   });
