@@ -414,6 +414,7 @@ test('room-copy adoption interprets generationRead before staging can synchronou
     'store:complete:1:gm-a',
     'store:remove-below:1:gm-a',
     'store:remove-older-formats',
+    'replace:sheet:anya',
     'room-copy:replaced:true',
     'publish',
   ]);
