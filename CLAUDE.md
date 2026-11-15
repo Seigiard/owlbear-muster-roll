@@ -29,8 +29,26 @@ Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you w
 - `bun run dev` serves the Owlbear adapter and needs a tunnel for a live room; `bun run dev:mock` needs no Owlbear.
 - `bun run preview [path]` adds that preset file to the preview's list and opens it first.
 - `bun run room` opens a seeded GM and player mock room on one local page.
-- The full check before a commit: `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run test:browser`, `bun run build`. Lefthook runs only lint and format on staged files, and CI (`.github/workflows/ci.yml`) runs everything but `bun run test:browser`, so the browser tests are yours.
 - `bun run test:browser` needs Chromium. Run it outside the sandbox.
+</important>
+
+<important if="you are preparing a commit, including a merge commit, or choosing local checks">
+
+Choose checks from the paths in the commit, not from the act of committing. For a normal commit, inspect `git diff --cached --name-status` (both paths of a rename). Combine the applicable rows for mixed commits.
+
+| Paths | Local checks |
+|---|---|
+| Source or tests (`src/`, `tests/`, `scripts/`, `tools/`, `test-setup.ts`), root HTML entry pages, shipped assets or presets (`public/`, `presets/`), `package.json`, `bun.lock`, or build/test/check configuration | Full check: `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run test:browser`, `bun run build`. |
+| Backlog records (`backlog/`) only, or with documentation below | Read each touched task with `backlog task view <id> --plain` to check that the CLI can read it and that its fields match the intended change; run `backlog doctor` for ID and dependency diagnostics. Use the CLI for corrections, as the Backlog.md block requires. Also run the touched-path format check below. |
+| Documentation only: `docs/`, `_bmad-output/`, `GLOSSARY.md`, `CLAUDE.md`, or other Markdown outside source/test/config paths | Run the touched-path format check below and `git diff --cached --check`. Changes to `docs/preset-format.md` or `docs/example-preset.json` also require the example's parse test from the preset-format block. |
+
+The touched-path format check is `bunx oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern --check <touched-existing-paths>`. Pass paths as separate, quoted arguments. `.oxfmtrc.json` excludes Markdown, `backlog/` and `_bmad-output/`; report those files as skipped, not format-validated. Run `git diff --cached --check` for these excluded files too. Deleted files need no formatter input. For paths outside the table, inspect their consumers; use the full check if they affect the app or its checks, or their effect is uncertain.
+
+For a merge commit, record conflicted paths before resolving them. Classify those paths plus any extra manual edits, including edits to auto-merged files. Cleanly auto-merged source changes alone do not trigger the full local check: a merge with only documentation and backlog conflicts uses the smaller sets above. A source/test/config conflict or manual edit still requires the full check.
+
+PR CI (`.github/workflows/ci.yml`) is the backstop: it runs every full-check command except `bun run test:browser`, even for docs-only PRs. Smaller local sets defer those checks to CI; they do not replace them. Full-check commits still owe browser tests locally. Docs/backlog-only commits and merges as defined above do not.
+
+Lefthook's pre-commit hook lints staged `*.{ts,tsx}` and formats staged `*.{ts,tsx,css,json}`, then stages formatter fixes. It does not check Markdown. Its pre-push hook always runs `bun run typecheck`, including for docs-only pushes; this rule leaves both hooks unchanged.
 </important>
 
 <important if="you are about to deploy, release, push, or touch wrangler.toml or the production URL">
