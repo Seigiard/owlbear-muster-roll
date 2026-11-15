@@ -422,6 +422,58 @@ describe('catch-up', () => {
     ]);
   });
 
+  test('a GM re-arms an answer whose timer fires during ordinary catch-up', () => {
+    // #given
+    const harness = createHarness({ role: 'GM' });
+    becomeLive(harness);
+    harness.catchUp.stateRequested('ask');
+    harness.catchUp.enter('page-return');
+    harness.catchUp.fired({ kind: 'answer', r: 'ask' });
+
+    // #when
+    const decisions = harness.catchUp.fired({ kind: 'catch-up' });
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'disarm', timer: { kind: 'catch-up' } },
+      { type: 'caught-up', exit: 'unanswered' },
+      { type: 'arm', timer: { kind: 'answer', r: 'ask' }, delayMs: 20 },
+    ]);
+  });
+
+  test('an observed answer suppresses an armed answer whose timer fired during ordinary catch-up', () => {
+    // #given
+    const harness = createHarness({ role: 'GM' });
+    becomeLive(harness);
+    harness.catchUp.stateRequested('ask');
+    harness.catchUp.enter('page-return');
+    harness.catchUp.fired({ kind: 'answer', r: 'ask' });
+    harness.catchUp.stateMerged(state('ask'), 'gm-b', 'equal');
+
+    // #when
+    const decisions = harness.catchUp.fired({ kind: 'catch-up' });
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'disarm', timer: { kind: 'catch-up' } },
+      { type: 'caught-up', exit: 'unanswered' },
+    ]);
+  });
+
+  test('an armed answer does not fire during incomplete adoption', () => {
+    // #given
+    const harness = createHarness({ role: 'GM' });
+    becomeLive(harness);
+    harness.catchUp.stateRequested('ask');
+    harness.catchUp.generationHeard(NEXT, false);
+
+    // #when
+    const decisions = harness.catchUp.fired({ kind: 'answer', r: 'ask' });
+
+    // #then
+    expect(decisions).toEqual([]);
+  });
+
   test('a GM in ordinary catch-up holds a request and answers it only if still unanswered on exit', () => {
     // #given
     const harness = createHarness({ role: 'GM' });
@@ -869,6 +921,437 @@ describe('catch-up', () => {
       saved: [NEXT],
       view: { state: 'catching-up', firstCatchUpDone: true, gmAnswered: true, gmLink: 'offline' },
     });
+  });
+
+  test('a foreign state does not mark the active request answered on a page return', () => {
+    // #given
+    const harness = createHarness();
+    const r = start(harness);
+    harness.catchUp.roomCopyRead(r, true);
+    harness.catchUp.stateMerged(state('other', 1, 2), 'gm-a', 'equal');
+    harness.catchUp.enter('page-return');
+
+    // #when
+    const decisions = harness.catchUp.roomCopyRead(r, false);
+
+    // #then
+    expect(decisions).toEqual([{ type: 'request', r }]);
+  });
+
+  test('an adopting page return asks again when no answer part arrived', () => {
+    // #given
+    const harness = createHarness();
+    becomeLive(harness);
+    const adoption = harness.catchUp.generationHeard(NEXT, false);
+    const read = adoption.find((decision) => decision.type === 'read-room-copy');
+
+    if (read?.type !== 'read-room-copy') {
+      throw new Error('adoption must read the room copy');
+    }
+
+    harness.catchUp.roomCopyRead(read.r, true);
+    harness.catchUp.enter('page-return');
+
+    // #when
+    const decisions = harness.catchUp.roomCopyRead(read.r, false);
+
+    // #then
+    expect(decisions).toEqual([{ type: 'request', r: read.r }]);
+  });
+
+  test('a higher-generation answer part suppresses the repeated request', () => {
+    // #given
+    const harness = createHarness();
+    becomeLive(harness);
+    const adoption = harness.catchUp.generationHeard(NEXT, false);
+    const read = adoption.find((decision) => decision.type === 'read-room-copy');
+
+    if (read?.type !== 'read-room-copy') {
+      throw new Error('adoption must read the room copy');
+    }
+
+    harness.catchUp.roomCopyRead(read.r, true);
+    harness.catchUp.stateMerged(state(read.r, 1, 2, NEXT), 'gm-a', 'higher');
+    harness.catchUp.enter('page-return');
+
+    // #when
+    const decisions = harness.catchUp.roomCopyRead(read.r, false);
+
+    // #then
+    expect(decisions).toEqual([]);
+  });
+
+  test('a gm-return request is armed with its jitter delay', () => {
+    // #given
+    const harness = createHarness({ random: 0.5 });
+    becomeLive(harness);
+    const entry = harness.catchUp.heard('GM', { t: 'commit' });
+    const read = entry.find((decision) => decision.type === 'read-room-copy');
+
+    if (read?.type !== 'read-room-copy') {
+      throw new Error('a returning GM must start a catch-up');
+    }
+
+    // #when
+    const decisions = harness.catchUp.roomCopyRead(read.r, true);
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'arm', timer: { kind: 'request', r: read.r }, delayMs: 15 },
+    ]);
+  });
+
+  test('a foreign state starts a gm-return catch-up for a live player', () => {
+    // #given
+    const harness = createHarness();
+    becomeLive(harness);
+
+    // #when
+    const decisions = harness.catchUp.heard('GM', { t: 'state', r: 'other' });
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'arm', timer: { kind: 'ping' }, delayMs: 50 },
+      { type: 'arm', timer: { kind: 'gm-silence' }, delayMs: 80 },
+      { type: 'gm-back' },
+      { type: 'entered', trigger: 'gm-return', fresh: true },
+      { type: 'arm', timer: { kind: 'catch-up' }, delayMs: 100 },
+      { type: 'read-room-copy', r: 'r-2', fresh: true },
+    ]);
+  });
+
+  test('a GM arms one answer for repeated requests of the same nonce', () => {
+    // #given
+    const harness = createHarness({ role: 'GM' });
+    becomeLive(harness);
+    harness.catchUp.stateRequested('ask');
+
+    // #when
+    const decisions = harness.catchUp.stateRequested('ask');
+
+    // #then
+    expect(decisions).toEqual([]);
+  });
+
+  test('a held request is cleared after the catch-up that cannot answer it', () => {
+    // #given
+    const harness = createHarness({ role: 'GM' });
+    harness.setVouches(false);
+    start(harness);
+    harness.catchUp.stateRequested('held');
+    harness.catchUp.fired({ kind: 'catch-up' });
+    harness.setVouches(true);
+    harness.catchUp.enter('role');
+
+    // #when
+    const decisions = harness.catchUp.fired({ kind: 'catch-up' });
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'disarm', timer: { kind: 'catch-up' } },
+      { type: 'caught-up', exit: 'unanswered' },
+    ]);
+  });
+
+  test('a refreshed held request remains after a full held-request queue', () => {
+    // #given
+    const harness = createHarness({ role: 'GM' });
+    const r = start(harness);
+    harness.catchUp.stateRequested('x');
+
+    for (let index = 1; index <= 255; index += 1) {
+      harness.catchUp.stateRequested(`a-${index}`);
+    }
+
+    harness.catchUp.stateRequested('x');
+    harness.catchUp.stateRequested('a-256');
+
+    // #when
+    const decisions = harness.catchUp.stateMerged(state(r), 'gm-a', 'equal');
+
+    // #then
+    expect(decisions.filter((decision) => decision.type === 'arm')).toEqual([
+      ...Array.from({ length: 254 }, (_, index) => ({
+        type: 'arm' as const,
+        timer: { kind: 'answer' as const, r: `a-${index + 2}` },
+        delayMs: 20,
+      })),
+      { type: 'arm', timer: { kind: 'answer', r: 'x' }, delayMs: 20 },
+      { type: 'arm', timer: { kind: 'answer', r: 'a-256' }, delayMs: 20 },
+    ]);
+  });
+
+  test('an answer timer held during adoption is not armed after adoption completes', () => {
+    // #given
+    const harness = createHarness({ role: 'GM' });
+    becomeLive(harness);
+    harness.catchUp.stateRequested('ask');
+    harness.catchUp.generationHeard(NEXT, false);
+    harness.catchUp.fired({ kind: 'answer', r: 'ask' });
+
+    // #when
+    const decisions = harness.catchUp.stateMerged(state('r-2', 1, 1, NEXT), 'gm-a', 'higher');
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'arm', timer: { kind: 'catch-up' }, delayMs: 100 },
+      { type: 'disarm', timer: { kind: 'catch-up' } },
+      { type: 'caught-up', exit: 'answered' },
+    ]);
+  });
+
+  test('a stale party read cannot exit a newer catch-up', () => {
+    // #given
+    const harness = createHarness({ role: 'GM' });
+    const old = start(harness);
+    harness.catchUp.fired({ kind: 'catch-up' });
+    harness.catchUp.enter('page-return');
+
+    // #when
+    const decisions = harness.catchUp.partyRead(old, []);
+
+    // #then
+    expect(decisions).toEqual([]);
+  });
+
+  test('a stale gm-return request timer does not send the request after adoption starts', () => {
+    // #given
+    const harness = createHarness();
+    becomeLive(harness);
+    const entry = harness.catchUp.heard('GM', { t: 'commit' });
+    const read = entry.find((decision) => decision.type === 'read-room-copy');
+
+    if (read?.type !== 'read-room-copy') {
+      throw new Error('a returning GM must start a catch-up');
+    }
+
+    harness.catchUp.roomCopyRead(read.r, true);
+    harness.catchUp.generationHeard(NEXT, false);
+
+    // #when
+    const decisions = harness.catchUp.fired({ kind: 'request', r: read.r });
+
+    // #then
+    expect(decisions).toEqual([]);
+  });
+
+  test('an adoption drops answer parts of the old generation', () => {
+    // #given
+    const harness = createHarness();
+    const r = start(harness);
+    harness.catchUp.stateMerged(state(r, 1, 2), 'gm-a', 'equal');
+    harness.catchUp.generationHeard(NEXT, true);
+
+    // #when
+    const decisions = harness.catchUp.stateMerged(state(r, 2, 2, NEXT), 'gm-a', 'higher');
+
+    // #then
+    expect({ decisions, saved: harness.saved }).toEqual({
+      decisions: [],
+      saved: [],
+    });
+  });
+
+  test('a higher generation keeps the active nonce while catching up', () => {
+    // #given
+    const harness = createHarness();
+    start(harness);
+
+    // #when
+    const decisions = harness.catchUp.generationHeard(NEXT, true);
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'adopt', generation: NEXT, previous: null, keepNonce: true, hadData: true },
+    ]);
+  });
+
+  test('a generation read during catch-up keeps the active nonce', () => {
+    // #given
+    const harness = createHarness();
+    start(harness);
+
+    // #when
+    const decisions = harness.catchUp.generationRead(NEXT);
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'adopt', generation: NEXT, previous: null, keepNonce: true, hadData: true },
+    ]);
+  });
+
+  test('answersOwn is false for a live client and a foreign catch-up nonce', () => {
+    // #given
+    const live = createHarness();
+    becomeLive(live);
+    const catchingUp = createHarness();
+    start(catchingUp);
+
+    // #when
+    const answers = {
+      live: live.catchUp.answersOwn('r-1'),
+      foreign: catchingUp.catchUp.answersOwn('other'),
+    };
+
+    // #then
+    expect(answers).toEqual({ live: false, foreign: false });
+  });
+
+  test('a changed digest is no longer ignored when its earlier value returns', () => {
+    // #given
+    const harness = createHarness();
+    becomeLive(harness);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.setNow(41);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.catchUp.stateMerged(state('r-2'), 'gm-a', 'equal');
+    harness.setNow(82);
+    harness.catchUp.aliveReceived(alive(12), 'gm-a', 'equal');
+    harness.setNow(123);
+
+    // #when
+    const decisions = harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'entered', trigger: 'drift', fresh: true },
+      { type: 'arm', timer: { kind: 'catch-up' }, delayMs: 100 },
+      { type: 'read-room-copy', r: 'r-3', fresh: true },
+    ]);
+  });
+
+  test('the exact burst boundary starts a new drift window', () => {
+    // #given
+    const harness = createHarness();
+    becomeLive(harness);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.setNow(40);
+
+    // #when
+    const decisions = harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'entered', trigger: 'drift', fresh: true },
+      { type: 'arm', timer: { kind: 'catch-up' }, delayMs: 100 },
+      { type: 'read-room-copy', r: 'r-2', fresh: true },
+    ]);
+  });
+
+  test('a nonzero-clock burst stays in its original drift window', () => {
+    // #given
+    const harness = createHarness();
+    becomeLive(harness);
+    harness.setNow(1000);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.setNow(1010);
+
+    // #when
+    const decisions = harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+
+    // #then
+    expect(decisions).toEqual([]);
+  });
+
+  test('a party update keeps ignored digests for GMs that remain', () => {
+    // #given
+    const harness = createHarness();
+    becomeLive(harness);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.setNow(41);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.catchUp.stateMerged(state('r-2'), 'gm-a', 'equal');
+    harness.catchUp.partyChanged([
+      { connectionId: 'gm-a', role: 'GM' },
+      { connectionId: 'gm-b', role: 'GM' },
+    ]);
+    harness.setNow(82);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.setNow(123);
+
+    // #when
+    const decisions = harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+
+    // #then
+    expect(decisions).toEqual([]);
+  });
+
+  test('a replica replacement forgets ignored digests', () => {
+    // #given
+    const harness = createHarness();
+    becomeLive(harness);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.setNow(41);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.catchUp.stateMerged(state('r-2'), 'gm-a', 'equal');
+    harness.catchUp.replicaReplaced();
+    harness.setNow(82);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.setNow(123);
+
+    // #when
+    const decisions = harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'entered', trigger: 'drift', fresh: true },
+      { type: 'arm', timer: { kind: 'catch-up' }, delayMs: 100 },
+      { type: 'read-room-copy', r: 'r-3', fresh: true },
+    ]);
+  });
+
+  test('a replica replacement resets a single mismatch count', () => {
+    // #given
+    const harness = createHarness();
+    becomeLive(harness);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.catchUp.replicaReplaced();
+    harness.setNow(41);
+
+    // #when
+    const decisions = harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+
+    // #then
+    expect(decisions).toEqual([]);
+  });
+
+  test('generation adoption clears the drift starter before an answered exit', () => {
+    // #given
+    const harness = createHarness();
+    becomeLive(harness);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.setNow(41);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.catchUp.generationRead(NEXT);
+    harness.catchUp.adoptionStaged();
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.setGeneration(NEXT);
+    harness.catchUp.stateMerged(state('r-2', 1, 1, NEXT), 'gm-b', 'equal');
+    harness.setNow(82);
+    harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+    harness.setNow(123);
+
+    // #when
+    const decisions = harness.catchUp.aliveReceived(alive(11), 'gm-a', 'equal');
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'entered', trigger: 'drift', fresh: true },
+      { type: 'arm', timer: { kind: 'catch-up' }, delayMs: 100 },
+      { type: 'read-room-copy', r: 'r-3', fresh: true },
+    ]);
+  });
+
+  test('a player room-copy read does not request a party read', () => {
+    // #given
+    const harness = createHarness();
+    const r = start(harness);
+
+    // #when
+    const decisions = harness.catchUp.roomCopyRead(r, true);
+
+    // #then
+    expect(decisions).toEqual([{ type: 'request', r }]);
   });
 
   test.each<[string, (harness: Harness) => CatchUpDecision[]]>([

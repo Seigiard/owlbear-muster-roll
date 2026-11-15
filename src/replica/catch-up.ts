@@ -225,6 +225,19 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
     return options.timing.stateAnswerDelayMinMs + options.random() * span;
   }
 
+  function holdRequest(r: string): void {
+    heldRequests.delete(r);
+    heldRequests.add(r);
+
+    for (const oldest of heldRequests) {
+      if (heldRequests.size <= RECENT_NONCE_LIMIT) {
+        break;
+      }
+
+      heldRequests.delete(oldest);
+    }
+  }
+
   function scheduleAnswer(r: string): CatchUpDecision[] {
     if (!canAnswer() || armedAnswers.has(r)) {
       return [];
@@ -569,16 +582,7 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
       if (options.role() === 'GM' && !canAnswer()) {
         // A request heard while this GM cannot answer waits until its catch-up ends. It answers the
         // ones still unanswered because nobody asks again.
-        heldRequests.delete(r);
-        heldRequests.add(r);
-
-        for (const oldest of heldRequests) {
-          if (heldRequests.size <= RECENT_NONCE_LIMIT) {
-            break;
-          }
-
-          heldRequests.delete(oldest);
-        }
+        holdRequest(r);
 
         return [];
       }
@@ -736,6 +740,10 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
             : [];
         case 'answer':
           armedAnswers.delete(timer.r);
+
+          if (!canAnswer() && phase.kind === 'catching-up' && phase.mode.kind === 'ordinary') {
+            holdRequest(timer.r);
+          }
 
           return canAnswer() && !answeredNonces.has(timer.r)
             ? (answeredNonces.add(timer.r), [{ type: 'answer', r: timer.r }])
