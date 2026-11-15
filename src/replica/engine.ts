@@ -2,19 +2,16 @@ import { nanoid } from 'nanoid';
 
 import { checkProposal, partyEntries, type ProposalContext } from '@/core/access';
 import { createBoundedIdSet } from '@/core/bounded-id-set';
-import { dicePlusDice, dicePlusTarget } from '@/core/dice-plus';
-import { prepareDiceRoll, type DiceRollFailure, type PreparedDiceRoll } from '@/core/dice-roll';
 import { recordDigest } from '@/core/digest';
 import { newRecordId, type RecordIdKind } from '@/core/ids';
 import { fitsOneMessage, recordFitsOneMessage } from '@/core/message-size';
 import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
-import { listedFaces, randomFaces, type FaceSource } from '@/core/formula-evaluate';
 import { liveLinkTarget, type LinkTarget } from '@/core/link-target';
 import { decodePreset, windowSizeOf, type Preset } from '@/core/preset';
 import { NOTHING_ERASED } from '@/core/preset-migrate';
 import { parseRepKey, presetDataSchema, type VersionedRecord } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
-import { rollNotificationText, type RollCopy } from '@/core/roll-text';
+import { err, type Result } from '@/core/result';
+import type { RollCopy } from '@/core/roll-text';
 import {
   admitRoomMessage,
   aliveMessage,
@@ -25,18 +22,14 @@ import {
   proposeMessage,
   rejectMessage,
   resetMessage,
-  rollMessage,
   stateRequestMessage,
   SYNC_CHANNEL,
   type GenerationRelation,
   type ProposeMessage,
   type RejectMessage,
-  type RollContent,
-  type RollMessage,
   type RoomMessage,
   type StateMessage,
 } from '@/core/room-messages';
-import { resolveSheet, sheetName } from '@/core/sheets';
 import {
   decodeSnapshotFileData,
   importSnapshot,
@@ -62,11 +55,9 @@ import {
   type OpenSheetRequest,
   type PresetDiffMessage,
   type RejectionReason,
-  type RollOutcome,
-  type RollRequestMessage,
   type SnapshotCheckMessage,
 } from '@/core/ui-messages';
-import { linkTargetShownTo, rollShownTo, tabShownTo, type PlayerRole } from '@/core/visibility';
+import { linkTargetShownTo, type PlayerRole } from '@/core/visibility';
 import type { BroadcastEvent, BroadcastOptions, Platform } from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
 import {
@@ -88,6 +79,7 @@ import { createPendingQueue, type PendingEntry } from '@/replica/pending-queue';
 import { createPendingEdits } from '@/replica/pending-edits';
 import { createRecordStore, type RecordStore } from '@/replica/record-store';
 import { createRoomCopy, type RoomCopy } from '@/replica/room-copy';
+import { createRollFlow } from '@/replica/roll-flow';
 import { watchSceneRemovals, type SceneWatch } from '@/replica/scene-watch';
 import { createTokenMenu, type TokenMenuCopy } from '@/replica/token-menu';
 import { createVersionMinter } from '@/replica/version-minter';
@@ -103,9 +95,6 @@ const RECENT_COMMAND_ID_LIMIT = 256;
 
 // Far more tokens than one session deletes while a link to one of them can still arrive.
 const DELETED_TOKEN_LIMIT = 1024;
-
-// Far more rolls than reach a client while one of them can still arrive twice.
-const RECENT_ROLL_ID_LIMIT = 256;
 
 // Sits in the problem set, and no write clears it: a reload has to read the storage again.
 const UNREADABLE_STORAGE_MARK = '(unreadable)';
@@ -193,17 +182,6 @@ type LoadedReplica = {
   persistence: Persistence | null;
 };
 
-// A roll evaluated in this client, before it has an id and the roller's name.
-type EvaluatedRoll = Omit<RollContent, 'id' | 'roller'>;
-
-// A dice cell of one sheet, read at the request, waiting for its faces.
-type PreparedRoll = Pick<EvaluatedRoll, 'sheetId' | 'hidden' | 'sheetName'> & {
-  dice: PreparedDiceRoll;
-};
-
-// Who a shown roll came from: this client, or a party member the gate admitted.
-type RollSender = Pick<RoomSender, 'role' | 'name'>;
-
 // The decoded preset, kept while the `preset` record keeps its version.
 type DecodedPreset = { c: number; a: string; preset: Preset };
 
@@ -229,9 +207,6 @@ export async function startReplicaEngine(
   const minter = createVersionMinter(connectionId);
   const composers = createComposers(connectionId);
   const recentCommandIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
-  // AD-13: every roll this client has shown or dropped, its own included.
-  const recentRollIds = createBoundedIdSet(RECENT_ROLL_ID_LIMIT);
-  const recentRollRequestIds = createBoundedIdSet(RECENT_COMMAND_ID_LIMIT);
   let decodedPreset: DecodedPreset | null = null;
   // TASK-33: the window follows the size of the `preset` record. `sizedFor` names the version the
   // size was last taken from, "" for no preset. It is null before the first size and after a failed
@@ -405,6 +380,28 @@ export async function startReplicaEngine(
       // UX-DR12: only a GM's access panel lists the party, so a player's windows get none.
       party: role === 'GM' ? partyEntries(roster.entries()) : [],
     }),
+  });
+
+  const rollFlow = createRollFlow({
+    pendingView,
+    presetOf,
+    role: () => role,
+    stopped: () => stopped,
+    generation: () => ownGeneration,
+    dice: diceExtension,
+    gmInRoom,
+    playerId: ownPlayerId,
+    playerName: () => platform.player.getName(),
+    random,
+    newId,
+    sendRemote: (message) => sendQueue.enqueueReported(SYNC_CHANNEL, message, REMOTE),
+    replyOutcome: (id, outcome) => {
+      send({ t: 'roll-outcome', id, outcome }).catch((error) => {
+        console.error('Muster Roll could not answer a roll request', error);
+      });
+    },
+    notify: (text) => platform.notification.show(text).then(() => undefined),
+    rollCopy: options.rollCopy,
   });
 
   function merge(record: VersionedRecord): VersionedRecord {
@@ -1565,183 +1562,6 @@ export async function startReplicaEngine(
     });
   }
 
-  // AD-13: the roller's replica evaluates once, from the values its windows show: the replica with
-  // its pending edits, and the window's own unsent text and input errors over them. A roll writes
-  // nothing, so a player and a client in catch-up roll too. The values are read at the request. A
-  // local roll comes first: a field error, or an arithmetic error with its faces, sends nothing
-  // anywhere, and it stands in when the dice extension gives no faces (TASK-36). Other faces from
-  // the extension can still give an arithmetic error, after its dice showed.
-  function handleRollRequest(message: RollRequestMessage): void {
-    if (recentRollRequestIds.has(message.id)) {
-      return;
-    }
-
-    recentRollRequestIds.add(message.id);
-
-    const prepared = prepareRoll(message);
-
-    if (!prepared.ok) {
-      replyRoll(message.id, prepared.error);
-
-      return;
-    }
-
-    const local = evaluatedWith(prepared.value, randomFaces(random));
-
-    if (!local.ok) {
-      replyRoll(message.id, local.error);
-
-      return;
-    }
-
-    void rollWithDice(message.id, prepared.value, local.value);
-  }
-
-  // AD-13, AD-18: `hidden` is computed once here from the sheet's template and the dice cell's tab;
-  // every output of the roll uses it. A player's replica refuses a hidden roll.
-  function prepareRoll(message: RollRequestMessage): Result<PreparedRoll, RollOutcome> {
-    const view = pendingView();
-    const preset = presetOf(view.get('preset'));
-    const policy = resolveSheet(view, preset, message.sheetId);
-
-    const hidden =
-      policy !== null && !tabShownTo('PLAYER', policy.template, message.place.tabIndex);
-
-    if (policy === null || !rollShownTo(role, hidden)) {
-      return err({ code: 'refused' });
-    }
-
-    const dice = prepareDiceRoll(
-      policy.template,
-      view,
-      message.sheetId,
-      message.place,
-      new Map(Object.entries(message.shown)),
-    );
-
-    if (!dice.ok) {
-      return err(rollFailure(dice.error));
-    }
-
-    return ok({
-      sheetId: message.sheetId,
-      hidden,
-      // "" for an empty name: every client shows the fallback label.
-      sheetName: sheetName(view, preset, message.sheetId) ?? '',
-      dice: dice.value,
-    });
-  }
-
-  // TASK-36: the faces come from the dice extension of this client when it is ready and can roll
-  // every term, and the 3D dice show to the clients that see the notification. With no extension,
-  // an error, a refusal of access, a result that does not match, or no result in time, the local
-  // roll goes out. A roll the GM has not allowed yet still goes to the extension, which holds it
-  // for the GM's answer, and the window says it waits for that answer.
-  async function rollWithDice(
-    requestId: string,
-    prepared: PreparedRoll,
-    local: EvaluatedRoll,
-  ): Promise<void> {
-    let roller: string;
-
-    try {
-      roller = await platform.player.getName();
-    } catch (error) {
-      console.error('Muster Roll could not read the player name for a roll', error);
-      replyRoll(requestId, { code: 'failed' });
-
-      return;
-    }
-
-    const dice = dicePlusDice(prepared.dice.terms);
-
-    if (dice === null) {
-      console.info('Muster Roll rolled locally: unsupported dice');
-      await sendRoll(requestId, local, roller);
-
-      return;
-    }
-
-    const readiness = stopped ? 'absent' : await diceExtension.ready();
-
-    if (!stopped && (readiness === 'absent' || readiness === 'refused')) {
-      console.info(
-        readiness === 'absent'
-          ? 'Muster Roll rolled locally: no dice extension answered'
-          : 'Muster Roll rolled locally: access refused',
-      );
-    }
-
-    // The role can change while the name is read or the probe answers. `sendRoll` refuses such a
-    // roll, and no dice show for it.
-    if (
-      readiness === 'absent' ||
-      readiness === 'refused' ||
-      stopped ||
-      !rollShownTo(role, prepared.hidden)
-    ) {
-      await sendRoll(requestId, local, roller);
-
-      return;
-    }
-
-    // With no GM in the room the extension refuses at once, so the window shows no wait for one.
-    if (readiness === 'pending' || (readiness === 'unknown' && gmInRoom())) {
-      replyRoll(requestId, { code: 'waiting-access' });
-    }
-
-    const faces = await diceExtension.roll({
-      terms: prepared.dice.terms,
-      notation: dice.notation,
-      playerId: ownPlayerId,
-      playerName: roller,
-      rollTarget: dicePlusTarget(prepared.hidden),
-    });
-
-    // A stopped page sends nothing more, and its wait was no failure of the extension.
-    if (stopped) {
-      return;
-    }
-
-    if (!faces.ok) {
-      if (faces.error.code === 'stopped') {
-        return;
-      }
-
-      console.error(
-        'Muster Roll rolled locally, as the dice extension gave no faces:',
-        faces.error.reason,
-      );
-      console.info('Muster Roll rolled locally: the dice extension gave no faces');
-      await sendRoll(requestId, local, roller);
-
-      return;
-    }
-
-    console.info('Muster Roll rolled with the dice extension');
-
-    // The extension's faces are the roll, and its dice already showed, so no local roll follows
-    // them, even when they give an arithmetic error.
-    let evaluated: Result<EvaluatedRoll, RollOutcome>;
-
-    try {
-      evaluated = evaluatedWith(prepared, listedFaces(faces.value));
-    } catch (error) {
-      console.error('Muster Roll could not apply the dice extension faces', error);
-      replyRoll(requestId, { code: 'failed' });
-
-      return;
-    }
-
-    if (!evaluated.ok) {
-      replyRoll(requestId, evaluated.error);
-
-      return;
-    }
-
-    await sendRoll(requestId, evaluated.value, roller);
-  }
-
   function gmInRoom(): boolean {
     return role === 'GM' || roster.entries().some((member) => member.role === 'GM');
   }
@@ -1766,81 +1586,6 @@ export async function startReplicaEngine(
     decodedPreset = { c: record.c, a: record.a, preset: decoded.value };
 
     return decoded.value;
-  }
-
-  // The roller's name is read at roll time. `REMOTE` does not echo to the sender, so this client
-  // shows its own roll through the same id check as a received one, once the room has it.
-  async function sendRoll(
-    requestId: string,
-    evaluated: EvaluatedRoll,
-    roller: string,
-  ): Promise<void> {
-    if (stopped) {
-      return;
-    }
-
-    // The role can change while the name is read or the dice roll.
-    if (!rollShownTo(role, evaluated.hidden)) {
-      replyRoll(requestId, { code: 'refused' });
-
-      return;
-    }
-
-    const message = rollMessage(ownGeneration, { id: newId(), roller, ...evaluated });
-
-    // A roll a receiver would drop, or one too large to send, never goes out.
-    if (!parseRoomMessage(message).ok || !fitsOneMessage(message)) {
-      console.error('Muster Roll built a roll the room would not take');
-      replyRoll(requestId, { code: 'failed' });
-
-      return;
-    }
-
-    const sent = await sendQueue.enqueueReported(SYNC_CHANNEL, message, REMOTE);
-
-    if (stopped) {
-      return;
-    }
-
-    if (!sent) {
-      replyRoll(requestId, { code: 'failed' });
-
-      return;
-    }
-
-    receiveRoll(message, { role, name: roller });
-    replyRoll(requestId, { code: 'rolled' });
-  }
-
-  function replyRoll(id: string, outcome: RollOutcome): void {
-    send({ t: 'roll-outcome', id, outcome }).catch((error) => {
-      console.error('Muster Roll could not answer a roll request', error);
-    });
-  }
-
-  // AD-13: a roll shows once per id, and a player shows only one with `hidden: false`. Only this
-  // background page shows it, so it shows with the window closed. It never enters the replica. A
-  // player cannot see a hidden sheet, so a hidden roll from a player is forged, and the name shown
-  // is the one the party lists for the sender.
-  function receiveRoll(message: RollMessage, sender: RollSender): void {
-    if (recentRollIds.has(message.id)) {
-      return;
-    }
-
-    recentRollIds.add(message.id);
-
-    const forged = sender.role !== 'GM' && message.hidden;
-
-    if (forged || !rollShownTo(role, message.hidden) || options.rollCopy === undefined) {
-      return;
-    }
-
-    const roller = sender.name === '' ? message.roller : sender.name;
-    const text = rollNotificationText({ ...message, roller }, options.rollCopy);
-
-    platform.notification.show(text).catch((error) => {
-      console.error('Muster Roll could not show a roll', error);
-    });
   }
 
   // AD-7: an intent made during catch-up waits and takes `c` on exit. It is checked now against the
@@ -2446,7 +2191,7 @@ export async function startReplicaEngine(
         break;
       case 'roll':
         if (member !== null) {
-          receiveRoll(message, member);
+          rollFlow.receiveRoll(message, member);
         }
 
         break;
@@ -2486,7 +2231,7 @@ export async function startReplicaEngine(
     } else if (parsed.value.t === 'preset-diff') {
       handlePresetDiff(parsed.value);
     } else if (parsed.value.t === 'roll-request') {
-      handleRollRequest(parsed.value);
+      rollFlow.handleRollRequest(parsed.value);
     } else if (parsed.value.t === 'open-sheet-ack') {
       dropOpen(parsed.value.id);
     } else if (parsed.value.t === 'snapshot-check') {
@@ -2653,29 +2398,4 @@ function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedR
   }
 
   return { records, problemKeys, persistence: { store, generation } };
-}
-
-// A dice cell that is gone is refused; a field or arithmetic failure goes to the window as it is.
-function rollFailure(failure: DiceRollFailure): RollOutcome {
-  return failure.code === 'not-dice' ? { code: 'refused' } : failure;
-}
-
-// The roll of a prepared dice cell with these faces, as the room message carries it.
-function evaluatedWith(
-  prepared: PreparedRoll,
-  faces: FaceSource,
-): Result<EvaluatedRoll, RollOutcome> {
-  const rolled = prepared.dice.roll(faces);
-
-  if (!rolled.ok) {
-    return err(rollFailure(rolled.error));
-  }
-
-  return ok({
-    sheetId: prepared.sheetId,
-    hidden: prepared.hidden,
-    sheetName: prepared.sheetName,
-    cell: prepared.dice.cell,
-    result: rolled.value,
-  });
 }

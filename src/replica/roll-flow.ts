@@ -1,4 +1,5 @@
 import { dicePlusDice, dicePlusTarget, type DicePlusTarget } from '@/core/dice-plus';
+import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { fitsOneMessage } from '@/core/message-size';
 import {
   listedFaces,
@@ -23,6 +24,10 @@ import { err, ok, type Result } from '@/core/result';
 import type { Generation } from '@/core/storage-key';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
 import { rollShownTo, tabShownTo, type PlayerRole } from '@/core/visibility';
+
+const RECENT_REQUEST_ID_LIMIT = 256;
+
+const RECENT_ROLL_ID_LIMIT = 256;
 
 type EvaluatedRoll = Omit<RollContent, 'id' | 'roller'>;
 
@@ -78,8 +83,8 @@ export type RollFlow = {
 // The roll pipeline is independent from the room, window, and platform adapters. The engine wires
 // these ports to its live state and transport when the extraction is completed.
 export function createRollFlow(ports: RollFlowPorts): RollFlow {
-  const recentRequestIds = new Set<string>();
-  const recentRollIds = new Set<string>();
+  const recentRequestIds = createBoundedIdSet(RECENT_REQUEST_ID_LIMIT);
+  const recentRollIds = createBoundedIdSet(RECENT_ROLL_ID_LIMIT);
 
   function handleRollRequest(message: RollRequestMessage): void {
     if (recentRequestIds.has(message.id)) {
@@ -162,17 +167,27 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     const dice = dicePlusDice(prepared.dice.terms);
 
     if (dice === null) {
+      console.info('Muster Roll rolled locally: unsupported dice');
       await sendRoll(requestId, local, roller);
 
       return;
     }
 
     const readiness = ports.stopped() ? 'absent' : await ports.dice.ready();
+    const stoppedAfterReadiness = ports.stopped();
+
+    if (!stoppedAfterReadiness && (readiness === 'absent' || readiness === 'refused')) {
+      console.info(
+        readiness === 'absent'
+          ? 'Muster Roll rolled locally: no dice extension answered'
+          : 'Muster Roll rolled locally: access refused',
+      );
+    }
 
     if (
       readiness === 'absent' ||
       readiness === 'refused' ||
-      ports.stopped() ||
+      stoppedAfterReadiness ||
       !rollShownTo(ports.role(), prepared.hidden)
     ) {
       await sendRoll(requestId, local, roller);
@@ -181,7 +196,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     }
 
     if (readiness === 'pending' || (readiness === 'unknown' && ports.gmInRoom())) {
-      // The waiting-access reply is intentionally left for the extraction implementation turn.
+      ports.replyOutcome(requestId, { code: 'waiting-access' });
     }
 
     const faces = await ports.dice.roll({
@@ -201,10 +216,17 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
         return;
       }
 
+      console.error(
+        'Muster Roll rolled locally, as the dice extension gave no faces:',
+        faces.error.reason,
+      );
+      console.info('Muster Roll rolled locally: the dice extension gave no faces');
       await sendRoll(requestId, local, roller);
 
       return;
     }
+
+    console.info('Muster Roll rolled with the dice extension');
 
     let evaluated: Result<EvaluatedRoll, RollOutcome>;
 
@@ -244,6 +266,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     const message = rollMessage(ports.generation(), { id: ports.newId(), roller, ...evaluated });
 
     if (!parseRoomMessage(message).ok || !fitsOneMessage(message)) {
+      console.error('Muster Roll built a roll the room would not take');
       ports.replyOutcome(requestId, { code: 'failed' });
 
       return;
