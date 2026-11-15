@@ -126,5 +126,29 @@
     "find": "    } else {\n      notSaved = true;\n      deferred.owed = true;\n",
     "replace": "    } else {\n      deferred.owed = true;\n",
     "test": ["src/replica/room-copy.test.ts"]
+  },
+  {
+    "id": "R17",
+    "rule": "Stopping during an active write preserves the stopped lifecycle after it settles.",
+    "file": "src/replica/room-copy.ts",
+    "find": "      lifecycle = { phase: 'stopped' };\n",
+    "replace": "      lifecycle = { phase: 'idle' };\n",
+    "test": ["src/replica/room-copy.test.ts"]
+  },
+  {
+    "id": "R19",
+    "rule": "An import waits through every routine write that was queued before it.",
+    "file": "src/replica/room-copy.ts",
+    "find": "    await operation.completion;\n    await waitForWrite();\n",
+    "replace": "    await operation.completion;\n",
+    "test": ["src/replica/room-copy.test.ts"]
+  },
+  {
+    "id": "R20",
+    "rule": "Failed import cleanup refreshes status from the metadata after removing a lower copy.",
+    "file": "src/replica/room-copy.ts",
+    "find": "    noteRoomCopy(after, false);\n",
+    "replace": "",
+    "test": ["src/replica/room-copy.test.ts"]
   }
 ]

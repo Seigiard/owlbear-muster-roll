@@ -3,7 +3,13 @@ import { expect, test } from 'bun:test';
 import { FORMAT_VERSION } from '@/core/format-version';
 import type { JsonObject } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
-import { encodeSnapshot, readSnapshot, SNAPSHOT_KEY } from '@/core/snapshot';
+import {
+  encodeSnapshot,
+  readSnapshot,
+  ROOM_METADATA_BYTE_LIMIT,
+  roomMetadataBytes,
+  SNAPSHOT_KEY,
+} from '@/core/snapshot';
 import type { Generation } from '@/core/storage-key';
 import type { RoomCopyOutcome } from '@/core/ui-messages';
 import { createMockPlatform, createMemoryRoom, type MockPlatform } from '@/platform/current';
@@ -230,6 +236,19 @@ function copied(generation: Generation, records: readonly VersionedRecord[]): Js
   }
 
   return { [SNAPSHOT_KEY]: encoded.value };
+}
+
+function metadataAtLimit(generation: Generation, records: readonly VersionedRecord[]): JsonObject {
+  const encoded = encodeSnapshot(generation, records);
+
+  if (!encoded.ok) {
+    throw new Error('fixture did not encode');
+  }
+
+  const key = 'other.extension/data';
+  const base = roomMetadataBytes({ [key]: '' }, encoded.value);
+
+  return { [key]: 'x'.repeat(ROOM_METADATA_BYTE_LIMIT - base) };
 }
 
 function decoded(room: ReturnType<typeof createMemoryRoom>) {
@@ -648,6 +667,100 @@ test('import waits for a write and saves its generation over a lower copy', asyn
   });
 });
 
+test('an import waiting for a stopped write completes after that write settles', async () => {
+  // #given
+  const subject = createSubject();
+  holdWrite(subject.gate);
+  subject.pageHidden();
+  await waitFor(() => subject.gate.writes === 1);
+  const imported = subject.writeImport(HIGHER, () => false);
+
+  // #when
+  subject.stop();
+  subject.gate.releaseWrite();
+  await imported;
+
+  // #then
+  expect({ writes: subject.gate.writes, state: subject.status().state }).toEqual({
+    writes: 1,
+    state: 'saved',
+  });
+});
+
+test('a stopped room copy does not merge records after its active write settles', async () => {
+  // #given
+  const subject = createSubject();
+  holdWrite(subject.gate);
+  subject.pageHidden();
+  await waitFor(() => subject.gate.writes === 1);
+
+  // #when
+  subject.stop();
+  subject.gate.releaseWrite();
+  await flush();
+  const afterWrite = subject.changed;
+  subject.room.setMetadata(copied(INITIAL, [RECORD]));
+  await subject.read();
+
+  // #then
+  expect({ afterWrite, received: subject.received, changed: subject.changed }).toEqual({
+    afterWrite: 1,
+    received: [],
+    changed: 1,
+  });
+});
+
+test('an import waits for a routine write that completes in a later macrotask', async () => {
+  // #given
+  const subject = createSubject();
+  holdWrite(subject.gate);
+  subject.pageHidden();
+  await waitFor(() => subject.gate.writes === 1);
+  const imported = subject.writeImport(HIGHER, () => false);
+
+  // #when
+  setTimeout(() => subject.gate.releaseWrite(), 0);
+  await imported;
+
+  // #then
+  expect({ writes: subject.gate.writes, copy: decoded(subject.room) }).toEqual({
+    writes: 2,
+    copy: { g: HIGHER, records: [NEW_RECORD, RECORD] },
+  });
+});
+
+test('an import waits through a routine rerun without overlapping its write', async () => {
+  // #given
+  const subject = createSubject();
+  holdWrite(subject.gate);
+  subject.pageHidden();
+  await waitFor(() => subject.gate.writes === 1);
+  subject.pageHidden();
+  const imported = subject.writeImport(HIGHER, () => false);
+  subject.gate.afterWrite = () => holdWrite(subject.gate);
+
+  // #when
+  subject.gate.releaseWrite();
+  await waitFor(() => subject.gate.writes === 2);
+
+  const whileRerunHeld = {
+    writes: subject.gate.writes,
+    peakWrites: subject.gate.peakWrites,
+  };
+
+  subject.gate.releaseWrite();
+  await imported;
+
+  // #then
+  expect({
+    whileRerunHeld,
+    final: { writes: subject.gate.writes, peakWrites: subject.gate.peakWrites },
+  }).toEqual({
+    whileRerunHeld: { writes: 2, peakWrites: 1 },
+    final: { writes: 3, peakWrites: 1 },
+  });
+});
+
 test('import keeps a newer-build copy and raises its literal notice', async () => {
   // #given
   const subject = createSubject();
@@ -692,6 +805,82 @@ test('a failed import keeps a readable copy of its own generation', async () => 
     notices: ['room-copy-not-saved'],
   });
 });
+
+test('an import read-back failure completes and signals the failed status', async () => {
+  // #given
+  const subject = createSubject({ generation: HIGHER });
+  subject.gate.rejectReadAt = 2;
+
+  // #when
+  await subject.writeImport(HIGHER, () => false);
+
+  // #then
+  expect({ state: subject.status().state, changed: subject.changed }).toEqual({
+    state: 'failed',
+    changed: 1,
+  });
+});
+
+test('a failed import cleanup read failure still signals its failed status', async () => {
+  // #given
+  const subject = createSubject({ generation: HIGHER });
+  subject.gate.dropWrite = true;
+  subject.gate.rejectReadAt = 3;
+
+  // #when
+  await subject.writeImport(HIGHER, () => false);
+
+  // #then
+  expect({ state: subject.status().state, changed: subject.changed }).toEqual({
+    state: 'failed',
+    changed: 1,
+  });
+});
+
+test.each([null, 4] as const)(
+  'a failed import removes a lower copy and refreshes status when cleanup read %s',
+  async (rejectReadAt) => {
+    // #given
+    const subject = createSubject({ generation: HIGHER });
+    subject.room.setMetadata(copied(INITIAL, [RECORD]));
+    subject.followed(subject.room.getMetadata());
+    subject.gate.afterWrite = () => subject.room.setMetadata(copied(INITIAL, [RECORD]));
+    subject.gate.rejectReadAt = rejectReadAt;
+    const beforeImport = subject.changed;
+
+    // #when
+    await subject.writeImport(HIGHER, () => false);
+
+    const beforeDemotion = {
+      snapshot: decoded(subject.room),
+      status: subject.status(),
+      changed: subject.changed,
+    };
+
+    subject.demoted();
+
+    // #then
+    expect({ beforeImport, beforeDemotion, afterDemotion: subject.status() }).toEqual({
+      beforeImport: 1,
+      beforeDemotion: {
+        snapshot: null,
+        status: {
+          state: 'failed',
+          usedBytes: rejectReadAt === null ? 0 : 148,
+          freeBytes: rejectReadAt === null ? 15498 : 15350,
+          outcome: null,
+        },
+        changed: 2,
+      },
+      afterDemotion: {
+        state: 'none',
+        usedBytes: rejectReadAt === null ? 0 : 148,
+        freeBytes: rejectReadAt === null ? 15498 : 15350,
+        outcome: null,
+      },
+    });
+  },
+);
 
 test('a verified import clears an earlier owed routine write', async () => {
   // #given
@@ -980,4 +1169,292 @@ test('each status or notice change signals the publisher', async () => {
 
   // #then
   expect(subject.changed).toBe(3);
+});
+
+test('a new room copy does not owe a write at catch-up completion', async () => {
+  // #given
+  const subject = createSubject();
+
+  // #when
+  subject.caughtUp(false);
+  await subject.runScheduled();
+
+  // #then
+  expect({ delays: subject.delays, writes: subject.gate.writes }).toEqual({
+    delays: [],
+    writes: 0,
+  });
+});
+
+test('a verified routine write clears its debt before catch-up completion', async () => {
+  // #given
+  const subject = createSubject();
+  subject.pageHidden();
+  await flush();
+
+  // #when
+  subject.caughtUp(false);
+  await subject.runScheduled();
+
+  // #then
+  expect({
+    delays: subject.delays,
+    writes: subject.gate.writes,
+    state: subject.status().state,
+  }).toEqual({
+    delays: [],
+    writes: 1,
+    state: 'saved',
+  });
+});
+
+test('a failed import remains owed for catch-up completion', async () => {
+  // #given
+  const subject = createSubject();
+  subject.gate.dropWrite = true;
+
+  // #when
+  await subject.writeImport(HIGHER, () => false);
+  subject.caughtUp(false);
+
+  // #then
+  expect({ delays: subject.delays, state: subject.status().state }).toEqual({
+    delays: [12],
+    state: 'failed',
+  });
+});
+
+test('demotion cancels a paused write without creating a later debt', async () => {
+  // #given
+  const subject = createSubject();
+  subject.edited();
+  subject.demoted();
+
+  // #when
+  await subject.runScheduled();
+  subject.caughtUp(false);
+
+  // #then
+  expect({ delays: subject.delays, writes: subject.gate.writes }).toEqual({
+    delays: [12],
+    writes: 0,
+  });
+});
+
+test('a rejected held write after the gate closes leaves no not-saved notice', async () => {
+  // #given
+  const subject = createSubject();
+  holdWrite(subject.gate);
+  subject.gate.rejectWrite = true;
+  subject.pageHidden();
+  await waitFor(() => subject.gate.writes === 1);
+
+  // #when
+  subject.writable(false);
+  subject.gate.releaseWrite();
+  await flush();
+
+  // #then
+  expect({ state: subject.status().state, notices: subject.notices() }).toEqual({
+    state: 'none',
+    notices: [],
+  });
+});
+
+test('a verified import clears a prior failed routine notice', async () => {
+  // #given
+  const subject = createSubject();
+  subject.gate.dropWrite = true;
+  subject.pageHidden();
+  await flush();
+  subject.gate.dropWrite = false;
+
+  // #when
+  await subject.writeImport(HIGHER, () => false);
+
+  // #then
+  expect({ state: subject.status().state, notices: subject.notices() }).toEqual({
+    state: 'saved',
+    notices: [],
+  });
+});
+
+test('reading an own copy reports saved with its literal sizes', async () => {
+  // #given
+  const subject = createSubject();
+  subject.room.setMetadata(copied(INITIAL, [RECORD]));
+
+  // #when
+  await subject.read();
+
+  // #then
+  expect(subject.status()).toEqual({
+    state: 'saved',
+    usedBytes: 148,
+    freeBytes: 15350,
+    outcome: 'read',
+  });
+});
+
+test('an over-limit write reports the literal sizes of the retained metadata', async () => {
+  // #given
+  const subject = createSubject();
+  subject.room.setMetadata({
+    'other.extension/data': 'x'.repeat(15400),
+    ...copied(INITIAL, [RECORD]),
+  });
+
+  // #when
+  subject.pageHidden();
+  await flush();
+
+  // #then
+  expect(subject.status()).toEqual({
+    state: 'failed',
+    usedBytes: 149,
+    freeBytes: 0,
+    outcome: null,
+  });
+});
+
+test('replacing from a copy reports saved before its metadata is read', () => {
+  // #given
+  const subject = createSubject();
+
+  // #when
+  subject.replaced(true);
+
+  // #then
+  expect(subject.status()).toEqual({
+    state: 'saved',
+    usedBytes: 0,
+    freeBytes: 15500,
+    outcome: null,
+  });
+});
+
+test('a failed import over a higher copy updates sizes and demotion clears exists', async () => {
+  // #given
+  const subject = createSubject({ generation: HIGHER });
+  subject.room.setMetadata(copied(HIGHER, [RECORD]));
+  subject.gate.dropWrite = true;
+
+  // #when
+  await subject.writeImport(HIGHER, () => false);
+  const failed = subject.status();
+  subject.demoted();
+
+  // #then
+  expect({ failed, demoted: subject.status() }).toEqual({
+    failed: {
+      state: 'failed',
+      usedBytes: 156,
+      freeBytes: 15342,
+      outcome: null,
+    },
+    demoted: {
+      state: 'none',
+      usedBytes: 156,
+      freeBytes: 15342,
+      outcome: null,
+    },
+  });
+});
+
+test('a direct write cancels its paused scheduled write', async () => {
+  // #given
+  const subject = createSubject();
+  subject.edited();
+
+  // #when
+  subject.pageHidden();
+  await flush();
+  await subject.runScheduled();
+
+  // #then
+  expect({ writes: subject.gate.writes, delays: subject.delays }).toEqual({
+    writes: 1,
+    delays: [12],
+  });
+});
+
+test('a closed write gate performs no metadata read', async () => {
+  // #given
+  const subject = createSubject({ writable: false });
+
+  // #when
+  subject.pageHidden();
+  await flush();
+
+  // #then
+  expect({ reads: subject.gate.reads, writes: subject.gate.writes }).toEqual({
+    reads: 0,
+    writes: 0,
+  });
+});
+
+test('a superseded import does not start its deferred rerun', async () => {
+  // #given
+  const subject = createSubject();
+  holdWrite(subject.gate);
+  let superseded = false;
+  const imported = subject.writeImport(HIGHER, () => superseded);
+  await waitFor(() => subject.gate.writes === 1);
+  subject.edited();
+  await subject.runScheduled();
+
+  // #when
+  superseded = true;
+  subject.gate.releaseWrite();
+  await imported;
+  await flush();
+
+  // #then
+  expect({ writes: subject.gate.writes, peakWrites: subject.gate.peakWrites }).toEqual({
+    writes: 1,
+    peakWrites: 1,
+  });
+});
+
+test.each([
+  ['routine', INITIAL, async (subject: Subject) => subject.pageHidden()],
+  ['import', HIGHER, async (subject: Subject) => subject.writeImport(HIGHER, () => false)],
+] as const)(
+  '%s write saves metadata at the exact 15500-byte limit',
+  async (_kind, generation, write) => {
+    // #given
+    const subject = createSubject({ generation });
+    subject.room.setMetadata(metadataAtLimit(generation, [RECORD, NEW_RECORD]));
+
+    // #when
+    await write(subject);
+    await flush();
+
+    // #then
+    expect({
+      bytes: roomMetadataBytes(
+        subject.room.getMetadata(),
+        subject.room.getMetadata()[SNAPSHOT_KEY],
+      ),
+      state: subject.status().state,
+    }).toEqual({
+      bytes: 15500,
+      state: 'saved',
+    });
+  },
+);
+
+test('a rejected room-copy read signals the publisher exactly once', async () => {
+  // #given
+  const subject = createSubject();
+  subject.gate.rejectRead = true;
+
+  // #when
+  await subject.read();
+
+  // #then
+  expect({ changed: subject.changed, outcome: subject.status().outcome }).toEqual({
+    changed: 1,
+    outcome: 'unreadable',
+  });
 });
