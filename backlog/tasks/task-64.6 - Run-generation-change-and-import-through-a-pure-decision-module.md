@@ -1,10 +1,11 @@
 ---
 id: TASK-64.6
 title: Extract generation change and import through an injected-port module
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@seigiard'
 created_date: '2026-11-14T20:26:00Z'
-updated_date: '2026-11-15T08:13:00Z'
+updated_date: '2026-11-15T10:36:00Z'
 labels:
   - architecture
   - replica
@@ -31,3 +32,18 @@ On 2026-11-15 the owner reopened the shape and chose an injected-port module, li
 - [ ] #4 The full check passes
 - [ ] #5 Unit tests on fake store, room-copy and CatchUp seams cover, without a room rig: the AD-9 call order (no `reset` before a complete save and `writeImport`, commits flushed before the save), supersession by a higher generation during `writeImport` (`data-replaced`, no `reset`), a failed save that removes the part saved and leaves adoption open, and the late `snapshot-imported`; adoption races already covered by TASK-63.3 are referenced, not duplicated
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Expose the injected generation/adoption module through a bounded behavior-preserving extraction, using existing engine import, wipe and catch-up scenarios as the first oracle because a missing-module import is not a behavioral red.
+2. Lock independent module tests on fake store, RoomCopy and CatchUp ports for the documented AD-9 order, failed-save, supersession and late snapshot-imported cases; calibrate them with faithful mutations.
+3. Wire retained engine lifecycle and CatchUp through the module getters and operations without changing protected interfaces, then run the locked module tests, unchanged engine generation/snapshot tests, and the full source/test check set.
+4. Record command evidence and objective completion through Backlog.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Exposure extraction commit `95138bb673be79bfc1f9da2c94d8c7ac7773b82c` preserved existing engine scenarios and passed full checks: exposure 87/87, unit 3045 passed (1 skipped), browser 521 passed, format/lint/typecheck/build exit 0. Raw logs: `/Users/seigiard/.claude/artifacts/implement-spec-64-20261115/64.6/controls/`. TDD is blocked before the required module-test lock and calibration: implementer-1 did not publish its required report after one resume (D1 returned); parent must choose recovery.
+<!-- SECTION:NOTES:END -->
