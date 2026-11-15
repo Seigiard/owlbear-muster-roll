@@ -39,12 +39,9 @@ import {
 import {
   parseWindowMessage,
   UI_CHANNEL,
-  type Command,
-  type CommandMessage,
   type EngineMessage,
   type Notice,
   type OpenSheetRequest,
-  type PresetDiffMessage,
   type RejectionReason,
 } from '@/core/ui-messages';
 import { linkTargetShownTo, type PlayerRole } from '@/core/visibility';
@@ -71,7 +68,8 @@ import {
   type GenerationPersistence,
 } from '@/replica/generation-flow';
 import { createPartyRoster, type RoomSender } from '@/replica/party-roster';
-import { createPendingQueue, type PendingEntry } from '@/replica/pending-queue';
+import { createCommandRouting, type CommandRouting } from '@/replica/command-routing';
+import { createPendingQueue } from '@/replica/pending-queue';
 import { createPendingEdits } from '@/replica/pending-edits';
 import { createRecordStore } from '@/replica/record-store';
 import { createRoomCopy, type RoomCopy } from '@/replica/room-copy';
@@ -152,11 +150,6 @@ export type ReplicaEngineOptions = {
   dataReplaced?: string;
 };
 
-type ReplayedPending = {
-  applied: VersionedRecord[];
-  completed: string[];
-};
-
 export type ReplicaEngine = {
   stop: () => void;
   // Sends every waiting message at once, held commits included, for a page that is about to close.
@@ -212,9 +205,6 @@ export async function startReplicaEngine(
   });
 
   const pending = createPendingQueue();
-  // The ids each pending intent has made so far, by command id and then by role, until the queue
-  // is replayed.
-  const pendingIds = new Map<string, Map<string, string>>();
   // AD-5: re-read on every party change, and a change enters catch-up.
   let role = startRole;
   let generationFlow: GenerationFlow;
@@ -274,7 +264,11 @@ export async function startReplicaEngine(
             const id = newId();
 
             menuCommandIds.add(id);
-            handleCommand({ t: 'command', id, command: { type: 'link-clear', tokenId } });
+            commandRouting.handleCommand({
+              t: 'command',
+              id,
+              command: { type: 'link-clear', tokenId },
+            });
           },
           open: openFromToken,
         });
@@ -325,6 +319,7 @@ export async function startReplicaEngine(
   });
 
   let publisher: WindowPublisher;
+  let commandRouting: CommandRouting;
 
   for (const record of loaded.records) {
     merge(record);
@@ -360,6 +355,36 @@ export async function startReplicaEngine(
     changed: () => publisher.publish(),
   });
 
+  commandRouting = createCommandRouting({
+    role: () => role,
+    importing: () => generationFlow.importing(),
+    live: catchUp.live,
+    acceptCommand,
+    composers,
+    records: () => replica,
+    liveContext,
+    dryContext,
+    newRecordId: newRecordIdOf,
+    pending,
+    pendingEdits,
+    apply,
+    reject,
+    commandDone,
+    notifyDenied,
+    publish: () => publisher.publish(),
+    hasPersistence: () => generationFlow.persistence() !== null,
+    flushOutbox: outbox.flush,
+    addCommits: sendCommits,
+    roomCopyEdited: roomCopy.edited,
+    importFromSnapshot: (id, command) => generationFlow.importFromSnapshot(id, command),
+    wipe: (id) => generationFlow.wipe(id),
+    reply: (message) => {
+      send(message).catch((error) => {
+        console.error('Muster Roll could not answer a command', error);
+      });
+    },
+  });
+
   publisher = createWindowPublisher({
     send,
     newId,
@@ -367,7 +392,7 @@ export async function startReplicaEngine(
     state: () => ({
       role,
       replica,
-      pendingView: pendingViewRecords(),
+      pendingView: commandRouting.pendingViewRecords(),
       notices: currentNotices(),
       sync: catchUp.view(),
       roomCopy: roomCopy.status(),
@@ -383,15 +408,7 @@ export async function startReplicaEngine(
     presetOf,
     role: () => role,
     stopped: () => stopped,
-    acceptCommand: (id) => {
-      if (recentCommandIds.has(id)) {
-        return false;
-      }
-
-      recentCommandIds.add(id);
-
-      return true;
-    },
+    acceptCommand,
     catchUp,
     interpretCatchUp: (decisions) => {
       void runCatchUp(decisions).catch((error) => {
@@ -417,7 +434,7 @@ export async function startReplicaEngine(
         }
       }
 
-      pendingIds.clear();
+      commandRouting.clearPendingIds();
       pendingEdits.clear();
     },
     notifyDataReplaced,
@@ -435,7 +452,7 @@ export async function startReplicaEngine(
   });
 
   const rollFlow = createRollFlow({
-    pendingView,
+    pendingView: commandRouting.pendingView,
     presetOf,
     role: () => role,
     stopped: () => stopped,
@@ -480,6 +497,16 @@ export async function startReplicaEngine(
 
   function send(message: EngineMessage): Promise<void> {
     return sendQueue.enqueue(UI_CHANNEL, message, LOCAL);
+  }
+
+  function acceptCommand(id: string): boolean {
+    if (recentCommandIds.has(id)) {
+      return false;
+    }
+
+    recentCommandIds.add(id);
+
+    return true;
   }
 
   function catchUpTimerKey(timer: CatchUpTimer): string {
@@ -860,7 +887,7 @@ export async function startReplicaEngine(
       const id = newId();
 
       sceneCommandIds.add(id);
-      runCommand(id, { type: 'link-clear', tokenId });
+      commandRouting.runCommand(id, { type: 'link-clear', tokenId });
     }
   }
 
@@ -913,26 +940,6 @@ export async function startReplicaEngine(
     };
   }
 
-  // A pending intent composes again for every pending view and once more on replay. One role of
-  // one command gets one id each time, so the view keeps its keys and the replay writes the keys
-  // the windows already show, even when records arrive in between.
-  function pendingIdsOf(intentId: string): ComposeContext['newRecordId'] {
-    return (kind, role) => {
-      let ids = pendingIds.get(intentId);
-
-      if (ids === undefined) {
-        ids = new Map();
-        pendingIds.set(intentId, ids);
-      }
-
-      const id = ids.get(role) ?? newRecordIdOf(kind);
-
-      ids.set(role, id);
-
-      return id;
-    };
-  }
-
   // A batch is saved in order and stops at its first failed write. The failed record and the ones
   // after it are not applied, so a retry of the command reaches them again. A single record keeps
   // its value after a failed write, and the notice asks the GM for a snapshot, unless it is part of
@@ -966,169 +973,6 @@ export async function startReplicaEngine(
     }
   }
 
-  function handleCommand(message: CommandMessage): void {
-    if (recentCommandIds.has(message.id)) {
-      return;
-    }
-
-    recentCommandIds.add(message.id);
-    runCommand(message.id, message.command);
-  }
-
-  function runCommand(id: string, command: Command): void {
-    // AD-4: a player never merges its own edit, which would beat later GM edits of its key. Its
-    // field and repeat block edits wait for a GM client's check. Nothing else is a player's to
-    // write.
-    if (role !== 'GM') {
-      handlePlayerCommand(id, command);
-
-      return;
-    }
-
-    // AD-9: until the importer's `reset` is out, no commit of the new generation may reach the room.
-    if (generationFlow.importing()) {
-      reject(id, 'importing');
-
-      return;
-    }
-
-    if (!catchUp.live()) {
-      queueIntent(id, command);
-
-      return;
-    }
-
-    if (command.type === 'preset-upload') {
-      uploadPreset(id, command);
-
-      return;
-    }
-
-    if (command.type === 'snapshot-import') {
-      void generationFlow.importFromSnapshot(id, command);
-
-      return;
-    }
-
-    if (command.type === 'wipe') {
-      void generationFlow.wipe(id);
-
-      return;
-    }
-
-    const composed = composers.compose(liveContext(), command);
-
-    if (!composed.ok) {
-      reject(id, composed.error);
-
-      return;
-    }
-
-    const applied = apply(composed.value);
-
-    // A notice change reaches the window even when the command applied nothing.
-    publisher.publish();
-    commandDone(id);
-    sendCommits(applied);
-
-    if (applied.length > 0) {
-      roomCopy.edited();
-    }
-  }
-
-  // AD-14: a window asks how many stored values a preset would erase before it asks the GM. A GM
-  // client that is live answers with one diff over its full replica. The answer writes nothing.
-  function handlePresetDiff(message: PresetDiffMessage): void {
-    if (recentCommandIds.has(message.id)) {
-      return;
-    }
-
-    recentCommandIds.add(message.id);
-
-    if (role !== 'GM') {
-      reject(message.id, 'not-allowed');
-
-      return;
-    }
-
-    if (!catchUp.live()) {
-      reject(message.id, 'catching-up');
-
-      return;
-    }
-
-    const diff = composers.presetDiffResult(liveContext(), message.data);
-
-    if (!diff.ok) {
-      reject(message.id, diff.error);
-
-      return;
-    }
-
-    send({ t: 'preset-diff-result', id: message.id, ...diff.value }).catch((error) => {
-      console.error('Muster Roll could not answer a preset diff', error);
-    });
-  }
-
-  // AD-14: the diff runs again over the replica as it is now. The commits held so far go out
-  // first, then each group of the batch is saved and sent as commits of its own, in order: rows
-  // under new keys, `preset`, then tombstones of old keys and stripped rows. A failed write stops
-  // the batch there, so a closure or a failure at any point leaves values readable under one of
-  // the two presets. The generation does not change.
-  function uploadPreset(id: string, command: Extract<Command, { type: 'preset-upload' }>): void {
-    const batch = composers.composePresetUpload(liveContext(), command);
-
-    if (!batch.ok) {
-      reject(id, batch.error.reason, batch.error.changed);
-
-      return;
-    }
-
-    if (generationFlow.persistence() !== null) {
-      outbox.flush();
-    }
-
-    const applied: VersionedRecord[] = [];
-    let complete = true;
-
-    for (const group of batch.value.groups) {
-      const written = apply(group, true);
-
-      applied.push(...written);
-
-      if (generationFlow.persistence() !== null && written.length > 0) {
-        outbox.add(written);
-        outbox.flush();
-      }
-
-      if (written.length < group.length) {
-        complete = false;
-        break;
-      }
-    }
-
-    publisher.publish();
-
-    if (applied.length > 0) {
-      roomCopy.edited();
-    }
-
-    if (!complete) {
-      reject(id, 'write-failed');
-
-      return;
-    }
-
-    send({
-      t: 'preset-uploaded',
-      id,
-      count: batch.value.count,
-      sheets: batch.value.sheets,
-    }).catch((error) => {
-      console.error('Muster Roll could not report a preset upload', error);
-    });
-  }
-
   // The replica becomes the new generation's records. The windows get a new stream, as a delta
   // cannot take the old records out of them: each asks for a fresh projection.
   function replaceReplicaRecords(records: readonly VersionedRecord[]): void {
@@ -1150,27 +994,6 @@ export async function startReplicaEngine(
     publisher.restart();
     dropStaleOpen();
     followReplica();
-  }
-
-  // AD-4: the pending-edits module checks and queues a player's edit. The engine reports only the
-  // immediate command rejection or the notification the module returns.
-  function handlePlayerCommand(id: string, command: Command): void {
-    const view = pendingView();
-
-    const result = pendingEdits.edit(command, view);
-
-    if (!result.ok) {
-      reject(id, result.error);
-
-      return;
-    }
-
-    if (result.value.notify) {
-      notifyDenied();
-    }
-
-    publisher.publish();
-    commandDone(id);
   }
 
   function proposalContext(records: ReadonlyMap<string, VersionedRecord>): ProposalContext {
@@ -1353,124 +1176,6 @@ export async function startReplicaEngine(
     return decoded.value;
   }
 
-  // AD-7: an intent made during catch-up waits and takes `c` on exit. It is checked now against the
-  // pending view, so a refusal comes at once.
-  function queueIntent(id: string, command: Command): void {
-    if (
-      command.type === 'preset-upload' ||
-      command.type === 'snapshot-import' ||
-      command.type === 'wipe'
-    ) {
-      reject(id, 'catching-up');
-
-      return;
-    }
-
-    const dry = composers.compose(
-      { ...dryContext(pendingView()), newRecordId: pendingIdsOf(id) },
-      command,
-    );
-
-    if (!dry.ok) {
-      pendingIds.delete(id);
-      reject(id, dry.error);
-
-      return;
-    }
-
-    pending.add(id, command);
-    publisher.publish();
-  }
-
-  // The replica with every pending intent applied by the same composers, minting nothing, and every
-  // proposal of a player's edit over it (AD-4): the newest version sent, or one that waits for its
-  // `c`, as its patch makes it of the record it will be applied to.
-  function pendingView(): Map<string, VersionedRecord> {
-    const view = new Map(replica);
-    const context = dryContext(view);
-
-    for (const entry of pending.entries()) {
-      for (const record of composedEntry(context, entry)) {
-        view.set(record.k, record);
-      }
-    }
-
-    pendingEdits.overlay(view);
-
-    return view;
-  }
-
-  function composedEntry(context: ComposeContext, entry: PendingEntry): VersionedRecord[] {
-    if (entry.kind === 'intent') {
-      const composed = composers.compose(
-        { ...context, newRecordId: pendingIdsOf(entry.id) },
-        entry.command,
-      );
-
-      return composed.ok ? composed.value : [];
-    }
-
-    const { record } = composers.composePatches(context, entry.patches);
-
-    return record === null ? [] : [record];
-  }
-
-  // The publisher compares this pending view with what windows hold. Keys equal to the replica are
-  // omitted, so a pending record never masks an applied record without a visible change.
-  function pendingViewRecords(): Map<string, VersionedRecord> {
-    const view = pendingView();
-
-    return new Map([...view].filter(([key, record]) => record !== replica.get(key)));
-  }
-
-  // AD-7 replay: every pending intent runs for real in arrival order. A refusal now goes to the
-  // window with the command id it came with.
-  function replayPending(): ReplayedPending {
-    const applied: VersionedRecord[] = [];
-    const completed: string[] = [];
-
-    for (const entry of pending.takeAll()) {
-      const ids = entry.kind === 'intent' ? [entry.id] : entry.patches.map((patch) => patch.id);
-
-      if (role !== 'GM') {
-        for (const id of ids) {
-          reject(id, 'not-allowed');
-        }
-      } else if (entry.kind === 'intent') {
-        const composed = composers.compose(
-          { ...liveContext(), newRecordId: pendingIdsOf(entry.id) },
-          entry.command,
-        );
-
-        if (composed.ok) {
-          applied.push(...apply(composed.value));
-          completed.push(entry.id);
-        } else {
-          reject(entry.id, composed.error);
-        }
-      } else {
-        const { record, refusals } = composers.composePatches(liveContext(), entry.patches);
-        const refused = new Set(refusals.map((refusal) => refusal.id));
-
-        for (const refusal of refusals) {
-          reject(refusal.id, refusal.reason);
-        }
-
-        if (record !== null) {
-          applied.push(...apply([record]));
-        }
-
-        completed.push(
-          ...entry.patches.flatMap((patch) => (refused.has(patch.id) ? [] : [patch.id])),
-        );
-      }
-    }
-
-    pendingIds.clear();
-
-    return { applied, completed };
-  }
-
   // A GM client merges what it and the other tabs of its browser saved. A player persists nothing.
   function mergePersisted(): void {
     const currentPersistence = generationFlow.persistence();
@@ -1553,7 +1258,7 @@ export async function startReplicaEngine(
       }
     }
 
-    const replayed = replayPending();
+    const replayed = commandRouting.replayPending();
 
     const pendingDenial = pendingEdits.caughtUp();
 
@@ -1890,7 +1595,7 @@ export async function startReplicaEngine(
         deliverOpen();
       }
     } else if (parsed.value.t === 'preset-diff') {
-      handlePresetDiff(parsed.value);
+      commandRouting.handlePresetDiff(parsed.value);
     } else if (parsed.value.t === 'roll-request') {
       rollFlow.handleRollRequest(parsed.value);
     } else if (parsed.value.t === 'open-sheet-ack') {
@@ -1898,7 +1603,7 @@ export async function startReplicaEngine(
     } else if (parsed.value.t === 'snapshot-check') {
       generationFlow.checkSnapshot(parsed.value);
     } else {
-      handleCommand(parsed.value);
+      commandRouting.handleCommand(parsed.value);
     }
   });
 

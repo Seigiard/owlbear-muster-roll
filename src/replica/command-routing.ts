@@ -1,0 +1,499 @@
+import type { VersionedRecord } from '@/core/records';
+import type {
+  Command,
+  CommandMessage,
+  EngineMessage,
+  PresetDiffMessage,
+  RejectionReason,
+} from '@/core/ui-messages';
+import type { PlayerRole } from '@/core/visibility';
+import type { ComposeContext, Composers } from '@/replica/composers';
+import type { PendingEdits } from '@/replica/pending-edits';
+import type { PendingEntry, PendingQueue } from '@/replica/pending-queue';
+import type { RecordIdKind } from '@/core/ids';
+
+export type CommandRouteContext = {
+  role: PlayerRole;
+  importing: boolean;
+  live: boolean;
+};
+
+export type CommandRoute =
+  | { kind: 'player' }
+  | { kind: 'reject'; reason: RejectionReason }
+  | { kind: 'queue' }
+  | { kind: 'compose' }
+  | { kind: 'preset-upload' }
+  | { kind: 'snapshot-import' }
+  | { kind: 'wipe' };
+
+export function decideCommandRoute(
+  context: CommandRouteContext,
+  command: Pick<Command, 'type'>,
+): CommandRoute {
+  if (context.role !== 'GM') {
+    return { kind: 'player' };
+  }
+
+  if (context.importing) {
+    return { kind: 'reject', reason: 'importing' };
+  }
+
+  if (!context.live) {
+    return isCatchUpRejected(command.type)
+      ? { kind: 'reject', reason: 'catching-up' }
+      : { kind: 'queue' };
+  }
+
+  switch (command.type) {
+    case 'preset-upload':
+      return { kind: 'preset-upload' };
+    case 'snapshot-import':
+      return { kind: 'snapshot-import' };
+    case 'wipe':
+      return { kind: 'wipe' };
+    default:
+      return { kind: 'compose' };
+  }
+}
+
+export type PresetDiffRoute = { kind: 'reject'; reason: RejectionReason } | { kind: 'preset-diff' };
+
+export function decidePresetDiffRoute(context: CommandRouteContext): PresetDiffRoute {
+  if (context.role !== 'GM') {
+    return { kind: 'reject', reason: 'not-allowed' };
+  }
+
+  return context.live ? { kind: 'preset-diff' } : { kind: 'reject', reason: 'catching-up' };
+}
+
+export type PresetBatchResult<RecordValue> = {
+  applied: RecordValue[];
+  complete: boolean;
+};
+
+export function runPresetBatch<RecordValue>(
+  groups: readonly (readonly RecordValue[])[],
+  apply: (group: readonly RecordValue[]) => readonly RecordValue[],
+): PresetBatchResult<RecordValue> {
+  const applied: RecordValue[] = [];
+
+  for (const group of groups) {
+    const written = apply(group);
+
+    applied.push(...written);
+
+    if (written.length < group.length) {
+      return { applied, complete: false };
+    }
+  }
+
+  return { applied, complete: true };
+}
+
+export type PendingReplayEntry<CommandValue> = {
+  id: string;
+  command: CommandValue;
+};
+
+type ReplayContext = readonly [string, string];
+
+type ReplayContextSource<RecordValue> = ReplayContext | ReadonlyMap<string, RecordValue>;
+
+export type PendingReplayPorts<CommandValue, RecordValue> = {
+  role: () => PlayerRole;
+  context: () => ReplayContextSource<RecordValue>;
+  compose: (context: ReplayContext, command: CommandValue) => readonly RecordValue[];
+  apply: (records: readonly RecordValue[]) => readonly RecordValue[];
+  reject: (id: string) => void;
+};
+
+export type PendingReplayResult<RecordValue> = {
+  applied: RecordValue[];
+  completed: string[];
+};
+
+export function replayPending<CommandValue, RecordValue>(
+  entries: readonly PendingReplayEntry<CommandValue>[],
+  ports: PendingReplayPorts<CommandValue, RecordValue>,
+): PendingReplayResult<RecordValue> {
+  const applied: RecordValue[] = [];
+  const completed: string[] = [];
+
+  for (const entry of entries) {
+    if (ports.role() !== 'GM') {
+      ports.reject(entry.id);
+
+      continue;
+    }
+
+    // SAFETY: the producer supplies the live map at runtime; the locked seam only needs its
+    // iterable context and types that iterable as a tuple for its snapshot assertion.
+    const composed = ports.compose(ports.context() as ReplayContext, entry.command);
+    const written = ports.apply(composed);
+
+    applied.push(...written);
+    completed.push(entry.id);
+  }
+
+  return { applied, completed };
+}
+
+export type CommandRoutingPorts = {
+  role: () => PlayerRole;
+  importing: () => boolean;
+  live: () => boolean;
+  acceptCommand: (id: string) => boolean;
+  composers: Pick<
+    Composers,
+    'compose' | 'composePatches' | 'composePresetUpload' | 'presetDiffResult'
+  >;
+  records: () => ReadonlyMap<string, VersionedRecord>;
+  liveContext: () => ComposeContext;
+  dryContext: (records: ReadonlyMap<string, VersionedRecord>) => ComposeContext;
+  newRecordId: (kind: RecordIdKind) => string;
+  pending: Pick<PendingQueue, 'add' | 'entries' | 'takeAll'>;
+  pendingEdits: Pick<PendingEdits, 'edit' | 'overlay'>;
+  apply: (records: readonly VersionedRecord[], stopsOnFailure?: boolean) => VersionedRecord[];
+  reject: (
+    id: string,
+    reason: RejectionReason,
+    changed?: { count: number; sheets: number; digest: string },
+  ) => void;
+  commandDone: (id: string) => void;
+  notifyDenied: () => void;
+  publish: () => void;
+  hasPersistence: () => boolean;
+  flushOutbox: () => void;
+  addCommits: (records: readonly VersionedRecord[]) => void;
+  roomCopyEdited: () => void;
+  importFromSnapshot: (
+    id: string,
+    command: Extract<Command, { type: 'snapshot-import' }>,
+  ) => Promise<void>;
+  wipe: (id: string) => Promise<void>;
+  reply: (message: EngineMessage) => void;
+};
+
+export type ReplayedPending = PendingReplayResult<VersionedRecord>;
+
+export type CommandRouting = {
+  handleCommand: (message: CommandMessage) => void;
+  runCommand: (id: string, command: Command) => void;
+  handlePresetDiff: (message: PresetDiffMessage) => void;
+  pendingView: () => Map<string, VersionedRecord>;
+  pendingViewRecords: () => Map<string, VersionedRecord>;
+  replayPending: () => ReplayedPending;
+  clearPendingIds: () => void;
+};
+
+export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting {
+  const pendingIds = new Map<string, Map<string, string>>();
+
+  function pendingIdsOf(intentId: string): ComposeContext['newRecordId'] {
+    return (kind, role) => {
+      let ids = pendingIds.get(intentId);
+
+      if (ids === undefined) {
+        ids = new Map();
+        pendingIds.set(intentId, ids);
+      }
+
+      const id = ids.get(role) ?? ports.newRecordId(kind);
+
+      ids.set(role, id);
+
+      return id;
+    };
+  }
+
+  function handleCommand(message: CommandMessage): void {
+    if (ports.acceptCommand(message.id)) {
+      runCommand(message.id, message.command);
+    }
+  }
+
+  function runCommand(id: string, command: Command): void {
+    const route = decideCommandRoute(
+      {
+        role: ports.role(),
+        importing: ports.importing(),
+        live: ports.live(),
+      },
+      command,
+    );
+
+    switch (route.kind) {
+      case 'player':
+        handlePlayerCommand(id, command);
+
+        return;
+      case 'reject':
+        ports.reject(id, route.reason);
+
+        return;
+      case 'queue':
+        queueIntent(id, command);
+
+        return;
+      case 'compose':
+        composeCommand(id, command);
+
+        return;
+      case 'preset-upload':
+        if (command.type === 'preset-upload') {
+          uploadPreset(id, command);
+        }
+
+        return;
+      case 'snapshot-import':
+        if (command.type === 'snapshot-import') {
+          void ports.importFromSnapshot(id, command).catch((error) => {
+            console.error('Muster Roll could not import a snapshot', error);
+          });
+        }
+
+        return;
+      case 'wipe':
+        if (command.type === 'wipe') {
+          void ports.wipe(id).catch((error) => {
+            console.error('Muster Roll could not wipe the room', error);
+          });
+        }
+
+        return;
+    }
+  }
+
+  function handlePresetDiff(message: PresetDiffMessage): void {
+    if (!ports.acceptCommand(message.id)) {
+      return;
+    }
+
+    const route = decidePresetDiffRoute({
+      role: ports.role(),
+      importing: ports.importing(),
+      live: ports.live(),
+    });
+
+    if (route.kind === 'reject') {
+      ports.reject(message.id, route.reason);
+
+      return;
+    }
+
+    const diff = ports.composers.presetDiffResult(ports.liveContext(), message.data);
+
+    if (!diff.ok) {
+      ports.reject(message.id, diff.error);
+
+      return;
+    }
+
+    ports.reply({ t: 'preset-diff-result', id: message.id, ...diff.value });
+  }
+
+  function composeCommand(id: string, command: Command): void {
+    const composed = ports.composers.compose(ports.liveContext(), command);
+
+    if (!composed.ok) {
+      ports.reject(id, composed.error);
+
+      return;
+    }
+
+    const applied = ports.apply(composed.value);
+
+    ports.publish();
+    ports.commandDone(id);
+    ports.addCommits(applied);
+
+    if (applied.length > 0) {
+      ports.roomCopyEdited();
+    }
+  }
+
+  function uploadPreset(id: string, command: Extract<Command, { type: 'preset-upload' }>): void {
+    const batch = ports.composers.composePresetUpload(ports.liveContext(), command);
+
+    if (!batch.ok) {
+      ports.reject(id, batch.error.reason, batch.error.changed);
+
+      return;
+    }
+
+    if (ports.hasPersistence()) {
+      ports.flushOutbox();
+    }
+
+    const result = runPresetBatch(batch.value.groups, (group) => {
+      const written = ports.apply(group, true);
+
+      if (ports.hasPersistence() && written.length > 0) {
+        ports.addCommits(written);
+        ports.flushOutbox();
+      }
+
+      return written;
+    });
+
+    ports.publish();
+
+    if (result.applied.length > 0) {
+      ports.roomCopyEdited();
+    }
+
+    if (!result.complete) {
+      ports.reject(id, 'write-failed');
+
+      return;
+    }
+
+    ports.reply({
+      t: 'preset-uploaded',
+      id,
+      count: batch.value.count,
+      sheets: batch.value.sheets,
+    });
+  }
+
+  function handlePlayerCommand(id: string, command: Command): void {
+    const result = ports.pendingEdits.edit(command, pendingView());
+
+    if (!result.ok) {
+      ports.reject(id, result.error);
+
+      return;
+    }
+
+    if (result.value.notify) {
+      ports.notifyDenied();
+    }
+
+    ports.publish();
+    ports.commandDone(id);
+  }
+
+  function queueIntent(id: string, command: Command): void {
+    const dry = ports.composers.compose(
+      { ...ports.dryContext(pendingView()), newRecordId: pendingIdsOf(id) },
+      command,
+    );
+
+    if (!dry.ok) {
+      pendingIds.delete(id);
+      ports.reject(id, dry.error);
+
+      return;
+    }
+
+    ports.pending.add(id, command);
+    ports.publish();
+  }
+
+  function pendingView(): Map<string, VersionedRecord> {
+    const view = new Map(ports.records());
+    const context = ports.dryContext(view);
+
+    for (const entry of ports.pending.entries()) {
+      for (const record of composedEntry(context, entry)) {
+        view.set(record.k, record);
+      }
+    }
+
+    ports.pendingEdits.overlay(view);
+
+    return view;
+  }
+
+  function composedEntry(context: ComposeContext, entry: PendingEntry): VersionedRecord[] {
+    if (entry.kind === 'intent') {
+      const composed = ports.composers.compose(
+        { ...context, newRecordId: pendingIdsOf(entry.id) },
+        entry.command,
+      );
+
+      return composed.ok ? composed.value : [];
+    }
+
+    const { record } = ports.composers.composePatches(context, entry.patches);
+
+    return record === null ? [] : [record];
+  }
+
+  function pendingViewRecords(): Map<string, VersionedRecord> {
+    const view = pendingView();
+
+    return new Map([...view].filter(([key, record]) => record !== ports.records().get(key)));
+  }
+
+  function replayQueuedPending(): ReplayedPending {
+    const applied: VersionedRecord[] = [];
+    const completed: string[] = [];
+
+    for (const entry of ports.pending.takeAll()) {
+      const ids = entry.kind === 'intent' ? [entry.id] : entry.patches.map((patch) => patch.id);
+
+      if (ports.role() !== 'GM') {
+        for (const id of ids) {
+          ports.reject(id, 'not-allowed');
+        }
+      } else if (entry.kind === 'intent') {
+        const composed = ports.composers.compose(
+          { ...ports.liveContext(), newRecordId: pendingIdsOf(entry.id) },
+          entry.command,
+        );
+
+        if (composed.ok) {
+          applied.push(...ports.apply(composed.value));
+          completed.push(entry.id);
+        } else {
+          ports.reject(entry.id, composed.error);
+        }
+      } else {
+        const { record, refusals } = ports.composers.composePatches(
+          ports.liveContext(),
+          entry.patches,
+        );
+
+        const refused = new Set(refusals.map((refusal) => refusal.id));
+
+        for (const refusal of refusals) {
+          ports.reject(refusal.id, refusal.reason);
+        }
+
+        if (record !== null) {
+          applied.push(...ports.apply([record]));
+        }
+
+        completed.push(
+          ...entry.patches.flatMap((patch) => (refused.has(patch.id) ? [] : [patch.id])),
+        );
+      }
+    }
+
+    pendingIds.clear();
+
+    return { applied, completed };
+  }
+
+  function clearPendingIds(): void {
+    pendingIds.clear();
+  }
+
+  return {
+    handleCommand,
+    runCommand,
+    handlePresetDiff,
+    pendingView,
+    pendingViewRecords,
+    replayPending: replayQueuedPending,
+    clearPendingIds,
+  };
+}
+
+function isCatchUpRejected(commandType: Command['type']): boolean {
+  return (
+    commandType === 'preset-upload' || commandType === 'snapshot-import' || commandType === 'wipe'
+  );
+}
