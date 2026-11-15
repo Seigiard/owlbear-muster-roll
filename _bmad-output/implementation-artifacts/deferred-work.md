@@ -395,3 +395,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-66-replica-mutation-gaps.md`
   summary: Investigate message headers that exceed the broadcast limit before any records are added.
   evidence: Closing review Edge 1 constructs 100 party entries with 100-character Cyrillic names, producing an oversized empty cue. Empty `splitParts` bypasses capacity checks; projected restarts and other empty cues already used this path before TASK-66. Actual Owlbear rejection and an affected live party remain unverified; capture a real header and send outcome to settle the risk.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-66-replica-mutation-gaps.md`
+  summary: Investigate intermittent focus loss when a GM opens an NPC repeat block from its token.
+  evidence: One post-review browser run at `44e21453d8146c43ca38e36bdeb24e7bfa2f7a13` passed 520 tests but failed `tests/open.e2e.ts:307`: the Dragon group was visible but inactive after five seconds. Ten exact-scenario serial repeats and a full unchanged 521-test recheck passed. No expectation, retry setting or application code changed; the cause is unverified. Original context is saved in the TASK-66 run's `browser-focus-diagnosis/original-failure/`.

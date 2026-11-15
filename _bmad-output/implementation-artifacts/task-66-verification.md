@@ -8,15 +8,17 @@ Production changed only in `src/replica/catch-up.ts` and
 `src/replica/window-publisher.ts`. Room-copy and engine startup are unchanged.
 
 - Base: `476e8f0284f103d092c1b7363a56393e1433a617`.
-- Verified integration: `ab010576183cdce13d3dae4db627da284786075d`.
-- Final source/test tip: `676dff1362ec238c997688b71043fbd7f5131945`.
-  The integration adds only task metadata and the deferred cold-start note.
+- Verified final source/test integration: `44e21453d8146c43ca38e36bdeb24e7bfa2f7a13`.
+- Initial source/test tip: `676dff1362ec238c997688b71043fbd7f5131945`.
+  Its first clean integrated check ran at
+  `ab010576183cdce13d3dae4db627da284786075d`. The only later test correction
+  independently measures metadata bytes; application production is unchanged.
 - Original inventory and generator: [mutation probe](mutation-probe-2026-11-15.md).
 - Approved intent: [specification](spec-task-66-replica-mutation-gaps.md).
 
 ## Integrated checks
 
-These commands ran on the clean verified integration. Every command exited 0.
+These commands have passing evidence on the clean final source/test integration.
 
 | Command | Observed result |
 |---|---|
@@ -31,6 +33,13 @@ These commands ran on the clean verified integration. Every command exited 0.
 The source was restored after mutation controls. The checkout was clean before
 and after the checks. The skipped unit test is not used by the matrix audit.
 Markdown and Backlog files are excluded by the formatter configuration.
+
+The first post-review browser run had 520 passes and one failure:
+`tests/open.e2e.ts:307` found the visible NPC repeat block inactive instead of
+focused after five seconds. The exact scenario then passed ten serial repetitions,
+and the unchanged full browser command passed all 521 tests. No assertion,
+retry setting or application code changed between those runs. The failure's
+cause remains unverified; its original output and context were preserved.
 
 ## Matrix-to-executed-test audit
 
@@ -74,6 +83,14 @@ separate projection and delta scenarios with nearby enabled bus-delivered
 controls. Each faithful F35/F36/F66/F67/F68 mutation then failed at the protected
 behavior assertion. The final mechanical unit pass also detects all five.
 
+Closing review also found a shared metadata-size oracle in the two equality
+tests. Commit `44e21453d8146c43ca38e36bdeb24e7bfa2f7a13` replaced it with
+independent `TextEncoder` measurement of the whole persisted JSON. A one-byte
+bias in production's helper passed the former tests but fails both corrected
+owners. Both original `>` to `>=` boundary controls still fail at the behavior
+assertion. The restored module passes 63 tests; full unit passes 3089 with one
+environment skip. No production fix was needed.
+
 ## Mechanical probe
 
 The original TypeScript AST generator ran with isolated TypeScript 5. Pass 1
@@ -84,6 +101,12 @@ The three pass-2 checkouts use the verified integration revision.
 
 The full replica baseline passed: 948 tests, 0 failures. Reused earlier unit
 results have byte-identical module, test, helper, dependency and setup inputs.
+After the oracle correction, all three replica-survivor passes ran again at
+`44e21453d8146c43ca38e36bdeb24e7bfa2f7a13`; room-copy's entire 334-mutant unit
+pass also ran again. Every repeated row matches the earlier operation, source
+anchor and outcome. Catch-up and publisher unit inputs are unchanged, so their
+full unit inventories remain valid. The tables below are the accepted final
+results, not projections from an incomplete run.
 
 | Module | Inventory | Unit killed | Unit survived | Unit timeout |
 |---|---:|---:|---:|---:|
@@ -178,15 +201,35 @@ below. IDs refer to the final inventory; anchors distinguish shifted IDs.
 The old D gap is not claimed as killed. The replacement regression instead pins
 the owner's chosen unconditional cue. This is an explicit reclassification.
 
-## Evidence and remaining closure
+## Closing review
+
+One closing review loop ran with the project's Blind Hunter, Edge Case Hunter
+and Verification Gap lenses. The first round found the metadata oracle issue.
+A test-writer child corrected and calibrated it. Three fresh read-only reviewers
+then confirmed the fix and found no blocking critical/major or verification gap.
+The contained final round did not search for new minor polish.
+
+Deferred items remain explicit: observer stderr diagnostics, existing publisher
+spy cleanup, an optional expanded per-gap/raw-run bundle, and the unverified
+oversized-header and cold-start questions. See the specification's individual
+triage rows and [deferred work](deferred-work.md).
+
+## Evidence and limits
 
 Durable local evidence is under
 `~/.claude/artifacts/implement-spec-66-20261115-093432/`: ticket calibration
 patches/logs, `integration-checks/`, and `probe-*-pass*.jsonl`.
 The supervisor verdicts use labels `spec66-integration-checks` and
 `spec66-{room-copy,catch-up,publisher}-probe-pass2`.
+Post-review evidence is in `integration-checks-review-final/`,
+`review-fix/controls/`, `browser-focus-diagnosis/`, and
+`probe-*-review-final.jsonl`. The original failed browser result is not
+overwritten by its successful recheck.
 
-Closing review is pending. This note does not yet claim parent-task completion.
+Backlog TASK-66 and all four subtasks are Done. The specification is complete.
+The combined final 788-row evidence has SHA256
+`d3d7b1b1064ed62293aa3c799f6486ed1db26a619579ee24ea61aa8db5839b38`.
+No push, pull request or deployment was performed.
 The live Owlbear background-restart lifecycle was not verified. The constructed
 cold-start scenario without replica replacement remains in
 [deferred work](deferred-work.md); engine startup was not changed.
