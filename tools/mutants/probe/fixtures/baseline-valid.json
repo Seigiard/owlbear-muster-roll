@@ -1,0 +1,11 @@
+[
+  {
+    "file": "src/replica/example.ts",
+    "fn": "sample",
+    "op": "===→!==",
+    "text": "left === right",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The caller already checks the same values."
+  }
+]
