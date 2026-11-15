@@ -81,7 +81,7 @@ export type RollFlow = {
 };
 
 // The roll pipeline is independent from the room, window, and platform adapters. The engine wires
-// these ports to its live state and transport when the extraction is completed.
+// these ports to its live state and transport.
 export function createRollFlow(ports: RollFlowPorts): RollFlow {
   const recentRequestIds = createBoundedIdSet(RECENT_REQUEST_ID_LIMIT);
   const recentRollIds = createBoundedIdSet(RECENT_ROLL_ID_LIMIT);
@@ -109,10 +109,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
       return;
     }
 
-    void rollWithDice(message.id, prepared.value, local.value).catch(() => {
-      console.error('Muster Roll could not complete a roll');
-      ports.replyOutcome(message.id, { code: 'failed' });
-    });
+    void rollWithDice(message.id, prepared.value, local.value);
   }
 
   function prepareRoll(message: RollRequestMessage): Result<PreparedRoll, RollOutcome> {
