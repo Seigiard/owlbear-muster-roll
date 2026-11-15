@@ -2,10 +2,10 @@
 title: 'TASK-64: Extract the remaining engine machines'
 type: 'refactor'
 created: '2026-11-15'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: 'f354412658a2d37ee2fe91909ec03f160a7c2826'
-review_loop_iteration: 0
+review_loop_iteration: 2
 context:
   - '{project-root}/backlog/docs/doc-4 - TASK-64.4-Engine-state-machine-map-and-extraction-order.md'
 ---
@@ -50,12 +50,12 @@ context:
 
 **Execution:**
 
-- [ ] `src/replica/engine.ts` and roll module — TASK-64.5: preserve live getter points; add independent tests.
-- [ ] `src/replica/engine.ts` and generation module — TASK-64.6: move owned state; expose approved getters and operations.
-- [ ] `src/replica/engine.ts` and command module — TASK-64.7: preserve actual-apply feedback in batch and replay loops.
-- [ ] `src/replica/engine.ts` and protocol module — TASK-64.9: move serialized ingress and all mapped dispatch.
-- [ ] `ARCHITECTURE-SPINE.md` — name all extracted replica modules and reconcile layer table and diagram with code.
-- [ ] `backlog/` — record objective completion evidence for the four tickets and the epic through the CLI.
+- [x] `src/replica/engine.ts` and roll module — TASK-64.5: preserve live getter points; add independent tests.
+- [x] `src/replica/engine.ts` and generation module — TASK-64.6: move owned state; expose approved getters and operations.
+- [x] `src/replica/engine.ts` and command module — TASK-64.7: preserve actual-apply feedback in batch and replay loops.
+- [x] `src/replica/engine.ts` and protocol module — TASK-64.9: move serialized ingress and all mapped dispatch.
+- [x] `ARCHITECTURE-SPINE.md` — name all extracted replica modules and reconcile layer table and diagram with code.
+- [x] `backlog/` — record objective completion evidence for the four tickets and the epic through the CLI.
 
 **Acceptance Criteria:**
 
@@ -72,10 +72,18 @@ context:
 - `implement-spec` owns scheduling and integration. Each ticket uses `tdd`; one closing `code-review` covers the integration branch.
 - Setup: runner exits 0 with no configuration; install the frozen Bun lockfile.
 - Mock/browser evidence excludes live Owlbear host behavior.
+- The four modules have 75 independent cases. All 33 saved behavioral regressions produced protected assertion failures and clean restoration on the final integrated source.
+- Fourteen redundant protocol matrix rows could not distinguish rejection from their no-op dispatch paths. Their decision coverage remains in the unchanged core AD-5 table; module assertions retain 39 observable rejection cases with parser-valid fixtures and admitted controls.
+- Final code includes a clean merge of master PR #39 at `b52ecfb5d7f30fde485c87aa9eac76d35b84c094`. The reviewed extracted modules and engine wiring were unchanged by that merge.
 
 ## Spec Change Log
 
 ## Review Triage Log
+
+- Initial closing review: 6/6 healthy sources, no critical or major findings. Fixed four minor findings: removed the always-empty `generationRead` result member; restored baseline ordering rationale; documented synchronous adoption interpretation; restored the notification error cause. Kept the existing `adoptionStaged` consumer shape and all locked test bytes.
+- The publication mutation fixture follows the extracted command implementation and its restored rationale comment. The final repository mutation run has no stale anchor.
+- Confirming review: 2/2 healthy sources, no blocking findings or open questions. It confirms the contained fixes; it is not a new exhaustive minor-finding search.
+- Duplicate structural dice-port types were judged immaterial and remain unchanged. No actionable finding was deferred.
 
 ## Design Notes
 
@@ -92,3 +100,12 @@ Keep generation's two linear sequences distinct and CatchUp's interpreter unique
 - `bun run test:browser` — Chromium app flows pass.
 - `bun run build` — shipped entries compile.
 - `backlog task view <touched-id> --plain`, `backlog doctor`, touched-path format check and `git diff --cached --check` — task metadata and patch integrity pass.
+
+**Final results on the fresh-base integration:**
+
+- Bun: 3164 pass, 1 existing environment skip, 0 fail.
+- Chromium with Node 22.19.0: 521 passed.
+- Repository mutation runner: 53 killed, 0 survived, 0 stale.
+- Formatting, lint, typecheck, build, Backlog diagnostics and whitespace checks: exit 0.
+- All original engine tests match the fresh base, including the separately merged TASK-66 additions. CatchUp, RoomCopy, party-roster and pending-edits interfaces remain unchanged by this extraction.
+- Markdown and Backlog records are excluded by the formatter and are reported as skipped, not format-validated.
