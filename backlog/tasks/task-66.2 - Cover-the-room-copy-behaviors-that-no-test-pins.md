@@ -1,10 +1,10 @@
 ---
 id: TASK-66.2
 title: Cover the room-copy behaviors that no test pins
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-15T08:12:00Z'
-updated_date: '2026-11-15T08:12:00Z'
+updated_date: '2026-11-15T09:32:00Z'
 labels:
   - testing
   - replica
@@ -31,3 +31,11 @@ The mutation probe found 39 room-copy mutants that survive every `src/replica/` 
 - [ ] #3 A test runs the lower-copy removal path, including read failures during the import read-back.
 - [ ] #4 New mutation controls in `tools/mutants/room-copy.json` cover clusters A, B and F, and `bun run mutants room-copy` reports 0 survived and 0 stale.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add RoomCopy boundary tests for probe clusters A–I, with an explicit mapping for all 39 recorded mutants.
+2. Add committed A/B/F mutation controls and verify focused room-copy behavior plus controls in a disposable calibration checkout.
+3. Run the changed-path full checks, record criterion evidence, and finalize the task.
+<!-- SECTION:PLAN:END -->
