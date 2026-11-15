@@ -23,6 +23,7 @@ import {
   storageKey,
   type RigClient,
   type RigPage,
+  type RigRoom,
   waitUntil,
 } from '../../tests/support/room-rig';
 
@@ -92,6 +93,7 @@ type WireMessage = {
 type Rig = {
   client: RigClient;
   platform: MockPlatform;
+  room: RigRoom;
   wire: WireMessage[];
 };
 
@@ -110,11 +112,13 @@ function createRig(
   role: PlayerRole = 'GM',
   platform?: (platform: MockPlatform) => MockPlatform,
 ): Rig {
-  const client = roomRig.createClient(roomRig.openRoom(), 'mock-connection', { role, platform });
+  const room = roomRig.openRoom();
+  const client = roomRig.createClient(room, 'mock-connection', { role, platform });
 
   return {
     client,
     platform: client.platform,
+    room,
     get wire() {
       // SAFETY: the test reads only messages the code under test put on the UI channel.
       return client.local as WireMessage[];
@@ -243,6 +247,77 @@ async function rejectionOf(view: WindowView, command: Command): Promise<string |
 function unchanged(rig: Rig, view: WindowView): Aftermath {
   return { records: byKey(recordsOf(view.store)), deltas: deltas(rig).length };
 }
+
+describe('command id ownership', () => {
+  test('answers a repeated raw window command id once', async () => {
+    // #given
+    const rig = createRig();
+    seedRecords(rig, PRESET_RECORD);
+    await startEngine(rig);
+
+    const message = {
+      t: 'command',
+      id: 'repeat-command',
+      command: { type: 'sheet-create', sheetId: 'ada', set: 'pc' },
+    } as const;
+
+    // #when
+    await post(rig, message);
+    await post(rig, message);
+    await waitUntil(
+      () =>
+        rig.wire.filter(
+          (candidate) =>
+            candidate.id === message.id &&
+            (candidate.t === 'command-done' || candidate.t === 'command-rejected'),
+        ).length > 0,
+    );
+    await pause(20);
+
+    // #then
+    expect(
+      rig.wire
+        .filter(
+          (candidate) =>
+            candidate.id === message.id &&
+            (candidate.t === 'command-done' || candidate.t === 'command-rejected'),
+        )
+        .map(({ t, id, reason }) => ({ t, id, reason })),
+    ).toEqual([{ t: 'command-done', id: 'repeat-command', reason: undefined }]);
+  });
+
+  test('ignores local commands and room commits after stop', async () => {
+    // #given
+    const rig = createRig();
+    seedRecords(rig, PRESET_RECORD);
+    rig.room.join('gm-b', 'GM');
+    const engine = await startEngine(rig);
+    engine.stop();
+    const localBefore = rig.wire.length;
+
+    // #when
+    await post(rig, {
+      t: 'command',
+      id: 'after-stop',
+      command: { type: 'sheet-create', sheetId: 'late', set: 'pc' },
+    });
+    rig.room.post('gm-b', {
+      v: 3,
+      g: { n: 0, a: '' },
+      t: 'commit',
+      records: [{ k: 'row:late:name', d: { name: 'Late' }, c: 1, a: 'gm-b' }],
+    });
+    await pause(20);
+
+    // #then
+    expect({
+      engineMessagesAfterStop: rig.wire
+        .slice(localBefore)
+        .filter((message) => message.t !== 'command'),
+      stored: storedRecords(rig).map((record) => record.k),
+    }).toEqual({ engineMessagesAfterStop: [], stored: ['preset'] });
+  });
+});
 
 describe('GM start', () => {
   test('puts every persisted record of the current generation in the replica', async () => {

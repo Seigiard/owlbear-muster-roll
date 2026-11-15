@@ -217,6 +217,29 @@ describe('a GM client answers a proposal', () => {
     });
   });
 
+  test('an existing repeat tombstone still removes links that arrived later', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const link: VersionedRecord = { k: 'link:late', d: { s: 'brok', i: 'r2' }, c: 1, a: 'seed' };
+    const gm = await startClient(room, 'gm-a', { seeded: [...BASE, link] });
+    joinPlayerSocket(room);
+
+    // #when
+    propose(room, { ...REMOVED, c: 1, a: PLAYER_SOCKET });
+    await waitUntil(() => committedRecords(room, 'gm-a').some((record) => record.k === REMOVED.k));
+
+    // #then
+    expect({
+      sent: committedRecords(room, 'gm-a'),
+      stored: storedRecord(gm, link.k),
+      shown: shown(gm, link.k),
+    }).toEqual({
+      sent: [REMOVED, { k: link.k, d: null, c: 2, a: 'gm-a' }],
+      stored: { k: link.k, d: null, c: 2, a: 'gm-a' },
+      shown: { k: link.k, d: null, c: 2, a: 'gm-a' },
+    });
+  });
+
   test.each<[string, VersionedRecord]>([
     ['an edit of a sheet with no access', { k: 'row:kira:str', d: { str: 1 }, c: 1, a: S }],
     [
