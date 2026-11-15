@@ -54,10 +54,24 @@ type Subject = ReturnType<typeof createRoomCopy> & {
   generation: (next: Generation) => void;
 };
 
-type StoppedWriteImportObservation = {
-  event: 'import-complete';
-  writes: number;
-};
+type WriteImportObservation =
+  | {
+      event: 'stopped-write-import-complete';
+      writes: number;
+      state: 'saved';
+    }
+  | {
+      event: 'later-macrotask-import-complete';
+      writes: number;
+      copy: { g: Generation; records: readonly VersionedRecord[] };
+    }
+  | {
+      event: 'routine-rerun-import-complete';
+      whileRerunHeld: { writes: number; peakWrites: number };
+      final: { writes: number; peakWrites: number };
+    };
+
+type WriteImportScenario = 'stopped-write' | 'later-macrotask' | 'routine-rerun';
 
 function createGate(): Gate {
   let releaseRead = (): void => undefined;
@@ -285,9 +299,13 @@ async function flush(): Promise<void> {
   }
 }
 
-async function observeStoppedWriteImport(): Promise<StoppedWriteImportObservation> {
+async function observeWriteImport(scenario: WriteImportScenario): Promise<WriteImportObservation> {
   const child = Bun.spawn(
-    ['bun', fileURLToPath(new URL('../../tests/support/room-copy-observer.ts', import.meta.url))],
+    [
+      'bun',
+      fileURLToPath(new URL('../../tests/support/room-copy-observer.ts', import.meta.url)),
+      scenario,
+    ],
     { stdout: 'pipe', stderr: 'pipe' },
   );
 
@@ -298,7 +316,9 @@ async function observeStoppedWriteImport(): Promise<StoppedWriteImportObservatio
       new Response(child.stdout).text(),
       new Promise<never>((_resolve, reject) => {
         deadline = setTimeout(() => {
-          reject(new Error('observer did not report import completion before the 500 ms deadline'));
+          reject(
+            new Error(`${scenario} observer did not report completion before the 500 ms deadline`),
+          );
         }, 500);
       }),
     ]);
@@ -309,8 +329,8 @@ async function observeStoppedWriteImport(): Promise<StoppedWriteImportObservatio
       throw new Error(`observer exited with status ${status}`);
     }
 
-    // SAFETY: this fixture emits only its documented import-complete observation before it exits.
-    return JSON.parse(output) as StoppedWriteImportObservation;
+    // SAFETY: this fixture emits only the selected documented observation before it exits.
+    return JSON.parse(output) as WriteImportObservation;
   } finally {
     if (deadline !== undefined) {
       clearTimeout(deadline);
@@ -712,32 +732,16 @@ test('import waits for a write and saves its generation over a lower copy', asyn
   });
 });
 
-test('an import waiting for a stopped write completes after that write settles', async () => {
-  // #given
-  const subject = createSubject();
-  holdWrite(subject.gate);
-  subject.pageHidden();
-  await waitFor(() => subject.gate.writes === 1);
-  const imported = subject.writeImport(HIGHER, () => false);
-
-  // #when
-  subject.stop();
-  subject.gate.releaseWrite();
-  await imported;
-
-  // #then
-  expect({ writes: subject.gate.writes, state: subject.status().state }).toEqual({
-    writes: 1,
-    state: 'saved',
-  });
-});
-
 test('a healthy observer receives stopped-write import completion before its deadline', async () => {
   // #given
-  const expected: StoppedWriteImportObservation = { event: 'import-complete', writes: 1 };
+  const expected: WriteImportObservation = {
+    event: 'stopped-write-import-complete',
+    writes: 1,
+    state: 'saved',
+  };
 
   // #when
-  const observed = await observeStoppedWriteImport();
+  const observed = await observeWriteImport('stopped-write');
 
   // #then
   expect(observed).toEqual(expected);
@@ -766,55 +770,34 @@ test('a stopped room copy does not merge records after its active write settles'
   });
 });
 
-test('an import waits for a routine write that completes in a later macrotask', async () => {
+test('a healthy observer sees an import wait for a routine write in a later macrotask', async () => {
   // #given
-  const subject = createSubject();
-  holdWrite(subject.gate);
-  subject.pageHidden();
-  await waitFor(() => subject.gate.writes === 1);
-  const imported = subject.writeImport(HIGHER, () => false);
-
-  // #when
-  setTimeout(() => subject.gate.releaseWrite(), 0);
-  await imported;
-
-  // #then
-  expect({ writes: subject.gate.writes, copy: decoded(subject.room) }).toEqual({
+  const expected: WriteImportObservation = {
+    event: 'later-macrotask-import-complete',
     writes: 2,
     copy: { g: HIGHER, records: [NEW_RECORD, RECORD] },
-  });
-});
-
-test('an import waits through a routine rerun without overlapping its write', async () => {
-  // #given
-  const subject = createSubject();
-  holdWrite(subject.gate);
-  subject.pageHidden();
-  await waitFor(() => subject.gate.writes === 1);
-  subject.pageHidden();
-  const imported = subject.writeImport(HIGHER, () => false);
-  subject.gate.afterWrite = () => holdWrite(subject.gate);
-
-  // #when
-  subject.gate.releaseWrite();
-  await waitFor(() => subject.gate.writes === 2);
-
-  const whileRerunHeld = {
-    writes: subject.gate.writes,
-    peakWrites: subject.gate.peakWrites,
   };
 
-  subject.gate.releaseWrite();
-  await imported;
+  // #when
+  const observed = await observeWriteImport('later-macrotask');
 
   // #then
-  expect({
-    whileRerunHeld,
-    final: { writes: subject.gate.writes, peakWrites: subject.gate.peakWrites },
-  }).toEqual({
+  expect(observed).toEqual(expected);
+});
+
+test('a healthy observer sees an import wait through a non-overlapping routine rerun', async () => {
+  // #given
+  const expected: WriteImportObservation = {
+    event: 'routine-rerun-import-complete',
     whileRerunHeld: { writes: 2, peakWrites: 1 },
     final: { writes: 3, peakWrites: 1 },
-  });
+  };
+
+  // #when
+  const observed = await observeWriteImport('routine-rerun');
+
+  // #then
+  expect(observed).toEqual(expected);
 });
 
 test('import keeps a newer-build copy and raises its literal notice', async () => {
