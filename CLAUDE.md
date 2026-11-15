@@ -27,6 +27,8 @@ Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you w
 `package.json` lists the scripts. What it does not say:
 
 - `bun run dev` serves the Owlbear adapter and needs a tunnel for a live room; `bun run dev:mock` needs no Owlbear.
+- `bun run dev` serves and opens the standalone builder with no Owlbear or tunnel.
+- `bun run dev:owlbear` serves the Owlbear adapter through cloudflared and prints its manifest URL.
 - `bun run preview [path]` adds that preset file to the preview's list and opens it first.
 - `bun run room` opens a seeded GM and player mock room on one local page.
 </important>
