@@ -422,6 +422,58 @@ describe('catch-up', () => {
     ]);
   });
 
+  test('a GM re-arms an answer whose timer fires during ordinary catch-up', () => {
+    // #given
+    const harness = createHarness({ role: 'GM' });
+    becomeLive(harness);
+    harness.catchUp.stateRequested('ask');
+    harness.catchUp.enter('page-return');
+    harness.catchUp.fired({ kind: 'answer', r: 'ask' });
+
+    // #when
+    const decisions = harness.catchUp.fired({ kind: 'catch-up' });
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'disarm', timer: { kind: 'catch-up' } },
+      { type: 'caught-up', exit: 'unanswered' },
+      { type: 'arm', timer: { kind: 'answer', r: 'ask' }, delayMs: 20 },
+    ]);
+  });
+
+  test('an observed answer suppresses an armed answer whose timer fired during ordinary catch-up', () => {
+    // #given
+    const harness = createHarness({ role: 'GM' });
+    becomeLive(harness);
+    harness.catchUp.stateRequested('ask');
+    harness.catchUp.enter('page-return');
+    harness.catchUp.fired({ kind: 'answer', r: 'ask' });
+    harness.catchUp.stateMerged(state('ask'), 'gm-b', 'equal');
+
+    // #when
+    const decisions = harness.catchUp.fired({ kind: 'catch-up' });
+
+    // #then
+    expect(decisions).toEqual([
+      { type: 'disarm', timer: { kind: 'catch-up' } },
+      { type: 'caught-up', exit: 'unanswered' },
+    ]);
+  });
+
+  test('an armed answer does not fire during incomplete adoption', () => {
+    // #given
+    const harness = createHarness({ role: 'GM' });
+    becomeLive(harness);
+    harness.catchUp.stateRequested('ask');
+    harness.catchUp.generationHeard(NEXT, false);
+
+    // #when
+    const decisions = harness.catchUp.fired({ kind: 'answer', r: 'ask' });
+
+    // #then
+    expect(decisions).toEqual([]);
+  });
+
   test('a GM in ordinary catch-up holds a request and answers it only if still unanswered on exit', () => {
     // #given
     const harness = createHarness({ role: 'GM' });
