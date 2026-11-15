@@ -3,6 +3,7 @@ import { describe, expect, spyOn, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
 import {
   type GenerationRelation,
+  parseRoomMessage,
   type RoomMessageType,
   type SenderRole,
 } from '@/core/room-messages';
@@ -12,6 +13,7 @@ import type { RoomSender } from '@/replica/party-roster';
 import { createRoomProtocol, type RoomProtocolPorts } from '@/replica/room-protocol';
 
 const OWN_GENERATION: Generation = { n: 1, a: '' };
+const HIGHER_GENERATION: Generation = { n: 2, a: '' };
 const RECORD = { k: 'sheet:a', d: { set: 'pc', order: 0 }, c: 1, a: 'gm-a' };
 const PLAYER: RoomSender = { role: 'PLAYER', playerId: 'player-a', name: 'Player' };
 const GM: RoomSender = { role: 'GM', playerId: 'gm-a', name: 'GM' };
@@ -65,6 +67,12 @@ const ADMITTED = new Set([
 
 type AdmissionCase = readonly [RoomMessageType, SenderRole, GenerationRelation];
 
+type AdmissionControl = {
+  sender: SenderRole;
+  relation: GenerationRelation;
+  handlerEffects: string[];
+};
+
 const REJECTED_CASES: AdmissionCase[] = TYPES.flatMap((type) =>
   SENDERS.flatMap((sender) =>
     RELATIONS.flatMap((relation) =>
@@ -72,6 +80,30 @@ const REJECTED_CASES: AdmissionCase[] = TYPES.flatMap((type) =>
     ),
   ),
 );
+
+const ADMITTED_CONTROLS: Record<RoomMessageType, AdmissionControl> = {
+  commit: {
+    sender: 'GM',
+    relation: 'equal',
+    handlerEffects: ['heard', 'answered', 'receive-records'],
+  },
+  propose: { sender: 'GM', relation: 'equal', handlerEffects: ['heard'] },
+  reject: { sender: 'GM', relation: 'equal', handlerEffects: ['heard', 'rejected'] },
+  ping: { sender: 'GM', relation: 'equal', handlerEffects: ['heard', 'ping'] },
+  alive: { sender: 'GM', relation: 'equal', handlerEffects: ['heard', 'alive'] },
+  'state-request': {
+    sender: 'GM',
+    relation: 'equal',
+    handlerEffects: ['heard', 'state-request:control'],
+  },
+  state: {
+    sender: 'GM',
+    relation: 'equal',
+    handlerEffects: ['heard', 'receive-records', 'state'],
+  },
+  reset: { sender: 'GM', relation: 'higher', handlerEffects: ['heard'] },
+  roll: { sender: 'GM', relation: 'equal', handlerEffects: ['heard', 'roll'] },
+};
 
 function createPorts(
   effects: string[],
@@ -168,6 +200,27 @@ function createPorts(
   };
 }
 
+function createAdmissionPorts(
+  handlerEffects: string[],
+  preAdmissionEffects: string[],
+  senderOf: RoomProtocolPorts['senderOf'],
+): RoomProtocolPorts {
+  const ports = createPorts(handlerEffects, senderOf);
+
+  ports.catchUp.adopting = () => HIGHER_GENERATION;
+  ports.seeGeneration = () => {
+    preAdmissionEffects.push('see-generation');
+
+    return [];
+  };
+
+  ports.stageGeneration = () => {
+    preAdmissionEffects.push('stage-generation');
+  };
+
+  return ports;
+}
+
 function event(data: JsonValue, connectionId = 'sender') {
   return { data, connectionId };
 }
@@ -226,6 +279,18 @@ function senderFor(role: SenderRole): RoomSender | null {
   }
 
   return role === 'GM' ? GM : PLAYER;
+}
+
+function preAdmissionEffectsFor(
+  type: RoomMessageType,
+  sender: SenderRole,
+  relation: GenerationRelation,
+): string[] {
+  if (sender !== 'GM' || relation !== 'higher') {
+    return [];
+  }
+
+  return type === 'commit' ? ['see-generation', 'stage-generation'] : ['see-generation'];
 }
 
 function settleIngress(remaining = 8): Promise<void> {
@@ -290,19 +355,73 @@ describe('createRoomProtocol', () => {
     expect(effects).toEqual(['ping', 'state-request:request']);
   });
 
+  test('drops a malformed room message before it reaches admission', async () => {
+    // #given
+    const handlerEffects: string[] = [];
+    const malformed = { v: 3, g: OWN_GENERATION, t: 'state-request' };
+    const protocol = createRoomProtocol(createPorts(handlerEffects));
+
+    // #when
+    protocol.receive(event(malformed));
+    await settleIngress();
+
+    // #then
+    expect({ parsed: parseRoomMessage(malformed).ok, handlerEffects }).toEqual({
+      parsed: false,
+      handlerEffects: [],
+    });
+  });
+
   test.each(REJECTED_CASES)(
-    '%s from %s with a %s generation has no handler effect',
+    '%s from %s with a %s generation has no handler effect after parsing',
     async (type, sender, relation) => {
       // #given
-      const effects: string[] = [];
-      const protocol = createRoomProtocol(createPorts(effects, async () => senderFor(sender)));
+      const rejectedMessage = messageFor(type, generationFor(relation));
+      const control = ADMITTED_CONTROLS[type];
+      const handlerEffects: string[] = [];
+      const preAdmissionEffects: string[] = [];
+
+      const protocol = createRoomProtocol(
+        createAdmissionPorts(handlerEffects, preAdmissionEffects, async (connectionId) =>
+          senderFor(connectionId === 'rejected' ? sender : control.sender),
+        ),
+      );
 
       // #when
-      protocol.receive(event(messageFor(type, generationFor(relation))));
+      protocol.receive(event(rejectedMessage, 'rejected'));
+      await settleIngress();
+
+      const rejectedEffects = {
+        handlerEffects: [...handlerEffects],
+        preAdmissionEffects: [...preAdmissionEffects],
+      };
+
+      protocol.receive(
+        event(messageFor(type, generationFor(control.relation), 'control'), 'control'),
+      );
       await settleIngress();
 
       // #then
-      expect(effects).toEqual([]);
+      expect({
+        parsed: parseRoomMessage(rejectedMessage).ok,
+        rejected: rejectedEffects,
+        admittedControl: {
+          handlerEffects: handlerEffects.slice(rejectedEffects.handlerEffects.length),
+          preAdmissionEffects: preAdmissionEffects.slice(
+            rejectedEffects.preAdmissionEffects.length,
+          ),
+        },
+      }).toEqual({
+        parsed: true,
+        rejected: {
+          handlerEffects: [],
+          preAdmissionEffects: preAdmissionEffectsFor(type, sender, relation),
+        },
+        admittedControl: {
+          handlerEffects: control.handlerEffects,
+          preAdmissionEffects: preAdmissionEffectsFor(type, control.sender, control.relation),
+        },
+      });
     },
   );
 });
