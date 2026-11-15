@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@opencode'
 created_date: '2026-11-14T20:25:00Z'
-updated_date: '2026-11-15T07:51:00Z'
+updated_date: '2026-11-15T08:13:00Z'
 labels:
   - architecture
   - replica
@@ -24,7 +24,7 @@ ordinal: 80000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-`startReplicaEngine` in `src/replica/engine.ts` spans lines 210-2562. The complete compiler-AST inventory is 160 nested functions (including callbacks) and 26 `let` declarations. Those symbols hold role, generation, import state, catch-up, held open requests and roll state. All of it is tested only through full room simulation. `src/replica/catch-up.ts` (TASK-48) already shows the shape that works here: a pure module returns a decision as data and `runCatchUp` executes it. Before cutting the engine, one spike maps which state belongs to which machine, where the machines touch, and whether the catch-up shape, the ADR-0002 reducer shape or an injected-port module fits each. The map is recorded in `backlog/docs/doc-4 - TASK-64.4-engine-state-map-and-extraction-order.md` and adds the room-protocol follow-up TASK-64.9. It writes no production code. It waits for TASK-63.2 (room-copy write phases) and TASK-63.3 (catch-up and adoption phases), because both reshape the state the generation machine reads; the map is drawn over their finished state, and TASK-63 AC#4 (no shared state-machine runtime) binds the shape chosen here.
+`startReplicaEngine` in `src/replica/engine.ts` spans lines 210-2562. The complete compiler-AST inventory is 160 nested functions (including callbacks) and 26 `let` declarations. Those symbols hold role, generation, import state, catch-up, held open requests and roll state. All of it is tested only through full room simulation. `src/replica/catch-up.ts` (TASK-48) already shows the shape that works here: a pure module returns a decision as data and `runCatchUp` executes it. Before cutting the engine, one spike maps which state belongs to which machine, where the machines touch, and whether the catch-up shape, the ADR-0002 reducer shape or an injected-port module fits each. The map is recorded in `backlog/docs/doc-4 - TASK-64.4-Engine-state-machine-map-and-extraction-order.md` and adds the room-protocol follow-up TASK-64.9. It writes no production code. It waits for TASK-63.2 (room-copy write phases) and TASK-63.3 (catch-up and adoption phases), because both reshape the state the generation machine reads; the map is drawn over their finished state, and TASK-63 AC#4 (no shared state-machine runtime) binds the shape chosen here.
 
 Validation on 2026-11-15 added two facts the map covers. First, `src/replica` already uses a third shape beside the two above: a module with injected ports and callbacks, as `room-copy.ts`, `pending-edits.ts` and `dice-extension.ts` do. For a linear async pipeline such as the roll (read name, send to dice extension, wait for the result, send) that shape is simpler than a decision list, so the spike weighs all three. Second, the three planned machines leave a room-protocol/proposal machine outside their boundaries: `handleRoomMessage`, `dispatchRoomMessage`, `receiveProposal`, `receiveReject`, `receiveState`, `proposalContext`, `unlinkRemovedBlock` and `sendRoom`. The map assigns those symbols to TASK-64.9. Token menu, open requests, scene watch, timer interpretation and `runCatchUp` remain explicitly retained wiring around existing modules.
 <!-- SECTION:DESCRIPTION:END -->
@@ -52,6 +52,8 @@ Validation on 2026-11-15 added two facts the map covers. First, `src/replica` al
 2026-11-15: Owner explicitly answered “Подтвердить карту” after reading the doc-4 link, the 160-function/26-let inventory, all four shapes, the roll injected-port versus pure tradeoff, and extraction order TASK-64.5 → TASK-64.6 → TASK-64.7 → TASK-64.9. This confirms the map and permits the extraction order; it does not start TASK-64.5. Evidence is recorded in doc-4 with status confirmed-owner-approved. The source/inventory and map-coverage controls remain unchanged and previously passed.
 
 Final documentary verification: Babel and OXC independently reconcile all 160 nested functions and 26 let bindings, and the map has no missing or duplicate ownership rows. The three BMAD lenses completed; eight source-grounded documentary findings and validation corrections were fixed. A fresh confirming prose review returned no findings or open questions. Nothing is deferred. Runtime checks were not run under the owner-approved documentation-only exception; production and test code are unchanged. TASK-64.5 was not started.
+
+2026-11-15, later: the owner reopened the generation/adoption shape after an architecture validation and chose the injected-port module (as room-copy and pending-edits) over catch-up-style decisions; performCaughtUp moved to retained wiring. doc-4 carries the revision; TASK-64.6 is updated. The rest of the map and its confirmation stand.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
