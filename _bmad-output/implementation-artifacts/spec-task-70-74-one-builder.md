@@ -61,7 +61,7 @@ context:
 
 **Execution:**
 - [x] TASK-70: preview/store, interaction module and tests — editing/rolls.
-- [ ] TASK-71: preview/navigation, copy and tests — role/visibility/write policy.
+- [x] TASK-71: preview/navigation, copy and tests — role/visibility/write policy.
 - [ ] TASK-72: page, file-block component/state, history, copy, glossary and tests — file menus; define File block.
 - [ ] TASK-73: file-access port, browser implementation/fake, caller/reducer and tests — write/follow/refusal/conflicts.
 - [ ] TASK-74: remove `room.html`, `preview.html`, their page modules, scripts, plugin and obsolete e2e tests; update `package.json`, `vite.config.ts`, `CLAUDE.md`, `presets/README.md`, `docs/preset-format.md` and `GLOSSARY.md`. Preserve mock `index.html` for e2e only.
@@ -75,6 +75,7 @@ context:
 
 - The owner approved the complete plan and continued implementation on 2026-11-15.
 - TASK-70 adds selected-cell editing through the existing field-edit path and a pure preview reducer. Dice cells evaluate on second click. Validation passed: 3192 unit tests, one existing environment skip, 537 browser tests, formatting, lint, types and build. A separate real-preview control observed RNG consumption; no rendered numeric dice face is claimed.
+- TASK-71 adds the GM/player switch, core visibility projection, player write policy and hidden-sheet note. Number fields retain their existing textbox behavior. Final validation passed: 3192 unit tests, one existing skip, 540 browser tests and all static/build checks. Mutation controls proved detection of empty projected records and leaked GM-only tabs.
 
 ## Spec Change Log
 

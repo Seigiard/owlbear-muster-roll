@@ -1,9 +1,11 @@
 ---
 id: TASK-72
 title: Show the preset and snapshot files as blocks with a menu
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@opencode'
 created_date: '2026-11-15T17:45:00Z'
+updated_date: '2026-11-15T23:55:00Z'
 labels:
   - one-editor
 dependencies:
@@ -28,3 +30,12 @@ With two documents in the builder, the GM needs to see which file each comes fro
 - [ ] #4 Clear asks one confirmation that names the linked file; undo restores the content
 - [ ] #5 The blocks replace the top bar Открыть… and Скачать buttons; GLOSSARY.md defines File block
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Replace top-bar file actions with preset and snapshot file blocks, using existing open/download validation.
+2. Lock file menu, status, clear-confirmation and undo behavior before implementation.
+3. Keep save-as as download in this task; add File block to the glossary and keep file I/O outside pure state.
+4. Run all TDD and changed-path checks; no per-ticket review.
+<!-- SECTION:PLAN:END -->
