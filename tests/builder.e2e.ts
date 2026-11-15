@@ -788,15 +788,39 @@ test('the preview sidebar lists templates in order and selects a template in the
   );
 });
 
-test('the player switch projects the same snapshot and explains an open hidden sheet', async ({
-  page,
-}) => {
+test('the player projection hides GM-only content from a visible sheet', async ({ page }) => {
   // #given
   await openPlayerPreview(page);
 
   const shown = preview(page);
 
   await expect(roleSwitch(page).getByRole('button', { name: 'Мастер' })).toBeVisible();
+  await shown.getByRole('tab', { name: 'Ария', exact: true }).click();
+  await expect(shown.getByRole('heading', { name: 'Ария', level: 1 })).toBeVisible();
+  await expect(shown.getByRole('tab', { name: 'Секреты мастера', exact: true })).toBeVisible();
+  await shown.getByRole('tab', { name: 'Секреты мастера', exact: true }).click();
+  await expect(shown.getByText('Только мастер', { exact: true })).toBeVisible();
+
+  // #when
+  await roleSwitch(page).getByRole('button', { name: 'Игрок' }).click();
+
+  // #then
+  await expect(shown.getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
+  await expect(shown.getByRole('heading', { name: 'Ария', level: 1 })).toBeVisible();
+  await expect(shown.getByRole('group', { name: 'Сила' })).toHaveText('12');
+  await expect(shown.getByRole('tab', { name: 'NPC', exact: true })).toHaveCount(0);
+  await expect(shown.getByRole('tab', { name: 'Заметки ГМ', exact: true })).toHaveCount(0);
+  await expect(shown.getByRole('tab', { name: 'Лич', exact: true })).toHaveCount(0);
+  await expect(shown.getByText('Злодеи', { exact: true })).toHaveCount(0);
+  await expect(shown.getByRole('tab', { name: 'Секреты мастера', exact: true })).toHaveCount(0);
+});
+
+test('the player switch explains an open hidden sheet', async ({ page }) => {
+  // #given
+  await openPlayerPreview(page);
+
+  const shown = preview(page);
+
   await shown.getByRole('tab', { name: 'Заметки ГМ', exact: true }).click();
   await expect(shown.getByText('Тайный мост', { exact: true })).toBeVisible();
 
@@ -809,19 +833,7 @@ test('the player switch projects the same snapshot and explains an open hidden s
       exact: true,
     }),
   ).toBeVisible();
-  await expect(shown.getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
-  await expect(shown.getByRole('tab', { name: 'NPC', exact: true })).toHaveCount(0);
   await expect(shown.getByRole('tab', { name: 'Заметки ГМ', exact: true })).toHaveCount(0);
-  await expect(shown.getByRole('tab', { name: 'Лич', exact: true })).toHaveCount(0);
-  await expect(shown.getByText('Злодеи', { exact: true })).toHaveCount(0);
-  await expect(shown.getByRole('tab', { name: 'Секреты мастера', exact: true })).toHaveCount(0);
-
-  // #when
-  await shown.getByRole('tab', { name: 'Ария', exact: true }).click();
-
-  // #then
-  await expect(shown.getByRole('heading', { name: 'Ария', level: 1 })).toBeVisible();
-  await expect(shown.getByRole('group', { name: 'Сила' })).toHaveText('12');
 });
 
 test('the player cannot edit a sheet-set sheet and can edit a player-editable single sheet', async ({
@@ -858,8 +870,8 @@ test('the player cannot edit a sheet-set sheet and can edit a player-editable si
   await gold.click();
 
   // #then
-  await expect(shown.getByRole('spinbutton', { name: 'Золото' })).toHaveValue('10');
-  await expect(shown.getByRole('spinbutton', { name: 'Золото' })).toBeEditable();
+  await expect(shown.getByRole('textbox', { name: 'Золото' })).toHaveValue('10');
+  await expect(shown.getByRole('textbox', { name: 'Золото' })).toBeEditable();
 });
 
 test('undo and redo each change, and typing in one input is one step', async ({ page }) => {
