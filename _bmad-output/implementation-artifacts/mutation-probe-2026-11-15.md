@@ -183,6 +183,7 @@ None of these gaps can show a sheet of a GM-only template to a player.
 - After a restart with no earlier projection, the publisher stays silent even when records changed before the restart. The engine does this near line 1395: it replaces the replica and calls `restart()` with no `publish()` between them. The mutant sends one cue delta with no records from the new engine id.
 - Scenario P2: GM source; change the replica; `restart()`; `publish()`. Expected: no messages.
 - Open question for the owner, before this is pinned: the current silence means that a replica replacement does not cue a window that is still live on an older engine. The mutant's behavior, which cues that window, can be the intended one.
+- Decision, 2026-11-15: the owner chose the cue. A restart always cues the next `publish()`, so a window on an older engine's stream asks again. The TASK-49 spec already required a cue for "a window open across a background restart"; this case slipped past it. The owner could not reproduce a background restart with an open popover in a live room, and the cue is cheap. TASK-66.4 owns the change.
 
 **E. A pending record that is too large.** #114 (`splitParts`).
 - A pending-view record that cannot fit must fail the whole delta or projection with an error, as a replica record does. The mutant drops the pending part and sends the rest.
