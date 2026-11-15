@@ -3,7 +3,7 @@
     "id": "M1",
     "rule": "A GM in catch-up holds a state request it cannot answer until the catch-up ends.",
     "file": "src/replica/catch-up.ts",
-    "find": "        // A request heard while this GM cannot answer waits until its catch-up ends. It answers the\n        // ones still unanswered because nobody asks again.\n        heldRequests.delete(r);\n        heldRequests.add(r);\n\n        for (const oldest of heldRequests) {\n          if (heldRequests.size <= RECENT_NONCE_LIMIT) {\n            break;\n          }\n\n          heldRequests.delete(oldest);\n        }\n\n",
+    "find": "        // A request heard while this GM cannot answer waits until its catch-up ends. It answers the\n        // ones still unanswered because nobody asks again.\n        holdRequest(r);\n\n",
     "replace": "",
     "test": ["src/replica/catch-up.test.ts"]
   },
@@ -93,6 +93,38 @@
     "file": "src/replica/catch-up.ts",
     "find": "    const keepsNonce = trigger === 'page-return' && phase.kind === 'catching-up';\n",
     "replace": "    const keepsNonce = false;\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M14",
+    "rule": "A GM arms at most one delayed answer for one nonce.",
+    "file": "src/replica/catch-up.ts",
+    "find": "    if (!canAnswer() || armedAnswers.has(r)) {\n",
+    "replace": "    if (!canAnswer()) {\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M15",
+    "rule": "A generation adopted during catch-up keeps its active nonce.",
+    "file": "src/replica/catch-up.ts",
+    "find": "      return [{ type: 'adopt', generation, previous, keepNonce: true, hadData }];\n",
+    "replace": "      return [{ type: 'adopt', generation, previous, keepNonce: false, hadData }];\n",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M16",
+    "rule": "A changed digest clears the earlier ignored digest before drift is counted again.",
+    "file": "src/replica/catch-up.ts",
+    "find": "      ignoredDigests.delete(sender);\n",
+    "replace": "",
+    "test": ["src/replica/catch-up.test.ts"]
+  },
+  {
+    "id": "M13",
+    "rule": "An answer timer that fires during ordinary catch-up is retained until catch-up ends.",
+    "file": "src/replica/catch-up.ts",
+    "find": "          if (!canAnswer() && phase.kind === 'catching-up' && phase.mode.kind === 'ordinary') {\n            holdRequest(timer.r);\n          }\n\n",
+    "replace": "",
     "test": ["src/replica/catch-up.test.ts"]
   }
 ]

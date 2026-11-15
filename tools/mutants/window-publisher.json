@@ -62,5 +62,85 @@
     "find": "    const records = [...current.records.values()].filter((record) => {\n      const previous = previousHeld.records.get(record.k);\n\n      return withdrawn.includes(record.k) || !sameRecord(previous, record);\n    });\n",
     "replace": "    const records = [...current.records.values()].filter((record) => {\n      const previous = previousHeld.records.get(record.k);\n\n      return withdrawn.includes(record.k) || previous === undefined;\n    });\n",
     "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "A60",
+    "rule": "A player pending overlay is used when deriving known records (#60).",
+    "file": "src/replica/window-publisher.ts",
+    "find": "    if (source.role !== 'GM') {\n",
+    "replace": "    if (false) {\n",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "A61",
+    "rule": "A player role takes the pending-overlay branch (#61).",
+    "file": "src/replica/window-publisher.ts",
+    "find": "source.role !== 'GM'",
+    "replace": "source.role === 'GM'",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "A62",
+    "rule": "Each pending player record overrides its replica record in known records (#62).",
+    "file": "src/replica/window-publisher.ts",
+    "find": "        playerKnown.set(key, record);\n",
+    "replace": "",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "A63",
+    "rule": "The pending player map becomes the known-record source (#63).",
+    "file": "src/replica/window-publisher.ts",
+    "find": "      known = playerKnown;\n",
+    "replace": "",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "B38",
+    "rule": "A no-fit projection is rejected instead of treated as successful (#38).",
+    "file": "src/replica/window-publisher.ts",
+    "find": "    if (parts === null) {\n      console.error('Muster Roll could not split a projection');\n\n      return false;\n    }\n",
+    "replace": "    if (false) {\n      console.error('Muster Roll could not split a projection');\n\n      return false;\n    }\n",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "B40",
+    "rule": "A no-fit projection reports its split error (#40).",
+    "file": "src/replica/window-publisher.ts",
+    "find": "    if (parts === null) {\n      console.error('Muster Roll could not split a projection');\n\n      return false;\n    }\n",
+    "replace": "    if (parts === null) {\n      return false;\n    }\n",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "B41",
+    "rule": "A no-fit projection returns false (#41).",
+    "file": "src/replica/window-publisher.ts",
+    "find": "    if (parts === null) {\n      console.error('Muster Roll could not split a projection');\n\n      return false;\n    }\n",
+    "replace": "    if (parts === null) {\n      console.error('Muster Roll could not split a projection');\n\n      return true;\n    }\n",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "C49",
+    "rule": "A settled projection releases its answering nonce through the send chain (#49).",
+    "file": "src/replica/window-publisher.ts",
+    "find": "    Promise.all(sends)\n      .then(() => {\n        answeringNonces.delete(nonce);\n      })\n      .catch((error) => {\n        console.error('Muster Roll could not send a projection', error);\n      });\n",
+    "replace": "    Promise.all(sends);\n",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "C50",
+    "rule": "A settled projection deletes its answering nonce (#50).",
+    "file": "src/replica/window-publisher.ts",
+    "find": "        answeringNonces.delete(nonce);\n",
+    "replace": "",
+    "test": ["src/replica/window-publisher.test.ts"]
+  },
+  {
+    "id": "D-unconditional",
+    "rule": "Every restart leaves one unconditional cue pending.",
+    "file": "src/replica/window-publisher.ts",
+    "find": "    restartPending = true;\n",
+    "replace": "    restartPending = false;\n",
+    "test": ["src/replica/window-publisher.test.ts", "src/replica/engine-client.test.ts"]
   }
 ]
