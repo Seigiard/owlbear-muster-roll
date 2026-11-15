@@ -390,7 +390,6 @@ export function PreviewPane({
   const preview = useMemo<CellPreview>(
     () => ({
       placeholders: true,
-      numericRole: role === 'PLAYER' ? 'spinbutton' : undefined,
       editableCell:
         activeEditingUid === null
           ? null
@@ -399,7 +398,7 @@ export function PreviewPane({
         dispatchEditing({ type: 'escape-pressed' });
       },
     }),
-    [activeEditingUid, document, openTab, role, templateUid],
+    [activeEditingUid, document, openTab, templateUid],
   );
 
   const header =

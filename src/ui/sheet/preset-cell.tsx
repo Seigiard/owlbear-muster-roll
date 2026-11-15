@@ -78,7 +78,6 @@ const CHECK_MARK = '✓';
 export type CellPreview = {
   placeholders: true;
   editableCell?: string | null;
-  numericRole?: 'spinbutton';
   onEscape?: () => void;
 };
 
@@ -347,7 +346,6 @@ function TextValueField({
 }: FieldProps): ReactNode {
   const errorId = useId();
   const markId = useId();
-  const preview = useContext(CellPreviewContext);
 
   const edit = useTextFieldEdit(field.type === 'number' ? 'number' : 'text', {
     place,
@@ -391,7 +389,6 @@ function TextValueField({
       {field.type === 'number' ? (
         <input
           {...common}
-          role={preview?.numericRole}
           type="text"
           inputMode="text"
           onChange={(event) => {
