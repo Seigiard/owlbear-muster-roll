@@ -158,6 +158,47 @@ describe('window publisher', () => {
     });
   });
 
+  test('answers a projection nonce again after its first projection has sent', async () => {
+    // #given
+    const harness = publisherHarness(source('GM', [PRESET_RECORD]));
+
+    // #when
+    const first = harness.publisher.project('again');
+    await settle();
+    const second = harness.publisher.project('again');
+    await settle();
+
+    // #then
+    expect({
+      answers: [first, second],
+      projections: harness.messages
+        .filter((message) => message.t === 'projection')
+        .map((message) => message.nonce),
+    }).toEqual({ answers: [true, true], projections: ['again', 'again'] });
+  });
+
+  test('leaves an oversized projection nonce free after the source shrinks', async () => {
+    // #given
+    const oversized = record('row:large:value', { value: 'ы'.repeat(7000) });
+    const harness = publisherHarness(source('GM', [oversized]));
+    const error = spyOn(console, 'error').mockImplementation(() => undefined);
+    harness.source.party = party(100);
+
+    // #when
+    const rejected = harness.publisher.project('retry');
+    harness.source.party = [];
+    const accepted = harness.publisher.project('retry');
+    await settle();
+
+    // #then
+    expect({
+      answers: [rejected, accepted],
+      errors: error.mock.calls.length,
+      projections: harness.messages.filter((message) => message.t === 'projection').length,
+    }).toEqual({ answers: [false, true], errors: 1, projections: 1 });
+    error.mockRestore();
+  });
+
   test('sends only a changed record and leaves the window at the new version', async () => {
     // #given
     const before = record('row:hero:name', { name: 'Ada' });
@@ -248,6 +289,36 @@ describe('window publisher', () => {
         { records: [visiblePreset, hero, name], pending: [], withdrawn: [] },
       ],
       keys: ['preset', 'sheet:hero', 'row:hero:name'],
+    });
+  });
+
+  test('withdraws a player link when the pending view tombstones its repeat block', async () => {
+    // #given
+    const preset = record('preset', encodePreset(tokenPreset()));
+    const hero = record('sheet:brok', { set: 'party', order: 0 });
+    const name = record('row:brok:name', { name: 'Brok' });
+    const block = record('rep:brok:item:i1', { order: 0, cells: { item: 'Sword' } });
+    const pendingBlock = record('rep:brok:item:i1', null, 2, 'player');
+    const link = record('link:t1', { s: 'brok', i: 'i1' });
+    const harness = publisherHarness(source('PLAYER', [preset, hero, name, block, link]));
+    const window = harness.openWindow('pending-link');
+    await settle();
+    const initial = [...window.store.$records.get().keys()];
+    harness.source.pendingView = records(pendingBlock);
+
+    // #when
+    harness.publisher.publish();
+    await settle();
+
+    // #then
+    expect({
+      initial,
+      delta: deltas(harness.messages),
+      window: [...window.store.$records.get().keys()],
+    }).toEqual({
+      initial: ['preset', 'sheet:brok', 'row:brok:name', 'rep:brok:item:i1', 'link:t1'],
+      delta: [{ records: [], pending: [pendingBlock], withdrawn: ['link:t1'] }],
+      window: ['preset', 'sheet:brok', 'row:brok:name', 'rep:brok:item:i1'],
     });
   });
 
@@ -422,6 +493,84 @@ describe('window publisher', () => {
     error.mockRestore();
   });
 
+  test('rejects a delta with an oversized pending record but sends the fitting control', async () => {
+    // #given
+    const changed = record('row:changed:value', { value: 'Ada' }, 2);
+    const oversized = record('row:pending:value', { value: 'ы'.repeat(7000) }, 2, 'player');
+    const fitting = record('row:pending:value', { value: 'Bea' }, 2, 'player');
+    const rejected = publisherHarness(source('GM'));
+    const control = publisherHarness(source('GM'));
+    rejected.openWindow('pending-too-large');
+    control.openWindow('pending-fits');
+    await settle();
+    rejected.source.party = party(100);
+    rejected.source.replica = records(changed);
+    rejected.source.pendingView = records(oversized);
+    control.source.replica = records(changed);
+    control.source.pendingView = records(fitting);
+    const error = spyOn(console, 'error').mockImplementation(() => undefined);
+
+    // #when
+    rejected.publisher.publish();
+    control.publisher.publish();
+    await settle();
+
+    // #then
+    expect({
+      errors: error.mock.calls.length,
+      rejected: deltas(rejected.messages),
+      control: deltas(control.messages),
+    }).toEqual({
+      errors: 1,
+      rejected: [],
+      control: [
+        { records: [changed], pending: [], withdrawn: [] },
+        { records: [], pending: [fitting], withdrawn: [] },
+      ],
+    });
+    error.mockRestore();
+  });
+
+  test('rejects counter-sized projection and delta messages that a smaller envelope would send', async () => {
+    // #given
+    const counterRecords = Array.from({ length: 5 }, (_, index) =>
+      record(`row:counter:${String(index).padStart(5, '0')}`, { value: 'x'.repeat(9544) }),
+    );
+
+    const counterPending = Array.from({ length: 5 }, (_, index) =>
+      record(
+        `row:pending:${String(index).padStart(5, '0')}`,
+        { value: 'x'.repeat(9576) },
+        1,
+        'player',
+      ),
+    );
+
+    const projection = publisherHarness(source('GM', counterRecords, counterPending));
+    const delta = publisherHarness(source('GM'));
+    projection.source.party = party(100);
+    delta.source.party = party(100);
+    delta.publisher.project('ready');
+    await settle();
+    delta.source.replica = records(...counterRecords);
+    delta.source.pendingView = records(...counterPending);
+    const error = spyOn(console, 'error').mockImplementation(() => undefined);
+
+    // #when
+    const projected = projection.publisher.project('counter-projection');
+    delta.publisher.publish();
+    await settle();
+
+    // #then
+    expect({
+      projected,
+      errors: error.mock.calls.length,
+      projectionMessages: projection.messages,
+      deltaMessages: deltas(delta.messages),
+    }).toEqual({ projected: false, errors: 2, projectionMessages: [], deltaMessages: [] });
+    error.mockRestore();
+  });
+
   test('sends a restart cue once and stays silent until the next projection', async () => {
     // #given
     const hero = record('sheet:hero', { set: 'party', order: 0 });
@@ -535,16 +684,31 @@ describe('window publisher', () => {
     ]);
   });
 
-  test('stays silent after a restart with no earlier projection', () => {
+  test('sends one restart cue with no earlier projection and then stays silent', async () => {
     // #given
     const harness = publisherHarness(source('GM', [PRESET_RECORD]));
     harness.publisher.restart();
 
     // #when
     harness.publisher.publish();
+    harness.publisher.publish();
+    await settle();
 
     // #then
-    expect(harness.messages).toEqual([]);
+    expect(
+      harness.messages.flatMap((message) =>
+        message.t === 'delta'
+          ? [
+              {
+                engine: message.engine,
+                records: message.records,
+                pending: message.pending,
+                withdrawn: message.withdrawn,
+              },
+            ]
+          : [],
+      ),
+    ).toEqual([{ engine: 'engine-2', records: [], pending: [], withdrawn: [] }]);
   });
 
   test('brings an existing and a newly opened window to the current source', async () => {
@@ -675,6 +839,36 @@ function presetWithPartyVisibility(): Preset {
       template.id === 'party' ? Object.assign({}, template, { visibility: 'gm' }) : template,
     ),
   };
+}
+
+function tokenPreset(): Preset {
+  return {
+    v: 3,
+    templates: [
+      {
+        id: 'party',
+        kind: 'set',
+        title: 'Party',
+        nameField: 'name',
+        tabs: [
+          {
+            sections: [
+              { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+              { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function party(count: number): WindowPublisherState['party'] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `player-${index}`,
+    name: 'Player',
+    role: 'PLAYER' as const,
+  }));
 }
 
 function deltas(

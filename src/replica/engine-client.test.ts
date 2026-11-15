@@ -1047,6 +1047,29 @@ describe('window lifecycle', () => {
     // #then
     expect(keysOf(view.store)).toEqual(['preset', 'sheet:after', 'sheet:before']);
   });
+
+  test('re-requests a projection when a new engine replaces its replica before projecting', async () => {
+    // #given
+    const rig = createRig();
+
+    seedRecords(rig, PRESET_RECORD, sheet('before'));
+    const engine = await startEngine(rig, ids('engine-1'));
+    const view = await openAndLoad(rig);
+    engine.stop();
+    seedRecords(rig, sheet('after'));
+    const requestsBefore = requests(rig).length;
+
+    // #when
+    await startEngine(rig, ids('engine-2'));
+    await waitUntil(() => requests(rig).length > requestsBefore);
+    await waitUntil(() => recordsOf(view.store).length === 3);
+
+    // #then
+    expect({
+      requests: requests(rig).length - requestsBefore,
+      records: keysOf(view.store),
+    }).toEqual({ requests: 1, records: ['preset', 'sheet:after', 'sheet:before'] });
+  });
 });
 
 describe('send queue through the engine', () => {
