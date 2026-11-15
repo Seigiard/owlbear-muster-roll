@@ -344,3 +344,18 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-64.1-layer-dependency-rules.md`
   summary: Forbid additional React wrappers in core beyond `react` and `react-dom`.
   evidence: Review 01, Blind Hunter 4: AC1 names `react` and `react-dom`, and no current core wrapper violation is reported. Parent accepted this polish as out of scope.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-64.3-port-contract.md`
+  summary: Keep the live OBR harness as bounded manual observation instead of adding an automatic PASS/FAIL comparator or a serialized control protocol.
+  evidence: Batch 2 decision A is `Ручной стенд (Recommended)`. The unchanged live runner returns observations; README and CLAUDE.md require manual comparison within a 2-second delivery wait and 100-ms quiet period. Relay/control failure and missing observation remain ambiguous, so neither alone is a host defect.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-64.3-port-contract.md`
+  summary: Add lifecycle locking and broader control-session safeguards for early or repeated Run, concurrent cleanup, duplicate callers, and cleanup acknowledgement.
+  evidence: Review 01 `adversarial-claude-1`, `adversarial-claude-2`, `B2`, `B3`, `E1`, `E2`, `E3`, `E4`, `E10`; the owner procedure is the accepted mitigation, with no reproduced live occurrence and no new protocol in this closeout.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-64.3-port-contract.md`
+  summary: Verify the hidden local bridge lifetime after an Owlbear popover closes and reopens.
+  evidence: Review 01 `adversarial-claude-4`: a closed bridge may remain cached as ready, but normal OBR click-away lifecycle was not verified. Recreate paired actions after lifecycle/control trouble; do not treat this procedure as a runtime guarantee.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-64.3-port-contract.md`
+  summary: Improve remaining harness report, topology, accessibility, and development-server polish.
+  evidence: Review 01 `B9`, `B11`, `B13`, `B14`, `adversarial-claude-5`, `GS1`, `GS2` and the corresponding edge findings were low-risk or unobserved. They remain deliberate review omissions, not changed adapter semantics.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-64.3-port-contract.md`
+  summary: Keep the live harness's cross-client timing, host rate-limit or recovery, metadata capacity or silent-drop, global order, and injected-failure boundaries owner-verified.
+  evidence: The original spec's local-versus-live proof boundary remains unchanged. The earlier note that no deferred adapter divergence was appended refers to D6 and D7, the only observed harness divergences, both fixed. These new entries are deliberate harness omissions from Batch 2, not newly discovered adapter divergences.
