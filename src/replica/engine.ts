@@ -350,10 +350,6 @@ export async function startReplicaEngine(
     adopt: (copy) => {
       const decisions = generationFlow.adoptFromCopy(copy);
 
-      void runCatchUp(decisions.generationRead).catch((error) => {
-        console.error('Muster Roll could not start adoption from the room copy', error);
-      });
-
       if (decisions.adoptionStaged.length > 0) {
         void runCatchUp(decisions.adoptionStaged).catch((error) => {
           console.error('Muster Roll could not complete adoption from the room copy', error);
@@ -397,6 +393,11 @@ export async function startReplicaEngine(
       return true;
     },
     catchUp,
+    interpretCatchUp: (decisions) => {
+      void runCatchUp(decisions).catch((error) => {
+        console.error('Muster Roll could not start adoption from the room copy', error);
+      });
+    },
     roomCopy,
     flush: outbox.flush,
     dropOutbox: outbox.drop,

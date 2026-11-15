@@ -47,6 +47,7 @@ export type GenerationFlowPorts = {
     | 'adoptionStaged'
     | 'live'
   >;
+  interpretCatchUp: (decisions: readonly CatchUpDecision[]) => void;
   roomCopy: Pick<RoomCopy, 'writeImport' | 'replaced'>;
   flush: () => void;
   dropOutbox: () => void;
@@ -343,16 +344,17 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
 
     highestSeenGeneration = higherGeneration(highestSeenGeneration, copy.g);
     const generationRead = ports.catchUp.generationRead(copy.g);
+    ports.interpretCatchUp(generationRead);
     const target = ports.catchUp.adopting();
 
     if (target === null || compareGenerations(copy.g, target) !== 0) {
-      return { generationRead, adoptionStaged: [] };
+      return { generationRead: [], adoptionStaged: [] };
     }
 
     stage(copy.records);
 
     return {
-      generationRead,
+      generationRead: [],
       adoptionStaged: ports.catchUp.adoptionStaged(),
     };
   }
