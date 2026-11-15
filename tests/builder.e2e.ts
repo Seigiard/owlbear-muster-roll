@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 
 import { parsePresetFile } from '@/core/preset';
+import type { Template } from '@/core/preset';
 import { copy } from '@/copy';
 
 import { openBackground } from './support/room';
@@ -15,9 +16,37 @@ const PAGE = '/builder.html';
 
 const D6_POOL_TEXT = readFileSync('tests/fixtures/presets/d6-pool.json', 'utf8');
 
+const D20_TEXT = readFileSync('tests/fixtures/presets/d20.json', 'utf8');
+
 const DOWNLOAD_NAME = /^preset-\d{4}-\d{2}-\d{2}-\d{4}\.json$/;
 
 const builder = copy.builder;
+
+const PLAYER_PREVIEW_SNAPSHOT = JSON.stringify({
+  v: 3,
+  type: 'muster-roll/snapshot',
+  sheets: [
+    {
+      id: 'aria',
+      set: 'pc',
+      order: 0,
+      rows: { name: { name: 'Ария' }, str: { str: 12 } },
+      repeats: {},
+    },
+    { id: 'npc', rows: { hp: { hp: 7 } }, repeats: {} },
+    { id: 'inventory', rows: { gold: { gold: 10 } }, repeats: {} },
+    { id: 'journal', rows: {}, repeats: {} },
+    { id: 'gm_notes', rows: { plot: { plot: 'Тайный мост' } }, repeats: {} },
+    {
+      id: 'lich',
+      set: 'villains',
+      order: 0,
+      rows: { villain: { villain: 'Лич' } },
+      repeats: {},
+    },
+  ],
+  links: [],
+});
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 1000 });
@@ -103,6 +132,80 @@ async function openFile(page: Page, name: string, text: string): Promise<void> {
   const chooser = await choosing;
 
   await chooser.setFiles({ name, mimeType: 'application/json', buffer: Buffer.from(text) });
+}
+
+function playerPreviewPreset(): string {
+  const parsed = parsePresetFile(D20_TEXT);
+
+  if (!parsed.ok) {
+    throw new Error('Expected the d20 fixture to be a valid preset');
+  }
+
+  const characters = parsed.value.templates[0];
+
+  if (characters === undefined) {
+    throw new Error('Expected the d20 fixture to include its character sheet set');
+  }
+
+  const hiddenTab = {
+    title: 'Секреты мастера',
+    visibility: 'gm' as const,
+    sections: [{ rows: [[{ kind: 'text' as const, text: 'Только мастер' }]] }],
+  };
+
+  const hiddenSet: Template = {
+    id: 'villains',
+    kind: 'set',
+    title: 'Злодеи',
+    nameField: 'villain',
+    visibility: 'gm',
+    tabs: [
+      {
+        sections: [
+          {
+            rows: [
+              [
+                { kind: 'text', text: 'Имя' },
+                { kind: 'field', type: 'text', id: 'villain' },
+              ],
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  return JSON.stringify({
+    ...parsed.value,
+    templates: [
+      {
+        ...characters,
+        tabs: [
+          ...characters.tabs.map((tab, index) =>
+            index === 0 ? { ...tab, title: 'Основное' } : tab,
+          ),
+          hiddenTab,
+        ],
+      },
+      ...parsed.value.templates.slice(1),
+      hiddenSet,
+    ],
+  });
+}
+
+async function openPlayerPreview(page: Page): Promise<void> {
+  await page.goto(PAGE);
+  await openFile(page, 'player-preview.json', playerPreviewPreset());
+
+  await page.locator('[data-builder-snapshot-file-input]').setInputFiles({
+    name: 'player-preview-snapshot.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(PLAYER_PREVIEW_SNAPSHOT),
+  });
+}
+
+function roleSwitch(page: Page): Locator {
+  return page.getByRole('group', { name: 'Чьими глазами' });
 }
 
 // The builder's dev server serves the window too, so a test can load a file into a mock room.
@@ -683,6 +786,80 @@ test('the preview sidebar lists templates in order and selects a template in the
     'aria-selected',
     'true',
   );
+});
+
+test('the player switch projects the same snapshot and explains an open hidden sheet', async ({
+  page,
+}) => {
+  // #given
+  await openPlayerPreview(page);
+
+  const shown = preview(page);
+
+  await expect(roleSwitch(page).getByRole('button', { name: 'Мастер' })).toBeVisible();
+  await shown.getByRole('tab', { name: 'Заметки ГМ', exact: true }).click();
+  await expect(shown.getByText('Тайный мост', { exact: true })).toBeVisible();
+
+  // #when
+  await roleSwitch(page).getByRole('button', { name: 'Игрок' }).click();
+
+  // #then
+  await expect(
+    shown.getByText('Игроки не видят «Заметки ГМ». В их окне этого листа нет.', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(shown.getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
+  await expect(shown.getByRole('tab', { name: 'NPC', exact: true })).toHaveCount(0);
+  await expect(shown.getByRole('tab', { name: 'Заметки ГМ', exact: true })).toHaveCount(0);
+  await expect(shown.getByRole('tab', { name: 'Лич', exact: true })).toHaveCount(0);
+  await expect(shown.getByText('Злодеи', { exact: true })).toHaveCount(0);
+  await expect(shown.getByRole('tab', { name: 'Секреты мастера', exact: true })).toHaveCount(0);
+
+  // #when
+  await shown.getByRole('tab', { name: 'Ария', exact: true }).click();
+
+  // #then
+  await expect(shown.getByRole('heading', { name: 'Ария', level: 1 })).toBeVisible();
+  await expect(shown.getByRole('group', { name: 'Сила' })).toHaveText('12');
+});
+
+test('the player cannot edit a sheet-set sheet and can edit a player-editable single sheet', async ({
+  page,
+}) => {
+  // #given
+  await openPlayerPreview(page);
+
+  const playerView = roleSwitch(page).getByRole('button', { name: 'Игрок' });
+
+  await expect(playerView).toBeVisible();
+  await playerView.click();
+
+  const shown = preview(page);
+
+  await shown.getByRole('tab', { name: 'Ария', exact: true }).click();
+
+  // #when
+  const characterName = shown.getByRole('group', { name: 'Имя' });
+
+  await characterName.click();
+  await characterName.click();
+
+  // #then
+  await expect(shown.getByRole('textbox', { name: 'Имя' })).toHaveCount(0);
+  await expect(shown.getByRole('group', { name: 'Имя' })).toHaveText('Ария');
+
+  // #when
+  await shown.getByRole('tab', { name: 'Инвентарь', exact: true }).click();
+
+  const gold = shown.getByRole('group', { name: 'Золото' });
+
+  await gold.click();
+  await gold.click();
+
+  // #then
+  await expect(shown.getByRole('spinbutton', { name: 'Золото' })).toHaveValue('10');
+  await expect(shown.getByRole('spinbutton', { name: 'Золото' })).toBeEditable();
 });
 
 test('undo and redo each change, and typing in one input is one step', async ({ page }) => {
