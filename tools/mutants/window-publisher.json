@@ -5,7 +5,7 @@
     "file": "src/replica/engine.ts",
     "find": "    newerVersionSeen = true;\n    publisher.publish();\n",
     "replace": "    newerVersionSeen = true;\n",
-    "test": ["src/replica/"]
+    "test": ["src/replica/engine-sync.test.ts"]
   },
   {
     "id": "M2",
@@ -13,7 +13,7 @@
     "file": "src/replica/engine.ts",
     "find": "    const applied = apply(composed.value);\n\n    // A notice change reaches the window even when the command applied nothing.\n    publisher.publish();\n    commandDone(id);\n",
     "replace": "    const applied = apply(composed.value);\n\n    // A notice change reaches the window even when the command applied nothing.\n    commandDone(id);\n",
-    "test": ["src/replica/"]
+    "test": ["src/replica/engine-sync.test.ts"]
   },
   {
     "id": "M3",

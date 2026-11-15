@@ -99,7 +99,7 @@ async function runMutant(root: string, mutant: Mutant): Promise<MutantResult> {
   try {
     await Bun.write(target, mutated);
     activeTest = Bun.spawn({
-      cmd: ['bun', 'test', ...mutant.test],
+      cmd: ['bun', 'test', '--bail', ...mutant.test],
       cwd: root,
       stdin: 'inherit',
       stdout: 'inherit',
