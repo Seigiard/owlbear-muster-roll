@@ -378,3 +378,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-64.8-shared-preview-helpers.md`
   summary: Add an independent assertion that the built-output dice smoke invokes the rolling callback.
   evidence: Review-01 Blind Hunter 4 noted that the smoke's visible settled result and absence of a message would also pass with a no-op callback. The helper move is verbatim, no callback regression was demonstrated, and the smoke therefore records visible behavior only; callback-invocation coverage remains deferred rather than treated as a runtime bug.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-66-replica-mutation-gaps.md`
+  summary: Investigate whether a cold background-engine start must cue an already-live window without an explicit replica replacement.
+  evidence: The constructed mock scenario in `6c1671c511611d10ec1987c8a1082e1353cd7487` starts a fresh engine after adding local records. That path loads initial state but does not call `replaceReplica` or `publisher.restart`; the old window does not request another projection. TASK-66.4 instead tests the approved import/adoption replacement path. Initial pre-projection silence is unchanged. No live Owlbear occurrence was reproduced, and startup behavior was not changed.
