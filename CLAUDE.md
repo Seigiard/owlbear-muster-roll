@@ -22,36 +22,39 @@ Muster Roll is an Owlbear Rodeo extension that keeps the sheets of one room, suc
 
 Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you write. Read it before you use or coin a domain term. A new term or a changed meaning lands in the glossary in the same commit.
 
-<important if="you are preparing a commit or running build, test, lint, format, or preview commands">
+<important if="you are running dev, preview, or room scripts">
 
 `package.json` lists the scripts. What it does not say:
 
 - `bun run dev` serves the Owlbear adapter and needs a tunnel for a live room; `bun run dev:mock` needs no Owlbear.
 - `bun run preview [path]` adds that preset file to the preview's list and opens it first.
 - `bun run room` opens a seeded GM and player mock room on one local page.
-- `bun run test:browser` needs Chromium. Run it outside the sandbox.
 </important>
 
-<important if="you are preparing a commit, including a merge commit, or choosing local checks">
+<important if="you are preparing a commit, resolving a merge, or choosing or running local checks">
 
-Choose checks from the paths in the commit, not from the act of committing. For a normal commit, inspect `git diff --cached --name-status` (both paths of a rename). Combine the applicable rows for mixed commits.
+The paths in the commit choose the checks. For a normal commit, inspect `git diff --cached --name-status` (both paths of a rename). Combine the matching rows.
 
 | Paths | Local checks |
 |---|---|
-| Source or tests (`src/`, `tests/`, `scripts/`, `tools/`, `test-setup.ts`), root HTML entry pages, shipped assets or presets (`public/`, `presets/`), `package.json`, `bun.lock`, or build/test/check configuration | Full check: `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run test:browser`, `bun run build`. |
-| Backlog records (`backlog/`) only, or with documentation below | Read each touched task with `backlog task view <id> --plain` to check that the CLI can read it and that its fields match the intended change; run `backlog doctor` for ID and dependency diagnostics. Use the CLI for corrections, as the Backlog.md block requires. Also run the touched-path format check below. |
-| Documentation only: `docs/`, `_bmad-output/`, `GLOSSARY.md`, `CLAUDE.md`, or other Markdown outside source/test/config paths | Run the touched-path format check below and `git diff --cached --check`. Changes to `docs/preset-format.md` or `docs/example-preset.json` also require the example's parse test from the preset-format block. |
+| Source or tests (`src/`, `tests/`, `scripts/`, `tools/`, `test-setup.ts`), root HTML entry pages, shipped assets or presets (`public/`, `presets/`), `package.json`, `bun.lock`, or configuration consumed by these checks | Full check: `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run test:browser`, `bun run build`. |
+| Backlog records (`backlog/`) | Read each touched task with `backlog task view <id> --plain`: the CLI must read it and its fields must match the intended change. Run `backlog doctor` for ID and dependency diagnostics, the touched-path format check below, and `git diff --cached --check`. |
+| Documentation: `docs/`, `_bmad-output/`, `GLOSSARY.md`, `CLAUDE.md`, or other Markdown outside source/test/config paths | Run the touched-path format check below and `git diff --cached --check`. Changes to `docs/preset-format.md` or `docs/example-preset.json` also require the example's parse test from the preset-format block. |
 
-The touched-path format check is `bunx oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern --check <touched-existing-paths>`. Pass paths as separate, quoted arguments. `.oxfmtrc.json` excludes Markdown, `backlog/` and `_bmad-output/`; report those files as skipped, not format-validated. Run `git diff --cached --check` for these excluded files too. Deleted files need no formatter input. For paths outside the table, inspect their consumers; use the full check if they affect the app or its checks, or their effect is uncertain.
+`bun run test:browser` needs Chromium; run it outside the sandbox.
 
-For a merge commit, record conflicted paths before resolving them. Classify those paths plus any extra manual edits, including edits to auto-merged files. Cleanly auto-merged source changes alone do not trigger the full local check: a merge with only documentation and backlog conflicts uses the smaller sets above. A source/test/config conflict or manual edit still requires the full check.
+The touched-path format check is `bunx oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern --check <paths>`, with each existing touched path as a separate, quoted argument. `.oxfmtrc.json` excludes Markdown, `backlog/` and `_bmad-output/`; report them as skipped, not format-validated.
 
-PR CI (`.github/workflows/ci.yml`) is the backstop: it runs every full-check command except `bun run test:browser`, even for docs-only PRs. Smaller local sets defer those checks to CI; they do not replace them. Full-check commits still owe browser tests locally. Docs/backlog-only commits and merges as defined above do not.
+For paths outside the table, inspect their consumers; use the full check if they affect the app or its checks, or their effect is uncertain.
 
-Lefthook's pre-commit hook lints staged `*.{ts,tsx}` and formats staged `*.{ts,tsx,css,json}`, then stages formatter fixes. It does not check Markdown. Its pre-push hook always runs `bun run typecheck`, including for docs-only pushes; this rule leaves both hooks unchanged.
+For a merge commit, record conflicted paths before resolving them. Classify those paths plus every extra manual edit, including edits to auto-merged files; cleanly auto-merged source stays outside the classification. A merge with only documentation and backlog conflicts therefore uses the smaller rows.
+
+PR CI (`.github/workflows/ci.yml`) is the backstop: on every PR, docs-only included, it runs every full-check command except `bun run test:browser`. The smaller local sets defer those checks to CI. Browser tests remain a local responsibility for full-check commits only.
+
+Lefthook (`lefthook.yml`) lints and formats matching staged files before a commit. Its pre-push hook runs `bun run typecheck` on every push, docs-only pushes included.
 </important>
 
-<important if="you are about to deploy, release, push, or touch wrangler.toml or the production URL">
+<important if="you are about to deploy, release, or touch wrangler.toml or the production URL">
 
 - Deploying is the owner's step. Your part ends at `bun run build` and a commit on a branch other than `master`.
 - The production origin stays `https://musterroll.2249364.xyz/`: it scopes each GM's `localStorage`, the only full copy of their data.
@@ -76,7 +79,7 @@ Lefthook's pre-commit hook lints staged `*.{ts,tsx}` and formats staged `*.{ts,t
 </important>
 
 <important if="you are changing the preset format or its checks">
-- Update `docs/preset-format.md`, `_bmad-output/specs/spec-muster-roll/preset-format.md` and `docs/example-preset.json` with the change. The example's parse test is the completion check.
+- Update `docs/preset-format.md`, `_bmad-output/specs/spec-muster-roll/preset-format.md` and `docs/example-preset.json` with the change. The completion check is `bun test src/core/preset.test.ts`, which parses the example.
 </important>
 
 <important if="you are writing or changing interface text">
@@ -105,7 +108,7 @@ Lefthook's pre-commit hook lints staged `*.{ts,tsx}` and formats staged `*.{ts,t
 </important>
 
 <important if="you are implementing a backlog task or a feature">
-- Work goes through the `bmad-build` skill and ends on the full check. Its spec lives in `_bmad-output/implementation-artifacts/spec-*.md`; deferred findings go to `deferred-work.md` beside it.
+- Work goes through the `bmad-build` skill and ends with the local checks selected by the changed-path rules above. Its spec lives in `_bmad-output/implementation-artifacts/spec-*.md`; deferred findings go to `deferred-work.md` beside it.
 </important>
 
 <!-- BACKLOG.MD GUIDELINES START -->
