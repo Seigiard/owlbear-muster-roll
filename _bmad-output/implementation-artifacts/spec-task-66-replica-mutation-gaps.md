@@ -2,7 +2,7 @@
 title: 'Close the replica test gaps found by the mutation probe'
 type: 'bugfix'
 created: '2026-11-15'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: '476e8f0284f103d092c1b7363a56393e1433a617'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -53,10 +53,10 @@ context:
 
 **Execution:**
 
-- [ ] TASK-66.1: catch-up source, tests and controls above — lock reproduction, retain held request, protect suppression and AD-9.
-- [ ] TASK-66.2: room-copy tests and controls — cover clusters A–I.
-- [ ] TASK-66.3, after 66.1: catch-up tests and controls — cover clusters A–H without duplicating 66.1.
-- [ ] TASK-66.4: publisher source, tests, controls and engine-client test — cover clusters A–F and implement the agreed cue. Replace `stays silent after a restart with no earlier projection`; state the contract change in the commit.
+- [x] TASK-66.1: catch-up source, tests and controls above — lock reproduction, retain held request, protect suppression and AD-9.
+- [x] TASK-66.2: room-copy tests and controls — cover clusters A–I.
+- [x] TASK-66.3, after 66.1: catch-up tests and controls — cover clusters A–H without duplicating 66.1.
+- [x] TASK-66.4: publisher source, tests, controls and engine-client test — cover clusters A–F and implement the agreed cue. Replace `stays silent after a restart with no earlier projection`; state the contract change in the commit.
 - [ ] `backlog/` and this spec — record outcomes, evidence and reclassification reasons through the CLI.
 
 **Acceptance Criteria:**
@@ -79,6 +79,21 @@ context:
 
 ## Review Triage Log
 
+| Finding | Verdict | Evidence and route |
+|---|---|---|
+| Blind 1: shared metadata-size oracle | low / patch | The exact-limit fixture and final assertion both call production's `roomMetadataBytes`. A biased size helper can keep the pair green. Re-lock only these two boundary cases with independent UTF-8 JSON measurement; calibrate both equality mutations again. |
+| Blind 2: observer startup consumes deadline | maybe-false / reject | All three current fixtures completed in about 50–62 ms under integrated parallel load; no slow-start failure was observed. A readiness protocol would add states for a hypothetical CI condition. Revisit with a failing startup trace. |
+| Blind 3: process exit can outlive deadline | false / reject | The fixture never closes stdout early, traps no termination signal and spawns no descendants. EOF follows process exit; timeout cleanup terminates the sole Bun process. All five starvation controls reached parent assertion-red and reaped the child. The proposed surviving-process path is not present. |
+| Blind 4: unread stderr pipe | low / defer | Failure diagnostics are less useful because the parent reports only exit status. No fixture emits enough stderr to block, and termination remains external. Keep stderr capture as a test-harness diagnostic improvement, not a demonstrated hang. |
+| Blind 5: PATH-selected Bun | maybe-false / reject | No differing child runtime was observed; the project and all saved commands resolve Bun through the same PATH. A mismatched-runtime trace would establish the proposed failure. |
+| Blind 6: spy restore after assertion | low / defer | The existing publisher tests already use this restore pattern. New cases follow it; a failed non-bailing run can retain a spy and obscure later logging diagnostics. A module-wide cleanup policy is a pre-existing test-harness improvement. |
+| Blind 7: restart assertion filters projections | false / reject | This harness opens no client. `publish()` has only `sendDelta` paths and cannot emit a projection; `restart()` sends nothing. No discarded projection can occur in this scenario. |
+| Blind 8: replacement setup not explicitly asserted | false / reject | The current setup opens no new window/request after engine-1 stops; snapshot-check emits a command response, not a projection. The faithful unconditional-cue control reached red at the replacement regression, proving the current setup exercises the pre-projection case. A future fixture change is not a present masking path. |
+| Blind 9: portable per-gap calibration table | low / defer | All 82 original IDs have accepted saved calibration evidence or D's explicit reclassification; the verification note summarizes ticket clusters and every final survivor. A single expanded ID-to-owner table would improve navigation, but no missing or unmatched ID was identified. |
+| Blind 10: local detailed probe evidence | low / defer | The repository retains the generator, fixed revisions, counts, and every surviving anchor/reason. Detailed transient logs remain local. A portable raw-run bundle would improve independent inspection; no existing acceptance condition requires committing process logs or tooling installations. |
+| Edge 1: oversized party header in restart cue | maybe-false / defer | The constructed 100 long-name party can exceed the message cap with an empty payload. The same unbounded-header path existed for projected restarts and record-free change cues before this change; `splitParts` bypasses splitting when both arrays are empty. Actual Owlbear rejection and this party occurrence were not observed. Record the pre-existing header-limit question without widening startup or transport production code. |
+| Verification Gap Reviewer | complete | No verification gaps found. |
+
 ## Design Notes
 
 Run sequentially: 66.1, 66.2, 66.3, 66.4. Only 66.3 formally depends on 66.1. Use separate worktrees and test locks; merge successful chains into `implement-spec-66` with `--no-ff`. Run one closing review.
@@ -92,3 +107,14 @@ Run the generator with isolated TypeScript 5 in a disposable clean checkout. Cor
 - Probe: unit pass, then `src/replica/` for survivors; investigate timeouts and setup failures.
 - Backlog: task read-back, `backlog doctor`, touched-path formatting and `git diff --check`.
 - Mock checks do not prove the Owlbear host's background-restart lifecycle.
+- Integration evidence and matrix-to-executed-test audit:
+  [TASK-66 verification](task-66-verification.md). The clean integration
+  `ab010576183cdce13d3dae4db627da284786075d` passed all listed checks: 3089 unit
+  tests, 1 skip, 521 browser tests, and 53 controls killed with none survived or
+  stale. The matrix owners all executed and passed.
+- Final publisher probe: 118 mutants, 108 killed, 10 equivalent/unreachable
+  survivors. Original D is explicitly reclassified under the approved cue
+  contract. Catch-up replica pass: 12 more killed, 23 equivalent/unreachable
+  survivors. Room-copy replica pass: 13 more killed, 32 equivalent/unreachable
+  survivors. Across both passes: 720 test failures, 65 classified survivors and
+  3 separately recorded timeouts. Closing review is pending.

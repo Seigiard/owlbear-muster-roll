@@ -382,3 +382,16 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-66-replica-mutation-gaps.md`
   summary: Investigate whether a cold background-engine start must cue an already-live window without an explicit replica replacement.
   evidence: The constructed mock scenario in `6c1671c511611d10ec1987c8a1082e1353cd7487` starts a fresh engine after adding local records. That path loads initial state but does not call `replaceReplica` or `publisher.restart`; the old window does not request another projection. TASK-66.4 instead tests the approved import/adoption replacement path. Initial pre-projection silence is unchanged. No live Owlbear occurrence was reproduced, and startup behavior was not changed.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-66-replica-mutation-gaps.md`
+  summary: Capture child stderr when room-copy observer fixtures fail.
+  evidence: Closing review Blind 4 found the fixture pipes stderr without draining or reporting it. Current scenarios emit bounded diagnostics and are externally terminated; no pipe-blocking occurrence was observed. Capture would improve failure diagnosis.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-66-replica-mutation-gaps.md`
+  summary: Restore publisher test console spies through module-wide cleanup after failed assertions.
+  evidence: Closing review Blind 6 found an existing test pattern that restores spies only after expectations. A failed non-bailing run can retain a spy and obscure later diagnostic assertions; the current mutation runs bail at the first failure.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-66-replica-mutation-gaps.md`
+  summary: Expand the portable replica probe evidence with one per-gap owner table and an optional raw-run bundle.
+  evidence: Closing review Blind 9 and 10 requested easier navigation and independent inspection. Accepted per-gap calibration logs remain in the local run; the repository contains the generator, revisions, aggregate outcomes and every final survivor classification. No uncovered original gap was identified.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-66-replica-mutation-gaps.md`
+  summary: Investigate message headers that exceed the broadcast limit before any records are added.
+  evidence: Closing review Edge 1 constructs 100 party entries with 100-character Cyrillic names, producing an oversized empty cue. Empty `splitParts` bypasses capacity checks; projected restarts and other empty cues already used this path before TASK-66. Actual Owlbear rejection and an affected live party remain unverified; capture a real header and send outcome to settle the risk.
