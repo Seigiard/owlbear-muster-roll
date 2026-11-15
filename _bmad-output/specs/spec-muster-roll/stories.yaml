@@ -1,43 +1,95 @@
 - id: "1"
-  title: Format v3 with tabs in the preset, the sheet, the preview and the builder
+  title: One dev command opens the builder, another serves a live Owlbear room
   description: >-
-    Every template holds a required tabs list and a sheet shows one tab at a time under its
-    header (CAP-34, CAP-23); format v3 refuses v1 and v2 data. Covers preset-format.md "Tabs"
-    and "Older format", the window tab row, preview.html and the builder's tab level.
+    `bun run dev` serves the builder and opens it with no Owlbear and no tunnel; `bun run
+    dev:owlbear` serves the Owlbear adapter through cloudflared and prints the manifest.json URL
+    (CAP-40, builder-and-dev.md "Dev commands"). The old dev:mock, room and preview scripts stay
+    until story 7.
   spec_checkpoint: false
   done_checkpoint: true
   invoke_dev_with: >-
-    Binding rules: ARCHITECTURE-SPINE AD-11 (mr3 keys), AD-12 (v 3, no migration from v1 or v2),
-    AD-14 (tabs never enter record keys), AD-18 "Rule, tabs" (one cell address {tab, section, row,
-    cell}), AD-21 to AD-25, AD-26 "Rule, open tab". Tab visibility is story 2: accept the
-    visibility key but do not hide anything yet. Keep the current tab bar of sheets; the sidebar
-    is story 3. Update docs/preset-format.md (keys, window width 480 to 1440, refusal messages),
-    docs/example-preset.json, presets/*.json and test fixtures; the example's parse test is the
-    completion check. Add Tab to GLOSSARY.md.
+    builder.html is a top-level page with no Owlbear (AD-20), so the dev server's adapter mode
+    does not matter for it. The tunnel URL is printed by cloudflared at start; parse it and print
+    "<url>/manifest.json". Keep vite.config.ts's allowedHosts for .trycloudflare.com. The
+    project CLAUDE.md "dev, preview, or room scripts" block changes in story 7, not here; only add
+    the two commands.
 - id: "2"
-  title: GM-only tabs
+  title: Snapshot in the builder, shown in the extension window
   description: >-
-    A preset hides a tab from players: no tab, no roll shown, no token menu or open on its repeat
-    blocks, and its fields read-only for players, the name field included (CAP-35, CAP-2, CAP-6,
-    CAP-14). Hiding stays interface-only; records of hidden tabs stay in every replica.
+    The builder holds a snapshot beside the preset: the preview becomes the extension window
+    whose sidebar lists the snapshot's sheets with "+ Добавить", an empty sheet set shows a pale
+    "Образец", a snapshot file opens and downloads, and the draft holds the snapshot (CAP-36,
+    CAP-21, CAP-26). Values a preset change leaves no place drop with no warning.
+  spec_checkpoint: true
+  done_checkpoint: false
+  invoke_dev_with: >-
+    Prototype: _bmad-output/forge/one-dev-entry/prototypes/round-2.html, design 2 ("двойной клик,
+    окно всегда"). Reuse src/core/snapshot-file.ts and snapshot-import.ts for the file and for
+    dropping values; the window draws through the one frame component (AD-26) and SheetBody,
+    which already takes records. No engine and no mock adapter in the builder bundle. Values are
+    read-only in this story; typing is story 3. Interface text goes in src/copy.ts.
+- id: "3"
+  title: Type values in the preview with a double click
+  description: >-
+    The first click on a preview cell selects its tree item, a second click or Enter types a
+    value into the snapshot, Esc leaves typing, and a dice cell rolls on the second click
+    (CAP-22, CAP-36). A structure edit applies to every sheet of the template.
+  spec_checkpoint: false
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Prototype: _bmad-output/forge/one-dev-entry/prototypes/round-1.html, design 3 ("двойной
+    клик"). SheetBody's `editing` prop is null in the builder today; give it an editing that
+    writes the builder's snapshot. Follow docs/adr/0002 (pure reducer, useReducer in the
+    component, effects there) for the selected and typing state.
+- id: "4"
+  title: Switch the preview between the GM and a player
+  description: >-
+    A «Мастер / Игрок» switch over the window redraws it as a player sees it from the same
+    records: GM-only sheet sets, single sheets and tabs disappear, sheets of a sheet set read
+    only, a player-editable single sheet stays editable (CAP-37).
   spec_checkpoint: false
   done_checkpoint: false
   invoke_dev_with: >-
-    Binding rules: AD-4 "Rule, one edit check", AD-13 (player replica refuses a hidden roll
-    request), AD-18 one core/visibility function for sheet, tab and link target, AD-19, the
-    Visibility convention (records filtered by template only). Today token-links.ts and
-    engine.ts openTargetShown check only the template.
-- id: "3"
-  title: Sidebar and one window frame
+    Prototype: _bmad-output/forge/one-dev-entry/prototypes/round-3.html, design 1. Views get
+    sheets only through src/core/visibility.ts. A sheet the GM had open that players cannot see
+    shows a note in its place (builder-and-dev.md "Player view").
+- id: "5"
+  title: File blocks and their menu, without writing to disk
   description: >-
-    The window lists sheets in a sidebar grouped by sheet set, with Settings at the bottom
-    (CAP-33, CAP-17, CAP-29, CAP-32), and the window, preview.html and the builder preview draw
-    through one frame (AD-26). EXPERIENCE.md and DESIGN.md hold the layout.
+    Two file blocks at the right of the top bar show kind, name and status, and each opens a
+    menu with the path and sync time, open another file or an example, save as, download a copy,
+    detach and clear (CAP-39). In this story "save as" downloads; disk writes are story 6.
+  spec_checkpoint: false
+  done_checkpoint: false
+  invoke_dev_with: >-
+    Prototype: _bmad-output/forge/one-dev-entry/prototypes/round-5.html, design 2 ("блок — это
+    кнопка"). The blocks replace the top bar's Открыть… and Скачать buttons. Clear asks one
+    confirmation that names the linked file; undo restores. Labels and statuses go in
+    src/copy.ts; read ~/.claude/shared/interface-copy.md for their grammar.
+- id: "6"
+  title: Read, write and follow the attached files
+  description: >-
+    In Chromium the builder writes every page edit to the attached file, redraws on a save on
+    disk, and on both changed asks «Взять из файла» or «Оставить мои»; a preset with problems is
+    not written and a file that fails the checks on disk keeps the last good content (CAP-38).
+    Safari and Firefox keep open and download only.
+  spec_checkpoint: true
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Put the File System Access API behind a port with a fake for bun and Playwright tests; the
+    real API needs the owner's check in Chrome. Timers only schedule work: a hidden tab throttles
+    them, so a poll decides on the file's lastModified it reads, not on elapsed time. The open
+    question in SPEC.md (reattach files after a reload) is not decided; do not build reattach.
+- id: "7"
+  title: Remove the old dev pages
+  description: >-
+    Remove room.html, preview.html, the dev:mock, room and preview scripts, the Vite preview
+    plugin and their e2e tests, and update the docs that name them (CAP-40). The mock index.html
+    stays for e2e tests only.
   spec_checkpoint: false
   done_checkpoint: true
   invoke_dev_with: >-
-    Visual reference: ux-designs/ux-owlbear-muster-roll-2026-11-10/mockups/window-sidebar-tabs.html;
-    the spines win on conflict. Sidebar is 10 rem. ui/sheet-tabs.ts becomes
-    ui/shell/sidebar-entries.ts with playerMayEdit. A sidebar group heading stays outside the
-    react-aria tab list and entries reference it with aria-describedby. Replace the old "sheet tab"
-    meaning in GLOSSARY.md with Sidebar and Sidebar entry.
+    Update the project CLAUDE.md "dev, preview, or room scripts" block and the project map,
+    presets/README.md, docs/preset-format.md "Preview a preset", and GLOSSARY.md if it names
+    these pages. src/preview/sample-records.ts may still feed "Образец"; keep what the builder
+    imports. Run the full check.
