@@ -43,12 +43,10 @@ type RoomProtocolCatchUp = Pick<
 >;
 
 export type RoomProtocolPorts = {
-  parse?: typeof parseRoomMessage;
   senderOf: (connectionId: string) => Promise<RoomSender | null>;
   role: () => PlayerRole;
   stopped: () => boolean;
   generation: () => Generation;
-  relation?: typeof generationRelation;
   catchUp: RoomProtocolCatchUp;
   seeGeneration: (generation: Generation, keepNonce: boolean) => CatchUpDecision[];
   stageGeneration: (records: readonly VersionedRecord[]) => void;
@@ -78,8 +76,6 @@ export type RoomProtocol = {
 };
 
 export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
-  const parse = ports.parse ?? parseRoomMessage;
-  const relationOf = ports.relation ?? generationRelation;
   let roomMessages: Promise<void> = Promise.resolve();
 
   function receive(event: RoomProtocolEvent): void {
@@ -93,7 +89,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   }
 
   async function handleRoomMessage(event: RoomProtocolEvent): Promise<void> {
-    const parsed = parse(event.data);
+    const parsed = parseRoomMessage(event.data);
 
     if (!parsed.ok) {
       if (parsed.error === 'newer-version') {
@@ -110,7 +106,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
       return;
     }
 
-    const relation = relationOf(message.g, ports.generation());
+    const relation = generationRelation(message.g, ports.generation());
 
     // AD-5 and AD-9: a GM that speaks from a higher generation, by `reset` or any other message,
     // starts adoption. An answer to this client's own request keeps that request.
