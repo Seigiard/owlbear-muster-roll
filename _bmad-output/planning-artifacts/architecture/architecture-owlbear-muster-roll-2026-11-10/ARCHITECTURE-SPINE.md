@@ -7,7 +7,7 @@ paradigm: 'Replicated state (state-based LWW CRDT per record) over a functional 
 scope: 'The Muster Roll Owlbear Rodeo extension, with no own server, and its v2 preset builder page'
 status: final
 created: '2026-11-10'
-updated: '2026-11-12'
+updated: '2026-11-15'
 binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-17, CAP-18, CAP-19, CAP-20, CAP-21, CAP-22, CAP-23, CAP-24, CAP-25, CAP-26, CAP-27, CAP-28, CAP-29, CAP-30, CAP-31, CAP-32, CAP-33, CAP-34, CAP-35]
 sources:
   - ../../../specs/spec-muster-roll/SPEC.md
@@ -30,14 +30,14 @@ Code is a functional core with ports and adapters:
 | Layer | Directory | Holds |
 | --- | --- | --- |
 | Core | `src/core` | Records, merge, access check, visibility, preset schema, formula parser, snapshot codec. Pure, with no DOM or SDK |
-| Replica | `src/replica` | The engine in the background page. Owns the replica, protocol, catch-up and snapshot timing |
+| Replica | `src/replica` | The engine in the background page. Owns the replica, protocol, catch-up and snapshot timing. Extracted engine modules: `command-routing`, `generation-flow`, `roll-flow` and `room-protocol` |
 | Platform | `src/platform` | Ports for broadcast, metadata, party, player, map selection, storage, context menu, popover, action, notification, scene and theme. The Owlbear adapter and the test mock |
 | UI | `src/ui` | React views and nanostores. A projection of the replica |
 | Builder | `src/builder` | The preset builder page (v2): its store, document edits, tree, forms and preview. No replica and no platform |
 
 ```mermaid
 graph TD
-  UI[src/ui] -->|LOCAL messages only| Replica[src/replica]
+  UI[src/ui] -->|LOCAL messages only| Replica[src/replica<br/>engine, command-routing,<br/>generation-flow, roll-flow,<br/>room-protocol]
   UI --> Core[src/core]
   Replica --> Core
   Replica --> Ports[src/platform ports]
@@ -327,7 +327,8 @@ A message with a higher generation also starts AD-9 adoption.
 ```text
 src/
   core/        # records, merge, access, visibility, preset, formula, snapshot, messages
-  replica/     # engine, pending queue, pending edits, catch-up, room copy, gmLink
+  replica/     # engine, command-routing, generation-flow, roll-flow, room-protocol,
+               # pending queue, pending edits, catch-up, room copy, gmLink
   platform/    # ports, send queue, obr/ adapter, mock/
   ui/          # React views, nanostores projection
   builder/     # preset builder page: store, document edits, tree, forms, preview

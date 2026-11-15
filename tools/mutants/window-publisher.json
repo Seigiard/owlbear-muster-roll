@@ -10,9 +10,9 @@
   {
     "id": "M2",
     "rule": "Applying a GM command publishes the resulting change.",
-    "file": "src/replica/engine.ts",
-    "find": "    const applied = apply(composed.value);\n\n    // A notice change reaches the window even when the command applied nothing.\n    publisher.publish();\n    commandDone(id);\n",
-    "replace": "    const applied = apply(composed.value);\n\n    // A notice change reaches the window even when the command applied nothing.\n    commandDone(id);\n",
+    "file": "src/replica/command-routing.ts",
+    "find": "    const applied = ports.apply(composed.value);\n\n    // A notice change reaches the window even when the command applied nothing.\n    ports.publish();\n    ports.commandDone(id);\n",
+    "replace": "    const applied = ports.apply(composed.value);\n\n    // A notice change reaches the window even when the command applied nothing.\n    ports.commandDone(id);\n",
     "test": ["src/replica/engine-sync.test.ts"]
   },
   {
