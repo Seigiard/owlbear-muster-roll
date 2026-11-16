@@ -1,9 +1,11 @@
 ---
 id: TASK-77
 title: 'Preset format v4: one node registry for the tree'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@openai'
 created_date: '2026-11-16T06:49:00Z'
+updated_date: '2026-11-16T15:38:00Z'
 labels:
   - format-v4
 dependencies:
@@ -31,3 +33,17 @@ Every irregularity of format v3 is a special case in the checks and the builder:
 - [ ] #6 An upload that changes `repeat.id`, adds or removes `repeat`, or removes a token cell follows the table in preset-format.md "Preset changes" with one confirmation that counts the erased values
 - [ ] #7 docs/preset-format.md, docs/example-preset.json (parsed by `bun test src/core/preset.test.ts`), presets/*.json, test fixtures and GLOSSARY.md (Repeat scope, Block, Token cell added; Linkable retired; Repeat section widened) describe v4
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Approve _bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md at the bmad-build checkpoint.
+2. Implement the v4 node registry, shared validation and stable repeat scopes; update naming, access and visibility.
+3. Update token-cell link records, commands, rendering, opening and selection; apply preset-change loss rules.
+4. Adapt Builder conversion and existing operations without adding TASK-80 controls; port examples, fixtures and docs.
+5. Verify the acceptance matrix with calibrated targeted regressions, the required full changed-path checks and bmad-build review.
+
+Cell-menu linking opens all scene tokens, marked when already linked. Prefer viewport-visible unlinked, off-screen unlinked, viewport-visible linked, off-screen linked. Extend both platform adapters for token listing and viewport data; keep the existing token-menu entry point.
+
+Confirmed token-cell behavior: the GM picks individual linked tokens to unlink, with multi-selection; picking an already linked token reassigns its single link to the current cell. No map token is deleted. The draft spec is ready for the approval checkpoint.
+<!-- SECTION:PLAN:END -->
