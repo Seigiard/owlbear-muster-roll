@@ -37,7 +37,7 @@ const PRESET_V4 = {
 };
 
 describe('Builder preset v4 document', () => {
-  test('round-trips every v4 property without adding Builder uids', () => {
+  test('round-trips representative v4 properties without adding Builder uids', () => {
     // #given
     type BuilderInput = Parameters<typeof fromPreset>[0];
 
@@ -48,6 +48,47 @@ describe('Builder preset v4 document', () => {
 
     // #then
     expect(roundTrip).toEqual({ result: PRESET_V4 });
+  });
+
+  test('preserves explicit row visibility and leaves default row visibility absent', () => {
+    // #given
+    type BuilderInput = Parameters<typeof fromPreset>[0];
+
+    const input: BuilderInput = {
+      templates: [
+        {
+          id: 'notes',
+          title: 'Заметки',
+          tabs: [
+            {
+              sections: [
+                {
+                  rows: [
+                    { visibility: 'gm', cells: [{ kind: 'text', text: 'Секрет' }] },
+                    { cells: [{ kind: 'text', text: 'Общее' }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    // #when
+    const roundTrip = capture(() => {
+      const rows = toPreset(fromPreset(input)).templates[0]?.tabs[0]?.sections[0]?.rows;
+
+      return {
+        explicit: rows?.[0]?.visibility,
+        defaultHasVisibility: rows?.[1] !== undefined && 'visibility' in rows[1],
+      };
+    });
+
+    // #then
+    expect(roundTrip).toEqual({
+      result: { explicit: 'gm', defaultHasVisibility: false },
+    });
   });
 });
 
