@@ -13,6 +13,48 @@ import { openBackground } from './support/room';
 const PAGE = '/builder.html';
 const D6_POOL_TEXT = readFileSync('tests/fixtures/presets/d6-pool.json', 'utf8');
 const D20_TEXT = readFileSync('tests/fixtures/presets/d20.json', 'utf8');
+
+const ROW_DRAG_TEXT = JSON.stringify({
+  v: 4,
+  templates: [
+    {
+      id: 'inventory',
+      title: 'Инвентарь',
+      tabs: [
+        {
+          sections: [
+            {
+              title: 'Вещи',
+              repeat: { id: 'item', nameField: 'item' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'text', text: 'Вещь' },
+                    { kind: 'field', type: 'text', id: 'item' },
+                    { kind: 'text', text: 'Количество' },
+                    { kind: 'field', type: 'number', id: 'qty' },
+                  ],
+                },
+              ],
+            },
+            {
+              title: 'Деньги',
+              rows: [
+                {
+                  cells: [
+                    { kind: 'text', text: 'Золото' },
+                    { kind: 'field', type: 'number', id: 'gold' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+});
+
 const DOWNLOAD_NAME = /^preset-\d{4}-\d{2}-\d{2}-\d{4}\.json$/;
 const builder = copy.builder;
 
@@ -1177,12 +1219,12 @@ test('typing select options with a new line is one undo step', async ({ page }) 
   await expect(options).toHaveValue('Вариант 1\nВариант 2');
 });
 
-test('drags a data row out of a repeat section, and the remaining token row shows the missing-name problem', async ({
+test('drags a row out of a repeat section, and the emptied repeat section shows as a problem', async ({
   page,
 }) => {
   // #given
   await page.goto(PAGE);
-  await openFromMenu(page, builder.openD20);
+  await openFile(page, 'row-drag.json', ROW_DRAG_TEXT);
   await expect(page.getByText(builder.noProblems)).toBeVisible();
   const names = await rowNames(page);
 
@@ -1204,21 +1246,21 @@ test('drags a data row out of a repeat section, and the remaining token row show
   const after = await rowNames(page);
   const emptied = after.indexOf('Вещи');
   const money = after.indexOf('Деньги');
-  expect(after.slice(emptied, emptied + 2)).toEqual(['Вещи', builder.rowItem(1)]);
-  expect(after.slice(money, money + 13)).toEqual([
+  const moved = after.indexOf(builder.rowItem(2), money);
+
+  expect(after.slice(emptied, emptied + 2)).toEqual(['Вещи', builder.addRow]);
+  expect(after.slice(money, money + 4)).toEqual([
     'Деньги',
     builder.rowItem(1),
     'Золото',
     `gold · ${builder.form.typeNumber}`,
-    builder.addLabel,
-    builder.addField,
-    builder.addDice,
+  ]);
+  expect(after.slice(moved, moved + 5)).toEqual([
     builder.rowItem(2),
     'Вещь',
     `item · ${builder.form.typeText}`,
     'Количество',
     `qty · ${builder.form.typeNumber}`,
-    builder.addLabel,
   ]);
   await expect(problemCounter(page, 1)).toBeVisible();
   await expect(item(page, 'Вещи')).toHaveAttribute('data-problem', 'true');
