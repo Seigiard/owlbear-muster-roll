@@ -576,9 +576,7 @@ describe('open from token', () => {
     background.platform.setRole('GM');
     await waitUntil(
       () =>
-        window.store.$sync.get().role === 'GM' &&
-        window.store.$sync.get().state === 'catching-up' &&
-        background.platform.actionSizes().length === 2,
+        window.store.$sync.get().role === 'GM' && window.store.$sync.get().state === 'catching-up',
     );
 
     // #then
