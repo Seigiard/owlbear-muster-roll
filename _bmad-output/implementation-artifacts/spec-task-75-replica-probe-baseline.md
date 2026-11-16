@@ -2,7 +2,7 @@
 title: 'TASK-75: Probe and baseline the extracted replica modules'
 type: 'chore'
 created: '2026-11-15'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '9a75650128d19072735ce87446eb923344f2d11f'
 review_loop_iteration: 0
@@ -66,7 +66,7 @@ context:
 - [x] `src/replica/*.test.ts` — add focused behavioral tests for observed gaps; use the existing helpers and calibrate each test against its mutation.
 - [x] `tools/mutants/probe-baseline.json` — add only justified remaining survivors and timeouts using stable anchors.
 - [x] `backlog/` — record the plan, evidence and final counts through the CLI; create explicit follow-ups only for unresolved gaps.
-- [ ] Repeat the five-module probe on the committed final tests and baseline; run the required changed-path checks and closing review.
+- [x] Complete the five-module probe, retain the isolated final C1 control separately, and compare their explicit composition against the final baseline; run the required changed-path checks and closing review.
 
 **Acceptance Criteria:**
 - Given the five named modules, when the initial probe completes, then the task notes record killed, survived and timed-out counts separately for each module.
@@ -90,6 +90,10 @@ context:
 - Matrix audit: provenance/classification/comparison rows use the recorded full runner executions and ledger audit; behavioral-gap rows use 126 exact assertion-red/restored-green replays. No new timeout occurred. Existing runner limits and timeout comparison tests remain unchanged. Cleanup/source-preservation evidence covers both complete final runs.
 - Final unit evidence: 3271 pass, one environment skip, zero fail; format/lint/types pass. Browser (521 pass) and build evidence is reused because their application/configuration/dependency inputs are unchanged. Closing review remains pending.
 - Closing review uses the project's three supplied rubrics rather than the default code-review roster. All three context-free reviewers reported before triage. Review fixes must enter a new TDD batch in the existing run directory. Preserve the accepted tests and controls; add faithful behavioral owners before removing incorrect equivalent entries. Reconcile every affected anchor, its ledger row and its baseline reason. Reuse unchanged browser/build evidence, then run a new complete five-module probe on the corrected committed baseline.
+- Final acceptance at `71561c88045dacc01c3dc35ff457082fb6d0f528`: 143 calibrated gaps, 140 equivalent anchors and 21 unreachable anchors in the 304-row cumulative ledger. Current baseline contains 229 entries and preserves the original 68 objects.
+- The latest complete native probe remains the run at `c3e40df7aab4ba85616c06a2d818348f693c8da1`: 1089 mutations, 927 killed, 162 survived, zero timeouts, native comparison 0/0/0. It was not rerun after the final isolated C1 test. One exact targeted full-replica control at `cda8f2a1ab52de121155d161e3907fd59ca81200` supplies C1's assertion-red/restored-green result; restored replica suite has 1119 passes.
+- Explicitly composed evidence updates only C1's row: 928 killed, 161 survived, zero timeouts. This is not labeled as an executed full sweep. The existing native comparator on that evidence and the final baseline reports zero new survivors, zero new timeouts and zero missing entries. All 143 gaps are killed; all 161 selected baseline anchors survive.
+- Final parent gates at `71561c88045dacc01c3dc35ff457082fb6d0f528`: full format/lint/types pass; unit 3286 pass, one environment skip, zero fail. Browser 521 pass and build are reused from unchanged application inputs. Confirming review and the targeted C1 confirmation have no unresolved findings. No fix is deferred.
 
 ## Spec Change Log
 
@@ -127,3 +131,5 @@ All retained findings are local verification/classification corrections with no 
 - Confirming verification reviewer: no blocking findings after inspecting all 142 red/green records, corrected callers, current baseline and metadata through `31577e85ae03211aca7af30a0d17de08531abde6`.
 - Confirming source reviewer C1 — medium, patch: `followParty / if→false / stopped` remains incorrectly equivalent. `party-roster.ts:35-43` can finish its initial read after `stop: unsubscribe` at :84; stop neither cancels the read nor changes its epoch. The resumed `replace` invokes `onReplace`, so the mutated engine guard publishes a changed party header after stop. Add a controlled held-read behavioral owner and exact assertion-red/restored-green control, then reclassify the anchor. No product or production change is needed.
 - Verification reuse: the complete native five-module run at `c3e40df7aab4ba85616c06a2d818348f693c8da1` is immutable historical evidence (927 killed, 162 survived, no timeouts). A later targeted control must retain its own revision and result; it must not be relabeled as another full run. Reuse unchanged test/source evidence and rerun the comparison for the revised baseline with explicit provenance.
+- C1 closure: the real publisher/window owner and live control are calibrated. The parent exact full-replica replay reaches the intended assertion-red and restored green. The reviewer who raised C1 confirmed the fix without blockers. Metadata removes only that incorrect equivalent entry and preserves all unrelated rows.
+- Final review verdict: initial three-layer review completed, retained findings fixed through delegated TDD batches, confirming verification review clear, confirming source review's sole C1 finding closed. B10's duplicate immutable fixture proposal remains rejected, not deferred. No unresolved finding or human decision remains.

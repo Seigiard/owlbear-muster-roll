@@ -1,11 +1,11 @@
 ---
 id: TASK-75
 title: Probe and baseline the replica modules extracted in TASK-64
-status: In Progress
+status: Done
 assignee:
   - '@opencode'
 created_date: '2026-11-15T20:32:00Z'
-updated_date: '2026-11-16T08:39:00Z'
+updated_date: '2026-11-16T08:45:00Z'
 labels: []
 dependencies:
   - TASK-67
@@ -26,7 +26,7 @@ TASK-64 moved the roll, generation, command-routing and room-protocol rules out 
 - [x] #1 bun run probe runs over command-routing, generation-flow, roll-flow, room-protocol and engine, and the counts per module (killed, survived, timed out) are recorded in the task notes
 - [x] #2 Each survivor is classified as a test gap, equivalent or unreachable, with a one-line reason
 - [x] #3 Each test gap is covered by a test that kills the mutation, or by a follow-up task that names it
-- [ ] #4 tools/mutants/probe-baseline.json holds an entry with verdict and reason for every remaining survivor and timeout, and bun run probe on these modules reports 0 new survivors, 0 new timeouts and 0 missing entries
+- [x] #4 tools/mutants/probe-baseline.json holds an entry with verdict and reason for every remaining survivor and timeout, and bun run probe on these modules reports 0 new survivors, 0 new timeouts and 0 missing entries
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -37,6 +37,8 @@ TASK-64 moved the roll, generation, command-routing and room-protocol rules out 
 3. Add calibrated behavioral regression tests for real gaps through the TDD chain. Record any unresolved gap as a named follow-up, never as equivalent.
 4. Add justified survivors and timeouts to the anchor baseline, preserving other modules.
 5. Commit the tested state, rerun the five-module probe, run the changed-path checks and closing review, then finalize the task against its acceptance criteria.
+
+Final verification refinement: preserve the complete native run at c3e40df7 and combine it explicitly with the separately executed C1 control at cda8f2a1. Only engine-access.test.ts changed among probe inputs. Compare this one-row composition against the final baseline instead of repeating the full sweep; never label composed evidence as a new native run.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -57,4 +59,12 @@ Batch-4 C1 correction at accepted lock cda8f2a1ab52de121155d161e3907fd59ca81200:
 Focused evidence uses the owner control at cda8f2a1: exact stopped→false mutation red is ordinary expect mismatch, restored owner green is 2 pass; accepted full owner gate is 43 pass/0 fail/44 expectations. Parent targeted native-anchor control at the same SHA reached ordinary expect-red after 193 tests before bail and restored replica green is 1119 pass/0 fail; this is not a new five-module run. Immutable native c3e40df7aab4ba85616c06a2d818348f693c8da1 evidence remains 1089/927/162/0 and is not replaced. Parent-owned full-suite verification, targeted FULL-REPLICA calibration, native comparison and confirming acceptance/review remain pending. Task remains In Progress and AC #4 stays unchecked.
 
 Batch-4 status correction: the targeted full-replica C1 control at cda8f2a1ab52de121155d161e3907fd59ca81200 is EXECUTED and preserved: exact mutation result killed, red exit 1, green exit 0 with 1119 pass. It is not pending. Remaining parent-owned work is explicit one-row evidence composition, native comparison, final global/unit checks, targeted C1 confirmation/review and final acceptance. Task remains In Progress and AC #4 stays unchecked.
+
+Final acceptance at 71561c88045dacc01c3dc35ff457082fb6d0f528 supersedes the pending statuses above. Complete native sweep at c3e40df7aab4ba85616c06a2d818348f693c8da1 remains 1089 total / 927 killed / 162 survived / 0 timeouts with actual comparison 0/0/0. Exact C1 full-replica control at cda8f2a1ab52de121155d161e3907fd59ca81200 reaches the intended assertion-red and restored green (1119 pass). Explicit one-row composition yields 928 killed / 161 survived / 0 timeouts; the existing native comparator against baseline229 reports zero new survivors, zero new timeouts and zero missing. This is not another complete native sweep. Ledger304 = 143 covered gaps / 140 equivalent / 21 unreachable; all 143 gaps killed and all 161 selected baseline anchors survive. Original68 unchanged. Final format/lint/types pass; unit3286 pass, one environment skip, zero fail. Browser521/build pass reused from unchanged application inputs. Three-layer review, confirming reviews and targeted C1 confirmation complete with no unresolved or deferred findings. Evidence: _bmad-output/implementation-artifacts/task-75-verification.md#final-acceptance and review-batch-4/{composed-provenance.json,final-comparison.json,parent-checks/summary.json} under the recorded evidence root. No production-code change, push, deployment or live Owlbear claim.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The five extracted replica modules now have a justified mutation baseline and calibrated tests for 143 observed test gaps. The final baseline preserves the original 68 entries and contains 229 entries total. [Verification and provenance](_bmad-output/implementation-artifacts/task-75-verification.md#final-acceptance) distinguish the complete native sweep (927 killed, 162 survived) from its explicit one-row C1 update (928 killed, 161 survived); current comparison is 0/0/0. Final format/lint/types and 3286 unit tests pass; one environment skip. Browser521/build evidence reused with unchanged inputs. Review has no open findings or follow-ups. Production code is unchanged; live Owlbear behavior was not verified.
+<!-- SECTION:FINAL_SUMMARY:END -->

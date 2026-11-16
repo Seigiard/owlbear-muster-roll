@@ -2,11 +2,11 @@
 
 ## Scope and status
 
-**CURRENT BATCH-4 STATUS: the delayed initial party-read anchor is corrected from equivalent to covered gap; completion remains pending.** The executed native run and parent checks are preserved as historical evidence. The targeted full-replica C1 control is executed and preserved. Explicit one-row evidence composition, native comparison, final global/unit checks, targeted C1 confirmation/review and final acceptance remain pending; **this batch does not claim acceptance**.
+**FINAL STATUS: accepted after review corrections and explicit evidence reuse.** The cumulative ledger has 143 calibrated gaps, 140 equivalent anchors and 21 unreachable anchors. No finding is unresolved or deferred.
 
-Explicit one-row evidence composition: **PENDING**. Native comparison: **PENDING**. Final global/unit checks: **PENDING**. Targeted C1 confirmation/review and final acceptance: **PENDING**. The targeted full-replica C1 control is already executed and is not pending. No new full five-module probe is claimed or required in this metadata batch. The task remains In Progress and AC #4 is intentionally unchecked.
+The latest complete native sweep ran at `c3e40df7aab4ba85616c06a2d818348f693c8da1`: 1089 mutations, 927 killed, 162 survived, no timeouts, native comparison 0/0/0. The final isolated C1 test has a separate exact full-replica control. Explicit composition replaces only its result and yields 928 killed and 161 survived. The native comparator accepts this evidence against the final baseline with 0/0/0. This composition is not another executed full sweep; see Final acceptance below.
 
-The accepted lock is `cda8f2a1ab52de121155d161e3907fd59ca81200`. All nineteen locked paths remain byte-identical to that SHA. This phase changes only the baseline, verification record and existing TASK-75 Backlog record; production code, tests, helpers and approved spec remain unchanged.
+The accepted source/test lock is `cda8f2a1ab52de121155d161e3907fd59ca81200`. All nineteen locked source/test paths remain byte-identical to that SHA. The final correction changes the baseline and metadata only. Closure updates the spec status, verification record and existing TASK-75 Backlog record.
 
 ## Initial complete inventory
 
@@ -743,8 +743,8 @@ These checks cover only the two changed documentation/Backlog paths. Markdown, B
 - The behavioral owners use Bun tests, mock ports and `tests/support/room-rig.ts`. They prove the replica contracts exercised by those fixtures, not live Owlbear host behavior.
 - The initial five-module run observed zero timeouts. The three timeout entries retained from the original 68-entry baseline remain separate timeout verdicts; no new timeout was classified as killed or equivalent.
 - Replay-4 cleaned its owned detached worktree, and the initial runner cleaned all temporary mutation worktrees. Caller source was unchanged in both runs.
-- Final-v2 five-module comparison, final counts and zero-new status are complete and recorded above. The caller-owned closing review and terminal task completion remain pending.
-- Batch-2 corrected the baseline and ledger after that historical final-v2 run. A fresh full five-module probe and confirming review are pending and caller-owned; no complete current probe or full static/unit/browser/build pass is claimed here.
+- Historical final-v2 and batch-2 records retain their original source revisions and limits. Later review corrections supersede their classifications.
+- Final acceptance uses the complete native run, the isolated C1 control and the current comparison described below. Mock evidence does not establish live Owlbear host behavior.
 
 ## Evidence paths
 
@@ -791,7 +791,7 @@ Focused owner evidence uses source SHA `cda8f2a1ab52de121155d161e3907fd59ca81200
 
 The immutable executed native run remains at source `c3e40df7aab4ba85616c06a2d818348f693c8da1` with `1089 total / 927 killed / 162 survived / 0 timeout`.
 Its raw results, summary, provenance, comparison and parent-check summary are unchanged.
-The targeted full-replica C1 control is executed and preserved. Explicit one-row evidence composition, native comparison, final global/unit checks, targeted C1 confirmation/review and final acceptance remain pending.
+At the metadata handoff, composition, comparison, parent checks and confirmation remained pending. They are now complete as recorded under Final acceptance.
 No composite result is labeled as an executed full run.
 
 ### Current batch-4 checks and limits
@@ -811,3 +811,35 @@ No global lint, typecheck, full unit, directory replica, browser, build, full fi
 ## D5 preserved-original 65/3 scope
 
 D5 preserves the independent TASK-66 oracle for the original three module paths: `src/replica/catch-up.ts`, `src/replica/room-copy.ts` and `src/replica/window-publisher.ts` must retain exactly 65 survivor entries and 3 timeout entries. The expanded registry is intentionally not used as the expected global count. The exact deletion controls removed one original survivor while retaining all 177 approved added-module entries (64 vs 65, assertion-red exit 1, restored green exit 0) and one original timeout (2 vs 3, assertion-red exit 1, restored green exit 0); both controls used `bun test tools/mutants/probe/baseline.test.ts --test-name-pattern 'preserves 65 survivor entries'`. Evidence: `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/test-writer-5.report.md`, `test-writer-5/calibration-remove-survivor.*`, `test-writer-5/calibration-remove-timeout.*`, and the deletion script `delete-original-baseline-entry.mjs`.
+
+## Final acceptance
+
+The final checked source is `71561c88045dacc01c3dc35ff457082fb6d0f528`. Finalization changes documentation and Backlog state only.
+
+| Evidence | Revision | Observed result |
+| --- | --- | --- |
+| Complete native five-module sweep | `c3e40df7aab4ba85616c06a2d818348f693c8da1` | 1089 total, 927 killed, 162 survived, 0 timeouts; actual runner comparison 0/0/0 |
+| Isolated C1 native-anchor control | `cda8f2a1ab52de121155d161e3907fd59ca81200` | Exact mutation assertion-red; restored full replica suite 1119 pass, 0 fail |
+| Explicit one-row composition and current native comparison | `71561c88045dacc01c3dc35ff457082fb6d0f528` | 928 killed, 161 survived, no timeouts; zero new survivors, zero new timeouts, zero missing |
+| Parent format, lint and typecheck | `71561c88045dacc01c3dc35ff457082fb6d0f528` | All exit 0 |
+| Parent full unit suite | `71561c88045dacc01c3dc35ff457082fb6d0f528` | 3286 pass, one environment skip, zero fail |
+| Browser suite and build | `c3e40df7aab4ba85616c06a2d818348f693c8da1` | 521 browser tests pass; build pass; reused with unchanged application inputs |
+
+Only `engine-access.test.ts` changed among probe execution inputs after the complete native sweep. It adds the isolated C1 owner and live control. Production, generator, helpers and prior test bodies are unchanged. The exact C1 control supplies the changed row. Raw complete-run files remain untouched.
+
+The current baseline has 229 entries, including the unchanged original 68 objects. The selected modules have 161 entries. Every one is represented as a survivor in the explicit evidence. All 143 classified gaps have assertion-red/restored-green evidence and killed results. The cumulative 304-anchor ledger is complete.
+
+The first review used all three project layers. Confirming review checked the corrections and found one remaining C1 gap. The exact targeted fix passed confirmation by its source reviewer. The independent verification reviewer found no remaining blocker. No retained finding, deferred fix or open decision remains.
+
+Evidence root: `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/`.
+
+| Final evidence | Relative path under the evidence root |
+| --- | --- |
+| Complete native run and provenance | `review-batch-2/final-results.json`, `review-batch-2/final-provenance.json` |
+| Exact targeted C1 replica control | `review-batch-4/parent-replica-control/result.json`, `red.log`, `green.log`, `mutation.patch` |
+| Explicit composition and provenance | `review-batch-4/composed-results.json`, `review-batch-4/composed-provenance.json` |
+| Current native comparison | `review-batch-4/final-comparison.json` |
+| Final parent check results | `review-batch-4/parent-checks/summary.json` |
+| Reused browser/build results | `review-batch-2/parent-full-checks/summary.json` |
+
+Probe and control worktrees were removed. The global worktree inventory changed through unrelated user work; no unrelated worktree was removed by this task. There was no push, deployment or live Owlbear verification.
