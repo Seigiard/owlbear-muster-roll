@@ -119,3 +119,11 @@ context:
 | Edge E6: newer-format room ingress after stop | medium | Same verified parser-before-stopped ordering as B4. Patch. |
 
 All retained findings are local verification/classification corrections with no new public surface or gameplay decision. They route to patch. None requires changing the approved frozen intent or reverting sound implementation.
+
+### Confirming review and refinements
+
+- B9 refinement: the inner OR mutation sends a null cancelled proposal and is a calibrated gap. The outer exact mutation is `record === null || stopped && role === 'GM'`; operator precedence preserves the unconditional null guard. Its 0/0 control refutes the broader original claim for that anchor. The corrected equivalent reason is retained.
+- B3 matching-site correction: the full probe also killed `engine > dropPendingWork / drop commandRouting.clearPendingIds()`. The first fix inventory omitted that delegating wrapper. An independent replay reaches the existing generation-replacement assertion (`old-free` instead of `fresh`) and restores green. All four cleanup sites are now classified as covered gaps.
+- Confirming verification reviewer: no blocking findings after inspecting all 142 red/green records, corrected callers, current baseline and metadata through `31577e85ae03211aca7af30a0d17de08531abde6`.
+- Confirming source reviewer C1 — medium, patch: `followParty / if→false / stopped` remains incorrectly equivalent. `party-roster.ts:35-43` can finish its initial read after `stop: unsubscribe` at :84; stop neither cancels the read nor changes its epoch. The resumed `replace` invokes `onReplace`, so the mutated engine guard publishes a changed party header after stop. Add a controlled held-read behavioral owner and exact assertion-red/restored-green control, then reclassify the anchor. No product or production change is needed.
+- Verification reuse: the complete native five-module run at `c3e40df7aab4ba85616c06a2d818348f693c8da1` is immutable historical evidence (927 killed, 162 survived, no timeouts). A later targeted control must retain its own revision and result; it must not be relabeled as another full run. Reuse unchanged test/source evidence and rerun the comparison for the revised baseline with explicit provenance.
