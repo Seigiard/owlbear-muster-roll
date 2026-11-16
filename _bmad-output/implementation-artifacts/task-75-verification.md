@@ -679,13 +679,13 @@ The caller's authoritative observation was `worktreeInventoryRestored=false` bec
 
 Only focused metadata checks were run. Durable logs record the command, actual output and exit, plus source SHA or exact precommit diff state.
 
-| Check | Command / evidence | Result |
-| --- | --- | --- |
+| Check | Command / evidence | Result | Evidence |
+| --- | --- | --- | --- |
 | Focused baseline consumer | `bun test tools/mutants/probe/baseline.test.ts` | exit 0; 9 pass, 0 fail, 9 expectations | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/checks/focused-baseline.log` |
-| Touched-path format | `bunx oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern --check ...` | exit 0; all matched files use the correct format | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/checks/format.log` |
+| Touched-path format | `bunx oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern --check ...` | exit 0; only JSON was formatted; Markdown/Backlog skipped by repository config (1 matched file) | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/checks/format.log` |
 | Whitespace / scope / ledger / lock audit | `git diff --check` and parsed audit | exit 0; exact one removal, 304 rows, lock18/source/spec unchanged; final `audit.py` exit 0 | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/checks/metadata-audit.log`; `chain-validation.json`; `checks/final-audit.log` |
 | Backlog task view | `backlog task view TASK-75 --plain` | exit 0; task In Progress and AC #4 unchecked | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/checks/backlog.log` |
-| Fresh full probe and confirming review | caller-owned | **PENDING, caller-owned** |
+| Fresh full probe and confirming review | caller-owned | **PENDING, caller-owned** | Parent decision |
 
 No global lint, typecheck, full unit, replica, browser, build, full probe or new review was run in batch 3. AC #4 remains unchecked until the parent fresh-probe/review decision.
 
