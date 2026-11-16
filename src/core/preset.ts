@@ -346,14 +346,48 @@ export function openTabIndex(
 }
 
 export function repeatSectionById(layout: TemplateLayout, id: string): PresetSection | null {
-  return repeatSectionPlace(layout, id)?.section ?? null;
+  const scope = repeatScopeById(layout, id);
+
+  if (scope === null) return null;
+
+  return scope.row === null
+    ? scope.section
+    : { ...scope.section, repeat: scope.row.repeat, rows: [scope.row] };
 }
 
 export function repeatSectionPlace(
   layout: TemplateLayout,
   id: string,
 ): { place: TemplateSectionPlace; section: PresetSection } | null {
-  return placedSections(layout).find(({ section }) => repeatSectionId(section) === id) ?? null;
+  const scope = repeatScopeById(layout, id);
+
+  return scope === null
+    ? null
+    : {
+        place: scope.place,
+        section:
+          scope.row === null
+            ? scope.section
+            : { ...scope.section, repeat: scope.row.repeat, rows: [scope.row] },
+      };
+}
+
+export type RepeatScope = {
+  place: TemplateSectionPlace;
+  section: PresetSection;
+  row: PresetRow | null;
+};
+
+export function repeatScopeById(layout: TemplateLayout, id: string): RepeatScope | null {
+  for (const { place, section } of placedSections(layout)) {
+    if (section.repeat?.id === id) return { place, section, row: null };
+
+    const row = section.rows.find((candidate) => candidate.repeat?.id === id);
+
+    if (row !== undefined) return { place, section, row };
+  }
+
+  return null;
 }
 
 export function plainRow(layout: TemplateLayout, rowId: string): readonly PresetCell[] | null {
@@ -621,6 +655,7 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
       }
 
       tabRepeatIds.add(tab.repeat.id);
+      repeatIds.add(tab.repeat.id);
 
       if (!hasTextFieldInScope(tab, tab.repeat.nameField, true)) {
         problems.push({
@@ -650,26 +685,26 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
       }
 
       const scope = section.repeat === undefined ? rootFields : new Set<string>();
-      const rowRepeatIds = new Set<string>();
       section.rows.forEach((item, ri) => {
         const rowPath = [...sectionPath, ri];
 
         if (item.repeat !== undefined && !validRepeat(item.repeat))
           problems.push({ failure: { code: 'bad-repeat' }, path: rowPath });
 
-        if (item.repeat !== undefined && rowRepeatIds.has(item.repeat.id)) {
+        if (item.repeat !== undefined && repeatIds.has(item.repeat.id)) {
           problems.push({
             failure: { code: 'duplicate-section', detail: short(item.repeat.id) },
             path: rowPath,
           });
         }
 
-        if (item.repeat !== undefined) rowRepeatIds.add(item.repeat.id);
+        if (item.repeat !== undefined) repeatIds.add(item.repeat.id);
 
         if (section.columns !== undefined && item.cells.length > section.columns)
           problems.push({ failure: { code: 'row-too-wide' }, path: rowPath });
+        const rowScope = item.repeat === undefined ? scope : new Set<string>();
         item.cells.forEach((candidate, ci) => {
-          const failure = cellFailure(candidate, scope);
+          const failure = cellFailure(candidate, rowScope);
 
           if (failure !== null) problems.push({ failure, path: [...rowPath, ci] });
         });

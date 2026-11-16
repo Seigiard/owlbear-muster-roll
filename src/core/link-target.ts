@@ -2,6 +2,7 @@ import type { JsonValue } from '@/core/json';
 import {
   repeatSectionById,
   repeatSectionPlace,
+  repeatScopeById,
   placedSections,
   type Preset,
   type PresetSection,
@@ -187,18 +188,38 @@ export function tokenCellPlace(
     return null;
   }
 
-  for (const { place, section } of placedSections(template)) {
-    if (
-      (repeatSectionId === null && section.repeat !== undefined) ||
-      (repeatSectionId !== null && section.repeat?.id !== repeatSectionId)
-    ) {
-      continue;
+  if (repeatSectionId !== null) {
+    const scope = repeatScopeById(template, repeatSectionId);
+
+    if (scope === null) return null;
+
+    const rows =
+      scope.row === null
+        ? scope.section.rows.filter((row) => row.repeat === undefined)
+        : [scope.row];
+
+    const row = rows.find((candidate) =>
+      candidate.cells.some((cell) => cell.kind === 'token' && cell.id === cellId),
+    );
+
+    if (row !== undefined) {
+      return {
+        tabIndex: scope.place.tabIndex,
+        sectionIndex: scope.place.sectionIndex,
+        rowIndex: scope.section.rows.indexOf(row),
+        section: scope.section,
+        row,
+      };
     }
 
+    return null;
+  }
+
+  for (const { place, section } of placedSections(template)) {
+    if (section.repeat !== undefined) continue;
+
     for (const [rowIndex, row] of section.rows.entries()) {
-      if (repeatSectionId === null && row.repeat !== undefined) {
-        continue;
-      }
+      if (row.repeat !== undefined) continue;
 
       if (row.cells.some((cell) => cell.kind === 'token' && cell.id === cellId)) {
         return {

@@ -11,7 +11,7 @@ import {
 } from '@/core/link-target';
 import {
   layoutSections,
-  repeatSectionId,
+  repeatSectionById,
   rowCells,
   type Preset,
   type PresetSection,
@@ -77,6 +77,26 @@ export type PickerGroup = {
   section: PresetSection | null;
   targets: PickerTarget[];
 };
+
+const groupMeta = new WeakMap<
+  PickerGroup,
+  { heading: string; collisionHeading: string; cellId: string }
+>();
+
+const distinctTargetCells = new WeakSet<PickerTarget>();
+
+export function pickerGroupHeading(group: PickerGroup): string {
+  return (
+    groupMeta.get(group)?.heading ??
+    (group.section === null
+      ? group.template.title
+      : (sectionTitle(group.section) ?? group.template.title))
+  );
+}
+
+export function pickerTargetNeedsCellIdentity(choice: PickerTarget): boolean {
+  return distinctTargetCells.has(choice);
+}
 
 // The icons of "Открыть лист", GM first. Owlbear shows the first icon whose filter matches.
 const OPEN_ROLES: readonly PlayerRole[] = ['GM', 'PLAYER'];
@@ -198,26 +218,36 @@ export function pickerGroups(
     const sheetIds = templateSheetIds(records.values(), preset, template);
 
     for (const { cellId, section } of tokenCells(template, null)) {
-      groups.push({
+      const group: PickerGroup = {
         template,
         section: null,
         targets: sheetIds.map((sheetId) =>
           targetOf(template, { sheetId, instanceId: null, cellId }, cellId, null, section),
         ),
+      };
+
+      groups.push(group);
+      groupMeta.set(group, {
+        heading: template.title,
+        collisionHeading: sectionTitle(section) ?? template.title,
+        cellId,
       });
     }
 
-    for (const section of layoutSections(template)) {
-      const sectionId = repeatSectionId(section);
+    const repeatIds = layoutSections(template).flatMap((section) => [
+      ...(section.repeat === undefined ? [] : [section.repeat.id]),
+      ...section.rows.flatMap((row) => (row.repeat === undefined ? [] : [row.repeat.id])),
+    ]);
 
-      if (sectionId === null) {
-        continue;
-      }
+    for (const sectionId of repeatIds) {
+      const repeatedSection = repeatSectionById(template, sectionId);
+
+      if (repeatedSection === null) continue;
 
       for (const { cellId } of tokenCells(template, sectionId)) {
-        groups.push({
+        const group: PickerGroup = {
           template,
-          section,
+          section: repeatedSection,
           targets: sheetIds.flatMap((sheetId) =>
             repeatBlocks(records, sheetId, sectionId).map((block) =>
               targetOf(
@@ -229,19 +259,47 @@ export function pickerGroups(
                   cellId,
                 },
                 cellId,
-                repeatBlockName(records, sheetId, section, block.instanceId),
-                section,
+                repeatBlockName(records, sheetId, repeatedSection, block.instanceId),
+                repeatedSection,
               ),
             ),
           ),
-        });
+        };
+
+        groups.push(group);
+        const heading = sectionTitle(repeatedSection) ?? template.title;
+
+        groupMeta.set(group, { heading, collisionHeading: heading, cellId });
       }
     }
   }
 
-  return groups.flatMap((group) =>
-    group.targets.length === 0 ? [] : [{ ...group, targets: noTokenFirst(group.targets) }],
-  );
+  const headingCounts = new Map<string, number>();
+
+  for (const group of groups) {
+    const heading = pickerGroupHeading(group);
+    headingCounts.set(heading, (headingCounts.get(heading) ?? 0) + 1);
+  }
+
+  return groups.flatMap((group) => {
+    if (group.targets.length === 0) return [];
+
+    const heading = pickerGroupHeading(group);
+    const meta = groupMeta.get(group);
+    const cellId = meta?.cellId ?? group.targets[0]?.cellId ?? '';
+    const distinct = (headingCounts.get(heading) ?? 0) > 1;
+
+    if (distinct) for (const target of group.targets) distinctTargetCells.add(target);
+
+    const result = { ...group, targets: noTokenFirst(group.targets) };
+    groupMeta.set(result, {
+      heading: distinct ? `${meta?.collisionHeading ?? heading} — ${cellId}` : heading,
+      collisionHeading: meta?.collisionHeading ?? heading,
+      cellId,
+    });
+
+    return [result];
+  });
 }
 
 function tokenCells(
@@ -249,22 +307,22 @@ function tokenCells(
   repeatId: string | null,
 ): { cellId: string; section: PresetSection }[] {
   return layoutSections(template).flatMap((section) => {
-    if (
-      (repeatId === null && section.repeat !== undefined) ||
-      (repeatId !== null && section.repeat?.id !== repeatId)
-    ) {
-      return [];
-    }
+    const rows =
+      repeatId === null
+        ? section.repeat === undefined
+          ? section.rows.filter((row) => row.repeat === undefined)
+          : []
+        : section.repeat?.id === repeatId
+          ? section.rows.filter((row) => row.repeat === undefined)
+          : section.repeat === undefined
+            ? section.rows.filter((row) => row.repeat?.id === repeatId)
+            : [];
 
-    return section.rows.flatMap((row) => {
-      if (repeatId === null && row.repeat !== undefined) {
-        return [];
-      }
-
-      return rowCells(row).flatMap((cell) =>
+    return rows.flatMap((row) =>
+      rowCells(row).flatMap((cell) =>
         cell.kind === 'token' ? [{ cellId: cell.id, section }] : [],
-      );
-    });
+      ),
+    );
   });
 }
 

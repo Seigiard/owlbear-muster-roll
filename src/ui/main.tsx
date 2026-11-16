@@ -562,6 +562,7 @@ function WindowRoot({
           editing={editing}
           rolling={rolling}
           pending={null}
+          role="GM"
           blockTools={blockTools}
           reveal={blockReveal?.sheet === tab.id ? blockReveal : null}
           onRevealed={clearBlockReveal}
@@ -607,6 +608,7 @@ function WindowRoot({
           editing={mayEdit ? editing : null}
           rolling={rolling}
           pending={pendingBySheet.get(tab.sheetId) ?? null}
+          role="PLAYER"
           reveal={blockReveal?.sheet === tab.id ? blockReveal : null}
           onRevealed={clearBlockReveal}
         />

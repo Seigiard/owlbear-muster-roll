@@ -396,8 +396,18 @@ export function templateScopes(layout: TemplateLayout): TemplateScopes {
 
     if (sectionId !== null) {
       scopes.sections.set(sectionId, sectionFields(section));
-    } else if (section.repeat === undefined) {
+    } else {
       for (const row of section.rows) {
+        const rowRepeatId = row.repeat?.id;
+
+        if (rowRepeatId !== undefined) {
+          scopes.sections.set(
+            rowRepeatId,
+            row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field'),
+          );
+          continue;
+        }
+
         const id = firstFieldId(row);
 
         if (id === null) continue;

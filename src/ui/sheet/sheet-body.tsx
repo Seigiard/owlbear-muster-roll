@@ -10,6 +10,7 @@ import {
   type TemplateLayout,
 } from '@/core/preset';
 import { repKeyPrefix, rowKey, type VersionedRecord } from '@/core/records';
+import { sectionShownTo } from '@/core/visibility';
 import { revealElement } from '@/ui/reveal';
 
 import { DiceSheetContext, type DiceRolling, type DiceSheet } from './dice-button';
@@ -24,7 +25,7 @@ export type BlockReveal = { instanceId: string | null; cellId: string; focus: bo
 type SheetBodyProps = {
   // The sheet's template, as `core/sheets` resolves it.
   // The title names an untitled repeat section's "Добавить".
-  template: Pick<Template, 'tabs' | 'title'>;
+  template: Template;
   sheetId: string;
   // The tab this sheet shows, as the caller's one AD-26 open-tab check picks it.
   openTab: number | null;
@@ -35,6 +36,7 @@ type SheetBodyProps = {
   rolling: DiceRolling;
   // A player's edits that wait for a GM (UX-DR28). `null` for a GM, whose edits never wait.
   pending: SheetPending | null;
+  role?: 'GM' | 'PLAYER';
   // The GM's controls on each repeat block, `null` for a player and the preview.
   blockTools?: BlockTools | null;
   reveal?: BlockReveal | null;
@@ -50,6 +52,7 @@ export function SheetBody({
   editing,
   rolling,
   pending,
+  role = 'GM',
   blockTools = null,
   reveal = null,
   onRevealed,
@@ -121,20 +124,26 @@ export function SheetBody({
             data-sheet-body
             data-tab-index={openTab}
           >
-            {(template.tabs[openTab]?.sections ?? []).map((section, index) => (
-              <SheetSection
-                key={`${openTab}.${index}`}
-                section={section}
-                tabIndex={openTab}
-                sectionIndex={index}
-                templateTitle={template.title}
-                sheetId={sheetId}
-                records={shownRecords}
-                readOnly={editing === null}
-                pending={pending}
-                blockTools={blockTools}
-              />
-            ))}
+            {(template.tabs[openTab]?.sections ?? []).flatMap((section, index) =>
+              sectionShownTo(role, template, openTab, index)
+                ? [
+                    <SheetSection
+                      key={`${openTab}.${index}`}
+                      template={template}
+                      section={section}
+                      tabIndex={openTab}
+                      sectionIndex={index}
+                      templateTitle={template.title}
+                      sheetId={sheetId}
+                      records={shownRecords}
+                      readOnly={editing === null}
+                      pending={pending}
+                      blockTools={blockTools}
+                      role={role}
+                    />,
+                  ]
+                : [],
+            )}
           </div>
         </div>
       </DiceSheetContext>
@@ -165,6 +174,11 @@ function sheetValuesSignature(
     }
 
     for (const row of section.rows) {
+      if (row.repeat !== undefined) {
+        repeatPrefixes.push(repKeyPrefix(sheetId, row.repeat.id));
+        continue;
+      }
+
       const id = firstFieldId(row);
 
       if (id !== null) {

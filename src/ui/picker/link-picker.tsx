@@ -5,12 +5,13 @@ import { Button as AriaButton, Checkbox } from 'react-aria-components';
 
 import { linkTargetKey, linkTargetOf, type LinkTarget } from '@/core/link-target';
 import { repeatSectionId } from '@/core/preset';
-import { sectionTitle } from '@/core/sheet-values';
 import { LINK_PICKER_TIMING, type LinkPickerTiming } from '@/core/timing';
 import {
   linkKey,
   liveLinks,
+  pickerGroupHeading,
   pickerGroups,
+  pickerTargetNeedsCellIdentity,
   type PickerGroup,
   type PickerTarget,
 } from '@/core/token-links';
@@ -403,11 +404,11 @@ export function LinkPicker({
       <div aria-busy={picker.attempt !== null} className="flex flex-col gap-2">
         {labelOffer()}
         {groups.map((group) => {
-          const heading = groupHeading(group);
+          const heading = pickerGroupHeading(group);
 
           return (
             <section
-              key={`${group.template.id}:${group.section === null ? '' : (repeatSectionId(group.section) ?? '')}`}
+              key={`${group.template.id}:${group.section === null ? '' : (repeatSectionId(group.section) ?? '')}:${group.targets[0]?.cellId ?? ''}`}
               aria-label={heading}
               className="flex flex-col gap-1"
             >
@@ -475,6 +476,8 @@ export function TokenCellPicker({
     [links, targetKey],
   );
 
+  const [failed, setFailed] = useState(false);
+
   useEffect(() => {
     if (!loaded || !sync.firstCatchUpDone) {
       return;
@@ -518,7 +521,7 @@ export function TokenCellPicker({
     setBusy(true);
 
     try {
-      await Promise.all(
+      const outcomes = await Promise.all(
         [...selected].map((tokenId) =>
           sendCommand({
             type: 'link-set',
@@ -529,7 +532,20 @@ export function TokenCellPicker({
           }),
         ),
       );
-      await onLinked();
+
+      if (!outcomes.every((outcome) => outcome.kind === 'answered')) {
+        setFailed(true);
+
+        return;
+      }
+
+      try {
+        await onLinked();
+      } catch {
+        setFailed(true);
+      }
+    } catch {
+      setFailed(true);
     } finally {
       setBusy(false);
     }
@@ -571,7 +587,11 @@ export function TokenCellPicker({
                     {names.get(tokenId) || tokenId}
                   </span>
                   {isLinked ? (
-                    <span className="text-label-sm text-text-muted">{copy.status.tokenLinked}</span>
+                    <span className="text-label-sm text-text-muted">
+                      {linkedToTarget.has(tokenId)
+                        ? copy.status.tokenLinkedCurrent
+                        : copy.status.tokenLinkedElsewhere}
+                    </span>
                   ) : null}
                 </label>
               </li>
@@ -600,7 +620,22 @@ export function TokenCellPicker({
                 linkedToTarget.has(tokenId) ? [sendCommand({ type: 'link-clear', tokenId })] : [],
               ),
             )
-              .then(onLinked)
+              .then(async (outcomes) => {
+                if (!outcomes.every((outcome) => outcome.kind === 'answered')) {
+                  setFailed(true);
+
+                  return;
+                }
+
+                try {
+                  await onLinked();
+                } catch {
+                  setFailed(true);
+                }
+              })
+              .catch(() => {
+                setFailed(true);
+              })
               .finally(() => {
                 setBusy(false);
               });
@@ -610,6 +645,9 @@ export function TokenCellPicker({
           {copy.command.unlinkSheet}
         </AriaButton>
       </div>
+      <p aria-live="polite" className="text-label-sm text-danger-text empty:hidden">
+        {failed ? copy.linkFailed : null}
+      </p>
     </div>
   );
 }
@@ -667,19 +705,12 @@ function orderReversePickerIds(
   return ordered;
 }
 
-// A sheet set or a single sheet groups by its `title`, a repeat section by its own title, and an
-// untitled one by its template's.
-function groupHeading(group: PickerGroup): string {
-  return group.section === null
-    ? group.template.title
-    : (sectionTitle(group.section) ?? group.template.title);
-}
-
 // The visible parts joined by commas, so a screen reader does not run them together. Built here,
 // as the computed name of separate spans adds a space before each comma.
 export function targetAccessibleName(choice: PickerTarget): string {
   return [
     shownName(targetIdentity(choice)),
+    pickerTargetNeedsCellIdentity(choice) ? choice.cellId : null,
     choice.blockName === null || choice.blockName === '' ? null : shownName(choice.sheetName),
     choice.linked ? copy.status.tokenLinked : null,
   ]

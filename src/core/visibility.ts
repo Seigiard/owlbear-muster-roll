@@ -49,6 +49,38 @@ export function tabShownTo(role: PlayerRole, template: Template, tabIndex: numbe
   );
 }
 
+export function sectionShownTo(
+  role: PlayerRole,
+  template: Template,
+  tabIndex: number,
+  sectionIndex: number,
+): boolean {
+  const section = template.tabs[tabIndex]?.sections[sectionIndex];
+
+  return (
+    section !== undefined &&
+    tabShownTo(role, template, tabIndex) &&
+    (role === 'GM' || section.visibility !== 'gm')
+  );
+}
+
+export function rowShownTo(
+  role: PlayerRole,
+  template: Template,
+  tabIndex: number,
+  sectionIndex: number,
+  rowIndex: number,
+): boolean {
+  const section = template.tabs[tabIndex]?.sections[sectionIndex];
+  const row = section?.rows[rowIndex];
+
+  return (
+    row !== undefined &&
+    sectionShownTo(role, template, tabIndex, sectionIndex) &&
+    (role === 'GM' || row.visibility !== 'gm')
+  );
+}
+
 // A dice cell inherits visibility from its template, tab, section and row. The place is already
 // checked by the roll parser, so an invalid layout position is not shown to a player.
 export function rollTargetShownTo(
