@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { useStore } from '@nanostores/react';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 
@@ -8,6 +8,7 @@ import { FORMAT_VERSION } from '@/core/format-version';
 import {
   parsePresetFile,
   PRESET_FILE_BYTE_LIMIT,
+  formatPresetFile,
   type Preset,
   type PresetFailure,
 } from '@/core/preset';
@@ -19,6 +20,7 @@ import {
   SNAPSHOT_FILE_BYTE_LIMIT,
   type SnapshotImportFailure,
 } from '@/core/snapshot-import';
+import type { VersionedRecord } from '@/core/records';
 import { encodeSnapshotFile, formatSnapshotFile, snapshotFileName } from '@/core/snapshot-file';
 import { PREVIEW_THEMES, type PreviewThemeName } from '@/ui/themes';
 import { copy } from '@/copy';
@@ -28,11 +30,23 @@ import { fileFailureText } from '@/ui/settings/snapshot-text';
 import { Banner, type BannerMessage } from '@/ui/primitives/banner';
 import { Button } from '@/ui/primitives/button';
 import { applyTheme } from '@/ui/theme';
+import type {
+  FileAccessPort,
+  FileAccessResult,
+  FileContents,
+  FileReference,
+} from '@/core/file-access';
 
 import { type BuilderStore } from './builder-store';
-import { isEmptyDocument, toPreset } from './document';
+import {
+  attachedFilesReducer,
+  emptyAttachedFilesState,
+  type AttachedFile,
+  type AttachedFilesState,
+} from './attached-files';
+import { isEmptyDocument, toPreset, type BuilderDocument } from './document';
 import { BUILDER_EXAMPLES } from './examples';
-import { FileBlock, type AttachedFile, type FileBlockKind } from './file-block';
+import { FileBlock, type FileBlockKind } from './file-block';
 import { downloadFileName, nameFromFile } from './file-name';
 import { ItemForm } from './item-form';
 import { PreviewPane } from './preview-pane';
@@ -47,9 +61,23 @@ type OpenRequest = {
   name: string;
   label: string;
   fileName: string | null;
+  fileReference?: FileReference;
+  fileContents?: FileContents;
 };
 
 type ClearRequest = { kind: FileBlockKind; fileName: string };
+
+type AttachedText =
+  | { ok: true; kind: 'preset'; preset: Preset; canonicalText: string }
+  | {
+      ok: true;
+      kind: 'snapshot';
+      records: readonly VersionedRecord[];
+      file: ReturnType<typeof encodeSnapshotFile>;
+      canonicalText: string;
+    };
+
+type AttachedTextResult = AttachedText | { ok: false; message: string };
 
 const EMPTY_PRESET: Preset = { v: FORMAT_VERSION, templates: [] };
 
@@ -58,7 +86,13 @@ const TOP_BUTTON_CLASS =
 
 // CAP-20 to CAP-28: the preset builder page, layout B. The top bar spans the page. Under it, the
 // structure tree and the form of its selected item on the left, and the preview on the right.
-export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
+export function BuilderPage({
+  store,
+  fileAccess,
+}: {
+  store: BuilderStore;
+  fileAccess: FileAccessPort;
+}): ReactNode {
   const state = useStore(store.$state);
   const document = state.step.document;
 
@@ -78,14 +112,23 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
     [document, problems.length, state.step.records],
   );
 
+  const presetText = useMemo(() => formatPresetFile(toPreset(document)), [document]);
+
   const [theme, setTheme] = useState<PreviewThemeName>(readThemeChoice);
   const [request, setRequest] = useState<OpenRequest | null>(null);
   const [fileMessage, setFileMessage] = useState<BannerMessage | undefined>(undefined);
   const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null);
-  const [presetFile, setPresetFile] = useState<AttachedFile | null>(null);
-  const [snapshotFile, setSnapshotFile] = useState<AttachedFile | null>(null);
+
+  const [files, dispatchFiles] = useReducer(
+    attachedFilesReducer,
+    undefined,
+    emptyAttachedFilesState,
+  );
+
   const [clearRequest, setClearRequest] = useState<ClearRequest | null>(null);
   const structureHeadingId = useId();
+  const filesRef = useRef<AttachedFilesState>(files);
+  filesRef.current = files;
 
   useEffect(() => {
     applyTheme(PREVIEW_THEMES[theme], window.document.documentElement);
@@ -93,21 +136,50 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
 
   useUndoKeys(store);
 
+  const presetFile = files.preset.file;
+  const snapshotFile = files.snapshot.file;
+
   function open(next: OpenRequest): void {
     store.open(next.preset, next.origin, next.name);
-    setPresetFile(next.fileName === null ? null : { name: next.fileName, lastSyncAt: new Date() });
-    setSnapshotFile(null);
+    dispatchFiles({ type: 'detach', kind: 'snapshot' });
+
+    if (next.fileName === null) {
+      dispatchFiles({ type: 'detach', kind: 'preset' });
+    } else {
+      const canonicalText = formatPresetFile(next.preset);
+
+      dispatchFiles({
+        type: 'attach',
+        kind: 'preset',
+        reference: next.fileReference ?? null,
+        name: next.fileName,
+        contents: next.fileContents ?? { text: canonicalText, modifiedAt: new Date() },
+        canonicalText,
+      });
+    }
+
     setRequest(null);
     setFileMessage(undefined);
   }
 
   function clear(kind: FileBlockKind): void {
-    if (kind === 'preset') {
-      const current = store.$state.get().step;
+    const current = store.$state.get().step;
 
+    const text =
+      kind === 'preset' ? formatPresetFile(EMPTY_PRESET) : snapshotTextFor([], current.document);
+
+    dispatchFiles({ type: 'prepare-clear', kind, documentText: text });
+
+    if (kind === 'preset') {
       store.open(EMPTY_PRESET, current.origin === null ? null : EMPTY_PRESET, current.name);
     } else {
       store.setSnapshot([]);
+    }
+
+    const file = attachedFile(kind);
+
+    if (file?.reference !== null && file?.reference !== undefined) {
+      void writeFile(kind, file, text);
     }
 
     setClearRequest(null);
@@ -127,7 +199,10 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
   function requestOpen(next: OpenRequest): void {
     setFileMessage(undefined);
 
-    if (isEmptyDocument(store.$state.get().step.document)) {
+    if (
+      isEmptyDocument(store.$state.get().step.document) ||
+      JSON.stringify(toPreset(store.$state.get().step.document)) === JSON.stringify(next.preset)
+    ) {
       open(next);
     } else {
       setRequest(next);
@@ -155,6 +230,71 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
       label: file.name,
       fileName: file.name,
     });
+  }
+
+  async function openAttachedFile(kind: FileBlockKind): Promise<boolean> {
+    const opened = await fileAccess.open({ mode: 'open' });
+
+    if (!opened.ok) {
+      setFileMessage({ variant: 'danger', text: opened.error.reason });
+
+      return false;
+    }
+
+    if (opened.value === null) {
+      return true;
+    }
+
+    const read = await fileAccess.read(opened.value);
+
+    if (!read.ok) {
+      setFileMessage({ variant: 'danger', text: read.error.reason });
+
+      return false;
+    }
+
+    if (kind === 'preset') {
+      const parsed = parsePresetFile(read.value.text);
+
+      if (!parsed.ok) {
+        setFileMessage({ variant: 'danger', text: presetFailureMessage(parsed.error) });
+
+        return true;
+      }
+
+      requestOpen({
+        preset: parsed.value,
+        origin: parsed.value,
+        name: store.$state.get().step.name,
+        label: opened.value.name,
+        fileName: opened.value.name,
+        fileReference: opened.value,
+        fileContents: read.value,
+      });
+
+      return true;
+    }
+
+    const imported = parseAttachedText('snapshot', read.value.text);
+
+    if (!imported.ok) {
+      setFileMessage({ variant: 'danger', text: imported.message });
+
+      return true;
+    }
+
+    applyAttachedText(imported);
+    dispatchFiles({
+      type: 'attach',
+      kind: 'snapshot',
+      reference: opened.value,
+      name: opened.value.name,
+      contents: read.value,
+      canonicalText: imported.canonicalText,
+    });
+    setFileMessage(undefined);
+
+    return true;
   }
 
   async function openSnapshotFile(file: File): Promise<void> {
@@ -189,7 +329,14 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
     }
 
     store.setSnapshot(imported.value.records);
-    setSnapshotFile({ name: file.name, lastSyncAt: new Date() });
+    dispatchFiles({
+      type: 'attach',
+      kind: 'snapshot',
+      reference: null,
+      name: file.name,
+      contents: { text, modifiedAt: new Date() },
+      canonicalText: formatSnapshotFile(parsed.value),
+    });
     setFileMessage(undefined);
   }
 
@@ -206,6 +353,266 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
         fileName: null,
       });
     }
+  }
+
+  function openPresetInput(file: File): void {
+    void openFile(file);
+  }
+
+  function openSnapshotInput(file: File): void {
+    openSnapshotFile(file).catch(() => {
+      console.error('Muster Roll could not load a snapshot');
+    });
+  }
+
+  function parseAttachedText(kind: FileBlockKind, text: string): AttachedTextResult {
+    if (kind === 'preset') {
+      const parsed = parsePresetFile(text);
+
+      return parsed.ok
+        ? {
+            ok: true,
+            kind: 'preset',
+            preset: parsed.value,
+            canonicalText: formatPresetFile(parsed.value),
+          }
+        : { ok: false, message: presetFailureMessage(parsed.error) };
+    }
+
+    const parsed = parseSnapshotFile(text);
+
+    if (!parsed.ok) {
+      return { ok: false, message: fileFailureText(parsed.error) };
+    }
+
+    const step = store.$state.get().step;
+
+    const imported = importSnapshot(
+      parsed.value,
+      { preset: toPreset(step.document), data: encodePreset(toPreset(step.document)) },
+      'builder',
+    );
+
+    return imported.ok
+      ? {
+          ok: true,
+          kind: 'snapshot',
+          records: imported.value.records,
+          file: parsed.value,
+          canonicalText: formatSnapshotFile(parsed.value),
+        }
+      : { ok: false, message: snapshotImportFailureText(imported.error) };
+  }
+
+  useEffect(() => {
+    const file = files.preset.file;
+
+    if (file?.reference === null || file === null || problems.length > 0) {
+      if (
+        file !== null &&
+        file.status.kind !== 'blocked' &&
+        presetText !== files.preset.lastDocumentText
+      ) {
+        dispatchFiles({ type: 'block', kind: 'preset' });
+      }
+
+      return;
+    }
+
+    if (
+      files.preset.lastDocumentText === presetText &&
+      files.preset.forceWrite === 0 &&
+      files.preset.file?.status.kind !== 'blocked'
+    ) {
+      return;
+    }
+
+    void writeFile('preset', file, textForWrite(files.preset, presetText), presetText);
+  }, [
+    fileAccess,
+    files.preset.file,
+    files.preset.forceWrite,
+    files.preset.lastDocumentText,
+    files.preset.restoreDocumentText,
+    files.preset.restoreText,
+    presetText,
+    problems.length,
+  ]);
+
+  useEffect(() => {
+    const file = files.snapshot.file;
+
+    if (file?.reference === null || file === null || generatedSnapshot === null) {
+      if (
+        file !== null &&
+        generatedSnapshot === null &&
+        file.status.kind !== 'blocked' &&
+        files.snapshot.lastDocumentText !== null
+      ) {
+        dispatchFiles({ type: 'block', kind: 'snapshot' });
+      }
+
+      return;
+    }
+
+    if (
+      files.snapshot.lastDocumentText === generatedSnapshot &&
+      files.snapshot.forceWrite === 0 &&
+      files.snapshot.file?.status.kind !== 'blocked'
+    ) {
+      return;
+    }
+
+    void writeFile(
+      'snapshot',
+      file,
+      textForWrite(files.snapshot, generatedSnapshot),
+      generatedSnapshot,
+    );
+  }, [
+    fileAccess,
+    files.snapshot.file,
+    files.snapshot.forceWrite,
+    files.snapshot.lastDocumentText,
+    files.snapshot.restoreDocumentText,
+    files.snapshot.restoreText,
+    generatedSnapshot,
+  ]);
+
+  useEffect(() => followAttachedFile('preset'), [fileAccess, files.preset.file?.reference?.id]);
+  useEffect(() => followAttachedFile('snapshot'), [fileAccess, files.snapshot.file?.reference?.id]);
+
+  function followAttachedFile(kind: FileBlockKind): () => void {
+    const file = filesRef.current[kind].file;
+
+    if (file?.reference === null || file === null || fileAccess.capability !== 'write-and-follow') {
+      return () => undefined;
+    }
+
+    return fileAccess.follow(file.reference, (result) => {
+      void handleExternalResult(kind, result);
+    });
+  }
+
+  async function handleExternalResult(
+    kind: FileBlockKind,
+    result: FileAccessResult<FileContents>,
+  ): Promise<void> {
+    if (!result.ok) {
+      dispatchFiles({ type: 'fail', kind, message: result.error.reason });
+
+      return;
+    }
+
+    const parsed = parseAttachedText(kind, result.value.text);
+
+    if (!parsed.ok) {
+      dispatchFiles({ type: 'refuse', kind, message: parsed.message });
+
+      return;
+    }
+
+    const current = filesRef.current[kind];
+    const currentDocumentText = documentText(kind);
+
+    if (
+      current.lastDocumentText !== null &&
+      currentDocumentText !== current.lastDocumentText &&
+      currentDocumentText !== parsed.canonicalText
+    ) {
+      dispatchFiles({
+        type: 'conflict',
+        kind,
+        contents: result.value,
+        canonicalText: parsed.canonicalText,
+      });
+
+      return;
+    }
+
+    applyAttachedText(parsed);
+    dispatchFiles({
+      type: 'accept-external',
+      kind,
+      contents: result.value,
+      canonicalText: parsed.canonicalText,
+    });
+  }
+
+  function applyAttachedText(parsed: AttachedText): void {
+    if (parsed.kind === 'preset') {
+      store.open(parsed.preset, parsed.preset, store.$state.get().step.name);
+    } else {
+      store.setSnapshot(parsed.records);
+    }
+  }
+
+  function resolveConflict(kind: FileBlockKind, takeFile: boolean): void {
+    const conflict = filesRef.current[kind].conflict;
+
+    if (conflict === null) {
+      return;
+    }
+
+    if (!takeFile) {
+      dispatchFiles({ type: 'keep-local', kind });
+
+      return;
+    }
+
+    const parsed = parseAttachedText(kind, conflict.contents.text);
+
+    if (!parsed.ok) {
+      dispatchFiles({ type: 'refuse', kind, message: parsed.message });
+
+      return;
+    }
+
+    applyAttachedText(parsed);
+    dispatchFiles({ type: 'take-file', kind });
+  }
+
+  async function writeFile(
+    kind: FileBlockKind,
+    file: AttachedFile,
+    text: string,
+    canonicalDocumentText = text,
+  ): Promise<void> {
+    if (file.reference === null || fileAccess.capability !== 'write-and-follow') {
+      return;
+    }
+
+    const result = await fileAccess.write(file.reference, text);
+
+    if (!result.ok) {
+      dispatchFiles({ type: 'fail', kind, message: result.error.reason });
+
+      return;
+    }
+
+    if (documentText(kind) !== canonicalDocumentText) {
+      return;
+    }
+
+    dispatchFiles({
+      type: 'write-succeeded',
+      kind,
+      contents: result.value,
+      text,
+      documentText: canonicalDocumentText,
+    });
+  }
+
+  function attachedFile(kind: FileBlockKind): AttachedFile | null {
+    return filesRef.current[kind].file;
+  }
+
+  function documentText(kind: FileBlockKind): string {
+    const step = store.$state.get().step;
+
+    return kind === 'preset'
+      ? formatPresetFile(toPreset(step.document))
+      : snapshotTextFor(step.records, step.document);
   }
 
   const first = problems[0];
@@ -225,25 +632,22 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
         snapshotDownload={generatedSnapshot}
         presetFile={presetFile}
         snapshotFile={snapshotFile}
+        canAttach={fileAccess.capability === 'write-and-follow'}
         theme={theme}
         onTheme={(next) => {
           setTheme(next);
           saveThemeChoice(next);
         }}
         onOpenExample={openExample}
-        onOpenFile={(file) => {
-          void openFile(file);
-        }}
-        onOpenSnapshotFile={(file) => {
-          openSnapshotFile(file).catch(() => {
-            console.error('Muster Roll could not load a snapshot');
-          });
-        }}
+        onOpenFile={() => openAttachedFile('preset')}
+        onSelectFile={openPresetInput}
+        onOpenSnapshotFile={() => openAttachedFile('snapshot')}
+        onSelectSnapshotFile={openSnapshotInput}
         onDetachPreset={() => {
-          setPresetFile(null);
+          dispatchFiles({ type: 'detach', kind: 'preset' });
         }}
         onDetachSnapshot={() => {
-          setSnapshotFile(null);
+          dispatchFiles({ type: 'detach', kind: 'snapshot' });
         }}
         onClearPreset={() => {
           requestClear('preset');
@@ -274,6 +678,26 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
           }}
           onCancel={() => {
             setClearRequest(null);
+          }}
+        />
+      )}
+      {files.preset.conflict === null ? null : (
+        <ConflictConfirmation
+          onTakeFile={() => {
+            resolveConflict('preset', true);
+          }}
+          onKeepMine={() => {
+            resolveConflict('preset', false);
+          }}
+        />
+      )}
+      {files.snapshot.conflict === null ? null : (
+        <ConflictConfirmation
+          onTakeFile={() => {
+            resolveConflict('snapshot', true);
+          }}
+          onKeepMine={() => {
+            resolveConflict('snapshot', false);
           }}
         />
       )}
@@ -321,6 +745,18 @@ function snapshotImportFailureText(failure: SnapshotImportFailure): string {
   );
 }
 
+function snapshotTextFor(records: readonly VersionedRecord[], document: BuilderDocument): string {
+  return formatSnapshotFile(
+    encodeSnapshotFile(new Map(records.map((record) => [record.k, record])), toPreset(document)),
+  );
+}
+
+function textForWrite(file: AttachedFilesState[FileBlockKind], canonicalText: string): string {
+  return file.restoreDocumentText === canonicalText && file.restoreText !== null
+    ? file.restoreText
+    : canonicalText;
+}
+
 type TopBarProps = {
   store: BuilderStore;
   problemCount: number;
@@ -329,11 +765,14 @@ type TopBarProps = {
   snapshotDownload: string | null;
   presetFile: AttachedFile | null;
   snapshotFile: AttachedFile | null;
+  canAttach: boolean;
   theme: PreviewThemeName;
   onTheme: (theme: PreviewThemeName) => void;
   onOpenExample: (key: string) => void;
-  onOpenFile: (file: File) => void;
-  onOpenSnapshotFile: (file: File) => void;
+  onOpenFile: () => Promise<boolean>;
+  onSelectFile: (file: File) => void;
+  onOpenSnapshotFile: () => Promise<boolean>;
+  onSelectSnapshotFile: (file: File) => void;
   onDetachPreset: () => void;
   onDetachSnapshot: () => void;
   onClearPreset: () => void;
@@ -348,11 +787,14 @@ function TopBar({
   snapshotDownload,
   presetFile,
   snapshotFile,
+  canAttach,
   theme,
   onTheme,
   onOpenExample,
   onOpenFile,
+  onSelectFile,
   onOpenSnapshotFile,
+  onSelectSnapshotFile,
   onDetachPreset,
   onDetachSnapshot,
   onClearPreset,
@@ -403,6 +845,8 @@ function TopBar({
           hasContent={!isEmptyDocument(state.step.document)}
           downloadText={download}
           onOpenFile={onOpenFile}
+          onSelectFile={onSelectFile}
+          canAttach={canAttach}
           onOpenExample={onOpenExample}
           onSaveAs={() => {
             if (download !== null) {
@@ -423,6 +867,8 @@ function TopBar({
           hasContent={state.step.records.length > 0}
           downloadText={snapshotDownload}
           onOpenFile={onOpenSnapshotFile}
+          onSelectFile={onSelectSnapshotFile}
+          canAttach={canAttach}
           onSaveAs={() => {
             if (snapshotDownload !== null) {
               downloadJsonFile(snapshotFileName(new Date()), snapshotDownload);
@@ -522,6 +968,33 @@ function ClearConfirmation({
         <Button autoFocus onPress={onCancel}>
           {copy.command.cancel}
         </Button>
+      </div>
+    </div>
+  );
+}
+
+type ConflictConfirmationProps = {
+  onTakeFile: () => void;
+  onKeepMine: () => void;
+};
+
+function ConflictConfirmation({ onTakeFile, onKeepMine }: ConflictConfirmationProps): ReactNode {
+  const textId = useId();
+
+  return (
+    <div
+      role="group"
+      aria-labelledby={textId}
+      className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface p-2"
+    >
+      <p id={textId} className="min-w-0 flex-1 text-text">
+        {copy.builder.fileConflict}
+      </p>
+      <div className="flex gap-2">
+        <Button variant="primary" onPress={onTakeFile}>
+          {copy.builder.takeFile}
+        </Button>
+        <Button onPress={onKeepMine}>{copy.builder.keepMine}</Button>
       </div>
     </div>
   );

@@ -6,6 +6,16 @@ export type Unsubscribe = () => void;
 
 export type { PlayerRole };
 
+export type {
+  FileAccessCapability,
+  FileAccessFailure,
+  FileAccessPort,
+  FileAccessResult,
+  FileContents,
+  FileOpenRequest,
+  FileReference,
+} from '@/core/file-access';
+
 export type BroadcastDestination = 'LOCAL' | 'REMOTE';
 
 export type BroadcastOptions = { destination: BroadcastDestination };
