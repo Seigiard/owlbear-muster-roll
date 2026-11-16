@@ -342,7 +342,7 @@ test('file block menus show file metadata and all actions for their document', a
   await expect(snapshotMenu.getByRole('menuitem', { name: builder.openD20 })).toHaveCount(0);
 });
 
-test('save as downloads the linked preset document', async ({ page }) => {
+test('download copy downloads the linked preset document', async ({ page }) => {
   // #given
   await page.goto(PAGE);
   await openFile(page, 'd6-pool.json', D6_POOL_TEXT);
@@ -351,7 +351,7 @@ test('save as downloads the linked preset document', async ({ page }) => {
   const downloading = page.waitForEvent('download');
   const menu = await openFileMenu(page, 'Пресет');
 
-  await menu.getByRole('menuitem', { name: 'Сохранить как…' }).click();
+  await menu.getByRole('menuitem', { name: 'Скачать копию' }).click();
 
   const download = await downloading;
   const path = await download.path();
@@ -364,7 +364,7 @@ test('save as downloads the linked preset document', async ({ page }) => {
   expect(parsePresetFile(readFileSync(path, 'utf8'))).toEqual(parsePresetFile(D6_POOL_TEXT));
 });
 
-test('save as downloads the linked snapshot document', async ({ page }) => {
+test('download copy downloads the linked snapshot document', async ({ page }) => {
   // #given
   await openPlayerPreview(
     page,
@@ -399,7 +399,7 @@ test('save as downloads the linked snapshot document', async ({ page }) => {
   const downloading = page.waitForEvent('download');
   const menu = await openFileMenu(page, 'Снимок');
 
-  await menu.getByRole('menuitem', { name: 'Сохранить как…' }).click();
+  await menu.getByRole('menuitem', { name: 'Скачать копию' }).click();
 
   const download = await downloading;
   const path = await download.path();

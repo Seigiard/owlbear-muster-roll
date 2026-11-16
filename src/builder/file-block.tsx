@@ -5,21 +5,19 @@ import { Button as AriaButton, Menu, MenuItem, MenuTrigger, Popover } from 'reac
 
 import { copy } from '@/copy';
 
+import type { AttachedFile } from './attached-files';
 import { BUILDER_EXAMPLES } from './examples';
 
 export type FileBlockKind = 'preset' | 'snapshot';
-
-export type AttachedFile = {
-  name: string;
-  lastSyncAt: Date;
-};
 
 type FileBlockProps = {
   kind: FileBlockKind;
   file: AttachedFile | null;
   hasContent: boolean;
   downloadText: string | null;
-  onOpenFile: (file: File) => void;
+  canAttach: boolean;
+  onOpenFile: () => Promise<boolean>;
+  onSelectFile: (file: File) => void;
   onOpenExample?: (key: string) => void;
   onSaveAs: () => void;
   onDownloadCopy: () => void;
@@ -44,7 +42,9 @@ export function FileBlock({
   file,
   hasContent,
   downloadText,
+  canAttach,
   onOpenFile,
+  onSelectFile,
   onOpenExample,
   onSaveAs,
   onDownloadCopy,
@@ -60,13 +60,23 @@ export function FileBlock({
   const syncTime = file === null ? null : formatTime(file.lastSyncAt);
 
   const status =
-    file === null
-      ? copy.builder.fileBlock.draftStatus
-      : copy.builder.fileBlock.synchronizedAt(syncTime ?? '');
+    file === null ? copy.builder.fileBlock.draftStatus : statusText(file, syncTime ?? '');
 
   function handleAction(key: string): void {
     if (key === OPEN_FILE) {
-      fileInput.current?.click();
+      if (canAttach) {
+        onOpenFile()
+          .then((usedPort) => {
+            if (!usedPort) {
+              fileInput.current?.click();
+            }
+          })
+          .catch(() => {
+            fileInput.current?.click();
+          });
+      } else {
+        fileInput.current?.click();
+      }
     } else if (key === SAVE_AS) {
       onSaveAs();
     } else if (key === DOWNLOAD_COPY) {
@@ -142,9 +152,11 @@ export function FileBlock({
                 </MenuItem>
               ))
             : null}
-          <MenuItem id={SAVE_AS} isDisabled={downloadText === null} className={MENU_ITEM_CLASS}>
-            {file === null ? copy.builder.fileBlock.saveFile : copy.builder.fileBlock.saveAs}
-          </MenuItem>
+          {canAttach ? (
+            <MenuItem id={SAVE_AS} isDisabled={downloadText === null} className={MENU_ITEM_CLASS}>
+              {file === null ? copy.builder.fileBlock.saveFile : copy.builder.fileBlock.saveAs}
+            </MenuItem>
+          ) : null}
           <MenuItem
             id={DOWNLOAD_COPY}
             isDisabled={downloadText === null}
@@ -184,7 +196,7 @@ export function FileBlock({
           event.target.value = '';
 
           if (selected !== undefined) {
-            onOpenFile(selected);
+            onSelectFile(selected);
           }
         }}
       />
@@ -194,4 +206,26 @@ export function FileBlock({
 
 function formatTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function statusText(file: AttachedFile, time: string): string {
+  switch (file.status.kind) {
+    case 'synchronized':
+      return copy.builder.fileBlock.synchronizedAt(time);
+    case 'saved':
+      return copy.builder.fileBlock.savedAt(time);
+    case 'blocked':
+      return copy.builder.fileBlock.writeBlocked;
+    case 'changed':
+      return copy.builder.fileBlock.changedOnDisk;
+    case 'refused':
+    case 'failed':
+      return file.status.message;
+    default:
+      return unknownStatus(file.status);
+  }
+}
+
+function unknownStatus(status: never): never {
+  throw new Error(`Unknown file status ${JSON.stringify(status)}`);
 }
