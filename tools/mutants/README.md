@@ -20,8 +20,10 @@ PR CI runs every control. Run them locally before pushing a change to a covered 
 
 ## AST mutation probe
 
-Run the on-demand probe when you add or rewrite a module in `src/replica/`,
-before planning its tests:
+The probe runs in PR CI and on request. A new module in `src/replica/` gets
+one run scoped to that module before its tests are planned. Estimate the cost
+before a local run: about 50 seconds per mutation, divided by the job count,
+so a change that touches most replica modules costs hours, not minutes.
 
 ```sh
 bun run probe
