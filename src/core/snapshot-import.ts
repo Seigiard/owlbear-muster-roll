@@ -21,6 +21,7 @@ import {
 } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 import { snapshotFileSchema, SNAPSHOT_FILE_TYPE, type SnapshotFile } from '@/core/snapshot-file';
+import { isSheetSet } from '@/core/sheets';
 
 export const SNAPSHOT_FILE_BYTE_LIMIT = PRESET_FILE_BYTE_LIMIT;
 
@@ -124,8 +125,8 @@ export function importSnapshot(
     const owns =
       template !== null &&
       (sheet.set === undefined
-        ? template.kind === 'single'
-        : template.kind === 'set' && templateById(current.preset, sheet.id) === null);
+        ? !isSheetSet(template)
+        : isSheetSet(template) && templateById(current.preset, sheet.id) === null);
 
     const scopes = template === null ? null : templateScopes(template);
 
@@ -180,10 +181,7 @@ export function importSnapshot(
 
   // Single sheets exist even when a file omitted them.
   for (const template of current.preset.templates) {
-    if (
-      template.kind === 'single' &&
-      !records.some((record) => record.k === blockKey(template.id))
-    ) {
+    if (!isSheetSet(template) && !records.some((record) => record.k === blockKey(template.id))) {
       records.push({
         k: blockKey(template.id),
         c: 1,
@@ -198,7 +196,12 @@ export function importSnapshot(
   const blocks = blockIndex(records);
 
   for (const link of file.links) {
-    const target = { sheetId: link.sheetId, instanceId: link.instanceId ?? null };
+    const target = {
+      sheetId: link.sheetId,
+      path: link.path ?? null,
+      instanceId: link.path?.at(-1) ?? null,
+      cellId: link.cellId,
+    };
 
     if (liveLinkTarget(placed, current.preset, target, blocks) !== null) {
       records.push({ k: `link:${link.tokenId}`, d: linkDataOf(target), c: 1, a: author });

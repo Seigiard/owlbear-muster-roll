@@ -3,10 +3,10 @@ import { z } from 'zod';
 import {
   plainRowIdOf,
   sectionFirstField,
+  sectionFields,
   type Preset,
   type PresetFieldCell,
   type PresetSection,
-  type SheetSetTemplate,
   type Template,
 } from '@/core/preset';
 import {
@@ -62,8 +62,10 @@ export function sheetKey(sheetId: string): string {
 }
 
 // A sheet set gives any number of sheets; a single sheet is one sheet, named by its title.
-export function isSheetSet(template: Template): template is SheetSetTemplate {
-  return template.kind === 'set';
+export function isSheetSet<T extends { repeat?: unknown }>(
+  template: T,
+): template is T & { repeat: { nameField: string } } {
+  return template.repeat !== undefined;
 }
 
 // AD-18: the one function that finds a sheet's template. A `sheetId` equal to a template id is that
@@ -100,15 +102,16 @@ export function sheetPolicy(template: Template, sheetId: string): SheetPolicy {
   const hidden = template.visibility === 'gm';
 
   if (isSheetSet(template)) {
-    const rowId = plainRowIdOf(template, template.nameField);
+    const nameField = template.repeat.nameField;
+    const rowId = nameField === undefined ? null : plainRowIdOf(template, nameField);
 
     return {
       sheetId,
       template,
       hidden,
-      write: hidden ? 'none' : 'per-player',
-      nameField: rowId === null ? null : { rowId, fieldId: template.nameField },
-      linkable: template.tokens === true,
+      write: hidden ? 'none' : template.players === 'edit' ? 'players-edit' : 'per-player',
+      nameField: rowId === null ? null : { rowId, fieldId: nameField },
+      linkable: templateHasToken(template),
     };
   }
 
@@ -118,8 +121,16 @@ export function sheetPolicy(template: Template, sheetId: string): SheetPolicy {
     hidden,
     write: !hidden && template.players === 'edit' ? 'players-edit' : 'none',
     nameField: null,
-    linkable: template.tokens === true,
+    linkable: templateHasToken(template),
   };
+}
+
+function templateHasToken(template: Template): boolean {
+  return template.tabs.some((tab) =>
+    tab.sections.some((section) =>
+      section.rows.some((row) => row.cells.some((cell) => cell.kind === 'token')),
+    ),
+  );
 }
 
 // The live sheets of the sheet set `setId`, ordered by `(order, sheetId)`. A root whose
@@ -200,14 +211,21 @@ export function repeatBlockName(
   instanceId: string,
 ): string {
   const first = sectionFirstField(section);
+  const nameField = section.repeat?.nameField ?? first?.id ?? null;
 
-  if (first === null) {
+  if (first === null || nameField === null || section.repeat?.id === undefined) {
     return '';
   }
 
-  const block = repDataSchema.safeParse(records.get(repKey(sheetId, first.id, instanceId))?.d);
+  const block = repDataSchema.safeParse(
+    records.get(repKey(sheetId, section.repeat.id, instanceId))?.d,
+  );
 
-  return nameText(first.type, block.data?.cells[first.id]?.[0] ?? undefined);
+  const named = sectionFields(section).find((field) => field.id === nameField);
+
+  return named === undefined
+    ? ''
+    : nameText(named.type, block.data?.cells[nameField]?.[0] ?? undefined);
 }
 
 // True for a live record the sheet's deletion must tombstone with it. A tombstone needs no second

@@ -142,13 +142,14 @@ const repeatBlockDuplicateSchema = z.strictObject({
   count: z.number(),
 });
 
-// AD-19: a token links to one sheet, or with `instanceId` to one repeat block of it, so a new link
-// replaces the token's old one. The engine checks the token id and that the target is live.
+// AD-19: a token links to one sheet, or with a repeat-scope path to one repeat block of it, and one
+// token cell. A new link replaces the token's old one. The engine checks the token id and target.
 const linkSetSchema = z.strictObject({
   type: z.literal('link-set'),
   tokenId: z.string(),
   sheetId: z.string(),
-  instanceId: z.string().nullable(),
+  path: z.array(z.string()).min(2).optional(),
+  cellId: z.string(),
 });
 
 // Tombstones the token's link. The sheet and the token stay.
@@ -421,14 +422,15 @@ const rollOutcomeSchema = z.strictObject({
   ]),
 });
 
-// FR14: "Открыть лист" asks a window to show a sheet, and with `instanceId` to scroll to that
-// repeat block of it. The engine holds the request and sends it again after each projection until a
-// window acknowledges its id. A new press replaces it.
+// FR14: "Открыть лист" asks a window to show a sheet and its token cell. `path` names the repeat
+// block when the cell is inside one. The engine holds the request and sends it again after each
+// projection until a window acknowledges its id. A new press replaces it.
 const openSheetSchema = z.strictObject({
   t: z.literal('open-sheet'),
   id: idSchema,
   sheetId: idSchema,
-  instanceId: idSchema.nullable(),
+  path: z.array(idSchema).min(2).optional(),
+  cellId: idSchema,
 });
 
 // The window took the request: it selected the sheet's tab, or found no tab to select.

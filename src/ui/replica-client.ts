@@ -396,7 +396,8 @@ export function startReplicaClient(
         store.setOpenRequest({
           id: message.id,
           sheetId: message.sheetId,
-          instanceId: message.instanceId,
+          path: message.path,
+          cellId: message.cellId,
         });
       }
     } else if (isAnswerMessage(message)) {

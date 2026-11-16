@@ -42,7 +42,7 @@ export type BuilderDocument = { window?: WindowSize; templates: readonly DocTemp
 
 export type CellKind = PresetCell['kind'];
 
-export type TemplateKind = Template['kind'];
+export type TemplateKind = 'set' | 'single';
 
 // The tree's first item. The window has no uid of its own, as a preset has one window at most.
 export const WINDOW_UID = 'window';
@@ -102,7 +102,7 @@ export function toPreset(document: BuilderDocument): Preset {
 export function templateToPreset(template: DocTemplate): Template {
   const tabs = template.tabs.map(tabToPreset);
 
-  if (template.kind === 'set') {
+  if (template.repeat !== undefined) {
     const { uid: _uid, tabs: _tabs, ...rest } = template;
 
     return { ...rest, tabs };
@@ -131,7 +131,11 @@ function sectionFromPreset(section: PresetSection): DocSection {
   return {
     ...section,
     uid: mintUid(),
-    rows: section.rows.map((cells) => ({ uid: mintUid(), cells: cells.map(cellFromPreset) })),
+    rows: section.rows.map((row: any) => ({
+      ...row,
+      uid: mintUid(),
+      cells: row.cells.map(cellFromPreset),
+    })),
   };
 }
 
@@ -142,7 +146,14 @@ function cellFromPreset(cell: PresetCell): DocCell {
 function sectionToPreset(section: DocSection): PresetSection {
   const { uid: _uid, rows, ...rest } = section;
 
-  return { ...rest, rows: rows.map((row) => row.cells.map(cellToPreset)) };
+  return {
+    ...rest,
+    rows: rows.map((row) => {
+      const { uid: _rowUid, cells, ...rowRest } = row;
+
+      return { ...rowRest, cells: cells.map(cellToPreset) };
+    }),
+  };
 }
 
 function cellToPreset(cell: DocCell): PresetCell {
@@ -156,6 +167,10 @@ function cellToPreset(cell: DocCell): PresetCell {
     return cell.type === 'select' || cell.type === 'dice-choice'
       ? { kind: 'field', type: cell.type, id: cell.id, ...named, options: cell.options }
       : { kind: 'field', type: cell.type, id: cell.id, ...named };
+  }
+
+  if (cell.kind === 'token') {
+    return { kind: 'token', id: cell.id };
   }
 
   return cell.name === undefined
@@ -378,9 +393,9 @@ export function scopeFieldIds(
   const own = sectionOf(template, spot);
 
   const sections =
-    own?.repeat === true
+    own?.repeat !== undefined
       ? [own]
-      : templateSections(template).filter((section) => section.repeat !== true);
+      : templateSections(template).filter((section) => section.repeat === undefined);
 
   return new Set(sections.flatMap((section) => sectionFieldIds(section, except)));
 }
@@ -391,10 +406,10 @@ export function formulaFieldIds(template: DocTemplate, spot: SectionSpot): strin
   const own = sectionOf(template, spot);
 
   const outside = templateSections(template).flatMap((section) =>
-    section.repeat === true ? [] : sectionFieldIds(section, null),
+    section.repeat !== undefined ? [] : sectionFieldIds(section, null),
   );
 
-  const block = own?.repeat === true ? sectionFieldIds(own, null) : [];
+  const block = own?.repeat !== undefined ? sectionFieldIds(own, null) : [];
 
   return [...new Set([...block, ...outside])];
 }
@@ -424,9 +439,8 @@ function newSheetSet(uid: string, taken: ReadonlySet<string>): DocSheetSet {
 
   return {
     id: suggestTemplateId(title, taken),
-    kind: 'set',
     title,
-    nameField,
+    repeat: { nameField },
     uid,
     tabs: [
       {
@@ -455,7 +469,6 @@ function newSingleSheet(uid: string, taken: ReadonlySet<string>): DocSingleSheet
 
   return {
     id: suggestTemplateId(title, taken),
-    kind: 'single',
     title,
     uid,
     tabs: [{ uid: mintUid(), sections: [{ uid: mintUid(), rows: [] }] }],
@@ -523,6 +536,8 @@ export function addCell(
     cell = { kind: 'text', text: copy.builder.newLabel, uid };
   } else if (kind === 'dice') {
     cell = { kind: 'dice', formula: copy.builder.newFormula, uid };
+  } else if (kind === 'token') {
+    cell = { kind: 'token', id: suggestFieldId('token', scopeFieldIds(template, path)), uid };
   } else {
     const labels = row.cells.flatMap((other) =>
       other.kind === 'text' && other.text.trim() !== '' ? [other.text] : [],
@@ -610,26 +625,28 @@ export function updateCell(
 // A sheet set and a single sheet differ in `nameField` and `players`. A new sheet set is named by
 // the first text field outside its repeat sections, or by `name`.
 export function withTemplateKind(template: DocTemplate, kind: TemplateKind): DocTemplate {
-  if (template.kind === kind) {
+  const isSet = template.repeat !== undefined;
+
+  if ((kind === 'set') === isSet) {
     return template;
   }
 
-  if (template.kind === 'set') {
-    const { nameField: _nameField, kind: _kind, ...rest } = template;
+  if (isSet) {
+    const { repeat: _repeat, ...rest } = template;
 
-    return { ...rest, kind: 'single' };
+    return rest;
   }
 
-  const { players: _players, kind: _kind, ...rest } = template;
+  const { players: _players, ...rest } = template;
   const nameField = nameFieldCandidates(template)[0] ?? 'name';
 
-  return { ...rest, kind: 'set', nameField };
+  return { ...rest, repeat: { nameField } };
 }
 
 // The text fields outside repeat sections, on any tab, which may name a sheet of a sheet set.
 export function nameFieldCandidates(template: DocTemplate): string[] {
   return templateSections(template).flatMap((section) =>
-    section.repeat === true
+    section.repeat !== undefined
       ? []
       : section.rows.flatMap((row) =>
           row.cells.flatMap((cell) =>
@@ -639,13 +656,18 @@ export function nameFieldCandidates(template: DocTemplate): string[] {
   );
 }
 
-// A section that stops repeating loses its repeat block tokens too.
+// A section that stops repeating loses its repeat block identity.
 export function withRepeat(section: DocSection, repeat: boolean): DocSection {
   if (repeat) {
-    return { ...section, repeat: true };
+    const nameField =
+      section.rows
+        .flatMap((row) => row.cells)
+        .find((cell) => cell.kind === 'field' && cell.type === 'text')?.id ?? 'name';
+
+    return { ...section, repeat: { id: 'repeat', nameField } };
   }
 
-  const { repeat: _repeat, tokens: _tokens, ...rest } = section;
+  const { repeat: _repeat, ...rest } = section;
 
   return rest;
 }
@@ -776,7 +798,7 @@ function withContent(template: DocTemplate, content: Template): DocTemplate {
         rows: section.rows.map((row, rowIndex) => ({
           ...row,
           cells: row.cells.map((cell, cellIndex) => {
-            const presetCell = presetSection?.rows[rowIndex]?.[cellIndex];
+            const presetCell = presetSection?.rows[rowIndex]?.cells[cellIndex];
 
             return presetCell === undefined ? cell : { ...presetCell, uid: cell.uid };
           }),
@@ -785,8 +807,8 @@ function withContent(template: DocTemplate, content: Template): DocTemplate {
     }),
   }));
 
-  return content.kind === 'set' && template.kind === 'set'
-    ? { ...template, nameField: content.nameField, tabs }
+  return content.repeat !== undefined && template.repeat !== undefined
+    ? { ...template, repeat: content.repeat, tabs }
     : { ...template, tabs };
 }
 

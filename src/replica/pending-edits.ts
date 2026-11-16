@@ -548,8 +548,8 @@ function commandsOf(entry: ProposalEntry, template: Template | null): PlayerEdit
 }
 
 // AD-14: where a block's values go when its sheet's template changes from its form in `before` to
-// its form in `after`. A template matches by its `id` and `kind`. `null` when either preset has no
-// template for the sheet, or the template changed its `id` or `kind`.
+// its form in `after`. A template matches by its `id` and repeat status. `null` when either preset
+// has no template for the sheet, or the template changed its id or repeat status.
 function templateMoves(
   records: ReadonlyMap<string, VersionedRecord>,
   before: Preset,
@@ -559,7 +559,10 @@ function templateMoves(
   const old = templateOfKey(records, before, key);
   const current = templateOfKey(records, after, key);
 
-  return old === null || current === null || old.id !== current.id || old.kind !== current.kind
+  return old === null ||
+    current === null ||
+    old.id !== current.id ||
+    (old.repeat !== undefined) !== (current.repeat !== undefined)
     ? null
     : presetMoves(old, current);
 }

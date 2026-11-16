@@ -52,37 +52,47 @@ export function renameFieldId(
         const from = { tabIndex, sectionIndex, rowIndex };
         const reaches = resolvesToField(template, from, oldId, place);
 
-        return row.map((other, cellIndex): PresetCell => {
-          if (samePlace({ ...from, cellIndex }, place)) {
-            return { ...cell, id: newId };
-          }
+        return {
+          ...row,
+          cells: row.cells.map((other, cellIndex): PresetCell => {
+            if (samePlace({ ...from, cellIndex }, place)) {
+              return { ...cell, id: newId };
+            }
 
-          if (other.kind !== 'dice' || !reaches || !rewrites) {
-            return other;
-          }
+            if (other.kind !== 'dice' || !reaches || !rewrites) {
+              return other;
+            }
 
-          const formula = replaceWord(other.formula, oldId, newId);
+            const formula = replaceWord(other.formula, oldId, newId);
 
-          if (formula === null) {
-            return other;
-          }
+            if (formula === null) {
+              return other;
+            }
 
-          formulas += 1;
+            formulas += 1;
 
-          return { ...other, formula };
-        });
+            return { ...other, formula };
+          }),
+        };
       }),
     })),
   }));
 
   const namesSheets =
-    template.kind === 'set' &&
-    template.nameField === oldId &&
+    template.repeat !== undefined &&
+    template.repeat.nameField === oldId &&
     isFirstHolder(template, oldId, place, false);
 
   const renamed: Template =
-    template.kind === 'set'
-      ? { ...template, nameField: namesSheets ? newId : template.nameField, tabs }
+    template.repeat !== undefined
+      ? {
+          ...template,
+          repeat: {
+            ...template.repeat,
+            nameField: namesSheets ? newId : template.repeat.nameField,
+          },
+          tabs,
+        }
       : { ...template, tabs };
 
   return { template: renamed, formulas };
@@ -104,7 +114,7 @@ export function fieldFormulaCount(template: TemplateLayout, place: TemplateCellP
         return;
       }
 
-      for (const other of row) {
+      for (const other of row.cells) {
         if (other.kind === 'dice' && formulaNames(other.formula, cell.id)) {
           count += 1;
         }
@@ -121,7 +131,7 @@ export function formulaNames(formula: string, id: string): boolean {
 }
 
 function cellAt(layout: TemplateLayout, place: TemplateCellPlace): PresetCell | undefined {
-  return sectionAt(layout, place)?.rows[place.rowIndex]?.[place.cellIndex];
+  return sectionAt(layout, place)?.rows[place.rowIndex]?.cells[place.cellIndex];
 }
 
 function sameSection(a: TemplateSectionPlace, b: TemplateSectionPlace): boolean {
@@ -156,12 +166,12 @@ function resolvesToField(
 // Whether a field of `field`'s scope is `id`: its own repeat section, or every section that does not
 // repeat.
 function scopeHolds(layout: TemplateLayout, id: string, field: TemplateCellPlace): boolean {
-  const block = sectionAt(layout, field)?.repeat === true;
+  const block = sectionAt(layout, field)?.repeat !== undefined;
 
   return placedSections(layout).some(
     ({ place, section }) =>
-      (block ? sameSection(place, field) : section.repeat !== true) &&
-      section.rows.some((row) => row.some((cell) => cell.kind === 'field' && cell.id === id)),
+      (block ? sameSection(place, field) : section.repeat === undefined) &&
+      section.rows.some((row) => row.cells.some((cell) => cell.kind === 'field' && cell.id === id)),
   );
 }
 
@@ -175,19 +185,19 @@ function isFirstHolder(
 ): boolean {
   const own = sectionAt(layout, field);
 
-  if (own === null || (own.repeat === true) !== block) {
+  if (own === null || (own.repeat !== undefined) !== block) {
     return false;
   }
 
   for (const { place, section } of placedSections(layout)) {
-    const inScope = block ? sameSection(place, field) : section.repeat !== true;
+    const inScope = block ? sameSection(place, field) : section.repeat === undefined;
 
     if (!inScope) {
       continue;
     }
 
     for (const [rowIndex, row] of section.rows.entries()) {
-      const cellIndex = row.findIndex((cell) => cell.kind === 'field' && cell.id === id);
+      const cellIndex = row.cells.findIndex((cell) => cell.kind === 'field' && cell.id === id);
 
       if (cellIndex !== -1) {
         return samePlace({ ...place, rowIndex, cellIndex }, field);

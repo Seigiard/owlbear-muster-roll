@@ -3,7 +3,7 @@ import OBR from '@owlbear-rodeo/sdk';
 import type { JsonObject, JsonValue } from '@/core/json';
 import { TIMING, type Timing } from '@/core/timing';
 import { sameItemIds } from '@/core/token-selection';
-import type { PartyMember, Platform, PlayerRole } from '@/platform/ports';
+import type { Bounds, PartyMember, Platform, PlayerRole } from '@/platform/ports';
 
 import { createBrowserStorage } from './browser-storage';
 import { itemLabel, writeItemLabel } from './item-label';
@@ -126,10 +126,24 @@ export const platform: Platform = {
 
       return items.map((item) => item.id);
     },
+    getTokenIds: async () => {
+      const items = await OBR.scene.items.getItems((item) => item.layer === 'CHARACTER');
+
+      return items.map((item) => item.id);
+    },
     onItemsChange: (callback) =>
       OBR.scene.items.onChange((items) => {
         callback(items.map((item) => item.id));
       }),
+    getItemBounds: async (itemIds) => {
+      const entries = await Promise.all(
+        itemIds.map(
+          async (itemId) => [itemId, await OBR.scene.items.getItemBounds([itemId])] as const,
+        ),
+      );
+
+      return new Map<string, Bounds>(entries);
+    },
     getItemLabel: async (itemId) => itemLabel(await OBR.scene.items.getItems([itemId]), itemId),
     setItemLabel: async (itemId, label) => {
       // Only a GM labels tokens through Muster Roll.
@@ -152,6 +166,37 @@ export const platform: Platform = {
       if (!written) {
         throw new Error(`Owlbear item ${itemId} is missing or has no label`);
       }
+    },
+  },
+  viewport: {
+    getBounds: async () => {
+      const [width, height] = await Promise.all([
+        OBR.viewport.getWidth(),
+        OBR.viewport.getHeight(),
+      ]);
+
+      const [topLeft, bottomRight] = await Promise.all([
+        OBR.viewport.inverseTransformPoint({ x: 0, y: 0 }),
+        OBR.viewport.inverseTransformPoint({ x: width, y: height }),
+      ]);
+
+      const min = {
+        x: Math.min(topLeft.x, bottomRight.x),
+        y: Math.min(topLeft.y, bottomRight.y),
+      };
+
+      const max = {
+        x: Math.max(topLeft.x, bottomRight.x),
+        y: Math.max(topLeft.y, bottomRight.y),
+      };
+
+      return {
+        min,
+        max,
+        width: max.x - min.x,
+        height: max.y - min.y,
+        center: { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2 },
+      };
     },
   },
   theme: {

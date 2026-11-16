@@ -96,7 +96,9 @@ export function canEdit(
   return record !== undefined && record.d !== null;
 }
 
-export type PlayerEditTarget = { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string };
+export type PlayerEditTarget =
+  | { kind: 'row'; rowId: string }
+  | { kind: 'rep'; sectionId: string; fieldId?: string };
 
 // AD-4, one edit check: this three-argument form answers only the player's sheet-level right. Field
 // checks use playerMayEditField, which requires an explicit row or repeat-section target so the
@@ -412,7 +414,7 @@ function proposalJudgement(
     const target: PlayerEditTarget =
       repeat === null
         ? { kind: 'row', rowId: rowId ?? '' }
-        : { kind: 'rep', sectionId: repeat.sectionId };
+        : { kind: 'rep', sectionId: repeat.sectionId, fieldId: id };
 
     const field = targetFields(policy.template, target)?.find((item) => item.id === id);
 

@@ -39,7 +39,12 @@ const sheetSchema = z
 const linkSchema = z.strictObject({
   tokenId: tokenIdSchema,
   sheetId: keySegmentSchema,
-  instanceId: keySegmentSchema.optional(),
+  path: z
+    .array(keySegmentSchema)
+    .min(2)
+    .refine((parts) => parts.length % 2 === 0)
+    .optional(),
+  cellId: keySegmentSchema,
 });
 
 const fileSchema = z.strictObject({
@@ -93,8 +98,9 @@ export const snapshotFileSchema = fileSchema.superRefine((file, context) => {
       context.addIssue({ code: 'custom', message: 'duplicate token id', path: ['links', index] });
     tokens.add(link.tokenId);
     const blocks = sheets.get(link.sheetId);
+    const instanceId = link.path?.at(-1);
 
-    if (blocks === undefined || (link.instanceId !== undefined && !blocks.has(link.instanceId))) {
+    if (blocks === undefined || (instanceId !== undefined && !blocks.has(instanceId))) {
       context.addIssue({ code: 'custom', message: 'link to no block', path: ['links', index] });
     }
   }
@@ -143,9 +149,9 @@ export function encodeSnapshotFile(
   const links = [...liveLinks(records, preset)]
     .sort(([a], [b]) => compare(a, b))
     .map(([tokenId, { target }]) =>
-      target.instanceId === null
-        ? { tokenId, sheetId: target.sheetId }
-        : { tokenId, sheetId: target.sheetId, instanceId: target.instanceId },
+      target.path === null || target.path === undefined
+        ? { tokenId, sheetId: target.sheetId, cellId: target.cellId ?? '' }
+        : { tokenId, sheetId: target.sheetId, path: target.path, cellId: target.cellId ?? '' },
     );
 
   return { v: FORMAT_VERSION, type: SNAPSHOT_FILE_TYPE, sheets, links };

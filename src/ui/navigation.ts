@@ -9,7 +9,8 @@ export type NavigationDeleteAsk = { sheet: string; request: number };
 
 export type NavigationBlockReveal = {
   sheet: string;
-  instanceId: string;
+  instanceId: string | null;
+  cellId: string;
   focus: boolean;
 };
 
@@ -56,12 +57,13 @@ export type NavigationEvent =
       tab: string | null;
       blockTab: number | null;
       block: string | null;
+      cellTab: number | null;
       ready: boolean;
     }
   | { type: 'name-focused'; sheet: string }
   | { type: 'actions-focused'; sheet: string }
   | { type: 'focus-actions'; sheet: string }
-  | { type: 'block-revealed'; sheet: string; instanceId: string }
+  | { type: 'block-revealed'; sheet: string; instanceId: string | null }
   | { type: 'tab-revealed' }
   | { type: 'focus-loss-handled' };
 
@@ -257,8 +259,12 @@ function openRequestTransition(
 
   const block = event.block;
 
-  const blockReveal =
-    block === null ? null : { sheet: event.tab, instanceId: block, focus: event.focusInWindow };
+  const blockReveal = {
+    sheet: event.tab,
+    instanceId: block,
+    cellId: event.request.cellId,
+    focus: event.focusInWindow,
+  };
 
   const nextFocusName =
     state.focusNameOf !== null && state.focusNameOf !== event.tab ? null : state.focusNameOf;
@@ -270,9 +276,9 @@ function openRequestTransition(
     blockReveal,
     tabReveal: { tab: event.tab, focus: event.focusInWindow && blockReveal === null },
     chosenTemplateTabs:
-      event.blockTab === null
+      (event.blockTab ?? event.cellTab) === null
         ? state.chosenTemplateTabs
-        : new Map(state.chosenTemplateTabs).set(event.tab, event.blockTab),
+        : new Map(state.chosenTemplateTabs).set(event.tab, event.blockTab ?? event.cellTab ?? 0),
     // Another tab, a sheet deleted elsewhere, or a role that cannot delete closes the confirmation
     // for good, so returning to the tab does not bring it back.
     deleteAsk: state.deleteAsk?.sheet === event.tab ? state.deleteAsk : null,

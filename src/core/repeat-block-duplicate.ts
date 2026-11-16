@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { sectionFirstField, type PresetSection } from '@/core/preset';
+import { sectionFields, sectionFirstField, type PresetSection } from '@/core/preset';
 import type { FieldValue, FieldValues } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 
@@ -41,21 +41,26 @@ export function duplicateBlockCells(
   count: number,
 ): Result<FieldValues[], DuplicateNameFailure> {
   const first = sectionFirstField(section);
-  const value = first === null ? null : textValue(source[first.id]);
+  const nameId = section.repeat?.nameField ?? first?.id ?? null;
 
-  if (first === null || first.type !== 'text' || value === null) {
+  const nameField =
+    nameId === null ? null : (sectionFields(section).find((field) => field.id === nameId) ?? null);
+
+  const value = nameId === null ? null : textValue(source[nameId]);
+
+  if (nameId === null || nameField === null || nameField.type !== 'text' || value === null) {
     return ok(Array.from({ length: count }, () => ({ ...source })));
   }
 
   const existing = siblings.flatMap((cells) => {
-    const name = textValue(cells[first.id]);
+    const name = textValue(cells[nameId]);
 
     return name === null ? [] : [name];
   });
 
   const names = duplicateNames(value, existing, count);
 
-  return names.ok ? ok(names.value.map((name) => ({ ...source, [first.id]: name }))) : names;
+  return names.ok ? ok(names.value.map((name) => ({ ...source, [nameId]: name }))) : names;
 }
 
 // UX-DR20: the source name without its trailing number, then the highest number any repeat block of

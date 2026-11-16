@@ -6,7 +6,7 @@ import { ToggleButton } from 'react-aria-components';
 import type { LinkTarget } from '@/core/link-target';
 import type { SelectionStep } from '@/core/token-selection';
 import { copy } from '@/copy';
-import { ICON_BUTTON_CLASS, IconStatus } from '@/ui/primitives/icon-button';
+import { ICON_BUTTON_CLASS, IconButton, IconStatus } from '@/ui/primitives/icon-button';
 import { TokenIcon } from '@/ui/primitives/icons';
 import { CellTooltip } from '@/ui/primitives/tooltip';
 
@@ -59,6 +59,29 @@ export function TokenControl({
   );
 
   return linked ? <MapToggle target={target} name={toggleName} fallback={status} /> : status;
+}
+
+// A token cell has its own GM menu. The map toggle remains a separate action so opening the picker
+// never changes selection.
+export function TokenCellControl({
+  target,
+  linked,
+  onOpen,
+}: {
+  target: LinkTarget;
+  linked: boolean;
+  onOpen: () => void;
+}): ReactNode {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <TokenControl target={target} linked={linked} />
+      <IconButton
+        icon={<TokenIcon linked={linked} />}
+        label={linked ? copy.command.unlinkSheet : copy.command.linkSheet}
+        onPress={onOpen}
+      />
+    </span>
+  );
 }
 
 // Pressed while every linked token of the target on the open scene is selected. It shows only while

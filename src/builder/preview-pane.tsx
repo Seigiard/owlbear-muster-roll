@@ -137,8 +137,7 @@ export function PreviewPane({
 
         const fieldTemplate = selection === null ? null : templateOf(document, selection);
 
-        const editable =
-          role === 'GM' || (fieldTemplate?.kind === 'single' && fieldTemplate.players === 'edit');
+        const editable = role === 'GM' || fieldTemplate?.players === 'edit';
 
         if (!editable) {
           return Promise.resolve({ kind: 'answered' as const, answer: undefined });
@@ -310,8 +309,7 @@ export function PreviewPane({
   const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
   const previewSelection = useRef<string | null>(null);
 
-  const canEdit =
-    role === 'GM' || (docTemplate?.kind === 'single' && docTemplate.players === 'edit');
+  const canEdit = role === 'GM' || docTemplate?.players === 'edit';
 
   useEffect(() => {
     dispatchEditing({ type: 'selection-changed', uid: selection });

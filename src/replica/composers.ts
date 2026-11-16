@@ -8,7 +8,7 @@ import {
   type PatchedRecord,
 } from '@/core/field-patch';
 import type { RecordIdKind } from '@/core/ids';
-import { linkDataOf, linkTargetOf, liveLinkTarget } from '@/core/link-target';
+import { linkDataOf, linkTargetOf, liveLinkTarget, type LinkTarget } from '@/core/link-target';
 import { recordFitsOneMessage } from '@/core/message-size';
 import type { Version } from '@/core/merge';
 import {
@@ -609,19 +609,33 @@ export function createComposers(connectionId: string): Composers {
       return policy;
     }
 
-    const { instanceId } = command;
+    const path = command.path ?? null;
 
-    if (instanceId !== null) {
-      if (!sheetIdSchema.safeParse(instanceId).success) {
+    const target: LinkTarget = {
+      sheetId: command.sheetId,
+      instanceId: path === null ? null : (path.at(-1) ?? null),
+      path,
+      cellId: command.cellId,
+    };
+
+    if (path !== null) {
+      const instanceId = path.at(-1);
+
+      if (instanceId === undefined || !sheetIdSchema.safeParse(instanceId).success) {
         return err('invalid-instance-id');
       }
 
-      if (!liveInstanceIds(context, command.sheetId).has(instanceId)) {
+      const sectionId = path[0];
+
+      if (
+        sectionId === undefined ||
+        !repDataSchema.safeParse(
+          context.records.get(repKey(command.sheetId, sectionId, instanceId))?.d,
+        ).success
+      ) {
         return err('unknown-instance');
       }
     }
-
-    const target = { sheetId: command.sheetId, instanceId };
 
     if (liveLinkTarget(context.records, currentPreset(context), target) === null) {
       return err('not-linkable');
@@ -871,21 +885,6 @@ function sheetInstanceIds(context: ComposeContext, sheetId: string): Set<string>
     const parts = parseRepKey(key);
 
     if (parts?.sheetId === sheetId) {
-      ids.add(parts.instanceId);
-    }
-  }
-
-  return ids;
-}
-
-// The instance ids of the live repeat blocks of one sheet.
-function liveInstanceIds(context: ComposeContext, sheetId: string): Set<string> {
-  const ids = new Set<string>();
-
-  for (const [key, record] of context.records) {
-    const parts = parseRepKey(key);
-
-    if (parts?.sheetId === sheetId && repDataSchema.safeParse(record.d).success) {
       ids.add(parts.instanceId);
     }
   }

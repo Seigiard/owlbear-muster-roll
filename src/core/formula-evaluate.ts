@@ -11,6 +11,7 @@ import {
   sectionAt,
   type PresetCell,
   type PresetFieldCell,
+  type PresetRow,
   type TemplateLayout,
   type TemplateRowPlace,
 } from '@/core/preset';
@@ -251,8 +252,8 @@ export function formulaDiceFieldLookup(
 
     const cell =
       reference.scope === 'block'
-        ? fieldIn(section.rows, id)
-        : fieldIn([plainRow(layout, reference.rowId) ?? []], id);
+        ? fieldInRows(section.rows, id)
+        : fieldInCells(plainRow(layout, reference.rowId) ?? [], id);
 
     if (cell === null || cell.type !== 'dice-choice') {
       return null;
@@ -343,8 +344,8 @@ export function formulaFieldLookup(
 
     const cell =
       reference.scope === 'block'
-        ? fieldIn(section.rows, id)
-        : fieldIn([plainRow(layout, reference.rowId) ?? []], id);
+        ? fieldInRows(section.rows, id)
+        : fieldInCells(plainRow(layout, reference.rowId) ?? [], id);
 
     if (cell === null) {
       return null;
@@ -417,14 +418,20 @@ function compare(operator: ComparisonOperator, roll: number, target: number): bo
   return roll > target;
 }
 
-function fieldIn(rows: readonly (readonly PresetCell[])[], id: string): PresetFieldCell | null {
+function fieldInRows(rows: readonly PresetRow[], id: string): PresetFieldCell | null {
   for (const row of rows) {
-    const cell = row.find((candidate) => candidate.kind === 'field' && candidate.id === id);
+    const cell = fieldInCells(row.cells, id);
 
-    if (cell?.kind === 'field') {
+    if (cell !== null) {
       return cell;
     }
   }
 
   return null;
+}
+
+function fieldInCells(cells: readonly PresetCell[], id: string): PresetFieldCell | null {
+  const cell = cells.find((candidate) => candidate.kind === 'field' && candidate.id === id);
+
+  return cell?.kind === 'field' ? cell : null;
 }

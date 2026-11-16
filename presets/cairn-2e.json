@@ -1,5 +1,5 @@
 {
-  "v": 3,
+  "v": 4,
   "window": {
     "width": 640,
     "height": 720
@@ -7,10 +7,7 @@
   "templates": [
     {
       "id": "pc",
-      "kind": "set",
       "title": "Персонажи",
-      "nameField": "name",
-      "tokens": true,
       "tabs": [
         {
           "sections": [
@@ -18,46 +15,58 @@
               "title": "Персонаж",
               "columns": 4,
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "Имя"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "name"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Предыстория"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "background"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Возраст"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "age"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Монеты, зм"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "gold"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Имя"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "name"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Предыстория"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "background"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Возраст"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "age"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Монеты, зм"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "gold"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "token",
+                      "id": "token"
+                    }
+                  ]
+                }
               ]
             },
             {
@@ -65,87 +74,95 @@
               "width": "1/2",
               "columns": 4,
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": ""
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Тек."
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Макс."
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Спасбросок"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "STR"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "str"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "str_max",
-                    "name": "STR, максимум"
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "1d20 <= str"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "DEX"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "dex"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "dex_max",
-                    "name": "DEX, максимум"
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "1d20 <= dex"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "WIL"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "wil"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "wil_max",
-                    "name": "WIL, максимум"
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "1d20 <= wil"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": ""
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Тек."
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Макс."
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Спасбросок"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "STR"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "str"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "str_max",
+                      "name": "STR, максимум"
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "1d20 <= str"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "DEX"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "dex"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "dex_max",
+                      "name": "DEX, максимум"
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "1d20 <= dex"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "WIL"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "wil"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "wil_max",
+                      "name": "WIL, максимум"
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "1d20 <= wil"
+                    }
+                  ]
+                }
               ]
             },
             {
@@ -153,49 +170,55 @@
               "width": "1/2",
               "columns": 4,
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "HP"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "hp"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "из"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "hp_max",
-                    "name": "HP, максимум"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Броня"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "armor"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Лишения"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "deprived"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "HP"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "hp"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "из"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "hp_max",
+                      "name": "HP, максимум"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Броня"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "armor"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Лишения"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "deprived"
+                    }
+                  ]
+                }
               ]
             },
             {
@@ -203,84 +226,94 @@
               "width": "1/2",
               "columns": 3,
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": ""
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Предмет"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Усталость"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "1"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "slot_1"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "fatigue_1"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "2"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "slot_2"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "fatigue_2"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "3"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "slot_3"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "fatigue_3"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "4"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "slot_4"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "fatigue_4"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": ""
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Предмет"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Усталость"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "1"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "slot_1"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "fatigue_1"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "2"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "slot_2"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "fatigue_2"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "3"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "slot_3"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "fatigue_3"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "4"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "slot_4"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "fatigue_4"
+                    }
+                  ]
+                }
               ]
             },
             {
@@ -288,290 +321,327 @@
               "width": "1/2",
               "columns": 3,
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": ""
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Предмет"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Усталость"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "5"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "slot_5"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "fatigue_5"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "6"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "slot_6"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "fatigue_6"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "7"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "slot_7"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "fatigue_7"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "8"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "slot_8"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "fatigue_8"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "9"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "slot_9"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "fatigue_9"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "10"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "slot_10"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "fatigue_10"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": ""
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Предмет"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Усталость"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "5"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "slot_5"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "fatigue_5"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "6"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "slot_6"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "fatigue_6"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "7"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "slot_7"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "fatigue_7"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "8"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "slot_8"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "fatigue_8"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "9"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "slot_9"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "fatigue_9"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "10"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "slot_10"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "fatigue_10"
+                    }
+                  ]
+                }
               ]
             },
             {
               "title": "Оружие",
               "columns": 4,
-              "repeat": true,
+              "repeat": {
+                "id": "weapon",
+                "nameField": "weapon"
+              },
               "rows": [
-                [
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "weapon",
-                    "name": "Оружие"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Урон"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "dice-choice",
-                    "id": "weapon_die",
-                    "options": ["d4", "d6", "d8", "d10", "d12"]
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "1d(weapon_die)"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "weapon",
+                      "name": "Оружие"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Урон"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "dice-choice",
+                      "id": "weapon_die",
+                      "options": ["d4", "d6", "d8", "d10", "d12"]
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "1d(weapon_die)"
+                    }
+                  ]
+                }
               ]
             },
             {
               "title": "Черты",
               "columns": 4,
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "Телосложение"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "physique"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Кожа"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "skin"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Волосы"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "hair"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Лицо"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "face"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Речь"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "speech"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Одежда"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "clothing"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Добродетель"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "virtue"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Порок"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "vice"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Телосложение"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "physique"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Кожа"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "skin"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Волосы"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "hair"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Лицо"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "face"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Речь"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "speech"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Одежда"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "clothing"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Добродетель"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "virtue"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Порок"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "vice"
+                    }
+                  ]
+                }
               ]
             },
             {
               "title": "Узы и заметки",
               "columns": 2,
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "Узы"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "bond"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Знамение"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "omen"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Шрамы"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "scars"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Заметки"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "notes"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Узы"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "bond"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Знамение"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "omen"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Шрамы"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "scars"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Заметки"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "notes"
+                    }
+                  ]
+                }
               ]
             }
           ]
         }
-      ]
+      ],
+      "repeat": {
+        "nameField": "name"
+      }
     },
     {
       "id": "npc",
-      "kind": "single",
       "title": "NPC",
       "visibility": "gm",
       "tabs": [
@@ -580,156 +650,178 @@
             {
               "title": "NPC",
               "columns": 9,
-              "repeat": true,
-              "tokens": true,
+              "repeat": {
+                "id": "npc_name",
+                "nameField": "npc_name"
+              },
               "rows": [
-                [
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "npc_name",
-                    "name": "Имя NPC"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "HP"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "hp"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "из"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "hp_max",
-                    "name": "HP, максимум"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Броня"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "armor"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "STR"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "str"
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "1d20 <= str"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "DEX"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "dex"
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "1d20 <= dex"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "WIL"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "wil"
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "1d20 <= wil"
-                  }
-                ],
-                [
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "attack_1",
-                    "name": "Атака 1"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Урон"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "dice-choice",
-                    "id": "attack_1_die",
-                    "name": "Урон атаки 1",
-                    "options": ["d4", "d6", "d8", "d10", "d12"]
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "1d(attack_1_die)",
-                    "name": "Урон атаки 1"
-                  }
-                ],
-                [
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "attack_2",
-                    "name": "Атака 2"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Урон"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "dice-choice",
-                    "id": "attack_2_die",
-                    "name": "Урон атаки 2",
-                    "options": ["d4", "d6", "d8", "d10", "d12"]
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "1d(attack_2_die)",
-                    "name": "Урон атаки 2"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Крит. урон"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "critical"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Заметки"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "notes"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "npc_name",
+                      "name": "Имя NPC"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "HP"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "hp"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "из"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "hp_max",
+                      "name": "HP, максимум"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Броня"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "armor"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "STR"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "str"
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "1d20 <= str"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "DEX"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "dex"
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "1d20 <= dex"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "WIL"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "wil"
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "1d20 <= wil"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "attack_1",
+                      "name": "Атака 1"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Урон"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "dice-choice",
+                      "id": "attack_1_die",
+                      "name": "Урон атаки 1",
+                      "options": ["d4", "d6", "d8", "d10", "d12"]
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "1d(attack_1_die)",
+                      "name": "Урон атаки 1"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "attack_2",
+                      "name": "Атака 2"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Урон"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "dice-choice",
+                      "id": "attack_2_die",
+                      "name": "Урон атаки 2",
+                      "options": ["d4", "d6", "d8", "d10", "d12"]
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "1d(attack_2_die)",
+                      "name": "Урон атаки 2"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Крит. урон"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "critical"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Заметки"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "notes"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "token",
+                      "id": "token"
+                    }
+                  ]
+                }
               ]
             }
           ]

@@ -12,6 +12,7 @@ import {
 } from 'react-aria-components';
 
 import { copy } from '@/copy';
+import { isSheetSet } from '@/core/sheets';
 
 import type { BuilderStore } from './builder-store';
 import {
@@ -317,7 +318,7 @@ function TemplateItem({
   problems,
   onAdd,
 }: ContainerProps & { template: DocTemplate }): ReactNode {
-  const kind = template.kind === 'set' ? copy.builder.form.kindSet : copy.builder.form.kindSingle;
+  const kind = isSheetSet(template) ? copy.builder.form.kindSet : copy.builder.form.kindSingle;
   const title = template.title.trim() === '' ? copy.builder.untitled : template.title;
 
   return (
@@ -414,6 +415,11 @@ function RowItem({
         onAdd={onAdd}
       />
       <AddItem addKey={`${ADD_PREFIX}dice:${row.uid}`} label={copy.builder.addDice} onAdd={onAdd} />
+      <AddItem
+        addKey={`${ADD_PREFIX}token:${row.uid}`}
+        label={copy.builder.addToken}
+        onAdd={onAdd}
+      />
     </Item>
   );
 }
@@ -436,7 +442,11 @@ export function cellItemLabel(cell: DocCell): string {
     return copy.builder.fieldItem(cell.id, FIELD_TYPE_NAMES[cell.type]);
   }
 
-  return cell.formula.trim() === '' ? copy.builder.emptyFormula : cell.formula;
+  return cell.kind === 'dice'
+    ? cell.formula.trim() === ''
+      ? copy.builder.emptyFormula
+      : cell.formula
+    : copy.builder.tokenItem(cell.id);
 }
 
 function containerUids(document: BuilderDocument): string[] {
@@ -460,7 +470,9 @@ function allAddKeys(document: BuilderDocument): string[] {
         ...tab.sections.flatMap((section) => [
           `${ADD_PREFIX}row:${section.uid}`,
           ...section.rows.flatMap((row) =>
-            (['text', 'field', 'dice'] as const).map((kind) => `${ADD_PREFIX}${kind}:${row.uid}`),
+            (['text', 'field', 'dice', 'token'] as const).map(
+              (kind) => `${ADD_PREFIX}${kind}:${row.uid}`,
+            ),
           ),
         ]),
       ]),
@@ -490,6 +502,7 @@ function parseAddKey(key: string): AddTarget | null {
     case 'text':
     case 'field':
     case 'dice':
+    case 'token':
       return { adds, container };
     default:
       return null;
@@ -546,6 +559,7 @@ const ADDED_KIND: Readonly<Record<AddTarget['adds'], ItemKind>> = {
   text: 'cell',
   field: 'cell',
   dice: 'cell',
+  token: 'cell',
 };
 
 // Where a drop lands, or `null` for a drop the preset form refuses. A drop before an add item lands

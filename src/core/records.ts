@@ -70,11 +70,15 @@ export const repDataSchema = blockDataSchema;
 // `acl:` and `plink:` hold the player's last known name.
 export const playerDataSchema = z.strictObject({ name: z.string() });
 
-// AD-19: a token links to the sheet `s`, or with `i` to its repeat block of that instance id. The
-// repeat block's scope is read from its `blk:` key, as an instance id is unique in its sheet.
+// A token-cell link names the sheet, an optional repeat scope path, and the cell id.
 export const linkDataSchema = z.strictObject({
   s: keySegmentSchema,
-  i: keySegmentSchema.optional(),
+  path: z
+    .array(keySegmentSchema)
+    .min(2)
+    .refine((parts) => parts.length % 2 === 0)
+    .optional(),
+  c: keySegmentSchema,
 });
 
 export const recordSchema = z.union([
@@ -164,7 +168,30 @@ export function repKey(sheetId: string, sectionId: string, instanceId: string): 
   return `${repKeyPrefix(sheetId, sectionId)}${instanceId}`;
 }
 
+export function blockPathKey(sheetId: string, path: readonly string[]): string {
+  return `blk:${[sheetId, ...path].join(':')}`;
+}
+
 export type RepKeyParts = { sheetId: string; sectionId: string; instanceId: string };
+
+export type BlockPathParts = { sheetId: string; path: string[] };
+
+export function parseBlockPathKey(key: string): BlockPathParts | null {
+  const [form, sheetId, ...path] = key.split(':');
+
+  if (
+    form !== 'blk' ||
+    sheetId === undefined ||
+    !keySegmentSchema.safeParse(sheetId).success ||
+    path.length < 2 ||
+    path.length % 2 !== 0 ||
+    path.some((part) => !keySegmentSchema.safeParse(part).success)
+  ) {
+    return null;
+  }
+
+  return { sheetId, path };
+}
 
 // The ids of one repeat level, or null for a root or another key form.
 export function parseRepKey(key: string): RepKeyParts | null {

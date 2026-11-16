@@ -11,7 +11,6 @@ import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
 import { AccessPanel } from './access-panel';
-import { TokenControl } from './map-toggle';
 import { FieldEditingContext, useTextFieldEdit, type FieldEditing } from './use-field-edit';
 
 const HEADER_CLASS = 'mb-6 flex items-center gap-1';
@@ -27,7 +26,6 @@ export type HeaderStatus = 'can-edit' | 'read-only';
 export type GmHeader = {
   playerId: string;
   access: boolean;
-  tokenLinked: boolean | null;
   onDelete: (() => void) | null;
   // True after the GM cancels a deletion, so the focus goes back where the GM asked from.
   focusActions: boolean;
@@ -111,9 +109,6 @@ export function SheetHeader({
           <span className="shrink-0 self-center text-label-sm text-text-muted">
             {status === 'can-edit' ? copy.status.canEdit : copy.status.readOnly}
           </span>
-        )}
-        {gm === null || gm.tokenLinked === null ? null : (
-          <TokenControl target={{ sheetId, instanceId: null }} linked={gm.tokenLinked} />
         )}
         {gm?.access === true ? (
           <IconButton

@@ -5,6 +5,7 @@ import {
   type Preset,
   type PresetCell,
   type PresetFieldCell,
+  type PresetRow,
   type Template,
 } from '@/core/preset';
 import {
@@ -117,7 +118,7 @@ function addSampleValues(
     }
 
     // A section marked `repeat` with no field cannot pass the preset rules, so it has no record.
-    if (section.repeat === true) {
+    if (section.repeat !== undefined) {
       continue;
     }
 
@@ -152,16 +153,16 @@ function addRecord(records: Map<string, VersionedRecord>, record: VersionedRecor
 // A text field shows its own label, and in a repeat block the block's number after it, so it is
 // never empty: a stored text value is never "".
 function sampleValues(
-  rows: readonly (readonly PresetCell[])[],
+  rows: readonly PresetRow[],
   counters: ValueCounters,
   block: number | null,
 ): FieldValues {
   const values: [string, FieldValue][] = [];
 
   for (const row of rows) {
-    row.forEach((cell, index) => {
+    row.cells.forEach((cell, index) => {
       if (cell.kind === 'field') {
-        values.push([cell.id, sampleValue(cell, row.slice(0, index), counters, block)]);
+        values.push([cell.id, sampleValue(cell, row.cells.slice(0, index), counters, block)]);
       }
     });
   }

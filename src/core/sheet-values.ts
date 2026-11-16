@@ -77,7 +77,7 @@ export function cellLabel(cell: PresetCell, before: readonly PresetCell[]): stri
     return cell.text;
   }
 
-  if (cell.name !== undefined) {
+  if (cell.kind !== 'token' && cell.name !== undefined) {
     return cell.name;
   }
 
@@ -97,7 +97,15 @@ export function cellVisibleLabel(
     }
   }
 
-  return cell.kind === 'field' ? cell.id : cell.formula;
+  if (cell.kind === 'field') {
+    return cell.id;
+  }
+
+  if (cell.kind === 'dice') {
+    return cell.formula;
+  }
+
+  return cell.id;
 }
 
 // A blank title counts as none, so no empty heading names the section.

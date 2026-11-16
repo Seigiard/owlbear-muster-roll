@@ -8,7 +8,12 @@ import { newSheetId } from '@/core/ids';
 import { openTabIndex, type SheetSetTemplate } from '@/core/preset';
 import { isSheetSet, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
-import { linkTargetKey, repeatBlockTabIndex, type LinkTarget } from '@/core/link-target';
+import {
+  linkTargetKey,
+  repeatBlockTabIndex,
+  tokenCellPlace,
+  type LinkTarget,
+} from '@/core/link-target';
 import {
   selectionMarks,
   selectionStep,
@@ -49,6 +54,7 @@ import type { ShellTab } from '@/ui/shell/tab-bar';
 import { WindowFrame } from '@/ui/shell/window-frame';
 import { followTheme } from '@/ui/theme';
 import { useWindowView } from '@/ui/window-view';
+import { tokenCellPickerUrl } from '@/core/token-links';
 
 import './main.css';
 
@@ -263,6 +269,18 @@ function WindowRoot({
     () => ({
       sendCommand: (command) => sendCommand(command),
       linkedTargets,
+      open: (target) => {
+        void platform.popover
+          .open({
+            id: 'app.muster-roll/link-picker',
+            url: tokenCellPickerUrl(target),
+            width: 320,
+            height: 420,
+          })
+          .catch((error) => {
+            console.error('Muster Roll could not open the token-cell picker', error);
+          });
+      },
     }),
     [sendCommand, linkedTargets],
   );
@@ -322,13 +340,18 @@ function WindowRoot({
     const template =
       tab === null ? undefined : tabs.find((listed) => listed.id === tab)?.policy.template;
 
-    const block =
-      openRequest.instanceId === null || preset === null ? null : openRequest.instanceId;
+    const block = openRequest.path?.at(-1) ?? null;
 
     const blockTab =
       block === null || template === undefined
         ? null
         : repeatBlockTabIndex(records.values(), template, openRequest.sheetId, block);
+
+    const cellTab =
+      template === undefined
+        ? null
+        : (tokenCellPlace(template, openRequest.cellId, openRequest.path?.[0] ?? null)?.tabIndex ??
+          null);
 
     dispatch({
       type: 'open-request',
@@ -337,6 +360,7 @@ function WindowRoot({
       tab,
       blockTab,
       block,
+      cellTab,
       ready,
     });
   }, [openRequest, preset, ready, records, tabIds, tabs, takenOpen]);
@@ -514,7 +538,6 @@ function WindowRoot({
             gm={{
               playerId,
               access: ofSet && !policy.hidden,
-              tokenLinked: policy.linkable ? linkedTargets.has(tab.sheetId) : null,
               onDelete: ofSet
                 ? () => {
                     askDelete(tab);

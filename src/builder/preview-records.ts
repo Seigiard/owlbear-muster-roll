@@ -1,6 +1,6 @@
 import { layoutSections, repeatSectionId, type Template } from '@/core/preset';
 import { repKey, type VersionedRecord } from '@/core/records';
-import { sheetKey } from '@/core/sheets';
+import { isSheetSet, sheetKey } from '@/core/sheets';
 import { copy } from '@/copy';
 
 // AD-23: the records the builder's preview draws one template with. No value is set, so every field
@@ -28,10 +28,7 @@ export function previewRecords(
 
     records.set(key, {
       k: key,
-      d:
-        template.kind === 'set'
-          ? { set: template.id, order: 1, cells: {} }
-          : { order: 1, cells: {} },
+      d: isSheetSet(template) ? { set: template.id, order: 1, cells: {} } : { order: 1, cells: {} },
       c: PREVIEW_COUNTER,
       a: PREVIEW_AUTHOR,
       l: [PREVIEW_COUNTER, PREVIEW_AUTHOR],
@@ -61,19 +58,20 @@ export function previewRecords(
 // set's sample sheet has an empty name, so it shows its name field's placeholder, the field id, or
 // "Без имени" when the name field names no text field outside repeat sections on any tab.
 export function previewSheetName(template: Template): string {
-  if (template.kind === 'single') {
+  if (!isSheetSet(template)) {
     return template.title;
   }
 
   const named = layoutSections(template).some(
     (section) =>
-      section.repeat !== true &&
+      section.repeat === undefined &&
       section.rows.some((row) =>
-        row.some(
-          (cell) => cell.kind === 'field' && cell.type === 'text' && cell.id === template.nameField,
+        row.cells.some(
+          (cell) =>
+            cell.kind === 'field' && cell.type === 'text' && cell.id === template.repeat?.nameField,
         ),
       ),
   );
 
-  return named ? template.nameField : copy.unnamed;
+  return named ? (template.repeat?.nameField ?? copy.unnamed) : copy.unnamed;
 }

@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import {
   blockIndex,
+  linkDataOf,
   linkTargetKey,
   linkTargetOf,
   liveLinkTarget,
@@ -11,12 +12,13 @@ import {
 import {
   layoutSections,
   repeatSectionId,
+  rowCells,
   type Preset,
   type PresetSection,
   type Template,
 } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { repeatBlocks } from '@/core/sheet-values';
+import { repeatBlocks, sectionTitle } from '@/core/sheet-values';
 import { repeatBlockName, sheetName, templateSheetIds } from '@/core/sheets';
 import { linkTargetShownTo, type PlayerRole } from '@/core/visibility';
 
@@ -27,6 +29,7 @@ const TOKEN_LAYER = 'CHARACTER';
 export const LINK_PICKER_PATH = '/picker.html';
 
 export const LINK_PICKER_TOKEN_PARAM = 'token';
+export const LINK_PICKER_TARGET_PARAM = 'target';
 
 // One picker at a time: a second one opens under the same id.
 export const LINK_PICKER_POPOVER_ID = 'app.muster-roll/link-picker';
@@ -60,8 +63,10 @@ export type TokenMenuEntry = { action: TokenMenuAction; filters: TokenMenuFilter
 // names the target already.
 export type PickerTarget = {
   target: LinkTarget;
+  cellId: string;
   sheetName: string;
   blockName: string | null;
+  label: string;
   linked: boolean;
 };
 
@@ -83,6 +88,12 @@ export function linkKey(tokenId: string): string {
 // The picker's URL for one token, relative to the extension's origin.
 export function linkPickerUrl(tokenId: string): string {
   return `${LINK_PICKER_PATH}?${new URLSearchParams({ [LINK_PICKER_TOKEN_PARAM]: tokenId }).toString()}`;
+}
+
+export function tokenCellPickerUrl(target: LinkTarget): string {
+  return `${LINK_PICKER_PATH}?${new URLSearchParams({
+    [LINK_PICKER_TARGET_PARAM]: JSON.stringify(linkDataOf(target)),
+  }).toString()}`;
 }
 
 // AD-19: token id to target, for every live link. An inert link counts as no link everywhere. Only
@@ -147,10 +158,8 @@ export function linkedTargetKeys(
   );
 }
 
-// UX: one group per linkable template and per linkable repeat section, in preset order, a
-// template's own group before its sections'. A sheet set lists its live sheets, a single sheet
-// itself, and a section its repeat blocks, sheet by sheet. In each group the targets with no token
-// come first, and both parts keep their order. A group with no target is left out.
+// UX: one group per token cell and scope, in preset order. A root group lists sheets and a repeat
+// group lists blocks, sheet by sheet. In each group the targets with no token come first.
 export function pickerGroups(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset | null,
@@ -163,16 +172,24 @@ export function pickerGroups(
   const groups: PickerGroup[] = [];
 
   const targetOf = (
-    sheetId: string,
-    instanceId: string | null,
+    template: Template,
+    target: LinkTarget,
+    cellId: string,
     blockName: string | null,
+    section: PresetSection | null,
   ): PickerTarget => {
-    const target = { sheetId, instanceId };
+    const targetSheetName = sheetName(records, preset, target.sheetId) ?? '';
 
     return {
       target,
-      sheetName: sheetName(records, preset, sheetId) ?? '',
+      cellId,
+      sheetName: targetSheetName,
       blockName,
+      label:
+        blockName !== null && blockName !== ''
+          ? blockName
+          : ((section === null ? null : sectionTitle(section)) ??
+            (targetSheetName || template.title)),
       linked: linked.has(linkTargetKey(target)),
     };
   };
@@ -180,40 +197,75 @@ export function pickerGroups(
   for (const template of preset.templates) {
     const sheetIds = templateSheetIds(records.values(), preset, template);
 
-    if (template.tokens === true) {
+    for (const { cellId, section } of tokenCells(template, null)) {
       groups.push({
         template,
         section: null,
-        targets: sheetIds.map((sheetId) => targetOf(sheetId, null, null)),
+        targets: sheetIds.map((sheetId) =>
+          targetOf(template, { sheetId, instanceId: null, cellId }, cellId, null, section),
+        ),
       });
     }
 
     for (const section of layoutSections(template)) {
       const sectionId = repeatSectionId(section);
 
-      if (sectionId === null || section.tokens !== true) {
+      if (sectionId === null) {
         continue;
       }
 
-      groups.push({
-        template,
-        section,
-        targets: sheetIds.flatMap((sheetId) =>
-          repeatBlocks(records, sheetId, sectionId).map((block) =>
-            targetOf(
-              sheetId,
-              block.instanceId,
-              repeatBlockName(records, sheetId, section, block.instanceId),
+      for (const { cellId } of tokenCells(template, sectionId)) {
+        groups.push({
+          template,
+          section,
+          targets: sheetIds.flatMap((sheetId) =>
+            repeatBlocks(records, sheetId, sectionId).map((block) =>
+              targetOf(
+                template,
+                {
+                  sheetId,
+                  instanceId: block.instanceId,
+                  path: [sectionId, block.instanceId],
+                  cellId,
+                },
+                cellId,
+                repeatBlockName(records, sheetId, section, block.instanceId),
+                section,
+              ),
             ),
           ),
-        ),
-      });
+        });
+      }
     }
   }
 
   return groups.flatMap((group) =>
     group.targets.length === 0 ? [] : [{ ...group, targets: noTokenFirst(group.targets) }],
   );
+}
+
+function tokenCells(
+  template: Template,
+  repeatId: string | null,
+): { cellId: string; section: PresetSection }[] {
+  return layoutSections(template).flatMap((section) => {
+    if (
+      (repeatId === null && section.repeat !== undefined) ||
+      (repeatId !== null && section.repeat?.id !== repeatId)
+    ) {
+      return [];
+    }
+
+    return section.rows.flatMap((row) => {
+      if (repeatId === null && row.repeat !== undefined) {
+        return [];
+      }
+
+      return rowCells(row).flatMap((cell) =>
+        cell.kind === 'token' ? [{ cellId: cell.id, section }] : [],
+      );
+    });
+  });
 }
 
 // AD-2 and UX-DR21: Owlbear filters match item keys only and do not change, so the menu is built

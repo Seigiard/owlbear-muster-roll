@@ -366,7 +366,9 @@ function reconcileRecords(
     const previous = before.templates.find((template) => template.id === (sheet.set ?? sheet.id));
 
     const next = after.templates.find(
-      (template) => template.id === previous?.id && template.kind === previous?.kind,
+      (template) =>
+        template.id === previous?.id &&
+        (template.repeat !== undefined) === (previous?.repeat !== undefined),
     );
 
     if (previous === undefined || next === undefined) continue;

@@ -104,8 +104,8 @@ export function prepareDiceRoll(
 ): Result<PreparedDiceRoll, DiceRollFailure> {
   const section = sectionAt(layout, place);
   const row = section?.rows[place.rowIndex];
-  const cell = row?.[place.cellIndex];
-  const repeat = section?.repeat === true;
+  const cell = row?.cells[place.cellIndex];
+  const repeat = section?.repeat !== undefined || row?.repeat !== undefined;
 
   if (
     section === null ||
@@ -125,7 +125,7 @@ export function prepareDiceRoll(
   let ownBlock: FieldValues | undefined;
 
   if (place.instanceId !== null) {
-    const block = blockValues(records, sheetId, section, place.instanceId);
+    const block = blockValues(records, sheetId, section, row, place.instanceId);
 
     if (block === null) {
       return err({ code: 'not-dice' });
@@ -174,7 +174,7 @@ export function prepareDiceRoll(
     return sides;
   });
 
-  const cellText = cellLabel(cell, row.slice(0, place.cellIndex));
+  const cellText = cellLabel(cell, row.cells.slice(0, place.cellIndex));
 
   const label =
     writtenFormula !== cell.formula
@@ -211,9 +211,10 @@ function blockValues(
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
   section: PresetSection,
+  row: PresetSection['rows'][number],
   instanceId: string,
 ): FieldValues | null {
-  const sectionId = repeatSectionId(section);
+  const sectionId = repeatSectionId(section) ?? row.repeat?.id ?? null;
 
   if (sectionId === null) {
     return null;
@@ -249,15 +250,15 @@ function withShown(values: FieldValues, shown: ShownValues): FieldValues {
 function fieldLabel(layout: TemplateLayout, from: TemplateRowPlace, id: string): string {
   const reference = resolveFieldReference(layout, from, id);
 
+  if (reference === null) return id;
+
   const rows: readonly (readonly PresetCell[])[] =
-    reference === null
-      ? []
-      : reference.scope === 'block'
-        ? (sectionAt(layout, from)?.rows ?? [])
-        : [plainRow(layout, reference.rowId) ?? []];
+    reference.scope === 'block'
+      ? (sectionAt(layout, from)?.rows.map((row) => row.cells) ?? [])
+      : [plainRow(layout, reference.rowId) ?? []];
 
   for (const row of rows) {
-    const index = row.findIndex((cell) => cell.kind === 'field' && cell.id === id);
+    const index = row.findIndex((candidate) => candidate.kind === 'field' && candidate.id === id);
     const cell = row[index];
 
     if (cell !== undefined) {

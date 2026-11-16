@@ -1,12 +1,10 @@
 import { blockIndex, linkTargetOf, liveLinkTarget, type LiveLinkTarget } from '@/core/link-target';
+import type { DicePlace } from '@/core/dice-roll';
 import {
   firstFieldId,
   placedSections,
-  repeatSectionId,
   repeatSectionPlace,
   type Preset,
-  type SheetSetTemplate,
-  type SingleSheetTemplate,
   type Template,
 } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
@@ -21,13 +19,15 @@ import {
 
 export type PlayerRole = 'GM' | 'PLAYER';
 
-type FieldVisibilityTarget = { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string };
+type FieldVisibilityTarget =
+  | { kind: 'row'; rowId: string }
+  | { kind: 'rep'; sectionId: string; fieldId?: string };
 
 // One template as the sidebar lists it: a sheet set with its live sheets, or a single sheet, whose
 // sheet id is its template id.
 export type VisibleTemplate =
-  | { kind: 'set'; template: SheetSetTemplate; sheets: SheetSummary[] }
-  | { kind: 'single'; template: SingleSheetTemplate };
+  | { kind: 'set'; template: Template; sheets: SheetSummary[] }
+  | { kind: 'single'; template: Template };
 
 // The templates a role sees, in preset order.
 export type VisibleSheets = VisibleTemplate[];
@@ -46,6 +46,30 @@ export function tabShownTo(role: PlayerRole, template: Template, tabIndex: numbe
     tab !== undefined &&
     templateShownTo(role, template) &&
     (role === 'GM' || tab.visibility !== 'gm')
+  );
+}
+
+// A dice cell inherits visibility from its template, tab, section and row. The place is already
+// checked by the roll parser, so an invalid layout position is not shown to a player.
+export function rollTargetShownTo(
+  role: PlayerRole,
+  template: Template,
+  place: Pick<DicePlace, 'tabIndex' | 'sectionIndex' | 'rowIndex'>,
+): boolean {
+  if (role === 'GM') {
+    return true;
+  }
+
+  const tab = template.tabs[place.tabIndex];
+  const section = tab?.sections[place.sectionIndex];
+  const row = section?.rows[place.rowIndex];
+
+  return (
+    row !== undefined &&
+    section !== undefined &&
+    tabShownTo(role, template, place.tabIndex) &&
+    section.visibility !== 'gm' &&
+    row.visibility !== 'gm'
   );
 }
 
@@ -69,13 +93,17 @@ export function linkTargetShownTo(role: PlayerRole, live: LiveLinkTarget): boole
   }
 
   if (live.section === null) {
-    return true;
+    return (
+      tabShownTo(role, live.policy.template, live.cell.tabIndex) &&
+      (role === 'GM' ||
+        (live.cell.section.visibility !== 'gm' && live.cell.row.visibility !== 'gm'))
+    );
   }
 
-  const sectionId = repeatSectionId(live.section);
-  const place = sectionId === null ? null : repeatSectionPlace(live.policy.template, sectionId);
-
-  return place !== null && tabShownTo(role, live.policy.template, place.place.tabIndex);
+  return (
+    tabShownTo(role, live.policy.template, live.cell.tabIndex) &&
+    (role === 'GM' || (live.section.visibility !== 'gm' && live.cell.row.visibility !== 'gm'))
+  );
 }
 
 // True while a template owns `sheetId` and this role sees that template.
@@ -183,12 +211,34 @@ export function rollShownTo(role: PlayerRole, hidden: boolean): boolean {
 
 function fieldTargetTabIndex(template: Template, target: FieldVisibilityTarget): number | null {
   if (target.kind === 'rep') {
-    return repeatSectionPlace(template, target.sectionId)?.place.tabIndex ?? null;
+    const repeated = repeatSectionPlace(template, target.sectionId);
+
+    if (repeated === null) {
+      return null;
+    }
+
+    const { section, place } = repeated;
+
+    if (target.fieldId === undefined) {
+      return section.visibility === 'gm' ? null : place.tabIndex;
+    }
+
+    const row = section.rows.find((candidate) =>
+      candidate.cells.some((cell) => cell.kind === 'field' && cell.id === target.fieldId),
+    );
+
+    return row === undefined || row.visibility === 'gm' || section.visibility === 'gm'
+      ? null
+      : place.tabIndex;
   }
 
   for (const { place, section } of placedSections(template)) {
-    if (section.repeat !== true && section.rows.some((row) => firstFieldId(row) === target.rowId)) {
-      return place.tabIndex;
+    if (section.repeat === undefined) {
+      const row = section.rows.find((item) => firstFieldId(item) === target.rowId);
+
+      if (row !== undefined && row.visibility !== 'gm' && section.visibility !== 'gm') {
+        return place.tabIndex;
+      }
     }
   }
 

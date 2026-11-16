@@ -737,7 +737,10 @@ export async function startReplicaEngine(
 
     const id = newId();
 
-    heldOpen = { id, sheetId: target.sheetId, instanceId: target.instanceId };
+    heldOpen =
+      target.path === null || target.path === undefined
+        ? { id, sheetId: target.sheetId, cellId: target.cellId ?? '' }
+        : { id, sheetId: target.sheetId, path: target.path, cellId: target.cellId ?? '' };
     heldOpenUntil = Date.now() + timing.openRequestTtlMs;
     // No window opens for it, so a window opened by hand later does not jump to it.
     platform.action.open().catch((error) => {
@@ -763,7 +766,10 @@ export async function startReplicaEngine(
   }
 
   function dropStaleOpen(): void {
-    if (heldOpen !== null && (Date.now() >= heldOpenUntil || !openTargetShown(heldOpen))) {
+    if (
+      heldOpen !== null &&
+      (Date.now() >= heldOpenUntil || !openTargetShown(openRequestTarget(heldOpen)))
+    ) {
       heldOpen = null;
     }
   }
@@ -773,6 +779,15 @@ export async function startReplicaEngine(
     const live = liveLinkTarget(replica, presetOf(replica.get('preset')), target);
 
     return live !== null && linkTargetShownTo(role, live);
+  }
+
+  function openRequestTarget(request: OpenSheetRequest): LinkTarget {
+    return {
+      sheetId: request.sheetId,
+      instanceId: request.path?.at(-1) ?? null,
+      path: request.path,
+      cellId: request.cellId,
+    };
   }
 
   function dropOpen(id: string): void {

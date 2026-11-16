@@ -71,7 +71,8 @@ export function presetDiff(
 
   for (const template of oldPreset?.templates ?? []) {
     const next = newPreset.templates.find(
-      (item) => item.id === template.id && item.kind === template.kind,
+      (item) =>
+        item.id === template.id && (item.repeat !== undefined) === (template.repeat !== undefined),
     );
 
     const before = templateScopes(template);
@@ -254,7 +255,7 @@ export function presetDiff(
       }
 
       if (next === undefined) {
-        if (template.kind === 'set' || erased.length > lostBefore) {
+        if (template.repeat !== undefined || erased.length > lostBefore) {
           sheets += 1;
           erased.push(`${blockKey(sheetId)}\u0000`);
         }
@@ -273,7 +274,7 @@ export function presetDiff(
   }
 
   for (const template of newPreset.templates) {
-    if (template.kind === 'single' && records.get(blockKey(template.id))?.d == null) {
+    if (template.repeat === undefined && records.get(blockKey(template.id))?.d == null) {
       first.push({ k: blockKey(template.id), d: { order: 0, cells: {} }, relocate: true });
     }
   }
@@ -379,28 +380,12 @@ export function sectionTarget(
   after: TemplateScopes,
   allowTextForSelect = false,
 ): string | null {
-  let best: { id: string; kept: number } | null = null;
+  void fields;
+  void allowTextForSelect;
 
-  for (const [id, newFields] of after.sections) {
-    const kept = fields.filter((field) =>
-      newFields.some(
-        (other) =>
-          other.id === field.id &&
-          (other.type === field.type ||
-            (allowTextForSelect &&
-              field.type === 'text' &&
-              (other.type === 'select' || other.type === 'dice-choice'))),
-      ),
-    ).length;
-
-    if (kept === 0) continue;
-
-    if (newFields.some((field) => field.id === sectionId)) return id;
-
-    if (best === null || kept > best.kept) best = { id, kept };
-  }
-
-  return best?.id ?? null;
+  // v4 repeat ids are stable scope identities. Matching fields is not a relocation
+  // rule: changing the scope id erases its blocks.
+  return after.sections.has(sectionId) ? sectionId : null;
 }
 
 export function templateScopes(layout: TemplateLayout): TemplateScopes {
@@ -411,12 +396,12 @@ export function templateScopes(layout: TemplateLayout): TemplateScopes {
 
     if (sectionId !== null) {
       scopes.sections.set(sectionId, sectionFields(section));
-    } else if (section.repeat !== true) {
+    } else if (section.repeat === undefined) {
       for (const row of section.rows) {
         const id = firstFieldId(row);
 
         if (id === null) continue;
-        const fields = row.filter((cell) => cell.kind === 'field');
+        const fields = row.cells.filter((cell) => cell.kind === 'field');
         scopes.rows.set(id, fields);
 
         for (const field of fields) scopes.rowFields.set(field.id, { rowId: id, field });

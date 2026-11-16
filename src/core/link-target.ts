@@ -2,27 +2,46 @@ import type { JsonValue } from '@/core/json';
 import {
   repeatSectionById,
   repeatSectionPlace,
+  placedSections,
   type Preset,
   type PresetSection,
+  type PresetRow,
   type TemplateLayout,
 } from '@/core/preset';
 import {
   linkDataSchema,
   parseRepKey,
   repDataSchema,
+  repKey,
   type LinkData,
   type VersionedRecord,
 } from '@/core/records';
 import { resolveSheet, sheetIdSchema, type SheetPolicy } from '@/core/sheets';
 
-// AD-19: what a token link names: a sheet, or with `instanceId` one repeat block of it.
-export type LinkTarget = { sheetId: string; instanceId: string | null };
+// A v4 link names a sheet, an optional sequence of (repeat scope, block id)
+// pairs, and the token cell. `instanceId` remains as a derived compatibility
+// view for replica code that addresses one block at a time.
+export type LinkTarget = {
+  sheetId: string;
+  instanceId: string | null;
+  path?: string[] | null;
+  cellId?: string;
+};
 
 // A target a live link may name: its sheet's policy, and for a repeat block its section.
 export type LiveLinkTarget = {
   target: LinkTarget;
   policy: SheetPolicy;
   section: PresetSection | null;
+  cell: TokenCellPlace;
+};
+
+export type TokenCellPlace = {
+  tabIndex: number;
+  sectionIndex: number;
+  rowIndex: number;
+  section: PresetSection;
+  row: PresetRow;
 };
 
 // Where each live repeat block of the replica is, by `blockIndexKey`.
@@ -37,23 +56,33 @@ export function linkTargetOf(d: JsonValue): LinkTarget | null {
     return null;
   }
 
-  return { sheetId: data.data.s, instanceId: data.data.i ?? null };
+  const path = data.data.path ?? null;
+  const instanceId = path === null ? null : (path.at(-1) ?? null);
+
+  return { sheetId: data.data.s, instanceId, path, cellId: data.data.c };
 }
 
 // The `link:` record data for a target.
 export function linkDataOf(target: LinkTarget): LinkData {
-  return target.instanceId === null
-    ? { s: target.sheetId }
-    : { s: target.sheetId, i: target.instanceId };
+  return target.path === null || target.path === undefined
+    ? { s: target.sheetId, c: target.cellId ?? '' }
+    : { s: target.sheetId, path: target.path, c: target.cellId ?? '' };
 }
 
 // One string per target, so targets can be kept in a set.
 export function linkTargetKey(target: LinkTarget): string {
-  return target.instanceId === null ? target.sheetId : `${target.sheetId}:${target.instanceId}`;
+  const path = target.path?.join(':') ?? '';
+
+  return `${target.sheetId}:${path}:${target.cellId ?? ''}`;
 }
 
 export function sameLinkTarget(first: LinkTarget, second: LinkTarget): boolean {
-  return first.sheetId === second.sheetId && first.instanceId === second.instanceId;
+  return (
+    first.sheetId === second.sheetId &&
+    first.instanceId === second.instanceId &&
+    first.cellId === second.cellId &&
+    JSON.stringify(first.path ?? null) === JSON.stringify(second.path ?? null)
+  );
 }
 
 // The section id of every live repeat block, by sheet id and instance id. An instance id is unique
@@ -106,6 +135,7 @@ export function liveLinkTarget(
   target: LinkTarget,
   blocks: BlockIndex = blockIndex(records.values()),
 ): LiveLinkTarget | null {
+  void blocks;
   const policy = resolveSheet(records, preset, target.sheetId);
 
   if (policy === null) {
@@ -113,13 +143,76 @@ export function liveLinkTarget(
   }
 
   if (target.instanceId === null) {
-    return policy.linkable ? { target, policy, section: null } : null;
+    const cell = tokenCellPlace(policy.template, target.cellId, null);
+
+    return policy.linkable && cell !== null ? { target, policy, section: null, cell } : null;
   }
 
-  const sectionId = blocks.get(blockIndexKey(target.sheetId, target.instanceId));
-  const section = sectionId === undefined ? null : repeatSectionById(policy.template, sectionId);
+  const sectionId = target.path?.[0];
+  const instanceId = target.path?.[1];
 
-  return section?.tokens === true ? { target, policy, section } : null;
+  if (
+    target.path === undefined ||
+    target.path === null ||
+    target.path.length !== 2 ||
+    sectionId === undefined ||
+    instanceId === undefined ||
+    instanceId !== target.instanceId ||
+    !isLiveRepeatBlock(records, target.sheetId, sectionId, instanceId)
+  ) {
+    return null;
+  }
+
+  const section = repeatSectionById(policy.template, sectionId);
+  const cell = section === null ? null : tokenCellPlace(policy.template, target.cellId, sectionId);
+
+  return section !== null && cell !== null ? { target, policy, section, cell } : null;
+}
+
+function isLiveRepeatBlock(
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  sectionId: string,
+  instanceId: string,
+): boolean {
+  return repDataSchema.safeParse(records.get(repKey(sheetId, sectionId, instanceId))?.d).success;
+}
+
+export function tokenCellPlace(
+  template: TemplateLayout,
+  cellId: string | undefined,
+  repeatSectionId: string | null,
+): TokenCellPlace | null {
+  if (cellId === undefined) {
+    return null;
+  }
+
+  for (const { place, section } of placedSections(template)) {
+    if (
+      (repeatSectionId === null && section.repeat !== undefined) ||
+      (repeatSectionId !== null && section.repeat?.id !== repeatSectionId)
+    ) {
+      continue;
+    }
+
+    for (const [rowIndex, row] of section.rows.entries()) {
+      if (repeatSectionId === null && row.repeat !== undefined) {
+        continue;
+      }
+
+      if (row.cells.some((cell) => cell.kind === 'token' && cell.id === cellId)) {
+        return {
+          tabIndex: place.tabIndex,
+          sectionIndex: place.sectionIndex,
+          rowIndex,
+          section,
+          row,
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 function blockIndexKey(sheetId: string, instanceId: string): string {

@@ -17,9 +17,9 @@ import { withRemovedRows, type SheetPending } from './pending-mark';
 import { SheetSection, type BlockTools } from './preset-section';
 import { FieldEditingContext, type FieldEditing } from './use-field-edit';
 
-// FR14: the repeat block "Открыть лист" asked for. It scrolls into view once, and takes the focus
-// when `focus` is set.
-export type BlockReveal = { instanceId: string; focus: boolean };
+// FR14: the token cell "Открыть лист" asked for. It scrolls into view once, and takes the focus
+// when `focus` is set. A null instance addresses a root cell.
+export type BlockReveal = { instanceId: string | null; cellId: string; focus: boolean };
 
 type SheetBodyProps = {
   // The sheet's template, as `core/sheets` resolves it.
@@ -78,19 +78,26 @@ export function SheetBody({
     }
 
     const frame = requestAnimationFrame(() => {
-      const block = body.current?.querySelector<HTMLElement>(
-        `[data-repeat-block="${CSS.escape(reveal.instanceId)}"]`,
+      const scope =
+        reveal.instanceId === null
+          ? body.current
+          : body.current?.querySelector<HTMLElement>(
+              `[data-repeat-block="${CSS.escape(reveal.instanceId)}"]`,
+            );
+
+      const cell = scope?.querySelector<HTMLElement>(
+        `[data-cell-id="${CSS.escape(reveal.cellId)}"][data-cell-scope="${CSS.escape(
+          reveal.instanceId ?? 'root',
+        )}"]`,
       );
 
-      revealElement(block);
+      revealElement(cell ?? scope);
       onRevealed?.();
 
-      // The tab switched under the focus, so the focus goes to the repeat block, which names itself.
+      // The tab switched under the focus, so the focus goes to the target cell or its block.
       if (reveal.focus) {
         setTimeout(() => {
-          body.current
-            ?.querySelector<HTMLElement>(`[data-repeat-block="${CSS.escape(reveal.instanceId)}"]`)
-            ?.focus({ preventScroll: true });
+          (cell ?? scope)?.focus({ preventScroll: true });
         });
       }
     });
@@ -149,7 +156,7 @@ function sheetValuesSignature(
   for (const section of layoutSections(template)) {
     const sectionId = repeatSectionId(section);
 
-    if (section.repeat === true) {
+    if (section.repeat !== undefined) {
       if (sectionId !== null) {
         repeatPrefixes.push(repKeyPrefix(sheetId, sectionId));
       }
