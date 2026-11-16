@@ -244,7 +244,3 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 - A token cell on a hidden tab, section or row gives players no token menu, by the visibility rule.
 - Snapshot import drops blocks whose repeat scope the current preset lacks and counts them with the dropped values.
 - An owner (CAP-19) can still be set on a player-editable sheet set; it changes nothing for write access there.
-
-## Open Questions
-
-- Can the Owlbear extension iframe open a new tab? The v2 settings button (CAP-21) depends on it, and the extension opens no tab today.
