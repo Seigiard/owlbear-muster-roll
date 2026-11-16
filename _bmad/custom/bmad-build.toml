@@ -1,0 +1,97 @@
+# Team overrides for bmad-build. Committed: every checkout and every herdr worktree loads
+# them. A `*.user.toml` beside this file is gitignored and never reaches a worktree.
+# Merge rules and the default values: .claude/skills/bmad-build/customize.toml.
+#
+# BMAD keeps clarify, plan and spec; the `implement` skill builds the spec (tdd chain, then
+# code-review). The BMAD reviewer layers are off: code-review already reviewed and fixed the
+# change before step 04 runs.
+
+[workflow]
+
+# Loaded at activation and carried through the whole run.
+persistent_facts = [
+  "Size gate. At CHECKPOINT 1, beside the token count, state the footprint: how many source files and how many test files the Code Map and Tasks touch, and the estimate in hours. A spec that rewrites a data format or an API across layers, or touches more than 15 source files or more than 10 test files, is an epic: propose the split by layer, each part its own spec, and let the human choose split or keep. A kept epic carries its estimate in hours in the spec.",
+  "Verification cost. Every entry under `## Verification` carries its expected duration in minutes. An entry over 15 minutes runs only on the human's explicit yes in this run or in CI, and the spec says which. `bun run probe` and `bun run mutants` are CI and on-request checks: a spec names them only when the human asked for them.",
+  "Review scope. A verified finding outside the frozen Intent and matrix is one `deferred-work.md` entry. It gets no Backlog task and no question to the human unless the human asks for follow-up tasks.",
+]
+
+
+implementation_handoff = """
+Build the spec with the `implement` skill in this session. `implement` is this step's
+implementer and delegates through its own `tdd` chain.
+
+1. Commit {spec_file}, and `sprint-status.yaml` when this step changed it, as
+   `docs: spec for <spec slug>`, so the spec lands under that subject instead of in
+   `implement`'s carry-over commit. `implement` step 2 handles any other dirty path.
+2. Call the Skill tool with `implement`, ticket slug = the spec file name without `spec-`
+   and `.md`, and this ticket, with {spec_file} filled in:
+
+   > Described work: implement the spec at {spec_file}. The spec is the sole source of truth. Load every file listed in its frontmatter `context:` before you start. Its validation criteria are the spec's `## Tasks & Acceptance` items and every row of its I/O & Edge-Case Matrix, if it has one.
+
+   When `implement` calls `code-review`, pass it `plan:{spec_file}` and the `implement` run
+   directory, so the reviewers judge the change against the spec and the review rounds
+   land in that run directory.
+3. The implementation report is the report of `implement`. If `implement` stopped before
+   `code-review` ran, HALT and give the human that report; the human decides how the work
+   goes on. If `code-review` stopped as blocked, take one recovery pass:
+   - Coverage incomplete: run one more `code-review` round with the same `plan:` and run
+     directory.
+   - A check failed on code in the diff since `baseline_commit`: run a new `tdd` batch in
+     the `implement` run directory with the failing check as its criterion (tdd, "Entering
+     mid-chain"), then run `code-review` again.
+   - A check failed on code outside that diff: HALT and give the human the failing output.
+     The cause is the environment or an older defect, and this build cannot fix it.
+   If `code-review` stops as blocked again, HALT and give the human both reports.
+4. Everything else `code-review` left open — decisions, unresolved findings, deferred
+   findings, corrected criteria — goes to step 04 through the `code-review-carryover`
+   layer. Skip its decision question.
+5. Work that the Tasks & Acceptance Verification or the Matrix Test Audit finds missing goes
+   back through a new `tdd` batch in the `implement` run directory (tdd, "Entering
+   mid-chain"), one criterion per unmet task or matrix row. A failure that an open
+   decision or a corrected criterion explains goes to step 04 with its evidence instead.
+
+Step 04's patch route re-engages the implementer the same way: a new `tdd` batch in the
+`implement` run directory, with the patch findings as its criteria.
+"""
+
+# An epic is a Backlog milestone. `improve-codebase-architecture` sets
+# `disable-model-invocation`, so only the human can start it: this hook only says when.
+on_complete = """
+Find the Backlog task this spec builds: the TASK id in the spec, or the task whose title
+carries the spec's story number. If there is none, or it has no milestone, stop here.
+Otherwise run `backlog task list --milestone <milestone> --plain`. If every other task in
+that milestone is Done, this build closes the epic: print one line that names the
+milestone and tells the human to run `/improve-codebase-architecture`.
+"""
+
+[[workflow.review_layers]]
+id = "blind-hunter"
+instruction = ""
+
+[[workflow.review_layers]]
+id = "edge-case-hunter"
+instruction = ""
+
+[[workflow.review_layers]]
+id = "verification-gap"
+instruction = ""
+
+# Hands what code-review left open to the step 04 triage, so a wrong spec loops back as
+# bad_spec or intent_gap.
+[[workflow.review_layers]]
+id = "code-review-carryover"
+name = "Code-review carry-over"
+instruction = """
+Read the code-review report that `implement` returned in step 03 and the
+`review-<round>.md` files in the `implement` run directory. Return as findings, each with
+its file, its evidence and the reviewer's title:
+
+- every open `decision`;
+- every unresolved reachable `critical` or `major`;
+- every deferred finding;
+- every criterion that code-review corrected in `ticket.md`, whatever the final review
+  status, filed as a deviation from the spec: the spec's text, the corrected text, and the
+  code that now follows the corrected one.
+
+Done when each item in those four classes is one finding; with none, return an empty list.
+"""
