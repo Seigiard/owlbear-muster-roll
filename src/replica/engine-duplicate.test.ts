@@ -626,11 +626,8 @@ describe('repeat-block-duplicate', () => {
     });
 
     await commandWithId(client, 'retry', duplicate('npc', 'mob', 'sk1', 1));
-    room.post(GHOST, stateMessage(lastRequest(room, 'gm-a'), base(), higher));
-    await waitUntil(() => client.store.$sync.get().state === 'live');
-
-    client.engine.catchUp();
-    await waitUntil(() => client.store.$sync.get().state === 'catching-up');
+    room.post(GHOST, { v: 3, g: higher, t: 'reset' });
+    await waitUntil(() => rejection(client, 'retry') === 'data-replaced');
     await evictCommandId(client, 'replacement');
 
     // #when
@@ -638,11 +635,13 @@ describe('repeat-block-duplicate', () => {
     await commandWithId(client, 'after-retry', duplicate('npc', 'mob', 'missing', 1));
     await waitUntil(() => rejection(client, 'after-retry') === 'unknown-instance');
 
-    room.post(GHOST, stateMessage(lastRequest(room, 'gm-a'), [], higher));
+    const during = addedRecords(client).map((record) => record.k);
+
+    room.post(GHOST, stateMessage(lastRequest(room, 'gm-a'), base(), higher));
     await waitUntil(() => client.store.$sync.get().state === 'live');
 
     // #then
-    expect(addedRecords(client).map((record) => record.k)).toEqual(['rep:npc:mob:fresh']);
+    expect(during).toEqual(['rep:npc:mob:fresh']);
   });
 });
 

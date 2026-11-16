@@ -274,7 +274,7 @@ describe('open from token', () => {
     background.room.room.setMetadata({
       'app.muster-roll/snapshot': copyValue({ n: 1, a: 'importer' }, [
         replacement,
-        ...ROOM.filter((record) => record.k !== 'preset' && !record.k.includes('brok')),
+        ...ROOM.filter((record) => record.k !== 'preset'),
       ]),
     });
     await waitUntil(() => window.store.$records.get().get('preset')?.d === replacement.d);
