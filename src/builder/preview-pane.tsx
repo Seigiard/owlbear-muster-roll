@@ -300,13 +300,19 @@ export function PreviewPane({
   const [shownTab, dispatch] = useReducer(previewNavigationReducer, null);
   const [editingUid, dispatchEditing] = useReducer(previewEditingReducer, null);
   const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
+  const previewSelection = useRef<string | null>(null);
 
   const canEdit =
     role === 'GM' || (docTemplate?.kind === 'single' && docTemplate.players === 'edit');
 
   useEffect(() => {
     dispatchEditing({ type: 'selection-changed', uid: selection });
-    setEditingInstanceId(null);
+
+    if (previewSelection.current === selection) {
+      previewSelection.current = null;
+    } else {
+      setEditingInstanceId(null);
+    }
   }, [selection]);
 
   useEffect(() => {
@@ -333,6 +339,16 @@ export function PreviewPane({
         return;
       }
 
+      if (
+        editingInstanceId !== null &&
+        area.current?.querySelector(`[data-repeat-block="${CSS.escape(editingInstanceId)}"]`) ===
+          null
+      ) {
+        setEditingInstanceId(null);
+
+        return;
+      }
+
       event.preventDefault();
       dispatchEditing({ type: 'enter-pressed', uid: selection, editable: canEdit });
     }
@@ -342,7 +358,7 @@ export function PreviewPane({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [canEdit, document, editingUid, selection]);
+  }, [canEdit, document, editingInstanceId, editingUid, selection]);
 
   const selectedTab = useMemo(
     () => (selection === null ? null : tabIndexOf(document, selection)),
@@ -469,8 +485,9 @@ export function PreviewPane({
     const editable = !sample && cell?.kind === 'field' && canEdit;
 
     if (!selected) {
+      previewSelection.current = uid;
       store.select(uid);
-      setEditingInstanceId(null);
+      setEditingInstanceId(repeatBlockId(event.target));
       dispatchEditing({ type: 'cell-clicked', uid, selected: false, editable });
 
       if (cellTarget !== null) {

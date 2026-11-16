@@ -460,6 +460,9 @@ export function BuilderPage({
       files.preset.conflict !== null ||
       (files.preset.file?.status.kind === 'failed' &&
         files.preset.failedDocumentText === presetText &&
+        files.preset.forceWrite === 0) ||
+      (files.preset.file?.status.kind === 'refused' &&
+        files.preset.refusedDocumentText === presetText &&
         files.preset.forceWrite === 0)
     ) {
       return;
@@ -473,6 +476,7 @@ export function BuilderPage({
     files.preset.failedDocumentText,
     files.preset.forceWrite,
     files.preset.lastDocumentText,
+    files.preset.refusedDocumentText,
     files.preset.restoreDocumentText,
     files.preset.restoreText,
     presetText,
@@ -512,6 +516,9 @@ export function BuilderPage({
       files.snapshot.conflict !== null ||
       (files.snapshot.file?.status.kind === 'failed' &&
         files.snapshot.failedDocumentText === generatedSnapshot &&
+        files.snapshot.forceWrite === 0) ||
+      (files.snapshot.file?.status.kind === 'refused' &&
+        files.snapshot.refusedDocumentText === generatedSnapshot &&
         files.snapshot.forceWrite === 0)
     ) {
       return;
@@ -529,6 +536,7 @@ export function BuilderPage({
     files.snapshot.failedDocumentText,
     files.snapshot.forceWrite,
     files.snapshot.lastDocumentText,
+    files.snapshot.refusedDocumentText,
     files.snapshot.restoreDocumentText,
     files.snapshot.restoreText,
     generatedSnapshot,
@@ -553,6 +561,8 @@ export function BuilderPage({
     kind: FileBlockKind,
     result: FileAccessResult<FileContents>,
   ): Promise<void> {
+    const currentDocumentText = documentText(kind);
+
     if (!result.ok) {
       dispatchFiles({
         type: 'fail',
@@ -567,13 +577,17 @@ export function BuilderPage({
     const parsed = parseAttachedText(kind, result.value.text);
 
     if (!parsed.ok) {
-      dispatchFiles({ type: 'refuse', kind, message: parsed.message });
+      dispatchFiles({
+        type: 'refuse',
+        kind,
+        message: parsed.message,
+        documentText: currentDocumentText,
+      });
 
       return;
     }
 
     const current = filesRef.current[kind];
-    const currentDocumentText = documentText(kind);
     const activeWrite = writeQueues.current[kind].active;
 
     const sameFile =
@@ -606,6 +620,17 @@ export function BuilderPage({
       currentDocumentText !== current.lastDocumentText &&
       currentDocumentText !== parsed.canonicalText
     ) {
+      dispatchFiles({
+        type: 'conflict',
+        kind,
+        contents: result.value,
+        canonicalText: parsed.canonicalText,
+      });
+
+      return;
+    }
+
+    if (current.conflict !== null) {
       dispatchFiles({
         type: 'conflict',
         kind,
@@ -649,7 +674,12 @@ export function BuilderPage({
     const parsed = parseAttachedText(kind, conflict.contents.text);
 
     if (!parsed.ok) {
-      dispatchFiles({ type: 'refuse', kind, message: parsed.message });
+      dispatchFiles({
+        type: 'refuse',
+        kind,
+        message: parsed.message,
+        documentText: documentText(kind),
+      });
 
       return;
     }
@@ -684,6 +714,10 @@ export function BuilderPage({
       queued.text === text &&
       queued.canonicalDocumentText === canonicalDocumentText
     ) {
+      if (active === null) {
+        void drainWriteQueue(kind);
+      }
+
       return;
     }
 
@@ -787,7 +821,12 @@ export function BuilderPage({
       const parsed = parseAttachedText(kind, currentOnDisk.value.text);
 
       if (!parsed.ok) {
-        dispatchFiles({ type: 'refuse', kind, message: parsed.message });
+        dispatchFiles({
+          type: 'refuse',
+          kind,
+          message: parsed.message,
+          documentText: canonicalDocumentText,
+        });
 
         return null;
       }

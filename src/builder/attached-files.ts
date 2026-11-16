@@ -27,6 +27,7 @@ export type AttachedFileState = {
   conflict: FileConflict | null;
   forceWrite: number;
   failedDocumentText: string | null;
+  refusedDocumentText: string | null;
   restoreText: string | null;
   restoreDocumentText: string | null;
 };
@@ -47,7 +48,12 @@ export type AttachedFilesAction =
     }
   | { type: 'detach'; kind: keyof AttachedFilesState }
   | { type: 'block'; kind: keyof AttachedFilesState }
-  | { type: 'refuse'; kind: keyof AttachedFilesState; message: string }
+  | {
+      type: 'refuse';
+      kind: keyof AttachedFilesState;
+      message: string;
+      documentText: string;
+    }
   | {
       type: 'fail';
       kind: keyof AttachedFilesState;
@@ -95,6 +101,7 @@ export function emptyAttachedFileState(): AttachedFileState {
     conflict: null,
     forceWrite: 0,
     failedDocumentText: null,
+    refusedDocumentText: null,
     restoreText: null,
     restoreDocumentText: null,
   };
@@ -125,6 +132,7 @@ export function attachedFilesReducer(
         lastDocumentText: action.canonicalText,
         conflict: null,
         failedDocumentText: null,
+        refusedDocumentText: null,
       };
       break;
     case 'detach':
@@ -142,6 +150,8 @@ export function attachedFilesReducer(
           ? current
           : {
               ...current,
+              failedDocumentText: null,
+              refusedDocumentText: action.documentText,
               file: { ...current.file, status: { kind: 'refused', message: action.message } },
             };
       break;
@@ -152,6 +162,7 @@ export function attachedFilesReducer(
           : {
               ...current,
               failedDocumentText: action.documentText,
+              refusedDocumentText: null,
               file: { ...current.file, status: { kind: 'failed', message: action.message } },
             };
       break;
@@ -162,6 +173,8 @@ export function attachedFilesReducer(
           : {
               ...current,
               conflict: { contents: action.contents, canonicalText: action.canonicalText },
+              failedDocumentText: null,
+              refusedDocumentText: null,
               file: { ...current.file, status: { kind: 'changed' } },
             };
       break;
@@ -174,6 +187,7 @@ export function attachedFilesReducer(
               lastText: action.contents.text,
               lastDocumentText: action.canonicalText,
               conflict: null,
+              refusedDocumentText: null,
               failedDocumentText: null,
               file: {
                 ...current.file,
@@ -190,6 +204,7 @@ export function attachedFilesReducer(
               ...current,
               lastText: action.contents.text,
               lastDocumentText: action.canonicalText,
+              refusedDocumentText: null,
               failedDocumentText: null,
               file: {
                 ...current.file,
@@ -206,6 +221,7 @@ export function attachedFilesReducer(
               ...current,
               conflict: null,
               forceWrite: current.forceWrite + 1,
+              refusedDocumentText: null,
               failedDocumentText: null,
               file: { ...current.file, status: { kind: 'changed' } },
             };
@@ -220,6 +236,7 @@ export function attachedFilesReducer(
               lastDocumentText: current.conflict.canonicalText,
               conflict: null,
               forceWrite: current.forceWrite + 1,
+              refusedDocumentText: null,
               failedDocumentText: null,
               file: {
                 ...current.file,
@@ -238,6 +255,7 @@ export function attachedFilesReducer(
               lastDocumentText: action.documentText,
               conflict: current.conflict,
               forceWrite: 0,
+              refusedDocumentText: null,
               failedDocumentText: null,
               restoreText:
                 current.restoreDocumentText !== null &&
@@ -262,6 +280,7 @@ export function attachedFilesReducer(
       next = {
         ...current,
         lastDocumentText: action.documentText,
+        refusedDocumentText: null,
         restoreText: current.lastText,
         restoreDocumentText: current.lastDocumentText,
       };
