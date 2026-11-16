@@ -74,6 +74,10 @@ export class TestFileAccessFake implements TestFileAccessPort {
     this.openQueue.push(file);
   }
 
+  isFollowing(file: TestFileReference): boolean {
+    return (this.followers.get(file.id)?.size ?? 0) > 0;
+  }
+
   setModifiedAt(modifiedAt: Date): void {
     this.nextModifiedAt = modifiedAt;
   }

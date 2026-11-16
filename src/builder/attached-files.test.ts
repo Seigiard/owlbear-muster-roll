@@ -57,6 +57,55 @@ const EMPTY_SNAPSHOT = {
   links: [],
 };
 
+const CREW_PRESET_TEXT = `{
+  "v": 3,
+  "templates": [
+    {
+      "id": "crew",
+      "kind": "single",
+      "title": "Экипаж",
+      "tabs": [
+        {
+          "sections": [
+            {
+              "rows": [
+                [
+                  {
+                    "kind": "text",
+                    "text": "Сила"
+                  },
+                  {
+                    "kind": "field",
+                    "type": "number",
+                    "id": "strength"
+                  }
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}`;
+
+const SNAPSHOT_DOCUMENT_TEXT = `{
+  "v": 3,
+  "type": "muster-roll/snapshot",
+  "sheets": [
+    {
+      "id": "crew",
+      "rows": {
+        "strength": {
+          "strength": 12
+        }
+      },
+      "repeats": {}
+    }
+  ],
+  "links": []
+}`;
+
 const mounted: Root[] = [];
 
 afterEach(() => {
@@ -98,6 +147,90 @@ describe('attached Builder files', () => {
         },
       ],
       block: 'Пресетcrew.jsonсохранено в файл в 18:06',
+    });
+  });
+
+  test('Save File writes the current preset and attaches the selected handle for later edits', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const selected = access.addFile('saved-preset', 'saved-crew.json', '');
+    const unrelated = access.addFile('unrelated', 'unrelated.json', '');
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    await mount(store, access);
+    access.queueOpen(selected);
+
+    // #when
+    await click(fileBlock('Пресет'));
+    await click(menuItem('Сохранить в файл…'));
+    await settle();
+    editTemplateTitle(store, 'Моя версия');
+    await settle();
+
+    // #then
+    expect({
+      modes: access.openRequests.map((request) => request.mode),
+      initialWrite: access.writeRequests[0],
+      laterWrite: parsedWrite(access, 1),
+      selectedIsFollowed: access.isFollowing(selected),
+      unrelatedIsFollowed: access.isFollowing(unrelated),
+    }).toEqual({
+      modes: ['save'],
+      initialWrite: {
+        file: { id: 'saved-preset', name: 'saved-crew.json' },
+        text: CREW_PRESET_TEXT,
+      },
+      laterWrite: {
+        file: { id: 'saved-preset', name: 'saved-crew.json' },
+        document: LOCAL_PRESET,
+      },
+      selectedIsFollowed: true,
+      unrelatedIsFollowed: false,
+    });
+  });
+
+  test('Save As replaces the snapshot handle and keeps later snapshot edits attached', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const original = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
+    const selected = access.addFile('saved-snapshot', 'saved-snapshot.json', '');
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    store.setSnapshot(snapshotRecords(SNAPSHOT_TEXT));
+    await mount(store, access);
+    await openAttachedFile(access, original, 'Снимок');
+    access.openRequests.splice(0);
+    access.writeRequests.splice(0);
+    access.queueOpen(selected);
+
+    // #when
+    await click(fileBlock('Снимок'));
+    await click(menuItem('Сохранить как…'));
+    await settle();
+    act(() => store.setSnapshot(snapshotRecords(EXTERNAL_SNAPSHOT_TEXT)));
+    await settle();
+
+    // #then
+    expect({
+      modes: access.openRequests.map((request) => request.mode),
+      initialWrite: access.writeRequests[0],
+      laterWrite: parsedWrite(access, 1),
+      selectedIsFollowed: access.isFollowing(selected),
+      originalIsFollowed: access.isFollowing(original),
+    }).toEqual({
+      modes: ['save'],
+      initialWrite: {
+        file: { id: 'saved-snapshot', name: 'saved-snapshot.json' },
+        text: SNAPSHOT_DOCUMENT_TEXT,
+      },
+      laterWrite: {
+        file: { id: 'saved-snapshot', name: 'saved-snapshot.json' },
+        document: JSON.parse(EXTERNAL_SNAPSHOT_TEXT),
+      },
+      selectedIsFollowed: true,
+      originalIsFollowed: false,
     });
   });
 
@@ -237,6 +370,57 @@ describe('attached Builder files', () => {
     expect(toPreset(store.$state.get().step.document)).toEqual(expected);
   });
 
+  test('keeps a pending-write conflict until the user chooses', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    await mount(store, access);
+    await openAttachedFile(access, file, 'Пресет');
+    access.writeRequests.splice(0);
+    access.pauseWrites();
+    editTemplateTitle(store, 'Моя версия');
+    await settle();
+
+    // #when
+    access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
+    await act(async () => {
+      access.externalWrite(file, JSON.stringify(DISK_PRESET));
+    });
+
+    const diskBeforeRelease = await access.read(file);
+
+    const beforeRelease = {
+      writes: access.writeRequests.length,
+      actions: conflictActions(),
+    };
+
+    access.releaseWrites();
+    await settle();
+
+    // #then
+    expect({
+      diskBeforeRelease: diskBeforeRelease.ok ? JSON.parse(diskBeforeRelease.value.text) : null,
+      beforeRelease,
+      afterRelease: {
+        writes: access.writeRequests.length,
+        actions: conflictActions(),
+      },
+    }).toEqual({
+      diskBeforeRelease: DISK_PRESET,
+      beforeRelease: {
+        writes: 1,
+        actions: { takeFile: true, keepMine: true },
+      },
+      afterRelease: {
+        writes: 1,
+        actions: { takeFile: true, keepMine: true },
+      },
+    });
+  });
+
   test('pauses writes for a preset problem and resumes after the repair', async () => {
     // #given
     const access = new TestFileAccessFake();
@@ -303,6 +487,67 @@ describe('attached Builder files', () => {
     }).toEqual({
       document: CREW_PRESET,
       block: 'Пресетcrew.jsonФайл не подошёл: это не JSON. Ничего не изменено.',
+    });
+  });
+
+  test('keeps an attached compatible snapshot through preset own-write echo and external follow', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const presetFile = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
+    const snapshotFile = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    await mount(store, access);
+    await openAttachedFile(access, presetFile, 'Пресет');
+    await openAttachedFile(access, snapshotFile, 'Снимок');
+    access.writeRequests.splice(0);
+
+    const before = visiblePresetAndSnapshot(access, snapshotFile);
+    editTemplateTitle(store, 'Моя версия');
+    await settle();
+    const ownWrite = access.writeRequests.find((request) => request.file.id === presetFile.id);
+
+    if (ownWrite === undefined) {
+      throw new Error('The preset edit did not reach its attached file');
+    }
+
+    // #when
+    await act(async () => {
+      access.externalWrite(presetFile, ownWrite.text);
+    });
+    const afterOwnWriteEcho = visiblePresetAndSnapshot(access, snapshotFile);
+
+    access.setModifiedAt(new Date('2026-11-16T18:08:00.000Z'));
+    await act(async () => {
+      access.externalWrite(presetFile, JSON.stringify(DISK_PRESET));
+    });
+    const afterExternalTitleUpdate = visiblePresetAndSnapshot(access, snapshotFile);
+
+    // #then
+    expect({
+      before,
+      afterOwnWriteEcho,
+      afterExternalTitleUpdate,
+    }).toEqual({
+      before: {
+        presetTitle: 'Экипаж',
+        snapshotValue: '12',
+        snapshotFileName: 'crew-snapshot.json',
+        snapshotIsFollowed: true,
+      },
+      afterOwnWriteEcho: {
+        presetTitle: 'Моя версия',
+        snapshotValue: '12',
+        snapshotFileName: 'crew-snapshot.json',
+        snapshotIsFollowed: true,
+      },
+      afterExternalTitleUpdate: {
+        presetTitle: 'С диска',
+        snapshotValue: '12',
+        snapshotFileName: 'crew-snapshot.json',
+        snapshotIsFollowed: true,
+      },
     });
   });
 
@@ -461,12 +706,51 @@ function button(name: string): HTMLButtonElement | null {
   );
 }
 
+function conflictActions() {
+  return {
+    takeFile: button('Взять из файла') !== null,
+    keepMine: button('Оставить мои') !== null,
+  };
+}
+
 function previewValue(name: string): string | null {
   return (
     [...document.querySelectorAll<HTMLElement>('[role="group"]')].find(
       (element) => element.getAttribute('aria-label') === name,
     )?.textContent ?? null
   );
+}
+
+function formValue(labelText: string): string | null {
+  const label = [...document.querySelectorAll<HTMLLabelElement>('label')].find(
+    (element) => element.textContent?.trim() === labelText,
+  );
+
+  const input = label === undefined ? null : document.getElementById(label.htmlFor);
+
+  return input instanceof HTMLInputElement ? input.value : null;
+}
+
+function attachedFileName(kind: 'Пресет' | 'Снимок'): string | null {
+  return fileBlock(kind).querySelector<HTMLElement>('[title]')?.textContent ?? null;
+}
+
+function visiblePresetAndSnapshot(access: TestFileAccessFake, snapshotFile: TestFileReference) {
+  return {
+    presetTitle: formValue('Заголовок'),
+    snapshotValue: previewValue('Сила'),
+    snapshotFileName: attachedFileName('Снимок'),
+    snapshotIsFollowed: access.isFollowing(snapshotFile),
+  };
+}
+
+function parsedWrite(
+  access: TestFileAccessFake,
+  index: number,
+): { file: TestFileReference; document: unknown } | null {
+  const request = access.writeRequests[index];
+
+  return request === undefined ? null : { file: request.file, document: JSON.parse(request.text) };
 }
 
 async function click(element: HTMLElement | null): Promise<void> {
