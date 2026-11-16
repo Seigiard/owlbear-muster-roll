@@ -61,10 +61,16 @@ test('orders scene tokens by viewport first and linked state second', async () =
   const picker = await openPicker();
 
   // #when
-  const names = labels(picker.container);
+  const choices = listedChoices(picker.container);
 
   // #then
-  expect(names).toEqual(['near-free', 'far-free', 'near-linked', 'far-linked']);
+  expect(choices).toEqual([
+    { name: 'near-free', linked: false },
+    { name: 'far-free', linked: false },
+    { name: 'near-linked', linked: true },
+    { name: 'near-other-linked', linked: true },
+    { name: 'far-linked', linked: true },
+  ]);
 });
 
 test('reassigns selected tokens and selectively unlinks only selected links to this cell', async () => {
@@ -72,7 +78,7 @@ test('reassigns selected tokens and selectively unlinks only selected links to t
   const picker = await openPicker();
 
   // #when
-  await choose(picker.container, 'near-free');
+  await choose(picker.container, 'near-other-linked');
   await choose(picker.container, 'near-linked');
   await press(picker.container, 'Привязать лист…');
 
@@ -84,7 +90,7 @@ test('reassigns selected tokens and selectively unlinks only selected links to t
   // #then
   expect({ linkedCommands, unlinkedCommands: picker.commands }).toEqual({
     linkedCommands: [
-      { type: 'link-set', tokenId: 'near-free', sheetId: 'shared', cellId: 'portrait' },
+      { type: 'link-set', tokenId: 'near-other-linked', sheetId: 'shared', cellId: 'portrait' },
       { type: 'link-set', tokenId: 'near-linked', sheetId: 'shared', cellId: 'portrait' },
     ],
     unlinkedCommands: [{ type: 'link-clear', tokenId: 'near-linked' }],
@@ -101,7 +107,7 @@ async function openPicker() {
     { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
     { k: 'link:near-linked', d: { s: 'shared', c: 'portrait' }, c: 1, a: 'seed' },
     { k: 'link:far-linked', d: { s: 'shared', c: 'portrait' }, c: 1, a: 'seed' },
-    { k: 'link:near-free', d: { s: 'shared', c: 'camp' }, c: 1, a: 'seed' },
+    { k: 'link:near-other-linked', d: { s: 'shared', c: 'camp' }, c: 1, a: 'seed' },
   ];
 
   document.body.append(container);
@@ -119,11 +125,18 @@ async function openPicker() {
           return Promise.resolve({ kind: 'answered', answer: undefined });
         }}
         scene={{
-          getItemIds: async () => ['far-linked', 'near-free', 'near-linked', 'far-free'],
+          getItemIds: async () => [
+            'far-linked',
+            'near-free',
+            'near-linked',
+            'far-free',
+            'near-other-linked',
+          ],
           getItemBounds: async () =>
             new Map([
               ['near-free', bounds(1)],
               ['near-linked', bounds(2)],
+              ['near-other-linked', bounds(3)],
               ['far-free', bounds(100)],
               ['far-linked', bounds(101)],
             ]),
@@ -148,10 +161,11 @@ function bounds(minimum: number, maximum = minimum + 1): Bounds {
   };
 }
 
-function labels(container: HTMLElement): string[] {
-  return [...container.querySelectorAll('li label span:first-of-type')].map(
-    (node) => node.textContent ?? '',
-  );
+function listedChoices(container: HTMLElement): { name: string; linked: boolean }[] {
+  return [...container.querySelectorAll('li label')].map((label) => ({
+    name: label.querySelector('span:first-of-type')?.textContent ?? '',
+    linked: label.textContent.includes('Токен привязан'),
+  }));
 }
 
 async function choose(container: HTMLElement, name: string): Promise<void> {
