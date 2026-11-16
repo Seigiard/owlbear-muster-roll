@@ -36,34 +36,38 @@ const PLAYER_ID = 'player-a';
 // "pc" is a sheet set whose repeat blocks a token can link to. "npc" is a single sheet only GMs
 // see, "rules" one players see but do not edit, and "camp" one every player edits.
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Основное',
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'text', id: 'note' },
-                ],
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'text', id: 'note' },
+                  ],
+                },
               ],
             },
             {
-              repeat: true,
-              tokens: true,
+              repeat: { id: 'item', nameField: 'item' },
+
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'item' },
-                  { kind: 'field', type: 'number', id: 'qty' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'item' },
+                    { kind: 'field', type: 'number', id: 'qty' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
               ],
             },
           ],
@@ -72,36 +76,42 @@ const PRESET: Preset = {
           title: 'Заметки мастера',
           visibility: 'gm',
           sections: [
-            { rows: [[{ kind: 'field', type: 'text', id: 'secret' }]] },
-            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'secret_item' }]] },
+            { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'secret' }] }] },
+            {
+              repeat: { id: 'secret_item', nameField: 'secret_item' },
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'secret_item' }] }],
+            },
           ],
         },
       ],
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPC',
       visibility: 'gm',
       players: 'edit',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'str' }] }] }] }],
     },
     {
       id: 'rules',
-      kind: 'single',
+
       title: 'Правила',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'rule' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'rule' }] }] }] }],
     },
     {
       id: 'camp',
-      kind: 'single',
+
       title: 'Лагерь',
       players: 'edit',
       tabs: [
         {
           sections: [
-            { rows: [[{ kind: 'field', type: 'number', id: 'food' }]] },
-            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'cart' }]] },
+            { rows: [{ cells: [{ kind: 'field', type: 'number', id: 'food' }] }] },
+            {
+              repeat: { id: 'cart', nameField: 'cart' },
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'cart' }] }],
+            },
           ],
         },
       ],
@@ -316,7 +326,13 @@ describe('a GM client answers a proposal', () => {
   ])('$name', async ({ snapshotPauseMs, observationPauseMs, copied }) => {
     // #given
     const room = roomRig.openRoom();
-    const link: VersionedRecord = { k: 'link:late', d: { s: 'brok', i: 'r2' }, c: 1, a: 'seed' };
+
+    const link: VersionedRecord = {
+      k: 'link:late',
+      d: { s: 'brok', path: ['item', 'r2'], c: 'token' },
+      c: 1,
+      a: 'seed',
+    };
 
     const gm = await startClient(room, 'gm-a', {
       seeded: [...BASE, link],
@@ -377,7 +393,7 @@ describe('a GM client answers a proposal', () => {
     ],
     ['an edit of a removed repeat block', fixturePatch(REMOVED, { order: 0, cells: {} }, 9, S)],
     ['a value of another JSON type', fixturePatch(STR_ROW, { str: '11' }, 3, S)],
-    ['a GM key form', { k: 'link:token-1', d: { s: 'brok' }, c: 1, a: S }],
+    ['a GM key form', { k: 'link:token-1', d: { s: 'brok', c: 'token' }, c: 1, a: S }],
     ['a removal of a plain row', fixturePatch(STR_ROW, null, 3, S)],
     ["an author that is not the sender's", fixturePatch(STR_ROW, { str: 11 }, 3, 'gm-b')],
     ['a c far past the current one', fixturePatch(STR_ROW, { str: 11 }, 2000000, S)],
@@ -436,11 +452,27 @@ describe('a GM client answers a proposal', () => {
   test('that removes a repeat block: tombstones the links to it too, and keeps other links', async () => {
     // #given: AD-19, t1 and t2 link the sword and t3 links the sheet.
     const room = roomRig.openRoom();
-    const sheetLink: VersionedRecord = { k: 'link:t3', d: { s: 'brok' }, c: 1, a: 'seed' };
+
+    const sheetLink: VersionedRecord = {
+      k: 'link:t3',
+      d: { s: 'brok', c: 'token' },
+      c: 1,
+      a: 'seed',
+    };
 
     const links: VersionedRecord[] = [
-      { k: 'link:t1', d: { s: 'brok', i: 'r1' }, c: 2, a: 'seed' },
-      { k: 'link:t2', d: { s: 'brok', i: 'r1' }, c: 1, a: 'seed' },
+      {
+        k: 'link:t1',
+        d: { s: 'brok', path: ['item', 'r1'], c: 'token' },
+        c: 2,
+        a: 'seed',
+      },
+      {
+        k: 'link:t2',
+        d: { s: 'brok', path: ['item', 'r1'], c: 'token' },
+        c: 1,
+        a: 'seed',
+      },
       sheetLink,
     ];
 

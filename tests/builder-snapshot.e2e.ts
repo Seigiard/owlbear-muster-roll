@@ -21,28 +21,33 @@ function createPreset({
   additionalSections?: readonly PresetSection[];
 } = {}): Preset {
   return {
-    v: 3,
+    v: 4,
     templates: [
       {
         id: 'pc',
-        kind: 'set',
+
         title: 'Экипаж',
-        nameField: 'name',
-        tokens: true,
+        repeat: { nameField: 'name' },
+
         tabs: [
           {
             sections: [
               {
                 rows: [
-                  [
-                    { kind: 'text', text: 'Имя' },
-                    { kind: 'field', type: 'text', id: 'name' },
-                  ],
-                  [
-                    { kind: 'text', text: 'Сила' },
-                    { kind: 'field', type: 'number', id: 'str' },
-                    ...strengthExtraCells,
-                  ],
+                  {
+                    cells: [
+                      { kind: 'text', text: 'Имя' },
+                      { kind: 'field', type: 'text', id: 'name' },
+                      { kind: 'token', id: 'token' },
+                    ],
+                  },
+                  {
+                    cells: [
+                      { kind: 'text', text: 'Сила' },
+                      { kind: 'field', type: 'number', id: 'str' },
+                      ...strengthExtraCells,
+                    ],
+                  },
                 ],
               },
               ...additionalSections,
@@ -52,17 +57,19 @@ function createPreset({
       },
       {
         id: 'inventory',
-        kind: 'single',
+
         title: 'Инвентарь',
         tabs: [
           {
             sections: [
               {
                 rows: [
-                  [
-                    { kind: 'text', text: 'Золото' },
-                    { kind: 'field', type: 'number', id: 'gold' },
-                  ],
+                  {
+                    cells: [
+                      { kind: 'text', text: 'Золото' },
+                      { kind: 'field', type: 'number', id: 'gold' },
+                    ],
+                  },
                 ],
               },
             ],
@@ -83,27 +90,35 @@ const EDITING_PRESET = createPreset({
   additionalSections: [
     {
       rows: [
-        [
-          { kind: 'text', text: 'Готов' },
-          { kind: 'field', type: 'check', id: 'ready' },
-        ],
-        [
-          { kind: 'text', text: 'Броня' },
-          { kind: 'field', type: 'select', id: 'armor', options: ['Кожа', 'Латы'] },
-        ],
-        [
-          { kind: 'text', text: 'Куб' },
-          { kind: 'field', type: 'dice-choice', id: 'die', options: ['d6', 'd8'] },
-        ],
+        {
+          cells: [
+            { kind: 'text', text: 'Готов' },
+            { kind: 'field', type: 'check', id: 'ready' },
+          ],
+        },
+        {
+          cells: [
+            { kind: 'text', text: 'Броня' },
+            { kind: 'field', type: 'select', id: 'armor', options: ['Кожа', 'Латы'] },
+          ],
+        },
+        {
+          cells: [
+            { kind: 'text', text: 'Куб' },
+            { kind: 'field', type: 'dice-choice', id: 'die', options: ['d6', 'd8'] },
+          ],
+        },
       ],
     },
     {
-      repeat: true,
+      repeat: { id: 'item', nameField: 'item' },
       rows: [
-        [
-          { kind: 'text', text: 'Вещь' },
-          { kind: 'field', type: 'text', id: 'item' },
-        ],
+        {
+          cells: [
+            { kind: 'text', text: 'Вещь' },
+            { kind: 'field', type: 'text', id: 'item' },
+          ],
+        },
       ],
     },
   ],
@@ -133,7 +148,7 @@ const SNAPSHOT = {
       blocks: fixtureSnapshotBlocks({}),
     },
   ],
-  links: [{ tokenId: 'token-a', sheetId: 'anya' }],
+  links: [{ tokenId: 'token-a', sheetId: 'anya', cellId: 'token' }],
 };
 
 const SNAPSHOT_WITHOUT_STRENGTH = {

@@ -6,33 +6,37 @@ import { blockDataSchema, cellValues, type VersionedRecord } from '@/core/record
 import { createRoomRig, send, shown, storedRecord } from '../../tests/support/room-rig';
 
 const preset: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Party',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'tired' },
-                ],
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'tired' },
+                  ],
+                },
               ],
             },
             {
-              repeat: true,
-              tokens: true,
+              repeat: { id: 'item', nameField: 'item' },
+
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'item' },
-                  { kind: 'field', type: 'number', id: 'qty' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'item' },
+                    { kind: 'field', type: 'number', id: 'qty' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
               ],
             },
           ],
@@ -140,7 +144,12 @@ test('deleting a block and its link defeats a later higher-counter cell commit',
       { k: 'preset', d: encodePreset(preset), c: 1, a: 'seed' },
       root,
       block,
-      { k: 'link:token', d: { s: 'hero', i: 'sword' }, c: 1, a: 'seed' },
+      {
+        k: 'link:token',
+        d: { s: 'hero', path: ['item', 'sword'], c: 'token' },
+        c: 1,
+        a: 'seed',
+      },
     ],
   });
 
@@ -171,39 +180,43 @@ test('deleting a block and its link defeats a later higher-counter cell commit',
   ]).toEqual([null, null, null, null]);
 });
 
-test('preset relocation A to B to A keeps block identity and values over the prior tombstone', async () => {
+test('reordering fields keeps the explicit repeat identity and values', async () => {
   // #given
   const room = rig.openRoom();
   const client = await rig.startClient(room, 'gm-a');
 
   const moved: Preset = {
-    v: 3,
+    v: 4,
     templates: [
       {
         id: 'pc',
-        kind: 'set',
         title: 'Party',
-        nameField: 'name',
+        repeat: { nameField: 'name' },
         tabs: [
           {
             sections: [
               {
                 rows: [
-                  [{ kind: 'field', type: 'text', id: 'name' }],
-                  [
-                    { kind: 'field', type: 'number', id: 'str' },
-                    { kind: 'field', type: 'check', id: 'tired' },
-                  ],
+                  { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                  {
+                    cells: [
+                      { kind: 'field', type: 'number', id: 'str' },
+                      { kind: 'field', type: 'check', id: 'tired' },
+                    ],
+                  },
                 ],
               },
               {
-                repeat: true,
-                tokens: true,
+                repeat: { id: 'item', nameField: 'item' },
+
                 rows: [
-                  [
-                    { kind: 'field', type: 'number', id: 'qty' },
-                    { kind: 'field', type: 'text', id: 'item' },
-                  ],
+                  {
+                    cells: [
+                      { kind: 'field', type: 'number', id: 'qty' },
+                      { kind: 'field', type: 'text', id: 'item' },
+                      { kind: 'token', id: 'token' },
+                    ],
+                  },
                 ],
               },
             ],
@@ -221,10 +234,7 @@ test('preset relocation A to B to A keeps block identity and values over the pri
     expectedSheets: 0,
     expectedDigest: NOTHING_ERASED,
   });
-  await rig.waitUntil(
-    () =>
-      shown(client, block.k)?.d === null && shown(client, 'blk:hero:qty:sword')?.d !== undefined,
-  );
+  await rig.waitUntil(() => storedRecord(client, 'preset')?.d === encodePreset(moved));
   send(client, {
     type: 'preset-upload',
     data: encodePreset(preset),
@@ -232,7 +242,7 @@ test('preset relocation A to B to A keeps block identity and values over the pri
     expectedSheets: 0,
     expectedDigest: NOTHING_ERASED,
   });
-  await rig.waitUntil(() => shown(client, 'blk:hero:qty:sword')?.d === null);
+  await rig.waitUntil(() => storedRecord(client, 'preset')?.d === encodePreset(preset));
   // #then
   expect({
     values: values(shown(client, block.k)),

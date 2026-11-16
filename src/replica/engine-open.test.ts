@@ -37,20 +37,27 @@ const MENU_COPY = {
 const WIDE = { width: 900, height: 700 };
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Основное',
           sections: [
-            { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
-            { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] },
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
+            { rows: [{ cells: [{ kind: 'field', type: 'number', id: 'str' }] }] },
           ],
         },
         {
@@ -58,9 +65,16 @@ const PRESET: Preset = {
           visibility: 'gm',
           sections: [
             {
-              repeat: true,
-              tokens: true,
-              rows: [[{ kind: 'field', type: 'text', id: 'secret' }]],
+              repeat: { id: 'secret', nameField: 'secret' },
+
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'secret' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
             },
           ],
         },
@@ -68,20 +82,22 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
         {
           sections: [
             {
-              repeat: true,
-              tokens: true,
+              repeat: { id: 'foe', nameField: 'foe' },
+
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'foe' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'foe' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
               ],
             },
           ],
@@ -118,10 +134,20 @@ const ROOM: readonly VersionedRecord[] = [
     l: [1, 'seed'],
   },
   { k: 'blk:liza', d: null, c: 2, a: 'seed', l: [1, 'seed'] },
-  { k: 'link:t-pc', d: { s: 'brok' }, c: 1, a: 'seed' },
-  { k: 'link:t-secret', d: { s: 'brok', i: 'hidden' }, c: 1, a: 'seed' },
-  { k: 'link:t-npc', d: { s: 'npc', i: 'skel' }, c: 1, a: 'seed' },
-  { k: 'link:t-gone', d: { s: 'liza' }, c: 1, a: 'seed' },
+  { k: 'link:t-pc', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' },
+  {
+    k: 'link:t-secret',
+    d: { s: 'brok', path: ['secret', 'hidden'], c: 'token' },
+    c: 1,
+    a: 'seed',
+  },
+  {
+    k: 'link:t-npc',
+    d: { s: 'npc', path: ['foe', 'skel'], c: 'token' },
+    c: 1,
+    a: 'seed',
+  },
+  { k: 'link:t-gone', d: { s: 'liza', c: 'token' }, c: 1, a: 'seed' },
 ];
 
 // One client's background, with no window until a test opens one. `requests` holds every open
@@ -152,7 +178,7 @@ describe('open from token', () => {
     expect({
       actionOpens: background.platform.actionOpens(),
       target: target(background, window),
-    }).toEqual({ actionOpens: 1, target: { sheetId: 'brok', instanceId: null } });
+    }).toEqual({ actionOpens: 1, target: { sheetId: 'brok', cellId: 'token' } });
   });
   test('with the window open, a press reaches it at once', async () => {
     // #given
@@ -162,7 +188,11 @@ describe('open from token', () => {
     click(background, 't-npc');
     await waitUntil(() => window.store.$openRequest.get() !== null);
     // #then
-    expect(target(background, window)).toEqual({ sheetId: 'npc', instanceId: 'skel' });
+    expect(target(background, window)).toEqual({
+      sheetId: 'npc',
+      path: ['foe', 'skel'],
+      cellId: 'token',
+    });
   });
   test('a GM press on a repeat block on a hidden tab reaches the window', async () => {
     // #given
@@ -172,7 +202,11 @@ describe('open from token', () => {
     click(background, 't-secret');
     await waitUntil(() => window.store.$openRequest.get() !== null);
     // #then
-    expect(target(background, window)).toEqual({ sheetId: 'brok', instanceId: 'hidden' });
+    expect(target(background, window)).toEqual({
+      sheetId: 'brok',
+      path: ['secret', 'hidden'],
+      cellId: 'token',
+    });
   });
   test('reprojects before it re-sends a held open request after the stream restarts', async () => {
     // #given
@@ -193,7 +227,7 @@ describe('open from token', () => {
       target: target(background, window),
     }).toEqual({
       messages: ['delta', 'projection', 'open-sheet'],
-      target: { sheetId: 'brok', instanceId: null },
+      target: { sheetId: 'brok', cellId: 'token' },
     });
   });
   test('a player press on a character token reaches the window', async () => {
@@ -207,7 +241,7 @@ describe('open from token', () => {
     expect({
       actionOpens: background.platform.actionOpens(),
       target: target(background, window),
-    }).toEqual({ actionOpens: 1, target: { sheetId: 'brok', instanceId: null } });
+    }).toEqual({ actionOpens: 1, target: { sheetId: 'brok', cellId: 'token' } });
   });
   test('a winning same-counter preset from another author refreshes token-menu visibility', async () => {
     // #given
@@ -353,7 +387,10 @@ describe('open from token', () => {
     expect({
       shown: target(background, window),
       actionOpens: background.platform.actionOpens(),
-    }).toEqual({ shown: { sheetId: 'npc', instanceId: 'skel' }, actionOpens: 2 });
+    }).toEqual({
+      shown: { sheetId: 'npc', path: ['foe', 'skel'], cellId: 'token' },
+      actionOpens: 2,
+    });
   });
   test('an acknowledgement of a replaced request leaves the newer one held', async () => {
     // #given
@@ -368,7 +405,11 @@ describe('open from token', () => {
     const second = await openWindow(background);
     await waitUntil(() => second.store.$openRequest.get() !== null);
     // #then
-    expect(target(background, second)).toEqual({ sheetId: 'npc', instanceId: 'skel' });
+    expect(target(background, second)).toEqual({
+      sheetId: 'npc',
+      path: ['foe', 'skel'],
+      cellId: 'token',
+    });
   });
   test('a request no window took within its lifetime is dropped', async () => {
     // #given
@@ -591,18 +632,14 @@ async function startBackground(
     client,
     platform: client.platform,
     get requests() {
-      return client.local.flatMap((data) =>
-        Object(data).t === 'open-sheet'
-          ? [
-              {
-                id: String(Object(data).id),
-                sheetId: String(Object(data).sheetId),
-                instanceId:
-                  Object(data).instanceId === null ? null : String(Object(data).instanceId),
-              },
-            ]
-          : [],
-      );
+      return client.local.flatMap((data) => {
+        const parsed = parseEngineMessage(data);
+
+        if (!parsed.ok || parsed.value.t !== 'open-sheet') return [];
+        const { t: _type, ...request } = parsed.value;
+
+        return [request];
+      });
     },
   };
 }
@@ -619,9 +656,10 @@ function target(background: Background, window: Window): Omit<OpenSheetRequest, 
   const id = window.store.$openRequest.get()?.id;
   const request = background.requests.find((one) => one.id === id);
 
-  return request === undefined
-    ? null
-    : { sheetId: request.sheetId, instanceId: request.instanceId };
+  if (request === undefined) return null;
+  const { id: _id, ...target } = request;
+
+  return target;
 }
 
 function localEngineMessageTypes(messages: readonly JsonValue[]): EngineMessage['t'][] {

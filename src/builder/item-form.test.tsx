@@ -9,17 +9,16 @@ import { ItemForm } from './item-form';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const FIELD_PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'hero',
-      kind: 'single',
       title: 'Hero',
       tabs: [
         {
           sections: [
             {
-              rows: [[{ kind: 'field', type: 'text', id: 'strength' }]],
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'strength' }] }],
             },
           ],
         },

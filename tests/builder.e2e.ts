@@ -190,24 +190,26 @@ function playerPreviewPreset(includePrivateTab = false): string {
   const hiddenTab = {
     title: 'Секреты мастера',
     visibility: 'gm' as const,
-    sections: [{ rows: [[{ kind: 'text' as const, text: 'Только мастер' }]] }],
+    sections: [{ rows: [{ cells: [{ kind: 'text' as const, text: 'Только мастер' }] }] }],
   };
 
   const hiddenSet: Template = {
     id: 'villains',
-    kind: 'set',
+
     title: 'Злодеи',
-    nameField: 'villain',
+    repeat: { nameField: 'villain' },
     visibility: 'gm',
     tabs: [
       {
         sections: [
           {
             rows: [
-              [
-                { kind: 'text', text: 'Имя' },
-                { kind: 'field', type: 'text', id: 'villain' },
-              ],
+              {
+                cells: [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'villain' },
+                ],
+              },
             ],
           },
         ],
@@ -217,7 +219,7 @@ function playerPreviewPreset(includePrivateTab = false): string {
 
   const privateTab: Template = {
     id: 'private_tab',
-    kind: 'single',
+
     title: 'Закрытый лист',
     tabs: [
       {
@@ -226,10 +228,12 @@ function playerPreviewPreset(includePrivateTab = false): string {
         sections: [
           {
             rows: [
-              [
-                { kind: 'text', text: 'Секрет' },
-                { kind: 'field', type: 'text', id: 'secret' },
-              ],
+              {
+                cells: [
+                  { kind: 'text', text: 'Секрет' },
+                  { kind: 'field', type: 'text', id: 'secret' },
+                ],
+              },
             ],
           },
         ],
@@ -608,34 +612,37 @@ test('builds a preset with the tree and the forms, and the window loads the down
   expect(parsePresetFile(text)).toEqual({
     ok: true,
     value: {
-      v: 3,
+      v: 4,
       window: { width: 800, height: 600 },
       templates: [
         {
           id: 'nabor',
-          kind: 'set',
           title: 'Экипаж',
-          nameField: 'imya',
+          repeat: { nameField: 'imya' },
           tabs: [
             {
               sections: [
                 {
                   rows: [
-                    [
-                      { kind: 'text', text: 'Имя' },
-                      { kind: 'field', type: 'text', id: 'imya' },
-                    ],
+                    {
+                      cells: [
+                        { kind: 'text', text: 'Имя' },
+                        { kind: 'field', type: 'text', id: 'imya' },
+                      ],
+                    },
                   ],
                 },
                 {
                   title: 'Характеристики',
                   columns: 3,
                   rows: [
-                    [
-                      { kind: 'text', text: 'Мощь' },
-                      { kind: 'field', type: 'number', id: 'str' },
-                      { kind: 'dice', formula: '1d20 <= str' },
-                    ],
+                    {
+                      cells: [
+                        { kind: 'text', text: 'Мощь' },
+                        { kind: 'field', type: 'number', id: 'str' },
+                        { kind: 'dice', formula: '1d20 <= str' },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -701,15 +708,17 @@ test('builds, previews and downloads a select field, then drops its options on a
   const selectPath = await (await selectDownloading).path();
   const selectFile = JSON.parse(readFileSync(selectPath, 'utf8'));
   // #then
-  expect(selectFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
-    { kind: 'text', text: 'Броня' },
-    {
-      kind: 'field',
-      type: 'select',
-      id: 'bronya',
-      options: ['Кожаная', 'Кольчуга'],
-    },
-  ]);
+  expect(selectFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual({
+    cells: [
+      { kind: 'text', text: 'Броня' },
+      {
+        kind: 'field',
+        type: 'select',
+        id: 'bronya',
+        options: ['Кожаная', 'Кольчуга'],
+      },
+    ],
+  });
   // #when
   await type.selectOption({ label: 'Текст' });
   const textDownloading = page.waitForEvent('download');
@@ -720,10 +729,12 @@ test('builds, previews and downloads a select field, then drops its options on a
   await expect(
     form(page).getByRole('textbox', { name: 'Варианты — по одному в строке' }),
   ).toHaveCount(0);
-  expect(textFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
-    { kind: 'text', text: 'Броня' },
-    { kind: 'field', type: 'text', id: 'bronya' },
-  ]);
+  expect(textFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual({
+    cells: [
+      { kind: 'text', text: 'Броня' },
+      { kind: 'field', type: 'text', id: 'bronya' },
+    ],
+  });
 });
 
 test('switches a field to dice-choice with the standard dice and downloads its tree type', async ({
@@ -758,15 +769,17 @@ test('switches a field to dice-choice with the standard dice and downloads its t
   const path = await (await downloading).path();
   const file = JSON.parse(readFileSync(path, 'utf8'));
   // #then
-  expect(file.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
-    { kind: 'text', text: 'Урон' },
-    {
-      kind: 'field',
-      type: 'dice-choice',
-      id: 'uron',
-      options: ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'],
-    },
-  ]);
+  expect(file.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual({
+    cells: [
+      { kind: 'text', text: 'Урон' },
+      {
+        kind: 'field',
+        type: 'dice-choice',
+        id: 'uron',
+        options: ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'],
+      },
+    ],
+  });
 });
 
 test('sets and clears field and dice cell names, with the hint, in the downloaded preset', async ({
@@ -792,10 +805,12 @@ test('sets and clears field and dice cell names, with the hint, in the downloade
   const namedPath = await (await namedDownloading).path();
   const namedFile = JSON.parse(readFileSync(namedPath, 'utf8'));
   // #then
-  expect(namedFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
-    { kind: 'field', type: 'number', id: 'field', name: 'HP, максимум' },
-    { kind: 'dice', formula: '1d20', name: 'Спасбросок HP' },
-  ]);
+  expect(namedFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual({
+    cells: [
+      { kind: 'field', type: 'number', id: 'field', name: 'HP, максимум' },
+      { kind: 'dice', formula: '1d20', name: 'Спасбросок HP' },
+    ],
+  });
   // #when
   await pick(item(page, `field · ${builder.form.typeNumber}`));
   await form(page).getByRole('textbox', { name: 'Название', exact: true }).fill('   ');
@@ -806,10 +821,12 @@ test('sets and clears field and dice cell names, with the hint, in the downloade
   const clearedPath = await (await clearedDownloading).path();
   const clearedFile = JSON.parse(readFileSync(clearedPath, 'utf8'));
   // #then
-  expect(clearedFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
-    { kind: 'field', type: 'number', id: 'field' },
-    { kind: 'dice', formula: '1d20' },
-  ]);
+  expect(clearedFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual({
+    cells: [
+      { kind: 'field', type: 'number', id: 'field' },
+      { kind: 'dice', formula: '1d20' },
+    ],
+  });
 });
 
 test('opens the draft again after a reload, with no prompt', async ({ page }) => {
@@ -1160,7 +1177,7 @@ test('typing select options with a new line is one undo step', async ({ page }) 
   await expect(options).toHaveValue('Вариант 1\nВариант 2');
 });
 
-test('drags a row out of a repeat section, and the emptied repeat section shows as a problem', async ({
+test('drags a data row out of a repeat section, and the remaining token row shows the missing-name problem', async ({
   page,
 }) => {
   // #given
@@ -1187,7 +1204,7 @@ test('drags a row out of a repeat section, and the emptied repeat section shows 
   const after = await rowNames(page);
   const emptied = after.indexOf('Вещи');
   const money = after.indexOf('Деньги');
-  expect(after.slice(emptied, emptied + 2)).toEqual(['Вещи', builder.addRow]);
+  expect(after.slice(emptied, emptied + 2)).toEqual(['Вещи', builder.rowItem(1)]);
   expect(after.slice(money, money + 13)).toEqual([
     'Деньги',
     builder.rowItem(1),

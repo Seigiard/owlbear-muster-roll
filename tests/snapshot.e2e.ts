@@ -66,12 +66,12 @@ const RECORDS: StoredRecord[] = [
   record('blk:brok:attack:i1', { order: 0, cells: { attack: 'Меч' } }),
   record('acl:brok:lisa', { name: 'Лиза' }),
   record('plink:brok:lisa', { name: 'Лиза' }),
-  record('link:t1', { s: 'brok' }),
-  record('link:t3', { s: 'npc', i: 'skel' }),
+  record('link:t1', { s: 'brok', c: 'token' }),
+  record('link:t3', { s: 'npc', path: ['npc_name', 'skel'], c: 'token' }),
   // A deleted sheet with a live row left behind, and a link to it.
   record('blk:gone', null, 2),
   record('blk:gone', { class: 'Лучник' }),
-  record('link:t2', { s: 'gone' }),
+  record('link:t2', { s: 'gone', c: 'token' }),
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -172,8 +172,13 @@ test('the downloaded snapshot holds the live sheets, their values and links, and
         { id: 'inventory', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) },
       ],
       links: [
-        { tokenId: 't1', sheetId: 'brok' },
-        { tokenId: 't3', sheetId: 'npc', instanceId: 'skel' },
+        { tokenId: 't1', sheetId: 'brok', cellId: 'token' },
+        {
+          tokenId: 't3',
+          sheetId: 'npc',
+          path: ['npc_name', 'skel'],
+          cellId: 'token',
+        },
       ],
     },
     commands: [],
@@ -220,7 +225,7 @@ const MIRA_FILE = {
       blocks: fixtureSnapshotBlocks({}),
     },
   ],
-  links: [{ tokenId: 't9', sheetId: 'mira' }],
+  links: [{ tokenId: 't9', sheetId: 'mira', cellId: 'token' }],
 };
 
 // MIRA_FILE with two sheets the example preset has no template for: a sheet of a sheet set
@@ -239,9 +244,9 @@ const UNKNOWN_TEMPLATES_FILE = {
     { id: 'journal', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) },
   ],
   links: [
-    { tokenId: 't9', sheetId: 'mira' },
-    { tokenId: 't-ship', sheetId: 'ship' },
-    { tokenId: 't-journal', sheetId: 'journal' },
+    { tokenId: 't9', sheetId: 'mira', cellId: 'token' },
+    { tokenId: 't-ship', sheetId: 'ship', cellId: 'token' },
+    { tokenId: 't-journal', sheetId: 'journal', cellId: 'token' },
   ],
 };
 
@@ -260,8 +265,8 @@ const LINKED_FILE = {
     { ...MIRA_FILE.sheets[0], order: 1 },
   ],
   links: [
-    { tokenId: 't9', sheetId: 'mira' },
-    { tokenId: 't-absent', sheetId: 'anya' },
+    { tokenId: 't9', sheetId: 'mira', cellId: 'token' },
+    { tokenId: 't-absent', sheetId: 'anya', cellId: 'token' },
   ],
 };
 

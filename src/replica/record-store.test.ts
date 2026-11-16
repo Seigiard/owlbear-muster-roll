@@ -8,7 +8,7 @@ const GENERATION = { n: 2, a: 'x' };
 const STORAGE_KEY = 'mr4:r:2:x:link:t';
 
 function link(c: number, s = 's1'): VersionedRecord {
-  return { k: 'link:t', d: { s }, c, a: 'conn' };
+  return { k: 'link:t', d: { s, c: 'token' }, c, a: 'conn' };
 }
 
 type FakeStorage = {
@@ -67,19 +67,19 @@ describe('record store write', () => {
     store.write(GENERATION, link(1));
     // #then
     expect([...storage.entries]).toEqual([
-      [STORAGE_KEY, '{"k":"link:t","d":{"s":"s1"},"c":1,"a":"conn"}'],
+      [STORAGE_KEY, '{"k":"link:t","d":{"s":"s1","c":"token"},"c":1,"a":"conn"}'],
     ]);
   });
   test('replaces a stored record with a newer one', () => {
     // #given
     const storage = createFakeStorage();
-    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":{"s":"old"},"c":3,"a":"conn"}');
+    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":{"s":"old","c":"token"},"c":3,"a":"conn"}');
     // #when
     const written = createRecordStore(storage.port, 'r').write(GENERATION, link(4, 'new'));
     // #then
     expect({ written, stored: storage.entries.get(STORAGE_KEY) }).toEqual({
       written: ok(link(4, 'new')),
-      stored: '{"k":"link:t","d":{"s":"new"},"c":4,"a":"conn"}',
+      stored: '{"k":"link:t","d":{"s":"new","c":"token"},"c":4,"a":"conn"}',
     });
   });
   test('keeps the newer stored record when a stale tab writes a lower version', () => {
@@ -93,7 +93,7 @@ describe('record store write', () => {
     // #then
     expect({ written, stored: storage.entries.get(STORAGE_KEY) }).toEqual({
       written: ok(link(5, 'fresh')),
-      stored: '{"k":"link:t","d":{"s":"fresh"},"c":5,"a":"conn"}',
+      stored: '{"k":"link:t","d":{"s":"fresh","c":"token"},"c":5,"a":"conn"}',
     });
   });
   test('reports success for a stale write while storage is full, as it writes nothing', () => {
@@ -155,8 +155,8 @@ describe('record store write', () => {
   });
   test.each([
     ['text that is not JSON', '{not json'],
-    ['JSON that is not a record', '{"k":"link:t","d":{"s":"s"},"c":0,"a":"conn"}'],
-    ['a record of another key', '{"k":"link:other","d":{"s":"s"},"c":99,"a":"conn"}'],
+    ['JSON that is not a record', '{"k":"link:t","d":{"s":"s","c":"token"},"c":0,"a":"conn"}'],
+    ['a record of another key', '{"k":"link:other","d":{"s":"s","c":"token"},"c":99,"a":"conn"}'],
   ])('writes the incoming record over %s', (_name, corrupt) => {
     // #given
     const storage = createFakeStorage();
@@ -164,7 +164,9 @@ describe('record store write', () => {
     // #when
     createRecordStore(storage.port, 'r').write(GENERATION, link(1));
     // #then
-    expect(storage.entries.get(STORAGE_KEY)).toBe('{"k":"link:t","d":{"s":"s1"},"c":1,"a":"conn"}');
+    expect(storage.entries.get(STORAGE_KEY)).toBe(
+      '{"k":"link:t","d":{"s":"s1","c":"token"},"c":1,"a":"conn"}',
+    );
   });
   test('returns a failure when the write fails', () => {
     // #given
@@ -204,16 +206,31 @@ describe('record store loadGeneration', () => {
   test('returns only the records of this room and generation', () => {
     // #given
     const storage = createFakeStorage();
-    storage.entries.set('mr4:r:2:x:link:t', '{"k":"link:t","d":{"s":"mine"},"c":1,"a":"conn"}');
-    storage.entries.set('mr4:r:1:x:link:t', '{"k":"link:t","d":{"s":"older"},"c":1,"a":"conn"}');
-    storage.entries.set('mr4:r:2:y:link:t', '{"k":"link:t","d":{"s":"author"},"c":1,"a":"conn"}');
-    storage.entries.set('mr4:other:2:x:link:t', '{"k":"link:t","d":{"s":"room"},"c":1,"a":"conn"}');
+    storage.entries.set(
+      'mr4:r:2:x:link:t',
+      '{"k":"link:t","d":{"s":"mine","c":"token"},"c":1,"a":"conn"}',
+    );
+    storage.entries.set(
+      'mr4:r:1:x:link:t',
+      '{"k":"link:t","d":{"s":"older","c":"token"},"c":1,"a":"conn"}',
+    );
+    storage.entries.set(
+      'mr4:r:2:y:link:t',
+      '{"k":"link:t","d":{"s":"author","c":"token"},"c":1,"a":"conn"}',
+    );
+    storage.entries.set(
+      'mr4:other:2:x:link:t',
+      '{"k":"link:t","d":{"s":"room","c":"token"},"c":1,"a":"conn"}',
+    );
     storage.entries.set('unrelated', 'value');
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
     // #then
     expect(loaded).toEqual(
-      ok({ records: [{ k: 'link:t', d: { s: 'mine' }, c: 1, a: 'conn' }], corruptKeys: [] }),
+      ok({
+        records: [{ k: 'link:t', d: { s: 'mine', c: 'token' }, c: 1, a: 'conn' }],
+        corruptKeys: [],
+      }),
     );
   });
   test('returns a tombstone', () => {
@@ -231,7 +248,10 @@ describe('record store loadGeneration', () => {
     // #given
     const storage = createFakeStorage();
     storage.entries.set('mr4:r:2:x:link:bad', '{not json');
-    storage.entries.set('mr4:r:2:x:link:t', '{"k":"link:t","d":{"s":"s1"},"c":1,"a":"conn"}');
+    storage.entries.set(
+      'mr4:r:2:x:link:t',
+      '{"k":"link:t","d":{"s":"s1","c":"token"},"c":1,"a":"conn"}',
+    );
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
     // #then
@@ -249,7 +269,10 @@ describe('record store loadGeneration', () => {
   test('reports a record filed under another key as corrupt', () => {
     // #given
     const storage = createFakeStorage();
-    storage.entries.set(STORAGE_KEY, '{"k":"link:other","d":{"s":"s"},"c":9,"a":"conn"}');
+    storage.entries.set(
+      STORAGE_KEY,
+      '{"k":"link:other","d":{"s":"s","c":"token"},"c":9,"a":"conn"}',
+    );
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
     // #then
@@ -267,7 +290,7 @@ describe('record store loadGeneration', () => {
   test('returns a failure, not a partial load, when a read fails', () => {
     // #given
     const storage = createFakeStorage();
-    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":{"s":"s1"},"c":1,"a":"conn"}');
+    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":{"s":"s1","c":"token"},"c":1,"a":"conn"}');
     storage.failing.add('read');
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
@@ -280,7 +303,10 @@ describe('record store readHighestGeneration', () => {
   test('returns the initial generation when the room has no record', () => {
     // #given
     const storage = createFakeStorage();
-    storage.entries.set('mr4:other:5:x:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
+    storage.entries.set(
+      'mr4:other:5:x:link:t',
+      '{"k":"link:t","d":{"s":"s","c":"token"},"c":1,"a":"conn"}',
+    );
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
     // #then
@@ -289,9 +315,18 @@ describe('record store readHighestGeneration', () => {
   test('returns the highest stored generation and ignores other rooms', () => {
     // #given
     const storage = createFakeStorage();
-    storage.entries.set('mr4:r:1:b:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
-    storage.entries.set('mr4:r:2:a:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
-    storage.entries.set('mr4:other:9:z:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
+    storage.entries.set(
+      'mr4:r:1:b:link:t',
+      '{"k":"link:t","d":{"s":"s","c":"token"},"c":1,"a":"conn"}',
+    );
+    storage.entries.set(
+      'mr4:r:2:a:link:t',
+      '{"k":"link:t","d":{"s":"s","c":"token"},"c":1,"a":"conn"}',
+    );
+    storage.entries.set(
+      'mr4:other:9:z:link:t',
+      '{"k":"link:t","d":{"s":"s","c":"token"},"c":1,"a":"conn"}',
+    );
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
     // #then
@@ -300,8 +335,14 @@ describe('record store readHighestGeneration', () => {
   test('breaks a generation tie by author', () => {
     // #given
     const storage = createFakeStorage();
-    storage.entries.set('mr4:r:2:b:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
-    storage.entries.set('mr4:r:2:a:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
+    storage.entries.set(
+      'mr4:r:2:b:link:t',
+      '{"k":"link:t","d":{"s":"s","c":"token"},"c":1,"a":"conn"}',
+    );
+    storage.entries.set(
+      'mr4:r:2:a:link:t',
+      '{"k":"link:t","d":{"s":"s","c":"token"},"c":1,"a":"conn"}',
+    );
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
     // #then
@@ -310,7 +351,10 @@ describe('record store readHighestGeneration', () => {
   test('counts a generation that holds only tombstones', () => {
     // #given
     const storage = createFakeStorage();
-    storage.entries.set('mr4:r:1:a:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
+    storage.entries.set(
+      'mr4:r:1:a:link:t',
+      '{"k":"link:t","d":{"s":"s","c":"token"},"c":1,"a":"conn"}',
+    );
     storage.entries.set('mr4:r:7:a:link:t', '{"k":"link:t","d":null,"c":6,"a":"conn"}');
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
@@ -320,7 +364,10 @@ describe('record store readHighestGeneration', () => {
   test('does not count a generation that holds only corrupt values', () => {
     // #given
     const storage = createFakeStorage();
-    storage.entries.set('mr4:r:1:a:link:t', '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}');
+    storage.entries.set(
+      'mr4:r:1:a:link:t',
+      '{"k":"link:t","d":{"s":"s","c":"token"},"c":1,"a":"conn"}',
+    );
     storage.entries.set('mr4:r:7:a:link:t', '{not json');
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
@@ -339,7 +386,7 @@ describe('record store readHighestGeneration', () => {
   test('returns a failure when a read fails', () => {
     // #given
     const storage = createFakeStorage();
-    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":{"s":"s1"},"c":1,"a":"conn"}');
+    storage.entries.set(STORAGE_KEY, '{"k":"link:t","d":{"s":"s1","c":"token"},"c":1,"a":"conn"}');
     storage.failing.add('read');
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
@@ -349,7 +396,7 @@ describe('record store readHighestGeneration', () => {
 });
 
 describe('record store generations', () => {
-  const RECORD = '{"k":"link:t","d":{"s":"s"},"c":1,"a":"conn"}';
+  const RECORD = '{"k":"link:t","d":{"s":"s","c":"token"},"c":1,"a":"conn"}';
   test('does not read a generation with the incomplete marker as the highest', () => {
     // #given
     const storage = createFakeStorage();

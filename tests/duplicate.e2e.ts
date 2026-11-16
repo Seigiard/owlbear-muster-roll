@@ -50,7 +50,7 @@ const SKELETON_CELLS = {
 
 const SKELETON: readonly StoredRecord[] = [
   repRecord('npc', 'npc_name', 'skel', 0, SKELETON_CELLS),
-  record('link:token1', { s: 'npc', i: 'skel' }),
+  record('link:token1', { s: 'npc', path: ['npc_name', 'skel'], c: 'token' }),
   npcBlock('gob', 'Гоблин', 1),
 ];
 

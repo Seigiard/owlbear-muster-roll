@@ -13,30 +13,33 @@ import { importSnapshot, parseSnapshotFile } from '@/core/snapshot-import';
 import { decodeStateRecords, stateAnswer } from '@/core/state-records';
 
 const preset: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'journal',
-      kind: 'single',
+
       title: 'Journal',
       players: 'edit',
-      tokens: true,
+
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'field', id: 'a', type: 'text' },
-                  { kind: 'field', id: 'b', type: 'text' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', id: 'a', type: 'text' },
+                    { kind: 'field', id: 'b', type: 'text' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
               ],
             },
           ],
         },
         {
           visibility: 'gm',
-          sections: [{ rows: [[{ kind: 'field', id: 'secret', type: 'text' }]] }],
+          sections: [{ rows: [{ cells: [{ kind: 'field', id: 'secret', type: 'text' }] }] }],
         },
       ],
     },
@@ -129,7 +132,7 @@ test('manual snapshots use root cells and restore values and live links without 
         root.a,
       ),
     ],
-    ['link:token', { k: 'link:token', d: { s: 'journal' }, c: 1, a: 'gm' }],
+    ['link:token', { k: 'link:token', d: { s: 'journal', c: 'token' }, c: 1, a: 'gm' }],
     ['acl:journal:player', { k: 'acl:journal:player', d: { name: 'Player' }, c: 1, a: 'gm' }],
   ]);
 
@@ -148,7 +151,7 @@ test('manual snapshots use root cells and restore values and live links without 
       v: 4,
       type: 'muster-roll/snapshot',
       sheets: [{ id: 'journal', cells: { a: 'first' }, blocks: [] }],
-      links: [{ tokenId: 'token', sheetId: 'journal' }],
+      links: [{ tokenId: 'token', sheetId: 'journal', cellId: 'token' }],
     },
     root: { order: 0, cells: { a: ['first', 1, 'importer'] } },
     keys: ['blk:journal', 'link:token', 'preset'],

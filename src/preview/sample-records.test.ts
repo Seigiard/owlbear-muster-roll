@@ -21,36 +21,43 @@ const PRESET: Preset = {
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Characters',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               title: 'Stats',
               rows: [
-                [
-                  { kind: 'text', text: 'Name' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Strength' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'str_tired' },
-                  { kind: 'dice', formula: '1d20 <= str' },
-                ],
-                [
-                  { kind: 'text', text: 'Dexterity' },
-                  { kind: 'field', type: 'number', id: 'dex' },
-                  { kind: 'field', type: 'check', id: 'dex_tired' },
-                ],
-                [{ kind: 'text', text: 'Броня' }, ARMOR],
-                [{ kind: 'dice', formula: '1d6' }],
-                [
-                  { kind: 'text', text: '  ' },
-                  { kind: 'field', type: 'text', id: 'motto' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Name' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Strength' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'str_tired' },
+                    { kind: 'dice', formula: '1d20 <= str' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Dexterity' },
+                    { kind: 'field', type: 'number', id: 'dex' },
+                    { kind: 'field', type: 'check', id: 'dex_tired' },
+                  ],
+                },
+                { cells: [{ kind: 'text', text: 'Броня' }, ARMOR] },
+                { cells: [{ kind: 'dice', formula: '1d6' }] },
+                {
+                  cells: [
+                    { kind: 'text', text: '  ' },
+                    { kind: 'field', type: 'text', id: 'motto' },
+                  ],
+                },
               ],
             },
           ],
@@ -59,7 +66,6 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPCs',
       visibility: 'gm',
       tabs: [
@@ -67,16 +73,20 @@ const PRESET: Preset = {
           sections: [
             {
               title: 'Foes',
-              repeat: true,
+              repeat: { id: 'foe', nameField: 'foe' },
               rows: [
-                [
-                  { kind: 'text', text: 'Foe' },
-                  { kind: 'field', type: 'text', id: 'foe' },
-                ],
-                [
-                  { kind: 'field', type: 'number', id: 'hp' },
-                  { kind: 'dice', formula: '1d20 + hp' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Foe' },
+                    { kind: 'field', type: 'text', id: 'foe' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'hp' },
+                    { kind: 'dice', formula: '1d20 + hp' },
+                  ],
+                },
               ],
             },
           ],

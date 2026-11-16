@@ -73,7 +73,8 @@ const OPEN: EngineMessage = {
   t: 'open-sheet',
   id: 'open-1',
   sheetId: 'npc',
-  instanceId: 'skeleton-1',
+  path: ['npc_name', 'skeleton-1'],
+  cellId: 'portrait',
 };
 
 type Harness = {
@@ -118,7 +119,12 @@ describe('replica client open requests', () => {
     // #then
     expect({ before, after: harness.store.$openRequest.get() }).toEqual({
       before: null,
-      after: { id: 'open-1', sheetId: 'npc', instanceId: 'skeleton-1' },
+      after: {
+        id: 'open-1',
+        sheetId: 'npc',
+        path: ['npc_name', 'skeleton-1'],
+        cellId: 'portrait',
+      },
     });
   });
 });
@@ -585,7 +591,12 @@ const TIMEOUT_CASES: readonly {
     name: 'link-set',
     field: 'linkSetTimeoutMs',
     begin: (client) =>
-      client.sendCommand({ type: 'link-set', tokenId: 'token', sheetId: 'hero', instanceId: null }),
+      client.sendCommand({
+        type: 'link-set',
+        tokenId: 'token',
+        sheetId: 'hero',
+        cellId: 'portrait',
+      }),
   },
   {
     name: 'roll',

@@ -264,7 +264,7 @@ describe('ownerOf', () => {
   test('skips a plink: whose data or player id no plink: may hold', () => {
     // #given
     const records: VersionedRecord[] = [
-      { k: 'plink:brok:p-oly', d: { s: 'Оля' }, c: 9, a: 'gm-a' },
+      fixtureRecord('plink:brok:p-oly', { s: 'Оля' }, 9, 'gm-a'),
       { k: 'plink:brok:a b', d: { name: 'Гена' }, c: 9, a: 'gm-a' },
       plink('brok', 'p-vova', 1, 'gm-a'),
     ];

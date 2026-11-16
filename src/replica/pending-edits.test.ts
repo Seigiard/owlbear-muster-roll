@@ -17,32 +17,36 @@ const PLAYER = 'player-a';
 const CONNECTION = 'player-connection';
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Characters',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'text', id: 'note' },
-                ],
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'text', id: 'note' },
+                  ],
+                },
               ],
             },
             {
-              repeat: true,
+              repeat: { id: 'item', nameField: 'item' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'item' },
-                  { kind: 'field', type: 'number', id: 'qty' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'item' },
+                    { kind: 'field', type: 'number', id: 'qty' },
+                  ],
+                },
               ],
             },
           ],
@@ -51,16 +55,18 @@ const PRESET: Preset = {
     },
     {
       id: 'camp',
-      kind: 'single',
+
       title: 'Camp',
       players: 'edit',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'food' }]] }] }],
+      tabs: [
+        { sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'food' }] }] }] },
+      ],
     },
     {
       id: 'rules',
-      kind: 'single',
+
       title: 'Rules',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'rule' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'rule' }] }] }] }],
     },
   ],
 };
@@ -95,11 +101,11 @@ const HIDDEN_PRESET: Preset = {
     ...PRESET.templates,
     {
       id: 'hidden',
-      kind: 'single',
+
       title: 'Hidden',
       visibility: 'gm',
       players: 'edit',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'str' }] }] }] }],
     },
   ],
 };
@@ -723,8 +729,8 @@ describe('pending edits', () => {
               sections: [
                 {
                   rows: [
-                    [{ kind: 'field', type: 'text', id: 'name' }],
-                    [{ kind: 'field', type: 'number', id: 'str' }],
+                    { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                    { cells: [{ kind: 'field', type: 'number', id: 'str' }] },
                   ],
                 },
               ],
@@ -785,32 +791,6 @@ describe('pending edits', () => {
     expect({ result, sent: harness.sent, size: harness.pending.size() }).toEqual({
       result: { notify: false },
       sent: [pcRecord({ note: 'tired' }, 3)],
-      size: 1,
-    });
-  });
-  test('a preset change moves a repeat block removal to its new section', () => {
-    // #given
-    const harness = createHarness();
-    harness.pending.edit(remove('sword'), harness.records);
-    const before = harness.records.get('preset');
-    harness.records.set('preset', { k: 'preset', d: encodePreset(movedPreset()), c: 2, a: 'gm' });
-    harness.records.set('blk:brok:label:sword', {
-      k: 'blk:brok:label:sword',
-      d: { order: 0, cells: {} },
-      c: 1,
-      a: 'gm',
-      l: [1, 'seed'],
-    });
-    harness.records.set(SWORD.k, fixturePatch(SWORD, null, 2, 'gm'));
-    // #when
-    const result = harness.pending.recordsChanged(before);
-    // #then
-    expect({ result, sent: harness.sent, size: harness.pending.size() }).toEqual({
-      result: { notify: false },
-      sent: [
-        fixtureRecord(SWORD.k, null, 2, CONNECTION),
-        { k: 'blk:brok:label:sword', d: null, c: 3, a: CONNECTION, l: [1, 'seed'] },
-      ],
       size: 1,
     });
   });
@@ -1032,8 +1012,8 @@ function noNotePreset(): Preset {
             sections: [
               {
                 rows: [
-                  [{ kind: 'field', type: 'text', id: 'name' }],
-                  [{ kind: 'field', type: 'number', id: 'str' }],
+                  { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                  { cells: [{ kind: 'field', type: 'number', id: 'str' }] },
                 ],
               },
               PRESET.templates[0]!.tabs[0]!.sections[1]!,
@@ -1057,20 +1037,24 @@ function movedPreset(): Preset {
             sections: [
               {
                 rows: [
-                  [{ kind: 'field', type: 'text', id: 'name' }],
-                  [
-                    { kind: 'field', type: 'text', id: 'note' },
-                    { kind: 'field', type: 'number', id: 'str' },
-                  ],
+                  { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'note' },
+                      { kind: 'field', type: 'number', id: 'str' },
+                    ],
+                  },
                 ],
               },
               {
-                repeat: true,
+                repeat: { id: 'label', nameField: 'label' },
                 rows: [
-                  [
-                    { kind: 'field', type: 'text', id: 'label' },
-                    { kind: 'field', type: 'number', id: 'qty' },
-                  ],
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'label' },
+                      { kind: 'field', type: 'number', id: 'qty' },
+                    ],
+                  },
                 ],
               },
             ],

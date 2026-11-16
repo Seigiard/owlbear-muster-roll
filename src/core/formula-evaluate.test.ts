@@ -24,41 +24,49 @@ const TEMPLATE: TemplateLayout = {
       sections: [
         {
           rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-            ],
-            [{ kind: 'field', type: 'number', id: 'str_tired' }],
-            [{ kind: 'field', type: 'number', id: 'dex' }],
-            [{ kind: 'field', type: 'number', id: 'big' }],
-            [{ kind: 'field', type: 'check', id: 'bless' }],
-            [{ kind: 'field', type: 'text', id: 'note' }],
-            [
-              { kind: 'field', type: 'number', id: 'level' },
-              { kind: 'field', type: 'number', id: 'bonus' },
-            ],
+            {
+              cells: [
+                { kind: 'text', text: 'Сила' },
+                { kind: 'field', type: 'number', id: 'str' },
+              ],
+            },
+            { cells: [{ kind: 'field', type: 'number', id: 'str_tired' }] },
+            { cells: [{ kind: 'field', type: 'number', id: 'dex' }] },
+            { cells: [{ kind: 'field', type: 'number', id: 'big' }] },
+            { cells: [{ kind: 'field', type: 'check', id: 'bless' }] },
+            { cells: [{ kind: 'field', type: 'text', id: 'note' }] },
+            {
+              cells: [
+                { kind: 'field', type: 'number', id: 'level' },
+                { kind: 'field', type: 'number', id: 'bonus' },
+              ],
+            },
           ],
         },
         {
-          repeat: true,
+          repeat: { id: 'attack', nameField: 'attack' },
           rows: [
-            [
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'field', type: 'number', id: 'bonus' },
-              { kind: 'dice', formula: '1d20+bonus' },
-            ],
+            {
+              cells: [
+                { kind: 'field', type: 'text', id: 'attack' },
+                { kind: 'field', type: 'number', id: 'bonus' },
+                { kind: 'dice', formula: '1d20+bonus' },
+              ],
+            },
           ],
         },
         {
-          repeat: true,
+          repeat: { id: 'item', nameField: 'item' },
           rows: [
-            [
-              { kind: 'field', type: 'text', id: 'item' },
-              { kind: 'field', type: 'number', id: 'weight' },
-            ],
+            {
+              cells: [
+                { kind: 'field', type: 'text', id: 'item' },
+                { kind: 'field', type: 'number', id: 'weight' },
+              ],
+            },
           ],
         },
-        { rows: [[{ kind: 'dice', formula: '1d20 <= str - 2*str_tired' }]] },
+        { rows: [{ cells: [{ kind: 'dice', formula: '1d20 <= str - 2*str_tired' }] }] },
       ],
     },
   ],
@@ -290,16 +298,20 @@ describe('evaluateFormula', () => {
         {
           sections: [
             {
-              repeat: true,
+              repeat: { id: 'attack', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'attack' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                ],
-                [
-                  { kind: 'field', type: 'number', id: 'range' },
-                  { kind: 'dice', formula: '1d20+bonus+range' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'range' },
+                    { kind: 'dice', formula: '1d20+bonus+range' },
+                  ],
+                },
               ],
             },
           ],

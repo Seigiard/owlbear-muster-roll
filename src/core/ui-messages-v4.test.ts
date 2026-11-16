@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test';
-import { parseEngineMessage } from './ui-messages';
+import { parseEngineMessage, type EngineMessage } from './ui-messages';
 
 test('accepts a cell-target open request with its repeat path', () => {
   // #given
-  const message = {
+  const message: EngineMessage = {
     t: 'open-sheet',
     id: 'open-1',
     sheetId: 'heroes',

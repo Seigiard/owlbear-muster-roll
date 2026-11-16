@@ -59,81 +59,109 @@ const rollOutcomeMessageSchema = z.strictObject({
 const LOCAL_RANDOM = (): number => 0.3;
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Основное',
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'str_tired' },
-                  { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
-                ],
-                [
-                  { kind: 'text', text: 'Ловкость' },
-                  { kind: 'field', type: 'number', id: 'dex' },
-                  { kind: 'dice', formula: '1d20 + dex' },
-                ],
-                [
-                  { kind: 'text', text: 'Удар' },
-                  { kind: 'dice', formula: '1d20 + str' },
-                ],
-                [
-                  { kind: 'text', text: 'Залп' },
-                  { kind: 'dice', formula: '2d6 + 1d8 - 1d4' },
-                ],
-                [
-                  { kind: 'text', text: 'Число' },
-                  { kind: 'dice', formula: 'str + 2' },
-                ],
-                [
-                  { kind: 'text', text: 'Тройка' },
-                  { kind: 'dice', formula: '1d3 + str' },
-                ],
-                [
-                  { kind: 'text', text: 'Тысяча' },
-                  { kind: 'dice', formula: '1d1000' },
-                ],
-                [
-                  { kind: 'text', text: 'Тридцать' },
-                  { kind: 'dice', formula: '30d6' },
-                ],
-                [
-                  { kind: 'text', text: 'Шестьдесят' },
-                  { kind: 'dice', formula: '20d6 + 20d6 + 20d6' },
-                ],
-                [
-                  { kind: 'text', text: 'Кости' },
-                  { kind: 'dice', formula: '1d20 + 1d4' },
-                ],
-                [
-                  { kind: 'text', text: 'Смесь' },
-                  { kind: 'dice', formula: '2d6 + 1d8 - 1d6' },
-                ],
-                [
-                  { kind: 'text', text: 'Десятка' },
-                  { kind: 'dice', formula: '1d10' },
-                ],
-                [
-                  { kind: 'text', text: 'Сотня' },
-                  { kind: 'dice', formula: '1d100' },
-                ],
-                [
-                  { kind: 'text', text: 'Деление' },
-                  { kind: 'dice', formula: '10 / (1d6 - 3)' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'str_tired' },
+                    { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Ловкость' },
+                    { kind: 'field', type: 'number', id: 'dex' },
+                    { kind: 'dice', formula: '1d20 + dex' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Удар' },
+                    { kind: 'dice', formula: '1d20 + str' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Залп' },
+                    { kind: 'dice', formula: '2d6 + 1d8 - 1d4' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Число' },
+                    { kind: 'dice', formula: 'str + 2' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Тройка' },
+                    { kind: 'dice', formula: '1d3 + str' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Тысяча' },
+                    { kind: 'dice', formula: '1d1000' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Тридцать' },
+                    { kind: 'dice', formula: '30d6' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Шестьдесят' },
+                    { kind: 'dice', formula: '20d6 + 20d6 + 20d6' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Кости' },
+                    { kind: 'dice', formula: '1d20 + 1d4' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Смесь' },
+                    { kind: 'dice', formula: '2d6 + 1d8 - 1d6' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Десятка' },
+                    { kind: 'dice', formula: '1d10' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сотня' },
+                    { kind: 'dice', formula: '1d100' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Деление' },
+                    { kind: 'dice', formula: '10 / (1d6 - 3)' },
+                  ],
+                },
               ],
             },
-            { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+            { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] },
           ],
         },
         {
@@ -142,11 +170,13 @@ const PRESET: Preset = {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Секрет' },
-                  { kind: 'field', type: 'number', id: 'secret' },
-                  { kind: 'dice', formula: '1d20 + secret' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Секрет' },
+                    { kind: 'field', type: 'number', id: 'secret' },
+                    { kind: 'dice', formula: '1d20 + secret' },
+                  ],
+                },
               ],
             },
           ],
@@ -155,7 +185,7 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPC',
       visibility: 'gm',
       tabs: [
@@ -163,11 +193,13 @@ const PRESET: Preset = {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Хиты' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                  { kind: 'dice', formula: '1d20 + hp' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Хиты' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                    { kind: 'dice', formula: '1d20 + hp' },
+                  ],
+                },
               ],
             },
           ],

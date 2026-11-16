@@ -12,6 +12,7 @@ import {
   PARTY_LIMIT,
   partyEntries,
   playerMayEdit,
+  playerMayEditField,
   playerName,
   plinkKey,
   PROPOSE_C_MAX_STEP,
@@ -352,31 +353,31 @@ const PRESET: Preset = {
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Characters',
-      nameField: 'name',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] }] }],
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPCs',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
     {
       id: 'loot',
-      kind: 'single',
+
       title: 'Loot',
       players: 'edit',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'gold' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'gold' }] }] }] }],
     },
     {
       id: 'ship',
-      kind: 'set',
+
       title: 'Ships',
-      nameField: 'hull',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'hull' }]] }] }],
+      repeat: { nameField: 'hull' },
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'hull' }] }] }] }],
     },
   ],
 };
@@ -417,34 +418,100 @@ describe('playerMayEdit', () => {
   });
 });
 
+test('players: edit grants visible root fields of every sheet, including a sheet set', () => {
+  // #given
+  const editableSet: Template = {
+    id: 'crew',
+    title: 'Crew',
+    repeat: { nameField: 'name' },
+    players: 'edit',
+    tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] }] }],
+  };
+
+  const ordinarySet: Template = {
+    ...editableSet,
+    id: 'party',
+    title: 'Party',
+    players: undefined,
+  };
+
+  const editableSingle: Template = {
+    id: 'camp',
+    title: 'Camp',
+    players: 'edit',
+    tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] }] }],
+  };
+
+  const preset: Preset = { v: 4, templates: [editableSet, ordinarySet, editableSingle] };
+
+  const records = byKey([
+    {
+      k: 'blk:enterprise',
+      d: { set: 'crew', order: 0, cells: {} },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    },
+    {
+      k: 'blk:aragorn',
+      d: { set: 'party', order: 0, cells: {} },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    },
+  ]);
+
+  const setPolicy = resolveSheet(records, preset, 'enterprise');
+  const singlePolicy = resolveSheet(records, preset, 'camp');
+  const aclPolicy = resolveSheet(records, preset, 'aragorn');
+
+  if (setPolicy === null || singlePolicy === null || aclPolicy === null) {
+    throw new Error('Expected every control sheet to resolve');
+  }
+
+  // #when
+  const allowed = [
+    playerMayEditField(setPolicy, records, PLAYER, { kind: 'row', rowId: 'name' }),
+    playerMayEditField(singlePolicy, records, PLAYER, { kind: 'row', rowId: 'name' }),
+    playerMayEditField(aclPolicy, records, PLAYER, { kind: 'row', rowId: 'name' }),
+  ];
+
+  // #then
+  expect(allowed).toEqual([true, true, false]);
+});
+
 // The sheet set "pc" has a plain row "str" with a note and a check, and a two-row repeat section
 // "item", whose one repeat block holds `item`, `qty` and `weight`.
 const PC: Template = {
   id: 'pc',
-  kind: 'set',
+
   title: 'Персонажи',
-  nameField: 'note',
+  repeat: { nameField: 'note' },
   tabs: [
     {
       title: 'Основное',
       sections: [
         {
           rows: [
-            [
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'text', id: 'note' },
-              { kind: 'field', type: 'check', id: 'tired' },
-            ],
+            {
+              cells: [
+                { kind: 'field', type: 'number', id: 'str' },
+                { kind: 'field', type: 'text', id: 'note' },
+                { kind: 'field', type: 'check', id: 'tired' },
+              ],
+            },
           ],
         },
         {
-          repeat: true,
+          repeat: { id: 'item', nameField: 'item' },
           rows: [
-            [
-              { kind: 'field', type: 'text', id: 'item' },
-              { kind: 'field', type: 'number', id: 'qty' },
-            ],
-            [{ kind: 'field', type: 'number', id: 'weight' }],
+            {
+              cells: [
+                { kind: 'field', type: 'text', id: 'item' },
+                { kind: 'field', type: 'number', id: 'qty' },
+              ],
+            },
+            { cells: [{ kind: 'field', type: 'number', id: 'weight' }] },
           ],
         },
       ],
@@ -453,54 +520,65 @@ const PC: Template = {
       title: 'Заметки мастера',
       visibility: 'gm',
       sections: [
-        { rows: [[{ kind: 'field', type: 'text', id: 'secret' }]] },
-        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'secret_item' }]] },
+        { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'secret' }] }] },
+        {
+          repeat: { id: 'secret_item', nameField: 'secret_item' },
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'secret_item' }] }],
+        },
       ],
     },
   ],
 };
 
 const PROPOSAL_PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     PC,
     // Hidden, so its `players: "edit"` lets no player edit it.
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'НПС',
       visibility: 'gm',
       players: 'edit',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'str' }] }] }] }],
     },
     {
       id: 'inventory',
-      kind: 'single',
+
       title: 'Инвентарь',
       players: 'edit',
       tabs: [
         {
           sections: [
-            { rows: [[{ kind: 'field', type: 'text', id: 'items' }]] },
-            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'gear' }]] },
-            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'tool' }]] },
+            { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'items' }] }] },
+            {
+              repeat: { id: 'gear', nameField: 'gear' },
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'gear' }] }],
+            },
+            {
+              repeat: { id: 'tool', nameField: 'tool' },
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'tool' }] }],
+            },
           ],
         },
       ],
     },
     {
       id: 'journal',
-      kind: 'single',
+
       title: 'Журнал',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'entry' }] }] }] }],
     },
     {
       id: 'villains',
-      kind: 'set',
+
       title: 'Злодеи',
-      nameField: 'villain',
+      repeat: { nameField: 'villain' },
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }] }],
+      tabs: [
+        { sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'villain' }] }] }] },
+      ],
     },
   ],
 };
@@ -833,7 +911,10 @@ describe('checkProposal', () => {
     ],
     ['the GM key form acl:', { k: 'acl:kira:p-oly', d: { name: 'Оля' }, c: 1, a: 'p-conn' }],
     ['the GM key form plink:', { k: 'plink:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'p-conn' }],
-    ['the GM key form link:', { k: 'link:token-1', d: { s: 'brok' }, c: 1, a: 'p-conn' }],
+    [
+      'the GM key form link:',
+      { k: 'link:token-1', d: { s: 'brok', c: 'token' }, c: 1, a: 'p-conn' },
+    ],
     ['the GM key form preset', { k: 'preset', d: 'AAAA', c: 9, a: 'p-conn' }],
     ["an author that is not the sender's", fixturePatch(STR_ROW, { str: 6 }, 4, 'gm-a')],
     ['a copy of a GM record', STR_ROW],

@@ -41,8 +41,8 @@ const ROOM: readonly StoredRecord[] = [
   ...pcSheet('anya', 'Аня', 0),
   record('acl:anya:lisa', { name: 'Лиза' }),
   npcBlock('gob', 'Гоблин', 0, { str: 3 }),
-  record('link:t-anya', { s: 'anya' }),
-  record('link:t-gob', { s: 'npc', i: 'gob' }),
+  record('link:t-anya', { s: 'anya', c: 'token' }),
+  record('link:t-gob', { s: 'npc', path: ['npc_name', 'gob'], c: 'token' }),
 ];
 
 test.beforeEach(async ({ page }) => {

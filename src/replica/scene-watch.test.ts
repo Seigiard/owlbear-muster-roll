@@ -231,6 +231,7 @@ function createFakeScene(itemIds: string[]): FakeScene {
         return Promise.resolve(fake.readyAnswer);
       },
       onReadyChange: () => () => undefined,
+      getItemBounds: () => Promise.resolve(new Map()),
       getItemIds: () => {
         if (fake.itemFailures > 0) {
           fake.itemFailures -= 1;

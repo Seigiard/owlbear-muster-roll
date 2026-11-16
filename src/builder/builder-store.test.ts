@@ -275,7 +275,7 @@ describe('undo and redo', () => {
     store.redo();
     // #then
     expect(store.$state.get().selection).toBe(
-      uid(store, 0, 0, 0, 0, D20.templates[0]?.tabs[0]?.sections[0]?.rows[0]?.length ?? 0),
+      uid(store, 0, 0, 0, 0, D20.templates[0]?.tabs[0]?.sections[0]?.rows[0]?.cells.length ?? 0),
     );
   });
 });
@@ -306,7 +306,7 @@ describe('the draft', () => {
     // #when
     const store = createBuilderStore(storage);
     // #then
-    expect(presetOf(store)).toEqual({ v: 3, templates: [] });
+    expect(presetOf(store)).toEqual({ v: 4, templates: [] });
     expect(store.$state.get().selection).toBe(WINDOW_UID);
   });
   test('a storage that keeps nothing says so, and editing goes on', () => {
@@ -331,6 +331,6 @@ describe('the draft', () => {
     const store = createBuilderStore(storage);
     // #then
     expect(store.$state.get().draft).toBe('failed');
-    expect(presetOf(store)).toEqual({ v: 3, templates: [] });
+    expect(presetOf(store)).toEqual({ v: 4, templates: [] });
   });
 });

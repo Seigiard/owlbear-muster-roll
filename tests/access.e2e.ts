@@ -45,27 +45,30 @@ const PLAYER: ClientParams = {
 
 // A visible sheet set, the hidden single sheet NPC, a visible single sheet, and a hidden sheet set.
 const ACCESS_PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Основное',
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
           ],
@@ -74,7 +77,6 @@ const ACCESS_PRESET = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
@@ -82,13 +84,15 @@ const ACCESS_PRESET = {
           sections: [
             {
               title: 'Противники',
-              repeat: true,
+              repeat: { id: 'npc_name', nameField: 'npc_name' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'npc_name' },
-                  { kind: 'text', text: 'Хиты' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'npc_name' },
+                    { kind: 'text', text: 'Хиты' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                  ],
+                },
               ],
             },
           ],
@@ -97,7 +101,6 @@ const ACCESS_PRESET = {
     },
     {
       id: 'inventory',
-      kind: 'single',
       title: 'Инвентарь',
       players: 'edit',
       tabs: [
@@ -105,10 +108,12 @@ const ACCESS_PRESET = {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Золото' },
-                  { kind: 'field', type: 'number', id: 'gold' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Золото' },
+                    { kind: 'field', type: 'number', id: 'gold' },
+                  ],
+                },
               ],
             },
           ],
@@ -117,19 +122,20 @@ const ACCESS_PRESET = {
     },
     {
       id: 'agents',
-      kind: 'set',
       title: 'Агенты',
-      nameField: 'agent',
+      repeat: { nameField: 'agent' },
       visibility: 'gm',
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Агент' },
-                  { kind: 'field', type: 'text', id: 'agent' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Агент' },
+                    { kind: 'field', type: 'text', id: 'agent' },
+                  ],
+                },
               ],
             },
           ],
@@ -153,10 +159,12 @@ const TABBED_PRESET_TEXT = JSON.stringify({
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Заметка' },
-                  { kind: 'field', type: 'text', id: 'note' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Заметка' },
+                    { kind: 'field', type: 'text', id: 'note' },
+                  ],
+                },
               ],
             },
           ],

@@ -24,13 +24,12 @@ const PAST_PAUSE_MS = 1300;
 const WITHIN_PAUSE_MS = 300;
 
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
@@ -38,52 +37,66 @@ const PRESET = {
               title: 'Сетка',
               columns: 3,
               rows: [
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'str_tired' },
-                ],
-                [
-                  { kind: 'text', text: 'Ловкость' },
-                  { kind: 'field', type: 'number', id: 'dex' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'str_tired' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Ловкость' },
+                    { kind: 'field', type: 'number', id: 'dex' },
+                  ],
+                },
               ],
             },
             {
               title: 'Строки',
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Заметки' },
-                  { kind: 'field', type: 'text', id: 'notes' },
-                ],
-                [
-                  { kind: 'text', text: 'Девиз' },
-                  { kind: 'field', type: 'text', id: 'motto' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Заметки' },
+                    { kind: 'field', type: 'text', id: 'notes' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Девиз' },
+                    { kind: 'field', type: 'text', id: 'motto' },
+                  ],
+                },
               ],
             },
             {
               title: 'Атаки',
               columns: 2,
-              repeat: true,
+              repeat: { id: 'attack', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'attack' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                  ],
+                },
               ],
             },
             {
               title: 'Отметки',
               rows: [
-                [
-                  { kind: 'text', text: 'Отдых' },
-                  { kind: 'field', type: 'check', id: 'rested' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Отдых' },
+                    { kind: 'field', type: 'check', id: 'rested' },
+                  ],
+                },
               ],
             },
           ],

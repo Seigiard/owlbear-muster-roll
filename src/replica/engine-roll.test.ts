@@ -18,57 +18,69 @@ const GHOST_NAME = 'Призрак';
 const SEVEN = (): number => 0.3;
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Основное',
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'str_tired' },
-                  { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
-                ],
-                [
-                  { kind: 'text', text: 'Ловкость' },
-                  { kind: 'field', type: 'number', id: 'dex' },
-                  { kind: 'dice', formula: '1d20 + dex' },
-                ],
-                [
-                  { kind: 'text', text: 'Деление' },
-                  { kind: 'dice', formula: 'str / (str - str)' },
-                ],
-                [
-                  { kind: 'text', text: 'Чтение' },
-                  { kind: 'dice', formula: '1d1 + secret' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'str_tired' },
+                    { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Ловкость' },
+                    { kind: 'field', type: 'number', id: 'dex' },
+                    { kind: 'dice', formula: '1d20 + dex' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Деление' },
+                    { kind: 'dice', formula: 'str / (str - str)' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Чтение' },
+                    { kind: 'dice', formula: '1d1 + secret' },
+                  ],
+                },
               ],
             },
             {
-              repeat: true,
+              repeat: { id: 'attack', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'text', text: 'Атака' },
-                  { kind: 'field', type: 'text', id: 'attack' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                  { kind: 'dice', formula: '1d20 + bonus' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Атака' },
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                    { kind: 'dice', formula: '1d20 + bonus' },
+                  ],
+                },
               ],
             },
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
               ],
             },
           ],
@@ -79,11 +91,13 @@ const PRESET: Preset = {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Секрет' },
-                  { kind: 'field', type: 'number', id: 'secret' },
-                  { kind: 'dice', formula: '1d20 + secret' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Секрет' },
+                    { kind: 'field', type: 'number', id: 'secret' },
+                    { kind: 'dice', formula: '1d20 + secret' },
+                  ],
+                },
               ],
             },
           ],
@@ -92,7 +106,7 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPC',
       visibility: 'gm',
       tabs: [
@@ -100,11 +114,13 @@ const PRESET: Preset = {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Хиты' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                  { kind: 'dice', formula: '1d20 + hp' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Хиты' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                    { kind: 'dice', formula: '1d20 + hp' },
+                  ],
+                },
               ],
             },
           ],

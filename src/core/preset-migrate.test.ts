@@ -40,20 +40,38 @@ function namedNumber(id: string, name?: string): PresetFieldCell {
 }
 
 function rows(...cells: PresetCell[][]): PresetSection {
-  return { rows: cells };
+  return { rows: cells.map((rowCells) => ({ cells: rowCells })) };
 }
 
 function repeat(...cells: PresetCell[]): PresetSection {
-  return { repeat: true, rows: [cells] };
+  const fields = cells.filter((cell) => cell.kind === 'field');
+  const id = fields[0]?.id ?? 'repeat';
+  const nameField = fields.find((field) => field.type === 'text')?.id ?? id;
+
+  return { repeat: { id, nameField }, rows: [{ cells }] };
 }
 
 // A repeat section of several rows, all of which form one repeat block.
 function repeatRows(...cells: PresetCell[][]): PresetSection {
-  return { repeat: true, rows: cells };
+  const fields = cells.flat().filter((cell) => cell.kind === 'field');
+  const id = fields[0]?.id ?? 'repeat';
+  const nameField = fields.find((field) => field.type === 'text')?.id ?? id;
+
+  return {
+    repeat: { id, nameField },
+    rows: cells.map((rowCells) => ({ cells: rowCells })),
+  };
 }
 
 function linkable(section: PresetSection): PresetSection {
-  return { ...section, tokens: true };
+  const [first, ...rest] = section.rows;
+
+  return first === undefined
+    ? section
+    : {
+        ...section,
+        rows: [{ ...first, cells: [...first.cells, { kind: 'token', id: 'token' }] }, ...rest],
+      };
 }
 
 // The sheet set `pc`, named by its `notes` field.
@@ -63,9 +81,9 @@ function sheetSet(
 ): SheetSetTemplate {
   return {
     id: 'pc',
-    kind: 'set',
+
     title: 'Персонажи',
-    nameField: 'notes',
+    repeat: { nameField: 'notes' },
     tabs: [{ sections }],
     ...extra,
   };
@@ -76,11 +94,11 @@ function single(
   sections: PresetSection[],
   extra: Partial<SingleSheetTemplate> = {},
 ): SingleSheetTemplate {
-  return { id, kind: 'single', title: id, tabs: [{ sections }], ...extra };
+  return { id, title: id, tabs: [{ sections }], ...extra };
 }
 
 function presetOf(...templates: Template[]): Preset {
-  return { v: 3, templates };
+  return { v: 4, templates };
 }
 
 // A preset whose only template is the sheet set `pc` with these sections.
@@ -128,24 +146,13 @@ function rep(
   return fixtureRecord(`blk:${sheetId}:${sectionId}:${instanceId}`, d, 2, 'seed');
 }
 
-function relocatedRep(
-  sheetId: string,
-  sectionId: string,
-  instanceId: string,
-  cells: Values,
-  order = 0,
-): VersionedRecord {
-  return {
-    ...rep(sheetId, sectionId, instanceId, cells, order),
-    d: { order, cells: fixtureCells(cells, 3, 'migration') },
-    c: 3,
-    a: 'migration',
-    l: [3, 'migration'],
-  };
-}
-
 function link(tokenId: string, s: string, i?: string): VersionedRecord {
-  return { k: `link:${tokenId}`, d: i === undefined ? { s } : { s, i }, c: 2, a: 'seed' };
+  return {
+    k: `link:${tokenId}`,
+    d: i === undefined ? { s, c: 'token' } : { s, path: ['npc_name', i], c: 'token' },
+    c: 2,
+    a: 'seed',
+  };
 }
 
 function player(form: 'acl' | 'plink', sheetId: string, playerId: string): VersionedRecord {
@@ -402,8 +409,8 @@ describe('presetDiff', () => {
   });
   test('keeps a repeat-block select value when only its options change', () => {
     // #given
-    const old = preset([repeat(select('armor', ['Кожаная', 'Кольчуга']))]);
-    const next = preset([repeat(select('armor', ['Без доспеха', 'Кожаная']))]);
+    const old = preset([repeat(select('armor', ['Кожаная', 'Кольчуга']), text('name'))]);
+    const next = preset([repeat(select('armor', ['Без доспеха', 'Кожаная']), text('name'))]);
     const records = replica(sheet('brok'), rep('brok', 'armor', 'i1', { armor: 'Кольчуга' }));
     // #when
     const migration = capture(() => summary(presetDiff(records, old, next)));
@@ -553,61 +560,6 @@ describe('presetDiff', () => {
       ],
     });
   });
-  test('moves every repeat block to the new section while one field id survives', () => {
-    // #given: attack goes, bonus stays, and the section is now named by weapon.
-    const next = preset([
-      rows([number('str'), check('str_tired')], [text('notes')]),
-      rows([number('hp')]),
-      repeat(text('weapon'), number('bonus')),
-    ]);
-
-    const records = replica(
-      sheet('brok'),
-      rep('brok', 'attack', 'i1', { attack: 'Меч', bonus: 3 }, 0),
-      rep('brok', 'attack', 'i2', { attack: 'Лук' }, 1),
-      rep('brok', 'attack', 'i3', null),
-    );
-
-    // #when
-    const migration = presetDiff(records, BASE, next);
-    // #then
-    expect({ count: migration.count, removed: migration.removed, ...writes(migration) }).toEqual({
-      count: 2,
-      removed: { pc: ['attack'] },
-      first: [
-        'blk:brok:weapon:i1={"order":0,"cells":{"bonus":[3,2,"seed"]}}',
-        'blk:brok:weapon:i2={"order":1,"cells":{}}',
-      ],
-      last: ['blk:brok:attack:i1=null', 'blk:brok:attack:i2=null'],
-    });
-  });
-  test('moves a repeat block of several rows as one record with all its fields', () => {
-    // #given: the NPC block spans two rows; its first field changes, so its section id changes.
-    const old = presetOf(
-      sheetSet(BASE_SECTIONS),
-      single('npc', [repeatRows([text('npc_name'), number('hp')], [number('str')])]),
-    );
-
-    const next = presetOf(
-      sheetSet(BASE_SECTIONS),
-      single('npc', [repeatRows([text('label'), number('hp')], [number('str'), check('elite')])]),
-    );
-
-    const records = replica(rep('npc', 'npc_name', 'i1', { npc_name: 'Скелет 1', hp: 7, str: 3 }));
-    // #when
-    const migration = presetDiff(records, old, next);
-    // #then
-    expect(summary(migration)).toEqual({
-      count: 1,
-      sheets: 0,
-      removed: { npc: ['npc_name'] },
-      first: [
-        'blk:npc:label:i1={"order":0,"cells":{"hp":[7,2,"seed"],"str":[3,2,"seed"]}}',
-        'blk:npc={"order":0,"cells":{}}',
-      ],
-      last: ['blk:npc:npc_name:i1=null'],
-    });
-  });
   test('strips a repeat block in place when its section keeps its id', () => {
     // #given
     const next = preset([
@@ -711,145 +663,6 @@ describe('presetDiff', () => {
       last: [
         'blk:brok:attack:i1={"order":0,"cells":{"attack":["Меч",2,"seed"],"bonus":[null,2,"seed"]}}',
       ],
-    });
-  });
-  test('picks the new section that keeps the most ids, ties by template order', () => {
-    // #given
-    const old = preset([repeat(text('attack'), number('bonus'), number('range'))]);
-
-    const next = preset([
-      repeat(text('first'), number('bonus')),
-      repeat(text('second'), number('range')),
-    ]);
-
-    const records = replica(sheet('brok'), rep('brok', 'attack', 'i1', { bonus: 2, range: 30 }));
-    // #when
-    const migration = presetDiff(records, old, next);
-    // #then
-    expect(writes(migration).first).toEqual([
-      'blk:brok:first:i1={"order":0,"cells":{"bonus":[2,2,"seed"]}}',
-    ]);
-  });
-  test('resumes a relocation already written under its target key', () => {
-    // #given: the first phase wrote spell:i1 under attack:i1, then stopped before the preset.
-    const old = preset([
-      repeat(text('attack'), number('bonus')),
-      repeat(text('spell'), number('mana')),
-    ]);
-
-    const next = preset([repeat(text('attack'), number('bonus'), number('mana'))]);
-
-    const records = replica(
-      sheet('brok'),
-      relocatedRep('brok', 'attack', 'i1', { mana: 4 }, 1),
-      rep('brok', 'spell', 'i1', { mana: 4 }),
-    );
-
-    // #when
-    const migration = presetDiff(records, old, next);
-    // #then
-    expect({ count: migration.count, ...writes(migration) }).toEqual({
-      count: 0,
-      first: [],
-      last: ['blk:brok:spell:i1=null'],
-    });
-  });
-  test('moves blocks back over their own tombstones on a round trip, with nothing counted', () => {
-    // #given: an earlier upload moved the blocks from section a to b; this one moves them back.
-    const sectionB = preset([repeat(text('b'), number('qty'))]);
-    const sectionA = preset([repeat(text('a'), number('qty'))]);
-
-    const records = replica(
-      sheet('brok'),
-      rep('brok', 'a', 'i1', null),
-      rep('brok', 'b', 'i1', { qty: 2 }, 3),
-    );
-
-    // #when
-    const migration = presetDiff(records, sectionB, sectionA);
-    // #then
-    expect({ count: migration.count, ...writes(migration) }).toEqual({
-      count: 0,
-      first: ['blk:brok:a:i1={"order":3,"cells":{"qty":[2,2,"seed"]}}'],
-      last: ['blk:brok:b:i1=null'],
-    });
-  });
-  test('lets the first of two old sections claim a new key, and counts the second', () => {
-    // #given: both old sections go to a new section, with one instance id in each.
-    const old = preset([
-      repeat(text('attack'), number('bonus')),
-      repeat(text('spell'), number('bonus')),
-    ]);
-
-    const next = preset([repeat(text('action'), number('bonus'))]);
-
-    const records = replica(
-      sheet('brok'),
-      rep('brok', 'attack', 'i1', { bonus: 1 }),
-      rep('brok', 'spell', 'i1', { bonus: 4 }),
-    );
-
-    // #when
-    const migration = presetDiff(records, old, next);
-    // #then
-    expect({ count: migration.count, ...writes(migration) }).toEqual({
-      count: 1,
-      first: ['blk:brok:action:i1={"order":0,"cells":{"bonus":[1,2,"seed"]}}'],
-      last: ['blk:brok:attack:i1=null', 'blk:brok:spell:i1=null'],
-    });
-  });
-  test('puts the blocks of a merged section after the blocks of the section they join', () => {
-    // #given
-    const old = preset([
-      repeat(text('attack'), number('bonus')),
-      repeat(text('spell'), number('mana')),
-    ]);
-
-    const next = preset([repeat(text('attack'), number('bonus'), number('mana'))]);
-
-    const records = replica(
-      sheet('brok'),
-      rep('brok', 'attack', 'a1', { bonus: 1 }, 0),
-      rep('brok', 'attack', 'a2', { bonus: 2 }, 1),
-      rep('brok', 'spell', 's1', { mana: 3 }, 0),
-      rep('brok', 'spell', 's2', { mana: 4 }, 1),
-    );
-
-    // #when
-    const migration = presetDiff(records, old, next);
-    // #then
-    expect({ count: migration.count, ...writes(migration) }).toEqual({
-      count: 0,
-      first: [
-        'blk:brok:attack:s1={"order":2,"cells":{"mana":[3,2,"seed"]}}',
-        'blk:brok:attack:s2={"order":3,"cells":{"mana":[4,2,"seed"]}}',
-      ],
-      last: ['blk:brok:spell:s1=null', 'blk:brok:spell:s2=null'],
-    });
-  });
-  test('only tombstones the old key of a block a stopped batch already moved', () => {
-    // #given: the first try wrote spell:s1 under attack:s1, then stopped before the preset.
-    const old = preset([
-      repeat(text('attack'), number('bonus')),
-      repeat(text('spell'), number('mana')),
-    ]);
-
-    const next = preset([repeat(text('attack'), number('bonus'), number('mana'))]);
-
-    const records = replica(
-      sheet('brok'),
-      rep('brok', 'attack', 'a1', { bonus: 1 }, 0),
-      relocatedRep('brok', 'attack', 's1', { mana: 3 }, 2),
-      rep('brok', 'spell', 's1', { spell: 'Огонь', mana: 3 }, 0),
-    );
-
-    // #when
-    const migration = presetDiff(records, old, next);
-    // #then
-    expect({ count: migration.count, ...writes(migration) }).toEqual({
-      count: 0,
-      first: [],
-      last: ['blk:brok:spell:s1=null'],
     });
   });
   test('gives two diffs with one count but other erased values other digests', () => {
@@ -974,7 +787,7 @@ describe('presetDiff', () => {
     // #given
     const old = presetOf(
       sheetSet(BASE_SECTIONS),
-      single('inventory', [rows([number('gold')]), repeat(text('item'))], { tokens: true }),
+      single('inventory', [linkable(rows([number('gold')])), repeat(text('item'))]),
     );
 
     const records = replica(
@@ -1015,9 +828,9 @@ describe('presetDiff', () => {
 
     const next = presetOf({
       id: 'npc',
-      kind: 'set',
+
       title: 'NPC',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [{ sections: [rows([text('name'), number('hp')])] }],
     });
 
@@ -1050,7 +863,10 @@ describe('presetDiff', () => {
   });
   test('tombstones the links to the sheets of a template that stops being linkable', () => {
     // #given
-    const old = presetOf(sheetSet(BASE_SECTIONS, { tokens: true }));
+    const old = presetOf(
+      sheetSet([linkable(BASE_SECTIONS[0] ?? rows([])), ...BASE_SECTIONS.slice(1)]),
+    );
+
     const records = replica(sheet('brok'), link('t1', 'brok'));
     // #when
     const migration = presetDiff(records, old, BASE);
@@ -1105,10 +921,12 @@ describe('presetDiff', () => {
       last: ['blk:npc:npc_name:i1=null', 'link:t3=null'],
     });
   });
-  test('keeps the link to a repeat block that moves to another linkable section', () => {
+  test('keeps the link and block identity when the repeat name field changes', () => {
     // #given
     const old = presetOf(single('npc', [linkable(repeat(text('npc_name'), number('hp')))]));
-    const next = presetOf(single('npc', [linkable(repeat(text('label'), number('hp')))]));
+    const renamed = linkable(repeat(text('label'), number('hp')));
+    renamed.repeat = { id: 'npc_name', nameField: 'label' };
+    const next = presetOf(single('npc', [renamed]));
 
     const records = replica(
       rep('npc', 'npc_name', 'i1', { npc_name: 'Скелет', hp: 3 }),
@@ -1119,11 +937,10 @@ describe('presetDiff', () => {
     const migration = presetDiff(records, old, next);
     // #then
     expect(writes(migration)).toEqual({
-      first: [
-        'blk:npc:label:i1={"order":0,"cells":{"hp":[3,2,"seed"]}}',
-        'blk:npc={"order":0,"cells":{}}',
+      first: ['blk:npc={"order":0,"cells":{}}'],
+      last: [
+        'blk:npc:npc_name:i1={"order":0,"cells":{"hp":[3,2,"seed"],"npc_name":[null,2,"seed"]}}',
       ],
-      last: ['blk:npc:npc_name:i1=null'],
     });
   });
   test('leaves a link that was already inert as it is', () => {
@@ -1166,8 +983,8 @@ function capture<Result>(operation: () => Result):
 }
 
 describe('presetMoves', () => {
-  test('names the new row of a field and the new section of a repeat section', () => {
-    // #given: hp joins the row of str, and the attack section is now named by weapon.
+  test('names the new row of a field and does not infer a new repeat identity from fields', () => {
+    // #given
     const after = sheetSet([
       rows([number('str'), check('str_tired'), number('hp')], [text('notes')]),
       repeat(text('weapon'), number('bonus')),
@@ -1181,7 +998,7 @@ describe('presetMoves', () => {
       moves.rowOf('gone'),
       moves.sectionOf('attack'),
       moves.sectionOf('gone'),
-    ]).toEqual(['str', null, 'weapon', null]);
+    ]).toEqual(['str', null, null, null]);
   });
 });
 

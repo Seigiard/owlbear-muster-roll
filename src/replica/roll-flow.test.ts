@@ -10,29 +10,33 @@ import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
 import { createRollFlow, type RollDiceFailure, type RollFlowPorts } from './roll-flow';
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'hero',
-      kind: 'set',
+
       title: 'Heroes',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Main',
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Strike' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                  { kind: 'dice', formula: '1d20 + bonus' },
-                ],
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [
-                  { kind: 'text', text: 'Divide' },
-                  { kind: 'dice', formula: '1 / (bonus - bonus)' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Strike' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                    { kind: 'dice', formula: '1d20 + bonus' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Divide' },
+                    { kind: 'dice', formula: '1 / (bonus - bonus)' },
+                  ],
+                },
               ],
             },
           ],
@@ -43,11 +47,13 @@ const PRESET: Preset = {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Secret strike' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                  { kind: 'dice', formula: '1d20 + bonus' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Secret strike' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                    { kind: 'dice', formula: '1d20 + bonus' },
+                  ],
+                },
               ],
             },
           ],

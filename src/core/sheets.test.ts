@@ -21,21 +21,24 @@ import {
 // A linkable sheet set whose name field is the second field of the row `level`.
 const PC: Template = {
   id: 'pc',
-  kind: 'set',
+
   title: 'Персонажи',
-  nameField: 'name',
-  tokens: true,
+  repeat: { nameField: 'name' },
+
   tabs: [
     {
       sections: [
         {
           rows: [
-            [
-              { kind: 'text', text: 'Уровень' },
-              { kind: 'field', type: 'number', id: 'level' },
-              { kind: 'text', text: 'Имя' },
-              { kind: 'field', type: 'text', id: 'name' },
-            ],
+            {
+              cells: [
+                { kind: 'text', text: 'Уровень' },
+                { kind: 'field', type: 'number', id: 'level' },
+                { kind: 'text', text: 'Имя' },
+                { kind: 'field', type: 'text', id: 'name' },
+                { kind: 'token', id: 'token' },
+              ],
+            },
           ],
         },
       ],
@@ -44,20 +47,23 @@ const PC: Template = {
 };
 
 const NPC_SECTION: PresetSection = {
-  repeat: true,
-  tokens: true,
+  repeat: { id: 'npc_name', nameField: 'npc_name' },
+
   rows: [
-    [
-      { kind: 'field', type: 'text', id: 'npc_name' },
-      { kind: 'field', type: 'number', id: 'hp' },
-    ],
+    {
+      cells: [
+        { kind: 'field', type: 'text', id: 'npc_name' },
+        { kind: 'field', type: 'number', id: 'hp' },
+        { kind: 'token', id: 'token' },
+      ],
+    },
   ],
 };
 
 // A hidden single sheet. Only its repeat section is linkable, not the sheet.
 const NPC: Template = {
   id: 'npc',
-  kind: 'single',
+
   title: 'НПС',
   visibility: 'gm',
   tabs: [{ sections: [NPC_SECTION] }],
@@ -65,30 +71,45 @@ const NPC: Template = {
 
 const INVENTORY: Template = {
   id: 'inventory',
-  kind: 'single',
+
   title: 'Инвентарь',
   players: 'edit',
-  tokens: true,
-  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'items' }]] }] }],
+
+  tabs: [
+    {
+      sections: [
+        {
+          rows: [
+            {
+              cells: [
+                { kind: 'field', type: 'text', id: 'items' },
+                { kind: 'token', id: 'token' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
 };
 
 const JOURNAL: Template = {
   id: 'journal',
-  kind: 'single',
+
   title: 'Журнал',
-  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }] }],
+  tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'entry' }] }] }] }],
 };
 
 const VILLAINS: Template = {
   id: 'villains',
-  kind: 'set',
+
   title: 'Злодеи',
-  nameField: 'villain',
+  repeat: { nameField: 'villain' },
   visibility: 'gm',
-  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }] }],
+  tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'villain' }] }] }] }],
 };
 
-const PRESET: Preset = { v: 3, templates: [PC, NPC, INVENTORY, JOURNAL, VILLAINS] };
+const PRESET: Preset = { v: 4, templates: [PC, NPC, INVENTORY, JOURNAL, VILLAINS] };
 
 function record(k: string, d: JsonValue): VersionedRecord {
   // SAFETY: some cases build a record no schema takes on purpose, so the code under test meets it.
@@ -159,7 +180,7 @@ describe('resolveSheet', () => {
       linkable: false,
     });
   });
-  test('gives a hidden single sheet no player write, and a linkable repeat section does not make it linkable', () => {
+  test('gives a hidden single sheet no player write and reports token capability across its template', () => {
     // #when
     const policy = resolveSheet(recordsOf(), PRESET, 'npc');
     // #then
@@ -169,7 +190,7 @@ describe('resolveSheet', () => {
       hidden: true,
       write: 'none',
       nameField: null,
-      linkable: false,
+      linkable: true,
     });
   });
   test('gives a sheet of a hidden sheet set no player write', () => {
@@ -390,12 +411,14 @@ describe('repeatBlockName', () => {
   test('gives the empty name when the first field is a check', () => {
     // #given
     const section: PresetSection = {
-      repeat: true,
+      repeat: { id: 'label', nameField: 'label' },
       rows: [
-        [
-          { kind: 'field', type: 'check', id: 'ready' },
-          { kind: 'field', type: 'text', id: 'label' },
-        ],
+        {
+          cells: [
+            { kind: 'field', type: 'check', id: 'ready' },
+            { kind: 'field', type: 'text', id: 'label' },
+          ],
+        },
       ],
     };
 
@@ -414,8 +437,12 @@ describe('isSheetDependent', () => {
     ['a repeat block', 'blk:brok:items:i1', { order: 0, cells: {} }],
     ['an access grant', 'acl:brok:p1', { name: 'Оля' }],
     ['a player link', 'plink:brok:p1', { name: 'Оля' }],
-    ['a token link to the sheet', 'link:token1', { s: 'brok' }],
-    ['a token link to a repeat block of the sheet', 'link:token1', { s: 'brok', i: 'i1' }],
+    ['a token link to the sheet', 'link:token1', { s: 'brok', c: 'token' }],
+    [
+      'a token link to a repeat block of the sheet',
+      'link:token1',
+      { s: 'brok', path: ['item', 'i1'], c: 'token' },
+    ],
   ])('counts %s of the sheet', (_name, key, d) => {
     // #when
     const dependent = isSheetDependent(key, { d: fixtureRecord(key, d).d }, 'brok');
@@ -427,8 +454,8 @@ describe('isSheetDependent', () => {
     ['a row of another sheet', 'blk:liza', { str: 3 }],
     ['a row of a sheet whose id starts with this one', 'blk:brokk', { str: 3 }],
     ['an access grant of a sheet whose id starts with this one', 'acl:brok2:p1', { name: 'Оля' }],
-    ['a token link that names another sheet', 'link:token1', { s: 'liza' }],
-    ['a token link whose token id is the sheet id', 'link:brok', { s: 'liza' }],
+    ['a token link that names another sheet', 'link:token1', { s: 'liza', c: 'token' }],
+    ['a token link whose token id is the sheet id', 'link:brok', { s: 'liza', c: 'token' }],
     ['a token link in the old bare sheet id form', 'link:token1', 'brok'],
   ])('does not count %s', (_name, key, d) => {
     // #when
@@ -457,11 +484,21 @@ describe('dependentSheetId', () => {
     ['a row', 'blk:brok', { str: 3 }, 'brok'],
     ['an access grant', 'acl:brok:p1', { name: 'Оля' }, 'brok'],
     ['a player link', 'plink:brok:p1', { name: 'Оля' }, 'brok'],
-    ['a token link to a sheet', 'link:token1', { s: 'brok' }, 'brok'],
-    ['a token link to a repeat block', 'link:token1', { s: 'brok', i: 'i1' }, 'brok'],
+    ['a token link to a sheet', 'link:token1', { s: 'brok', c: 'token' }, 'brok'],
+    [
+      'a token link to a repeat block',
+      'link:token1',
+      { s: 'brok', path: ['item', 'i1'], c: 'token' },
+      'brok',
+    ],
     ['a row key with no second ":"', 'row:brok', { str: 3 }, null],
     ['a row key with an empty sheet id', 'row::x', { str: 3 }, null],
-    ['a token link whose sheet is no sheet id', 'link:token1', { s: 'not a sheet id' }, null],
+    [
+      'a token link whose sheet is no sheet id',
+      'link:token1',
+      { s: 'not a sheet id', c: 'token' },
+      null,
+    ],
     ['a token link in the old bare sheet id form', 'link:token1', 'brok', null],
     ['a tombstoned token link', 'link:token1', null, null],
     ['the sheet record itself', 'blk:brok', { set: 'pc', order: 0 }, 'brok'],

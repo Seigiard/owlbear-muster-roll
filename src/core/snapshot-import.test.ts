@@ -19,42 +19,49 @@ import {
 // two repeat sections, and a single sheet `npc` with a row and a linkable repeat section whose
 // blocks span two rows.
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'notes',
-      tokens: true,
+      repeat: { nameField: 'notes' },
+
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'tired' },
-                ],
-                [{ kind: 'field', type: 'text', id: 'notes' }],
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'tired' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'text', id: 'notes' }] },
               ],
             },
             {
-              repeat: true,
+              repeat: { id: 'attack', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'attack' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                  ],
+                },
               ],
             },
             {
-              repeat: true,
+              repeat: { id: 'item', nameField: 'item' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'item' },
-                  { kind: 'field', type: 'number', id: 'weight' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'item' },
+                    { kind: 'field', type: 'number', id: 'weight' },
+                  ],
+                },
               ],
             },
           ],
@@ -63,21 +70,23 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       tabs: [
         {
           sections: [
-            { rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] },
+            { rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] },
             {
-              repeat: true,
-              tokens: true,
+              repeat: { id: 'npc_name', nameField: 'npc_name' },
+
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'npc_name' },
-                  { kind: 'field', type: 'number', id: 'ac' },
-                ],
-                [{ kind: 'field', type: 'number', id: 'might' }],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'npc_name' },
+                    { kind: 'field', type: 'number', id: 'ac' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'number', id: 'might' }] },
               ],
             },
           ],
@@ -164,8 +173,13 @@ describe('importSnapshot', () => {
         }),
       ],
       [
-        { tokenId: 't1', sheetId: 'brok' },
-        { tokenId: 't2', sheetId: 'npc', instanceId: 'n1' },
+        { tokenId: 't1', sheetId: 'brok', cellId: 'token' },
+        {
+          tokenId: 't2',
+          sheetId: 'npc',
+          path: ['npc_name', 'n1'],
+          cellId: 'token',
+        },
       ],
     );
 
@@ -197,8 +211,13 @@ describe('importSnapshot', () => {
             a: AUTHOR,
             l: [1, AUTHOR],
           },
-          { k: 'link:t1', d: { s: 'brok' }, c: 1, a: AUTHOR },
-          { k: 'link:t2', d: { s: 'npc', i: 'n1' }, c: 1, a: AUTHOR },
+          { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: AUTHOR },
+          {
+            k: 'link:t2',
+            d: { s: 'npc', path: ['npc_name', 'n1'], c: 'token' },
+            c: 1,
+            a: AUTHOR,
+          },
           { k: 'preset', d: CURRENT.data, c: 1, a: AUTHOR },
         ],
         count: 0,
@@ -326,26 +345,29 @@ describe('importSnapshot', () => {
   test('keeps every select-only repeat block through export and import into the same preset', () => {
     // #given
     const preset: Preset = {
-      v: 3,
+      v: 4,
       templates: [
         {
           id: 'inventory',
-          kind: 'single',
+
           title: 'Инвентарь',
           tabs: [
             {
               sections: [
                 {
-                  repeat: true,
+                  repeat: { id: 'armor', nameField: 'name' },
                   rows: [
-                    [
-                      {
-                        kind: 'field',
-                        type: 'select',
-                        id: 'armor',
-                        options: ['Кожаная', 'Кольчуга'],
-                      },
-                    ],
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'name' },
+                        {
+                          kind: 'field',
+                          type: 'select',
+                          id: 'armor',
+                          options: ['Кожаная', 'Кольчуга'],
+                        },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -403,25 +425,27 @@ describe('importSnapshot', () => {
   test('matches a snapshot text value to a current dice-choice field', () => {
     // #given
     const preset: Preset = {
-      v: 3,
+      v: 4,
       templates: [
         {
           id: 'inventory',
-          kind: 'single',
+
           title: 'Инвентарь',
           tabs: [
             {
               sections: [
                 {
                   rows: [
-                    [
-                      {
-                        kind: 'field',
-                        type: 'dice-choice',
-                        id: 'weapon_die',
-                        options: ['d6', 'd8'],
-                      },
-                    ],
+                    {
+                      cells: [
+                        {
+                          kind: 'field',
+                          type: 'dice-choice',
+                          id: 'weapon_die',
+                          options: ['d6', 'd8'],
+                        },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -608,10 +632,10 @@ describe('importSnapshot', () => {
         pc('brok'),
       ],
       [
-        { tokenId: 't1', sheetId: 'x' },
-        { tokenId: 't2', sheetId: 'ghost', instanceId: 'i1' },
-        { tokenId: 't3', sheetId: 'npc' },
-        { tokenId: 't4', sheetId: 'brok' },
+        { tokenId: 't1', sheetId: 'x', cellId: 'token' },
+        { tokenId: 't2', sheetId: 'ghost', path: ['g', 'i1'], cellId: 'token' },
+        { tokenId: 't3', sheetId: 'npc', cellId: 'token' },
+        { tokenId: 't4', sheetId: 'brok', cellId: 'token' },
       ],
     );
 
@@ -637,11 +661,26 @@ describe('importSnapshot', () => {
         }),
       ],
       [
-        { tokenId: 't1', sheetId: 'brok' },
-        { tokenId: 't2', sheetId: 'npc', instanceId: 'n1' },
-        { tokenId: 't3', sheetId: 'npc', instanceId: 'n9' },
-        { tokenId: 't4', sheetId: 'brok', instanceId: 'a1' },
-        { tokenId: 't5', sheetId: 'npc' },
+        { tokenId: 't1', sheetId: 'brok', cellId: 'token' },
+        {
+          tokenId: 't2',
+          sheetId: 'npc',
+          path: ['npc_name', 'n1'],
+          cellId: 'token',
+        },
+        {
+          tokenId: 't3',
+          sheetId: 'npc',
+          path: ['npc_name', 'n9'],
+          cellId: 'token',
+        },
+        {
+          tokenId: 't4',
+          sheetId: 'brok',
+          path: ['attack', 'a1'],
+          cellId: 'token',
+        },
+        { tokenId: 't5', sheetId: 'npc', cellId: 'token' },
       ],
     );
 
@@ -708,7 +747,7 @@ describe('importSnapshot', () => {
 describe('parseSnapshotFile', () => {
   const valid = file(
     [pc('brok', { rows: { str: { str: 1 } } }), single('npc')],
-    [{ tokenId: 't1', sheetId: 'brok' }],
+    [{ tokenId: 't1', sheetId: 'brok', cellId: 'token' }],
   );
 
   test('reads a file of the v4 format', () => {

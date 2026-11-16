@@ -15,50 +15,64 @@ const TEMPLATE: TemplateLayout = {
       sections: [
         {
           rows: [
-            [
-              { kind: 'text', text: 'Сила' },
-              { kind: 'field', type: 'number', id: 'str' },
-              { kind: 'field', type: 'check', id: 'str_tired' },
-              { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
-            ],
-            [
-              { kind: 'field', type: 'number', id: 'dex' },
-              { kind: 'dice', formula: '1d20 + dex' },
-            ],
-            [
-              { kind: 'text', text: 'Деление' },
-              { kind: 'dice', formula: 'str / (str - str)' },
-            ],
-            [
-              { kind: 'text', text: 'Чужое' },
-              { kind: 'dice', formula: '1d20 + bonus' },
-            ],
+            {
+              cells: [
+                { kind: 'text', text: 'Сила' },
+                { kind: 'field', type: 'number', id: 'str' },
+                { kind: 'field', type: 'check', id: 'str_tired' },
+                { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
+              ],
+            },
+            {
+              cells: [
+                { kind: 'field', type: 'number', id: 'dex' },
+                { kind: 'dice', formula: '1d20 + dex' },
+              ],
+            },
+            {
+              cells: [
+                { kind: 'text', text: 'Деление' },
+                { kind: 'dice', formula: 'str / (str - str)' },
+              ],
+            },
+            {
+              cells: [
+                { kind: 'text', text: 'Чужое' },
+                { kind: 'dice', formula: '1d20 + bonus' },
+              ],
+            },
           ],
         },
         {
-          repeat: true,
+          repeat: { id: 'attack', nameField: 'attack' },
           rows: [
-            [
-              { kind: 'text', text: 'Атака' },
-              { kind: 'field', type: 'text', id: 'attack' },
-              { kind: 'field', type: 'number', id: 'bonus' },
-              { kind: 'dice', formula: '1d20 + bonus + str' },
-            ],
+            {
+              cells: [
+                { kind: 'text', text: 'Атака' },
+                { kind: 'field', type: 'text', id: 'attack' },
+                { kind: 'field', type: 'number', id: 'bonus' },
+                { kind: 'dice', formula: '1d20 + bonus + str' },
+              ],
+            },
           ],
         },
         {
-          repeat: true,
+          repeat: { id: 'spell', nameField: 'spell' },
           rows: [
-            [
-              { kind: 'text', text: 'Заклинание' },
-              { kind: 'field', type: 'text', id: 'spell' },
-              { kind: 'field', type: 'number', id: 'power' },
-            ],
-            [
-              { kind: 'text', text: 'Дальность' },
-              { kind: 'field', type: 'number', id: 'range' },
-              { kind: 'dice', formula: '1d20 + power + range' },
-            ],
+            {
+              cells: [
+                { kind: 'text', text: 'Заклинание' },
+                { kind: 'field', type: 'text', id: 'spell' },
+                { kind: 'field', type: 'number', id: 'power' },
+              ],
+            },
+            {
+              cells: [
+                { kind: 'text', text: 'Дальность' },
+                { kind: 'field', type: 'number', id: 'range' },
+                { kind: 'dice', formula: '1d20 + power + range' },
+              ],
+            },
           ],
         },
       ],
@@ -136,10 +150,10 @@ function diceChoiceRoll(
     cells.unshift({ kind: 'text', text: label });
   }
 
-  const section: TemplateLayout['tabs'][number]['sections'][number] = { rows: [cells] };
+  const section: TemplateLayout['tabs'][number]['sections'][number] = { rows: [{ cells }] };
 
   if (repeat) {
-    section.repeat = true;
+    section.repeat = { id: 'weapon_die', nameField: 'weapon_die' };
   }
 
   const layout: TemplateLayout = { tabs: [{ sections: [section] }] };
@@ -282,13 +296,15 @@ describe('rollDiceCell', () => {
           sections: [
             {
               rows: [
-                [
-                  {
-                    kind: 'dice',
-                    formula: '1d20 <= 10',
-                    name: 'Спасбросок STR',
-                  },
-                ],
+                {
+                  cells: [
+                    {
+                      kind: 'dice',
+                      formula: '1d20 <= 10',
+                      name: 'Спасбросок STR',
+                    },
+                  ],
+                },
               ],
             },
           ],
@@ -316,19 +332,21 @@ describe('rollDiceCell', () => {
           sections: [
             {
               rows: [
-                [
-                  {
-                    kind: 'field',
-                    type: 'dice-choice',
-                    id: 'attack_1_die',
-                    options: ['d6', 'd8'],
-                  },
-                  {
-                    kind: 'dice',
-                    formula: '1d(attack_1_die)',
-                    name: 'Урон атаки 1',
-                  },
-                ],
+                {
+                  cells: [
+                    {
+                      kind: 'field',
+                      type: 'dice-choice',
+                      id: 'attack_1_die',
+                      options: ['d6', 'd8'],
+                    },
+                    {
+                      kind: 'dice',
+                      formula: '1d(attack_1_die)',
+                      name: 'Урон атаки 1',
+                    },
+                  ],
+                },
               ],
             },
           ],
@@ -369,19 +387,21 @@ describe('rollDiceCell', () => {
           sections: [
             {
               rows: [
-                [
-                  {
-                    kind: 'field',
-                    type: 'dice-choice',
-                    id: 'damage',
-                    options: ['d6', 'd8'],
-                  },
-                  {
-                    kind: 'dice',
-                    formula: '1d(damage)',
-                    name: '1d(damage)',
-                  },
-                ],
+                {
+                  cells: [
+                    {
+                      kind: 'field',
+                      type: 'dice-choice',
+                      id: 'damage',
+                      options: ['d6', 'd8'],
+                    },
+                    {
+                      kind: 'dice',
+                      formula: '1d(damage)',
+                      name: '1d(damage)',
+                    },
+                  ],
+                },
               ],
             },
           ],
@@ -422,10 +442,12 @@ describe('rollDiceCell', () => {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'field', type: 'number', id: 'hp_max', name: 'HP, максимум' },
-                  { kind: 'dice', formula: '1d20 <= hp_max' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'hp_max', name: 'HP, максимум' },
+                    { kind: 'dice', formula: '1d20 <= hp_max' },
+                  ],
+                },
               ],
             },
           ],
@@ -552,18 +574,20 @@ describe('rollDiceCell across tabs', () => {
     tabs: [
       {
         title: 'Основное',
-        sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'str' }]] }],
+        sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'str' }] }] }],
       },
       {
         title: 'Бой',
         sections: [
-          { rows: [[{ kind: 'text', text: 'Удар' }]] },
+          { rows: [{ cells: [{ kind: 'text', text: 'Удар' }] }] },
           {
             rows: [
-              [
-                { kind: 'text', text: 'Сила' },
-                { kind: 'dice', formula: '1d20 + str' },
-              ],
+              {
+                cells: [
+                  { kind: 'text', text: 'Сила' },
+                  { kind: 'dice', formula: '1d20 + str' },
+                ],
+              },
             ],
           },
         ],

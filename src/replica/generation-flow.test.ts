@@ -39,20 +39,20 @@ const STALE_RECORD: VersionedRecord = {
 const COPY: Snapshot = { g: NEXT, records: [RECORD] };
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Characters',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [{ kind: 'field', type: 'number', id: 'str' }],
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                { cells: [{ kind: 'field', type: 'number', id: 'str' }] },
               ],
             },
           ],

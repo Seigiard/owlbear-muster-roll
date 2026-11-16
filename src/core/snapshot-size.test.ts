@@ -5,6 +5,7 @@ import {
   blockDataSchema,
   versionCells,
   type FieldValue,
+  type LinkData,
   type VersionedRecord,
 } from '@/core/records';
 import { INSTANCE_ID_LENGTH, SHEET_ID_LENGTH } from './ids';
@@ -127,7 +128,7 @@ function room(preset: Preset): VersionedRecord[] {
   ];
 
   for (const template of preset.templates) {
-    if (template.kind === 'single') {
+    if (template.repeat === undefined) {
       records.push(...sheetRecords(template, template.id, 0, maker));
       continue;
     }
@@ -164,13 +165,19 @@ function sheetRecords(
     a: rootAuthor,
     l: [1, rootAuthor],
     d:
-      template.kind === 'set'
+      template.repeat !== undefined
         ? { order: index, set: template.id, cells: {} }
         : { order: index, cells: {} },
   };
 
-  if (template.tokens === true) {
-    records.push(linkRecord(maker, { s: sheetId }));
+  const rootToken = layoutSections(template)
+    .filter((section) => section.repeat === undefined)
+    .flatMap((section) => section.rows)
+    .flatMap((row) => row.cells)
+    .find((cell) => cell.kind === 'token');
+
+  if (rootToken !== undefined) {
+    records.push(linkRecord(maker, { s: sheetId, c: rootToken.id }));
   }
 
   for (const section of layoutSections(template)) {
@@ -190,7 +197,7 @@ function sheetRecords(
 
     for (let order = 0; order < blockCount(template); order += 1) {
       const instanceId = maker.instanceId();
-      const cells = fieldValues(section, maker, template.kind === 'set' ? index : order);
+      const cells = fieldValues(section, maker, template.repeat !== undefined ? index : order);
       const c = maker.counter();
       const a = maker.author();
       records.push({
@@ -201,8 +208,10 @@ function sheetRecords(
         l: [1, a],
       });
 
-      if (section.tokens === true) {
-        records.push(linkRecord(maker, { s: sheetId, i: instanceId }));
+      const token = section.rows.flatMap((row) => row.cells).find((cell) => cell.kind === 'token');
+
+      if (token !== undefined) {
+        records.push(linkRecord(maker, { s: sheetId, path: [sectionId, instanceId], c: token.id }));
       }
     }
   }
@@ -237,20 +246,14 @@ function plainRows(
 }
 
 function blockCount(template: Template): number {
-  if (template.kind === 'set') {
+  if (template.repeat !== undefined) {
     return CHARACTER_ATTACKS;
   }
 
   return template.id === 'npc' ? NPC_COUNT : SINGLE_SHEET_BLOCKS;
 }
 
-function linkRecord(
-  maker: Maker,
-  d: {
-    s: string;
-    i?: string;
-  },
-): VersionedRecord {
+function linkRecord(maker: Maker, d: LinkData): VersionedRecord {
   return { k: `link:${uuid(maker.random)}`, d, c: 1, a: maker.author() };
 }
 

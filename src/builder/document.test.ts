@@ -76,26 +76,28 @@ describe('fromPreset and toPreset', () => {
   test('keeps a select field and its options through the builder document', () => {
     // #given
     const preset: Preset = {
-      v: 3,
+      v: 4,
       templates: [
         {
           id: 'inventory',
-          kind: 'single',
+
           title: 'Инвентарь',
           tabs: [
             {
               sections: [
                 {
                   rows: [
-                    [
-                      { kind: 'text', text: 'Броня' },
-                      {
-                        kind: 'field',
-                        type: 'select',
-                        id: 'armor',
-                        options: ['Без доспеха', 'Кожаная'],
-                      },
-                    ],
+                    {
+                      cells: [
+                        { kind: 'text', text: 'Броня' },
+                        {
+                          kind: 'field',
+                          type: 'select',
+                          id: 'armor',
+                          options: ['Без доспеха', 'Кожаная'],
+                        },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -110,26 +112,27 @@ describe('fromPreset and toPreset', () => {
     const actual: unknown = back;
     // #then
     expect(actual).toEqual({
-      v: 3,
+      v: 4,
       templates: [
         {
           id: 'inventory',
-          kind: 'single',
           title: 'Инвентарь',
           tabs: [
             {
               sections: [
                 {
                   rows: [
-                    [
-                      { kind: 'text', text: 'Броня' },
-                      {
-                        kind: 'field',
-                        type: 'select',
-                        id: 'armor',
-                        options: ['Без доспеха', 'Кожаная'],
-                      },
-                    ],
+                    {
+                      cells: [
+                        { kind: 'text', text: 'Броня' },
+                        {
+                          kind: 'field',
+                          type: 'select',
+                          id: 'armor',
+                          options: ['Без доспеха', 'Кожаная'],
+                        },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -142,26 +145,28 @@ describe('fromPreset and toPreset', () => {
   test('keeps a dice-choice field and its options through the builder document', () => {
     // #given
     const preset: Preset = {
-      v: 3,
+      v: 4,
       templates: [
         {
           id: 'weapons',
-          kind: 'single',
+
           title: 'Оружие',
           tabs: [
             {
               sections: [
                 {
                   rows: [
-                    [
-                      { kind: 'text', text: 'Урон' },
-                      {
-                        kind: 'field',
-                        type: 'dice-choice',
-                        id: 'weapon_die',
-                        options: ['d4', 'd6', 'd8'],
-                      },
-                    ],
+                    {
+                      cells: [
+                        { kind: 'text', text: 'Урон' },
+                        {
+                          kind: 'field',
+                          type: 'dice-choice',
+                          id: 'weapon_die',
+                          options: ['d4', 'd6', 'd8'],
+                        },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -179,30 +184,32 @@ describe('fromPreset and toPreset', () => {
   test('keeps field and dice cell names through the builder document', () => {
     // #given
     const preset: Preset = {
-      v: 3,
+      v: 4,
       templates: [
         {
           id: 'pc',
-          kind: 'single',
+
           title: 'Лист',
           tabs: [
             {
               sections: [
                 {
                   rows: [
-                    [
-                      {
-                        kind: 'field',
-                        type: 'number',
-                        id: 'hp_max',
-                        name: 'HP, максимум',
-                      },
-                      {
-                        kind: 'dice',
-                        formula: '1d20 <= hp_max',
-                        name: 'Спасбросок HP',
-                      },
-                    ],
+                    {
+                      cells: [
+                        {
+                          kind: 'field',
+                          type: 'number',
+                          id: 'hp_max',
+                          name: 'HP, максимум',
+                        },
+                        {
+                          kind: 'dice',
+                          formula: '1d20 <= hp_max',
+                          name: 'Спасбросок HP',
+                        },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -220,25 +227,27 @@ describe('fromPreset and toPreset', () => {
   test('puts a blank field name problem on that field in the builder', () => {
     // #given
     const preset: Preset = {
-      v: 3,
+      v: 4,
       templates: [
         {
           id: 'pc',
-          kind: 'single',
+
           title: 'Лист',
           tabs: [
             {
               sections: [
                 {
                   rows: [
-                    [
-                      {
-                        kind: 'field',
-                        type: 'number',
-                        id: 'hp',
-                        name: '  ',
-                      },
-                    ],
+                    {
+                      cells: [
+                        {
+                          kind: 'field',
+                          type: 'number',
+                          id: 'hp',
+                          name: '  ',
+                        },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -270,18 +279,19 @@ describe('addTemplate', () => {
     expect(toPreset(document).templates).toEqual([
       {
         id: 'nabor',
-        kind: 'set',
         title: 'Набор',
-        nameField: 'imya',
+        repeat: { nameField: 'imya' },
         tabs: [
           {
             sections: [
               {
                 rows: [
-                  [
-                    { kind: 'text', text: 'Имя' },
-                    { kind: 'field', type: 'text', id: 'imya' },
-                  ],
+                  {
+                    cells: [
+                      { kind: 'text', text: 'Имя' },
+                      { kind: 'field', type: 'text', id: 'imya' },
+                    ],
+                  },
                 ],
               },
             ],
@@ -349,17 +359,17 @@ describe('moveItem', () => {
       templates: [
         {
           id: 'inv',
-          kind: 'single',
+
           title: 'Инвентарь',
           tabs: [
             {
               sections: [
                 { rows: [] },
                 {
-                  repeat: true,
+                  repeat: { id: 'item', nameField: 'item' },
                   rows: [
-                    [{ kind: 'field', type: 'text', id: 'item' }],
-                    [{ kind: 'field', type: 'number', id: 'money' }],
+                    { cells: [{ kind: 'field', type: 'text', id: 'item' }] },
+                    { cells: [{ kind: 'field', type: 'number', id: 'money' }] },
                   ],
                 },
               ],
@@ -380,8 +390,11 @@ describe('moveItem', () => {
     expect(moved.changed).toBe(money);
     expect(uidAt(moved.document, [0, 0, 0, 0])).toBe(money);
     expect(toPreset(moved.document).templates[0]?.tabs[0]?.sections).toEqual([
-      { rows: [[{ kind: 'field', type: 'number', id: 'money' }]] },
-      { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
+      { rows: [{ cells: [{ kind: 'field', type: 'number', id: 'money' }] }] },
+      {
+        repeat: { id: 'item', nameField: 'item' },
+        rows: [{ cells: [{ kind: 'field', type: 'text', id: 'item' }] }],
+      },
     ]);
   });
   test('moves a template before another', () => {
@@ -423,9 +436,13 @@ describe('removeItem', () => {
     const removed = applied(removeItem(document, cell));
     // #then
     expect(removed.changed).toBe(uid(document, 0, 0, 0, 0));
-    expect(toPreset(removed.document).templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual(
-      D20.templates[0]?.tabs[0]?.sections[0]?.rows[0]?.slice(1),
-    );
+    const sourceRow = D20.templates[0]?.tabs[0]?.sections[0]?.rows[0];
+
+    if (sourceRow === undefined) throw new Error('Expected the d20 fixture to have its first row');
+    expect(toPreset(removed.document).templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual({
+      ...sourceRow,
+      cells: sourceRow.cells.slice(1),
+    });
   });
   test('cannot remove the window', () => {
     // #then
@@ -440,20 +457,22 @@ describe('renameField', () => {
       templates: [
         {
           id: 'pc',
-          kind: 'set',
+
           title: 'Экипаж',
-          nameField: 'name',
+          repeat: { nameField: 'name' },
           tabs: [
             {
               sections: [
                 {
                   rows: [
-                    [{ kind: 'field', type: 'text', id: 'name' }],
-                    [
-                      { kind: 'field', type: 'number', id: 'str' },
-                      { kind: 'field', type: 'number', id: 'str_tired' },
-                      { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
-                    ],
+                    { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                    {
+                      cells: [
+                        { kind: 'field', type: 'number', id: 'str' },
+                        { kind: 'field', type: 'number', id: 'str_tired' },
+                        { kind: 'dice', formula: '1d20 <= str - 2*str_tired' },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -471,15 +490,17 @@ describe('renameField', () => {
     expect(treeOrder(renamed?.document ?? EMPTY_DOCUMENT)).toEqual(order);
     expect(
       toPreset(renamed?.document ?? EMPTY_DOCUMENT).templates[0]?.tabs[0]?.sections[0]?.rows[1],
-    ).toEqual([
-      { kind: 'field', type: 'number', id: 'strength' },
-      { kind: 'field', type: 'number', id: 'str_tired' },
-      { kind: 'dice', formula: '1d20 <= strength - 2*str_tired' },
-    ]);
+    ).toEqual({
+      cells: [
+        { kind: 'field', type: 'number', id: 'strength' },
+        { kind: 'field', type: 'number', id: 'str_tired' },
+        { kind: 'dice', formula: '1d20 <= strength - 2*str_tired' },
+      ],
+    });
     // #when
     const name = renameField(document, uid(document, 0, 0, 0, 0, 0), 'imya');
     // #then
-    expect(name?.document.templates[0]).toMatchObject({ nameField: 'imya' });
+    expect(name?.document.templates[0]).toMatchObject({ repeat: { nameField: 'imya' } });
   });
 });
 
@@ -490,10 +511,12 @@ describe('withTemplateKind', () => {
       templates: [
         {
           id: 'npc',
-          kind: 'single',
+
           title: 'NPC',
           players: 'edit',
-          tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'who' }]] }] }],
+          tabs: [
+            { sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'who' }] }] }] },
+          ],
         },
       ],
     });
@@ -508,9 +531,9 @@ describe('withTemplateKind', () => {
     const set = withTemplateKind(template, 'set');
     const back = withTemplateKind(set, 'single');
     // #then
-    expect(set).toMatchObject({ kind: 'set', nameField: 'who' });
+    expect(set).toMatchObject({ repeat: { nameField: 'who' } });
     expect(set).not.toHaveProperty('players');
-    expect(back).not.toHaveProperty('nameField');
+    expect(back).not.toHaveProperty('repeat');
   });
 });
 
@@ -608,19 +631,21 @@ describe('field ids across tabs', () => {
     templates: [
       {
         id: 'pc',
-        kind: 'set',
+
         title: 'Экипаж',
-        nameField: 'name',
+        repeat: { nameField: 'name' },
         tabs: [
           {
             title: 'Основное',
             sections: [
               {
                 rows: [
-                  [
-                    { kind: 'field', type: 'text', id: 'name' },
-                    { kind: 'field', type: 'number', id: 'str' },
-                  ],
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'name' },
+                      { kind: 'field', type: 'number', id: 'str' },
+                    ],
+                  },
                 ],
               },
             ],
@@ -628,8 +653,11 @@ describe('field ids across tabs', () => {
           {
             title: 'Бой',
             sections: [
-              { rows: [[{ kind: 'field', type: 'text', id: 'nick' }]] },
-              { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
+              { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'nick' }] }] },
+              {
+                repeat: { id: 'item', nameField: 'item' },
+                rows: [{ cells: [{ kind: 'field', type: 'text', id: 'item' }] }],
+              },
             ],
           },
         ],

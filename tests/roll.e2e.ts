@@ -31,57 +31,71 @@ const PLAYER: ClientParams = {
 // Every `1d1` shows 1, so each roll has one known result. "Персонажи" and "Журнал" are visible,
 // "NPC" is hidden, and its NPCs are repeat blocks.
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               title: 'Основное',
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'tired' },
-                  { kind: 'dice', formula: '1d1 + str - 2*tired' },
-                ],
-                [
-                  { kind: 'text', text: 'Ловкость' },
-                  { kind: 'field', type: 'number', id: 'dex' },
-                  { kind: 'dice', formula: '1d1 + dex' },
-                ],
-                [
-                  { kind: 'text', text: 'Деление' },
-                  { kind: 'dice', formula: 'str / (str - str)' },
-                ],
-                [
-                  { kind: 'text', text: 'Удача' },
-                  { kind: 'dice', formula: '1d1 > str' },
-                ],
-                [
-                  { kind: 'text', text: 'Монета' },
-                  { kind: 'dice', formula: '1d1' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'tired' },
+                    { kind: 'dice', formula: '1d1 + str - 2*tired' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Ловкость' },
+                    { kind: 'field', type: 'number', id: 'dex' },
+                    { kind: 'dice', formula: '1d1 + dex' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Деление' },
+                    { kind: 'dice', formula: 'str / (str - str)' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Удача' },
+                    { kind: 'dice', formula: '1d1 > str' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Монета' },
+                    { kind: 'dice', formula: '1d1' },
+                  ],
+                },
               ],
             },
             {
               title: 'Атаки',
-              repeat: true,
+              repeat: { id: 'bonus', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'text', text: 'Атака' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                  { kind: 'dice', formula: '1d1 + bonus' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Атака' },
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                    { kind: 'dice', formula: '1d1 + bonus' },
+                  ],
+                },
               ],
             },
           ],
@@ -90,7 +104,6 @@ const PRESET = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
@@ -98,14 +111,16 @@ const PRESET = {
           sections: [
             {
               title: 'Противники',
-              repeat: true,
+              repeat: { id: 'npc_name', nameField: 'npc_name' },
               rows: [
-                [{ kind: 'field', type: 'text', id: 'npc_name' }],
-                [
-                  { kind: 'text', text: 'Хиты' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                  { kind: 'dice', formula: '1d1 + hp' },
-                ],
+                { cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Хиты' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                    { kind: 'dice', formula: '1d1 + hp' },
+                  ],
+                },
               ],
             },
           ],
@@ -114,17 +129,18 @@ const PRESET = {
     },
     {
       id: 'journal',
-      kind: 'single',
       title: 'Журнал',
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Погода' },
-                  { kind: 'dice', formula: '1d1 + 1' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Погода' },
+                    { kind: 'dice', formula: '1d1 + 1' },
+                  ],
+                },
               ],
             },
           ],

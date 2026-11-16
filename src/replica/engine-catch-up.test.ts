@@ -36,53 +36,78 @@ const ASKER = 'asker';
 
 // "pc" is the visible sheet set, "npc" a hidden single sheet and "mon" a hidden sheet set.
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
+      repeat: { nameField: 'name' },
+
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'str_tired' },
-                ],
-                [{ kind: 'field', type: 'text', id: 'notes' }],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'str_tired' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'text', id: 'notes' }] },
               ],
             },
-            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] },
+            {
+              repeat: { id: 'attack', nameField: 'attack' },
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack' }] }],
+            },
           ],
         },
       ],
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPC',
       visibility: 'gm',
-      tokens: true,
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'hp' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
     {
       id: 'mon',
-      kind: 'set',
+
       title: 'Монстры',
-      nameField: 'title',
+      repeat: { nameField: 'title' },
       visibility: 'gm',
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'title' }],
-                [{ kind: 'field', type: 'number', id: 'mhp' }],
+                { cells: [{ kind: 'field', type: 'text', id: 'title' }] },
+                { cells: [{ kind: 'field', type: 'number', id: 'mhp' }] },
               ],
             },
           ],
@@ -301,7 +326,7 @@ describe('engine catch-up decisions', () => {
     await waitUntil(() => heardOf(room, 'gm-a', 'alive').length === 2);
     // #then
     expect(heardOf(room, 'gm-a', 'alive').map((message) => Object(message).digest)).toEqual([
-      2796397003, 1498180731,
+      1850085591, 2443697511,
     ]);
   });
   test('surfaces persisted corruption discovered on a later catch-up', async () => {
@@ -1504,7 +1529,14 @@ describe('player visibility', () => {
     });
 
     const r = lastRequest(room, 'player-p');
-    const skeletonLink: VersionedRecord = { k: 'link:token-2', d: { s: 'npc' }, c: 1, a: 'seed' };
+
+    const skeletonLink: VersionedRecord = {
+      k: 'link:token-2',
+      d: { s: 'npc', c: 'token' },
+      c: 1,
+      a: 'seed',
+    };
+
     // #when: the first part holds the rows, the second their sheets.
     room.post(GHOST, stateMessage(r, [skeletonHp, skeletonLink, goblinName, brokStr], 1, 2));
     room.post(GHOST, stateMessage(r, [PRESET_RECORD, goblin, BROK], 2, 2));
@@ -1524,14 +1556,20 @@ describe('player visibility', () => {
       timing: { catchUpTimeoutMs: 1500 },
     });
 
-    const link: VersionedRecord = { k: 'link:token-1', d: { s: 'brok' }, c: 1, a: 'seed' };
+    const link: VersionedRecord = {
+      k: 'link:token-1',
+      d: { s: 'brok', c: 'token' },
+      c: 1,
+      a: 'seed',
+    };
+
     room.post(
       GHOST,
       stateMessage(lastRequest(room, 'player-p'), [PRESET_RECORD, brokStr, skeletonHp, link]),
     );
     await waitUntil(() => shown(client, link.k) !== undefined);
     // #when: the edit after the link shows that the link commit was handled.
-    room.post(GHOST, commit([fixturePatch(link, { s: 'npc' }, 2, GHOST)]));
+    room.post(GHOST, commit([fixturePatch(link, { s: 'npc', c: 'token' }, 2, GHOST)]));
     room.post(GHOST, commit([fixturePatch(brokStr, { str: 16 }, 2, GHOST)]));
     await waitUntil(() => shown(client, brokStr.k)?.c === 2);
     // #then

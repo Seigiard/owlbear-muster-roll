@@ -38,8 +38,8 @@ const PLAYER: ClientParams = {
   name: 'Лиза',
 };
 
-function labelled(label: string, ...cells: JsonValue[]): JsonValue[] {
-  return [{ kind: 'text', text: label }, ...cells];
+function labelled(label: string, ...cells: JsonValue[]): JsonValue {
+  return { cells: [{ kind: 'text', text: label }, ...cells] };
 }
 
 function number(id: string): JsonValue {
@@ -48,28 +48,26 @@ function number(id: string): JsonValue {
 
 const ATTACKS = {
   title: 'Атаки',
-  repeat: true,
-  rows: [labelled('Атака', number('bonus'))],
+  repeat: { id: 'bonus', nameField: 'attack' },
+  rows: [labelled('Атака', { kind: 'field', type: 'text', id: 'attack' }, number('bonus'))],
 };
 
 const NAME = { rows: [labelled('Имя', { kind: 'field', type: 'text', id: 'name' })] };
 
 const NPC = {
   id: 'npc',
-  kind: 'single',
   title: 'NPC',
   tabs: [{ sections: [{ rows: [labelled('Хиты', number('hp'))] }] }],
 };
 
-function presetText(rows: JsonValue[][], more: readonly JsonValue[] = []): string {
+function presetText(rows: readonly JsonValue[], more: readonly JsonValue[] = []): string {
   return JSON.stringify({
-    v: 3,
+    v: 4,
     templates: [
       {
         id: 'pc',
-        kind: 'set',
         title: 'Персонажи',
-        nameField: 'name',
+        repeat: { nameField: 'name' },
         tabs: [{ sections: [NAME, { title: 'Основное', rows }, ATTACKS] }],
       },
       NPC,
@@ -81,9 +79,8 @@ function presetText(rows: JsonValue[][], more: readonly JsonValue[] = []): strin
 // A second sheet set, "Экипаж", which an upload of BEFORE drops.
 const CREW = {
   id: 'crew',
-  kind: 'set',
   title: 'Экипаж',
-  nameField: 'name',
+  repeat: { nameField: 'name' },
   tabs: [{ sections: [NAME] }],
 };
 
@@ -145,24 +142,37 @@ const CREW_SHEETS: StoredRecord[] = [
 
 const LOOT_ITEMS = {
   title: 'Вещи',
-  repeat: true,
-  rows: [[{ kind: 'field', type: 'text', id: 'loot_item' }]],
+  repeat: { id: 'loot_item', nameField: 'loot_item' },
+  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'loot_item' }] }],
 };
 
 // A linkable single sheet "Добыча" whose repeat section is linkable too, or no longer.
 function lootPreset(sectionTokens: boolean): string {
-  return presetText(
-    [labelled('Сила', number('str'))],
-    [
+  const items: JsonValue = sectionTokens
+    ? {
+        ...LOOT_ITEMS,
+        rows: [
+          {
+            cells: [
+              { kind: 'field' as const, type: 'text' as const, id: 'loot_item' },
+              { kind: 'token' as const, id: 'token' },
+            ],
+          },
+        ],
+      }
+    : LOOT_ITEMS;
+
+  const loot: JsonValue = {
+    id: 'loot',
+    title: 'Добыча',
+    tabs: [
       {
-        id: 'loot',
-        kind: 'single',
-        title: 'Добыча',
-        tokens: true,
-        tabs: [{ sections: [sectionTokens ? { ...LOOT_ITEMS, tokens: true } : LOOT_ITEMS] }],
+        sections: [{ rows: [{ cells: [{ kind: 'token', id: 'token' }] }] }, items],
       },
     ],
-  );
+  };
+
+  return presetText([labelled('Сила', number('str'))], [loot]);
 }
 
 const WITH_TOKENS = lootPreset(true);
@@ -173,8 +183,8 @@ const TOKEN_RECORDS: StoredRecord[] = [
   ...pcSheet('brok', 'Брок', 0),
   record('blk:brok', { str: 14 }),
   repRecord('loot', 'loot_item', 'i1', 0, { loot_item: 'Меч' }),
-  record('link:t-gob', { s: 'loot', i: 'i1' }),
-  record('link:t-chest', { s: 'loot' }),
+  record('link:t-gob', { s: 'loot', path: ['loot_item', 'i1'], c: 'token' }),
+  record('link:t-chest', { s: 'loot', c: 'token' }),
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -433,7 +443,7 @@ test("an upload that drops a section's tokens removes the links to its repeat bl
   }).toEqual({
     preset: JSON.parse(WITHOUT_TOKENS),
     block: ['Меч', 1, 'seed'],
-    sheetLink: { s: 'loot' },
+    sheetLink: { s: 'loot', c: 'token' },
   });
 });
 

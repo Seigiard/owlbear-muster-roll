@@ -30,15 +30,29 @@ const PRESET: Preset = {
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
@@ -46,11 +60,16 @@ const PRESET: Preset = {
           sections: [
             {
               title: 'Противники',
-              repeat: true,
-              tokens: true,
+              repeat: { id: 'npc_name', nameField: 'npc_name' },
+
               rows: [
-                [{ kind: 'field', type: 'text', id: 'npc_name' }],
-                [{ kind: 'field', type: 'number', id: 'hp' }],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'npc_name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'number', id: 'hp' }] },
               ],
             },
           ],
@@ -81,8 +100,13 @@ const SHEETS: readonly VersionedRecord[] = [
 
 // The targets a test picks: the sheet "Арагорн", and the repeat block "Гоблин" of the NPC sheet.
 const TARGETS = {
-  arag: { sheetId: 'arag', instanceId: null },
-  gob: { sheetId: 'npc', instanceId: 'gob' },
+  arag: { sheetId: 'arag', instanceId: null, cellId: 'token' },
+  gob: {
+    sheetId: 'npc',
+    instanceId: 'gob',
+    path: ['npc_name', 'gob'],
+    cellId: 'token',
+  },
 } as const satisfies Record<string, LinkTarget>;
 
 type TargetName = keyof typeof TARGETS;
@@ -190,7 +214,12 @@ describe('link picker targets', () => {
           a: 'seed',
           l: [1, 'seed'],
         },
-        { k: 'link:t9', d: { s: 'npc', i: 'gob' }, c: 1, a: 'seed' },
+        {
+          k: 'link:t9',
+          d: { s: 'npc', path: ['npc_name', 'gob'], c: 'token' },
+          c: 1,
+          a: 'seed',
+        },
       ],
     });
 
@@ -464,7 +493,7 @@ describe('link picker label offer', () => {
     await act(async () => {
       picker.steps.push({ kind: 'arrived' });
       picker.store.applyDelta(
-        [{ k: `link:${TOKEN}`, d: { s: 'arag' }, c: 1, a: 'gm' }],
+        [{ k: `link:${TOKEN}`, d: { s: 'arag', c: 'token' }, c: 1, a: 'gm' }],
         [],
         [],
         [],
@@ -662,7 +691,20 @@ function never<Value>(): Promise<Value> {
 }
 
 function linkSet(name: TargetName): Command {
-  return { type: 'link-set', tokenId: TOKEN, ...TARGETS[name] };
+  const target = TARGETS[name];
+
+  const command: Extract<Command, { type: 'link-set' }> = {
+    type: 'link-set',
+    tokenId: TOKEN,
+    sheetId: target.sheetId,
+    cellId: target.cellId ?? '',
+  };
+
+  if ('path' in target && target.path !== null) {
+    command.path = target.path;
+  }
+
+  return command;
 }
 
 // The link of the last pick arrives in the replica, as the engine's delta brings it.

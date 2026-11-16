@@ -41,32 +41,54 @@ const SAVED_SHEET: StoredRecord = {
 const BAD_FILES: readonly (readonly [string, string, string])[] = [
   ['a file that is not JSON', '{"v": 1,', 'это не JSON'],
   ['an unknown key', fileText({ title: 'x' }), 'неверная структура'],
-  ['an unknown cell kind', fileText({ rows: [[{ kind: 'image' }]] }), 'неверная структура'],
+  [
+    'an unknown cell kind',
+    fileText({ rows: [{ cells: [{ kind: 'image' }] }] }),
+    'неверная структура',
+  ],
   ['an unknown width', fileText({ width: '1/4', rows: [] }), 'неверная структура'],
-  ['a duplicate id', fileText({ rows: [[field('str'), field('str')]] }), 'поле «str» повторяется'],
+  [
+    'a duplicate id',
+    fileText({ rows: [{ cells: [field('str'), field('str')] }] }),
+    'поле «str» повторяется',
+  ],
   [
     'a bad field id',
-    fileText({ rows: [[field('__proto__')]] }),
+    fileText({ rows: [{ cells: [field('__proto__')] }] }),
     'недопустимый id поля «__proto__»',
   ],
   [
     'a repeat section whose rows hold no field',
-    fileText({ repeat: true, rows: [[{ kind: 'text', text: 'Вещь' }], []] }),
+    fileText({
+      repeat: { id: 'item', nameField: 'item' },
+      rows: [{ cells: [{ kind: 'text', text: 'Вещь' }] }, { cells: [] }],
+    }),
     'в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем',
   ],
   [
     'two repeat sections that start with one id',
     templatesText([
       setTemplate('pc', [
-        { repeat: true, rows: [[field('a')]] },
-        { repeat: true, rows: [[field('a')]] },
+        {
+          repeat: { id: 'a', nameField: 'a' },
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'a' }] }],
+        },
+        {
+          repeat: { id: 'a', nameField: 'a' },
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'a' }] }],
+        },
       ]),
     ]),
     'две повторяемые секции с id «a»',
   ],
   [
     'a nameField that names a number field',
-    templatesText([{ ...setTemplate('pc', [{ rows: [[field('level')]] }]), nameField: 'level' }]),
+    templatesText([
+      {
+        ...setTemplate('pc', [{ rows: [{ cells: [field('level')] }] }]),
+        repeat: { nameField: 'level' },
+      },
+    ]),
     'в наборе «pc» нет текстового поля «level» вне повторяемых секций',
   ],
   [
@@ -74,11 +96,17 @@ const BAD_FILES: readonly (readonly [string, string, string])[] = [
     templatesText([
       {
         id: 'pc',
-        kind: 'set',
         title: 'Персонажи',
-        nameField: 'attack',
+        repeat: { nameField: 'attack' },
         tabs: [
-          { sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] }] },
+          {
+            sections: [
+              {
+                repeat: { id: 'attack', nameField: 'attack' },
+                rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack' }] }],
+              },
+            ],
+          },
         ],
       },
     ]),
@@ -100,24 +128,19 @@ const BAD_FILES: readonly (readonly [string, string, string])[] = [
     'неверная структура',
   ],
   [
-    'players on a sheet set',
-    templatesText([{ ...setTemplate('pc', []), players: 'edit' }]),
-    'неверная структура',
-  ],
-  [
     'tokens on a section that is not a repeat section',
-    fileText({ tokens: true, rows: [[field('a')]] }),
+    fileText({ tokens: true, rows: [{ cells: [field('a')] }] }),
     'неверная структура',
   ],
   ['an empty template list', templatesText([]), 'неверная структура'],
   [
     'a row wider than its columns',
-    fileText({ columns: 1, rows: [[field('a'), field('b')]] }),
+    fileText({ columns: 1, rows: [{ cells: [field('a'), field('b')] }] }),
     'в строке больше ячеек, чем колонок',
   ],
   [
     'a bad formula',
-    fileText({ rows: [[{ kind: 'dice', formula: '1d0' }]] }),
+    fileText({ rows: [{ cells: [{ kind: 'dice', formula: '1d0' }] }] }),
     'ошибка в формуле «1d0»',
   ],
   [
@@ -314,7 +337,10 @@ test('a preset too large for one command is refused in the window', async ({ pag
   await openWindowAndBackground(page, context);
   await watchWire(page);
   // #when
-  await uploadFile(page, fileText({ rows: [[{ kind: 'text', text: randomLabel(30000) }]] }));
+  await uploadFile(
+    page,
+    fileText({ rows: [{ cells: [{ kind: 'text', text: randomLabel(30000) }] }] }),
+  );
   // #then
   await expect(page.getByText(TOO_LARGE)).toBeVisible();
   expect(await windowSideRefusal(page)).toEqual({ commands: 0, stored: [] });
@@ -444,21 +470,27 @@ function fileText(section: JsonValue): string {
 }
 
 function templatesText(templates: readonly JsonValue[]): string {
-  return JSON.stringify({ v: 3, templates });
+  return JSON.stringify({ v: 4, templates });
 }
 
 function setTemplate(id: string, sections: readonly JsonValue[]) {
   return {
     id,
-    kind: 'set',
     title: 'Персонажи',
-    nameField: 'name',
-    tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, ...sections] }],
+    repeat: { nameField: 'name' },
+    tabs: [
+      {
+        sections: [
+          { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] },
+          ...sections,
+        ],
+      },
+    ],
   };
 }
 
 function singleTemplate(id: string) {
-  return { id, kind: 'single', title: 'Заметки', tabs: [{ sections: [] }] };
+  return { id, title: 'Заметки', tabs: [{ sections: [] }] };
 }
 
 function randomLabel(length: number): string {
@@ -475,7 +507,7 @@ function randomLabel(length: number): string {
 // Random labels barely deflate, so the data grows with the label until it lands in the window.
 function fileJustOverTheRecordLimit(): string {
   for (let length = 10000; length < 20000; length += 50) {
-    const text = fileText({ rows: [[{ kind: 'text', text: randomLabel(length) }]] });
+    const text = fileText({ rows: [{ cells: [{ kind: 'text', text: randomLabel(length) }] }] });
     const dataLength = Buffer.from(deflateSync(strToU8(text))).toString('base64').length;
 
     if (

@@ -23,13 +23,12 @@ const NANOID_PATTERN = /^[A-Za-z0-9_-]{8}$/;
 // One repeat section on a grid wider than its row, one that flows inline and opens with a label,
 // and one whose two rows hold five fields.
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
@@ -37,53 +36,65 @@ const PRESET = {
               title: 'Сетка',
               columns: 2,
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
             {
               title: 'Атаки',
               columns: 3,
-              repeat: true,
+              repeat: { id: 'attack', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'attack' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                  ],
+                },
               ],
             },
             {
               title: 'Вещи',
-              repeat: true,
+              repeat: { id: 'item', nameField: 'item' },
               rows: [
-                [
-                  { kind: 'text', text: 'Вещь' },
-                  { kind: 'field', type: 'text', id: 'item' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Вещь' },
+                    { kind: 'field', type: 'text', id: 'item' },
+                  ],
+                },
               ],
             },
             {
               title: 'Заклинания',
-              repeat: true,
+              repeat: { id: 'spell', nameField: 'spell' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'spell' },
-                  { kind: 'text', text: 'Круг' },
-                  { kind: 'field', type: 'number', id: 'circle' },
-                ],
-                [
-                  { kind: 'text', text: 'Цена' },
-                  { kind: 'field', type: 'number', id: 'cost' },
-                  { kind: 'field', type: 'check', id: 'prepared' },
-                  { kind: 'text', text: 'Заметка' },
-                  { kind: 'field', type: 'text', id: 'note' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'spell' },
+                    { kind: 'text', text: 'Круг' },
+                    { kind: 'field', type: 'number', id: 'circle' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Цена' },
+                    { kind: 'field', type: 'number', id: 'cost' },
+                    { kind: 'field', type: 'check', id: 'prepared' },
+                    { kind: 'text', text: 'Заметка' },
+                    { kind: 'field', type: 'text', id: 'note' },
+                  ],
+                },
               ],
             },
           ],

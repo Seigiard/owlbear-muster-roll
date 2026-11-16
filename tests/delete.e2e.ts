@@ -253,7 +253,7 @@ test('"Удалить" in the block sends one command, tombstones the sheet and 
     record('blk:liza:item:i2', { order: 0, cells: { item: 'Лук' } }, 1),
     record('acl:liza:p1', { name: 'Оля' }, 1),
     record('plink:liza:p1', { name: 'Оля' }, 1),
-    record('link:token2', { s: 'liza' }, 1),
+    record('link:token2', { s: 'liza', c: 'token' }, 1),
   ];
 
   await openRoom(page, context, [
@@ -262,7 +262,7 @@ test('"Удалить" in the block sends one command, tombstones the sheet and 
     record('blk:brok:item:i1', { order: 0, cells: { item: 'Меч' } }, 1),
     record('acl:brok:p1', { name: 'Оля' }, 4),
     record('plink:brok:p1', { name: 'Оля' }, 1),
-    record('link:token1', { s: 'brok' }, 5),
+    record('link:token1', { s: 'brok', c: 'token' }, 5),
     ...kept,
   ]);
   await watchCommands(page);

@@ -16,32 +16,36 @@ import {
 const GM: ClientParams = { client: 'gm', device: 'gm', name: 'Мастер' };
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Урон' },
-                  {
-                    kind: 'field',
-                    type: 'dice-choice',
-                    id: 'weapon_die',
-                    options: ['d4', 'd6', 'd8', 'd10', 'd12'],
-                  },
-                  { kind: 'dice', formula: '1d(weapon_die)' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Урон' },
+                    {
+                      kind: 'field',
+                      type: 'dice-choice',
+                      id: 'weapon_die',
+                      options: ['d4', 'd6', 'd8', 'd10', 'd12'],
+                    },
+                    { kind: 'dice', formula: '1d(weapon_die)' },
+                  ],
+                },
               ],
             },
           ],

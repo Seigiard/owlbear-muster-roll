@@ -4,15 +4,21 @@ import { previewRecords, previewSheetName, PREVIEW_SHEET_ID } from './preview-re
 
 const SET: Template = {
   id: 'pc',
-  kind: 'set',
+
   title: 'Экипаж',
-  nameField: 'name',
+  repeat: { nameField: 'name' },
   tabs: [
     {
       sections: [
-        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
-        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
-        { repeat: true, rows: [[{ kind: 'text', text: 'Нет поля' }]] },
+        { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] },
+        {
+          repeat: { id: 'item', nameField: 'item' },
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'item' }] }],
+        },
+        {
+          repeat: { id: 'name', nameField: 'name' },
+          rows: [{ cells: [{ kind: 'text', text: 'Нет поля' }] }],
+        },
       ],
     },
   ],
@@ -38,13 +44,20 @@ describe('previewRecords', () => {
         a: 'builder',
         l: [1, 'builder'],
       },
+      {
+        k: `blk:${PREVIEW_SHEET_ID}:name:sample`,
+        d: { order: 1, cells: {} },
+        c: 1,
+        a: 'builder',
+        l: [1, 'builder'],
+      },
     ]);
   });
   test('materializes the root of a single sheet', () => {
     // #when
     const records = previewRecords({
       id: 'npc',
-      kind: 'single',
+
       title: 'NPC',
       tabs: [{ sections: [] }],
     });
@@ -67,14 +80,10 @@ describe('previewSheetName', () => {
     ['a sheet set by its name field id', SET, 'name'],
     [
       'a sheet set with a name field that names no text field',
-      { ...SET, nameField: 'x' },
+      { ...SET, repeat: { nameField: 'x' } },
       'Без имени',
     ],
-    [
-      'a single sheet by its title',
-      { id: 'npc', kind: 'single', title: 'NPC', tabs: [{ sections: [] }] },
-      'NPC',
-    ],
+    ['a single sheet by its title', { id: 'npc', title: 'NPC', tabs: [{ sections: [] }] }, 'NPC'],
   ])('names %s', (_name, template, expected) => {
     // #when
     const name = previewSheetName(template);

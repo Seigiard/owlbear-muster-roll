@@ -24,36 +24,43 @@ const PLAYER: ClientParams = {
 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'STR' },
-                  { kind: 'field', type: 'number', id: 'str', name: 'STR, максимум' },
-                ],
-                [
-                  { kind: 'text', text: 'DEX' },
-                  { kind: 'field', type: 'number', id: 'dex' },
-                ],
-                [{ kind: 'field', type: 'check', id: 'ready', name: 'Готовность' }],
-                [
-                  { kind: 'dice', formula: '1d20 <= str', name: 'Спасбросок STR' },
-                  { kind: 'dice', formula: '1d20 <= dex' },
-                ],
-                [{ kind: 'dice', formula: '1d1', name: 'Монета' }],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'STR' },
+                    { kind: 'field', type: 'number', id: 'str', name: 'STR, максимум' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'DEX' },
+                    { kind: 'field', type: 'number', id: 'dex' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'check', id: 'ready', name: 'Готовность' }] },
+                {
+                  cells: [
+                    { kind: 'dice', formula: '1d20 <= str', name: 'Спасбросок STR' },
+                    { kind: 'dice', formula: '1d20 <= dex' },
+                  ],
+                },
+                { cells: [{ kind: 'dice', formula: '1d1', name: 'Монета' }] },
               ],
             },
           ],

@@ -9,24 +9,28 @@ import {
 
 // A two-row NPC repeat block whose first field is the text name.
 const NPC_SECTION: PresetSection = {
-  repeat: true,
+  repeat: { id: 'npc_name', nameField: 'npc_name' },
   rows: [
-    [
-      { kind: 'field', type: 'text', id: 'npc_name' },
-      { kind: 'field', type: 'number', id: 'hp' },
-    ],
-    [{ kind: 'field', type: 'check', id: 'elite' }],
+    {
+      cells: [
+        { kind: 'field', type: 'text', id: 'npc_name' },
+        { kind: 'field', type: 'number', id: 'hp' },
+      ],
+    },
+    { cells: [{ kind: 'field', type: 'check', id: 'elite' }] },
   ],
 };
 
 // A repeat section whose first field is a number, so nothing is numbered.
 const NUMBER_FIRST_SECTION: PresetSection = {
-  repeat: true,
+  repeat: { id: 'item', nameField: 'item' },
   rows: [
-    [
-      { kind: 'field', type: 'number', id: 'qty' },
-      { kind: 'field', type: 'text', id: 'item' },
-    ],
+    {
+      cells: [
+        { kind: 'field', type: 'number', id: 'qty' },
+        { kind: 'field', type: 'text', id: 'item' },
+      ],
+    },
   ],
 };
 
@@ -69,7 +73,7 @@ describe('duplicateBlockCells', () => {
     // #then
     expect(cells).toEqual({ ok: true, value: [{ hp: 4 }, { hp: 4 }] });
   });
-  test('copies the values as they are when the first field is not a text field', () => {
+  test('numbers the explicit name field when it is not the first field', () => {
     // #given
     const source = { qty: 2, item: 'Верёвка 1' };
     // #when
@@ -78,8 +82,8 @@ describe('duplicateBlockCells', () => {
     expect(cells).toEqual({
       ok: true,
       value: [
-        { qty: 2, item: 'Верёвка 1' },
-        { qty: 2, item: 'Верёвка 1' },
+        { qty: 2, item: 'Верёвка 2' },
+        { qty: 2, item: 'Верёвка 3' },
       ],
     });
   });

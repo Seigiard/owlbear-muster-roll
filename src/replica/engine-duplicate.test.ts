@@ -35,24 +35,26 @@ const GHOST = 'ghost-gm';
 // number. "pc" is a sheet set with a repeat section of its own, and "camp" a single sheet every
 // player edits.
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
-            { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
+            { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] },
             {
-              repeat: true,
+              repeat: { id: 'attack', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'attack' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                  ],
+                },
               ],
             },
           ],
@@ -61,39 +63,60 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
         {
           sections: [
-            { rows: [[{ kind: 'field', type: 'text', id: 'notes' }]] },
+            { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'notes' }] }] },
             {
-              repeat: true,
-              tokens: true,
+              repeat: { id: 'mob', nameField: 'mob' },
+
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'mob' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                ],
-                [
-                  { kind: 'field', type: 'check', id: 'elite' },
-                  { kind: 'field', type: 'text', id: 'tactics' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'mob' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'field', type: 'check', id: 'elite' },
+                    { kind: 'field', type: 'text', id: 'tactics' },
+                  ],
+                },
               ],
             },
-            { repeat: true, rows: [[{ kind: 'field', type: 'number', id: 'gold' }]] },
+            {
+              repeat: { id: 'gold', nameField: 'cart' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'gold' },
+                    { kind: 'field', type: 'text', id: 'cart' },
+                  ],
+                },
+              ],
+            },
           ],
         },
       ],
     },
     {
       id: 'camp',
-      kind: 'single',
+
       title: 'Лагерь',
       players: 'edit',
       tabs: [
-        { sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'cart' }]] }] },
+        {
+          sections: [
+            {
+              repeat: { id: 'cart', nameField: 'cart' },
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'cart' }] }],
+            },
+          ],
+        },
       ],
     },
   ],
@@ -109,7 +132,12 @@ const SOURCE: readonly VersionedRecord[] = [
   block('npc', 'mob', 'gob', 4, { mob: 'Гоблин', hp: 5 }),
   { k: 'blk:npc:mob:dead', d: null, c: 2, a: 'seed', l: [1, 'seed'] },
   block('npc', 'gold', 'g1', 9, { gold: 30 }),
-  { k: 'link:token1', d: { s: 'npc', i: 'sk1' }, c: 1, a: 'seed' },
+  {
+    k: 'link:token1',
+    d: { s: 'npc', path: ['mob', 'sk1'], c: 'token' },
+    c: 1,
+    a: 'seed',
+  },
   { k: 'blk:brok', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
   {
     k: 'blk:brok',

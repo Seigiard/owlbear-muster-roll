@@ -27,26 +27,29 @@ const QUICK: Partial<ClientParams> = { snapshotPauseMs: 100, snapshotJitterMs: 0
 const NEVER: Partial<ClientParams> = { snapshotPauseMs: 600000, snapshotJitterMs: 0 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
           ],
@@ -55,9 +58,8 @@ const PRESET_TEXT = JSON.stringify({
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
   ],
 });

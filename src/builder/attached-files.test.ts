@@ -76,7 +76,7 @@ const RESUMED_SNAPSHOT_TEXT = JSON.stringify({
   links: [],
 });
 
-const EMPTY_PRESET: Preset = { v: 3, templates: [] };
+const EMPTY_PRESET: Preset = { v: 4, templates: [] };
 
 const EMPTY_SNAPSHOT = {
   v: 4,
@@ -86,28 +86,29 @@ const EMPTY_SNAPSHOT = {
 };
 
 const CREW_PRESET_TEXT = `{
-  "v": 3,
+  "v": 4,
   "templates": [
     {
       "id": "crew",
-      "kind": "single",
       "title": "Экипаж",
       "tabs": [
         {
           "sections": [
             {
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "Сила"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "strength"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Сила"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "strength"
+                    }
+                  ]
+                }
               ]
             }
           ]
@@ -1109,21 +1110,23 @@ describe('attached Builder files', () => {
 
 function createCrewPreset(title = 'Экипаж'): Preset {
   return {
-    v: 3,
+    v: 4,
     templates: [
       {
         id: 'crew',
-        kind: 'single',
+
         title,
         tabs: [
           {
             sections: [
               {
                 rows: [
-                  [
-                    { kind: 'text', text: 'Сила' },
-                    { kind: 'field', type: 'number', id: 'strength' },
-                  ],
+                  {
+                    cells: [
+                      { kind: 'text', text: 'Сила' },
+                      { kind: 'field', type: 'number', id: 'strength' },
+                    ],
+                  },
                 ],
               },
             ],

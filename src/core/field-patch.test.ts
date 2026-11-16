@@ -31,12 +31,12 @@ const TEMPLATE: TemplateLayout = {
   tabs: [
     {
       sections: [
-        { rows: [[{ kind: 'text', text: 'Сила' }, STR, TIRED], [NOTES]] },
+        { rows: [{ cells: [{ kind: 'text', text: 'Сила' }, STR, TIRED] }, { cells: [NOTES] }] },
         {
-          repeat: true,
+          repeat: { id: 'attack', nameField: 'attack' },
           rows: [
-            [ATTACK, BONUS],
-            [{ kind: 'text', text: 'Дальность' }, RANGE],
+            { cells: [ATTACK, BONUS] },
+            { cells: [{ kind: 'text', text: 'Дальность' }, RANGE] },
           ],
         },
       ],

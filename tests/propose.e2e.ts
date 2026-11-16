@@ -57,37 +57,42 @@ const PLAYER: ClientParams = {
 
 // A sheet set, a player-editable single sheet and a single sheet players only read.
 const PRESET_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               title: 'Основное',
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
             {
               title: 'Атаки',
-              repeat: true,
+              repeat: { id: 'attack', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'text', text: 'Атака' },
-                  { kind: 'field', type: 'text', id: 'attack' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Атака' },
+                    { kind: 'field', type: 'text', id: 'attack' },
+                  ],
+                },
               ],
             },
           ],
@@ -96,7 +101,6 @@ const PRESET_TEXT = JSON.stringify({
     },
     {
       id: 'inventory',
-      kind: 'single',
       title: 'Инвентарь',
       players: 'edit',
       tabs: [
@@ -105,10 +109,12 @@ const PRESET_TEXT = JSON.stringify({
             {
               title: 'Деньги',
               rows: [
-                [
-                  { kind: 'text', text: 'Золото' },
-                  { kind: 'field', type: 'number', id: 'gold' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Золото' },
+                    { kind: 'field', type: 'number', id: 'gold' },
+                  ],
+                },
               ],
             },
           ],
@@ -117,7 +123,6 @@ const PRESET_TEXT = JSON.stringify({
     },
     {
       id: 'journal',
-      kind: 'single',
       title: 'Журнал',
       tabs: [
         {
@@ -125,10 +130,12 @@ const PRESET_TEXT = JSON.stringify({
             {
               title: 'Записи',
               rows: [
-                [
-                  { kind: 'text', text: 'Запись' },
-                  { kind: 'field', type: 'text', id: 'entry' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Запись' },
+                    { kind: 'field', type: 'text', id: 'entry' },
+                  ],
+                },
               ],
             },
           ],

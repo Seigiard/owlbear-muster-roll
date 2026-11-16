@@ -36,29 +36,36 @@ const D6_POOL_PRESET = fixture('d6-pool');
 // A sheet set whose repeat section "Атаки" is linkable, so a player with write access can remove a
 // repeat block that tokens link to.
 const LINKABLE_ATTACKS_PRESET = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
               ],
             },
             {
               title: 'Атаки',
-              repeat: true,
-              tokens: true,
-              rows: [[{ kind: 'field', type: 'text', id: 'attack' }]],
+              repeat: { id: 'attack', nameField: 'attack' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
             },
           ],
         },
@@ -288,9 +295,9 @@ test('removing a repeat block with two token links tombstones both links and lea
   await openNpcTab(page, context, [
     npcBlock('skel', 'Скелет', 0),
     npcBlock('gob', 'Гоблин', 1),
-    record('link:t1', { s: 'npc', i: 'skel' }),
-    record('link:t2', { s: 'npc', i: 'skel' }),
-    record('link:t3', { s: 'npc', i: 'gob' }),
+    record('link:t1', { s: 'npc', path: ['attack', 'skel'], c: 'token' }),
+    record('link:t2', { s: 'npc', path: ['attack', 'skel'], c: 'token' }),
+    record('link:t3', { s: 'npc', path: ['attack', 'gob'], c: 'token' }),
   ]);
   // #when
   await page.getByRole('button', { name: 'Удалить блок 1', exact: true }).click();
@@ -303,7 +310,12 @@ test('removing a repeat block with two token links tombstones both links and lea
       t2: await storedData(page, 'link:t2'),
       t3: await storedData(page, 'link:t3'),
     }))
-    .toEqual({ block: null, t1: null, t2: null, t3: { s: 'npc', i: 'gob' } });
+    .toEqual({
+      block: null,
+      t1: null,
+      t2: null,
+      t3: { s: 'npc', path: ['attack', 'gob'], c: 'token' },
+    });
 });
 
 test("a player's removal of a linked repeat block is committed by the GM client with its links tombstoned", async ({
@@ -315,9 +327,9 @@ test("a player's removal of a linked repeat block is committed by the GM client 
     repRecord('anya', 'attack', 'sword', 0, { attack: 'Меч' }),
     repRecord('anya', 'attack', 'bow', 1, { attack: 'Лук' }),
     record('acl:anya:lisa', { name: 'Лиза' }),
-    record('link:t1', { s: 'anya', i: 'sword' }),
-    record('link:t2', { s: 'anya', i: 'sword' }),
-    record('link:t3', { s: 'anya' }),
+    record('link:t1', { s: 'anya', path: ['attack', 'sword'], c: 'token' }),
+    record('link:t2', { s: 'anya', path: ['attack', 'sword'], c: 'token' }),
+    record('link:t3', { s: 'anya', c: 'token' }),
   ]);
 
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
@@ -333,7 +345,7 @@ test("a player's removal of a linked repeat block is committed by the GM client 
       t2: await storedData(gm.window, 'link:t2'),
       t3: await storedData(gm.window, 'link:t3'),
     }))
-    .toEqual({ block: null, t1: null, t2: null, t3: { s: 'anya' } });
+    .toEqual({ block: null, t1: null, t2: null, t3: { s: 'anya', c: 'token' } });
   await expect(attacks.getByRole('group')).toHaveCount(1);
 });
 

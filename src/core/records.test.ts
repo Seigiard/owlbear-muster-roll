@@ -14,8 +14,8 @@ const VALID_FORMS: [string, JsonValue][] = [
   ['blk:s1:item:i1', { order: 1, cells: { item: ['rope', 1, 'conn'], qty: [2, 1, 'conn'] } }],
   ['blk:s1:item:i1:child:i2', { order: 0, cells: { cleared: [null, 2, 'conn'] } }],
   ['acl:s1:p1', { name: 'Bob' }],
-  ['link:t1', { s: 's1' }],
-  ['link:t2', { s: 's1', i: 'i1' }],
+  ['link:t1', { s: 's1', c: 'token' }],
+  ['link:t2', { s: 's1', path: ['item', 'i1'], c: 'token' }],
   ['plink:s1:p1', { name: 'Bob' }],
 ];
 
@@ -226,11 +226,14 @@ describe('parseRecord refuses', () => {
 describe('parseStoredRecord', () => {
   test('parses a valid record filed under its own key', () => {
     // #given
-    const text = '{"k":"link:t","d":{"s":"s"},"c":3,"a":"conn"}';
+    const text = '{"k":"link:t","d":{"s":"s","c":"token"},"c":3,"a":"conn"}';
     // #when
     const parsed = parseStoredRecord(text, 'link:t');
     // #then
-    expect(parsed).toEqual({ ok: true, value: { k: 'link:t', d: { s: 's' }, c: 3, a: 'conn' } });
+    expect(parsed).toEqual({
+      ok: true,
+      value: { k: 'link:t', d: { s: 's', c: 'token' }, c: 3, a: 'conn' },
+    });
   });
   test('refuses text that is not JSON without throwing', () => {
     // #when
@@ -240,7 +243,11 @@ describe('parseStoredRecord', () => {
   });
   test('refuses valid JSON that is not a record', () => {
     // #when
-    const parsed = parseStoredRecord('{"k":"link:t","d":{"s":"s"},"c":0,"a":"conn"}', 'link:t');
+    const parsed = parseStoredRecord(
+      '{"k":"link:t","d":{"s":"s","c":"token"},"c":0,"a":"conn"}',
+      'link:t',
+    );
+
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });

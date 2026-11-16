@@ -5,8 +5,8 @@ import type { VersionedRecord } from '@/core/records';
 import type { SyncState } from '@/core/ui-messages';
 import { createProjectionStore } from './projection-store';
 
-const FIRST: VersionedRecord = { k: 'link:a', d: { s: 's1' }, c: 1, a: 'conn' };
-const SECOND: VersionedRecord = { k: 'link:b', d: { s: 's2' }, c: 1, a: 'conn' };
+const FIRST: VersionedRecord = { k: 'link:a', d: { s: 's1', c: 'token' }, c: 1, a: 'conn' };
+const SECOND: VersionedRecord = { k: 'link:b', d: { s: 's2', c: 'token' }, c: 1, a: 'conn' };
 
 const LIVE: SyncState = {
   state: 'live',
@@ -58,7 +58,7 @@ describe('projection store', () => {
   test('applies a delta over existing records and takes its notices', () => {
     // #given
     const store = createProjectionStore();
-    const updated: VersionedRecord = { k: 'link:a', d: { s: 's9' }, c: 2, a: 'conn' };
+    const updated: VersionedRecord = { k: 'link:a', d: { s: 's9', c: 'token' }, c: 2, a: 'conn' };
     store.replaceAll([FIRST, SECOND], [], [], LIVE);
     // #when
     store.applyDelta([updated], [], [], ['local-save-failed'], LIVE);
@@ -105,8 +105,21 @@ describe('projection store', () => {
   test('shows the pending view over the replica record of its key while catching up', () => {
     // #given
     const store = createProjectionStore();
-    const pendingFirst: VersionedRecord = { k: 'link:a', d: { s: 's7' }, c: 2, a: 'conn' };
-    const replicaFirst: VersionedRecord = { k: 'link:a', d: { s: 's3' }, c: 2, a: 'other' };
+
+    const pendingFirst: VersionedRecord = {
+      k: 'link:a',
+      d: { s: 's7', c: 'token' },
+      c: 2,
+      a: 'conn',
+    };
+
+    const replicaFirst: VersionedRecord = {
+      k: 'link:a',
+      d: { s: 's3', c: 'token' },
+      c: 2,
+      a: 'other',
+    };
+
     store.replaceAll([FIRST, SECOND], [], [], CATCHING_UP);
     // #when
     store.applyDelta([], [pendingFirst], [], [], CATCHING_UP);
@@ -121,7 +134,7 @@ describe('projection store', () => {
   test('keeps a pending view record through a live delta until the engine withdraws its key', () => {
     // #given
     const store = createProjectionStore();
-    const proposed: VersionedRecord = { k: 'link:c', d: { s: 's5' }, c: 1, a: 'conn' };
+    const proposed: VersionedRecord = { k: 'link:c', d: { s: 's5', c: 'token' }, c: 1, a: 'conn' };
     store.replaceAll([FIRST], [proposed], [], CATCHING_UP);
     // #when
     store.applyDelta([], [], [], [], LIVE);
@@ -131,8 +144,15 @@ describe('projection store', () => {
   test('shows the replica record a delta brings again for a withdrawn pending key, or nothing', () => {
     // #given
     const store = createProjectionStore();
-    const pendingFirst: VersionedRecord = { k: 'link:a', d: { s: 's7' }, c: 2, a: 'conn' };
-    const created: VersionedRecord = { k: 'link:c', d: { s: 's5' }, c: 1, a: 'conn' };
+
+    const pendingFirst: VersionedRecord = {
+      k: 'link:a',
+      d: { s: 's7', c: 'token' },
+      c: 2,
+      a: 'conn',
+    };
+
+    const created: VersionedRecord = { k: 'link:c', d: { s: 's5', c: 'token' }, c: 1, a: 'conn' };
     store.replaceAll([FIRST], [pendingFirst, created], [], CATCHING_UP);
     // #when
     store.applyDelta([FIRST], [], ['link:a', 'link:c'], [], CATCHING_UP);
@@ -151,7 +171,7 @@ describe('projection store', () => {
   test("shows a live player's pending edits from a projection over the replica", () => {
     // #given
     const store = createProjectionStore();
-    const proposed: VersionedRecord = { k: 'link:a', d: { s: 's9' }, c: 2, a: 'conn' };
+    const proposed: VersionedRecord = { k: 'link:a', d: { s: 's9', c: 'token' }, c: 2, a: 'conn' };
     // #when
     store.replaceAll([FIRST, SECOND], [proposed], [], LIVE);
     // #then

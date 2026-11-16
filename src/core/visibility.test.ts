@@ -17,22 +17,34 @@ import {
 
 const PC: Template = {
   id: 'pc',
-  kind: 'set',
+
   title: 'Персонажи',
-  nameField: 'name',
-  tokens: true,
+  repeat: { nameField: 'name' },
+
   tabs: [
     {
       title: 'Основное',
       sections: [
-        { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
-        { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] },
+        {
+          rows: [
+            {
+              cells: [
+                { kind: 'field', type: 'text', id: 'name' },
+                { kind: 'token', id: 'token' },
+              ],
+            },
+          ],
+        },
+        {
+          repeat: { id: 'attack', nameField: 'attack' },
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack' }] }],
+        },
       ],
     },
     {
       title: 'Заметки мастера',
       visibility: 'gm',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'secret' }]] }],
+      sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'secret' }] }] }],
     },
   ],
 };
@@ -40,14 +52,23 @@ const PC: Template = {
 // A hidden single sheet with a linkable repeat section.
 const NPC: Template = {
   id: 'npc',
-  kind: 'single',
   title: 'НПС',
   visibility: 'gm',
   tabs: [
     {
       sections: [
-        { rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] },
-        { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'npc_name' }]] },
+        { rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] },
+        {
+          repeat: { id: 'npc_name', nameField: 'npc_name' },
+          rows: [
+            {
+              cells: [
+                { kind: 'field', type: 'text', id: 'npc_name' },
+                { kind: 'token', id: 'token' },
+              ],
+            },
+          ],
+        },
       ],
     },
   ],
@@ -55,22 +76,22 @@ const NPC: Template = {
 
 const INVENTORY: Template = {
   id: 'inventory',
-  kind: 'single',
+
   title: 'Инвентарь',
   players: 'edit',
-  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'items' }]] }] }],
+  tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'items' }] }] }] }],
 };
 
 const VILLAINS: Template = {
   id: 'villains',
-  kind: 'set',
+
   title: 'Злодеи',
-  nameField: 'villain',
+  repeat: { nameField: 'villain' },
   visibility: 'gm',
-  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'villain' }]] }] }],
+  tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'villain' }] }] }] }],
 };
 
-const PRESET: Preset = { v: 3, templates: [PC, NPC, INVENTORY, VILLAINS] };
+const PRESET: Preset = { v: 4, templates: [PC, NPC, INVENTORY, VILLAINS] };
 
 function record(k: string, d: JsonValue): VersionedRecord {
   // SAFETY: some cases build a record no schema takes on purpose, so the code under test meets it.
@@ -88,10 +109,16 @@ const BROK = record('blk:brok', {
 const LIZA = record('blk:liza', { set: 'pc', order: 0 });
 const BROK_REP = record('blk:brok:attack:i1', { order: 0, cells: {} });
 const BROK_ACL = record('acl:brok:p1', { name: 'Оля' });
-const BROK_LINK = record('link:token-1', { s: 'brok' });
+const BROK_LINK = record('link:token-1', { s: 'brok', c: 'token' });
 const NPC_ROW = record('blk:npc', { hp: 7 });
 const NPC_REP = record('blk:npc:npc_name:s1', { order: 0, cells: { npc_name: 'Скелет' } });
-const NPC_LINK = record('link:token-2', { s: 'npc', i: 's1' });
+
+const NPC_LINK = record('link:token-2', {
+  s: 'npc',
+  path: ['npc_name', 's1'],
+  c: 'token',
+});
+
 const INVENTORY_ROW = record('blk:inventory', { items: 'Верёвка' });
 
 const BOSS = record('blk:boss', {
@@ -101,7 +128,11 @@ const BOSS = record('blk:boss', {
 });
 
 // A link to a repeat block of a section with no tokens, so it is inert.
-const INERT_LINK = record('link:token-3', { s: 'brok', i: 'i1' });
+const INERT_LINK = record('link:token-3', {
+  s: 'brok',
+  path: ['attack', 'i1'],
+  c: 'token',
+});
 
 // A sheet whose set names no template, so it resolves to none.
 const STRAY = record('blk:stray', { set: 'gone', order: 0, cells: { name: 'Никто' } });

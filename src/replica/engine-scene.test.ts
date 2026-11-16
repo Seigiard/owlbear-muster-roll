@@ -32,25 +32,49 @@ const MENU_COPY = {
 
 // "pc" links whole sheets, and "npc" links its repeat blocks.
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
         {
           sections: [
-            { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'mob' }]] },
+            {
+              repeat: { id: 'mob', nameField: 'mob' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'mob' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
           ],
         },
       ],
@@ -59,8 +83,8 @@ const PRESET: Preset = {
 };
 
 // The link data of "Брок" and of the NPC "Скелет".
-const BROK: LinkData = { s: 'brok' };
-const SKEL: LinkData = { s: 'npc', i: 'sk1' };
+const BROK: LinkData = { s: 'brok', c: 'token' };
+const SKEL: LinkData = { s: 'npc', path: ['mob', 'sk1'], c: 'token' };
 
 // "Брок" has the tokens t1 and t2, "Скелет" has t3.
 const SEEDED: readonly VersionedRecord[] = [
@@ -415,7 +439,13 @@ describe('two GM clients', () => {
     first.platform.addSceneItems(['map']);
     await pause(SETTLE_MS);
     // #when
-    send(second, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
+    send(second, {
+      type: 'link-set',
+      tokenId: 't1',
+      sheetId: 'npc',
+      path: ['mob', 'sk1'],
+      cellId: 'token',
+    });
     await waitUntil(() => (storedRecord(second, 'link:t1')?.c ?? 0) >= 3);
     await pause(SETTLE_MS);
     // #then
@@ -480,7 +510,13 @@ describe('two GM clients', () => {
     first.platform.addSceneItems(['t1']);
     await pause(SETTLE_MS);
     // #when
-    send(second, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
+    send(second, {
+      type: 'link-set',
+      tokenId: 't1',
+      sheetId: 'npc',
+      path: ['mob', 'sk1'],
+      cellId: 'token',
+    });
     await waitUntil(() => sameData(storedRecord(first, 'link:t1'), SKEL));
     await pause(SETTLE_MS);
     // #then
@@ -546,6 +582,11 @@ async function startClient(
           sceneCalls += 1;
 
           return scene.getItemIds();
+        },
+        getItemBounds: (itemIds) => {
+          sceneCalls += 1;
+
+          return scene.getItemBounds(itemIds);
         },
         onItemsChange: (callback) => {
           sceneCalls += 1;

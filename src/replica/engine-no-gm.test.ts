@@ -27,20 +27,20 @@ const GHOST = 'ghost-gm';
 const PLAYER = 'player-p';
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [{ kind: 'field', type: 'number', id: 'str' }],
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                { cells: [{ kind: 'field', type: 'number', id: 'str' }] },
               ],
             },
           ],
@@ -49,10 +49,10 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPC',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
   ],
 };

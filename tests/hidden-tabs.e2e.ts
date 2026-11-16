@@ -30,14 +30,12 @@ const PLAYER: ClientParams = {
 // The name field, a numeric field and a linkable repeat section are on the hidden tab. The visible
 // tab rolls with the hidden numeric field. "Хранилище" has no tab visible to a player.
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Основное',
@@ -45,10 +43,12 @@ const PRESET = {
             {
               title: 'Открытое',
               rows: [
-                [
-                  { kind: 'text', text: 'Проверка' },
-                  { kind: 'dice', formula: '1d1 + secret' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Проверка' },
+                    { kind: 'dice', formula: '1d1 + secret' },
+                  ],
+                },
               ],
             },
           ],
@@ -60,21 +60,32 @@ const PRESET = {
             {
               title: 'Секреты',
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Секрет' },
-                  { kind: 'field', type: 'number', id: 'secret' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Секрет' },
+                    { kind: 'field', type: 'number', id: 'secret' },
+                  ],
+                },
               ],
             },
             {
               title: 'Связи',
-              repeat: true,
-              tokens: true,
-              rows: [[{ kind: 'field', type: 'text', id: 'contact' }]],
+              repeat: { id: 'contact', nameField: 'contact' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'contact' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
             },
           ],
         },
@@ -82,7 +93,6 @@ const PRESET = {
     },
     {
       id: 'vault',
-      kind: 'single',
       title: 'Хранилище',
       tabs: [
         {
@@ -90,7 +100,7 @@ const PRESET = {
           sections: [
             {
               title: 'Тайники',
-              rows: [[{ kind: 'field', type: 'text', id: 'stash' }]],
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'stash' }] }],
             },
           ],
         },
@@ -105,8 +115,8 @@ const RECORDS: readonly StoredRecord[] = [
   record('blk:brok', { secret: 4 }),
   record('acl:brok:lisa', { name: 'Лиза' }),
   repRecord('brok', 'contact', 'spy', 0, { contact: 'Осведомитель' }),
-  record('link:t-sheet', { s: 'brok' }),
-  record('link:t-secret', { s: 'brok', i: 'spy' }),
+  record('link:t-sheet', { s: 'brok', c: 'token' }),
+  record('link:t-secret', { s: 'brok', path: ['contact', 'spy'], c: 'token' }),
   record('blk:vault', { stash: 'Ключ' }),
 ];
 

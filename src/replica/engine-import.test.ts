@@ -42,22 +42,27 @@ const CURRENT_ROOM_PREFIX = `${storageKey('', INITIAL).split(':').slice(0, 2).jo
 const GHOST = 'ghost-gm';
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
+      repeat: { nameField: 'name' },
+
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [{ kind: 'field', type: 'number', id: 'str' }],
-                [{ kind: 'field', type: 'text', id: 'notes' }],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'number', id: 'str' }] },
+                { cells: [{ kind: 'field', type: 'text', id: 'notes' }] },
               ],
             },
           ],
@@ -66,10 +71,10 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPC',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
   ],
 };
@@ -112,7 +117,7 @@ const FILE: SnapshotFile = {
       blocks: fixtureSnapshotBlocks({}),
     },
   ],
-  links: [{ tokenId: 't1', sheetId: 'anya' }],
+  links: [{ tokenId: 't1', sheetId: 'anya', cellId: 'token' }],
 };
 
 const DATA = encodeSnapshotFileData(FILE);
@@ -370,7 +375,10 @@ describe('check', () => {
     // #when
     const answer = await check(
       gm,
-      encodeSnapshotFileData({ ...FILE, links: [{ tokenId: 't', sheetId: 'x' }] }),
+      encodeSnapshotFileData({
+        ...FILE,
+        links: [{ tokenId: 't', sheetId: 'x', cellId: '' }],
+      }),
     );
 
     // #then
@@ -521,7 +529,7 @@ describe('import', () => {
     await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'alive').length === 2);
     // #then
     expect(heardOf(room, 'gm-a', 'alive').map((message) => Object(message).digest)).toEqual([
-      3332516721, 2508441357,
+      1098523264, 1362206446,
     ]);
   });
   test('answers a ping with the empty replica digest after a wipe', async () => {
@@ -538,7 +546,7 @@ describe('import', () => {
     await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'alive').length === 2);
     // #then
     expect(heardOf(room, 'gm-a', 'alive').map((message) => Object(message).digest)).toEqual([
-      3332516721, 0,
+      1098523264, 0,
     ]);
   });
   test('drops a file sheet of no template of the preset with its values and counts it', async () => {
@@ -658,7 +666,7 @@ describe('import', () => {
         order: 0,
         cells: { name: 'Аня', str: 12, notes: 'Смелая' },
       }),
-      link: importedRecord('gm-a', 'link:t1', { s: 'anya' }),
+      link: importedRecord('gm-a', 'link:t1', { s: 'anya', c: 'token' }),
     });
   });
   test('keeps only the new generation in storage once it is complete', async () => {
@@ -874,7 +882,7 @@ describe('import', () => {
       stored: storedRecord(gm, 'link:t1', { n: 1, a: 'gm-a' }),
       rejections: gm.local.filter((message) => Object(message).t === 'command-rejected'),
     }).toEqual({
-      during: { s: 'anya' },
+      during: { s: 'anya', c: 'token' },
       stored: { k: 'link:t1', d: null, c: 2, a: 'gm-a' },
       rejections: [],
     });

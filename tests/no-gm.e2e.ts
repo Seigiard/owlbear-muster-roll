@@ -50,30 +50,33 @@ const SILENT_GM = 'mock-connection-silent';
 const OBSERVER: ClientParams = { client: 'o', role: 'PLAYER', player: 'olga', device: 'o' };
 
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
               ],
             },
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
           ],
@@ -82,19 +85,20 @@ const PRESET = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
         {
           sections: [
             {
-              repeat: true,
+              repeat: { id: 'npc_name', nameField: 'npc_name' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'npc_name' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'npc_name' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                  ],
+                },
               ],
             },
           ],

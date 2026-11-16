@@ -28,22 +28,37 @@ import {
 } from '../../tests/support/room-rig';
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'party',
-      kind: 'set',
+
       title: 'Party',
-      nameField: 'name',
-      tokens: true,
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
     {
       id: 'secret',
-      kind: 'single',
+
       title: 'Secret',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'note' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'note' }] }] }] }],
     },
   ],
 };
@@ -278,7 +293,7 @@ describe('window publisher', () => {
     const name = record('blk:brok', { name: 'Brok' });
     const block = record('blk:brok:item:i1', { order: 0, cells: { item: 'Sword' } });
     const pendingBlock = record('blk:brok:item:i1', null, 2, 'player');
-    const link = record('link:t1', { s: 'brok', i: 'i1' });
+    const link = record('link:t1', { s: 'brok', path: ['item', 'i1'], c: 'token' });
     const harness = publisherHarness(source('PLAYER', [preset, hero, name, block, link]));
     const window = harness.openWindow('pending-link');
     await settle();
@@ -854,18 +869,27 @@ function presetWithPartyVisibility(): Preset {
 
 function tokenPreset(): Preset {
   return {
-    v: 3,
+    v: 4,
     templates: [
       {
         id: 'party',
-        kind: 'set',
         title: 'Party',
-        nameField: 'name',
+        repeat: { nameField: 'name' },
         tabs: [
           {
             sections: [
-              { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] },
-              { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
+              { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] },
+              {
+                repeat: { id: 'item', nameField: 'item' },
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'item' },
+                      { kind: 'token', id: 'token' },
+                    ],
+                  },
+                ],
+              },
             ],
           },
         ],

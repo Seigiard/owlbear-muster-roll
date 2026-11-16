@@ -11,23 +11,49 @@ import { createProjectionStore, type ProjectionStore } from '@/ui/projection-sto
 import { useWindowView, type WindowView, windowViewOf } from '@/ui/window-view';
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'party',
-      kind: 'set',
       title: 'Party',
-      nameField: 'name',
-      tokens: true,
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
     {
       id: 'secret',
-      kind: 'single',
       title: 'Secret',
       visibility: 'gm',
-      tokens: true,
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'note' }]] }] }],
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'note' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
   ],
 };
@@ -35,9 +61,9 @@ const PRESET: Preset = {
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'gm' };
 const HERO = record('blk:hero', { set: 'party', order: 0 });
 const HERO_NAME = record('blk:hero', { name: 'Ada' });
-const HERO_LINK = record('link:token-hero', { s: 'hero' });
+const HERO_LINK = record('link:token-hero', { s: 'hero', c: 'token' });
 const SECRET = record('blk:secret', { note: 'GM only' });
-const SECRET_LINK = record('link:token-secret', { s: 'secret' });
+const SECRET_LINK = record('link:token-secret', { s: 'secret', c: 'token' });
 
 const GM_SYNC: SyncState = {
   state: 'live',

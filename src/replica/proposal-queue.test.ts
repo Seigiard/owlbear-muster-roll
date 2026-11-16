@@ -505,19 +505,23 @@ describe('strippedPatch', () => {
         sections: [
           {
             rows: [
-              [
-                { kind: 'field', type: 'number', id: 'str' },
-                { kind: 'field', type: 'check', id: 'str_tired' },
-              ],
+              {
+                cells: [
+                  { kind: 'field', type: 'number', id: 'str' },
+                  { kind: 'field', type: 'check', id: 'str_tired' },
+                ],
+              },
             ],
           },
           {
-            repeat: true,
+            repeat: { id: 'attack', nameField: 'attack' },
             rows: [
-              [
-                { kind: 'field', type: 'text', id: 'attack' },
-                { kind: 'field', type: 'number', id: 'bonus' },
-              ],
+              {
+                cells: [
+                  { kind: 'field', type: 'text', id: 'attack' },
+                  { kind: 'field', type: 'number', id: 'bonus' },
+                ],
+              },
             ],
           },
         ],

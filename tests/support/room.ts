@@ -217,7 +217,9 @@ export function materializedRecords(
 
   const singleRoots = preset.ok
     ? preset.value.templates.flatMap((template) =>
-        template.kind === 'single' ? [record(`blk:${template.id}`, { order: 0, cells: {} })] : [],
+        template.repeat === undefined
+          ? [record(`blk:${template.id}`, { order: 0, cells: {} })]
+          : [],
       )
     : [];
 

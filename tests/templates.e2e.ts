@@ -24,33 +24,33 @@ const D6_POOL = readFileSync(new URL('fixtures/presets/d6-pool.json', import.met
 
 // Two sheet sets between two single sheets, so each "+" has a neighbour on both sides.
 const TWO_SETS = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] }] }],
     },
     {
       id: 'inv',
-      kind: 'single',
       title: 'Инвентарь',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'gold' }]] }] }],
+      tabs: [
+        { sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'gold' }] }] }] },
+      ],
     },
     {
       id: 'ship',
-      kind: 'set',
       title: 'Корабли',
-      nameField: 'ship_name',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'ship_name' }]] }] }],
+      repeat: { nameField: 'ship_name' },
+      tabs: [
+        { sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'ship_name' }] }] }] },
+      ],
     },
     {
       id: 'log',
-      kind: 'single',
       title: 'Журнал',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'entry' }] }] }] }],
     },
   ],
 });

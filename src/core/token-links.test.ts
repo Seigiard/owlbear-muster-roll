@@ -21,39 +21,62 @@ import {
 
 // A two-row linkable repeat section: one repeat block spans both rows.
 const PET_SECTION: PresetSection = {
-  repeat: true,
-  tokens: true,
+  repeat: { id: 'pet', nameField: 'pet' },
+
   rows: [
-    [{ kind: 'field', type: 'text', id: 'pet' }],
-    [{ kind: 'field', type: 'number', id: 'pet_hp' }],
+    {
+      cells: [
+        { kind: 'field', type: 'text', id: 'pet' },
+        { kind: 'token', id: 'token' },
+      ],
+    },
+    { cells: [{ kind: 'field', type: 'number', id: 'pet_hp' }] },
   ],
 };
 
 const PC: Template = {
   id: 'pc',
-  kind: 'set',
+
   title: 'Персонажи',
-  nameField: 'name',
-  tokens: true,
+  repeat: { nameField: 'name' },
+
   tabs: [
     {
       title: 'Основное',
-      sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }],
+      sections: [
+        {
+          rows: [
+            {
+              cells: [
+                { kind: 'field', type: 'text', id: 'name' },
+                { kind: 'token', id: 'token' },
+              ],
+            },
+          ],
+        },
+      ],
     },
     { title: 'Заметки мастера', visibility: 'gm', sections: [PET_SECTION] },
   ],
 };
 
 const NPC_SECTION: PresetSection = {
-  repeat: true,
-  tokens: true,
-  rows: [[{ kind: 'field', type: 'text', id: 'npc_name' }]],
+  repeat: { id: 'npc_name', nameField: 'npc_name' },
+
+  rows: [
+    {
+      cells: [
+        { kind: 'field', type: 'text', id: 'npc_name' },
+        { kind: 'token', id: 'token' },
+      ],
+    },
+  ],
 };
 
 // Hidden, and only its repeat blocks are linkable.
 const NPC: Template = {
   id: 'npc',
-  kind: 'single',
+
   title: 'НПС',
   visibility: 'gm',
   tabs: [{ sections: [NPC_SECTION] }],
@@ -61,22 +84,46 @@ const NPC: Template = {
 
 const INVENTORY: Template = {
   id: 'inventory',
-  kind: 'single',
+
   title: 'Инвентарь',
   players: 'edit',
-  tokens: true,
-  tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'items' }]] }] }],
+
+  tabs: [
+    {
+      sections: [
+        {
+          rows: [
+            {
+              cells: [
+                { kind: 'field', type: 'text', id: 'items' },
+                { kind: 'token', id: 'token' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
 };
 
 // Nothing in it is linkable.
 const JOURNAL: Template = {
   id: 'journal',
-  kind: 'single',
+
   title: 'Журнал',
-  tabs: [{ sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'entry' }]] }] }],
+  tabs: [
+    {
+      sections: [
+        {
+          repeat: { id: 'entry', nameField: 'entry' },
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'entry' }] }],
+        },
+      ],
+    },
+  ],
 };
 
-const PRESET: Preset = { v: 3, templates: [PC, NPC, INVENTORY, JOURNAL] };
+const PRESET: Preset = { v: 4, templates: [PC, NPC, INVENTORY, JOURNAL] };
 
 describe('liveLinks', () => {
   test('maps each token to the live target its link names, two tokens to one sheet included', () => {
@@ -94,10 +141,18 @@ describe('liveLinks', () => {
     const links = liveLinks(records, PRESET);
     // #then
     expect([...links].map(([tokenId, live]) => [tokenId, live.target])).toEqual([
-      ['t1', { sheetId: 'brok', instanceId: null }],
-      ['t2', { sheetId: 'brok', instanceId: null }],
-      ['t3', { sheetId: 'npc', instanceId: 's1' }],
-      ['t4', { sheetId: 'inventory', instanceId: null }],
+      ['t1', { sheetId: 'brok', instanceId: null, path: null, cellId: 'token' }],
+      ['t2', { sheetId: 'brok', instanceId: null, path: null, cellId: 'token' }],
+      [
+        't3',
+        {
+          sheetId: 'npc',
+          instanceId: 's1',
+          path: ['npc_name', 's1'],
+          cellId: 'token',
+        },
+      ],
+      ['t4', { sheetId: 'inventory', instanceId: null, path: null, cellId: 'token' }],
     ]);
   });
   test('counts no link under a key whose token id no command could write', () => {
@@ -164,7 +219,7 @@ describe('linkedTargetKeys', () => {
     // #when
     const linked = linkedTargetKeys(records, PRESET);
     // #then
-    expect([...linked]).toEqual(['brok', 'brok:wolf']);
+    expect([...linked]).toEqual(['brok::token', 'brok:pet:wolf:token']);
   });
 });
 
@@ -447,13 +502,35 @@ describe('openTarget', () => {
   ]);
 
   test.each<[string, 'GM' | 'PLAYER', LinkTarget | null]>([
-    ['t-pc', 'GM', { sheetId: 'brok', instanceId: null }],
-    ['t-pc', 'PLAYER', { sheetId: 'brok', instanceId: null }],
-    ['t-hidden-block', 'GM', { sheetId: 'brok', instanceId: 'wolf' }],
+    ['t-pc', 'GM', { sheetId: 'brok', instanceId: null, path: null, cellId: 'token' }],
+    ['t-pc', 'PLAYER', { sheetId: 'brok', instanceId: null, path: null, cellId: 'token' }],
+    [
+      't-hidden-block',
+      'GM',
+      {
+        sheetId: 'brok',
+        instanceId: 'wolf',
+        path: ['pet', 'wolf'],
+        cellId: 'token',
+      },
+    ],
     ['t-hidden-block', 'PLAYER', null],
-    ['t-npc', 'GM', { sheetId: 'npc', instanceId: 's1' }],
+    [
+      't-npc',
+      'GM',
+      {
+        sheetId: 'npc',
+        instanceId: 's1',
+        path: ['npc_name', 's1'],
+        cellId: 'token',
+      },
+    ],
     ['t-npc', 'PLAYER', null],
-    ['t-inventory', 'PLAYER', { sheetId: 'inventory', instanceId: null }],
+    [
+      't-inventory',
+      'PLAYER',
+      { sheetId: 'inventory', instanceId: null, path: null, cellId: 'token' },
+    ],
     ['t-journal', 'GM', null],
     ['t-gone', 'GM', null],
     ['t-cleared', 'GM', null],
@@ -572,14 +649,25 @@ function block(
 }
 
 function link(tokenId: string, sheetId: string, instanceId?: string): VersionedRecord {
+  const sectionId = sheetId === 'npc' ? 'npc_name' : sheetId === 'journal' ? 'entry' : 'pet';
+
   return record(
     `link:${tokenId}`,
-    instanceId === undefined ? { s: sheetId } : { s: sheetId, i: instanceId },
+    instanceId === undefined
+      ? { s: sheetId, c: 'token' }
+      : { s: sheetId, path: [sectionId, instanceId], c: 'token' },
   );
 }
 
 function sheetTarget(sheetId: string, sheetName: string, linked: boolean) {
-  return { target: { sheetId, instanceId: null }, sheetName, blockName: null, linked };
+  return {
+    target: { sheetId, instanceId: null, cellId: 'token' },
+    cellId: 'token',
+    sheetName,
+    blockName: null,
+    label: sheetName || 'Персонажи',
+    linked,
+  };
 }
 
 function blockTarget(
@@ -589,7 +677,21 @@ function blockTarget(
   blockName: string,
   linked: boolean,
 ) {
-  return { target: { sheetId, instanceId }, sheetName, blockName, linked };
+  const sectionId = sheetId === 'npc' ? 'npc_name' : 'pet';
+
+  return {
+    target: {
+      sheetId,
+      instanceId,
+      path: [sectionId, instanceId],
+      cellId: 'token',
+    },
+    cellId: 'token',
+    sheetName,
+    blockName,
+    label: blockName || sheetName || (sheetId === 'npc' ? 'НПС' : 'Персонажи'),
+    linked,
+  };
 }
 
 function byKey(records: readonly VersionedRecord[]): Map<string, VersionedRecord> {

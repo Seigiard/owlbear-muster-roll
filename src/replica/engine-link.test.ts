@@ -33,44 +33,54 @@ const MENU_COPY = {
 // "pc" links whole sheets and has a repeat section a token cannot link to. "npc" links only its
 // repeat blocks.
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
+      repeat: { nameField: 'name' },
+
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [{ kind: 'field', type: 'number', id: 'str' }],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'number', id: 'str' }] },
               ],
             },
-            { repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'item' }]] },
+            {
+              repeat: { id: 'item', nameField: 'item' },
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'item' }] }],
+            },
           ],
         },
       ],
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
         {
           sections: [
             {
-              repeat: true,
-              tokens: true,
+              repeat: { id: 'mob', nameField: 'mob' },
+
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'mob' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'mob' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
               ],
             },
           ],
@@ -157,10 +167,22 @@ describe('link-set', () => {
     const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
     // #when
-    send(client, { type: 'link-set', tokenId: 't1', sheetId: 'brok', instanceId: null });
+    send(client, {
+      type: 'link-set',
+      tokenId: 't1',
+      sheetId: 'brok',
+      cellId: 'token',
+    });
     await waitUntil(() => committed(room, 'gm-a').length === 1);
+
     // #then
-    const expected: VersionedRecord = { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'gm-a' };
+    const expected: VersionedRecord = {
+      k: 'link:t1',
+      d: { s: 'brok', c: 'token' },
+      c: 1,
+      a: 'gm-a',
+    };
+
     expect({
       shown: shown(client, 'link:t1'),
       stored: storedRecord(client, 'link:t1'),
@@ -172,18 +194,29 @@ describe('link-set', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 3, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 3, a: 'seed' }],
     });
 
     // #when
-    send(client, { type: 'link-set', tokenId: 't2', sheetId: 'brok', instanceId: null });
-    send(client, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
+    send(client, { type: 'link-set', tokenId: 't2', sheetId: 'brok', cellId: 'token' });
+    send(client, {
+      type: 'link-set',
+      tokenId: 't1',
+      sheetId: 'npc',
+      path: ['mob', 'sk1'],
+      cellId: 'token',
+    });
     await waitUntil(() => shown(client, 'link:t1')?.c === 4);
     await waitUntil(() => shown(client, 'link:t2') !== undefined);
     // #then
     expect([shown(client, 'link:t1'), shown(client, 'link:t2')]).toEqual([
-      { k: 'link:t1', d: { s: 'npc', i: 'sk1' }, c: 4, a: 'gm-a' },
-      { k: 'link:t2', d: { s: 'brok' }, c: 1, a: 'gm-a' },
+      {
+        k: 'link:t1',
+        d: { s: 'npc', path: ['mob', 'sk1'], c: 'token' },
+        c: 4,
+        a: 'gm-a',
+      },
+      { k: 'link:t2', d: { s: 'brok', c: 'token' }, c: 1, a: 'gm-a' },
     ]);
   });
   test('writes a link to a repeat block of a linkable section with the sheet and instance ids', async () => {
@@ -191,33 +224,59 @@ describe('link-set', () => {
     const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a');
     // #when
-    send(client, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
+    send(client, {
+      type: 'link-set',
+      tokenId: 't1',
+      sheetId: 'npc',
+      path: ['mob', 'sk1'],
+      cellId: 'token',
+    });
     await waitUntil(() => committed(room, 'gm-a').length === 1);
+
     // #then
-    const expected: VersionedRecord = { k: 'link:t1', d: { s: 'npc', i: 'sk1' }, c: 1, a: 'gm-a' };
+    const expected: VersionedRecord = {
+      k: 'link:t1',
+      d: { s: 'npc', path: ['mob', 'sk1'], c: 'token' },
+      c: 1,
+      a: 'gm-a',
+    };
+
     expect({ stored: storedRecord(client, 'link:t1'), sent: committed(room, 'gm-a') }).toEqual({
       stored: expected,
       sent: [expected],
     });
   });
 
-  for (const [sheetId, instanceId, reason] of [
-    ['liza', null, 'deleted-sheet'],
-    ['nobody', null, 'unknown-sheet'],
-    ['bad:id', null, 'invalid-sheet-id'],
+  for (const [sheetId, path, reason] of [
+    ['liza', undefined, 'deleted-sheet'],
+    ['nobody', undefined, 'unknown-sheet'],
+    ['bad:id', undefined, 'invalid-sheet-id'],
     // AD-19: "npc" has no `tokens`, and the section of "Меч" has none either.
-    ['npc', null, 'not-linkable'],
-    ['brok', 'sword', 'not-linkable'],
-    ['npc', 'gone', 'unknown-instance'],
-    ['npc', 'nobody', 'unknown-instance'],
-    ['npc', 'a:b', 'invalid-instance-id'],
+    ['npc', undefined, 'not-linkable'],
+    ['brok', ['item', 'sword'], 'not-linkable'],
+    ['npc', ['mob', 'gone'], 'unknown-instance'],
+    ['npc', ['mob', 'nobody'], 'unknown-instance'],
+    ['npc', ['mob', 'a:b'], 'invalid-instance-id'],
   ] as const) {
-    test(`refuses a link to "${sheetId}" block ${JSON.stringify(instanceId)} with "${reason}" and writes nothing`, async () => {
+    test(`refuses a link to "${sheetId}" path ${JSON.stringify(path)} with "${reason}" and writes nothing`, async () => {
       // #given
       const room = roomRig.openRoom();
       const client = await startClient(room, 'gm-a');
+
       // #when
-      const id = send(client, { type: 'link-set', tokenId: 't1', sheetId, instanceId });
+      const command: Extract<Command, { type: 'link-set' }> = {
+        type: 'link-set',
+        tokenId: 't1',
+        sheetId,
+        cellId: 'token',
+      };
+
+      if (path !== undefined) {
+        command.path = [...path];
+      }
+
+      const id = send(client, command);
+
       await waitUntil(() => rejection(client, id) !== undefined);
       // #then
       expect({
@@ -238,7 +297,7 @@ describe('link-set', () => {
       type: 'link-set',
       tokenId: 'a:b',
       sheetId: 'brok',
-      instanceId: null,
+      cellId: 'token',
     });
 
     await waitUntil(() => rejection(client, id) !== undefined);
@@ -249,8 +308,15 @@ describe('link-set', () => {
     // #given
     const room = roomRig.openRoom();
     const client = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
+
     // #when
-    const id = send(client, { type: 'link-set', tokenId: 't1', sheetId: 'brok', instanceId: null });
+    const id = send(client, {
+      type: 'link-set',
+      tokenId: 't1',
+      sheetId: 'brok',
+      cellId: 'token',
+    });
+
     await waitUntil(() => rejection(client, id) !== undefined);
     // #then
     expect(rejection(client, id)).toBe('not-allowed');
@@ -263,7 +329,7 @@ describe('link-clear', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 2, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 2, a: 'seed' }],
     });
 
     // #when
@@ -311,9 +377,19 @@ describe('a repeat block removal', () => {
     const client = await startClient(room, 'gm-a', {
       seeded: [
         ...BASE,
-        { k: 'link:t1', d: { s: 'npc', i: 'sk1' }, c: 2, a: 'seed' },
-        { k: 'link:t2', d: { s: 'npc', i: 'sk1' }, c: 1, a: 'seed' },
-        { k: 'link:t3', d: { s: 'brok' }, c: 1, a: 'seed' },
+        {
+          k: 'link:t1',
+          d: { s: 'npc', path: ['mob', 'sk1'], c: 'token' },
+          c: 2,
+          a: 'seed',
+        },
+        {
+          k: 'link:t2',
+          d: { s: 'npc', path: ['mob', 'sk1'], c: 'token' },
+          c: 1,
+          a: 'seed',
+        },
+        { k: 'link:t3', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' },
       ],
     });
 
@@ -338,7 +414,7 @@ describe('a repeat block removal', () => {
           { k: 'link:t2', d: null, c: 2, a: 'gm-a' },
         ],
       ],
-      kept: { k: 'link:t3', d: { s: 'brok' }, c: 1, a: 'seed' },
+      kept: { k: 'link:t3', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' },
       menu: [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM],
     });
   });
@@ -361,7 +437,7 @@ describe('token menu', () => {
 
     // #when
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' }],
     });
 
     // #then
@@ -427,7 +503,7 @@ describe('token menu', () => {
 
     // #when
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'liza' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'liza', c: 'token' }, c: 1, a: 'seed' }],
     });
 
     // #then
@@ -441,7 +517,13 @@ describe('token menu', () => {
     const client = await startClient(room, 'gm-a');
     const before = client.platform.contextMenuCalls().length;
     // #when
-    send(client, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
+    send(client, {
+      type: 'link-set',
+      tokenId: 't1',
+      sheetId: 'npc',
+      path: ['mob', 'sk1'],
+      cellId: 'token',
+    });
     await waitUntil(() => client.platform.contextMenuCalls().length === before + 3);
     // #then
     expect(client.platform.contextMenuCalls().slice(before)).toEqual([
@@ -455,7 +537,7 @@ describe('token menu', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' }],
     });
 
     const before = client.platform.contextMenuCalls();
@@ -483,7 +565,7 @@ describe('token menu', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' }],
     });
 
     // #when
@@ -501,7 +583,7 @@ describe('token menu', () => {
     const client = await startClient(room, 'gm-a');
     const other = await startClient(room, 'gm-b');
     // #when
-    send(other, { type: 'link-set', tokenId: 't9', sheetId: 'brok', instanceId: null });
+    send(other, { type: 'link-set', tokenId: 't9', sheetId: 'brok', cellId: 'token' });
     await waitUntil(() => menuOf(client).length === 3);
     // #then
     expect(menuOf(client).map((item) => item.icons[0]?.filter)).toEqual([
@@ -540,7 +622,7 @@ describe('token menu', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' }],
     });
 
     await waitUntil(() => menuOf(client).length === 3);
@@ -564,7 +646,7 @@ describe('token menu', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' }],
       timing: { catchUpTimeoutMs: 300 },
     });
 
@@ -619,7 +701,7 @@ describe('token menu', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' }],
     });
 
     // #when
@@ -636,7 +718,7 @@ describe('token menu', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' }],
     });
 
     // #when
@@ -651,7 +733,7 @@ describe('token menu', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' }],
     });
 
     await waitUntil(() => menuOf(client).length === 3);
@@ -697,7 +779,7 @@ describe('token menu', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' }],
     });
 
     await waitUntil(() => menuOf(client).length === 3);
@@ -724,7 +806,7 @@ describe('token menu', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' }],
     });
 
     await waitUntil(() => menuOf(client).length === 3);
@@ -755,7 +837,7 @@ describe('token menu', () => {
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
-      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' }],
     });
 
     // #when
@@ -769,7 +851,12 @@ describe('token menu', () => {
       link: storedRecord(client, 'link:t1')?.d,
       actionOpens: client.platform.actionOpens(),
       openRequest: client.store.$openRequest.get(),
-    }).toEqual({ popovers: [], link: { s: 'brok' }, actionOpens: 0, openRequest: null });
+    }).toEqual({
+      popovers: [],
+      link: { s: 'brok', c: 'token' },
+      actionOpens: 0,
+      openRequest: null,
+    });
   });
 });
 

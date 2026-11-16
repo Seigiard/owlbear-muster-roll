@@ -1,160 +1,184 @@
 {
-  "v": 3,
+  "v": 4,
   "templates": [
     {
       "id": "pc",
-      "kind": "set",
       "title": "Экипаж",
-      "nameField": "name",
-      "tokens": true,
       "tabs": [
         {
           "sections": [
             {
               "title": "Характеристики",
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "Имя"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "name"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "СИЛ"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "str"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "ЛОВ"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "dex"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "ИНТ"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "int"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Имя"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "name"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "СИЛ"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "str"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "ЛОВ"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "dex"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "ИНТ"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "int"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "token",
+                      "id": "token"
+                    }
+                  ]
+                }
               ]
             },
             {
               "title": "Навыки",
               "columns": 3,
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "Стрельба"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "gun"
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "2D6 + gun >= 8"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Пилот"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "pilot"
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "2D6 + pilot >= 8"
-                  }
-                ],
-                [
-                  {
-                    "kind": "dice",
-                    "formula": "2D6"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Стрельба"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "gun"
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "2D6 + gun >= 8"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Пилот"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "pilot"
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "2D6 + pilot >= 8"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "dice",
+                      "formula": "2D6"
+                    }
+                  ]
+                }
               ]
             },
             {
               "title": "Состояние",
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "Ранен"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "wounded"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Заметки"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "notes"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Ранен"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "wounded"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Заметки"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "notes"
+                    }
+                  ]
+                }
               ]
             },
             {
               "title": "Снаряжение",
-              "repeat": true,
+              "repeat": {
+                "id": "item",
+                "nameField": "item"
+              },
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "Вещь"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "item"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Масса"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "mass"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Вещь"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "item"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Масса"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "mass"
+                    }
+                  ]
+                }
               ]
             }
           ]
         }
-      ]
+      ],
+      "repeat": {
+        "nameField": "name"
+      }
     },
     {
       "id": "npc",
-      "kind": "single",
       "title": "NPC",
       "visibility": "gm",
       "tabs": [
@@ -163,44 +187,58 @@
             {
               "title": "Противники",
               "columns": 4,
-              "repeat": true,
-              "tokens": true,
+              "repeat": {
+                "id": "npc_name",
+                "nameField": "npc_name"
+              },
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "Имя"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "npc_name"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Навык"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "skill"
-                  }
-                ],
-                [
-                  {
-                    "kind": "text",
-                    "text": "Ранен"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "check",
-                    "id": "wounded"
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "2D6 >= skill"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Имя"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "npc_name"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Навык"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "skill"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Ранен"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "check",
+                      "id": "wounded"
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "2D6 >= skill"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "token",
+                      "id": "token"
+                    }
+                  ]
+                }
               ]
             }
           ]
@@ -209,37 +247,48 @@
     },
     {
       "id": "inventory",
-      "kind": "single",
       "title": "Инвентарь",
       "players": "edit",
-      "tokens": true,
       "tabs": [
         {
           "sections": [
             {
               "title": "Груз",
-              "repeat": true,
+              "repeat": {
+                "id": "cargo",
+                "nameField": "cargo"
+              },
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "Вещь"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "cargo"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Масса"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "mass"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Вещь"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "cargo"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Масса"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "mass"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "token",
+                      "id": "token"
+                    }
+                  ]
+                }
               ]
             }
           ]
@@ -248,7 +297,6 @@
     },
     {
       "id": "spells",
-      "kind": "single",
       "title": "Список заклинаний",
       "tabs": [
         {
@@ -256,35 +304,42 @@
             {
               "title": "Заклинания",
               "columns": 3,
-              "repeat": true,
+              "repeat": {
+                "id": "spell",
+                "nameField": "spell"
+              },
               "rows": [
-                [
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "spell"
-                  },
-                  {
-                    "kind": "text",
-                    "text": "Сложность"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "difficulty"
-                  }
-                ],
-                [
-                  {
-                    "kind": "field",
-                    "type": "text",
-                    "id": "effect"
-                  },
-                  {
-                    "kind": "dice",
-                    "formula": "2D6 >= difficulty"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "spell"
+                    },
+                    {
+                      "kind": "text",
+                      "text": "Сложность"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "difficulty"
+                    }
+                  ]
+                },
+                {
+                  "cells": [
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "effect"
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "2D6 >= difficulty"
+                    }
+                  ]
+                }
               ]
             }
           ]

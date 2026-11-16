@@ -29,24 +29,26 @@ const ROW_NAME = { kind: 'row', rowId: 'name' } as const;
 
 // A sheet set with a name row, a plain row with a number and a check, and a text row of its own.
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'str_tired' },
-                ],
-                [{ kind: 'field', type: 'text', id: 'notes' }],
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'str_tired' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'text', id: 'notes' }] },
               ],
             },
           ],
@@ -55,10 +57,10 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPC',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
   ],
 };

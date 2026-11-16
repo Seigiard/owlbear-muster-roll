@@ -11,7 +11,6 @@ function previewTemplate(uid: string, tabCount = 3): PreviewNavigationTemplate {
     templates: [
       {
         id: 'preview',
-        kind: 'single',
         title: 'Preview',
         tabs: Array.from({ length: tabCount }, () => ({ sections: [] })),
       },

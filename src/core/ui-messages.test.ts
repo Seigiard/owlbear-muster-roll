@@ -146,10 +146,19 @@ describe('parseWindowMessage', () => {
         count: 0.5,
       },
     ],
-    ['a link-set to a sheet', { type: 'link-set', tokenId: 't1', sheetId: 's1', instanceId: null }],
+    [
+      'a link-set to a sheet',
+      { type: 'link-set', tokenId: 't1', sheetId: 's1', cellId: 'portrait' },
+    ],
     [
       'a link-set to a repeat block',
-      { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'i1' },
+      {
+        type: 'link-set',
+        tokenId: 't1',
+        sheetId: 'npc',
+        path: ['npc_name', 'i1'],
+        cellId: 'portrait',
+      },
     ],
     ['a wipe', { type: 'wipe' }],
   ])('accepts %s command', (_name, command) => {
@@ -471,8 +480,14 @@ describe('parseEngineMessage', () => {
   test('accepts an open-sheet request for a sheet and for a repeat block of it', () => {
     // #given
     const messages: EngineMessage[] = [
-      { t: 'open-sheet', id: 'o1', sheetId: 'brok', instanceId: null },
-      { t: 'open-sheet', id: 'o2', sheetId: 'npc', instanceId: 'i1' },
+      { t: 'open-sheet', id: 'o1', sheetId: 'brok', cellId: 'portrait' },
+      {
+        t: 'open-sheet',
+        id: 'o2',
+        sheetId: 'npc',
+        path: ['npc_name', 'i1'],
+        cellId: 'portrait',
+      },
     ];
 
     // #when
@@ -481,10 +496,14 @@ describe('parseEngineMessage', () => {
     expect(parsed).toEqual(messages.map((value) => ({ ok: true, value })));
   });
   test.each<[string, JsonValue]>([
-    ['no sheet', { t: 'open-sheet', id: 'o1', instanceId: null }],
-    ['an empty sheet id', { t: 'open-sheet', id: 'o1', sheetId: '', instanceId: null }],
-    ['no instanceId', { t: 'open-sheet', id: 'o1', sheetId: 'brok' }],
-    ['an empty instance id', { t: 'open-sheet', id: 'o1', sheetId: 'npc', instanceId: '' }],
+    ['no sheet', { t: 'open-sheet', id: 'o1', cellId: 'portrait' }],
+    ['an empty sheet id', { t: 'open-sheet', id: 'o1', sheetId: '', cellId: 'portrait' }],
+    ['no cell id', { t: 'open-sheet', id: 'o1', sheetId: 'brok' }],
+    ['an empty cell id', { t: 'open-sheet', id: 'o1', sheetId: 'npc', cellId: '' }],
+    [
+      'a one-segment repeat path',
+      { t: 'open-sheet', id: 'o1', sheetId: 'npc', path: ['npc_name'], cellId: 'portrait' },
+    ],
   ])('refuses an open-sheet request with %s', (_name, message) => {
     // #when
     const parsed = parseEngineMessage(message);
@@ -558,15 +577,22 @@ describe('parseEngineMessage', () => {
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
 
-  const PROJECTION: EngineMessage = {
+  const PROJECTION = {
     t: 'projection',
     nonce: 'n1',
     engine: 'e1',
     seq: 4,
     i: 1,
     n: 2,
-    records: [{ k: 'link:t', d: { s: 's' }, c: 1, a: 'conn' }],
-    pending: [{ k: 'link:u', d: { s: 's', i: 'i1' }, c: 2, a: 'conn' }],
+    records: [{ k: 'link:t', d: { s: 's', c: 'token' }, c: 1, a: 'conn' }],
+    pending: [
+      {
+        k: 'link:u',
+        d: { s: 's', path: ['npc_name', 'i1'], c: 'token' },
+        c: 2,
+        a: 'conn',
+      },
+    ],
     notices: ['local-save-failed'],
     sync: {
       state: 'catching-up',
@@ -577,7 +603,7 @@ describe('parseEngineMessage', () => {
     },
     roomCopy: NO_COPY,
     party: [],
-  };
+  } satisfies EngineMessage;
 
   test('accepts a projection part', () => {
     // #when

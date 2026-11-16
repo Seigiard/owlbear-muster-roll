@@ -32,28 +32,31 @@ const PLAYER: ClientParams = {
 };
 
 const TABBED_PRESET = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Основное',
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Заметка' },
-                  { kind: 'field', type: 'text', id: 'note' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Заметка' },
+                    { kind: 'field', type: 'text', id: 'note' },
+                  ],
+                },
               ],
             },
           ],
@@ -63,9 +66,15 @@ const TABBED_PRESET = JSON.stringify({
           sections: [
             {
               title: 'Питомцы',
-              repeat: true,
-              tokens: true,
-              rows: [[{ kind: 'field', type: 'text', id: 'pet' }]],
+              repeat: { id: 'pet', nameField: 'pet' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'pet' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
             },
           ],
         },
@@ -463,7 +472,7 @@ test('map selection marks the sidebar entry and its tab without switching either
     [
       ...pcSheet('brok', 'Брок', 0),
       repRecord('brok', 'pet', 'wolf', 0, { pet: 'Волк' }),
-      record('link:t-wolf', { s: 'brok', i: 'wolf' }),
+      record('link:t-wolf', { s: 'brok', path: ['pet', 'wolf'], c: 'token' }),
     ],
     TABBED_PRESET,
   );
@@ -500,7 +509,7 @@ function draftSheets(): StoredRecord[] {
     record('blk:sheet-a', { note: 'Сохранено А' }),
     ...pcSheet('sheet-b', 'Лист Б', 1),
     record('blk:sheet-b', { note: 'Сохранено Б' }),
-    record('link:token-b', { s: 'sheet-b' }),
+    record('link:token-b', { s: 'sheet-b', c: 'token' }),
   ];
 }
 

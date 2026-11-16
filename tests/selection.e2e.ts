@@ -27,12 +27,12 @@ const ROOM: readonly StoredRecord[] = [
   ...pcSheet('pc2', 'Вера', 2),
   npcBlock('n1', 'Скелет 1', 0),
   npcBlock('n2', 'Скелет 2', 1),
-  record('link:t-anya', { s: 'pc0' }),
-  record('link:t-anya-far', { s: 'pc0' }),
-  record('link:t-brok', { s: 'pc1' }),
-  record('link:t-vera-far', { s: 'pc2' }),
-  record('link:t-s1', { s: 'npc', i: 'n1' }),
-  record('link:t-s2', { s: 'npc', i: 'n2' }),
+  record('link:t-anya', { s: 'pc0', c: 'token' }),
+  record('link:t-anya-far', { s: 'pc0', c: 'token' }),
+  record('link:t-brok', { s: 'pc1', c: 'token' }),
+  record('link:t-vera-far', { s: 'pc2', c: 'token' }),
+  record('link:t-s1', { s: 'npc', path: ['npc_name', 'n1'], c: 'token' }),
+  record('link:t-s2', { s: 'npc', path: ['npc_name', 'n2'], c: 'token' }),
 ];
 
 const SCENE = ['t-anya', 't-brok', 't-s1', 't-s2', 'tree'];

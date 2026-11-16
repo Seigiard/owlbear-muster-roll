@@ -15,14 +15,14 @@ import {
 import { builderProblems, downloadText, problemReason } from './problems';
 
 const VALID: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Экипаж',
-      nameField: 'name',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] }] }],
     },
   ],
 };
@@ -42,23 +42,25 @@ describe('builderProblems', () => {
       templates: [
         {
           id: 'pc',
-          kind: 'set',
+
           title: 'Экипаж',
-          nameField: 'name',
+          repeat: { nameField: 'name' },
           tabs: [
             {
               sections: [
                 {
                   columns: 1,
                   rows: [
-                    [
-                      { kind: 'field', type: 'text', id: 'name' },
-                      { kind: 'field', type: 'number', id: 'name' },
-                    ],
-                    [{ kind: 'dice', formula: '1d20+' }],
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'name' },
+                        { kind: 'field', type: 'number', id: 'name' },
+                      ],
+                    },
+                    { cells: [{ kind: 'dice', formula: '1d20+' }] },
                   ],
                 },
-                { repeat: true, rows: [] },
+                { repeat: { id: 'name', nameField: 'name' }, rows: [] },
               ],
             },
           ],
@@ -75,7 +77,10 @@ describe('builderProblems', () => {
       { uid: at(0, 0, 0, 0), failure: { code: 'row-too-wide' } },
       { uid: at(0, 0, 0, 0, 1), failure: { code: 'duplicate-id', detail: 'name' } },
       { uid: at(0, 0, 0, 1, 0), failure: { code: 'bad-formula', detail: '1d20+' } },
-      { uid: at(0, 0, 1), failure: { code: 'bad-repeat' } },
+      {
+        uid: at(0, 0, 1),
+        failure: { code: 'bad-name-field', detail: 'name', field: 'name' },
+      },
     ]);
     expect(downloadText(document)).toBeNull();
   });
@@ -85,10 +90,10 @@ describe('builderProblems', () => {
       templates: [
         {
           id: 'pc',
-          kind: 'set',
+
           title: 'Экипаж',
-          nameField: 'nope',
-          tabs: [{ sections: [{ rows: [[{ kind: 'dice', formula: '(' }]] }] }],
+          repeat: { nameField: 'nope' },
+          tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'dice', formula: '(' }] }] }] }],
         },
       ],
     });
@@ -107,7 +112,7 @@ describe('builderProblems', () => {
       templates: [
         {
           id: 'pc',
-          kind: 'single',
+
           title: 'x'.repeat(PRESET_FILE_BYTE_LIMIT),
           tabs: [{ sections: [{ rows: [] }] }],
         },

@@ -7,7 +7,7 @@ import { err } from '@/core/result';
 import {
   encodePreset,
   type Preset,
-  type PresetCell,
+  type PresetRow,
   type PresetSection,
   type Template,
 } from '@/core/preset';
@@ -37,35 +37,42 @@ import {
 const GENERATION = { n: 0, a: '' };
 const DENIED = 'Нет прав на правку';
 const PLAYER_ID = 'player-a';
-const NAME_ROW: PresetCell[] = [{ kind: 'field', type: 'text', id: 'name' }];
+
+const NAME_ROW: PresetRow = {
+  cells: [{ kind: 'field', type: 'text', id: 'name' }],
+};
 
 const ITEMS: PresetSection = {
-  repeat: true,
+  repeat: { id: 'item', nameField: 'item' },
   rows: [
-    [
-      { kind: 'field', type: 'text', id: 'item' },
-      { kind: 'field', type: 'number', id: 'qty' },
-    ],
+    {
+      cells: [
+        { kind: 'field', type: 'text', id: 'item' },
+        { kind: 'field', type: 'number', id: 'qty' },
+      ],
+    },
   ],
 };
 
 // A GM-only single sheet whose repeat blocks a token can link to.
 const NPC: Template = {
   id: 'npc',
-  kind: 'single',
   title: 'NPC',
   visibility: 'gm',
   tabs: [
     {
       sections: [
         {
-          repeat: true,
-          tokens: true,
+          repeat: { id: 'mob', nameField: 'mob' },
+
           rows: [
-            [
-              { kind: 'field', type: 'text', id: 'mob' },
-              { kind: 'field', type: 'number', id: 'hp' },
-            ],
+            {
+              cells: [
+                { kind: 'field', type: 'text', id: 'mob' },
+                { kind: 'field', type: 'number', id: 'hp' },
+                { kind: 'token', id: 'token' },
+              ],
+            },
           ],
         },
       ],
@@ -74,20 +81,22 @@ const NPC: Template = {
 };
 
 function pcTemplate(sections: PresetSection[]): Template {
-  return { id: 'pc', kind: 'set', title: 'Персонажи', nameField: 'name', tabs: [{ sections }] };
+  return { id: 'pc', title: 'Персонажи', repeat: { nameField: 'name' }, tabs: [{ sections }] };
 }
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     pcTemplate([
       {
         rows: [
           NAME_ROW,
-          [
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'text', id: 'note' },
-          ],
+          {
+            cells: [
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'text', id: 'note' },
+            ],
+          },
         ],
       },
       ITEMS,
@@ -96,28 +105,32 @@ const PRESET: Preset = {
   ],
 };
 
-// The row of `str` is named by `note` now, and the repeat section by `label`, which replaces
-// `item`.
+// The row of `str` is named by `note` now. The repeat section id changes from `item` to `label`,
+// so its old blocks are removed rather than relocated.
 const MOVED: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     pcTemplate([
       {
         rows: [
           NAME_ROW,
-          [
-            { kind: 'field', type: 'text', id: 'note' },
-            { kind: 'field', type: 'number', id: 'str' },
-          ],
+          {
+            cells: [
+              { kind: 'field', type: 'text', id: 'note' },
+              { kind: 'field', type: 'number', id: 'str' },
+            ],
+          },
         ],
       },
       {
-        repeat: true,
+        repeat: { id: 'label', nameField: 'label' },
         rows: [
-          [
-            { kind: 'field', type: 'text', id: 'label' },
-            { kind: 'field', type: 'number', id: 'qty' },
-          ],
+          {
+            cells: [
+              { kind: 'field', type: 'text', id: 'label' },
+              { kind: 'field', type: 'number', id: 'qty' },
+            ],
+          },
         ],
       },
     ]),
@@ -127,17 +140,19 @@ const MOVED: Preset = {
 
 // Only a label is new, so nothing moves or goes.
 const RELABELLED: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     pcTemplate([
       {
         title: 'Сила',
         rows: [
           NAME_ROW,
-          [
-            { kind: 'field', type: 'number', id: 'str' },
-            { kind: 'field', type: 'text', id: 'note' },
-          ],
+          {
+            cells: [
+              { kind: 'field', type: 'number', id: 'str' },
+              { kind: 'field', type: 'text', id: 'note' },
+            ],
+          },
         ],
       },
       ITEMS,
@@ -148,26 +163,35 @@ const RELABELLED: Preset = {
 
 // `note` goes from the row of `str`.
 const NO_NOTE: Preset = {
-  v: 3,
+  v: 4,
   templates: [
-    pcTemplate([{ rows: [NAME_ROW, [{ kind: 'field', type: 'number', id: 'str' }]] }, ITEMS]),
+    pcTemplate([
+      { rows: [NAME_ROW, { cells: [{ kind: 'field', type: 'number', id: 'str' }] }] },
+      ITEMS,
+    ]),
     NPC,
   ],
 };
 
 // The sheet set goes, with every sheet of it.
-const NO_PC: Preset = { v: 3, templates: [NPC] };
+const NO_PC: Preset = { v: 4, templates: [NPC] };
 
 // The NPC repeat section is no longer linkable.
 const NO_TOKENS: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     PRESET.templates[0] ?? NPC,
     {
       ...NPC,
       tabs: NPC.tabs.map((tab) => ({
         ...tab,
-        sections: tab.sections.map(({ tokens: _tokens, ...section }) => section),
+        sections: tab.sections.map((section) => ({
+          ...section,
+          rows: section.rows.map((row) => ({
+            ...row,
+            cells: row.cells.filter((cell) => cell.kind !== 'token'),
+          })),
+        })),
       })),
     },
   ],
@@ -261,7 +285,7 @@ describe('a preset diff', () => {
     // #given: a preset a newer build wrote.
     const newer: VersionedRecord = {
       k: 'preset',
-      d: deflateToBase64(JSON.stringify({ ...PRESET, v: 4 })),
+      d: deflateToBase64(JSON.stringify({ ...PRESET, v: 5 })),
       c: 1,
       a: 'seed',
     };
@@ -311,21 +335,14 @@ describe('a preset upload', () => {
       generations: heardOf(room, 'gm-a', 'commit').map((data) => Object(data).g),
       writes: gm.writes.slice(writesBefore),
       note: storedRecord(gm, 'blk:brok')?.d,
-      label: storedRecord(gm, 'blk:brok:label:r1')?.d,
       gone: [storedRecord(gm, STR_ROW.k)?.d, storedRecord(gm, SWORD.k)?.d],
     }).toEqual({
       result: { count: 1, sheets: 0 },
-      commits: [['blk:brok:label:r1', 'blk:npc'], ['preset'], ['blk:brok:item:r1']],
+      commits: [['blk:npc'], ['preset'], ['blk:brok:item:r1']],
       // AD-14: the generation does not change, so the storage keys keep theirs too.
       generations: [GENERATION, GENERATION, GENERATION],
-      writes: [
-        storageKey('blk:brok:label:r1'),
-        storageKey('blk:npc'),
-        storageKey('preset'),
-        storageKey('blk:brok:item:r1'),
-      ],
+      writes: [storageKey('blk:npc'), storageKey('preset'), storageKey('blk:brok:item:r1')],
       note: { set: 'pc', order: 0, cells: { str: [10, 2, 'seed'] } },
-      label: { order: 0, cells: {} },
       gone: [{ set: 'pc', order: 0, cells: { str: [10, 2, 'seed'] } }, null],
     });
   });
@@ -399,7 +416,7 @@ describe('a preset upload', () => {
     const gm = await startClient(room, 'gm-a');
     const setItem = gm.platform.storage.setItem;
     spyOn(gm.platform.storage, 'setItem').mockImplementation((key, value) =>
-      key === storageKey('blk:brok:label:r1')
+      key === storageKey('blk:npc')
         ? err({ operation: 'write', reason: 'quota' })
         : setItem(key, value),
     );
@@ -584,7 +601,16 @@ describe('a preset upload that removes a template', () => {
     };
 
     const gm = await startClient(room, 'gm-a', {
-      seeded: [...BASE, block, { k: 'link:t1', d: { s: 'npc', i: 'm1' }, c: 1, a: 'seed' }],
+      seeded: [
+        ...BASE,
+        block,
+        {
+          k: 'link:t1',
+          d: { s: 'npc', path: ['mob', 'm1'], c: 'token' },
+          c: 1,
+          a: 'seed',
+        },
+      ],
     });
 
     // #when
@@ -757,33 +783,6 @@ describe("a player's pending edit when the preset changes", () => {
       pending: ['blk:brok'],
       notifications: [],
     });
-  });
-  test('of a repeat block removal: follows the block to its new section', async () => {
-    // #given
-    const { room, player } = await playerWithSilentGm();
-    send(player, {
-      type: 'repeat-block-delete',
-      sheetId: 'brok',
-      sectionId: 'item',
-      instanceId: 'r1',
-    });
-    await waitUntil(() => proposals(room).length === 1);
-    // #when
-    answer(
-      room,
-      commit([
-        { k: 'blk:brok:label:r1', d: { order: 0, cells: {} }, c: 1, a: 'gm-a', l: [1, 'seed'] },
-      ]),
-    );
-    answer(room, commit([{ k: 'preset', d: encodePreset(MOVED), c: 2, a: 'gm-a' }]));
-    answer(room, commit([fixturePatch(SWORD, null, 2, 'gm-a')]));
-    await waitUntil(() => proposals(room).length === 2);
-    // #then
-    expect({
-      newest: proposals(room)[1]?.k,
-      data: proposals(room)[1]?.d,
-      notifications: player.platform.shownNotifications(),
-    }).toEqual({ newest: 'blk:brok:label:r1', data: null, notifications: [] });
   });
   test('does not show the denied notification from a GM it reached', async () => {
     // #given: a live GM that commits the upload.

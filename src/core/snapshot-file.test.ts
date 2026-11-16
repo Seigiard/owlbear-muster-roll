@@ -15,33 +15,42 @@ import {
 // A linkable sheet set `pc`, a single sheet `npc` with a linkable repeat section, and a single
 // sheet `notes` with no token link.
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
+      repeat: { nameField: 'name' },
+
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'str_tired' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'str_tired' },
+                  ],
+                },
               ],
             },
             {
-              repeat: true,
+              repeat: { id: 'attack', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'attack' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                  ],
+                },
               ],
             },
           ],
@@ -50,20 +59,22 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
         {
           sections: [
             {
-              repeat: true,
-              tokens: true,
+              repeat: { id: 'npc_name', nameField: 'npc_name' },
+
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'npc_name' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'npc_name' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
               ],
             },
           ],
@@ -72,9 +83,9 @@ const PRESET: Preset = {
     },
     {
       id: 'notes',
-      kind: 'single',
+
       title: 'Заметки',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'plot' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'plot' }] }] }] }],
     },
   ],
 };
@@ -93,8 +104,8 @@ describe('encodeSnapshotFile', () => {
       record('blk:npc:npc_name:n1', { order: 0, cells: { npc_name: 'Скелет', hp: 7 } }),
       record('acl:brok:lisa', { name: 'Лиза' }),
       record('plink:brok:lisa', { name: 'Лиза' }),
-      record('link:t2', { s: 'npc', i: 'n1' }, 2),
-      record('link:t1', { s: 'brok' }, 2),
+      record('link:t2', { s: 'npc', path: ['npc_name', 'n1'], c: 'token' }, 2),
+      record('link:t1', { s: 'brok', c: 'token' }, 2),
     ]);
 
     // #when
@@ -136,8 +147,13 @@ describe('encodeSnapshotFile', () => {
         { id: 'notes', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) },
       ],
       links: [
-        { tokenId: 't1', sheetId: 'brok' },
-        { tokenId: 't2', sheetId: 'npc', instanceId: 'n1' },
+        { tokenId: 't1', sheetId: 'brok', cellId: 'token' },
+        {
+          tokenId: 't2',
+          sheetId: 'npc',
+          path: ['npc_name', 'n1'],
+          cellId: 'token',
+        },
       ],
     });
   });
@@ -264,19 +280,19 @@ describe('encodeSnapshotFile', () => {
       record('blk:gone', null, 2),
       record('blk:brok', { set: 'pc', order: 0 }),
       record('blk:brok:attack:i1', { order: 0, cells: {} }),
-      record('link:t1', { s: 'gone' }),
-      record('link:t2', { s: 'nobody' }),
+      record('link:t1', { s: 'gone', c: 'token' }),
+      record('link:t2', { s: 'nobody', c: 'token' }),
       record('link:t3', null, 2),
-      record('link:t4', { s: 'brok' }),
-      record('link:t5', { s: 'npc', i: 'missing' }),
-      record('link:t6', { s: 'notes' }),
-      record('link:t7', { s: 'brok', i: 'i1' }),
+      record('link:t4', { s: 'brok', c: 'token' }),
+      record('link:t5', { s: 'npc', path: ['npc_name', 'missing'], c: 'token' }),
+      record('link:t6', { s: 'notes', c: 'token' }),
+      record('link:t7', { s: 'brok', path: ['attack', 'i1'], c: 'token' }),
     ]);
 
     // #when
     const file = encodeSnapshotFile(records, PRESET);
     // #then: t5 names no block, t6 a template with no tokens, t7 a section with no tokens.
-    expect(file.links).toEqual([{ tokenId: 't4', sheetId: 'brok' }]);
+    expect(file.links).toEqual([{ tokenId: 't4', sheetId: 'brok', cellId: 'token' }]);
   });
   test('sorts sheets of equal order by id, and repeat blocks of equal order by instance id', () => {
     // #given
@@ -300,14 +316,14 @@ describe('encodeSnapshotFile', () => {
 describe('formatSnapshotFile', () => {
   test('writes the file pretty-printed with 2 spaces and keys in the format order', () => {
     // #given: one template of each kind.
-    const preset: Preset = { v: 3, templates: PRESET.templates.slice(0, 2) };
+    const preset: Preset = { v: 4, templates: PRESET.templates.slice(0, 2) };
 
     const records = byKey([
       record('blk:brok', { set: 'pc', order: 0 }),
       record('blk:brok', { str_tired: true, str: 14 }),
       record('blk:npc:npc_name:i1', { order: 0, cells: { npc_name: 'Скелет' } }),
-      record('link:t1', { s: 'brok' }),
-      record('link:t2', { s: 'npc', i: 'i1' }),
+      record('link:t1', { s: 'brok', c: 'token' }),
+      record('link:t2', { s: 'npc', path: ['npc_name', 'i1'], c: 'token' }),
     ]);
 
     // #when
@@ -339,8 +355,13 @@ describe('formatSnapshotFile', () => {
             },
           ],
           links: [
-            { tokenId: 't1', sheetId: 'brok' },
-            { tokenId: 't2', sheetId: 'npc', instanceId: 'i1' },
+            { tokenId: 't1', sheetId: 'brok', cellId: 'token' },
+            {
+              tokenId: 't2',
+              sheetId: 'npc',
+              path: ['npc_name', 'i1'],
+              cellId: 'token',
+            },
           ],
         },
         null,
@@ -359,8 +380,8 @@ describe('formatSnapshotFile', () => {
       record('blk:b:attack:x', { order: 1, cells: { attack: 'А' } }),
       record('blk:b:item:z', { order: 0, cells: { equipped: true, item: 'Верёвка' } }),
       record('blk:npc:npc_name:n1', { order: 0, cells: { npc_name: 'Скелет', hp: 3 } }),
-      record('link:t2', { s: 'a' }),
-      record('link:t1', { i: 'n1', s: 'npc' }),
+      record('link:t2', { s: 'a', c: 'token' }),
+      record('link:t1', { s: 'npc', path: ['npc_name', 'n1'], c: 'token' }),
     ];
 
     // Records, sections and every object's keys come in the other order, at other versions.
@@ -387,8 +408,8 @@ describe('snapshotFileSchema', () => {
         record('blk:brok', { str: -1.5, str_tired: false }),
         record('blk:brok:attack:i1', { order: 0, cells: { attack: 'Меч', bonus: 0 } }),
         record('blk:npc:npc_name:n1', { order: 0, cells: { hp: 2 } }),
-        record('link:t1', { s: 'brok' }),
-        record('link:t2', { s: 'npc', i: 'n1' }),
+        record('link:t1', { s: 'brok', c: 'token' }),
+        record('link:t2', { s: 'npc', path: ['npc_name', 'n1'], c: 'token' }),
       ]),
       PRESET,
     );
@@ -557,7 +578,9 @@ function block(scopeId: string, instanceId: string): JsonObject {
 }
 
 function link(tokenId: string, sheetId: string, instanceId?: string): JsonObject {
-  return instanceId === undefined ? { tokenId, sheetId } : { tokenId, sheetId, instanceId };
+  return instanceId === undefined
+    ? { tokenId, sheetId, cellId: 'token' }
+    : { tokenId, sheetId, path: ['attack', instanceId], cellId: 'token' };
 }
 
 function reversedKeys(value: JsonValue): JsonValue {

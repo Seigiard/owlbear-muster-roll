@@ -22,13 +22,12 @@ const GM: ClientParams = { client: 'a', device: 'a', name: 'Мастер' };
 // "Персонажи" has two tabs: the dice cell on "Бой" reads `str` from "Основное", and the linkable
 // repeat section "Питомцы" sits on "Бой" below a tall section. "Журнал" has one tab.
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Основное',
@@ -36,14 +35,18 @@ const PRESET = {
             {
               title: 'Характеристики',
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
           ],
@@ -54,21 +57,31 @@ const PRESET = {
             {
               title: 'Удары',
               rows: [
-                [
-                  { kind: 'text', text: 'Удар' },
-                  { kind: 'dice', formula: '1d1 + str' },
-                ],
-                ...Array.from({ length: 12 }, (_, index) => [
-                  { kind: 'text', text: `Приём ${index + 1}` },
-                  { kind: 'field', type: 'text', id: `move_${index + 1}` },
-                ]),
+                {
+                  cells: [
+                    { kind: 'text', text: 'Удар' },
+                    { kind: 'dice', formula: '1d1 + str' },
+                  ],
+                },
+                ...Array.from({ length: 12 }, (_, index) => ({
+                  cells: [
+                    { kind: 'text', text: `Приём ${index + 1}` },
+                    { kind: 'field', type: 'text', id: `move_${index + 1}` },
+                  ],
+                })),
               ],
             },
             {
               title: 'Питомцы',
-              repeat: true,
-              tokens: true,
-              rows: [[{ kind: 'field', type: 'text', id: 'pet' }]],
+              repeat: { id: 'pet', nameField: 'pet' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'pet' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
             },
           ],
         },
@@ -76,9 +89,10 @@ const PRESET = {
     },
     {
       id: 'journal',
-      kind: 'single',
       title: 'Журнал',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'weather' }]] }] }],
+      tabs: [
+        { sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'weather' }] }] }] },
+      ],
     },
   ],
 };
@@ -88,7 +102,7 @@ const RECORDS: StoredRecord[] = [
   record('blk:brok', { str: 14 }),
   repRecord('brok', 'pet', 'p1', 0, { pet: 'Волк' }),
   repRecord('brok', 'pet', 'p2', 1, { pet: 'Сокол' }),
-  record('link:t-pet', { s: 'brok', i: 'p2' }),
+  record('link:t-pet', { s: 'brok', path: ['pet', 'p2'], c: 'token' }),
 ];
 
 test.beforeEach(async ({ page }) => {

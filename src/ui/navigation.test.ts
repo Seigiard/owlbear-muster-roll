@@ -300,11 +300,17 @@ describe('transition', () => {
     // #when
     const opened = transition(state, {
       type: 'open-request',
-      request: { id: 'open-rival', sheetId: 'rival', instanceId: 'contact' },
+      request: {
+        id: 'open-rival',
+        sheetId: 'rival',
+        path: ['contacts', 'contact'],
+        cellId: 'portrait',
+      },
       focusInWindow: false,
       tab: 'blk:rival',
       blockTab: null,
       block: null,
+      cellTab: null,
       ready: true,
     });
 
@@ -390,21 +396,28 @@ describe('transition', () => {
     // #when
     const opened = transition(state, {
       type: 'open-request',
-      request: { id: 'open-hero', sheetId: 'hero', instanceId: 'contact' },
+      request: {
+        id: 'open-hero',
+        sheetId: 'hero',
+        path: ['contacts', 'contact'],
+        cellId: 'portrait',
+      },
       focusInWindow: true,
       tab: 'blk:hero',
       blockTab: 1,
       block: 'contact',
+      cellTab: 1,
       ready: true,
     });
 
     const replayed = transition(opened, {
       type: 'open-request',
-      request: { id: 'open-hero', sheetId: 'rival', instanceId: null },
+      request: { id: 'open-hero', sheetId: 'rival', cellId: 'portrait' },
       focusInWindow: false,
       tab: 'blk:rival',
       blockTab: null,
       block: null,
+      cellTab: null,
       ready: true,
     });
 
@@ -417,7 +430,12 @@ describe('transition', () => {
     }).toEqual({
       selected: 'blk:hero',
       takenOpen: 'open-hero',
-      blockReveal: { sheet: 'blk:hero', instanceId: 'contact', focus: true },
+      blockReveal: {
+        sheet: 'blk:hero',
+        instanceId: 'contact',
+        cellId: 'portrait',
+        focus: true,
+      },
       tabReveal: { tab: 'blk:hero', focus: false },
     });
   });
@@ -428,11 +446,17 @@ describe('transition', () => {
     // #when
     const opened = transition(state, {
       type: 'open-request',
-      request: { id: 'open-hero', sheetId: 'hero', instanceId: 'contact' },
+      request: {
+        id: 'open-hero',
+        sheetId: 'hero',
+        path: ['contacts', 'contact'],
+        cellId: 'portrait',
+      },
       focusInWindow: true,
       tab: 'blk:hero',
       blockTab: 1,
       block: 'contact',
+      cellTab: 1,
       ready: true,
     });
 
@@ -448,7 +472,12 @@ describe('transition', () => {
       selectedTab: 'blk:hero',
       seenPresetState: 'absent',
       deleteAsk: { sheet: 'blk:hero', request: 1 },
-      blockReveal: { sheet: 'blk:hero', instanceId: 'contact', focus: true },
+      blockReveal: {
+        sheet: 'blk:hero',
+        instanceId: 'contact',
+        cellId: 'portrait',
+        focus: true,
+      },
     });
 
     // #when
@@ -477,7 +506,12 @@ describe('transition', () => {
     const state = stateWith({
       focusNameOf: 'blk:hero',
       focusActionsOf: 'blk:rival',
-      blockReveal: { sheet: 'blk:hero', instanceId: 'contact', focus: true },
+      blockReveal: {
+        sheet: 'blk:hero',
+        instanceId: 'contact',
+        cellId: 'portrait',
+        focus: true,
+      },
       tabReveal: { tab: 'blk:hero', focus: true },
       focusAfterLoss: { kind: 'actions', sheet: 'blk:rival', tab: 'blk:rival' },
     });
@@ -515,7 +549,12 @@ describe('transition', () => {
       unmatched: {
         focusNameOf: 'blk:hero',
         focusActionsOf: 'blk:rival',
-        blockReveal: { sheet: 'blk:hero', instanceId: 'contact', focus: true },
+        blockReveal: {
+          sheet: 'blk:hero',
+          instanceId: 'contact',
+          cellId: 'portrait',
+          focus: true,
+        },
       },
       cleared: {
         focusNameOf: null,

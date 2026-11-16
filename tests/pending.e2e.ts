@@ -50,45 +50,50 @@ const PLAYER: ClientParams = {
 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
               ],
             },
             {
               title: 'Основное',
               rows: [
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'text', text: 'Ловкость' },
-                  { kind: 'field', type: 'number', id: 'dex' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'text', text: 'Ловкость' },
+                    { kind: 'field', type: 'number', id: 'dex' },
+                  ],
+                },
               ],
             },
             {
               title: 'Атаки',
-              repeat: true,
+              repeat: { id: 'attack', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'text', text: 'Атака' },
-                  { kind: 'field', type: 'text', id: 'attack' },
-                  { kind: 'text', text: 'Маг' },
-                  { kind: 'field', type: 'check', id: 'magic' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Атака' },
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'text', text: 'Маг' },
+                    { kind: 'field', type: 'check', id: 'magic' },
+                  ],
+                },
               ],
             },
           ],
@@ -97,14 +102,12 @@ const PRESET_TEXT = JSON.stringify({
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
     {
       id: 'loot',
-      kind: 'single',
       title: 'Добыча',
       players: 'edit',
       tabs: [
@@ -112,10 +115,12 @@ const PRESET_TEXT = JSON.stringify({
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Золото' },
-                  { kind: 'field', type: 'number', id: 'gold' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Золото' },
+                    { kind: 'field', type: 'number', id: 'gold' },
+                  ],
+                },
               ],
             },
           ],

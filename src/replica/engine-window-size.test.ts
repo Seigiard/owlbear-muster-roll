@@ -25,25 +25,31 @@ const GENERATION: Generation = { n: 0, a: '' };
 // The sizes of the 5.4 spec, written out by hand.
 const DEFAULT: WindowSizeCall = { width: 600, height: 600 };
 const WIDE: WindowSizeCall = { width: 900, height: 700 };
-const NAME_SECTION: PresetSection = { rows: [[{ kind: 'field', type: 'text', id: 'name' }]] };
-const STR_SECTION: PresetSection = { rows: [[{ kind: 'field', type: 'number', id: 'str' }]] };
+
+const NAME_SECTION: PresetSection = {
+  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }],
+};
+
+const STR_SECTION: PresetSection = {
+  rows: [{ cells: [{ kind: 'field', type: 'number', id: 'str' }] }],
+};
 
 const PLAIN: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [{ sections: [NAME_SECTION, STR_SECTION] }],
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPC',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
   ],
 };

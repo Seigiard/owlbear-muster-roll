@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { encodePreset, type Preset } from '@/core/preset';
-import type { VersionedRecord } from '@/core/records';
+import { recordSchema, type VersionedRecord } from '@/core/records';
 import type { SyncState } from '@/core/ui-messages';
 import { createProjectionStore } from '@/ui/projection-store';
 import { TokenCellPicker } from './link-picker';
@@ -90,7 +90,7 @@ function listed(container: HTMLElement): { name: string; linked: boolean }[] {
 }
 
 function record(k: string, d: VersionedRecord['d']): VersionedRecord {
-  return { k, d, c: 1, a: 'seed' };
+  return recordSchema.parse({ k, d, c: 1, a: 'seed' });
 }
 
 async function settle(): Promise<void> {

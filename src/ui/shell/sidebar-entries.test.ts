@@ -14,31 +14,31 @@ const PRESET: Preset = {
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Characters',
-      nameField: 'name',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] }] }],
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPCs',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
     {
       id: 'loot',
-      kind: 'single',
+
       title: 'Loot',
       players: 'edit',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'gold' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'gold' }] }] }] }],
     },
     {
       id: 'ship',
-      kind: 'set',
+
       title: 'Ships',
-      nameField: 'hull',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'hull' }]] }] }],
+      repeat: { nameField: 'hull' },
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'hull' }] }] }] }],
     },
   ],
 };

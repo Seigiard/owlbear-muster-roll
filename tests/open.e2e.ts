@@ -47,11 +47,15 @@ const ROOM: readonly StoredRecord[] = [
   ...CHARACTERS.flatMap((name, order) => pcSheet(`pc${order}`, name, order)),
   ...NPCS.map((name, order) => npcBlock(`npc${order}`, name, order)),
   record('blk:gone', null, 2),
-  record('link:t-first', { s: 'pc0' }),
-  record('link:t-last', { s: `pc${CHARACTERS.length - 1}` }),
-  record('link:t-npc', { s: 'npc', i: `npc${NPCS.length - 1}` }),
-  record('link:t-chest', { s: 'inventory' }),
-  record('link:t-gone', { s: 'gone' }),
+  record('link:t-first', { s: 'pc0', c: 'token' }),
+  record('link:t-last', { s: `pc${CHARACTERS.length - 1}`, c: 'token' }),
+  record('link:t-npc', {
+    s: 'npc',
+    path: ['npc_name', `npc${NPCS.length - 1}`],
+    c: 'token',
+  }),
+  record('link:t-chest', { s: 'inventory', c: 'token' }),
+  record('link:t-gone', { s: 'gone', c: 'token' }),
 ];
 
 const LAYER = { key: 'layer', value: 'CHARACTER' };

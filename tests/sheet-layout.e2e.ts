@@ -10,13 +10,12 @@ const LONG_VALUE = 'Ш'.repeat(120);
 // Every cell kind and layout the matrix of the 1.8 spec names, in the width order it lists. The
 // sheet set names each sheet by `motto`, so the layout needs no field of its own for the name.
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'motto',
+      repeat: { nameField: 'motto' },
       tabs: [
         {
           sections: [
@@ -25,33 +24,41 @@ const PRESET = {
               width: '1/3',
               columns: 3,
               rows: [
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'str_tired' },
-                ],
-                [
-                  { kind: 'text', text: 'Ловкость' },
-                  { kind: 'field', type: 'number', id: 'dex' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'str_tired' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Ловкость' },
+                    { kind: 'field', type: 'number', id: 'dex' },
+                  ],
+                },
               ],
             },
             {
               title: 'Строки',
               width: '1/3',
               rows: [
-                [
-                  { kind: 'text', text: 'Хиты сейчас' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                  { kind: 'text', text: 'из максимума' },
-                  { kind: 'field', type: 'number', id: 'hp_max' },
-                ],
-                [{ kind: 'field', type: 'text', id: 'motto' }],
-                [
-                  { kind: 'text', text: 'Удача' },
-                  { kind: 'dice', formula: '2d6' },
-                ],
-                [{ kind: 'dice', formula: '1d20+str' }],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Хиты сейчас' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                    { kind: 'text', text: 'из максимума' },
+                    { kind: 'field', type: 'number', id: 'hp_max' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'text', id: 'motto' }] },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Удача' },
+                    { kind: 'dice', formula: '2d6' },
+                  ],
+                },
+                { cells: [{ kind: 'dice', formula: '1d20+str' }] },
               ],
             },
             {
@@ -59,46 +66,54 @@ const PRESET = {
               width: '1/3',
               columns: 2,
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'wide_a' },
-                  { kind: 'field', type: 'text', id: 'wide_b' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'wide_a' },
+                    { kind: 'field', type: 'text', id: 'wide_b' },
+                  ],
+                },
               ],
             },
             {
               title: 'Атаки',
               width: '1/2',
               columns: 2,
-              repeat: true,
+              repeat: { id: 'attack', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'attack' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                  ],
+                },
               ],
             },
             {
               width: 'full',
               rows: [
-                [
-                  { kind: 'text', text: 'Заметки' },
-                  { kind: 'field', type: 'text', id: 'notes' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Заметки' },
+                    { kind: 'field', type: 'text', id: 'notes' },
+                  ],
+                },
               ],
             },
             {
               title: 'Отметки',
               rows: [
-                [
-                  { kind: 'text', text: 'Отдых' },
-                  { kind: 'field', type: 'check', id: 'rested' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Отдых' },
+                    { kind: 'field', type: 'check', id: 'rested' },
+                  ],
+                },
               ],
             },
             {
               title: 'Пусто',
-              repeat: true,
-              rows: [[{ kind: 'field', type: 'text', id: 'item' }]],
+              repeat: { id: 'item', nameField: 'item' },
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'item' }] }],
             },
           ],
         },
@@ -106,10 +121,9 @@ const PRESET = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
   ],
 } as const;

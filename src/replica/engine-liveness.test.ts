@@ -24,20 +24,20 @@ const INITIAL: Generation = { n: 0, a: '' };
 const GHOST = 'ghost-gm';
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [{ kind: 'field', type: 'number', id: 'str' }],
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                { cells: [{ kind: 'field', type: 'number', id: 'str' }] },
               ],
             },
           ],
@@ -46,10 +46,10 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPC',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
   ],
 };
@@ -65,7 +65,7 @@ const BROK: VersionedRecord = {
 };
 
 // The digest of PRESET_RECORD and BROK, from a separate FNV-1a implementation.
-const SEEDED_DIGEST = 2580830934;
+const SEEDED_DIGEST = 3531322979;
 const OTHER_DIGEST = 12345;
 
 const LIZA: VersionedRecord = {

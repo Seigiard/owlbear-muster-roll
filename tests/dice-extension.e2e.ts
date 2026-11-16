@@ -24,24 +24,25 @@ const PLAYER: ClientParams = {
 
 // A visible sheet set and a hidden single sheet "NPC", both with a dice cell.
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [
-                  { kind: 'text', text: 'Удар' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'dice', formula: '1d20 + str' },
-                ],
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Удар' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'dice', formula: '1d20 + str' },
+                  ],
+                },
               ],
             },
           ],
@@ -50,7 +51,6 @@ const PRESET = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
@@ -58,11 +58,13 @@ const PRESET = {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Укус' },
-                  { kind: 'field', type: 'number', id: 'bite' },
-                  { kind: 'dice', formula: '1d20 + bite' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Укус' },
+                    { kind: 'field', type: 'number', id: 'bite' },
+                    { kind: 'dice', formula: '1d20 + bite' },
+                  ],
+                },
               ],
             },
           ],

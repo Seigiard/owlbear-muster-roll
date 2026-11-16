@@ -39,22 +39,35 @@ const ROOM: readonly StoredRecord[] = [
   npcBlock('gob', 'Гоблин', 0),
   npcBlock('skel', 'Скелет', 1),
   record('blk:gone', null, 2),
-  record('link:t-anya', { s: 'anya' }),
-  record('link:t-gob', { s: 'npc', i: 'gob' }),
-  record('link:t-gone', { s: 'gone' }),
+  record('link:t-anya', { s: 'anya', c: 'token' }),
+  record('link:t-gob', { s: 'npc', path: ['npc_name', 'gob'], c: 'token' }),
+  record('link:t-gone', { s: 'gone', c: 'token' }),
 ];
 
 // A preset whose one linkable template has no sheet yet.
 const NO_TARGET_PRESET = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
   ],
 });
@@ -127,7 +140,7 @@ test('a pick writes the link, closes the popover, and both headers show the stat
   await expect(headerOf(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
   expect({ before, link: await storedData(page, 'link:tok-new') }).toEqual({
     before: NO_TOKEN,
-    link: { s: 'brok' },
+    link: { s: 'brok', c: 'token' },
   });
 });
 
@@ -157,7 +170,11 @@ test('a pick of a repeat block links the token to it and its status shows on the
   // #then
   await page.getByRole('tab', { name: 'NPC' }).click();
   await expect(repeatBlock(page, 'Скелет').getByText(TOKEN_LINKED)).toBeVisible();
-  expect(await storedData(page, 'link:tok-new')).toEqual({ s: 'npc', i: 'skel' });
+  expect(await storedData(page, 'link:tok-new')).toEqual({
+    s: 'npc',
+    path: ['npc_name', 'skel'],
+    c: 'token',
+  });
 });
 
 test('"Отвязать лист" tombstones the link and the header shows "Нет токена"', async ({
@@ -241,7 +258,7 @@ test(`a token deleted from the scene clears its link, and the header shows "${NO
     sheet: await storedData(page, 'blk:anya'),
   }).toEqual({
     link: null,
-    other: { s: 'npc', i: 'gob' },
+    other: { s: 'npc', path: ['npc_name', 'gob'], c: 'token' },
     sheet: { set: 'pc', order: 0, cells: { name: ['Аня', 1, 'seed'] } },
   });
 });
@@ -263,7 +280,7 @@ test('a scene change keeps the links of the scene left behind', async ({ page, c
   expect({
     anya: await storedData(page, 'link:t-anya'),
     goblin: await storedData(page, 'link:t-gob'),
-  }).toEqual({ anya: { s: 'anya' }, goblin: null });
+  }).toEqual({ anya: { s: 'anya', c: 'token' }, goblin: null });
 });
 
 test('a pick on a token with no label, the offer checked, labels the token with the sheet name', async ({
@@ -285,7 +302,7 @@ test('a pick on a token with no label, the offer checked, labels the token with 
     link: await storedData(page, 'link:tok-new'),
     label: await sceneLabel(background, 'tok-new'),
     other: await sceneLabel(background, 'map'),
-  }).toEqual({ link: { s: 'brok' }, label: 'Брок', other: '' });
+  }).toEqual({ link: { s: 'brok', c: 'token' }, label: 'Брок', other: '' });
 });
 
 test("a pick of a repeat block on a token with no label labels it with the block's first field", async ({
@@ -304,7 +321,10 @@ test("a pick of a repeat block on a token with no label labels it with the block
   expect({
     link: await storedData(page, 'link:tok-new'),
     label: await sceneLabel(background, 'tok-new'),
-  }).toEqual({ link: { s: 'npc', i: 'skel' }, label: 'Скелет' });
+  }).toEqual({
+    link: { s: 'npc', path: ['npc_name', 'skel'], c: 'token' },
+    label: 'Скелет',
+  });
 });
 
 test('a token with a label shows it in the offer, unchecked, and a pick keeps it', async ({
@@ -328,7 +348,7 @@ test('a token with a label shows it in the offer, unchecked, and a pick keeps it
   expect({
     link: await storedData(page, 'link:tok-new'),
     label: await sceneLabel(background, 'tok-new'),
-  }).toEqual({ link: { s: 'brok' }, label: 'Гоблин 2' });
+  }).toEqual({ link: { s: 'brok', c: 'token' }, label: 'Гоблин 2' });
 });
 
 test('a failed label write keeps the link, shows an Owlbear notification, and closes the picker', async ({
@@ -351,7 +371,7 @@ test('a failed label write keeps the link, shows an Owlbear notification, and cl
     link: await storedData(page, 'link:tok-new'),
     label: await sceneLabel(background, 'tok-new'),
     notifications: await picker.evaluate(() => window.mockPlatform.shownNotifications()),
-  }).toEqual({ link: { s: 'brok' }, label: '', notifications: [LABEL_FAILED] });
+  }).toEqual({ link: { s: 'brok', c: 'token' }, label: '', notifications: [LABEL_FAILED] });
 });
 
 test('"Отвязать лист" leaves the token label as it is', async ({ page, context }) => {

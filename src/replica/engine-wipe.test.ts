@@ -29,20 +29,20 @@ const WIPED: Generation = { n: 1, a: 'gm-a' };
 const GHOST = 'ghost-gm';
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [{ kind: 'field', type: 'number', id: 'str' }],
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                { cells: [{ kind: 'field', type: 'number', id: 'str' }] },
               ],
             },
           ],

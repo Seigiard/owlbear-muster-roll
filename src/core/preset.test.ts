@@ -1083,9 +1083,10 @@ describe('parsePresetFile with tabs', () => {
     // #when
     const parsed = parsePresetFile(JSON.stringify(draft));
     const structure = parsePresetStructure(draft);
+    const actual: unknown = structure;
     // #then
     expect(parsed).toEqual({ ok: false, error: { code: 'invalid-structure' } });
-    expect(structure).toEqual(draft);
+    expect(actual).toEqual(draft);
   });
   test('refuses a field id on two tabs outside repeat sections, at the second one', () => {
     // #given

@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { encodePreset, type Preset } from '@/core/preset';
-import type { VersionedRecord } from '@/core/records';
+import { recordSchema, type BlockData, type VersionedRecord } from '@/core/records';
 import type { SyncState } from '@/core/ui-messages';
 import { createProjectionStore } from '@/ui/projection-store';
 import { LinkPicker } from './link-picker';
@@ -213,15 +213,12 @@ function targetOf(fixture: PickerFixture) {
 }
 
 function record(k: string, d: VersionedRecord['d']): VersionedRecord {
-  return { k, d, c: 1, a: 'seed' };
+  return recordSchema.parse({ k, d, c: 1, a: 'seed' });
 }
 
-function blockRecord(
-  k: string,
-  d: Extract<VersionedRecord, { k: `blk:${string}` }>['d'],
-): VersionedRecord {
+function blockRecord(k: string, d: BlockData): VersionedRecord {
   // SAFETY: every caller supplies a blk key and block data with its required lifecycle.
-  return { k, d, c: 1, a: 'seed', l: [1, 'seed'] } as VersionedRecord;
+  return { k, d, c: 1, a: 'seed', l: [1, 'seed'] };
 }
 
 async function settle(): Promise<void> {
