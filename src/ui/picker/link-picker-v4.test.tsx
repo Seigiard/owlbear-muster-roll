@@ -164,7 +164,7 @@ function bounds(minimum: number, maximum = minimum + 1): Bounds {
 function listedChoices(container: HTMLElement): { name: string; linked: boolean }[] {
   return [...container.querySelectorAll('li label')].map((label) => ({
     name: label.querySelector('span:first-of-type')?.textContent ?? '',
-    linked: label.textContent.includes('Токен привязан'),
+    linked: label.textContent.includes('Привязан к '),
   }));
 }
 
