@@ -95,9 +95,11 @@ test('external selection marks another tab without changing the open tab or scro
   context,
 }) => {
   // #given
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const background = await openV4Room(page, context);
   await putOnScene(page, ['t-root', 't-block']);
   await clickOpen(background, 't-root');
+  await expect(cell(page, 'root')).toBeInViewport();
   const panel = page.getByRole('tabpanel');
   const before = await panel.evaluate((node) => node.scrollTop);
 
