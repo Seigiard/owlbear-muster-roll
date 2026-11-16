@@ -523,7 +523,8 @@ describe('two GM clients', () => {
 
     // #when
     post(room, GHOST, commit([{ ...oldest, c: 3, a: GHOST }]));
-    await waitUntil(() => (storedRecord(first, oldest.k)?.c ?? 0) >= 4);
+    await waitUntil(() => (storedRecord(first, oldest.k)?.c ?? 0) >= 3);
+    await pause(SETTLE_MS);
 
     // #then
     expect(storedRecord(first, oldest.k)).toEqual({

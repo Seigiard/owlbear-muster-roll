@@ -1873,15 +1873,15 @@ describe('write failure', () => {
     seedRecords(rig, PRESET_RECORD);
 
     // #when
-    await startEngine(rig);
-
-    const view = await openAndLoad(rig);
+    const [startup] = await Promise.allSettled([startEngine(rig)]);
+    const view = startup.status === 'fulfilled' ? await openAndLoad(rig) : undefined;
 
     // #then
     expect({
-      records: recordsOf(view.store),
-      notices: view.store.$notices.get(),
-    }).toEqual({ records: [], notices: ['local-save-failed'] });
+      startup: startup.status,
+      records: view === undefined ? null : recordsOf(view.store),
+      notices: view === undefined ? null : view.store.$notices.get(),
+    }).toEqual({ startup: 'fulfilled', records: [], notices: ['local-save-failed'] });
   });
 });
 

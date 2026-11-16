@@ -305,14 +305,27 @@ describe('a GM client answers a proposal', () => {
     });
   });
 
-  test('an existing repeat tombstone still removes links that arrived later', async () => {
+  test.each([
+    {
+      name: 'immediately publishes links removed by an existing repeat tombstone',
+      snapshotPauseMs: 60_000,
+      observationPauseMs: 0,
+      copied: undefined,
+    },
+    {
+      name: 'persists links removed by an existing repeat tombstone in the room copy',
+      snapshotPauseMs: 10,
+      observationPauseMs: 50,
+      copied: { k: 'link:late', d: null, c: 2, a: 'gm-a' },
+    },
+  ])('$name', async ({ snapshotPauseMs, observationPauseMs, copied }) => {
     // #given
     const room = roomRig.openRoom();
     const link: VersionedRecord = { k: 'link:late', d: { s: 'brok', i: 'r2' }, c: 1, a: 'seed' };
 
     const gm = await startClient(room, 'gm-a', {
       seeded: [...BASE, link],
-      timing: { snapshotPauseMs: 10 },
+      timing: { snapshotPauseMs },
     });
 
     joinPlayerSocket(room);
@@ -320,7 +333,7 @@ describe('a GM client answers a proposal', () => {
     // #when
     propose(room, { ...REMOVED, c: 1, a: PLAYER_SOCKET });
     await waitUntil(() => committedRecords(room, 'gm-a').some((record) => record.k === REMOVED.k));
-    await pause(50);
+    await pause(observationPauseMs);
 
     // #then
     expect({
@@ -332,7 +345,7 @@ describe('a GM client answers a proposal', () => {
       sent: [REMOVED, { k: link.k, d: null, c: 2, a: 'gm-a' }],
       stored: { k: link.k, d: null, c: 2, a: 'gm-a' },
       shown: { k: link.k, d: null, c: 2, a: 'gm-a' },
-      copied: { k: link.k, d: null, c: 2, a: 'gm-a' },
+      copied,
     });
   });
 

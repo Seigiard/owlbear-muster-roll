@@ -302,7 +302,8 @@ describe('a preset upload', () => {
     await pause(50);
 
     // #then
-    const records = recordSchema.array().parse(roomCopyOf(room)?.records);
+    const parsed = recordSchema.array().safeParse(roomCopyOf(room)?.records);
+    const records = parsed.success ? parsed.data : [];
 
     expect(records.find((record) => record.k === 'preset')?.d).toBe(encodePreset(MOVED));
   });
