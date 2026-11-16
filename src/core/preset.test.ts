@@ -1085,7 +1085,7 @@ describe('parsePresetFile with tabs', () => {
     const structure = parsePresetStructure(draft);
     // #then
     expect(parsed).toEqual({ ok: false, error: { code: 'invalid-structure' } });
-    expect(structure).toBeNull();
+    expect(structure).toEqual(draft);
   });
   test('refuses a field id on two tabs outside repeat sections, at the second one', () => {
     // #given
@@ -1535,7 +1535,7 @@ describe('decodePreset', () => {
     // #given: the record data an older build stored, deflated and base64-encoded by hand.
     const stored = {
       v: 1,
-      character: { tabs: [{ sections: [{ rows: [{ cells: [NUMBER_FIELD('str')] }] }] }] },
+      character: { tabs: [{ sections: [{ rows: [[NUMBER_FIELD('str')]] }] }] },
       npc: { tabs: [{ sections: [] }] },
     };
 
