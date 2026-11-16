@@ -64,7 +64,7 @@ context:
 - [x] TASK-71: preview/navigation, copy and tests — role/visibility/write policy.
 - [x] TASK-72: page, file-block component/state, history, copy, glossary and tests — file menus; define File block.
 - [x] TASK-73: file-access port, browser implementation/fake, caller/reducer and tests — write/follow/refusal/conflicts.
-- [ ] TASK-74: remove `room.html`, `preview.html`, their page modules, scripts, plugin and obsolete e2e tests; update `package.json`, `vite.config.ts`, `CLAUDE.md`, `presets/README.md`, `docs/preset-format.md` and `GLOSSARY.md`. Preserve mock `index.html` for e2e only.
+- [x] TASK-74: remove `room.html`, `preview.html`, their page modules, scripts, plugin and obsolete e2e tests; update `package.json`, `vite.config.ts`, `CLAUDE.md`, `presets/README.md`, `docs/preset-format.md` and `GLOSSARY.md`. Preserve mock `index.html` for e2e only.
 
 **Acceptance Criteria:**
 - Given preset/snapshot content, when matrix actions run, then their observable results hold.
@@ -78,6 +78,7 @@ context:
 - TASK-71 adds the GM/player switch, core visibility projection, player write policy and hidden-sheet note. Number fields retain their existing textbox behavior. Final validation passed: 3192 unit tests, one existing skip, 540 browser tests and all static/build checks. Mutation controls proved detection of empty projected records and leaked GM-only tabs.
 - TASK-72 replaces top-bar file actions with preset/snapshot file blocks and adds their glossary term. Save-as downloads current encoded content; clear names the file and undo restores content. Final recovery preserves a sample for each empty set and the existing snapshot reconciliation/export rules. Validation passed: 3192 unit tests, one existing skip, 547 browser tests and all static/build checks.
 - TASK-73 adds the file-access port, Chromium adapter, file synchronization and conflict choices. Save File/Save As writes and attaches the selected handle; Download Copy stays separate. Preset follow preserves compatible snapshot values. Confirmed Clear/Undo updates both page and file. Final validation passed: 3208 unit tests, one existing skip, 547 browser tests and all static/build checks. Mutation controls and a fresh real-Chromium OPFS control passed on the recovery tip. Native picker permission/cancellation and external OS-process delivery remain unverified.
+- TASK-74 removes the obsolete room/preview pages, exclusive modules, launchers, plugin and test owners. Builder browser tests and attached-file tests retain the applicable behavior coverage; retired launcher/list/address/seeding contracts end with their entrypoints. Mock `index.html` stays for e2e. Final ticket checks passed: 3182 unit tests, one existing skip, 531 Chromium tests and all static/build checks. The original completed shell records were recovered without rerunning checks.
 
 ## Spec Change Log
 

@@ -226,7 +226,11 @@ A refused file changes nothing. The message under the button names the first pro
 
 ## Build a preset without JSON
 
-The builder page, `/builder.html`, makes a preset with no JSON to write. Open it with "Конструктор пресетов" in the Пресет section of Settings. It opens in a new tab. The page starts from an empty preset, an example or a file, and edits it as a tree with a form for each item: template, tab, section, row and cell. A new template starts with one untitled tab; "Добавить вкладку" adds another, and a section can be dragged to another tab. The preview shows the tab of the selected item, and a click on a tab in the preview selects it. "Скачать пресет" is enabled only when the preset has no problems, so each file it gives is one that "Загрузить пресет" accepts.
+The builder page, `/builder.html`, makes a preset with no JSON to write. Open it with "Конструктор пресетов" in the Пресет section of Settings. It opens in a new tab. The page starts from an empty preset, an example or a file, and edits it as a tree with a form for each item: template, tab, section, row and cell. A new template starts with one untitled tab; "Добавить вкладку" adds another, and a section can be dragged to another tab.
+
+The preview shows the tab of the selected item. A first cell click selects its tree item; a second click or Enter edits its snapshot value or rolls a dice cell. The "Мастер / Игрок" switch shows the same snapshot under each role's visibility and write policy.
+
+The Пресет and Снимок file blocks contain each document's actions. "Скачать копию" downloads the current document. Preset saving and download stay off while the preset has problems. In Chromium, saving attaches the selected file: later page edits write to it, and valid file changes redraw the page. A conflict offers "Взять из файла" or "Оставить мои". Other browsers keep open and download only. Reload does not reattach files.
 
 ## Annotated example
 

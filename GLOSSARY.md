@@ -207,11 +207,11 @@ _Avoid_: reset, clear, purge
 ## Builder
 
 **Builder**:
-A separate page of the deployed site where a GM makes or changes a preset and its snapshot without writing JSON, then downloads either file. In the interface: «Конструктор пресетов».
+A separate page of the deployed site where a GM makes or changes a preset and its snapshot without writing JSON, then saves either file or downloads a copy. In the interface: «Конструктор пресетов».
 _Avoid_: editor, configurator, constructor, designer
 
 **Preview**:
-A read-only extension window in the Builder that draws the sheets and values from its snapshot; an empty sheet set uses a pale «Образец» until a real sheet is added.
+The extension window in the Builder that shows its snapshot as a GM or a player would see it, with value editing and dice rolls under that role's write policy. An empty sheet set uses a pale «Образец» until a real sheet is added.
 _Avoid_: mockup, render
 
 **Draft**:
