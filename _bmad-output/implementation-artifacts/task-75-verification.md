@@ -2,9 +2,9 @@
 
 ## Scope and status
 
-This deliverable records the approved metadata and baseline phase only. It does not claim the final five-module probe or the closing review.
+This deliverable records the approved metadata/baseline phase and the successful final-v2 probe evidence. It does not claim the caller-owned closing review or terminal task completion.
 
-**Final five-module comparison: PENDING. Closing review: PENDING.** The parent must run the committed probe and complete the review. Final AC #4 and the task status remain open.
+**Final five-module comparison: PASS (0 new survivors, 0 new timeouts, 0 missing). Closing review: PENDING.** Final AC evidence is recorded and the task remains In Progress while awaiting the caller-owned closing review.
 
 The accepted lock is `885c7f775fe50a063def9081739896cc228dbe6c`. The seventeen locked test files remain byte-identical to that SHA. No production, test, runner or schema file was changed in this phase.
 
@@ -64,7 +64,41 @@ The first complete final probe ran on the extended lock, before the D6 baseline 
 | engine | 494 | 388 | 106 | 0 |
 | **Total** | 1089 | 911 | 178 | 0 |
 
-The first final comparison recorded 1 new survivor, 0 new timeouts and 0 missing entries. All 126 calibrated gaps were killed and all 177 selected baseline entries survived. This result is retained under the original `final-results.json`, `final-summary.json`, `final-provenance.json` and `final-comparison.json` names. A fresh complete five-module comparison after the D6 append remains pending and is parent-owned.
+The first final comparison recorded 1 new survivor, 0 new timeouts and 0 missing entries. All 126 calibrated gaps were killed and all 177 selected baseline entries survived. This result is retained under the original `final-results.json`, `final-summary.json`, `final-provenance.json` and `final-comparison.json` names. The later successful final-v2 comparison after the D6 append is recorded below.
+
+## Final-v2 complete comparison (successful)
+
+The fresh complete five-module probe ran on the committed D6 baseline. Its provenance and summary report a clean successful comparison; the caller-owned closing review remains pending.
+
+| Field | Value |
+| --- | --- |
+| Source revision | 377cdde10a620961fcb843dcd1dc280dc95ddb92 |
+| Command | bun run probe command-routing generation-flow roll-flow room-protocol engine --jobs 6 --out /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-results-v2.json |
+| Result path | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-results-v2.json |
+| Summary | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-v2-summary.json |
+| Provenance | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-v2-provenance.json |
+| Comparison | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-v2-comparison.json |
+| Supervisor | task75-final-v2-sunny-8b3b / t3cy; `/Users/seigiard/.cache/herdr-run/task75-final-v2-sunny-8b3b.log` |
+| Unit / replica limits | 30000 ms / 180000 ms |
+| Workers | 6 |
+| Exit | 0 |
+
+| Module | Total | Killed | Survived | Timeout |
+| --- | --- | --- | --- | --- |
+| command-routing | 140 | 128 | 12 | 0 |
+| generation-flow | 208 | 171 | 37 | 0 |
+| roll-flow | 115 | 108 | 7 | 0 |
+| room-protocol | 132 | 116 | 16 | 0 |
+| engine | 494 | 388 | 106 | 0 |
+| **Total** | 1089 | 911 | 178 | 0 |
+
+`final-v2-comparison.json` contains empty `newSurvivors`, `newTimeouts` and `missing` arrays. The summary also records `inventoryMatchesInitialAnchors: true`, `unclosedCalibratedGaps: []`, `baselinedKilled: []`, baseline entries `246`, baseline SHA256 `5b2100bb7e3e83858e642fed9e94143671ac66d7fe8618f0ced22e680d61cb53`, `callerUnchanged: true`, `lockDiffExit: 0`, `ownedWorktreesRemoved: true` and `callerClosingReview: pending; caller-owned`. All 126 calibrated gaps were killed, all 178 selected baseline anchors survived, and all 1,089 anchors matched the initial inventory.
+
+The final-v2 probe is runner evidence for the mocked replica contracts. It does not extend the existing mock/live boundary: the behavioral owners use Bun tests, mock ports and `tests/support/room-rig.ts`, and do not prove live Owlbear host behavior.
+
+## Final-v2 check reuse
+
+The final-v2 run changed no application inputs. The accepted unit/static evidence remains valid from the same D6 baseline content at `377cdde10a620961fcb843dcd1dc280dc95ddb92`: focused baseline tests, full `bun test`, lint and typecheck are recorded in `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/metadata-checks-implementer-2/`. Browser and build remain valid reuse from `extra-checks-122409e` at `122409eab9095593db01c59f027445c92f922a05`; the later changes are verification Markdown and the Backlog record only, so no application, browser, build, configuration or dependency input changed. Final touched-record, format and whitespace checks are recorded below.
 
 ## D6 survivor investigation
 
@@ -551,7 +585,7 @@ The candidate appends exactly 178 full anchors from the accepted equivalent/unre
 | engine | 98 | 8 | 106 |
 | **Appended total** | 157 | 21 | 178 |
 
-The committed parser/comparison remains the authority for the unchanged schema: anchors are `file/fn/op/text/nth`; verdicts are only `equivalent`, `unreachable` or `timeout`; reasons are non-empty; and anchors are unique. The final comparison after the D6 append is intentionally still pending and parent-owned.
+The committed parser/comparison remains the authority for the unchanged schema: anchors are `file/fn/op/text/nth`; verdicts are only `equivalent`, `unreachable` or `timeout`; reasons are non-empty; and anchors are unique. The final-v2 comparison after the D6 append is successful with zero new survivors, zero new timeouts and zero missing entries.
 
 ## Accepted check evidence
 
@@ -586,13 +620,28 @@ The checks below run against the D6 metadata candidate. Each durable log records
 | Browser | reused `bun run test:browser` exit 0 at `122409eab9095593db01c59f027445c92f922a05` | reused; no covered input changed | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/extra-checks-122409e/browser.log` |
 | Build | reused `bun run build` exit 0 at `122409eab9095593db01c59f027445c92f922a05` | reused; no covered input changed | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/extra-checks-122409e/build.log` |
 
+
+## Final evidence-record checks
+
+These checks cover only the two changed documentation/Backlog paths. Markdown, Backlog and `_bmad-output/` are skipped by the repository formatter configuration; the touched-path command still includes them to record that scope. No fresh application, browser or build run is required because final-v2 and the accepted D6 checks cover unchanged inputs.
+
+| Check | Command | Result | Evidence |
+| --- | --- | --- | --- |
+| Backlog task view | `backlog task view TASK-75 --plain` | exit 0; AC #1–#4 checked, status In Progress | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-record-checks-implementer-3/backlog-view.log` |
+| Backlog doctor | `backlog doctor` | exit 0 | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-record-checks-implementer-3/backlog-doctor.log` |
+| Touched-path format | `bunx oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern --check ...` | exit 0; Markdown/Backlog skipped by repository config | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-record-checks-implementer-3/format.log` |
+| Whitespace | `git diff --check`; cached diff check | exit 0; cached check recorded after staging | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-record-checks-implementer-3/whitespace.log`; `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-record-checks-implementer-3/staged-whitespace.log` |
+| Baseline unchanged | `git diff --exit-code 377cdde10a620961fcb843dcd1dc280dc95ddb92 -- tools/mutants/probe-baseline.json` | exit 0 | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-record-checks-implementer-3/baseline-unchanged.log` |
+| Locked paths | `git diff --exit-code 885c7f775fe50a063def9081739896cc228dbe6c -- <17 locked paths>` | exit 0 | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-record-checks-implementer-3/lock-diff.log` |
+| Final clean checkout | `git status --porcelain` | exit 0 after commit | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-record-checks-implementer-3/status.log` |
+
 ## Limits and cleanup
 
 - Equivalence is diagnostic-only where stated. A console log mutation is not a claim that stderr is byte-identical; the accepted scope compares caller-visible state, messages, notices and storage.
 - The behavioral owners use Bun tests, mock ports and `tests/support/room-rig.ts`. They prove the replica contracts exercised by those fixtures, not live Owlbear host behavior.
 - The initial five-module run observed zero timeouts. The three timeout entries retained from the original 68-entry baseline remain separate timeout verdicts; no new timeout was classified as killed or equivalent.
 - Replay-4 cleaned its owned detached worktree, and the initial runner cleaned all temporary mutation worktrees. Caller source was unchanged in both runs.
-- Final five-module comparison, final counts, zero-new status and closing review are still pending. No claim is made for them here.
+- Final-v2 five-module comparison, final counts and zero-new status are complete and recorded above. The caller-owned closing review and terminal task completion remain pending.
 
 ## Evidence paths
 
@@ -603,6 +652,10 @@ The checks below run against the D6 metadata candidate. Each durable log records
 | Final classifications | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/classifications-final.json |
 | Accepted replay matrix | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/calibration-final/matrix.json |
 | Final replay results | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/replay-4/results.json |
+| Final-v2 results | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-results-v2.json |
+| Final-v2 summary | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-v2-summary.json |
+| Final-v2 provenance | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-v2-provenance.json |
+| Final-v2 comparison | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/final-v2-comparison.json |
 | Accepted lock checks | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/calibration-4/checks/results.json |
 
 ## D5 preserved-original 65/3 scope
