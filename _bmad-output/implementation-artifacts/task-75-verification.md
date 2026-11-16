@@ -2,11 +2,11 @@
 
 ## Scope and status
 
-**CURRENT BATCH-2 STATUS: classification/baseline correction recorded; acceptance remains pending.** The previous final-v2 zero-new run used the now-corrected erroneous baseline. It is historical evidence only, **not acceptance of the review fixes**.
+**CURRENT BATCH-3 STATUS: the omitted engine cleanup wrapper is corrected as a covered gap; acceptance remains pending.** The parent native run and parent checks are preserved as historical evidence. The caller-owned fresh probe and confirming review remain pending; **this batch does not claim acceptance**.
 
 Fresh full five-module probe: **PENDING, caller-owned**. Confirming review: **PENDING, caller-owned**. Full static, unit, browser, build and probe verification: **PENDING, caller-owned**. The task remains In Progress and AC #4 is intentionally unchecked.
 
-The accepted batch-2 lock is `8298a63fd2b61e3215a7b4aaf1a7c6244a5d5eb6`. All eighteen locked paths remain byte-identical to that SHA. This phase changes only the baseline, verification record and existing TASK-75 Backlog record; production code, tests, helpers and approved spec remain unchanged.
+The accepted lock is `8298a63fd2b61e3215a7b4aaf1a7c6244a5d5eb6`. All eighteen locked paths remain byte-identical to that SHA. This phase changes only the baseline, verification record and existing TASK-75 Backlog record; production code, tests, helpers and approved spec remain unchanged.
 
 ## Initial complete inventory
 
@@ -112,7 +112,7 @@ The actual callers and deduplication path were checked independently. `room-prot
 
 ## Classification summary
 
-The initial inventory has 303 survivors. The cumulative classified set has 304 anchors: 141 reachable gaps, 142 equivalent mutations and 21 unreachable paths. The 304th anchor is the D6 equivalent classification below; it is not an additional initial-inventory survivor. Batch 2 corrects fifteen prior equivalent verdicts to calibrated gaps and retains one outer-OR equivalent with its behavior-specific reason. There are no deferred gaps and no accepted new timeout rows.
+The initial inventory has 303 survivors. The cumulative classified set has 304 anchors: 142 reachable gaps, 141 equivalent mutations and 21 unreachable paths. The 304th anchor is the D6 equivalent classification below; it is not an additional initial-inventory survivor. Batch 2 corrected fifteen prior equivalent verdicts to calibrated gaps, and batch 3 corrects the omitted engine-level cleanup wrapper using the unchanged generation-replacement owner. There are no deferred gaps and no accepted new timeout rows.
 
 | Module | Gap | Equivalent | Unreachable | Classified |
 | --- | --- | --- | --- | --- |
@@ -120,12 +120,12 @@ The initial inventory has 303 survivors. The cumulative classified set has 304 a
 | generation-flow | 42 | 34 | 3 | 79 |
 | roll-flow | 7 | 6 | 1 | 14 |
 | room-protocol | 13 | 10 | 6 | 29 |
-| engine | 63 | 86 | 8 | 157 |
-| **Total** | 141 | 142 | 21 | 304 |
+| engine | 64 | 85 | 8 | 157 |
+| **Total** | 142 | 141 | 21 | 304 |
 
 ### Historical batch-1 gap calibration
 
-This 126-row table is retained historical batch-1 evidence. The fifteen current batch-2 gaps and their replay-1 evidence are listed in the current correction table above.
+This 126-row table is retained historical batch-1 evidence. The fifteen batch-2 gaps and their replay-1 evidence are listed in the historical correction table above.
 
 Each gap below has an independent contract, a behavioral owner, and final replay-4 evidence. Replay-4 ran the exact faithful patch at the lock SHA in a detached worktree: all 126 rows reached the protected assertion with red exit 1, then restored production reached green exit 0. No replay row was a timeout, parser exception or unrelated setup failure. Replay-4 supersedes earlier stale or false-green evidence.
 
@@ -260,7 +260,7 @@ Each gap below has an independent contract, a behavioral owner, and final replay
 
 The five D4 false-green cases were corrected before this lock: immediate publication is isolated from eventual room-copy persistence; the two command-routing preset cases reach the exact preset mismatch rather than a parser error; startup failure is captured as a rejected promise before the projection/notice assertions; and the scene-boundary test waits only for unaffected ingress before asserting the exact tombstone. This preserves the stated assertion-red standard.
 
-## Current batch-2 classification correction
+## Historical batch-2 classification correction
 
 Batch 2 reconciles all sixteen affected anchors against the accepted review delta at lock `8298a63fd2b61e3215a7b4aaf1a7c6244a5d5eb6`: fifteen newly proved gaps and one retained outer-OR equivalence. The three `pendingIds` cleanup anchors are gaps through actual engine admission, bounded-ID eviction, replay and generation replacement. Impossible-repeat arguments are discarded. The outer-OR equivalent keeps the faithful JavaScript precedence reason and its actual paced cancellation control, which is 0/0 and remains green.
 
@@ -451,7 +451,7 @@ The ledger below is the complete cumulative classification set. It contains the 
 | 156 | src/replica/engine.ts | startReplicaEngine > reply | drop statement | console.error('Muster Roll could not answer a command', error); | 1 | equivalent | Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged. |
 | 157 | src/replica/engine.ts | startReplicaEngine > interpretCatchUp | drop statement | console.error('Muster Roll could not start adoption from the room copy', error); | 1 | equivalent | Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged. |
 | 158 | src/replica/engine.ts | startReplicaEngine > sendRemote | drop statement | console.error('Muster Roll could not send the reset', error); | 1 | equivalent | Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged. |
-| 159 | src/replica/engine.ts | startReplicaEngine > dropPendingWork | drop statement | commandRouting.clearPendingIds(); | 1 | equivalent | dropPendingWork already consumed every pending entry; accepted ids cannot recur, so retained per-intent generated ids are never read. |
+| 159 | src/replica/engine.ts | startReplicaEngine > dropPendingWork | drop statement | commandRouting.clearPendingIds(); | 1 | gap | Generation replacement retained block:0=old-free; the admitted retry showed rep:npc:mob:old-free instead of rep:npc:mob:fresh. |
 | 160 | src/replica/engine.ts | startReplicaEngine > reply | drop statement | console.error('Muster Roll could not report a generation result', error); | 1 | equivalent | Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged. |
 | 161 | src/replica/engine.ts | startReplicaEngine > replyOutcome | drop statement | console.error('Muster Roll could not answer a roll request', error); | 1 | equivalent | Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged. |
 | 162 | src/replica/engine.ts | startReplicaEngine > merge | drop assignment | cachedDigest = null; | 1 | gap | alive messages keep a cached digest after records change, so peers miss replica drift; mutation drop assignment changes the reachable cachedDigest = null; boundary. |
@@ -616,13 +616,13 @@ The candidate appends exactly 178 full anchors from the accepted equivalent/unre
 
 The committed parser/comparison remains the authority for the unchanged schema: anchors are `file/fn/op/text/nth`; verdicts are only `equivalent`, `unreachable` or `timeout`; reasons are non-empty; and anchors are unique. The final-v2 comparison after the D6 append is successful with zero new survivors, zero new timeouts and zero missing entries.
 
-## Current batch-2 baseline and classifications
+## Historical batch-2 baseline and classifications
 
-The historical D6 baseline had 246 entries and contained fifteen affected anchors whose equivalent reasons are now disproved. Batch 2 removes exactly those fifteen gap anchors and retains the outer-OR entry with its corrected behavior-specific reason. The current baseline has **231 parsed entries**: 192 equivalent, 36 unreachable and 3 retained original timeouts. The original 68 entries and order are unchanged; every unaffected entry/object remains unchanged. Current baseline SHA256 is `f29caee64d63d955f1231afe9e42ae339cad21314ce83a73a551948f20356fe0`.
+The historical D6 baseline had 246 entries and contained fifteen affected anchors whose equivalent reasons are now disproved. Batch 2 removed exactly those fifteen gap anchors and retained the outer-OR entry with its corrected behavior-specific reason. The historical batch-2 baseline had **231 parsed entries**: 192 equivalent, 36 unreachable and 3 retained original timeouts. The original 68 entries and order were unchanged; every unaffected entry/object remained unchanged. Historical batch-2 baseline SHA256 is `f29caee64d63d955f1231afe9e42ae339cad21314ce83a73a551948f20356fe0`.
 
-`classifications-after.json` is the corrected cumulative ledger source: 304 rows with **141 gap, 142 equivalent and 21 unreachable**. Historical root `classifications-final.json` is preserved unchanged as the pre-batch-2 record. The current full ledger above equals `classifications-after.json` by full anchor, verdict and reason.
+The historical batch-2 `classifications-after.json` is preserved at `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-2/classifications-after.json`; it has 304 rows with **141 gap, 142 equivalent and 21 unreachable**. Historical root `classifications-final.json` remains unchanged as the pre-batch-2 record.
 
-## Current batch-2 validation and limits
+## Historical batch-2 validation and limits
 
 Only checks covering edited paths are current. No full suite, directory suite, browser, build, global lint/typecheck or probe was run for this metadata correction.
 
@@ -635,7 +635,59 @@ Only checks covering edited paths are current. No full suite, directory suite, b
 | Full static/unit/browser/build/probe | caller-owned full verification | **PENDING, caller-owned** |
 | Confirming review | caller-owned review after fresh full probe | **PENDING, caller-owned** |
 
-The prior final-v2 zero-new result and all prior full static/unit/browser/build records remain historical artifacts. They ran against the superseded baseline and must not be reported as current batch-2 acceptance.
+The prior final-v2 zero-new result and all prior full static/unit/browser/build records remain historical artifacts. They ran against superseded baselines and must not be reported as current batch-3 acceptance.
+
+## Current batch-3 classification correction and preserved parent evidence
+
+Batch 3 removes exactly one incorrect baseline object and reclassifies the engine-level delegating call as a covered gap. The anchor is `src/replica/engine.ts / startReplicaEngine > dropPendingWork / drop statement / commandRouting.clearPendingIds(); / nth=1`. The affected-anchor inventory omitted this wrapper while selecting the three command-routing cleanup leaves. The wrapper is the same B3 clearPendingIds mechanism, not a new behavioral contract.
+
+The unchanged real owner is `src/replica/engine-duplicate.test.ts: a duplicate retry after generation replacement draws its identity in the new generation`. The parent control at source `c3e40df7aab4ba85616c06a2d818348f693c8da1` removes the statement to `;`: red exit 1 at `expect(during)` with `old-free` instead of `fresh`, then restored green exit 0. Evidence: `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-2/cleanup-wrapper-control/result.json`, `mutation.patch`, `red.log` and `green.log`. No new test or calibration was added.
+
+The cleanup-reason sweep confirms four source cleanup sites total: `command-routing.ts:355` (`pendingIds.delete(id);`), `command-routing.ts:453` (`pendingIds.clear();`), `command-routing.ts:459` (`pendingIds.clear();`) and the sole delegating wrapper `engine.ts:423` (`commandRouting.clearPendingIds();`). The three leaves are already covered gaps from batch 2. Only the wrapper was reclassified in this batch. Full matched anchors, reasons and dispositions are in `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/cleanup-reason-sweep.json`; no unrelated equivalent was reclassified.
+
+The current batch-3 baseline has **230 parsed entries**: **191 equivalent, 36 unreachable and 3 retained original timeouts**. The original 68 entries and order are preserved. Exactly the wrapper object was removed; every other baseline object and order is unchanged. The batch-3 ledger has **304 rows**: **142 gap, 141 equivalent and 21 unreachable**. `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/classifications-after.json` is the current ledger source; the prior batch-2 file is preserved as `classifications-before.json` in the batch-3 directory.
+
+### Native parent probe and parent checks
+
+The native full probe is preserved, not rerun or relabeled. It ran at source revision `c3e40df7aab4ba85616c06a2d818348f693c8da1` with `1089 total / 927 killed / 162 survived / 0 timeout`. Actual per-module counts from the parent summary are:
+
+| Module | Total | Killed | Survived | Timeout |
+| --- | ---: | ---: | ---: | ---: |
+| command-routing | 140 | 131 | 9 | 0 |
+| generation-flow | 208 | 171 | 37 | 0 |
+| roll-flow | 115 | 108 | 7 | 0 |
+| room-protocol | 132 | 116 | 16 | 0 |
+| engine | 494 | 401 | 93 | 0 |
+| **Total** | **1089** | **927** | **162** | **0** |
+
+Parent native artifacts are `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-2/final-results.json`, `final-summary.json`, `final-provenance.json` and `final-comparison.json`. The comparison is genuinely `newSurvivors=0`, `newTimeouts=0`, `missing=0`; `final-summary.json` also records one baselined-killed wrapper, so that comparison did not validate the incorrect classification. The probe is not called failed, and its source is not relabeled to this later commit.
+
+Parent full-check statuses are recorded, not newly run, from `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-2/parent-full-checks/summary.json` at the same source revision:
+
+| Check | Exit | Seconds |
+| --- | ---: | ---: |
+| format | 0 | 0.388 |
+| lint | 0 | 4.227 |
+| typecheck | 0 | 0.876 |
+| unit | 0 | 80.789 |
+| browser | 0 | 167.88 |
+| build | 0 | 0.547 |
+
+The caller's authoritative observation was `worktreeInventoryRestored=false` because unrelated worktrees changed; no new mutation-probe directory remained. Caller source hashes and the lock were unchanged, with `sourceAndLockHashesUnchanged=true`, `callerUnchanged=true` and `lockDiffExit=0`. No unrelated worktree was removed.
+
+### Current batch-3 checks and limits
+
+Only focused metadata checks were run. Durable logs record the command, actual output and exit, plus source SHA or exact precommit diff state.
+
+| Check | Command / evidence | Result |
+| --- | --- | --- |
+| Focused baseline consumer | `bun test tools/mutants/probe/baseline.test.ts` | exit 0; 9 pass, 0 fail, 9 expectations | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/checks/focused-baseline.log` |
+| Touched-path format | `bunx oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern --check ...` | exit 0; all matched files use the correct format | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/checks/format.log` |
+| Whitespace / scope / ledger / lock audit | `git diff --check` and parsed audit | exit 0; exact one removal, 304 rows, lock18/source/spec unchanged; final `audit.py` exit 0 | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/checks/metadata-audit.log`; `chain-validation.json`; `checks/final-audit.log` |
+| Backlog task view | `backlog task view TASK-75 --plain` | exit 0; task In Progress and AC #4 unchecked | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/checks/backlog.log` |
+| Fresh full probe and confirming review | caller-owned | **PENDING, caller-owned** |
+
+No global lint, typecheck, full unit, replica, browser, build, full probe or new review was run in batch 3. AC #4 remains unchecked until the parent fresh-probe/review decision.
 
 ## Historical accepted check evidence
 
@@ -713,6 +765,12 @@ These checks cover only the two changed documentation/Backlog paths. Markdown, B
 | Batch-2 classifications | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-2/classifications-after.json |
 | Batch-2 replay results | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-2/replay-1/results.json |
 | Batch-2 focused gate | /Users/seigiard/.cache/herdr-run/task75-review-b2-focused-sunny-8b3b.log |
+| Batch-3 classifications | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/classifications-after.json |
+| Batch-3 historical classifications | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/classifications-before.json |
+| Batch-3 cleanup reason sweep | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/cleanup-reason-sweep.json |
+| Batch-3 handoff audit | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/chain-validation.json |
+| Batch-3 final audit log | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/checks/final-audit.log |
+| Batch-3 implementer report | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/implementer-1.report.md |
 
 ## D5 preserved-original 65/3 scope
 

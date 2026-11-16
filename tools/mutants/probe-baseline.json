@@ -1306,15 +1306,6 @@
   },
   {
     "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > dropPendingWork",
-    "op": "drop statement",
-    "text": "commandRouting.clearPendingIds();",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "dropPendingWork already consumed every pending entry; accepted ids cannot recur, so retained per-intent generated ids are never read."
-  },
-  {
-    "file": "src/replica/engine.ts",
     "fn": "startReplicaEngine > reply",
     "op": "drop statement",
     "text": "console.error('Muster Roll could not report a generation result', error);",
