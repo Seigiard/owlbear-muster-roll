@@ -2,9 +2,9 @@
 
 ## Scope and status
 
-**CURRENT BATCH-4 STATUS: the delayed initial party-read anchor is corrected from equivalent to covered gap; completion remains pending.** The executed native run and parent checks are preserved as historical evidence. Parent-owned full-suite verification, targeted FULL-REPLICA calibration, native comparison and confirming acceptance/review remain pending; **this batch does not claim acceptance**.
+**CURRENT BATCH-4 STATUS: the delayed initial party-read anchor is corrected from equivalent to covered gap; completion remains pending.** The executed native run and parent checks are preserved as historical evidence. The targeted full-replica C1 control is executed and preserved. Explicit one-row evidence composition, native comparison, final global/unit checks, targeted C1 confirmation/review and final acceptance remain pending; **this batch does not claim acceptance**.
 
-Parent-owned full-suite verification: **PENDING**. Targeted FULL-REPLICA calibration: **PENDING**. Native comparison: **PENDING**. Confirming acceptance/review: **PENDING**. No new full five-module probe is claimed or required in this metadata batch. The task remains In Progress and AC #4 is intentionally unchecked.
+Explicit one-row evidence composition: **PENDING**. Native comparison: **PENDING**. Final global/unit checks: **PENDING**. Targeted C1 confirmation/review and final acceptance: **PENDING**. The targeted full-replica C1 control is already executed and is not pending. No new full five-module probe is claimed or required in this metadata batch. The task remains In Progress and AC #4 is intentionally unchecked.
 
 The accepted lock is `cda8f2a1ab52de121155d161e3907fd59ca81200`. All nineteen locked paths remain byte-identical to that SHA. This phase changes only the baseline, verification record and existing TASK-75 Backlog record; production code, tests, helpers and approved spec remain unchanged.
 
@@ -120,7 +120,7 @@ The initial inventory has 303 survivors. The cumulative classified set has 304 a
 | generation-flow | 42 | 34 | 3 | 79 |
 | roll-flow | 7 | 6 | 1 | 14 |
 | room-protocol | 13 | 10 | 6 | 29 |
-| engine | 64 | 85 | 8 | 157 |
+| engine | 65 | 84 | 8 | 157 |
 | **Total** | 143 | 140 | 21 | 304 |
 
 ### Historical batch-1 gap calibration
@@ -791,7 +791,7 @@ Focused owner evidence uses source SHA `cda8f2a1ab52de121155d161e3907fd59ca81200
 
 The immutable executed native run remains at source `c3e40df7aab4ba85616c06a2d818348f693c8da1` with `1089 total / 927 killed / 162 survived / 0 timeout`.
 Its raw results, summary, provenance, comparison and parent-check summary are unchanged.
-Parent-owned full-suite verification, targeted FULL-REPLICA calibration, native comparison and confirming acceptance/review remain pending.
+The targeted full-replica C1 control is executed and preserved. Explicit one-row evidence composition, native comparison, final global/unit checks, targeted C1 confirmation/review and final acceptance remain pending.
 No composite result is labeled as an executed full run.
 
 ### Current batch-4 checks and limits

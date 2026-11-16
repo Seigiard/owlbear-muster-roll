@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@opencode'
 created_date: '2026-11-15T20:32:00Z'
-updated_date: '2026-11-16T08:33:00Z'
+updated_date: '2026-11-16T08:39:00Z'
 labels: []
 dependencies:
   - TASK-67
@@ -55,4 +55,6 @@ Batch-3 metadata correction at source c3e40df7aab4ba85616c06a2d818348f693c8da1: 
 Batch-4 C1 correction at accepted lock cda8f2a1ab52de121155d161e3907fd59ca81200: removed exactly src/replica/engine.ts / startReplicaEngine > followParty / if→false / stopped / nth=1 from the baseline and reclassified it as a covered gap. roster.stop unsubscribes but does not cancel or epoch-invalidate an already-running initial read; followParty stopped guard prevents post-stop publication. Current baseline: 229 entries (190 equivalent, 36 unreachable, 3 retained timeouts); selected five-module metadata baseline: 161. Cumulative ledger: 304 rows (143 gap, 140 equivalent, 21 unreachable). Original68, prior18/current19 lock paths, source and approved spec remain unchanged.
 
 Focused evidence uses the owner control at cda8f2a1: exact stopped→false mutation red is ordinary expect mismatch, restored owner green is 2 pass; accepted full owner gate is 43 pass/0 fail/44 expectations. Parent targeted native-anchor control at the same SHA reached ordinary expect-red after 193 tests before bail and restored replica green is 1119 pass/0 fail; this is not a new five-module run. Immutable native c3e40df7aab4ba85616c06a2d818348f693c8da1 evidence remains 1089/927/162/0 and is not replaced. Parent-owned full-suite verification, targeted FULL-REPLICA calibration, native comparison and confirming acceptance/review remain pending. Task remains In Progress and AC #4 stays unchecked.
+
+Batch-4 status correction: the targeted full-replica C1 control at cda8f2a1ab52de121155d161e3907fd59ca81200 is EXECUTED and preserved: exact mutation result killed, red exit 1, green exit 0 with 1119 pass. It is not pending. Remaining parent-owned work is explicit one-row evidence composition, native comparison, final global/unit checks, targeted C1 confirmation/review and final acceptance. Task remains In Progress and AC #4 stays unchecked.
 <!-- SECTION:NOTES:END -->
