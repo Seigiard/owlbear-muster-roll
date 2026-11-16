@@ -13,6 +13,7 @@ import {
 import { NOTHING_ERASED, presetDiff } from '@/core/preset-migrate';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import type { Command } from '@/core/ui-messages';
+import type { Timing } from '@/core/timing';
 import type { PlayerRole } from '@/platform/ports';
 import {
   createRoomRig,
@@ -22,6 +23,7 @@ import {
   pause,
   rejection,
   requestPresetDiff,
+  roomCopyOf,
   send,
   shown,
   storageKey,
@@ -196,6 +198,7 @@ type Room = RigRoom;
 type ClientOptions = {
   role?: PlayerRole;
   seeded?: readonly VersionedRecord[];
+  timing?: Partial<Timing>;
   until?: 'loaded' | 'live';
 };
 
@@ -289,6 +292,22 @@ describe('a preset diff', () => {
 });
 
 describe('a preset upload', () => {
+  test('puts the applied preset in the next room copy', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { timing: { snapshotPauseMs: 10 } });
+
+    // #when
+    send(gm, uploadOf(MOVED, 1));
+    await pause(50);
+
+    // #then
+    const parsed = recordSchema.array().safeParse(roomCopyOf(room)?.records);
+    const records = parsed.success ? parsed.data : [];
+
+    expect(records.find((record) => record.k === 'preset')?.d).toBe(encodePreset(MOVED));
+  });
+
   test('writes and sends new-key rows, then the preset, then tombstones, in that order', async () => {
     // #given
     const room = roomRig.openRoom();

@@ -541,4 +541,102 @@ describe('createRoomProtocol', () => {
       });
     },
   );
+
+  test('drops an in-flight room message when the engine stops during sender lookup', async () => {
+    // #given
+    const effects: string[] = [];
+    let stopped = false;
+    let release!: (sender: RoomSender | null) => void;
+
+    const sender = new Promise<RoomSender | null>((resolve) => {
+      release = resolve;
+    });
+
+    const ports = createPorts(effects, () => sender);
+    ports.stopped = () => stopped;
+
+    const protocol = createRoomProtocol(ports);
+
+    // #when
+    protocol.receive(event(messageFor('state-request', OWN_GENERATION)));
+    await settleIngress();
+    stopped = true;
+    release(PLAYER);
+    await settleIngress();
+
+    // #then
+    expect(effects).toEqual([]);
+  });
+
+  test('an unrelated higher state answer does not retain the current nonce', async () => {
+    // #given
+    const effects: string[] = [];
+    let keptNonce: boolean | undefined;
+    const ports = createPorts(effects, async () => GM);
+    ports.catchUp.answersOwn = () => false;
+    ports.catchUp.adopting = () => HIGHER_GENERATION;
+    ports.seeGeneration = (_generation, keepNonce) => {
+      keptNonce = keepNonce;
+
+      return [];
+    };
+
+    const protocol = createRoomProtocol(ports);
+
+    // #when
+    protocol.receive(event(messageFor('state', HIGHER_GENERATION, 'other')));
+    await settleIngress();
+
+    // #then
+    expect(keptNonce).toBe(false);
+  });
+
+  test('an idempotent commit still publishes a cleared pending edit', async () => {
+    // #given
+    const effects: string[] = [];
+    const ports = createPorts(effects, async () => GM);
+    ports.pendingEdits.answered = () => true;
+    ports.receiveRecords = () => [];
+    const protocol = createRoomProtocol(ports);
+
+    // #when
+    protocol.receive(event(messageFor('commit', OWN_GENERATION)));
+    await settleIngress();
+
+    // #then
+    expect(effects).toEqual(['heard', 'publish']);
+  });
+
+  test('a stale rejection without denial does not show a denied notice', async () => {
+    // #given
+    const effects: string[] = [];
+    const ports = createPorts(effects, async () => GM);
+    ports.pendingEdits.rejected = () => ({ notify: false, merge: null });
+    const protocol = createRoomProtocol(ports);
+
+    // #when
+    protocol.receive(event(messageFor('reject', OWN_GENERATION)));
+    await settleIngress();
+
+    // #then
+    expect(effects).toEqual(['heard', 'publish']);
+  });
+
+  test('a higher state outside the current adoption target is not staged', async () => {
+    // #given
+    const effects: string[] = [];
+    const target = { n: 3, a: '' };
+    const ports = createPorts(effects, async () => GM);
+    ports.catchUp.adopting = () => target;
+    ports.seeGeneration = () => [];
+    ports.stageGeneration = () => effects.push('stage');
+    const protocol = createRoomProtocol(ports);
+
+    // #when
+    protocol.receive(event(messageFor('state', HIGHER_GENERATION)));
+    await settleIngress();
+
+    // #then
+    expect(effects).toEqual(['heard']);
+  });
 });

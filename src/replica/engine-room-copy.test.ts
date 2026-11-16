@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from 'bun:test';
 
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
+import { NOTHING_ERASED } from '@/core/preset-migrate';
 import type { VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Generation } from '@/core/storage-key';
@@ -190,6 +191,102 @@ async function settle(): Promise<void> {
 }
 
 describe('writer triggers', () => {
+  test('a failed multi-record command does not owe an unchanged room-copy write', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+    const gate = createGate();
+
+    const client = await startClient(room, 'gm-a', {
+      platform: gated(gate),
+      seeded: [PRESET_RECORD, BROK, { k: 'row:brok:str', d: { str: 12 }, c: 1, a: 'seed' }],
+      timing: { snapshotPauseMs: 10 },
+      until: 'live',
+    });
+
+    client.platform.setFailingStorageOperations(['write']);
+    gate.rejectWrites = true;
+
+    // #when
+    send(client, { type: 'sheet-delete', sheetId: 'brok' });
+    await waitUntil(() => notices(client).includes('local-save-failed'));
+    await pause(50);
+
+    // #then
+    expect({ writes: gate.writes, notices: notices(client) }).toEqual({
+      writes: 0,
+      notices: ['local-save-failed'],
+    });
+  });
+
+  test('catch-up with no replayed records does not owe an unchanged room-copy write', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+    const gate = createGate();
+
+    const client = await startClient(room, 'gm-a', {
+      platform: gated(gate),
+      timing: { snapshotPauseMs: 10 },
+      until: 'live',
+    });
+
+    gate.rejectWrites = true;
+
+    // #when
+    client.engine.catchUp();
+    await pause(50);
+
+    // #then
+    expect({ writes: gate.writes, notices: notices(client) }).toEqual({
+      writes: 0,
+      notices: [],
+    });
+  });
+
+  test('a failed preset batch does not owe an unchanged room-copy write', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+    const gate = createGate();
+
+    const client = await startClient(room, 'gm-a', {
+      platform: gated(gate),
+      timing: { snapshotPauseMs: 10 },
+      until: 'live',
+    });
+
+    const renamed: Preset = {
+      ...PRESET,
+      templates: PRESET.templates.map((template) =>
+        template.id === 'pc' ? { ...template, title: 'Герои' } : template,
+      ),
+    };
+
+    client.platform.setFailingStorageOperations(['write']);
+    gate.rejectWrites = true;
+
+    // #when
+    send(client, {
+      type: 'preset-upload',
+      data: encodePreset(renamed),
+      expectedCount: 0,
+      expectedSheets: 0,
+      expectedDigest: NOTHING_ERASED,
+    });
+    await waitUntil(() => notices(client).includes('local-save-failed'));
+    await pause(50);
+
+    // #then
+    expect({ writes: gate.writes, notices: notices(client) }).toEqual({
+      writes: 0,
+      notices: ['local-save-failed'],
+    });
+  });
+
   test('a live GM writes every record with its tombstones, versions and generation, sorted by key, once edits pause', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -472,6 +569,54 @@ describe('size check', () => {
 });
 
 describe('interruption and rescheduling', () => {
+  test('a stopped GM does not merge a held equal-generation metadata read', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gate = createGate();
+    const client = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
+    const read = gate.holdNextRead();
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK, MIRA]) });
+    client.engine.catchUp();
+    await settle();
+
+    // #when
+    client.engine.stop();
+    read.release();
+    await pause(20);
+
+    // #then
+    expect({
+      mira: shown(client, MIRA.k) ?? null,
+      stored: storedRecord(client, MIRA.k),
+      writes: gate.writes,
+    }).toEqual({
+      mira: null,
+      stored: null,
+      writes: 0,
+    });
+  });
+
+  test('a live GM merges the same held equal-generation metadata read', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gate = createGate();
+    const client = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
+    const read = gate.holdNextRead();
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK, MIRA]) });
+    client.engine.catchUp();
+    await settle();
+
+    // #when
+    read.release();
+    await waitUntil(() => shown(client, MIRA.k) !== undefined);
+
+    // #then
+    expect({ mira: shown(client, MIRA.k), stored: storedRecord(client, MIRA.k) }).toEqual({
+      mira: MIRA,
+      stored: MIRA,
+    });
+  });
+
   test('a resume between the read and the write stops the write, also once the GM is live again', async () => {
     // #given
     const room = roomRig.openRoom();

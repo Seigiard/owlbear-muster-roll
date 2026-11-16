@@ -1150,6 +1150,26 @@ describe('the dice extension client', () => {
     });
   });
 
+  test('stop cancels the remaining start probe retries', async () => {
+    // #given
+    const room = openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      dice: { kind: 'silent' },
+      diceReady: false,
+      diceTiming: { probeWaitMs: 10, startProbeRetries: 2, startProbeRetryMs: 50 },
+    });
+
+    await waitUntil(() => gm.dice?.probes() === 1);
+
+    // #when
+    gm.engine.stop();
+    await pause(150);
+
+    // #then
+    expect(gm.dice?.probes()).toBe(1);
+  });
+
   test('a page that stops while a roll waits for its dice logs no local roll and sends nothing', async () => {
     // #given
     const errors = spyOn(console, 'error').mockImplementation(() => undefined);

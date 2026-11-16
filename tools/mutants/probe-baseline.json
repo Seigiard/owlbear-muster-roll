@@ -610,5 +610,1454 @@
     "nth": 1,
     "verdict": "timeout",
     "reason": "Pass 1 timed out in the original probe because omitting the rerun guard causes an unbounded routine rerun."
+  },
+  {
+    "file": "src/replica/command-routing.ts",
+    "fn": "createCommandRouting > runCommand",
+    "op": "if→true",
+    "text": "command.type === 'preset-upload'",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "decideCommandRoute returns preset-upload only for a parsed preset-upload command, so the inner discriminant is always true."
+  },
+  {
+    "file": "src/replica/command-routing.ts",
+    "fn": "createCommandRouting > runCommand",
+    "op": "if→true",
+    "text": "command.type === 'snapshot-import'",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "decideCommandRoute returns snapshot-import only for a parsed snapshot-import command, so the inner discriminant is always true."
+  },
+  {
+    "file": "src/replica/command-routing.ts",
+    "fn": "createCommandRouting > runCommand",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not import a snapshot', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/command-routing.ts",
+    "fn": "createCommandRouting > runCommand",
+    "op": "if→true",
+    "text": "command.type === 'wipe'",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "decideCommandRoute returns wipe only for a parsed wipe command, so the inner discriminant is always true."
+  },
+  {
+    "file": "src/replica/command-routing.ts",
+    "fn": "createCommandRouting > runCommand",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not wipe the room', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/command-routing.ts",
+    "fn": "createCommandRouting > uploadPreset",
+    "op": "if→true",
+    "text": "ports.hasPersistence()",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Without persistence the outbox is empty by sendCommits, so forcing the pre-upload flush emits no message or storage effect."
+  },
+  {
+    "file": "src/replica/command-routing.ts",
+    "fn": "createCommandRouting > uploadPreset",
+    "op": "if→true",
+    "text": "ports.hasPersistence() && written.length > 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "sendCommits independently rejects null persistence and CommitOutbox.add rejects an empty record list; the pre-batch flush also leaves no held commit for the extra flush to expose."
+  },
+  {
+    "file": "src/replica/command-routing.ts",
+    "fn": "createCommandRouting > uploadPreset",
+    "op": "&&→||",
+    "text": "ports.hasPersistence() && written.length > 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "sendCommits independently rejects null persistence and CommitOutbox.add rejects an empty record list; the pre-batch flush also leaves no held commit for the extra flush to expose."
+  },
+  {
+    "file": "src/replica/command-routing.ts",
+    "fn": "createCommandRouting > uploadPreset",
+    "op": ">→>=",
+    "text": "written.length > 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "sendCommits independently rejects null persistence and CommitOutbox.add rejects an empty record list; the pre-batch flush also leaves no held commit for the extra flush to expose."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > planImport",
+    "op": "if→false",
+    "text": "!imported.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Snapshot and preset schemas make invalid-structure unreachable at the engine boundary; the only reachable importSnapshot failure is too-large, and returning it directly produces the same terminal rejection."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > wipe",
+    "op": "if→false",
+    "text": "persistence === null",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The inner replaceGeneration persistence guard repeats the same check and emits the same write-failed rejection; no generation, storage, copy or reset effect follows."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "if→false",
+    "text": "persistence === null",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "importFromSnapshot and wipe reject null persistence before their synchronous call to replaceGeneration; no other caller reaches it."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "drop statement",
+    "text": "ports.reject(id, 'write-failed');",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The enclosing null-persistence branch is unreachable because both replaceGeneration callers already reject that state."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "false→true",
+    "text": "false",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The enclosing null-persistence branch is unreachable because importFromSnapshot and wipe already return on null persistence."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "if→true",
+    "text": "!removed.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "removeGeneration is cleanup after an already failed save; changing its diagnostic condition cannot change the rejected replacement or partial-generation removal result."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "if→false",
+    "text": "!removed.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "removeGeneration is cleanup after an already failed save; changing its diagnostic condition cannot change the rejected replacement or partial-generation removal result."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "drop !",
+    "text": "!removed.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "removeGeneration is cleanup after an already failed save; changing its diagnostic condition cannot change the rejected replacement or partial-generation removal result."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not remove a part saved generation', removed.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "drop assignment",
+    "text": "highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The freshly assigned ownGeneration is at least the prior highestSeen by nextGeneration, so assigning higherGeneration produces the same value."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "if→true",
+    "text": "!removed.ok",
+    "nth": 2,
+    "verdict": "equivalent",
+    "reason": "removeGenerationsBelow is best-effort cleanup after reset was sent; changing only its diagnostic condition cannot change the adopted generation, messages or storage operation."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "if→false",
+    "text": "!removed.ok",
+    "nth": 2,
+    "verdict": "equivalent",
+    "reason": "removeGenerationsBelow is best-effort cleanup after reset was sent; changing only its diagnostic condition cannot change the adopted generation, messages or storage operation."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "drop !",
+    "text": "!removed.ok",
+    "nth": 2,
+    "verdict": "equivalent",
+    "reason": "removeGenerationsBelow is best-effort cleanup after reset was sent; changing only its diagnostic condition cannot change the adopted generation, messages or storage operation."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > replaceGeneration",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not remove the replaced records', removed.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > adoptFromCopy",
+    "op": "drop assignment",
+    "text": "highestSeenGeneration = higherGeneration(highestSeenGeneration, copy.g);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "generationRead immediately records the higher copy as the active adoption target, and successful saveAdoption stores it in ownGeneration/highestSeen; a non-target lower copy cannot raise the already higher target."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > seeGeneration",
+    "op": "if→false",
+    "text": "ports.stopped()",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Every protocol caller checks stopped after sender lookup before seeGeneration; stopped room-copy adoption uses adoptFromCopy instead."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > seeGeneration",
+    "op": "drop assignment",
+    "text": "highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "generationHeard keeps the higher generation as the active adoption target, commands remain blocked while adopting, and saveAdoption records it before a local generation can be minted."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > stage",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll dropped a remote record too large for one message', record.k);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveAdoption",
+    "op": "if→true",
+    "text": "!removed.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "removeGeneration is cleanup after a failed adoption save; changing its diagnostic condition cannot change the retained old generation or removed partial generation."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveAdoption",
+    "op": "if→false",
+    "text": "!removed.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "removeGeneration is cleanup after a failed adoption save; changing its diagnostic condition cannot change the retained old generation or removed partial generation."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveAdoption",
+    "op": "drop !",
+    "text": "!removed.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "removeGeneration is cleanup after a failed adoption save; changing its diagnostic condition cannot change the retained old generation or removed partial generation."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveAdoption",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not remove a part saved generation', removed.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveAdoption",
+    "op": "if→true",
+    "text": "!removed.ok",
+    "nth": 2,
+    "verdict": "equivalent",
+    "reason": "removeGenerationsBelow already ran after successful adoption; changing only its diagnostic condition cannot change replica, storage values, messages or notices."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveAdoption",
+    "op": "if→false",
+    "text": "!removed.ok",
+    "nth": 2,
+    "verdict": "equivalent",
+    "reason": "removeGenerationsBelow already ran after successful adoption; changing only its diagnostic condition cannot change replica, storage values, messages or notices."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveAdoption",
+    "op": "drop !",
+    "text": "!removed.ok",
+    "nth": 2,
+    "verdict": "equivalent",
+    "reason": "removeGenerationsBelow already ran after successful adoption; changing only its diagnostic condition cannot change replica, storage values, messages or notices."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveAdoption",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not remove the replaced records', removed.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveAdoption",
+    "op": "drop assignment",
+    "text": "highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "After adoption ownGeneration equals generation and is at least the prior target, so higherGeneration stores the same generation."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > roleChanged",
+    "op": "drop assignment",
+    "text": "highestSeenGeneration = higherGeneration(highestSeenGeneration, next.generation);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "roleChanged assigns the same persistence generation to ownGeneration, and nextGeneration takes max(ownGeneration, highestSeen), so the omitted duplicate highestSeen assignment cannot lower the next generation."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveGeneration",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not mark a new generation', marked.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveGeneration",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not keep a new generation', kept.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveGeneration",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not save a record of a new generation', written.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "createGenerationFlow > saveGeneration",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not mark a new generation complete', complete.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "higherGeneration",
+    "op": ">=→>",
+    "text": "compareGenerations(first, second) >= 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Equal generations have identical n and a; returning either operand cannot change a key, message, or comparison."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "removeOlderFormats",
+    "op": "if→true",
+    "text": "!removed.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "removeOlderFormats is best-effort cleanup whose result is not consumed; changing only its diagnostic condition cannot alter storage calls, state, messages or notices."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "removeOlderFormats",
+    "op": "if→false",
+    "text": "!removed.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "removeOlderFormats is best-effort cleanup whose result is not consumed; changing only its diagnostic condition cannot alter storage calls, state, messages or notices."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "removeOlderFormats",
+    "op": "drop !",
+    "text": "!removed.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "removeOlderFormats is best-effort cleanup whose result is not consumed; changing only its diagnostic condition cannot alter storage calls, state, messages or notices."
+  },
+  {
+    "file": "src/replica/generation-flow.ts",
+    "fn": "removeOlderFormats",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not remove the records of an older format', removed.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/roll-flow.ts",
+    "fn": "createRollFlow > rollWithDice",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not read the player name for a roll', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/roll-flow.ts",
+    "fn": "createRollFlow > rollWithDice",
+    "op": "drop statement",
+    "text": "console.info('Muster Roll rolled locally: unsupported dice');",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/roll-flow.ts",
+    "fn": "createRollFlow > rollWithDice",
+    "op": "drop statement",
+    "text": "console.info('Muster Roll rolled locally: the dice extension gave no faces');",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/roll-flow.ts",
+    "fn": "createRollFlow > rollWithDice",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not apply the dice extension faces', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/roll-flow.ts",
+    "fn": "createRollFlow > rollWithDice",
+    "op": "drop statement",
+    "text": "ports.replyOutcome(requestId, { code: 'failed' });",
+    "nth": 2,
+    "verdict": "unreachable",
+    "reason": "A real Dice+ result is validated against the requested dice groups before it reaches rollWithDice, and prepared.dice.roll returns a Result for every validated face list; the defensive exception handler has no real caller."
+  },
+  {
+    "file": "src/replica/roll-flow.ts",
+    "fn": "createRollFlow > sendRoll",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll built a roll the room would not take');",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/roll-flow.ts",
+    "fn": "createRollFlow > receiveRoll",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not show a roll', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > receive",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not handle a room message', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > dispatchRoomMessage",
+    "op": "false→true",
+    "text": "false",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "A GM has no player pending entry (promotion drains it), so answered is never called with a live GM edit and the forced boolean only adds a publisher no-op."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > dispatchRoomMessage",
+    "op": "if→true",
+    "text": "member !== null",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "AD-5 admission rejects roll messages without a known member before dispatchRoomMessage, so member is non-null here."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > dispatchRoomMessage",
+    "op": "drop statement",
+    "text": "unknownRoomMessage(message);",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "parseRoomMessage returns the closed RoomMessage union, so the exhaustive default has no parsed input."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > receiveProposal",
+    "op": "if→false",
+    "text": "record === undefined",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The parsed propose schema requires one record, so message.records[0] is defined."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > receiveProposal",
+    "op": "drop statement",
+    "text": "unknownVerdict(verdict);",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "checkProposal returns the closed ProposalVerdict union handled above, so the exhaustive default has no input."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > unlinkRemovedBlock",
+    "op": "if→false",
+    "text": "parts === null",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "checkProposal accepts a player tombstone only for a repeat-block key, so parseRepKey is non-null on this path."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > sendRoom",
+    "op": "if→false",
+    "text": "!fitsOneMessage(message)",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "Every reject message is built from the fixed reject schema with bounded generation, edit, player and reason fields, so it always fits one room message."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > sendRoom",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll built a rejection too large for one message', message.k);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > sendRoom",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not answer a proposal', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > receiveReject",
+    "op": "if→false",
+    "text": "ports.role() === 'GM'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "AD-5 admits reject only from GM; a GM receiver has no pending player edits, so rejected returns null and no state changes."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > receiveReject",
+    "op": "if→false",
+    "text": "result === null",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "An unmatched rejection already has no pending/state effect; the mutated null dereference is caught by ingress and changes only diagnostics."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > receiveReject",
+    "op": "if→true",
+    "text": "changed.length === 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "receiveRecords always publishes before returning, so the forced outer publish is suppressed by the publisher’s unchanged comparison."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > receiveState",
+    "op": "if→false",
+    "text": "!records.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "A decode failure reaches no records or catch-up decision either way; the mutation only turns the accepted diagnostic return into a caught exception."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > receiveState",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll dropped a state message it could not read');",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/room-protocol.ts",
+    "fn": "createRoomProtocol > continueCatchUp",
+    "op": "drop statement",
+    "text": "console.error(message, error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > enqueue",
+    "op": "||→&&",
+    "text": "record === null || stopped || role === 'GM'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Exact control stayed green. The exact mutation is `record === null || stopped && role === 'GM'`; `&&` binds first, so a cancelled compose with record=null still takes the unchanged null guard."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > hasData",
+    "op": "||→&&",
+    "text": "replica.size > 0 || pending.entries().length > 0 || pendingEdits.size() > 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The exact mutation is replica.size > 0 || (pending intents > 0 && pending player edits > 0), so replica data alone still preserves hadData. A valid queued intent or player edit is composed from existing replica data; no valid caller has an empty replica with only one pending source."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > adopt",
+    "op": "if→true",
+    "text": "decisions.adoptionStaged.length > 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Forcing the branch only calls runCatchUp([]) when no adoption decision exists; the empty loop schedules no timer, read, message, state, storage or publisher effect."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > adopt",
+    "op": ">→>=",
+    "text": "decisions.adoptionStaged.length > 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "At length zero the changed boundary only calls runCatchUp([]); the empty loop schedules no timer, read, message, state, storage or publisher effect."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > adopt",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not complete adoption from the room copy', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > reply",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not answer a command', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > interpretCatchUp",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not start adoption from the room copy', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > sendRemote",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not send the reset', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > reply",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not report a generation result', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > replyOutcome",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not answer a roll request', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > catchUpTimerKey",
+    "op": "===→!==",
+    "text": "timer.kind === 'request'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only one request timer belongs to the active catch-up nonce; replacing it may cancel the obsolete request, whose fired decision would otherwise be rejected by the nonce check. Answer timers remain nonce-specific."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > disarmCatchUpTimer",
+    "op": "if→true",
+    "text": "handle !== undefined",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "When no handle exists, clearTimeout(undefined) and deleting the absent key are no-ops; an existing handle follows the original branch."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > disarmCatchUpTimer",
+    "op": "if→false",
+    "text": "handle !== undefined",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "A disarmed timer may still run physically, but the catch-up transition that emitted disarm makes catchUp.fired return no decisions; no state, timer, message or storage effect follows."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > disarmCatchUpTimer",
+    "op": "!==→===",
+    "text": "handle !== undefined",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "With no handle the forced body is harmless; with a handle the physical timer may run, but the completed catch-up transition makes catchUp.fired return no decisions."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > disarmCatchUpTimer",
+    "op": "drop statement",
+    "text": "clearTimeout(handle);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The map entry is still deleted. When the uncleared physical timer runs, catchUpTimers.get(key) is undefined and the callback returns at its identity guard before catchUp.fired."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > disarmCatchUpTimer",
+    "op": "drop statement",
+    "text": "catchUpTimers.delete(key);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The cleared timer cannot fire, and a later arm overwrites this key after harmlessly clearing the old handle again."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > armCatchUpTimer",
+    "op": "if→false",
+    "text": "stopped",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "All post-stop timer decisions are also blocked at runCatchUp and timer callbacks check stopped before catchUp.fired, so this outer scheduling guard is redundant."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > armCatchUpTimer",
+    "op": "drop statement",
+    "text": "disarmCatchUpTimer(timer);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "An older callback compares its handle with the newly stored handle and returns, so explicit pre-arm disarm changes no decision."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > armCatchUpTimer",
+    "op": "if→false",
+    "text": "stopped",
+    "nth": 2,
+    "verdict": "equivalent",
+    "reason": "stop clears catchUpTimers before any surviving callback can continue; the next identity check sees no matching handle and returns before catchUp.fired."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > armCatchUpTimer",
+    "op": "if→false",
+    "text": "catchUpTimers.get(key) !== handle",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "Re-arming a timer clears the old handle synchronously before storing the replacement; JavaScript cannot run the cleared callback inside that operation, so no stale handle reaches this branch."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > armCatchUpTimer",
+    "op": "drop statement",
+    "text": "catchUpTimers.delete(key);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Leaving an expired handle until the next arm only causes clearTimeout on an already-fired timer before overwrite."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > armCatchUpTimer",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not run a catch-up timer', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "if→false",
+    "text": "stopped",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "All asynchronous re-entry sites check stopped and all public/event sources are stopped or unsubscribed; no decisions reach runCatchUp after stop."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "drop statement",
+    "text": "disarmCatchUpTimer(decision.timer);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Every disarm decision follows a catch-up state transition that makes catchUp.fired for the old timer return no decisions, so retaining the physical timer can only run a no-op callback."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "if→true",
+    "text": "decision.trigger !== 'start'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "At start, loadReplica already merged the same synchronous storage snapshot; re-merging it is idempotent and no other task can write between the reads."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "if→false",
+    "text": "stopped",
+    "nth": 2,
+    "verdict": "equivalent",
+    "reason": "The room-copy continuation checks stopped again at runCatchUp, so this outer guard is redundant."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not continue a room copy read', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "if→false",
+    "text": "stopped",
+    "nth": 3,
+    "verdict": "equivalent",
+    "reason": "The party-read continuation checks stopped again at runCatchUp, so this outer guard is redundant."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not read the party', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not ask for the room state', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll left out a record too large for one state message', key);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not send the room state', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not answer a ping', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > runCatchUp",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not ping the GM clients', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > reject",
+    "op": "if→false",
+    "text": "sceneCommandIds.has(id)",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "A rejection for an engine-owned scene id has no waiting window; the extra LOCAL answer is ignored by every client and changes no state/notice/storage."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > reject",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not show a refused unlink', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > reject",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not reject a command', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > commandDone",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not answer a command', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > openFromToken",
+    "op": "if→false",
+    "text": "stopped",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The token-menu callback checks its own stopped flag before it invokes openFromToken, and stop also removes the menu item; no post-stop platform callback reaches this function."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > openFromToken",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not open its window', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > deliverOpen",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not ask a window to open a sheet', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > unlinkRemoved",
+    "op": "if→false",
+    "text": "stopped || role !== 'GM'",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "Demotion and stop synchronously stop sceneWatch, whose own stopped checks suppress every pending removed callback; unlinkRemoved is therefore never called outside a live GM watch."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > unlinkRemoved",
+    "op": "||→&&",
+    "text": "stopped || role !== 'GM'",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "Demotion and stop synchronously stop sceneWatch, whose own stopped checks suppress every pending removed callback; unlinkRemoved is therefore never called outside a live GM watch."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > unlinkRemoved",
+    "op": "drop statement",
+    "text": "deletedTokens.delete(itemId);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Scene removal ids are unique within one callback; a token can be reported removed again only after a present callback has already removed it from deletedTokens, so delete-before-add never changes insertion order."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > clearDeletedLinks",
+    "op": "||→&&",
+    "text": "stopped || role !== 'GM'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The only calls outside a live GM are followed by commandRouting authority/stopped checks, and scene-owned rejection ids are silent; no record, message, notice or storage value changes."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > persist",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not save a record', written.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > notifyDenied",
+    "op": "if→false",
+    "text": "options.editDenied === undefined",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The production background caller always supplies copy.editDenied; absence exists only for tests that intentionally disable notifications."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > notifyDenied",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not show a denied edit', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > presetOf",
+    "op": "if→false",
+    "text": "decodedPreset?.c === record.c && decodedPreset.a === record.a",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The changed cache predicate only causes a redundant decode; callers receive the same parsed preset for the same version."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > presetOf",
+    "op": "drop assignment",
+    "text": "decodedPreset = { c: record.c, a: record.a, preset: decoded.value };",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Omitting the cache write only repeats pure decodePreset calls and changes no returned preset or external effect."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > mergePersisted",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not read the saved records', load.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > enterCatchUp",
+    "op": "if→false",
+    "text": "stopped",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Public engine.catchUp can reach catchUp.enter after stop, but runCatchUp rejects every resulting decision at its own stopped guard. Stop is permanent, so the private phase change cannot reach a publisher, timer, message, storage or later live transition."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > notifyDataReplaced",
+    "op": "if→false",
+    "text": "options.dataReplaced === undefined",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "The production background caller always supplies copy.dataReplaced; absence exists only for tests that intentionally disable notifications."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > notifyDataReplaced",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not show that the room data was replaced', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > performCaughtUp",
+    "op": "||→&&",
+    "text": "currentPersistence === null || currentPersistence.generation.n === 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "persistAllOnExit is armed only after successful promotion installs non-null persistence. For n>0 both expressions mark the generation; for n=0 the mutation only adds the initial-generation marker that readHighestGeneration already returns by default."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > performCaughtUp",
+    "op": "if→false",
+    "text": "kept !== undefined && !kept.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Changing only the error diagnostic condition cannot change marker storage, replica, messages or notices."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > performCaughtUp",
+    "op": "drop !",
+    "text": "!kept.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Changing only the error diagnostic condition cannot change marker storage, replica, messages or notices."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > performCaughtUp",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not keep its generation', kept.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > performCaughtUp",
+    "op": "if→false",
+    "text": "pendingDenial.notify",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "Every engine replica change calls pendingEdits.recordsChanged before catch-up can finish, and edits composed during catch-up are validated before they enter the pending set; pendingEdits.caughtUp cannot return notify=true under the engine caller."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > performCaughtUp",
+    "op": "drop statement",
+    "text": "notifyDenied();",
+    "nth": 1,
+    "verdict": "unreachable",
+    "reason": "Every engine replica change calls pendingEdits.recordsChanged before catch-up can finish, and edits composed during catch-up are validated before they enter the pending set; pendingEdits.caughtUp cannot return notify=true under the engine caller."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > receiveRecords",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll dropped a remote record too large for one message', record.k);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > receiveRecords",
+    "op": "if→true",
+    "text": "changed.length > 0",
+    "nth": 2,
+    "verdict": "equivalent",
+    "reason": "clearDeletedLinks on an unchanged receive is idempotent; any live deleted-token link was already checked on the prior change or catch-up exit."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > receiveRecords",
+    "op": ">→>=",
+    "text": "changed.length > 0",
+    "nth": 2,
+    "verdict": "equivalent",
+    "reason": "clearDeletedLinks on an unchanged receive is idempotent; any live deleted-token link was already checked on the prior change or catch-up exit."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > rereadRole",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not read its role', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > changeRole",
+    "op": "if→true",
+    "text": "next !== 'GM'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Promotion drains pending player edits before this branch, while a GM has no pending player edits to retain on demotion; all three branch mutations leave the queue empty."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > changeRole",
+    "op": "if→false",
+    "text": "next !== 'GM'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Promotion drains pending player edits before this branch, while a GM has no pending player edits to retain on demotion; all three branch mutations leave the queue empty."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > changeRole",
+    "op": "!==→===",
+    "text": "next !== 'GM'",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Promotion drains pending player edits before this branch, while a GM has no pending player edits to retain on demotion; all three branch mutations leave the queue empty."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > changeRole",
+    "op": "drop statement",
+    "text": "pendingEdits.clear();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "A promoted queue was drained and a demoting GM has no player edits, so the explicit clear has no reachable entry to remove."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > changeRole",
+    "op": "drop statement",
+    "text": "catchUp.replicaReplaced();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "A role change does not replace the full replica or its digest; the immediately following role-change catch-up establishes a fresh nonce and clears mismatch evidence, so retaining valid peer digest history changes no decision."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > changeRole",
+    "op": "drop assignment",
+    "text": "persistAllOnExit = false;",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The flag is overwritten to true on successful promotion storage load and is irrelevant on demotion, so retaining/forcing it has no caller-visible branch."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > changeRole",
+    "op": "false→true",
+    "text": "false",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The flag is overwritten to true on successful promotion storage load and is irrelevant on demotion, so retaining/forcing it has no caller-visible branch."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > changeRole",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not read the saved records', probe.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not start the GM link watch', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > stop",
+    "op": "drop statement",
+    "text": "clearTimeout(timer);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "stop sets stopped and clears the timer map; surviving callbacks see no matching handle or stopped and cannot fire decisions."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > stop",
+    "op": "drop statement",
+    "text": "catchUpTimers.clear();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "All handles were cleared and stopped is permanent; retaining dead handles changes only unreachable memory."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > stop",
+    "op": "drop statement",
+    "text": "pendingEdits.clear();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "A retained proposal can reach only the send queue callback, which returns null whenever the engine-level stopped flag is true; the stopped send queue emits no proposal or caller-visible result."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > stop",
+    "op": "drop statement",
+    "text": "unsubscribeParty();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The retained direct party callback can only update stopped catch-up bookkeeping and start rereadRole; rereadRole checks the engine-level stopped flag before changing role, and no message, storage, notice, or projection follows."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > stop",
+    "op": "drop statement",
+    "text": "unsubscribeRole();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The retained role callback only starts rereadRole, whose continuation checks the engine-level stopped flag before changeRole; authority, catch-up, storage, messages, and projections stay unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > stop",
+    "op": "drop statement",
+    "text": "unsubscribeMetadata();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "roomCopy.stop changes its lifecycle to stopped before a retained metadata callback can run; followed then returns before decode, adoption, status changes, or publish."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > stop",
+    "op": "drop statement",
+    "text": "roster.stop();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "A retained roster subscription may refresh its private member map, but its onReplace callback followParty checks the engine-level stopped flag before publishing; room ingress is independently blocked."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > flushNow",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not close catch-up', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > flushNow",
+    "op": "drop statement",
+    "text": "outbox.flush();",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "CommitOutbox.add already placed a composed commit in sendQueue. sendQueue.flushNow invokes that composer and drains every held record, so the preceding direct outbox flush is redundant."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "settledWithin",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not start its catch-up', error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "settledWithin",
+    "op": "drop statement",
+    "text": "clearTimeout(timer);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The deadline timer only resolves an already-settled race; retaining it briefly changes no engine state or external effect."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "higherGeneration",
+    "op": ">=→>",
+    "text": "compareGenerations(first, second) >= 0",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Equal generations have identical n and a; returning either operand cannot change a key, message, or comparison."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "loadReplica",
+    "op": "if→false",
+    "text": "!removed.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "readHighestGeneration excludes every generation with an incomplete marker even if removing it failed. A list failure is independently handled by the highest-generation read, so this branch changes only diagnostics."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "loadReplica",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not remove an incomplete generation', removed.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "loadReplica",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not read the saved records', highest.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "loadReplica",
+    "op": "if→false",
+    "text": "!below.ok",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Failure to remove lower generations is intentionally non-fatal and only logged; the same highest generation is loaded and exposed."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "loadReplica",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not remove a replaced generation', below.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "loadReplica",
+    "op": "drop statement",
+    "text": "console.error('Muster Roll could not read the saved records', load.error);",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > raiseNewerVersion",
+    "op": "if→false",
+    "text": "newerVersionSeen",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The first call still sets the sticky newerVersionSeen flag; later calls repeat true and publish(), which suppresses unchanged visible records and header, so notices and window messages are unchanged."
   }
 ]

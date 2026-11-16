@@ -82,22 +82,24 @@ type Subject = {
   events: string[];
   replies: EngineMessage[];
   failWrite: () => void;
+  failStore: (operation: 'mark-incomplete' | 'mark-generation' | 'mark-complete') => void;
   holdImport: () => void;
   releaseImport: () => void;
   onWriteImport: (next: () => void) => void;
   runCatchUp: (decisions: readonly CatchUpDecision[]) => void;
 };
 
-function createSubject(): Subject {
+function createSubject(overrides: Partial<GenerationFlowPortsWithInterpreter> = {}): Subject {
   const events: string[] = [];
   const replies: EngineMessage[] = [];
   let writesFail = false;
+  const failedStoreOperations = new Set<string>();
   let waitForImport: Promise<void> | null = null;
   let releaseImport = noop;
   let writeImportHook: (() => void) | null = null;
   let flow: GenerationFlow;
 
-  const store = createStore(events, () => writesFail);
+  const store = createStore(events, () => writesFail, failedStoreOperations);
 
   const catchUp = createCatchUp({
     timing: {
@@ -170,6 +172,7 @@ function createSubject(): Subject {
       events.push(`reply:${message.t}:${'id' in message ? message.id : 'none'}`);
     },
     interpretCatchUp: runCatchUp,
+    ...overrides,
   };
 
   flow = createGenerationFlow(ports);
@@ -181,6 +184,9 @@ function createSubject(): Subject {
     replies,
     failWrite: () => {
       writesFail = true;
+    },
+    failStore: (operation) => {
+      failedStoreOperations.add(operation);
     },
     holdImport: () => {
       waitForImport = new Promise((resolve) => {
@@ -198,7 +204,11 @@ function createSubject(): Subject {
   };
 }
 
-function createStore(events: string[], writesFail: () => boolean): RecordStore {
+function createStore(
+  events: string[],
+  writesFail: () => boolean,
+  failedOperations: ReadonlySet<string>,
+): RecordStore {
   return {
     write: (generation, record) => {
       events.push(`store:write:${generationId(generation)}:${record.k}`);
@@ -210,17 +220,23 @@ function createStore(events: string[], writesFail: () => boolean): RecordStore {
     markIncomplete: (generation) => {
       events.push(`store:incomplete:${generationId(generation)}`);
 
-      return ok(undefined);
+      return failedOperations.has('mark-incomplete')
+        ? err({ operation: 'write', reason: 'quota' })
+        : ok(undefined);
     },
     markComplete: (generation) => {
       events.push(`store:complete:${generationId(generation)}`);
 
-      return ok(undefined);
+      return failedOperations.has('mark-complete')
+        ? err({ operation: 'write', reason: 'quota' })
+        : ok(undefined);
     },
     markGeneration: (generation) => {
       events.push(`store:generation:${generationId(generation)}`);
 
-      return ok(undefined);
+      return failedOperations.has('mark-generation')
+        ? err({ operation: 'write', reason: 'quota' })
+        : ok(undefined);
     },
     removeGeneration: (generation) => {
       events.push(`store:remove:${generationId(generation)}`);
@@ -419,3 +435,238 @@ test('room-copy adoption interprets generationRead before staging can synchronou
     'publish',
   ]);
 });
+
+test.each([
+  {
+    name: 'a duplicate snapshot check',
+    overrides: { acceptCommand: () => false },
+    prepare: (_subject: Subject) => undefined,
+    expected: [],
+  },
+  {
+    name: 'a player snapshot check',
+    overrides: { role: () => 'PLAYER' as const },
+    prepare: (_subject: Subject) => undefined,
+    expected: ['reject:check:not-allowed'],
+  },
+  {
+    name: 'a snapshot check during catch-up',
+    overrides: {},
+    prepare: (_subject: Subject) => undefined,
+    expected: ['reject:check:catching-up'],
+  },
+  {
+    name: 'a snapshot check without writable persistence',
+    overrides: { initialPersistence: null },
+    prepare: (subject: Subject) => {
+      subject.catchUp.enter('start');
+      subject.catchUp.partyRead('catch-up-id', []);
+    },
+    expected: ['reject:check:write-failed'],
+  },
+] satisfies readonly {
+  name: string;
+  overrides: Partial<GenerationFlowPortsWithInterpreter>;
+  prepare: (subject: Subject) => void;
+  expected: string[];
+}[])('$name has only its required terminal effect', ({ overrides, prepare, expected }) => {
+  // #given
+  const subject = createSubject(overrides);
+  prepare(subject);
+
+  // #when
+  subject.flow.checkSnapshot({ t: 'snapshot-check', id: 'check', data: 'invalid' });
+
+  // #then
+  expect(subject.events).toEqual(expected);
+});
+
+test('a wipe without writable persistence is rejected without replacing data', async () => {
+  // #given
+  const subject = createSubject({ initialPersistence: null });
+
+  // #when
+  await subject.flow.wipe('wipe');
+
+  // #then
+  expect(subject.events).toEqual(['reject:wipe:write-failed']);
+});
+
+test('a stopped room-copy adoption leaves the replica unchanged', () => {
+  // #given
+  const subject = createSubject({ stopped: () => true });
+
+  // #when
+  const actual = subject.flow.adoptFromCopy(COPY);
+
+  // #then
+  expect({ actual, events: subject.events, generation: subject.flow.generation() }).toEqual({
+    actual: { adoptionStaged: [] },
+    events: [],
+    generation: INITIAL,
+  });
+});
+
+test('clearing an adopted generation with a retained nonce publishes the replacement state', () => {
+  // #given
+  const subject = createSubject();
+
+  // #when
+  subject.flow.clearStaged(false, true);
+
+  // #then
+  expect(subject.events).toEqual(['drop-outbox', 'drop-pending-work', 'publish']);
+});
+
+test('a second adoption does not reuse records staged for the first generation', () => {
+  // #given
+  const subject = createSubject();
+  subject.catchUp.generationRead(NEXT);
+  subject.flow.stage([STALE_RECORD]);
+  expect(subject.flow.saveAdoption(NEXT, false)).toBe(true);
+  subject.events.splice(0);
+
+  // #when
+  subject.catchUp.generationRead(HIGHER);
+  expect(subject.flow.saveAdoption(HIGHER, false)).toBe(true);
+
+  // #then
+  expect(subject.events).toEqual([
+    'store:incomplete:2:other-gm',
+    'store:generation:2:other-gm',
+    'store:complete:2:other-gm',
+    'store:remove-below:2:other-gm',
+    'store:remove-older-formats',
+    'replace:',
+    'room-copy:replaced:false',
+    'publish',
+  ]);
+});
+
+test('a second snapshot import is rejected while the first writes its room copy', async () => {
+  // #given
+  const subject = createSubject();
+  subject.holdImport();
+  subject.catchUp.enter('start');
+  subject.catchUp.partyRead('catch-up-id', []);
+  subject.flow.checkSnapshot({
+    t: 'snapshot-check',
+    id: 'check',
+    data: encodeSnapshotFileData(FILE),
+  });
+  const checked = subject.replies.at(-1);
+
+  if (checked?.t !== 'snapshot-check-result') {
+    throw new Error('snapshot check did not return a digest');
+  }
+
+  const command = {
+    type: 'snapshot-import' as const,
+    data: encodeSnapshotFileData(FILE),
+    expectedDigest: checked.digest,
+  };
+
+  const first = subject.flow.importFromSnapshot('first', command);
+  await Promise.resolve();
+  subject.events.splice(0);
+
+  // #when
+  const second = subject.flow.importFromSnapshot('second', command);
+  await Promise.resolve();
+
+  // #then
+  try {
+    expect(subject.events).toEqual(['reject:second:importing']);
+  } finally {
+    subject.releaseImport();
+    await Promise.all([first, second]);
+  }
+});
+
+test('a wipe and snapshot check are rejected while an import writes its room copy', async () => {
+  // #given
+  const subject = createSubject();
+  subject.holdImport();
+  const first = subject.flow.wipe('first');
+  await Promise.resolve();
+  subject.events.splice(0);
+
+  // #when
+  const second = subject.flow.wipe('second');
+  await Promise.resolve();
+  subject.flow.checkSnapshot({ t: 'snapshot-check', id: 'check', data: 'invalid' });
+
+  // #then
+  try {
+    expect(subject.events).toEqual(['reject:second:importing', 'reject:check:importing']);
+  } finally {
+    subject.releaseImport();
+    await Promise.all([first, second]);
+  }
+});
+
+test('an invalid snapshot import is rejected before storage or room effects', async () => {
+  // #given
+  const subject = createSubject();
+
+  // #when
+  const result = subject.flow
+    .importFromSnapshot('import', {
+      type: 'snapshot-import',
+      data: 'invalid',
+      expectedDigest: 'none',
+    })
+    .then(() => subject.events);
+
+  const [settled] = await Promise.allSettled([result]);
+
+  // #then
+  expect(settled).toEqual({
+    status: 'fulfilled',
+    value: ['reject:import:invalid-snapshot'],
+  });
+});
+
+test('a snapshot import without writable persistence is rejected before parsing', async () => {
+  // #given
+  const subject = createSubject({ initialPersistence: null });
+
+  // #when
+  await subject.flow.importFromSnapshot('import', {
+    type: 'snapshot-import',
+    data: 'invalid',
+    expectedDigest: 'none',
+  });
+
+  // #then
+  expect(subject.events).toEqual(['reject:import:write-failed']);
+});
+
+test.each([
+  ['mark-incomplete', ['store:incomplete:1:gm-a']],
+  ['mark-generation', ['store:incomplete:1:gm-a', 'store:generation:1:gm-a']],
+  [
+    'mark-complete',
+    ['store:incomplete:1:gm-a', 'store:generation:1:gm-a', 'store:complete:1:gm-a'],
+  ],
+] as const)(
+  'a %s failure keeps the old generation and refuses the wipe',
+  async (operation, storageEvents) => {
+    // #given
+    const subject = createSubject();
+    subject.failStore(operation);
+
+    // #when
+    await subject.flow.wipe('wipe');
+
+    // #then
+    expect(subject.events).toEqual([
+      'flush',
+      ...storageEvents,
+      'save-failed',
+      'store:remove:1:gm-a',
+      'publish',
+      'reject:wipe:write-failed',
+    ]);
+  },
+);

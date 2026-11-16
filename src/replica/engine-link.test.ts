@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
+import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import type { Command } from '@/core/ui-messages';
 import type { ContextMenuIconFilter, PlayerRole } from '@/platform/ports';
@@ -573,6 +574,30 @@ describe('token menu', () => {
     });
   });
 
+  test('removes GM items during catch-up after the GM becomes a player', async () => {
+    // #given
+    const room = roomRig.openRoom();
+
+    const client = await startClient(room, 'gm-a', {
+      seeded: [...BASE, { k: 'link:t1', d: { s: 'brok' }, c: 1, a: 'seed' }],
+      timing: { catchUpTimeoutMs: 300 },
+    });
+
+    await waitUntil(() => menuOf(client).length === 3);
+    room.join(GHOST, 'GM');
+
+    // #when
+    client.platform.setRole('PLAYER');
+    await waitUntil(
+      () =>
+        client.store.$sync.get().role === 'PLAYER' &&
+        client.store.$sync.get().state === 'catching-up',
+    );
+
+    // #then
+    expect(menuOf(client).map((item) => item.id)).toEqual([OPEN_ITEM]);
+  });
+
   test('makes no item before the first catch-up ends, and makes them when it ends', async () => {
     // #given: a GM in the party that never answers holds the catch-up open.
     const room = roomRig.openRoom();
@@ -689,6 +714,26 @@ describe('token menu', () => {
       failed: 0,
       menu: [{ id: LINK_ITEM, icons: [{ label: 'Привязать лист…', filter: LINK_ANY }] }],
     });
+  });
+
+  test('an unchanged remote record does not retry a failed menu update', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const client = await startClient(room, 'gm-a', { failMenuCalls: ['create'] });
+
+    await pause(20);
+    room.join(GHOST, 'GM');
+
+    // #when
+    room.room.postRemote(
+      SYNC_CHANNEL,
+      { v: 3, g: { n: 0, a: '' }, t: 'commit', records: [PRESET_RECORD] },
+      GHOST,
+    );
+    await pause(30);
+
+    // #then
+    expect(menuOf(client)).toEqual([]);
   });
 
   test('removes an item again on the next change after its remove failed', async () => {
