@@ -2,11 +2,11 @@
 
 ## Scope and status
 
-**CURRENT BATCH-3 STATUS: the omitted engine cleanup wrapper is corrected as a covered gap; acceptance remains pending.** The parent native run and parent checks are preserved as historical evidence. The caller-owned fresh probe and confirming review remain pending; **this batch does not claim acceptance**.
+**CURRENT BATCH-4 STATUS: the delayed initial party-read anchor is corrected from equivalent to covered gap; completion remains pending.** The executed native run and parent checks are preserved as historical evidence. Parent-owned full-suite verification, targeted FULL-REPLICA calibration, native comparison and confirming acceptance/review remain pending; **this batch does not claim acceptance**.
 
-Fresh full five-module probe: **PENDING, caller-owned**. Confirming review: **PENDING, caller-owned**. Full static, unit, browser, build and probe verification: **PENDING, caller-owned**. The task remains In Progress and AC #4 is intentionally unchecked.
+Parent-owned full-suite verification: **PENDING**. Targeted FULL-REPLICA calibration: **PENDING**. Native comparison: **PENDING**. Confirming acceptance/review: **PENDING**. No new full five-module probe is claimed or required in this metadata batch. The task remains In Progress and AC #4 is intentionally unchecked.
 
-The accepted lock is `8298a63fd2b61e3215a7b4aaf1a7c6244a5d5eb6`. All eighteen locked paths remain byte-identical to that SHA. This phase changes only the baseline, verification record and existing TASK-75 Backlog record; production code, tests, helpers and approved spec remain unchanged.
+The accepted lock is `cda8f2a1ab52de121155d161e3907fd59ca81200`. All nineteen locked paths remain byte-identical to that SHA. This phase changes only the baseline, verification record and existing TASK-75 Backlog record; production code, tests, helpers and approved spec remain unchanged.
 
 ## Initial complete inventory
 
@@ -112,7 +112,7 @@ The actual callers and deduplication path were checked independently. `room-prot
 
 ## Classification summary
 
-The initial inventory has 303 survivors. The cumulative classified set has 304 anchors: 142 reachable gaps, 141 equivalent mutations and 21 unreachable paths. The 304th anchor is the D6 equivalent classification below; it is not an additional initial-inventory survivor. Batch 2 corrected fifteen prior equivalent verdicts to calibrated gaps, and batch 3 corrects the omitted engine-level cleanup wrapper using the unchanged generation-replacement owner. There are no deferred gaps and no accepted new timeout rows.
+The initial inventory has 303 survivors. The cumulative classified set has 304 anchors: 143 reachable gaps, 140 equivalent mutations and 21 unreachable paths. The 304th anchor is the D6 equivalent classification below; it is not an additional initial-inventory survivor. Batch 2 corrected fifteen prior equivalent verdicts to calibrated gaps, batch 3 corrected the omitted engine-level cleanup wrapper, and batch 4 corrects the delayed initial party-read anchor. There are no deferred gaps and no accepted new timeout rows.
 
 | Module | Gap | Equivalent | Unreachable | Classified |
 | --- | --- | --- | --- | --- |
@@ -121,7 +121,7 @@ The initial inventory has 303 survivors. The cumulative classified set has 304 a
 | roll-flow | 7 | 6 | 1 | 14 |
 | room-protocol | 13 | 10 | 6 | 29 |
 | engine | 64 | 85 | 8 | 157 |
-| **Total** | 142 | 141 | 21 | 304 |
+| **Total** | 143 | 140 | 21 | 304 |
 
 ### Historical batch-1 gap calibration
 
@@ -494,7 +494,7 @@ The ledger below is the complete cumulative classification set. It contains the 
 | 199 | src/replica/engine.ts | startReplicaEngine > openFromToken | drop statement | console.error('Muster Roll could not open its window', error); | 1 | equivalent | Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged. |
 | 200 | src/replica/engine.ts | startReplicaEngine > deliverOpen | drop statement | console.error('Muster Roll could not ask a window to open a sheet', error); | 1 | equivalent | Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged. |
 | 201 | src/replica/engine.ts | startReplicaEngine > dropStaleOpen | >=→> | Date.now() >= heldOpenUntil | 1 | gap | an open request remains deliverable at the exact TTL deadline |
-| 202 | src/replica/engine.ts | startReplicaEngine > followParty | if→false | stopped | 1 | equivalent | roster.stop synchronously unsubscribes followParty; no caller invokes it after stopped. |
+| 202 | src/replica/engine.ts | startReplicaEngine > followParty | if→false | stopped | 1 | gap | roster.stop unsubscribes but does not cancel or epoch-invalidate an already-running initial read; engine followParty's stopped guard prevents its post-stop publication. |
 | 203 | src/replica/engine.ts | startReplicaEngine > followWindowSize | if→false | version === sizedFor | 1 | gap | An unrelated replica update marked the unresolved size as wanted again, so rejection retried WIDE immediately. |
 | 204 | src/replica/engine.ts | startReplicaEngine > followWindowSize | drop assignment | sizedFor = version; | 1 | gap | Without the assignment, an unrelated replica update marked the unresolved size as wanted again, so rejection retried WIDE immediately. |
 | 205 | src/replica/engine.ts | startReplicaEngine > followScene | drop assignment | sceneWatch = null; | 1 | gap | after demotion the stopped scene watcher remains cached, so promotion never subscribes again; mutation drop assignment changes the reachable sceneWatch = null; boundary. |
@@ -771,6 +771,42 @@ These checks cover only the two changed documentation/Backlog paths. Markdown, B
 | Batch-3 handoff audit | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/chain-validation.json |
 | Batch-3 final audit log | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/checks/final-audit.log |
 | Batch-3 implementer report | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-3/implementer-1.report.md |
+
+## Current batch-4 C1 correction and preserved evidence
+
+Batch 4 removes exactly one incorrect equivalent baseline object and reclassifies the delayed initial party-read anchor as a covered gap:
+`src/replica/engine.ts / startReplicaEngine > followParty / if→false / stopped / nth=1`.
+`roster.stop` unsubscribes but does not cancel or epoch-invalidate an already-running initial read; the engine `followParty` stopped guard prevents its post-stop publication.
+The complete ledger remains 304 rows: **143 gap, 140 equivalent and 21 unreachable**.
+
+The current baseline has **229 parsed entries**: **190 equivalent, 36 unreachable and 3 retained original timeouts**.
+The selected five-module portion has **161 entries**. These are metadata counts, not a full-run result.
+The original 68 objects and order, every unrelated baseline object and order, and all prior classifications remain unchanged.
+
+Focused owner evidence uses source SHA `cda8f2a1ab52de121155d161e3907fd59ca81200`:
+
+- `bun test src/replica/engine-access.test.ts --test-name-pattern 'initial party read'`: mutation red exit 1 with an ordinary `expect(...).toEqual(...)` mismatch; restored green exit 0 with 2 pass, 0 fail and 2 expectations. The same controlled read has a live positive control.
+- The accepted unchanged owner-file gate is `bun test src/replica/engine-access.test.ts`: 43 pass, 0 fail, 44 expectations. This result is reused from `/Users/seigiard/.cache/herdr-run/task75-review-b4-focused-sunny-8b3b.log`.
+- Parent targeted native-anchor control uses the same source SHA and exact `stopped→false` mutation. `bun test --bail src/replica/` reached the ordinary expect-red after 193 tests before bail; restored code passed 1119 tests with 0 failures and 1131 expectations. This is one exact native mutation control, not a repeated full five-module probe.
+
+The immutable executed native run remains at source `c3e40df7aab4ba85616c06a2d818348f693c8da1` with `1089 total / 927 killed / 162 survived / 0 timeout`.
+Its raw results, summary, provenance, comparison and parent-check summary are unchanged.
+Parent-owned full-suite verification, targeted FULL-REPLICA calibration, native comparison and confirming acceptance/review remain pending.
+No composite result is labeled as an executed full run.
+
+### Current batch-4 checks and limits
+
+| Check | Command / evidence | Result | Evidence |
+| --- | --- | --- | --- |
+| Focused baseline consumer | `bun test tools/mutants/probe/baseline.test.ts` | exit 0; 9 pass, 0 fail, 9 expectations | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-4/checks/focused-baseline.log` |
+| Accepted owner-file result | `bun test src/replica/engine-access.test.ts` | reused at `cda8f2a1ab52de121155d161e3907fd59ca81200`; 43 pass, 0 fail, 44 expectations | `/Users/seigiard/.cache/herdr-run/task75-review-b4-focused-sunny-8b3b.log` |
+| Touched-path format | `bunx oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern --check ...` | exit 0; only matched JSON is format-validated; Markdown and Backlog are skipped | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-4/checks/format.log` |
+| Whitespace / parsed ledger / baseline / lock / scope audit | `git diff --check` and parsed metadata audit | exit 0; exact one removal, 304 rows, current19 lock/source/spec/native evidence unchanged | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-4/checks/metadata-audit.log` |
+| Backlog task view | `backlog task view TASK-75 --plain` | exit 0; task remains In Progress and AC #4 unchecked | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-4/checks/backlog.log` |
+| Parent targeted native-anchor control | exact `stopped→false` mutation at `cda8f2a1…`; `bun test --bail src/replica/` | preserved evidence: red exit 1 after ordinary expect mismatch at 193 tests; restored green 1119 pass, 0 fail | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-4/parent-replica-control/result.json` |
+| Native full run | immutable source `c3e40df7…`; 1089/927/162/0 | preserved historical evidence; not rerun or replaced | `/Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/review-batch-2/final-{results,summary,provenance,comparison}.json` |
+
+No global lint, typecheck, full unit, directory replica, browser, build, full five-module probe, targeted FULL-REPLICA calibration or new review was run in this metadata batch.
 
 ## D5 preserved-original 65/3 scope
 

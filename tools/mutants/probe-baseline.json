@@ -1603,15 +1603,6 @@
   },
   {
     "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > followParty",
-    "op": "if→false",
-    "text": "stopped",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "roster.stop synchronously unsubscribes followParty; no caller invokes it after stopped."
-  },
-  {
-    "file": "src/replica/engine.ts",
     "fn": "startReplicaEngine > unlinkRemoved",
     "op": "if→false",
     "text": "stopped || role !== 'GM'",
