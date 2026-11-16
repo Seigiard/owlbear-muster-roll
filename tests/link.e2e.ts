@@ -287,7 +287,7 @@ test('a scene change keeps the links of the scene left behind', async ({ page, c
   }).toEqual({ anya: { s: 'anya', c: 'token' }, goblin: null });
 });
 
-test('a pick on a token with no label, the offer checked, labels the token with the sheet name', async ({
+test('a pick on a token with no label, the offer checked, labels it with the nearest ancestor', async ({
   page,
   context,
 }) => {
@@ -306,7 +306,7 @@ test('a pick on a token with no label, the offer checked, labels the token with 
     link: await storedData(page, 'link:tok-new'),
     label: await sceneLabel(background, 'tok-new'),
     other: await sceneLabel(background, 'map'),
-  }).toEqual({ link: { s: 'brok', c: 'token' }, label: 'Брок', other: '' });
+  }).toEqual({ link: { s: 'brok', c: 'token' }, label: 'Персонаж', other: '' });
 });
 
 test("a pick of a repeat block on a token with no label labels it with the block's first field", async ({
