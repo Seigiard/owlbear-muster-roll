@@ -26,6 +26,7 @@ Keep `dev:mock`, `room`, and `preview` working until TASK-74. Keep the `.tryclou
 - Existing `dev:mock`, `room`, `preview`, and the `.trycloudflare.com` Vite host rule remain unchanged.
 - Local validation passed: format, lint, types, 3165 Bun tests with one documented environment skip, 521 Chromium tests, and build.
 - Real cloudflared registered a quick tunnel and printed the manifest URL. Fifteen public fetch attempts failed to resolve its hostname. Public manifest reachability and live Add Extension remain unverified; TASK-68 stays In Progress for that boundary.
+- On 2026-11-15 the owner confirmed the remaining live check: "68 проверено, закройте в этом ПРе". TASK-68 is now Done on that manual evidence.
 
 ## Review Triage Log
 

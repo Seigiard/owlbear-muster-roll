@@ -1,5 +1,5 @@
 import { createContext, useContext, useId } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 
 import type { PresetCell, PresetFieldCell } from '@/core/preset';
 import {
@@ -33,6 +33,8 @@ type SheetCellProps = {
   row: DiceRow;
   cellIndex: number;
   pending: CellPending;
+  autoFocus?: boolean;
+  onEscape?: () => void;
 };
 
 // UX-DR28: `disabled` for a field of a row whose removal waits for a GM. `marked` shows the field's
@@ -45,6 +47,8 @@ type FieldProps = {
   values: FieldValues;
   place: FieldPlace;
   pending: CellPending;
+  autoFocus?: boolean;
+  onEscape?: () => void;
 };
 
 const ERROR_TEXT: Record<FieldErrorKind, string> = {
@@ -69,8 +73,13 @@ const CHECK_MARK = '✓';
 
 // AD-23: the preset builder's preview, `null` in the window. When set, each cell sits in a
 // `display: contents` element that names its place, `{section}.{row}.{cell}`, so a click and a mark
-// find it, and an empty field shows its id as a placeholder, the name formulas use.
-export type CellPreview = { placeholders: true };
+// find it, and an empty field shows its id as a placeholder, the name formulas use. The selected
+// cell may be temporarily editable for the preview's in-place editing flow.
+export type CellPreview = {
+  placeholders: true;
+  editableCell?: string | null;
+  onEscape?: () => void;
+};
 
 export const CellPreviewContext = createContext<CellPreview | null>(null);
 
@@ -86,6 +95,8 @@ export function SheetCell({
   pending,
 }: SheetCellProps): ReactNode {
   const preview = useContext(CellPreviewContext);
+  const cellKey = `${row.tabIndex}.${row.sectionIndex}.${row.rowIndex}.${cellIndex}.${row.instanceId ?? ''}`;
+  const previewEditable = preview?.editableCell === cellKey;
 
   const node = (
     <CellContent
@@ -93,10 +104,12 @@ export function SheetCell({
       before={before}
       values={values}
       place={place}
-      readOnly={readOnly}
+      readOnly={readOnly || (preview !== null && !previewEditable)}
       row={row}
       cellIndex={cellIndex}
       pending={pending}
+      autoFocus={previewEditable}
+      onEscape={preview?.onEscape}
     />
   );
 
@@ -121,6 +134,8 @@ function CellContent({
   row,
   cellIndex,
   pending,
+  autoFocus = false,
+  onEscape,
 }: SheetCellProps): ReactNode {
   const label = cellLabel(cell, before);
   let content: ReactNode;
@@ -144,9 +159,25 @@ function CellContent({
   } else {
     content =
       cell.type === 'check' ? (
-        <CheckField field={cell} label={label} values={values} place={place} pending={pending} />
+        <CheckField
+          field={cell}
+          label={label}
+          values={values}
+          place={place}
+          pending={pending}
+          autoFocus={autoFocus}
+          onEscape={onEscape}
+        />
       ) : cell.type === 'select' || cell.type === 'dice-choice' ? (
-        <SelectField field={cell} label={label} values={values} place={place} pending={pending} />
+        <SelectField
+          field={cell}
+          label={label}
+          values={values}
+          place={place}
+          pending={pending}
+          autoFocus={autoFocus}
+          onEscape={onEscape}
+        />
       ) : (
         <TextValueField
           field={cell}
@@ -154,6 +185,8 @@ function CellContent({
           values={values}
           place={place}
           pending={pending}
+          autoFocus={autoFocus}
+          onEscape={onEscape}
         />
       );
   }
@@ -202,7 +235,15 @@ function ReadOnlyValue({ field, label, values }: Omit<FieldProps, 'place' | 'pen
 }
 
 // The wrapper stays mounted with or without the mark, so a focused checkbox keeps its focus.
-function CheckField({ field, label, values, place, pending }: FieldProps): ReactNode {
+function CheckField({
+  field,
+  label,
+  values,
+  place,
+  pending,
+  autoFocus = false,
+  onEscape,
+}: FieldProps): ReactNode {
   const markId = useId();
   const edit = useCheckFieldEdit({ place, fieldId: field.id, recordValue: values.get(field.id) });
 
@@ -215,7 +256,14 @@ function CheckField({ field, label, values, place, pending }: FieldProps): React
         aria-describedby={describedBy([pending.marked ? markId : null, pending.rowMarkId])}
         checked={edit.checked}
         disabled={pending.disabled}
+        autoFocus={autoFocus}
         onChange={edit.onToggle}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && onEscape !== undefined) {
+            event.preventDefault();
+            onEscape();
+          }
+        }}
       />
       {pending.marked ? <PendingMark id={markId} /> : null}
     </span>
@@ -228,6 +276,8 @@ function SelectField({
   values,
   place,
   pending,
+  autoFocus = false,
+  onEscape,
 }: Omit<FieldProps, 'field'> & {
   field: Extract<PresetFieldCell, { type: 'select' | 'dice-choice' }>;
 }): ReactNode {
@@ -248,8 +298,16 @@ function SelectField({
         aria-label={label}
         aria-describedby={describedBy([pending.marked ? markId : null, pending.rowMarkId])}
         disabled={pending.disabled}
+        autoFocus={autoFocus}
         value={edit.value}
         onKeyDown={(event) => {
+          if (event.key === 'Escape' && onEscape !== undefined) {
+            event.preventDefault();
+            onEscape();
+
+            return;
+          }
+
           if (event.altKey || event.metaKey || event.ctrlKey) {
             return;
           }
@@ -294,7 +352,15 @@ function SelectField({
 
 // A `text` field is a textarea that grows with its lines. A `number` field is a text input with
 // the full keyboard, so `1,5` and a minus can be typed: the iOS decimal keypad has no minus.
-function TextValueField({ field, label, values, place, pending }: FieldProps): ReactNode {
+function TextValueField({
+  field,
+  label,
+  values,
+  place,
+  pending,
+  autoFocus = false,
+  onEscape,
+}: FieldProps): ReactNode {
   const errorId = useId();
   const markId = useId();
 
@@ -315,10 +381,24 @@ function TextValueField({ field, label, values, place, pending }: FieldProps): R
     ]),
     className: VALUE_CLASS,
     disabled: pending.disabled,
+    autoFocus,
     value: edit.text,
     onFocus: edit.onFocus,
-    onBlur: edit.onBlur,
-    onKeyDown: edit.onKeyDown,
+    onBlur: () => {
+      edit.onBlur();
+      onEscape?.();
+    },
+    onKeyDown: (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      if (event.key === 'Escape' && onEscape !== undefined) {
+        event.preventDefault();
+        edit.onBlur();
+        onEscape();
+
+        return;
+      }
+
+      edit.onKeyDown(event);
+    },
   };
 
   return (

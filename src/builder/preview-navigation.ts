@@ -11,6 +11,7 @@ export type PreviewNavigationAction = {
   type: 'selection-changed';
   template: PreviewNavigationTemplate | null;
   selectedTab: ShownTab | null;
+  tabShown?: (index: number) => boolean;
 };
 
 export type PreviewSheetNavigationState = string | null;
@@ -40,13 +41,20 @@ export function previewNavigationReducer(
         ? state.tab
         : undefined;
 
-  const tab = openTabIndex(action.template, chosenTab);
+  const shownTab =
+    action.tabShown === undefined
+      ? openTabIndex(action.template, chosenTab)
+      : openTabIndex(action.template, chosenTab, action.tabShown);
 
-  if (state?.template === action.template.uid && state.tab === tab) {
+  if (shownTab === null) {
+    return null;
+  }
+
+  if (state?.template === action.template.uid && state.tab === shownTab) {
     return state;
   }
 
-  return { template: action.template.uid, tab };
+  return { template: action.template.uid, tab: shownTab };
 }
 
 // AD-23: keep the selected sheet while the selected template remains in its group. On a template
