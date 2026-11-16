@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@opencode'
 created_date: '2026-11-15T20:32:00Z'
-updated_date: '2026-11-16T01:27:00Z'
+updated_date: '2026-11-16T03:29:00Z'
 labels: []
 dependencies:
   - TASK-67
@@ -43,4 +43,6 @@ TASK-64 moved the roll, generation, command-routing and room-protocol rules out 
 
 <!-- SECTION:NOTES:BEGIN -->
 Metadata/baseline phase recorded on lock 47eb45bd3ba989fad6cd762df960aa0c7b21b22f. Complete initial run at f91547e079b99f7dee6edf4408ebd52667eb33bb with `bun run probe command-routing generation-flow roll-flow room-protocol engine --jobs 6 --out /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/initial-results-v2.json`; limits 30000 ms unit and 180000 ms replica, six workers. Counts: command-routing 140 total/115 killed/25 survived/0 timeout; generation-flow 208/129/79/0; roll-flow 115/101/14/0; room-protocol 132/103/29/0; engine 494/338/156/0; total 1089/786/303/0. Complete classification is 126 calibrated gaps, 156 equivalent and 21 unreachable, no deferred gaps; replay-3 at the lock has 126/126 assertion-red exit 1 and restored-green exit 0. Candidate baseline preserves the original 68 parsed entries and SHA256 f4efced3bbda1b185ccd1e20e80524d33d094eae8d4f7af2ae54c2bb50646399, then appends 177 justified equivalent/unreachable anchors for 245 total entries. Evidence: _bmad-output/implementation-artifacts/task-75-verification.md and /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/. Final five-module comparison, AC #4 and closing review remain pending; task is not Done.
+
+D6 targeted metadata repair at lock 885c7f775fe50a063def9081739896cc228dbe6c: first final probe was a preserved failed attempt at final-results.json/final-summary.json/final-provenance.json/final-comparison.json, with command-routing 140/128/12/0, generation-flow 208/171/37/0, roll-flow 115/108/7/0, room-protocol 132/116/16/0, engine 494/388/106/0; total 1089/911/178/0, one new survivor, zero new timeouts and zero missing. The D6 anchor src/replica/engine.ts / startReplicaEngine > raiseNewerVersion / if→false / newerVersionSeen / nth=1 is accepted equivalent: the first call sets sticky newerVersionSeen and publishes; later calls repeat true and publish(), while publisher deduplication suppresses unchanged visible records/header. The initial killed status has no retained assertion output, so its cause is unknown. Evidence is version-survivor-investigation/guard-false.patch, both full replica green logs, the positive-control red/restored-green logs, and actual caller inspection. Cumulative classifications are 304 (126 gap, 157 equivalent, 21 unreachable), while the initial inventory remains 303. Baseline is now 246 entries with 178 selected-module entries; prior 245 entries and original 68 objects/order are preserved. Replay-4 and calibration-final/matrix.json are current evidence. D5 preserves the independent original-module 65 survivor/3 timeout oracle; deletion controls remain in test-writer-5.report.md. Fresh complete final comparison, AC #4 and closing review remain pending; status and checkboxes unchanged.
 <!-- SECTION:NOTES:END -->

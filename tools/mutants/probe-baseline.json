@@ -2203,5 +2203,14 @@
     "nth": 1,
     "verdict": "equivalent",
     "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
+  },
+  {
+    "file": "src/replica/engine.ts",
+    "fn": "startReplicaEngine > raiseNewerVersion",
+    "op": "if→false",
+    "text": "newerVersionSeen",
+    "nth": 1,
+    "verdict": "equivalent",
+    "reason": "The first call still sets the sticky newerVersionSeen flag; later calls repeat true and publish(), which suppresses unchanged visible records and header, so notices and window messages are unchanged."
   }
 ]
