@@ -474,3 +474,24 @@
 - source_spec: `spec-task-76-block-records.md`
   summary: "TASK-85: Harden record merge boundaries and preserve explicit fixture versions."
   evidence: "Schema accepts non-block lifecycle/prototype-named cells outside normal valid-preset commands; fixturePatch also discards explicit same-value tuple versions."
+
+## Deferred from: TASK-77 single review (2026-11-16)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Remove unread block-index construction and dead parameters."
+  evidence: "arch+quality-claude-6 traced liveLinkTarget's unused default block index; no measured slowdown is claimed."
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Remove unreachable preset block-relocation preparation."
+  evidence: "lean-codex-2 traced sectionTarget returning only the unchanged scope id or null."
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Replace first-field comments and unreachable name-field fallbacks."
+  evidence: "arch+quality-claude-12 found v3 naming assumptions after repeat.nameField became explicit."
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Remove duplicate unused preset helper exports."
+  evidence: "arch+quality-claude-7 found unused isSheetSet and hasField exports in preset.ts."
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Update retired Linkable and tokens comments."
+  evidence: "docs+tests-claude-6 found comments that still describe sheet-or-block links rather than token-cell targets."
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Share the picker popover id at the token-cell opener."
+  evidence: "arch+quality-claude-11 found main.tsx duplicating LINK_PICKER_POPOVER_ID as a literal."

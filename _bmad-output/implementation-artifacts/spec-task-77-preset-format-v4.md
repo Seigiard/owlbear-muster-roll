@@ -112,3 +112,24 @@ Declare independent oracles before test edits; calibrate red then green. No broa
 - Recovery settled at source candidate `9fa7179caa4d0f69dfb823d91454ec14976a1fae`: lint, typecheck, 3363 Bun tests (one environment skip), 542 browser tests and build passed. The single report-only review then found five in-scope behavior gaps: picker cell identity, refused-command handling, current-cell link status, repeat-row runtime support, and player section/row visibility. These gaps prevent feature acceptance despite the green suites. One bounded review-fix TDD batch is authorized; no second TASK-77 review round will run. The user authorized autonomous continuation through TASK-78, TASK-79 and TASK-80. TASK-86 records the owner's live-room gate; TASK-87 records deferred internal cleanup. Neither is claimed complete.
 
 ## Review Triage Log
+
+Single round `01-initial`, profile `mixed`, all six sources reported. No confirming round is authorized.
+
+| Finding | Grade | Evidence and disposition |
+| --- | --- | --- |
+| adversarial-claude-4 | high | AC4 requires several token cells; group keys and visible identities omit the cell. Batch6 fix. |
+| adversarial-claude-5 | high | Reverse picker ignores refused/timed-out outcomes while AC4 requires working link/unlink. Batch6 fix. |
+| arch+quality-claude-2 | high | Confirmed selective-unlink decision requires identifying this cell's linked tokens. Batch6 fix; reassignment remains intentional. |
+| adversarial-claude-2 | high | AC3 explicitly requires one-row blocks; accepted repeat rows render at the root. Batch6 implements row scopes. |
+| adversarial-claude-1 | high | AC5 and the frozen matrix hide sections/rows from players; renderer omits their visibility. Batch6 fix. |
+| adversarial-claude-3 | medium | Repeat-row fields and scope ids use the wrong validator sets. Included in the same Batch6 row-scope repair. |
+| arch+quality-claude-5 | medium | Token and repeat default ids collide. TASK-80 carries the valid-default repair. |
+| arch+quality-claude-8 | low | Typed row has an unjustified `any`. TASK-80 carries the conversion cleanup. |
+| adversarial-claude-6 | medium | Renaming the example name field leaves section/row `nameField` stale. TASK-79 carries ancestor-chain propagation; TASK-80 carries Builder conversion. |
+| arch+quality-claude-6 | low | Link lookup creates an unread index. Deferred to TASK-87; no measured slowdown is claimed. |
+| arch+quality-claude-12 | low | First-field comments and fallbacks describe retired naming. Deferred to TASK-87. |
+| lean-codex-2 | low | Stable scope ids make relocation preparation unreachable. Deferred to TASK-87. |
+| arch+quality-claude-7 | low | Duplicate preset helper exports have no callers. Deferred to TASK-87. |
+| docs+tests-claude-6 | low | Linkable/token comments retain v3 meanings. Deferred to TASK-87. |
+| arch+quality-claude-11 | low | Picker popover id is duplicated as a literal. Deferred to TASK-87. |
+| docs+tests-codex-2 | medium | AD-14 still promised relocation and restoration after scope-id changes. Corrected with AD-3 in the documentation commit; `sectionTarget` and the approved loss table require deletion instead. |
