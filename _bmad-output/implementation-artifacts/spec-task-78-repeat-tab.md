@@ -2,8 +2,9 @@
 title: 'TASK-78: Repeat tab — one tab per block'
 type: 'feature'
 created: '2026-11-16'
-status: 'draft'
+status: 'in-progress'
 route: 'dispatch'
+baseline_commit: '2b3ead7ec919cdbda9d87ce18381cb1baa4b4147'
 review_loop_iteration: 0
 context:
   - '_bmad-output/specs/spec-muster-roll/preset-format.md'
@@ -72,6 +73,8 @@ context:
 Reconcile this map with the committed TASK-77 review fix before implementation.
 
 Estimated footprint: 16–18 source files, 6–8 test files, 1.5 hours including verification. Keep this cohesive task under the user's autonomous 77 → 78 → 79 → 80 authorization.
+
+The user's overnight authorization covers implementation without a routine approval stop. The parent re-read this spec, reconciled it with the verified row-scope repair at `db11acc8cb09c1f9cd057e5b38d4d3ad6fcf8f39`, and froze its intent before dispatch. `repeatScopeById` now resolves rows as well as sections; its section-shaped adapters retain the original row position. Extend this mechanism rather than restoring section-only assumptions. TASK-77 AC2's unproved temporary guard stays unchecked; this task advances tab support, not a claim that the earlier refusal existed.
 
 ## Spec Change Log
 
