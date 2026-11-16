@@ -7,9 +7,10 @@ import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { encodeStateRecords } from '@/core/state-records';
 import type { Timing } from '@/core/timing';
-import type { Command } from '@/core/ui-messages';
+import { UI_CHANNEL, type Command } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
+import type { Wait } from '@/platform/send-queue';
 import {
   createRoomRig,
   heardOf,
@@ -146,6 +147,7 @@ type ClientOptions = {
   platform?: (platform: MockPlatform) => MockPlatform;
   seeded?: readonly VersionedRecord[];
   timing?: Partial<Timing>;
+  sendWait?: Wait;
 };
 
 describe('a GM client answers a proposal', () => {
@@ -661,6 +663,70 @@ describe('a GM client answers a proposal', () => {
 });
 
 describe("a player's edit", () => {
+  test('a paced proposal cancelled while still a player sends no null record', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a');
+    let held = false;
+    let release = (): void => undefined;
+
+    const sendWait: Wait = (milliseconds) =>
+      held
+        ? new Promise<void>((resolve) => {
+            release = resolve;
+          })
+        : pause(milliseconds);
+
+    const player = await startClient(room, PLAYER_ID, {
+      role: 'PLAYER',
+      seeded: [],
+      sendWait,
+    });
+
+    await waitUntil(() => shown(player, SWORD.k) !== undefined);
+    gm.engine.stop();
+    held = true;
+
+    send(player, strEdit('str', 11));
+    await waitUntil(() => heardOf(room, PLAYER_ID, 'propose').length === 1);
+
+    await player.platform.broadcast.sendMessage(
+      UI_CHANNEL,
+      { t: 'command', id: 'queued-sword', command: swordEdit(3) },
+      { destination: 'LOCAL' },
+    );
+
+    const accepted: VersionedRecord = {
+      ...SWORD,
+      d: { order: 0, cells: { item: 'Меч', qty: 3 } },
+      c: 2,
+      a: PLAYER_ID,
+    };
+
+    // #when
+    answer(room, commit([accepted], [{ k: accepted.k, c: accepted.c, a: accepted.a }]));
+    await pause(20);
+    held = false;
+    release();
+    await pause(30);
+
+    // #then
+    expect({
+      role: player.store.$sync.get().role,
+      sent: heardOf(room, PLAYER_ID, 'propose'),
+    }).toEqual({
+      role: 'PLAYER',
+      sent: [
+        {
+          v: 3,
+          g: GENERATION,
+          t: 'propose',
+          records: [{ k: STR_ROW.k, d: { str: 11 }, c: 3, a: PLAYER_ID }],
+        },
+      ],
+    });
+  });
+
   test("answers when pending edits accepts it, and the GM's later reject is no second answer", async () => {
     // #given
     const { room, player } = await playerWithSilentGm();

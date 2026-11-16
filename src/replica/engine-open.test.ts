@@ -14,8 +14,10 @@ import type { JsonValue } from '@/core/json';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
 import {
+  copyValue,
   createRoomRig,
   pause,
+  storageKey,
   type RigClient,
   type RigPage,
   type RigRoom,
@@ -33,6 +35,8 @@ const MENU_COPY = {
   openSheet: 'Открыть лист',
   unlinkFailed: 'Не удалось отвязать лист. Попробуйте ещё раз.',
 };
+
+const WIDE = { width: 900, height: 700 };
 
 const PRESET: Preset = {
   v: 3,
@@ -251,6 +255,44 @@ describe('open from token', () => {
     });
   });
 
+  test('a generation replacement decodes different preset content with the same counter and author', async () => {
+    // #given
+    const background = await startBackground('GM');
+    const window = await openWindow(background);
+
+    const replacement: VersionedRecord = {
+      k: 'preset',
+      d: encodePreset({
+        ...PRESET,
+        templates: PRESET.templates.filter((template) => template.id !== 'pc'),
+      }),
+      c: 1,
+      a: 'seed',
+    };
+
+    // #when
+    background.room.room.setMetadata({
+      'app.muster-roll/snapshot': copyValue({ n: 1, a: 'importer' }, [
+        replacement,
+        ...ROOM.filter((record) => record.k !== 'preset' && !record.k.includes('brok')),
+      ]),
+    });
+    await waitUntil(() => window.store.$records.get().get('preset')?.d === replacement.d);
+
+    // #then
+    expect(
+      background.platform
+        .contextMenuItems()
+        .find((item) => item.id === OPEN_ITEM)
+        ?.icons.at(0)?.filter,
+    ).toEqual({
+      max: 1,
+      roles: ['GM'],
+      every: [{ key: 'layer', value: 'CHARACTER' }],
+      some: [{ key: 'id', value: 't-npc' }],
+    });
+  });
+
   for (const [role, tokenId] of [
     ['PLAYER', 't-npc'],
     ['PLAYER', 't-secret'],
@@ -466,6 +508,97 @@ describe('open from token', () => {
       sentAfter: background.requests.slice(sent),
       shown: window.store.$openRequest.get(),
     }).toEqual({ sentAfter: [], shown: null });
+  });
+
+  test('a held request stays discarded when a later generation restores its sheet before delivery', async () => {
+    // #given
+    const background = await startBackground('GM', { catchUpTimeoutMs: 100 });
+
+    click(background, 't-pc');
+    await waitUntil(() => background.requests.length === 1);
+    const sent = background.requests.length;
+
+    // #when
+    const removedGeneration = { n: 1, a: 'importer' };
+    background.room.room.setMetadata({
+      'app.muster-roll/snapshot': copyValue(
+        removedGeneration,
+        ROOM.filter((record) => !record.k.includes('brok') && record.k !== 'link:t-pc'),
+      ),
+    });
+    await waitUntil(
+      () => background.client.backing.get(storageKey('#generation', removedGeneration)) === '1',
+    );
+
+    const restoredGeneration = { n: 2, a: 'importer' };
+    background.room.room.setMetadata({
+      'app.muster-roll/snapshot': copyValue(restoredGeneration, ROOM),
+    });
+    await waitUntil(
+      () => background.client.backing.get(storageKey('#generation', restoredGeneration)) === '1',
+    );
+
+    const window = await openWindow(background);
+    await pause(SETTLE_MS);
+
+    // #then
+    expect({
+      sentAfter: background.requests.slice(sent),
+      shown: window.store.$openRequest.get(),
+    }).toEqual({ sentAfter: [], shown: null });
+  });
+
+  test('a promoted GM applies a newer stored preset before its held catch-up completes', async () => {
+    // #given
+    const background = await startBackground('GM', { catchUpTimeoutMs: 100 });
+    const window = await openWindow(background);
+
+    background.platform.setRole('PLAYER');
+    await waitUntil(
+      () => window.store.$sync.get().role === 'PLAYER' && window.store.$sync.get().state === 'live',
+    );
+
+    const storedPreset: VersionedRecord = {
+      k: 'preset',
+      d: encodePreset({
+        ...PRESET,
+        window: WIDE,
+        templates: PRESET.templates.filter((template) => template.id !== 'pc'),
+      }),
+      c: 2,
+      a: 'other-tab',
+    };
+
+    background.client.backing.set(storageKey('preset'), JSON.stringify(storedPreset));
+    background.room.join('silent-gm', 'GM');
+
+    // #when
+    background.platform.setRole('GM');
+    await waitUntil(
+      () =>
+        window.store.$sync.get().role === 'GM' &&
+        window.store.$sync.get().state === 'catching-up' &&
+        background.platform.actionSizes().length === 2,
+    );
+
+    // #then
+    expect({
+      sync: window.store.$sync.get().state,
+      sizes: background.platform.actionSizes(),
+      menu: background.platform
+        .contextMenuItems()
+        .find((item) => item.id === OPEN_ITEM)
+        ?.icons.at(0)?.filter,
+    }).toEqual({
+      sync: 'catching-up',
+      sizes: [{ width: 600, height: 600 }, WIDE],
+      menu: {
+        max: 1,
+        roles: ['GM'],
+        every: [{ key: 'layer', value: 'CHARACTER' }],
+        some: [{ key: 'id', value: 't-npc' }],
+      },
+    });
   });
 
   test('a request whose repeat block is deleted before delivery is discarded', async () => {

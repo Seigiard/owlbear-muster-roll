@@ -305,6 +305,54 @@ describe('the window size after a preset change', () => {
       sizes: [WIDE, WIDE],
     });
   });
+
+  test('an unrelated replica change does not schedule an in-flight size retry before rejection', async () => {
+    // #given
+    const logged = spyOn(console, 'error').mockImplementation(() => {});
+    const sizes: WindowSizeCall[] = [];
+    let rejectFirst = (_error: Error): void => undefined;
+
+    const firstSize = new Promise<void>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+
+    const gm = await startClient(openRoom(), 'gm-a', {
+      seeded: [presetRecord(SIZED)],
+      beforeStart: (platform) => {
+        spyOn(platform.action, 'setSize').mockImplementation((width, height) => {
+          sizes.push({ width, height });
+
+          return sizes.length === 1 ? firstSize : Promise.resolve();
+        });
+      },
+    });
+
+    // #when
+    send(gm, { type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    await waitUntil(() => gm.store.$records.get().has('sheet:brok'));
+
+    rejectFirst(new Error('first size failed'));
+    await pause(20);
+
+    const afterRejection = [...sizes];
+
+    send(gm, { type: 'sheet-create', sheetId: 'anya', set: 'pc' });
+    await waitUntil(() => gm.store.$records.get().has('sheet:anya'));
+    await pause(20);
+
+    // #then
+    expect({
+      afterRejection,
+      afterNextChange: sizes,
+      failures: logged.mock.calls.filter(
+        ([message]) => message === 'Muster Roll could not size its window',
+      ).length,
+    }).toEqual({
+      afterRejection: [WIDE],
+      afterNextChange: [WIDE, WIDE],
+      failures: 1,
+    });
+  });
 });
 
 async function gmAndPlayer(preset: VersionedRecord): Promise<{ gm: Client; player: Client }> {
