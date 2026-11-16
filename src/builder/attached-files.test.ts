@@ -2,8 +2,9 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
-import { encodePreset, type Preset } from '@/core/preset';
+import { encodePreset, parsePresetFile, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
+import type { SnapshotFile } from '@/core/snapshot-file';
 import { importSnapshot, parseSnapshotFile } from '@/core/snapshot-import';
 import {
   TestFileAccessFake,
@@ -57,6 +58,19 @@ const NEWER_SNAPSHOT_TEXT = JSON.stringify({
     {
       id: 'crew',
       rows: { strength: { strength: 34 } },
+      repeats: {},
+    },
+  ],
+  links: [],
+});
+
+const RESUMED_SNAPSHOT_TEXT = JSON.stringify({
+  v: 3,
+  type: 'muster-roll/snapshot',
+  sheets: [
+    {
+      id: 'crew',
+      rows: { strength: { strength: 55 } },
       repeats: {},
     },
   ],
@@ -660,6 +674,137 @@ describe('attached Builder files', () => {
     });
   });
 
+  test.each([
+    ['preset', 'Пресет', 'crew.json'],
+    ['snapshot', 'Снимок', 'crew-snapshot.json'],
+  ] as const)(
+    'stops after a failed forced Keep Mine %s write without new work',
+    async (kind, label, fileName) => {
+      // #given
+      const scenario = await failForcedKeepMineWrite(kind);
+
+      // #when
+      await settle();
+
+      // #then
+      expect({
+        reads: scenario.access.readRequests.length,
+        writes: scenario.access.writeRequests.map((request) => ({
+          file: request.file,
+          document: JSON.parse(request.text),
+        })),
+        page: attachedPageValue(scenario),
+        block: fileBlock(label).textContent,
+      }).toEqual({
+        reads: 1,
+        writes: [
+          {
+            file: { id: kind, name: fileName },
+            document: scenario.localDocument,
+          },
+        ],
+        page: scenario.localPageValue,
+        block: `${label}${fileName}Не удалось выполнить операцию с файлом. Попробуйте ещё раз.`,
+      });
+    },
+  );
+
+  test.each([
+    ['preset', 'Пресет'],
+    ['snapshot', 'Снимок'],
+  ] as const)(
+    'resumes a failed forced Keep Mine %s write after a new edit',
+    async (kind, label) => {
+      // #given
+      const scenario = await failForcedKeepMineWrite(kind);
+
+      scenario.access.readRequests.splice(0);
+      scenario.access.writeRequests.splice(0);
+
+      // #when
+      applyResumedEdit(scenario);
+      scenario.access.releaseReads();
+      await settle();
+
+      const readsAfterEdit = scenario.access.readRequests.length;
+      const disk = await readFakeDocument(scenario.kind, scenario.access, scenario.file);
+
+      // #then
+      expect({
+        readsAfterEdit,
+        writes: scenario.access.writeRequests.map((request) => ({
+          file: request.file,
+          document: JSON.parse(request.text),
+        })),
+        page: attachedPageValue(scenario),
+        disk,
+        block: fileBlock(label).textContent,
+      }).toEqual({
+        readsAfterEdit: 1,
+        writes: [
+          {
+            file: scenario.file,
+            document: scenario.resumedDocument,
+          },
+        ],
+        page: scenario.resumedPageValue,
+        disk: scenario.resumedDocument,
+        block: `${label}${scenario.file.name}сохранено в файл в 18:07`,
+      });
+    },
+  );
+
+  test.each([
+    ['preset', 'Пресет'],
+    ['snapshot', 'Снимок'],
+  ] as const)(
+    'explicit Save As retries a failed forced Keep Mine %s write to the selected file',
+    async (kind, label) => {
+      // #given
+      const scenario = await failForcedKeepMineWrite(kind);
+
+      scenario.access.openRequests.splice(0);
+      scenario.access.readRequests.splice(0);
+      scenario.access.writeRequests.splice(0);
+      scenario.access.queueOpen(scenario.file);
+
+      // #when
+      await click(fileBlock(label));
+      await click(menuItem('Сохранить как…'));
+      await settle();
+      scenario.access.releaseReads();
+      await settle();
+
+      const readsAfterRetry = scenario.access.readRequests.length;
+      const disk = await readFakeDocument(scenario.kind, scenario.access, scenario.file);
+
+      // #then
+      expect({
+        modes: scenario.access.openRequests.map((request) => request.mode),
+        readsAfterRetry,
+        writes: scenario.access.writeRequests.map((request) => ({
+          file: request.file,
+          document: JSON.parse(request.text),
+        })),
+        page: attachedPageValue(scenario),
+        disk,
+        block: fileBlock(label).textContent,
+      }).toEqual({
+        modes: ['save'],
+        readsAfterRetry: 0,
+        writes: [
+          {
+            file: scenario.file,
+            document: scenario.localDocument,
+          },
+        ],
+        page: scenario.localPageValue,
+        disk: scenario.localDocument,
+        block: `${label}${scenario.file.name}сохранено в файл в 18:07`,
+      });
+    },
+  );
+
   test('does not expose native file-operation details in the attached-file status', async () => {
     // #given
     const access = new TestFileAccessFake();
@@ -1168,6 +1313,118 @@ function snapshotRecords(text: string): readonly VersionedRecord[] {
   }
 
   return imported.value.records;
+}
+
+type AttachedFileKind = 'preset' | 'snapshot';
+
+type FailedForcedWriteScenario = {
+  access: TestFileAccessFake;
+  file: TestFileReference;
+  store: BuilderStore;
+  kind: AttachedFileKind;
+  localDocument: Preset | SnapshotFile;
+  localPageValue: Preset | string;
+  resumedDocument: Preset | SnapshotFile;
+  resumedPageValue: Preset | string;
+};
+
+async function failForcedKeepMineWrite(kind: AttachedFileKind): Promise<FailedForcedWriteScenario> {
+  const access = new TestFileAccessFake();
+
+  const file =
+    kind === 'preset'
+      ? access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET))
+      : access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
+
+  const store = createBuilderStore(memoryStorage());
+
+  store.open(CREW_PRESET, CREW_PRESET, 'crew');
+
+  if (kind === 'snapshot') {
+    store.setSnapshot(snapshotRecords(SNAPSHOT_TEXT));
+  }
+
+  await mount(store, access);
+  await openAttachedFile(access, file, kind === 'preset' ? 'Пресет' : 'Снимок');
+  access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
+  access.externalWriteSilently(
+    file,
+    kind === 'preset' ? JSON.stringify(DISK_PRESET) : EXTERNAL_SNAPSHOT_TEXT,
+  );
+
+  if (kind === 'preset') {
+    editTemplateTitle(store, 'Моя версия');
+  } else {
+    act(() => store.setSnapshot(snapshotRecords(NEWER_SNAPSHOT_TEXT)));
+  }
+
+  await settle();
+
+  if (button('Оставить мои') === null) {
+    throw new Error(`The ${kind} conflict did not expose Keep Mine`);
+  }
+
+  access.readRequests.splice(0);
+  access.writeRequests.splice(0);
+  access.queueWriteFailure('native write denied');
+  access.pauseReadsAfter(1);
+
+  await click(button('Оставить мои'));
+  await settle();
+  await settle();
+
+  return {
+    access,
+    file,
+    store,
+    kind,
+    localDocument:
+      kind === 'preset' ? LOCAL_PRESET : parseAttachedDocument(kind, NEWER_SNAPSHOT_TEXT),
+    localPageValue: kind === 'preset' ? LOCAL_PRESET : '34',
+    resumedDocument:
+      kind === 'preset' ? NEWER_LOCAL_PRESET : parseAttachedDocument(kind, RESUMED_SNAPSHOT_TEXT),
+    resumedPageValue: kind === 'preset' ? NEWER_LOCAL_PRESET : '55',
+  };
+}
+
+function attachedPageValue(scenario: FailedForcedWriteScenario): Preset | string | null {
+  return scenario.kind === 'preset'
+    ? toPreset(scenario.store.$state.get().step.document)
+    : previewValue('Сила');
+}
+
+function applyResumedEdit(scenario: FailedForcedWriteScenario): void {
+  if (scenario.kind === 'preset') {
+    editTemplateTitle(scenario.store, 'Новая версия');
+
+    return;
+  }
+
+  act(() => scenario.store.setSnapshot(snapshotRecords(RESUMED_SNAPSHOT_TEXT)));
+}
+
+async function readFakeDocument(
+  kind: AttachedFileKind,
+  access: TestFileAccessFake,
+  file: TestFileReference,
+): Promise<Preset | SnapshotFile> {
+  const result = await access.read(file);
+
+  if (!result.ok) {
+    throw new Error(`Could not read fake file: ${result.error.reason}`);
+  }
+
+  return parseAttachedDocument(kind, result.value.text);
+}
+
+function parseAttachedDocument(kind: AttachedFileKind, text: string): Preset | SnapshotFile {
+  const result = kind === 'preset' ? parsePresetFile(text) : parseSnapshotFile(text);
+
+  if (!result.ok) {
+    throw new Error(`Could not parse ${kind} fixture`);
+  }
+
+  return result.value;
 }
 
 async function mount(store: BuilderStore, fileAccess: TestFileAccessPort): Promise<void> {
