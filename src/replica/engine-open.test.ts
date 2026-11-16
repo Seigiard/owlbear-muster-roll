@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
@@ -335,6 +335,31 @@ describe('open from token', () => {
 
     // #when
     await pause(80);
+
+    const window = await openWindow(background);
+
+    await pause(SETTLE_MS);
+
+    // #then
+    expect({
+      sentAfter: background.requests.slice(sent),
+      shown: window.store.$openRequest.get(),
+    }).toEqual({ sentAfter: [], shown: null });
+  });
+
+  test('a request expires at the exact end of its lifetime', async () => {
+    // #given
+    const background = await startBackground('GM', { openRequestTtlMs: 40 });
+    let now = 1000;
+
+    spyOn(Date, 'now').mockImplementation(() => now);
+    click(background, 't-pc');
+    await waitUntil(() => background.requests.length === 1);
+
+    const sent = background.requests.length;
+
+    // #when
+    now = 1040;
 
     const window = await openWindow(background);
 

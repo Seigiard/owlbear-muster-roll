@@ -199,6 +199,58 @@ describe('a GM client answers a proposal', () => {
     );
   });
 
+  test('an idempotent proposal does not owe an unchanged room-copy write', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+    let metadataWrites = 0;
+    let rejectMetadata = false;
+
+    const gm = await startClient(room, 'gm-a', {
+      timing: { snapshotPauseMs: 10 },
+      platform: (platform) => {
+        const metadata = platform.metadata;
+
+        return {
+          ...platform,
+          metadata: {
+            ...metadata,
+            setMetadata: (update) => {
+              if (!rejectMetadata) {
+                return metadata.setMetadata(update);
+              }
+
+              metadataWrites += 1;
+
+              return Promise.reject(new Error('metadata write failed'));
+            },
+          },
+        };
+      },
+    });
+
+    const proposed: VersionedRecord = { ...STR_ROW, d: { str: 11 }, c: 3, a: PLAYER_SOCKET };
+
+    joinPlayerSocket(room);
+    propose(room, proposed);
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 1);
+    await pause(30);
+
+    rejectMetadata = true;
+
+    // #when
+    propose(room, proposed);
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 2);
+    await pause(50);
+
+    // #then
+    expect({ metadataWrites, notices: gm.store.$notices.get() }).toEqual({
+      metadataWrites: 0,
+      notices: [],
+    });
+  });
+
   test("that removes a removed repeat block: commits the existing tombstone with the proposer's echo", async () => {
     // #given
     const room = roomRig.openRoom();
@@ -214,6 +266,42 @@ describe('a GM client answers a proposal', () => {
     expect({ sent: heardOf(room, 'gm-a', 'commit'), stored: storedRecord(gm, REMOVED.k) }).toEqual({
       sent: [commit([REMOVED], [{ k: REMOVED.k, c: 1, a: PLAYER_SOCKET }])],
       stored: REMOVED,
+    });
+  });
+
+  test('a repeat tombstone with no links does not owe an unchanged room-copy write', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+    let metadataWrites = 0;
+
+    const gm = await startClient(room, 'gm-a', {
+      timing: { snapshotPauseMs: 10 },
+      platform: (platform) => ({
+        ...platform,
+        metadata: {
+          ...platform.metadata,
+          setMetadata: () => {
+            metadataWrites += 1;
+
+            return Promise.reject(new Error('metadata write failed'));
+          },
+        },
+      }),
+    });
+
+    joinPlayerSocket(room);
+
+    // #when
+    propose(room, { ...REMOVED, c: 1, a: PLAYER_SOCKET });
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 1);
+    await pause(50);
+
+    // #then
+    expect({ metadataWrites, notices: gm.store.$notices.get() }).toEqual({
+      metadataWrites: 0,
+      notices: [],
     });
   });
 

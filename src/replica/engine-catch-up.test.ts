@@ -386,6 +386,40 @@ describe('engine catch-up decisions', () => {
     expect({ during, after: sync(client).state }).toEqual({ during: 'catching-up', after: 'live' });
   });
 
+  test('a GM without readable persistence can re-enter catch-up', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+
+    const client = await startClient(room, 'gm-a', {
+      platform: (platform) => {
+        platform.setFailingStorageOperations(['list']);
+
+        return platform;
+      },
+      until: 'live',
+    });
+
+    // #when
+    let thrown: string | null = null;
+
+    try {
+      client.engine.catchUp();
+    } catch (error) {
+      thrown = error instanceof Error ? error.message : 'unknown error';
+    }
+
+    // #then
+    expect({
+      thrown,
+      notices: client.store.$notices.get(),
+    }).toEqual({
+      thrown: null,
+      notices: ['local-save-failed'],
+    });
+  });
+
   test('publishes catch-up entry before pending room and party reads settle', async () => {
     // #given
     const room = roomRig.openRoom();

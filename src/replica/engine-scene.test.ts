@@ -509,6 +509,31 @@ describe('two GM clients', () => {
     expect(storedRecord(first, oldest.k)).toEqual(relinked);
   });
 
+  test('remembers the oldest deletion at the exact scene-history limit', async () => {
+    // #given
+    const removed = Array.from({ length: 1024 }, (_, index) => `old-${index}`);
+    const room = openRoom([...removed, 'anchor']);
+    const oldest: VersionedRecord = { k: 'link:old-0', d: BROK, c: 1, a: 'seed' };
+    const first = await startClient(room, 'gm-a', { seeded: [...SEEDED, oldest] });
+
+    room.join(GHOST, 'GM');
+    await pause(SETTLE_MS);
+    first.platform.removeSceneItems(removed);
+    await pause(SETTLE_MS);
+
+    // #when
+    post(room, GHOST, commit([{ ...oldest, c: 3, a: GHOST }]));
+    await waitUntil(() => (storedRecord(first, oldest.k)?.c ?? 0) >= 4);
+
+    // #then
+    expect(storedRecord(first, oldest.k)).toEqual({
+      k: oldest.k,
+      d: null,
+      c: 4,
+      a: 'gm-a',
+    });
+  });
+
   test('a token back in the scene, as after an undo, can be linked again', async () => {
     // #given
     const room = openRoom(['t1']);

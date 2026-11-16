@@ -11,6 +11,7 @@ import type { PlayerRole, StorageOperation } from '@/platform/ports';
 import type { Wait } from '@/platform/send-queue';
 import {
   createRoomRig,
+  pause,
   send,
   shown,
   storageKey,
@@ -639,6 +640,29 @@ describe('remote record', () => {
       deltas: gm.deltas() - deltasBefore,
       writes: writes.mock.calls.map(([key]) => key),
     }).toEqual({ shown: local, deltas: 1, writes: [storageKey('sheet:marker')] });
+  });
+
+  test('an unchanged winner does not read failed persistence or raise a notice', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+    const wire = listen(room);
+    const local = sheet('brok', 5, 'seed');
+    const gm = await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, local] });
+
+    await startClient(room, 'gm-b');
+    gm.platform.setFailingStorageOperations(['read']);
+
+    // #when
+    wire.post('gm-b', commit([sheet('brok', 2, 'gm-b')]));
+    await pause(30);
+
+    // #then
+    expect({
+      shown: shown(gm, local.k),
+      notices: gm.store.$notices.get(),
+    }).toEqual({ shown: local, notices: [] });
   });
 });
 
