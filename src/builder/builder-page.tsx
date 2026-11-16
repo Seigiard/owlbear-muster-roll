@@ -19,7 +19,6 @@ import {
   SNAPSHOT_FILE_BYTE_LIMIT,
   type SnapshotImportFailure,
 } from '@/core/snapshot-import';
-import type { VersionedRecord } from '@/core/records';
 import { encodeSnapshotFile, formatSnapshotFile, snapshotFileName } from '@/core/snapshot-file';
 import { PREVIEW_THEMES, type PreviewThemeName } from '@/ui/themes';
 import { copy } from '@/copy';
@@ -52,8 +51,6 @@ type OpenRequest = {
 
 type ClearRequest = { kind: FileBlockKind; fileName: string };
 
-type SnapshotSource = { text: string; records: readonly VersionedRecord[] };
-
 const EMPTY_PRESET: Preset = { v: FORMAT_VERSION, templates: [] };
 
 const TOP_BUTTON_CLASS =
@@ -64,7 +61,6 @@ const TOP_BUTTON_CLASS =
 export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
   const state = useStore(store.$state);
   const document = state.step.document;
-  const [snapshotSource, setSnapshotSource] = useState<SnapshotSource | null>(null);
 
   const problems = useMemo(() => builderProblems(document), [document]);
   const download = useMemo(() => downloadText(document), [document]);
@@ -80,14 +76,6 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
           )
         : null,
     [document, problems.length, state.step.records],
-  );
-
-  const snapshot = useMemo(
-    () =>
-      snapshotSource !== null && snapshotSource.records === state.step.records
-        ? snapshotSource.text
-        : generatedSnapshot,
-    [generatedSnapshot, snapshotSource, state.step.records],
   );
 
   const [theme, setTheme] = useState<PreviewThemeName>(readThemeChoice);
@@ -109,7 +97,6 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
     store.open(next.preset, next.origin, next.name);
     setPresetFile(next.fileName === null ? null : { name: next.fileName, lastSyncAt: new Date() });
     setSnapshotFile(null);
-    setSnapshotSource(null);
     setRequest(null);
     setFileMessage(undefined);
   }
@@ -203,7 +190,6 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
 
     store.setSnapshot(imported.value.records);
     setSnapshotFile({ name: file.name, lastSyncAt: new Date() });
-    setSnapshotSource({ text, records: store.$state.get().step.records });
     setFileMessage(undefined);
   }
 
@@ -236,7 +222,7 @@ export function BuilderPage({ store }: { store: BuilderStore }): ReactNode {
           }
         }}
         download={download}
-        snapshotDownload={snapshot}
+        snapshotDownload={generatedSnapshot}
         presetFile={presetFile}
         snapshotFile={snapshotFile}
         theme={theme}
