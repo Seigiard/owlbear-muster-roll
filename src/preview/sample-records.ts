@@ -8,6 +8,8 @@ import {
   type Template,
 } from '@/core/preset';
 import {
+  versionCells,
+  blockDataSchema,
   repKey,
   rowKey,
   type FieldValue,
@@ -60,12 +62,15 @@ export function previewSheets(preset: Preset, content: PreviewContent): PreviewS
   const sheets = preset.templates.map((template, index): PreviewSheet => {
     const sheetId = isSheetSet(template) ? previewSheetId(index) : template.id;
 
-    if (isSheetSet(template)) {
+    {
       addRecord(records, {
         k: sheetKey(sheetId),
-        d: { set: template.id, order: 1 },
+        d: isSheetSet(template)
+          ? { set: template.id, order: 1, cells: {} }
+          : { order: 1, cells: {} },
         c: SAMPLE_COUNTER,
         a: SAMPLE_AUTHOR,
+        l: [SAMPLE_COUNTER, SAMPLE_AUTHOR],
       });
     }
 
@@ -94,9 +99,17 @@ function addSampleValues(
       for (let block = 1; block <= REPEAT_BLOCK_COUNT; block += 1) {
         addRecord(records, {
           k: repKey(sheetId, sectionId, `sample-${block}`),
-          d: { order: block, cells: sampleValues(section.rows, counters, block) },
+          d: {
+            order: block,
+            cells: versionCells(
+              sampleValues(section.rows, counters, block),
+              SAMPLE_COUNTER,
+              SAMPLE_AUTHOR,
+            ),
+          },
           c: SAMPLE_COUNTER,
           a: SAMPLE_AUTHOR,
+          l: [SAMPLE_COUNTER, SAMPLE_AUTHOR],
         });
       }
 
@@ -113,11 +126,19 @@ function addSampleValues(
 
       // A row with no field has no record.
       if (rowId !== null) {
+        const root = blockDataSchema.parse(records.get(sheetKey(sheetId))?.d);
         addRecord(records, {
           k: rowKey(sheetId, rowId),
-          d: sampleValues([row], counters, null),
+          d: {
+            ...root,
+            cells: {
+              ...root.cells,
+              ...versionCells(sampleValues([row], counters, null), SAMPLE_COUNTER, SAMPLE_AUTHOR),
+            },
+          },
           c: SAMPLE_COUNTER,
           a: SAMPLE_AUTHOR,
+          l: [SAMPLE_COUNTER, SAMPLE_AUTHOR],
         });
       }
     }

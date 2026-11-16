@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 import { isFieldId, isTemplateId } from '@/core/field-id';
-import { FORMAT_VERSION } from '@/core/format-version';
+import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
 import { parseFormula, type FormulaExpression, type FormulaTree } from '@/core/formula';
 import type { JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
@@ -186,7 +186,7 @@ export type TemplateSectionPlace = { tabIndex: number; sectionIndex: number };
 // A row of a template by position, so a row with no field, as a dice row, can be named too.
 export type TemplateRowPlace = TemplateSectionPlace & { rowIndex: number };
 
-// `block`: the same repeat block. `sheet`: the `row:` record of `rowId` on the same sheet. The
+// `block`: the same repeat block. `sheet`: the plain row `rowId` within the same sheet root. The
 // caller reads values only from the sheet the cell is on.
 export type FieldReference = { scope: 'block' } | { scope: 'sheet'; rowId: string };
 
@@ -308,8 +308,8 @@ export function templateById(preset: Preset, id: string): Template | null {
   return preset.templates.find((template) => template.id === id) ?? null;
 }
 
-// The id of a row's first field. It names the row's `row:` record. A row with no field has no
-// record.
+// The id of a row's first field. It addresses the row within the sheet's root block. A row with no
+// field has no value address.
 export function firstFieldId(row: readonly PresetCell[]): string | null {
   for (const cell of row) {
     if (cell.kind === 'field') {
@@ -326,8 +326,8 @@ export function sectionFields(section: PresetSection): PresetFieldCell[] {
   return section.rows.flatMap((row) => row.filter((cell) => cell.kind === 'field'));
 }
 
-// The first field of a section in row order. Its id names a repeat section's `rep:` records, its
-// value names a repeat block, and a duplicate numbers it.
+// The first field of a section in row order. Its id names the repeat section in descendant block
+// paths, its value names a repeat block, and a duplicate numbers it.
 export function sectionFirstField(section: PresetSection): PresetFieldCell | null {
   return sectionFields(section)[0] ?? null;
 }
@@ -409,7 +409,7 @@ export function repeatSectionPlace(
   );
 }
 
-// The non-repeat row whose first field is `rowId`, the row a `row:` record of that id holds.
+// The non-repeat row whose first field is `rowId`.
 export function plainRow(layout: TemplateLayout, rowId: string): readonly PresetCell[] | null {
   for (const section of layoutSections(layout)) {
     if (section.repeat === true) {

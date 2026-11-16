@@ -1,7 +1,9 @@
+import type { JsonValue } from '@/core/json';
+import { assembleRecords } from '@/core/merge';
+import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type { SyncState } from '@/core/ui-messages';
@@ -31,10 +33,10 @@ const PRESET: Preset = {
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'gm' };
-const HERO = record('sheet:hero', { set: 'party', order: 0 });
-const HERO_NAME = record('row:hero:name', { name: 'Ada' });
+const HERO = record('blk:hero', { set: 'party', order: 0 });
+const HERO_NAME = record('blk:hero', { name: 'Ada' });
 const HERO_LINK = record('link:token-hero', { s: 'hero' });
-const SECRET = record('row:secret:note', { note: 'GM only' });
+const SECRET = record('blk:secret', { note: 'GM only' });
 const SECRET_LINK = record('link:token-secret', { s: 'secret' });
 
 const GM_SYNC: SyncState = {
@@ -46,7 +48,6 @@ const GM_SYNC: SyncState = {
 };
 
 const PLAYER_SYNC: SyncState = { ...GM_SYNC, role: 'PLAYER' };
-
 const cleanups: Array<() => void> = [];
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -60,46 +61,45 @@ afterEach(() => {
 describe('window view', () => {
   test('shows every record to a GM', () => {
     // #given
-    const records = new Map(
-      [PRESET_RECORD, HERO, HERO_NAME, HERO_LINK, SECRET, SECRET_LINK].map((entry) => [
-        entry.k,
-        entry,
-      ]),
-    );
+    const records = assembleRecords([
+      PRESET_RECORD,
+      HERO,
+      HERO_NAME,
+      HERO_LINK,
+      SECRET,
+      SECRET_LINK,
+    ]);
 
     // #when
     const view = windowViewOf('GM', PRESET, records);
-
     // #then
     expect([...view.records.keys()]).toEqual([
       'preset',
-      'sheet:hero',
-      'row:hero:name',
+      'blk:hero',
       'link:token-hero',
-      'row:secret:note',
+      'blk:secret',
       'link:token-secret',
     ]);
   });
-
   test('shows a player visible sheets and their live links only', () => {
     // #given
-    const records = new Map(
-      [PRESET_RECORD, HERO, HERO_NAME, HERO_LINK, SECRET, SECRET_LINK].map((entry) => [
-        entry.k,
-        entry,
-      ]),
-    );
+    const records = assembleRecords([
+      PRESET_RECORD,
+      HERO,
+      HERO_NAME,
+      HERO_LINK,
+      SECRET,
+      SECRET_LINK,
+    ]);
 
     // #when
     const view = windowViewOf('PLAYER', PRESET, records);
-
     // #then
     expect({ keys: [...view.records.keys()], links: [...view.links.keys()] }).toEqual({
-      keys: ['preset', 'sheet:hero', 'row:hero:name', 'link:token-hero'],
+      keys: ['preset', 'blk:hero', 'link:token-hero'],
       links: ['token-hero'],
     });
   });
-
   test('treats a preset that cannot decode as no preset', async () => {
     // #given
     const store = createProjectionStore();
@@ -110,40 +110,32 @@ describe('window view', () => {
       PLAYER_SYNC,
     );
     const mounted = await mountWindowView(store, 'PLAYER');
-
     // #when
     const view = mounted.current();
-
     // #then
     expect({ preset: view.preset, keys: [...view.records.keys()] }).toEqual({
       preset: null,
       keys: ['preset'],
     });
   });
-
   test('uses the initial role before the first projection', async () => {
     // #given
     const mounted = await mountWindowView(createProjectionStore(), 'GM');
-
     // #when
     const view = mounted.current();
-
     // #then
     expect(view.role).toBe('GM');
   });
-
   test('keeps the decoded preset object when the preset string is unchanged', async () => {
     // #given
     const store = createProjectionStore();
     store.replaceAll([PRESET_RECORD], [], [], GM_SYNC);
     const mounted = await mountWindowView(store, 'GM');
     const before = mounted.current().preset;
-
     // #when
     await act(async () => {
       store.applyDelta([HERO], [], [], [], GM_SYNC);
     });
-
     // #then
     expect({
       templates: mounted.current().preset?.templates.map((template) => template.id),
@@ -169,7 +161,6 @@ async function mountWindowView(
   await act(async () => {
     root.render(createElement(Probe));
   });
-
   const mounted = { current: () => view ?? failToRender() };
   cleanups.push(() => {
     act(() => {
@@ -180,13 +171,15 @@ async function mountWindowView(
   return mounted;
 }
 
-type MountedWindowView = { current: () => WindowView };
+type MountedWindowView = {
+  current: () => WindowView;
+};
 
 function failToRender(): never {
   throw new Error('window view did not render');
 }
 
-function record(k: string, d: VersionedRecord['d'], c = 1, a = 'gm'): VersionedRecord {
+function record(k: string, d: JsonValue, c = 1, a = 'gm'): VersionedRecord {
   // SAFETY: fixtures use only valid record key and data combinations.
-  return { k, d, c, a } as VersionedRecord;
+  return fixtureRecord(k, d, c, a);
 }

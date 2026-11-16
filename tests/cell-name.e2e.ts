@@ -1,8 +1,6 @@
 import { readFileSync } from 'node:fs';
-
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import {
   connectionIdOf,
   openClientBackground,
@@ -67,8 +65,8 @@ const PRESET_TEXT = JSON.stringify({
 
 const RECORDS: StoredRecord[] = [
   ...pcSheet('brok', 'Брок', 0),
-  record('row:brok:str', { str: 12 }),
-  record('row:brok:dex', { dex: 10 }),
+  record('blk:brok', { str: 12 }),
+  record('blk:brok', { dex: 10 }),
 ];
 
 const CAIRN_TEXT = readFileSync('presets/cairn-2e.json', 'utf8');
@@ -85,38 +83,29 @@ test('a named writer field shows one non-overlapping tooltip on Tab, hover and p
   const panel = gm.window.getByRole('tabpanel');
   const current = panel.getByRole('textbox', { name: 'STR', exact: true }).first();
   const field = panel.getByRole('textbox', { name: 'STR, максимум', exact: true });
-
   await expect(field).toBeVisible();
   await current.focus();
-
   // #when
   await gm.window.keyboard.press('Tab');
-
   // #then
   await expect(field).toBeFocused();
   await expect(tooltip(gm.window, 'STR, максимум')).toBeVisible();
   expect(await boxesOverlap(field, tooltip(gm.window, 'STR, максимум'))).toBe(false);
   await expect(field).not.toHaveAttribute('aria-describedby', /.+/);
-
   // #when
   await gm.window.keyboard.press('Escape');
-
   // #then
   await expect(tooltip(gm.window, 'STR, максимум')).toHaveCount(0);
-
   // #when
   await current.focus();
   await field.hover();
-
   // #then
   await expect(tooltip(gm.window, 'STR, максимум')).toBeVisible();
   expect(await boxesOverlap(field, tooltip(gm.window, 'STR, максимум'))).toBe(false);
-
   // #when
   await gm.window.mouse.move(0, 0);
   await current.focus();
   await field.click();
-
   // #then
   await expect(field).toBeFocused();
   await expect(tooltip(gm.window, 'STR, максимум')).toBeVisible();
@@ -135,10 +124,8 @@ test('a focused named writer keeps its tooltip when the mouse pointer leaves', a
   await field.click();
   await expect(field).toBeFocused();
   await expect(tooltip(gm.window, 'STR, максимум')).toBeVisible();
-
   // #when
   await gm.window.mouse.move(0, 0);
-
   // #then
   await expect(field).toBeFocused();
   await expect(tooltip(gm.window, 'STR, максимум')).toBeVisible();
@@ -150,14 +137,11 @@ test('Escape closes a named writer tooltip opened by hover', async ({ context })
   const panel = gm.window.getByRole('tabpanel');
   const current = panel.getByRole('textbox', { name: 'STR', exact: true }).first();
   const field = panel.getByRole('textbox', { name: 'STR, максимум', exact: true });
-
   await current.focus();
   await field.hover();
   await expect(tooltip(gm.window, 'STR, максимум')).toBeVisible();
-
   // #when
   await gm.window.keyboard.press('Escape');
-
   // #then
   await expect(tooltip(gm.window, 'STR, максимум')).toHaveCount(0);
 });
@@ -170,12 +154,10 @@ test('an unnamed writer field and dice cell keep their labels and show no toolti
   const panel = gm.window.getByRole('tabpanel');
   const field = panel.getByRole('textbox', { name: 'Имя', exact: true });
   const dice = panel.getByRole('button', { name: 'STR', exact: true });
-
   // #when
   await field.focus();
   await field.hover();
   await gm.window.waitForTimeout(600);
-
   // #then
   await expect(gm.window.getByRole('tooltip')).toHaveCount(0);
   await expect(dice).toHaveText('STR');
@@ -205,12 +187,9 @@ test('a named read-only value is a tab stop with one tooltip, while an unnamed v
   const panel = player.window.getByRole('tabpanel');
   const named = panel.getByRole('group', { name: 'STR, максимум', exact: true });
   const unnamed = panel.getByRole('group', { name: 'Имя', exact: true });
-
   await expect(named).toBeVisible();
-
   // #when
   await named.focus();
-
   // #then
   await expect(named).toHaveAttribute('tabindex', '0');
   await expect(named).toBeFocused();
@@ -218,12 +197,10 @@ test('a named read-only value is a tab stop with one tooltip, while an unnamed v
   expect(await boxesOverlap(named, tooltip(player.window, 'STR, максимум'))).toBe(false);
   await expect(named).not.toHaveAttribute('aria-describedby', /.+/);
   await expect(unnamed).not.toHaveAttribute('tabindex', /.+/);
-
   // #when
   await player.window.keyboard.press('Escape');
   await unnamed.hover();
   await player.window.waitForTimeout(600);
-
   // #then
   await expect(player.window.getByRole('tooltip')).toHaveCount(0);
 });
@@ -263,7 +240,6 @@ test('the tooltip geometry assertion distinguishes overlap, separation and a mis
 
 test.describe('touch tooltip', () => {
   test.use({ hasTouch: true });
-
   test('a tap leaves a named writer tooltip open after the tap ends', async ({ context }) => {
     // #given
     const gm = await openSeededGm(context, cairnRecords(), CAIRN_TEXT);
@@ -274,12 +250,10 @@ test.describe('touch tooltip', () => {
 
     // #when
     await field.tap();
-
     // #then
     await expect(field).toBeFocused();
     expect(await tooltip(gm.window, 'STR, максимум').isVisible()).toBe(true);
   });
-
   test('a no-focus touch tap keeps a named checkbox tooltip open after the pointer leaves', async ({
     context,
   }) => {
@@ -291,7 +265,6 @@ test.describe('touch tooltip', () => {
       .getByRole('checkbox', { name: 'Готовность', exact: true });
 
     const touchPointer = { pointerId: 1, pointerType: 'touch', isPrimary: true };
-
     // #when
     await checkbox.dispatchEvent('pointerover', touchPointer);
     await checkbox.dispatchEvent('pointerdown', { ...touchPointer, button: 0, buttons: 1 });
@@ -300,7 +273,6 @@ test.describe('touch tooltip', () => {
     await checkbox.dispatchEvent('pointerup', { ...touchPointer, button: 0, buttons: 0 });
     await checkbox.dispatchEvent('pointerout', touchPointer);
     await gm.window.waitForTimeout(300);
-
     // #then
     expect({
       focused: await checkbox.evaluate((element) => element === document.activeElement),
@@ -312,7 +284,6 @@ test.describe('touch tooltip', () => {
       openAfterPointerLeave: true,
     });
   });
-
   test('a no-focus touch tap opens a named dice tooltip and still rolls', async ({ context }) => {
     // #given
     const gm = await openSeededGm(context, RECORDS, PRESET_TEXT);
@@ -322,7 +293,6 @@ test.describe('touch tooltip', () => {
       .getByRole('button', { name: 'Монета', exact: true });
 
     const touchPointer = { pointerId: 1, pointerType: 'touch', isPrimary: true };
-
     // #when
     await button.dispatchEvent('pointerover', touchPointer);
     await button.dispatchEvent('pointerdown', { ...touchPointer, button: 0, buttons: 1 });
@@ -330,7 +300,6 @@ test.describe('touch tooltip', () => {
     await button.dispatchEvent('pointerup', { ...touchPointer, button: 0, buttons: 0 });
     await button.dispatchEvent('pointerout', touchPointer);
     await button.dispatchEvent('click', { button: 0 });
-
     // #then
     await expect
       .poll(async () => ({
@@ -346,7 +315,6 @@ test.describe('touch tooltip', () => {
         openAfterPointerLeave: true,
       });
   });
-
   test('a named checkbox tooltip closes on Escape, blur and an outside pointerdown', async ({
     context,
   }) => {
@@ -355,16 +323,13 @@ test.describe('touch tooltip', () => {
     const panel = gm.window.getByRole('tabpanel');
     const checkbox = panel.getByRole('checkbox', { name: 'Готовность', exact: true });
     const outside = panel.getByRole('textbox', { name: 'Имя', exact: true });
-
     // #when
     await checkbox.focus();
     await gm.window.keyboard.press('Escape');
     const closedOnEscape = (await tooltip(gm.window, 'Готовность').count()) === 0;
-
     await checkbox.focus();
     await outside.focus();
     const closedOnBlur = (await tooltip(gm.window, 'Готовность').count()) === 0;
-
     await checkbox.focus();
     await outside.dispatchEvent('pointerdown', {
       pointerId: 1,
@@ -374,7 +339,6 @@ test.describe('touch tooltip', () => {
       buttons: 1,
     });
     const closedOnOutsidePointerDown = (await tooltip(gm.window, 'Готовность').count()) === 0;
-
     // #then
     expect({ closedOnEscape, closedOnBlur, closedOnOutsidePointerDown }).toEqual({
       closedOnEscape: true,
@@ -390,16 +354,14 @@ async function openSeededGm(
   presetText: string,
 ): Promise<RoomClient> {
   const window = await openClientWindow(context, GM);
-
   await seedStorage(window, records, presetText);
-
   const background = await openClientBackground(context, GM);
 
   return { window, background, connectionId: connectionIdOf(GM) };
 }
 
 function cairnRecords(): StoredRecord[] {
-  return [...pcSheet('brok', 'Брок', 0), record('row:brok:str', { str: 12, str_max: 18 })];
+  return [...pcSheet('brok', 'Брок', 0), record('blk:brok', { str: 12, str_max: 18 })];
 }
 
 async function openClient(context: BrowserContext, params: ClientParams): Promise<RoomClient> {

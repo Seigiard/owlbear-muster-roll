@@ -1,10 +1,8 @@
 import { expect, test } from 'bun:test';
-
 import type { VersionedRecord } from '@/core/records';
 import type { Command, RejectionReason } from '@/core/ui-messages';
 import type { ComposeContext } from '@/replica/composers';
 import { createPendingQueue } from '@/replica/pending-queue';
-
 import {
   createCommandRouting,
   decideCommandRoute,
@@ -143,10 +141,8 @@ for (const route of COMMAND_ROUTES) {
   test(`command route ${route.name}`, () => {
     // #given
     const { context, command, expected } = route;
-
     // #when
     const actual = decideCommandRoute(context, command);
-
     // #then
     expect(actual).toEqual(expected);
   });
@@ -156,7 +152,14 @@ test('a preset diff is GM-only and needs a live GM, but is not blocked by an imp
   // #given
   const contexts: readonly {
     context: CommandRouteContext;
-    expected: { kind: 'reject'; reason: RejectionReason } | { kind: 'preset-diff' };
+    expected:
+      | {
+          kind: 'reject';
+          reason: RejectionReason;
+        }
+      | {
+          kind: 'preset-diff';
+        };
   }[] = [
     {
       context: { role: 'PLAYER', importing: false, live: true },
@@ -174,7 +177,6 @@ test('a preset diff is GM-only and needs a live GM, but is not blocked by an imp
 
   // #when
   const actual = contexts.map(({ context }) => decidePresetDiffRoute(context));
-
   // #then
   expect(actual).toEqual(contexts.map(({ expected }) => expected));
 });
@@ -201,24 +203,36 @@ test('a preset batch stops before its later group when an earlier group applies 
 test('a complete preset batch applies every group in order', () => {
   // #given
   const groups = [['new-row'], ['preset'], ['old-row']];
-
   // #when
   const actual = runPresetBatch(groups, (group) => group);
-
   // #then
   expect(actual).toEqual({ applied: ['new-row', 'preset', 'old-row'], complete: true });
 });
 
 test('pending replay continues after a partial entry and composes the next entry from updated records', () => {
   // #given
-  const firstA: VersionedRecord = { k: 'row:first:a', d: {}, c: 1, a: 'gm' };
-  const firstB: VersionedRecord = { k: 'row:first:b', d: {}, c: 1, a: 'gm' };
-
-  const secondAfterFirstA: VersionedRecord = {
-    k: 'row:second:after-first-a',
-    d: {},
+  const firstA: VersionedRecord = {
+    k: 'blk:first',
+    d: { order: 0, cells: {} },
     c: 1,
     a: 'gm',
+    l: [1, 'seed'],
+  };
+
+  const firstB: VersionedRecord = {
+    k: 'blk:first',
+    d: { order: 0, cells: {} },
+    c: 1,
+    a: 'gm',
+    l: [1, 'seed'],
+  };
+
+  const secondAfterFirstA: VersionedRecord = {
+    k: 'blk:second',
+    d: { order: 0, cells: {} },
+    c: 1,
+    a: 'gm',
+    l: [1, 'seed'],
   };
 
   const first: Command = { type: 'sheet-create', sheetId: 'first', set: 'pc' };
@@ -294,12 +308,11 @@ test('pending replay continues after a partial entry and composes the next entry
 
   // #when
   const actual = routing.replayPending();
-
   // #then
   expect({ actual, appliedGroups, composeContexts }).toEqual({
     actual: { applied: [firstA, secondAfterFirstA], completed: ['first', 'second'] },
-    appliedGroups: [['row:first:a', 'row:first:b'], ['row:second:after-first-a']],
-    composeContexts: [[], ['row:first:a']],
+    appliedGroups: [['blk:first', 'blk:first'], ['blk:second']],
+    composeContexts: [[], ['blk:first']],
   });
 });
 
@@ -345,7 +358,6 @@ test('a repeated window command id runs its command once', () => {
     id: 'repeat',
     command: { type: 'sheet-create', sheetId: 'a', set: 'pc' },
   });
-
   // #then
   expect(events).toEqual(['compose', 'publish', 'done']);
 });
@@ -379,7 +391,6 @@ test('a queued intent that becomes invalid is rejected on catch-up exit', () => 
 
   // #when
   const actual = routing.replayPending();
-
   // #then
   expect({ actual, rejections, applyInputs }).toEqual({
     actual: { applied: [], completed: [] },
@@ -414,7 +425,6 @@ test('a repeated preset diff id produces one terminal result', () => {
   // #when
   routing.handlePresetDiff({ t: 'preset-diff', id: 'same', data: '{}' });
   routing.handlePresetDiff({ t: 'preset-diff', id: 'same', data: '{}' });
-
   // #then
   expect(replies).toEqual(['preset-diff-result:same']);
 });
@@ -444,7 +454,6 @@ test('a denied player edit shows its notice once', () => {
     fieldId: 'name',
     value: 'Ada',
   });
-
   // #then
   expect(effects).toEqual(['denied', 'publish', 'done']);
 });
@@ -482,7 +491,6 @@ test('a fully refused queued patch batch is never applied', () => {
 
   // #when
   const replayed = routing.replayPending();
-
   // #then
   expect({ effects, replayed }).toEqual({
     effects: ['reject:patch:not-allowed'],

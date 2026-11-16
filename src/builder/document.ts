@@ -1,5 +1,5 @@
 import { suggestFieldId, suggestTemplateId } from '@/core/field-id-suggest';
-import { FORMAT_VERSION } from '@/core/format-version';
+import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
 import { renameFieldId } from '@/core/formula-rename';
 import type {
   Preset,

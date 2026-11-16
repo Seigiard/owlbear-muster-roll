@@ -15,6 +15,7 @@ export function fileFailureText(failure: SnapshotFileFailure): string {
     case 'not-json':
       return copy.badFile(reason.notJson);
     case 'unsupported-version':
+    case 'older-version':
       return copy.badFile(reason.unsupportedVersion);
     case 'not-snapshot':
       return copy.badFile(reason.notSnapshot);

@@ -58,12 +58,12 @@ const ERROR_TEXT: Record<FieldErrorKind, string> = {
 
 // The content sizes the control, so a long value widens its grid column as plain text would.
 const VALUE_CLASS =
-  'touch-target field-ghost min-w-[3rem] max-w-full resize-none px-2 py-[6px] text-text tabular-nums [field-sizing:content] [overflow-wrap:anywhere]';
+  'touch-target field-ghost min-w-[3rem] max-w-full resize-none px-2 py-[6px] text-text tabular-nums field-sizing-content wrap-anywhere';
 
 // A read-only value takes the place and size of the control, with a transparent edge, so a sheet
 // keeps its layout for both roles. It is no form control, so only a named value is a Tab stop.
 const READ_ONLY_VALUE_CLASS =
-  'touch-target inline-flex min-w-[3rem] max-w-full items-center whitespace-pre-wrap border border-transparent px-2 text-text tabular-nums [overflow-wrap:anywhere]';
+  'touch-target inline-flex min-w-[3rem] max-w-full items-center whitespace-pre-wrap border border-transparent px-2 text-text tabular-nums wrap-anywhere';
 
 // The box of a check, as the checkbox of the GM draws it.
 const READ_ONLY_CHECK_CLASS =

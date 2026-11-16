@@ -2,18 +2,16 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-
 import { compile } from 'tailwindcss';
 import { z } from 'zod';
 
 const REPOSITORY_ROOT = join(import.meta.dir, '..');
-const BUILD_TIMEOUT_MS = 120_000;
+const BUILD_TIMEOUT_MS = 120000;
 
 const DESIGN_PATH =
   '_bmad-output/planning-artifacts/ux-designs/ux-owlbear-muster-roll-2026-11-10/DESIGN.md';
 
 const BUILDER_CHUNK = /^builder-/;
-
 const HASHED_ASSET = /^.+-[A-Za-z0-9_-]{8}\.(?:js|css)$/;
 
 // Every hex of the live Owlbear themes and of the DESIGN.md theme-mapped tokens, with the short
@@ -97,7 +95,6 @@ const FOREIGN_UTILITIES = [
 describe('default-mode vite build', () => {
   const outDir = mkdtempSync(join(tmpdir(), 'muster-roll-build-'));
   let exitCode: number | null = null;
-
   beforeAll(() => {
     const build = Bun.spawnSync({
       cmd: ['bunx', 'vite', 'build', '--outDir', outDir, '--emptyOutDir'],
@@ -110,15 +107,12 @@ describe('default-mode vite build', () => {
 
     exitCode = build.exitCode;
   }, BUILD_TIMEOUT_MS);
-
   afterAll(() => {
     rmSync(outDir, { recursive: true, force: true });
   });
-
   test('exits 0', () => {
     expect(exitCode).toBe(0);
   });
-
   test('emits every entry page, the manifest and the headers file', () => {
     // #given
     const required = [
@@ -132,35 +126,27 @@ describe('default-mode vite build', () => {
 
     // #when
     const missing = required.filter((name) => !existsSync(join(outDir, name)));
-
     // #then
     expect(missing).toEqual([]);
   });
-
   test('emits both JS and CSS', () => {
     // #when
     const extensions = new Set(scriptsAndStyles(outDir).map((name) => name.split('.').at(-1)));
-
     // #then
     expect(extensions).toEqual(new Set(['css', 'js']));
   });
-
   test('gives every JS and CSS asset a hashed name', () => {
     // #when
     const unhashed = scriptsAndStyles(outDir).filter((name) => !HASHED_ASSET.test(name));
-
     // #then
     expect(unhashed).toEqual([]);
   });
-
   test('bundles the Owlbear adapter chunk', () => {
     // #when
     const hasAdapterChunk = scriptsAndStyles(outDir).some((name) => /^obr-.+\.js$/.test(name));
-
     // #then
     expect(hasAdapterChunk).toBe(true);
   });
-
   test('ships no part of the mock adapter', () => {
     // #when
     const leaking = outputFiles(outDir).filter((path) =>
@@ -170,7 +156,6 @@ describe('default-mode vite build', () => {
     // #then
     expect(leaking).toEqual([]);
   });
-
   test('ships no part of the dev-only preset preview', () => {
     // #when
     const leaking = outputFiles(outDir).filter(
@@ -182,15 +167,12 @@ describe('default-mode vite build', () => {
     // #then
     expect(leaking).toEqual([]);
   });
-
   test('ships no dev-only local room page', () => {
     // #when
     const leaking = outputFiles(outDir).filter((path) => path.endsWith('room.html'));
-
     // #then
     expect(leaking).toEqual([]);
   });
-
   test('ships no hex value of a theme-mapped token', () => {
     // #when
     // AD-20: the builder page runs outside Owlbear, so its own entry chunk carries the fixed
@@ -206,21 +188,17 @@ describe('default-mode vite build', () => {
     // #then
     expect(leaking).toEqual([]);
   });
-
   test('loads no Owlbear adapter chunk in the builder page', () => {
     // #given
     const page = readFileSync(join(outDir, 'builder.html'), 'utf8');
     const entry = /src="\/assets\/(builder-[^"]+\.js)"/.exec(page)?.[1] ?? '';
-
     // #when
     const imported = chunkImports(outDir, entry);
-
     // #then
     expect(entry).not.toBe('');
     expect([...imported].filter((name) => name.startsWith('obr-'))).toEqual([]);
     expect(page).not.toContain('obr-');
   });
-
   test('ships the fixed warning and danger hex values', () => {
     // #given
     const css = scriptsAndStyles(outDir)
@@ -230,19 +208,15 @@ describe('default-mode vite build', () => {
 
     // #when
     const missing = FIXED_HEX.filter((hex) => !css.includes(hex));
-
     // #then
     expect(missing).toEqual([]);
   });
-
   test('ships the DESIGN.md value of every typography, radius, spacing and fixed color token', () => {
     // #given
     const expected = designTokenValues();
-
     // #when
     const declared = declaredThemeValues(outDir);
     const actual = [...expected.keys()].map((name) => [name, declared.get(name)]);
-
     // #then
     expect(actual).toEqual([...expected]);
   });
@@ -252,21 +226,16 @@ describe('tailwind theme', () => {
   test('exposes every DESIGN.md color, typography style, radius and spacing step', async () => {
     // #given
     const compiler = await compileMainCss();
-
     // #when
     const css = compiler.build(DESIGN_UTILITIES);
-
     // #then
     expect(DESIGN_UTILITIES.filter((name) => !hasUtility(css, name))).toEqual([]);
   });
-
   test('generates nothing from the default Tailwind scales', async () => {
     // #given
     const compiler = await compileMainCss();
-
     // #when
     const css = compiler.build(FOREIGN_UTILITIES);
-
     // #then
     expect(FOREIGN_UTILITIES.filter((name) => hasUtility(css, name))).toEqual([]);
   });
@@ -355,7 +324,6 @@ function chunkImports(outDir: string, entry: string): Set<string> {
     }
 
     seen.add(name);
-
     const code = readFileSync(join(outDir, 'assets', name), 'utf8');
 
     for (const [, imported = ''] of code.matchAll(/(?:from|import)\(?"\.\/([^"]+\.js)"/g)) {

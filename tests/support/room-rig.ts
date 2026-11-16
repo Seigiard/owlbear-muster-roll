@@ -2,8 +2,8 @@ import { afterEach, mock } from 'bun:test';
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
-
 import { FORMAT_VERSION } from '@/core/format-version';
+import { assembleRecords } from '@/core/merge';
 import type { JsonObject, JsonValue } from '@/core/json';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
@@ -76,11 +76,23 @@ export const RIG_TIMING: Timing = {
 };
 
 export type RigOutcome =
-  | { kind: 'answered'; answer: JsonValue | undefined }
-  | { kind: 'refused'; rejection: CommandRejectedMessage }
-  | { kind: 'timed-out' };
+  | {
+      kind: 'answered';
+      answer: JsonValue | undefined;
+    }
+  | {
+      kind: 'refused';
+      rejection: CommandRejectedMessage;
+    }
+  | {
+      kind: 'timed-out';
+    };
 
-export type RigHeard = { from: string; data: JsonValue; at: number };
+export type RigHeard = {
+  from: string;
+  data: JsonValue;
+  at: number;
+};
 
 export type RigRoom = {
   room: MockRoom;
@@ -151,7 +163,14 @@ export type RoomRigOptions = {
 };
 
 export type RoomRig = {
-  openRoom: (scene?: string[] | { itemIds: string[]; ready?: boolean }) => RigRoom;
+  openRoom: (
+    scene?:
+      | string[]
+      | {
+          itemIds: string[];
+          ready?: boolean;
+        },
+  ) => RigRoom;
   createClient: (
     room: RigRoom | MockRoom,
     connectionId: string,
@@ -167,11 +186,13 @@ export type RoomRig = {
   pause: (milliseconds: number) => Promise<void>;
 };
 
-type GenerationLike = { n: number; a: string };
+type GenerationLike = {
+  n: number;
+  a: string;
+};
 
 export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
   const cleanups: (() => void)[] = [];
-
   afterEach(() => {
     for (const cleanup of cleanups.splice(0)) {
       cleanup();
@@ -179,18 +200,21 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
 
     mock.restore();
   });
-
   const rigTiming = { ...RIG_TIMING, ...options.timing };
   const waitLimitMs = options.waitLimitMs ?? WAIT_LIMIT_MS;
   const rigEngine = options.engine ?? {};
 
-  function openRoom(scene?: string[] | { itemIds: string[]; ready?: boolean }): RigRoom {
+  function openRoom(
+    scene?:
+      | string[]
+      | {
+          itemIds: string[];
+          ready?: boolean;
+        },
+  ): RigRoom {
     const room = createMemoryRoom();
-
     const heard: RigHeard[] = [];
-
     const events: string[] = [];
-
     cleanups.push(
       room.onRemote(SYNC_CHANNEL, 'observer', (event) => {
         heard.push({ from: event.connectionId, data: event.data, at: Date.now() });
@@ -247,18 +271,15 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
 
     const seeded = clientOptions.seeded ?? options.seeded ?? [];
     const seededKeys = new Set(seeded.map((record) => record.k));
-
     const writes: string[] = [];
-
     const trackedBacking = trackBacking(backing, writes);
-
     const local: JsonValue[] = [];
     const mintedIds: string[] = [];
     const commandOutcomes = new Map<string, RigOutcome>();
     const created = createMockPlatform(bus, trackedBacking, identity);
     const effectiveTiming = { ...rigTiming, ...clientOptions.timing };
 
-    for (const record of seeded) {
+    for (const record of assembleRecords(seeded).values()) {
       backing.set(
         storageKey(record.k, clientOptions.generation ?? options.generation),
         JSON.stringify(record),
@@ -272,9 +293,7 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
     bus.subscribe('app.muster-roll/ui', (event) => {
       local.push(event.data);
     });
-
     created.joinParty();
-
     let engine: ReplicaEngine | null = null;
     let store: ProjectionStore | null = null;
     let window: ReplicaClient | null = null;
@@ -300,7 +319,6 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
         createSendQueue(enginePlatform.broadcast, effectiveTiming, clientOptions.sendWait),
         engineOptions,
       );
-
       cleanups.push(engine.stop);
     }
 
@@ -318,7 +336,6 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
         effectiveTiming,
         () => {
           const id = makeId();
-
           mintedIds.push(id);
 
           return id;
@@ -398,9 +415,7 @@ export function createRoomRig(options: RoomRigOptions = {}): RoomRig {
     const client = createClient(roomOrRig, connectionId, clientOptions);
     await client.startEngine();
     client.openWindow();
-
     await waitWithin(waitLimitMs, () => client.store.$loaded.get());
-
     const until = clientOptions.until ?? options.until ?? 'loaded';
 
     if (until === 'live') {
@@ -561,7 +576,10 @@ export function lastRequest(room: Pick<RigRoom, 'heard'>, from: string): string 
 export function storageKey(
   key: string,
   generation: GenerationLike = { n: 0, a: '' },
-  place: { roomId?: string; format?: number } = {},
+  place: {
+    roomId?: string;
+    format?: number;
+  } = {},
 ): string {
   const roomId = place.roomId ?? RIG_ROOM_ID;
   const format = place.format ?? RIG_FORMAT;
@@ -593,9 +611,11 @@ export function copyValue(
   return { v: version, data: Buffer.from(deflated).toString('base64') };
 }
 
-export function roomCopyOf(
-  room: Pick<RigRoom, 'room'>,
-): { v: JsonValue; g: JsonValue; records: JsonValue } | null {
+export function roomCopyOf(room: Pick<RigRoom, 'room'>): {
+  v: JsonValue;
+  g: JsonValue;
+  records: JsonValue;
+} | null {
   const value = room.room.getMetadata()['app.muster-roll/snapshot'];
 
   if (value === undefined) {

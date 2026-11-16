@@ -1,17 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-import { FORMAT_VERSION } from '@/core/format-version';
+import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
 import { parsePresetFile, type Preset, type PresetFieldCell } from '@/core/preset';
-import { recordSchema, type VersionedRecord } from '@/core/records';
+import { blockDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
 import { repeatBlocks, rowValues } from '@/core/sheet-values';
 import { sheetName } from '@/core/sheets';
-
 import { previewSheets } from './sample-records';
 
 const REPOSITORY_ROOT = join(import.meta.dir, '../..');
-
 const ARMOR = selectField('armor', ['Кожаная', 'Кольчуга']);
 
 function selectField(id: string, options: string[]): PresetFieldCell {
@@ -93,61 +90,64 @@ describe('previewSheets with sample content', () => {
   test('makes one sheet per template, in preset order: a preview sheet for a set, the template id for a single sheet', () => {
     // #when
     const { records, sheets } = previewSheets(PRESET, 'sample');
-
+    const setSheet = blockDataSchema.parse(records.get('blk:preview-1')?.d);
     // #then
     expect({
       sheets: sheets.map((sheet) => [sheet.template.id, sheet.sheetId]),
-      setSheet: records.get('sheet:preview-1')?.d,
-      singleSheet: records.get('sheet:npc'),
+      setSheet: { set: setSheet.set, order: setSheet.order },
+      singleSheet: records.get('blk:npc'),
     }).toEqual({
       sheets: [
         ['pc', 'preview-1'],
         ['npc', 'npc'],
       ],
       setSheet: { set: 'pc', order: 1 },
-      singleSheet: undefined,
+      singleSheet: {
+        k: 'blk:npc',
+        d: { order: 1, cells: {} },
+        c: 1,
+        a: 'preview',
+        l: [1, 'preview'],
+      },
     });
   });
-
   test('gives every field a value of its type, so the sheet of the set has a name', () => {
     // #when
     const { records } = previewSheets(PRESET, 'sample');
-
     // #then
     expect({
       name: sheetName(records, PRESET, 'preview-1'),
-      str: Object.fromEntries(rowValues(records, 'preview-1', 'str')),
-      dex: Object.fromEntries(rowValues(records, 'preview-1', 'dex')),
+      root: Object.fromEntries(rowValues(records, 'preview-1', 'str')),
     }).toEqual({
       name: 'Name',
-      str: { str: 10, str_tired: true },
-      dex: { dex: 11, dex_tired: false },
+      root: {
+        name: 'Name',
+        motto: 'motto',
+        str: 10,
+        str_tired: true,
+        dex: 11,
+        dex_tired: false,
+        armor: 'Кожаная',
+      },
     });
   });
-
   test('gives a text field with no visible label its id, so no value is empty', () => {
     // #when
     const { records } = previewSheets(PRESET, 'sample');
-
     // #then
     expect(rowValues(records, 'preview-1', 'motto').get('motto')).toBe('motto');
   });
-
   test('gives a select field one of the options from its preset', () => {
     // #when
     const { records } = previewSheets(PRESET, 'sample');
     const value = rowValues(records, 'preview-1', 'armor').get('armor');
-
     // #then
     expect(['Кожаная', 'Кольчуга'].includes(String(value))).toBe(true);
   });
-
   test('gives a repeat section two repeat blocks, each with every field of the section', () => {
     // #when
     const { records } = previewSheets(PRESET, 'sample');
-
     const blocks = repeatBlocks(records, 'npc', 'foe');
-
     // #then
     expect(
       blocks.map((block) => ({ id: block.instanceId, values: Object.fromEntries(block.values) })),
@@ -156,31 +156,18 @@ describe('previewSheets with sample content', () => {
       { id: 'sample-2', values: { foe: 'Foe 2', hp: 11 } },
     ]);
   });
-
   test('makes no record for a row with no field', () => {
     // #when
     const { records } = previewSheets(PRESET, 'sample');
-
     // #then
     expect([...records.keys()].sort()).toEqual(
-      [
-        'sheet:preview-1',
-        'row:preview-1:name',
-        'row:preview-1:str',
-        'row:preview-1:dex',
-        'row:preview-1:armor',
-        'row:preview-1:motto',
-        'rep:npc:foe:sample-1',
-        'rep:npc:foe:sample-2',
-      ].sort(),
+      ['blk:preview-1', 'blk:npc', 'blk:npc:foe:sample-1', 'blk:npc:foe:sample-2'].sort(),
     );
   });
-
   test('gives the same records for the same preset', () => {
     // #when
     const first = previewSheets(PRESET, 'sample');
     const second = previewSheets(PRESET, 'sample');
-
     // #then
     expect([...second.records]).toEqual([...first.records]);
   });
@@ -190,13 +177,12 @@ describe('previewSheets with empty content', () => {
   test('keeps only the sheet of the set, with no name, and no value or repeat block', () => {
     // #when
     const { records } = previewSheets(PRESET, 'empty');
-
     // #then
     expect({
       keys: [...records.keys()],
       name: sheetName(records, PRESET, 'preview-1'),
       blocks: repeatBlocks(records, 'npc', 'foe'),
-    }).toEqual({ keys: ['sheet:preview-1'], name: '', blocks: [] });
+    }).toEqual({ keys: ['blk:preview-1', 'blk:npc'], name: '', blocks: [] });
   });
 });
 
@@ -224,7 +210,6 @@ describe('previewSheets over the repository presets', () => {
 
     // #then
     const refused = records.filter((record) => !recordSchema.safeParse(record).success);
-
     expect(refused).toEqual([]);
   });
 });

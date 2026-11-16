@@ -54,7 +54,7 @@ export type DiceTerm = { count: number; sides: number };
 // The face one die of `sides` shows.
 export type DieFace = { sides: number; face: number };
 
-// The values of the sheet's `row:` record named by `rowId`.
+// The values of the plain row named by `rowId`, read from the sheet's root block.
 export type SheetRowValues = (rowId: string) => FieldValues;
 
 // Walks the Story 1.5 tree in order, left before right, so dice faces come out in tree order. The
@@ -324,8 +324,8 @@ export function resolveFormulaDiceFields(
 
 // The lookup for a dice cell in the row at `from`. `sheetRow` reads rows of the same sheet only, so
 // an id never crosses sheets. An id resolves through `resolveFieldReference`: the cell's own repeat
-// block first, then the sheet's non-repeat scope. A repeat block has no `row:` record, so its
-// caller passes the block's values as `ownBlock`; without them its own fields read as empty.
+// block first, then the sheet's non-repeat scope. The caller passes repeat values as `ownBlock`;
+// without them the repeat block's own fields read as empty.
 export function formulaFieldLookup(
   layout: TemplateLayout,
   from: TemplateRowPlace,

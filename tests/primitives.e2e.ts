@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-
 import {
   contrastRatio,
   cssValue,
@@ -12,7 +11,6 @@ import {
 import type { Rgb } from './support/colors';
 
 const TRANSPARENT = 'rgba(0, 0, 0, 0)';
-
 const MIN_CONTRAST = 4.5;
 const MIN_TOUCH_TARGET_PX = 32;
 const MAX_TAB_PRESSES = 20;
@@ -68,12 +66,9 @@ for (const { name, locate } of [
   test(`keyboard focus on a ${name} shows a 2 px outline in the focus color`, async ({ page }) => {
     // #given
     await openFixture(page);
-
     const control = locate(page);
-
     // #when
     await tabTo(page, control);
-
     // #then
     expect({
       style: await cssValue(control, 'outline-style'),
@@ -81,7 +76,6 @@ for (const { name, locate } of [
       color: await renderedColor(control, 'outline-color'),
     }).toEqual({ style: 'solid', width: '2px', color: DARK_FOCUS });
   });
-
   test(`a ${name} takes a press anywhere in a 32 px high touch target`, async ({ page }) => {
     // #given
     await openFixture(page);
@@ -112,12 +106,9 @@ for (const { name, label, reason } of [
   test(`a disabled ${name} is dimmed, explains itself and ignores a press`, async ({ page }) => {
     // #given
     await openFixture(page);
-
     const control = page.getByRole('button', { name: label });
-
     // #when
     await control.click({ force: true });
-
     // #then
     await expect(control).toHaveCSS('opacity', '0.5');
     await expect(control).toHaveAccessibleDescription(reason);
@@ -129,10 +120,8 @@ for (const { name, label, reason } of [
 test('a disabled Field is dimmed, explains itself and takes no input', async ({ page }) => {
   // #given
   await openFixture(page);
-
   // #when
   const field = page.getByRole('textbox', { name: 'Disabled field' });
-
   // #then
   await expect(field).toBeDisabled();
   await expect(field).toHaveCSS('opacity', '0.5');
@@ -157,7 +146,6 @@ test('the radii follow DESIGN.md for buttons and chips', async ({ page }) => {
 test('a status chip is not a button and renders muted at 11 px', async ({ page }) => {
   // #given
   await openFixture(page);
-
   const chip = page.getByText('Status chip');
 
   // #when
@@ -174,17 +162,13 @@ test('a status chip is not a button and renders muted at 11 px', async ({ page }
 test('typing in a Field reaches onChange and leaving it fires onBlur', async ({ page }) => {
   // #given
   await openFixture(page);
-
   const field = page.getByRole('textbox', { name: 'Echo field' });
   const echo = page.getByTestId('field-echo');
-
   // #when
   await field.pressSequentially('ab');
   const afterTyping = await echo.textContent();
-
   await page.keyboard.press('Tab');
   const afterLeaving = await echo.textContent();
-
   // #then
   expect([afterTyping, afterLeaving]).toEqual(['ab:0', 'ab:1']);
 });
@@ -192,7 +176,6 @@ test('typing in a Field reaches onChange and leaving it fires onBlur', async ({ 
 test('a primary Button renders the accent background and contrast text', async ({ page }) => {
   // #given
   await openFixture(page);
-
   const button = page.getByRole('button', { name: 'Primary' });
 
   // #when
@@ -214,7 +197,6 @@ for (const name of ['Secondary', 'Default']) {
   }) => {
     // #given
     await openFixture(page);
-
     const button = page.getByRole('button', { name, exact: true });
 
     // #when
@@ -238,7 +220,6 @@ for (const name of ['Secondary', 'Default']) {
 test('a Field is quiet at rest and shows a line edge under the pointer', async ({ page }) => {
   // #given
   await openFixture(page);
-
   const field = page.getByRole('textbox', { name: 'Enabled field' });
 
   const atRest = {
@@ -248,7 +229,6 @@ test('a Field is quiet at rest and shows a line edge under the pointer', async (
 
   // #when
   await field.hover();
-
   // #then: the edge fades in over 150 ms, so the check waits for it to settle.
   expect(atRest).toEqual({ background: TRANSPARENT, edge: TRANSPARENT });
   await expect
@@ -259,28 +239,22 @@ test('a Field is quiet at rest and shows a line edge under the pointer', async (
 test('the shell banner slot renders the banner as a live region', async ({ page }) => {
   // #when
   await openFixture(page);
-
   // #then
   await expect(page.getByRole('status').filter({ hasText: 'Warning banner' })).toBeVisible();
 });
 
 test.describe('touch and mouse', () => {
   test.use({ hasTouch: true });
-
   test('a tap and a click each act once', async ({ page }) => {
     // #given
     await openFixture(page);
-
     const button = page.getByRole('button', { name: 'Primary' });
     const presses = page.getByTestId('presses');
-
     // #when
     await button.tap();
     const afterTap = await presses.textContent();
-
     await button.click();
     const afterClick = await presses.textContent();
-
     // #then
     expect([afterTap, afterClick]).toEqual(['1', '2']);
   });
@@ -306,7 +280,6 @@ for (const { name, mode, text, surface, foreground } of BANNER_CASES) {
     // #then
     expect(colors).toEqual([surface, foreground]);
   });
-
   test(`the ${name} banner has at least 4.5:1 contrast`, async ({ page }) => {
     // #given
     await openFixture(page);

@@ -2,9 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { inflateSync, strFromU8 } from 'fflate';
 import { z } from 'zod';
-
 import type { JsonValue } from '@/core/json';
-
 import {
   ABSENT,
   ADD,
@@ -18,6 +16,7 @@ import {
   roomKeys,
   repRecord,
   seedStorage,
+  storedCell,
   storedData,
   type ClientParams,
   type RoomClient,
@@ -29,7 +28,6 @@ const CANCEL = 'Отменить';
 const SETTINGS = 'Настройки';
 const CHANGED = 'Формат листов изменён.';
 const SILENT_GM = 'silent-gm';
-
 const GM: ClientParams = { client: 'a', name: 'Мастер', catchUpTimeoutMs: 8000 };
 
 const PLAYER: ClientParams = {
@@ -120,10 +118,10 @@ const RELABELLED = presetText([
 const RECORDS: StoredRecord[] = [
   ...pcSheet('brok', 'Брок', 0),
   record('acl:brok:lisa', { name: 'Лиза' }),
-  record('row:brok:str', { str: 14 }),
-  record('row:brok:dex', { dex: 3 }),
-  record('row:brok:tired', { tired: false }),
-  record('rep:brok:bonus:i1', { order: 0, cells: { bonus: 2 } }),
+  record('blk:brok', { str: 14 }),
+  record('blk:brok', { dex: 3 }),
+  record('blk:brok', { tired: false }),
+  record('blk:brok:bonus:i1', { order: 0, cells: { bonus: 2 } }),
 ];
 
 const WITH_CREW = presetText(
@@ -137,12 +135,12 @@ const WITH_CREW = presetText(
 
 // Three sheets of "Экипаж", each holding only its name.
 const CREW_SHEETS: StoredRecord[] = [
-  record('sheet:ivan', { set: 'crew', order: 0 }),
-  record('row:ivan:name', { name: 'Иван' }),
-  record('sheet:petr', { set: 'crew', order: 1 }),
-  record('row:petr:name', { name: 'Пётр' }),
-  record('sheet:yana', { set: 'crew', order: 2 }),
-  record('row:yana:name', { name: 'Яна' }),
+  record('blk:ivan', { set: 'crew', order: 0 }),
+  record('blk:ivan', { name: 'Иван' }),
+  record('blk:petr', { set: 'crew', order: 1 }),
+  record('blk:petr', { name: 'Пётр' }),
+  record('blk:yana', { set: 'crew', order: 2 }),
+  record('blk:yana', { name: 'Яна' }),
 ];
 
 const LOOT_ITEMS = {
@@ -168,13 +166,12 @@ function lootPreset(sectionTokens: boolean): string {
 }
 
 const WITH_TOKENS = lootPreset(true);
-
 const WITHOUT_TOKENS = lootPreset(false);
 
 // t-gob links a repeat block of "Добыча", t-chest the whole sheet.
 const TOKEN_RECORDS: StoredRecord[] = [
   ...pcSheet('brok', 'Брок', 0),
-  record('row:brok:str', { str: 14 }),
+  record('blk:brok', { str: 14 }),
   repRecord('loot', 'loot_item', 'i1', 0, { loot_item: 'Меч' }),
   record('link:t-gob', { s: 'loot', i: 'i1' }),
   record('link:t-chest', { s: 'loot' }),
@@ -189,41 +186,33 @@ test('an upload that erases values asks once with focus on "Отменить", w
 }) => {
   // #given
   const gm = await openGm(context);
-
   await openSettings(gm.window);
-
   // #when
   await uploadFile(gm.window, REMOVES_TWO);
-
   // #then
   await expect(block(gm.window)).toHaveAccessibleName(
     'Значения удалённых полей будут стёрты: 2. Загрузить пресет?',
   );
   await expect(block(gm.window).getByRole('button', { name: CANCEL })).toBeFocused();
-
   // #when
   await block(gm.window).getByRole('button', { name: CANCEL }).click();
-
   // #then
   await expect(block(gm.window)).toHaveCount(0);
   await expect(uploadButton(gm.window)).toBeFocused();
   expect({
     preset: await storedPreset(gm.window),
-    dex: await storedData(gm.window, 'row:brok:dex'),
-  }).toEqual({ preset: JSON.parse(BEFORE), dex: { dex: 3 } });
+    dex: await storedCell(gm.window, 'blk:brok', 'dex'),
+  }).toEqual({ preset: JSON.parse(BEFORE), dex: [3, 1, 'seed'] });
 });
 
 test('Escape closes the confirmation and changes nothing', async ({ context }) => {
   // #given
   const gm = await openGm(context);
-
   await openSettings(gm.window);
   await uploadFile(gm.window, REMOVES_TWO);
   await expect(block(gm.window).getByRole('button', { name: CANCEL })).toBeFocused();
-
   // #when
   await gm.window.keyboard.press('Escape');
-
   // #then
   await expect(block(gm.window)).toHaveCount(0);
   expect(await storedPreset(gm.window)).toEqual(JSON.parse(BEFORE));
@@ -235,14 +224,11 @@ test('a confirmed upload erases the removed values on every client, keeps rename
   // #given
   const gm = await openGm(context);
   const player = await openPlayer(context);
-
   await expect(valueField(player.window, 'Сила')).toHaveValue('14');
   await openSettings(gm.window);
   await uploadFile(gm.window, REMOVES_TWO);
-
   // #when
   await block(gm.window).getByRole('button', { name: UPLOAD }).click();
-
   // #then
   await expect(block(gm.window)).toHaveCount(0);
   await expect(underUpload(gm.window)).toHaveText(CHANGED);
@@ -261,19 +247,19 @@ test('a confirmed upload erases the removed values on every client, keeps rename
   // AD-14: the generation does not change, so every record stays under the same storage keys.
   expect({
     preset: await storedPreset(gm.window),
-    dex: await storedData(gm.window, 'row:brok:dex'),
-    tired: await storedData(gm.window, 'row:brok:tired'),
-    str: await storedData(gm.window, 'row:brok:str'),
-    bonus: await storedData(gm.window, 'rep:brok:bonus:i1'),
+    dex: await storedCell(gm.window, 'blk:brok', 'dex'),
+    tired: await storedCell(gm.window, 'blk:brok', 'tired'),
+    str: await storedCell(gm.window, 'blk:brok', 'str'),
+    bonus: await storedCell(gm.window, 'blk:brok:bonus:i1', 'bonus'),
     otherGenerations: (await roomKeys(gm.window)).filter(
       (key) => !isStorageKeyInGeneration(key, { n: 0, a: '' }),
     ),
   }).toEqual({
     preset: JSON.parse(REMOVES_TWO),
-    dex: null,
-    tired: null,
-    str: { str: 14 },
-    bonus: { order: 0, cells: { bonus: 2 } },
+    dex: [null, 2, gm.connectionId],
+    tired: [null, 2, gm.connectionId],
+    str: [14, 2, gm.connectionId],
+    bonus: [2, 1, 'seed'],
     otherGenerations: [],
   });
 });
@@ -283,16 +269,13 @@ test('a roll whose formula names a removed field shows the bad formula message a
 }) => {
   // #given
   const gm = await openGm(context);
-
   await openSettings(gm.window);
   await uploadFile(gm.window, REMOVES_TWO);
   await block(gm.window).getByRole('button', { name: UPLOAD }).click();
   await expect(block(gm.window)).toHaveCount(0);
   await gm.window.getByRole('tab', { name: 'Брок' }).click();
-
   // #when
   await diceButton(gm.window, 'Мощь').click();
-
   // #then
   await expect(messageUnder(gm.window, 'Мощь')).toHaveText(
     'Нельзя бросить: поле «dex» пустое или не число',
@@ -305,12 +288,9 @@ test('an upload that erases nothing applies at once and says so under the button
 }) => {
   // #given
   const gm = await openGm(context);
-
   await openSettings(gm.window);
-
   // #when
   await uploadFile(gm.window, RELABELLED);
-
   // #then
   await expect(underUpload(gm.window)).toHaveText(CHANGED);
   await expect(block(gm.window)).toHaveCount(0);
@@ -321,26 +301,23 @@ test('a confirm after the replica changed asks again with the new count', async 
   // #given
   const gm = await openGm(context);
   const other = await openClientWindow(context, GM);
-
   await openSettings(gm.window);
   await uploadFile(gm.window, REMOVES_TWO);
   await expect(block(gm.window)).toHaveAccessibleName(/стёрты: 2\./);
-
   // #when: another window of the GM clears "Ловкость", so only "Усталость" holds a value.
   await clearField(other, 'Ловкость');
-  await expect.poll(() => storedData(gm.window, 'row:brok:dex')).toEqual({});
+  await expect
+    .poll(() => storedCell(gm.window, 'blk:brok', 'dex'))
+    .toEqual([null, 2, gm.connectionId]);
   await block(gm.window).getByRole('button', { name: UPLOAD }).click();
-
   // #then
   await expect(block(gm.window)).toHaveAccessibleName(
     'Значения удалённых полей будут стёрты: 1. Загрузить пресет?',
   );
   await expect(block(gm.window).getByRole('button', { name: CANCEL })).toBeFocused();
   expect(await storedPreset(gm.window)).toEqual(JSON.parse(BEFORE));
-
   // #when
   await block(gm.window).getByRole('button', { name: UPLOAD }).click();
-
   // #then
   await expect(block(gm.window)).toHaveCount(0);
   await expect.poll(() => storedPreset(gm.window)).toEqual(JSON.parse(REMOVES_TWO));
@@ -352,16 +329,15 @@ test('a confirm after the count fell to 0 closes the block and takes the path th
   // #given
   const gm = await openGm(context);
   const other = await openClientWindow(context, GM);
-
   await openSettings(gm.window);
   await uploadFile(gm.window, REMOVES_DEX);
   await expect(block(gm.window)).toHaveAccessibleName(/стёрты: 1\./);
-
   // #when
   await clearField(other, 'Ловкость');
-  await expect.poll(() => storedData(gm.window, 'row:brok:dex')).toEqual({});
+  await expect
+    .poll(() => storedCell(gm.window, 'blk:brok', 'dex'))
+    .toEqual([null, 2, gm.connectionId]);
   await block(gm.window).getByRole('button', { name: UPLOAD }).click();
-
   // #then
   await expect(block(gm.window)).toHaveCount(0);
   await expect(underUpload(gm.window)).toHaveText(CHANGED);
@@ -371,24 +347,21 @@ test('a confirm after the count fell to 0 closes the block and takes the path th
 test('a catch-up closes an open confirmation and writes nothing', async ({ context }) => {
   // #given
   const gm = await openGm(context);
-
   await openSettings(gm.window);
   await uploadFile(gm.window, REMOVES_TWO);
   await expect(block(gm.window)).toBeVisible();
-
   // #when: a GM that never answers joins, and the page comes back online.
   await addPartyMember(gm.window, SILENT_GM, 'GM');
   await gm.background.evaluate(() => {
     window.dispatchEvent(new Event('online'));
   });
-
   // #then
   await expect(block(gm.window)).toHaveCount(0);
   await expect(uploadButton(gm.window)).toHaveAccessibleDescription('Загрузка…');
   expect({
     preset: await storedPreset(gm.window),
-    tired: await storedData(gm.window, 'row:brok:tired'),
-  }).toEqual({ preset: JSON.parse(BEFORE), tired: { tired: false } });
+    tired: await storedCell(gm.window, 'blk:brok', 'tired'),
+  }).toEqual({ preset: JSON.parse(BEFORE), tired: [false, 1, 'seed'] });
 });
 
 test('an upload that drops a sheet set with three sheets names the deleted sheets, and "Отменить" keeps them', async ({
@@ -396,31 +369,26 @@ test('an upload that drops a sheet set with three sheets names the deleted sheet
 }) => {
   // #given
   const gm = await openGm(context, [...RECORDS, ...CREW_SHEETS], WITH_CREW);
-
   await openSettings(gm.window);
-
   // #when
   await uploadFile(gm.window, BEFORE);
-
   // #then: each sheet's name is a value of its name field, so the three names are erased too.
   await expect(block(gm.window)).toHaveAccessibleName(
     'Значения удалённых полей будут стёрты: 3. Листы будут удалены: 3. Загрузить пресет?',
   );
   await expect(block(gm.window).getByRole('button', { name: CANCEL })).toBeFocused();
-
   // #when
   await block(gm.window).getByRole('button', { name: CANCEL }).click();
-
   // #then
   await expect(block(gm.window)).toHaveCount(0);
   expect({
     preset: await storedPreset(gm.window),
     tabs: await gm.window.getByRole('tab').allTextContents(),
-    sheet: await storedData(gm.window, 'sheet:ivan'),
+    sheet: await storedData(gm.window, 'blk:ivan'),
   }).toEqual({
     preset: JSON.parse(WITH_CREW),
     tabs: ['Брок', 'NPC', 'Иван', 'Пётр', 'Яна', SETTINGS],
-    sheet: { set: 'crew', order: 0 },
+    sheet: { set: 'crew', order: 0, cells: { name: ['Иван', 1, 'seed'] } },
   });
 });
 
@@ -430,25 +398,20 @@ test('a confirmed upload that drops a sheet set deletes its sheets on every clie
   // #given
   const gm = await openGm(context, [...RECORDS, ...CREW_SHEETS], WITH_CREW);
   const player = await openPlayer(context);
-
   await expect(player.window.getByRole('tab', { name: 'Яна' })).toBeVisible();
   await openSettings(gm.window);
   await uploadFile(gm.window, BEFORE);
-
   // #when
   await block(gm.window).getByRole('button', { name: UPLOAD }).click();
-
   // #then
   await expect(block(gm.window)).toHaveCount(0);
   await expect(gm.window.getByRole('tab')).toHaveText(['Брок', 'NPC', SETTINGS]);
   await expect(player.window.getByRole('tab')).toHaveText(['Брок', 'NPC']);
   expect(
     await Promise.all(
-      ['sheet:ivan', 'row:ivan:name', 'sheet:petr', 'sheet:yana', 'row:yana:name'].map((key) =>
-        storedData(gm.window, key),
-      ),
+      ['blk:ivan', 'blk:petr', 'blk:yana'].map((key) => storedData(gm.window, key)),
     ),
-  ).toEqual([null, null, null, null, null]);
+  ).toEqual([null, null, null]);
 });
 
 test("an upload that drops a section's tokens removes the links to its repeat blocks without counting them", async ({
@@ -456,23 +419,20 @@ test("an upload that drops a section's tokens removes the links to its repeat bl
 }) => {
   // #given
   const gm = await openGm(context, TOKEN_RECORDS, WITH_TOKENS);
-
   await openSettings(gm.window);
-
   // #when
   await uploadFile(gm.window, WITHOUT_TOKENS);
-
   // #then
   await expect(underUpload(gm.window)).toHaveText(CHANGED);
   await expect(block(gm.window)).toHaveCount(0);
   await expect.poll(() => storedData(gm.window, 'link:t-gob')).toBeNull();
   expect({
     preset: await storedPreset(gm.window),
-    block: await storedData(gm.window, 'rep:loot:loot_item:i1'),
+    block: await storedCell(gm.window, 'blk:loot:loot_item:i1', 'loot_item'),
     sheetLink: await storedData(gm.window, 'link:t-chest'),
   }).toEqual({
     preset: JSON.parse(WITHOUT_TOKENS),
-    block: { order: 0, cells: { loot_item: 'Меч' } },
+    block: ['Меч', 1, 'seed'],
     sheetLink: { s: 'loot' },
   });
 });
@@ -483,11 +443,8 @@ async function openGm(
   preset = BEFORE,
 ): Promise<RoomClient> {
   const window = await openClientWindow(context, GM);
-
   await seedStorage(window, records, preset);
-
   const background = await openClientBackground(context, GM);
-
   await expect(window.getByRole('button', { name: ADD })).toBeVisible();
   await expect(valueField(window, 'Сила')).toHaveValue('14');
 
@@ -515,11 +472,8 @@ async function clearField(page: Page, name: string): Promise<void> {
 
 async function uploadFile(page: Page, text: string): Promise<void> {
   const choosing = page.waitForEvent('filechooser');
-
   await uploadButton(page).click();
-
   const chooser = await choosing;
-
   await chooser.setFiles({
     name: 'preset.json',
     mimeType: 'application/json',

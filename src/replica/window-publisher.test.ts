@@ -1,5 +1,7 @@
+import type { JsonValue } from '@/core/json';
+import { assembleRecords } from '@/core/merge';
+import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
-
 import { jsonByteLength } from '@/core/message-size';
 import { decodePreset, encodePreset, type Preset } from '@/core/preset';
 import { presetDataSchema, type VersionedRecord } from '@/core/records';
@@ -60,7 +62,10 @@ type Harness = {
   source: WindowPublisherState;
   publisher: WindowPublisher;
   messages: EngineMessage[];
-  openWindow: (id: string) => { client: RigPage['window']; store: RigPage['store'] };
+  openWindow: (id: string) => {
+    client: RigPage['window'];
+    store: RigPage['store'];
+  };
   stopRequests: () => void;
   stop: () => void;
 };
@@ -77,12 +82,10 @@ describe('window publisher', () => {
   test('sends a record-free delta from its engine before the first projection when records change', async () => {
     // #given
     const harness = publisherHarness(source('GM', [PRESET_RECORD]));
-    harness.source.replica = records(PRESET_RECORD, record('row:hero:name', { name: 'Ada' }, 2));
-
+    harness.source.replica = records(PRESET_RECORD, record('blk:hero', { name: 'Ada' }, 2));
     // #when
     harness.publisher.publish();
     await settle();
-
     // #then
     expect(
       harness.messages.flatMap((message) =>
@@ -99,34 +102,30 @@ describe('window publisher', () => {
       ),
     ).toEqual([{ engine: 'engine-1', records: [], pending: [], withdrawn: [] }]);
   });
-
   test('sends nothing before the first projection for a header-only or unchanged source', () => {
     // #given
     const harness = publisherHarness(source('GM', [PRESET_RECORD]));
     harness.source.notices = ['new-version'];
-
     // #when
     harness.publisher.publish();
     harness.publisher.publish();
-
     // #then
     expect(harness.messages).toEqual([]);
   });
-
   test('opens a window with the full visible projection', async () => {
     // #given
-    const hero = record('sheet:hero', { set: 'party', order: 0 });
-    const name = record('row:hero:name', { name: 'Ada' });
+    const hero = record('blk:hero', { set: 'party', order: 0 });
+    const name = record('blk:hero', { name: 'Ada' });
     const harness = publisherHarness(source('GM', [PRESET_RECORD, hero, name]));
-
     // #when
     const window = harness.openWindow('open');
     await settle();
-
     // #then
-    expect([...window.store.$records.get().values()]).toEqual([PRESET_RECORD, hero, name]);
+    expect([...window.store.$records.get().values()]).toEqual([
+      PRESET_RECORD,
+      records(hero, name).get(hero.k)!,
+    ]);
   });
-
   test('answers a projection nonce once while its first projection is queued', () => {
     // #given
     let release: (() => void) | undefined;
@@ -150,24 +149,20 @@ describe('window publisher', () => {
     // #when
     const answered = [publisher.project('repeat'), publisher.project('repeat')];
     release?.();
-
     // #then
     expect({ answered, projections: sent.length }).toEqual({
       answered: [true, false],
       projections: 1,
     });
   });
-
   test('answers a projection nonce again after its first projection has sent', async () => {
     // #given
     const harness = publisherHarness(source('GM', [PRESET_RECORD]));
-
     // #when
     const first = harness.publisher.project('again');
     await settle();
     const second = harness.publisher.project('again');
     await settle();
-
     // #then
     expect({
       answers: [first, second],
@@ -176,20 +171,17 @@ describe('window publisher', () => {
         .map((message) => message.nonce),
     }).toEqual({ answers: [true, true], projections: ['again', 'again'] });
   });
-
   test('leaves an oversized projection nonce free after the source shrinks', async () => {
     // #given
-    const oversized = record('row:large:value', { value: 'ы'.repeat(7000) });
+    const oversized = record('blk:large', { value: 'ы'.repeat(7000) });
     const harness = publisherHarness(source('GM', [oversized]));
     const error = spyOn(console, 'error').mockImplementation(() => undefined);
     harness.source.party = party(100);
-
     // #when
     const rejected = harness.publisher.project('retry');
     harness.source.party = [];
     const accepted = harness.publisher.project('retry');
     await settle();
-
     // #then
     expect({
       answers: [rejected, accepted],
@@ -198,20 +190,17 @@ describe('window publisher', () => {
     }).toEqual({ answers: [false, true], errors: 1, projections: 1 });
     error.mockRestore();
   });
-
   test('sends only a changed record and leaves the window at the new version', async () => {
     // #given
-    const before = record('row:hero:name', { name: 'Ada' });
-    const after = record('row:hero:name', { name: 'Bea' }, 2);
+    const before = record('blk:hero', { name: 'Ada' });
+    const after = record('blk:hero', { name: 'Bea' }, 2);
     const harness = publisherHarness(source('GM', [PRESET_RECORD, before]));
     const window = harness.openWindow('change');
     await settle();
     harness.source.replica = records(PRESET_RECORD, after);
-
     // #when
     harness.publisher.publish();
     await settle();
-
     // #then
     expect({
       delta: deltas(harness.messages),
@@ -221,60 +210,51 @@ describe('window publisher', () => {
       window: [PRESET_RECORD, after],
     });
   });
-
   test('does not send a second delta when the visible state is unchanged', async () => {
     // #given
-    const original = record('row:hero:name', { name: 'Ada' });
-    const replacement = record('row:hero:name', { name: 'Ada' });
+    const original = record('blk:hero', { name: 'Ada' });
+    const replacement = record('blk:hero', { name: 'Ada' });
     const harness = publisherHarness(source('GM', [original]));
     harness.openWindow('steady');
     await settle();
     harness.source.replica = records(replacement);
-
     // #when
     harness.publisher.publish();
     await settle();
-
     // #then
     expect(deltas(harness.messages)).toEqual([]);
   });
-
   test('sends a record-free delta and new notices for a changed header', async () => {
     // #given
     const harness = publisherHarness(source('GM', [PRESET_RECORD]));
     const window = harness.openWindow('header');
     await settle();
     harness.source.notices = ['new-version'];
-
     // #when
     harness.publisher.publish();
     await settle();
-
     // #then
     expect({ deltas: deltas(harness.messages), notices: window.store.$notices.get() }).toEqual({
       deltas: [{ records: [], pending: [], withdrawn: [] }],
       notices: ['new-version'],
     });
   });
-
   test('withdraws hidden player records and sends them again when their template becomes visible', async () => {
     // #given
-    const hero = record('sheet:hero', { set: 'party', order: 0 });
-    const name = record('row:hero:name', { name: 'Ada' });
+    const hero = record('blk:hero', { set: 'party', order: 0 });
+    const name = record('blk:hero', { name: 'Ada' });
     const privatePreset = record('preset', encodePreset(presetWithPartyVisibility()), 2);
     const visiblePreset = record('preset', encodePreset(PRESET), 3);
     const harness = publisherHarness(source('PLAYER', [PRESET_RECORD, hero, name]));
     const window = harness.openWindow('player');
     await settle();
     harness.source.replica = records(privatePreset, hero, name);
-
     // #when
     harness.publisher.publish();
     await settle();
     harness.source.replica = records(visiblePreset, hero, name);
     harness.publisher.publish();
     await settle();
-
     // #then
     expect({
       deltas: deltas(harness.messages),
@@ -284,80 +264,71 @@ describe('window publisher', () => {
         {
           records: [privatePreset],
           pending: [],
-          withdrawn: ['sheet:hero', 'row:hero:name'],
+          withdrawn: ['blk:hero'],
         },
-        { records: [visiblePreset, hero, name], pending: [], withdrawn: [] },
+        { records: [visiblePreset, records(hero, name).get(hero.k)!], pending: [], withdrawn: [] },
       ],
-      keys: ['preset', 'sheet:hero', 'row:hero:name'],
+      keys: ['preset', 'blk:hero'],
     });
   });
-
   test('withdraws a player link when the pending view tombstones its repeat block', async () => {
     // #given
     const preset = record('preset', encodePreset(tokenPreset()));
-    const hero = record('sheet:brok', { set: 'party', order: 0 });
-    const name = record('row:brok:name', { name: 'Brok' });
-    const block = record('rep:brok:item:i1', { order: 0, cells: { item: 'Sword' } });
-    const pendingBlock = record('rep:brok:item:i1', null, 2, 'player');
+    const hero = record('blk:brok', { set: 'party', order: 0 });
+    const name = record('blk:brok', { name: 'Brok' });
+    const block = record('blk:brok:item:i1', { order: 0, cells: { item: 'Sword' } });
+    const pendingBlock = record('blk:brok:item:i1', null, 2, 'player');
     const link = record('link:t1', { s: 'brok', i: 'i1' });
     const harness = publisherHarness(source('PLAYER', [preset, hero, name, block, link]));
     const window = harness.openWindow('pending-link');
     await settle();
     const initial = [...window.store.$records.get().keys()];
     harness.source.pendingView = records(pendingBlock);
-
     // #when
     harness.publisher.publish();
     await settle();
-
     // #then
     expect({
       initial,
       delta: deltas(harness.messages),
       window: [...window.store.$records.get().keys()],
     }).toEqual({
-      initial: ['preset', 'sheet:brok', 'row:brok:name', 'rep:brok:item:i1', 'link:t1'],
+      initial: ['preset', 'blk:brok', 'blk:brok:item:i1', 'link:t1'],
       delta: [{ records: [], pending: [pendingBlock], withdrawn: ['link:t1'] }],
-      window: ['preset', 'sheet:brok', 'row:brok:name', 'rep:brok:item:i1'],
+      window: ['preset', 'blk:brok', 'blk:brok:item:i1'],
     });
   });
-
   test('does not send a row before the delta that brings its sheet', async () => {
     // #given
-    const hero = record('sheet:hero', { set: 'party', order: 0 });
-    const name = record('row:hero:name', { name: 'Ada' });
+    const hero = record('blk:hero', { set: 'party', order: 0 });
+    const name = record('blk:hero', { name: 'Ada' });
     const harness = publisherHarness(source('PLAYER', [PRESET_RECORD, name]));
     const window = harness.openWindow('row-before-sheet');
     await settle();
     harness.source.replica = records(PRESET_RECORD, name, hero);
-
     // #when
     harness.publisher.publish();
     await settle();
-
     // #then
     expect({
       deltas: deltas(harness.messages),
       records: [...window.store.$records.get().values()],
     }).toEqual({
-      deltas: [{ records: [name, hero], pending: [], withdrawn: [] }],
-      records: [PRESET_RECORD, name, hero],
+      deltas: [{ records: [records(name, hero).get(hero.k)!], pending: [], withdrawn: [] }],
+      records: [PRESET_RECORD, records(name, hero).get(hero.k)!],
     });
   });
-
   test('withdraws nothing from a GM when a template becomes GM-only', async () => {
     // #given
-    const hero = record('sheet:hero', { set: 'party', order: 0 });
+    const hero = record('blk:hero', { set: 'party', order: 0 });
     const privatePresetRecord = record('preset', encodePreset(presetWithPartyVisibility()), 2);
     const harness = publisherHarness(source('GM', [PRESET_RECORD, hero]));
     const window = harness.openWindow('gm-visibility');
     await settle();
     harness.source.replica = records(privatePresetRecord, hero);
-
     // #when
     harness.publisher.publish();
     await settle();
-
     // #then
     expect({
       deltas: deltas(harness.messages),
@@ -367,42 +338,37 @@ describe('window publisher', () => {
       records: [privatePresetRecord, hero],
     });
   });
-
-  test('a pending record stays in the window when its replica record is withdrawn', async () => {
+  test('a pending cell stays in the window when its replica cell is withdrawn', async () => {
     // #given
-    const applied = record('row:hero:name', { name: 'Ada' });
-    const pending = record('row:hero:name', { name: 'Bea' }, 2, 'player');
-    const hero = record('sheet:hero', { set: 'party', order: 0 });
+    const applied = record('blk:hero', { name: 'Ada' });
+    const pending = record('blk:hero', { name: 'Bea' }, 2, 'player');
+    const hero = record('blk:hero', { set: 'party', order: 0 });
     const harness = publisherHarness(source('PLAYER', [PRESET_RECORD, hero, applied], [pending]));
     const window = harness.openWindow('pending');
     await settle();
     harness.source.replica = records(PRESET_RECORD, hero);
-
     // #when
     harness.publisher.publish();
     await settle();
-
     // #then
     expect({
       delta: deltas(harness.messages),
       window: [...window.store.$records.get().values()],
     }).toEqual({
-      delta: [{ records: [], pending: [pending], withdrawn: ['row:hero:name'] }],
-      window: [PRESET_RECORD, hero, pending],
+      delta: [{ records: [hero], pending: [], withdrawn: [] }],
+      window: [PRESET_RECORD, records(hero, pending).get(hero.k)!],
     });
   });
-
   test('sends pending entries when they enter, change, and leave the pending view', async () => {
     // #given
-    const applied = record('row:hero:name', { name: 'Ada' });
-    const entered = record('row:hero:name', { name: 'Bea' }, 2, 'player');
-    const changed = record('row:hero:name', { name: 'Cy' }, 3, 'player');
-    const hero = record('sheet:hero', { set: 'party', order: 0 });
+    const applied = record('blk:hero', { name: 'Ada' });
+    const entered = record('blk:hero', { name: 'Bea' }, 2, 'player');
+    const changed = record('blk:hero', { name: 'Cy' }, 3, 'player');
+    const hero = record('blk:hero', { set: 'party', order: 0 });
     const harness = publisherHarness(source('PLAYER', [PRESET_RECORD, hero, applied]));
     const window = harness.openWindow('pending-views');
     await settle();
     harness.source.pendingView = records(entered);
-
     // #when
     harness.publisher.publish();
     harness.source.pendingView = records(changed);
@@ -410,7 +376,6 @@ describe('window publisher', () => {
     harness.source.pendingView = new Map();
     harness.publisher.publish();
     await settle();
-
     // #then
     expect({
       deltas: deltas(harness.messages).filter(
@@ -422,47 +387,43 @@ describe('window publisher', () => {
       deltas: [
         { records: [], pending: [entered], withdrawn: [] },
         { records: [], pending: [changed], withdrawn: [] },
-        { records: [applied], pending: [], withdrawn: ['row:hero:name'] },
+        { records: [records(hero, applied).get(hero.k)!], pending: [], withdrawn: ['blk:hero'] },
       ],
-      records: [PRESET_RECORD, hero, applied],
+      records: [PRESET_RECORD, records(hero, applied).get(hero.k)!],
     });
   });
-
   test('splits a large delta under the limit and withdraws only in its first part', async () => {
     // #given
-    const gone = record('row:gone:value', { value: 'before' });
-    const wideA = record('row:wide:a', { value: 'ы'.repeat(4000) });
-    const wideB = record('row:wide:b', { value: 'ы'.repeat(4000) });
-    const wideC = record('row:wide:c', { value: 'ы'.repeat(4000) });
+    const gone = record('blk:gone', { value: 'before' });
+    const wideA = record('blk:wide', { a: 'ы'.repeat(4000) });
+    const wideB = record('blk:wide', { b: 'ы'.repeat(4000) });
+    const wideC = record('blk:wide', { c: 'ы'.repeat(4000) });
     const wide = [wideA, wideB, wideC];
     const harness = publisherHarness(source('GM', [gone]));
     const window = harness.openWindow('large');
     await settle();
-    harness.source.replica = new Map(wide.map((entry) => [entry.k, entry]));
-
+    harness.source.replica = assembleRecords(wide);
     // #when
     harness.publisher.publish();
     await settle();
-
     // #then
     expect({
       parts: deltas(harness.messages),
       window: [...window.store.$records.get().keys()],
     }).toEqual({
       parts: [
-        { records: [wideA], pending: [], withdrawn: ['row:gone:value'] },
+        { records: [wideA], pending: [], withdrawn: ['blk:gone'] },
         { records: [wideB], pending: [], withdrawn: [] },
         { records: [wideC], pending: [], withdrawn: [] },
       ],
-      window: ['row:wide:a', 'row:wide:b', 'row:wide:c'],
+      window: ['blk:wide'],
     });
     expect(harness.messages.every((message) => jsonByteLength(message) < 15000)).toBe(true);
   });
-
   test('sends a later record after one delta cannot fit', async () => {
     // #given
-    const oversized = record('row:large:value', { value: 'ы'.repeat(7000) });
-    const later = record('row:later:value', { value: 'Ada' }, 2);
+    const oversized = record('blk:large', { value: 'ы'.repeat(7000) });
+    const later = record('blk:later', { value: 'Ada' }, 2);
     const harness = publisherHarness(source('GM'));
     const window = harness.openWindow('too-large');
     await settle();
@@ -473,13 +434,11 @@ describe('window publisher', () => {
       role: 'PLAYER' as const,
     }));
     harness.source.replica = records(oversized);
-
     // #when
     harness.publisher.publish();
     harness.source.replica = records(oversized, later);
     harness.publisher.publish();
     await settle();
-
     // #then
     expect({
       errors: error.mock.calls.length,
@@ -492,12 +451,11 @@ describe('window publisher', () => {
     });
     error.mockRestore();
   });
-
   test('rejects a delta with an oversized pending record but sends the fitting control', async () => {
     // #given
-    const changed = record('row:changed:value', { value: 'Ada' }, 2);
-    const oversized = record('row:pending:value', { value: 'ы'.repeat(7000) }, 2, 'player');
-    const fitting = record('row:pending:value', { value: 'Bea' }, 2, 'player');
+    const changed = record('blk:changed', { value: 'Ada' }, 2);
+    const oversized = record('blk:pending', { value: 'ы'.repeat(7000) }, 2, 'player');
+    const fitting = record('blk:pending', { value: 'Bea' }, 2, 'player');
     const rejected = publisherHarness(source('GM'));
     const control = publisherHarness(source('GM'));
     rejected.openWindow('pending-too-large');
@@ -509,12 +467,10 @@ describe('window publisher', () => {
     control.source.replica = records(changed);
     control.source.pendingView = records(fitting);
     const error = spyOn(console, 'error').mockImplementation(() => undefined);
-
     // #when
     rejected.publisher.publish();
     control.publisher.publish();
     await settle();
-
     // #then
     expect({
       errors: error.mock.calls.length,
@@ -530,17 +486,15 @@ describe('window publisher', () => {
     });
     error.mockRestore();
   });
-
   test('rejects a counter-sized projection and sends the nearby fitting control', async () => {
     // #given
-    const boundary = counterRecords(9544, 9540);
-    const fitting = counterRecords(9540, 9539);
+    const boundary = counterRecords(9505, 9496);
+    const fitting = counterRecords(9503, 9495);
     const rejected = publisherHarness(source('GM', boundary.replica, boundary.pending));
     const control = publisherHarness(source('GM', fitting.replica, fitting.pending));
     rejected.source.party = party(100);
     control.source.party = party(100);
     const error = spyOn(console, 'error').mockImplementation(() => undefined);
-
     // #when
     const rejectedAnswer = rejected.publisher.project('counter-projection');
     const controlAnswer = control.publisher.project('counter-projectioz');
@@ -550,8 +504,14 @@ describe('window publisher', () => {
 
     // #then
     const controlMessages = control.messages.filter(
-      (message): message is Extract<EngineMessage, { t: 'projection' }> =>
-        message.t === 'projection',
+      (
+        message,
+      ): message is Extract<
+        EngineMessage,
+        {
+          t: 'projection';
+        }
+      > => message.t === 'projection',
     );
 
     expect({
@@ -568,17 +528,16 @@ describe('window publisher', () => {
       control: {
         answer: true,
         envelopeBytes: [5398, 5398, 5398, 5398, 5398, 5398, 5398, 5398, 5398, 5399],
-        messageBytes: [14995, 14995, 14995, 14995, 14995, 14998, 14998, 14998, 14998, 14999],
+        messageBytes: [14998, 14998, 14998, 14998, 14998, 14998, 14998, 14998, 14998, 14999],
       },
     });
     expect(controlMessages.every((message) => jsonByteLength(message) < 15000)).toBe(true);
     error.mockRestore();
   });
-
   test('rejects a counter-sized delta and sends the nearby fitting control', async () => {
     // #given
-    const boundary = counterRecords(9544, 9572);
-    const fitting = counterRecords(9544, 9571);
+    const boundary = counterRecords(9537, 9529);
+    const fitting = counterRecords(9535, 9527);
     const rejected = publisherHarness(source('GM'));
     const control = publisherHarness(source('GM'));
     rejected.publisher.project('ready');
@@ -591,7 +550,6 @@ describe('window publisher', () => {
     control.source.replica = records(...fitting.replica);
     control.source.pendingView = records(...fitting.pending);
     const error = spyOn(console, 'error').mockImplementation(() => undefined);
-
     // #when
     rejected.publisher.publish();
     control.publisher.publish();
@@ -601,7 +559,14 @@ describe('window publisher', () => {
 
     // #then
     const controlMessages = control.messages.filter(
-      (message): message is Extract<EngineMessage, { t: 'delta' }> => message.t === 'delta',
+      (
+        message,
+      ): message is Extract<
+        EngineMessage,
+        {
+          t: 'delta';
+        }
+      > => message.t === 'delta',
     );
 
     expect({
@@ -616,61 +581,66 @@ describe('window publisher', () => {
       rejected: { sends: 0 },
       control: {
         envelopeBytes: [5366, 5366, 5366, 5366, 5366, 5366, 5366, 5366, 5366, 5367],
-        messageBytes: [14967, 14967, 14967, 14967, 14967, 14998, 14998, 14998, 14998, 14999],
+        messageBytes: [14998, 14998, 14998, 14998, 14998, 14998, 14998, 14998, 14998, 14999],
       },
     });
     expect(controlMessages.every((message) => jsonByteLength(message) < 15000)).toBe(true);
     error.mockRestore();
   });
-
   test('sends a restart cue once and stays silent until the next projection', async () => {
     // #given
-    const hero = record('sheet:hero', { set: 'party', order: 0 });
+    const hero = record('blk:hero', { set: 'party', order: 0 });
     const harness = publisherHarness(source('GM', [PRESET_RECORD, hero]));
     harness.openWindow('restart');
     await settle();
     harness.stopRequests();
     harness.publisher.restart();
-
     // #when
     harness.publisher.publish();
     harness.publisher.publish();
     await settle();
-
     // #then
     expect(deltas(harness.messages)).toEqual([{ records: [], pending: [], withdrawn: [] }]);
   });
-
   test('reprojects a restarted window from the new engine id', async () => {
     // #given
-    const hero = record('sheet:hero', { set: 'party', order: 0 });
+    const hero = record('blk:hero', { set: 'party', order: 0 });
     const harness = publisherHarness(source('GM', [PRESET_RECORD, hero]));
     const window = harness.openWindow('reproject');
     await settle();
     harness.publisher.restart();
-
     // #when
     harness.publisher.publish();
     await settle();
-
     // #then
     expect({
       cue: harness.messages.find(
-        (message): message is Extract<EngineMessage, { t: 'delta' }> =>
-          message.t === 'delta' && message.engine === 'engine-2',
+        (
+          message,
+        ): message is Extract<
+          EngineMessage,
+          {
+            t: 'delta';
+          }
+        > => message.t === 'delta' && message.engine === 'engine-2',
       )?.engine,
       projection: harness.messages.find(
-        (message): message is Extract<EngineMessage, { t: 'projection' }> =>
-          message.t === 'projection' && message.engine === 'engine-2',
+        (
+          message,
+        ): message is Extract<
+          EngineMessage,
+          {
+            t: 'projection';
+          }
+        > => message.t === 'projection' && message.engine === 'engine-2',
       )?.engine,
       records: [...window.store.$records.get().values()],
     }).toEqual({ cue: 'engine-2', projection: 'engine-2', records: [PRESET_RECORD, hero] });
   });
-
   test('asks a new publisher for a projection when its pre-projection records change', async () => {
     // #given
-    const before = record('row:hero:name', { name: 'Ada' });
-    const after = record('row:hero:name', { name: 'Bea' }, 2);
+    const before = record('blk:hero', { name: 'Ada' });
+    const after = record('blk:hero', { name: 'Bea' }, 2);
     const bus = createMemoryBus();
     const first = publisherHarness(source('GM', [PRESET_RECORD, before]), bus, ids('engine-a'));
     const window = first.openWindow('new-publisher');
@@ -678,11 +648,9 @@ describe('window publisher', () => {
     first.stopRequests();
     const next = publisherHarness(source('GM', [PRESET_RECORD, before]), bus, ids('engine-b'));
     next.source.replica = records(PRESET_RECORD, after);
-
     // #when
     next.publisher.publish();
     await settle();
-
     // #then
     expect({
       stream: next.messages.flatMap((message) =>
@@ -699,11 +667,10 @@ describe('window publisher', () => {
       records: [PRESET_RECORD, after],
     });
   });
-
   test('sends a record-free delta after its restart cue when visible records change', async () => {
     // #given
-    const hero = record('sheet:hero', { set: 'party', order: 0 });
-    const name = record('row:hero:name', { name: 'Ada' });
+    const hero = record('blk:hero', { set: 'party', order: 0 });
+    const name = record('blk:hero', { name: 'Ada' });
     const harness = publisherHarness(source('GM', [PRESET_RECORD, hero]));
     harness.openWindow('restart-change');
     await settle();
@@ -711,11 +678,9 @@ describe('window publisher', () => {
     harness.publisher.restart();
     harness.publisher.publish();
     harness.source.replica = records(PRESET_RECORD, hero, name);
-
     // #when
     harness.publisher.publish();
     await settle();
-
     // #then
     expect(
       harness.messages.flatMap((message) =>
@@ -735,17 +700,14 @@ describe('window publisher', () => {
       { engine: 'engine-2', records: [], pending: [], withdrawn: [] },
     ]);
   });
-
   test('sends one restart cue with no earlier projection and then stays silent', async () => {
     // #given
     const harness = publisherHarness(source('GM', [PRESET_RECORD]));
     harness.publisher.restart();
-
     // #when
     harness.publisher.publish();
     harness.publisher.publish();
     await settle();
-
     // #then
     expect(
       harness.messages.flatMap((message) =>
@@ -762,20 +724,17 @@ describe('window publisher', () => {
       ),
     ).toEqual([{ engine: 'engine-2', records: [], pending: [], withdrawn: [] }]);
   });
-
   test('brings an existing and a newly opened window to the current source', async () => {
     // #given
-    const before = record('row:hero:name', { name: 'Ada' });
-    const after = record('row:hero:name', { name: 'Bea' }, 2);
+    const before = record('blk:hero', { name: 'Ada' });
+    const after = record('blk:hero', { name: 'Bea' }, 2);
     const harness = publisherHarness(source('GM', [before]));
     const first = harness.openWindow('first');
     await settle();
     harness.source.replica = records(after);
-
     // #when
     const second = harness.openWindow('second');
     await settle();
-
     // #then
     expect({
       first: [...first.store.$records.get().values()],
@@ -863,13 +822,13 @@ function source(
   };
 }
 
-function record(k: string, d: VersionedRecord['d'], c = 1, a = 'gm'): VersionedRecord {
+function record(k: string, d: JsonValue, c = 1, a = 'gm'): VersionedRecord {
   // SAFETY: fixtures use only keys and data shapes that this file's publisher scenarios need.
-  return { k, d, c, a } as VersionedRecord;
+  return fixtureRecord(k, d, c, a);
 }
 
 function records(...entries: readonly VersionedRecord[]): Map<string, VersionedRecord> {
-  return new Map(entries.map((entry) => [entry.k, entry]));
+  return assembleRecords(entries);
 }
 
 function presetOf(presetRecord: VersionedRecord | undefined): Preset | null {
@@ -926,28 +885,36 @@ function party(count: number): WindowPublisherState['party'] {
 function counterRecords(recordLength: number, pendingLength: number) {
   return {
     replica: Array.from({ length: 5 }, (_, index) =>
-      record(`row:counter:${String(index).padStart(5, '0')}`, { value: 'x'.repeat(recordLength) }),
+      record(`blk:counter-${index}`, { value: 'x'.repeat(recordLength) }),
     ),
     pending: Array.from({ length: 5 }, (_, index) =>
-      record(
-        `row:pending:${String(index).padStart(5, '0')}`,
-        { value: 'x'.repeat(pendingLength) },
-        1,
-        'player',
-      ),
+      record(`blk:pending-${index}`, { value: 'x'.repeat(pendingLength) }, 1, 'player'),
     ),
   };
 }
 
 function bodyFreeMessageBytes(
-  message: Extract<EngineMessage, { t: 'projection' | 'delta' }>,
+  message: Extract<
+    EngineMessage,
+    {
+      t: 'projection' | 'delta';
+    }
+  >,
 ): number {
   return jsonByteLength({ ...message, records: [], pending: [] });
 }
 
-function deltas(
-  messages: readonly EngineMessage[],
-): Array<Pick<Extract<EngineMessage, { t: 'delta' }>, 'records' | 'pending' | 'withdrawn'>> {
+function deltas(messages: readonly EngineMessage[]): Array<
+  Pick<
+    Extract<
+      EngineMessage,
+      {
+        t: 'delta';
+      }
+    >,
+    'records' | 'pending' | 'withdrawn'
+  >
+> {
   return messages.flatMap((message) =>
     message.t === 'delta'
       ? [{ records: message.records, pending: message.pending, withdrawn: message.withdrawn }]

@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { act, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-
 import { FormulaInput } from './formula-input';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -29,12 +28,10 @@ describe('formula completion keyboard confirmation', () => {
       // #given
       const formula = await openFormula();
       await enterText(formula.input, 'st');
-
       // #when
       await pressKey(formula.input, key, signal);
       const afterComposition = [...formula.values];
       await pressKey(formula.input, key);
-
       // #then
       expect({ afterComposition, afterPlainKey: formula.values }).toEqual({
         afterComposition: ['st'],
@@ -44,7 +41,9 @@ describe('formula completion keyboard confirmation', () => {
   );
 });
 
-type FormulaHarnessProps = { values: string[] };
+type FormulaHarnessProps = {
+  values: string[];
+};
 
 function FormulaHarness({ values }: FormulaHarnessProps): ReactNode {
   const [value, setValue] = useState('');
@@ -65,19 +64,20 @@ function FormulaHarness({ values }: FormulaHarnessProps): ReactNode {
   );
 }
 
-type FormulaHarness = { input: HTMLInputElement; values: string[] };
+type FormulaHarness = {
+  input: HTMLInputElement;
+  values: string[];
+};
 
 async function openFormula(): Promise<FormulaHarness> {
   const container = document.createElement('div');
   const root = createRoot(container);
   const values: string[] = [];
-
   document.body.append(container);
   mounted.push(root);
   await act(async () => {
     root.render(<FormulaHarness values={values} />);
   });
-
   const input = container.querySelector('input');
 
   if (input === null) {
@@ -104,7 +104,10 @@ async function enterText(input: HTMLInputElement, text: string): Promise<void> {
 async function pressKey(
   element: HTMLElement,
   key: string,
-  signal: { isComposing?: boolean; keyCode?: number } = {},
+  signal: {
+    isComposing?: boolean;
+    keyCode?: number;
+  } = {},
 ): Promise<void> {
   await act(async () => {
     const event = new KeyboardEvent('keydown', {

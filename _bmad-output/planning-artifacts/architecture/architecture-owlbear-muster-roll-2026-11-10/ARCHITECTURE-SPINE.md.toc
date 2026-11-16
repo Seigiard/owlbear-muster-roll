@@ -1,0 +1,37 @@
+document-map v1
+Source: "ARCHITECTURE-SPINE.md"
+SHA256: 4ef13da6acd699ebaca4ae5c5ffa4e44ad16d37c1f5e96ae2712616db33a156d
+Total lines: 422
+
+Architecture Spine — Muster Roll — lines 22–422
+  Design Paradigm — lines 24–50
+  Invariants & Rules — lines 51–277
+    AD-1 — Peer replicas [ADOPTED] — lines 53–58
+    AD-2 — The record is the unit of replication — lines 59–81
+    AD-3 — One merge, ordered by counter [ADOPTED] — lines 82–87
+    AD-4 — A GM client validates player edits [ADOPTED] — lines 88–112
+    AD-5 — One gate for every room message — lines 113–129
+    AD-6 — GM liveness means a response — lines 130–135
+    AD-7 — Catch-up is full state [ADOPTED] — lines 136–146
+    AD-8 — Snapshot is read, merge, write, verify [ADOPTED] — lines 147–158
+    AD-9 — Generation replaces room data — lines 159–172
+    AD-10 — The background owns the replica [ADOPTED] — lines 173–182
+    AD-11 — One localStorage key per record [ADOPTED] — lines 183–188
+    AD-12 — One wire protocol, paced and under the limit — lines 189–197
+    AD-13 — Rolls are events, not state — lines 198–203
+    AD-14 — A preset upload rewrites values in one pass — lines 204–209
+    AD-17 — The production origin is permanent — lines 210–215
+    AD-18 — One template owns every sheet — lines 216–222
+    AD-19 — A token link targets a sheet or a repeat block — lines 223–229
+    AD-20 — The builder is its own page with no platform — lines 230–235
+    AD-21 — One builder store, and undo is a stack of documents — lines 236–245
+    AD-22 — The builder checks with the upload's check — lines 246–251
+    AD-23 — The preview is the window's sheet components — lines 252–257
+    AD-24 — Field ids and renames follow the parser's scopes — lines 258–263
+    AD-25 — Tree moves keep the preset shape — lines 264–269
+    AD-26 — One window frame — lines 270–277
+  Consistency Conventions — lines 278–292
+  Stack — lines 293–323
+  Structural Seed — lines 324–352
+  Capability → Architecture Map — lines 353–393
+  Deferred — lines 394–422

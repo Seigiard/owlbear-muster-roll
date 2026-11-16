@@ -1,8 +1,10 @@
+import type { JsonValue } from '@/core/json';
+import { assembleRecords } from '@/core/merge';
+import { fixtureSnapshotCells, fixtureSnapshotBlocks } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
-
 import type { Preset } from '@/core/preset';
 import { err } from '@/core/result';
-import type { VersionedRecord } from '@/core/records';
+import { blockDataSchema, cellValues, parseRepKey, type VersionedRecord } from '@/core/records';
 import { encodeSnapshotFile, type SnapshotFile } from '@/core/snapshot-file';
 import {
   decodeSnapshotFileData,
@@ -86,12 +88,15 @@ const PRESET: Preset = {
 };
 
 const CURRENT: CurrentPreset = { preset: PRESET, data: 'eJwrSS0uAQAEXQHB' };
-
 const AUTHOR = 'importer';
 
 type SnapshotSheet = SnapshotFile['sheets'][number];
 
-type SheetParts = Partial<Pick<SnapshotSheet, 'order' | 'rows' | 'repeats'>>;
+type SheetParts = {
+  order?: number;
+  rows?: Parameters<typeof fixtureSnapshotCells>[0];
+  repeats?: Parameters<typeof fixtureSnapshotBlocks>[0];
+};
 
 // A sheet of the sheet set `pc`.
 function pc(id: string, parts: SheetParts = {}): SnapshotSheet {
@@ -99,22 +104,30 @@ function pc(id: string, parts: SheetParts = {}): SnapshotSheet {
     id,
     set: 'pc',
     order: parts.order ?? 0,
-    rows: parts.rows ?? {},
-    repeats: parts.repeats ?? {},
+    cells: fixtureSnapshotCells(parts.rows ?? {}),
+    blocks: fixtureSnapshotBlocks(parts.repeats ?? {}),
   };
 }
 
 // A single sheet, whose id is its template id.
 function single(id: string, parts: SheetParts = {}): SnapshotSheet {
-  return { id, rows: parts.rows ?? {}, repeats: parts.repeats ?? {} };
+  return {
+    id,
+    cells: fixtureSnapshotCells(parts.rows ?? {}),
+    blocks: fixtureSnapshotBlocks(parts.repeats ?? {}),
+  };
 }
 
 function file(sheets: readonly SnapshotSheet[], links: SnapshotFile['links'] = []): SnapshotFile {
-  return { v: 3, type: 'muster-roll/snapshot', sheets: [...sheets], links };
+  return { v: 4, type: 'muster-roll/snapshot', sheets: [...sheets], links };
 }
 
 // The imported records by key, and the counts of dropped values and dropped sheets.
-type Imported = { records: Map<string, VersionedRecord>; count: number; sheets: number };
+type Imported = {
+  records: Map<string, VersionedRecord>;
+  count: number;
+  sheets: number;
+};
 
 function imported(input: SnapshotFile): Imported {
   const result = importSnapshot(input, CURRENT, AUTHOR);
@@ -124,14 +137,19 @@ function imported(input: SnapshotFile): Imported {
   }
 
   return {
-    records: new Map(result.value.records.map((record) => [record.k, record])),
+    records: assembleRecords(result.value.records),
     count: result.value.count,
     sheets: result.value.sheets,
   };
 }
 
-function dataOf(records: ReadonlyMap<string, VersionedRecord>, key: string): VersionedRecord['d'] {
-  return records.get(key)?.d ?? null;
+function dataOf(records: ReadonlyMap<string, VersionedRecord>, key: string): JsonValue {
+  const data = blockDataSchema.safeParse(records.get(key)?.d).data;
+
+  if (data === undefined) return null;
+  const values = cellValues(data.cells);
+
+  return parseRepKey(key) === null ? values : { order: data.order, cells: values };
 }
 
 describe('importSnapshot', () => {
@@ -153,24 +171,35 @@ describe('importSnapshot', () => {
 
     // #when
     const result = importSnapshot(input, CURRENT, AUTHOR);
-
     // #then
     expect(result).toEqual({
       ok: true,
       value: {
         records: [
+          {
+            k: 'blk:brok',
+            d: { set: 'pc', order: 2, cells: { str: [14, 1, AUTHOR] } },
+            c: 1,
+            a: AUTHOR,
+            l: [1, AUTHOR],
+          },
+          {
+            k: 'blk:npc',
+            d: { order: 0, cells: { hp: [7, 1, AUTHOR] } },
+            c: 1,
+            a: AUTHOR,
+            l: [1, AUTHOR],
+          },
+          {
+            k: 'blk:npc:npc_name:n1',
+            d: { order: 0, cells: { npc_name: ['Волк', 1, AUTHOR] } },
+            c: 1,
+            a: AUTHOR,
+            l: [1, AUTHOR],
+          },
           { k: 'link:t1', d: { s: 'brok' }, c: 1, a: AUTHOR },
           { k: 'link:t2', d: { s: 'npc', i: 'n1' }, c: 1, a: AUTHOR },
           { k: 'preset', d: CURRENT.data, c: 1, a: AUTHOR },
-          {
-            k: 'rep:npc:npc_name:n1',
-            d: { order: 0, cells: { npc_name: 'Волк' } },
-            c: 1,
-            a: AUTHOR,
-          },
-          { k: 'row:brok:str', d: { str: 14 }, c: 1, a: AUTHOR },
-          { k: 'row:npc:hp', d: { hp: 7 }, c: 1, a: AUTHOR },
-          { k: 'sheet:brok', d: { set: 'pc', order: 2 }, c: 1, a: AUTHOR },
         ],
         count: 0,
         sheets: 0,
@@ -178,53 +207,43 @@ describe('importSnapshot', () => {
       },
     });
   });
-
   test('places a value by field id when the field is now in another row', () => {
     // #given: `notes` was in the row of `str`.
     const input = file([pc('brok', { rows: { str: { str: 14, notes: 'Храбрый' } } })]);
-
     // #when
     const { records, count } = imported(input);
-
     // #then
     expect({
-      str: dataOf(records, 'row:brok:str'),
-      notes: dataOf(records, 'row:brok:notes'),
+      root: dataOf(records, 'blk:brok'),
       count,
-    }).toEqual({ str: { str: 14 }, notes: { notes: 'Храбрый' }, count: 0 });
+    }).toEqual({ root: { notes: 'Храбрый', str: 14 }, count: 0 });
   });
-
-  test("takes the value in the field's own row over a stray copy in another row, and drops the copy", () => {
-    // #given: the `notes` row sorts first and holds a stray `str`.
+  test('keeps the one v4 root-cell value when old row-shaped input names one field twice', () => {
+    // #given: v4 has one root cells object, so the later `str` value replaces the earlier one
+    // while the fixture is built. The old row identity and its duplicate cannot reach the importer.
     const input = file([
       pc('brok', { rows: { notes: { notes: 'Храбрый', str: 9 }, str: { str: 3 } } }),
     ]);
 
     // #when
     const { records, count } = imported(input);
-
     // #then
     expect({
-      notes: dataOf(records, 'row:brok:notes'),
-      str: dataOf(records, 'row:brok:str'),
+      root: dataOf(records, 'blk:brok'),
       count,
-    }).toEqual({ notes: { notes: 'Храбрый' }, str: { str: 3 }, count: 1 });
+    }).toEqual({ root: { notes: 'Храбрый', str: 3 }, count: 0 });
   });
-
   test('drops and counts a value whose type differs from the current field', () => {
     // #given
     const input = file([pc('brok', { rows: { str: { str: 'сильный', tired: true } } })]);
-
     // #when
     const { records, count } = imported(input);
-
     // #then
-    expect({ str: dataOf(records, 'row:brok:str'), count }).toEqual({
+    expect({ str: dataOf(records, 'blk:brok'), count }).toEqual({
       str: { tired: true },
       count: 1,
     });
   });
-
   test('drops and counts a value whose id the template of the sheet does not have', () => {
     // #given: `str` is a field of the sheet set, not of the NPC sheet.
     const input = file([
@@ -234,16 +253,14 @@ describe('importSnapshot', () => {
 
     // #when
     const { records, count } = imported(input);
-
     // #then
     expect({
-      brok: dataOf(records, 'row:brok:str'),
-      npc: dataOf(records, 'row:npc:hp'),
-      old: records.has('row:brok:old'),
+      brok: dataOf(records, 'blk:brok'),
+      npc: dataOf(records, 'blk:npc'),
+      root: records.has('blk:brok'),
       count,
-    }).toEqual({ brok: { str: 3 }, npc: { hp: 4 }, old: false, count: 2 });
+    }).toEqual({ brok: { str: 3 }, npc: { hp: 4 }, root: true, count: 2 });
   });
-
   test('drops and counts a value moved across a repeat boundary, either way', () => {
     // #given: `attack` is a repeat field now, `notes` a non-repeat one.
     const input = file([
@@ -255,15 +272,13 @@ describe('importSnapshot', () => {
 
     // #when
     const { records, count } = imported(input);
-
     // #then
     expect({
-      notes: records.has('row:brok:notes'),
-      block: dataOf(records, 'rep:brok:attack:i1'),
+      root: dataOf(records, 'blk:brok'),
+      block: dataOf(records, 'blk:brok:attack:i1'),
       count,
-    }).toEqual({ notes: false, block: { order: 0, cells: { attack: 'Лук' } }, count: 2 });
+    }).toEqual({ root: {}, block: { order: 0, cells: { attack: 'Лук' } }, count: 2 });
   });
-
   test('keeps a repeat block with its instance id and order in the section that holds its section id', () => {
     // #given
     const input = file([
@@ -279,11 +294,10 @@ describe('importSnapshot', () => {
 
     // #when
     const { records, count } = imported(input);
-
     // #then
     expect({
-      i1: dataOf(records, 'rep:brok:attack:i1'),
-      i2: dataOf(records, 'rep:brok:attack:i2'),
+      i1: dataOf(records, 'blk:brok:attack:i1'),
+      i2: dataOf(records, 'blk:brok:attack:i2'),
       count,
     }).toEqual({
       i1: { order: 1, cells: {} },
@@ -291,7 +305,6 @@ describe('importSnapshot', () => {
       count: 0,
     });
   });
-
   test('keeps the values of every row of a repeat block in one record', () => {
     // #given: `npc_name` and `ac` are in the first row of the block, `might` in the second.
     const input = file([
@@ -304,14 +317,12 @@ describe('importSnapshot', () => {
 
     // #when
     const { records, count } = imported(input);
-
     // #then
-    expect({ block: dataOf(records, 'rep:npc:npc_name:n1'), count }).toEqual({
+    expect({ block: dataOf(records, 'blk:npc:npc_name:n1'), count }).toEqual({
       block: { order: 0, cells: { ac: 12, might: 3, npc_name: 'Волк' } },
       count: 0,
     });
   });
-
   test('keeps every select-only repeat block through export and import into the same preset', () => {
     // #given
     const preset: Preset = {
@@ -346,27 +357,28 @@ describe('importSnapshot', () => {
 
     const room = new Map<string, VersionedRecord>([
       [
-        'rep:inventory:armor:a1',
+        'blk:inventory:armor:a1',
         {
-          k: 'rep:inventory:armor:a1',
-          d: { order: 2, cells: { armor: 'Кожаная' } },
+          k: 'blk:inventory:armor:a1',
+          d: { order: 2, cells: { armor: ['Кожаная', 3, 'gm'] } },
           c: 3,
           a: 'gm',
+          l: [1, 'seed'],
         },
       ],
       [
-        'rep:inventory:armor:a2',
+        'blk:inventory:armor:a2',
         {
-          k: 'rep:inventory:armor:a2',
-          d: { order: 0, cells: { armor: 'Кольчуга' } },
+          k: 'blk:inventory:armor:a2',
+          d: { order: 0, cells: { armor: ['Кольчуга', 4, 'gm'] } },
           c: 4,
           a: 'gm',
+          l: [1, 'seed'],
         },
       ],
     ]);
 
     const snapshot = encodeSnapshotFile(room, preset);
-
     // #when
     const result = importSnapshot(snapshot, { preset, data: CURRENT.data }, AUTHOR);
 
@@ -375,11 +387,10 @@ describe('importSnapshot', () => {
       throw new Error(`the import failed: ${result.error}`);
     }
 
-    const records = new Map(result.value.records.map((record) => [record.k, record]));
-
+    const records = assembleRecords(result.value.records);
     expect({
-      a1: dataOf(records, 'rep:inventory:armor:a1'),
-      a2: dataOf(records, 'rep:inventory:armor:a2'),
+      a1: dataOf(records, 'blk:inventory:armor:a1'),
+      a2: dataOf(records, 'blk:inventory:armor:a2'),
       count: result.value.count,
       sheets: result.value.sheets,
     }).toEqual({
@@ -389,7 +400,6 @@ describe('importSnapshot', () => {
       sheets: 0,
     });
   });
-
   test('matches a snapshot text value to a current dice-choice field', () => {
     // #given
     const preset: Preset = {
@@ -430,10 +440,7 @@ describe('importSnapshot', () => {
 
         return result.ok
           ? {
-              row: dataOf(
-                new Map(result.value.records.map((record) => [record.k, record])),
-                'row:inventory:weapon_die',
-              ),
+              row: dataOf(assembleRecords(result.value.records), 'blk:inventory'),
               count: result.value.count,
             }
           : result;
@@ -445,9 +452,8 @@ describe('importSnapshot', () => {
     // #then
     expect(actual).toEqual({ row: { weapon_die: 'd8' }, count: 0 });
   });
-
-  test('maps a section the template does not name to the one that holds most of its field ids', () => {
-    // #given: `gear` is no section id now; `item` and `weight` are in the `item` section.
+  test('drops an unknown block scope instead of guessing from its field ids', () => {
+    // #given: `gear` is no section id now, even though `item` and `weight` exist elsewhere.
     const input = file([
       pc('brok', {
         repeats: {
@@ -458,16 +464,15 @@ describe('importSnapshot', () => {
 
     // #when
     const { records, count } = imported(input);
-
     // #then
-    expect({ block: dataOf(records, 'rep:brok:item:i1'), count }).toEqual({
-      block: { order: 0, cells: { item: 'Верёвка', weight: 1 } },
-      count: 1,
+    expect({ block: dataOf(records, 'blk:brok:item:i1'), count }).toEqual({
+      block: null,
+      count: 3,
     });
   });
-
-  test('does not send a section to the one with its id when no field of the same type is kept there', () => {
-    // #given: `item` is a section id, but its `item` field is text and here it holds a number.
+  test('does not relocate values from a known scope when none fit that scope', () => {
+    // #given: `item` is a section id, but its `item` field is text and here it holds a number;
+    // `bonus` belongs to another scope.
     const input = file([
       pc('brok', {
         repeats: { item: [{ instanceId: 'i1', order: 0, cells: { item: 5, bonus: 1 } }] },
@@ -476,16 +481,19 @@ describe('importSnapshot', () => {
 
     // #when
     const { records, count } = imported(input);
-
     // #then
-    expect({ attack: dataOf(records, 'rep:brok:attack:i1'), count }).toEqual({
-      attack: { order: 0, cells: { bonus: 1 } },
-      count: 1,
+    expect({
+      item: dataOf(records, 'blk:brok:item:i1'),
+      attack: dataOf(records, 'blk:brok:attack:i1'),
+      count,
+    }).toEqual({
+      item: { order: 0, cells: {} },
+      attack: null,
+      count: 2,
     });
   });
-
-  test('breaks a tie between sections by template order', () => {
-    // #given: one id of each section.
+  test('does not use template order to guess an unknown block scope', () => {
+    // #given: the unknown scope contains one field from each current section.
     const input = file([
       pc('brok', {
         repeats: { mixed: [{ instanceId: 'i1', order: 0, cells: { bonus: 1, weight: 2 } }] },
@@ -493,12 +501,14 @@ describe('importSnapshot', () => {
     ]);
 
     // #when
-    const { records } = imported(input);
-
+    const { records, count } = imported(input);
     // #then
-    expect(dataOf(records, 'rep:brok:attack:i1')).toEqual({ order: 0, cells: { bonus: 1 } });
+    expect({
+      attack: dataOf(records, 'blk:brok:attack:i1'),
+      item: dataOf(records, 'blk:brok:item:i1'),
+      count,
+    }).toEqual({ attack: null, item: null, count: 2 });
   });
-
   test('drops and counts every value of a section no current section holds', () => {
     // #given
     const input = file([
@@ -514,16 +524,14 @@ describe('importSnapshot', () => {
 
     // #when
     const { records, count } = imported(input);
-
     // #then
     expect({
-      keys: [...records.keys()].filter((key) => key.startsWith('rep:')),
+      keys: [...records.keys()].filter((key) => key.startsWith('blk:')),
       count,
-    }).toEqual({ keys: [], count: 3 });
+    }).toEqual({ keys: ['blk:brok', 'blk:npc'], count: 3 });
   });
-
-  test('merges two file sections into one with orders shifted after the highest, own section first', () => {
-    // #given: `gear` maps to `item` too.
+  test('keeps a known section and drops an unknown one without shifting orders', () => {
+    // #given: `item` is current and `gear` is unknown.
     const input = file([
       pc('brok', {
         repeats: {
@@ -541,21 +549,19 @@ describe('importSnapshot', () => {
 
     // #when
     const { records, count } = imported(input);
-
-    // #then: `i1` of `gear` collides with `item`'s own and is dropped with its value.
+    // #then: both values under `gear` are dropped. The current `item` blocks keep their orders.
     expect({
-      i1: dataOf(records, 'rep:brok:item:i1'),
-      i2: dataOf(records, 'rep:brok:item:i2'),
-      g1: dataOf(records, 'rep:brok:item:g1'),
+      i1: dataOf(records, 'blk:brok:item:i1'),
+      i2: dataOf(records, 'blk:brok:item:i2'),
+      g1: dataOf(records, 'blk:brok:item:g1'),
       count,
     }).toEqual({
       i1: { order: 0, cells: { item: 'Фляга' } },
       i2: { order: 3, cells: { item: 'Нож' } },
-      g1: { order: 4, cells: { weight: 4 } },
-      count: 1,
+      g1: null,
+      count: 2,
     });
   });
-
   test('drops and counts a repeat block whose instance id an earlier section of the sheet took', () => {
     // #given: AD-2 makes an instance id unique in its sheet; `attack` comes first in the template.
     const input = file([
@@ -569,26 +575,36 @@ describe('importSnapshot', () => {
 
     // #when
     const { records, count } = imported(input);
-
     // #then
     expect({
-      attack: dataOf(records, 'rep:brok:attack:i1'),
-      item: records.has('rep:brok:item:i1'),
+      attack: dataOf(records, 'blk:brok:attack:i1'),
+      item: records.has('blk:brok:item:i1'),
       count,
     }).toEqual({ attack: { order: 0, cells: { attack: 'Меч' } }, item: false, count: 2 });
   });
-
   test('drops every sheet no template owns with its values and links, counting sheets apart', () => {
     // #given: a set no template has, an id no single sheet has, a set sheet under a template id,
     // and a set that names a single sheet.
     const input = file(
       [
-        { id: 'x', set: 'monsters', order: 0, rows: { a: { a: 1 } }, repeats: {} },
+        {
+          id: 'x',
+          set: 'monsters',
+          order: 0,
+          cells: fixtureSnapshotCells({ a: { a: 1 } }),
+          blocks: fixtureSnapshotBlocks({}),
+        },
         single('ghost', {
           repeats: { g: [{ instanceId: 'i1', order: 0, cells: { g: 'x', h: 2 } }] },
         }),
         pc('npc'),
-        { id: 's2', set: 'npc', order: 0, rows: {}, repeats: {} },
+        {
+          id: 's2',
+          set: 'npc',
+          order: 0,
+          cells: fixtureSnapshotCells({}),
+          blocks: fixtureSnapshotBlocks({}),
+        },
         pc('brok'),
       ],
       [
@@ -601,15 +617,13 @@ describe('importSnapshot', () => {
 
     // #when
     const { records, count, sheets } = imported(input);
-
     // #then
     expect({ keys: [...records.keys()], count, sheets }).toEqual({
-      keys: ['link:t4', 'preset', 'sheet:brok'],
+      keys: ['blk:brok', 'blk:npc', 'link:t4', 'preset'],
       count: 3,
       sheets: 4,
     });
   });
-
   test('keeps only the links that are live over the imported records, uncounted', () => {
     // #given: a linkable sheet, a linkable repeat block, a repeat block the file lacks, a repeat
     // block of a section with no `tokens`, and a single sheet whose template has no `tokens`.
@@ -633,7 +647,6 @@ describe('importSnapshot', () => {
 
     // #when
     const { records, count, sheets } = imported(input);
-
     // #then
     expect({
       links: [...records.keys()].filter((key) => key.startsWith('link:')),
@@ -641,7 +654,6 @@ describe('importSnapshot', () => {
       sheets,
     }).toEqual({ links: ['link:t1', 'link:t2'], count: 0, sheets: 0 });
   });
-
   test('gives the same digest for the same dropped values and another for others', () => {
     // #given
     const first = file([pc('brok', { rows: { x: { gone: 1 } } })]);
@@ -658,12 +670,10 @@ describe('importSnapshot', () => {
     // #then
     expect([digests[0] === digests[1], digests[0] === digests[2]]).toEqual([true, false]);
   });
-
   test('gives another digest for another dropped sheet with no values', () => {
     // #given
     const first = file([single('ghost')]);
     const other = file([single('phantom')]);
-
     // #when
     const results = [first, other].map((input) => imported(input));
 
@@ -685,14 +695,11 @@ describe('importSnapshot', () => {
       same: false,
     });
   });
-
   test('refuses a record that does not fit one message as too large', () => {
     // #given
     const input = file([pc('brok', { rows: { notes: { notes: 'я'.repeat(9000) } } })]);
-
     // #when
     const result = importSnapshot(input, CURRENT, AUTHOR);
-
     // #then
     expect(result).toEqual({ ok: false, error: 'too-large' });
   });
@@ -704,21 +711,19 @@ describe('parseSnapshotFile', () => {
     [{ tokenId: 't1', sheetId: 'brok' }],
   );
 
-  test('reads a file of the v2 format', () => {
+  test('reads a file of the v4 format', () => {
     // #when
     const parsed = parseSnapshotFile(JSON.stringify(valid));
-
     // #then
     expect(parsed).toEqual({ ok: true, value: valid });
   });
-
   test.each([
     ['not JSON', '{', 'not-json'],
-    ['a newer v, whatever its shape', '{"v":4,"sheets":7}', 'newer-version'],
+    ['a newer v, whatever its shape', '{"v":5,"sheets":7}', 'newer-version'],
     [
       'a v1 snapshot file',
       '{"v":1,"type":"muster-roll/snapshot","sheets":[],"links":[]}',
-      'unsupported-version',
+      'older-version',
     ],
     [
       'a lower v',
@@ -731,53 +736,43 @@ describe('parseSnapshotFile', () => {
     ['an array', '[]', 'invalid-structure'],
     [
       'a wrong shape',
-      '{"v":3,"type":"muster-roll/snapshot","sheets":{},"links":[]}',
+      '{"v":4,"type":"muster-roll/snapshot","sheets":{},"links":[]}',
       'invalid-structure',
     ],
     [
       'a link to no sheet of the file',
-      '{"v":3,"type":"muster-roll/snapshot","sheets":[],"links":[{"tokenId":"t","sheetId":"x"}]}',
+      '{"v":4,"type":"muster-roll/snapshot","sheets":[],"links":[{"tokenId":"t","sheetId":"x"}]}',
       'invalid-structure',
     ],
   ] satisfies [string, string, SnapshotFileFailure][])('refuses %s', (_name, text, failure) => {
     // #when
     const parsed = parseSnapshotFile(text);
-
     // #then
     expect(parsed).toEqual(err(failure));
   });
-
   test('refuses a file over 1 MiB as too large before it reads JSON', () => {
     // #given
     const text = ' '.repeat(1024 * 1024 + 1);
-
     // #when
     const parsed = parseSnapshotFile(text);
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'too-large' });
   });
-
   test('reads a file saved with a byte order mark', () => {
     // #when
-    const parsed = parseSnapshotFile(`﻿${JSON.stringify(valid)}`);
-
+    const parsed = parseSnapshotFile(`\uFEFF${JSON.stringify(valid)}`);
     // #then
     expect(parsed).toEqual({ ok: true, value: valid });
   });
-
   test('round-trips through the data a window sends', () => {
     // #when
     const decoded = decodeSnapshotFileData(encodeSnapshotFileData(valid));
-
     // #then
     expect(decoded).toEqual({ ok: true, value: valid });
   });
-
   test('refuses data that does not inflate as a bad structure', () => {
     // #when
     const decoded = decodeSnapshotFileData('bm90IGRlZmxhdGU=');
-
     // #then
     expect(decoded).toEqual({ ok: false, error: 'invalid-structure' });
   });

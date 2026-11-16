@@ -10,7 +10,8 @@ import {
   type Template,
 } from '@/core/preset';
 import {
-  fieldValuesSchema,
+  blockDataSchema,
+  blockKey,
   linkDataSchema,
   repDataSchema,
   repKey,
@@ -31,16 +32,16 @@ export const sheetIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 
 // The forms whose key holds the sheet id right after the form name. A `link:` key holds a token id
 // instead, so it is matched by its data.
-const KEYED_DEPENDENT_FORMS = ['row', 'rep', 'acl', 'plink'] as const;
+const KEYED_DEPENDENT_FORMS = ['blk', 'acl', 'plink'] as const;
 
-// A live sheet of a sheet set, as its `sheet:` record holds it.
-export type SheetSummary = SheetData & { sheetId: string };
+// A live sheet of a sheet set, with its root metadata.
+export type SheetSummary = Pick<SheetData, 'set' | 'order'> & { sheetId: string };
 
 // AD-4: who besides a GM may edit a sheet. `per-player`: a player holding a live `acl:` of it.
 // `players-edit`: every player. `none`: no player.
 export type WriteRule = 'per-player' | 'players-edit' | 'none';
 
-// The field whose value names a sheet of a sheet set, and the `row:` record that holds it.
+// The field whose root cell names a sheet, with its preset row address.
 export type NameField = { rowId: string; fieldId: string };
 
 // AD-18: what the one template of a sheet decides for it.
@@ -57,7 +58,7 @@ export type SheetPolicy = {
 };
 
 export function sheetKey(sheetId: string): string {
-  return `sheet:${sheetId}`;
+  return blockKey(sheetId);
 }
 
 // A sheet set gives any number of sheets; a single sheet is one sheet, named by its title.
@@ -66,7 +67,7 @@ export function isSheetSet(template: Template): template is SheetSetTemplate {
 }
 
 // AD-18: the one function that finds a sheet's template. A `sheetId` equal to a template id is that
-// template's single sheet or nothing. Any other `sheetId` needs a live `sheet:` record whose `set`
+// template's single sheet or nothing. Any other `sheetId` needs a live root whose `set`
 // names a sheet set. `null`: no template owns the sheet, so it is not shown and takes no edit.
 export function resolveSheet(
   records: ReadonlyMap<string, VersionedRecord>,
@@ -121,7 +122,7 @@ export function sheetPolicy(template: Template, sheetId: string): SheetPolicy {
   };
 }
 
-// The live sheets of the sheet set `setId`, ordered by `(order, sheetId)`. A `sheet:` record whose
+// The live sheets of the sheet set `setId`, ordered by `(order, sheetId)`. A root whose
 // id is a template id belongs to no sheet set, so it is not listed. A tombstoned sheet is deleted.
 export function liveSheets(
   records: Iterable<VersionedRecord>,
@@ -138,15 +139,15 @@ export function liveSheets(
   const sheets: SheetSummary[] = [];
 
   for (const record of records) {
-    if (!record.k.startsWith('sheet:')) {
+    if (!record.k.startsWith('blk:') || record.k.split(':').length !== 2) {
       continue;
     }
 
-    const sheetId = record.k.slice('sheet:'.length);
+    const sheetId = record.k.slice('blk:'.length);
     const data = sheetDataSchema.safeParse(record.d);
 
     if (data.success && data.data.set === setId && !templateIds.has(sheetId)) {
-      sheets.push({ sheetId, ...data.data });
+      sheets.push({ sheetId, set: data.data.set, order: data.data.order });
     }
   }
 
@@ -183,12 +184,10 @@ export function sheetName(
     return policy.template.title;
   }
 
-  const values = fieldValuesSchema.safeParse(
-    records.get(rowKey(sheetId, policy.nameField.rowId))?.d,
-  );
+  const values = blockDataSchema.safeParse(records.get(rowKey(sheetId, policy.nameField.rowId))?.d);
 
   // The preset schema makes every name field a `text` field.
-  const name = nameText('text', values.data?.[policy.nameField.fieldId]);
+  const name = nameText('text', values.data?.cells[policy.nameField.fieldId]?.[0] ?? undefined);
 
   return Array.from(name).slice(0, SHEET_NAME_MAX_LENGTH).join('');
 }
@@ -208,7 +207,7 @@ export function repeatBlockName(
 
   const block = repDataSchema.safeParse(records.get(repKey(sheetId, first.id, instanceId))?.d);
 
-  return nameText(first.type, block.data?.cells[first.id]);
+  return nameText(first.type, block.data?.cells[first.id]?.[0] ?? undefined);
 }
 
 // True for a live record the sheet's deletion must tombstone with it. A tombstone needs no second
@@ -222,7 +221,7 @@ export function isSheetDependent(
   return dependentSheetId(key, record) === sheetId;
 }
 
-// True for a key of a form that belongs to a sheet: `row:`, `rep:`, `acl:`, `plink:` and `link:`.
+// True for a block, an access record, an owner link or a token link.
 export function isDependentKey(key: string): boolean {
   return (
     key.startsWith('link:') || KEYED_DEPENDENT_FORMS.some((form) => key.startsWith(`${form}:`))
@@ -269,7 +268,7 @@ function keyedSheetSegment(key: string): string | undefined {
   const rest = key.slice(form.length + 1);
   const end = rest.indexOf(':');
 
-  return end === -1 ? undefined : rest.slice(0, end);
+  return end === -1 ? rest : rest.slice(0, end);
 }
 
 // A value names as a field shows it. A blank text and a check name nothing.

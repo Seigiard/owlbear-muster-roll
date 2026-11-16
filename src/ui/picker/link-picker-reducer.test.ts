@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { LinkTarget } from '@/core/link-target';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
-
 import {
   canOffer,
   canPick,
@@ -28,10 +26,8 @@ describe('link picker reducer', () => {
     (patch) => {
       // #given
       const state = initialPickerState('t1');
-
       // #when
       const next = pickerReducer(state, { type: 'facts', facts: { ...READY, ...patch } });
-
       // #then
       expect({ label: next.label.kind, canPick: canPick(next) }).toEqual({
         label: 'pending',
@@ -39,16 +35,13 @@ describe('link picker reducer', () => {
       });
     },
   );
-
   test.each(['', 'bad:token', 'a b', 'x'.repeat(129)])(
     'does not read an invalid token %j',
     (tokenId) => {
       // #given
       const state = initialPickerState(tokenId);
-
       // #when
       const next = pickerReducer(state, { type: 'facts', facts: READY });
-
       // #then
       expect({
         validToken: next.validToken,
@@ -61,7 +54,6 @@ describe('link picker reducer', () => {
       });
     },
   );
-
   test.each([
     ['', true, true],
     ['  ', true, true],
@@ -84,19 +76,15 @@ describe('link picker reducer', () => {
       pick: true,
     });
   });
-
   test('ignores a read result that arrived after a failed read', () => {
     // #given
     const reading = readyState();
     const failed = pickerReducer(reading, { type: 'label-read', result: { failed: true } });
-
     // #when
     const late = pickerReducer(failed, { type: 'label-read', result: { text: '' } });
-
     // #then
     expect(late).toEqual(failed);
   });
-
   test('does not finish for the wrong repeat block arrival', () => {
     // #given
     const picked = pickState(BLOCK, 'Goblin');
@@ -110,21 +98,17 @@ describe('link picker reducer', () => {
     // #then
     expect(next.attempt?.phase).toBe('waiting');
   });
-
   test('keeps waiting for the replica after an answered command', () => {
     // #given
     const picked = pickState(TARGET, 'Aragorn');
-
     // #when
     const next = pickerReducer(picked, { type: 'command', id: 1, outcome: 'answered' });
-
     // #then
     expect({ phase: next.attempt?.phase, failed: next.failed }).toEqual({
       phase: 'waiting',
       failed: false,
     });
   });
-
   test('arrival wins over a later refused command answer', () => {
     // #given
     const picked = pickState(TARGET, 'Aragorn');
@@ -136,23 +120,19 @@ describe('link picker reducer', () => {
 
     // #when
     const next = pickerReducer(arrived, { type: 'command', id: 1, outcome: 'refused' });
-
     // #then
     expect({ phase: next.attempt?.phase, failed: next.failed }).toEqual({
       phase: 'writing',
       failed: false,
     });
   });
-
   test.each(['refused', 'timed-out', 'failed'] as const)(
     'clears a pick after a %s command outcome',
     (outcome) => {
       // #given
       const picked = pickState(TARGET, 'Aragorn');
-
       // #when
       const next = pickerReducer(picked, { type: 'command', id: 1, outcome });
-
       // #then
       expect({ attempt: next.attempt, failed: next.failed, canPick: canPick(next) }).toEqual({
         attempt: null,
@@ -161,34 +141,27 @@ describe('link picker reducer', () => {
       });
     },
   );
-
   test('moves a failed label write through notification before close', () => {
     // #given
     const writing = arrivedState(TARGET, 'Aragorn');
-
     // #when
     const notifying = pickerReducer(writing, { type: 'label-written', id: 1, ok: false });
     const closing = pickerReducer(notifying, { type: 'notified', id: 1 });
-
     // #then
     expect({ failedWrite: notifying.attempt?.phase, afterNotice: closing.attempt?.phase }).toEqual({
       failedWrite: 'notifying',
       afterNotice: 'closing',
     });
   });
-
   test('ignores a duplicate label completion after closing starts', () => {
     // #given
     const writing = arrivedState(TARGET, 'Aragorn');
     const closing = pickerReducer(writing, { type: 'label-written', id: 1, ok: true });
-
     // #when
     const duplicate = pickerReducer(closing, { type: 'label-written', id: 1, ok: false });
-
     // #then
     expect(duplicate).toEqual(closing);
   });
-
   test('demotion before arrival skips the label write and closes', () => {
     // #given
     const picked = pickState(TARGET, 'Aragorn');
@@ -205,7 +178,6 @@ describe('link picker reducer', () => {
       label: 'Aragorn',
     });
   });
-
   test('permits a same-target retry after close rejection', () => {
     // #given
     let state = arrivedState(TARGET, '');
@@ -227,22 +199,18 @@ describe('link picker reducer', () => {
       closed: false,
     });
   });
-
   test('disables picks and offers after a successful close', () => {
     // #given
     let state = arrivedState(TARGET, '');
     state = pickerReducer(state, { type: 'label-written', id: 1, ok: true });
-
     // #when
     const closed = pickerReducer(state, { type: 'closed', id: 1, ok: true });
-
     // #then
     expect({ canPick: canPick(closed), canOffer: canOffer(closed) }).toEqual({
       canPick: false,
       canOffer: false,
     });
   });
-
   test('blocks another pick while close is still pending', () => {
     // #given
     const closing = pickerReducer(arrivedState(TARGET, ''), {
@@ -265,7 +233,6 @@ describe('link picker reducer', () => {
       target: TARGET,
     });
   });
-
   test('ignores a stale command completion from an earlier same-target attempt', () => {
     // #given
     let state = pickState(TARGET, 'Aragorn');
@@ -276,10 +243,8 @@ describe('link picker reducer', () => {
       name: 'Aragorn again',
       outcome: commandOutcome(),
     });
-
     // #when
     const next = pickerReducer(state, { type: 'command', id: 1, outcome: 'timed-out' });
-
     // #then
     expect({ id: next.attempt?.id, phase: next.attempt?.phase, failed: next.failed }).toEqual({
       id: 2,
@@ -287,7 +252,6 @@ describe('link picker reducer', () => {
       failed: false,
     });
   });
-
   test('ignores a stale label completion from an earlier attempt', () => {
     // #given
     let state = arrivedState(TARGET, 'Aragorn');
@@ -300,10 +264,8 @@ describe('link picker reducer', () => {
       name: 'Aragorn again',
       outcome: commandOutcome(),
     });
-
     // #when
     const next = pickerReducer(state, { type: 'label-written', id: 1, ok: true });
-
     // #then
     expect({
       id: next.attempt?.id,

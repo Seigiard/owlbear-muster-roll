@@ -82,7 +82,7 @@ export function blockIndex(records: Iterable<VersionedRecord>): BlockIndex {
   return index;
 }
 
-// The tab that holds a live repeat block of a sheet: the tab of the repeat section its `rep:` key
+// The tab that holds a live repeat block of a sheet: the tab of the repeat section its block path
 // names. `null` when the block is gone or its section is not in the template.
 export function repeatBlockTabIndex(
   records: Iterable<VersionedRecord>,

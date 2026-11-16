@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-
 import {
   ADD,
   mapSelection,
@@ -37,9 +36,7 @@ const ROOM: readonly StoredRecord[] = [
 ];
 
 const SCENE = ['t-anya', 't-brok', 't-s1', 't-s2', 'tree'];
-
 const GM: ClientParams = { client: 'a', device: 'a' };
-
 const PLAYER: ClientParams = { client: 'p', role: 'PLAYER', player: 'lisa', device: 'p' };
 
 test.beforeEach(async ({ page }) => {
@@ -54,14 +51,11 @@ test('a GM who selects an NPC token on the map sees its tab and repeat block mar
   await openRoom(page, context, ROOM);
   await putOnScene(page, SCENE);
   await expect(page.getByRole('tab', { name: 'Аня' })).toHaveAttribute('aria-selected', 'true');
-
   // #when
   await selectOnMap(page, ['t-s1']);
-
   // #then
   await expect(page.getByRole('tab', { name: 'NPC, токен выделен' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Аня' })).toHaveAttribute('aria-selected', 'true');
-
   await page.getByRole('tab', { name: 'NPC, токен выделен' }).click();
   await expect(page.getByRole('group', { name: 'Скелет 1, токен выделен' })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Скелет 2' })).toBeVisible();
@@ -77,10 +71,8 @@ test('several selected tokens mark every target, and a cleared selection clears 
   await selectOnMap(page, ['t-brok', 't-s2', 'tree']);
   await expect(page.getByRole('tab', { name: 'Брок, токен выделен' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'NPC, токен выделен' })).toBeVisible();
-
   // #when
   await selectOnMap(page, []);
-
   // #then
   await expect(page.getByRole('tab', { name: 'Брок', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'NPC', exact: true })).toBeVisible();
@@ -95,20 +87,15 @@ test('a GM selects the tokens of a sheet on the open scene with one press and de
   await openRoom(page, context, ROOM);
   await putOnScene(page, SCENE);
   await selectOnMap(page, ['tree']);
-
   const toggle = page.getByRole('button', { name: SELECT_ON_MAP });
-
   // #when
   await toggle.click();
-
   // #then
   await expect.poll(() => mapSelection(page)).toEqual(['t-anya', 'tree']);
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('tab', { name: 'Аня, токен выделен' })).toBeVisible();
-
   // #when
   await toggle.click();
-
   // #then
   await expect.poll(() => mapSelection(page)).toEqual(['tree']);
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
@@ -124,7 +111,6 @@ test('a refused selection change leaves the map selection and the toggle as they
   await page.evaluate(() => {
     window.mockPlatform.failNextSelectionWrite();
   });
-
   const toggle = page.getByRole('button', { name: SELECT_ON_MAP });
 
   const refused = page.waitForEvent('console', (message) =>
@@ -134,7 +120,6 @@ test('a refused selection change leaves the map selection and the toggle as they
   // #when
   await toggle.click();
   await refused;
-
   // #then: the next press works again.
   expect({
     selection: await mapSelection(page),
@@ -153,11 +138,9 @@ test('a GM selects the token of one repeat block from the keyboard', async ({ pa
   await putOnScene(page, SCENE);
   await selectOnMap(page, ['t-s1']);
   await page.getByRole('tab', { name: 'NPC, токен выделен' }).click();
-
   // #when
   await page.getByRole('button', { name: 'Выделить блок 2 на карте' }).focus();
   await page.keyboard.press('Enter');
-
   // #then
   await expect.poll(() => mapSelection(page)).toEqual(['t-s1', 't-s2']);
   await expect(page.getByRole('group', { name: 'Скелет 2, токен выделен' })).toBeVisible();
@@ -172,10 +155,8 @@ test('a sheet whose linked tokens are all on another scene offers no selection',
   await putOnScene(page, SCENE);
   await page.getByRole('tab', { name: 'Брок' }).click();
   await expect(page.getByRole('button', { name: SELECT_ON_MAP })).toBeVisible();
-
   // #when
   await page.getByRole('tab', { name: 'Вера' }).click();
-
   // #then: the token status still says it is linked.
   await expect(page.getByRole('img', { name: 'Токен привязан' })).toBeVisible();
   await expect(page.getByRole('button', { name: SELECT_ON_MAP })).toHaveCount(0);
@@ -186,20 +167,15 @@ test('a player sees marks for their own selection on visible sheets only, and no
 }) => {
   // #given
   const gmWindow = await openClientWindow(context, GM);
-
   await seedStorage(gmWindow, ROOM, undefined, GM.device);
   await openClientBackground(context, GM);
   await expect(gmWindow.getByRole('button', { name: ADD })).toBeVisible();
   await putOnScene(gmWindow, SCENE);
-
   const sheets = await openClientWindow(context, PLAYER);
-
   await openClientBackground(context, PLAYER);
   await expect(sheets.getByRole('tab', { name: 'Аня' })).toHaveAttribute('aria-selected', 'true');
-
   // #when
   await selectOnMap(sheets, ['t-brok', 't-s1']);
-
   // #then: the GM's own selection stays empty, and the hidden NPC tab never shows.
   await expect(sheets.getByRole('tab', { name: 'Брок, токен выделен' })).toBeVisible();
   await expect(sheets.getByRole('tab', { name: /токен выделен/ })).toHaveCount(1);
@@ -212,7 +188,6 @@ test("a player's own sheet keeps «вы» in its name when its token is selected
 }) => {
   // #given: lisa owns Аня.
   const gmWindow = await openClientWindow(context, GM);
-
   await seedStorage(
     gmWindow,
     [...ROOM, record('plink:pc0:lisa', { name: 'Лиза' })],
@@ -222,15 +197,11 @@ test("a player's own sheet keeps «вы» in its name when its token is selected
   await openClientBackground(context, GM);
   await expect(gmWindow.getByRole('button', { name: ADD })).toBeVisible();
   await putOnScene(gmWindow, SCENE);
-
   const sheets = await openClientWindow(context, PLAYER);
-
   await openClientBackground(context, PLAYER);
   await expect(sheets.getByRole('tab', { name: 'Аня, вы' })).toBeVisible();
-
   // #when
   await selectOnMap(sheets, ['t-anya']);
-
   // #then
   await expect(sheets.getByRole('tab', { name: 'Аня, вы, токен выделен' })).toBeVisible();
 });

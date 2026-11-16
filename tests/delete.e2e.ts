@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-
 import { cssValue, renderedColor, tokenColor } from './support/colors';
 import {
   ADD,
   afterSettling,
   EXAMPLE_PRESET_TEXT,
   keyed,
+  materializedRecords,
   openBackground,
   openRoom,
   presetRecord,
@@ -34,10 +34,8 @@ test('"Удалить" in "⋯" opens one block at the top of the content area, 
 }) => {
   // #given
   await openRoom(page, context, pcSheet('brok', 'Брок', 0));
-
   // #when
   await askDelete(page);
-
   // #then
   await expect(page.getByRole('group')).toHaveCount(1);
   await expect(confirmation(page)).toHaveText(
@@ -57,10 +55,8 @@ test('the block names the sheet by its current name', async ({ page, context }) 
   await nameField(page).fill('Лиза');
   await page.keyboard.press('Tab');
   await expect(page.getByRole('tab', { name: 'Лиза' })).toBeVisible();
-
   // #when
   await askDelete(page);
-
   // #then
   await expect(confirmation(page)).toHaveAccessibleName('Удалить «Лиза»? Это нельзя отменить.');
 });
@@ -71,13 +67,10 @@ test('the block sits on surface-raised with a hairline border and rounded-lg', a
 }) => {
   // #given
   await openRoom(page, context, pcSheet('brok', 'Брок', 0));
-
   // #when
   await askDelete(page);
-
   // #then
   const block = confirmation(page);
-
   expect({
     background: await renderedColor(block, 'background-color'),
     border: await renderedColor(block, 'border-top-color'),
@@ -97,10 +90,8 @@ test('"Удалить лист" is an icon that shows its name in a tooltip unde
 }) => {
   // #given
   await openRoom(page, context, pcSheet('brok', 'Брок', 0));
-
   // #when
   await actionsButton(page).hover();
-
   // #then: the icon has no visible word, so the tooltip names it.
   await expect(page.getByRole('tooltip')).toHaveText(ACTIONS);
   await expect(actionsButton(page)).toHaveText('');
@@ -110,10 +101,8 @@ test('the keyboard presses "Удалить лист" and lands on "Отмени�
   // #given
   await openRoom(page, context, pcSheet('brok', 'Брок', 0));
   await actionsButton(page).focus();
-
   // #when
   await page.keyboard.press('Enter');
-
   // #then
   await expect(cancelButton(page)).toBeFocused();
 });
@@ -128,19 +117,19 @@ for (const [label, cancel] of [
   }) => {
     // #given
     const seeded = pcSheet('brok', 'Брок', 0);
-
     await openRoom(page, context, seeded);
     await watchCommands(page);
     await askDelete(page);
     await expect(cancelButton(page)).toBeFocused();
-
     // #when
     await cancel(page);
-
     // #then
     await expect(page.getByRole('group')).toHaveCount(0);
     await expect(actionsButton(page)).toBeFocused();
-    expect(await afterSettling(page)).toEqual({ commands: [], stored: keyed(seeded) });
+    expect(await afterSettling(page)).toEqual({
+      commands: [],
+      stored: keyed(materializedRecords(seeded)),
+    });
   });
 }
 
@@ -150,20 +139,20 @@ test('another tab closes the block, deletes nothing, and the block is gone on re
 }) => {
   // #given
   const seeded = [...pcSheet('brok', 'Брок', 0), ...pcSheet('liza', 'Лиза', 1)];
-
   await openRoom(page, context, seeded);
   await watchCommands(page);
   await askDelete(page);
-
   // #when
   await page.getByRole('tab', { name: 'Лиза' }).click();
   await expect(page.getByRole('group')).toHaveCount(0);
   await page.getByRole('tab', { name: 'Брок' }).click();
-
   // #then
   await expect(nameField(page)).toHaveValue('Брок');
   await expect(page.getByRole('group')).toHaveCount(0);
-  expect(await afterSettling(page)).toEqual({ commands: [], stored: keyed(seeded) });
+  expect(await afterSettling(page)).toEqual({
+    commands: [],
+    stored: keyed(materializedRecords(seeded)),
+  });
 });
 
 test('a sheet deleted in another window closes the block there with no second command', async ({
@@ -174,26 +163,20 @@ test('a sheet deleted in another window closes the block there with no second co
   await openRoom(page, context, [...pcSheet('brok', 'Брок', 0), ...pcSheet('liza', 'Лиза', 1)]);
   await watchCommands(page);
   await askDelete(page);
-
   const other = await context.newPage();
-
   await other.setViewportSize({ width: 600, height: 600 });
   await other.goto('/index.html');
-
   // #when
   await askDelete(other);
   await other.getByRole('button', { name: DELETE, exact: true }).click();
-
   // #then
   await expect(page.getByRole('tab', { name: 'Брок' })).toHaveCount(0);
   await expect(page.getByRole('group')).toHaveCount(0);
   expect(await afterSettling(page)).toEqual({
     commands: ['sheet-delete'],
-    stored: keyed([
-      record('sheet:brok', null, 2),
-      record('row:brok:name', null, 2),
-      ...pcSheet('liza', 'Лиза', 1),
-    ]),
+    stored: keyed(
+      materializedRecords([record('blk:brok', null, 2), ...pcSheet('liza', 'Лиза', 1)]),
+    ),
   });
 });
 
@@ -207,10 +190,8 @@ test('confirming with the keyboard leaves the focus on the newly selected tab', 
   await expect(cancelButton(page)).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(page.getByRole('button', { name: DELETE, exact: true })).toBeFocused();
-
   // #when
   await page.keyboard.press('Enter');
-
   // #then
   await expect(page.getByRole('tab', { name: 'Брок' })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'Лиза' })).toHaveAttribute('aria-selected', 'true');
@@ -224,10 +205,8 @@ test('picking "Удалить" again while the block is open moves the focus bac
   // #given
   await openRoom(page, context, pcSheet('brok', 'Брок', 0));
   await askDelete(page);
-
   // #when
   await askDelete(page);
-
   // #then
   await expect(page.getByRole('group')).toHaveCount(1);
   await expect(cancelButton(page)).toBeFocused();
@@ -238,10 +217,8 @@ test('a double click on "Удалить" in the block sends one command', async 
   await openRoom(page, context, [...pcSheet('brok', 'Брок', 0), ...pcSheet('liza', 'Лиза', 1)]);
   await watchCommands(page);
   await askDelete(page);
-
   // #when
   await page.getByRole('button', { name: DELETE, exact: true }).dblclick();
-
   // #then
   await expect(page.getByRole('tab', { name: 'Брок' })).toHaveCount(0);
   expect((await afterSettling(page)).commands).toEqual(['sheet-delete']);
@@ -253,18 +230,15 @@ test('a window closed with the block open shows no block and has deleted nothing
 }) => {
   // #given
   const seeded = pcSheet('brok', 'Брок', 0);
-
   await openRoom(page, context, seeded);
   await askDelete(page);
-
   // #when
   await page.reload();
-
   // #then
   await expect(nameField(page)).toHaveValue('Брок');
   await expect(page.getByRole('group')).toHaveCount(0);
   expect(keyed((await storedRecords(page)).filter((one) => one.k !== 'preset'))).toEqual(
-    keyed(seeded),
+    keyed(materializedRecords(seeded)),
   );
 });
 
@@ -275,8 +249,8 @@ test('"Удалить" in the block sends one command, tombstones the sheet and 
   // #given: "brok" with one record of every dependent form, "liza" with its own, and the preset.
   const kept = [
     ...pcSheet('liza', 'Лиза', 1),
-    record('row:liza:str', { str: 9 }, 1),
-    record('rep:liza:item:i2', { order: 0, cells: { item: 'Лук' } }, 1),
+    record('blk:liza', { str: 9 }, 1),
+    record('blk:liza:item:i2', { order: 0, cells: { item: 'Лук' } }, 1),
     record('acl:liza:p1', { name: 'Оля' }, 1),
     record('plink:liza:p1', { name: 'Оля' }, 1),
     record('link:token2', { s: 'liza' }, 1),
@@ -284,8 +258,8 @@ test('"Удалить" in the block sends one command, tombstones the sheet and 
 
   await openRoom(page, context, [
     ...pcSheet('brok', 'Брок', 0),
-    record('row:brok:str', { str: 3 }, 2),
-    record('rep:brok:item:i1', { order: 0, cells: { item: 'Меч' } }, 1),
+    record('blk:brok', { str: 3 }, 2),
+    record('blk:brok:item:i1', { order: 0, cells: { item: 'Меч' } }, 1),
     record('acl:brok:p1', { name: 'Оля' }, 4),
     record('plink:brok:p1', { name: 'Оля' }, 1),
     record('link:token1', { s: 'brok' }, 5),
@@ -293,10 +267,8 @@ test('"Удалить" in the block sends one command, tombstones the sheet and 
   ]);
   await watchCommands(page);
   await askDelete(page);
-
   // #when
   await page.getByRole('button', { name: DELETE, exact: true }).click();
-
   // #then
   await expect(page.getByRole('tab', { name: 'Брок' })).toHaveCount(0);
   expect({
@@ -305,16 +277,16 @@ test('"Удалить" in the block sends one command, tombstones the sheet and 
   }).toEqual({
     preset: presetRecord(EXAMPLE_PRESET_TEXT),
     commands: ['sheet-delete'],
-    stored: keyed([
-      record('sheet:brok', null, 2),
-      record('row:brok:name', null, 2),
-      record('row:brok:str', null, 3),
-      record('rep:brok:item:i1', null, 2),
-      record('acl:brok:p1', null, 5),
-      record('plink:brok:p1', null, 2),
-      record('link:token1', null, 6),
-      ...kept,
-    ]),
+    stored: keyed(
+      materializedRecords([
+        record('blk:brok', null, 3),
+        record('blk:brok:item:i1', null, 2),
+        record('acl:brok:p1', null, 5),
+        record('plink:brok:p1', null, 2),
+        record('link:token1', null, 6),
+        ...kept,
+      ]),
+    ),
   });
 });
 
@@ -328,13 +300,11 @@ test('a deleted sheet does not return after a reload', async ({ page, context })
   await askDelete(page);
   await page.getByRole('button', { name: DELETE, exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Брок' })).toHaveCount(0);
-
   // #when
   await background.close();
   await page.reload();
   await openBackground(context);
   await expect(page.getByRole('button', { name: ADD })).toBeVisible();
-
   // #then
   await expect(page.getByRole('tab')).toHaveText(['Лиза', 'NPC', 'Инвентарь', SETTINGS]);
 });
@@ -351,10 +321,8 @@ test('deleting the selected sheet selects the first tab, not its neighbour', asy
   ]);
   await page.getByRole('tab', { name: 'Тиша' }).click();
   await askDelete(page);
-
   // #when
   await page.getByRole('button', { name: DELETE, exact: true }).click();
-
   // #then
   await expect(page.getByRole('tab', { name: 'Тиша' })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'Брок' })).toHaveAttribute('aria-selected', 'true');
@@ -364,10 +332,8 @@ test('deleting the last sheet of the set selects the first tab, NPC', async ({ p
   // #given
   await openRoom(page, context, pcSheet('brok', 'Брок', 0));
   await askDelete(page);
-
   // #when
   await page.getByRole('button', { name: DELETE, exact: true }).click();
-
   // #then
   await expect(page.getByRole('tab')).toHaveText(['NPC', 'Инвентарь', SETTINGS]);
   await expect(page.getByRole('tab', { name: 'NPC' })).toHaveAttribute('aria-selected', 'true');
@@ -380,10 +346,8 @@ test('confirming with a click on the last sheet of the set leaves the focus on N
   // #given
   await openRoom(page, context, pcSheet('brok', 'Брок', 0));
   await askDelete(page);
-
   // #when
   await page.getByRole('button', { name: DELETE, exact: true }).click();
-
   // #then
   await expect(page.getByRole('tab', { name: 'NPC' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('tab', { name: 'NPC' })).toBeFocused();
@@ -395,10 +359,8 @@ test('a sheet with an empty name shows "Без имени" on its tab, in its he
 }) => {
   // #given
   await openRoom(page, context, pcSheet('nameless', '', 0));
-
   // #when
   await askDelete(page);
-
   // #then
   await expect(confirmation(page)).toHaveAccessibleName(
     `Удалить «${UNNAMED}»? Это нельзя отменить.`,

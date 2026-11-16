@@ -14,7 +14,7 @@ import type { RollCopy } from '@/core/roll-text';
 import {
   aliveMessage,
   pingMessage,
-  proposeMessage,
+  proposeMessages,
   stateRequestMessage,
   SYNC_CHANNEL,
 } from '@/core/room-messages';
@@ -216,9 +216,28 @@ export async function startReplicaEngine(
         () => {
           const record = compose();
 
-          return record === null || stopped || role === 'GM'
-            ? null
-            : proposeMessage(generationFlow.generation(), record);
+          if (record === null || stopped || role === 'GM') return null;
+          const generation = generationFlow.generation();
+          const [first, ...rest] = proposeMessages(generation, record);
+
+          for (const part of rest) {
+            sendQueue
+              .enqueueComposed(
+                SYNC_CHANNEL,
+                () =>
+                  stopped ||
+                  role === 'GM' ||
+                  compareGenerations(generation, generationFlow.generation()) !== 0
+                    ? null
+                    : part,
+                REMOTE,
+              )
+              .catch((error) =>
+                console.error('Muster Roll could not send a proposal fragment', error),
+              );
+          }
+
+          return first ?? null;
         },
         REMOTE,
       ),
@@ -943,7 +962,8 @@ export async function startReplicaEngine(
         break;
       }
 
-      applied.push(merge(persisted.record));
+      merge(persisted.record);
+      applied.push(record);
     }
 
     followReplica();

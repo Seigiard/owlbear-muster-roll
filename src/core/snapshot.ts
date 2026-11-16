@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 import { FORMAT_VERSION } from '@/core/format-version';
-import type { JsonObject, JsonValue } from '@/core/json';
-import { compareGenerations, compareVersions } from '@/core/merge';
+import { canonicalJson, type JsonObject, type JsonValue } from '@/core/json';
+import { compareGenerations, recordHolds } from '@/core/merge';
 import { jsonByteLength } from '@/core/message-size';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
@@ -55,7 +55,7 @@ export function encodeSnapshot(
   records: readonly VersionedRecord[],
 ): Result<SnapshotValue, EncodeFailure> {
   const snapshot: Snapshot = { g: generation, records: [...records].sort(byKey) };
-  const text = JSON.stringify(snapshot);
+  const text = canonicalJson(snapshot);
 
   // A copy this client could not read back would fail every read-back.
   if (new TextEncoder().encode(text).length > SNAPSHOT_INFLATED_BYTE_LIMIT) {
@@ -153,7 +153,7 @@ export function readBackHolds(written: Snapshot, readBack: Snapshot | null): boo
   return written.records.every((record) => {
     const found = held.get(record.k);
 
-    return found !== undefined && compareVersions(found, record) >= 0;
+    return found !== undefined && recordHolds(found, record);
   });
 }
 

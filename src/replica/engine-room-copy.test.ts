@@ -1,9 +1,9 @@
+import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, spyOn, test } from 'bun:test';
-
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { NOTHING_ERASED } from '@/core/preset-migrate';
-import type { VersionedRecord } from '@/core/records';
+import { blockDataSchema, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
@@ -30,7 +30,6 @@ const SHORT_PAUSE: Partial<Timing> = { snapshotPauseMs: 60, snapshotJitterMs: 0 
 // The key and the limit of the 2.5 spec, written out by hand.
 const KEY = 'app.muster-roll/snapshot';
 const LIMIT = 15500;
-
 const INITIAL: Generation = { n: 0, a: '' };
 const HIGHER: Generation = { n: 1, a: 'importer' };
 const GHOST = 'ghost-gm';
@@ -91,13 +90,25 @@ type MetadataGate = {
   writes: number;
   // Resolves the next read only when the test releases it.
   heldRead: Promise<void> | null;
-  holdNextRead: () => { release: () => void };
+  holdNextRead: () => {
+    release: () => void;
+  };
   dropWrites: boolean;
   rejectWrites: boolean;
 };
 
 function sheet(id: string, order = 0, c = 1, a = 'seed'): VersionedRecord {
-  return { k: `sheet:${id}`, d: { set: 'pc', order }, c, a };
+  return { k: `blk:${id}`, d: { set: 'pc', order, cells: {} }, c, a, l: [1, 'seed'] };
+}
+
+function brokWithStr(value: number, c: number, a: string): VersionedRecord {
+  return {
+    k: 'blk:brok',
+    d: { set: 'pc', order: 0, cells: { str: [value, c, a] } },
+    c,
+    a,
+    l: [1, 'seed'],
+  };
 }
 
 const roomRig = createRoomRig({
@@ -112,7 +123,6 @@ function gated(gate: MetadataGate): (platform: MockPlatform) => MockPlatform {
       ...platform.metadata,
       getMetadata: async () => {
         const held = gate.heldRead;
-
         gate.heldRead = null;
         await held;
 
@@ -140,7 +150,6 @@ function createGate(): MetadataGate {
     rejectWrites: false,
     holdNextRead: () => {
       let release = (): void => undefined;
-
       gate.heldRead = new Promise((resolve) => {
         release = resolve;
       });
@@ -194,36 +203,31 @@ describe('writer triggers', () => {
   test('a failed multi-record command does not owe an unchanged room-copy write', async () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     const room = roomRig.openRoom();
     const gate = createGate();
 
     const client = await startClient(room, 'gm-a', {
       platform: gated(gate),
-      seeded: [PRESET_RECORD, BROK, { k: 'row:brok:str', d: { str: 12 }, c: 1, a: 'seed' }],
+      seeded: [PRESET_RECORD, brokWithStr(12, 1, 'seed'), ACL],
       timing: { snapshotPauseMs: 10 },
       until: 'live',
     });
 
     client.platform.setFailingStorageOperations(['write']);
     gate.rejectWrites = true;
-
     // #when
     send(client, { type: 'sheet-delete', sheetId: 'brok' });
     await waitUntil(() => notices(client).includes('local-save-failed'));
     await pause(50);
-
     // #then
     expect({ writes: gate.writes, notices: notices(client) }).toEqual({
       writes: 0,
       notices: ['local-save-failed'],
     });
   });
-
   test('catch-up with no replayed records does not owe an unchanged room-copy write', async () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     const room = roomRig.openRoom();
     const gate = createGate();
 
@@ -234,22 +238,18 @@ describe('writer triggers', () => {
     });
 
     gate.rejectWrites = true;
-
     // #when
     client.engine.catchUp();
     await pause(50);
-
     // #then
     expect({ writes: gate.writes, notices: notices(client) }).toEqual({
       writes: 0,
       notices: [],
     });
   });
-
   test('a failed preset batch does not owe an unchanged room-copy write', async () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     const room = roomRig.openRoom();
     const gate = createGate();
 
@@ -268,7 +268,6 @@ describe('writer triggers', () => {
 
     client.platform.setFailingStorageOperations(['write']);
     gate.rejectWrites = true;
-
     // #when
     send(client, {
       type: 'preset-upload',
@@ -279,14 +278,12 @@ describe('writer triggers', () => {
     });
     await waitUntil(() => notices(client).includes('local-save-failed'));
     await pause(50);
-
     // #then
     expect({ writes: gate.writes, notices: notices(client) }).toEqual({
       writes: 0,
       notices: ['local-save-failed'],
     });
   });
-
   test('a live GM writes every record with its tombstones, versions and generation, sorted by key, once edits pause', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -299,30 +296,19 @@ describe('writer triggers', () => {
 
     // #when
     send(client, setStr(14));
-    await waitUntil(() => shown(client, 'row:brok:str') !== undefined);
-
+    await waitUntil(() => shown(client, 'blk:brok') !== undefined);
     const beforePause = roomCopyOf(room);
-
     await waitUntil(() => roomCopyOf(room) !== null);
-
     // #then
     expect({ beforePause, copy: roomCopyOf(room) }).toEqual({
       beforePause: null,
       copy: {
-        v: 3,
+        v: 4,
         g: INITIAL,
-        records: [
-          ACL,
-          GONE,
-          PRESET_RECORD,
-          { k: 'row:brok:str', d: { str: 14 }, c: 1, a: 'gm-a' },
-          BROK,
-          MIRA,
-        ],
+        records: [ACL, brokWithStr(14, 2, 'gm-a'), MIRA, GONE, PRESET_RECORD],
       },
     });
   });
-
   test('each edit puts the write off by the whole pause again', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -337,40 +323,31 @@ describe('writer triggers', () => {
     await pause(100);
     send(client, setStr(2));
     await pause(100);
-
     const midway = roomCopyOf(room);
-
     await waitUntil(() => roomCopyOf(room) !== null);
-
     // #then
     expect({ midway, written: roomCopyOf(room)?.records }).toEqual({
       midway: null,
-      written: [PRESET_RECORD, { k: 'row:brok:str', d: { str: 2 }, c: 2, a: 'gm-a' }, BROK],
+      written: [brokWithStr(2, 3, 'gm-a'), PRESET_RECORD],
     });
   });
-
   test('a live GM writes at once when its page becomes hidden, with no edit and no pause', async () => {
     // #given
     const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a', { until: 'live' });
-
     // #when
     client.engine.pageHidden();
     await waitUntil(() => roomCopyOf(room) !== null);
-
     // #then
-    expect(roomCopyOf(room)?.records).toEqual([PRESET_RECORD, BROK]);
+    expect(roomCopyOf(room)?.records).toEqual([BROK, PRESET_RECORD]);
   });
-
   test('a player never writes the room copy', async () => {
     // #given
     const room = roomRig.openRoom();
     const client = await startClient(room, 'player-p', { role: 'PLAYER', until: 'live' });
-
     // #when
     client.engine.pageHidden();
     await pause(50);
-
     // #then
     expect(room.room.getMetadata()).toEqual({});
   });
@@ -381,63 +358,54 @@ describe('writer read and merge', () => {
     // #given
     const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a', { until: 'live' });
-
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [MIRA]) });
-
     // #when
     client.engine.pageHidden();
     await waitUntil(
       () => roomCopyOf(room)?.records !== undefined && shown(client, MIRA.k) !== undefined,
     );
-
     // #then
     expect({
       copy: roomCopyOf(room)?.records,
       shown: shown(client, MIRA.k),
       saved: storedRecord(client, MIRA.k),
     }).toEqual({
-      copy: [PRESET_RECORD, BROK, MIRA],
+      copy: [BROK, MIRA, PRESET_RECORD],
       shown: MIRA,
       saved: MIRA,
     });
   });
-
   test('a GM of a higher generation leaves a lower-generation copy unmerged and replaces it', async () => {
     // #given
     const room = roomRig.openRoom();
-
     room.room.setMetadata({ [KEY]: copyValue(HIGHER, [PRESET_RECORD, BROK]) });
-
     // A new device: no stored record, so it takes the copy's generation at start.
     const client = await startClient(room, 'gm-a', { seeded: [], until: 'live' });
-
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [MIRA]) });
-
     // #when
     client.engine.pageHidden();
-    await waitUntil(() => JSON.stringify(roomCopyOf(room)?.g) === JSON.stringify(HIGHER));
-
+    await waitUntil(
+      () =>
+        Object(Object(roomCopyOf(room)).g).n === HIGHER.n &&
+        Object(Object(roomCopyOf(room)).g).a === HIGHER.a,
+    );
     // #then
     expect({ copy: roomCopyOf(room), mira: shown(client, MIRA.k) ?? null }).toEqual({
-      copy: { v: 3, g: HIGHER, records: [PRESET_RECORD, BROK] },
+      copy: { v: 4, g: HIGHER, records: [BROK, PRESET_RECORD] },
       mira: null,
     });
   });
-
   test('a copy of a higher generation is not overwritten: the GM adopts it in place of its own data', async () => {
     // #given
     const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a', { until: 'live' });
     const higher = copyValue(HIGHER, [PRESET_RECORD, MIRA]);
-
     room.join(GHOST, 'GM');
     room.room.setMetadata({ [KEY]: higher });
     await waitUntil(() => shown(client, MIRA.k) !== undefined);
-
     // #when
     client.engine.pageHidden();
     await settle();
-
     // #then
     expect({
       copy: room.room.getMetadata()[KEY],
@@ -445,25 +413,20 @@ describe('writer read and merge', () => {
       brok: shown(client, BROK.k) ?? null,
     }).toEqual({ copy: higher, mira: MIRA, brok: null });
   });
-
   test.each<[string, JsonValue, Notice[]]>([
-    ['a higher v', { v: 4, data: 'from a newer build' }, ['room-copy-not-saved', 'new-version']],
-    ['data that does not decode', { v: 3, data: 'bm90IGRlZmxhdGU=' }, ['room-copy-not-saved']],
+    ['a higher v', { v: 5, data: 'from a newer build' }, ['room-copy-not-saved', 'new-version']],
+    ['data that does not decode', { v: 4, data: 'bm90IGRlZmxhdGU=' }, ['room-copy-not-saved']],
   ])(
     'a copy with %s stops the write, keeps the copy and raises its notices',
     async (_name, value, expectedNotices) => {
       // #given
       spyOn(console, 'error').mockImplementation(() => undefined);
-
       const room = roomRig.openRoom();
       const client = await startClient(room, 'gm-a', { until: 'live' });
-
       room.room.setMetadata({ [KEY]: value });
-
       // #when
       client.engine.pageHidden();
       await waitUntil(() => notices(client).includes('room-copy-not-saved'));
-
       // #then
       expect({
         copy: room.room.getMetadata()[KEY],
@@ -482,11 +445,9 @@ describe('a room copy of an older format', () => {
     async (format) => {
       // #given
       spyOn(console, 'error').mockImplementation(() => undefined);
-
       const room = roomRig.openRoom();
       const gate = createGate();
       const older = copyValue(INITIAL, [MIRA], format);
-
       room.room.setMetadata({ [KEY]: older });
 
       const client = await startClient(room, 'gm-a', {
@@ -498,9 +459,8 @@ describe('a room copy of an older format', () => {
       // #when: an edit after the pause and a hidden page each try a write.
       send(client, setStr(14));
       client.engine.pageHidden();
-      await waitUntil(() => shown(client, 'row:brok:str') !== undefined);
+      await waitUntil(() => shown(client, 'blk:brok') !== undefined);
       await pause(150);
-
       // #then
       expect({
         writes: gate.writes,
@@ -517,15 +477,12 @@ describe('a room copy of an older format', () => {
       });
     },
   );
-
   test.each([1, 2])(
     'format %i: a player with no GM gets outcome older and no older-format notice',
     async (format) => {
       // #given
       spyOn(console, 'error').mockImplementation(() => undefined);
-
       const room = roomRig.openRoom();
-
       room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], format) });
 
       // #when
@@ -551,15 +508,11 @@ describe('size check', () => {
     // #given
     const room = roomRig.openRoom();
     const previous = copyValue(INITIAL, [PRESET_RECORD]);
-
     room.room.setMetadata({ 'other.extension/data': 'x'.repeat(15400), [KEY]: previous });
-
     const client = await startClient(room, 'gm-a', { until: 'live' });
-
     // #when
     client.engine.pageHidden();
     await waitUntil(() => notices(client).includes('room-copy-not-saved'));
-
     // #then
     expect({ copy: room.room.getMetadata()[KEY], status: roomCopyStatus(client).state }).toEqual({
       copy: previous,
@@ -578,12 +531,10 @@ describe('interruption and rescheduling', () => {
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK, MIRA]) });
     client.engine.catchUp();
     await settle();
-
     // #when
     client.engine.stop();
     read.release();
     await pause(20);
-
     // #then
     expect({
       mira: shown(client, MIRA.k) ?? null,
@@ -595,7 +546,6 @@ describe('interruption and rescheduling', () => {
       writes: 0,
     });
   });
-
   test('a live GM merges the same held equal-generation metadata read', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -605,67 +555,54 @@ describe('interruption and rescheduling', () => {
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK, MIRA]) });
     client.engine.catchUp();
     await settle();
-
     // #when
     read.release();
     await waitUntil(() => shown(client, MIRA.k) !== undefined);
-
     // #then
     expect({ mira: shown(client, MIRA.k), stored: storedRecord(client, MIRA.k) }).toEqual({
       mira: MIRA,
       stored: MIRA,
     });
   });
-
   test('a resume between the read and the write stops the write, also once the GM is live again', async () => {
     // #given
     const room = roomRig.openRoom();
     const gate = createGate();
-
     // Alone, so the resume's catch-up ends before the read returns: only the page change can stop
     // the write.
     const client = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
     const read = gate.holdNextRead();
-
     client.engine.pageHidden();
     await settle();
-
     // #when
     client.engine.catchUp();
     await waitUntil(() => requestsOf(room, 'gm-a').length === 2);
     await pause(20);
     read.release();
     await settle();
-
     // #then
     expect(gate.writes).toBe(0);
   });
-
   test('a hidden page during a pause write stops that write and writes on its own', async () => {
     // #given
     const room = roomRig.openRoom();
     const gate = createGate();
     const client = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
     const read = gate.holdNextRead();
-
     client.engine.pageHidden();
     await settle();
-
     // #when
     client.engine.pageHidden();
     read.release();
     await waitUntil(() => roomCopyOf(room) !== null);
     await settle();
-
     // #then
     expect(gate.writes).toBe(1);
   });
-
   test('a stopped write is written again once catch-up ends', async () => {
     // #given
     const room = roomRig.openRoom();
     const gate = createGate();
-
     room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', {
@@ -675,30 +612,24 @@ describe('interruption and rescheduling', () => {
     });
 
     const read = gate.holdNextRead();
-
     client.engine.pageHidden();
     await settle();
     client.engine.catchUp();
     read.release();
     await settle();
-
     const afterStop = gate.writes;
-
     // #when
     await waitUntil(() => client.store.$sync.get().state === 'live');
     await waitUntil(() => roomCopyOf(room) !== null);
-
     // #then
     expect({ afterStop, copy: roomCopyOf(room)?.records }).toEqual({
       afterStop: 0,
-      copy: [PRESET_RECORD, BROK],
+      copy: [BROK, PRESET_RECORD],
     });
   });
-
   test('a trigger during catch-up writes nothing then, and writes once catch-up ends', async () => {
     // #given
     const room = roomRig.openRoom();
-
     room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', {
@@ -708,15 +639,12 @@ describe('interruption and rescheduling', () => {
     // #when
     client.engine.pageHidden();
     await pause(100);
-
     const during = { state: client.store.$sync.get().state, copy: roomCopyOf(room) };
-
     await waitUntil(() => roomCopyOf(room) !== null);
-
     // #then
     expect({ during, copy: roomCopyOf(room)?.records }).toEqual({
       during: { state: 'catching-up', copy: null },
-      copy: [PRESET_RECORD, BROK],
+      copy: [BROK, PRESET_RECORD],
     });
   });
 });
@@ -727,13 +655,10 @@ describe('read-back', () => {
     const room = roomRig.openRoom();
     const gate = createGate();
     const client = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
-
     gate.dropWrites = true;
-
     // #when
     client.engine.pageHidden();
     await waitUntil(() => notices(client).includes('room-copy-not-saved'));
-
     // #then
     expect({
       writes: gate.writes,
@@ -745,22 +670,18 @@ describe('read-back', () => {
       status: 'failed',
     });
   });
-
   test('the next verified write clears the notice', async () => {
     // #given
     const room = roomRig.openRoom();
     const gate = createGate();
     const client = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
-
     gate.dropWrites = true;
     client.engine.pageHidden();
     await waitUntil(() => notices(client).includes('room-copy-not-saved'));
     gate.dropWrites = false;
-
     // #when
     client.engine.pageHidden();
     await waitUntil(() => !notices(client).includes('room-copy-not-saved'));
-
     // #then
     expect({ notices: notices(client), status: roomCopyStatus(client).state }).toEqual({
       notices: [],
@@ -773,7 +694,6 @@ describe('catch-up merge', () => {
   test('a GM merges the copy before it broadcasts state-request on a later catch-up', async () => {
     // #given
     const room = roomRig.openRoom();
-
     room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', {
@@ -782,10 +702,8 @@ describe('catch-up merge', () => {
     });
 
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [MIRA]) });
-
     // The stored records at the moment the second request goes out.
     let storedAtRequest: VersionedRecord | null | undefined;
-
     roomRig.cleanup(
       room.room.onRemote(SYNC_CHANNEL, 'listener', (event) => {
         if (Object(event.data).t === 'state-request' && storedAtRequest === undefined) {
@@ -793,33 +711,25 @@ describe('catch-up merge', () => {
         }
       }),
     );
-
     // #when
     client.engine.catchUp();
     await waitUntil(() => storedAtRequest !== undefined);
-
     // #then
     expect(storedAtRequest).toEqual(MIRA);
   });
-
   test('a GM alone in the room merges the copy and leaves catching-up with no wait', async () => {
     // #given
     const room = roomRig.openRoom();
-
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [MIRA]) });
-
     // #when
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 1500 } });
-
     await waitUntil(() => client.store.$sync.get().state === 'live');
-
     // #then
     expect({ mira: shown(client, MIRA.k), brok: shown(client, BROK.k) }).toEqual({
       mira: MIRA,
       brok: BROK,
     });
   });
-
   test('a GM on a new device with no other GM gets the data from the copy and saves it', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -833,48 +743,35 @@ describe('catch-up merge', () => {
     await waitUntil(() => roomCopyOf(room) !== null);
     writer.engine.stop();
     room.room.leave('gm-a');
-
     // #when
     const newDevice = await startClient(room, 'gm-b', { seeded: [], until: 'live' });
-
     // #then
     expect({
       shown: [shown(newDevice, BROK.k), shown(newDevice, MIRA.k), shown(newDevice, 'preset')],
       saved: storedRecord(newDevice, MIRA.k),
     }).toEqual({ shown: [BROK, MIRA, PRESET_RECORD], saved: MIRA });
   });
-
   test('a player with no data takes the copy of a higher generation, merges it and asks in it', async () => {
     // #given
     const room = roomRig.openRoom();
-
     room.join(GHOST, 'GM');
     room.room.setMetadata({ [KEY]: copyValue(HIGHER, [PRESET_RECORD, BROK]) });
-
     // #when
     const client = await startClient(room, 'player-p', { role: 'PLAYER', seeded: [] });
-
     await waitUntil(() => shown(client, BROK.k) !== undefined);
-
     // #then
     expect(requestsOf(room, 'player-p').map((request) => Object(request).g)).toEqual([HIGHER]);
   });
-
   test('a client that holds records of its generation does not merge a copy of a lower one', async () => {
     // #given
     const room = roomRig.openRoom();
-
     room.room.setMetadata({ [KEY]: copyValue(HIGHER, [PRESET_RECORD, BROK]) });
-
     const client = await startClient(room, 'gm-a', { seeded: [], until: 'live' });
-
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [MIRA]) });
-
     // #when
     client.engine.catchUp();
     await waitUntil(() => client.store.$sync.get().state === 'live');
     await settle();
-
     // #then
     expect(shown(client, MIRA.k) ?? null).toBeNull();
   });
@@ -884,12 +781,9 @@ describe('room copy status in the projection', () => {
   test('with no copy yet it is none, with the limit less all room metadata free', async () => {
     // #given
     const room = roomRig.openRoom();
-
     room.room.setMetadata({ 'other.extension/data': 'x'.repeat(1000) });
-
     // #when
     const client = await startClient(room, 'gm-a', { until: 'live' });
-
     // #then
     // {"other.extension/data":"xxx…"} is 1000 bytes of x and 27 of JSON around them.
     expect(roomCopyStatus(client)).toEqual({
@@ -899,19 +793,15 @@ describe('room copy status in the projection', () => {
       outcome: 'none',
     });
   });
-
   test('after a verified write it is saved, with the copy key bytes used and the rest free', async () => {
     // #given
     const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a', { until: 'live' });
-
     // #when
     client.engine.pageHidden();
     await waitUntil(() => roomCopyStatus(client).state === 'saved');
-
     // #then
     const total = metadataBytes(room);
-
     // The copy is the only key: all its bytes but the two braces are its own.
     expect(roomCopyStatus(client)).toEqual({
       state: 'saved',
@@ -928,7 +818,6 @@ describe('review cases', () => {
     // #given
     const room = roomRig.openRoom();
     const gate = createGate();
-
     gate.holdNextRead();
 
     // #when
@@ -941,11 +830,9 @@ describe('review cases', () => {
     // #then
     expect(client.store.$sync.get()).toMatchObject({ state: 'live', firstCatchUpDone: true });
   });
-
   test('an edit queued during catch-up lands in the room copy after catch-up ends', async () => {
     // #given
     const room = roomRig.openRoom();
-
     room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', {
@@ -955,15 +842,9 @@ describe('review cases', () => {
     // #when
     send(client, setStr(21));
     await waitUntil(() => roomCopyOf(room) !== null);
-
     // #then
-    expect(roomCopyOf(room)?.records).toEqual([
-      PRESET_RECORD,
-      { k: 'row:brok:str', d: { str: 21 }, c: 1, a: 'gm-a' },
-      BROK,
-    ]);
+    expect(roomCopyOf(room)?.records).toEqual([brokWithStr(21, 2, 'gm-a'), PRESET_RECORD]);
   });
-
   test('the jitter puts the write off past the pause', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -977,68 +858,58 @@ describe('review cases', () => {
     // #when
     send(client, setStr(3));
     await pause(100);
-
     const early = roomCopyOf(room);
-
     await pause(100);
-
     // #then
     expect({ early, late: roomCopyOf(room) !== null }).toEqual({ early: null, late: true });
   });
-
   test('a GM that takes a higher generation from the copy saves under that generation', async () => {
     // #given
     const room = roomRig.openRoom();
-
     room.room.setMetadata({ [KEY]: copyValue(HIGHER, [PRESET_RECORD, BROK]) });
-
     // #when
     const client = await startClient(room, 'gm-a', { seeded: [], until: 'live' });
-
     // #then
-    expect(client.backing.get(storageKey('sheet:brok', HIGHER))).toBe(JSON.stringify(BROK));
+    expect(JSON.parse(client.backing.get(storageKey('blk:brok', HIGHER)) ?? 'null')).toEqual(BROK);
   });
-
   test('a demotion clears the not-saved notice', async () => {
     // #given
     const room = roomRig.openRoom();
     const gate = createGate();
     const client = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
-
     gate.dropWrites = true;
     client.engine.pageHidden();
     await waitUntil(() => notices(client).includes('room-copy-not-saved'));
-
     // #when
     client.platform.setRole('PLAYER');
     await waitUntil(() => client.store.$sync.get().role === 'PLAYER');
-
     // #then
     expect(notices(client)).toEqual([]);
   });
-
   test('a rejected write raises the notice and the failed state', async () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     const room = roomRig.openRoom();
     const gate = createGate();
     const client = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
-
     gate.rejectWrites = true;
-
     // #when
     client.engine.pageHidden();
     await waitUntil(() => notices(client).includes('room-copy-not-saved'));
-
     // #then
     expect(roomCopyStatus(client).state).toBe('failed');
   });
-
   test('a player with no GM reads the sheet set from the copy, and no value of a GM-only single sheet reaches its window', async () => {
     // #given
     const room = roomRig.openRoom();
-    const goblin: VersionedRecord = { k: 'row:npc:hp', d: { hp: 7 }, c: 1, a: 'seed' };
+
+    const goblin: VersionedRecord = {
+      k: 'blk:npc',
+      d: { order: 0, cells: { hp: [7, 1, 'seed'] } },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    };
 
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK, goblin]) });
 
@@ -1056,12 +927,10 @@ describe('review cases', () => {
       goblin: null,
     });
   });
-
   test('the writer adopts a copy of a higher generation it reads, and writes none of its own', async () => {
     // #given: the copy appears with no change event, as one another GM wrote while this one slept.
     const room = roomRig.openRoom();
     const gate = createGate();
-
     room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', {
@@ -1072,14 +941,11 @@ describe('review cases', () => {
 
     const higher = copyValue(HIGHER, [PRESET_RECORD, MIRA]);
     const writes = gate.writes;
-
     room.room.setMetadata({ [KEY]: higher });
-
     // #when
     client.engine.pageHidden();
     await waitUntil(() => shown(client, MIRA.k) !== undefined);
     await waitUntil(() => client.store.$sync.get().state === 'live');
-
     // #then
     expect({
       writes: gate.writes - writes,
@@ -1087,31 +953,23 @@ describe('review cases', () => {
       brok: shown(client, BROK.k) ?? null,
     }).toEqual({ writes: 0, copy: higher, brok: null });
   });
-
   test('a GM that cannot read the copy at catch-up shows the failed state', async () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     const room = roomRig.openRoom();
-
-    room.room.setMetadata({ [KEY]: { v: 3, data: 'bm90IGRlZmxhdGU=' } });
-
+    room.room.setMetadata({ [KEY]: { v: 4, data: 'bm90IGRlZmxhdGU=' } });
     // #when
     const client = await startClient(room, 'gm-a', { until: 'live' });
-
     // #then
     expect(roomCopyStatus(client).state).toBe('failed');
   });
-
   test('another extension taking room metadata updates the free size, with no write', async () => {
     // #given
     const room = roomRig.openRoom();
     const client = await startClient(room, 'gm-a', { until: 'live' });
-
     // #when
     room.room.setMetadata({ 'other.extension/data': 'x'.repeat(1000) });
     await waitUntil(() => roomCopyStatus(client).freeBytes !== LIMIT - 2);
-
     // #then
     // {"other.extension/data":"xxx…"} is 1000 bytes of x and 27 of JSON around them.
     expect({ status: roomCopyStatus(client), copy: roomCopyOf(room) }).toEqual({
@@ -1119,24 +977,17 @@ describe('review cases', () => {
       copy: null,
     });
   });
-
   test('a commit merged from another GM schedules this GM to write the copy', async () => {
     // #given
     const room = roomRig.openRoom();
     const a = await startClient(room, 'gm-a', { timing: SHORT_PAUSE, until: 'live' });
     const b = await startClient(room, 'gm-b', { until: 'live' });
-
     // #when
     send(b, setStr(9));
-    await waitUntil(() => shown(a, 'row:brok:str') !== undefined);
+    await waitUntil(() => shown(a, 'blk:brok') !== undefined);
     await waitUntil(() => roomCopyOf(room) !== null);
-
     // #then
-    expect(roomCopyOf(room)?.records).toEqual([
-      PRESET_RECORD,
-      { k: 'row:brok:str', d: { str: 9 }, c: 1, a: 'gm-b' },
-      BROK,
-    ]);
+    expect(roomCopyOf(room)?.records).toEqual([brokWithStr(9, 2, 'gm-b'), PRESET_RECORD]);
   });
 });
 
@@ -1146,38 +997,50 @@ describe('ids made before TASK-37', () => {
     // #given: the room copy and the writer's storage hold competing versions of two old-id keys.
     const room = roomRig.openRoom();
     const sheetId = 'V1StGXR8_Z5jdHi6B-myT';
-    const repKey = `rep:${sheetId}:attack:Uakgb_J5m9g-0JDMbcJqL`;
-    const rowKey = `row:${sheetId}:str`;
-    const storedSheet = sheet(sheetId);
+    const repKey = `blk:${sheetId}:attack:Uakgb_J5m9g-0JDMbcJqL`;
+    const rowKey = `blk:${sheetId}`;
     const copiedSheet = sheet(sheetId, 1, 4, 'other');
-    const storedRep: VersionedRecord = { k: repKey, d: { order: 0, cells: {} }, c: 3, a: 'seed' };
-    const copiedRep: VersionedRecord = { k: repKey, d: { order: 5, cells: {} }, c: 2, a: 'other' };
-    const storedRow: VersionedRecord = { k: rowKey, d: { str: 5 }, c: 2, a: 'seed' };
+    const storedRep: VersionedRecord = fixtureRecord(repKey, { order: 0, cells: {} }, 3, 'seed');
+    const copiedRep: VersionedRecord = fixtureRecord(repKey, { order: 5, cells: {} }, 2, 'other');
+
+    const storedRoot: VersionedRecord = fixtureRecord(
+      rowKey,
+      { set: 'pc', order: 0, cells: { str: 5 } },
+      2,
+      'seed',
+    );
 
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [copiedSheet, copiedRep]) });
 
     const writer = await startClient(room, 'gm-a', {
-      seeded: [PRESET_RECORD, storedSheet, storedRep, storedRow],
+      seeded: [PRESET_RECORD, storedRoot, storedRep],
       until: 'live',
     });
 
     const newDevice = await startClient(room, 'gm-b', { seeded: [], until: 'live' });
-
     // #when
     send(newDevice, { type: 'field-patch', sheetId, target: ROW_STR, fieldId: 'str', value: 12 });
-    await waitUntil(() => shown(writer, rowKey)?.c === 3);
+    await waitUntil(
+      () => blockDataSchema.safeParse(shown(writer, rowKey)?.d).data?.cells.str?.[0] === 12,
+    );
     writer.engine.pageHidden();
-    await waitUntil(() => JSON.stringify(roomCopyOf(room)).includes('"str":12'));
+    await waitUntil(() => JSON.stringify(roomCopyOf(room)).includes('"str":[12,5,"gm-b"]'));
 
     // #then: the higher version of each key wins, and the edit raises the row's counter.
-    const editedRow: VersionedRecord = { k: rowKey, d: { str: 12 }, c: 3, a: 'gm-b' };
+    const editedRoot: VersionedRecord = fixtureRecord(
+      rowKey,
+      { set: 'pc', order: 1, cells: { str: 12 } },
+      5,
+      'gm-b',
+    );
 
+    const mergedRep: VersionedRecord = fixtureRecord(repKey, { order: 5, cells: {} }, 3, 'seed');
     expect({
-      synced: [shown(newDevice, copiedSheet.k), shown(newDevice, repKey), shown(newDevice, rowKey)],
+      synced: [shown(newDevice, rowKey), shown(newDevice, repKey)],
       copy: roomCopyOf(room)?.records,
     }).toEqual({
-      synced: [copiedSheet, storedRep, editedRow],
-      copy: [PRESET_RECORD, storedRep, editedRow, copiedSheet],
+      synced: [editedRoot, mergedRep],
+      copy: [editedRoot, mergedRep, PRESET_RECORD],
     });
   });
 });

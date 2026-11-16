@@ -1,6 +1,8 @@
 import type { PresetCell, PresetSection } from '@/core/preset';
 import {
-  fieldValuesSchema,
+  blockDataSchema,
+  blockKey,
+  cellValues,
   repDataSchema,
   repKeyPrefix,
   type FieldValue,
@@ -24,9 +26,9 @@ export function rowValues(
     return NO_VALUES;
   }
 
-  const data = fieldValuesSchema.safeParse(records.get(`row:${sheetId}:${rowId}`)?.d);
+  const data = blockDataSchema.safeParse(records.get(blockKey(sheetId))?.d);
 
-  return data.success ? new Map(Object.entries(data.data)) : NO_VALUES;
+  return data.success ? new Map(Object.entries(cellValues(data.data.cells))) : NO_VALUES;
 }
 
 // Ties compare by code unit, not by locale, so every client and reload gets the same order.
@@ -46,7 +48,7 @@ export function repeatBlocks(
         blocks.push({
           instanceId: record.k.slice(prefix.length),
           order: data.data.order,
-          values: new Map(Object.entries(data.data.cells)),
+          values: new Map(Object.entries(cellValues(data.data.cells))),
         });
       }
     }

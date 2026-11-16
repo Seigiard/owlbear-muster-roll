@@ -1,14 +1,12 @@
 import { acceptedFieldValue, targetFields } from '@/core/field-patch';
-import { counterAbove, ownersBySheet, sameRecord } from '@/core/merge';
-import type { Preset, PresetFieldCell } from '@/core/preset';
+import { compareCells, ownersBySheet } from '@/core/merge';
+import { plainRowIdOf, type Preset } from '@/core/preset';
 import {
-  fieldValuesSchema,
+  blockDataSchema,
   parseRepKey,
   playerDataSchema,
   playerIdSchema,
   plinkPrefix,
-  repDataSchema,
-  type FieldValues,
   type VersionedRecord,
 } from '@/core/records';
 import { resolveSheet, sortSheets, type SheetPolicy, type SheetSummary } from '@/core/sheets';
@@ -151,18 +149,9 @@ export type ProposalVerdict =
   | { kind: 'denied' }
   | { kind: 'stale'; current: VersionedRecord };
 
-// Where a player's record lands: a plain row or a repeat block of one sheet.
-type ProposalPlace = {
-  sheetId: string;
-  target: PlayerEditTarget;
-};
-
 // `unknown-field`: the record passes every check but one: it sets a field id its row or repeat
 // block does not have, as a player whose preset is older sends it.
 type ProposalJudgement = 'allowed' | 'denied' | 'unknown-field';
-
-// How the values of a record compare with the fields of its row or repeat block.
-type DataFit = 'fits' | 'denied' | 'unknown-field';
 
 // FR3, AD-4: the checks of a player's record that read no version. `proposalJudgement` tells why a
 // record fails. The GM client runs it on a proposal, and the player's own client before it queues
@@ -208,19 +197,36 @@ export function checkProposal(
       : { kind: 'denied' };
   }
 
-  if (sameRecord(record, current)) {
-    return { kind: 'commit' };
-  }
-
-  if (record.k.startsWith('rep:') && current.d === null) {
+  if (current.d === null) {
     return record.d === null ? { kind: 'commit-existing', record: current } : { kind: 'denied' };
   }
+
+  if (record.l?.[0] !== current.l?.[0] || record.l?.[1] !== current.l?.[1])
+    return { kind: 'denied' };
 
   if (judgement === 'unknown-field') {
     return { kind: 'stale', current };
   }
 
-  return counterAbove(record, current) ? { kind: 'commit' } : { kind: 'stale', current };
+  if (record.d === null) return { kind: 'commit' };
+  const proposed = blockDataSchema.parse(record.d);
+  const held = blockDataSchema.parse(current.d);
+
+  const alreadyHeld = Object.entries(proposed.cells).every(([id, cell]) => {
+    const old = held.cells[id];
+
+    return old !== undefined && compareCells(cell, old) === 0;
+  });
+
+  if (alreadyHeld) return { kind: 'commit-existing', record: current };
+
+  const stale = Object.entries(proposed.cells).some(([id, cell]) => {
+    const old = held.cells[id];
+
+    return old !== undefined && compareCells(cell, old) !== 0 && cell[1] <= old[1];
+  });
+
+  return stale ? { kind: 'stale', current } : { kind: 'commit' };
 }
 
 // The party as a window gets it: one entry per valid player id, a GM when any of its connections
@@ -336,43 +342,89 @@ function heldRight(record: VersionedRecord, sheetId: string): HeldRight | null {
   return null;
 }
 
-// AD-4, AD-18: the key is a `row:` or `rep:` of a sheet whose template is visible and whose row or
+// AD-4, AD-18: the key is a block of a sheet whose template is visible and whose target row or
 // repeat section is on a tab players see. A sheet of a sheet set must be live, and the player must
-// hold a live `acl:` of it. A single sheet must be player-editable. Only the values the record sets
-// or changes against the current record of its key are judged: each must be a field of its row or
-// repeat block with the field's JSON type, so a value an older preset left keeps no edit of its row
-// out. `d: null` is a repeat block's removal only.
+// hold a live `acl:` of it. A single sheet must be player-editable. Only cells the proposal changes
+// against the current block are judged, so an unrelated value left by an older preset cannot deny
+// the edit. `d: null` is a repeat block's removal only.
 function proposalJudgement(
   context: ProposalContext,
   playerId: string,
   record: VersionedRecord,
 ): ProposalJudgement {
-  const place = proposalPlace(record.k);
+  if (!record.k.startsWith('blk:')) return 'denied';
+  const parts = record.k.split(':');
+  const sheetId = parts[1] ?? '';
+  const repeat = parseRepKey(record.k);
 
-  if (place === null) {
-    return 'denied';
+  if (repeat === null && parts.length !== 2) return 'denied';
+  const policy = resolveSheet(context.records, context.preset, sheetId);
+
+  if (policy === null || !playerMayEdit(policy, context.records, playerId)) return 'denied';
+  const current = context.records.get(record.k);
+
+  if (record.d === null) {
+    return repeat !== null &&
+      playerMayEditField(policy, context.records, playerId, {
+        kind: 'rep',
+        sectionId: repeat.sectionId,
+      })
+      ? 'allowed'
+      : 'denied';
   }
 
-  const policy = resolveSheet(context.records, context.preset, place.sheetId);
+  const data = blockDataSchema.safeParse(record.d).data;
 
-  if (policy === null || !playerMayEditField(policy, context.records, playerId, place.target)) {
+  if (data === undefined) return 'denied';
+  const before = blockDataSchema.safeParse(current?.d).data;
+
+  if (before !== undefined && (before.order !== data.order || before.set !== data.set))
     return 'denied';
+
+  if (
+    current === undefined &&
+    (repeat === null ||
+      data.set !== undefined ||
+      record.l === undefined ||
+      record.l[0] > record.c ||
+      record.l?.[1] !== record.a)
+  )
+    return 'denied';
+
+  if (
+    repeat !== null &&
+    !playerMayEditField(policy, context.records, playerId, {
+      kind: 'rep',
+      sectionId: repeat.sectionId,
+    })
+  )
+    return 'denied';
+  let verdict: ProposalJudgement = 'allowed';
+
+  for (const [id, cell] of Object.entries(data.cells)) {
+    const held = before?.cells[id];
+
+    if (held !== undefined && compareCells(cell, held) === 0) continue;
+
+    if (cell[1] !== record.c || cell[2] !== record.a) return 'denied';
+    const rowId = repeat === null ? plainRowIdOf(policy.template, id) : null;
+
+    const target: PlayerEditTarget =
+      repeat === null
+        ? { kind: 'row', rowId: rowId ?? '' }
+        : { kind: 'rep', sectionId: repeat.sectionId };
+
+    const field = targetFields(policy.template, target)?.find((item) => item.id === id);
+
+    if (field === undefined) verdict = 'unknown-field';
+    else if (
+      !playerMayEditField(policy, context.records, playerId, target) ||
+      !acceptedFieldValue(field, cell[0]).ok
+    )
+      return 'denied';
   }
 
-  const fields = targetFields(policy.template, place.target);
-
-  if (fields === null) {
-    return 'denied';
-  }
-
-  const fit = dataFit(
-    fields,
-    place.target.kind,
-    record.d,
-    context.records.get(record.k)?.d ?? null,
-  );
-
-  return fit === 'fits' ? 'allowed' : fit;
+  return verdict;
 }
 
 // True when `key` names a repeat block whose instance id the same sheet holds under another
@@ -401,73 +453,6 @@ function instanceHeldElsewhere(
   }
 
   return false;
-}
-
-// `row:{sheetId}:{rowId}` or `rep:{sheetId}:{sectionId}:{instanceId}`. Any other form is the GM's.
-function proposalPlace(key: string): ProposalPlace | null {
-  const [form, sheetId, id, instanceId, ...rest] = key.split(':');
-
-  if (sheetId === undefined || sheetId === '' || id === undefined || id === '' || rest.length > 0) {
-    return null;
-  }
-
-  if (form === 'row' && instanceId === undefined) {
-    return { sheetId, target: { kind: 'row', rowId: id } };
-  }
-
-  if (form === 'rep' && instanceId !== undefined && instanceId !== '') {
-    return { sheetId, target: { kind: 'rep', sectionId: id } };
-  }
-
-  return null;
-}
-
-// Every value that `d` sets or changes against `currentD` names a field of the row and has its JSON
-// type. Only a repeat block takes `d: null`.
-function dataFit(
-  fields: readonly PresetFieldCell[],
-  kind: ProposalPlace['target']['kind'],
-  d: VersionedRecord['d'],
-  currentD: VersionedRecord['d'],
-): DataFit {
-  if (d === null) {
-    return kind === 'rep' ? 'fits' : 'denied';
-  }
-
-  const values = valuesOf(kind, d);
-
-  if (values === undefined) {
-    return 'denied';
-  }
-
-  const before = valuesOf(kind, currentD) ?? {};
-  let fit: DataFit = 'fits';
-
-  for (const [fieldId, value] of Object.entries(values)) {
-    if (Object.hasOwn(before, fieldId) && before[fieldId] === value) {
-      continue;
-    }
-
-    const field = fields.find((cell) => cell.id === fieldId);
-
-    if (field === undefined) {
-      fit = 'unknown-field';
-    } else if (!acceptedFieldValue(field, value).ok) {
-      return 'denied';
-    }
-  }
-
-  return fit;
-}
-
-// The field values of a row's `d`, or the cells of a repeat block's.
-function valuesOf(
-  kind: ProposalPlace['target']['kind'],
-  d: VersionedRecord['d'],
-): FieldValues | undefined {
-  return kind === 'row'
-    ? fieldValuesSchema.safeParse(d).data
-    : repDataSchema.safeParse(d).data?.cells;
 }
 
 function byName(first: AccessRow, second: AccessRow): number {

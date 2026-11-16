@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { fieldValuesSchema, rowKey, type VersionedRecord } from '@/core/records';
+import { blockDataSchema, rowKey, type VersionedRecord } from '@/core/records';
 import type { NameField } from '@/core/sheets';
 import { copy } from '@/copy';
 import { IconButton } from '@/ui/primitives/icon-button';
@@ -98,7 +98,7 @@ export function SheetHeader({
         />
       </FieldEditingContext>
     ) : (
-      <h1 className={clsx('min-w-0 flex-1 px-2 [overflow-wrap:anywhere] text-text', NAME_CLASS)}>
+      <h1 className={clsx('min-w-0 flex-1 px-2 wrap-anywhere text-text', NAME_CLASS)}>
         {name === '' ? copy.unnamed : name}
       </h1>
     );
@@ -173,12 +173,14 @@ function NameInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const errorId = useId();
   const record = records.get(rowKey(sheetId, nameField.rowId));
-  const values = fieldValuesSchema.safeParse(record?.d);
+  const values = blockDataSchema.safeParse(record?.d);
 
   const edit = useTextFieldEdit('text', {
     place: { sheetId, target: { kind: 'row', rowId: nameField.rowId }, record },
     fieldId: nameField.fieldId,
-    recordValue: values.success ? values.data[nameField.fieldId] : undefined,
+    recordValue: values.success
+      ? (values.data.cells[nameField.fieldId]?.[0] ?? undefined)
+      : undefined,
   });
 
   useEffect(() => {

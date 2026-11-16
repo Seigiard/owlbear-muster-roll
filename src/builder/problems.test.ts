@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-
 import { parsePresetFile, PRESET_FILE_BYTE_LIMIT, type Preset } from '@/core/preset';
 import { copy } from '@/copy';
-
 import {
   addTab,
   EMPTY_DOCUMENT,
@@ -33,12 +31,10 @@ describe('builderProblems', () => {
   test('the empty preset has one problem, at the preset, and no download', () => {
     // #when
     const problems = builderProblems(EMPTY_DOCUMENT);
-
     // #then
     expect(problems).toEqual([{ uid: PRESET_UID, failure: { code: 'no-templates' } }]);
     expect(downloadText(EMPTY_DOCUMENT)).toBeNull();
   });
-
   test('marks each invalid state at its item, in tree order', () => {
     // #given
     const document = fromPreset({
@@ -72,10 +68,8 @@ describe('builderProblems', () => {
 
     // #when
     const problems = builderProblems(document);
-
     // #then
     const at = (...path: number[]): string => uidAt(document, path) ?? '';
-
     expect(problems).toEqual([
       { uid: WINDOW_UID, failure: { code: 'bad-window' } },
       { uid: at(0, 0, 0, 0), failure: { code: 'row-too-wide' } },
@@ -85,7 +79,6 @@ describe('builderProblems', () => {
     ]);
     expect(downloadText(document)).toBeNull();
   });
-
   test('puts a template problem before the problems of its items', () => {
     // #given
     const document = fromPreset({
@@ -102,7 +95,6 @@ describe('builderProblems', () => {
 
     // #when
     const problems = builderProblems(document);
-
     // #then
     expect(problems.map((problem) => problem.uid)).toEqual([
       uidAt(document, [0]) ?? '',
@@ -124,7 +116,6 @@ describe('builderProblems', () => {
 
     // #when
     const problems = builderProblems(document);
-
     // #then
     expect(problems).toEqual([{ uid: PRESET_UID, failure: { code: 'too-large' } }]);
     expect(downloadText(document)).toBeNull();
@@ -136,25 +127,20 @@ describe('builderProblems with tabs', () => {
     // #given
     const document = fromPreset(VALID);
     const added = edited(addTab(document, uidOf(document, [0])));
-
     // #when
     const problems = builderProblems(added.document);
-
     // #then
     expect(problems).toEqual([
       { uid: uidOf(document, [0, 0]), failure: { code: 'untitled-tab', detail: 'pc' } },
       { uid: added.changed, failure: { code: 'untitled-tab', detail: 'pc' } },
     ]);
   });
-
   test('marks a template with no tabs at the template, and gives no download', () => {
     // #given
     const document = fromPreset(VALID);
     const removed = edited(removeItem(document, uidOf(document, [0, 0])));
-
     // #when
     const problems = builderProblems(removed.document);
-
     // #then
     expect(problems).toContainEqual({
       uid: uidOf(document, [0]),
@@ -186,7 +172,6 @@ describe('downloadText', () => {
   test('is the file the upload accepts', () => {
     // #when
     const text = downloadText(fromPreset(VALID));
-
     // #then
     expect(text).not.toBeNull();
     expect(parsePresetFile(text ?? '')).toEqual({ ok: true, value: VALID });
@@ -197,11 +182,9 @@ describe('problemReason', () => {
   test("is the reason of the upload's refusal message", () => {
     // #when
     const reason = problemReason({ code: 'bad-formula', detail: '1d20+dx' });
-
     // #then
     expect(reason).toBe('ошибка в формуле «1d20+dx»');
   });
-
   test('a preset with no templates says what to add', () => {
     // #when
     const reason = problemReason(

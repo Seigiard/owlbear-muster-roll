@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import { copy } from '@/copy';
-
 import {
   ADD,
   connectionIdOf,
@@ -19,7 +17,6 @@ import {
 
 const OPEN_ITEM = 'app.muster-roll/open-sheet';
 const SHEET_NAME = 'Имя листа';
-
 const GM: ClientParams = { client: 'a', device: 'a', name: 'Мастер' };
 
 const PLAYER: ClientParams = {
@@ -103,14 +100,14 @@ const PRESET = {
 };
 
 const RECORDS: readonly StoredRecord[] = [
-  record('sheet:brok', { set: 'pc', order: 0 }),
-  record('row:brok:name', { name: 'Брок' }),
-  record('row:brok:secret', { secret: 4 }),
+  record('blk:brok', { set: 'pc', order: 0 }),
+  record('blk:brok', { name: 'Брок' }),
+  record('blk:brok', { secret: 4 }),
   record('acl:brok:lisa', { name: 'Лиза' }),
   repRecord('brok', 'contact', 'spy', 0, { contact: 'Осведомитель' }),
   record('link:t-sheet', { s: 'brok' }),
   record('link:t-secret', { s: 'brok', i: 'spy' }),
-  record('row:vault:stash', { stash: 'Ключ' }),
+  record('blk:vault', { stash: 'Ключ' }),
 ];
 
 const HIDDEN_LINK_RECORDS = RECORDS.filter((one) => one.k !== 'link:t-sheet');
@@ -126,17 +123,14 @@ test('a GM sees a hidden tab and a player sees only the visible tab and its sect
 }) => {
   // #given
   const gm = await openGm(context);
-
   // #when
   const player = await openPlayer(context);
-
   // #then
   await expect(gm.window.getByRole('tablist', { name: copy.label.sheetTabs })).toBeVisible();
   await expect(sheetTab(gm.window, 'Основное')).toBeVisible();
   await expect(sheetTab(gm.window, 'Заметки мастера')).toBeVisible();
   await sheetTab(gm.window, 'Заметки мастера').click();
   await expect(gm.window.getByRole('heading', { name: 'Секреты' })).toBeVisible();
-
   await expect(player.window.getByRole('heading', { name: 'Открытое' })).toBeVisible();
   await expect(player.window.getByRole('heading', { name: 'Секреты' })).toHaveCount(0);
   await expect(player.window.getByRole('tablist', { name: copy.label.sheetTabs })).toHaveCount(0);
@@ -148,10 +142,8 @@ test('a player sees the header but no tab row or content when every tab is hidde
   // #given
   await openGm(context);
   const player = await openPlayer(context);
-
   // #when
   await player.window.getByRole('tab', { name: 'Хранилище' }).click();
-
   // #then
   await expect(player.window.getByRole('heading', { level: 1, name: 'Хранилище' })).toBeVisible();
   await expect(player.window.getByRole('tablist', { name: copy.label.sheetTabs })).toHaveCount(0);
@@ -164,10 +156,8 @@ test('a hidden-tab name stays read-only while the player header says they can ed
 }) => {
   // #given
   await openGm(context);
-
   // #when
   const player = await openPlayer(context);
-
   // #then
   await expect(player.window.getByRole('heading', { level: 1, name: 'Брок' })).toBeVisible();
   await expect(player.window.getByRole('textbox', { name: SHEET_NAME })).toHaveCount(0);
@@ -179,10 +169,8 @@ test('a hidden-tab name stays read-only while the player header says read-only',
 }) => {
   // #given
   await openGm(context, READ_ONLY_RECORDS);
-
   // #when
   const player = await openPlayer(context);
-
   // #then
   await expect(player.window.getByRole('heading', { level: 1, name: 'Брок' })).toBeVisible();
   await expect(player.window.getByRole('textbox', { name: SHEET_NAME })).toHaveCount(0);
@@ -193,10 +181,8 @@ test('a player roll on a visible tab reads a field kept on a hidden tab', async 
   // #given
   await openGm(context);
   const player = await openPlayer(context);
-
   // #when
   await player.window.getByRole('button', { name: 'Проверка', exact: true }).click();
-
   // #then: 1 on d1 plus the hidden field value 4.
   await expect.poll(() => shownNotifications(player)).toEqual(['Лиза: Брок, Проверка — 5']);
 });
@@ -205,10 +191,8 @@ test('a hidden-tab repeat link gives a player no token menu entry', async ({ con
   // #given
   await openGm(context);
   const player = await openPlayer(context);
-
   // #when
   const tokens = await playerOpenTokens(player.background);
-
   // #then
   expect(tokens).toEqual(['t-sheet']);
 });
@@ -219,10 +203,8 @@ test('a player token menu is empty when its only link targets a hidden tab', asy
   // #given
   await openGm(context, HIDDEN_LINK_RECORDS);
   const player = await openPlayer(context);
-
   // #when
   const tokens = await playerOpenTokens(player.background);
-
   // #then
   expect(tokens).toEqual([]);
 });
@@ -231,10 +213,8 @@ test('a player token menu is empty when the room has no links', async ({ context
   // #given
   await openGm(context, NO_LINK_RECORDS);
   const player = await openPlayer(context);
-
   // #when
   const tokens = await playerOpenTokens(player.background);
-
   // #then
   expect(tokens).toEqual([]);
 });
@@ -245,11 +225,9 @@ test('a selected token linked to a hidden-tab repeat block gives a player no sel
   // #given
   const gm = await openGm(context);
   const player = await openPlayer(context);
-
   // #when
   await selectOnMap(gm.window, ['t-secret']);
   await selectOnMap(player.window, ['t-secret']);
-
   // #then
   await expect(gm.window.getByRole('tab', { name: 'Брок, токен выделен' })).toBeVisible();
   await expect(player.window.getByRole('tab', { name: /токен выделен/ })).toHaveCount(0);
@@ -261,11 +239,8 @@ async function openGm(
   records: readonly StoredRecord[] = RECORDS,
 ): Promise<RoomClient> {
   const window = await openClientWindow(context, GM);
-
   await seedStorage(window, records, JSON.stringify(PRESET), GM.device);
-
   const background = await openClientBackground(context, GM);
-
   await expect(window.getByRole('button', { name: ADD })).toBeVisible();
 
   return { window, background, connectionId: connectionIdOf(GM) };
@@ -274,7 +249,6 @@ async function openGm(
 async function openPlayer(context: BrowserContext): Promise<RoomClient> {
   const window = await openClientWindow(context, PLAYER);
   const background = await openClientBackground(context, PLAYER);
-
   await expect(window.getByRole('tab', { name: 'Брок' })).toBeVisible();
 
   return { window, background, connectionId: connectionIdOf(PLAYER) };

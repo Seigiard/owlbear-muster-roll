@@ -93,7 +93,7 @@ type SheetRow = {
   pending: RowPending;
 };
 
-// One repeat block: every row of its section, with the values of one `rep:` record.
+// One repeat block: every row of its section, with the values of one descendant block record.
 type SheetBlock = {
   instanceId: string;
   // The value of the section's first field, "" when empty.
@@ -663,8 +663,8 @@ function plainRows(
   });
 }
 
-// CAP-5: all rows of a repeat section form one repeat block, so every row of a block reads and
-// writes the block's one `rep:` record, and a formula in any of them reaches every field of it.
+// CAP-5: all rows of a repeat section form one repeat block, so every row reads and writes the same
+// descendant block record, and a formula in any row reaches every field of that block.
 function repeatBlocksOf(
   section: PresetSection,
   tabIndex: number,

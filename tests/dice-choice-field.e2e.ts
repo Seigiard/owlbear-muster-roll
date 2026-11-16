@@ -1,16 +1,14 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import type { Preset } from '@/core/preset';
 import { previewSheets } from '@/preview/sample-records';
-
 import {
   connectionIdOf,
   openClientBackground,
   openClientWindow,
   pcSheet,
   seedStorage,
-  storedData,
+  storedCell,
   type ClientParams,
   type RoomClient,
 } from './support/room';
@@ -54,7 +52,6 @@ const PRESET: Preset = {
 };
 
 const PRESET_TEXT = JSON.stringify(PRESET);
-
 const SHEET = pcSheet('brok', 'Брок', 0);
 
 test.beforeEach(async ({ page }) => {
@@ -64,38 +61,34 @@ test.beforeEach(async ({ page }) => {
 test('the preview sample value is the first dice option', () => {
   // #given
   const preset = PRESET;
-
   // #when
   const preview = previewSheets(preset, 'sample');
-
   // #then
-  expect(preview.records.get('row:preview-1:weapon_die')?.d).toEqual({ weapon_die: 'd4' });
+  expect(preview.records.get('blk:preview-1')?.d).toEqual({
+    set: 'pc',
+    order: 1,
+    cells: {
+      name: ['Имя', 1, 'preview'],
+      weapon_die: ['d4', 1, 'preview'],
+    },
+  });
 });
 
 test('a GM picks d8, saves it, and the damage roll notification names 1d8', async ({ context }) => {
   // #given
   const gm = await openGm(context);
-
   await expect(diePicker(gm.window)).toBeVisible();
-
   // #when
   await diePicker(gm.window).selectOption('d8');
-
   // #then
   await expect
-    .poll(() => storedData(gm.window, 'row:brok:weapon_die'))
-    .toEqual({
-      weapon_die: 'd8',
-    });
-
+    .poll(() => storedCell(gm.window, 'blk:brok', 'weapon_die'))
+    .toEqual(['d8', 2, gm.connectionId]);
   // #when
   await damageButton(gm.window).click();
-
   // #then
   await expect.poll(() => shownNotifications(gm)).toHaveLength(1);
-
   const [notification] = await shownNotifications(gm);
-
   expect(notification).toMatch(/^Мастер: Брок, Урон \(1d8\) — [1-8]$/);
 });
 
@@ -104,12 +97,9 @@ test('an empty dice-choice field shows its labelled field error and sends no rol
 }) => {
   // #given
   const gm = await openGm(context);
-
   await expect(diePicker(gm.window)).toBeVisible();
-
   // #when
   await damageButton(gm.window).click();
-
   // #then
   await expect(messageUnderDamage(gm.window)).toHaveText(
     'Нельзя бросить: поле «Урон» пустое или не число',
@@ -119,9 +109,7 @@ test('an empty dice-choice field shows its labelled field error and sends no rol
 
 async function openGm(context: BrowserContext): Promise<RoomClient> {
   const window = await openClientWindow(context, GM);
-
   await seedStorage(window, SHEET, PRESET_TEXT, GM.device);
-
   const background = await openClientBackground(context, GM);
 
   return { window, background, connectionId: connectionIdOf(GM) };

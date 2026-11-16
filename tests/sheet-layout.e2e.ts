@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import { cssValue, renderedColor, tokenColor } from './support/colors';
 import { openRoom, record } from './support/room';
 
@@ -115,22 +114,27 @@ const PRESET = {
   ],
 } as const;
 
-type Box = { x: number; y: number; width: number; height: number };
+type Box = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
 const RECORDS = [
-  record('sheet:brok', { set: 'pc', order: 0 }),
-  record('sheet:liza', { set: 'pc', order: 1 }),
-  record('row:brok:str', { str: 14, str_tired: true }),
-  record('row:brok:hp', { hp: 7, hp_max: 12 }),
-  record('row:brok:motto', { motto: 'Брок' }),
-  record('row:liza:motto', { motto: 'Лиза' }),
-  record('row:brok:wide_a', { wide_a: LONG_VALUE, wide_b: LONG_VALUE }),
-  record('row:brok:notes', { notes: 'Первая\nВторая' }),
-  record('rep:brok:attack:i2', { order: 2, cells: { attack: 'Лук' } }),
-  record('rep:brok:attack:i1', { order: 1, cells: { attack: 'Меч', bonus: 3 } }),
-  record('rep:brok:attack:i0', { order: 2, cells: { attack: 'Нож' } }),
-  record('rep:liza:attack:x', { order: 0, cells: { attack: 'Чужой' } }),
-  record('row:liza:str', { str: 9 }),
+  record('blk:brok', { set: 'pc', order: 0 }),
+  record('blk:liza', { set: 'pc', order: 1 }),
+  record('blk:brok', { str: 14, str_tired: true }),
+  record('blk:brok', { hp: 7, hp_max: 12 }),
+  record('blk:brok', { motto: 'Брок' }),
+  record('blk:liza', { motto: 'Лиза' }),
+  record('blk:brok', { wide_a: LONG_VALUE, wide_b: LONG_VALUE }),
+  record('blk:brok', { notes: 'Первая\nВторая' }),
+  record('blk:brok:attack:i2', { order: 2, cells: { attack: 'Лук' } }),
+  record('blk:brok:attack:i1', { order: 1, cells: { attack: 'Меч', bonus: 3 } }),
+  record('blk:brok:attack:i0', { order: 2, cells: { attack: 'Нож' } }),
+  record('blk:liza:attack:x', { order: 0, cells: { attack: 'Чужой' } }),
+  record('blk:liza', { str: 9 }),
 ] as const;
 
 test.beforeEach(async ({ page }) => {
@@ -174,7 +178,6 @@ test('a grid wider than its section scrolls inside the section, not the page', a
   // #given
   await openSheet(page, context);
   const scroller = region(page, 'Широкая').locator('[data-section-body]');
-
   // #then
   expect({
     section: await overflows(scroller),
@@ -190,7 +193,6 @@ test('a section with no columns flows each row inline and wraps it', async ({ pa
   const label = await box(section.getByText('Хиты сейчас'));
   const value = await box(section.getByRole('textbox', { name: 'Хиты сейчас' }));
   const last = await box(section.getByRole('textbox', { name: 'из максимума' }));
-
   // #then
   expect({
     valueBesideLabel: value.x > label.x + label.width && value.y < label.y + label.height,
@@ -204,14 +206,11 @@ test('sections 1/3, 1/3, 1/3, 1/2, full, none and none sit three in a line, then
 }) => {
   // #given
   await openSheet(page, context);
-
   // #when
   const { line, sections } = await sectionBoxes(page);
-
   // #then
   const third = (line.width - 2 * SECTION_GAP) / 3;
   const half = (line.width - SECTION_GAP) / 2;
-
   expect(sections.map((one) => Math.round(one.width))).toEqual(
     [third, third, third, half, line.width, line.width, line.width].map(Math.round),
   );
@@ -226,10 +225,8 @@ test('below 480 px of content area every section takes the whole line', async ({
   // #given
   await page.setViewportSize({ width: 470, height: 800 });
   await openSheet(page, context);
-
   // #when
   const { line, sections } = await sectionBoxes(page);
-
   // #then
   expect(sections.map((one) => Math.round(one.width))).toEqual(
     Array.from({ length: 7 }, () => Math.round(line.width)),
@@ -239,7 +236,6 @@ test('below 480 px of content area every section takes the whole line', async ({
 test('a text cell shows its label', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
-
   // #then
   await expect(region(page, 'Сетка').getByText('Ловкость', { exact: true })).toBeVisible();
 });
@@ -248,7 +244,6 @@ test('stored text, number and check values show in their fields', async ({ page,
   // #given
   await openSheet(page, context);
   const grid = region(page, 'Сетка');
-
   // #then
   await expect(grid.getByRole('textbox', { name: 'Сила' })).toHaveValue('14');
   await expect(grid.getByRole('checkbox', { name: 'Сила' })).toBeChecked();
@@ -258,7 +253,6 @@ test('stored text, number and check values show in their fields', async ({ page,
 test('a text value keeps its line breaks', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
-
   // #then
   await expect(page.getByRole('textbox', { name: 'Заметки' })).toHaveValue('Первая\nВторая');
 });
@@ -267,7 +261,6 @@ test('a field with no value shows an empty value area', async ({ page, context }
   // #given
   await openSheet(page, context);
   const empty = region(page, 'Сетка').getByRole('textbox', { name: 'Ловкость' });
-
   // #then
   await expect(empty).toHaveValue('');
   await expect(empty).toBeVisible();
@@ -281,7 +274,6 @@ test('a dice cell is a button labelled by the preceding text cell, otherwise by 
   // #given
   await openSheet(page, context);
   const rows = rowsOf(region(page, 'Строки'));
-
   // #then
   await expect(rows.nth(0)).toHaveText('Хиты сейчасиз максимума');
   expect(await valuesOf(rows.nth(0).getByRole('textbox'))).toEqual(['7', '12']);
@@ -314,7 +306,6 @@ test("a repeat section shows this sheet's instances by order, then id, and no ot
 }) => {
   // #given
   await openSheet(page, context);
-
   // #then
   expect(await valuesOf(region(page, 'Атаки').getByRole('textbox', { name: 'attack' }))).toEqual([
     'Меч',
@@ -329,10 +320,8 @@ test("the other character's tab shows its own instances and values only", async 
 }) => {
   // #given
   await openSheet(page, context);
-
   // #when
   await page.getByRole('tab', { name: 'Лиза' }).click();
-
   // #then
   await expect(region(page, 'Сетка').getByRole('textbox', { name: 'Сила' })).toHaveValue('9');
   expect(await valuesOf(region(page, 'Атаки').getByRole('textbox', { name: 'attack' }))).toEqual([
@@ -354,7 +343,6 @@ test('rows do not stripe, and a row under the pointer takes the fill', async ({
 
   // #when
   await rows.nth(1).hover();
-
   // #then: the fill fades in over 150 ms, so the check waits for it to settle.
   expect(atRest).toEqual(atRest.map(() => TRANSPARENT));
   await expect
@@ -366,7 +354,6 @@ test('repeat blocks after the first sit under a hairline', async ({ page, contex
   // #given: all rows of a repeat section form one repeat block (CAP-5).
   await openSheet(page, context);
   const blocks = region(page, 'Атаки').locator('[data-repeat-block]');
-
   // #then
   expect({
     first: await cssValue(blocks.nth(0), 'border-top-width'),
@@ -387,7 +374,6 @@ test('a titled section has a muted section-heading over a hairline and no box', 
   await openSheet(page, context);
   const section = region(page, 'Сетка');
   const heading = section.getByRole('heading', { level: 2, name: 'Сетка' });
-
   // #then
   expect({
     size: await cssValue(heading, 'font-size'),
@@ -456,7 +442,6 @@ test('a repeat section with no instances shows its heading and no row', async ({
   // #given
   await openSheet(page, context);
   const section = region(page, 'Пусто');
-
   // #then
   await expect(section.getByRole('heading', { name: 'Пусто' })).toBeVisible();
   await expect(rowsOf(section)).toHaveCount(0);
@@ -491,7 +476,10 @@ async function box(locator: Locator): Promise<Box> {
   return found;
 }
 
-async function boxes(row: Locator): Promise<{ row: Box; cells: Box[] }> {
+async function boxes(row: Locator): Promise<{
+  row: Box;
+  cells: Box[];
+}> {
   return row.evaluate((element) => ({
     row: element.getBoundingClientRect().toJSON(),
     cells: [...element.children].map((child) => child.getBoundingClientRect().toJSON()),
@@ -503,7 +491,10 @@ function overflows(locator: Locator): Promise<boolean> {
 }
 
 // The sections of the open tab, in preset order, and the line they wrap in.
-async function sectionBoxes(page: Page): Promise<{ line: Box; sections: Box[] }> {
+async function sectionBoxes(page: Page): Promise<{
+  line: Box;
+  sections: Box[];
+}> {
   const line = page.getByRole('tabpanel').locator('[data-sheet-body]');
 
   return {

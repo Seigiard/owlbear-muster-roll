@@ -1,6 +1,6 @@
 import { checkProposal, type ProposalContext } from '@/core/access';
 import type { JsonValue } from '@/core/json';
-import { compareGenerations } from '@/core/merge';
+import { assembleRecords, compareGenerations } from '@/core/merge';
 import { fitsOneMessage, recordFitsOneMessage } from '@/core/message-size';
 import {
   admitRoomMessage,
@@ -17,7 +17,7 @@ import {
 import { decodeStateRecords } from '@/core/state-records';
 import type { Generation } from '@/core/storage-key';
 import type { Preset } from '@/core/preset';
-import { parseRepKey, type VersionedRecord } from '@/core/records';
+import { blockDataSchema, parseRepKey, type VersionedRecord } from '@/core/records';
 import type { PlayerRole } from '@/core/visibility';
 import type { ComposeContext } from '@/replica/composers';
 import { blockLinkTombstones } from '@/replica/composers';
@@ -77,6 +77,7 @@ export type RoomProtocol = {
 
 export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   let roomMessages: Promise<void> = Promise.resolve();
+  const proposals = new Map<string, { n: number; parts: Map<number, VersionedRecord> }>();
 
   function receive(event: RoomProtocolEvent): void {
     // One message at a time in arrival order, so a sender lookup never lets a later message
@@ -154,10 +155,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   ): void {
     switch (message.t) {
       case 'commit': {
-        const cleared =
-          ports.role() === 'GM'
-            ? false
-            : ports.pendingEdits.answered([...message.acks, ...message.records.map(editIdOf)]);
+        const cleared = ports.role() === 'GM' ? false : ports.pendingEdits.answered(message.acks);
 
         // AD-8: another GM's edit changed the replica, so this GM writes too. The jitter keeps
         // GM clients from writing together.
@@ -225,10 +223,32 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
       return;
     }
 
-    const [record] = message.records;
+    let [record] = message.records;
 
     if (record === undefined) {
       return;
+    }
+
+    if (message.n > 1) {
+      const key = JSON.stringify([sender, message.g, editIdOf(record)]);
+
+      if (!proposals.has(key) && proposals.size >= 100)
+        proposals.delete(proposals.keys().next().value ?? '');
+
+      const assembly = proposals.get(key) ?? {
+        n: message.n,
+        parts: new Map<number, VersionedRecord>(),
+      };
+
+      if (assembly.n !== message.n) return;
+      assembly.parts.set(message.i, record);
+      proposals.set(key, assembly);
+
+      if (assembly.parts.size !== assembly.n) return;
+      proposals.delete(key);
+      record = assembleRecords(assembly.parts.values()).get(record.k);
+
+      if (record === undefined) return;
     }
 
     const edit = editIdOf(record);
@@ -275,7 +295,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
       case 'stale': {
         const stale = rejectMessage(ports.generation(), edit, {
           reason: 'stale',
-          current: verdict.current,
+          current: proposalReadBack(verdict.current, record),
         });
 
         // A current record too large to go with the answer leaves the player nothing to rebase on.
@@ -390,6 +410,19 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   }
 
   return { receive };
+}
+
+function proposalReadBack(current: VersionedRecord, proposal: VersionedRecord): VersionedRecord {
+  const held = blockDataSchema.safeParse(current.d).data;
+  const patch = blockDataSchema.safeParse(proposal.d).data;
+
+  if (held === undefined || patch === undefined) return current;
+
+  const cells = Object.fromEntries(
+    Object.entries(held.cells).filter(([id]) => Object.hasOwn(patch.cells, id)),
+  );
+
+  return { ...current, l: current.l ?? [current.c, current.a], d: { ...held, cells } };
 }
 
 function unknownVerdict(verdict: never): never {

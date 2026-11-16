@@ -21,7 +21,13 @@ import {
   type TemplateLayout,
   type TemplateRowPlace,
 } from '@/core/preset';
-import { repDataSchema, repKey, type FieldValue, type VersionedRecord } from '@/core/records';
+import {
+  cellValues,
+  repDataSchema,
+  repKey,
+  type FieldValue,
+  type VersionedRecord,
+} from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 import { cellLabel, rowValues, type FieldValues } from '@/core/sheet-values';
 
@@ -215,7 +221,7 @@ function blockValues(
 
   const data = repDataSchema.safeParse(records.get(repKey(sheetId, sectionId, instanceId))?.d);
 
-  return data.success ? new Map(Object.entries(data.data.cells)) : null;
+  return data.success ? new Map(Object.entries(cellValues(data.data.cells))) : null;
 }
 
 // A shown text stands in for the stored value, and an empty one for no value. Every row gets the

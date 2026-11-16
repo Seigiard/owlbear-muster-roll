@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { z } from 'zod';
-
 import {
   DICE_PLUS_ACCESS_CHANNEL,
   DICE_PLUS_ERROR_CHANNEL,
@@ -181,11 +180,29 @@ const PRESET: Preset = {
 // `dex` is empty, so "Ловкость" gives the field error.
 const SEEDED: VersionedRecord[] = [
   { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
-  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
-  { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
-  { k: 'row:brok:str', d: { str: 14, str_tired: true }, c: 1, a: 'seed' },
-  { k: 'row:brok:secret', d: { secret: 4 }, c: 1, a: 'seed' },
-  { k: 'row:npc:hp', d: { hp: 5 }, c: 1, a: 'seed' },
+  { k: 'blk:brok', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
+  {
+    k: 'blk:brok',
+    d: { order: 0, cells: { name: ['Брок', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  {
+    k: 'blk:brok',
+    d: { order: 0, cells: { str: [14, 1, 'seed'], str_tired: [true, 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  {
+    k: 'blk:brok',
+    d: { order: 0, cells: { secret: [4, 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  { k: 'blk:npc', d: { order: 0, cells: { hp: [5, 1, 'seed'] } }, c: 1, a: 'seed', l: [1, 'seed'] },
 ];
 
 // A roll of the GM-only single sheet "npc".
@@ -229,7 +246,10 @@ type Client = Omit<RigClient, 'local'> & {
 
 type RollRequest = Parameters<RigClient['window']['requestRoll']>[0];
 
-type Room = { room: MockRoom; rolls: JsonValue[] };
+type Room = {
+  room: MockRoom;
+  rolls: JsonValue[];
+};
 
 const roomRig = createRoomRig({
   seeded: SEEDED,
@@ -305,7 +325,6 @@ async function startClient(
     }),
   );
   roomRig.cleanup(() => dice?.stop());
-
   client.platform.failNextSends(
     Array.from({ length: options.failFirstSends ?? 0 }, () => ({
       kind: 'failed' as const,
@@ -376,7 +395,6 @@ async function finalOutcome(client: Client, id: string): Promise<RollOutcome> {
   };
 
   await waitUntil(() => final() !== undefined);
-
   const settledRoll = final();
 
   if (settledRoll === undefined) {
@@ -423,12 +441,9 @@ describe('a roll with a dice extension in the client', () => {
     });
 
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
-
     // #when
     const outcome = await roll(gm, STRIKE);
-
     await waitUntil(() => shown(player).includes('Мастер: Брок, Удар — 31'));
-
     // #then: 17 + str 14.
     expect({ outcome, requests: requests(gm), shown: [gm, player].map(shown) }).toEqual({
       outcome: { code: 'rolled' },
@@ -447,7 +462,6 @@ describe('a roll with a dice extension in the client', () => {
       shown: [['Мастер: Брок, Удар — 31'], ['Мастер: Брок, Удар — 31']],
     });
   });
-
   test('of a hidden single sheet shows the dice to GM clients only, and the notification on GM clients only', async () => {
     // #given
     const room = openRoom();
@@ -458,12 +472,10 @@ describe('a roll with a dice extension in the client', () => {
     });
 
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
-
     // #when: the sheet set roll after it reaches the player after it.
     await roll(gm, HIT_POINTS);
     await roll(gm, STRIKE);
     await waitUntil(() => shown(player).includes('Мастер: Брок, Удар — 31'));
-
     // #then
     expect({
       targets: requests(gm).map((request) => Object(request).rollTarget),
@@ -473,7 +485,6 @@ describe('a roll with a dice extension in the client', () => {
       shown: [['Мастер: NPC, Хиты — 22', 'Мастер: Брок, Удар — 31'], ['Мастер: Брок, Удар — 31']],
     });
   });
-
   test('from a hidden tab sends gm_only to the dice extension and no notification to a player', async () => {
     // #given
     const room = openRoom();
@@ -484,12 +495,10 @@ describe('a roll with a dice extension in the client', () => {
     });
 
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
-
     // #when: the visible roll after it proves the player handled the hidden roll first.
     await roll(gm, HIDDEN_SECRET);
     await roll(gm, STRIKE);
     await waitUntil(() => shown(player).includes('Мастер: Брок, Удар — 31'));
-
     // #then
     expect({
       targets: requests(gm).map((request) => Object(request).rollTarget),
@@ -502,7 +511,6 @@ describe('a roll with a dice extension in the client', () => {
       ],
     });
   });
-
   test("with a comparison compares the extension's face", async () => {
     // #given: the target is str 14 - 2 * 1 = 12, and a local die would show 7, a success.
     const room = openRoom();
@@ -514,14 +522,12 @@ describe('a roll with a dice extension in the client', () => {
 
     // #when
     await roll(gm, STRENGTH);
-
     // #then
     expect({ shown: shown(gm), rolls: room.rolls.map((sent) => Object(sent).result) }).toEqual({
       shown: ['Мастер: Брок, Сила — 15, провал'],
       rolls: [{ roll: 15, faces: [15], target: 12, targetFaces: [], outcome: 'failure' }],
     });
   });
-
   test('with several terms asks for each positive in dice set order and subtracts the d4 itself', async () => {
     // #given: dicex rolls the d4 first, then the d6s, then the d8.
     const room = openRoom();
@@ -533,14 +539,12 @@ describe('a roll with a dice extension in the client', () => {
 
     // #when
     await roll(gm, VOLLEY);
-
     // #then: 6 + 5 + 8 - 3.
     expect({
       notation: requests(gm).map((request) => Object(request).diceNotation),
       shown: shown(gm),
     }).toEqual({ notation: ['1d4+2d6+1d8'], shown: ['Мастер: Брок, Залп — 16'] });
   });
-
   test.each<[string, RollRequest, number[], string, number[], string]>([
     ['out of the dice set order', BONES, [3, 17], '1d4+1d20', [17, 3], 'Кости — 20'],
     ['with repeated sides', MIX, [1, 2, 6, 8], '3d6+1d8', [1, 2, 8, 6], 'Смесь — 5'],
@@ -558,7 +562,6 @@ describe('a roll with a dice extension in the client', () => {
 
       // #when
       await roll(gm, request);
-
       // #then
       expect({
         notation: requests(gm).map((sent) => Object(sent).diceNotation),
@@ -567,15 +570,12 @@ describe('a roll with a dice extension in the client', () => {
       }).toEqual({ notation: [notation], faces: [treeFaces], shown: [`Мастер: Брок, ${text}`] });
     },
   );
-
   test('whose extension faces give an arithmetic error refuses the roll and rolls nothing locally', async () => {
     // #given: a local d6 would show 2, which divides; the extension's 3 divides by zero.
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { dice: { kind: 'faces', faces: [3] } });
-
     // #when
     const outcome = await roll(gm, DIVISION);
-
     // #then
     expect({ outcome, requests: requests(gm).length, rolls: room.rolls, shown: shown(gm) }).toEqual(
       {
@@ -586,20 +586,16 @@ describe('a roll with a dice extension in the client', () => {
       },
     );
   });
-
   test('waits for the roll before it, as dicex keeps one request at a time', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер', dice: { kind: 'silent' } });
     const first = roll(gm, STRIKE);
     const second = roll(gm, STRENGTH);
-
     await waitUntil(() => requests(gm).length === 1);
     await pause(20);
-
     const waiting = requests(gm).length;
     const LOCAL = { destination: 'LOCAL' } as const;
-
     // #when
     await gm.local.broadcast.sendMessage(
       DICE_PLUS_RESULT_CHANNEL,
@@ -612,7 +608,6 @@ describe('a roll with a dice extension in the client', () => {
       resultOf(String(Object(requests(gm)[1]).rollId), [['d20', [15]]]),
       LOCAL,
     );
-
     // #then
     expect({
       waiting,
@@ -624,7 +619,6 @@ describe('a roll with a dice extension in the client', () => {
       shown: ['Мастер: Брок, Удар — 31', 'Мастер: Брок, Сила — 15, провал'],
     });
   });
-
   test.each([
     ['no dice', NUMBER, 'Число — 16'],
     ['a d3', THREE, 'Тройка — 15'],
@@ -642,22 +636,18 @@ describe('a roll with a dice extension in the client', () => {
 
     // #when
     await roll(gm, request);
-
     // #then
     expect({ requests: requests(gm), shown: shown(gm) }).toEqual({
       requests: [],
       shown: [`Мастер: Брок, ${text}`],
     });
   });
-
   test('with a field error shows the error and asks the extension nothing', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { dice: { kind: 'faces', faces: [17] } });
-
     // #when
     const outcome = await roll(gm, DEXTERITY);
-
     // #then
     expect({ outcome, requests: requests(gm), rolls: room.rolls }).toEqual({
       outcome: { code: 'field', field: 'Ловкость' },
@@ -680,12 +670,9 @@ describe('a roll falls back to a local roll', () => {
     });
 
     await pause(40);
-
     const probesBefore = gm.dice?.probes();
-
     // #when
     const outcome = await roll(gm, STRIKE);
-
     // #then
     expect({
       outcome,
@@ -701,16 +688,13 @@ describe('a roll falls back to a local roll', () => {
       paths: ['Muster Roll rolled locally: no dice extension answered'],
     });
   });
-
   test('on an error reply, and logs its reason', async () => {
     // #given
     const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер', dice: { kind: 'error' } });
-
     // #when
     await roll(gm, STRIKE);
-
     // #then
     expect({
       requests: requests(gm).length,
@@ -722,7 +706,6 @@ describe('a roll falls back to a local roll', () => {
       reasons: ['the extension refused the roll: the fake dice extension refused the roll'],
     });
   });
-
   test('at once on an error reply that carries only its roll id', async () => {
     // #given: the result wait is far past the test's wait limit.
     const errors = spyOn(console, 'error').mockImplementation(() => undefined);
@@ -734,16 +717,13 @@ describe('a roll falls back to a local roll', () => {
     });
 
     const outcome = roll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 1);
-
     // #when
     await gm.local.broadcast.sendMessage(
       DICE_PLUS_ERROR_CHANNEL,
       { rollId: String(Object(requests(gm)[0]).rollId) },
       { destination: 'LOCAL' },
     );
-
     // #then
     expect({
       outcome: await outcome,
@@ -755,7 +735,6 @@ describe('a roll falls back to a local roll', () => {
       reasons: ['the extension refused the roll: no reason given'],
     });
   });
-
   test.each<[string, [string, number[]][], string]>([
     ['no group', [], 'the result has 0 dice groups, not 1'],
     [
@@ -783,14 +762,12 @@ describe('a roll falls back to a local roll', () => {
 
     // #when
     await roll(gm, STRIKE);
-
     // #then
     expect({ shown: shown(gm), reasons: fallbackReasons(errors.mock.calls) }).toEqual({
       shown: ['Мастер: Брок, Удар — 21'],
       reasons: [reason],
     });
   });
-
   test('when no result comes in time, and logs its reason', async () => {
     // #given
     const errors = spyOn(console, 'error').mockImplementation(() => undefined);
@@ -804,7 +781,6 @@ describe('a roll falls back to a local roll', () => {
 
     // #when
     const outcome = await roll(gm, STRIKE);
-
     // #then
     expect({
       outcome,
@@ -818,18 +794,14 @@ describe('a roll falls back to a local roll', () => {
       reasons: ['no result in time'],
     });
   });
-
   test('at once when the roll request cannot be sent, well before the result wait', async () => {
     // #given: the result wait is far past the test's wait limit.
     const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер', dice: { kind: 'silent' } });
-
     gm.platform.failNextSends([{ kind: 'failed', reason: 'test' }]);
-
     // #when
     const outcome = await roll(gm, STRIKE);
-
     // #then
     expect({
       outcome,
@@ -843,7 +815,6 @@ describe('a roll falls back to a local roll', () => {
       reasons: ['the roll request was not sent'],
     });
   });
-
   test('for a d100, which dicex reports as tens only', async () => {
     // #given
     const room = openRoom();
@@ -855,14 +826,12 @@ describe('a roll falls back to a local roll', () => {
 
     // #when
     await roll(gm, HUNDRED);
-
     // #then: floor(0.3 * 100) + 1.
     expect({ requests: requests(gm), shown: shown(gm) }).toEqual({
       requests: [],
       shown: ['Мастер: Брок, Сотня — 31'],
     });
   });
-
   test('and never after a valid result: a late result changes nothing', async () => {
     // #given
     const room = openRoom();
@@ -873,9 +842,7 @@ describe('a roll falls back to a local roll', () => {
     });
 
     await roll(gm, STRIKE);
-
     const rollId = String(Object(requests(gm)[0]).rollId);
-
     // #when: the same roll answered again, with an error and with other faces.
     await gm.local.broadcast.sendMessage(
       DICE_PLUS_ERROR_CHANNEL,
@@ -888,7 +855,6 @@ describe('a roll falls back to a local roll', () => {
       { destination: 'LOCAL' },
     );
     await pause(20);
-
     // #then
     expect({ shown: shown(gm), rolls: room.rolls.length }).toEqual({
       shown: ['Мастер: Брок, Удар — 31'],
@@ -903,12 +869,9 @@ describe('the dice extension client', () => {
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер', dice: { kind: 'silent' } });
     const outcome = roll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 1);
-
     const rollId = String(Object(requests(gm)[0]).rollId);
     const LOCAL = { destination: 'LOCAL' } as const;
-
     // #when
     await gm.local.broadcast.sendMessage(
       DICE_PLUS_RESULT_CHANNEL,
@@ -927,30 +890,25 @@ describe('the dice extension client', () => {
       resultOf(rollId, [['d20', [12]]]),
       LOCAL,
     );
-
     // #then: 12 + str 14.
     expect({ outcome: await outcome, shown: shown(gm) }).toEqual({
       outcome: { code: 'rolled' },
       shown: ['Мастер: Брок, Удар — 26'],
     });
   });
-
   test('probes at start, and a roll does not probe again within the max age', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { dice: { kind: 'faces', faces: [17] } });
-
     // #when
     await roll(gm, STRIKE);
     await roll(gm, STRIKE);
-
     // #then
     expect({ probes: gm.dice?.probes(), requests: requests(gm).length }).toEqual({
       probes: 1,
       requests: 2,
     });
   });
-
   test('a roll after the max age probes again and waits for an extension that answered last time', async () => {
     // #given
     const room = openRoom();
@@ -963,14 +921,12 @@ describe('the dice extension client', () => {
 
     // #when
     await roll(gm, STRIKE);
-
     // #then
     expect({ probes: gm.dice?.probes(), shown: shown(gm) }).toEqual({
       probes: 2,
       shown: ['Мастер: Брок, Удар — 31'],
     });
   });
-
   test('a roll with no extension last time waits for a fresh probe and uses the extension it finds', async () => {
     // #given: the probe at start went unanswered, as for an extension that loads after the start.
     const room = openRoom();
@@ -984,10 +940,8 @@ describe('the dice extension client', () => {
 
     await pause(30);
     gm.dice?.setReady(true);
-
     // #when
     await roll(gm, STRIKE);
-
     // #then
     expect({
       probes: gm.dice?.probes(),
@@ -1001,7 +955,6 @@ describe('the dice extension client', () => {
       paths: ['Muster Roll rolled with the dice extension'],
     });
   });
-
   test('a ready answer that comes after the probe wait still counts for the next roll', async () => {
     // #given: the extension answers the start probe late.
     const room = openRoom();
@@ -1014,7 +967,6 @@ describe('the dice extension client', () => {
     });
 
     const probeIds: string[] = [];
-
     roomRig.cleanup(
       gm.local.broadcast.onMessage(DICE_PLUS_READY_CHANNEL, (event) => {
         const message = Object(event.data);
@@ -1024,13 +976,10 @@ describe('the dice extension client', () => {
         }
       }),
     );
-
     // The start probe went before the listener, so a roll's probe, after the start probe's wait,
     // gives the id to answer late.
     await pause(30);
-
     const first = roll(gm, STRIKE);
-
     await waitUntil(() => probeIds.length === 1);
     await first;
     await gm.local.broadcast.sendMessage(
@@ -1038,10 +987,8 @@ describe('the dice extension client', () => {
       { requestId: probeIds[0] ?? '', ready: true, timestamp: 0, permitted: true },
       { destination: 'LOCAL' },
     );
-
     // #when
     await roll(gm, STRIKE);
-
     // #then: the first roll is local, the second uses the extension the late answer found.
     expect({ probes: gm.dice?.probes(), requests: requests(gm).length, shown: shown(gm) }).toEqual({
       probes: 2,
@@ -1049,7 +996,6 @@ describe('the dice extension client', () => {
       shown: ['Мастер: Брок, Удар — 21', 'Мастер: Брок, Удар — 31'],
     });
   });
-
   test('a roll after the max age waits out the probe of a removed extension and rolls locally', async () => {
     // #given: the extension answered at start, then went away.
     const room = openRoom();
@@ -1061,17 +1007,14 @@ describe('the dice extension client', () => {
     });
 
     gm.dice?.setReady(false);
-
     // #when
     await roll(gm, STRIKE);
-
     // #then
     expect({ requests: requests(gm).length, shown: shown(gm) }).toEqual({
       requests: 0,
       shown: ['Мастер: Брок, Удар — 21'],
     });
   });
-
   test('a roll with no result in time marks the extension gone and probes again', async () => {
     // #given: the extension answered at start, then went away.
     spyOn(console, 'error').mockImplementation(() => undefined);
@@ -1084,11 +1027,9 @@ describe('the dice extension client', () => {
     });
 
     gm.dice?.setReady(false);
-
     // #when
     await roll(gm, STRIKE);
     await roll(gm, STRIKE);
-
     // #then: the second roll asks nothing, and the probe after the first one is the only new one.
     expect({ requests: requests(gm).length, probes: gm.dice?.probes(), shown: shown(gm) }).toEqual({
       requests: 1,
@@ -1096,7 +1037,6 @@ describe('the dice extension client', () => {
       shown: ['Мастер: Брок, Удар — 21', 'Мастер: Брок, Удар — 21'],
     });
   });
-
   test('a probe that cannot be sent counts as no extension, and a later roll probes again', async () => {
     // #given: the probe at start is the background's first send.
     const room = openRoom();
@@ -1108,10 +1048,8 @@ describe('the dice extension client', () => {
     });
 
     const probesAtStart = gm.dice?.probes();
-
     // #when
     await roll(gm, STRIKE);
-
     // #then
     expect({
       probesAtStart,
@@ -1125,7 +1063,6 @@ describe('the dice extension client', () => {
       shown: ['Мастер: Брок, Удар — 31'],
     });
   });
-
   test('an extension that loads after the start is found by a start probe retry', async () => {
     // #given
     const room = openRoom();
@@ -1138,18 +1075,15 @@ describe('the dice extension client', () => {
     });
 
     gm.dice?.setReady(true);
-
     // #when
     await waitUntil(() => gm.dice?.probes() === 2);
     await roll(gm, STRIKE);
-
     // #then
     expect({ requests: requests(gm).length, shown: shown(gm) }).toEqual({
       requests: 1,
       shown: ['Мастер: Брок, Удар — 31'],
     });
   });
-
   test('stop cancels the remaining start probe retries', async () => {
     // #given
     const room = openRoom();
@@ -1161,35 +1095,28 @@ describe('the dice extension client', () => {
     });
 
     await waitUntil(() => gm.dice?.probes() === 1);
-
     // #when
     gm.engine.stop();
     await pause(150);
-
     // #then
     expect(gm.dice?.probes()).toBe(1);
   });
-
   test('a page that stops while a roll waits for its dice logs no local roll and sends nothing', async () => {
     // #given
     const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { dice: { kind: 'silent' } });
-
     gm.window.requestRoll(STRIKE);
     await waitUntil(() => requests(gm).length === 1);
-
     // #when
     gm.engine.stop();
     await pause(20);
-
     // #then
     expect({ reasons: fallbackReasons(errors.mock.calls), rolls: room.rolls }).toEqual({
       reasons: [],
       rolls: [],
     });
   });
-
   test("a player's roll asks for its own player", async () => {
     // #given
     const room = openRoom();
@@ -1203,14 +1130,12 @@ describe('the dice extension client', () => {
 
     // #when
     await roll(player, STRIKE);
-
     // #then
     expect(requests(player).map((request) => Object(request).playerId)).toEqual(['player']);
   });
 });
 
 const DENIED_REASON = 'the GM has not allowed Muster Roll to roll dice in this room';
-
 const NO_GM_REASON = 'no GM is in the room to allow Muster Roll to roll dice';
 
 describe('a dice extension that lets Muster Roll roll only after the GM allows it', () => {
@@ -1225,21 +1150,17 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     });
 
     await waitUntil(() => gm.dice?.accessRequests().length === 1);
-
     // #when: the roll's probe finds no access while the GM's prompt is open.
     const id = requestRoll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 1);
     gm.dice?.answerPrompt('allowed');
     await finalOutcome(gm, id);
-
     // #then
     expect({ probes: gm.dice?.probes(), accessRequests: gm.dice?.accessRequests() }).toEqual({
       probes: 2,
       accessRequests: [{ requestId: expect.any(String), source: 'app.muster-roll' }],
     });
   });
-
   test('that the GM allows at start rolls the first roll with no wait for the GM', async () => {
     // #given
     const room = openRoom();
@@ -1253,19 +1174,15 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     await waitUntil(() => gm.dice?.accessRequests().length === 1);
     gm.dice?.answerPrompt('allowed');
     await pause(20);
-
     // #when
     const id = requestRoll(gm, STRIKE);
-
     await finalOutcome(gm, id);
-
     // #then
     expect({ outcomes: gm.outcomes.get(id), shown: shown(gm) }).toEqual({
       outcomes: [{ code: 'rolled' }],
       shown: ['Мастер: Брок, Удар — 31'],
     });
   });
-
   test('keeps access learned from a roll over a probe answer that started before it', async () => {
     // #given: a player client, which never asks for access itself, learned of the GM's answer from
     // its first roll, after its start probe found no access.
@@ -1280,26 +1197,20 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     });
 
     const first = requestRoll(player, STRIKE);
-
     await waitUntil(() => requests(player).length === 1);
     player.dice?.answerPrompt('allowed');
     await finalOutcome(player, first);
-
     // #when: the start probe's answer comes again, late.
     await player.local.broadcast.sendMessage(
       DICE_PLUS_READY_CHANNEL,
       { requestId: player.dice?.lastProbeId() ?? '', ready: true, timestamp: 0, permitted: false },
       { destination: 'LOCAL' },
     );
-
     const second = requestRoll(player, STRIKE);
-
     await finalOutcome(player, second);
-
     // #then
     expect(player.outcomes.get(second)).toEqual([{ code: 'rolled' }]);
   });
-
   test('is asked again by a GM client when a probe finds that the extension forgot its access', async () => {
     // #given: the GM allowed at start, and every roll probes again.
     const room = openRoom();
@@ -1315,14 +1226,11 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     gm.dice?.answerPrompt('allowed');
     await roll(gm, STRIKE);
     gm.dice?.setAccess('unknown');
-
     // #when
     const id = requestRoll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 2);
     gm.dice?.answerPrompt('allowed');
     await finalOutcome(gm, id);
-
     // #then
     expect({
       accessRequests: gm.dice?.accessRequests().length,
@@ -1332,7 +1240,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       outcomes: [{ code: 'waiting-access' }, { code: 'rolled' }],
     });
   });
-
   test("lets a player's next roll go with no wait for the GM once a roll came back", async () => {
     // #given: the player's probe found no access, and the GM allowed during the first roll.
     const room = openRoom();
@@ -1346,23 +1253,18 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     });
 
     const first = requestRoll(player, STRIKE);
-
     await waitUntil(() => requests(player).length === 1);
     player.dice?.answerPrompt('allowed');
     await finalOutcome(player, first);
-
     // #when: within the probe's max age, so no probe tells the player of the answer.
     const second = requestRoll(player, STRIKE);
-
     await finalOutcome(player, second);
-
     // #then
     expect([first, second].map((id) => player.outcomes.get(id))).toEqual([
       [{ code: 'waiting-access' }, { code: 'rolled' }],
       [{ code: 'rolled' }],
     ]);
   });
-
   test.each<[string, FakeDiceAccess]>([
     ['that already allowed Muster Roll', 'allowed'],
     ['that knows no access, as the commercial Dice+', 'unmanaged'],
@@ -1378,9 +1280,7 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
 
     // #when
     const id = requestRoll(gm, STRIKE);
-
     await finalOutcome(gm, id);
-
     // #then
     expect({
       accessRequests: gm.dice?.accessRequests(),
@@ -1392,7 +1292,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       shown: ['Мастер: Брок, Удар — 31'],
     });
   });
-
   test("is never asked for access by a player client, whose roll waits for the GM's answer", async () => {
     // #given
     const room = openRoom();
@@ -1406,13 +1305,10 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     });
 
     const id = requestRoll(player, STRIKE);
-
     await waitUntil(() => requests(player).length === 1 && player.outcomes.has(id));
-
     // #when
     player.dice?.answerPrompt('allowed');
     await finalOutcome(player, id);
-
     // #then
     expect({
       accessRequests: player.dice?.accessRequests(),
@@ -1424,7 +1320,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       shown: ['Лиза: Брок, Удар — 31'],
     });
   });
-
   test('takes a roll while the GM has not answered, and the window hears it waits until the GM allows it', async () => {
     // #given
     const room = openRoom();
@@ -1436,15 +1331,11 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     });
 
     const id = requestRoll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 1 && gm.outcomes.has(id));
-
     const waiting = gm.outcomes.get(id);
-
     // #when
     gm.dice?.answerPrompt('allowed');
     await finalOutcome(gm, id);
-
     // #then
     expect({ waiting, outcomes: gm.outcomes.get(id), shown: shown(gm) }).toEqual({
       waiting: [{ code: 'waiting-access' }],
@@ -1452,7 +1343,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       shown: ['Мастер: Брок, Удар — 31'],
     });
   });
-
   test('refuses a waiting roll when the GM denies, and it rolls locally', async () => {
     // #given
     const errors = spyOn(console, 'error').mockImplementation(() => undefined);
@@ -1465,13 +1355,10 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     });
 
     const id = requestRoll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 1);
-
     // #when
     gm.dice?.answerPrompt('denied');
     await finalOutcome(gm, id);
-
     // #then
     expect({
       outcomes: gm.outcomes.get(id),
@@ -1483,7 +1370,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       reasons: [DENIED_REASON],
     });
   });
-
   test('refuses a waiting roll when the GM does not answer in time, and it rolls locally', async () => {
     // #given: the GM's prompt for the start's access request timed out already.
     const errors = spyOn(console, 'error').mockImplementation(() => undefined);
@@ -1497,12 +1383,9 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     });
 
     await pause(50);
-
     // #when
     const id = requestRoll(gm, STRIKE);
-
     await finalOutcome(gm, id);
-
     // #then
     expect({
       outcomes: gm.outcomes.get(id),
@@ -1514,7 +1397,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       reasons: [DENIED_REASON],
     });
   });
-
   test('with no GM in the room refuses a roll at once, the window hears no wait for a GM, and the next roll asks nothing', async () => {
     // #given: the GM left after the player loaded the sheets, so neither the extension nor the
     // party has a GM. The result wait is far past the test's wait limit.
@@ -1533,14 +1415,11 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     gm.engine.stop();
     gm.platform.leaveParty();
     await pause(20);
-
     // #when
     const ids = [requestRoll(player, STRIKE)];
-
     await finalOutcome(player, ids[0] ?? '');
     ids.push(requestRoll(player, STRIKE));
     await finalOutcome(player, ids[1] ?? '');
-
     // #then
     expect({
       outcomes: ids.map((id) => player.outcomes.get(id)),
@@ -1554,7 +1433,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       reasons: [NO_GM_REASON],
     });
   });
-
   test('answers a GM client with no-gm, so it rolls locally at once and asks again on a later probe', async () => {
     // #given: the extension sees no GM, and every roll probes again.
     const room = openRoom();
@@ -1569,12 +1447,9 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
 
     await waitUntil(() => gm.dice?.accessRequests().length === 1);
     await pause(20);
-
     // #when
     const id = requestRoll(gm, STRIKE);
-
     await finalOutcome(gm, id);
-
     // #then
     expect({
       accessRequests: gm.dice?.accessRequests().length,
@@ -1588,7 +1463,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       shown: ['Мастер: Брок, Удар — 21'],
     });
   });
-
   test('that takes access back refuses the roll, a GM client asks again, and the next roll asks nothing', async () => {
     // #given: a roll went through, then the GM denied Muster Roll in the extension.
     const errors = spyOn(console, 'error').mockImplementation(() => undefined);
@@ -1601,15 +1475,12 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
 
     await roll(gm, STRIKE);
     gm.dice?.setAccess('denied');
-
     // #when
     const revoked = requestRoll(gm, STRIKE);
-
     await finalOutcome(gm, revoked);
     await waitUntil(() => gm.dice?.accessRequests().length === 1);
     await pause(20);
     await roll(gm, STRIKE);
-
     // #then
     expect({
       revoked: gm.outcomes.get(revoked),
@@ -1623,7 +1494,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       reasons: [DENIED_REASON],
     });
   });
-
   test('is asked again by a GM client whose access request got no answer in time', async () => {
     // #given: the extension holds the request far past the client's own wait, and every roll
     // probes again.
@@ -1638,21 +1508,17 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
 
     await waitUntil(() => gm.dice?.accessRequests().length === 1);
     await pause(80);
-
     // #when
     const id = requestRoll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 1);
     gm.dice?.answerPrompt('allowed');
     await finalOutcome(gm, id);
-
     // #then
     expect({ accessRequests: gm.dice?.accessRequests().length, shown: shown(gm) }).toEqual({
       accessRequests: 2,
       shown: ['Мастер: Брок, Удар — 31'],
     });
   });
-
   test('is asked again on a later probe when the access request could not be sent', async () => {
     // #given: every roll probes again.
     const room = openRoom();
@@ -1666,23 +1532,18 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     });
 
     await pause(20);
-
     const atStart = gm.dice?.accessRequests().length;
-
     // #when
     const id = requestRoll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 1);
     gm.dice?.answerPrompt('allowed');
     await finalOutcome(gm, id);
-
     // #then
     expect({ atStart, accessRequests: gm.dice?.accessRequests().length }).toEqual({
       atStart: 0,
       accessRequests: 1,
     });
   });
-
   test('is asked for access by a client that becomes a GM', async () => {
     // #given
     const room = openRoom();
@@ -1695,20 +1556,16 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     });
 
     await pause(20);
-
     const asPlayer = player.dice?.accessRequests().length;
-
     // #when
     player.platform.setRole('GM');
     await waitUntil(() => player.dice?.accessRequests().length === 1);
-
     // #then
     expect({ asPlayer, asGm: player.dice?.accessRequests().length }).toEqual({
       asPlayer: 0,
       asGm: 1,
     });
   });
-
   test("starts a queued roll's result wait when its request goes out", async () => {
     // #given: the second roll waits behind the first longer than a result wait.
     const room = openRoom();
@@ -1722,7 +1579,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
 
     const first = requestRoll(gm, STRIKE);
     const second = requestRoll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 1);
     await pause(70);
     await gm.local.broadcast.sendMessage(
@@ -1732,7 +1588,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     );
     await waitUntil(() => requests(gm).length === 2);
     await pause(50);
-
     // #when: 120 ms after the second roll was asked for, 50 ms after its request went out.
     await gm.local.broadcast.sendMessage(
       DICE_PLUS_RESULT_CHANNEL,
@@ -1740,11 +1595,9 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       LOCAL,
     );
     await Promise.all([finalOutcome(gm, first), finalOutcome(gm, second)]);
-
     // #then
     expect(shown(gm)).toEqual(['Мастер: Брок, Удар — 31', 'Мастер: Брок, Удар — 29']);
   });
-
   test('that the GM denied earlier gets no roll: each rolls locally at once, and a GM client does not ask again', async () => {
     // #given: the start probe asked, and the extension answered with the stored denial. Every roll
     // probes again.
@@ -1759,14 +1612,11 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
 
     await waitUntil(() => gm.dice?.accessRequests().length === 1);
     await pause(20);
-
     // #when
     const ids = [requestRoll(gm, STRIKE)];
-
     await finalOutcome(gm, ids[0] ?? '');
     ids.push(requestRoll(gm, STRIKE));
     await finalOutcome(gm, ids[1] ?? '');
-
     // #then
     expect({
       probes: gm.dice?.probes(),
@@ -1787,7 +1637,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       ],
     });
   });
-
   test('is asked again by a GM client after a timeout answer, when a later probe still finds no access', async () => {
     // #given: the start probe asked, and the GM let the prompt time out.
     const room = openRoom();
@@ -1802,21 +1651,17 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     await waitUntil(() => gm.dice?.accessRequests().length === 1);
     gm.dice?.answerPrompt('timeout');
     await pause(20);
-
     // #when: the roll probes again.
     const id = requestRoll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 1);
     gm.dice?.answerPrompt('allowed');
     await finalOutcome(gm, id);
-
     // #then
     expect({ accessRequests: gm.dice?.accessRequests().length, shown: shown(gm) }).toEqual({
       accessRequests: 2,
       shown: ['Мастер: Брок, Удар — 31'],
     });
   });
-
   test('gets the access wait on top of the result wait for a roll the GM has not allowed', async () => {
     // #given: the GM answers after the result wait alone, and within it with the access wait.
     const room = openRoom();
@@ -1829,20 +1674,16 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     });
 
     const id = requestRoll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 1);
     await pause(100);
-
     // #when
     gm.dice?.answerPrompt('allowed');
-
     // #then
     expect({ outcome: await finalOutcome(gm, id), shown: shown(gm) }).toEqual({
       outcome: { code: 'rolled' },
       shown: ['Мастер: Брок, Удар — 31'],
     });
   });
-
   test("takes only its own access request's allowed answer as access, never pending", async () => {
     // #given: the GM's prompt is open, and stray answers come on the access channel.
     const room = openRoom();
@@ -1854,10 +1695,8 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     });
 
     await waitUntil(() => gm.dice?.accessRequests().length === 1);
-
     const LOCAL = { destination: 'LOCAL' } as const;
     const ownId = String(gm.dice?.accessRequests()[0]?.requestId);
-
     await gm.local.broadcast.sendMessage(
       DICE_PLUS_ACCESS_CHANNEL,
       { requestId: 'other', status: 'allowed' },
@@ -1869,19 +1708,13 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       LOCAL,
     );
     await gm.local.broadcast.sendMessage(DICE_PLUS_ACCESS_CHANNEL, 'allowed', LOCAL);
-
     const first = requestRoll(gm, STRIKE);
-
     await waitUntil(() => requests(gm).length === 1);
-
     // #when: the GM allows, which answers the access request too.
     gm.dice?.answerPrompt('allowed');
     await finalOutcome(gm, first);
-
     const second = requestRoll(gm, STRIKE);
-
     await finalOutcome(gm, second);
-
     // #then
     expect([first, second].map((id) => gm.outcomes.get(id))).toEqual([
       [{ code: 'waiting-access' }, { code: 'rolled' }],

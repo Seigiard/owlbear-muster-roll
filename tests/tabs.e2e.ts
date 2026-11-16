@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import { copy } from '@/copy';
-
 import {
   ADD,
   connectionIdOf,
@@ -18,9 +16,7 @@ import {
 } from './support/room';
 
 // TASK-58, CAP-34: a sheet shows one tab of its template at a time.
-
 const OPEN_ITEM = 'app.muster-roll/open-sheet';
-
 const GM: ClientParams = { client: 'a', device: 'a', name: 'Мастер' };
 
 // "Персонажи" has two tabs: the dice cell on "Бой" reads `str` from "Основное", and the linkable
@@ -89,7 +85,7 @@ const PRESET = {
 
 const RECORDS: StoredRecord[] = [
   ...pcSheet('brok', 'Брок', 0),
-  record('row:brok:str', { str: 14 }),
+  record('blk:brok', { str: 14 }),
   repRecord('brok', 'pet', 'p1', 0, { pet: 'Волк' }),
   repRecord('brok', 'pet', 'p2', 1, { pet: 'Сокол' }),
   record('link:t-pet', { s: 'brok', i: 'p2' }),
@@ -104,23 +100,18 @@ test('a click on the second tab shows only its sections, and the sheet keeps it 
 }) => {
   // #given
   const gm = await openGm(context);
-
   await expect(sheetTab(gm.window, 'Основное')).toHaveAttribute('aria-selected', 'true');
   await expect(sectionHeading(gm.window, 'Характеристики')).toBeVisible();
-
   // #when
   await sheetTab(gm.window, 'Бой').click();
-
   // #then
   await expect(sheetTab(gm.window, 'Бой')).toHaveAttribute('aria-selected', 'true');
   await expect(sectionHeading(gm.window, 'Удары')).toBeVisible();
   await expect(sectionHeading(gm.window, 'Характеристики')).toHaveCount(0);
-
   // #when: another sheet, then back.
   await gm.window.getByRole('tab', { name: 'Журнал' }).click();
   await expect(gm.window.getByRole('textbox', { name: 'weather' })).toBeVisible();
   await gm.window.getByRole('tab', { name: 'Брок' }).click();
-
   // #then
   await expect(sheetTab(gm.window, 'Бой')).toHaveAttribute('aria-selected', 'true');
   await expect(sectionHeading(gm.window, 'Удары')).toBeVisible();
@@ -129,10 +120,8 @@ test('a click on the second tab shows only its sections, and the sheet keeps it 
 test('a sheet of a template with one tab draws no tab row', async ({ context }) => {
   // #given
   const gm = await openGm(context);
-
   // #when
   await gm.window.getByRole('tab', { name: 'Журнал' }).click();
-
   // #then
   await expect(gm.window.getByRole('textbox', { name: 'weather' })).toBeVisible();
   await expect(gm.window.getByRole('tablist', { name: copy.label.sheetTabs })).toHaveCount(0);
@@ -141,12 +130,9 @@ test('a sheet of a template with one tab draws no tab row', async ({ context }) 
 test('the arrow keys move between the tabs of a sheet', async ({ context }) => {
   // #given
   const gm = await openGm(context);
-
   await sheetTab(gm.window, 'Основное').focus();
-
   // #when
   await gm.window.keyboard.press('ArrowRight');
-
   // #then
   await expect(sheetTab(gm.window, 'Бой')).toBeFocused();
   await expect(sheetTab(gm.window, 'Бой')).toHaveAttribute('aria-selected', 'true');
@@ -155,12 +141,9 @@ test('the arrow keys move between the tabs of a sheet', async ({ context }) => {
 test('a dice cell on one tab rolls with a field on another tab', async ({ context }) => {
   // #given
   const gm = await openGm(context);
-
   await sheetTab(gm.window, 'Бой').click();
-
   // #when
   await gm.window.getByRole('button', { name: 'Удар', exact: true }).click();
-
   // #then: 1 + "Сила" 14 from "Основное".
   await expect.poll(() => shownNotifications(gm)).toEqual(['Мастер: Брок, Удар — 15']);
 });
@@ -170,7 +153,6 @@ test('a token linked to a repeat block on the second tab opens that tab, scrolle
 }) => {
   // #given
   const gm = await openGm(context);
-
   await expect
     .poll(() =>
       gm.background.evaluate(() => window.mockPlatform.contextMenuItems().map((item) => item.id)),
@@ -196,11 +178,8 @@ test('a token linked to a repeat block on the second tab opens that tab, scrolle
 
 async function openGm(context: BrowserContext): Promise<RoomClient> {
   const window = await openClientWindow(context, GM);
-
   await seedStorage(window, RECORDS, JSON.stringify(PRESET), GM.device);
-
   const background = await openClientBackground(context, GM);
-
   await expect(window.getByRole('button', { name: ADD })).toBeVisible();
   await expect(sheetTab(window, 'Основное')).toBeVisible();
 

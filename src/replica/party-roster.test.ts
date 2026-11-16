@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
-
 import type { PartyMember, PartyPort } from '@/platform/ports';
 import { createPartyRoster } from '@/replica/party-roster';
 
@@ -82,87 +81,65 @@ describe('party roster', () => {
     // #given
     const party = createFakeParty([member('gm-b', 'GM', 'owner')]);
     const roster = createPartyRoster(party);
-
     await settled();
-
     const readsBefore = party.reads;
-
     // #when
     const sender = await roster.senderOf('gm-b');
-
     // #then
     expect({ sender, extraReads: party.reads - readsBefore }).toEqual({
       sender: { role: 'GM', playerId: 'owner', name: 'gm-b' },
       extraReads: 0,
     });
   });
-
   test('re-reads the party once on a miss and finds a sender that joined since', async () => {
     // #given
     const party = createFakeParty();
     const roster = createPartyRoster(party);
-
     await settled();
     party.players = [member('late', 'PLAYER', 'lisa')];
-
     const readsBefore = party.reads;
-
     // #when
     const sender = await roster.senderOf('late');
-
     // #then
     expect({ sender, extraReads: party.reads - readsBefore }).toEqual({
       sender: { role: 'PLAYER', playerId: 'lisa', name: 'late' },
       extraReads: 1,
     });
   });
-
   test('returns null for a sender still missing after the one re-read', async () => {
     // #given
     const party = createFakeParty([member('gm-b', 'GM')]);
     const roster = createPartyRoster(party);
-
     await settled();
-
     const readsBefore = party.reads;
-
     // #when
     const sender = await roster.senderOf('stranger');
-
     // #then
     expect({ sender, extraReads: party.reads - readsBefore }).toEqual({
       sender: null,
       extraReads: 1,
     });
   });
-
   test('follows a party change, so a member who left is no longer known', async () => {
     // #given
     const party = createFakeParty([member('gm-b', 'GM')]);
     const roster = createPartyRoster(party);
-
     await settled();
-
     // #when
     party.change([member('gm-c', 'GM')]);
-
     // #then
     expect({ left: await roster.senderOf('gm-b'), joined: await roster.senderOf('gm-c') }).toEqual({
       left: null,
       joined: { role: 'GM', playerId: 'player', name: 'gm-c' },
     });
   });
-
   test('takes a role change from a party change', async () => {
     // #given
     const party = createFakeParty([member('gm-b', 'GM')]);
     const roster = createPartyRoster(party);
-
     await settled();
-
     // #when
     party.change([member('gm-b', 'PLAYER')]);
-
     // #then
     expect(await roster.senderOf('gm-b')).toEqual({
       role: 'PLAYER',
@@ -170,21 +147,15 @@ describe('party roster', () => {
       name: 'gm-b',
     });
   });
-
   test('keeps a party change over a read that started before it', async () => {
     // #given: the start read sees gm-b as a GM and answers only after the demotion.
     const party = createFakeParty([member('gm-b', 'GM')]);
-
     party.holdReads = true;
-
     const roster = createPartyRoster(party);
-
     party.change([member('gm-b', 'PLAYER')]);
-
     // #when
     party.releaseReads();
     await settled();
-
     // #then
     expect(await roster.senderOf('gm-b')).toEqual({
       role: 'PLAYER',
@@ -192,32 +163,25 @@ describe('party roster', () => {
       name: 'gm-b',
     });
   });
-
   test('applies a read that started after the last party change', async () => {
     // #given: the party changed, and then a member joined with no change event yet.
     const party = createFakeParty();
     const roster = createPartyRoster(party);
-
     await settled();
     party.change([member('gm-b', 'GM')]);
     party.players = [member('gm-b', 'GM'), member('late', 'GM')];
-
     // #when
     const sender = await roster.senderOf('late');
-
     // #then
     expect(sender).toEqual({ role: 'GM', playerId: 'player', name: 'late' });
   });
-
   test('shares one read among misses that come while it is on its way', async () => {
     // #given
     const party = createFakeParty();
     const roster = createPartyRoster(party);
-
     await settled();
     party.holdReads = true;
     party.players = [member('late', 'GM')];
-
     const readsBefore = party.reads;
 
     // #when
@@ -229,7 +193,6 @@ describe('party roster', () => {
 
     await settled();
     party.releaseReads();
-
     // #then
     expect({ senders: await senders, extraReads: party.reads - readsBefore }).toEqual({
       senders: [
@@ -240,37 +203,27 @@ describe('party roster', () => {
       extraReads: 1,
     });
   });
-
   test('returns null and does not throw when the party read fails', async () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     const party = createFakeParty([member('gm-b', 'GM')]);
-
     party.failReads = true;
-
     const roster = createPartyRoster(party);
-
     // #when
     const sender = await roster.senderOf('gm-b');
-
     // #then
     expect(sender).toBeNull();
   });
-
   test('stops following party changes once stopped', async () => {
     // #given
     const party = createFakeParty();
     const roster = createPartyRoster(party);
-
     await settled();
     roster.stop();
     party.failReads = true;
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     // #when
     party.change([member('gm-b', 'GM')]);
-
     // #then
     expect(await roster.senderOf('gm-b')).toBeNull();
   });

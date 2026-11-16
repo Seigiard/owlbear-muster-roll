@@ -1,5 +1,6 @@
 import type { PartyEntry } from '@/core/access';
-import { jsonByteLength, splitBatch } from '@/core/message-size';
+import { mergeRecords } from '@/core/merge';
+import { fragmentRecords, jsonByteLength, splitBatch } from '@/core/message-size';
 import type { Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type {
@@ -210,7 +211,8 @@ export function createWindowPublisher(options: WindowPublisherOptions): WindowPu
       const playerKnown = new Map(source.replica);
 
       for (const [key, record] of source.pendingView) {
-        playerKnown.set(key, record);
+        const current = playerKnown.get(key);
+        playerKnown.set(key, current === undefined ? record : mergeRecords(current, record));
       }
 
       known = playerKnown;
@@ -345,8 +347,11 @@ function splitParts(
     return [{ records: [], pending: [] }];
   }
 
-  const recordParts = records.length === 0 ? null : splitBatch(records, envelopeBytes);
-  const pendingParts = pendingView.length === 0 ? null : splitBatch(pendingView, envelopeBytes);
+  const recordParts =
+    records.length === 0 ? null : splitBatch(fragmentRecords(records), envelopeBytes);
+
+  const pendingParts =
+    pendingView.length === 0 ? null : splitBatch(fragmentRecords(pendingView), envelopeBytes);
 
   if (recordParts !== null && !recordParts.ok) {
     return null;

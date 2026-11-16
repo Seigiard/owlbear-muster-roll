@@ -15,22 +15,26 @@ const SAMPLE_INSTANCE_ID = 'sample';
 const PREVIEW_COUNTER = 1;
 const PREVIEW_AUTHOR = 'builder';
 
-// A sheet set's sample sheet gets a `sheet:` record, and each repeat section one empty `rep:`
-// record, so it shows one sample repeat block.
+// A sheet set's sample sheet gets a root block, and each repeat section gets one empty descendant
+// block, so the preview shows one sample repeat block.
 export function previewRecords(
   template: Template,
   sheetId: string = PREVIEW_SHEET_ID,
 ): Map<string, VersionedRecord> {
   const records = new Map<string, VersionedRecord>();
 
-  if (template.kind === 'set') {
+  {
     const key = sheetKey(sheetId);
 
     records.set(key, {
       k: key,
-      d: { set: template.id, order: 1 },
+      d:
+        template.kind === 'set'
+          ? { set: template.id, order: 1, cells: {} }
+          : { order: 1, cells: {} },
       c: PREVIEW_COUNTER,
       a: PREVIEW_AUTHOR,
+      l: [PREVIEW_COUNTER, PREVIEW_AUTHOR],
     });
   }
 
@@ -45,6 +49,7 @@ export function previewRecords(
         d: { order: 1, cells: {} },
         c: PREVIEW_COUNTER,
         a: PREVIEW_AUTHOR,
+        l: [PREVIEW_COUNTER, PREVIEW_AUTHOR],
       });
     }
   }

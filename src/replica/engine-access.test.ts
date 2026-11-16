@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { PartyEntry } from '@/core/access';
 import { ownerOf } from '@/core/merge';
 import { encodePreset, type Preset } from '@/core/preset';
@@ -69,9 +68,15 @@ const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c
 // "Брок" is a live sheet of the sheet set "pc", "npc" a single sheet, and "Лиза" was deleted.
 const BASE: readonly VersionedRecord[] = [
   PRESET_RECORD,
-  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
-  { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
-  { k: 'sheet:liza', d: null, c: 2, a: 'seed' },
+  { k: 'blk:brok', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
+  {
+    k: 'blk:brok',
+    d: { order: 0, cells: { name: ['Брок', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  { k: 'blk:liza', d: null, c: 2, a: 'seed', l: [1, 'seed'] },
 ];
 
 type Client = RigClient;
@@ -83,21 +88,17 @@ describe('acl-set', () => {
     // #given
     const room = roomRig.openRoom();
     const client = await roomRig.startClient(room, 'gm-a');
-
     // #when
     send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля', on: true });
     await waitUntil(() => committed(room, 'gm-a').length === 1);
-
     // #then
     const expected: VersionedRecord = { k: 'acl:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'gm-a' };
-
     expect({
       shown: shown(client, 'acl:brok:p-oly'),
       stored: storedRecord(client, 'acl:brok:p-oly'),
       sent: committed(room, 'gm-a'),
     }).toEqual({ shown: expected, stored: expected, sent: [expected] });
   });
-
   test('revokes access: the acl: record is tombstoned, saved and sent', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -109,17 +110,14 @@ describe('acl-set', () => {
     // #when
     send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля', on: false });
     await waitUntil(() => committed(room, 'gm-a').length === 1);
-
     // #then
     const expected: VersionedRecord = { k: 'acl:brok:p-oly', d: null, c: 4, a: 'gm-a' };
-
     expect({
       shown: shown(client, 'acl:brok:p-oly'),
       stored: storedRecord(client, 'acl:brok:p-oly'),
       sent: committed(room, 'gm-a'),
     }).toEqual({ shown: expected, stored: expected, sent: [expected] });
   });
-
   test('grants again over a tombstone with the name of the moment', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -131,7 +129,6 @@ describe('acl-set', () => {
     // #when
     send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name: 'Ольга', on: true });
     await waitUntil(() => shown(client, 'acl:brok:p-oly')?.d !== null);
-
     // #then
     expect(storedRecord(client, 'acl:brok:p-oly')).toEqual({
       k: 'acl:brok:p-oly',
@@ -143,18 +140,16 @@ describe('acl-set', () => {
 
   for (const [label, name, expected] of [
     ['trims the name', '  Оля  ', 'Оля'],
-    ['cuts the name at 100 code points', `${'😀'.repeat(120)}`, '😀'.repeat(100)],
+    ['cuts the name at 100 code points', '\uD83D\uDE00'.repeat(120), '\uD83D\uDE00'.repeat(100)],
     ['stores "" for a blank name', '   ', ''],
   ] as const) {
     test(`${label} it stores`, async () => {
       // #given
       const room = roomRig.openRoom();
       const client = await roomRig.startClient(room, 'gm-a');
-
       // #when
       send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name, on: true });
       await waitUntil(() => shown(client, 'acl:brok:p-oly') !== undefined);
-
       // #then
       expect(storedRecord(client, 'acl:brok:p-oly')?.d).toEqual({ name: expected });
     });
@@ -180,7 +175,6 @@ describe('acl-set', () => {
       });
 
       await waitUntil(() => rejection(client, id) !== undefined);
-
       // #then
       expect({
         reason: rejection(client, id),
@@ -204,11 +198,9 @@ describe('acl-set', () => {
       // #given
       const room = roomRig.openRoom();
       const client = await roomRig.startClient(room, 'gm-a');
-
       // #when
       const id = send(client, { type: 'acl-set', sheetId, playerId, name: 'Оля', on: true });
       await waitUntil(() => rejection(client, id) !== undefined);
-
       // #then
       expect({
         reason: rejection(client, id),
@@ -223,7 +215,7 @@ describe('acl-set', () => {
     const room = roomRig.openRoom();
     await roomRig.startClient(room, 'gm-a');
     const player = await roomRig.startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
-    await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
+    await waitUntil(() => shown(player, 'blk:brok') !== undefined);
 
     // #when
     const id = send(player, {
@@ -235,7 +227,6 @@ describe('acl-set', () => {
     });
 
     await waitUntil(() => rejection(player, id) !== undefined);
-
     // #then
     expect({
       reason: rejection(player, id),
@@ -243,14 +234,12 @@ describe('acl-set', () => {
       sent: committed(room, 'player-a'),
     }).toEqual({ reason: 'not-allowed', shown: undefined, sent: [] });
   });
-
   test('reaches a player, whose window then holds its live acl:, and the revoke takes it back', async () => {
     // #given
     const room = roomRig.openRoom();
     const gmClient = await roomRig.startClient(room, 'gm-a');
     const player = await roomRig.startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
-    await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
-
+    await waitUntil(() => shown(player, 'blk:brok') !== undefined);
     // #when
     send(gmClient, {
       type: 'acl-set',
@@ -261,7 +250,6 @@ describe('acl-set', () => {
     });
     await waitUntil(() => shown(player, 'acl:brok:player-a')?.d != null);
     const granted = shown(player, 'acl:brok:player-a')?.d;
-
     send(gmClient, {
       type: 'acl-set',
       sheetId: 'brok',
@@ -270,24 +258,19 @@ describe('acl-set', () => {
       on: false,
     });
     await waitUntil(() => shown(player, 'acl:brok:player-a')?.d === null);
-
     // #then
     expect(granted).toEqual({ name: 'player-a' });
   });
-
   test('a sheet delete tombstones the acl: records the command wrote', async () => {
     // #given
     const room = roomRig.openRoom();
     const client = await roomRig.startClient(room, 'gm-a');
-
     send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля', on: true });
     send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-gena', name: 'Гена', on: true });
     await waitUntil(() => shown(client, 'acl:brok:p-gena') !== undefined);
-
     // #when
     send(client, { type: 'sheet-delete', sheetId: 'brok' });
-    await waitUntil(() => shown(client, 'sheet:brok')?.d === null);
-
+    await waitUntil(() => shown(client, 'blk:brok')?.d === null);
     // #then
     expect([
       storedRecord(client, 'acl:brok:p-oly'),
@@ -304,22 +287,18 @@ describe('owner-set', () => {
     // #given
     const room = roomRig.openRoom();
     const client = await roomRig.startClient(room, 'gm-a');
-
     // #when
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: 'p-oly', name: ' Оля ' });
     await waitUntil(() => commits(room, 'gm-a').length === 1);
-
     // #then
     const acl: VersionedRecord = { k: 'acl:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'gm-a' };
     const plink: VersionedRecord = { k: 'plink:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'gm-a' };
-
     expect({
       sent: commits(room, 'gm-a'),
       stored: [storedRecord(client, acl.k), storedRecord(client, plink.k)],
       owner: ownerOf(client.store.$records.get().values(), 'brok'),
     }).toEqual({ sent: [[acl, plink]], stored: [acl, plink], owner: 'p-oly' });
   });
-
   test("a new owner tombstones the previous owner's plink: and leaves the previous acl: alone", async () => {
     // #given
     const room = roomRig.openRoom();
@@ -332,7 +311,6 @@ describe('owner-set', () => {
     // #when
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: 'p-gena', name: 'Гена' });
     await waitUntil(() => commits(room, 'gm-a').length === 1);
-
     // #then
     expect({
       sent: commits(room, 'gm-a'),
@@ -350,25 +328,20 @@ describe('owner-set', () => {
       owner: 'p-gena',
     });
   });
-
   test('writes no acl: for an owner whose acl: is already live, and keeps it as it was', async () => {
     // #given
     const room = roomRig.openRoom();
     const acl: VersionedRecord = { k: 'acl:brok:p-oly', d: { name: 'Оля' }, c: 4, a: 'seed' };
-
     const client = await roomRig.startClient(room, 'gm-a', { seeded: [...BASE, acl] });
-
     // #when
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: 'p-oly', name: 'Ольга' });
     await waitUntil(() => commits(room, 'gm-a').length === 1);
-
     // #then
     expect({ sent: commits(room, 'gm-a'), acl: storedRecord(client, acl.k) }).toEqual({
       sent: [[{ k: 'plink:brok:p-oly', d: { name: 'Ольга' }, c: 1, a: 'gm-a' }]],
       acl,
     });
   });
-
   test('writes acl: again over its tombstone, as picking an owner turns editing on', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -380,7 +353,6 @@ describe('owner-set', () => {
     // #when
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля' });
     await waitUntil(() => commits(room, 'gm-a').length === 1);
-
     // #then
     expect(storedRecord(client, 'acl:brok:p-oly')).toEqual({
       k: 'acl:brok:p-oly',
@@ -389,7 +361,6 @@ describe('owner-set', () => {
       a: 'gm-a',
     });
   });
-
   test('"Никто" tombstones every live plink: of the sheet and leaves acl: as it was', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -409,7 +380,6 @@ describe('owner-set', () => {
     // #when
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: null, name: '' });
     await waitUntil(() => commits(room, 'gm-a').length === 1);
-
     // #then
     expect({
       sent: sortedByKey(commits(room, 'gm-a')[0] ?? []),
@@ -441,11 +411,9 @@ describe('owner-set', () => {
       // #given
       const room = roomRig.openRoom();
       const client = await roomRig.startClient(room, 'gm-a', { seeded: [...BASE, ...seeded] });
-
       // #when
       const id = send(client, { type: 'owner-set', sheetId: 'brok', playerId, name: 'Оля' });
       await waitUntil(() => rejection(client, id) !== undefined);
-
       // #then
       expect({ reason: rejection(client, id), sent: commits(room, 'gm-a') }).toEqual({
         reason: 'unchanged',
@@ -467,11 +435,9 @@ describe('owner-set', () => {
       // #given
       const room = roomRig.openRoom();
       const client = await roomRig.startClient(room, 'gm-a');
-
       // #when
       const id = send(client, { type: 'owner-set', sheetId, playerId, name: 'Оля' });
       await waitUntil(() => rejection(client, id) !== undefined);
-
       // #then
       expect({ reason: rejection(client, id), sent: commits(room, 'gm-a') }).toEqual({
         reason,
@@ -485,7 +451,7 @@ describe('owner-set', () => {
     const room = roomRig.openRoom();
     await roomRig.startClient(room, 'gm-a');
     const player = await roomRig.startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
-    await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
+    await waitUntil(() => shown(player, 'blk:brok') !== undefined);
 
     // #when
     const id = send(player, {
@@ -496,7 +462,6 @@ describe('owner-set', () => {
     });
 
     await waitUntil(() => rejection(player, id) !== undefined);
-
     // #then
     expect({
       reason: rejection(player, id),
@@ -504,19 +469,15 @@ describe('owner-set', () => {
       sent: commits(room, 'player-a'),
     }).toEqual({ reason: 'not-allowed', shown: undefined, sent: [] });
   });
-
   test('clearing "Может править" for the owner tombstones acl: only, and the owner stays', async () => {
     // #given
     const room = roomRig.openRoom();
     const client = await roomRig.startClient(room, 'gm-a');
-
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля' });
     await waitUntil(() => shown(client, 'plink:brok:p-oly') !== undefined);
-
     // #when
     send(client, { type: 'acl-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля', on: false });
     await waitUntil(() => shown(client, 'acl:brok:p-oly')?.d === null);
-
     // #then
     expect({
       plink: storedRecord(client, 'plink:brok:p-oly'),
@@ -526,7 +487,6 @@ describe('owner-set', () => {
       owner: 'p-oly',
     });
   });
-
   test('with two live plink: records, the next pick tombstones both', async () => {
     // #given: two GM clients picked at once, and the merge kept both.
     const room = roomRig.openRoom();
@@ -540,11 +500,9 @@ describe('owner-set', () => {
     });
 
     const before = ownerOf(client.store.$records.get().values(), 'brok');
-
     // #when
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: 'p-vova', name: 'Вова' });
     await waitUntil(() => commits(room, 'gm-a').length === 1);
-
     // #then
     expect({
       before,
@@ -564,21 +522,17 @@ describe('owner-set', () => {
       after: 'p-vova',
     });
   });
-
   test('two GM clients that pick different owners at once end with one owner on every client', async () => {
     // #given
     const room = roomRig.openRoom();
     const gmA = await roomRig.startClient(room, 'gm-a');
     const gmB = await roomRig.startClient(room, 'gm-b');
     const player = await roomRig.startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
-    await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
-
+    await waitUntil(() => shown(player, 'blk:brok') !== undefined);
     // #when
     send(gmA, { type: 'owner-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля' });
     send(gmB, { type: 'owner-set', sheetId: 'brok', playerId: 'p-gena', name: 'Гена' });
-
     const keys = ['plink:brok:p-oly', 'plink:brok:p-gena'];
-
     // Settled: every client holds both keys at the same versions.
     await waitUntil(() =>
       [gmB, player].every((client) =>
@@ -612,7 +566,6 @@ describe('owner-set', () => {
     );
 
     const expected = highest === null ? null : highest.k.slice('plink:brok:'.length);
-
     expect(expected).not.toBeNull();
     expect(owners).toEqual([expected, expected, expected]);
   });
@@ -627,11 +580,9 @@ describe('owner-set', () => {
       room.join('gm-b', 'GM', 'Мастер');
       const client = await roomRig.startClient(room, 'gm-a');
       await waitUntil(() => client.store.$party.get().length === 1);
-
       // #when
       const id = send(client, { type: 'owner-set', sheetId: 'brok', playerId, name: 'Мастер' });
       await waitUntil(() => rejection(client, id) !== undefined);
-
       // #then
       expect({ reason: rejection(client, id), sent: commits(room, 'gm-a') }).toEqual({
         reason: 'invalid-player-id',
@@ -644,14 +595,11 @@ describe('owner-set', () => {
     // #given
     const room = roomRig.openRoom();
     const client = await roomRig.startClient(room, 'gm-a');
-
     send(client, { type: 'owner-set', sheetId: 'brok', playerId: 'p-oly', name: 'Оля' });
     await waitUntil(() => shown(client, 'plink:brok:p-oly') !== undefined);
-
     // #when
     send(client, { type: 'sheet-delete', sheetId: 'brok' });
-    await waitUntil(() => shown(client, 'sheet:brok')?.d === null);
-
+    await waitUntil(() => shown(client, 'blk:brok')?.d === null);
     // #then
     expect([
       storedRecord(client, 'plink:brok:p-oly'),
@@ -669,10 +617,8 @@ describe('party in the projection', () => {
     const room = roomRig.openRoom();
     room.join('p-oly', 'PLAYER', 'Оля');
     room.join('gm-b', 'GM', 'Мастер');
-
     // #when
     const client = await roomRig.startClient(room, 'gm-a');
-
     // #then
     await waitUntil(() => client.store.$party.get().length === 2);
     expect(sortedParty(client)).toEqual([
@@ -680,38 +626,30 @@ describe('party in the projection', () => {
       { id: 'p-oly', name: 'Оля', role: 'PLAYER' },
     ]);
   });
-
   test('follows a player who joins and leaves while the window is open', async () => {
     // #given
     const room = roomRig.openRoom();
     const client = await roomRig.startClient(room, 'gm-a');
-
     // #when
     room.join('p-oly', 'PLAYER', 'Оля');
     await waitUntil(() => client.store.$party.get().length === 1);
     const joined = sortedParty(client);
-
     room.room.leave('p-oly');
     await waitUntil(() => client.store.$party.get().length === 0);
-
     // #then
     expect(joined).toEqual([{ id: 'p-oly', name: 'Оля', role: 'PLAYER' }]);
   });
-
   test('gives a player window no party', async () => {
     // #given
     const room = roomRig.openRoom();
     await roomRig.startClient(room, 'gm-a');
     room.join('p-oly', 'PLAYER', 'Оля');
-
     // #when
     const player = await roomRig.startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
-    await waitUntil(() => shown(player, 'sheet:brok') !== undefined);
-
+    await waitUntil(() => shown(player, 'blk:brok') !== undefined);
     // #then
     expect(player.store.$party.get()).toEqual([]);
   });
-
   test('does not publish an initial party read that resolves after the engine stops', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -721,16 +659,13 @@ describe('party in the projection', () => {
     await client.startEngine();
     client.openWindow();
     await waitUntil(() => client.store.$loaded.get() && client.store.$sync.get().state === 'live');
-
     const beforeParty = sortedParty(client);
     const deltaOffset = partyDeltas(client).length;
     const initialReadStarted = held.started();
-
     // #when
     client.engine.stop();
     held.release(PARTY_AFTER_INITIAL_READ);
     await roomRig.pause(0);
-
     // #then
     expect({
       beforeParty,
@@ -744,7 +679,6 @@ describe('party in the projection', () => {
       deltas: [],
     });
   });
-
   test('publishes the same delayed initial party read while the engine is live', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -754,15 +688,12 @@ describe('party in the projection', () => {
     await client.startEngine();
     client.openWindow();
     await waitUntil(() => client.store.$loaded.get() && client.store.$sync.get().state === 'live');
-
     const beforeParty = sortedParty(client);
     const deltaOffset = partyDeltas(client).length;
     const initialReadStarted = held.started();
-
     // #when
     held.release(PARTY_AFTER_INITIAL_READ);
     await waitUntil(() => partyDeltas(client).length === deltaOffset + 1);
-
     // #then
     expect({
       beforeParty,

@@ -1,9 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import type { JsonValue } from '@/core/json';
 import { SYNC_CHANNEL } from '@/core/room-messages';
-
 import {
   ADD,
   addPartyMember,
@@ -14,7 +12,7 @@ import {
   postRemote,
   record,
   seedStorage,
-  storedData,
+  storedCell,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
@@ -41,7 +39,6 @@ const AT_ONCE_MS = 600;
 
 // The background's first resend of an unanswered proposal comes 2 s after it, so this sees one.
 const RESEND_WAIT_MS = 6000;
-
 const GM: ClientParams = { client: 'a', name: 'Мастер' };
 
 const PLAYER: ClientParams = {
@@ -132,11 +129,16 @@ const PRESET_TEXT = JSON.stringify({
 const RECORDS: StoredRecord[] = [
   ...pcSheet('brok', 'Брок', 0),
   record('acl:brok:lisa', { name: 'Лиза' }),
-  record('row:brok:str', { str: 14, dex: 12 }),
-  record('rep:brok:attack:i1', { order: 0, cells: { attack: 'Меч' } }),
+  record('blk:brok', { str: 14, dex: 12 }),
+  record('blk:brok:attack:i1', { order: 0, cells: { attack: 'Меч' } }),
 ];
 
-type Proposed = { k: string; d: JsonValue; c: number; a: string };
+type Proposed = {
+  k: string;
+  d: JsonValue;
+  c: number;
+  a: string;
+};
 
 declare global {
   interface Window {
@@ -153,14 +155,12 @@ test('a player\'s edit shows at once, and "Ожидает" only after the delay 
 }) => {
   // #given
   const { gm, player } = await openWithSilentGm(context);
-
   // #when
   await strength(player.window).fill('16');
   await strength(player.window).press('Enter');
   const edited = Date.now();
-
   // #then: at a point well inside the delay the edit has gone out and shows, with no mark yet.
-  await expect.poll(() => proposedKeys(gm.window)).toEqual(['row:brok:str']);
+  await expect.poll(() => proposedKeys(gm.window)).toEqual(['blk:brok']);
   await player.window.waitForTimeout(Math.max(0, edited + INSIDE_DELAY_MS - Date.now()));
   await expect(strength(player.window)).toHaveValue('16');
   await expect(mark(player.window)).toHaveCount(0);
@@ -171,46 +171,39 @@ test('a player\'s edit shows at once, and "Ожидает" only after the delay 
 test('an edit of one field of a row marks that field only', async ({ context }) => {
   // #given
   const { player } = await openWithSilentGm(context);
-
   // #when
   await dexterity(player.window).fill('13');
   await dexterity(player.window).press('Enter');
-
   // #then
   await expect(mark(player.window)).toBeVisible();
   await expect(dexterity(player.window)).toHaveAccessibleDescription(PENDING);
   await expect(strength(player.window)).toHaveAccessibleDescription('');
 });
 
-test('an edit back to the applied value still waits, and every field of its row says so', async ({
+test('an edit back to the applied value still waits, and only the touched field says so', async ({
   context,
 }) => {
   // #given: the first version has gone out, so the edit back must go out too.
   const { gm, player } = await openWithSilentGm(context);
-
   await strength(player.window).fill('16');
   await strength(player.window).press('Enter');
-  await expect.poll(() => proposalCount(gm.window, 'row:brok:str')).toBe(1);
-
+  await expect.poll(() => proposalCount(gm.window, 'blk:brok')).toBe(1);
   // #when
   await strength(player.window).fill('14');
   await strength(player.window).press('Enter');
-
   // #then
-  await expect.poll(() => proposalCount(gm.window, 'row:brok:str')).toBe(2);
-  await expect(mark(player.window)).toHaveCount(2);
+  await expect.poll(() => proposalCount(gm.window, 'blk:brok')).toBe(2);
+  await expect(mark(player.window)).toHaveCount(1);
   await expect(strength(player.window)).toHaveValue('14');
   await expect(strength(player.window)).toHaveAccessibleDescription(PENDING);
-  await expect(dexterity(player.window)).toHaveAccessibleDescription(PENDING);
+  await expect(dexterity(player.window)).toHaveAccessibleDescription('');
 });
 
 test('a toggled check shows the mark and keeps its focus', async ({ context }) => {
   // #given
   const { player } = await openWithSilentGm(context);
-
   // #when
   await magic(player.window).click();
-
   // #then
   await expect(mark(player.window)).toBeVisible();
   await expect(magic(player.window)).toBeChecked();
@@ -221,14 +214,11 @@ test('a toggled check shows the mark and keeps its focus', async ({ context }) =
 test("a GM's commit takes the mark away with no message", async ({ context }) => {
   // #given
   const { gm, player } = await openWithSilentGm(context);
-
   await strength(player.window).fill('16');
   await strength(player.window).press('Enter');
   await expect(mark(player.window)).toBeVisible();
-
   // #when
-  await commitProposal(gm, 'row:brok:str');
-
+  await commitProposal(gm, 'blk:brok');
   // #then
   await expect(mark(player.window)).toHaveCount(0);
   await expect(strength(player.window)).toHaveValue('16');
@@ -241,23 +231,18 @@ test('an edit of a player-editable single sheet shows "Ожидает" after the
 }) => {
   // #given
   const { gm, player } = await openWithSilentGm(context);
-
   await player.window.getByRole('tab', { name: 'Добыча' }).click();
-
   // #when
   await gold(player.window).fill('30');
   await gold(player.window).press('Enter');
-
   // #then
-  await expect.poll(() => proposedKeys(gm.window)).toEqual(['row:loot:gold']);
+  await expect.poll(() => proposedKeys(gm.window)).toEqual(['blk:loot']);
   await expect(player.window.getByRole('tabpanel').getByText(READ_ONLY)).toHaveCount(0);
   await expect(mark(player.window)).toBeVisible({ timeout: MARK_DELAY_MS * 3 });
   await expect(gold(player.window)).toHaveValue('30');
   await expect(gold(player.window)).toHaveAccessibleDescription(PENDING);
-
   // #when
-  await commitProposal(gm, 'row:loot:gold');
-
+  await commitProposal(gm, 'blk:loot');
   // #then
   await expect(mark(player.window)).toHaveCount(0);
   await expect(gold(player.window)).toHaveValue('30');
@@ -270,26 +255,22 @@ test('with no GM answering, the mark shows at once over a readable sheet, and a 
 }) => {
   // #given: the player hears no GM for 1 s, then shows the no-GM banner.
   const { gm, player } = await openWithSilentGm(context, { gmLinkTimeoutMs: 1000 });
-
   await expect(player.window.getByRole('status')).toHaveText(NO_GM);
-
   // #when
   await strength(player.window).fill('16');
   await strength(player.window).press('Enter');
-
   // #then: it applies nowhere, and goes out again with no answer.
   await expect(mark(player.window)).toBeVisible({ timeout: AT_ONCE_MS });
   await expect(strength(player.window)).toHaveValue('16');
   await expect(player.window.getByRole('status')).toHaveText(NO_GM);
   await expect(attack(player.window)).toHaveValue('Меч');
   await expect
-    .poll(() => proposalCount(gm.window, 'row:brok:str'), { timeout: RESEND_WAIT_MS })
+    .poll(() => proposalCount(gm.window, 'blk:brok'), { timeout: RESEND_WAIT_MS })
     .toBeGreaterThanOrEqual(2);
-  expect(await storedData(gm.window, 'row:brok:str')).toEqual({ str: 14, dex: 12 });
-
+  expect(await storedCell(gm.window, 'blk:brok', 'str')).toEqual([14, 1, 'seed']);
+  expect(await storedCell(gm.window, 'blk:brok', 'dex')).toEqual([12, 1, 'seed']);
   // #when: the GM answers.
-  await commitProposal(gm, 'row:brok:str');
-
+  await commitProposal(gm, 'blk:brok');
   // #then
   await expect(mark(player.window)).toHaveCount(0);
   await expect(player.window.getByRole('status')).toBeEmpty();
@@ -299,13 +280,10 @@ test('with no GM answering, the mark shows at once over a readable sheet, and a 
 test('a focused field keeps its focus and caret when the mark appears', async ({ context }) => {
   // #given: the typing pause saves the field while it keeps the focus.
   const { player } = await openWithSilentGm(context);
-
   await strength(player.window).fill('16');
   await strength(player.window).press('ArrowLeft');
-
   // #when
   await expect(mark(player.window)).toBeVisible();
-
   // #then
   expect(
     await strength(player.window).evaluate((element) => [
@@ -319,19 +297,15 @@ test('a focused field keeps its focus and caret when the mark appears', async ({
 test('a new repeat row carries the mark until the GM commits it', async ({ context }) => {
   // #given
   const { gm, player } = await openWithSilentGm(context);
-
   // #when
   await attacks(player.window).getByRole('button', { name: ADD_ROW, exact: true }).click();
-
   // #then
   await expect(attackFields(player.window)).toHaveCount(2);
   await expect(mark(player.window)).toBeVisible();
   await expect(attackFields(player.window).nth(1)).toHaveAccessibleDescription(PENDING);
   await expect(attackFields(player.window).nth(0)).toHaveAccessibleDescription('');
-
   // #when
-  await commitProposal(gm, 'rep:brok:attack:');
-
+  await commitProposal(gm, 'blk:brok:attack:');
   // #then
   await expect(mark(player.window)).toHaveCount(0);
   await expect(attackFields(player.window)).toHaveCount(2);
@@ -342,10 +316,8 @@ test('a removed repeat row stays dimmed with the mark at once, inputs disabled a
 }) => {
   // #given
   const { gm, player } = await openWithSilentGm(context);
-
   // #when
   await deleteFirstRow(player.window).click();
-
   // #then: the focus moves on from the "Удалить" that left.
   await expect(mark(player.window)).toBeVisible({ timeout: AT_ONCE_MS });
   await expect(addRow(player.window)).toBeFocused();
@@ -356,10 +328,8 @@ test('a removed repeat row stays dimmed with the mark at once, inputs disabled a
   await expect(mark(player.window)).toHaveCSS('opacity', '1');
   await expect(deleteFirstRow(player.window)).toHaveCount(0);
   await expect(attack(player.window)).toHaveAccessibleDescription(PENDING);
-
   // #when
-  await commitProposal(gm, 'rep:brok:attack:i1');
-
+  await commitProposal(gm, 'blk:brok:attack:i1');
   // #then
   await expect(attackFields(player.window)).toHaveCount(0);
   await expect(mark(player.window)).toHaveCount(0);
@@ -370,14 +340,11 @@ test('a denied removal brings the row back to normal with "Нет прав на 
 }) => {
   // #given
   const { gm, player } = await openWithSilentGm(context);
-
   await deleteFirstRow(player.window).click();
   await expect(attack(player.window)).toBeDisabled();
-  await expect.poll(() => proposedKeys(gm.window)).toEqual(['rep:brok:attack:i1']);
-
+  await expect.poll(() => proposedKeys(gm.window)).toEqual(['blk:brok:attack:i1']);
   // #when
-  await rejectProposal(gm, 'rep:brok:attack:i1');
-
+  await rejectProposal(gm, 'blk:brok:attack:i1');
   // #then
   await expect(attack(player.window)).toBeEnabled();
   await expect(attack(player.window).locator('..')).toHaveCSS('opacity', '1');
@@ -391,23 +358,19 @@ test('a revoke while an edit waits makes the sheet read-only at once, returns th
 }) => {
   // #given
   const { gm, player } = await openWithSilentGm(context);
-
   await strength(player.window).fill('16');
   await strength(player.window).press('Enter');
   await deleteFirstRow(player.window).click();
-  await expect.poll(() => proposedKeys(gm.window)).toEqual(['rep:brok:attack:i1', 'row:brok:str']);
-
+  await expect.poll(() => proposedKeys(gm.window)).toEqual(['blk:brok', 'blk:brok:attack:i1']);
   // #when
   await postRemote(gm.window, gm.connectionId, {
-    v: 3,
+    v: 4,
     g: GENERATION,
     t: 'commit',
     records: [{ k: 'acl:brok:lisa', d: null, c: 2, a: gm.connectionId }],
   });
-
   // #then
   const sheet = player.window.getByRole('tabpanel');
-
   await expect(sheet.getByText(READ_ONLY, { exact: true })).toBeVisible();
   await expect(sheet.getByRole('textbox')).toHaveCount(0);
   await expect(sheet.getByRole('group', { name: 'Сила', exact: true })).toHaveText('14');
@@ -421,19 +384,17 @@ test('an edit a live GM answers within the delay never shows the mark, and the G
 }) => {
   // #given
   const gm = await openClient(context, GM, RECORDS);
-
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
-
   const player = await openClient(context, PLAYER, null);
-
   await expect(strength(player.window)).toHaveValue('14');
-
   // #when
   await strength(player.window).fill('16');
   await strength(player.window).press('Enter');
-  await expect.poll(() => storedData(gm.window, 'row:brok:str')).toEqual({ str: 16, dex: 12 });
+  await expect
+    .poll(() => storedCell(gm.window, 'blk:brok', 'str'))
+    .toEqual([16, 2, player.connectionId]);
+  await expect.poll(() => storedCell(gm.window, 'blk:brok', 'dex')).toEqual([12, 1, 'seed']);
   await player.window.waitForTimeout(MARK_DELAY_MS * 1.5);
-
   // #then
   await expect(mark(player.window)).toHaveCount(0);
   await expect(mark(gm.window)).toHaveCount(0);
@@ -445,13 +406,13 @@ test('an edit a live GM answers within the delay never shows the mark, and the G
 async function openWithSilentGm(
   context: BrowserContext,
   player: Partial<ClientParams> = {},
-): Promise<{ gm: RoomClient; player: RoomClient }> {
+): Promise<{
+  gm: RoomClient;
+  player: RoomClient;
+}> {
   const gm = await openClient(context, GM, RECORDS);
-
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
-
   const opened = await openClient(context, { ...PLAYER, ...player }, null);
-
   await expect(strength(opened.window)).toHaveValue('14');
   await gm.background.close();
   await addPartyMember(gm.window, gm.connectionId, 'GM', { name: 'Мастер' });
@@ -509,7 +470,6 @@ async function newestProposal(page: Page, prefix: string): Promise<Proposed> {
       (await page.evaluate(() => window.proposed)).some((one) => one.k.startsWith(prefix)),
     )
     .toBe(true);
-
   const proposed = await page.evaluate(() => window.proposed);
   const newest = proposed.filter((one) => one.k.startsWith(prefix)).at(-1);
 
@@ -523,9 +483,8 @@ async function newestProposal(page: Page, prefix: string): Promise<Proposed> {
 // The GM's answer: the proposed record merged unchanged, with the echo of its (k, c, a).
 async function commitProposal(gm: RoomClient, prefix: string): Promise<void> {
   const proposal = await newestProposal(gm.window, prefix);
-
   await postRemote(gm.window, gm.connectionId, {
-    v: 3,
+    v: 4,
     g: GENERATION,
     t: 'commit',
     records: [proposal],
@@ -535,9 +494,8 @@ async function commitProposal(gm: RoomClient, prefix: string): Promise<void> {
 
 async function rejectProposal(gm: RoomClient, prefix: string): Promise<void> {
   const proposal = await newestProposal(gm.window, prefix);
-
   await postRemote(gm.window, gm.connectionId, {
-    v: 3,
+    v: 4,
     g: GENERATION,
     t: 'reject',
     k: proposal.k,

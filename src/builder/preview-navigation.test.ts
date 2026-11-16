@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-
 import { fromPreset, templateToPreset } from './document';
 import {
   previewNavigationReducer,
@@ -42,7 +41,6 @@ describe('previewNavigationReducer', () => {
     // #then
     expect(shownTab).toEqual({ template: 'characters', tab: 1 });
   });
-
   test('switches to the tab of the selected item', () => {
     // #given
     const template = previewTemplate('characters');
@@ -58,7 +56,6 @@ describe('previewNavigationReducer', () => {
     // #then
     expect(shownTab).toEqual({ template: 'characters', tab: 2 });
   });
-
   test('keeps the shown tab when the selection is outside all tabs', () => {
     // #given
     const template = previewTemplate('characters');
@@ -74,7 +71,6 @@ describe('previewNavigationReducer', () => {
     // #then
     expect(shownTab).toEqual({ template: 'characters', tab: 1 });
   });
-
   test('uses tab zero when the shown template has no tabs', () => {
     // #given
     const template = previewTemplate('empty', 0);
@@ -90,7 +86,6 @@ describe('previewNavigationReducer', () => {
     // #then
     expect(shownTab).toEqual({ template: 'empty', tab: 0 });
   });
-
   test('keeps the previous shown tab when no template is available', () => {
     // #given
     const state: PreviewNavigationState = { template: 'characters', tab: 1 };
@@ -105,7 +100,6 @@ describe('previewNavigationReducer', () => {
     // #then
     expect(shownTab).toEqual({ template: 'characters', tab: 1 });
   });
-
   test('keeps a null tab when the selected role can see no tabs', () => {
     // #given
     const template = previewTemplate('private');

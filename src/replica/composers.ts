@@ -26,6 +26,9 @@ import {
   type PresetMigration,
 } from '@/core/preset-migrate';
 import {
+  blockDataSchema,
+  cellValues,
+  versionCells,
   parseRepKey,
   playerDataSchema,
   playerIdSchema,
@@ -177,10 +180,31 @@ export function createComposers(connectionId: string): Composers {
       return err({ reason: 'count-changed', changed: lossOf(migration) });
     }
 
-    const minted = (write: PlannedWrite): VersionedRecord => ({
-      ...write,
-      ...context.mint(write.k, context.records.get(write.k)?.c ?? 0),
-    });
+    const minted = (write: PlannedWrite): VersionedRecord => {
+      const current = context.records.get(write.k);
+      const version = context.mint(write.k, Math.max(current?.c ?? 0, current?.l?.[0] ?? 0));
+
+      if (!write.k.startsWith('blk:')) return { k: write.k, d: null, ...version };
+
+      return {
+        k: write.k,
+        ...version,
+        l: write.relocate ? [version.c, version.a] : (current?.l ?? [version.c, version.a]),
+        d:
+          write.d === null
+            ? null
+            : {
+                ...write.d,
+                cells: versionCells(
+                  Object.fromEntries(
+                    Object.entries(write.d.cells).map(([id, [value]]) => [id, value]),
+                  ),
+                  version.c,
+                  version.a,
+                ),
+              },
+      };
+    };
 
     const groups: VersionedRecord[][] = [
       migration.first.map(minted),
@@ -194,8 +218,8 @@ export function createComposers(connectionId: string): Composers {
   }
 
   // AD-18: the policy of a sheet a template owns. A single sheet's id is its template id. Any other
-  // sheet needs a live `sheet:` record. `noPreset` names the rejection for a sheet whose template
-  // cannot be known yet.
+  // sheet needs a live root block. `noPreset` names the rejection for a sheet whose template cannot
+  // be known yet.
   function sheetPolicyOf(
     context: ComposeContext,
     sheetId: string,
@@ -224,8 +248,8 @@ export function createComposers(connectionId: string): Composers {
     return policy === null ? err('unknown-sheet') : ok(policy);
   }
 
-  // A sheet of a sheet set: never a single sheet. With no preset, a live `sheet:` record says so,
-  // as only a sheet of a sheet set has one.
+  // A sheet of a sheet set: never a single sheet. With no preset, `set` on a live root block says
+  // so.
   function sheetOfSet(context: ComposeContext, sheetId: string): Result<null, RejectionReason> {
     if (!sheetIdSchema.safeParse(sheetId).success) {
       return err('invalid-sheet-id');
@@ -305,7 +329,7 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(patched.value.k, existing?.c ?? 0);
 
-    return ok({ ...patched.value, c, a });
+    return ok(mintedPatch(patched.value, existing, { c, a }));
   }
 
   // A patch that changes nothing on the record built so far is skipped in silence: the window
@@ -329,7 +353,9 @@ export function createComposers(connectionId: string): Composers {
 
     for (const patch of patches) {
       const base: VersionedRecord | undefined =
-        working === null ? existing : { ...working, c: 1, a: connectionId };
+        working === null
+          ? existing
+          : { ...working, c: 1, a: connectionId, l: existing?.l ?? [1, connectionId] };
 
       const patched = patchOnto(context, patch.command, base);
 
@@ -346,7 +372,7 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(working.k, existing?.c ?? 0);
 
-    return { record: { ...working, c, a }, refusals };
+    return { record: mintedPatch(working, existing, { c, a }), refusals };
   }
 
   // A new repeat block goes after every repeat block this sheet has in the section. The id is the
@@ -378,6 +404,7 @@ export function createComposers(connectionId: string): Composers {
       d: { order: nextBlockOrder(context, command), cells: {} },
       c,
       a,
+      l: [c, a],
     };
 
     return recordFitsOneMessage(record) ? ok(record) : err('too-large');
@@ -441,7 +468,7 @@ export function createComposers(connectionId: string): Composers {
 
     const cells = duplicateBlockCells(
       section.value.section,
-      source.data.cells,
+      cellValues(source.data.cells),
       siblings.map((block) => block.cells),
       command.count,
     );
@@ -464,11 +491,12 @@ export function createComposers(connectionId: string): Composers {
       taken.add(instanceId);
 
       const k = repKey(command.sheetId, command.sectionId, instanceId);
-      const d = { order: firstOrder + index, cells: values };
+      const version = context.mint(k, 0);
+      const d = { order: firstOrder + index, cells: versionCells(values, version.c, version.a) };
       // AD-14: a copy holds only the fields the template has in the section.
       const stripped = stripToTemplate({ k, d }, policy.template);
 
-      copies.push({ k, d: stripped.d, ...context.mint(k, 0) });
+      copies.push({ k, d: stripped.d, ...version, l: [version.c, version.a] });
     }
 
     return copies.every(recordFitsOneMessage) ? ok(copies) : err('too-large');
@@ -520,7 +548,11 @@ export function createComposers(connectionId: string): Composers {
       return err('sheet-exists');
     }
 
-    return mintedSheet(context, k, 0, { set: set.id, order: nextOrder(context, set.id) });
+    return mintedSheet(context, k, 0, {
+      set: set.id,
+      order: nextOrder(context, set.id),
+      cells: {},
+    });
   }
 
   // A sheet of a sheet set and every record that depends on it go in one batch. Storage gets the
@@ -546,7 +578,11 @@ export function createComposers(connectionId: string): Composers {
 
     for (const [key, record] of context.records) {
       // A tombstone already says deleted, and writing it again would only add a version.
-      if (record.d !== null && isSheetDependent(key, record, command.sheetId)) {
+      if (
+        key !== sheetKey(command.sheetId) &&
+        record.d !== null &&
+        isSheetDependent(key, record, command.sheetId)
+      ) {
         doomed.push(record);
       }
     }
@@ -819,7 +855,7 @@ function sectionBlocks(
       const block = repDataSchema.safeParse(record.d);
 
       if (block.success) {
-        blocks.push(block.data);
+        blocks.push({ order: block.data.order, cells: cellValues(block.data.cells) });
       }
     }
   }
@@ -877,8 +913,8 @@ function drawFreeId(
   return null;
 }
 
-// The sheet ids that live dependent records name: `row:`, `rep:`, `acl:`, `plink:` and `link:`.
-// A tombstone takes nothing over, so it does not count here.
+// The sheet ids that live block, access, player-link and token-link records name. A tombstone takes
+// nothing over, so it does not count here.
 function liveDependentSheetIds(context: ComposeContext): Set<string> {
   const sheetIds = new Set<string>();
 
@@ -923,7 +959,7 @@ function mintedSheet(
   d: SheetData,
 ): Result<VersionedRecord, RejectionReason> {
   const { c, a } = context.mint(k, highestKnownCounter);
-  const record: VersionedRecord = { k, d, c, a };
+  const record: VersionedRecord = { k, d, c, a, l: [c, a] };
 
   return recordFitsOneMessage(record) ? ok(record) : err('too-large');
 }
@@ -947,7 +983,7 @@ function nextOrder(context: ComposeContext, setId: string): number {
   let highest = -1;
 
   for (const record of context.records.values()) {
-    if (record.k.startsWith('sheet:')) {
+    if (record.k.startsWith('blk:') && record.k.split(':').length === 2) {
       const sheet = sheetDataSchema.safeParse(record.d);
 
       if (sheet.success && sheet.data.set === setId) {
@@ -957,6 +993,27 @@ function nextOrder(context: ComposeContext, setId: string): number {
   }
 
   return highest + 1;
+}
+
+function mintedPatch(
+  patched: PatchedRecord,
+  existing: VersionedRecord | undefined,
+  version: Version,
+): VersionedRecord {
+  const before = blockDataSchema.safeParse(existing?.d).data;
+
+  const changed = Object.fromEntries(
+    Object.entries(patched.d.cells)
+      .filter(([id, cell]) => cell[0] !== before?.cells[id]?.[0])
+      .map(([id, [value]]) => [id, value]),
+  );
+
+  return {
+    k: patched.k,
+    ...version,
+    l: existing?.l ?? [version.c, version.a],
+    d: { ...patched.d, cells: versionCells(changed, version.c, version.a) },
+  };
 }
 
 function listOf<Value, Failure>(result: Result<Value, Failure>): Result<Value[], Failure> {

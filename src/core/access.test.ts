@@ -1,5 +1,7 @@
+import { assembleRecords } from '@/core/merge';
+import { fixturePatch } from '../../tests/support/block-fixtures';
+import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
-
 import {
   accessRows,
   aclKey,
@@ -18,7 +20,7 @@ import {
   type ProposalContext,
   type ProposalSender,
 } from '@/core/access';
-import { FORMAT_VERSION } from '@/core/format-version';
+import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
 import type { Preset, Template } from '@/core/preset';
 import { playerIdSchema, recordKeySchema, type VersionedRecord } from '@/core/records';
 import { resolveSheet, type SheetPolicy } from '@/core/sheets';
@@ -38,7 +40,6 @@ describe('accessRows', () => {
 
     // #when
     const rows = accessRows(party, [], 'brok', OWN);
-
     // #then
     expect(rows).toEqual([
       { playerId: 'p-ann', name: 'Анна', canEdit: false },
@@ -46,18 +47,14 @@ describe('accessRows', () => {
       { playerId: 'p-oly', name: 'Оля', canEdit: false },
     ]);
   });
-
   test('lists a player id once, however many connections it has', () => {
     // #given
     const party: PartyEntry[] = [player('p-oly', 'Оля'), player('p-oly', 'Оля')];
-
     // #when
     const rows = accessRows(party, [acl('brok', 'p-oly', 'Оля')], 'brok', OWN);
-
     // #then
     expect(rows).toEqual([{ playerId: 'p-oly', name: 'Оля', canEdit: true }]);
   });
-
   test('adds a player who is not in the room but holds a live acl: or plink: of this sheet', () => {
     // #given
     const records = [
@@ -69,14 +66,12 @@ describe('accessRows', () => {
 
     // #when
     const rows = accessRows([], records, 'brok', OWN);
-
     // #then
     expect(rows).toEqual([
       { playerId: 'p-vova', name: 'Вова', canEdit: false },
       { playerId: 'p-lisa', name: 'Лиза', canEdit: true },
     ]);
   });
-
   test('names a player by the party first, then by acl:, then by plink:', () => {
     // #given
     const party: PartyEntry[] = [player('p-1', 'Новое имя')];
@@ -90,7 +85,6 @@ describe('accessRows', () => {
 
     // #when
     const rows = accessRows(party, records, 'brok', OWN);
-
     // #then
     expect(rows.map((row) => [row.playerId, row.name])).toEqual([
       ['p-2', 'Из acl'],
@@ -98,26 +92,20 @@ describe('accessRows', () => {
       ['p-3', 'Только plink'],
     ]);
   });
-
   test('gives no row to a player id the room lists as a GM, even with an acl: record', () => {
     // #given
     const party: PartyEntry[] = [gm('p-promoted', 'Оля')];
-
     // #when
     const rows = accessRows(party, [acl('brok', 'p-promoted', 'Оля')], 'brok', OWN);
-
     // #then
     expect(rows).toEqual([]);
   });
-
   test('does not read the records of a sheet whose id starts with this one', () => {
     // #when
     const rows = accessRows([], [acl('brok2', 'p-1', 'Оля')], 'brok', OWN);
-
     // #then
     expect(rows).toEqual([]);
   });
-
   test("gives no row to this client's own player id, also when only a record names it", () => {
     // #given
     const party: PartyEntry[] = [player(OWN, 'Я'), player('p-1', 'Оля')];
@@ -131,25 +119,19 @@ describe('accessRows', () => {
     // #then
     expect(rows).toEqual([[{ playerId: 'p-1', name: 'Оля', canEdit: false }], []]);
   });
-
   test('gives no row to a GM id that only a record names while the party lists it', () => {
     // #given
     const party: PartyEntry[] = [gm('p-gm', 'Мастер')];
-
     // #when
     const rows = accessRows(party, [plink('brok', 'p-gm', 'Мастер')], 'brok', OWN);
-
     // #then
     expect(rows).toEqual([]);
   });
-
   test('marks a name as unknown when no non-blank name is known, and trims a known one', () => {
     // #given
     const party: PartyEntry[] = [player('p-1', '   '), player('p-2', '  Оля  ')];
-
     // #when
     const rows = accessRows(party, [acl('brok', 'p-3', '')], 'brok', OWN);
-
     // #then
     expect(rows).toEqual([
       { playerId: 'p-2', name: 'Оля', canEdit: false },
@@ -157,25 +139,19 @@ describe('accessRows', () => {
       { playerId: 'p-3', name: null, canEdit: true },
     ]);
   });
-
   test('gives no row to a party id that no acl: key can hold', () => {
     // #given
     const party: PartyEntry[] = [player('a b', 'Оля'), player('a:b', 'Гена')];
-
     // #when
     const rows = accessRows(party, [], 'brok', OWN);
-
     // #then
     expect(rows).toEqual([]);
   });
-
   test('keeps one order for equal names, by player id', () => {
     // #given
     const party: PartyEntry[] = [player('p-b', 'Оля'), player('p-a', 'Оля')];
-
     // #when
     const rows = accessRows(party, [], 'brok', OWN);
-
     // #then
     expect(rows.map((row) => row.playerId)).toEqual(['p-a', 'p-b']);
   });
@@ -201,14 +177,11 @@ describe('canEdit', () => {
     // #then
     expect(found).toEqual([true, false, false, false]);
   });
-
   test('is false for a player id no acl: key can hold', () => {
     // #given
     const records = byKey([{ k: 'acl:brok:a b', d: { name: 'Оля' }, c: 1, a: 'seed' }]);
-
     // #when
     const found = canEdit(records, 'brok', 'a b');
-
     // #then
     expect(found).toBe(false);
   });
@@ -227,14 +200,12 @@ describe('partyEntries', () => {
 
     // #when
     const entries = partyEntries(members);
-
     // #then
     expect(entries).toEqual([
       { id: 'p-a', name: 'Гена', role: 'GM' },
       { id: 'p-b', name: 'Оля', role: 'PLAYER' },
     ]);
   });
-
   test(`keeps at most ${PARTY_LIMIT} entries and cuts each name`, () => {
     // #given
     const members = Array.from({ length: PARTY_LIMIT + 5 }, (_unused, index) =>
@@ -243,7 +214,6 @@ describe('partyEntries', () => {
 
     // #when
     const entries = partyEntries(members);
-
     // #then
     expect({
       count: entries.length,
@@ -256,7 +226,11 @@ describe('partyEntries', () => {
 describe('playerName', () => {
   test('trims and cuts at 100 code points, and turns a blank name into ""', () => {
     // #when
-    const names = [playerName('  Оля  '), playerName('   '), playerName('😀'.repeat(120))];
+    const names = [
+      playerName('  Оля  '),
+      playerName('   '),
+      playerName('\uD83D\uDE00'.repeat(120)),
+    ];
 
     // #then
     expect(names.map((name) => Array.from(name).length)).toEqual([3, 0, 100]);
@@ -278,7 +252,6 @@ describe('playerIdSchema', () => {
     // #then
     expect(accepted).toEqual([true, true, true, false, false, false]);
   });
-
   test('is the rule of the acl: and plink: keys', () => {
     // #when
     const accepted = [
@@ -292,11 +265,9 @@ describe('playerIdSchema', () => {
     // #then
     expect(accepted).toEqual([true, false, false, true, false]);
   });
-
   test('makes the acl: key of a sheet and a player', () => {
     // #when
     const key = aclKey('brok', 'p-1');
-
     // #then
     expect(key).toBe('acl:brok:p-1');
   });
@@ -315,11 +286,9 @@ describe('ownedSheetIds', () => {
 
     // #when
     const owned = ownedSheetIds(sheets, records, 'p-oly');
-
     // #then
     expect([...owned]).toEqual(['brok']);
   });
-
   test('follows the plink: with the highest (c, a) when two are live', () => {
     // #given
     const records = byKey([
@@ -349,23 +318,18 @@ describe('ownedFirst', () => {
   test('puts an owned sheet first, then the rest by (order, sheetId)', () => {
     // #when
     const sheets = ownedFirst(SHEETS, new Set(['a']));
-
     // #then
     expect(sheets.map((sheet) => sheet.sheetId)).toEqual(['a', 'b', 'c', 'd']);
   });
-
   test('puts several owned sheets first by (order, sheetId), then the rest the same way', () => {
     // #when
     const sheets = ownedFirst(SHEETS, new Set(['a', 'd', 'c']));
-
     // #then
     expect(sheets.map((sheet) => sheet.sheetId)).toEqual(['c', 'd', 'a', 'b']);
   });
-
   test('keeps the order by (order, sheetId) with nothing owned', () => {
     // #when
     const sheets = ownedFirst(SHEETS, new Set());
-
     // #then
     expect(sheets.map((sheet) => sheet.sheetId)).toEqual(['b', 'c', 'd', 'a']);
   });
@@ -375,7 +339,6 @@ describe('plinkKey', () => {
   test('makes the plink: key of a sheet and a player', () => {
     // #when
     const key = plinkKey('brok', 'p-1');
-
     // #then
     expect(key).toBe('plink:brok:p-1');
   });
@@ -419,9 +382,15 @@ const PRESET: Preset = {
 };
 
 const RECORDS: ReadonlyMap<string, VersionedRecord> = byKey([
-  { k: 'sheet:arag', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
-  { k: 'row:arag:name', d: { name: 'Арагорн' }, c: 1, a: 'seed' },
-  { k: 'sheet:frodo', d: { set: 'pc', order: 1 }, c: 1, a: 'seed' },
+  { k: 'blk:arag', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
+  {
+    k: 'blk:arag',
+    d: { order: 0, cells: { name: ['Арагорн', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  { k: 'blk:frodo', d: { set: 'pc', order: 1, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
   plink('frodo', PLAYER, 'Player'),
   acl('frodo', PLAYER, 'Player'),
 ]);
@@ -536,23 +505,37 @@ const PROPOSAL_PRESET: Preset = {
   ],
 };
 
-const STR_ROW: VersionedRecord = { k: 'row:brok:str', d: { str: 5 }, c: 3, a: 'gm-a' };
-
-const LIVE_ITEM: VersionedRecord = {
-  k: 'rep:brok:item:r1',
-  d: { order: 0, cells: { item: 'Меч' } },
-  c: 2,
+const STR_ROW: VersionedRecord = {
+  k: 'blk:brok',
+  d: { set: 'pc', order: 0, cells: { str: [5, 3, 'gm-a'] } },
+  c: 3,
   a: 'gm-a',
+  l: [1, 'seed'],
 };
 
-const REMOVED_ITEM: VersionedRecord = { k: 'rep:brok:item:r2', d: null, c: 4, a: 'gm-a' };
+const LIVE_ITEM: VersionedRecord = {
+  k: 'blk:brok:item:r1',
+  d: { order: 0, cells: { item: ['Меч', 2, 'gm-a'] } },
+  c: 2,
+  a: 'gm-a',
+  l: [1, 'seed'],
+};
+
+const REMOVED_ITEM: VersionedRecord = {
+  k: 'blk:brok:item:r2',
+  d: null,
+  c: 4,
+  a: 'gm-a',
+  l: [1, 'seed'],
+};
 
 // A repeat block Оля's connection wrote, so a copy of it is her own record.
 const OWN_ITEM: VersionedRecord = {
-  k: 'rep:brok:item:r3',
-  d: { order: 2, cells: { qty: 1 } },
+  k: 'blk:brok:item:r3',
+  d: { order: 2, cells: { qty: [1, 5, 'p-conn'] } },
   c: 5,
   a: 'p-conn',
+  l: [1, 'seed'],
 };
 
 // "Брок" is a live sheet of a sheet set Оля may edit, "Лиза" a deleted one she held access to,
@@ -563,11 +546,18 @@ const OWN_ITEM: VersionedRecord = {
 const PROPOSAL_CONTEXT: ProposalContext = {
   preset: PROPOSAL_PRESET,
   records: byKey([
-    { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'gm-a' },
-    { k: 'sheet:liza', d: null, c: 2, a: 'gm-a' },
-    { k: 'sheet:kira', d: { set: 'pc', order: 1 }, c: 1, a: 'gm-a' },
-    { k: 'sheet:boss', d: { set: 'villains', order: 0 }, c: 1, a: 'gm-a' },
-    { k: 'sheet:stray', d: { set: 'inventory', order: 0 }, c: 1, a: 'gm-a' },
+    { k: 'blk:brok', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'gm-a', l: [1, 'seed'] },
+    { k: 'blk:liza', d: null, c: 2, a: 'gm-a', l: [1, 'seed'] },
+    { k: 'blk:kira', d: { set: 'pc', order: 1, cells: {} }, c: 1, a: 'gm-a', l: [1, 'seed'] },
+    { k: 'blk:boss', d: { set: 'villains', order: 0, cells: {} }, c: 1, a: 'gm-a', l: [1, 'seed'] },
+    {
+      k: 'blk:stray',
+      d: { set: 'inventory', order: 0, cells: {} },
+      c: 1,
+      a: 'gm-a',
+      l: [1, 'seed'],
+    },
+    { k: 'blk:inventory', d: { order: 0, cells: {} }, c: 1, a: 'gm-a', l: [1, 'seed'] },
     acl('brok', 'p-oly', 'Оля'),
     acl('liza', 'p-oly', 'Оля'),
     acl('boss', 'p-oly', 'Оля'),
@@ -578,8 +568,14 @@ const PROPOSAL_CONTEXT: ProposalContext = {
     LIVE_ITEM,
     REMOVED_ITEM,
     OWN_ITEM,
-    { k: 'rep:inventory:tool:t1', d: { order: 0, cells: { tool: 'Кирка' } }, c: 1, a: 'gm-a' },
-    { k: 'rep:inventory:tool:t2', d: null, c: 2, a: 'gm-a' },
+    {
+      k: 'blk:inventory:tool:t1',
+      d: { order: 0, cells: { tool: ['Кирка', 1, 'gm-a'] } },
+      c: 1,
+      a: 'gm-a',
+      l: [1, 'seed'],
+    },
+    { k: 'blk:inventory:tool:t2', d: null, c: 2, a: 'gm-a', l: [1, 'seed'] },
   ]),
 };
 
@@ -588,46 +584,71 @@ const OLY: ProposalSender = { playerId: 'p-oly', author: 'p-conn' };
 
 describe('checkProposal', () => {
   test.each<[string, VersionedRecord]>([
-    ['a row edit with c above the current one', { ...STR_ROW, d: { str: 6 }, c: 4, a: 'p-conn' }],
+    ['a row edit with c above the current one', fixturePatch(STR_ROW, { str: 6 }, 4, 'p-conn')],
     [
       'a new repeat block',
-      { k: 'rep:brok:item:r9', d: { order: 1, cells: {} }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:brok:item:r9',
+        d: { order: 1, cells: {} },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'p-conn'],
+      },
+    ],
+    [
+      'a resent new repeat block with its original lifecycle',
+      {
+        k: 'blk:brok:item:r9',
+        d: { order: 1, cells: { item: ['Лук', 2, 'p-conn'] } },
+        c: 2,
+        a: 'p-conn',
+        l: [1, 'p-conn'],
+      },
     ],
     [
       'a repeat block edit with c above',
-      { ...LIVE_ITEM, d: { order: 0, cells: { item: 'Лук', qty: 2 } }, c: 3, a: 'p-conn' },
+      fixturePatch(LIVE_ITEM, { order: 0, cells: { item: 'Лук', qty: 2 } }, 3, 'p-conn'),
     ],
     [
       'a field of the second row of a repeat block',
-      { ...LIVE_ITEM, d: { order: 0, cells: { item: 'Меч', weight: 3 } }, c: 3, a: 'p-conn' },
+      fixturePatch(LIVE_ITEM, { order: 0, cells: { item: 'Меч', weight: 3 } }, 3, 'p-conn'),
     ],
-    ['a removal of a live repeat block with c above', { ...LIVE_ITEM, d: null, c: 3, a: 'p-conn' }],
-    ['a record identical to the current one, which is its own', OWN_ITEM],
+    ['a removal of a live repeat block with c above', fixturePatch(LIVE_ITEM, null, 3, 'p-conn')],
     [
       'a c exactly PROPOSE_C_MAX_STEP above the current one',
-      { ...STR_ROW, d: { str: 6 }, c: 3 + PROPOSE_C_MAX_STEP, a: 'p-conn' },
+      fixturePatch(STR_ROW, { str: 6 }, 3 + PROPOSE_C_MAX_STEP, 'p-conn'),
     ],
-    ['a clear of every value of a row', { ...STR_ROW, d: {}, c: 4, a: 'p-conn' }],
+    ['a clear of every value of a row', fixturePatch(STR_ROW, { str: null }, 4, 'p-conn')],
     [
       'every field type of the row with its own JSON type',
-      { ...STR_ROW, d: { str: -1.5, note: 'устал', tired: false }, c: 9, a: 'p-conn' },
+      fixturePatch(STR_ROW, { str: -1.5, note: 'устал', tired: false }, 9, 'p-conn'),
     ],
     [
       'an edit of a player-editable single sheet with no acl: of it',
-      { k: 'row:inventory:items', d: { items: 'Верёвка' }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:inventory',
+        d: { order: 0, cells: { items: ['Верёвка', 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'seed'],
+      },
     ],
     [
       'a new repeat block of a player-editable single sheet',
-      { k: 'rep:inventory:gear:g1', d: { order: 0, cells: { gear: 'Фонарь' } }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:inventory:gear:g1',
+        d: { order: 0, cells: { gear: ['Фонарь', 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'p-conn'],
+      },
     ],
   ])('commits %s', (_name, record) => {
     // #when
     const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, record);
-
     // #then
     expect(verdict).toEqual({ kind: 'commit' });
   });
-
   test('commits the existing tombstone for a removal of a removed repeat block, whatever its c', () => {
     // #when
     const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, {
@@ -639,123 +660,264 @@ describe('checkProposal', () => {
     // #then
     expect(verdict).toEqual({ kind: 'commit-existing', record: REMOVED_ITEM });
   });
+  test('commits the existing live record for an identical proposal', () => {
+    // #when
+    const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, OWN_ITEM);
+    // #then
+    expect(verdict).toEqual({ kind: 'commit-existing', record: OWN_ITEM });
+  });
+  test('commits a delayed removal in the same block lifecycle', () => {
+    // #when
+    const verdict = checkProposal(
+      PROPOSAL_CONTEXT,
+      OLY,
+      fixturePatch(LIVE_ITEM, null, 1, 'p-conn'),
+    );
 
+    // #then
+    expect(verdict).toEqual({ kind: 'commit' });
+  });
   test.each<[string, VersionedRecord, VersionedRecord]>([
-    ['an equal c with a higher author', { ...STR_ROW, d: { str: 6 }, a: 'p-conn' }, STR_ROW],
-    ['a lower c', { ...STR_ROW, d: { str: 6 }, c: 2, a: 'p-conn' }, STR_ROW],
-    ['a lower c on a live repeat block', { ...LIVE_ITEM, d: null, c: 1, a: 'p-conn' }, LIVE_ITEM],
+    [
+      'an equal c with a higher author',
+      fixturePatch(STR_ROW, { str: 6 }, STR_ROW.c, 'p-conn'),
+      STR_ROW,
+    ],
+    ['a lower c', fixturePatch(STR_ROW, { str: 6 }, 2, 'p-conn'), STR_ROW],
     [
       'a field id absent from the row, even with c above',
-      { ...STR_ROW, d: { qty: 1 }, c: 4, a: 'p-conn' },
+      fixturePatch(STR_ROW, { qty: 1 }, 4, 'p-conn'),
       STR_ROW,
     ],
     [
       'a field id of another row in a repeat block, even with c above',
-      { ...LIVE_ITEM, d: { order: 0, cells: { str: 1 } }, c: 3, a: 'p-conn' },
+      fixturePatch(LIVE_ITEM, { order: 0, cells: { str: 1 } }, 3, 'p-conn'),
       LIVE_ITEM,
     ],
   ])('answers stale with the current record for %s', (_name, record, current) => {
     // #when
     const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, record);
-
     // #then
     expect(verdict).toEqual({ kind: 'stale', current });
   });
-
   test.each<[string, VersionedRecord]>([
-    ['a tombstoned sheet', { k: 'row:liza:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
+    [
+      'a tombstoned sheet',
+      {
+        k: 'blk:liza',
+        d: { order: 0, cells: { str: [1, 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'p-conn'],
+      },
+    ],
     [
       'a hidden single sheet, even player-editable',
-      { k: 'row:npc:str', d: { str: 1 }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:npc',
+        d: { order: 0, cells: { str: [1, 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'seed'],
+      },
     ],
     [
       'a single sheet that is not player-editable, even with an acl: of it',
-      { k: 'row:journal:entry', d: { entry: 'День 1' }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:journal',
+        d: { order: 0, cells: { entry: ['День 1', 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'seed'],
+      },
     ],
     [
       'a sheet of a hidden sheet set, even with an acl: of it',
-      { k: 'row:boss:villain', d: { villain: 'Лич' }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:boss',
+        d: { order: 0, cells: { villain: ['Лич', 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'seed'],
+      },
     ],
     [
       'a sheet record whose set is a single sheet',
-      { k: 'row:stray:items', d: { items: 'Верёвка' }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:stray',
+        d: { order: 0, cells: { items: ['Верёвка', 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'seed'],
+      },
     ],
-    ['a sheet with no record', { k: 'row:ghost:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
+    [
+      'a sheet with no record',
+      {
+        k: 'blk:ghost',
+        d: { order: 0, cells: { str: [1, 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'seed'],
+      },
+    ],
     [
       'an edit of a tombstoned repeat block, even with c above',
-      { ...REMOVED_ITEM, d: { order: 0, cells: {} }, c: 9, a: 'p-conn' },
+      fixturePatch(REMOVED_ITEM, { order: 0, cells: {} }, 9, 'p-conn'),
     ],
-    ['a row id the template does not have', { k: 'row:brok:note', d: {}, c: 1, a: 'p-conn' }],
+    [
+      'a row id the template does not have',
+      { k: 'blk:brok', d: { order: 0, cells: {} }, c: 1, a: 'p-conn', l: [1, 'seed'] },
+    ],
     [
       'a section id the template does not have as a repeat section',
-      { k: 'rep:brok:str:r9', d: { order: 0, cells: {} }, c: 1, a: 'p-conn' },
+      { k: 'blk:brok:str:r9', d: { order: 0, cells: {} }, c: 1, a: 'p-conn', l: [1, 'seed'] },
     ],
     [
       'the second field of a repeat section as its section id',
-      { k: 'rep:brok:weight:r9', d: { order: 0, cells: {} }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:brok:weight:r9',
+        d: { order: 0, cells: {} },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'p-conn'],
+      },
     ],
-    ['a string in a number field', { ...STR_ROW, d: { str: '6' }, c: 4, a: 'p-conn' }],
-    ['a number in a text field', { ...STR_ROW, d: { note: 6 }, c: 4, a: 'p-conn' }],
-    ['a string in a check field', { ...STR_ROW, d: { tired: 'да' }, c: 4, a: 'p-conn' }],
+    ['a string in a number field', fixturePatch(STR_ROW, { str: '6' }, 4, 'p-conn')],
+    ['a number in a text field', fixturePatch(STR_ROW, { note: 6 }, 4, 'p-conn')],
+    ['a string in a check field', fixturePatch(STR_ROW, { tired: 'да' }, 4, 'p-conn')],
     [
       'a wrong JSON type next to a field id absent from the row',
-      { ...STR_ROW, d: { qty: 1, str: '6' }, c: 4, a: 'p-conn' },
+      fixturePatch(STR_ROW, { qty: 1, str: '6' }, 4, 'p-conn'),
     ],
-    ['a removal of a plain row', { ...STR_ROW, d: null, c: 4, a: 'p-conn' }],
-    ['a sheet with no access', { k: 'row:kira:str', d: { str: 1 }, c: 1, a: 'p-conn' }],
+    ['a removal of a plain row', fixturePatch(STR_ROW, null, 4, 'p-conn')],
+    [
+      'a sheet with no access',
+      {
+        k: 'blk:kira',
+        d: { order: 0, cells: { str: [1, 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'seed'],
+      },
+    ],
     [
       'a plain row on a hidden tab of a visible sheet with access',
-      { k: 'row:brok:secret', d: { secret: 'Лич' }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:brok',
+        d: { order: 0, cells: { secret: ['Лич', 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'seed'],
+      },
     ],
     [
       'a repeat block on a hidden tab of a visible sheet with access',
       {
-        k: 'rep:brok:secret_item:s1',
-        d: { order: 0, cells: { secret_item: 'Ключ' } },
+        k: 'blk:brok:secret_item:s1',
+        d: { order: 0, cells: { secret_item: ['Ключ', 1, 'p-conn'] } },
         c: 1,
         a: 'p-conn',
+        l: [1, 'seed'],
       },
     ],
-    ['the GM key form sheet:', { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 2, a: 'p-conn' }],
+    [
+      'the GM key form blk:',
+      {
+        k: 'blk:brok',
+        d: { set: 'villains', order: 0, cells: {} },
+        c: 2,
+        a: 'p-conn',
+        l: [1, 'seed'],
+      },
+    ],
     ['the GM key form acl:', { k: 'acl:kira:p-oly', d: { name: 'Оля' }, c: 1, a: 'p-conn' }],
     ['the GM key form plink:', { k: 'plink:brok:p-oly', d: { name: 'Оля' }, c: 1, a: 'p-conn' }],
     ['the GM key form link:', { k: 'link:token-1', d: { s: 'brok' }, c: 1, a: 'p-conn' }],
     ['the GM key form preset', { k: 'preset', d: 'AAAA', c: 9, a: 'p-conn' }],
-    ["an author that is not the sender's", { ...STR_ROW, d: { str: 6 }, c: 4, a: 'gm-a' }],
+    ["an author that is not the sender's", fixturePatch(STR_ROW, { str: 6 }, 4, 'gm-a')],
     ['a copy of a GM record', STR_ROW],
     [
       'a c more than PROPOSE_C_MAX_STEP above the current one',
-      { ...STR_ROW, d: { str: 6 }, c: 4 + PROPOSE_C_MAX_STEP, a: 'p-conn' },
+      fixturePatch(STR_ROW, { str: 6 }, 4 + PROPOSE_C_MAX_STEP, 'p-conn'),
     ],
     [
       'a c more than PROPOSE_C_MAX_STEP above none',
-      { k: 'rep:brok:item:r9', d: { order: 1, cells: {} }, c: 1 + PROPOSE_C_MAX_STEP, a: 'p-conn' },
+      {
+        k: 'blk:brok:item:r9',
+        d: { order: 1, cells: {} },
+        c: 1 + PROPOSE_C_MAX_STEP,
+        a: 'p-conn',
+        l: [1, 'p-conn'],
+      },
     ],
-    ['the largest safe c', { ...STR_ROW, d: { str: 6 }, c: Number.MAX_SAFE_INTEGER, a: 'p-conn' }],
+    [
+      'a new repeat block whose lifecycle is newer than its proposal',
+      {
+        k: 'blk:brok:item:r9',
+        d: { order: 1, cells: {} },
+        c: 2,
+        a: 'p-conn',
+        l: [3, 'p-conn'],
+      },
+    ],
+    [
+      'a new repeat block whose lifecycle belongs to another author',
+      {
+        k: 'blk:brok:item:r9',
+        d: { order: 1, cells: {} },
+        c: 2,
+        a: 'p-conn',
+        l: [1, 'other'],
+      },
+    ],
+    ['the largest safe c', fixturePatch(STR_ROW, { str: 6 }, Number.MAX_SAFE_INTEGER, 'p-conn')],
     [
       'a new repeat block whose cells set a field its section does not have',
-      { k: 'rep:brok:item:r9', d: { order: 1, cells: { str: 1 } }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:brok:item:r9',
+        d: { order: 1, cells: { str: [1, 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'p-conn'],
+      },
     ],
     [
       'a new row record that sets a field its row does not have',
-      { k: 'row:inventory:items', d: { gear: 'Фонарь' }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:inventory',
+        d: { order: 0, cells: { gear: ['Фонарь', 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'p-conn'],
+      },
     ],
     [
       'a new repeat block whose instance id another section of the sheet holds live',
-      { k: 'rep:inventory:gear:t1', d: { order: 0, cells: { gear: 'Фонарь' } }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:inventory:gear:t1',
+        d: { order: 0, cells: { gear: ['Фонарь', 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'p-conn'],
+      },
     ],
     [
       'a new repeat block whose instance id another section of the sheet holds removed',
-      { k: 'rep:inventory:gear:t2', d: { order: 0, cells: { gear: 'Фонарь' } }, c: 1, a: 'p-conn' },
+      {
+        k: 'blk:inventory:gear:t2',
+        d: { order: 0, cells: { gear: ['Фонарь', 1, 'p-conn'] } },
+        c: 1,
+        a: 'p-conn',
+        l: [1, 'p-conn'],
+      },
     ],
   ])('denies %s', (_name, record) => {
     // #when
     const verdict = checkProposal(PROPOSAL_CONTEXT, OLY, record);
-
     // #then
     expect(verdict).toEqual({ kind: 'denied' });
   });
-
   test('denies a record identical to the current one from a player with no access', () => {
     // #when
     const verdict = checkProposal(
@@ -767,33 +929,28 @@ describe('checkProposal', () => {
     // #then
     expect(verdict).toEqual({ kind: 'denied' });
   });
-
   test('denies an access that was revoked', () => {
     // #given
     const records = new Map(PROPOSAL_CONTEXT.records);
-
     records.set('acl:brok:p-oly', tombstone('acl:brok:p-oly'));
 
     // #when
-    const verdict = checkProposal({ ...PROPOSAL_CONTEXT, records }, OLY, {
-      ...STR_ROW,
-      d: { str: 6 },
-      c: 4,
-      a: 'p-conn',
-    });
+    const verdict = checkProposal(
+      { ...PROPOSAL_CONTEXT, records },
+      OLY,
+      fixturePatch(STR_ROW, { str: 6 }, 4, 'p-conn'),
+    );
 
     // #then
     expect(verdict).toEqual({ kind: 'denied' });
   });
-
   test('denies every edit while the room holds no preset', () => {
     // #when
-    const verdict = checkProposal({ ...PROPOSAL_CONTEXT, preset: null }, OLY, {
-      ...STR_ROW,
-      d: { str: 6 },
-      c: 4,
-      a: 'p-conn',
-    });
+    const verdict = checkProposal(
+      { ...PROPOSAL_CONTEXT, preset: null },
+      OLY,
+      fixturePatch(STR_ROW, { str: 6 }, 4, 'p-conn'),
+    );
 
     // #then
     expect(verdict).toEqual({ kind: 'denied' });
@@ -803,17 +960,23 @@ describe('checkProposal', () => {
 describe('checkProposal over values an older preset left', () => {
   // `old` is a field the template no longer has, and `note` holds a number in a text field.
   const LEGACY_ROW: VersionedRecord = {
-    k: 'row:brok:str',
-    d: { str: 5, old: 'x', note: 7 },
+    k: 'blk:brok',
+    d: {
+      set: 'pc',
+      order: 0,
+      cells: { str: [5, 3, 'gm-a'], old: ['x', 3, 'gm-a'], note: [7, 3, 'gm-a'] },
+    },
     c: 3,
     a: 'gm-a',
+    l: [1, 'seed'],
   };
 
   const LEGACY_ITEM: VersionedRecord = {
-    k: 'rep:brok:item:r1',
-    d: { order: 0, cells: { item: 'Меч', gone: true } },
+    k: 'blk:brok:item:r1',
+    d: { order: 0, cells: { item: ['Меч', 2, 'gm-a'], gone: [true, 2, 'gm-a'] } },
     c: 2,
     a: 'gm-a',
+    l: [1, 'seed'],
   };
 
   const context: ProposalContext = {
@@ -828,42 +991,40 @@ describe('checkProposal over values an older preset left', () => {
   test.each<[string, VersionedRecord]>([
     [
       'an edit of another field of the row, which keeps them',
-      { ...LEGACY_ROW, d: { str: 6, old: 'x', note: 7 }, c: 4, a: 'p-conn' },
+      fixturePatch(LEGACY_ROW, { str: 6, old: 'x', note: 7 }, 4, 'p-conn'),
     ],
-    ['a clear of them', { ...LEGACY_ROW, d: { str: 5 }, c: 4, a: 'p-conn' }],
+    [
+      'a clear of the known field, which keeps the legacy cells',
+      fixturePatch(LEGACY_ROW, { str: null }, 4, 'p-conn'),
+    ],
     [
       'an edit of another cell of the repeat block, which keeps them',
-      { ...LEGACY_ITEM, d: { order: 0, cells: { item: 'Лук', gone: true } }, c: 3, a: 'p-conn' },
+      fixturePatch(LEGACY_ITEM, { order: 0, cells: { item: 'Лук', gone: true } }, 3, 'p-conn'),
     ],
   ])('commits %s', (_name, record) => {
     // #when
     const verdict = checkProposal(context, OLY, record);
-
     // #then
     expect(verdict).toEqual({ kind: 'commit' });
   });
-
   test('answers stale with the current record for a new value of a field the template lacks', () => {
     // #when
-    const verdict = checkProposal(context, OLY, {
-      ...LEGACY_ROW,
-      d: { str: 5, old: 'y', note: 7 },
-      c: 4,
-      a: 'p-conn',
-    });
+    const verdict = checkProposal(
+      context,
+      OLY,
+      fixturePatch(LEGACY_ROW, { str: 5, old: 'y', note: 7 }, 4, 'p-conn'),
+    );
 
     // #then
     expect(verdict).toEqual({ kind: 'stale', current: LEGACY_ROW });
   });
-
   test('denies a new value of the wrong JSON type', () => {
     // #when
-    const verdict = checkProposal(context, OLY, {
-      ...LEGACY_ROW,
-      d: { str: 5, old: 'x', note: 8 },
-      c: 4,
-      a: 'p-conn',
-    });
+    const verdict = checkProposal(
+      context,
+      OLY,
+      fixturePatch(LEGACY_ROW, { str: 5, old: 'x', note: 8 }, 4, 'p-conn'),
+    );
 
     // #then
     expect(verdict).toEqual({ kind: 'denied' });
@@ -874,31 +1035,26 @@ describe('proposalAllowed', () => {
   test('reads no version: a stale record of an allowed key passes', () => {
     // #when
     const allowed = proposalAllowed(PROPOSAL_CONTEXT, 'p-oly', { ...STR_ROW, c: 1, a: 'p-conn' });
-
     // #then
     expect(allowed).toBe(true);
   });
-
   test('refuses plain and repeat fields on a hidden tab while keeping a visible field writable', () => {
     // #when
     const allowed = [
+      proposalAllowed(PROPOSAL_CONTEXT, 'p-oly', fixturePatch(STR_ROW, { str: 6 }, 4, 'p-conn')),
       proposalAllowed(PROPOSAL_CONTEXT, 'p-oly', {
-        ...STR_ROW,
-        d: { str: 6 },
-        c: 4,
-        a: 'p-conn',
-      }),
-      proposalAllowed(PROPOSAL_CONTEXT, 'p-oly', {
-        k: 'row:brok:secret',
-        d: { secret: 'Лич' },
+        k: 'blk:brok',
+        d: { order: 0, cells: { secret: ['Лич', 1, 'p-conn'] } },
         c: 1,
         a: 'p-conn',
+        l: [1, 'seed'],
       }),
       proposalAllowed(PROPOSAL_CONTEXT, 'p-oly', {
-        k: 'rep:brok:secret_item:s1',
-        d: { order: 0, cells: { secret_item: 'Ключ' } },
+        k: 'blk:brok:secret_item:s1',
+        d: { order: 0, cells: { secret_item: ['Ключ', 1, 'p-conn'] } },
         c: 1,
         a: 'p-conn',
+        l: [1, 'seed'],
       }),
     ];
 
@@ -924,9 +1080,9 @@ function plink(sheetId: string, playerId: string, name: string): VersionedRecord
 }
 
 function tombstone(k: string): VersionedRecord {
-  return { k, d: null, c: 2, a: 'seed' };
+  return fixtureRecord(k, null, 2, 'seed');
 }
 
 function byKey(records: readonly VersionedRecord[]): Map<string, VersionedRecord> {
-  return new Map(records.map((record) => [record.k, record]));
+  return assembleRecords(records);
 }

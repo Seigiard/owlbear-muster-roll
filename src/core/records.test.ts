@@ -1,15 +1,18 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { JsonObject, JsonValue } from '@/core/json';
 import { parseRecord, parseRepKey, parseStoredRecord, repKey } from '@/core/records';
 
 const VALID_FORMS: [string, JsonValue][] = [
   ['preset', 'eJyrVgIAAS8Arg=='],
-  ['sheet:s1', { set: 'pc', order: 1 }],
-  ['sheet:s2', { set: 'crew_2', order: 2.5 }],
-  ['row:s1:str', { str: 3, note: 'x', tired: false }],
-  ['row:s1:empty', {}],
-  ['rep:s1:item:i1', { order: 1, cells: { item: 'rope', qty: 2 } }],
+  ['blk:s1', { set: 'pc', order: 1, cells: {} }],
+  ['blk:s2', { set: 'crew_2', order: 2.5, cells: {} }],
+  [
+    'blk:s3',
+    { order: 0, cells: { str: [3, 1, 'conn'], note: ['x', 1, 'conn'], tired: [false, 1, 'conn'] } },
+  ],
+  ['blk:single', { order: 0, cells: {} }],
+  ['blk:s1:item:i1', { order: 1, cells: { item: ['rope', 1, 'conn'], qty: [2, 1, 'conn'] } }],
+  ['blk:s1:item:i1:child:i2', { order: 0, cells: { cleared: [null, 2, 'conn'] } }],
   ['acl:s1:p1', { name: 'Bob' }],
   ['link:t1', { s: 's1' }],
   ['link:t2', { s: 's1', i: 'i1' }],
@@ -24,6 +27,15 @@ const INVALID_KEYS = [
   'sheet',
   'sheet:',
   'sheet:s:x',
+  'sheet:s1',
+  'row:s1:str',
+  'rep:s1:item:i1',
+  'blk:',
+  'blk:s:scope',
+  'blk:s:scope:block:extra',
+  'blk:__proto__',
+  'blk:s:__proto__:block',
+  'blk:s:scope:__proto__',
   'row:s',
   'row::r',
   'row:s:',
@@ -54,23 +66,25 @@ const INVALID_DATA: [string, JsonValue][] = [
   ['preset', ''],
   ['preset', 'not base64!'],
   ['preset', { z: 1 }],
-  ['sheet:s', { kind: 'pc', name: 'x', order: 1 }],
-  ['sheet:s', { set: 'pc' }],
-  ['sheet:s', { set: 5, order: 1 }],
-  ['sheet:s', { set: '1pc', order: 1 }],
-  ['sheet:s', { set: 'd20', order: 1 }],
-  ['sheet:s', { set: 'constructor', order: 1 }],
-  ['sheet:s', { set: 'a'.repeat(65), order: 1 }],
-  ['sheet:s', { set: 'pc', order: '1' }],
-  ['sheet:s', { set: 'pc', order: 1, name: 'x' }],
-  ['sheet:s', 's'],
-  ['row:s:r', 's'],
-  ['row:s:r', [1]],
-  ['row:s:r', { '': 1 }],
-  ['rep:s:sec:i', { order: 1 }],
-  ['rep:s:sec:i', { cells: {} }],
-  ['rep:s:sec:i', { order: 1, cells: {}, extra: 1 }],
-  ['rep:s:sec:i', { order: 1, cells: [] }],
+  ['blk:s', { kind: 'pc', name: 'x', order: 1, cells: {} }],
+  ['blk:s', { set: 'pc', cells: {} }],
+  ['blk:s', { set: 5, order: 1, cells: {} }],
+  ['blk:s', { set: '1pc', order: 1, cells: {} }],
+  ['blk:s', { set: 'd20', order: 1, cells: {} }],
+  ['blk:s', { set: 'constructor', order: 1, cells: {} }],
+  ['blk:s', { set: 'a'.repeat(65), order: 1, cells: {} }],
+  ['blk:s', { set: 'pc', order: '1', cells: {} }],
+  ['blk:s', { set: 'pc', order: 1, cells: {}, name: 'x' }],
+  ['blk:s', 's'],
+  ['blk:s', [1]],
+  ['blk:s', { order: 0, cells: { '': [1, 1, 'conn'] } }],
+  ['blk:s:sec:i', { order: 1 }],
+  ['blk:s:sec:i', { cells: {} }],
+  ['blk:s:sec:i', { order: 1, cells: {}, extra: 1 }],
+  ['blk:s:sec:i', { order: 1, cells: [] }],
+  ['blk:s', { order: 0, cells: { x: [1, 0, 'conn'] } }],
+  ['blk:s', { order: 0, cells: { x: [1, 1, ''] } }],
+  ['blk:s', { order: 0, cells: { x: [1, 1] } }],
   ['acl:s:p', {}],
   ['acl:s:p', { name: 5 }],
   ['acl:s:p', { name: 'x', extra: 1 }],
@@ -90,7 +104,6 @@ const INVALID_DATA: [string, JsonValue][] = [
 ];
 
 const INVALID_FIELD_VALUES: [string, JsonValue][] = [
-  ['null', null],
   ['object', { nested: 1 }],
   ['array', [1]],
   ['empty string', ''],
@@ -102,95 +115,96 @@ const INVALID_FIELD_VALUES: [string, JsonValue][] = [
 describe('parseRecord accepts', () => {
   test.each(VALID_FORMS)('the key %s with its data', (k, d) => {
     // #given
-    const candidate: JsonValue = { k, d, c: 1, a: 'conn' };
-
+    const candidate = candidateOf(k, d, 1);
     // #when
     const parsed = parseRecord(candidate);
-
     // #then
-    expect(parsed).toEqual<JsonValue>({ ok: true, value: { k, d, c: 1, a: 'conn' } });
-  });
+    expect(parsed.ok).toBe(true);
 
+    if (!parsed.ok) throw new Error(parsed.error);
+    const actual: unknown = parsed.value;
+
+    expect(actual).toEqual(candidate);
+  });
   test.each(VALID_FORMS)('a tombstone of the key %s', (k) => {
     // #given
-    const candidate: JsonValue = { k, d: null, c: 2, a: 'conn' };
-
+    const candidate = candidateOf(k, null, 2);
     // #when
     const parsed = parseRecord(candidate);
-
     // #then
-    expect(parsed).toEqual({ ok: true, value: { k, d: null, c: 2, a: 'conn' } });
+    expect(parsed.ok).toBe(true);
+
+    if (!parsed.ok) throw new Error(parsed.error);
+    const actual: unknown = parsed.value;
+
+    expect(actual).toEqual(candidate);
   });
-
-  test.each([[3], [0], [-1.5], ['x'], [true], [false]])('the field value %j', (value) => {
+  test.each([[3], [0], [-1.5], ['x'], [true], [false], [null]])('the field value %j', (value) => {
     // #given
-    const d = { field: value };
-
+    const d = { order: 0, cells: { field: [value, 1, 'conn'] } };
+    const candidate = candidateOf('blk:s', d, 1);
     // #when
-    const parsed = parseRecord({ k: 'row:s:r', d, c: 1, a: 'conn' });
-
+    const parsed = parseRecord(candidate);
     // #then
-    expect(parsed).toEqual({ ok: true, value: { k: 'row:s:r', d, c: 1, a: 'conn' } });
+    expect(parsed.ok).toBe(true);
+
+    if (!parsed.ok) throw new Error(parsed.error);
+    const actual: unknown = parsed.value;
+
+    expect(actual).toEqual(candidate);
   });
 });
 
 describe('parseRecord refuses', () => {
   test.each(INVALID_KEYS)('the key %j', (k) => {
     // #when
-    const parsed = parseRecord({ k, d: null, c: 1, a: 'conn' });
-
+    const parsed = parseRecord(candidateOf(k, null, 1));
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
-
   test.each(INVALID_DATA)('for the key %s the data %j', (k, d) => {
     // #when
-    const parsed = parseRecord({ k, d, c: 1, a: 'conn' });
-
+    const parsed = parseRecord(candidateOf(k, d, 1));
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
-
   test.each(INVALID_FIELD_VALUES)('a row field holding %s', (_name, value) => {
     // #when
-    const parsed = parseRecord({ k: 'row:s:r', d: { field: value }, c: 1, a: 'conn' });
+    const parsed = parseRecord(
+      candidateOf('blk:s', { order: 0, cells: { field: [value, 1, 'conn'] } }, 1),
+    );
 
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
-
   test.each(INVALID_FIELD_VALUES)('a repeat cell holding %s', (_name, value) => {
     // #when
     const parsed = parseRecord({
-      k: 'rep:s:sec:i',
-      d: { order: 1, cells: { field: value } },
+      k: 'blk:s:sec:i',
+      d: { order: 1, cells: { field: [value, 1, 'conn'] } },
       c: 1,
       a: 'conn',
+      l: [1, 'conn'],
     });
 
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
-
   test.each<[string, JsonValue]>([
-    ['row:s:r', ownProtoKey(1)],
-    ['rep:s:sec:i', { order: 0, cells: ownProtoKey(1) }],
+    ['blk:s', { order: 0, cells: ownProtoKey([1, 1, 'conn']) }],
+    ['blk:s:sec:i', { order: 0, cells: ownProtoKey([1, 1, 'conn']) }],
   ])('for the key %s a field id __proto__', (k, d) => {
     // #when
-    const parsed = parseRecord({ k, d, c: 1, a: 'conn' });
-
+    const parsed = parseRecord(candidateOf(k, d, 1));
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
-
   test.each([[0], [-1], [1.5], ['1'], [null], [2 ** 53]])('the counter %j', (c) => {
     // #when
     const parsed = parseRecord({ k: 'preset', d: null, c, a: 'conn' });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
-
   test.each<[string, JsonValue]>([
     ['no d', { k: 'preset', c: 1, a: 'conn' }],
     ['no c', { k: 'preset', d: null, a: 'conn' }],
@@ -204,7 +218,6 @@ describe('parseRecord refuses', () => {
   ])('a candidate with %s', (_name, candidate) => {
     // #when
     const parsed = parseRecord(candidate);
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
@@ -214,58 +227,47 @@ describe('parseStoredRecord', () => {
   test('parses a valid record filed under its own key', () => {
     // #given
     const text = '{"k":"link:t","d":{"s":"s"},"c":3,"a":"conn"}';
-
     // #when
     const parsed = parseStoredRecord(text, 'link:t');
-
     // #then
     expect(parsed).toEqual({ ok: true, value: { k: 'link:t', d: { s: 's' }, c: 3, a: 'conn' } });
   });
-
   test('refuses text that is not JSON without throwing', () => {
     // #when
     const parsed = parseStoredRecord('{not json', 'link:t');
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
-
   test('refuses valid JSON that is not a record', () => {
     // #when
     const parsed = parseStoredRecord('{"k":"link:t","d":{"s":"s"},"c":0,"a":"conn"}', 'link:t');
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
-
   test('refuses a valid record filed under another key', () => {
     // #when
     const parsed = parseStoredRecord('{"k":"link:t","d":{"s":"s"},"c":3,"a":"conn"}', 'link:other');
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
 });
 
 describe('repKey', () => {
-  test('names one repeat block as rep:{sheetId}:{sectionId}:{instanceId}', () => {
+  test('names one repeat block as blk:{sheetId}:{sectionId}:{instanceId}', () => {
     // #when
     const key = repKey('s1', 'attack', 'i1');
-
     // #then
-    expect(key).toBe('rep:s1:attack:i1');
+    expect(key).toBe('blk:s1:attack:i1');
   });
 });
 
 describe('parseRepKey', () => {
-  test('reads the sheet, section and instance ids of a rep: key', () => {
+  test('reads the sheet, section and instance ids of a descendant block key', () => {
     // #when
-    const parts = parseRepKey('rep:s1:attack:i1');
-
+    const parts = parseRepKey('blk:s1:attack:i1');
     // #then
     expect(parts).toEqual({ sheetId: 's1', sectionId: 'attack', instanceId: 'i1' });
   });
-
   test.each([
     'row:s1:attack',
     'rep:s1:attack',
@@ -277,16 +279,22 @@ describe('parseRepKey', () => {
   ])('refuses the key %j', (key) => {
     // #when
     const parts = parseRepKey(key);
-
     // #then
     expect(parts).toBeNull();
   });
 });
 
+function candidateOf(k: string, d: JsonValue, c: number): JsonObject {
+  const candidate: JsonObject = { k, d, c, a: 'conn' };
+
+  if (k.startsWith('blk:')) candidate.l = [1, 'conn'];
+
+  return candidate;
+}
+
 // An object with an own `__proto__` key, as JSON.parse makes one from a message or stored text.
 function ownProtoKey(value: JsonValue): JsonObject {
   const object: JsonObject = {};
-
   Object.defineProperty(object, '__proto__', {
     value,
     enumerable: true,

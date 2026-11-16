@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-
 import { parseNumberInput } from './number-input';
 
 describe('parseNumberInput', () => {
@@ -15,19 +14,15 @@ describe('parseNumberInput', () => {
   ])('reads %p as %p', (text, value) => {
     // #when
     const parsed = parseNumberInput(text);
-
     // #then
     expect(parsed).toEqual({ ok: true, value });
   });
-
   test('reads an empty text as a clear', () => {
     // #when
     const parsed = parseNumberInput('');
-
     // #then
     expect(parsed).toEqual({ ok: true, value: null });
   });
-
   test.each<[string, string]>([
     ['an exponent', '1e3'],
     ['an exponent past the largest number', '1e999'],
@@ -42,7 +37,6 @@ describe('parseNumberInput', () => {
   ])('refuses %s', (_name, text) => {
     // #when
     const parsed = parseNumberInput(text);
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'not-a-number' });
   });

@@ -1,8 +1,6 @@
 import { readFileSync } from 'node:fs';
-
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import {
   ADD,
   openBackground,
@@ -15,7 +13,7 @@ import {
   repRecord,
   seedStorage,
   selectOnMap,
-  storedData,
+  storedCell,
   type ClientParams,
   type StoredRecord,
 } from './support/room';
@@ -23,7 +21,6 @@ import {
 const D20_PRESET = readFileSync('tests/fixtures/presets/d20.json', 'utf8');
 const SETTINGS = 'Настройки';
 const ADD_TEXT = '+ Добавить';
-
 const GM: ClientParams = { client: 'gm', device: 'gm', name: 'Мастер' };
 
 const PLAYER: ClientParams = {
@@ -92,15 +89,12 @@ test('the GM sidebar groups sheets, keeps singles plain and pins Settings at 10 
     [...pcSheet('kira', 'Кира', 0), ...pcSheet('brok', 'Брок', 1)],
     D20_PRESET,
   );
-
   const entries = sidebarEntries(page, 'Кира');
   const heading = page.getByRole('heading', { name: 'Персонажи', exact: true });
   const settings = entries.getByRole('tab', { name: SETTINGS, exact: true });
-
   // #when
   await expect(heading).toBeVisible();
   const settingsElement = await settings.elementHandle();
-
   expect(settingsElement).not.toBeNull();
 
   // The sidebar is the element that holds both its heading and Settings; its padding insets them.
@@ -139,16 +133,12 @@ test('the player sidebar puts owned sheets first and hides GM-only controls and 
   ];
 
   const gm = await openClientWindow(context, GM);
-
   await seedStorage(gm, records, D20_PRESET, GM.device);
   await openClientBackground(context, GM);
-
   // #when
   const player = await openClientWindow(context, PLAYER);
-
   await openClientBackground(context, PLAYER);
   const entries = sidebarEntries(player, 'Ярл, вы');
-
   // #then
   await expect(entries.getByRole('tab')).toHaveText([
     'Ярлвы',
@@ -173,14 +163,11 @@ test('an empty sheet set stays as a GM heading and add control but is absent for
 }) => {
   // #given
   const gm = await openClientWindow(context, GM);
-
   await seedStorage(gm, [], D20_PRESET, GM.device);
   await openClientBackground(context, GM);
   const player = await openClientWindow(context, PLAYER);
-
   // #when
   await openClientBackground(context, PLAYER);
-
   // #then
   await expect(gm.getByRole('heading', { name: 'Персонажи', exact: true })).toBeVisible();
   await expect(gm.getByRole('button', { name: ADD })).toHaveText(ADD_TEXT);
@@ -194,7 +181,6 @@ test('a long sidebar name has a full tooltip and the entry list scrolls without 
 }) => {
   // #given
   await page.setViewportSize({ width: 600, height: 300 });
-
   const longName = 'Эльверанха Длинноименная из Дома Бесконечных Имён';
 
   const sheets = Array.from({ length: 16 }, (_unused, index) =>
@@ -202,14 +188,12 @@ test('a long sidebar name has a full tooltip and the entry list scrolls without 
   ).flat();
 
   await openRoom(page, context, sheets, D20_PRESET);
-
   const entries = sidebarEntries(page, longName);
   const longEntry = entries.getByRole('tab', { name: longName, exact: true });
   const settings = entries.getByRole('tab', { name: SETTINGS, exact: true });
   const add = page.getByRole('button', { name: ADD });
   const lastEntry = entries.getByRole('tab', { name: 'Заметки ГМ', exact: true });
   const settingsBefore = Math.round((await settings.boundingBox())?.y ?? -1);
-
   // #when
   await longEntry.hover();
 
@@ -261,7 +245,6 @@ test('a long sidebar name has a full tooltip and the entry list scrolls without 
       whiteSpace: 'nowrap',
     },
   });
-
   const addBox = await add.boundingBox();
   const lastEntryBox = await lastEntry.boundingBox();
   const settingsBox = await settings.boundingBox();
@@ -273,7 +256,6 @@ test('a long sidebar name has a full tooltip and the entry list scrolls without 
   });
 
   await page.mouse.click(lastEntryCenter.x, lastEntryCenter.y);
-
   expect({
     addAboveSettings:
       addBox !== null &&
@@ -297,25 +279,21 @@ test('a draft stays with its sheet when another sheet is selected in the sidebar
 }) => {
   // #given
   await openRoom(page, context, draftSheets(), TABBED_PRESET);
-
   const note = page.getByRole('textbox', { name: 'Заметка' });
-
   await note.fill('Черновик А');
-
   // #when
   await page.getByRole('tab', { name: 'Лист Б', exact: true }).click();
-
   // #then
   await expect
     .poll(async () => ({
       shown: await note.inputValue(),
-      sheetA: await storedData(page, 'row:sheet-a:note'),
-      sheetB: await storedData(page, 'row:sheet-b:note'),
+      sheetA: await storedCell(page, 'blk:sheet-a', 'note'),
+      sheetB: await storedCell(page, 'blk:sheet-b', 'note'),
     }))
     .toEqual({
       shown: 'Сохранено Б',
-      sheetA: { note: 'Черновик А' },
-      sheetB: { note: 'Сохранено Б' },
+      sheetA: ['Черновик А', 2, 'mock-connection'],
+      sheetB: ['Сохранено Б', 1, 'seed'],
     });
 });
 
@@ -323,7 +301,6 @@ test('a draft stays with its sheet when a token opens another sheet', async ({ p
   // #given
   const background = await openDraftRoomWithToken(page, context);
   const note = page.getByRole('textbox', { name: 'Заметка' });
-
   await expect
     .poll(() =>
       background.evaluate(() => window.mockPlatform.contextMenuItems().map(({ id }) => id)),
@@ -341,14 +318,14 @@ test('a draft stays with its sheet when a token opens another sheet', async ({ p
     .poll(async () => ({
       clicked,
       shown: await note.inputValue(),
-      sheetA: await storedData(page, 'row:sheet-a:note'),
-      sheetB: await storedData(page, 'row:sheet-b:note'),
+      sheetA: await storedCell(page, 'blk:sheet-a', 'note'),
+      sheetB: await storedCell(page, 'blk:sheet-b', 'note'),
     }))
     .toEqual({
       clicked: true,
       shown: 'Сохранено Б',
-      sheetA: { note: 'Черновик А' },
-      sheetB: { note: 'Сохранено Б' },
+      sheetA: ['Черновик А', 2, 'mock-connection'],
+      sheetB: ['Сохранено Б', 1, 'seed'],
     });
 });
 
@@ -359,13 +336,11 @@ test('Settings is one sidebar entry and opens on the first selection after other
   // #given
   const background = await openDraftRoomWithToken(page, context);
   const settings = page.getByRole('tab', { name: SETTINGS, exact: true });
-
   await expect
     .poll(() =>
       background.evaluate(() => window.mockPlatform.contextMenuItems().map(({ id }) => id)),
     )
     .toContain('app.muster-roll/open-sheet');
-
   // #when
   await settings.click();
   await background.evaluate(() =>
@@ -374,19 +349,16 @@ test('Settings is one sidebar entry and opens on the first selection after other
   await expect(page.getByRole('tab', { name: 'Лист Б', selected: true })).toBeVisible();
   await settings.click();
   const afterTokenOpen = await settings.getAttribute('aria-selected');
-
   await settings.click();
   await expect(settings).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: ADD }).click();
   await settings.click();
   const afterNewSheet = await settings.getAttribute('aria-selected');
-
   await settings.click();
   await expect(settings).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('tab', { name: 'Лист А', exact: true }).click();
   await settings.click();
   const afterSheetEntry = await settings.getAttribute('aria-selected');
-
   // #then
   expect({
     afterNewSheet,
@@ -404,7 +376,6 @@ test('Settings is one sidebar entry and opens on the first selection after other
 test('the sheet header precedes the tab row and content', async ({ page, context }) => {
   // #given
   await openRoom(page, context, draftSheets(), TABBED_PRESET);
-
   const name = page.getByRole('textbox', { name: 'Имя листа' });
   const tabs = page.getByRole('tablist', { name: 'Вкладки листа' });
   const content = page.getByRole('textbox', { name: 'Заметка' });
@@ -447,23 +418,18 @@ test('Down crosses groups while headings are descriptions and the add control is
     [...pcSheet('kira', 'Кира', 0), ...pcSheet('brok', 'Брок', 1)],
     D20_PRESET,
   );
-
   const entries = sidebarEntries(page, 'Кира');
   const kira = entries.getByRole('tab', { name: 'Кира', exact: true });
   const brok = entries.getByRole('tab', { name: 'Брок', exact: true });
   const npc = entries.getByRole('tab', { name: 'NPC', exact: true });
   const heading = page.getByRole('heading', { name: 'Персонажи', exact: true });
-
   await kira.focus();
-
   // #when
   await page.keyboard.press('ArrowDown');
   await expect(brok).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(npc).toBeFocused();
-
   await kira.focus();
-
   const tabStops: string[] = [];
 
   for (let step = 0; step < 8; step += 1) {
@@ -479,7 +445,6 @@ test('Down crosses groups while headings are descriptions and the add control is
   }
 
   const headingId = await heading.getAttribute('id');
-
   // #then
   expect(headingId).not.toBeNull();
   await expect(kira).toHaveAttribute('aria-describedby', headingId ?? 'missing-heading-id');
@@ -503,14 +468,10 @@ test('map selection marks the sidebar entry and its tab without switching either
     TABBED_PRESET,
   );
   await putOnScene(page, ['t-wolf']);
-
   const openTab = sheetTab(page, 'Основное');
-
   await expect(openTab).toHaveAttribute('aria-selected', 'true');
-
   // #when
   await selectOnMap(page, ['t-wolf']);
-
   // #then
   await expect(page.getByRole('tab', { name: 'Брок, токен выделен', exact: true })).toHaveAttribute(
     'aria-selected',
@@ -536,9 +497,9 @@ function sheetTab(page: Page, name: string): Locator {
 function draftSheets(): StoredRecord[] {
   return [
     ...pcSheet('sheet-a', 'Лист А', 0),
-    record('row:sheet-a:note', { note: 'Сохранено А' }),
+    record('blk:sheet-a', { note: 'Сохранено А' }),
     ...pcSheet('sheet-b', 'Лист Б', 1),
-    record('row:sheet-b:note', { note: 'Сохранено Б' }),
+    record('blk:sheet-b', { note: 'Сохранено Б' }),
     record('link:token-b', { s: 'sheet-b' }),
   ];
 }
@@ -547,9 +508,7 @@ async function openDraftRoomWithToken(page: Page, context: BrowserContext): Prom
   await page.goto('/index.html');
   await seedStorage(page, draftSheets(), TABBED_PRESET);
   await putOnScene(page, ['token-b']);
-
   const background = await openBackground(context);
-
   await expect(page.getByRole('button', { name: ADD })).toBeVisible();
 
   return background;

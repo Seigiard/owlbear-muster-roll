@@ -1,5 +1,6 @@
 import type { JsonValue } from '@/core/json';
-import { jsonByteLength, splitBatch } from '@/core/message-size';
+import { fragmentRecord, jsonByteLength, splitBatch } from '@/core/message-size';
+import { blockDataSchema } from '@/core/records';
 import { mergeRecords } from '@/core/merge';
 import type { VersionedRecord } from '@/core/records';
 import { commitEnvelope, SYNC_CHANNEL, type EditId } from '@/core/room-messages';
@@ -63,9 +64,42 @@ export function createCommitOutbox(
     // The acks of a key that do not fit one message with its record. The record goes again with
     // them in a later part, as a record merges any number of times.
     const leftover = new Map<string, EditId[]>();
+    const remainders = new Map<string, VersionedRecord>();
 
-    for (const record of held.values()) {
+    for (const assembled of held.values()) {
+      const fragments = fragmentRecord(assembled);
+
+      if (!fragments.ok) {
+        console.error('Muster Roll dropped a commit record too large for one message', assembled.k);
+        held.delete(assembled.k);
+        heldAcks.delete(assembled.k);
+        continue;
+      }
+
+      const record = fragments.value[0];
+
+      if (record === undefined) continue;
+
+      if (fragments.value.length > 1) {
+        const cells = Object.assign(
+          {},
+          ...fragments.value.slice(1).map((fragment) => blockDataSchema.parse(fragment.d).cells),
+        );
+
+        remainders.set(record.k, {
+          ...assembled,
+          l: assembled.l ?? [assembled.c, assembled.a],
+          d: { ...blockDataSchema.parse(assembled.d), cells },
+        });
+      }
+
       const keyAcks = heldAcks.get(record.k) ?? [];
+
+      if (remainders.has(record.k)) {
+        items.push([record, []]);
+        continue;
+      }
+
       const fitting = fittingAcks(record, keyAcks, envelopeBytes);
 
       // A record passes the one-message check before it is applied, so this means a broken one.
@@ -90,6 +124,13 @@ export function createCommitOutbox(
     const acks = first.flatMap(([, keyAcks]) => keyAcks);
 
     for (const record of records) {
+      const remainder = remainders.get(record.k);
+
+      if (remainder !== undefined) {
+        held.set(record.k, remainder);
+        continue;
+      }
+
       const rest = leftover.get(record.k);
 
       if (rest === undefined) {

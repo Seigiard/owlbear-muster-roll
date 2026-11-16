@@ -299,7 +299,7 @@ export function LinkPicker({
               aria-label={targetAccessibleName(choice)}
               className="flex touch-target w-full items-center gap-2 rounded-sm px-3 text-left text-text data-disabled:opacity-50 data-hovered:bg-fill data-pressed:bg-fill-strong"
             >
-              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+              <span className="min-w-0 flex-1 wrap-anywhere">
                 {shownName(choice.blockName ?? choice.sheetName)}
                 {choice.blockName === null ? null : (
                   <span className="ml-2 text-label-sm text-text-muted">
@@ -354,10 +354,7 @@ export function LinkPicker({
           )}
         </Checkbox>
         {hint === null ? null : (
-          <p
-            id={labelHintId}
-            className="col-start-2 text-label-sm [overflow-wrap:anywhere] text-text-muted"
-          >
+          <p id={labelHintId} className="col-start-2 text-label-sm wrap-anywhere text-text-muted">
             {hint}
           </p>
         )}

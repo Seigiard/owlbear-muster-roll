@@ -1,5 +1,5 @@
+import { fixtureSnapshotCells, fixtureSnapshotBlocks } from '../../tests/support/block-fixtures';
 import { expect, test } from 'bun:test';
-
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { err, ok } from '@/core/result';
@@ -8,7 +8,6 @@ import type { SnapshotFile } from '@/core/snapshot-file';
 import { encodeSnapshotFileData } from '@/core/snapshot-import';
 import type { Generation } from '@/core/storage-key';
 import type { EngineMessage } from '@/core/ui-messages';
-
 import { createCatchUp, type CatchUp, type CatchUpDecision } from './catch-up';
 import {
   createGenerationFlow,
@@ -20,13 +19,21 @@ import type { RecordStore } from './record-store';
 const INITIAL: Generation = { n: 0, a: '' };
 const NEXT: Generation = { n: 1, a: 'gm-a' };
 const HIGHER: Generation = { n: 2, a: 'other-gm' };
-const RECORD: VersionedRecord = { k: 'sheet:anya', d: { set: 'pc', order: 0 }, c: 1, a: 'gm-a' };
+
+const RECORD: VersionedRecord = {
+  k: 'blk:anya',
+  d: { set: 'pc', order: 0, cells: {} },
+  c: 1,
+  a: 'gm-a',
+  l: [1, 'seed'],
+};
 
 const STALE_RECORD: VersionedRecord = {
-  k: 'sheet:stale',
-  d: { set: 'pc', order: 1 },
+  k: 'blk:stale',
+  d: { set: 'pc', order: 1, cells: {} },
   c: 1,
   a: 'old-gm',
+  l: [1, 'seed'],
 };
 
 const COPY: Snapshot = { g: NEXT, records: [RECORD] };
@@ -58,15 +65,15 @@ const PRESET: Preset = {
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
 
 const FILE: SnapshotFile = {
-  v: 3,
+  v: 4,
   type: 'muster-roll/snapshot',
   sheets: [
     {
       id: 'anya',
       set: 'pc',
       order: 0,
-      rows: { name: { name: 'Anya' }, str: { str: 12 } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ name: { name: 'Anya' }, str: { str: 12 } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
   ],
   links: [],
@@ -98,7 +105,6 @@ function createSubject(overrides: Partial<GenerationFlowPortsWithInterpreter> = 
   let releaseImport = noop;
   let writeImportHook: (() => void) | null = null;
   let flow: GenerationFlow;
-
   const store = createStore(events, () => writesFail, failedStoreOperations);
 
   const catchUp = createCatchUp({
@@ -266,10 +272,8 @@ function noop(): void {}
 test('a local wipe flushes, completes the save, replaces, writes the copy, then resets', async () => {
   // #given
   const subject = createSubject();
-
   // #when
   await subject.flow.wipe('wipe-1');
-
   // #then
   expect(subject.events).toEqual([
     'flush',
@@ -294,10 +298,8 @@ test('a higher generation during room-copy import rejects replacement without re
   subject.onWriteImport(() => {
     subject.flow.seeGeneration(HIGHER, false);
   });
-
   // #when
   await subject.flow.wipe('wipe-1');
-
   // #then
   expect(subject.events).toEqual([
     'flush',
@@ -320,16 +322,14 @@ test('a failed synchronous adoption save removes its partial generation and keep
   subject.failWrite();
   subject.catchUp.generationRead(NEXT);
   subject.flow.stage([RECORD]);
-
   // #when
   const decisions = subject.catchUp.adoptionStaged();
-
   // #then
   expect({ events: subject.events, decisions, adopting: subject.catchUp.adopting() }).toEqual({
     events: [
       'store:incomplete:1:gm-a',
       'store:generation:1:gm-a',
-      'store:write:1:gm-a:sheet:anya',
+      'store:write:1:gm-a:blk:anya',
       'save-failed',
       'store:remove:1:gm-a',
       'publish',
@@ -370,19 +370,16 @@ test('a snapshot import replies only after its room-copy import resolves', async
   const whileHeld = [...subject.events];
   subject.releaseImport();
   await importing;
-
   // #then
   expect({ whileHeld, final: subject.events }).toEqual({
     whileHeld: [
       'flush',
       'store:incomplete:1:gm-a',
       'store:generation:1:gm-a',
+      'store:write:1:gm-a:blk:anya',
       'store:write:1:gm-a:preset',
-      'store:write:1:gm-a:row:anya:name',
-      'store:write:1:gm-a:row:anya:str',
-      'store:write:1:gm-a:sheet:anya',
       'store:complete:1:gm-a',
-      'replace:preset,row:anya:name,row:anya:str,sheet:anya',
+      'replace:blk:anya,preset',
       'clear-pending-edits',
       'publish',
       'room-copy:write-import:1:gm-a',
@@ -391,12 +388,10 @@ test('a snapshot import replies only after its room-copy import resolves', async
       'flush',
       'store:incomplete:1:gm-a',
       'store:generation:1:gm-a',
+      'store:write:1:gm-a:blk:anya',
       'store:write:1:gm-a:preset',
-      'store:write:1:gm-a:row:anya:name',
-      'store:write:1:gm-a:row:anya:str',
-      'store:write:1:gm-a:sheet:anya',
       'store:complete:1:gm-a',
-      'replace:preset,row:anya:name,row:anya:str,sheet:anya',
+      'replace:blk:anya,preset',
       'clear-pending-edits',
       'publish',
       'room-copy:write-import:1:gm-a',
@@ -413,11 +408,9 @@ test('room-copy adoption interprets generationRead before staging can synchronou
   // #given
   const subject = createSubject();
   subject.flow.stage([STALE_RECORD]);
-
   // #when
   const decisions = subject.flow.adoptFromCopy(COPY);
   subject.runCatchUp(decisions.adoptionStaged);
-
   // #then
   expect(subject.events).toEqual([
     'interpreter:adopt',
@@ -426,11 +419,11 @@ test('room-copy adoption interprets generationRead before staging can synchronou
     'data-replaced-notice',
     'store:incomplete:1:gm-a',
     'store:generation:1:gm-a',
-    'store:write:1:gm-a:sheet:anya',
+    'store:write:1:gm-a:blk:anya',
     'store:complete:1:gm-a',
     'store:remove-below:1:gm-a',
     'store:remove-older-formats',
-    'replace:sheet:anya',
+    'replace:blk:anya',
     'room-copy:replaced:true',
     'publish',
   ]);
@@ -473,10 +466,8 @@ test.each([
   // #given
   const subject = createSubject(overrides);
   prepare(subject);
-
   // #when
   subject.flow.checkSnapshot({ t: 'snapshot-check', id: 'check', data: 'invalid' });
-
   // #then
   expect(subject.events).toEqual(expected);
 });
@@ -484,10 +475,8 @@ test.each([
 test('a wipe without writable persistence is rejected without replacing data', async () => {
   // #given
   const subject = createSubject({ initialPersistence: null });
-
   // #when
   await subject.flow.wipe('wipe');
-
   // #then
   expect(subject.events).toEqual(['reject:wipe:write-failed']);
 });
@@ -495,10 +484,8 @@ test('a wipe without writable persistence is rejected without replacing data', a
 test('a stopped room-copy adoption leaves the replica unchanged', () => {
   // #given
   const subject = createSubject({ stopped: () => true });
-
   // #when
   const actual = subject.flow.adoptFromCopy(COPY);
-
   // #then
   expect({ actual, events: subject.events, generation: subject.flow.generation() }).toEqual({
     actual: { adoptionStaged: [] },
@@ -510,10 +497,8 @@ test('a stopped room-copy adoption leaves the replica unchanged', () => {
 test('clearing an adopted generation with a retained nonce publishes the replacement state', () => {
   // #given
   const subject = createSubject();
-
   // #when
   subject.flow.clearStaged(false, true);
-
   // #then
   expect(subject.events).toEqual(['drop-outbox', 'drop-pending-work', 'publish']);
 });
@@ -525,11 +510,9 @@ test('a second adoption does not reuse records staged for the first generation',
   subject.flow.stage([STALE_RECORD]);
   expect(subject.flow.saveAdoption(NEXT, false)).toBe(true);
   subject.events.splice(0);
-
   // #when
   subject.catchUp.generationRead(HIGHER);
   expect(subject.flow.saveAdoption(HIGHER, false)).toBe(true);
-
   // #then
   expect(subject.events).toEqual([
     'store:incomplete:2:other-gm',
@@ -569,7 +552,6 @@ test('a second snapshot import is rejected while the first writes its room copy'
   const first = subject.flow.importFromSnapshot('first', command);
   await Promise.resolve();
   subject.events.splice(0);
-
   // #when
   const second = subject.flow.importFromSnapshot('second', command);
   await Promise.resolve();
@@ -590,7 +572,6 @@ test('a wipe and snapshot check are rejected while an import writes its room cop
   const first = subject.flow.wipe('first');
   await Promise.resolve();
   subject.events.splice(0);
-
   // #when
   const second = subject.flow.wipe('second');
   await Promise.resolve();
@@ -619,7 +600,6 @@ test('an invalid snapshot import is rejected before storage or room effects', as
     .then(() => subject.events);
 
   const [settled] = await Promise.allSettled([result]);
-
   // #then
   expect(settled).toEqual({
     status: 'fulfilled',
@@ -630,14 +610,12 @@ test('an invalid snapshot import is rejected before storage or room effects', as
 test('a snapshot import without writable persistence is rejected before parsing', async () => {
   // #given
   const subject = createSubject({ initialPersistence: null });
-
   // #when
   await subject.flow.importFromSnapshot('import', {
     type: 'snapshot-import',
     data: 'invalid',
     expectedDigest: 'none',
   });
-
   // #then
   expect(subject.events).toEqual(['reject:import:write-failed']);
 });
@@ -655,10 +633,8 @@ test.each([
     // #given
     const subject = createSubject();
     subject.failStore(operation);
-
     // #when
     await subject.flow.wipe('wipe');
-
     // #then
     expect(subject.events).toEqual([
       'flush',

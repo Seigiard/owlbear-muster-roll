@@ -115,10 +115,8 @@ export function visibleRecords(
   const blocks = blockIndex(known.values());
 
   return records.filter((record) => {
-    if (record.k.startsWith('sheet:')) {
-      return (
-        record.d === null || sheetShownTo(known, preset, record.k.slice('sheet:'.length), role)
-      );
+    if (record.k.startsWith('blk:') && record.k.split(':').length === 2) {
+      return record.d === null || sheetShownTo(known, preset, record.k.slice('blk:'.length), role);
     }
 
     if (record.k.startsWith('link:')) {

@@ -2,11 +2,12 @@ import { playerMayEdit, proposalAllowed, type ProposalContext } from '@/core/acc
 import type { FieldPatchTarget } from '@/core/field-patch';
 import { counterAbove, mergeRecords, type Version } from '@/core/merge';
 import { recordFitsOneMessage } from '@/core/message-size';
-import { type Preset, type Template } from '@/core/preset';
+import { plainRowIdOf, type Preset, type Template } from '@/core/preset';
 import { presetMoves, stripToTemplate, type PresetMoves } from '@/core/preset-migrate';
 import { dependentSheetId, resolveSheet } from '@/core/sheets';
 import {
-  fieldValuesSchema,
+  blockDataSchema,
+  cellValues,
   repDataSchema,
   type FieldValue,
   type VersionedRecord,
@@ -116,6 +117,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
 
     const entry: ProposalEntry = {
       k: record.k,
+      l: existing?.l ?? record.l,
       patch: existing === undefined ? patch : combinePatches(existing.patch, patch),
       record: existing?.record ?? null,
       sent: existing?.sent ?? false,
@@ -141,9 +143,18 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       const shown = waitingRecord(entry, view.get(entry.k));
 
       if (shown !== null) {
+        const base = blockDataSchema.safeParse(view.get(entry.k)?.d).data;
+        const data = blockDataSchema.safeParse(shown.d).data;
+
         view.set(
           entry.k,
-          entry.record === null ? shown : { ...shown, c: entry.record.c, a: entry.record.a },
+          data === undefined
+            ? shown
+            : {
+                ...shown,
+                l: shown.l ?? [shown.c, shown.a],
+                d: { ...data, cells: { ...base?.cells, ...data.cells } },
+              },
         );
       }
     }
@@ -273,6 +284,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
 
         const entry: ProposalEntry = {
           k: part.k,
+          l: existing?.l ?? found.l,
           patch,
           record: found.record === null ? null : (existing?.record ?? found.record),
           sent: existing?.sent ?? false,
@@ -290,7 +302,11 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   }
 
   function drain(): PlayerEditCommand[] {
-    const commands = proposals.entries().flatMap(commandsOf);
+    const commands = proposals
+      .entries()
+      .flatMap((entry) =>
+        commandsOf(entry, templateOfKey(records(), presetOf(records().get('preset')), entry.k)),
+      );
 
     proposals.clear();
 
@@ -335,7 +351,15 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     force: boolean,
   ): Result<VersionedRecord, ProposalFailure> {
     const highest = Math.max(base?.c ?? 0, entry.record?.c ?? 0);
-    const made = proposedRecord(entry.k, entry.patch, base, () => mint(entry.k, highest), force);
+
+    const made = proposedRecord(
+      entry.k,
+      entry.patch,
+      base,
+      () => mint(entry.k, highest),
+      force,
+      entry.l,
+    );
 
     if (!made.ok) {
       return made;
@@ -362,8 +386,12 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       entry.k,
       entry.patch,
       base,
-      () => ({ c: (base?.c ?? 0) + 1, a: options.connectionId }),
+      () =>
+        entry.record === null
+          ? { c: (base?.c ?? 0) + 1, a: options.connectionId }
+          : { c: entry.record.c, a: entry.record.a },
       true,
+      entry.l,
     );
 
     return made.ok ? strippedProposal(made.value) : null;
@@ -469,42 +497,48 @@ function patchOf(command: PlayerEditCommand, record: VersionedRecord): ProposalP
     return { kind: 'remove' };
   }
 
-  const block = record.k.startsWith('rep:') ? repDataSchema.parse(record.d) : null;
+  const block = repDataSchema.parse(record.d);
 
-  if (command.type === 'repeat-block-add' && block !== null) {
+  if (command.type === 'repeat-block-add') {
     return { kind: 'add', d: block };
   }
 
-  const values = block === null ? fieldValuesSchema.parse(record.d) : block.cells;
+  const values = block.cells;
   const fieldId = command.type === 'field-patch' ? command.fieldId : '';
 
-  return { kind: 'fields', values: { [fieldId]: values[fieldId] ?? null } };
+  return { kind: 'fields', values: { [fieldId]: values[fieldId]?.[0] ?? null } };
 }
 
 // The commands that make a player's entry again as a GM's own edit: a removal, or a new repeat
 // block and then its cells, or the fields it sets and clears.
-function commandsOf(entry: ProposalEntry): PlayerEditCommand[] {
-  const [form, sheetId = '', id = '', instanceId = ''] = entry.k.split(':');
+function commandsOf(entry: ProposalEntry, template: Template | null): PlayerEditCommand[] {
+  const [, sheetId = '', id, instanceId = ''] = entry.k.split(':');
 
   const target: FieldPatchTarget =
-    form === 'rep' ? { kind: 'rep', sectionId: id, instanceId } : { kind: 'row', rowId: id };
+    id !== undefined ? { kind: 'rep', sectionId: id, instanceId } : { kind: 'row', rowId: '' };
 
   const fieldPatches = (values: Readonly<Record<string, FieldValue | null>>): PlayerEditCommand[] =>
     Object.entries(values).map(([fieldId, value]) => ({
       type: 'field-patch',
       sheetId,
-      target,
+      target:
+        target.kind === 'row'
+          ? {
+              kind: 'row',
+              rowId: template === null ? fieldId : (plainRowIdOf(template, fieldId) ?? fieldId),
+            }
+          : target,
       fieldId,
       value,
     }));
 
   switch (entry.patch.kind) {
     case 'remove':
-      return [{ type: 'repeat-block-delete', sheetId, sectionId: id, instanceId }];
+      return [{ type: 'repeat-block-delete', sheetId, sectionId: id ?? '', instanceId }];
     case 'add':
       return [
-        { type: 'repeat-block-add', sheetId, sectionId: id, instanceId },
-        ...fieldPatches(entry.patch.d.cells),
+        { type: 'repeat-block-add', sheetId, sectionId: id ?? '', instanceId },
+        ...fieldPatches(cellValues(entry.patch.d.cells)),
       ];
     case 'fields':
       return fieldPatches(entry.patch.values);
@@ -513,9 +547,9 @@ function commandsOf(entry: ProposalEntry): PlayerEditCommand[] {
   }
 }
 
-// AD-14: where the values of a `row:` or `rep:` key go when its sheet's template changes from its
-// form in `before` to its form in `after`. A template matches by its `id` and `kind`. `null` when
-// either preset has no template for the sheet, or the template changed its `id` or `kind`.
+// AD-14: where a block's values go when its sheet's template changes from its form in `before` to
+// its form in `after`. A template matches by its `id` and `kind`. `null` when either preset has no
+// template for the sheet, or the template changed its `id` or `kind`.
 function templateMoves(
   records: ReadonlyMap<string, VersionedRecord>,
   before: Preset,
@@ -530,8 +564,7 @@ function templateMoves(
     : presetMoves(old, current);
 }
 
-// AD-18: the template of the sheet a `row:` or `rep:` key belongs to, or `null` when no template
-// owns that sheet.
+// AD-18: the template of the sheet a block key belongs to, or `null` when no template owns it.
 function templateOfKey(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset | null,

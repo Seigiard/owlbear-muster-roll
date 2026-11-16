@@ -1,2 +1,4 @@
-// AD-12: the one `v` of every message, snapshot, stored record and file format.
-export const FORMAT_VERSION = 3;
+// Data and wire versions can advance without changing preset layout.
+export const FORMAT_VERSION = 4;
+
+export const PRESET_FORMAT_VERSION = 3;

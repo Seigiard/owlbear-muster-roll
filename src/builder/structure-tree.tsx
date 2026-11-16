@@ -69,7 +69,7 @@ const ADD_ITEM_CLASS =
   'touch-target flex cursor-default items-center rounded-sm text-accent outline-none data-focus-visible:outline-2 data-focus-visible:outline-solid data-focus-visible:outline-focus';
 
 const ICON_BUTTON_CLASS =
-  'inline-flex size-[24px] shrink-0 items-center justify-center rounded-sm text-text-muted';
+  'inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-text-muted';
 
 const INDENT_PX = 16;
 
@@ -240,7 +240,7 @@ function Item({ uid, label, problem, movable, children }: ItemProps): ReactNode 
                 {isExpanded ? '▾' : '▸'}
               </Button>
             ) : (
-              <span className="size-[24px] shrink-0" />
+              <span className="size-6 shrink-0" />
             )}
             <span className="min-w-0 flex-1 truncate">{label}</span>
             {problem ? (
@@ -292,7 +292,7 @@ function AddItem({
             className="flex items-center gap-1"
             style={{ paddingInlineStart: (level - 1) * INDENT_PX }}
           >
-            <span className="w-[24px] shrink-0 text-center" aria-hidden>
+            <span className="w-6 shrink-0 text-center" aria-hidden>
               +
             </span>
             {label}

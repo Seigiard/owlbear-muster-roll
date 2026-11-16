@@ -4,6 +4,20 @@ export type JsonObject = { [key: string]: JsonValue };
 
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
 
+export function canonicalJson(value: JsonValue): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+
+  if (isJsonObject(value)) {
+    return `{${Object.keys(value)
+      .filter((key) => value[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key] ?? null)}`)
+      .join(',')}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
 // Two JSON values with the same content. Object keys compare as a set, so key order does not count.
 export function sameJson(first: JsonValue, second: JsonValue): boolean {
   if (first === second) {
@@ -23,7 +37,7 @@ export function sameJson(first: JsonValue, second: JsonValue): boolean {
     );
   }
 
-  if (!(first instanceof Object) || !(second instanceof Object)) {
+  if (!isJsonObject(first) || !isJsonObject(second)) {
     return false;
   }
 
@@ -38,4 +52,8 @@ export function sameJson(first: JsonValue, second: JsonValue): boolean {
       return value !== undefined && other !== undefined && sameJson(value, other);
     })
   );
+}
+
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return value !== null && !Array.isArray(value) && Object(value) === value;
 }

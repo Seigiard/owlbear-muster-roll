@@ -21,7 +21,7 @@ const SIDEBAR_TAB_CLASS =
   'touch-target inline-flex min-w-0 w-full items-center gap-1 rounded-md px-2 text-start text-text-muted -outline-offset-2 data-hovered:text-text [&[data-hovered]:not([data-selected])]:bg-fill data-selected:bg-fill-strong data-selected:font-medium data-selected:text-text';
 
 const SIDEBAR_SCROLLER_CLASS =
-  'min-h-0 flex-1 overflow-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+  'min-h-0 flex-1 overflow-auto p-2 scrollbar-none [&::-webkit-scrollbar]:hidden';
 
 const SIDEBAR_FLOW_CLASS = 'flex min-h-full flex-col gap-px';
 
@@ -199,7 +199,7 @@ function Sidebar({ entries, selected, onSelect, onAdd, settings }: SidebarProps)
           key={`divider:${section.id}`}
           aria-hidden
           style={{ order }}
-          className="mx-2 my-2 h-px shrink-0 bg-hairline"
+          className="m-2 h-px shrink-0 bg-hairline"
         />,
       );
       order += 1;

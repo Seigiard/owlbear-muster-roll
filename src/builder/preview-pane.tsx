@@ -174,6 +174,14 @@ export function PreviewPane({
           ...patched.value,
           c: (current?.c ?? 0) + 1,
           a: 'builder',
+          l: current?.l ?? [(current?.c ?? 0) + 1, 'builder'],
+          d: {
+            ...patched.value.d,
+            cells: {
+              ...patched.value.d.cells,
+              [command.fieldId]: [value.value, (current?.c ?? 0) + 1, 'builder'],
+            },
+          },
         });
 
         const nextRecords = snapshotRecords.some((record) => record.k === key)

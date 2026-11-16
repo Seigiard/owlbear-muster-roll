@@ -1,9 +1,9 @@
+import { assembleRecords } from '@/core/merge';
+import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
-
 import type { Preset, PresetSection, Template, TemplateLayout } from '@/core/preset';
 import type { JsonValue } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
-
 import {
   blockIndex,
   linkDataOf,
@@ -66,19 +66,17 @@ const PRESET: Preset = { v: 3, templates: [PC, NPC] };
 
 function record(k: string, d: JsonValue): VersionedRecord {
   // SAFETY: some cases build a record no schema takes on purpose, so the code under test meets it.
-  return { k, d, c: 1, a: 'gm' } as VersionedRecord;
+  return fixtureRecord(k, d, 1, 'gm');
 }
 
-const RECORDS: ReadonlyMap<string, VersionedRecord> = new Map(
-  [
-    record('sheet:brok', { set: 'pc', order: 0 }),
-    record('sheet:gone', null),
-    record('rep:brok:pet:wolf', { order: 0, cells: { pet: 'Волк' } }),
-    record('rep:brok:pet:dead', null),
-    record('rep:brok:item:rope', { order: 0, cells: { item: 'Верёвка' } }),
-    record('rep:npc:npc_name:s1', { order: 0, cells: { npc_name: 'Скелет 1' } }),
-  ].map((entry) => [entry.k, entry]),
-);
+const RECORDS: ReadonlyMap<string, VersionedRecord> = assembleRecords([
+  record('blk:brok', { set: 'pc', order: 0 }),
+  record('blk:gone', null),
+  record('blk:brok:pet:wolf', { order: 0, cells: { pet: 'Волк' } }),
+  record('blk:brok:pet:dead', null),
+  record('blk:brok:item:rope', { order: 0, cells: { item: 'Верёвка' } }),
+  record('blk:npc:npc_name:s1', { order: 0, cells: { npc_name: 'Скелет 1' } }),
+]);
 
 function live(target: LinkTarget, preset: Preset | null = PRESET) {
   const found = liveLinkTarget(RECORDS, preset, target);
@@ -93,12 +91,10 @@ describe('linkTargetOf', () => {
     // #then
     expect(linkTargetOf({ s: 'brok' })).toEqual({ sheetId: 'brok', instanceId: null });
   });
-
   test('reads a repeat block link', () => {
     // #then
     expect(linkTargetOf({ s: 'brok', i: 'wolf' })).toEqual({ sheetId: 'brok', instanceId: 'wolf' });
   });
-
   test.each<[string, JsonValue]>([
     ['a tombstone', null],
     ['the old bare sheet id form', 'brok'],
@@ -115,7 +111,6 @@ describe('linkDataOf', () => {
     // #then
     expect(linkDataOf({ sheetId: 'brok', instanceId: null })).toEqual({ s: 'brok' });
   });
-
   test('writes a repeat block target as { s, i }', () => {
     // #then
     expect(linkDataOf({ sheetId: 'brok', instanceId: 'wolf' })).toEqual({ s: 'brok', i: 'wolf' });
@@ -148,7 +143,6 @@ describe('blockIndex', () => {
   test('maps each live repeat block to its section by sheet id and instance id', () => {
     // #when
     const index = blockIndex(RECORDS.values());
-
     // #then
     expect([...index].sort(([left], [right]) => (left < right ? -1 : 1))).toEqual([
       ['brok:rope', 'item'],
@@ -156,17 +150,15 @@ describe('blockIndex', () => {
       ['npc:s1', 'npc_name'],
     ]);
   });
-
   test('gives one instance id held by two sections the section of the lower key on every client', () => {
     // #given
     const records = [
-      record('rep:brok:pet:twin', { order: 0, cells: {} }),
-      record('rep:brok:item:twin', { order: 0, cells: {} }),
+      record('blk:brok:pet:twin', { order: 0, cells: {} }),
+      record('blk:brok:item:twin', { order: 0, cells: {} }),
     ];
 
     // #when
     const indexes = [blockIndex(records), blockIndex([...records].reverse())];
-
     // #then
     expect(indexes.map((index) => index.get('brok:twin'))).toEqual(['item', 'item']);
   });
@@ -176,27 +168,21 @@ describe('liveLinkTarget', () => {
   test('keeps a link to a live sheet of a linkable template', () => {
     // #given
     const target = { sheetId: 'brok', instanceId: null };
-
     // #then
     expect(live(target)).toEqual({ target, template: PC, section: null });
   });
-
   test('keeps a link to a live repeat block of a linkable section', () => {
     // #given
     const target = { sheetId: 'brok', instanceId: 'wolf' };
-
     // #then
     expect(live(target)).toEqual({ target, template: PC, section: PET_SECTION });
   });
-
   test('keeps a link to a repeat block of a hidden single sheet, as visibility is not liveness', () => {
     // #given
     const target = { sheetId: 'npc', instanceId: 's1' };
-
     // #then
     expect(live(target)).toEqual({ target, template: NPC, section: NPC_SECTION });
   });
-
   test.each<[string, LinkTarget]>([
     ['a sheet of a template with no tokens', { sheetId: 'npc', instanceId: null }],
     ['a repeat block of a section with no tokens', { sheetId: 'brok', instanceId: 'rope' }],
@@ -209,7 +195,6 @@ describe('liveLinkTarget', () => {
     // #then
     expect(live(target)).toBeNull();
   });
-
   test('treats every link as inert with no decoded preset', () => {
     // #then
     expect(live({ sheetId: 'brok', instanceId: null }, null)).toBeNull();
@@ -226,8 +211,8 @@ describe('repeatBlockTabIndex', () => {
   };
 
   const RECORDS: VersionedRecord[] = [
-    { k: 'rep:brok:pet:p1', d: { order: 0, cells: {} }, c: 1, a: 'gm' },
-    { k: 'rep:brok:pet:gone', d: null, c: 2, a: 'gm' },
+    { k: 'blk:brok:pet:p1', d: { order: 0, cells: {} }, c: 1, a: 'gm', l: [1, 'seed'] },
+    { k: 'blk:brok:pet:gone', d: null, c: 2, a: 'gm', l: [1, 'seed'] },
   ];
 
   test.each<[string, string, number | null]>([
@@ -237,7 +222,6 @@ describe('repeatBlockTabIndex', () => {
   ])('finds the tab of %s', (_name, instanceId, expected) => {
     // #when
     const tab = repeatBlockTabIndex(RECORDS, LAYOUT, 'brok', instanceId);
-
     // #then
     expect(tab).toBe(expected);
   });

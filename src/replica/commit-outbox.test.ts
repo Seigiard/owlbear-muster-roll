@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
-
 import type { JsonValue } from '@/core/json';
 import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
-import type { VersionedRecord } from '@/core/records';
+import { blockDataSchema, type Cells, type VersionedRecord } from '@/core/records';
 import { ok } from '@/core/result';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
@@ -42,10 +41,18 @@ const TIMING: Timing = {
 
 const GENERATION = { n: 0, a: '' };
 
-type Sent = { channel: string; data: JsonValue; options: BroadcastOptions };
+type Sent = {
+  channel: string;
+  data: JsonValue;
+  options: BroadcastOptions;
+};
 
 // A queue whose spacing pause holds until the test releases it.
-type Rig = { queue: SendQueue; sent: Sent[]; release: () => void };
+type Rig = {
+  queue: SendQueue;
+  sent: Sent[];
+  release: () => void;
+};
 
 afterEach(() => {
   mock.restore();
@@ -82,15 +89,32 @@ function createRig(): Rig {
 }
 
 function row(id: string, c: number, value: string | number = c): VersionedRecord {
-  return { k: `row:brok:${id}`, d: { [id]: value }, c, a: 'gm-a' };
+  return {
+    k: 'blk:brok',
+    d: { order: 0, cells: { [id]: [value, c, 'gm-a'] } },
+    c,
+    a: 'gm-a',
+    l: [1, 'seed'],
+  };
 }
 
 function commit(records: VersionedRecord[]): Sent {
   return {
     channel: SYNC_CHANNEL,
-    data: { v: 3, g: GENERATION, t: 'commit', records },
+    data: { v: 4, g: GENERATION, t: 'commit', records },
     options: { destination: 'REMOTE' },
   };
+}
+
+function cellsOf(records: readonly VersionedRecord[]): Cells {
+  return Object.assign(
+    {},
+    ...records.flatMap((record) => {
+      const block = blockDataSchema.safeParse(record.d);
+
+      return block.success ? [block.data.cells] : [];
+    }),
+  );
 }
 
 async function drained(rig: Rig): Promise<void> {
@@ -112,146 +136,175 @@ describe('commit outbox', () => {
     // #given
     const rig = createRig();
     const outbox = createCommitOutbox(rig.queue, () => GENERATION);
-
     await holdQueue(rig);
-
     // #when
     outbox.add([row('str', 1)]);
     outbox.add([row('str', 2), row('dex', 1)]);
     await drained(rig);
-
     // #then
-    expect(rig.sent.slice(1)).toEqual([commit([row('str', 2), row('dex', 1)])]);
+    expect(rig.sent.slice(1)).toEqual([
+      commit([
+        {
+          k: 'blk:brok',
+          d: {
+            order: 0,
+            cells: { str: [2, 2, 'gm-a'], dex: [1, 1, 'gm-a'] },
+          },
+          c: 2,
+          a: 'gm-a',
+          l: [1, 'seed'],
+        },
+      ]),
+    ]);
   });
-
   test('sends records over one message in parts that each fit, and the remainder after the first', async () => {
     // #given: each record is about 4000 bytes, so four do not fit one message.
     const rig = createRig();
     const outbox = createCommitOutbox(rig.queue, () => GENERATION);
     const records = ['a', 'b', 'c', 'd', 'e'].map((id) => row(id, 1, 'ы'.repeat(2000)));
-
     // #when
     outbox.add(records);
     await drained(rig);
-
     // #then
     const sent = rig.sent.map((one) => Object(one.data).records);
-
     expect({
       parts: rig.sent.length,
       underLimit: rig.sent.every((one) => jsonByteLength(one.data) < MESSAGE_BYTE_LIMIT),
-      records: sent.flat(),
-    }).toEqual({ parts: 2, underLimit: true, records });
+      cells: cellsOf(sent.flat()),
+    }).toEqual({ parts: 2, underLimit: true, cells: cellsOf(records) });
   });
-
   test('drops and logs only a record too large for one message, and sends the rest', async () => {
     // #given
     const rig = createRig();
     const outbox = createCommitOutbox(rig.queue, () => GENERATION);
     const errors = spyOn(console, 'error').mockImplementation(() => undefined);
-
     // #when
-    outbox.add([row('str', 1), row('huge', 1, 'x'.repeat(MESSAGE_BYTE_LIMIT)), row('dex', 1)]);
+    outbox.add([
+      row('str', 1),
+      {
+        k: 'acl:huge:player',
+        d: { name: 'x'.repeat(MESSAGE_BYTE_LIMIT) },
+        c: 1,
+        a: 'gm-a',
+      },
+      row('dex', 1),
+    ]);
     await drained(rig);
-
     // #then
     expect({ sent: rig.sent, logged: errors.mock.calls.length }).toEqual({
-      sent: [commit([row('str', 1), row('dex', 1)])],
+      sent: [
+        commit([
+          {
+            k: 'blk:brok',
+            d: {
+              order: 0,
+              cells: { str: [1, 1, 'gm-a'], dex: [1, 1, 'gm-a'] },
+            },
+            c: 1,
+            a: 'gm-a',
+            l: [1, 'seed'],
+          },
+        ]),
+      ],
       logged: 1,
     });
   });
-
   test('sends nothing after stop, not even a commit already waiting in the queue', async () => {
     // #given
     const rig = createRig();
     const outbox = createCommitOutbox(rig.queue, () => GENERATION);
-
     await holdQueue(rig);
     outbox.add([row('str', 1)]);
-
     // #when
     outbox.stop();
     outbox.add([row('dex', 1)]);
     await drained(rig);
-
     // #then
     expect(rig.sent.map((one) => one.data)).toEqual(['first']);
   });
-
   test('drop forgets a commit waiting in the queue, and the outbox still sends what comes after', async () => {
     // #given
     const rig = createRig();
     const outbox = createCommitOutbox(rig.queue, () => GENERATION);
-
     await holdQueue(rig);
     outbox.add([row('str', 1)]);
-
     // #when
     outbox.drop();
     await drained(rig);
     outbox.add([row('dex', 2)]);
     await drained(rig);
-
     // #then
     expect(rig.sent.map((one) => one.data)).toEqual(['first', commit([row('dex', 2)]).data]);
   });
-
   test("a newer GM record of a proposed key still carries the player's (k, c, a) in its commit", async () => {
     // #given
     const rig = createRig();
     const outbox = createCommitOutbox(rig.queue, () => GENERATION);
-    const proposed: VersionedRecord = { k: 'row:brok:str', d: { str: 7 }, c: 4, a: 'p-conn' };
+
+    const proposed: VersionedRecord = {
+      k: 'blk:brok',
+      d: { order: 0, cells: { str: [7, 4, 'p-conn'] } },
+      c: 4,
+      a: 'p-conn',
+      l: [1, 'seed'],
+    };
+
     const ack = { k: proposed.k, c: 4, a: 'p-conn' };
-
     await holdQueue(rig);
-
     // #when
     outbox.add([proposed], [ack]);
     outbox.add([row('str', 5)]);
     await drained(rig);
-
     // #then
     expect(rig.sent.slice(1)).toEqual([
       {
         ...commit([row('str', 5)]),
-        data: { v: 3, g: GENERATION, t: 'commit', records: [row('str', 5)], acks: [ack] },
+        data: { v: 4, g: GENERATION, t: 'commit', records: [row('str', 5)], acks: [ack] },
       },
     ]);
   });
-
   test('echoes one proposal answered twice before the commit goes out once', async () => {
     // #given
     const rig = createRig();
     const outbox = createCommitOutbox(rig.queue, () => GENERATION);
-    const proposed: VersionedRecord = { k: 'row:brok:str', d: { str: 7 }, c: 4, a: 'p-conn' };
+
+    const proposed: VersionedRecord = {
+      k: 'blk:brok',
+      d: { order: 0, cells: { str: [7, 4, 'p-conn'] } },
+      c: 4,
+      a: 'p-conn',
+      l: [1, 'seed'],
+    };
+
     const ack = { k: proposed.k, c: 4, a: 'p-conn' };
-
     await holdQueue(rig);
-
     // #when
     outbox.add([proposed], [ack]);
     outbox.add([proposed], [ack]);
     await drained(rig);
-
     // #then
     expect(rig.sent.slice(1).map((one) => Object(one.data).acks)).toEqual([[ack]]);
   });
-
   test("keeps one ack per author of a key, that author's newest", async () => {
     // #given
     const rig = createRig();
     const outbox = createCommitOutbox(rig.queue, () => GENERATION);
-    const record: VersionedRecord = { k: 'row:brok:str', d: { str: 7 }, c: 9, a: 'gm-a' };
+
+    const record: VersionedRecord = {
+      k: 'blk:brok',
+      d: { order: 0, cells: { str: [7, 9, 'gm-a'] } },
+      c: 9,
+      a: 'gm-a',
+      l: [1, 'seed'],
+    };
 
     await holdQueue(rig);
-
     // #when
     outbox.add([record], [{ k: record.k, c: 4, a: 'p-oly' }]);
     outbox.add([record], [{ k: record.k, c: 6, a: 'p-oly' }]);
     outbox.add([record], [{ k: record.k, c: 5, a: 'p-oly' }]);
     outbox.add([record], [{ k: record.k, c: 2, a: 'p-gena' }]);
     await drained(rig);
-
     // #then
     expect(rig.sent.slice(1).map((one) => Object(one.data).acks)).toEqual([
       [
@@ -260,7 +313,6 @@ describe('commit outbox', () => {
       ],
     ]);
   });
-
   test('sends a record again with the acks that did not fit one message with it', async () => {
     // #given: the record is about 13000 bytes and each ack about 640, so two acks fit with it.
     const rig = createRig();
@@ -274,14 +326,11 @@ describe('commit outbox', () => {
     }));
 
     await holdQueue(rig);
-
     // #when
     outbox.add([record], acks);
     await drained(rig);
-
     // #then
     const sent = rig.sent.slice(1).map((one) => Object(one.data));
-
     expect({
       records: sent.map((data) => data.records),
       acks: sent.map((data) => data.acks),
@@ -292,20 +341,16 @@ describe('commit outbox', () => {
       fit: true,
     });
   });
-
   test('puts each ack in the part that carries the record of its key', async () => {
     // #given: each record is about 4000 bytes, so the five need two messages.
     const rig = createRig();
     const outbox = createCommitOutbox(rig.queue, () => GENERATION);
     const records = ['a', 'b', 'c', 'd', 'e'].map((id) => row(id, 1, 'ы'.repeat(2000)));
-    const lastAck = { k: 'row:brok:e', c: 1, a: 'gm-a' };
-
+    const lastAck = { k: 'blk:brok', c: 1, a: 'gm-a' };
     await holdQueue(rig);
-
     // #when
     outbox.add(records, [lastAck]);
     await drained(rig);
-
     // #then
     expect(
       rig.sent.slice(1).map((one) => ({
@@ -313,25 +358,23 @@ describe('commit outbox', () => {
         acks: Object(one.data).acks,
       })),
     ).toEqual([
-      { keys: ['row:brok:a', 'row:brok:b', 'row:brok:c'], acks: undefined },
-      { keys: ['row:brok:d', 'row:brok:e'], acks: [lastAck] },
+      { keys: ['blk:brok'], acks: undefined },
+      { keys: ['blk:brok'], acks: [lastAck] },
     ]);
   });
-
   test('flush hands every held record to the queue, so its flushNow sends them at once', async () => {
     // #given: the queue holds, and the records need two messages.
     const rig = createRig();
     const outbox = createCommitOutbox(rig.queue, () => GENERATION);
     const records = ['a', 'b', 'c', 'd', 'e'].map((id) => row(id, 1, 'ы'.repeat(2000)));
-
     await holdQueue(rig);
     outbox.add(records);
-
     // #when
     outbox.flush();
     rig.queue.flushNow();
-
     // #then
-    expect(rig.sent.slice(1).flatMap((one) => Object(one.data).records)).toEqual(records);
+    expect(cellsOf(rig.sent.slice(1).flatMap((one) => Object(one.data).records))).toEqual(
+      cellsOf(records),
+    );
   });
 });

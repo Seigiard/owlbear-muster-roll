@@ -11,7 +11,7 @@ const TAB_CLASS =
   'touch-target inline-flex min-w-0 shrink-0 items-center gap-1 px-3 text-text-muted -outline-offset-2 data-hovered:text-text data-selected:font-medium data-selected:text-text data-selected:shadow-[inset_0_-2px_0_var(--color-text)] forced-colors:data-selected:underline';
 
 const SCROLLER_CLASS =
-  'flex min-w-0 gap-1 overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+  'flex min-w-0 gap-1 overflow-x-auto border-b border-hairline scrollbar-none [&::-webkit-scrollbar]:hidden';
 
 // The tab row of the selected sheet. Its parent WindowFrame owns the Tabs state and panel.
 export type ShellTab = {

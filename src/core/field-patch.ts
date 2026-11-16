@@ -10,7 +10,7 @@ import {
   type TemplateLayout,
 } from '@/core/preset';
 import {
-  fieldValuesSchema,
+  blockDataSchema,
   repDataSchema,
   repKey,
   rowKey,
@@ -47,12 +47,10 @@ const AUTHOR_STAND_IN = 'a'.repeat(64);
 
 export type FieldPatchTarget = z.infer<typeof fieldPatchTargetSchema>;
 
-// `null` clears the field: its key leaves the record.
+// A clear remains a cell, so delayed values cannot restore it.
 export type FieldPatchValue = FieldValue | null;
 
-export type PatchedRecord =
-  | { k: string; d: z.infer<typeof fieldValuesSchema> }
-  | { k: string; d: z.infer<typeof repDataSchema> };
+export type PatchedRecord = { k: string; d: z.infer<typeof blockDataSchema> };
 
 export type FieldPatchFailure = 'unknown-instance' | 'unchanged';
 
@@ -117,29 +115,43 @@ export function patchedRecord(
 ): Result<PatchedRecord, FieldPatchFailure> {
   const k = patchRecordKey(sheetId, target);
 
-  if (target.kind === 'row') {
-    const values = fieldValuesSchema.safeParse(current?.d);
-    const cells = withValue(values.success ? values.data : {}, fieldId, value);
-
-    return cells === null ? err('unchanged') : ok({ k, d: cells });
-  }
-
   const block = repDataSchema.safeParse(current?.d);
 
   if (!block.success) {
-    return err('unknown-instance');
+    if (current?.d === null || target.kind === 'rep') return err('unknown-instance');
+
+    return value === null
+      ? err('unchanged')
+      : ok({
+          k,
+          d: { order: 0, cells: { [fieldId]: [value, Number.MAX_SAFE_INTEGER, AUTHOR_STAND_IN] } },
+        });
   }
 
-  const cells = withValue(block.data.cells, fieldId, value);
+  if (sameFieldValue(block.data.cells[fieldId]?.[0], value)) return err('unchanged');
 
-  return cells === null ? err('unchanged') : ok({ k, d: { ...block.data, cells } });
+  return ok({
+    k,
+    d: {
+      ...block.data,
+      cells: {
+        ...block.data.cells,
+        [fieldId]: [value, Number.MAX_SAFE_INTEGER, AUTHOR_STAND_IN],
+      },
+    },
+  });
 }
 
 // Measured at the largest version the record can reach, so a patch that passes here still fits
 // when the background mints it. The window measures its projection copy of the record, which can
 // lag behind, so the background's check on its own replica is the one that decides.
 export function patchedRecordFits(record: PatchedRecord): boolean {
-  return recordFitsOneMessage({ ...record, c: Number.MAX_SAFE_INTEGER, a: AUTHOR_STAND_IN });
+  return recordFitsOneMessage({
+    ...record,
+    c: Number.MAX_SAFE_INTEGER,
+    a: AUTHOR_STAND_IN,
+    l: [Number.MAX_SAFE_INTEGER, AUTHOR_STAND_IN],
+  });
 }
 
 export function sameFieldValue(
@@ -147,27 +159,4 @@ export function sameFieldValue(
   second: FieldPatchValue | undefined,
 ): boolean {
   return (first ?? null) === (second ?? null);
-}
-
-// `null` when the value is already there, or a clear finds no key.
-function withValue(
-  values: Readonly<Record<string, FieldValue>>,
-  fieldId: string,
-  value: FieldPatchValue,
-): Record<string, FieldValue> | null {
-  const present = Object.hasOwn(values, fieldId) ? values[fieldId] : undefined;
-
-  if (sameFieldValue(present, value)) {
-    return null;
-  }
-
-  const next = { ...values };
-
-  if (value === null) {
-    delete next[fieldId];
-  } else {
-    next[fieldId] = value;
-  }
-
-  return next;
 }

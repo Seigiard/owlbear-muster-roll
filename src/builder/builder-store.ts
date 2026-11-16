@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { z } from 'zod';
 
 import { encodePreset, parsePresetStructure, type Preset } from '@/core/preset';
+import { presetMoves } from '@/core/preset-migrate';
 import { recordSchema, templateIdSchema, type VersionedRecord } from '@/core/records';
 import { importSnapshot } from '@/core/snapshot-import';
 import { encodeSnapshotFile } from '@/core/snapshot-file';
@@ -229,9 +230,10 @@ export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
 
         const record = recordSchema.parse({
           k: sheetKey(sheetId),
-          d: { set: setId, order },
+          d: { set: setId, order, cells: {} },
           c: 1,
           a: BUILDER_AUTHOR,
+          l: [1, BUILDER_AUTHOR],
         });
 
         return {
@@ -359,6 +361,24 @@ function reconcileRecords(
   }
 
   const file = encodeSnapshotFile(new Map(records.map((record) => [record.k, record])), before);
+
+  for (const sheet of file.sheets) {
+    const previous = before.templates.find((template) => template.id === (sheet.set ?? sheet.id));
+
+    const next = after.templates.find(
+      (template) => template.id === previous?.id && template.kind === previous?.kind,
+    );
+
+    if (previous === undefined || next === undefined) continue;
+    const moves = presetMoves(previous, next);
+
+    for (const block of sheet.blocks) {
+      const scope = block.path[0];
+      const target = scope === undefined ? null : moves.sectionOf(scope);
+
+      if (target !== null) block.path = [target, ...block.path.slice(1)];
+    }
+  }
 
   const imported = importSnapshot(
     file,

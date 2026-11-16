@@ -41,7 +41,7 @@ Format version 4 keeps one record per block, the sheet root included. A block is
 | Preset | Structure only | Gives the same structure |
 | Room snapshot | Values and token links | Replaces all room data after confirmation. Drops values of field ids not in the current preset, blocks whose scope path the preset lacks, and sheets of a template the preset lacks, and shows the counts. Restores a token link where the token exists. Resets player links and write rights to read |
 
-A preset or snapshot of versions 1 to 3 is refused with a message. Such room data is not read. A wipe («Очистить всё», CAP-31) removes the preset, every record, the room copy and the GM's local copy of the room after one confirmation.
+Preset files remain version 3; preset versions 1 and 2 are refused. Snapshot and room-data versions 1 to 3 are refused and are not read. A wipe («Очистить всё», CAP-31) removes the preset, every record, the room copy and the GM's local copy of the room after one confirmation.
 
 ## Platform limits
 
@@ -81,7 +81,9 @@ Measured for the version 4 record unit (2026-11-16, synthetic room: 6 PCs with 4
 | One per field | 846 | 9048 B |
 | One per block, a version per cell (chosen) | 126 | 7436 B |
 
-The chosen unit grows the snapshot by about 60 % for the same room. Measure again on the real format with `src/core/snapshot-size.test.ts`.
+The chosen unit grows the snapshot by about 60 % for the same synthetic room.
+
+Measured on the real v4 format on 2026-11-16 with `src/core/snapshot-size.test.ts`: the unchanged d20 workload (6 sheets of a sheet set, 60 linked NPC blocks, and 3 other single sheets) uses **11434 bytes**, leaving **4066 bytes** under the 15500-byte limit. The required 1500-byte margin passes. This includes cell tuples and block lifecycle versions.
 
 ## Accepted losses
 

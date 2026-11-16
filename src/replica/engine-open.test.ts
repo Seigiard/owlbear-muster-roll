@@ -1,5 +1,4 @@
 import { describe, expect, spyOn, test } from 'bun:test';
-
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type { Timing } from '@/core/timing';
@@ -26,7 +25,6 @@ import {
 
 // Long enough for every queued LOCAL message to land.
 const SETTLE_MS = 30;
-
 const OPEN_ITEM = 'app.muster-roll/open-sheet';
 
 const MENU_COPY = {
@@ -97,16 +95,29 @@ const PRESET: Preset = {
 // "Лиза" was deleted. t-pc, t-npc and t-gone link to them.
 const ROOM: readonly VersionedRecord[] = [
   { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
-  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
-  { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
+  { k: 'blk:brok', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
   {
-    k: 'rep:brok:secret:hidden',
-    d: { order: 0, cells: { secret: 'Лич' } },
+    k: 'blk:brok',
+    d: { order: 0, cells: { name: ['Брок', 1, 'seed'] } },
     c: 1,
     a: 'seed',
+    l: [1, 'seed'],
   },
-  { k: 'rep:npc:foe:skel', d: { order: 0, cells: { foe: 'Скелет', hp: 7 } }, c: 1, a: 'seed' },
-  { k: 'sheet:liza', d: null, c: 2, a: 'seed' },
+  {
+    k: 'blk:brok:secret:hidden',
+    d: { order: 0, cells: { secret: ['Лич', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  {
+    k: 'blk:npc:foe:skel',
+    d: { order: 0, cells: { foe: ['Скелет', 1, 'seed'], hp: [7, 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  { k: 'blk:liza', d: null, c: 2, a: 'seed', l: [1, 'seed'] },
   { k: 'link:t-pc', d: { s: 'brok' }, c: 1, a: 'seed' },
   { k: 'link:t-secret', d: { s: 'brok', i: 'hidden' }, c: 1, a: 'seed' },
   { k: 'link:t-npc', d: { s: 'npc', i: 'skel' }, c: 1, a: 'seed' },
@@ -122,7 +133,10 @@ type Background = {
   readonly requests: OpenSheetRequest[];
 };
 
-type Window = { store: RigPage['store']; client: RigPage['window'] };
+type Window = {
+  store: RigPage['store'];
+  client: RigPage['window'];
+};
 
 const roomRig = createRoomRig({ seeded: ROOM });
 
@@ -130,47 +144,36 @@ describe('open from token', () => {
   test('with the window closed, a GM press opens the action window and the window that connects gets the character', async () => {
     // #given
     const background = await startBackground('GM');
-
     // #when
     click(background, 't-pc');
-
     const window = await openWindow(background);
-
     await waitUntil(() => window.store.$openRequest.get() !== null);
-
     // #then
     expect({
       actionOpens: background.platform.actionOpens(),
       target: target(background, window),
     }).toEqual({ actionOpens: 1, target: { sheetId: 'brok', instanceId: null } });
   });
-
   test('with the window open, a press reaches it at once', async () => {
     // #given
     const background = await startBackground('GM');
     const window = await openWindow(background);
-
     // #when
     click(background, 't-npc');
     await waitUntil(() => window.store.$openRequest.get() !== null);
-
     // #then
     expect(target(background, window)).toEqual({ sheetId: 'npc', instanceId: 'skel' });
   });
-
   test('a GM press on a repeat block on a hidden tab reaches the window', async () => {
     // #given
     const background = await startBackground('GM');
     const window = await openWindow(background);
-
     // #when
     click(background, 't-secret');
     await waitUntil(() => window.store.$openRequest.get() !== null);
-
     // #then
     expect(target(background, window)).toEqual({ sheetId: 'brok', instanceId: 'hidden' });
   });
-
   test('reprojects before it re-sends a held open request after the stream restarts', async () => {
     // #given
     const background = await startBackground('GM');
@@ -178,14 +181,12 @@ describe('open from token', () => {
     click(background, 't-pc');
     await waitUntil(() => window.store.$openRequest.get() !== null);
     const sent = background.client.local.length;
-
     // #when
     background.platform.setRole('PLAYER');
     await waitUntil(() => window.store.$sync.get().role === 'PLAYER');
     await waitUntil(
       () => localEngineMessageTypes(background.client.local.slice(sent)).at(-1) === 'open-sheet',
     );
-
     // #then
     expect({
       messages: localEngineMessageTypes(background.client.local.slice(sent)),
@@ -195,23 +196,19 @@ describe('open from token', () => {
       target: { sheetId: 'brok', instanceId: null },
     });
   });
-
   test('a player press on a character token reaches the window', async () => {
     // #given
     const background = await startBackground('PLAYER');
     const window = await openWindow(background);
-
     // #when
     click(background, 't-pc');
     await waitUntil(() => window.store.$openRequest.get() !== null);
-
     // #then
     expect({
       actionOpens: background.platform.actionOpens(),
       target: target(background, window),
     }).toEqual({ actionOpens: 1, target: { sheetId: 'brok', instanceId: null } });
   });
-
   test('a winning same-counter preset from another author refreshes token-menu visibility', async () => {
     // #given
     const background = await startBackground('GM');
@@ -228,10 +225,9 @@ describe('open from token', () => {
     };
 
     background.room.join('gm-new', 'GM');
-
     // #when
     background.room.post('gm-new', {
-      v: 3,
+      v: 4,
       g: { n: 0, a: '' },
       t: 'commit',
       records: [withoutCharacterSheet],
@@ -254,7 +250,6 @@ describe('open from token', () => {
       },
     });
   });
-
   test('a generation replacement decodes different preset content with the same counter and author', async () => {
     // #given
     const background = await startBackground('GM');
@@ -278,7 +273,6 @@ describe('open from token', () => {
       ]),
     });
     await waitUntil(() => window.store.$records.get().get('preset')?.d === replacement.d);
-
     // #then
     expect(
       background.platform
@@ -303,11 +297,9 @@ describe('open from token', () => {
       // #given: Owlbear would not show the item there, but a press can race a change.
       const background = await startBackground(role);
       const window = await openWindow(background);
-
       // #when
       click(background, tokenId);
       await pause(SETTLE_MS);
-
       // #then
       expect({
         actionOpens: background.platform.actionOpens(),
@@ -320,204 +312,141 @@ describe('open from token', () => {
   test('once a window acknowledges the request, a reload or a second window does not get it again', async () => {
     // #given
     const background = await startBackground('GM');
-
     click(background, 't-pc');
-
     const first = await openWindow(background);
-
     await waitUntil(() => first.store.$openRequest.get() !== null);
-
     const id = first.store.$openRequest.get()?.id ?? '';
-
     // #when
     first.client.acknowledgeOpen(id);
     await pause(SETTLE_MS);
-
     const before = background.requests.length;
     const second = await openWindow(background);
-
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sentAfter: background.requests.slice(before),
       second: second.store.$openRequest.get(),
     }).toEqual({ sentAfter: [], second: null });
   });
-
   test('until a window acknowledges it, every window that connects gets the request again', async () => {
     // #given
     const background = await startBackground('GM');
-
     click(background, 't-pc');
-
     const first = await openWindow(background);
-
     await waitUntil(() => first.store.$openRequest.get() !== null);
-
     // #when: the first window closes with no acknowledgement.
     first.client.stop();
-
     const second = await openWindow(background);
-
     await waitUntil(() => second.store.$openRequest.get() !== null);
-
     // #then
     expect(second.store.$openRequest.get()).toEqual(first.store.$openRequest.get());
   });
-
   test('a newer press replaces the request still held', async () => {
     // #given
     const background = await startBackground('GM');
-
     click(background, 't-pc');
     click(background, 't-npc');
-
     // #when
     const window = await openWindow(background);
-
     await waitUntil(() => window.store.$openRequest.get() !== null);
-
     // #then
     expect({
       shown: target(background, window),
       actionOpens: background.platform.actionOpens(),
     }).toEqual({ shown: { sheetId: 'npc', instanceId: 'skel' }, actionOpens: 2 });
   });
-
   test('an acknowledgement of a replaced request leaves the newer one held', async () => {
     // #given
     const background = await startBackground('GM');
-
     click(background, 't-pc');
     click(background, 't-npc');
-
     const [older] = background.requests;
     const first = await openWindow(background);
-
     // #when
     first.client.acknowledgeOpen(older?.id ?? '');
     await pause(SETTLE_MS);
-
     const second = await openWindow(background);
-
     await waitUntil(() => second.store.$openRequest.get() !== null);
-
     // #then
     expect(target(background, second)).toEqual({ sheetId: 'npc', instanceId: 'skel' });
   });
-
   test('a request no window took within its lifetime is dropped', async () => {
     // #given
     const background = await startBackground('GM', { openRequestTtlMs: 40 });
-
     click(background, 't-pc');
-
     // The press itself goes out once, to whatever window is open.
     await waitUntil(() => background.requests.length === 1);
-
     const sent = background.requests.length;
-
     // #when
     await pause(80);
-
     const window = await openWindow(background);
-
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sentAfter: background.requests.slice(sent),
       shown: window.store.$openRequest.get(),
     }).toEqual({ sentAfter: [], shown: null });
   });
-
   test('a request expires at the exact end of its lifetime', async () => {
     // #given
     const background = await startBackground('GM', { openRequestTtlMs: 40 });
     let now = 1000;
-
     spyOn(Date, 'now').mockImplementation(() => now);
     click(background, 't-pc');
     await waitUntil(() => background.requests.length === 1);
-
     const sent = background.requests.length;
-
     // #when
     now = 1040;
-
     const window = await openWindow(background);
-
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sentAfter: background.requests.slice(sent),
       shown: window.store.$openRequest.get(),
     }).toEqual({ sentAfter: [], shown: null });
   });
-
   test('a request is dropped at once when Owlbear refuses to open the window', async () => {
     // #given
     const background = await startBackground('GM');
-
     background.platform.failNextActionOpen();
-
     // #when
     click(background, 't-pc');
-
     // The press itself goes out once, to whatever window is open.
     await waitUntil(() => background.requests.length === 1);
-
     const sent = background.requests.length;
-
     await pause(SETTLE_MS);
-
     const window = await openWindow(background);
-
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sentAfter: background.requests.slice(sent),
       shown: window.store.$openRequest.get(),
     }).toEqual({ sentAfter: [], shown: null });
   });
-
   test('a request whose sheet is deleted before delivery is discarded', async () => {
     // #given
     const background = await startBackground('GM');
-
     click(background, 't-pc');
-
     // The press itself goes out once, to whatever window is open.
     await waitUntil(() => background.requests.length === 1);
-
     const sent = background.requests.length;
-
     // #when
     command(background, { type: 'sheet-delete', sheetId: 'brok' });
     await pause(SETTLE_MS);
-
     const window = await openWindow(background);
-
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sentAfter: background.requests.slice(sent),
       shown: window.store.$openRequest.get(),
     }).toEqual({ sentAfter: [], shown: null });
   });
-
   test('a held request stays discarded when a later generation restores its sheet before delivery', async () => {
     // #given
     const background = await startBackground('GM', { catchUpTimeoutMs: 100 });
-
     click(background, 't-pc');
     await waitUntil(() => background.requests.length === 1);
     const sent = background.requests.length;
-
     // #when
     const removedGeneration = { n: 1, a: 'importer' };
     background.room.room.setMetadata({
@@ -529,7 +458,6 @@ describe('open from token', () => {
     await waitUntil(
       () => background.client.backing.get(storageKey('#generation', removedGeneration)) === '1',
     );
-
     const restoredGeneration = { n: 2, a: 'importer' };
     background.room.room.setMetadata({
       'app.muster-roll/snapshot': copyValue(restoredGeneration, ROOM),
@@ -537,22 +465,18 @@ describe('open from token', () => {
     await waitUntil(
       () => background.client.backing.get(storageKey('#generation', restoredGeneration)) === '1',
     );
-
     const window = await openWindow(background);
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sentAfter: background.requests.slice(sent),
       shown: window.store.$openRequest.get(),
     }).toEqual({ sentAfter: [], shown: null });
   });
-
   test('a promoted GM applies a newer stored preset before its held catch-up completes', async () => {
     // #given
     const background = await startBackground('GM', { catchUpTimeoutMs: 100 });
     const window = await openWindow(background);
-
     background.platform.setRole('PLAYER');
     await waitUntil(
       () => window.store.$sync.get().role === 'PLAYER' && window.store.$sync.get().state === 'live',
@@ -571,14 +495,12 @@ describe('open from token', () => {
 
     background.client.backing.set(storageKey('preset'), JSON.stringify(storedPreset));
     background.room.join('silent-gm', 'GM');
-
     // #when
     background.platform.setRole('GM');
     await waitUntil(
       () =>
         window.store.$sync.get().role === 'GM' && window.store.$sync.get().state === 'catching-up',
     );
-
     // #then
     expect({
       sync: window.store.$sync.get().state,
@@ -598,18 +520,13 @@ describe('open from token', () => {
       },
     });
   });
-
   test('a request whose repeat block is deleted before delivery is discarded', async () => {
     // #given
     const background = await startBackground('GM');
-
     click(background, 't-npc');
-
     // The press itself goes out once, to whatever window is open.
     await waitUntil(() => background.requests.length === 1);
-
     const sent = background.requests.length;
-
     // #when
     command(background, {
       type: 'repeat-block-delete',
@@ -618,38 +535,27 @@ describe('open from token', () => {
       instanceId: 'skel',
     });
     await pause(SETTLE_MS);
-
     const window = await openWindow(background);
-
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sentAfter: background.requests.slice(sent),
       shown: window.store.$openRequest.get(),
     }).toEqual({ sentAfter: [], shown: null });
   });
-
   test('a GM request for an NPC is discarded when the GM becomes a player before delivery', async () => {
     // #given
     const background = await startBackground('GM');
-
     click(background, 't-npc');
-
     // The press itself goes out once, to whatever window is open.
     await waitUntil(() => background.requests.length === 1);
-
     const sent = background.requests.length;
-
     // #when
     background.platform.setRole('PLAYER');
     await pause(SETTLE_MS);
-
     const window = await openWindow(background);
-
     await waitUntil(() => window.store.$sync.get().role === 'PLAYER');
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sentAfter: background.requests.slice(sent),
@@ -703,7 +609,6 @@ async function startBackground(
 
 async function openWindow(background: Background): Promise<Window> {
   const page: RigPage = background.client.openWindow();
-
   await waitUntil(() => page.store.$loaded.get());
 
   return { store: page.store, client: page.window };

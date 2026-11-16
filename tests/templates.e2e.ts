@@ -1,15 +1,14 @@
 import { readFileSync } from 'node:fs';
-
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Page } from '@playwright/test';
-
+import { blockDataSchema } from '@/core/records';
 import {
   openBackground,
   openRoom,
   record,
   sheetRecord,
   sheetRecords,
-  storedData,
+  storedCell,
   storedRecords,
   type StoredRecord,
 } from './support/room';
@@ -21,7 +20,6 @@ const SETTINGS = 'Настройки';
 const ADD_CREW = 'Добавить: Экипаж';
 const ADD_CHARACTER = 'Добавить: Персонажи';
 const ADD_SHIP = 'Добавить: Корабли';
-
 const D6_POOL = readFileSync(new URL('fixtures/presets/d6-pool.json', import.meta.url), 'utf8');
 
 // Two sheet sets between two single sheets, so each "+" has a neighbour on both sides.
@@ -73,10 +71,8 @@ test.describe('a second system with no code change (CAP-4)', () => {
   }) => {
     // #given
     await openEmptyRoom(page, context);
-
     // #when
     await uploadPreset(page, D6_POOL);
-
     // #then
     await expect(page.getByRole('button', { name: ADD_CREW })).toHaveText('+ Добавить');
     await expect(page.getByRole('tab')).toHaveText([
@@ -94,17 +90,14 @@ test.describe('a second system with no code change (CAP-4)', () => {
       SETTINGS,
     ]);
   });
-
   test('a sheet of the crew and the spell list both take values and keep them after a reload', async ({
     page,
     context,
   }) => {
     // #given
     const background = await openEmptyRoom(page, context);
-
     await uploadPreset(page, D6_POOL);
     await expect(page.getByRole('button', { name: ADD_CREW })).toBeVisible();
-
     // #when: a crew sheet, named and with one value.
     await page.getByRole('button', { name: ADD_CREW }).click();
     await expect(page.getByRole('textbox', { name: NAME_FIELD })).toBeFocused();
@@ -113,7 +106,6 @@ test.describe('a second system with no code change (CAP-4)', () => {
     await expect(page.getByRole('tab', { name: 'Лиза' })).toBeVisible();
     await panelField(page, 'СИЛ').fill('7');
     await page.keyboard.press('Tab');
-
     // A spell: one repeat block of two rows.
     await page.getByRole('tab', { name: 'Список заклинаний' }).click();
     await page.getByRole('button', { name: 'Добавить в «Заклинания»' }).click();
@@ -121,26 +113,34 @@ test.describe('a second system with no code change (CAP-4)', () => {
     await panelField(page, 'Сложность').fill('8');
     await panelField(page, 'effect').fill('Жжёт');
     await page.keyboard.press('Tab');
-    await expect.poll(async () => (await storedRecords(page, 'rep:spells:')).length).toBe(1);
+    await expect.poll(async () => (await storedRecords(page, 'blk:spells:')).length).toBe(1);
     await expect
-      .poll(async () => (await storedRecords(page, 'rep:spells:'))[0]?.d)
-      .toEqual({ order: 0, cells: { spell: 'Огонь', difficulty: 8, effect: 'Жжёт' } });
-
+      .poll(async () => (await storedRecords(page, 'blk:spells:'))[0]?.d)
+      .toEqual({
+        order: 0,
+        cells: {
+          spell: ['Огонь', 2, 'mock-connection'],
+          difficulty: [8, 3, 'mock-connection'],
+          effect: ['Жжёт', 4, 'mock-connection'],
+        },
+      });
     await background.close();
     await page.reload();
     await openBackground(context);
     await expect(page.getByRole('button', { name: ADD_CREW })).toBeVisible();
 
     // #then
-    const [crew] = await storedRecords(page, 'sheet:');
-    const crewId = crew?.k.slice('sheet:'.length) ?? '';
+    const crew = (await storedRecords(page, 'blk:')).find(
+      (record) => blockDataSchema.safeParse(record.d).data?.set === 'pc',
+    );
 
+    const crewId = crew?.k.slice('blk:'.length) ?? '';
     await expect(panelField(page, 'СИЛ')).toHaveValue('7');
     await page.getByRole('tab', { name: 'Список заклинаний' }).click();
     expect({
       tabs: await page.getByRole('tab').allTextContents(),
       sheet: crew?.d,
-      name: await storedData(page, `row:${crewId}:name`),
+      name: await storedCell(page, `blk:${crewId}`, 'name'),
       spell: [
         await panelField(page, 'spell').inputValue(),
         await panelField(page, 'Сложность').inputValue(),
@@ -148,8 +148,15 @@ test.describe('a second system with no code change (CAP-4)', () => {
       ],
     }).toEqual({
       tabs: ['Лиза', 'NPC', 'Инвентарь', 'Список заклинаний', SETTINGS],
-      sheet: { set: 'pc', order: 0 },
-      name: { name: 'Лиза' },
+      sheet: {
+        set: 'pc',
+        order: 0,
+        cells: {
+          name: ['Лиза', 2, 'mock-connection'],
+          str: [7, 3, 'mock-connection'],
+        },
+      },
+      name: ['Лиза', 2, 'mock-connection'],
       spell: ['Огонь', '8', 'Жжёт'],
     });
   });
@@ -161,7 +168,6 @@ test('the sidebar lists templates in preset order, each sheet set add control af
 }) => {
   // #when
   await openRoom(page, context, [...PARTY, ...ship(0)], TWO_SETS);
-
   // #then
   await expect(page.getByRole('button', { name: ADD_SHIP })).toBeVisible();
   expect(await sidebarOrder(page)).toEqual([
@@ -184,7 +190,6 @@ test('a sheet set with no sheets keeps its heading and add control in place', as
 }) => {
   // #when
   await openRoom(page, context, PARTY, TWO_SETS);
-
   // #then
   await expect(page.getByRole('button', { name: ADD_SHIP })).toBeVisible();
   expect(await sidebarOrder(page)).toEqual([
@@ -206,16 +211,16 @@ test('the add control of a second sheet set adds a sheet of that set at its end,
 }) => {
   // #given
   await openRoom(page, context, [...PARTY, ...ship(2)], TWO_SETS);
-
   // #when
   await page.getByRole('button', { name: ADD_SHIP }).click();
-
   // #then
   await expect(page.getByRole('tab', { name: UNNAMED })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('textbox', { name: NAME_FIELD })).toBeFocused();
 
-  const created = (await storedRecords(page, 'sheet:')).find(
-    (one) => !['sheet:anya', 'sheet:brok', 'sheet:ladya'].includes(one.k),
+  const created = (await storedRecords(page, 'blk:')).find(
+    (one) =>
+      !['blk:anya', 'blk:brok', 'blk:ladya'].includes(one.k) &&
+      blockDataSchema.safeParse(one.d).data?.set === 'ship',
   );
 
   expect({ sidebar: await sidebarOrder(page), created: created?.d }).toEqual({
@@ -232,7 +237,7 @@ test('the add control of a second sheet set adds a sheet of that set at its end,
       'Журнал',
       SETTINGS,
     ],
-    created: { set: 'ship', order: 3 },
+    created: { set: 'ship', order: 3, cells: {} },
   });
 });
 
@@ -241,14 +246,11 @@ test('a single sheet sidebar entry shows its title, read-only, with no delete', 
   context,
 }) => {
   // #given
-  await openRoom(page, context, [...PARTY, record('row:inv:gold', { gold: 12 })], TWO_SETS);
-
+  await openRoom(page, context, [...PARTY, record('blk:inv', { gold: 12 })], TWO_SETS);
   // #when
   await page.getByRole('tab', { name: 'Инвентарь' }).click();
-
   // #then
   const panel = page.getByRole('tabpanel');
-
   expect({
     title: await panel.getByRole('heading', { level: 1 }).textContent(),
     nameFields: await panel.getByRole('textbox', { name: NAME_FIELD }).count(),
@@ -261,16 +263,14 @@ test('a single sheet sidebar entry shows its title, read-only, with no delete', 
 function ship(order: number): StoredRecord[] {
   return [
     sheetRecord({ id: 'ladya', name: 'Ладья', order, set: 'ship' }),
-    record('row:ladya:ship_name', { ship_name: 'Ладья' }),
+    record('blk:ladya', { ship_name: 'Ладья' }),
   ];
 }
 
 // A window and its background with no preset and no data, as a room the GM opens first.
 async function openEmptyRoom(page: Page, context: BrowserContext): Promise<Page> {
   await page.goto('/index.html');
-
   const background = await openBackground(context);
-
   await expect(page.getByRole('button', { name: UPLOAD })).toBeVisible();
 
   return background;
@@ -278,11 +278,8 @@ async function openEmptyRoom(page: Page, context: BrowserContext): Promise<Page>
 
 async function uploadPreset(page: Page, text: string): Promise<void> {
   const choosing = page.waitForEvent('filechooser');
-
   await page.getByRole('button', { name: UPLOAD }).click();
-
   const chooser = await choosing;
-
   await chooser.setFiles({
     name: 'preset.json',
     mimeType: 'application/json',

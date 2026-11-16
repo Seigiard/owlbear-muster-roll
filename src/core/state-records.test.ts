@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-
 import { deflateToBase64 } from '@/core/deflate';
 import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import type { VersionedRecord } from '@/core/records';
@@ -9,13 +8,14 @@ import { decodeStateRecords, encodeStateRecords, stateAnswer } from '@/core/stat
 const GENERATION = { n: 3, a: 'imp' };
 
 const BROK: VersionedRecord = {
-  k: 'sheet:brok',
-  d: { set: 'pc', order: 0 },
+  k: 'blk:brok',
+  d: { set: 'pc', order: 0, cells: {} },
   c: 2,
   a: 'gm-a',
+  l: [1, 'seed'],
 };
 
-const GONE: VersionedRecord = { k: 'row:brok:str', d: null, c: 4, a: 'gm-b' };
+const GONE: VersionedRecord = { k: 'blk:brok', d: null, c: 4, a: 'gm-b', l: [1, 'seed'] };
 
 // Letters with no pattern deflate hardly at all, so their size after encoding is known in advance.
 function noise(length: number, seed: number): string {
@@ -31,18 +31,22 @@ function noise(length: number, seed: number): string {
 }
 
 function notes(id: string, length: number, seed: number): VersionedRecord {
-  return { k: `row:${id}:notes`, d: { notes: noise(length, seed) }, c: 1, a: 'gm-a' };
+  return {
+    k: `blk:${id}`,
+    d: { order: 0, cells: { notes: [noise(length, seed), 1, 'gm-a'] } },
+    c: 1,
+    a: 'gm-a',
+    l: [1, 'seed'],
+  };
 }
 
 describe('state records', () => {
   test('come back from their encoding as they were, tombstones included', () => {
     // #when
     const decoded = decodeStateRecords(encodeStateRecords([BROK, GONE]));
-
     // #then
     expect(decoded).toEqual({ ok: true, value: [BROK, GONE] });
   });
-
   test.each([
     ['text that is not base64', 'not base64!'],
     ['bytes that are not deflated', btoa('plain')],
@@ -52,7 +56,6 @@ describe('state records', () => {
   ])('refuse %s', (_name, data) => {
     // #when
     const decoded = decodeStateRecords(data);
-
     // #then
     expect(decoded).toEqual({ ok: false, error: 'invalid-records' });
   });
@@ -62,7 +65,6 @@ describe('stateAnswer', () => {
   test('answers a room with no records with one message, so the asker can count it complete', () => {
     // #when
     const answer = stateAnswer(GENERATION, 'r1', []);
-
     // #then
     expect({
       messages: answer.messages.map((message) => ({
@@ -72,16 +74,14 @@ describe('stateAnswer', () => {
       skipped: answer.skipped,
     }).toEqual({
       messages: [
-        { v: 3, g: GENERATION, t: 'state', r: 'r1', i: 1, n: 1, records: { ok: true, value: [] } },
+        { v: 4, g: GENERATION, t: 'state', r: 'r1', i: 1, n: 1, records: { ok: true, value: [] } },
       ],
       skipped: [],
     });
   });
-
   test('splits records that do not deflate under the limit into numbered parts, each under it', () => {
     // #given: each record is about 18000 bytes of JSON and stays near that size once encoded.
     const records = ['a', 'b', 'c', 'd'].map((id, index) => notes(id, 6000, index + 1));
-
     // #when
     const answer = stateAnswer(GENERATION, 'r1', records);
 
@@ -110,32 +110,29 @@ describe('stateAnswer', () => {
       skipped: [],
     });
   });
-
   test('packs records that deflate well into fewer messages than their JSON size needs', () => {
     // #given: about 60000 bytes of JSON in repeated text.
-    const records = Array.from({ length: 200 }, (_unused, index): VersionedRecord => {
+    const records = Array.from({ length: 200 }, (): VersionedRecord => {
       return {
-        k: `row:brok:r${index}`,
-        d: { notes: 'Хромает на левую ногу. '.repeat(6) },
+        k: 'blk:brok',
+        d: { order: 0, cells: { notes: ['Хромает на левую ногу. '.repeat(6), 1, 'gm'] } },
         c: 1,
         a: 'gm',
+        l: [1, 'seed'],
       };
     });
 
     // #when
     const answer = stateAnswer(GENERATION, 'r1', records);
-
     // #then
     expect({
       json: jsonByteLength(records) > MESSAGE_BYTE_LIMIT * 2,
       messages: answer.messages.length,
-    }).toEqual({ json: true, messages: 1 });
+    }).toEqual({ json: true, messages: 2 });
   });
-
   test('leaves out a record too large for one message even alone, and names its key', () => {
     // #given
     const huge = notes('huge', 12000, 7);
-
     // #when
     const answer = stateAnswer(GENERATION, 'r1', [BROK, huge, GONE]);
 

@@ -1,7 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { Template } from '@/core/preset';
-
 import { previewRecords, previewSheetName, PREVIEW_SHEET_ID } from './preview-records';
 
 const SET: Template = {
@@ -24,15 +22,25 @@ describe('previewRecords', () => {
   test("gives a sheet set's sample sheet and one empty repeat block per repeat section", () => {
     // #when
     const records = previewRecords(SET);
-
     // #then
     expect([...records.values()]).toEqual([
-      { k: `sheet:${PREVIEW_SHEET_ID}`, d: { set: 'pc', order: 1 }, c: 1, a: 'builder' },
-      { k: `rep:${PREVIEW_SHEET_ID}:item:sample`, d: { order: 1, cells: {} }, c: 1, a: 'builder' },
+      {
+        k: `blk:${PREVIEW_SHEET_ID}`,
+        d: { set: 'pc', order: 1, cells: {} },
+        c: 1,
+        a: 'builder',
+        l: [1, 'builder'],
+      },
+      {
+        k: `blk:${PREVIEW_SHEET_ID}:item:sample`,
+        d: { order: 1, cells: {} },
+        c: 1,
+        a: 'builder',
+        l: [1, 'builder'],
+      },
     ]);
   });
-
-  test('gives a single sheet no sheet record', () => {
+  test('materializes the root of a single sheet', () => {
     // #when
     const records = previewRecords({
       id: 'npc',
@@ -42,7 +50,15 @@ describe('previewRecords', () => {
     });
 
     // #then
-    expect(records.size).toBe(0);
+    expect([...records.values()]).toEqual([
+      {
+        k: `blk:${PREVIEW_SHEET_ID}`,
+        d: { order: 1, cells: {} },
+        c: 1,
+        a: 'builder',
+        l: [1, 'builder'],
+      },
+    ]);
   });
 });
 
@@ -62,7 +78,6 @@ describe('previewSheetName', () => {
   ])('names %s', (_name, template, expected) => {
     // #when
     const name = previewSheetName(template);
-
     // #then
     expect(name).toBe(expected);
   });

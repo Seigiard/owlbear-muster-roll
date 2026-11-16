@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
-
 import type { PresetFailure } from '@/core/preset';
-
 import { presetFailureMessage, presetRejectionMessage } from './preset-errors';
 
 describe('presetFailureMessage', () => {
@@ -62,11 +60,9 @@ describe('presetFailureMessage', () => {
   ])('gives %j its message', (failure, message) => {
     // #when
     const text = presetFailureMessage(failure);
-
     // #then
     expect(text).toBe(message);
   });
-
   test.each([
     [
       { code: 'bad-die-option', detail: '8', field: 'weapon_die' },
@@ -100,7 +96,6 @@ describe('presetFailureMessage', () => {
     // #then
     expect(actual).toBe(message);
   });
-
   test.each<[PresetFailure, string]>([
     [
       { code: 'blank-name', detail: 'hp', cell: 'field' },
@@ -140,34 +135,27 @@ describe('presetRejectionMessage', () => {
   ] as const)('gives the engine reason %s its bad file message', (reason, message) => {
     // #when
     const text = presetRejectionMessage(reason);
-
     // #then
     expect(text).toBe(message);
   });
-
   test('leaves catching-up to the disabled reason of the upload', () => {
     // #when
     const text = presetRejectionMessage('catching-up');
-
     // #then
     expect(text).toBeNull();
   });
-
   test('says an unreadable stored preset needs a newer build', () => {
     // #when
     const text = presetRejectionMessage('preset-unreadable');
-
     // #then
     expect(text).toBe('Сохранённый пресет не читается. Обновите расширение.');
   });
-
   test.each([
     ['write-failed', 'Не удалось сохранить пресет. Попробуйте ещё раз.'],
     ['not-allowed', 'Загружать пресет может только мастер.'],
   ] as const)('gives the engine reason %s its own message', (reason, message) => {
     // #when
     const text = presetRejectionMessage(reason);
-
     // #then
     expect(text).toBe(message);
   });

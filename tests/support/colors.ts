@@ -1,5 +1,4 @@
 import type { Locator, Page } from '@playwright/test';
-
 import type { Theme } from '@/platform/ports';
 
 export type Rgb = readonly [number, number, number];
@@ -30,12 +29,9 @@ export async function renderedColor(locator: Locator, property: string): Promise
 export async function tokenColor(page: Page, token: string): Promise<Rgb> {
   const color = await page.evaluate((name) => {
     const probe = document.createElement('div');
-
     probe.style.backgroundColor = `var(${name})`;
     document.body.append(probe);
-
     const resolved = getComputedStyle(probe).backgroundColor;
-
     probe.remove();
 
     return resolved;
@@ -64,7 +60,6 @@ export function layeredColor(page: Page, tokens: readonly string[]): Promise<Rgb
     }
 
     probe.remove();
-
     const [red = 0, green = 0, blue = 0] = context.getImageData(0, 0, 1, 1).data;
 
     return [red, green, blue];
@@ -102,7 +97,6 @@ function paintedColor(page: Page, color: string): Promise<Rgb> {
     context.fillRect(0, 0, 1, 1);
     context.fillStyle = fill;
     context.fillRect(0, 0, 1, 1);
-
     const [red = 0, green = 0, blue = 0] = context.getImageData(0, 0, 1, 1).data;
 
     return [red, green, blue];

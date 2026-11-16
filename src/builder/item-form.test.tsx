@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-
 import type { Preset } from '@/core/preset';
-
 import { createBuilderStore, type BuilderStore } from './builder-store';
 import { uidAt } from './document';
 import { ItemForm } from './item-form';
@@ -48,12 +46,10 @@ describe('field id keyboard confirmation', () => {
     // #given
     const form = await openFieldForm();
     await enterText(form.input, 'agility');
-
     // #when
     await pressKey(form.input, 'Enter', signal);
     const afterComposition = fieldId(form.store);
     await pressKey(form.input, 'Enter');
-
     // #then
     expect({ afterComposition, afterPlainEnter: fieldId(form.store) }).toEqual({
       afterComposition: 'strength',
@@ -62,13 +58,14 @@ describe('field id keyboard confirmation', () => {
   });
 });
 
-type FieldForm = { input: HTMLInputElement; store: BuilderStore };
+type FieldForm = {
+  input: HTMLInputElement;
+  store: BuilderStore;
+};
 
 async function openFieldForm(): Promise<FieldForm> {
   const store = createBuilderStore(null);
-
   store.open(FIELD_PRESET, null, 'preset');
-
   const document = store.$state.get().step.document;
   const selection = uidAt(document, [0, 0, 0, 0, 0]);
 
@@ -78,7 +75,6 @@ async function openFieldForm(): Promise<FieldForm> {
 
   const container = documentNode();
   const root = createRoot(container);
-
   mounted.push(root);
   await act(async () => {
     root.render(
@@ -91,7 +87,6 @@ async function openFieldForm(): Promise<FieldForm> {
       />,
     );
   });
-
   const input = container.querySelector<HTMLInputElement>('input[autocomplete="off"]');
 
   if (input === null) {
@@ -103,7 +98,6 @@ async function openFieldForm(): Promise<FieldForm> {
 
 function documentNode(): HTMLDivElement {
   const container = document.createElement('div');
-
   document.body.append(container);
 
   return container;
@@ -132,7 +126,10 @@ async function enterText(input: HTMLInputElement, text: string): Promise<void> {
 async function pressKey(
   element: HTMLElement,
   key: string,
-  signal: { isComposing?: boolean; keyCode?: number } = {},
+  signal: {
+    isComposing?: boolean;
+    keyCode?: number;
+  } = {},
 ): Promise<void> {
   await act(async () => {
     const event = new KeyboardEvent('keydown', {

@@ -1,20 +1,43 @@
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
-
 import type { RejectionReason } from '@/core/ui-messages';
 import type { CommandOutcome, CommandOutcomePromise, ErasedCounts } from '@/ui/replica-client';
-
 import { initialUploadState, presetUploadReducer, type UploadState } from './preset-upload-reducer';
 
-type IdleState = Extract<UploadState, { phase: 'idle' }>;
+type IdleState = Extract<
+  UploadState,
+  {
+    phase: 'idle';
+  }
+>;
 
-type DiffingState = Extract<UploadState, { phase: 'diffing' }>;
+type DiffingState = Extract<
+  UploadState,
+  {
+    phase: 'diffing';
+  }
+>;
 
-type AskingState = Extract<UploadState, { phase: 'asking' }>;
+type AskingState = Extract<
+  UploadState,
+  {
+    phase: 'asking';
+  }
+>;
 
-type SendState = Extract<UploadState, { phase: 'send' }>;
+type SendState = Extract<
+  UploadState,
+  {
+    phase: 'send';
+  }
+>;
 
-type UploadingState = Extract<UploadState, { phase: 'uploading' }>;
+type UploadingState = Extract<
+  UploadState,
+  {
+    phase: 'uploading';
+  }
+>;
 
 type AskingFixture = Partial<Pick<AskingState, 'data' | 'ask'>> & {
   count?: number;
@@ -26,25 +49,19 @@ describe('presetUploadReducer', () => {
   test('starts a new attempt without the previous message and retains the ask count', () => {
     // #given
     const previous = idle({ message: { text: 'previous failure', tone: 'error' }, ask: 3 });
-
     // #when
     const reset = presetUploadReducer(previous, { type: 'reset' });
-
     // #then
     expect(reset).toEqual({ phase: 'idle', message: null, ask: 3 });
   });
-
   test('shows the supplied invalid-file error', () => {
     // #given
     const message = 'Файл не подошёл: это не JSON. Ничего не изменено.';
-
     // #when
     const failed = presetUploadReducer(initialUploadState, { type: 'file-error', message });
-
     // #then
     expect(failed).toEqual({ phase: 'idle', message: { text: message, tone: 'error' }, ask: 0 });
   });
-
   test('holds the selected data and supplied diff request', () => {
     // #given
     const request = diffRequest();
@@ -65,7 +82,6 @@ describe('presetUploadReducer', () => {
       ask: 3,
     });
   });
-
   test('asks again when the diff reports values to erase', () => {
     // #given
     const request = diffRequest();
@@ -86,7 +102,6 @@ describe('presetUploadReducer', () => {
       ask: 4,
     });
   });
-
   test('asks again when the diff reports sheets to delete', () => {
     // #given
     const request = diffRequest();
@@ -107,7 +122,6 @@ describe('presetUploadReducer', () => {
       ask: 4,
     });
   });
-
   test('hands a zero-loss diff to the local send state', () => {
     // #given
     const request = diffRequest();
@@ -128,15 +142,12 @@ describe('presetUploadReducer', () => {
       ask: 3,
     });
   });
-
   test('starts an upload from the local zero-loss send handoff', () => {
     // #given
     const outcome = uploadRequest();
     const state = sending({ ask: 3 });
-
     // #when
     const started = presetUploadReducer(state, { type: 'send-started', outcome });
-
     // #then
     expect(started).toEqual({
       phase: 'uploading',
@@ -145,15 +156,12 @@ describe('presetUploadReducer', () => {
       ask: 3,
     });
   });
-
   test('confirms an asking upload with its supplied outcome', () => {
     // #given
     const outcome = uploadRequest();
     const state = asking({ ask: 4 });
-
     // #when
     const confirmed = presetUploadReducer(state, { type: 'confirm', outcome });
-
     // #then
     expect(confirmed).toEqual({
       phase: 'uploading',
@@ -162,29 +170,22 @@ describe('presetUploadReducer', () => {
       ask: 4,
     });
   });
-
   test('cancels an asking upload without advancing the ask count', () => {
     // #given
     const state = asking({ ask: 4 });
-
     // #when
     const cancelled = presetUploadReducer(state, { type: 'cancel' });
-
     // #then
     expect(cancelled).toEqual({ phase: 'idle', message: null, ask: 4 });
   });
-
   test('closes an asking upload when catch-up starts', () => {
     // #given
     const state = asking({ ask: 4 });
-
     // #when
     const cancelled = presetUploadReducer(state, { type: 'catch-up-started' });
-
     // #then
     expect(cancelled).toEqual({ phase: 'idle', message: null, ask: 4 });
   });
-
   test('asks again with fresh loss and digest after a changed-count rejection', () => {
     // #given
     const outcome = uploadRequest();
@@ -205,7 +206,6 @@ describe('presetUploadReducer', () => {
       ask: 5,
     });
   });
-
   test('returns a timed-out diff to the exact idle failure state', () => {
     // #given
     const request = diffRequest();
@@ -225,7 +225,6 @@ describe('presetUploadReducer', () => {
       ask: 3,
     });
   });
-
   test('returns a timed-out upload to the exact idle failure state', () => {
     // #given
     const outcome = uploadRequest();
@@ -245,7 +244,6 @@ describe('presetUploadReducer', () => {
       ask: 4,
     });
   });
-
   test('shows a representative refusal message from a diff', () => {
     // #given
     const request = diffRequest();
@@ -265,7 +263,6 @@ describe('presetUploadReducer', () => {
       ask: 3,
     });
   });
-
   test('leaves an upload refusal with no message when catch-up owns the explanation', () => {
     // #given
     const outcome = uploadRequest();
@@ -281,7 +278,6 @@ describe('presetUploadReducer', () => {
     // #then
     expect(refused).toEqual({ phase: 'idle', message: null, ask: 4 });
   });
-
   test('rejects a diff outcome with no answer', () => {
     // #given
     const request = diffRequest();
@@ -301,7 +297,6 @@ describe('presetUploadReducer', () => {
       ask: 3,
     });
   });
-
   test('rejects a malformed diff outcome without a digest', () => {
     // #given
     const request = diffRequest();
@@ -326,7 +321,6 @@ describe('presetUploadReducer', () => {
       ask: 3,
     });
   });
-
   test('shows the successful upload result message', () => {
     // #given
     const outcome = uploadRequest();
@@ -346,7 +340,6 @@ describe('presetUploadReducer', () => {
       ask: 4,
     });
   });
-
   test('ignores a late diff result after a new attempt replaces its state', () => {
     // #given
     const request = diffRequest();
@@ -413,7 +406,10 @@ function diffRequest(): Promise<CommandOutcome<ErasedCounts>> {
   });
 }
 
-function uploadRequest(): CommandOutcomePromise<{ count: number; sheets: number }> {
+function uploadRequest(): CommandOutcomePromise<{
+  count: number;
+  sheets: number;
+}> {
   return Promise.resolve({ kind: 'answered', answer: { count: 0, sheets: 0 } });
 }
 

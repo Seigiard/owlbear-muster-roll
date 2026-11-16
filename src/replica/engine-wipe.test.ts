@@ -1,5 +1,4 @@
 import { describe, expect, spyOn, test } from 'bun:test';
-
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
@@ -54,8 +53,23 @@ const PRESET: Preset = {
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
-const BROK: VersionedRecord = { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' };
-const BROK_STR: VersionedRecord = { k: 'row:brok:str', d: { str: 10 }, c: 3, a: 'seed' };
+
+const BROK: VersionedRecord = {
+  k: 'blk:brok',
+  d: { set: 'pc', order: 0, cells: {} },
+  c: 1,
+  a: 'seed',
+  l: [1, 'seed'],
+};
+
+const BROK_STR: VersionedRecord = {
+  k: 'blk:brok',
+  d: { order: 0, cells: { str: [10, 3, 'seed'] } },
+  c: 3,
+  a: 'seed',
+  l: [1, 'seed'],
+};
+
 const ACL: VersionedRecord = { k: 'acl:brok:player-p', d: { name: 'Лиза' }, c: 2, a: 'seed' };
 const ROOM: readonly VersionedRecord[] = [PRESET_RECORD, BROK, BROK_STR, ACL];
 
@@ -65,8 +79,8 @@ const OTHER_ROOM_VALUE = '{"k":"preset","d":"x","c":1,"a":"seed"}';
 
 const FORMAT_1 = {
   [storageKey('preset', { n: 0, a: '' }, { format: 1 })]: '{"k":"preset","d":"x","c":1,"a":"seed"}',
-  [storageKey('sheet:brok', { n: 0, a: '' }, { format: 1 })]:
-    '{"k":"sheet:brok","d":{"kind":"pc"},"c":1,"a":"seed"}',
+  [storageKey('blk:brok', { n: 0, a: '' }, { format: 1 })]:
+    '{"k":"blk:brok","d":{"kind":"pc"},"c":1,"a":"seed"}',
   [OTHER_ROOM_KEY]: OTHER_ROOM_VALUE,
 } satisfies Readonly<Record<string, string>>;
 
@@ -83,9 +97,7 @@ type ClientOptions = {
 
 type Client = RigClient;
 
-type Room = RigRoom & {
-  // What happened in the room, in order: `copy` for a room copy write, and each `t` heard.
-};
+type Room = RigRoom & {};
 
 const roomRig = createRoomRig({
   waitLimitMs: 3000,
@@ -112,11 +124,8 @@ async function startClient(
 // The window's outcome from the wipe, reduced to the value these tests inspect.
 async function wipe(client: Client): Promise<JsonValue> {
   const id = send(client, { type: 'wipe' });
-
   await roomRig.waitUntil(() => outcome(client, id) !== undefined);
-
   const reason = rejection(client, id);
-
   const kind = outcome(client, id)?.kind;
 
   if (reason !== undefined) {
@@ -149,21 +158,15 @@ describe('a wipe', () => {
   test('empties the room in a new generation, writes its empty copy over an older-format one, then sends reset and answers', async () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     const room = roomRig.openRoom();
-
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD], 1) });
-
     const gm = await startClient(room, 'gm-a', { until: 'live' });
     const eventsBefore = room.events.length;
-
     // #when
     const answer = await wipe(gm);
-
     await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'reset').length === 1);
     // The window asks for the new engine's projection, which reaches it after the answer.
     await roomRig.waitUntil(() => shownKeys(gm).length === 0);
-
     // #then
     expect({
       answer,
@@ -174,57 +177,45 @@ describe('a wipe', () => {
     }).toEqual({
       answer: { kind: 'answered' },
       shown: [],
-      copy: { v: 3, g: WIPED, records: [] },
+      copy: { v: 4, g: WIPED, records: [] },
       events: ['copy', 'reset'],
-      reset: [{ v: 3, g: WIPED, t: 'reset' }],
+      reset: [{ v: 4, g: WIPED, t: 'reset' }],
     });
   });
-
   test('takes the older-format notice away', async () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     const room = roomRig.openRoom();
-
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD], 1) });
-
     const gm = await startClient(room, 'gm-a', { until: 'live' });
     const before = gm.store.$notices.get();
-
     // #when
     await wipe(gm);
     // The delta with the notices reaches the window after the answer.
     await pause(30);
-
     // #then
     expect({ before, after: gm.store.$notices.get() }).toEqual({
       before: ['room-copy-older-format'],
       after: [],
     });
   });
-
   test("deletes this room's keys of every format and generation, and leaves other rooms' keys", async () => {
     // #given: keys of format 1, and the records of generation 0.
     const room = roomRig.openRoom();
-
     const gm = await startClient(room, 'gm-a', { entries: FORMAT_1, until: 'live' });
-
     // #when
     await wipe(gm);
     await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'reset').length === 1);
-
     // #then
     expect({ room: roomKeys(gm), other: gm.backing.get(OTHER_ROOM_KEY) }).toEqual({
       room: [storageKey('#generation', WIPED)],
       other: OTHER_ROOM_VALUE,
     });
   });
-
   test('keeps its empty generation over a reload with no room copy', async () => {
     // #given: the copy is gone, so only the stored marker can name generation 1.
     const room = roomRig.openRoom();
     const first = await startClient(room, 'gm-a', { until: 'live' });
-
     await wipe(first);
     await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'reset').length === 1);
     first.engine.stop();
@@ -240,20 +231,17 @@ describe('a wipe', () => {
     // The copy it writes names the generation it loaded.
     reloaded.engine.pageHidden();
     await roomRig.waitUntil(() => roomCopyOf(room) !== null);
-
     // #then
     expect({ shown: shownKeys(reloaded), copy: roomCopyOf(room) }).toEqual({
       shown: [],
-      copy: { v: 3, g: WIPED, records: [] },
+      copy: { v: 4, g: WIPED, records: [] },
     });
   });
-
   test('another GM adopts the empty room, drops its own older-format keys and is notified', async () => {
     // #given
     const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a', { until: 'live' });
     const other = await startClient(room, 'gm-b', { entries: FORMAT_1, until: 'live' });
-
     // #when
     await wipe(gm);
     await roomRig.waitUntil(
@@ -262,7 +250,6 @@ describe('a wipe', () => {
         other.store.$sync.get().state === 'live' &&
         roomKeys(other).every((key) => !key.startsWith(OLD_PREFIX)),
     );
-
     // #then
     expect({
       keys: roomKeys(other),
@@ -274,7 +261,6 @@ describe('a wipe', () => {
       notified: [DATA_REPLACED],
     });
   });
-
   test('a player sees an empty room', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -287,40 +273,31 @@ describe('a wipe', () => {
     });
 
     await roomRig.waitUntil(() => shownKeys(player).includes(BROK.k));
-
     // #when
     await wipe(gm);
     await roomRig.waitUntil(() => shownKeys(player).length === 0);
-
     // #then
     expect({
       shown: shownKeys(player),
       notified: player.platform.shownNotifications(),
     }).toEqual({ shown: [], notified: [DATA_REPLACED] });
   });
-
   test('is refused while the GM client is catching up', async () => {
     // #given: another GM that never answers keeps the catch-up open.
     const room = roomRig.openRoom();
-
     room.join(GHOST, 'GM');
-
     const gm = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 2000 } });
-
     // #when
     const answer = await wipe(gm);
-
     // #then
     expect({ reason: Object(answer).reason, shown: shownKeys(gm) }).toEqual({
       reason: 'catching-up',
-      shown: [ACL.k, PRESET_RECORD.k, BROK_STR.k, BROK.k],
+      shown: [ACL.k, BROK.k, PRESET_RECORD.k],
     });
   });
-
   test("is refused to a player's window", async () => {
     // #given
     const room = roomRig.openRoom();
-
     await startClient(room, 'gm-a', { until: 'live' });
 
     const player = await startClient(room, 'player-p', {
@@ -331,7 +308,6 @@ describe('a wipe', () => {
 
     // #when
     const answer = await wipe(player);
-
     // #then
     expect({ reason: Object(answer).reason, resets: heardOf(room, 'player-p', 'reset') }).toEqual({
       reason: 'not-allowed',

@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 
-import { FORMAT_VERSION } from '@/core/format-version';
+import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
 import {
   parsePresetFile,
   PRESET_FILE_BYTE_LIMIT,

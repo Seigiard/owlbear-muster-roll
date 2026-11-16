@@ -1,9 +1,9 @@
+import { assembleRecords } from '@/core/merge';
+import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
-
 import { randomFaces } from '@/core/formula-evaluate';
 import type { PresetCell, TemplateLayout } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-
 import { prepareDiceRoll, rollDiceCell, type DicePlace, type ShownValue } from './dice-roll';
 
 // Every 1d20 shows 7: floor(0.3 * 20) + 1.
@@ -67,19 +67,30 @@ const TEMPLATE: TemplateLayout = {
 };
 
 const ROWS: VersionedRecord[] = [
-  { k: 'row:brok:str', d: { str: 14, str_tired: true }, c: 1, a: 'gm' },
-  { k: 'rep:brok:attack:i1', d: { order: 0, cells: { attack: 'Меч', bonus: 3 } }, c: 1, a: 'gm' },
   {
-    k: 'rep:brok:spell:s1',
-    d: { order: 0, cells: { spell: 'Искра', power: 2, range: 4 } },
+    k: 'blk:brok',
+    d: { order: 0, cells: { str: [14, 1, 'gm'], str_tired: [true, 1, 'gm'] } },
     c: 1,
     a: 'gm',
+    l: [1, 'seed'],
+  },
+  {
+    k: 'blk:brok:attack:i1',
+    d: { order: 0, cells: { attack: ['Меч', 1, 'gm'], bonus: [3, 1, 'gm'] } },
+    c: 1,
+    a: 'gm',
+    l: [1, 'seed'],
+  },
+  {
+    k: 'blk:brok:spell:s1',
+    d: { order: 0, cells: { spell: ['Искра', 1, 'gm'], power: [2, 1, 'gm'], range: [4, 1, 'gm'] } },
+    c: 1,
+    a: 'gm',
+    l: [1, 'seed'],
   },
 ];
 
-const RECORDS: ReadonlyMap<string, VersionedRecord> = new Map(
-  ROWS.map((record) => [record.k, record]),
-);
+const RECORDS: ReadonlyMap<string, VersionedRecord> = assembleRecords(ROWS);
 
 const STRENGTH: DicePlace = {
   tabIndex: 0,
@@ -132,19 +143,18 @@ function diceChoiceRoll(
   }
 
   const layout: TemplateLayout = { tabs: [{ sections: [section] }] };
-
-  const key = repeat ? 'rep:brok:weapon_die:i1' : 'row:brok:weapon_die';
+  const key = repeat ? 'blk:brok:weapon_die:i1' : 'blk:brok';
 
   const records = new Map<string, VersionedRecord>([
     [
       key,
       value === undefined
         ? repeat
-          ? { k: key, d: { order: 0, cells: { bonus: 2 } }, c: 1, a: 'gm' }
-          : { k: key, d: { bonus: 2 }, c: 1, a: 'gm' }
+          ? fixtureRecord(key, { order: 0, cells: { bonus: 2 } }, 1, 'gm')
+          : fixtureRecord(key, { bonus: 2 }, 1, 'gm')
         : repeat
-          ? { k: key, d: { order: 0, cells: { weapon_die: value, bonus: 2 } }, c: 1, a: 'gm' }
-          : { k: key, d: { weapon_die: value, bonus: 2 }, c: 1, a: 'gm' },
+          ? fixtureRecord(key, { order: 0, cells: { weapon_die: value, bonus: 2 } }, 1, 'gm')
+          : fixtureRecord(key, { weapon_die: value, bonus: 2 }, 1, 'gm'),
     ],
   ]);
 
@@ -210,7 +220,6 @@ describe('rollDiceCell', () => {
     // #then
     expect(actual).toEqual(expected);
   });
-
   test('reads a chosen die from its own repeat block and writes it into the label', () => {
     // #given
     const prepared = diceChoiceRoll('1d(weapon_die)', 'd8', 'Урон', true);
@@ -236,33 +245,26 @@ describe('rollDiceCell', () => {
       },
     });
   });
-
   test.each([
     ['an empty dice-choice field', undefined],
     ['a stale non-die value', 'Меч'],
   ] as const)('gives the field error for %s', (_name, value) => {
     // #when
     const prepared = diceChoiceRoll('1d(weapon_die)', value);
-
     // #then
     expect(prepared).toEqual({ ok: false, error: { code: 'field', field: 'Урон' } });
   });
-
   test('gives the field error when no field resolves from a dice-choice slot', () => {
     // #given
     const formula = '1d(nothing)';
-
     // #when
     const prepared = diceChoiceRoll(formula, undefined);
-
     // #then
     expect(prepared).toEqual({ ok: false, error: { code: 'field', field: 'nothing' } });
   });
-
   test('rolls from the records and labels the roll by the cell', () => {
     // #when
     const rolled = roll(STRENGTH);
-
     // #then
     expect(rolled).toEqual({
       ok: true,
@@ -272,7 +274,6 @@ describe('rollDiceCell', () => {
       },
     });
   });
-
   test('names a roll by the dice cell name while keeping the formula as the roll expression', () => {
     // #given
     const layout: TemplateLayout = {
@@ -307,7 +308,6 @@ describe('rollDiceCell', () => {
     // #then
     expect(prepared.ok ? prepared.value.cell : prepared).toEqual('Спасбросок STR');
   });
-
   test('adds the written chosen die to a named Nd field roll', () => {
     // #given
     const layout: TemplateLayout = {
@@ -338,12 +338,13 @@ describe('rollDiceCell', () => {
 
     const records = new Map<string, VersionedRecord>([
       [
-        'row:brok:attack_1_die',
+        'blk:brok',
         {
-          k: 'row:brok:attack_1_die',
-          d: { attack_1_die: 'd8' },
+          k: 'blk:brok',
+          d: { order: 0, cells: { attack_1_die: ['d8', 1, 'gm'] } },
           c: 1,
           a: 'gm',
+          l: [1, 'seed'],
         },
       ],
     ]);
@@ -360,7 +361,6 @@ describe('rollDiceCell', () => {
     // #then
     expect(prepared.ok ? prepared.value.cell : prepared).toEqual('Урон атаки 1 (1d8)');
   });
-
   test('keeps a named Nd field roll label when the name equals the unresolved formula', () => {
     // #given
     const layout: TemplateLayout = {
@@ -391,12 +391,13 @@ describe('rollDiceCell', () => {
 
     const records = new Map<string, VersionedRecord>([
       [
-        'row:brok:damage',
+        'blk:brok',
         {
-          k: 'row:brok:damage',
-          d: { damage: 'd8' },
+          k: 'blk:brok',
+          d: { order: 0, cells: { damage: ['d8', 1, 'gm'] } },
           c: 1,
           a: 'gm',
+          l: [1, 'seed'],
         },
       ],
     ]);
@@ -413,7 +414,6 @@ describe('rollDiceCell', () => {
     // #then
     expect(prepared.ok ? prepared.value.cell : prepared).toEqual('1d(damage) (1d8)');
   });
-
   test('names an empty formula field by its cell name', () => {
     // #given
     const layout: TemplateLayout = {
@@ -436,30 +436,36 @@ describe('rollDiceCell', () => {
     // #when
     const prepared = prepareDiceRoll(
       layout,
-      new Map([['row:brok:hp_max', { k: 'row:brok:hp_max', d: { hp_max: 10 }, c: 1, a: 'gm' }]]),
+      new Map([
+        [
+          'blk:brok',
+          {
+            k: 'blk:brok',
+            d: { order: 0, cells: { hp_max: [10, 1, 'gm'] } },
+            c: 1,
+            a: 'gm',
+            l: [1, 'seed'],
+          },
+        ],
+      ]),
       'brok',
       { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 1, instanceId: null },
       new Map([['hp_max', { kind: 'text', text: '' }]]),
     );
 
     const result = prepared.ok ? prepared.value.roll(randomFaces(SEVEN)) : prepared;
-
     // #then
     expect(result).toEqual({ ok: false, error: { code: 'field', field: 'HP, максимум' } });
   });
-
   test('uses the text a field shows over its record', () => {
     // #when
     const rolled = roll(STRENGTH, [['str', { kind: 'text', text: '16' }]]);
-
     // #then
     expect(rolled.ok && rolled.value.result.target).toBe(14);
   });
-
   test('uses the text a repeat row shows over its own instance', () => {
     // #when
     const rolled = roll(ATTACK, [['bonus', { kind: 'text', text: '5' }]]);
-
     // #then
     expect(rolled).toEqual({
       ok: true,
@@ -469,11 +475,9 @@ describe('rollDiceCell', () => {
       },
     });
   });
-
   test('rolls a dice cell in the second row of a repeat block from the fields of its whole block', () => {
     // #when
     const rolled = roll(SPELL_RANGE);
-
     // #then
     expect(rolled).toEqual({
       ok: true,
@@ -483,7 +487,6 @@ describe('rollDiceCell', () => {
       },
     });
   });
-
   test.each<[string, DicePlace, [string, ShownValue][], string]>([
     ['a field shown in an input error', STRENGTH, [['str', { kind: 'error' }]], 'Сила'],
     ['a field shown empty', STRENGTH, [['str', { kind: 'text', text: '' }]], 'Сила'],
@@ -520,19 +523,15 @@ describe('rollDiceCell', () => {
   ])('names %s in the field error', (_name, place, shown, field) => {
     // #when
     const rolled = roll(place, shown);
-
     // #then
     expect(rolled).toEqual({ ok: false, error: { code: 'field', field } });
   });
-
   test('gives the arithmetic error with no field for a division by zero', () => {
     // #when
     const rolled = roll({ ...STRENGTH, rowIndex: 2, cellIndex: 1 });
-
     // #then
     expect(rolled).toEqual({ ok: false, error: { code: 'arithmetic' } });
   });
-
   test.each<[string, DicePlace]>([
     ['a cell that is a field', { ...STRENGTH, cellIndex: 1 }],
     ['a row past the section', { ...STRENGTH, rowIndex: 9 }],
@@ -542,7 +541,6 @@ describe('rollDiceCell', () => {
   ])('refuses %s', (_name, place) => {
     // #when
     const rolled = roll(place);
-
     // #then
     expect(rolled).toEqual({ ok: false, error: { code: 'not-dice' } });
   });
@@ -585,7 +583,6 @@ describe('rollDiceCell across tabs', () => {
 
     // #when
     const rolled = rollDiceCell(TABBED, RECORDS, 'brok', place, new Map(), randomFaces(SEVEN));
-
     // #then
     expect(rolled).toEqual({
       ok: true,
@@ -595,7 +592,6 @@ describe('rollDiceCell across tabs', () => {
       },
     });
   });
-
   test('finds no dice cell at a section index counted across the whole sheet', () => {
     // #given: section 2 of the sheet is section 1 of the second tab.
     const place: DicePlace = {
@@ -608,7 +604,6 @@ describe('rollDiceCell across tabs', () => {
 
     // #when
     const rolled = rollDiceCell(TABBED, RECORDS, 'brok', place, new Map(), randomFaces(SEVEN));
-
     // #then
     expect(rolled).toEqual({ ok: false, error: { code: 'not-dice' } });
   });

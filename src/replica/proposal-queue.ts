@@ -2,13 +2,15 @@ import { acceptedFieldValue, targetFields } from '@/core/field-patch';
 import { sameJson } from '@/core/json';
 import type { Version } from '@/core/merge';
 import type { TemplateLayout } from '@/core/preset';
-import { keptValues, type PresetMoves } from '@/core/preset-migrate';
+import { keptCells, templateScopes, type PresetMoves } from '@/core/preset-migrate';
 import {
-  fieldValuesSchema,
-  repDataSchema,
+  blockDataSchema,
+  blockKey,
+  versionCells,
+  repKey,
   type FieldValue,
-  type FieldValues,
   type RepData,
+  type Lifecycle,
   type VersionedRecord,
 } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
@@ -28,6 +30,7 @@ export type ProposalPatch =
 // so an older one can still land in the room.
 export type ProposalEntry = {
   k: string;
+  l?: Lifecycle;
   patch: ProposalPatch;
   record: VersionedRecord | null;
   sent: boolean;
@@ -207,7 +210,10 @@ export function combinePatches(older: ProposalPatch, newer: ProposalPatch): Prop
   }
 
   if (older.kind === 'add') {
-    return { kind: 'add', d: { ...older.d, cells: withValues(older.d.cells, newer.values) } };
+    return {
+      kind: 'add',
+      d: { ...older.d, cells: { ...older.d.cells, ...versionCells(newer.values, 1, 'pending') } },
+    };
   }
 
   if (older.kind === 'fields') {
@@ -228,45 +234,57 @@ export function proposedRecord(
   base: VersionedRecord | undefined,
   mint: () => Version,
   force = false,
+  lifecycle?: Lifecycle,
 ): Result<VersionedRecord, ProposalFailure> {
   if (patch.kind === 'remove') {
-    return base !== undefined && base.d === null
-      ? err('unchanged')
-      : ok({ k: key, d: null, ...mint() });
-  }
+    if (base !== undefined && base.d === null) return err('unchanged');
+    const version = mint();
 
-  if (key.startsWith('row:')) {
-    const before = fieldValuesSchema.safeParse(base?.d).data ?? {};
-
-    // A row has no add, so its patch is always fields.
-    const after = patch.kind === 'fields' ? withValues(before, patch.values) : before;
-
-    return !force && sameJson(before, after)
-      ? err('unchanged')
-      : ok({ k: key, d: after, ...mint() });
+    return ok({ k: key, d: null, l: base?.l ?? lifecycle ?? [version.c, version.a], ...version });
   }
 
   if (base !== undefined && base.d === null) {
     return err('gone');
   }
 
-  const instance = base === undefined ? undefined : repDataSchema.safeParse(base.d).data;
+  const instance = blockDataSchema.safeParse(base?.d).data;
 
   if (patch.kind === 'add') {
-    return !force && instance !== undefined && sameJson(instance, patch.d)
-      ? err('unchanged')
-      : ok({ k: key, d: patch.d, ...mint() });
+    if (!force && instance !== undefined && sameJson(instance, patch.d)) return err('unchanged');
+    const version = mint();
+
+    return ok({
+      k: key,
+      ...version,
+      l: base?.l ?? lifecycle ?? [version.c, version.a],
+      d: {
+        ...patch.d,
+        cells: Object.fromEntries(
+          Object.entries(patch.d.cells).map(([id, [value]]) => [id, [value, version.c, version.a]]),
+        ),
+      },
+    });
   }
 
-  if (instance === undefined) {
+  if (instance === undefined && key.split(':').length !== 2) {
     return err('gone');
   }
 
-  const after: RepData = { ...instance, cells: withValues(instance.cells, patch.values) };
+  if (
+    !force &&
+    Object.entries(patch.values).every(
+      ([id, value]) => (instance?.cells[id]?.[0] ?? null) === value,
+    )
+  )
+    return err('unchanged');
+  const version = mint();
 
-  return !force && sameJson(instance, after)
-    ? err('unchanged')
-    : ok({ k: key, d: after, ...mint() });
+  return ok({
+    k: key,
+    ...version,
+    l: base?.l ?? [version.c, version.a],
+    d: { ...(instance ?? { order: 0 }), cells: versionCells(patch.values, version.c, version.a) },
+  });
 }
 
 // AD-14: the patch with only the fields the template has in the row or repeat block of `key`, each
@@ -277,12 +295,12 @@ export function strippedPatch(
   patch: ProposalPatch,
   template: TemplateLayout,
 ): ProposalPatch | null {
-  const [form, , id = ''] = key.split(':');
+  const [, , id] = key.split(':');
 
   const fields =
-    form === 'rep'
+    id !== undefined
       ? targetFields(template, { kind: 'rep', sectionId: id })
-      : targetFields(template, { kind: 'row', rowId: id });
+      : [...templateScopes(template).rowFields.values()].map((entry) => entry.field);
 
   if (fields === null) {
     return null;
@@ -293,7 +311,7 @@ export function strippedPatch(
   }
 
   if (patch.kind === 'add') {
-    const cells = keptValues(patch.d.cells, fields);
+    const cells = keptCells(patch.d.cells, fields);
 
     return sameJson(cells, patch.d.cells) ? patch : { kind: 'add', d: { ...patch.d, cells } };
   }
@@ -321,12 +339,12 @@ export function movedPatches(
   patch: ProposalPatch,
   moves: PresetMoves,
 ): { k: string; patch: ProposalPatch }[] {
-  const [form, sheetId = '', id = '', instanceId = ''] = key.split(':');
+  const [, sheetId = '', id, instanceId = ''] = key.split(':');
 
-  if (form === 'rep') {
+  if (id !== undefined) {
     const target = moves.sectionOf(id);
 
-    return target === null ? [] : [{ k: `rep:${sheetId}:${target}:${instanceId}`, patch }];
+    return target === null ? [] : [{ k: repKey(sheetId, target, instanceId), patch }];
   }
 
   if (patch.kind !== 'fields') {
@@ -343,27 +361,13 @@ export function movedPatches(
     }
   }
 
-  return [...byRow].map(([rowId, values]) => ({
-    k: `row:${sheetId}:${rowId}`,
-    patch: { kind: 'fields', values },
-  }));
-}
+  const values: Record<string, FieldValue | null> = {};
 
-function withValues(
-  values: Readonly<FieldValues>,
-  patch: Readonly<Record<string, FieldValue | null>>,
-): FieldValues {
-  const next: FieldValues = { ...values };
+  for (const fields of byRow.values()) Object.assign(values, fields);
 
-  for (const [fieldId, value] of Object.entries(patch)) {
-    if (value === null) {
-      delete next[fieldId];
-    } else {
-      next[fieldId] = value;
-    }
-  }
-
-  return next;
+  return Object.keys(values).length === 0
+    ? []
+    : [{ k: blockKey(sheetId), patch: { kind: 'fields', values } }];
 }
 
 function scheduleWithTimer(run: () => void, delay: number): () => void {

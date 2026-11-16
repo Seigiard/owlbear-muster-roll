@@ -1,10 +1,8 @@
 import { readFileSync } from 'node:fs';
-
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import type { JsonValue } from '@/core/json';
-
+import { blockDataSchema, cellValues } from '@/core/records';
 import { cssValue, renderedColor, tokenColor } from './support/colors';
 import {
   ADD,
@@ -36,7 +34,6 @@ const BAD_COUNT = 'Нужно число от 1 до 50';
 
 // TASK-37: a new instance id is 8 characters of the URL-safe nanoid alphabet.
 const NANOID_PATTERN = /^[A-Za-z0-9_-]{8}$/;
-
 const D20_PRESET = readFileSync(new URL('fixtures/presets/d20.json', import.meta.url), 'utf8');
 
 // The NPC single sheet of the d20 preset: one repeat section "Противники" of three rows. "Скелет 1"
@@ -87,10 +84,8 @@ test('each NPC repeat block offers the GM a "Дублировать…" icon, na
 }) => {
   // #given
   await openNpcTab(page, context, SKELETON);
-
   // #when
   await duplicateButton(page, 1).hover();
-
   // #then: the tooltip gives sight the short name, and the accessible name adds the position.
   await expect(page.getByRole('tooltip', { name: DUPLICATE })).toBeVisible();
   await expect(duplicateButton(page, 1)).toHaveText('');
@@ -108,10 +103,8 @@ test('"Дублировать…" opens a count of 1 in its repeat block, focuse
 }) => {
   // #given
   await openNpcTab(page, context, SKELETON);
-
   // #when
   await askDuplicate(page, 1);
-
   // #then
   await expect(countField(page)).toBeFocused();
   expect({
@@ -129,13 +122,10 @@ test('the count block sits on surface-raised with a hairline border and rounded-
 }) => {
   // #given
   await openNpcTab(page, context, SKELETON);
-
   // #when
   await askDuplicate(page, 1);
-
   // #then
   const shown = countBlock(page);
-
   expect({
     background: await renderedColor(shown, 'background-color'),
     border: await renderedColor(shown, 'border-top-color'),
@@ -163,15 +153,11 @@ for (const [name, text] of [
     // #given
     await openNpcTab(page, context, SKELETON);
     await watchCommands(page);
-
     const before = await afterSettling(page);
-
     await askDuplicate(page, 1);
     await countField(page).fill(text);
-
     // #when
     await countBlock(page).getByRole('button', { name: CONFIRM }).click();
-
     // #then
     await expect(countBlock(page).getByText(BAD_COUNT)).toBeVisible();
     expect({
@@ -196,14 +182,10 @@ test('Enter on a bad count shows the message too, and a change clears it', async
   await openNpcTab(page, context, SKELETON);
   await askDuplicate(page, 1);
   await countField(page).fill('0');
-
   // #when
   await countField(page).press('Enter');
-
   const shown = await countBlock(page).getByText(BAD_COUNT).count();
-
   await countField(page).fill('2');
-
   // #then
   expect({
     shown,
@@ -217,11 +199,9 @@ test('a count of 9 on "Скелет 1" adds "Скелет 2" to "Скелет 10
 }) => {
   // #given
   await openNpcTab(page, context, SKELETON);
-
   // #when
   await duplicateBy(page, 1, '9');
   await expect(blocks(page)).toHaveCount(11);
-
   // #then
   const copies = Array.from({ length: 9 }, (_unused, index) => `Скелет ${index + 2}`);
   const shownValues = [];
@@ -252,14 +232,15 @@ test('the nine copies are new rep records of the same sheet and section at c: 1,
   await watchCommands(page);
   await duplicateBy(page, 1, '9');
   await expect(blocks(page)).toHaveCount(11);
-
   // #when
   const { stored } = await afterSettling(page);
-
   // #then
   const seeded = new Set(SKELETON.map((one) => one.k));
-  const added = Object.values(stored).filter((one) => !seeded.has(one.k));
-  const prefix = 'rep:npc:npc_name:';
+  const prefix = 'blk:npc:npc_name:';
+
+  const added = Object.values(stored).filter(
+    (one) => one.k.startsWith(prefix) && !seeded.has(one.k),
+  );
 
   expect({
     keyForms: added.map(
@@ -268,13 +249,21 @@ test('the nine copies are new rep records of the same sheet and section at c: 1,
     versions: [...new Set(added.map((one) => one.c))],
     links: Object.keys(stored).filter((key) => key.startsWith('link:')),
     copies: added
-      .map((one) => one.d)
+      .map((one) => plainBlockData(one.d))
       .sort((first, second) => Number(Object(first).order) - Number(Object(second).order)),
+    cellVersions: [
+      ...new Set(
+        added.flatMap((one) =>
+          Object.values(blockDataSchema.parse(one.d).cells).map((cell) => `${cell[1]}:${cell[2]}`),
+        ),
+      ),
+    ],
     source: SKELETON.map((one) => stored[one.k]),
   }).toEqual({
     keyForms: Array.from({ length: 9 }, () => true),
     versions: [1],
     links: ['link:token1'],
+    cellVersions: ['1:mock-connection'],
     copies: Array.from({ length: 9 }, (_unused, index) => ({
       order: index + 2,
       cells: { ...SKELETON_CELLS, npc_name: `Скелет ${index + 2}` },
@@ -289,11 +278,9 @@ test('copies of an unnumbered "Скелет" are "Скелет 1" and "Скел�
 }) => {
   // #given
   await openNpcTab(page, context, [npcBlock('skel', 'Скелет', 0)]);
-
   // #when
   await duplicateBy(page, 1, '2');
   await expect(blocks(page)).toHaveCount(3);
-
   // #then
   expect(await blockNames(page)).toEqual(['Скелет', 'Скелет 1', 'Скелет 2']);
 });
@@ -308,11 +295,9 @@ test('copies continue after the highest number in the section and skip another b
     npcBlock('high', 'Скелет 7', 1),
     npcBlock('archer', 'Скелет-лучник 30', 2),
   ]);
-
   // #when
   await duplicateBy(page, 1, '2');
   await expect(blocks(page)).toHaveCount(5);
-
   // #then
   expect(await blockNames(page)).toEqual([
     'Скелет 1',
@@ -327,18 +312,15 @@ test('an empty first field is copied empty, with the other values', async ({ pag
   // #given
   await openNpcTab(page, context, [repRecord('npc', 'npc_name', 'anon', 0, { hp: 4 })]);
   await watchCommands(page);
-
   // #when
   await duplicateBy(page, 1, '1');
   await expect(blocks(page)).toHaveCount(2);
-
   // #then
   const { stored } = await afterSettling(page);
-
   expect(
     Object.values(stored)
-      .filter((one) => one.k !== 'rep:npc:npc_name:anon')
-      .map((one) => one.d),
+      .filter((one) => one.k.startsWith('blk:npc:npc_name:') && one.k !== 'blk:npc:npc_name:anon')
+      .map((one) => plainBlockData(one.d)),
   ).toEqual([{ order: 1, cells: { hp: 4 } }]);
 });
 
@@ -351,7 +333,6 @@ test('an edit of one copy leaves the source and the other copy as they were', as
   await watchCommands(page);
   await duplicateBy(page, 1, '2');
   await expect(blocks(page)).toHaveCount(4);
-
   // #when
   await block(page, 'Скелет 2').getByRole('textbox', { name: 'Хиты', exact: true }).fill('3');
   await block(page, 'Скелет 2')
@@ -362,13 +343,17 @@ test('an edit of one copy leaves the source and the other copy as they were', as
   // Only the edited copy can hold these values, so the storage has both edits once they show.
   await expect
     .poll(async () => {
-      const stored = JSON.stringify((await afterSettling(page)).stored);
+      const stored = Object.values((await afterSettling(page)).stored)
+        .filter((record) => record.k.startsWith('blk:npc:npc_name:'))
+        .map((record) => plainBlockData(record.d));
 
-      return [stored.includes('"hp":3'), stored.includes('"attack":"Топор"')];
+      return stored.find((data) => data.cells.npc_name === 'Скелет 2');
     })
-    .toEqual([true, true]);
+    .toEqual({
+      order: 2,
+      cells: { ...SKELETON_CELLS, npc_name: 'Скелет 2', hp: 3, attack: 'Топор' },
+    });
   await reloadOnNpcTab(page, context);
-
   // #then: the reload shows what the GM's storage holds.
   expect({
     edited: await blockValues(page, 'Скелет 2'),
@@ -388,15 +373,11 @@ test('Esc closes the count, writes nothing and returns the focus to "Дубли�
   // #given
   await openNpcTab(page, context, SKELETON);
   await watchCommands(page);
-
   const before = await afterSettling(page);
-
   await askDuplicate(page, 1);
   await countField(page).fill('4');
-
   // #when
   await page.keyboard.press('Escape');
-
   // #then
   await expect(duplicateButton(page, 1)).toBeFocused();
   expect({
@@ -412,15 +393,11 @@ test('"Отменить" closes the count, writes nothing and returns the focus 
   // #given
   await openNpcTab(page, context, SKELETON);
   await watchCommands(page);
-
   const before = await afterSettling(page);
-
   await askDuplicate(page, 1);
   await countField(page).fill('4');
-
   // #when
   await countBlock(page).getByRole('button', { name: CANCEL }).click();
-
   // #then
   await expect(duplicateButton(page, 1)).toBeFocused();
   expect({
@@ -436,13 +413,11 @@ test('the keyboard presses "Дублировать…", types the count and conf
   // #given
   await openNpcTab(page, context, SKELETON);
   await duplicateButton(page, 1).focus();
-
   // #when
   await page.keyboard.press('Enter');
   await expect(countField(page)).toBeFocused();
   await page.keyboard.type('2');
   await page.keyboard.press('Enter');
-
   // #then
   await expect(blocks(page)).toHaveCount(4);
 });
@@ -455,10 +430,8 @@ test('pressing "Дублировать…" again while the count is open moves t
   await openNpcTab(page, context, SKELETON);
   await askDuplicate(page, 1);
   await countField(page).fill('4');
-
   // #when
   await duplicateButton(page, 1).click();
-
   // #then
   await expect(countField(page)).toBeFocused();
   expect({
@@ -473,18 +446,14 @@ test('a sent count keeps the block open until the copies arrive, and a rejection
 }) => {
   // #given: with no background, the command gets no answer but the rejection the test sends.
   const background = await openNpcTab(page, context, SKELETON);
-
   await watchCommands(page);
   await background.close();
   await duplicateBy(page, 1, '3');
   await expect.poll(() => sentDuplicates(page)).toHaveLength(1);
-
   const waiting = await countBlock(page).count();
   const [sent] = await sentDuplicates(page);
-
   // #when
   await postToWindow(page, { t: 'command-rejected', id: sent ?? '', reason: 'too-large' });
-
   // #then
   await expect(countBlock(page).getByText(FAILED)).toBeVisible();
   expect({
@@ -510,28 +479,34 @@ test('the GM duplicates a repeat block of a sheet of a sheet set into the same s
     D20_PRESET,
   );
   await watchCommands(page);
-
   const attacks = page.getByRole('tabpanel').getByRole('region', { name: 'Атаки' });
-
   // #when
   await attacks.getByRole('button', { name: 'Дублировать блок 1…' }).click();
   await countField(page).fill('2');
   await countBlock(page).getByRole('button', { name: CONFIRM }).click();
   await expect(attacks.getByRole('group')).toHaveCount(3);
-
   // #then
   const { stored } = await afterSettling(page);
-
   expect(
     Object.values(stored)
-      .filter((one) => one.k.startsWith('rep:') && one.k !== 'rep:anya:attack:sword')
-      .map((one) => ({ form: one.k.split(':').slice(0, 3).join(':'), d: one.d, c: one.c }))
+      .filter((one) => one.k.startsWith('blk:anya:attack:') && one.k !== 'blk:anya:attack:sword')
+      .map((one) => ({
+        form: one.k.split(':').slice(0, 3).join(':'),
+        d: plainBlockData(one.d),
+        c: one.c,
+      }))
       .sort((first, second) => Number(Object(first.d).order) - Number(Object(second.d).order)),
   ).toEqual([
-    { form: 'rep:anya:attack', d: { order: 1, cells: { attack: 'Меч 1', bonus: 2 } }, c: 1 },
-    { form: 'rep:anya:attack', d: { order: 2, cells: { attack: 'Меч 2', bonus: 2 } }, c: 1 },
+    { form: 'blk:anya:attack', d: { order: 1, cells: { attack: 'Меч 1', bonus: 2 } }, c: 1 },
+    { form: 'blk:anya:attack', d: { order: 2, cells: { attack: 'Меч 2', bonus: 2 } }, c: 1 },
   ]);
 });
+
+function plainBlockData(data: JsonValue) {
+  const block = blockDataSchema.parse(data);
+
+  return { ...block, cells: cellValues(block.cells) };
+}
 
 test('a player who may edit a sheet gets "Удалить" on its repeat blocks and no "Дублировать…"', async ({
   context,
@@ -542,13 +517,10 @@ test('a player who may edit a sheet gets "Удалить" on its repeat blocks a
     repRecord('anya', 'attack', 'sword', 0, { attack: 'Меч' }),
     record('acl:anya:lisa', { name: 'Лиза' }),
   ]);
-
   // #when
   const player = await openClient(context, PLAYER, null);
   const attacks = player.window.getByRole('tabpanel').getByRole('region', { name: 'Атаки' });
-
   await expect(attacks.getByRole('button', { name: 'Удалить блок 1' })).toBeVisible();
-
   // #then
   expect(await attacks.getByRole('button', { name: /^Дублировать/ }).count()).toBe(0);
 });
@@ -568,7 +540,6 @@ async function openNpcTab(
   records: readonly StoredRecord[],
 ): Promise<Page> {
   const background = await openRoom(page, context, records, D20_PRESET);
-
   await page.getByRole('tab', { name: 'NPC' }).click();
   await expect(page.getByRole('button', { name: ADD_NPC })).toBeVisible();
 
@@ -577,7 +548,6 @@ async function openNpcTab(
 
 async function openGm(context: BrowserContext, records: readonly StoredRecord[]): Promise<void> {
   const gm = await openClient(context, GM, records);
-
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
 }
 

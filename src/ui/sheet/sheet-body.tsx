@@ -135,9 +135,8 @@ export function SheetBody({
   );
 }
 
-// The versions of the sheet's `row:` and `rep:` records on every tab, and the count of local
-// changes to the values its fields show, so it changes with any value of the sheet and with no
-// other record. A formula may read a field of another tab.
+// The versions of the sheet's root and descendant blocks on every tab, and the count of local
+// changes to the values its fields show. A formula may read a field of another tab.
 function sheetValuesSignature(
   template: TemplateLayout,
   records: ReadonlyMap<string, VersionedRecord>,
@@ -182,5 +181,5 @@ function sheetValuesSignature(
 }
 
 function versionOf(record: VersionedRecord): string {
-  return `${record.k} ${record.c} ${record.a}`;
+  return JSON.stringify(record);
 }

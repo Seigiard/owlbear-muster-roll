@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
-import type { VersionedRecord } from '@/core/records';
+import { blockDataSchema, type VersionedRecord } from '@/core/records';
 import type { Timing } from '@/core/timing';
 import type { RollOutcome } from '@/core/ui-messages';
 import type { MockRoom } from '@/platform/current';
@@ -118,14 +117,44 @@ const PRESET: Preset = {
 // "Брок" and the unnamed "liza" are sheets of the "pc" set; "npc" is the GM-only single sheet.
 const SEEDED: VersionedRecord[] = [
   { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
-  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
-  { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
-  { k: 'row:brok:str', d: { str: 14, str_tired: true }, c: 1, a: 'seed' },
-  { k: 'row:brok:secret', d: { secret: 4 }, c: 1, a: 'seed' },
-  { k: 'rep:brok:attack:i1', d: { order: 0, cells: { attack: 'Меч', bonus: 3 } }, c: 1, a: 'seed' },
-  { k: 'sheet:liza', d: { set: 'pc', order: 1 }, c: 1, a: 'seed' },
-  { k: 'row:liza:str', d: { str: 14, str_tired: true }, c: 1, a: 'seed' },
-  { k: 'row:npc:hp', d: { hp: 5 }, c: 1, a: 'seed' },
+  { k: 'blk:brok', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
+  {
+    k: 'blk:brok',
+    d: { order: 0, cells: { name: ['Брок', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  {
+    k: 'blk:brok',
+    d: { order: 0, cells: { str: [14, 1, 'seed'], str_tired: [true, 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  {
+    k: 'blk:brok',
+    d: { order: 0, cells: { secret: [4, 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  {
+    k: 'blk:brok:attack:i1',
+    d: { order: 0, cells: { attack: ['Меч', 1, 'seed'], bonus: [3, 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  { k: 'blk:liza', d: { set: 'pc', order: 1, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
+  {
+    k: 'blk:liza',
+    d: { order: 0, cells: { str: [14, 1, 'seed'], str_tired: [true, 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  { k: 'blk:npc', d: { order: 0, cells: { hp: [5, 1, 'seed'] } }, c: 1, a: 'seed', l: [1, 'seed'] },
 ];
 
 const STRENGTH: RollRequest = {
@@ -170,7 +199,11 @@ const HIT_POINTS: RollRequest = {
 
 const STRENGTH_TEXT = 'Мастер: Брок, Сила — 7, успех';
 
-type ClientOptions = { role?: PlayerRole; name?: string; timing?: Partial<Timing> };
+type ClientOptions = {
+  role?: PlayerRole;
+  name?: string;
+  timing?: Partial<Timing>;
+};
 
 type Client = RigClient;
 
@@ -179,7 +212,10 @@ type RollRequest = Parameters<RigClient['window']['requestRoll']>[0];
 type Room = {
   room: MockRoom;
   // Every roll on the room, by sender.
-  rolls: { from: string; data: JsonValue }[];
+  rolls: {
+    from: string;
+    data: JsonValue;
+  }[];
   post: (from: string, data: JsonValue) => void;
 };
 
@@ -239,7 +275,7 @@ function joinGhost(room: Room, role: PlayerRole): void {
 // A roll as the room carries it, with the roller name its sender wrote in.
 function rollFrom(id: string, sheetName: string, hidden = false, roller = GHOST_NAME): JsonValue {
   return {
-    v: 3,
+    v: 4,
     g: { n: 0, a: '' },
     t: 'roll',
     id,
@@ -259,12 +295,9 @@ describe('a roll', () => {
     const gmA = await startClient(room, 'gm-a', { name: 'Мастер' });
     const gmB = await startClient(room, 'gm-b');
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
-
     // #when
     const outcome = await roll(gmA, STRENGTH);
-
     await waitUntil(() => [gmA, gmB, player].every((client) => shown(client).length === 1));
-
     // #then
     expect({
       outcome,
@@ -276,7 +309,7 @@ describe('a roll', () => {
         {
           from: 'gm-a',
           data: {
-            v: 3,
+            v: 4,
             g: { n: 0, a: '' },
             t: 'roll',
             id: expect.any(String),
@@ -292,49 +325,39 @@ describe('a roll', () => {
       shown: [[STRENGTH_TEXT], [STRENGTH_TEXT], [STRENGTH_TEXT]],
     });
   });
-
   test('from a player of a character it cannot edit goes out and shows everywhere', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
-
     // #when
     const outcome = await roll(player, STRENGTH);
-
     await waitUntil(() => shown(gm).length === 1);
-
     // #then
     expect({ outcome, shown: [gm, player].map(shown) }).toEqual({
       outcome: { code: 'rolled' },
       shown: [['Лиза: Брок, Сила — 7, успех'], ['Лиза: Брок, Сила — 7, успех']],
     });
   });
-
   test('of a repeat block reads its own instance and is named by the row', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
-
     // #when
     await roll(gm, ATTACK);
-
     // #then
     expect(shown(gm)).toEqual(['Мастер: Брок, Атака — 10']);
   });
-
   test('of a hidden single sheet goes out hidden, named by its title, and shows on GM clients only, though the player receives it', async () => {
     // #given
     const room = openRoom();
     const gmA = await startClient(room, 'gm-a', { name: 'Мастер' });
     const gmB = await startClient(room, 'gm-b');
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
-
     // #when: the sheet set roll after it is handled after it on every client.
     await roll(gmA, HIT_POINTS);
     await roll(gmA, STRENGTH);
     await waitUntil(() => shown(player).length === 1 && shown(gmB).length === 2);
-
     // #then
     expect({
       sent: room.rolls.map((one) => {
@@ -355,18 +378,15 @@ describe('a roll', () => {
       ],
     });
   });
-
   test('from a hidden tab of a visible sheet goes out hidden and shows on GM clients only', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
-
     // #when: the visible roll after it proves the player handled the hidden roll first.
     const outcome = await roll(gm, HIDDEN_SECRET);
     await roll(gm, READ_SECRET);
     await waitUntil(() => shown(player).includes('Мастер: Брок, Чтение — 5'));
-
     // #then
     expect({
       outcome,
@@ -381,17 +401,14 @@ describe('a roll', () => {
       ],
     });
   });
-
   test('of a sheet with an empty name field goes out with an empty name and shows the fallback label', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
     const other = await startClient(room, 'gm-b');
-
     // #when
     await roll(gm, UNNAMED_STRENGTH);
     await waitUntil(() => shown(other).length === 1);
-
     // #then
     expect({
       sheetName: Object(room.rolls[0]?.data).sheetName,
@@ -401,19 +418,15 @@ describe('a roll', () => {
       shown: [['Мастер: Без имени, Сила — 7, успех'], ['Мастер: Без имени, Сила — 7, успех']],
     });
   });
-
   test('of a hidden single sheet requested by a player is refused, and nothing is sent or shown', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a');
     const player = await startClient(room, 'player', { role: 'PLAYER' });
-
     // #when
     const outcome = await roll(player, HIT_POINTS);
-
     await roll(player, STRENGTH);
     await waitUntil(() => shown(gm).includes('player: Брок, Сила — 7, успех'));
-
     // #then
     expect({ outcome, rolls: room.rolls.length, shown: [gm, player].map(shown) }).toEqual({
       outcome: { code: 'refused' },
@@ -421,18 +434,15 @@ describe('a roll', () => {
       shown: [['player: Брок, Сила — 7, успех'], ['player: Брок, Сила — 7, успех']],
     });
   });
-
   test('from a hidden tab requested by a player is refused and sends nothing', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a');
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
-
     // #when: the visible roll after it proves the hidden request sent no roll.
     const outcome = await roll(player, HIDDEN_SECRET);
     await roll(player, READ_SECRET);
     await waitUntil(() => shown(gm).includes('Лиза: Брок, Чтение — 5'));
-
     // #then
     expect({ outcome, rolls: room.rolls.length, shown: [gm, player].map(shown) }).toEqual({
       outcome: { code: 'refused' },
@@ -440,80 +450,61 @@ describe('a roll', () => {
       shown: [['Лиза: Брок, Чтение — 5'], ['Лиза: Брок, Чтение — 5']],
     });
   });
-
   test('that arrives twice, or comes back to its roller, shows once', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
-
     await roll(gm, STRENGTH);
     await waitUntil(() => shown(player).length === 1);
-
     const sent = room.rolls[0]?.data ?? null;
-
     joinGhost(room, 'GM');
-
     // #when: the marker after the repeats is handled after them.
     room.post(GHOST, sent);
     room.post(GHOST, sent);
     room.post(GHOST, rollFrom('marker', 'Маркер'));
     await waitUntil(() => shown(gm).length === 2 && shown(player).length === 2);
-
     // #then
     expect([gm, player].map(shown)).toEqual([
       [STRENGTH_TEXT, 'Призрак: Маркер, Сила — 3'],
       [STRENGTH_TEXT, 'Призрак: Маркер, Сила — 3'],
     ]);
   });
-
   test('from a sender outside the party shows nothing', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a');
-
     joinGhost(room, 'PLAYER');
-
     // #when: the marker from a known player after it is handled after it.
     room.post('stranger', rollFrom('stranger-roll', 'Чужой'));
     room.post(GHOST, rollFrom('marker', 'Маркер'));
     await waitUntil(() => shown(gm).length === 1);
-
     // #then
     expect(shown(gm)).toEqual(['Призрак: Маркер, Сила — 3']);
   });
-
   test('marked hidden from a player is dropped as forged, as a player cannot see a hidden sheet', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a');
-
     joinGhost(room, 'PLAYER');
-
     // #when: the marker after it is handled after it.
     room.post(GHOST, rollFrom('forged', 'NPC', true));
     room.post(GHOST, rollFrom('marker', 'Маркер'));
     await waitUntil(() => shown(gm).length === 1);
-
     // #then
     expect(shown(gm)).toEqual(['Призрак: Маркер, Сила — 3']);
   });
-
   test('shows the name the party lists for its sender, not the one the message carries', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a');
-
     joinGhost(room, 'PLAYER');
-
     // #when
     room.post(GHOST, rollFrom('named', 'Брок', false, 'Мастер'));
     await waitUntil(() => shown(gm).length === 1);
-
     // #then
     expect(shown(gm)).toEqual(['Призрак: Брок, Сила — 3']);
   });
-
   test('from a player in catch-up goes out and shows', async () => {
     // #given: the only GM left answers no one, so the player stays in catch-up.
     const room = openRoom();
@@ -530,10 +521,8 @@ describe('a roll', () => {
     joinGhost(room, 'GM');
     player.engine.catchUp();
     await waitUntil(() => player.store.$sync.get().state === 'catching-up');
-
     // #when
     const outcome = await roll(player, STRENGTH);
-
     // #then
     expect({
       outcome,
@@ -547,17 +536,13 @@ describe('a roll', () => {
       state: 'catching-up',
     });
   });
-
   test('whose send fails answers failed, and nothing shows', async () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
-
     gm.platform.failNextSends([{ kind: 'failed', reason: 'mock send failure' }]);
-
     // #when
     const outcome = await roll(gm, STRENGTH);
-
     // #then
     expect({ outcome, rolls: room.rolls.length, shown: shown(gm) }).toEqual({
       outcome: { code: 'failed' },
@@ -585,13 +570,10 @@ describe('a roll that cannot be evaluated', () => {
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
     const other = await startClient(room, 'gm-b');
-
     // #when: the good roll after it is handled after it.
     const outcome = await roll(gm, request);
-
     await roll(gm, STRENGTH);
     await waitUntil(() => shown(other).length === 1);
-
     // #then
     expect({ outcome, rolls: room.rolls.length, shown: [gm, other].map(shown) }).toEqual({
       outcome: expected,
@@ -606,14 +588,11 @@ describe('the value a roll uses', () => {
     // #given
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
-
     // #when: str 4 makes the target 2.
     await roll(gm, { ...STRENGTH, shown: { str: { kind: 'text', text: '4' } } });
-
     // #then
     expect(shown(gm)).toEqual(['Мастер: Брок, Сила — 7, провал']);
   });
-
   test('is a GM edit still pending in catch-up', async () => {
     // #given: a GM that never answers holds this client in catch-up.
     const room = openRoom();
@@ -626,7 +605,6 @@ describe('the value a roll uses', () => {
     joinGhost(room, 'GM');
     gm.engine.catchUp();
     await waitUntil(() => gm.store.$sync.get().state === 'catching-up');
-
     // #when
     gm.window.sendCommand({
       type: 'field-patch',
@@ -635,9 +613,7 @@ describe('the value a roll uses', () => {
       fieldId: 'str',
       value: 4,
     });
-
     const outcome = await roll(gm, STRENGTH);
-
     // #then
     expect({ outcome, shown: shown(gm), state: gm.store.$sync.get().state }).toEqual({
       outcome: { code: 'rolled' },
@@ -653,7 +629,6 @@ describe("the value a player's roll uses", () => {
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер' });
     const player = await startClient(room, 'player', { role: 'PLAYER', name: 'Лиза' });
-
     gm.window.sendCommand({
       type: 'acl-set',
       sheetId: 'brok',
@@ -661,10 +636,8 @@ describe("the value a player's roll uses", () => {
       name: 'Лиза',
       on: true,
     });
-
     await waitUntil(() => player.store.$records.get().get('acl:brok:player')?.d != null);
     gm.engine.stop();
-
     // #when: str 4 makes the target 2.
     player.window.sendCommand({
       type: 'field-patch',
@@ -673,15 +646,12 @@ describe("the value a player's roll uses", () => {
       fieldId: 'str',
       value: 4,
     });
-
     await waitUntil(
       () =>
-        JSON.stringify(player.store.$records.get().get('row:brok:str')?.d) ===
-        '{"str":4,"str_tired":true}',
+        blockDataSchema.safeParse(player.store.$records.get().get('blk:brok')?.d).data?.cells
+          .str?.[0] === 4,
     );
-
     const outcome = await roll(player, STRENGTH);
-
     // #then
     expect({ outcome, shown: shown(player) }).toEqual({
       outcome: { code: 'rolled' },
@@ -706,7 +676,6 @@ describe('a roll as state', () => {
     // #when
     await roll(gm, STRENGTH);
     await waitUntil(() => shown(other).length === 1);
-
     // #then
     expect({
       records: [...gm.store.$records.get().values()],
