@@ -1,27 +1,34 @@
 # Preset file format
 
-A preset is a JSON file that lists the templates of one room. Each template is a sheet set or a single sheet, with its own tabs of sections. A preset holds no values. Values are stored apart from it, by field id. The GM uploads it with "Загрузить пресет" and gets it back with "Скачать пресет".
+A preset is a JSON file that lists the templates of one room. A template is a
+sheet set or a single sheet. A preset holds structure only; values are stored
+separately by field id. The GM uploads it with «Загрузить пресет» and downloads
+it with «Скачать пресет».
 
-- A **sheet set** (`"kind": "set"`) is a template that GMs create any number of sheets from, such as the party. Its name field gives each sheet its tab name.
-- A **single sheet** (`"kind": "single"`) exists exactly once in the room, such as NPCs, a shared inventory, a story log or a spell list. Its tab name is its `title`. Nobody creates or deletes it.
-
-The window shows one tab per sheet, in the order of the list. A sheet splits into tabs of its own (see Tab below), and shows one of them at a time.
-
-`docs/example-preset.json` is a complete preset. A test parses it, so it stays valid.
+`docs/example-preset.json` is a complete v4 preset. The preset owner test
+parses it with the same validator as an upload.
 
 ## Shape
 
-```
-{ v, window?, templates: Template[] }
-Window   = { width, height }
-Template = { id, kind: "set", title, nameField, visibility?, tokens?, tabs: Tab[] }
-         | { id, kind: "single", title, visibility?, players?, tokens?, tabs: Tab[] }
-Tab      = { title?, visibility?, sections: Section[] }
-Section  = { title?, width?, columns?, repeat?, tokens?, rows: Cell[][] }
-Cell     = { kind: "text", text } | { kind: "field", type, id, name?, options? } | { kind: "dice", formula, name? }
+```text
+preset   = { v, window?, templates[] }                         at least one template
+template = { id, title, visibility?, repeat?: { nameField },    at least one tab
+             players?, tabs[] }
+tab      = { title?, visibility?, repeat?: { id, nameField }, sections[] }
+section  = { title?, width?, columns?, visibility?,
+             repeat?: { id, nameField }, rows[] }
+row      = { visibility?, repeat?: { id, nameField }, cells[] }
+cell     = text { text }
+         | field { type, id, name?, options? }
+         | dice { formula, name? }
+         | token { id }
 ```
 
-Every object is strict. A key that is not in this document makes the file invalid.
+Every object is strict. A key that is not listed here makes the file invalid.
+`repeat` is part of the v4 vocabulary at templates, tabs, sections and rows.
+The current release temporarily rejects repeat tabs and nested repeat scopes by
+rule checks. This release boundary does not remove those keys from the v4
+model or from the future block-path model.
 
 ## Keys
 
@@ -29,353 +36,259 @@ Every object is strict. A key that is not in this document makes the file invali
 
 | Key | Type | Meaning |
 | --- | --- | --- |
-| `v` | integer, required | Format version. The current version is `3`. |
-| `window` | `{ width, height }`, optional | The size of the action window in px, for every client. Both keys are required integers, and no other key is allowed. Without `window` the window is 600 by 600 px. "Скачать пресет" writes it back after `v`. |
-| `templates` | Template array, required, at least one | The sheet sets and single sheets of the room, in tab order. |
+| `v` | integer, required | Format version. The current version is `4`. |
+| `window` | `{ width, height }`, optional | The action-window size in px for every client. Both keys are required integers and no other key is allowed. Without it, the window is 600 by 600 px. |
+| `templates` | array, required, at least one | The room's templates in sidebar order. |
 
 ### Template
 
 | Key | Type | Meaning |
 | --- | --- | --- |
-| `id` | string, required | The stable id of the template. Its values are stored under it. It follows the id rules below, and no two templates share it. Changing it in an upload removes the template and adds a new one. |
-| `kind` | `"set"` or `"single"`, required | A sheet set or a single sheet. Changing it in an upload removes the template and adds a new one. |
-| `title` | string, required | A single sheet's tab name. For a sheet set: the name of its "+" ("Добавить: {title}") and of its group in the link picker. |
-| `nameField` | string, required on a sheet set, not allowed on a single sheet | The id of a `field` of type `text`, outside `repeat` sections of this template. Its value is the tab name of each sheet. An empty value shows "Без имени". |
-| `visibility` | `"all"` or `"gm"`, optional | `"all"` (the default): players see the template's sheets. `"gm"`: only the GM sees them, rolls from them show only on GM clients, and players get no token menu on them. Hiding is in the interface only: any client can read the room copy. |
-| `players` | `"edit"`, optional, on a single sheet only | Every player may edit the single sheet. Without it, players read it only. A sheet of a sheet set takes write access per player from the GM, in the "Доступ" panel. A hidden single sheet takes no player edit. |
-| `tokens` | `true`, optional | A token can link to the whole sheet, such as a chest token that opens Инвентарь. |
-| `tabs` | Tab array, required, at least one | The tabs of the sheet, in display order. |
+| `id` | string, required | The stable template id. No two templates share it. Changing it removes the old template and adds a new one. |
+| `title` | string, required | The title shown for a single sheet, or the sheet-set heading and add command. |
+| `visibility` | `"all"` or `"gm"`, optional | `"all"` is the default. `"gm"` hides the template from players in the interface. |
+| `repeat` | `{ nameField }`, optional | Makes the template a sheet set. The value of `nameField` names each sheet. Without it, the template is a single sheet. |
+| `players` | `"edit"`, optional | Every player may edit the template's sheet. On a repeated template this applies to every sheet. A hidden template still gives players no edit access. |
+| `tabs` | array, required, at least one | The tabs of the sheet, in display order. |
+
+A sheet set is a template with `repeat`. GMs can create and delete any number
+of its sheets. A single sheet has no `repeat` and exists exactly once. Its
+sidebar entry uses the template title. Template repetition does not add a pair
+to a repeat block path.
+
+Visibility is inherited. A player sees a node only when the node and every
+ancestor are visible. Hiding is an interface rule; the records remain in
+replicas and can be read by the room logic.
 
 ### Tab
 
-A tab («Вкладка» in the interface) is a titled group of sections inside a sheet. A sheet shows one tab at a time. A template with one tab draws no tab row. With more tabs, the row sits above the sheet's sections, scrolls sideways when the tabs do not fit, and the Left and Right keys move between the tabs. Each client keeps the open tab of each sheet for itself: it is never stored or sent. A token that opens a repeat block opens the tab that holds it.
+A tab is a group of sections inside a sheet. A sheet shows one tab at a time.
+A template with one tab draws no tab row. With more tabs, the tab row can
+scroll sideways, and Left and Right move between tabs. Each client keeps its
+open tab locally; it is not stored or sent.
 
 | Key | Type | Meaning |
 | --- | --- | --- |
-| `title` | string, optional | The tab's name in the tab row. Required, and not blank, when the template has more than one tab. |
-| `visibility` | `"all"` or `"gm"`, optional | `"all"` (the default): players see the tab. `"gm"`: only GMs see the tab and its sections; rolls from it show only to GMs, and players get no token menu or open action for its repeat blocks. Hiding is in the interface only: its records stay in every replica. |
-| `sections` | Section array, required | The sections of the tab, in display order. |
+| `title` | string, optional | The tab name. It is required and non-blank when the template has more than one tab. |
+| `visibility` | `"all"` or `"gm"`, optional | `"all"` is the default. `"gm"` hides the tab and its content from players in the interface. |
+| `repeat` | `{ id, nameField }`, optional | Reserves a repeat scope whose blocks are tabs named by `nameField`. The current release rejects this form; the v4 model retains it for the future. |
+| `sections` | array, required | The sections of the tab, in display order. |
 
-Tabs change only the layout. Field id scopes, the name field, formulas, repeat section ids and stored values are the same for the whole template, across all its tabs. A formula on one tab can use a field on another tab. A section can move to another tab, and its values stay.
+Tabs change layout only. Fields outside repeat scopes share one scope across
+all tabs of a template. A section can move to another tab without changing
+the values of its fields. A token link opens the tab that contains its token
+cell.
 
 ### Section
 
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `title` | string, optional | The section heading. |
-| `width` | `"1/3"`, `"1/2"` or `"full"`, optional | The share of the sheet width. The default is `"full"`. Sections flow side by side and wrap as whole sections. |
-| `columns` | positive integer, optional | All rows of the section share a grid of this many columns, so the columns align. A shorter row leaves the trailing grid cells empty. A row with more cells than `columns` makes the file invalid. Without `columns`, the cells of a row flow inline. |
-| `repeat` | `true`, optional | A repeat section: all its rows form one repeat block. Each sheet has its own list of repeat blocks made from it. |
-| `tokens` | `true`, optional, with `repeat` only | Each repeat block can link to its own token. The token opens the sheet scrolled to that repeat block. The repeat block's first field is offered as the token label. |
-| `rows` | array of Cell arrays, required | The rows of the section. Each row is an array of cells. |
+| `width` | `"1/3"`, `"1/2"` or `"full"`, optional | The share of the sheet width. The default is `"full"`. |
+| `columns` | positive integer, optional | The shared grid width for all rows. A row cannot contain more cells than this value. Without it, cells flow inline. |
+| `visibility` | `"all"` or `"gm"`, optional | Visibility for the section and its rows. |
+| `repeat` | `{ id, nameField }`, optional | Makes the section a repeat scope. Each sheet can hold its own blocks. |
+| `rows` | array, required | The rows of the section. |
+
+Sections flow side by side and wrap as whole sections. A repeat section can
+link a token cell inside each of its blocks.
+
+### Row
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `visibility` | `"all"` or `"gm"`, optional | Visibility for the row and its cells. |
+| `repeat` | `{ id, nameField }`, optional | Makes the row a repeat scope. Each parent block can hold its own row blocks. The current release rejects a nested repeat scope. |
+| `cells` | array, required | The cells in the row. |
+
+A row with more cells than its section's `columns` is invalid. A plain row has
+no storage identity. A repeated row is a block scope and has an identity in its
+parent block path.
 
 ### Cell
 
-| `kind` | Other keys | Meaning |
+| Kind | Other keys | Meaning |
 | --- | --- | --- |
-| `"text"` | `text`: string | A fixed label. It has no value. A label cannot have `name`. |
-| `"field"` | `type`: `"text"`, `"number"`, `"check"`, `"select"` or `"dice-choice"`; `id`: string; `name?`: string | A value that the GM fills in. The `id` is the key of its value. A `select` or `dice-choice` field also has required `options`: a non-empty list of distinct, non-blank strings. |
-| `"dice"` | `formula`: string; `name?`: string | A dice cell that rolls the formula. It has no value. |
+| `text` | `text`: string | A fixed label. It has no value. |
+| `field` | `type`, `id`, `name?`, `options?` | A value that a player or GM can read or edit under the access rules. |
+| `dice` | `formula`, `name?` | A dice cell that rolls its formula. It has no stored value. |
+| `token` | `id`: string | A bookmark that a token can link to. It has no stored value. |
 
-A `select` field offers the empty choice «—» followed by its `options` in order. The empty choice
-clears the field. Stored values are strings; a value that is no longer in `options` remains visible
-until the picker replaces it.
+Field types are `text`, `number`, `check`, `select` and `dice-choice`.
+`select` and `dice-choice` fields require a non-empty list of distinct,
+non-blank `options`. A select picker also has an empty choice that clears the
+field. A stored value that is no longer an option remains visible until it is
+replaced.
 
-A `dice-choice` field is a select field whose options are die sizes. Each option is `d` followed by
-an integer from 1 to 1000, with no leading zero, such as `d4`, `d20` or `d100`. Its picker, empty
-choice, stale values and option rules are the same as for a `select` field.
+A token cell may appear in any row, inside or outside a repeat scope. A token
+linked to a root cell opens the sheet on that cell's tab. A token linked to a
+cell in a block opens the sheet on the tab and block containing that cell.
+Players see no token-cell control.
 
 ### Cell names
 
-The optional `name` key gives a field or dice cell a stable name in compact layouts. It is the
-accessible name of a field, the accessible name and tooltip text of a dice cell, and the name shown
-for the cell in a roll. A label (`text`) cannot have this key.
+The optional `name` key gives a field or dice cell a stable name in compact
+layouts. It is its accessible name, the tooltip text, and the name shown for a
+dice cell in a roll. A token cell and a text cell cannot have `name`.
 
-The value must contain a non-space character and be no longer than 60 Unicode characters. The
-preset check refuses an empty or spaces-only value, and a value over 60 characters. The refusal
-message names a field by its `id` and a dice cell by its `formula`.
+The value must contain a non-space character and be no longer than 60 Unicode
+characters. Without a cell name, the cell uses the nearest preceding label in
+its row, then the field id or dice formula. Start a dice-cell name with the
+visible button text so speech input can activate it.
 
-The cell's label is its name, then the nearest preceding label with visible text in the same row,
-then the field `id` or the dice `formula`. A named field or dice cell shows its name in a tooltip on
-pointer hover and keyboard, pointer or touch focus. The tooltip stays outside the control. A named
-read-only value is a Tab stop. The dice button's visible text does not change: it still shows the
-preceding label or its formula.
+## Ids and scopes
 
-For accessibility, start a dice name with the text visible on its button. This follows WCAG 2.5.3:
-the accessible name starts with the visible label, so speech input users can activate the button.
-
-## Ids
-
-- A field id or an template id matches `^[A-Za-z_][A-Za-z0-9_]*$`.
+- A template id or field id matches `^[A-Za-z_][A-Za-z0-9_]*$`.
 - An id cannot look like a dice term, such as `d20` or `D6`.
-- An id cannot be `floor` or `ceil`, because formulas call them.
-- An id cannot be a member name of `Object.prototype`, such as `constructor`, `__proto__` or `toString`.
+- An id cannot be `floor` or `ceil`, or a member name of `Object.prototype`.
 - A template id is at most 64 characters.
+- Field ids are unique in their scope. Fields outside repeat scopes of one
+  template share one scope across all tabs.
+- Fields inside a repeat scope share that scope. Nested scopes resolve an id
+  inside the nearest block first, then through enclosing blocks, then in the
+  sheet scope.
+- `repeat.id` is unique among repeat scopes in its parent scope.
+- `repeat.nameField` names a text field inside its own scope.
 
-### Scopes
+## Repeat scopes and blocks
 
-- All fields outside `repeat` sections in one template, across all its tabs, are one scope. An id is unique in its scope.
-- All fields of one `repeat` section, across its rows, are a scope of their own.
-- Each template is separate. One field id can occur in two templates.
-- One id can occur in a `repeat` section and outside it.
+A repeat scope makes one block per instance. The scope kind decides where the
+blocks appear:
 
-### Repeat sections
+| Scope | Blocks appear as | Who adds and removes them |
+| --- | --- | --- |
+| Template | Sheets under a sheet-set heading | GM |
+| Tab | Tabs named by `nameField` | GM |
+| Section | Blocks stacked in the section | Anyone with write access |
+| Row | Blocks stacked as rows | Anyone with write access |
 
-- A `repeat` section needs at least one row with at least one field.
-- The id of the first field of the section, in row order, identifies the section. Two `repeat` sections of one template cannot start with the same id.
-- A formula in a repeat block resolves an id inside its own repeat block first, then among the template's fields outside `repeat` sections.
+The current release supports the non-nested repeat forms used by the shipped
+preset examples. It temporarily rejects repeat tabs and nested block scopes.
+The reserved forms remain in the schema vocabulary and in the approved future
+model.
+
+A block is addressed by a sheet and a path of `(scope id, block id)` pairs.
+The path can contain nested pairs in the future. A record and a token link use
+that path. Changing a repeat scope id creates a new scope and removes its old
+blocks. Changing `nameField` keeps block identity and values while changing
+the names shown in the interface.
 
 ## Dice formulas
 
-A formula holds:
+A formula can contain integer literals, field ids, `+`, `-`, `*`, `/`,
+parentheses, `floor(...)`, `ceil(...)`, dice terms `NdM`, dice-choice terms
+`Nd(id)`, and at most one comparison from `<=`, `<`, `>=` and `>`.
 
-- integer literals, such as `2`;
-- field ids, such as `str`;
-- `+`, `-`, `*`, `/` and parentheses;
-- `floor(...)` and `ceil(...)`;
-- dice terms `NdM` or `NDM`, with a literal `N` from 1 to 100 and a literal `M` from 1 to 1000;
-- dice-choice terms `Nd(id)` or `ND(id)`, with a literal `N` from 1 to 100 and optional spaces around
-  the field id;
-- at most one comparison from `<=`, `<`, `>=`, `>`, outside parentheses. A comparison makes the roll a check: success when it holds.
+`N` is from 1 to 100 and `M` is from 1 to 1000. A formula is at most 200
+characters. `Nd(id)` takes the die size from a `dice-choice` field. An empty
+or non-die value shows a field error and does not roll. An unknown id is
+accepted at upload and reports an error only when rolled.
 
-Grammar:
-
-```
-comparison = sum [('<=' | '<' | '>=' | '>') sum]
-sum        = product (('+' | '-') product)*
-product    = atom (('*' | '/') atom)*
-atom       = integer | dice | dice-choice | id | call | '(' sum ')'
-call       = ('floor' | 'ceil') '(' sum ')'
-```
-
-- Minus is binary only. `-1` is a syntax error.
-- A letter, digit or `_` right after a number or a dice term is a syntax error, such as `1d6x`.
-- A formula is at most 200 characters.
-- A check field counts as 0 or 1.
-- A formula can name any valid id. An id that is not on the sheet is an error when the GM rolls, not at upload.
-
-Examples: `1d20 <= str - 2*str_tired`, `floor(a/2)+ceil(b)`, `2D6+1`, `1d(weapon_die) + bonus`.
-
-Before a roll, `Nd(id)` becomes the literal `NdM` from the selected dice-choice field. An empty or
-non-die value, such as `Меч`, shows a field error and does not roll. A stale value that is still a
-die size, such as `d8` after it was removed from the options, still rolls that die. A formula that
-uses a dice-choice field outside `Nd(id)`, or uses another field type inside `Nd(id)`, is refused
-when the preset is uploaded. An unknown id inside `Nd(id)` is accepted and gives a field error only
-when rolled.
+The parser runs the formula; the product never evaluates it with `eval`.
+Anyone who can see a node can roll its dice cell. A roll from a hidden
+template, tab, section or row is shown only to GMs.
 
 ## Preset changes
 
-An upload over existing sheets keeps values by field id. One confirmation names what is lost:
+An upload keeps values by field id where the scope remains the same. One
+confirmation names values and sheets that will be lost.
 
-| Change in the file | Effect on the room |
+| Change | Effect |
 | --- | --- |
-| Add a field | The field is empty |
-| Remove a field | Its values are erased |
-| Rename a field label (same id) | Keeps its values |
-| Add, change or remove a cell name | Keeps its values |
-| Change only a select field's `options` (same id and type) | Keeps its values |
-| Change only a dice-choice field's `options` (same id and type) | Keeps its values |
-| Change a field's type (same id) | Counts as a removal: its values are erased |
-| Change `select` to `dice-choice`, or `dice-choice` to `select` | Counts as a removal: its values are erased |
-| Add a template | A single sheet's sidebar entry appears empty; a sheet set shows its «+ Добавить» |
-| Remove a template, or change its `id` or `kind` | Its sheets are deleted with their values, token links, owners and write access |
-| Remove `tokens`, or the repeat block or sheet a token links to | That token link is removed. It is not counted in the confirmation |
+| Add a field | The field is empty. |
+| Remove a field or move it across a repeat boundary | Its values are erased after confirmation. |
+| Change a field label, cell name or select options | Values are kept. |
+| Change a field type, including `select` and `dice-choice` | Its values are erased after confirmation. |
+| Add a single sheet | Its empty sidebar entry appears. |
+| Remove a template, change its id, or add/remove template `repeat` | Its sheets and their values, links, owners and access are removed after confirmation. |
+| Add, remove or change `repeat` on a tab, section or row | Blocks in that scope are removed after confirmation. The current release rejects tab and nested repeat forms before this change is applied. |
+| Change `repeat.id` | The old blocks are removed after confirmation. |
+| Change `repeat.nameField` | Block identity and values are kept; displayed names change. |
+| Remove a token cell or its block | Its token links are removed. Links are not counted in the confirmation. |
 
-## Limits
+## Limits and versions
 
 - A file over 1 MiB is refused before it is read.
-- The preset is stored deflated and base64-encoded in one record. A preset that cannot fit one message after that is refused as too large.
-- `window.width` is from 480 to 1440 px, and `window.height` is from 360 to 1080 px. Both bounds are inclusive.
-- A cell name is at most 60 Unicode characters. It must contain a non-space character.
+- A preset must fit one encoded room message.
+- `window.width` is 480–1440 px and `window.height` is 360–1080 px,
+  inclusive.
+- A file with a version higher than `4` is refused so a newer build can read
+  it. A file with no version, a non-integer version, or version 1–3 is
+  refused. Older files are not converted.
+- «Скачать пресет» writes the current version.
 
-## Versions
-
-- A file with a `v` higher than the current version is refused with "Файл из более новой версии. Перезагрузите страницу.". A newer build of the extension can read it.
-- A file with no `v`, a `v` that is not an integer, or a lower `v` is refused. Older presets are not converted: rewrite them in this format. For a version 2 preset, put the `sections` of each template into `"tabs": [{ "sections": [...] }]` and set `"v": 3`. Version 1 presets (with `character` and `npc`) need a full rewrite.
-- "Скачать пресет" always writes the current `v`.
-
-## Refused files
-
-A refused file changes nothing. The message under the button names the first problem found:
-
-| Problem | Reason in the message |
-| --- | --- |
-| The file is not JSON | это не JSON |
-| `window` is not an object with integer `width` and `height` in range, or has another key | в window нужны только width и height, целые числа: ширина от 480 до 1440 px, высота от 360 до 1080 px |
-| An unknown key, cell kind, field type, `kind` or `width`, a missing key, an empty `templates`, an empty `tabs`, `nameField` on a single sheet, `players` on a sheet set, or `tokens` on a section without `repeat` | неверная структура |
-| No `v`, or a `v` that is lower or not an integer | неподдерживаемая версия формата |
-| An template id breaks the id rules | недопустимый id листа «{id}» |
-| Two templates share an id | лист «{id}» повторяется |
-| A template has more than one tab, and a tab has no title or a blank one | в листе «{id}» больше одной вкладки, и у вкладки нет заголовка |
-| A sheet set's `nameField` names no `text` field outside its `repeat` sections | в наборе «{id}» нет текстового поля «{nameField}» вне повторяемых секций |
-| A field id breaks the id rules | недопустимый id поля «{id}» |
-| An id repeats in one scope | поле «{id}» повторяется |
-| A select field has no options | у поля «{id}» нет вариантов |
-| A select field has an empty or spaces-only option | пустой вариант в поле «{id}» |
-| A select field repeats an option | вариант «{option}» повторяется в поле «{id}» |
-| A dice-choice field has an option that is not `d1` to `d1000` | вариант «{option}» в поле «{id}» не кубик вида d6 |
-| A field or dice cell has an empty or spaces-only name | пустое название у поля «{id}» or пустое название у кубика «{formula}» |
-| A field or dice cell has a name over 60 Unicode characters | название поля «{id}» or название кубика «{formula}» длиннее 60 символов |
-| A `repeat` section without a row with a field | в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем |
-| Two `repeat` sections start with one id | две повторяемые секции с id «{id}» |
-| A row has more cells than `columns` | в строке больше ячеек, чем колонок |
-| A formula breaks the formula rules | ошибка в формуле «{formula}» |
-| A formula uses a dice-choice field as a number outside `Nd(id)` | в формуле «{formula}» поле «{id}» — выбор кубика, бросайте его как 1d({id}) |
-| A formula uses a non-dice field inside `Nd(id)` | в формуле «{formula}» поле «{id}» не выбор кубика |
-| The file or the stored preset is too large | файл слишком большой |
+A refused file changes nothing. The upload reports the first invalid structure,
+id, scope, cell, formula, repeat rule, size or version it finds. The Builder
+uses the same checks and messages, and saving or downloading stays disabled
+while a problem remains.
 
 ## Build a preset without JSON
 
-The builder page, `/builder.html`, makes a preset with no JSON to write. Open it with "Конструктор пресетов" in the Пресет section of Settings. It opens in a new tab. The page starts from an empty preset, an example or a file, and edits it as a tree with a form for each item: template, tab, section, row and cell. A new template starts with one untitled tab; "Добавить вкладку" adds another, and a section can be dragged to another tab.
+The Builder page, `/builder.html`, creates a preset with forms for templates,
+tabs, sections, rows and cells. It can open an empty preset, an example or a
+file. Its preview shows one selected tab and applies the same visibility and
+write rules as the room window.
 
-The Builder's bundled examples are `docs/example-preset.json` and the files in `tests/fixtures/presets/`. Files in `presets/` are standalone examples checked by `src/core/preset.test.ts`.
-
-The preview shows the tab of the selected item. A first cell click selects its tree item; a second click or Enter edits its snapshot value or rolls a dice cell. The "Мастер / Игрок" switch shows the same snapshot under each role's visibility and write policy.
-
-The Пресет and Снимок file blocks contain each document's actions. "Скачать копию" downloads the current document. Preset saving and download stay off while the preset has problems. In Chromium, saving attaches the selected file: later page edits write to it, and valid file changes redraw the page. A conflict offers "Взять из файла" or "Оставить мои". Other browsers keep open and download only. Reload does not reattach files.
+The bundled examples are `docs/example-preset.json` and the files in
+`tests/fixtures/presets/`. Files in `presets/` are standalone examples checked
+by the preset owner.
 
 ## Annotated example
 
-This walks through `docs/example-preset.json`.
+The complete example uses row objects, template repetition, explicit repeat
+identities and token cells:
 
 ```jsonc
 {
-  "v": 3, // the current format version
+  "v": 4,
   "templates": [
     {
-      "id": "pc", // values of every sheet of this sheet set are stored under "pc"
-      "kind": "set", // a sheet set: the GM adds sheets with its "+"
-      "title": "Персонажи", // the "+" reads "Добавить: Персонажи"
-      "nameField": "name", // the "name" field below names each tab
-      "tokens": true, // a token can link to one of these sheets
+      "id": "pc",
+      "title": "Персонажи",
+      "repeat": { "nameField": "name" },
       "tabs": [
-        { // one tab: the sheet draws no tab row, and its title may be left out
+        {
           "sections": [
             {
               "title": "Персонаж",
-              "columns": 4, // one grid of four columns
               "rows": [
-                [
-                  { "kind": "text", "text": "Имя" }, // a fixed label
-                  { "kind": "field", "type": "text", "id": "name" }, // the tab name
-                ],
-                [
-                  { "kind": "text", "text": "Класс" },
-                  { "kind": "field", "type": "text", "id": "class" },
-                  { "kind": "text", "text": "Уровень" },
-                  { "kind": "field", "type": "number", "id": "level" }, // a number value
-                ],
-                [
-                  { "kind": "text", "text": "Броня" },
-                  { "kind": "field", "type": "select", "id": "armor", "options": ["Нет", "Кожаная", "Кольчуга"] }, // a pick from a list
-                ],
-              ],
-            },
-            {
-              "title": "Характеристики",
-              "width": "1/2", // half the sheet width, beside the next section
-              "columns": 4,
-              "rows": [
-                [
-                  { "kind": "text", "text": "Сила" },
-                  { "kind": "field", "type": "number", "id": "str" },
-                  { "kind": "field", "type": "check", "id": "str_tired", "name": "Сила: усталость" }, // counts as 0 or 1 in a formula
-                  { "kind": "dice", "formula": "1d20 <= str - 2*str_tired" }, // a roll-under check
-                ],
-                // ... "Ловкость" in the same layout, with dex_tired named "Ловкость: усталость" ...
-                [
-                  { "kind": "text", "text": "Удача" },
-                  { "kind": "dice", "formula": "2D6+1" }, // two cells: the last two grid cells stay empty
-                ],
-              ],
-            },
-            {
-              "title": "Здоровье",
-              "width": "1/2",
-              // no "columns": the cells of each row flow inline
-              "rows": [
-                [
-                  { "kind": "text", "text": "Хиты" },
-                  { "kind": "field", "type": "number", "id": "hp" },
-                  { "kind": "text", "text": "из" },
-                  { "kind": "field", "type": "number", "id": "hp_max", "name": "Хиты, максимум" },
-                ],
-                [
-                  { "kind": "text", "text": "Отдых" },
-                  { "kind": "dice", "formula": "floor(hp_max/2) + ceil(level/3)" }, // ids from other sections
-                ],
-              ],
+                {
+                  "cells": [
+                    { "kind": "text", "text": "Имя" },
+                    { "kind": "field", "type": "text", "id": "name" },
+                    { "kind": "token", "id": "token" }
+                  ]
+                }
+              ]
             },
             {
               "title": "Атаки",
-              "width": "full",
-              "columns": 4,
-              "repeat": true, // each sheet has its own list of attack repeat blocks
+              "repeat": { "id": "attack", "nameField": "attack" },
               "rows": [
-                // the first field id, "attack", identifies the section
-                [
-                  { "kind": "field", "type": "text", "id": "attack" },
-                  { "kind": "field", "type": "number", "id": "bonus" },
-                  { "kind": "text", "text": "Бросок" },
-                  { "kind": "dice", "formula": "1d20 + bonus" }, // "bonus" resolves inside the repeat block first
-                ],
-                [
-                  { "kind": "text", "text": "Урон" },
-                  { "kind": "field", "type": "dice-choice", "id": "damage_die", "options": ["d4", "d6", "d8", "d10", "d12"] },
-                  { "kind": "dice", "formula": "1d(damage_die) + bonus" }, // the chosen die is written into the roll label
-                ],
-              ],
-            },
-            // ... "Снаряжение" (repeat, 1/3) and "Заметки" ...
-          ],
-        },
-      ],
-    },
-    {
-      "id": "npc",
-      "kind": "single", // a single sheet: one tab, named "NPC"; NPCs are its repeat blocks
-      "title": "NPC",
-      "visibility": "gm", // only the GM sees it and its rolls
-      "tabs": [
-        {
-          "sections": [
-            {
-              "title": "Противники",
-              "columns": 3,
-              "repeat": true,
-              "tokens": true, // each NPC repeat block links to its own token; the GM can duplicate one
-              "rows": [
-                // two rows, one repeat block: every NPC has a name, hits and strength
-                [
-                  { "kind": "field", "type": "text", "id": "npc_name" }, // the first field: the token label and the duplicate number
-                  { "kind": "text", "text": "Хиты" },
-                  { "kind": "field", "type": "number", "id": "hp" }, // "hp" is also a "pc" id: templates are separate scopes
-                ],
-                [
-                  { "kind": "text", "text": "Сила" },
-                  { "kind": "field", "type": "number", "id": "str" },
-                  { "kind": "dice", "formula": "1d20 <= str" },
-                ],
-              ],
-            },
-          ],
-        },
-      ],
+                {
+                  "cells": [
+                    { "kind": "field", "type": "text", "id": "attack" },
+                    { "kind": "field", "type": "number", "id": "bonus" },
+                    { "kind": "dice", "formula": "1d20 + bonus" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "inventory",
-      "kind": "single",
       "title": "Инвентарь",
-      "players": "edit", // every player may edit it
-      "tokens": true, // a chest token can open it
-      "tabs": [
-        {
-          "sections": [
-            // ... a repeat section of items, and "Деньги" with "gold" ...
-          ],
-        },
-      ],
-    },
-  ],
+      "players": "edit",
+      "tabs": [ { "sections": [ { "rows": [ { "cells": [] } ] } ] } ]
+    }
+  ]
 }
 ```
+
+The shortened fragment shows the shape only; use
+`docs/example-preset.json` for a complete valid file. The attack block is
+addressed by the scope and block ids. A token in that block links to the
+sheet, the attack path and the token-cell id.

@@ -12,16 +12,18 @@ If the snapshot does not fit, the GM sees a notice and play continues by broadca
 
 ## Records
 
-Format version 4 keeps one record per block, the sheet root included. A block is a sheet or one instance of a repeat scope (`preset-format.md`, Repeat).
+Format version 4 keeps one record per block, the sheet root included. A block is a sheet root or one instance of a repeat scope (`preset-format.md`, Repeat). A block path is a sequence of `(scope id, block id)` pairs; the current release writes the supported non-nested form.
 
 | Record | Key | Holds |
 | --- | --- | --- |
 | Block | `blk:<sheet>` for the sheet root, then one `:<scope id>:<block id>` pair per nesting level | `order`, the set for a sheet of a sheet set, and `cells`: every field value of the block, each with its own version `[value, counter, author]` |
-| Link | `link:<token>` | The sheet, the block path and the token cell the token opens |
-| Preset, access, player link | As in version 3 | — |
+| Link | `link:<token>` | `{ s, path?, c }`: the sheet, optional block path and token cell the token opens |
+| Preset, access, player link | Version 4 records | — |
 
 - A `null` block record is a deleted block, with its nested blocks.
-- The version 3 keys `row:` (one record per layout row, named by its first field) and `rep:` (one record per repeat block, named by the section's first field) are gone. Their identity was positional: moving a field changed the record's name.
+- The old `row:` and `rep:` keys are gone. Their identity was positional:
+  moving a field changed the record's name. V4 block keys use stable scope and
+  block ids instead.
 - Rejected: one record per block with one version for the whole block (smallest snapshot, 4040 B on the synthetic room, but two people editing different fields of one sheet in the same moment lose one edit). Fallback if per-cell merge proves awkward: one record per field (`val:<block path>:<field id>`, 9048 B and 846 records on the synthetic room).
 
 ## Sync rules
@@ -38,10 +40,13 @@ Format version 4 keeps one record per block, the sheet root included. A block is
 
 | File | Holds | On import |
 | --- | --- | --- |
-| Preset | Structure only | Gives the same structure |
-| Room snapshot | Values and token links | Replaces all room data after confirmation. Drops values of field ids not in the current preset, blocks whose scope path the preset lacks, and sheets of a template the preset lacks, and shows the counts. Restores a token link where the token exists. Resets player links and write rights to read |
+| Preset | Version 4 structure only | Gives the same structure |
+| Room snapshot | Version 4 values and token links | Replaces all room data after confirmation. Drops values of field ids not in the current preset, blocks whose scope path the preset lacks, and sheets of a template the preset lacks, and shows the counts. Restores a token link where the token exists. Resets player links and write rights to read |
 
-Preset files remain version 3; preset versions 1 and 2 are refused. Snapshot and room-data versions 1 to 3 are refused and are not read. A wipe («Очистить всё», CAP-31) removes the preset, every record, the room copy and the GM's local copy of the room after one confirmation.
+Preset and snapshot files use version 4. Versions 1 to 3 are refused and are
+not converted. A wipe («Очистить всё», CAP-31) removes the preset, every
+record, the room copy and the GM's local copy of the room after one
+confirmation.
 
 ## Platform limits
 
@@ -70,7 +75,10 @@ Deflate plus base64, on synthetic data with English notes.
 | 6 PC + 30 NPC | 8.5kB | 10.5kB |
 | 6 PC + 60 NPC | 13kB | 16.7kB |
 
-Russian text and the preset add more. These measurements predate the typed-field format, so measure again on the real format. Measured again on the sheet set and single sheet format (TASK-41, `src/core/snapshot-size.test.ts`): `tests/fixtures/presets/d20.json` with 6 sheets of a sheet set, a linkable NPC single sheet with 60 repeat blocks and links, and 3 other single sheets gives a room copy of 9270 bytes, a margin of 6230 bytes over the 1500-byte gate.
+Russian text and the preset add more. These measurements predate the typed-field
+format, so measure again on the real format. The real v4 owner uses
+`tests/fixtures/presets/d20.json` with 6 sheets of a sheet set, a token-linked
+NPC single sheet with 60 repeat blocks and links, and 3 other single sheets.
 
 Measured for the version 4 record unit (2026-11-16, synthetic room: 6 PCs with 40 fields and 10 inventory blocks of 3 fields each, 60 NPC blocks of 5 fields; limit 15500 bytes):
 
