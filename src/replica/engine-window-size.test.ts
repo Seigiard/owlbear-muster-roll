@@ -269,6 +269,19 @@ describe('the window size after a preset change', () => {
     expect(gm.platform.actionSizes()).toEqual([DEFAULT, WIDE]);
   });
 
+  test('a wipe returns a sized window to the default size', async () => {
+    // #given
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: [presetRecord(SIZED)] });
+
+    // #when
+    send(gm, { type: 'wipe' });
+    await pause(50);
+
+    // #then
+    expect(gm.platform.actionSizes()).toEqual([WIDE, DEFAULT]);
+  });
+
   test('a size that failed is logged and asked for again on the next replica change', async () => {
     // #given
     const logged = spyOn(console, 'error').mockImplementation(() => {});

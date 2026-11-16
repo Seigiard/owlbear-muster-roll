@@ -12,6 +12,7 @@ import { presetDataSchema, recordSchema, type VersionedRecord } from '@/core/rec
 import { err } from '@/core/result';
 import type { SnapshotFile } from '@/core/snapshot-file';
 import { encodeSnapshotFileData } from '@/core/snapshot-import';
+import type { Timing } from '@/core/timing';
 import { UI_CHANNEL, type Command } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole, SendResult } from '@/platform/ports';
@@ -111,9 +112,10 @@ function silenceErrors(): void {
 function createRig(
   role: PlayerRole = 'GM',
   platform?: (platform: MockPlatform) => MockPlatform,
+  timing?: Partial<Timing>,
 ): Rig {
   const room = roomRig.openRoom();
-  const client = roomRig.createClient(room, 'mock-connection', { role, platform });
+  const client = roomRig.createClient(room, 'mock-connection', { role, platform, timing });
 
   return {
     client,
@@ -317,6 +319,81 @@ describe('command id ownership', () => {
       stored: storedRecords(rig).map((record) => record.k),
     }).toEqual({ engineMessagesAfterStop: [], stored: ['preset'] });
   });
+
+  test('does not release a held commit after stop', async () => {
+    // #given
+    const rig = createRig('GM', undefined, { sendSpacingMs: 80 });
+
+    seedRecords(rig, PRESET_RECORD);
+    const engine = await startEngine(rig);
+    const view = await openAndLoad(rig);
+
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'late', set: 'pc' });
+    await waitUntil(() => recordsOf(view.store).some((record) => record.k === 'sheet:late'));
+
+    // #when
+    engine.stop();
+    await pause(250);
+
+    // #then
+    expect(rig.room.heard.filter((message) => Object(message.data).t === 'commit')).toEqual([]);
+  });
+
+  test('flushNow sends a held commit before its save pause ends', async () => {
+    // #given
+    const rig = createRig('GM', undefined, { fieldSavePauseMs: 1000, sendSpacingMs: 1000 });
+
+    seedRecords(rig, PRESET_RECORD);
+    const engine = await startEngine(rig);
+    const view = await openAndLoad(rig);
+
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'now', set: 'pc' });
+    await waitUntil(() => recordsOf(view.store).some((record) => record.k === 'sheet:now'));
+
+    // #when
+    engine.flushNow();
+    await pause(30);
+
+    // #then
+    expect(
+      rig.room.heard
+        .filter((message) => Object(message.data).t === 'commit')
+        .flatMap((message) => Object(message.data).records)
+        .map((record) => Object(record).k),
+    ).toEqual(['sheet:now']);
+  });
+});
+
+test('engine startup waits for the initial catch-up deadline when a room-copy read never settles', async () => {
+  // #given
+  const room = roomRig.openRoom();
+
+  const client = roomRig.createClient(room, 'gm-a', {
+    timing: { catchUpTimeoutMs: 80 },
+    platform: (platform) => ({
+      ...platform,
+      metadata: {
+        ...platform.metadata,
+        getMetadata: () => new Promise(() => undefined),
+      },
+    }),
+  });
+
+  let resolved = false;
+
+  const started = client.startEngine().then(() => {
+    resolved = true;
+  });
+
+  // #when
+  await pause(20);
+
+  const early = resolved;
+
+  await started;
+
+  // #then
+  expect({ early, final: resolved }).toEqual({ early: false, final: true });
 });
 
 describe('GM start', () => {
@@ -1773,6 +1850,39 @@ describe('write failure', () => {
       }).toEqual({ notices: ['local-save-failed'], calls: 0 });
     },
   );
+
+  test('starts with an empty read-only replica when the highest-generation read alone fails', async () => {
+    // #given
+    let keyReads = 0;
+
+    const rig = createRig('GM', (platform) => ({
+      ...platform,
+      storage: {
+        ...platform.storage,
+        keys: () => {
+          keyReads += 1;
+
+          return keyReads === 3
+            ? err({ operation: 'list', reason: 'highest generation unavailable' })
+            : platform.storage.keys();
+        },
+      },
+    }));
+
+    silenceErrors();
+    seedRecords(rig, PRESET_RECORD);
+
+    // #when
+    await startEngine(rig);
+
+    const view = await openAndLoad(rig);
+
+    // #then
+    expect({
+      records: recordsOf(view.store),
+      notices: view.store.$notices.get(),
+    }).toEqual({ records: [], notices: ['local-save-failed'] });
+  });
 });
 
 describe('preset upload', () => {

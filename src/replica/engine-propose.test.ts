@@ -221,22 +221,30 @@ describe('a GM client answers a proposal', () => {
     // #given
     const room = roomRig.openRoom();
     const link: VersionedRecord = { k: 'link:late', d: { s: 'brok', i: 'r2' }, c: 1, a: 'seed' };
-    const gm = await startClient(room, 'gm-a', { seeded: [...BASE, link] });
+
+    const gm = await startClient(room, 'gm-a', {
+      seeded: [...BASE, link],
+      timing: { snapshotPauseMs: 10 },
+    });
+
     joinPlayerSocket(room);
 
     // #when
     propose(room, { ...REMOVED, c: 1, a: PLAYER_SOCKET });
     await waitUntil(() => committedRecords(room, 'gm-a').some((record) => record.k === REMOVED.k));
+    await pause(50);
 
     // #then
     expect({
       sent: committedRecords(room, 'gm-a'),
       stored: storedRecord(gm, link.k),
       shown: shown(gm, link.k),
+      copied: roomCopyRecords(room)?.find((record) => record.k === link.k),
     }).toEqual({
       sent: [REMOVED, { k: link.k, d: null, c: 2, a: 'gm-a' }],
       stored: { k: link.k, d: null, c: 2, a: 'gm-a' },
       shown: { k: link.k, d: null, c: 2, a: 'gm-a' },
+      copied: { k: link.k, d: null, c: 2, a: 'gm-a' },
     });
   });
 
