@@ -420,7 +420,7 @@ test('save as downloads the linked snapshot document', async ({ page }) => {
         rows: { name: { name: 'Ария' }, str: { str: 12 } },
         repeats: {},
       },
-      { id: 'npc', rows: { hp: { hp: 7 } }, repeats: {} },
+      { id: 'npc', rows: {}, repeats: {} },
       { id: 'inventory', rows: { gold: { gold: 10 } }, repeats: {} },
       { id: 'journal', rows: {}, repeats: {} },
       { id: 'gm_notes', rows: { plot: { plot: 'Тайный мост' } }, repeats: {} },
