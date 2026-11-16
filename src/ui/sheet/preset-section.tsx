@@ -3,7 +3,7 @@ import { useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useSt
 import type { ReactNode, RefCallback } from 'react';
 
 import { patchRecordKey, type FieldPatchTarget } from '@/core/field-patch';
-import { linkTargetKey } from '@/core/link-target';
+import { linkTargetKey, type LinkTarget } from '@/core/link-target';
 import {
   firstFieldId,
   repeatSectionId,
@@ -23,9 +23,9 @@ import type { CommandOutcomePromise } from '@/ui/replica-client';
 
 import type { DiceRow } from './dice-button';
 import { DuplicateCount } from './duplicate-count';
-import { MapSelectionContext, TokenControl } from './map-toggle';
+import { MapSelectionContext } from './map-toggle';
 import { PendingMark, rowPending, type RowPending, type SheetPending } from './pending-mark';
-import { SheetCell } from './preset-cell';
+import { SheetCell, type TokenCellTools } from './preset-cell';
 import type { FieldPlace } from './use-field-edit';
 import { useRepeatBlocks, type RepeatBlockControls } from './use-repeat-blocks';
 
@@ -57,7 +57,7 @@ const INDEX_KEY_PREFIX = '#';
 
 // CAP-30, CAP-18: what a GM gets on each repeat block: "Дублировать…", and the token status when
 // the section is linkable. A player and the preview get none.
-export type BlockTools = {
+export type BlockTools = TokenCellTools & {
   sendCommand: (
     command: Extract<Command, { type: 'repeat-block-duplicate' }>,
   ) => CommandOutcomePromise<undefined>;
@@ -81,7 +81,7 @@ type SheetSectionProps = {
   blockTools: BlockTools | null;
 };
 
-type PlainContentProps = Omit<SheetSectionProps, 'blockTools' | 'templateTitle'>;
+type PlainContentProps = Omit<SheetSectionProps, 'templateTitle'>;
 
 // One row as its cells show it. Every row of a repeat block shares the block's record.
 type SheetRow = {
@@ -144,6 +144,7 @@ export function SheetSection({
         records={records}
         readOnly={readOnly}
         pending={pending}
+        blockTools={blockTools}
       />
     ) : readOnly ? (
       <ReadOnlyRepeatContent {...repeatProps} sectionId={sectionId} />
@@ -194,6 +195,7 @@ function PlainContent({
   records,
   readOnly,
   pending,
+  blockTools,
 }: PlainContentProps): ReactNode {
   const rows = useMemo(
     () => plainRows(section, tabIndex, sectionIndex, sheetId, records, pending),
@@ -202,7 +204,7 @@ function PlainContent({
 
   return (
     <Body>
-      <PlainRows section={section} rows={rows} readOnly={readOnly} />
+      <PlainRows section={section} rows={rows} readOnly={readOnly} tools={blockTools} />
     </Body>
   );
 }
@@ -300,10 +302,12 @@ function PlainRows({
   section,
   rows,
   readOnly,
+  tools,
 }: {
   section: PresetSection;
   rows: readonly SheetRow[];
   readOnly: boolean;
+  tools: BlockTools | null;
 }): ReactNode {
   if (section.columns === undefined) {
     return rows.map((row, index) => (
@@ -313,7 +317,7 @@ function PlainRows({
         data-row
         data-row-index={index}
       >
-        <Cells row={row} readOnly={readOnly} rowMarkId={null} />
+        <Cells row={row} readOnly={readOnly} rowMarkId={null} tools={tools} />
       </div>
     ));
   }
@@ -332,7 +336,7 @@ function PlainRows({
           data-row
           data-row-index={index}
         >
-          <Cells row={row} readOnly={readOnly} rowMarkId={null} />
+          <Cells row={row} readOnly={readOnly} rowMarkId={null} tools={tools} />
         </div>
       ))}
     </div>
@@ -422,8 +426,6 @@ function Blocks({
       <BlockSlot
         block={block}
         index={index}
-        section={section}
-        sheetId={sheetId}
         controls={controls}
         tools={tools}
         column={columns === undefined ? undefined : columns + 1}
@@ -452,7 +454,13 @@ function Blocks({
         data-row
         data-row-index={rowIndex}
       >
-        <Cells row={row} readOnly={readOnly} rowMarkId={rowMarkId} />
+        <Cells
+          row={row}
+          readOnly={readOnly}
+          rowMarkId={rowMarkId}
+          sectionId={sectionId}
+          tools={tools}
+        />
         {rowIndex === 0 ? slot : null}
       </div>
     ));
@@ -478,7 +486,21 @@ function Blocks({
       ) : null;
 
     const name = block.name === '' ? copy.unnamed : block.name;
-    const onMap = mapMarked.has(linkTargetKey({ sheetId, instanceId: block.instanceId }));
+
+    const onMap = section.rows.some((row) =>
+      row.cells.some(
+        (cell) =>
+          cell.kind === 'token' &&
+          mapMarked.has(
+            linkTargetKey({
+              sheetId,
+              instanceId: block.instanceId,
+              path: [sectionId, block.instanceId],
+              cellId: cell.id,
+            }),
+          ),
+      ),
+    );
 
     return (
       <div
@@ -517,8 +539,6 @@ function Blocks({
 type BlockSlotProps = {
   block: SheetBlock;
   index: number;
-  section: PresetSection;
-  sheetId: string;
   controls: RepeatBlockControls | undefined;
   tools: BlockTools | null;
   column: number | undefined;
@@ -535,8 +555,6 @@ type BlockSlotProps = {
 function BlockSlot({
   block,
   index,
-  section,
-  sheetId,
   controls,
   tools,
   column,
@@ -546,11 +564,6 @@ function BlockSlot({
 }: BlockSlotProps): ReactNode {
   const { instanceId } = block;
 
-  const linked =
-    tools !== null && section.tokens === true
-      ? tools.linkedTargets.has(linkTargetKey({ sheetId, instanceId }))
-      : null;
-
   return (
     <div
       className="flex flex-wrap items-center gap-x-1"
@@ -559,21 +572,6 @@ function BlockSlot({
       data-row-control
     >
       {block.pending.rowMarked ? <PendingMark id={markId} /> : null}
-      {linked === null ? null : (
-        <>
-          {/* The live region says a link change. The icon swaps between the status and the toggle as
-          the open scene changes, which is no news to announce, so it sits out of the region. */}
-          <span className="sr-only">{linked ? copy.status.tokenLinked : copy.status.noToken}</span>
-          <span aria-live="off" className="contents">
-            <TokenControl
-              target={{ sheetId, instanceId }}
-              linked={linked}
-              toggleName={copy.label.selectBlockOnMap(index + 1)}
-              statusHidden
-            />
-          </span>
-        </>
-      )}
       {tools === null || block.pending.removed ? null : (
         <IconButton
           ref={duplicateButton}
@@ -603,10 +601,14 @@ function Cells({
   row,
   readOnly,
   rowMarkId: markId,
+  sectionId = null,
+  tools = null,
 }: {
   row: SheetRow;
   readOnly: boolean;
   rowMarkId: string | null;
+  sectionId?: string | null;
+  tools?: BlockTools | null;
 }): ReactNode {
   return row.cells.map((cell, index) => (
     <SheetCell
@@ -623,8 +625,29 @@ function Cells({
         marked: cell.kind === 'field' && row.pending.markedFields.has(cell.id),
         rowMarkId: markId,
       }}
+      tokenTarget={tokenTargetOf(row.dice, cell, sectionId)}
+      tokenTools={tools}
     />
   ));
+}
+
+function tokenTargetOf(
+  row: DiceRow,
+  cell: PresetCell,
+  sectionId: string | null,
+): LinkTarget | null {
+  if (cell.kind !== 'token') {
+    return null;
+  }
+
+  return row.instanceId === null
+    ? { sheetId: row.sheetId, instanceId: null, cellId: cell.id }
+    : {
+        sheetId: row.sheetId,
+        instanceId: row.instanceId,
+        path: [sectionId ?? '', row.instanceId],
+        cellId: cell.id,
+      };
 }
 
 function plainRows(
@@ -635,8 +658,9 @@ function plainRows(
   records: ReadonlyMap<string, VersionedRecord>,
   pending: SheetPending | null,
 ): SheetRow[] {
-  return section.rows.map((cells, index) => {
-    const rowId = firstFieldId(cells);
+  return section.rows.map((row, index) => {
+    const cells = row.cells;
+    const rowId = firstFieldId(row);
     const target: FieldPatchTarget | null = rowId === null ? null : { kind: 'row', rowId };
 
     return {
@@ -685,9 +709,9 @@ function repeatBlocksOf(
       instanceId: block.instanceId,
       name: repeatBlockName(records, sheetId, section, block.instanceId),
       pending: blockPending,
-      rows: section.rows.map((cells, rowIndex) => ({
-        key: firstFieldId(cells) ?? `${INDEX_KEY_PREFIX}${rowIndex}`,
-        cells,
+      rows: section.rows.map((row, rowIndex) => ({
+        key: firstFieldId(row) ?? `${INDEX_KEY_PREFIX}${rowIndex}`,
+        cells: row.cells,
         values: block.values,
         place,
         pending: blockPending,
