@@ -222,6 +222,10 @@ _Avoid_: local preview
 The one unfinished preset and snapshot the Builder keeps by itself and opens again on the next visit, with no prompt.
 _Avoid_: autosave, work in progress
 
+**File block**:
+The Builder button that shows one preset or snapshot file, its name and status, and opens that file's actions.
+_Avoid_: file card, file control
+
 **Problem**:
 One reason the builder's preset would be refused as a file, tied to the tree item it comes from. Its text is the bad file message for that reason. Download stays off while one is left. In the interface: «Проблема».
 _Avoid_: issue, warning, validation error

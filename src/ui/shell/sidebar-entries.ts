@@ -187,6 +187,8 @@ export function builderSidebarEntries(
   role: PlayerRole = 'GM',
 ): SidebarEntries {
   const sections: SidebarSection[] = [];
+  // An empty snapshot gets one stable sample tab instead of one duplicate per empty sheet set.
+  let emptySampleShown = false;
 
   for (const [templateIndex, template] of preset.templates.entries()) {
     if (!templateShownTo(role, template)) {
@@ -203,6 +205,14 @@ export function builderSidebarEntries(
 
       if (role === 'PLAYER' && sheets.length === 0) {
         continue;
+      }
+
+      if (sheets.length === 0 && records.size === 0 && emptySampleShown) {
+        continue;
+      }
+
+      if (sheets.length === 0 && records.size === 0) {
+        emptySampleShown = true;
       }
 
       sections.push({

@@ -627,8 +627,12 @@ async function openPreset(
 
   const choosing = page.waitForEvent('filechooser');
 
-  await page.getByRole('button', { name: 'Открыть…' }).click();
-  await page.getByRole('menuitem', { name: 'Файл…' }).click();
+  await page
+    .locator('header')
+    .getByRole('button')
+    .filter({ hasText: /^Пресет/ })
+    .click();
+  await page.getByRole('menu').getByRole('menuitem', { name: 'Открыть файл…' }).click();
 
   const chooser = await choosing;
 
@@ -642,13 +646,24 @@ async function openPreset(
 }
 
 async function openSnapshot(page: Page, text: string): Promise<void> {
-  const button = page.getByRole('button', { name: 'Загрузить снимок' });
+  const block = page
+    .locator('header')
+    .getByRole('button')
+    .filter({ hasText: /^Снимок/ });
 
-  await expect(button).toBeVisible();
+  await expect(block).toBeVisible();
 
   const choosing = page.waitForEvent('filechooser');
 
-  await button.click();
+  await block.click();
+  const menu = page.getByRole('menu');
+  const openAnother = menu.getByRole('menuitem', { name: 'Открыть другой файл…' });
+
+  await (
+    (await openAnother.count()) === 1
+      ? openAnother
+      : menu.getByRole('menuitem', { name: 'Открыть файл…' })
+  ).click();
 
   const chooser = await choosing;
 
@@ -660,13 +675,17 @@ async function openSnapshot(page: Page, text: string): Promise<void> {
 }
 
 async function downloadSnapshot(page: Page): Promise<{ name: string; file: SnapshotFile }> {
-  const button = page.getByRole('button', { name: 'Скачать снимок' });
+  const block = page
+    .locator('header')
+    .getByRole('button')
+    .filter({ hasText: /^Снимок/ });
 
-  await expect(button).toBeVisible();
+  await expect(block).toBeVisible();
 
   const downloading = page.waitForEvent('download');
 
-  await button.click();
+  await block.click();
+  await page.getByRole('menu').getByRole('menuitem', { name: 'Скачать копию' }).click();
 
   const download = await downloading;
 
