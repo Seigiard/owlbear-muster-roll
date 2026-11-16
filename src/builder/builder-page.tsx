@@ -288,7 +288,7 @@ export function BuilderPage({
       requestOpen({
         preset: parsed.value,
         origin: parsed.value,
-        name: store.$state.get().step.name,
+        name: nameFromFile(opened.value.name),
         label: opened.value.name,
         fileName: opened.value.name,
         fileReference: opened.value,
