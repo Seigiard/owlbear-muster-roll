@@ -7,6 +7,7 @@ import { parsePresetFile } from '@/core/preset';
 import type { Template } from '@/core/preset';
 import { copy } from '@/copy';
 
+import { installBrowserFileAccessFake, queueBrowserFile } from './support/file-access';
 import { openBackground } from './support/room';
 
 // TASK-38: the preset builder page (CAP-20 to CAP-28). It runs with no Owlbear and no background
@@ -55,6 +56,7 @@ const PLAYER_PREVIEW_SNAPSHOT = JSON.stringify({
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 1000 });
+  await installBrowserFileAccessFake(page);
 });
 
 function tree(page: Page): Locator {
@@ -149,22 +151,32 @@ async function openFromMenu(page: Page, label: string): Promise<void> {
 }
 
 async function openFile(page: Page, name: string, text: string): Promise<void> {
+  await queueBrowserFile(page, name, text);
+
   const menu = await openFileMenu(page, 'Пресет');
   const openAnother = menu.getByRole('menuitem', { name: 'Открыть другой файл…' });
-  const choosing = page.waitForEvent('filechooser');
 
   await (
     (await openAnother.count()) === 1
       ? openAnother
       : menu.getByRole('menuitem', { name: 'Открыть файл…' })
   ).click();
-
-  const chooser = await choosing;
-
-  await chooser.setFiles({ name, mimeType: 'application/json', buffer: Buffer.from(text) });
 }
 
-function playerPreviewPreset(): string {
+async function openSnapshotFile(page: Page, name: string, text: string): Promise<void> {
+  await queueBrowserFile(page, name, text);
+
+  const menu = await openFileMenu(page, 'Снимок');
+  const openAnother = menu.getByRole('menuitem', { name: 'Открыть другой файл…' });
+
+  await (
+    (await openAnother.count()) === 1
+      ? openAnother
+      : menu.getByRole('menuitem', { name: 'Открыть файл…' })
+  ).click();
+}
+
+function playerPreviewPreset(includePrivateTab = false): string {
   const parsed = parsePresetFile(D20_TEXT);
 
   if (!parsed.ok) {
@@ -241,7 +253,7 @@ function playerPreviewPreset(): string {
       },
       ...parsed.value.templates.slice(1),
       hiddenSet,
-      privateTab,
+      ...(includePrivateTab ? [privateTab] : []),
     ],
   });
 }
@@ -249,15 +261,11 @@ function playerPreviewPreset(): string {
 async function openPlayerPreview(
   page: Page,
   snapshotText = PLAYER_PREVIEW_SNAPSHOT,
+  includePrivateTab = false,
 ): Promise<void> {
   await page.goto(PAGE);
-  await openFile(page, 'player-preview.json', playerPreviewPreset());
-
-  await page.locator('[data-builder-snapshot-file-input]').setInputFiles({
-    name: 'player-preview-snapshot.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(snapshotText),
-  });
+  await openFile(page, 'player-preview.json', playerPreviewPreset(includePrivateTab));
+  await openSnapshotFile(page, 'player-preview-snapshot.json', snapshotText);
 }
 
 function roleSwitch(page: Page): Locator {
@@ -1162,7 +1170,7 @@ test('the player projection renders no hidden fallback tab when every tab is GM-
   page,
 }) => {
   // #given
-  await openPlayerPreview(page);
+  await openPlayerPreview(page, PLAYER_PREVIEW_SNAPSHOT, true);
 
   const shown = preview(page);
 

@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test';
+
 export type TestFileAccessCapability = 'open-only' | 'write-and-follow';
 
 export type TestFileReference = {
@@ -41,6 +43,109 @@ type PendingWrite = {
   text: string;
   resolve: (result: TestFileAccessResult<TestFileContents>) => void;
 };
+
+type BrowserFileAccessControl = {
+  queueFile: (name: string, text: string) => void;
+};
+
+type TestPickerWindow = Window & {
+  musterRollFileAccessControl?: BrowserFileAccessControl;
+};
+
+export async function installBrowserFileAccessFake(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type BrowserFakeFile = {
+      name: string;
+      text: string;
+      lastModified: number;
+    };
+
+    type FakeHandle = {
+      name: string;
+      getFile: () => Promise<{
+        lastModified: number;
+        text: () => Promise<string>;
+      }>;
+      createWritable: () => Promise<{
+        write: (text: string) => Promise<void>;
+        close: () => Promise<void>;
+      }>;
+    };
+
+    type PickerWindow = Window & {
+      musterRollFileAccessControl?: BrowserFileAccessControl;
+      showOpenFilePicker?: () => Promise<FakeHandle[]>;
+      showSaveFilePicker?: (options?: { suggestedName?: string }) => Promise<FakeHandle>;
+    };
+
+    // SAFETY: the test installs only the optional picker and control properties declared above.
+    const browser = window as PickerWindow;
+    const openQueue: FakeHandle[] = [];
+    let nextModifiedAt = Date.parse('2026-11-16T18:06:00.000Z');
+
+    function createHandle(file: BrowserFakeFile): FakeHandle {
+      return {
+        name: file.name,
+        getFile: async () => ({
+          lastModified: file.lastModified,
+          text: async () => file.text,
+        }),
+        createWritable: async () => {
+          let pendingText = file.text;
+
+          return {
+            write: async (text) => {
+              pendingText = text;
+            },
+            close: async () => {
+              file.text = pendingText;
+              nextModifiedAt += 1000;
+              file.lastModified = nextModifiedAt;
+            },
+          };
+        },
+      };
+    }
+
+    browser.musterRollFileAccessControl = {
+      queueFile: (name, text) => {
+        openQueue.push(createHandle({ name, text, lastModified: nextModifiedAt }));
+      },
+    };
+    browser.showOpenFilePicker = async () => {
+      const handle = openQueue.shift();
+
+      if (handle === undefined) {
+        throw new DOMException('The user aborted a request.', 'AbortError');
+      }
+
+      return [handle];
+    };
+
+    browser.showSaveFilePicker = async (options) =>
+      createHandle({
+        name: options?.suggestedName ?? 'untitled.json',
+        text: '',
+        lastModified: nextModifiedAt,
+      });
+  });
+}
+
+export async function queueBrowserFile(page: Page, name: string, text: string): Promise<void> {
+  await page.evaluate(
+    ({ fileName, fileText }) => {
+      // SAFETY: installBrowserFileAccessFake installs only the optional control property declared.
+      const control = (window as TestPickerWindow).musterRollFileAccessControl;
+
+      if (control === undefined) {
+        throw new Error('The browser file-access fake is not installed');
+      }
+
+      control.queueFile(fileName, fileText);
+    },
+    { fileName: name, fileText: text },
+  );
+}
 
 export class TestFileAccessFake implements TestFileAccessPort {
   readonly followRequests: TestFileReference[] = [];

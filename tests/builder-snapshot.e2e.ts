@@ -8,6 +8,7 @@ import { recordSchema } from '@/core/records';
 import { encodeSnapshotFile, snapshotFileSchema, type SnapshotFile } from '@/core/snapshot-file';
 
 import { renderedColor, tokenColor } from './support/colors';
+import { installBrowserFileAccessFake, queueBrowserFile } from './support/file-access';
 
 const PAGE = '/builder.html';
 const DRAFT_STORAGE_KEY = 'muster-roll-builder-draft';
@@ -182,6 +183,7 @@ const EDITING_SNAPSHOT = {
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 1000 });
+  await installBrowserFileAccessFake(page);
 });
 
 test('opens and downloads the snapshot with both set sheets, the single sheet, values and links', async ({
@@ -837,8 +839,7 @@ async function openPreset(
   preset: ReturnType<typeof createPreset> = PRESET,
 ): Promise<void> {
   await page.goto(PAGE);
-
-  const choosing = page.waitForEvent('filechooser');
+  await queueBrowserFile(page, 'crew-preset.json', JSON.stringify(preset));
 
   await page
     .locator('header')
@@ -847,26 +848,18 @@ async function openPreset(
     .click();
   await page.getByRole('menu').getByRole('menuitem', { name: 'Открыть файл…' }).click();
 
-  const chooser = await choosing;
-
-  await chooser.setFiles({
-    name: 'crew-preset.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify(preset)),
-  });
-
   await expect(page.getByRole('row', { name: 'Экипаж · Набор', exact: true })).toBeVisible();
 }
 
 async function openSnapshot(page: Page, text: string): Promise<void> {
+  await queueBrowserFile(page, 'crew-snapshot.json', text);
+
   const block = page
     .locator('header')
     .getByRole('button')
     .filter({ hasText: /^Снимок/ });
 
   await expect(block).toBeVisible();
-
-  const choosing = page.waitForEvent('filechooser');
 
   await block.click();
   const menu = page.getByRole('menu');
@@ -877,14 +870,6 @@ async function openSnapshot(page: Page, text: string): Promise<void> {
       ? openAnother
       : menu.getByRole('menuitem', { name: 'Открыть файл…' })
   ).click();
-
-  const chooser = await choosing;
-
-  await chooser.setFiles({
-    name: 'crew-snapshot.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(text),
-  });
 }
 
 async function openEditingPreview(page: Page): Promise<void> {
