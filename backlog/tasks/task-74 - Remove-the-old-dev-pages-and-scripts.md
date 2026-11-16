@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@opencode'
 created_date: '2026-11-15T17:45:00Z'
-updated_date: '2026-11-16T04:15:00Z'
+updated_date: '2026-11-16T09:16:00Z'
 labels:
   - one-editor
 dependencies:
@@ -44,6 +44,8 @@ Once the builder shows both views and follows files, room.html and preview.html 
 
 <!-- SECTION:NOTES:BEGIN -->
 Removed obsolete room/preview pages, their exclusive modules, launchers, plugin and test owners. Mock index.html remains for e2e; builder and dev:owlbear remain. Retired rendering/GM-player/file-follow behaviors are owned by builder.e2e.ts, builder-snapshot.e2e.ts, attached-files.test.ts and the native OPFS control; obsolete launch/list/address/seeding contracts are removed with their entrypoints. Final full checks passed: 3182 unit tests (one existing environment skip), 531 Chromium tests, format, lint, typecheck and build. Original completed shell records and logs were recovered without rerunning checks.
+
+Final integration closeout: 3205 Bun tests pass with one existing environment skip, 541 Chromium tests pass, and format/lint/typecheck/build/diff checks pass. Two repair rounds and a final healthy two-source review leave no critical or major findings. Minor omissions are recorded in deferred-work.md. TASK-68 remains Done on the owner-confirmed live check. Five merged ticket worktrees were removed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

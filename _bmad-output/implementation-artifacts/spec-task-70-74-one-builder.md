@@ -2,10 +2,10 @@
 title: 'TASK-70–74: Edit values and attached files in one builder'
 type: 'feature'
 created: '2026-11-15'
-status: 'in-progress'
+status: 'completed'
 baseline_commit: '695b4cc1e5275e372f9a62c683b9fa873ba311b3'
 route: 'dispatch'
-review_loop_iteration: 0
+review_loop_iteration: 2
 context:
   - '_bmad-output/specs/spec-muster-roll/builder-and-dev.md'
   - 'docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md'
@@ -84,6 +84,11 @@ context:
 
 ## Review Triage Log
 
+- The integration review found file-write ordering, own-echo history, conflict persistence, failed-write retry, field editing, and player-projection defects. Two repair rounds added public-boundary regression owners and fixed those mechanisms.
+- The confirming review found no critical or major defects. It left three minor cases deferred: attachment replacement during a preflight read, a new attachment's queued edit after an old write completes, and Enter editing an empty set's sample.
+- The owner rejected a proposed no-write-on-open rule. Existing snapshot reconciliation and writing on attachment remain unchanged.
+- Native permission dialogs and saves from an external OS editor remain unverified. Earlier real-Chromium OPFS evidence applies to the TASK-73 recovery commit, not the final integration candidate.
+
 ## Design Notes
 
 Separate ticket worktrees and TDD locks. Shared preview/store/page paths favor 70 → 71 → 72 → 73 → 74. TASK-68 is Done on owner-confirmed live evidence.
@@ -98,3 +103,14 @@ Browser handles expose names, not absolute OS paths. Show only exposed location 
 - Run `CLAUDE.md` full source checks per ticket and on integration; reuse unchanged evidence.
 - Read changed Backlog tasks, run `backlog doctor`, check the diff. Markdown formatting is skipped.
 - One closing `code-review`; PR with requested auto-merge.
+
+### Final integration audit
+
+- Verified application/test commit: `e233c3a04fa0ab9335c4989b0828b4d8dac9a3cb`. The final metadata update does not change that graph.
+- `bun test`: 3205 pass, one existing environment-precondition skip, no failures.
+- `bun run test:browser`: 541 Chromium tests pass; both Builder files pass all 55 owners.
+- Formatting, lint, typecheck, build and diff checks pass. Lint reports 207 non-gating warnings and no errors.
+- `src/builder/attached-files.test.ts` owns serialized writes, actual conflict-choice disk results, own-echo identity/history, refusal preservation, failed forced-write stop, new-edit/Save-As recovery and Clear/Undo.
+- `tests/builder.e2e.ts` and `tests/builder-snapshot.e2e.ts` own field editing, repeat-block Enter identity, Escape, pagehide, player projection and file controls. Fifteen saved production mutations were checked again after the final test-lock extension; the failed forced-write owners also failed on the known-bad revision before the fix.
+- Review coverage: six healthy initial sources, then two healthy sources in each confirming round. No final critical or major findings remain. Deliberate omissions are in `deferred-work.md`.
+- TASK-68 is Done on the owner's live confirmation: "68 проверено, закройте в этом ПРе". TASK-70–74 are Done. Five ticket worktrees were removed after their commits were merged.

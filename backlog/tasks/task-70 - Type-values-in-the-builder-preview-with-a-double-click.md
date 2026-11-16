@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@opencode'
 created_date: '2026-11-15T17:45:00Z'
-updated_date: '2026-11-15T22:43:00Z'
+updated_date: '2026-11-16T09:16:00Z'
 labels:
   - one-editor
 dependencies:
@@ -43,6 +43,8 @@ With a snapshot in the window, a GM needs to fill values where the sheet is, and
 
 <!-- SECTION:NOTES:BEGIN -->
 The TDD chain locked browser interactions before implementation. Final validation passed: 3192 unit tests (one existing environment skip), 537 browser tests, formatting, lint, typecheck and build. A real-preview deterministic RNG control confirmed the second-click dice route. The preview does not render a numeric dice face.
+
+Integration closeout: selected repeat-block Enter, Escape, pagehide and field-kind regressions are covered by the Builder browser owners. Final application/test commit e233c3a04fa0ab9335c4989b0828b4d8dac9a3cb passed 3205 Bun tests (one environment skip), 541 Chromium tests and all static/build checks. The final review left only minor findings. Enter on an empty set sample remains deferred; it affects an unused draft record, not a real sheet.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

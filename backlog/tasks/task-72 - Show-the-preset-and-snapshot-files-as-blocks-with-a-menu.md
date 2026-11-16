@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@opencode'
 created_date: '2026-11-15T17:45:00Z'
-updated_date: '2026-11-16T01:32:00Z'
+updated_date: '2026-11-16T09:16:00Z'
 labels:
   - one-editor
 dependencies:
@@ -44,6 +44,8 @@ With two documents in the builder, the GM needs to see which file each comes fro
 
 <!-- SECTION:NOTES:BEGIN -->
 The file blocks replace top-bar file actions and support download-backed save-as, detach, clear confirmation and undo. Validation recovery preserved a sample for each empty sheet set and exports the current reconciled snapshot through the established encoder. Final checks passed: 547 browser tests, 3192 unit tests with one existing environment skip, format, lint, typecheck and build.
+
+Integration closeout: TASK-73 supersedes the intermediate download-backed Save As behavior with native Save File/Save As attachment in Chromium; Download Copy stays separate. Native-open copy filenames use the selected file name. Final integrated file-menu/browser owners and all checks pass. Unsupported browsers keep open/download only.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

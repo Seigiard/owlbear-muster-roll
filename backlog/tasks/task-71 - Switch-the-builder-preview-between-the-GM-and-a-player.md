@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@opencode'
 created_date: '2026-11-15T17:45:00Z'
-updated_date: '2026-11-15T23:55:00Z'
+updated_date: '2026-11-16T09:16:00Z'
 labels:
   - one-editor
 dependencies:
@@ -43,6 +43,8 @@ A GM cannot check what players see before uploading a preset; today that needs r
 
 <!-- SECTION:NOTES:BEGIN -->
 The final player projection passed 540 browser tests, 3192 unit tests with one existing environment skip, formatting, lint, typecheck and build. Calibration detected both an empty record projection and a leaked GM-only tab. Existing number-field textbox behavior is preserved.
+
+Integration closeout: own-echo identity/history and player projection regressions are fixed. Visible player content and hidden GM-only tabs have independent browser owners and mutation evidence. Final integration checks passed: 3205 Bun tests (one environment skip), 541 Chromium tests and all static/build checks.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
