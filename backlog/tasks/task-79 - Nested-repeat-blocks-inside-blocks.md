@@ -4,6 +4,7 @@ title: 'Nested repeat: blocks inside blocks'
 status: To Do
 assignee: []
 created_date: '2026-11-16T06:49:00Z'
+updated_date: '2026-11-16T22:52:00Z'
 labels:
   - format-v4
 dependencies:
@@ -30,3 +31,9 @@ A repeat tab per NPC is useless unless the NPC can hold its own lists, such as a
 - [ ] #4 Snapshot import drops blocks whose scope path the preset lacks and counts them with the dropped values; the upload confirmation counts the values of nested blocks
 - [ ] #5 Checked in a live Owlbear room by the owner: an NPC sheet with a repeat tab, an attacks section per NPC and a token cell per NPC, and a GM and a player editing different fields of one sheet at once with no edit lost
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+TASK-77 review found renameFieldId updates template.repeat.nameField but not the repeated section/row nameField, and Builder withContent loses those repeat updates. Renaming the example attack field to weapon leaves nameField=attack and makes the preset invalid. Include nearest-scope nameField propagation with the existing AC2 ancestor-chain rename work, and carry it through TASK-80 Builder conversion. Source: src/core/formula-rename.ts:81-97 and src/builder/document.ts:789-812; review adversarial-claude-6.
+<!-- SECTION:NOTES:END -->

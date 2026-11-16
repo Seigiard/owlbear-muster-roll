@@ -4,6 +4,7 @@ title: Builder covers preset format v4
 status: To Do
 assignee: []
 created_date: '2026-11-16T06:49:00Z'
+updated_date: '2026-11-16T22:52:00Z'
 labels:
   - format-v4
 dependencies:
@@ -31,3 +32,9 @@ After format v4 the builder still edits v3 shapes: no row form, `kind` instead o
 - [ ] #5 The preview draws the "+" tab and the token cell icon in the GM view only, and hides hidden sections and rows in the player view (CAP-37)
 - [ ] #6 Every example preset opens, round-trips and downloads unchanged; `parsePresetFile` gates the download
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+TASK-77 single-review carryover within this task: addCell currently allocates token ids from field-only taken ids, and withRepeat hard-codes repeat.id=repeat, so a second token cell/repeat section collides. sectionFromPreset also annotates an already typed row with any. Address valid unique defaults and the typed conversion while implementing the v4 forms; no separate follow-up issue is needed. Sources: src/builder/document.ts:134,417-421,539-667; review arch+quality-claude-5/8.
+<!-- SECTION:NOTES:END -->
