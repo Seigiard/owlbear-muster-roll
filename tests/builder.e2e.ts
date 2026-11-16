@@ -218,14 +218,17 @@ function playerPreviewPreset(): string {
   });
 }
 
-async function openPlayerPreview(page: Page): Promise<void> {
+async function openPlayerPreview(
+  page: Page,
+  snapshotText = PLAYER_PREVIEW_SNAPSHOT,
+): Promise<void> {
   await page.goto(PAGE);
   await openFile(page, 'player-preview.json', playerPreviewPreset());
 
   await page.locator('[data-builder-snapshot-file-input]').setInputFiles({
     name: 'player-preview-snapshot.json',
     mimeType: 'application/json',
-    buffer: Buffer.from(PLAYER_PREVIEW_SNAPSHOT),
+    buffer: Buffer.from(snapshotText),
   });
 }
 
@@ -363,7 +366,34 @@ test('save as downloads the linked preset document', async ({ page }) => {
 
 test('save as downloads the linked snapshot document', async ({ page }) => {
   // #given
-  await openPlayerPreview(page);
+  await openPlayerPreview(
+    page,
+    JSON.stringify({
+      v: 3,
+      type: 'muster-roll/snapshot',
+      sheets: [
+        {
+          id: 'lich',
+          set: 'villains',
+          order: 0,
+          rows: { villain: { villain: 'Лич' } },
+          repeats: {},
+        },
+        { id: 'gm_notes', rows: { plot: { plot: 'Тайный мост' } }, repeats: {} },
+        { id: 'journal', rows: {}, repeats: {} },
+        { id: 'inventory', rows: { gold: { gold: 10 } }, repeats: {} },
+        { id: 'npc', rows: { hp: { hp: 7 } }, repeats: {} },
+        {
+          id: 'aria',
+          set: 'pc',
+          order: 0,
+          rows: { name: { name: 'Ария' }, str: { str: 12 } },
+          repeats: {},
+        },
+      ],
+      links: [],
+    }),
+  );
 
   // #when
   const downloading = page.waitForEvent('download');
@@ -379,7 +409,31 @@ test('save as downloads the linked snapshot document', async ({ page }) => {
   }
 
   // #then
-  expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(JSON.parse(PLAYER_PREVIEW_SNAPSHOT));
+  expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+    v: 3,
+    type: 'muster-roll/snapshot',
+    sheets: [
+      {
+        id: 'aria',
+        set: 'pc',
+        order: 0,
+        rows: { name: { name: 'Ария' }, str: { str: 12 } },
+        repeats: {},
+      },
+      { id: 'npc', rows: { hp: { hp: 7 } }, repeats: {} },
+      { id: 'inventory', rows: { gold: { gold: 10 } }, repeats: {} },
+      { id: 'journal', rows: {}, repeats: {} },
+      { id: 'gm_notes', rows: { plot: { plot: 'Тайный мост' } }, repeats: {} },
+      {
+        id: 'lich',
+        set: 'villains',
+        order: 0,
+        rows: { villain: { villain: 'Лич' } },
+        repeats: {},
+      },
+    ],
+    links: [],
+  });
 });
 
 test('detaching a preset keeps its content as a draft', async ({ page }) => {
@@ -465,7 +519,9 @@ test('clears a linked snapshot after one named confirmation, and undo restores i
 
   // #then
   await expect(preview(page).getByRole('tab', { name: 'Ария', exact: true })).toHaveCount(0);
-  await expect(preview(page).getByRole('tab', { name: builder.previewSample })).toBeVisible();
+  await expect(
+    preview(page).getByRole('tab', { name: builder.previewSample, exact: true }),
+  ).toHaveCount(2);
 
   // #when
   await page.getByRole('button', { name: builder.undo }).click();
