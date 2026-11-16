@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 
-import type { PresetCell } from '@/core/preset';
-import { snapshotFileSchema, type SnapshotFile } from '@/core/snapshot-file';
+import type { Preset, PresetCell, PresetSection } from '@/core/preset';
+import { recordSchema } from '@/core/records';
+import { encodeSnapshotFile, snapshotFileSchema, type SnapshotFile } from '@/core/snapshot-file';
 
 import { renderedColor, tokenColor } from './support/colors';
 
@@ -12,7 +13,13 @@ const PAGE = '/builder.html';
 const DRAFT_STORAGE_KEY = 'muster-roll-builder-draft';
 const GENERATED_SHEET_ID = /^[A-Za-z0-9_-]{8}$/;
 
-function createPreset(strengthExtraCells: readonly PresetCell[] = []) {
+function createPreset({
+  strengthExtraCells = [],
+  additionalSections = [],
+}: {
+  strengthExtraCells?: readonly PresetCell[];
+  additionalSections?: readonly PresetSection[];
+} = {}): Preset {
   return {
     v: 3,
     templates: [
@@ -38,6 +45,7 @@ function createPreset(strengthExtraCells: readonly PresetCell[] = []) {
                   ],
                 ],
               },
+              ...additionalSections,
             ],
           },
         ],
@@ -66,7 +74,40 @@ function createPreset(strengthExtraCells: readonly PresetCell[] = []) {
 }
 
 const PRESET = createPreset();
-const PRESET_WITH_STRENGTH_DICE = createPreset([{ kind: 'dice', formula: '1d20 <= str' }]);
+
+const PRESET_WITH_STRENGTH_DICE = createPreset({
+  strengthExtraCells: [{ kind: 'dice', formula: '1d20 <= str' }],
+});
+
+const EDITING_PRESET = createPreset({
+  additionalSections: [
+    {
+      rows: [
+        [
+          { kind: 'text', text: 'Готов' },
+          { kind: 'field', type: 'check', id: 'ready' },
+        ],
+        [
+          { kind: 'text', text: 'Броня' },
+          { kind: 'field', type: 'select', id: 'armor', options: ['Кожа', 'Латы'] },
+        ],
+        [
+          { kind: 'text', text: 'Куб' },
+          { kind: 'field', type: 'dice-choice', id: 'die', options: ['d6', 'd8'] },
+        ],
+      ],
+    },
+    {
+      repeat: true,
+      rows: [
+        [
+          { kind: 'text', text: 'Вещь' },
+          { kind: 'field', type: 'text', id: 'item' },
+        ],
+      ],
+    },
+  ],
+});
 
 const SNAPSHOT = {
   v: 3,
@@ -114,6 +155,29 @@ const SNAPSHOT_WITHOUT_STRENGTH = {
     },
     SNAPSHOT.sheets[2],
   ],
+};
+
+const EDITING_SNAPSHOT = {
+  ...SNAPSHOT,
+  sheets: SNAPSHOT.sheets.map((sheet) =>
+    sheet.id === 'anya'
+      ? {
+          ...sheet,
+          rows: {
+            ...sheet.rows,
+            ready: { ready: false },
+            armor: { armor: 'Кожа' },
+            die: { die: 'd6' },
+          },
+          repeats: {
+            item: [
+              { instanceId: 'gear-1', order: 0, cells: { item: 'Верёвка' } },
+              { instanceId: 'gear-2', order: 1, cells: { item: 'Фляга' } },
+            ],
+          },
+        }
+      : sheet,
+  ),
 };
 
 test.beforeEach(async ({ page }) => {
@@ -213,6 +277,155 @@ test('the second click types a snapshot value, and Escape leaves typing with the
   // #then
   await expect(input).toHaveCount(0);
   await expect(treeField).toHaveAttribute('aria-selected', 'true');
+  expect(anya?.rows.str).toEqual({ str: 13 });
+});
+
+test('a preview checkbox writes its exact snapshot patch', async ({ page }) => {
+  // #given
+  await openEditingPreview(page);
+
+  const ready = preview(page).getByRole('img', { name: 'Готов: не отмечено', exact: true });
+
+  await ready.click();
+  await ready.click();
+
+  // #when
+  await preview(page).getByRole('checkbox', { name: 'Готов', exact: true }).click();
+
+  const downloaded = await downloadSnapshot(page);
+  const anya = downloaded.file.sheets.find((sheet) => sheet.id === 'anya');
+
+  // #then
+  expect(anya?.rows.ready).toEqual({ ready: true });
+});
+
+test('editing a repeat field changes only the clicked instance', async ({ page }) => {
+  // #given
+  await openEditingPreview(page);
+
+  const items = preview(page).getByRole('group', { name: 'Вещь', exact: true });
+
+  await items.first().click();
+  await expect(page.getByRole('row', { name: 'item · Текст', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await items.first().click();
+
+  // #when
+  const controls = preview(page).getByRole('textbox', { name: 'Вещь', exact: true });
+  const editingControls = await controls.count();
+  const focused = page.locator('textarea:focus');
+
+  await expect(focused).toHaveCount(1);
+  await focused.fill('Факел');
+  await focused.press('Enter');
+
+  const downloaded = await downloadSnapshot(page);
+  const anya = downloaded.file.sheets.find((sheet) => sheet.id === 'anya');
+
+  // #then
+  expect({ editingControls, repeats: anya?.repeats.item }).toEqual({
+    editingControls: 1,
+    repeats: [
+      { instanceId: 'gear-1', order: 0, cells: { item: 'Факел' } },
+      { instanceId: 'gear-2', order: 1, cells: { item: 'Фляга' } },
+    ],
+  });
+});
+
+for (const field of [
+  {
+    name: 'check',
+    label: 'Готов',
+    readOnlyRole: 'img' as const,
+    readOnlyName: 'Готов: не отмечено',
+    controlRole: 'checkbox' as const,
+    treeName: 'ready · Флажок',
+  },
+  {
+    name: 'select',
+    label: 'Броня',
+    readOnlyRole: 'group' as const,
+    readOnlyName: 'Броня',
+    controlRole: 'combobox' as const,
+    treeName: 'armor · Список',
+  },
+  {
+    name: 'dice choice',
+    label: 'Куб',
+    readOnlyRole: 'group' as const,
+    readOnlyName: 'Куб',
+    controlRole: 'combobox' as const,
+    treeName: 'die · Выбор кубика',
+  },
+] as const) {
+  test(`Escape exits ${field.name} editing while keeping its field selected`, async ({ page }) => {
+    // #given
+    await openEditingPreview(page);
+
+    const value = preview(page).getByRole(field.readOnlyRole, {
+      name: field.readOnlyName,
+      exact: true,
+    });
+
+    await value.click();
+    await value.click();
+
+    const control = preview(page).getByRole(field.controlRole, {
+      name: field.label,
+      exact: true,
+    });
+
+    await expect(control).toBeFocused();
+
+    // #when
+    await control.press('Escape');
+
+    // #then
+    await expect(control).toHaveCount(0);
+    await expect(page.getByRole('row', { name: field.treeName, exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+}
+
+test('pagehide flushes a pending preview value into the Builder draft', async ({ page }) => {
+  // #given
+  await openEditingPreview(page);
+
+  const strength = preview(page).getByRole('group', { name: 'Сила', exact: true });
+
+  await strength.click();
+  await strength.click();
+
+  const input = preview(page).getByRole('textbox', { name: 'Сила', exact: true });
+
+  await input.fill('13');
+
+  // #when
+  const rawDraft = await page.evaluate((key) => {
+    window.dispatchEvent(new PageTransitionEvent('pagehide'));
+
+    return window.localStorage.getItem(key);
+  }, DRAFT_STORAGE_KEY);
+
+  if (rawDraft === null) {
+    throw new Error('The Builder draft was not stored');
+  }
+
+  const draft = JSON.parse(rawDraft);
+  const records = recordSchema.array().parse(draft.records);
+
+  const snapshot = encodeSnapshotFile(
+    new Map(records.map((record) => [record.k, record])),
+    EDITING_PRESET,
+  );
+
+  const anya = snapshot.sheets.find((sheet) => sheet.id === 'anya');
+
+  // #then
   expect(anya?.rows.str).toEqual({ str: 13 });
 });
 
@@ -672,6 +885,11 @@ async function openSnapshot(page: Page, text: string): Promise<void> {
     mimeType: 'application/json',
     buffer: Buffer.from(text),
   });
+}
+
+async function openEditingPreview(page: Page): Promise<void> {
+  await openPreset(page, EDITING_PRESET);
+  await openSnapshot(page, JSON.stringify(EDITING_SNAPSHOT));
 }
 
 async function downloadSnapshot(page: Page): Promise<{ name: string; file: SnapshotFile }> {

@@ -150,6 +150,50 @@ describe('attached Builder files', () => {
     });
   });
 
+  test('serializes attached writes and leaves the newest page text on disk', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    await mount(store, access);
+    await openAttachedFile(access, file, 'Пресет');
+    access.writeRequests.splice(0);
+    access.pauseWrites();
+
+    // #when
+    editTemplateTitle(store, 'Первая версия');
+    await settle();
+    editTemplateTitle(store, 'Вторая версия');
+    await settle();
+
+    const requestsBeforeFirstCompletion = access.writeRequests.length;
+
+    access.releaseNextWrite();
+    await settle();
+
+    const requestsAfterFirstCompletion = access.writeRequests.length;
+
+    access.releaseWrites();
+    await settle();
+
+    const disk = await access.read(file);
+
+    // #then
+    expect({
+      requestsBeforeFirstCompletion,
+      requestsAfterFirstCompletion,
+      writes: access.writeRequests.map((request) => JSON.parse(request.text)),
+      disk: disk.ok ? JSON.parse(disk.value.text) : null,
+    }).toEqual({
+      requestsBeforeFirstCompletion: 1,
+      requestsAfterFirstCompletion: 2,
+      writes: [createCrewPreset('Первая версия'), createCrewPreset('Вторая версия')],
+      disk: createCrewPreset('Вторая версия'),
+    });
+  });
+
   test('Save File writes the current preset and attaches the selected handle for later edits', async () => {
     // #given
     const access = new TestFileAccessFake();
@@ -331,6 +375,36 @@ describe('attached Builder files', () => {
     });
   });
 
+  test('detects a disk change before a page write can overwrite it', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    await mount(store, access);
+    await openAttachedFile(access, file, 'Пресет');
+    access.writeRequests.splice(0);
+    access.externalWriteSilently(file, JSON.stringify(DISK_PRESET));
+
+    // #when
+    editTemplateTitle(store, 'Моя версия');
+    await settle();
+
+    const disk = await access.read(file);
+
+    // #then
+    expect({
+      writes: access.writeRequests,
+      disk: disk.ok ? JSON.parse(disk.value.text) : null,
+      actions: conflictActions(),
+    }).toEqual({
+      writes: [],
+      disk: DISK_PRESET,
+      actions: { takeFile: true, keepMine: true },
+    });
+  });
+
   test.each([
     ['Взять из файла', DISK_PRESET],
     ['Оставить мои', LOCAL_PRESET],
@@ -366,8 +440,13 @@ describe('attached Builder files', () => {
     access.releaseWrites();
     await settle();
 
+    const disk = await access.read(file);
+
     // #then
-    expect(toPreset(store.$state.get().step.document)).toEqual(expected);
+    expect({
+      page: toPreset(store.$state.get().step.document),
+      disk: disk.ok ? JSON.parse(disk.value.text) : null,
+    }).toEqual({ page: expected, disk: expected });
   });
 
   test('keeps a pending-write conflict until the user chooses', async () => {
@@ -399,6 +478,11 @@ describe('attached Builder files', () => {
 
     access.releaseWrites();
     await settle();
+    await act(async () => {
+      access.externalWrite(file, JSON.stringify(LOCAL_PRESET));
+    });
+
+    const diskAfterOwnEcho = await access.read(file);
 
     // #then
     expect({
@@ -408,6 +492,7 @@ describe('attached Builder files', () => {
         writes: access.writeRequests.length,
         actions: conflictActions(),
       },
+      diskAfterOwnEcho: diskAfterOwnEcho.ok ? JSON.parse(diskAfterOwnEcho.value.text) : null,
     }).toEqual({
       diskBeforeRelease: DISK_PRESET,
       beforeRelease: {
@@ -418,7 +503,58 @@ describe('attached Builder files', () => {
         writes: 1,
         actions: { takeFile: true, keepMine: true },
       },
+      diskAfterOwnEcho: LOCAL_PRESET,
     });
+  });
+
+  test('stops after a failed write and resumes only for a new edit', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    await mount(store, access);
+    await openAttachedFile(access, file, 'Пресет');
+    access.writeRequests.splice(0);
+    access.queueWriteFailure('native write denied');
+
+    // #when
+    editTemplateTitle(store, 'Первая версия');
+    await settle();
+
+    const requestsAfterFailure = access.writeRequests.length;
+
+    editTemplateTitle(store, 'Вторая версия');
+    await settle();
+
+    // #then
+    expect({
+      requestsAfterFailure,
+      writes: access.writeRequests.map((request) => JSON.parse(request.text)),
+    }).toEqual({
+      requestsAfterFailure: 1,
+      writes: [createCrewPreset('Первая версия'), createCrewPreset('Вторая версия')],
+    });
+  });
+
+  test('does not expose native file-operation details in the attached-file status', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    await mount(store, access);
+    await openAttachedFile(access, file, 'Пресет');
+
+    // #when
+    await act(async () => {
+      access.externalFailure(file, 'native permission denied');
+    });
+
+    // #then
+    expect(fileBlock('Пресет').textContent?.includes('native permission denied')).toBe(false);
   });
 
   test('pauses writes for a preset problem and resumes after the repair', async () => {
@@ -551,6 +687,116 @@ describe('attached Builder files', () => {
     });
   });
 
+  test('keeps preset selection and undo/redo identity through its own canonical echo', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
+    const store = createBuilderStore(memoryStorage());
+
+    await mount(store, access);
+    await openAttachedFile(access, file, 'Пресет');
+    editTemplateTitle(store, 'Моя версия');
+    await settle();
+    act(() => store.undo());
+    await settle();
+
+    const selected = uidAt(store.$state.get().step.document, [0, 0, 0, 0, 1]);
+
+    if (selected === null) {
+      throw new Error('The preset fixture has no field selection');
+    }
+
+    act(() => store.select(selected));
+
+    const documentBefore = store.$state.get().step.document;
+
+    // #when
+    await act(async () => {
+      access.externalWrite(file, CREW_PRESET_TEXT);
+    });
+
+    const state = store.$state.get();
+
+    // #then
+    expect({
+      documentIdentityPreserved: state.step.document === documentBefore,
+      selectionPreserved: state.selection === selected,
+      undoSteps: state.undo.length,
+      redoSteps: state.redo.length,
+    }).toEqual({
+      documentIdentityPreserved: true,
+      selectionPreserved: true,
+      undoSteps: 1,
+      redoSteps: 1,
+    });
+  });
+
+  test('keeps snapshot records and undo/redo identity through its own canonical echo', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const file = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    await mount(store, access);
+    await openAttachedFile(access, file, 'Снимок');
+    act(() => store.setSnapshot(snapshotRecords(EXTERNAL_SNAPSHOT_TEXT)));
+    await settle();
+    act(() => store.undo());
+    await settle();
+
+    const recordsBefore = store.$state.get().step.records;
+
+    // #when
+    await act(async () => {
+      access.externalWrite(file, SNAPSHOT_TEXT);
+    });
+
+    const state = store.$state.get();
+
+    // #then
+    expect({
+      recordsIdentityPreserved: state.step.records === recordsBefore,
+      undoSteps: state.undo.length,
+      redoSteps: state.redo.length,
+    }).toEqual({
+      recordsIdentityPreserved: true,
+      undoSteps: 2,
+      redoSteps: 1,
+    });
+  });
+
+  test('opening an identical preset attaches it without clearing the companion snapshot', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const firstPreset = access.addFile('preset-1', 'crew.json', JSON.stringify(CREW_PRESET));
+    const secondPreset = access.addFile('preset-2', 'crew-copy.json', JSON.stringify(CREW_PRESET));
+    const snapshotFile = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    store.setSnapshot(snapshotRecords(SNAPSHOT_TEXT));
+    await mount(store, access);
+    await openAttachedFile(access, firstPreset, 'Пресет');
+    await openAttachedFile(access, snapshotFile, 'Снимок');
+
+    // #when
+    await openAttachedFile(access, secondPreset, 'Пресет');
+
+    // #then
+    expect({
+      snapshotValue: previewValue('Сила'),
+      snapshotFileName: attachedFileName('Снимок'),
+      snapshotIsFollowed: access.isFollowing(snapshotFile),
+      secondPresetIsFollowed: access.isFollowing(secondPreset),
+    }).toEqual({
+      snapshotValue: '12',
+      snapshotFileName: 'crew-snapshot.json',
+      snapshotIsFollowed: true,
+      secondPresetIsFollowed: true,
+    });
+  });
+
   test('keeps open and download without write or follow claims in an unsupported browser', async () => {
     // #given
     const access = new TestFileAccessFake('open-only');
@@ -583,6 +829,30 @@ describe('attached Builder files', () => {
         'Очистить пресет…',
       ],
       opens: [],
+      writes: [],
+      follows: [],
+    });
+  });
+
+  test('keeps a valid open-only preset edit free of validation-problem status', async () => {
+    // #given
+    const access = new TestFileAccessFake('open-only');
+    const store = createBuilderStore(memoryStorage());
+
+    await mount(store, access);
+    await openInputFile('preset', 'crew.json', CREW_PRESET_TEXT);
+
+    // #when
+    editTemplateTitle(store, 'Моя версия');
+    await settle();
+
+    // #then
+    expect({
+      blocked: fileBlock('Пресет').textContent?.includes('не сохранено: исправьте проблемы'),
+      writes: access.writeRequests,
+      follows: access.followRequests,
+    }).toEqual({
+      blocked: false,
       writes: [],
       follows: [],
     });
@@ -668,7 +938,32 @@ async function openAttachedFile(
 ): Promise<void> {
   access.queueOpen(file);
   await click(fileBlock(kind));
-  await click(menuItem('Открыть файл…'));
+  await click(menuItem('Открыть другой файл…') ?? menuItem('Открыть файл…'));
+  await settle();
+}
+
+async function openInputFile(
+  kind: 'preset' | 'snapshot',
+  name: string,
+  text: string,
+): Promise<void> {
+  const selector =
+    kind === 'preset' ? '[data-builder-file-input]' : '[data-builder-snapshot-file-input]';
+
+  const input = document.querySelector<HTMLInputElement>(selector);
+
+  if (input === null) {
+    throw new Error(`No ${kind} file input`);
+  }
+
+  Object.defineProperty(input, 'files', {
+    configurable: true,
+    value: [new File([text], name, { type: 'application/json' })],
+  });
+
+  await act(async () => {
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
   await settle();
 }
 

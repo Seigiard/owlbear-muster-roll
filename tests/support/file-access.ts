@@ -55,6 +55,7 @@ export class TestFileAccessFake implements TestFileAccessPort {
     Set<(result: TestFileAccessResult<TestFileContents>) => void>
   >();
   private readonly pendingWrites: PendingWrite[] = [];
+  private readonly writeFailures: string[] = [];
   private nextModifiedAt = new Date('2026-11-16T18:06:00.000Z');
   private writesPaused = false;
 
@@ -82,19 +83,43 @@ export class TestFileAccessFake implements TestFileAccessPort {
     this.nextModifiedAt = modifiedAt;
   }
 
+  queueWriteFailure(reason: string): void {
+    this.writeFailures.push(reason);
+  }
+
   pauseWrites(): void {
     this.writesPaused = true;
+  }
+
+  releaseNextWrite(): void {
+    const pending = this.pendingWrites.shift();
+
+    if (pending !== undefined) {
+      pending.resolve(this.completeWrite(pending.file, pending.text));
+    }
   }
 
   releaseWrites(): void {
     this.writesPaused = false;
 
-    for (const pending of this.pendingWrites.splice(0)) {
-      pending.resolve(this.completeWrite(pending.file, pending.text));
+    while (this.pendingWrites.length > 0) {
+      this.releaseNextWrite();
     }
   }
 
   externalWrite(file: TestFileReference, text: string): void {
+    const contents = this.replaceFile(file, text);
+
+    for (const notify of this.followers.get(file.id) ?? []) {
+      notify({ ok: true, value: contents });
+    }
+  }
+
+  externalWriteSilently(file: TestFileReference, text: string): void {
+    this.replaceFile(file, text);
+  }
+
+  private replaceFile(file: TestFileReference, text: string): TestFileContents {
     const current = this.files.get(file.id);
 
     if (current === undefined) {
@@ -105,9 +130,7 @@ export class TestFileAccessFake implements TestFileAccessPort {
 
     this.files.set(file.id, { ...current, ...contents });
 
-    for (const notify of this.followers.get(file.id) ?? []) {
-      notify({ ok: true, value: contents });
-    }
+    return contents;
   }
 
   externalFailure(file: TestFileReference, reason: string): void {
@@ -165,6 +188,12 @@ export class TestFileAccessFake implements TestFileAccessPort {
     file: TestFileReference,
     text: string,
   ): TestFileAccessResult<TestFileContents> {
+    const failure = this.writeFailures.shift();
+
+    if (failure !== undefined) {
+      return { ok: false, error: { reason: failure } };
+    }
+
     const current = this.files.get(file.id);
 
     if (current === undefined) {

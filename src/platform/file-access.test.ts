@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { TestFileAccessFake } from '../../tests/support/file-access';
+import { createBrowserFileAccess } from '../builder/file-access';
 
 describe('file-access port fake', () => {
   test('returns queued open and read results without consulting browser globals', async () => {
@@ -101,3 +102,52 @@ describe('file-access port fake', () => {
     });
   });
 });
+
+describe('browser file-access adapter', () => {
+  test('maps a native AbortError picker cancellation to a null result', async () => {
+    // #given
+    const restore = installPickers(() => {
+      throw new DOMException('The user aborted a request.', 'AbortError');
+    });
+
+    // #when
+    const result = await createBrowserFileAccess().open({ mode: 'open' });
+    restore();
+
+    // #then
+    expect(result).toEqual({ ok: true, value: null });
+  });
+
+  test('keeps a non-Abort picker failure as an error result', async () => {
+    // #given
+    const restore = installPickers(() => {
+      throw new Error('permission denied');
+    });
+
+    // #when
+    const result = await createBrowserFileAccess().open({ mode: 'open' });
+    restore();
+
+    // #then
+    expect(result).toEqual({ ok: false, error: { reason: 'permission denied' } });
+  });
+});
+
+function installPickers(open: () => never): () => void {
+  // SAFETY: the test installs only the two optional picker properties declared by the adapter.
+  const browser = window as Window & {
+    showOpenFilePicker?: () => Promise<never>;
+    showSaveFilePicker?: () => Promise<never>;
+  };
+
+  const previousOpen = browser.showOpenFilePicker;
+  const previousSave = browser.showSaveFilePicker;
+
+  browser.showOpenFilePicker = async () => open();
+  browser.showSaveFilePicker = async () => open();
+
+  return () => {
+    browser.showOpenFilePicker = previousOpen;
+    browser.showSaveFilePicker = previousSave;
+  };
+}

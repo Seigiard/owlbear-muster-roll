@@ -44,6 +44,11 @@ const PLAYER_PREVIEW_SNAPSHOT = JSON.stringify({
       rows: { villain: { villain: 'Лич' } },
       repeats: {},
     },
+    {
+      id: 'private_tab',
+      rows: { secret: { secret: 'Скрытое значение' } },
+      repeats: {},
+    },
   ],
   links: [],
 });
@@ -200,6 +205,28 @@ function playerPreviewPreset(): string {
     ],
   };
 
+  const privateTab: Template = {
+    id: 'private_tab',
+    kind: 'single',
+    title: 'Закрытый лист',
+    tabs: [
+      {
+        title: 'Только мастеру',
+        visibility: 'gm',
+        sections: [
+          {
+            rows: [
+              [
+                { kind: 'text', text: 'Секрет' },
+                { kind: 'field', type: 'text', id: 'secret' },
+              ],
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
   return JSON.stringify({
     ...parsed.value,
     templates: [
@@ -214,6 +241,7 @@ function playerPreviewPreset(): string {
       },
       ...parsed.value.templates.slice(1),
       hiddenSet,
+      privateTab,
     ],
   });
 }
@@ -1105,6 +1133,52 @@ test('the player projection hides GM-only content from a visible sheet', async (
   await expect(shown.getByRole('tab', { name: 'Лич', exact: true })).toHaveCount(0);
   await expect(shown.getByText('Злодеи', { exact: true })).toHaveCount(0);
   await expect(shown.getByRole('tab', { name: 'Секреты мастера', exact: true })).toHaveCount(0);
+});
+
+test('the role switch remains available for an empty sheet set', async ({ page }) => {
+  // #given
+  await page.goto(PAGE);
+  await openFromMenu(page, builder.openD20);
+
+  const roles = roleSwitch(page);
+
+  // #when
+  await roles.getByRole('button', { name: 'Игрок' }).click();
+
+  // #then
+  await expect(roles.getByRole('button', { name: 'Игрок' })).toBeVisible();
+  await expect(roles.getByRole('button', { name: 'Мастер' })).toBeVisible();
+
+  // #when
+  await roles.getByRole('button', { name: 'Мастер' }).click();
+
+  // #then
+  await expect(
+    preview(page).getByRole('tab', { name: builder.previewSample, exact: true }).first(),
+  ).toBeVisible();
+});
+
+test('the player projection renders no hidden fallback tab when every tab is GM-only', async ({
+  page,
+}) => {
+  // #given
+  await openPlayerPreview(page);
+
+  const shown = preview(page);
+
+  await shown.getByRole('tab', { name: 'Закрытый лист', exact: true }).click();
+  await expect(shown.getByRole('group', { name: 'Секрет', exact: true })).toHaveText(
+    'Скрытое значение',
+  );
+
+  // #when
+  await roleSwitch(page).getByRole('button', { name: 'Игрок' }).click();
+
+  // #then
+  await expect(shown.getByRole('tab', { name: 'Закрытый лист', exact: true })).toBeVisible();
+  await expect(shown.getByRole('tab', { name: 'Только мастеру', exact: true })).toHaveCount(0);
+  await expect(shown.getByRole('group', { name: 'Секрет', exact: true })).toHaveCount(0);
+  await expect(shown.getByText('Скрытое значение', { exact: true })).toHaveCount(0);
 });
 
 test('the player switch explains an open hidden sheet', async ({ page }) => {
