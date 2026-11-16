@@ -175,6 +175,23 @@ async function catchingUpAgain(room: Room, connectionId: string): Promise<Client
 }
 
 describe('start', () => {
+  test('flushNow without queued intents leaves ordinary catch-up held until its GM answer', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const client = await catchingUpAgain(room, 'gm-a');
+    const request = lastRequest(room, 'gm-a');
+
+    // #when
+    client.engine.flushNow();
+    await pause(20);
+    const during = sync(client).state;
+    room.post(GHOST, stateMessage(request, []));
+    await waitUntil(() => sync(client).state === 'live');
+
+    // #then
+    expect({ during, after: sync(client).state }).toEqual({ during: 'catching-up', after: 'live' });
+  });
+
   test('a GM client enters catching-up with its persisted records and asks with a nonce', async () => {
     // #given
     const room = roomRig.openRoom();

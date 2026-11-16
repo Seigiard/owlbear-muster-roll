@@ -208,6 +208,49 @@ describe('open from token', () => {
     }).toEqual({ actionOpens: 1, target: { sheetId: 'brok', instanceId: null } });
   });
 
+  test('a winning same-counter preset from another author refreshes token-menu visibility', async () => {
+    // #given
+    const background = await startBackground('GM');
+    const before = background.platform.contextMenuItems().some((item) => item.id === OPEN_ITEM);
+
+    const withoutCharacterSheet: VersionedRecord = {
+      k: 'preset',
+      d: encodePreset({
+        ...PRESET,
+        templates: PRESET.templates.filter((template) => template.id !== 'pc'),
+      }),
+      c: 1,
+      a: 'zz-author',
+    };
+
+    background.room.join('gm-new', 'GM');
+
+    // #when
+    background.room.post('gm-new', {
+      v: 3,
+      g: { n: 0, a: '' },
+      t: 'commit',
+      records: [withoutCharacterSheet],
+    });
+    await pause(SETTLE_MS);
+
+    // #then
+    const after = background.platform
+      .contextMenuItems()
+      .find((item) => item.id === OPEN_ITEM)
+      ?.icons.at(0)?.filter;
+
+    expect({ before, after }).toEqual({
+      before: true,
+      after: {
+        max: 1,
+        roles: ['GM'],
+        every: [{ key: 'layer', value: 'CHARACTER' }],
+        some: [{ key: 'id', value: 't-npc' }],
+      },
+    });
+  });
+
   for (const [role, tokenId] of [
     ['PLAYER', 't-npc'],
     ['PLAYER', 't-secret'],

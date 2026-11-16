@@ -569,6 +569,54 @@ describe('size check', () => {
 });
 
 describe('interruption and rescheduling', () => {
+  test('a stopped GM does not merge a held equal-generation metadata read', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gate = createGate();
+    const client = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
+    const read = gate.holdNextRead();
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK, MIRA]) });
+    client.engine.catchUp();
+    await settle();
+
+    // #when
+    client.engine.stop();
+    read.release();
+    await pause(20);
+
+    // #then
+    expect({
+      mira: shown(client, MIRA.k) ?? null,
+      stored: storedRecord(client, MIRA.k),
+      writes: gate.writes,
+    }).toEqual({
+      mira: null,
+      stored: null,
+      writes: 0,
+    });
+  });
+
+  test('a live GM merges the same held equal-generation metadata read', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gate = createGate();
+    const client = await startClient(room, 'gm-a', { platform: gated(gate), until: 'live' });
+    const read = gate.holdNextRead();
+    room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK, MIRA]) });
+    client.engine.catchUp();
+    await settle();
+
+    // #when
+    read.release();
+    await waitUntil(() => shown(client, MIRA.k) !== undefined);
+
+    // #then
+    expect({ mira: shown(client, MIRA.k), stored: storedRecord(client, MIRA.k) }).toEqual({
+      mira: MIRA,
+      stored: MIRA,
+    });
+  });
+
   test('a resume between the read and the write stops the write, also once the GM is live again', async () => {
     // #given
     const room = roomRig.openRoom();
