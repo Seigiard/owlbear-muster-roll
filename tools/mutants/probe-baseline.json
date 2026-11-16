@@ -693,33 +693,6 @@
     "reason": "sendCommits independently rejects null persistence and CommitOutbox.add rejects an empty record list; the pre-batch flush also leaves no held commit for the extra flush to expose."
   },
   {
-    "file": "src/replica/command-routing.ts",
-    "fn": "createCommandRouting > queueIntent",
-    "op": "drop statement",
-    "text": "pendingIds.delete(id);",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "A dry-composition refusal consumes a command id that acceptCommand will never admit again; retained generated ids have no caller."
-  },
-  {
-    "file": "src/replica/command-routing.ts",
-    "fn": "createCommandRouting > replayQueuedPending",
-    "op": "drop statement",
-    "text": "pendingIds.clear();",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "takeAll consumed every entry and accepted command ids cannot recur, so retained per-intent ids are never read again."
-  },
-  {
-    "file": "src/replica/command-routing.ts",
-    "fn": "createCommandRouting > clearPendingIds",
-    "op": "drop statement",
-    "text": "pendingIds.clear();",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "Generation replacement already drops every pending entry; retained ids have no entry or repeatable accepted command that can read them."
-  },
-  {
     "file": "src/replica/generation-flow.ts",
     "fn": "createGenerationFlow > planImport",
     "op": "if→false",
@@ -1266,16 +1239,7 @@
     "text": "record === null || stopped || role === 'GM'",
     "nth": 1,
     "verdict": "equivalent",
-    "reason": "The proposal queue has no null composed record while the client remains a player; promotion drains/stops player proposals, and engine stop stops both the proposal queue and send queue before a delayed compose can send."
-  },
-  {
-    "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > enqueue",
-    "op": "||→&&",
-    "text": "record === null || stopped",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "The proposal queue has no null composed record while the client remains a player; promotion drains/stops player proposals, and engine stop stops both the proposal queue and send queue before a delayed compose can send."
+    "reason": "Exact control stayed green. The exact mutation is `record === null || stopped && role === 'GM'`; `&&` binds first, so a cancelled compose with record=null still takes the unchanged null guard."
   },
   {
     "file": "src/replica/engine.ts",
@@ -1657,24 +1621,6 @@
   },
   {
     "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > followWindowSize",
-    "op": "if→false",
-    "text": "version === sizedFor",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "Reapplying the same window size is idempotent at the action port and changes no projection, room state, notice or storage."
-  },
-  {
-    "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > followWindowSize",
-    "op": "drop assignment",
-    "text": "sizedFor = version;",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "Without the cache assignment later calls only repeat the same idempotent window-size apply; visible size and replica state are unchanged."
-  },
-  {
-    "file": "src/replica/engine.ts",
     "fn": "startReplicaEngine > unlinkRemoved",
     "op": "if→false",
     "text": "stopped || role !== 'GM'",
@@ -1720,24 +1666,6 @@
   },
   {
     "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > replaceReplicaRecords",
-    "op": "drop assignment",
-    "text": "decodedPreset = null;",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "AD-3 forbids different preset data for one (k,c,a); a replacement record matching the cached version decodes to the same preset."
-  },
-  {
-    "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > replaceReplicaRecords",
-    "op": "drop statement",
-    "text": "dropStaleOpen();",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "deliverOpen revalidates expiry and live visibility before every send, so retaining a held target across replacement cannot open a removed or hidden sheet."
-  },
-  {
-    "file": "src/replica/engine.ts",
     "fn": "startReplicaEngine > notifyDenied",
     "op": "if→false",
     "text": "options.editDenied === undefined",
@@ -1766,15 +1694,6 @@
   {
     "file": "src/replica/engine.ts",
     "fn": "startReplicaEngine > presetOf",
-    "op": "===→!==",
-    "text": "decodedPreset.a === record.a",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "The changed cache predicate only causes a redundant decode; callers receive the same parsed preset for the same version."
-  },
-  {
-    "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > presetOf",
     "op": "drop assignment",
     "text": "decodedPreset = { c: record.c, a: record.a, preset: decoded.value };",
     "nth": 1,
@@ -1789,15 +1708,6 @@
     "nth": 1,
     "verdict": "equivalent",
     "reason": "Only console diagnostics change; TASK-66 equivalence scope excludes logs, and state, messages, notices and storage are unchanged."
-  },
-  {
-    "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > mergePersisted",
-    "op": "drop statement",
-    "text": "followReplica();",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "performCaughtUp calls followReplica after mergePersisted before catch-up completes, so this earlier duplicate refresh changes no final menu/size state."
   },
   {
     "file": "src/replica/engine.ts",
@@ -2001,15 +1911,6 @@
     "file": "src/replica/engine.ts",
     "fn": "startReplicaEngine > stop",
     "op": "drop statement",
-    "text": "roomCopy.stop();",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "The engine-level stopped flag makes canWriteRoomCopy false after every await, while unsubscribeMetadata removes the only post-stop copy input; an uncancelled scheduled copy therefore cannot write metadata, adopt data, publish, or send."
-  },
-  {
-    "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > stop",
-    "op": "drop statement",
     "text": "clearTimeout(timer);",
     "nth": 1,
     "verdict": "equivalent",
@@ -2032,15 +1933,6 @@
     "nth": 1,
     "verdict": "equivalent",
     "reason": "A retained proposal can reach only the send queue callback, which returns null whenever the engine-level stopped flag is true; the stopped send queue emits no proposal or caller-visible result."
-  },
-  {
-    "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > stop",
-    "op": "drop statement",
-    "text": "unsubscribeRoom();",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "handleRoomMessage checks the engine-level stopped flag after its asynchronous sender lookup and before dispatch, so a retained room subscription cannot change replica, catch-up, storage, notices, or messages."
   },
   {
     "file": "src/replica/engine.ts",
@@ -2077,33 +1969,6 @@
     "nth": 1,
     "verdict": "equivalent",
     "reason": "A retained roster subscription may refresh its private member map, but its onReplace callback followParty checks the engine-level stopped flag before publishing; room ingress is independently blocked."
-  },
-  {
-    "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > flushNow",
-    "op": "if→true",
-    "text": "!catchUp.live() && pending.entries().length > 0",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "Forcing closing while already live returns no catch-up decisions; the zero-length >=0 mutation is handled separately as a gap only while not live."
-  },
-  {
-    "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > flushNow",
-    "op": "&&→||",
-    "text": "!catchUp.live() && pending.entries().length > 0",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "Forcing closing while already live returns no catch-up decisions; the zero-length >=0 mutation is handled separately as a gap only while not live."
-  },
-  {
-    "file": "src/replica/engine.ts",
-    "fn": "startReplicaEngine > flushNow",
-    "op": ">→>=",
-    "text": "pending.entries().length > 0",
-    "nth": 1,
-    "verdict": "equivalent",
-    "reason": "Forcing closing while already live returns no catch-up decisions; the zero-length >=0 mutation is handled separately as a gap only while not live."
   },
   {
     "file": "src/replica/engine.ts",
