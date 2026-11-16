@@ -2,7 +2,7 @@
 title: 'TASK-76: Block records with cell versions'
 type: 'feature'
 created: '2026-11-16'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '5dd5369678bfe7701a0c14c336fa7f7021ce4641'
 review_loop_iteration: 1
@@ -61,7 +61,7 @@ context:
 - [x] `src/core/*.test.ts`, `src/replica/*.test.ts`, `tests/support/{room,room-rig}.ts`, `tests/{sync,repeat-blocks,snapshot,builder-snapshot}.e2e.ts` — port fixtures and protect matrix behaviors; preserve Builder round-trips.
 - [x] `src/core/snapshot-size.test.ts`, `_bmad-output/specs/spec-muster-roll/storage-and-sync.md` — measure the existing d20 room without shrinking its workload or 1500-byte margin.
 - [x] `_bmad-output/planning-artifacts/architecture/architecture-owlbear-muster-roll-2026-11-10/ARCHITECTURE-SPINE.md` — align AD-2/3/4/7/8/11/12/14/18/19 with this transitional format; preserve other contracts.
-- [ ] `tools/mutants/probe-baseline.json`, existing mutation controls — rerun touched-module probes; classify changed anchors from behavior and calibrate real gaps.
+- [x] Verify changed behaviors with calibrated regressions. Broad mutation sweeps and controls are superseded by the user's instruction to use only targeted verification; they are not reported as passed.
 
 **Acceptance Criteria:**
 - Given two GM clients, when each edits a different field of one block, then both values persist on both clients and after reload.
@@ -78,7 +78,7 @@ Commits carry changed cells; persistence and views hold assembled blocks. Fragme
 
 - Declare oracles before test edits; replace `engine-sync.test.ts`'s lost-neighbor expectation with exact values. Observe red then green.
 - Run `CLAUDE.md`'s full checks and Backlog validation. Mock tests do not prove Owlbear behavior.
-- After committing, run `bun run probe catch-up room-copy engine command-routing --jobs 6`, adding other touched modules, and affected `bun run mutants` controls. Record revision/results/classifications; investigate missing anchors and timeouts.
+- Reuse the completed functional checks. Run only tests for a concrete finding in changed code; no further broad mutation sweeps or full-suite reruns.
 
 ## Implementation Notes
 
@@ -95,7 +95,7 @@ Commits carry changed cells; persistence and views hold assembled blocks. Fragme
   - Player patch, stale/rejected proposal, resend and ACK state: `block-boundaries.test.ts`, `access.test.ts`, `engine-propose.test.ts`, `proposal-queue.test.ts` and `pending.e2e.ts`.
   - Coverage-sensitive digest/read-back/UI, bounded cell fragmentation and oversized-cell rejection: `block-boundaries.test.ts` and `block-projection.test.ts`.
   - Snapshot round-trip, duplicate rejection and old-version refusal: `block-boundaries.test.ts`, `snapshot-file.test.ts`, `snapshot-import.test.ts` and `snapshot.e2e.ts`.
-- Remaining work before Done: commit the reviewed implementation, run touched-module mutation probes and existing controls against that revision, classify changed anchors or survivors, then record final evidence.
+- Parent matrix audit confirmed the listed behavioral owners against source and completed unit/browser evidence. Implementation commit: `156c4dba4110b942cd905eba3f6be75f631e46a1`. Focused review completed; findings are tracked in TASK-81 through TASK-85 instead of expanding this implementation.
 - Retired v3 row-identity cases map to explicit v4 coverage rather than disappearing:
   - Separate plain-row records and row relocation are impossible because all plain fields share `blk:<sheet>`; `engine-sync.test.ts` and `engine-blocks.test.ts` now assert exact concurrent cell values in one assembled root, including storage and reload.
   - Row-level `(c, a)` winner tests now assert per-cell winners. Concurrent edits to different cells both survive; sequential edits preserve the untouched cell's original version.
@@ -107,9 +107,30 @@ Commits carry changed cells; persistence and views hold assembled blocks. Fragme
   - All 19 `engine-*.test.ts` files pass: 703 tests. `engine-client.test.ts` passes 138/138 and `engine-sync.test.ts` passes 37/37.
   - The complete unit suite passes: 3347 passed, 1 skipped, 0 failed across 124 files. TypeScript typecheck passes.
   - Red/green calibration killed four temporary production faults: dropping a newly seen neighbor cell, omitting the relocation lifecycle marker, accepting a resent block whose lifecycle counter exceeds its proposal counter, and accepting duplicate snapshot block paths or repeated instance ids. Each narrow test passed again after restoring production code.
+- The user explicitly rejected broad checks after the excessive run. The core sweep was cancelled with exit 130 after 35m29.722s: partial 800 killed, 103 survived, 3 timed out out of 1319 inventoried mutations. Baseline comparison was not reached. This is CANCELLED/INCOMPLETE, not a passing result. Runner cleanup removed all six temporary worktrees and its pool; no live probe process remains. Additional sweeps and controls were not run. Machine-readable cancellation evidence is retained outside the repository in `task76-probe-core-cancelled-156c4db.json` under the session's approved temporary directory.
 
 ## Spec Change Log
 
 ## Review Triage Log
 
 - Iteration 1: no runtime contract gap found. Fixed stale v3 identity comments. Found and corrected a test-fixture defect in `tests/wipe.e2e.ts`: two historical v1 storage keys had been collapsed to the same v4 key and one JSON value was malformed. The corrected six-test file passes.
+
+### Parent review: three independent lenses
+
+The owner explicitly requested follow-up issues rather than extending this task. The following deferrals include defects introduced by this change, not only pre-existing issues. They remain unresolved; review completion does not mean defect-free.
+
+| Finding | Verdict | Evidence and disposition |
+|---|---|---|
+| Blind 1: preset upload reissues untouched cell versions | high | `composers.ts` remints all planned cells; reviewer reproduced a concurrent hp edit being overwritten. Follow-up TASK-82. |
+| Blind 2: stripped fields omitted rather than cleared | medium | `mintedPatch` only enumerates the stripped patch; absent fields survive union merge after an interrupted upload. Follow-up TASK-82. |
+| Blind 3: oversized stale response becomes denied | medium | `room-protocol.ts` explicitly falls back to denied when the read-back exceeds one message. Follow-up TASK-81. |
+| Blind 4: projection fragments ignore actual envelope budget | medium | `splitParts` fragments first using the default reserve, then applies the actual envelope; reviewer reproduced rejected projection delivery. Follow-up TASK-81. |
+| Blind 5: proposal assembly lacks byte/part/retention bounds | medium | The assembler bounds only its number of map entries; the resource-exhaustion consequence is a code-traced risk. Follow-up TASK-81. |
+| Blind 6: pending display loses to a newer applied cell | medium | Projection uses replica merge for pending display; reviewer reproduced displayed 30 with pending intent 20. Follow-up TASK-83. |
+| Blind 7: repeated root serialization | low | Every plain row now serializes the same root in `sheetValuesSignature`; no measured slowdown is claimed. Follow-up TASK-84. |
+| Blind 8: non-block lifecycle breaks equal-version commutativity | low | Schema accepts `l`, while non-block merge ignores it. Normal composers do not emit this case. Follow-up TASK-85. |
+| Blind 9: prototype-named parsed cells break merge | low | The record schema accepts names that valid preset field ids forbid; inherited lookup can lose the parsed cell. Follow-up TASK-85. |
+| Blind 10: fixture discards explicit same-value versions | medium | `fixturePatch` replaces explicit tuples when values equal the base value, hiding version-only scenarios. Follow-up TASK-85. |
+| Edge 1: large stale proposals lose pending edits | medium | Same verified fallback as Blind 3; retained as a separate review finding. Follow-up TASK-81. |
+| Edge 2: unbounded assembly bytes | medium | Same verified missing bounds as Blind 5; no memory-exhaustion incident is claimed. Follow-up TASK-81. |
+| Verification gap: no multi-part proposal admission regression | medium | Existing proposal tests send one part; large-block tests cover state assembly instead. Missing test must prove no early persistence/ACK and all-field access validation. Follow-up TASK-81. |

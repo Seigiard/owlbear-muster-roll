@@ -459,3 +459,18 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
   summary: Observe native picker permission dialogs and real external-editor saves on the final integration.
   evidence: Deterministic Bun/Chromium owners prove application behavior. A real native OPFS control passed at the TASK-73 recovery commit; it does not prove final permission dialogs or delivery from an external OS process.
+- source_spec: `spec-task-76-block-records.md`
+  summary: "TASK-81: Handle large fragmented player edits, projection budgets and bounded assembly."
+  evidence: "Owner explicitly requested follow-up issues; review identified oversized stale responses, projection envelope overflow, unbounded assembly and missing multi-part acceptance coverage."
+- source_spec: `spec-task-76-block-records.md`
+  summary: "TASK-82: Preserve untouched cell versions during concurrent or interrupted preset reconciliation."
+  evidence: "Review reproduced overwritten concurrent hp during preset upload and traced omitted clear markers after interrupted uploads; tracked rather than expanding TASK-76."
+- source_spec: `spec-task-76-block-records.md`
+  summary: "TASK-83: Keep the local pending intent visible until settlement."
+  evidence: "Review reproduced a remote value 30 displayed while pending intent remained 20; owner requested follow-up tracking."
+- source_spec: `spec-task-76-block-records.md`
+  summary: "TASK-84: Avoid serializing the shared root once per plain row."
+  evidence: "Code-traced scaling risk in sheetValuesSignature; no measured performance incident is claimed."
+- source_spec: `spec-task-76-block-records.md`
+  summary: "TASK-85: Harden record merge boundaries and preserve explicit fixture versions."
+  evidence: "Schema accepts non-block lifecycle/prototype-named cells outside normal valid-preset commands; fixturePatch also discards explicit same-value tuple versions."
