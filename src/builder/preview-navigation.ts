@@ -46,13 +46,15 @@ export function previewNavigationReducer(
       ? openTabIndex(action.template, chosenTab)
       : openTabIndex(action.template, chosenTab, action.tabShown);
 
-  const tab = shownTab ?? 0;
+  if (shownTab === null) {
+    return null;
+  }
 
-  if (state?.template === action.template.uid && state.tab === tab) {
+  if (state?.template === action.template.uid && state.tab === shownTab) {
     return state;
   }
 
-  return { template: action.template.uid, tab };
+  return { template: action.template.uid, tab: shownTab };
 }
 
 // AD-23: keep the selected sheet while the selected template remains in its group. On a template

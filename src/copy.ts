@@ -124,6 +124,7 @@ export const copy = {
   valueTooLong: 'Слишком длинно',
   emptySelectOption: '—',
   badFile: (reason: string): string => `Файл не подошёл: ${reason}. Ничего не изменено.`,
+  fileOperationFailed: 'Не удалось выполнить операцию с файлом. Попробуйте ещё раз.',
   newerFile: 'Файл из более новой версии. Перезагрузите страницу.',
   badFileReason: {
     notJson: 'это не JSON',

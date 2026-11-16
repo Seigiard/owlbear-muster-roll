@@ -76,6 +76,13 @@ export function createBrowserFileAccess(): FileAccessPort {
 
         return ok({ id, name: handle.name });
       } catch (error) {
+        if (
+          (error instanceof Error || error instanceof DOMException) &&
+          error.name === 'AbortError'
+        ) {
+          return ok(null);
+        }
+
         return err(fileError(error instanceof Error ? error : new Error('File access failed')));
       }
     },

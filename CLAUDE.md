@@ -11,7 +11,8 @@ Muster Roll is an Owlbear Rodeo extension that keeps the sheets of one room, suc
 - `scripts/` - the dev and live port-contract launchers
 - `tests/` - Playwright e2e (`*.e2e.ts`) plus shared support; `tests/support/room-rig.ts` is Bun-only and `tests/support/room.ts` is browser support
 - `docs/` - the user-facing preset format and example; decisions in `docs/adr/`
-- `presets/` - preset examples used by the builder and preset checks
+- `presets/` - standalone preset examples checked by `src/core/preset.test.ts`
+- Builder examples are `docs/example-preset.json` and `tests/fixtures/presets/`.
 - `public/` - `manifest.json` and `_headers`
 - `tools/oxlint/` - vendored anti-slop lint rules
 - `backlog/` - tasks, managed by the `backlog` CLI

@@ -4,8 +4,6 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-// With `.ts` extensions, Vite loads its config with no `configLoader: 'native'` warning.
-
 export default defineConfig(({ mode }) => {
   const adapter = mode === 'mock' ? 'mock' : 'obr';
 

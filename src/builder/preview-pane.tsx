@@ -114,6 +114,18 @@ export function PreviewPane({
   const localValues = useMemo(createLocalFieldValues, []);
   const pageHideFlushes = useMemo(createFieldFlushes, []);
 
+  useEffect(() => {
+    const flush = (): void => {
+      pageHideFlushes.flushAll();
+    };
+
+    window.addEventListener('pagehide', flush);
+
+    return () => {
+      window.removeEventListener('pagehide', flush);
+    };
+  }, [pageHideFlushes]);
+
   const fieldEditing = useMemo<FieldEditing>(
     () => ({
       // SAFETY: the preview sends only field patches; every other command is answered without side
@@ -287,12 +299,14 @@ export function PreviewPane({
 
   const [shownTab, dispatch] = useReducer(previewNavigationReducer, null);
   const [editingUid, dispatchEditing] = useReducer(previewEditingReducer, null);
+  const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
 
   const canEdit =
     role === 'GM' || (docTemplate?.kind === 'single' && docTemplate.players === 'edit');
 
   useEffect(() => {
     dispatchEditing({ type: 'selection-changed', uid: selection });
+    setEditingInstanceId(null);
   }, [selection]);
 
   useEffect(() => {
@@ -369,7 +383,7 @@ export function PreviewPane({
   }, [sheetNavigationAction]);
 
   const templateUid = docTemplate?.uid ?? null;
-  const openTab = template === null ? 0 : (nextShownTab?.tab ?? 0);
+  const openTab = template === null ? null : (nextShownTab?.tab ?? null);
 
   const scale = areaWidth === null ? 1 : Math.min(1, areaWidth / width);
 
@@ -393,12 +407,12 @@ export function PreviewPane({
       editableCell:
         activeEditingUid === null
           ? null
-          : previewCellKey(document, activeEditingUid, templateUid, openTab),
+          : previewCellKey(document, activeEditingUid, templateUid, openTab, editingInstanceId),
       onEscape: () => {
         dispatchEditing({ type: 'escape-pressed' });
       },
     }),
-    [activeEditingUid, document, openTab, templateUid],
+    [activeEditingUid, document, editingInstanceId, openTab, templateUid],
   );
 
   const header =
@@ -424,11 +438,15 @@ export function PreviewPane({
     );
 
   function handleClick(event: MouseEvent<HTMLDivElement>): void {
-    if (docTemplate === null || !(event.target instanceof Element)) {
+    if (docTemplate === null || openTab === null || !(event.target instanceof Element)) {
       return;
     }
 
     if (event.target.closest('[data-sidebar-entry]') !== null) {
+      return;
+    }
+
+    if (editingUid === selection && event.target.closest('input, select, textarea') !== null) {
       return;
     }
 
@@ -452,6 +470,7 @@ export function PreviewPane({
 
     if (!selected) {
       store.select(uid);
+      setEditingInstanceId(null);
       dispatchEditing({ type: 'cell-clicked', uid, selected: false, editable });
 
       if (cellTarget !== null) {
@@ -462,6 +481,7 @@ export function PreviewPane({
     }
 
     if (cell?.kind === 'field') {
+      setEditingInstanceId(repeatBlockId(event.target));
       dispatchEditing({ type: 'cell-clicked', uid, selected: true, editable });
 
       if (cellTarget !== null) {
@@ -485,63 +505,68 @@ export function PreviewPane({
           sidebar,
           templateUid,
           selectedSheet?.id ?? null,
-          openTab,
+          openTab ?? 0,
           selection,
           problems,
         )}
       </style>
       <div ref={area} className="min-w-0">
-        {docTemplate === null || template === null || renderRecords === null ? (
+        {docTemplate === null || template === null ? (
           <p className="text-text-muted">{copy.builder.emptyPreset}</p>
         ) : (
           <div className="flex flex-col gap-2">
             <PreviewRoleSwitch role={role} onRole={setRole} />
-            <div style={{ width: width * scale, height: height * scale }}>
-              <div
-                className="origin-top-left overflow-clip rounded-window bg-surface text-body text-text"
-                style={{ width, height, transform: scale === 1 ? undefined : `scale(${scale})` }}
-                onClickCapture={handleClick}
-                data-preview-frame
-              >
-                <WindowFrame
-                  layout={{
-                    sidebar,
-                    selectedSidebarEntry: selectedSheet?.id ?? '',
-                    onSelectSidebarEntry: (id) => {
-                      const entry = findSidebarSheet(sidebar, id);
+            {renderRecords === null ? (
+              <p className="text-text-muted">{copy.builder.emptyPreset}</p>
+            ) : (
+              <div style={{ width: width * scale, height: height * scale }}>
+                <div
+                  className="origin-top-left overflow-clip rounded-window bg-surface text-body text-text"
+                  style={{ width, height, transform: scale === 1 ? undefined : `scale(${scale})` }}
+                  onClickCapture={handleClick}
+                  data-preview-frame
+                >
+                  <WindowFrame
+                    layout={{
+                      sidebar,
+                      selectedSidebarEntry: selectedSheet?.id ?? '',
+                      onSelectSidebarEntry: (id) => {
+                        const entry = findSidebarSheet(sidebar, id);
 
-                      if (entry === null) {
-                        return;
-                      }
+                        if (entry === null) {
+                          return;
+                        }
 
-                      dispatchSheet({ type: 'sheet-selected', sheetId: entry.sheetId });
+                        dispatchSheet({ type: 'sheet-selected', sheetId: entry.sheetId });
 
-                      if (entry.templateUid !== undefined) {
-                        store.select(entry.templateUid);
-                      }
-                    },
-                    onAddSidebarEntry: role === 'GM' ? (setId) => store.addSheet(setId) : undefined,
-                    tabs,
-                    selectedTab: openTab === null ? null : templateTabKey(openTab),
-                    onSelectTab: (id) => {
-                      const index = templateIndexFromKey(id);
+                        if (entry.templateUid !== undefined) {
+                          store.select(entry.templateUid);
+                        }
+                      },
+                      onAddSidebarEntry:
+                        role === 'GM' ? (setId) => store.addSheet(setId) : undefined,
+                      tabs,
+                      selectedTab: openTab === null ? null : templateTabKey(openTab),
+                      onSelectTab: (id) => {
+                        const index = templateIndexFromKey(id);
 
-                      const uid =
-                        index === null
-                          ? null
-                          : uidAt(document, [templateIndexOf(document, docTemplate.uid), index]);
+                        const uid =
+                          index === null
+                            ? null
+                            : uidAt(document, [templateIndexOf(document, docTemplate.uid), index]);
 
-                      if (uid !== null) {
-                        store.select(uid);
-                      }
-                    },
-                    header: hiddenSheetNote === null ? header : null,
-                    content: hiddenSheetNote === null ? content : <p>{hiddenSheetNote}</p>,
-                    frameClassName: 'h-full',
-                  }}
-                />
+                        if (uid !== null) {
+                          store.select(uid);
+                        }
+                      },
+                      header: hiddenSheetNote === null ? header : null,
+                      content: hiddenSheetNote === null ? content : <p>{hiddenSheetNote}</p>,
+                      frameClassName: 'h-full',
+                    }}
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
@@ -603,7 +628,8 @@ function previewCellKey(
   document: BuilderDocument,
   uid: string,
   templateUid: string | null,
-  openTab: number,
+  openTab: number | null,
+  instanceId: string | null,
 ): string | null {
   const path = locate(document, uid);
 
@@ -615,7 +641,11 @@ function previewCellKey(
     return null;
   }
 
-  return `${path.tab}.${path.section}.${path.row}.${path.cell}`;
+  return `${path.tab}.${path.section}.${path.row}.${path.cell}.${instanceId ?? ''}`;
+}
+
+function repeatBlockId(target: Element): string | null {
+  return target.closest('[data-repeat-block]')?.getAttribute('data-repeat-block') ?? null;
 }
 
 function isTextEntryTarget(target: EventTarget | null): boolean {

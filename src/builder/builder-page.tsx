@@ -79,6 +79,17 @@ type AttachedText =
 
 type AttachedTextResult = AttachedText | { ok: false; message: string };
 
+type PendingAttachedWrite = {
+  file: AttachedFile;
+  text: string;
+  canonicalDocumentText: string;
+};
+
+type AttachedWriteQueue = {
+  active: PendingAttachedWrite | null;
+  queued: PendingAttachedWrite | null;
+};
+
 const EMPTY_PRESET: Preset = { v: FORMAT_VERSION, templates: [] };
 
 const TOP_BUTTON_CLASS =
@@ -128,6 +139,12 @@ export function BuilderPage({
   const [clearRequest, setClearRequest] = useState<ClearRequest | null>(null);
   const structureHeadingId = useId();
   const filesRef = useRef<AttachedFilesState>(files);
+
+  const writeQueues = useRef<Record<FileBlockKind, AttachedWriteQueue>>({
+    preset: { active: null, queued: null },
+    snapshot: { active: null, queued: null },
+  });
+
   filesRef.current = files;
 
   useEffect(() => {
@@ -140,8 +157,14 @@ export function BuilderPage({
   const snapshotFile = files.snapshot.file;
 
   function open(next: OpenRequest): void {
-    store.open(next.preset, next.origin, next.name);
-    dispatchFiles({ type: 'detach', kind: 'snapshot' });
+    const currentPresetText = formatPresetFile(toPreset(store.$state.get().step.document));
+    const nextPresetText = formatPresetFile(next.preset);
+    const samePreset = currentPresetText === nextPresetText;
+
+    if (!samePreset) {
+      store.open(next.preset, next.origin, next.name);
+      dispatchFiles({ type: 'detach', kind: 'snapshot' });
+    }
 
     if (next.fileName === null) {
       dispatchFiles({ type: 'detach', kind: 'preset' });
@@ -179,7 +202,7 @@ export function BuilderPage({
     const file = attachedFile(kind);
 
     if (file?.reference !== null && file?.reference !== undefined) {
-      void writeFile(kind, file, text);
+      enqueueWrite(kind, file, text, text);
     }
 
     setClearRequest(null);
@@ -236,7 +259,7 @@ export function BuilderPage({
     const opened = await fileAccess.open({ mode: 'open' });
 
     if (!opened.ok) {
-      setFileMessage({ variant: 'danger', text: opened.error.reason });
+      setFileMessage({ variant: 'danger', text: copy.fileOperationFailed });
 
       return false;
     }
@@ -248,7 +271,7 @@ export function BuilderPage({
     const read = await fileAccess.read(opened.value);
 
     if (!read.ok) {
-      setFileMessage({ variant: 'danger', text: read.error.reason });
+      setFileMessage({ variant: 'danger', text: copy.fileOperationFailed });
 
       return false;
     }
@@ -407,8 +430,14 @@ export function BuilderPage({
   useEffect(() => {
     const file = files.preset.file;
 
-    if (file?.reference === null || file === null || problems.length > 0) {
+    if (
+      fileAccess.capability !== 'write-and-follow' ||
+      file?.reference === null ||
+      file === null ||
+      problems.length > 0
+    ) {
       if (
+        fileAccess.capability === 'write-and-follow' &&
         file !== null &&
         file.status.kind !== 'blocked' &&
         presetText !== files.preset.lastDocumentText
@@ -427,15 +456,21 @@ export function BuilderPage({
       return;
     }
 
-    if (files.preset.conflict !== null) {
+    if (
+      files.preset.conflict !== null ||
+      (files.preset.file?.status.kind === 'failed' &&
+        files.preset.failedDocumentText === presetText &&
+        files.preset.forceWrite === 0)
+    ) {
       return;
     }
 
-    void writeFile('preset', file, textForWrite(files.preset, presetText), presetText);
+    enqueueWrite('preset', file, textForWrite(files.preset, presetText), presetText);
   }, [
     fileAccess,
     files.preset.conflict,
     files.preset.file,
+    files.preset.failedDocumentText,
     files.preset.forceWrite,
     files.preset.lastDocumentText,
     files.preset.restoreDocumentText,
@@ -447,7 +482,12 @@ export function BuilderPage({
   useEffect(() => {
     const file = files.snapshot.file;
 
-    if (file?.reference === null || file === null || generatedSnapshot === null) {
+    if (
+      fileAccess.capability !== 'write-and-follow' ||
+      file?.reference === null ||
+      file === null ||
+      generatedSnapshot === null
+    ) {
       if (
         file !== null &&
         generatedSnapshot === null &&
@@ -468,11 +508,16 @@ export function BuilderPage({
       return;
     }
 
-    if (files.snapshot.conflict !== null) {
+    if (
+      files.snapshot.conflict !== null ||
+      (files.snapshot.file?.status.kind === 'failed' &&
+        files.snapshot.failedDocumentText === generatedSnapshot &&
+        files.snapshot.forceWrite === 0)
+    ) {
       return;
     }
 
-    void writeFile(
+    enqueueWrite(
       'snapshot',
       file,
       textForWrite(files.snapshot, generatedSnapshot),
@@ -481,6 +526,7 @@ export function BuilderPage({
   }, [
     fileAccess,
     files.snapshot.file,
+    files.snapshot.failedDocumentText,
     files.snapshot.forceWrite,
     files.snapshot.lastDocumentText,
     files.snapshot.restoreDocumentText,
@@ -508,7 +554,12 @@ export function BuilderPage({
     result: FileAccessResult<FileContents>,
   ): Promise<void> {
     if (!result.ok) {
-      dispatchFiles({ type: 'fail', kind, message: result.error.reason });
+      dispatchFiles({
+        type: 'fail',
+        kind,
+        message: copy.fileOperationFailed,
+        documentText: documentText(kind),
+      });
 
       return;
     }
@@ -523,6 +574,32 @@ export function BuilderPage({
 
     const current = filesRef.current[kind];
     const currentDocumentText = documentText(kind);
+    const activeWrite = writeQueues.current[kind].active;
+
+    const sameFile =
+      current.file?.reference !== null &&
+      current.file?.reference !== undefined &&
+      current.file.reference.id === activeWrite?.file.reference?.id;
+
+    const ownEcho =
+      currentDocumentText === parsed.canonicalText ||
+      current.lastDocumentText === parsed.canonicalText ||
+      current.lastText === result.value.text ||
+      (sameFile &&
+        activeWrite !== null &&
+        (activeWrite.text === result.value.text ||
+          activeWrite.canonicalDocumentText === parsed.canonicalText));
+
+    if (ownEcho) {
+      dispatchFiles({
+        type: 'observe-own',
+        kind,
+        contents: result.value,
+        canonicalText: parsed.canonicalText,
+      });
+
+      return;
+    }
 
     if (
       current.lastDocumentText !== null &&
@@ -581,35 +658,190 @@ export function BuilderPage({
     dispatchFiles({ type: 'take-file', kind });
   }
 
+  function enqueueWrite(
+    kind: FileBlockKind,
+    file: AttachedFile,
+    text: string,
+    canonicalDocumentText: string,
+  ): void {
+    const queue = writeQueues.current[kind];
+    const pending = { file, text, canonicalDocumentText };
+    const active = queue.active;
+    const queued = queue.queued;
+
+    if (
+      active !== null &&
+      active.file.reference?.id === file.reference?.id &&
+      active.text === text &&
+      active.canonicalDocumentText === canonicalDocumentText
+    ) {
+      return;
+    }
+
+    if (
+      queued !== null &&
+      queued.file.reference?.id === file.reference?.id &&
+      queued.text === text &&
+      queued.canonicalDocumentText === canonicalDocumentText
+    ) {
+      return;
+    }
+
+    queue.queued = pending;
+
+    if (queue.active === null) {
+      void drainWriteQueue(kind);
+    }
+  }
+
+  async function drainWriteQueue(kind: FileBlockKind): Promise<void> {
+    const queue = writeQueues.current[kind];
+
+    if (queue.active !== null || queue.queued === null) {
+      return;
+    }
+
+    let knownContents: FileContents | null = null;
+
+    while (queue.queued !== null) {
+      const next = queue.queued;
+      queue.queued = null;
+      queue.active = next;
+
+      try {
+        knownContents = await writeFile(
+          kind,
+          next.file,
+          next.text,
+          next.canonicalDocumentText,
+          knownContents,
+        );
+      } catch {
+        const current = filesRef.current[kind].file;
+
+        if (current?.reference?.id === next.file.reference?.id) {
+          dispatchFiles({
+            type: 'fail',
+            kind,
+            message: copy.fileOperationFailed,
+            documentText: documentText(kind),
+          });
+        }
+
+        knownContents = null;
+      }
+
+      queue.active = null;
+
+      if (knownContents === null) {
+        break;
+      }
+    }
+  }
+
   async function writeFile(
     kind: FileBlockKind,
     file: AttachedFile,
     text: string,
     canonicalDocumentText = text,
-  ): Promise<void> {
+    knownContents: FileContents | null = null,
+  ): Promise<FileContents | null> {
     if (file.reference === null || fileAccess.capability !== 'write-and-follow') {
-      return;
+      return null;
+    }
+
+    const beforeRead = filesRef.current[kind];
+
+    if (
+      beforeRead.file?.reference?.id !== file.reference.id ||
+      (beforeRead.conflict !== null && beforeRead.forceWrite === 0)
+    ) {
+      return null;
+    }
+
+    const currentOnDisk = await fileAccess.read(file.reference);
+
+    if (!currentOnDisk.ok) {
+      if (filesRef.current[kind].file?.reference?.id === file.reference.id) {
+        dispatchFiles({
+          type: 'fail',
+          kind,
+          message: copy.fileOperationFailed,
+          documentText: documentText(kind),
+        });
+      }
+
+      return null;
+    }
+
+    const current = filesRef.current[kind];
+
+    const diskChanged =
+      knownContents === null
+        ? current.file?.lastSyncAt.getTime() !== currentOnDisk.value.modifiedAt.getTime() ||
+          current.lastText !== currentOnDisk.value.text
+        : knownContents.modifiedAt.getTime() !== currentOnDisk.value.modifiedAt.getTime() ||
+          knownContents.text !== currentOnDisk.value.text;
+
+    if (diskChanged && current.forceWrite === 0) {
+      const parsed = parseAttachedText(kind, currentOnDisk.value.text);
+
+      if (!parsed.ok) {
+        dispatchFiles({ type: 'refuse', kind, message: parsed.message });
+
+        return null;
+      }
+
+      if (
+        documentText(kind) === parsed.canonicalText ||
+        current.lastDocumentText === parsed.canonicalText
+      ) {
+        dispatchFiles({
+          type: 'observe-own',
+          kind,
+          contents: currentOnDisk.value,
+          canonicalText: parsed.canonicalText,
+        });
+
+        return null;
+      }
+
+      dispatchFiles({
+        type: 'conflict',
+        kind,
+        contents: currentOnDisk.value,
+        canonicalText: parsed.canonicalText,
+      });
+
+      return null;
     }
 
     const result = await fileAccess.write(file.reference, text);
 
     if (!result.ok) {
-      dispatchFiles({ type: 'fail', kind, message: result.error.reason });
+      dispatchFiles({
+        type: 'fail',
+        kind,
+        message: copy.fileOperationFailed,
+        documentText: documentText(kind),
+      });
 
-      return;
+      return null;
     }
 
-    if (documentText(kind) !== canonicalDocumentText) {
-      return;
+    if (filesRef.current[kind].file?.reference?.id !== file.reference.id) {
+      return null;
     }
 
     dispatchFiles({
       type: 'write-succeeded',
       kind,
       contents: result.value,
-      text,
+      text: result.value.text,
       documentText: canonicalDocumentText,
     });
+
+    return result.value;
   }
 
   async function saveAs(kind: FileBlockKind): Promise<void> {
@@ -627,7 +859,7 @@ export function BuilderPage({
     const opened = await fileAccess.open({ mode: 'save', suggestedName });
 
     if (!opened.ok) {
-      setFileMessage({ variant: 'danger', text: opened.error.reason });
+      setFileMessage({ variant: 'danger', text: copy.fileOperationFailed });
 
       return;
     }
@@ -639,7 +871,7 @@ export function BuilderPage({
     const written = await fileAccess.write(opened.value, text);
 
     if (!written.ok) {
-      setFileMessage({ variant: 'danger', text: written.error.reason });
+      setFileMessage({ variant: 'danger', text: copy.fileOperationFailed });
 
       return;
     }
@@ -699,7 +931,7 @@ export function BuilderPage({
           void saveAs('preset').catch(() => {
             setFileMessage({
               variant: 'danger',
-              text: 'File access failed',
+              text: copy.fileOperationFailed,
             });
           });
         }}
@@ -707,7 +939,7 @@ export function BuilderPage({
           void saveAs('snapshot').catch(() => {
             setFileMessage({
               variant: 'danger',
-              text: 'File access failed',
+              text: copy.fileOperationFailed,
             });
           });
         }}

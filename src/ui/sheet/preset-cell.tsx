@@ -95,7 +95,7 @@ export function SheetCell({
   pending,
 }: SheetCellProps): ReactNode {
   const preview = useContext(CellPreviewContext);
-  const cellKey = `${row.tabIndex}.${row.sectionIndex}.${row.rowIndex}.${cellIndex}`;
+  const cellKey = `${row.tabIndex}.${row.sectionIndex}.${row.rowIndex}.${cellIndex}.${row.instanceId ?? ''}`;
   const previewEditable = preview?.editableCell === cellKey;
 
   const node = (
@@ -166,6 +166,7 @@ function CellContent({
           place={place}
           pending={pending}
           autoFocus={autoFocus}
+          onEscape={onEscape}
         />
       ) : cell.type === 'select' || cell.type === 'dice-choice' ? (
         <SelectField
@@ -175,6 +176,7 @@ function CellContent({
           place={place}
           pending={pending}
           autoFocus={autoFocus}
+          onEscape={onEscape}
         />
       ) : (
         <TextValueField
@@ -240,6 +242,7 @@ function CheckField({
   place,
   pending,
   autoFocus = false,
+  onEscape,
 }: FieldProps): ReactNode {
   const markId = useId();
   const edit = useCheckFieldEdit({ place, fieldId: field.id, recordValue: values.get(field.id) });
@@ -255,6 +258,12 @@ function CheckField({
         disabled={pending.disabled}
         autoFocus={autoFocus}
         onChange={edit.onToggle}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && onEscape !== undefined) {
+            event.preventDefault();
+            onEscape();
+          }
+        }}
       />
       {pending.marked ? <PendingMark id={markId} /> : null}
     </span>
@@ -268,6 +277,7 @@ function SelectField({
   place,
   pending,
   autoFocus = false,
+  onEscape,
 }: Omit<FieldProps, 'field'> & {
   field: Extract<PresetFieldCell, { type: 'select' | 'dice-choice' }>;
 }): ReactNode {
@@ -291,6 +301,13 @@ function SelectField({
         autoFocus={autoFocus}
         value={edit.value}
         onKeyDown={(event) => {
+          if (event.key === 'Escape' && onEscape !== undefined) {
+            event.preventDefault();
+            onEscape();
+
+            return;
+          }
+
           if (event.altKey || event.metaKey || event.ctrlKey) {
             return;
           }

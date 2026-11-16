@@ -1,9 +1,9 @@
 # Presets
 
-Preset files kept here are examples for the builder and the preset checks, beside
-`docs/example-preset.json` and the test fixtures.
+Preset files kept here are standalone examples. The Builder examples are
+`docs/example-preset.json` and `tests/fixtures/presets/`.
 
-A test in `src/core/preset.test.ts` parses every `.json` file here, so each one stays a valid preset.
+`src/core/preset.test.ts` parses every `.json` file here, so each one stays a valid preset.
 
 ## Files
 

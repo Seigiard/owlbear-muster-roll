@@ -26,6 +26,7 @@ export type AttachedFileState = {
   lastDocumentText: string | null;
   conflict: FileConflict | null;
   forceWrite: number;
+  failedDocumentText: string | null;
   restoreText: string | null;
   restoreDocumentText: string | null;
 };
@@ -47,7 +48,12 @@ export type AttachedFilesAction =
   | { type: 'detach'; kind: keyof AttachedFilesState }
   | { type: 'block'; kind: keyof AttachedFilesState }
   | { type: 'refuse'; kind: keyof AttachedFilesState; message: string }
-  | { type: 'fail'; kind: keyof AttachedFilesState; message: string }
+  | {
+      type: 'fail';
+      kind: keyof AttachedFilesState;
+      message: string;
+      documentText: string;
+    }
   | {
       type: 'conflict';
       kind: keyof AttachedFilesState;
@@ -56,6 +62,12 @@ export type AttachedFilesAction =
     }
   | {
       type: 'accept-external';
+      kind: keyof AttachedFilesState;
+      contents: FileContents;
+      canonicalText: string;
+    }
+  | {
+      type: 'observe-own';
       kind: keyof AttachedFilesState;
       contents: FileContents;
       canonicalText: string;
@@ -82,6 +94,7 @@ export function emptyAttachedFileState(): AttachedFileState {
     lastDocumentText: null,
     conflict: null,
     forceWrite: 0,
+    failedDocumentText: null,
     restoreText: null,
     restoreDocumentText: null,
   };
@@ -111,6 +124,7 @@ export function attachedFilesReducer(
         lastText: action.contents.text,
         lastDocumentText: action.canonicalText,
         conflict: null,
+        failedDocumentText: null,
       };
       break;
     case 'detach':
@@ -137,6 +151,7 @@ export function attachedFilesReducer(
           ? current
           : {
               ...current,
+              failedDocumentText: action.documentText,
               file: { ...current.file, status: { kind: 'failed', message: action.message } },
             };
       break;
@@ -159,10 +174,27 @@ export function attachedFilesReducer(
               lastText: action.contents.text,
               lastDocumentText: action.canonicalText,
               conflict: null,
+              failedDocumentText: null,
               file: {
                 ...current.file,
                 lastSyncAt: action.contents.modifiedAt,
                 status: { kind: 'synchronized' },
+              },
+            };
+      break;
+    case 'observe-own':
+      next =
+        current.file === null
+          ? current
+          : {
+              ...current,
+              lastText: action.contents.text,
+              lastDocumentText: action.canonicalText,
+              failedDocumentText: null,
+              file: {
+                ...current.file,
+                lastSyncAt: action.contents.modifiedAt,
+                status: current.conflict === null ? { kind: 'saved' } : { kind: 'changed' },
               },
             };
       break;
@@ -174,6 +206,7 @@ export function attachedFilesReducer(
               ...current,
               conflict: null,
               forceWrite: current.forceWrite + 1,
+              failedDocumentText: null,
               file: { ...current.file, status: { kind: 'changed' } },
             };
       break;
@@ -187,6 +220,7 @@ export function attachedFilesReducer(
               lastDocumentText: current.conflict.canonicalText,
               conflict: null,
               forceWrite: current.forceWrite + 1,
+              failedDocumentText: null,
               file: {
                 ...current.file,
                 lastSyncAt: current.conflict.contents.modifiedAt,
@@ -204,6 +238,7 @@ export function attachedFilesReducer(
               lastDocumentText: action.documentText,
               conflict: current.conflict,
               forceWrite: 0,
+              failedDocumentText: null,
               restoreText:
                 current.restoreDocumentText !== null &&
                 current.restoreDocumentText === action.documentText &&
