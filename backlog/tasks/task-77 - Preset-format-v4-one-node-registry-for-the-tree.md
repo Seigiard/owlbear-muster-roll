@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-16T15:38:00Z'
+updated_date: '2026-11-16T23:57:00Z'
 labels:
   - format-v4
 dependencies:
@@ -25,13 +25,13 @@ Every irregularity of format v3 is a special case in the checks and the builder:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The schema is `template > tab > section > row > cell` with the keys of preset-format.md "Tree": `repeat: {nameField}` on a template, `repeat: {id, nameField}` on a section and a row, `visibility` on section and row, `players: "edit"` on any template, cell kinds text, field, dice and `token {id}`; `kind` and `tokens` are gone; `v` is 4 and v1-3 presets and snapshots are refused
+- [x] #1 The schema is `template > tab > section > row > cell` with the keys of preset-format.md "Tree": `repeat: {nameField}` on a template, `repeat: {id, nameField}` on a section and a row, `visibility` on section and row, `players: "edit"` on any template, cell kinds text, field, dice and `token {id}`; `kind` and `tokens` are gone; `v` is 4 and v1-3 presets and snapshots are refused
 - [ ] #2 Rule checks refuse a duplicate id in a scope, a `nameField` that names no `text` field inside its scope, `repeat` on a tab and a repeat scope inside another (temporary), and each shows at its item in the builder and under the upload button
-- [ ] #3 A sheet set is a template with `repeat`: sidebar groups, "+", sheet names, rolls and the duplicate number read `repeat.nameField`; a block key uses `repeat.id`; a repeat row draws as a block of one row
-- [ ] #4 A token cell shows the GM an icon with the link status and a menu to link, unlink and select the linked tokens on the map, and players nothing; a link record names the sheet, the block path and the cell id; the picker offers the nearest ancestor name (block nameField, section title, sheet name or template title) as the label; several token cells per sheet work
-- [ ] #5 A hidden section or row is invisible to players, its rolls show only on GM clients, and its token cells give players no menu, through src/core/visibility.ts
-- [ ] #6 An upload that changes `repeat.id`, adds or removes `repeat`, or removes a token cell follows the table in preset-format.md "Preset changes" with one confirmation that counts the erased values
-- [ ] #7 docs/preset-format.md, docs/example-preset.json (parsed by `bun test src/core/preset.test.ts`), presets/*.json, test fixtures and GLOSSARY.md (Repeat scope, Block, Token cell added; Linkable retired; Repeat section widened) describe v4
+- [x] #3 A sheet set is a template with `repeat`: sidebar groups, "+", sheet names, rolls and the duplicate number read `repeat.nameField`; a block key uses `repeat.id`; a repeat row draws as a block of one row
+- [x] #4 A token cell shows the GM an icon with the link status and a menu to link, unlink and select the linked tokens on the map, and players nothing; a link record names the sheet, the block path and the cell id; the picker offers the nearest ancestor name (block nameField, section title, sheet name or template title) as the label; several token cells per sheet work
+- [x] #5 A hidden section or row is invisible to players, its rolls show only on GM clients, and its token cells give players no menu, through src/core/visibility.ts
+- [x] #6 An upload that changes `repeat.id`, adds or removes `repeat`, or removes a token cell follows the table in preset-format.md "Preset changes" with one confirmation that counts the erased values
+- [x] #7 docs/preset-format.md, docs/example-preset.json (parsed by `bun test src/core/preset.test.ts`), presets/*.json, test fixtures and GLOSSARY.md (Repeat scope, Block, Token cell added; Linkable retired; Repeat section widened) describe v4
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -47,3 +47,9 @@ Cell-menu linking opens all scene tokens, marked when already linked. Prefer vie
 
 Confirmed token-cell behavior: the GM picks individual linked tokens to unlink, with multi-selection; picking an already linked token reassigns its single link to the current cell. No map token is deleted. The draft spec is ready for the approval checkpoint.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+The single review and its bounded fix batch are complete at db11acc8cb09c1f9cd057e5b38d4d3ad6fcf8f39. Five behavior gaps were repaired: distinct token-cell picker identity, failed-command outcomes, current/elsewhere link status, repeat-row blocks and inherited player visibility. Final clean-state checks: format/typecheck/build pass; lint 0 errors/256 warnings; Bun3375 pass/1 environment skip; browser542/542. No second review. Partial-success and rejected-promise variants are handled in source but not independently exercised by new owners. AC2 remains unchecked: duplicate/nameField checks are covered, but the previously excluded temporary repeat-tab/nesting guard D19 was not established; dependent TASK78/79 implement those forms rather than treating this as a completed refusal check. Durable evidence: /Users/seigiard/.claude/artifacts/tdd-20261116-235057/task-77-review-fix/final-handoff.md.
+<!-- SECTION:NOTES:END -->

@@ -1,9 +1,11 @@
 ---
 id: TASK-78
 title: 'Repeat tab: one tab per block'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@openai'
 created_date: '2026-11-16T06:49:00Z'
+updated_date: '2026-11-16T23:57:00Z'
 labels:
   - format-v4
 dependencies:
@@ -29,3 +31,9 @@ A GM wants an NPC sheet where each NPC is a tab with its own sections, not a row
 - [ ] #4 The open tab stays client-local and `openTabIndex` counts block tabs; a token cell inside a block tab opens and marks that tab (CAP-14, CAP-32)
 - [ ] #5 The builder preview and the extension draw the repeat tab through the one frame component; e2e covers add, open, delete and the player view
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Reconcile the prepared spec with the committed TASK77 row-scope and visibility repair. 2. Project stored repeat-tab blocks into stable rendered tabs shared by extension and preview. 3. Extend GM-only add/delete and token open/map marks with exact block context. 4. Verify core/engine and browser behavior through the TDD chain, then run required full checks and one scoped review. 5. Update release-boundary documentation and record acceptance evidence. Source dependency is available; TASK77 AC2 temporary-guard history stays explicit rather than falsely checked.
+<!-- SECTION:PLAN:END -->
