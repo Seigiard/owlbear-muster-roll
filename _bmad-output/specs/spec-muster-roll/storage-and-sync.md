@@ -10,11 +10,25 @@
 
 If the snapshot does not fit, the GM sees a notice and play continues by broadcast. Two things are lost: reading with no GM online, and moving to another GM device.
 
+## Records
+
+Format version 4 keeps one record per block, the sheet root included. A block is a sheet or one instance of a repeat scope (`preset-format.md`, Repeat).
+
+| Record | Key | Holds |
+| --- | --- | --- |
+| Block | `blk:<sheet>` for the sheet root, then one `:<scope id>:<block id>` pair per nesting level | `order`, the set for a sheet of a sheet set, and `cells`: every field value of the block, each with its own version `[value, counter, author]` |
+| Link | `link:<token>` | The sheet, the block path and the token cell the token opens |
+| Preset, access, player link | As in version 3 | — |
+
+- A `null` block record is a deleted block, with its nested blocks.
+- The version 3 keys `row:` (one record per layout row, named by its first field) and `rep:` (one record per repeat block, named by the section's first field) are gone. Their identity was positional: moving a field changed the record's name.
+- Rejected: one record per block with one version for the whole block (smallest snapshot, 4040 B on the synthetic room, but two people editing different fields of one sheet in the same moment lose one edit). Fallback if per-cell merge proves awkward: one record per field (`val:<block path>:<field id>`, 9048 B and 846 records on the synthetic room).
+
 ## Sync rules
 
-- Edits go by broadcast with a version per row.
-- The latest version wins, also when copies diverge.
-- Edits to different rows both stay. Of two simultaneous edits of one row, only the latest stays.
+- Edits go by broadcast with a version per cell. A block record carries the cells it changes.
+- The latest version wins per cell, also when copies diverge. A deleted block wins over its cells.
+- Edits to different cells, of one block or of different blocks, both stay. Of two simultaneous edits of one cell, only the latest stays.
 - All GM tabs and devices can edit.
 - A player's edit goes by broadcast. A GM client checks the write right before the edit takes effect.
 - Live exchange needs a GM online.
@@ -25,9 +39,9 @@ If the snapshot does not fit, the GM sees a notice and play continues by broadca
 | File | Holds | On import |
 | --- | --- | --- |
 | Preset | Structure only | Gives the same structure |
-| Room snapshot | Values and token links | Replaces all room data after confirmation. Drops values of field ids not in the current preset, and sheets of a sheet set or single sheet the preset lacks, and shows both counts. Restores a token link where the token exists. Resets player links and write rights to read |
+| Room snapshot | Values and token links | Replaces all room data after confirmation. Drops values of field ids not in the current preset, blocks whose scope path the preset lacks, and sheets of a template the preset lacks, and shows the counts. Restores a token link where the token exists. Resets player links and write rights to read |
 
-A v1 preset or snapshot is refused with a message. v1 room data is not read. A wipe («Очистить всё», CAP-31) removes the preset, every record, the room copy and the GM's local copy of the room after one confirmation.
+A preset or snapshot of versions 1 to 3 is refused with a message. Such room data is not read. A wipe («Очистить всё», CAP-31) removes the preset, every record, the room copy and the GM's local copy of the room after one confirmation.
 
 ## Platform limits
 
@@ -57,6 +71,17 @@ Deflate plus base64, on synthetic data with English notes.
 | 6 PC + 60 NPC | 13kB | 16.7kB |
 
 Russian text and the preset add more. These measurements predate the typed-field format, so measure again on the real format. Measured again on the sheet set and single sheet format (TASK-41, `src/core/snapshot-size.test.ts`): `tests/fixtures/presets/d20.json` with 6 sheets of a sheet set, a linkable NPC single sheet with 60 repeat blocks and links, and 3 other single sheets gives a room copy of 9270 bytes, a margin of 6230 bytes over the 1500-byte gate.
+
+Measured for the version 4 record unit (2026-11-16, synthetic room: 6 PCs with 40 fields and 10 inventory blocks of 3 fields each, 60 NPC blocks of 5 fields; limit 15500 bytes):
+
+| Record unit | Records | Snapshot |
+| --- | --- | --- |
+| Version 3: one per layout row and per block | 198 | 4644 B |
+| One per block, one version | 132 | 4040 B |
+| One per field | 846 | 9048 B |
+| One per block, a version per cell (chosen) | 126 | 7436 B |
+
+The chosen unit grows the snapshot by about 60 % for the same room. Measure again on the real format with `src/core/snapshot-size.test.ts`.
 
 ## Accepted losses
 
