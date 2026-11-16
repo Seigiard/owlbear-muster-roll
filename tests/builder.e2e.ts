@@ -72,8 +72,26 @@ function problemCounter(page: Page, count: number): Locator {
   return page.getByRole('button', { name: builder.problemsName(count) });
 }
 
-function downloadButton(page: Page): Locator {
-  return page.getByRole('button', { name: copy.command.downloadPreset });
+function fileBlock(page: Page, kind: 'Пресет' | 'Снимок'): Locator {
+  return page
+    .locator('header')
+    .getByRole('button')
+    .filter({ hasText: new RegExp(`^${kind}`) });
+}
+
+async function openFileMenu(page: Page, kind: 'Пресет' | 'Снимок'): Promise<Locator> {
+  const block = fileBlock(page, kind);
+
+  await expect(block).toBeVisible();
+  await block.click();
+
+  return page.getByRole('menu');
+}
+
+async function presetDownloadButton(page: Page): Promise<Locator> {
+  return (await openFileMenu(page, 'Пресет')).getByRole('menuitem', {
+    name: 'Скачать копию',
+  });
 }
 
 // React Aria restores the tree's scroll on focus from its last scroll event, which comes a frame
@@ -120,14 +138,21 @@ async function dragOnto(page: Page, source: Locator, target: Locator): Promise<v
 }
 
 async function openFromMenu(page: Page, label: string): Promise<void> {
-  await page.getByRole('button', { name: builder.open }).click();
-  await page.getByRole('menuitem', { name: label }).click();
+  const menu = await openFileMenu(page, 'Пресет');
+
+  await menu.getByRole('menuitem', { name: label }).click();
 }
 
 async function openFile(page: Page, name: string, text: string): Promise<void> {
+  const menu = await openFileMenu(page, 'Пресет');
+  const openAnother = menu.getByRole('menuitem', { name: 'Открыть другой файл…' });
   const choosing = page.waitForEvent('filechooser');
 
-  await openFromMenu(page, builder.openFile);
+  await (
+    (await openAnother.count()) === 1
+      ? openAnother
+      : menu.getByRole('menuitem', { name: 'Открыть файл…' })
+  ).click();
 
   const chooser = await choosing;
 
@@ -228,7 +253,7 @@ test('opens on the empty preset: one problem, download off, and the empty previe
     builder.addSingle,
   ]);
   await expect(problemCounter(page, 1)).toBeVisible();
-  const presetDownload = downloadButton(page);
+  const presetDownload = await presetDownloadButton(page);
   await expect(presetDownload).toBeDisabled();
   await expect(presetDownload).toHaveAccessibleDescription(builder.downloadDisabled);
   await expect(
@@ -236,6 +261,217 @@ test('opens on the empty preset: one problem, download off, and the empty previe
   ).toBeVisible();
   await expect(page.getByText(builder.emptyPreset)).toBeVisible();
   await expect(page.getByRole('heading', { name: builder.preview(600, 600) })).toBeVisible();
+});
+
+test('shows the preset and snapshot as complete file blocks instead of legacy controls', async ({
+  page,
+}) => {
+  // #given
+  await page.goto(PAGE);
+
+  // #when
+  const preset = fileBlock(page, 'Пресет');
+  const snapshot = fileBlock(page, 'Снимок');
+
+  // #then
+  await expect(preset).toContainText('Пресет');
+  await expect(preset).toContainText('пусто');
+  await expect(preset).toContainText('без файла, черновик в браузере');
+  await expect(preset.locator('[data-file-status-dot]')).toBeVisible();
+  await expect(snapshot).toContainText('Снимок');
+  await expect(snapshot).toContainText('пусто');
+  await expect(snapshot).toContainText('без файла, черновик в браузере');
+  await expect(snapshot.locator('[data-file-status-dot]')).toBeVisible();
+  await expect(page.locator('header').getByRole('button', { name: builder.open })).toHaveCount(0);
+  await expect(
+    page.locator('header').getByRole('button', { name: copy.command.downloadPreset }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('header').getByRole('button', { name: copy.command.downloadSnapshot }),
+  ).toHaveCount(0);
+});
+
+test('file block menus show file metadata and all actions for their document', async ({ page }) => {
+  // #given
+  await page.goto(PAGE);
+
+  // #when
+  const emptyPresetMenu = await openFileMenu(page, 'Пресет');
+
+  // #then
+  await expect(emptyPresetMenu.getByText('не подключён', { exact: true })).toBeVisible();
+  await expect(emptyPresetMenu.getByRole('menuitem', { name: 'Открыть файл…' })).toBeVisible();
+  await expect(emptyPresetMenu.getByRole('menuitem', { name: builder.openD20 })).toBeVisible();
+  await expect(emptyPresetMenu.getByRole('menuitem', { name: 'Сохранить в файл…' })).toBeVisible();
+  await expect(emptyPresetMenu.getByRole('menuitem', { name: 'Скачать копию' })).toBeVisible();
+  await expect(emptyPresetMenu.getByRole('menuitem', { name: 'Очистить пресет…' })).toBeVisible();
+
+  // #when
+  await page.keyboard.press('Escape');
+  await openFile(page, 'd6-pool-2026-11-01-1200.json', D6_POOL_TEXT);
+
+  const linkedPresetMenu = await openFileMenu(page, 'Пресет');
+
+  // #then
+  await expect(linkedPresetMenu.getByText('Файл', { exact: true })).toBeVisible();
+  await expect(linkedPresetMenu).toContainText('d6-pool-2026-11-01-1200.json');
+  await expect(linkedPresetMenu.getByText('Синхронизирован', { exact: true })).toBeVisible();
+  await expect(linkedPresetMenu).toContainText(/\d{1,2}:\d{2}/);
+  await expect(
+    linkedPresetMenu.getByRole('menuitem', { name: 'Открыть другой файл…' }),
+  ).toBeVisible();
+  await expect(linkedPresetMenu.getByRole('menuitem', { name: 'Сохранить как…' })).toBeVisible();
+  await expect(
+    linkedPresetMenu.getByRole('menuitem', { name: 'Отключить файл, оставить черновик' }),
+  ).toBeVisible();
+
+  // #when
+  await page.keyboard.press('Escape');
+
+  const snapshotMenu = await openFileMenu(page, 'Снимок');
+
+  // #then
+  await expect(snapshotMenu.getByText('не подключён', { exact: true })).toBeVisible();
+  await expect(snapshotMenu.getByRole('menuitem', { name: 'Открыть файл…' })).toBeVisible();
+  await expect(snapshotMenu.getByRole('menuitem', { name: 'Сохранить в файл…' })).toBeVisible();
+  await expect(snapshotMenu.getByRole('menuitem', { name: 'Скачать копию' })).toBeVisible();
+  await expect(snapshotMenu.getByRole('menuitem', { name: 'Очистить снимок…' })).toBeVisible();
+  await expect(snapshotMenu.getByRole('menuitem', { name: builder.openD20 })).toHaveCount(0);
+});
+
+test('save as downloads the linked preset document', async ({ page }) => {
+  // #given
+  await page.goto(PAGE);
+  await openFile(page, 'd6-pool.json', D6_POOL_TEXT);
+
+  // #when
+  const downloading = page.waitForEvent('download');
+  const menu = await openFileMenu(page, 'Пресет');
+
+  await menu.getByRole('menuitem', { name: 'Сохранить как…' }).click();
+
+  const download = await downloading;
+  const path = await download.path();
+
+  if (path === null) {
+    throw new Error('The preset download has no local path');
+  }
+
+  // #then
+  expect(parsePresetFile(readFileSync(path, 'utf8'))).toEqual(parsePresetFile(D6_POOL_TEXT));
+});
+
+test('save as downloads the linked snapshot document', async ({ page }) => {
+  // #given
+  await openPlayerPreview(page);
+
+  // #when
+  const downloading = page.waitForEvent('download');
+  const menu = await openFileMenu(page, 'Снимок');
+
+  await menu.getByRole('menuitem', { name: 'Сохранить как…' }).click();
+
+  const download = await downloading;
+  const path = await download.path();
+
+  if (path === null) {
+    throw new Error('The snapshot download has no local path');
+  }
+
+  // #then
+  expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(JSON.parse(PLAYER_PREVIEW_SNAPSHOT));
+});
+
+test('detaching a preset keeps its content as a draft', async ({ page }) => {
+  // #given
+  await page.goto(PAGE);
+  await openFile(page, 'd6-pool.json', D6_POOL_TEXT);
+  await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
+
+  // #when
+  const menu = await openFileMenu(page, 'Пресет');
+
+  await menu.getByRole('menuitem', { name: 'Отключить файл, оставить черновик' }).click();
+
+  // #then
+  await expect(fileBlock(page, 'Пресет')).toContainText('черновик');
+  await expect(fileBlock(page, 'Пресет')).not.toContainText('d6-pool.json');
+  await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
+
+  const detachedMenu = await openFileMenu(page, 'Пресет');
+
+  await expect(
+    detachedMenu.getByRole('menuitem', { name: 'Отключить файл, оставить черновик' }),
+  ).toHaveCount(0);
+  await expect(detachedMenu.getByRole('menuitem', { name: 'Сохранить в файл…' })).toBeVisible();
+});
+
+test('clears a linked preset after one named confirmation, and undo restores it', async ({
+  page,
+}) => {
+  // #given
+  await page.goto(PAGE);
+  await openFile(page, 'd6-pool.json', D6_POOL_TEXT);
+
+  const menu = await openFileMenu(page, 'Пресет');
+
+  // #when
+  await menu.getByRole('menuitem', { name: 'Очистить пресет…' }).click();
+
+  const confirmation = page.getByRole('group', {
+    name: /Очистить пресет.*d6-pool\.json/,
+  });
+
+  // #then
+  await expect(confirmation).toHaveCount(1);
+  await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
+
+  // #when
+  await confirmation.getByRole('button', { name: 'Очистить', exact: true }).click();
+
+  // #then
+  await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toHaveCount(0);
+  await expect(page.getByText(builder.emptyPreset)).toBeVisible();
+
+  // #when
+  await page.getByRole('button', { name: builder.undo }).click();
+
+  // #then
+  await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
+});
+
+test('clears a linked snapshot after one named confirmation, and undo restores it', async ({
+  page,
+}) => {
+  // #given
+  await openPlayerPreview(page);
+  await expect(preview(page).getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
+
+  const menu = await openFileMenu(page, 'Снимок');
+
+  // #when
+  await menu.getByRole('menuitem', { name: 'Очистить снимок…' }).click();
+
+  const confirmation = page.getByRole('group', {
+    name: /Очистить снимок.*player-preview-snapshot\.json/,
+  });
+
+  // #then
+  await expect(confirmation).toHaveCount(1);
+  await expect(preview(page).getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
+
+  // #when
+  await confirmation.getByRole('button', { name: 'Очистить', exact: true }).click();
+
+  // #then
+  await expect(preview(page).getByRole('tab', { name: 'Ария', exact: true })).toHaveCount(0);
+  await expect(preview(page).getByRole('tab', { name: builder.previewSample })).toBeVisible();
+
+  // #when
+  await page.getByRole('button', { name: builder.undo }).click();
+
+  // #then
+  await expect(preview(page).getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
 });
 
 test('builds a preset with the tree and the forms, and the window loads the downloaded file', async ({
@@ -301,7 +537,7 @@ test('builds a preset with the tree and the forms, and the window loads the down
   // #when
   const downloading = page.waitForEvent('download');
 
-  await downloadButton(page).click();
+  await (await presetDownloadButton(page)).click();
 
   const download = await downloading;
   const path = await download.path();
@@ -416,7 +652,7 @@ test('builds, previews and downloads a select field, then drops its options on a
   // #when
   const selectDownloading = page.waitForEvent('download');
 
-  await downloadButton(page).click();
+  await (await presetDownloadButton(page)).click();
 
   const selectPath = await (await selectDownloading).path();
   const selectFile = JSON.parse(readFileSync(selectPath, 'utf8'));
@@ -437,7 +673,7 @@ test('builds, previews and downloads a select field, then drops its options on a
 
   const textDownloading = page.waitForEvent('download');
 
-  await downloadButton(page).click();
+  await (await presetDownloadButton(page)).click();
 
   const textPath = await (await textDownloading).path();
   const textFile = JSON.parse(readFileSync(textPath, 'utf8'));
@@ -485,7 +721,7 @@ test('switches a field to dice-choice with the standard dice and downloads its t
   // #when
   const downloading = page.waitForEvent('download');
 
-  await downloadButton(page).click();
+  await (await presetDownloadButton(page)).click();
 
   const path = await (await downloading).path();
   const file = JSON.parse(readFileSync(path, 'utf8'));
@@ -528,7 +764,7 @@ test('sets and clears field and dice cell names, with the hint, in the downloade
 
   const namedDownloading = page.waitForEvent('download');
 
-  await downloadButton(page).click();
+  await (await presetDownloadButton(page)).click();
 
   const namedPath = await (await namedDownloading).path();
   const namedFile = JSON.parse(readFileSync(namedPath, 'utf8'));
@@ -547,7 +783,7 @@ test('sets and clears field and dice cell names, with the hint, in the downloade
 
   const clearedDownloading = page.waitForEvent('download');
 
-  await downloadButton(page).click();
+  await (await presetDownloadButton(page)).click();
 
   const clearedPath = await (await clearedDownloading).path();
   const clearedFile = JSON.parse(readFileSync(clearedPath, 'utf8'));
@@ -634,7 +870,7 @@ test('a file replaces the draft after one confirmation, and a refused file chang
   // #when: the download takes the file's name with no earlier time.
   const downloading = page.waitForEvent('download');
 
-  await downloadButton(page).click();
+  await (await presetDownloadButton(page)).click();
 
   // #then
   expect((await downloading).suggestedFilename()).toMatch(
@@ -671,7 +907,7 @@ test('each problem marks its tree item and preview cell, and the counter goes to
 
   // #then
   await expect(problemCounter(page, 1)).toBeVisible();
-  await expect(downloadButton(page)).toBeDisabled();
+  await expect(await presetDownloadButton(page)).toBeDisabled();
   await expect(item(page, '1d20+')).toHaveAttribute('data-problem', 'true');
   await expect(form(page).getByText('ошибка в формуле «1d20+»')).toBeVisible();
 
@@ -1062,7 +1298,7 @@ test('adds a tab, drags a section into it, and the preview shows the tab of the 
   // #when
   const downloading = page.waitForEvent('download');
 
-  await downloadButton(page).click();
+  await (await presetDownloadButton(page)).click();
 
   const parsed = parsePresetFile(readFileSync(await (await downloading).path(), 'utf8'));
 
