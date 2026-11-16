@@ -62,21 +62,23 @@ test('renders repeat-row add as a scoped block command', async () => {
 test('renders and edits a repeat-row value in its descendant block scope', async () => {
   // #given
   const view = await renderSheet(REPEAT_ROW, repeatRecords());
-  const input = view.container.querySelector('input');
+
+  const control = [...view.container.querySelectorAll('textarea, input')].find(
+    (candidate) => candidate.getAttribute('aria-label') === 'name',
+  );
+
+  if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement)) {
+    throw new Error('the repeat-row text field named "name" is missing');
+  }
+
+  const initial = control.value;
 
   // #when
-  if (input instanceof HTMLInputElement) {
-    await act(async () => {
-      input.focus();
-      input.value = 'Ослеплён';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.blur();
-    });
-  }
+  await enterText(control, 'Ослеплён');
 
   // #then
   expect({
-    initial: input?.getAttribute('value') ?? null,
+    initial,
     command: view.commands.at(-1) ?? null,
   }).toEqual({
     initial: 'Отравлен',
@@ -274,6 +276,29 @@ function summarize(container: HTMLElement) {
       node.getAttribute('data-row-index'),
     ),
   };
+}
+
+async function enterText(
+  control: HTMLInputElement | HTMLTextAreaElement,
+  text: string,
+): Promise<void> {
+  await act(async () => {
+    const prototype =
+      control instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+
+    if (descriptor?.set === undefined) {
+      throw new Error('the environment has no text control value setter');
+    }
+
+    control.focus();
+    descriptor.set.call(control, text);
+    control.dispatchEvent(new InputEvent('input', { bubbles: true, data: text }));
+    control.blur();
+  });
 }
 
 function rootRecords(): ReadonlyMap<string, VersionedRecord> {
