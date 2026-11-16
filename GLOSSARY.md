@@ -214,10 +214,6 @@ _Avoid_: editor, configurator, constructor, designer
 A read-only extension window in the Builder that draws the sheets and values from its snapshot; an empty sheet set uses a pale «Образец» until a real sheet is added.
 _Avoid_: mockup, render
 
-**Local room**:
-A dev-only page opened by `bun run room` that seeds a mock room and shows its GM and player windows together.
-_Avoid_: local preview
-
 **Draft**:
 The one unfinished preset and snapshot the Builder keeps by itself and opens again on the next visit, with no prompt.
 _Avoid_: autosave, work in progress
