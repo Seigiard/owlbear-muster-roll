@@ -41,6 +41,7 @@ The page reads and writes the attached file through the File System Access API (
 | Both changed | A prompt: «Взять из файла» or «Оставить мои» |
 | A preset with problems | Not written; the status says so; writing resumes when the problems are fixed |
 | A file on disk that fails the checks | The page keeps the last good content; the block shows the refusal message |
+| A page reload | Opens the draft; no file is reattached |
 
 ### File block
 

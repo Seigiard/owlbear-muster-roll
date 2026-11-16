@@ -135,10 +135,10 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
   - **success:** With a preset and a snapshot of two characters, the window sidebar lists both sheets and the set's "+ Добавить". A value typed into a sheet lands in the snapshot, and the snapshot imports into a room through CAP-13 with the same values. A sheet set with no sheets shows a pale "Образец" whose cells still select tree items. When a preset change leaves a value no place, the value drops with no warning.
 - **CAP-37**
   - **intent:** The builder preview switches between the GM's and a player's view of the same window.
-  - **success:** With "Игрок" chosen, GM-only sheet sets, single sheets and tabs disappear, and every sheet reads only except a player-editable single sheet. "Мастер" shows everything again. Both views draw the same records.
+  - **success:** With "Игрок" chosen, GM-only sheet sets, single sheets, tabs, sections and rows disappear, and every sheet reads only except the sheets of a player-editable template. "Мастер" shows everything again. Both views draw the same records.
 - **CAP-38**
   - **intent:** The builder reads and writes an attached preset file and snapshot file (`builder-and-dev.md`).
-  - **success:** In Chromium, a save of the attached file on disk redraws the preview with no reload, and an edit in the page is written to the file. When both changed, a prompt offers «Взять из файла» or «Оставить мои». In Safari and Firefox the builder opens a file and downloads, and neither writes nor follows it.
+  - **success:** In Chromium, a save of the attached file on disk redraws the preview with no reload, and an edit in the page is written to the file. When both changed, a prompt offers «Взять из файла» or «Оставить мои». A reload opens the draft and reattaches no file. In Safari and Firefox the builder opens a file and downloads, and neither writes nor follows it.
 - **CAP-39**
   - **intent:** A file block per file in the builder's top bar shows its state and holds every file action (`builder-and-dev.md`).
   - **success:** The block shows the file name and its status. Its menu shows the full path and the last sync time, and opens another file, saves as, downloads a copy, detaches and clears. Detach keeps the content as a draft and stops writing. Clear, after a confirmation that names the file, empties the page and the linked file, and undo restores both.
@@ -248,4 +248,3 @@ Pain and vision. A GM who runs a game in Owlbear Rodeo has no simple way to keep
 ## Open Questions
 
 - Can the Owlbear extension iframe open a new tab? The v2 settings button (CAP-21) depends on it, and the extension opens no tab today.
-- After a page reload, does the builder reattach the last files (Chrome asks for permission again) or open the draft?
