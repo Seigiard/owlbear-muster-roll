@@ -459,11 +459,9 @@ export function BuilderPage({
     if (
       files.preset.conflict !== null ||
       (files.preset.file?.status.kind === 'failed' &&
-        files.preset.failedDocumentText === presetText &&
-        files.preset.forceWrite === 0) ||
+        files.preset.failedDocumentText === presetText) ||
       (files.preset.file?.status.kind === 'refused' &&
-        files.preset.refusedDocumentText === presetText &&
-        files.preset.forceWrite === 0)
+        files.preset.refusedDocumentText === presetText)
     ) {
       return;
     }
@@ -515,11 +513,9 @@ export function BuilderPage({
     if (
       files.snapshot.conflict !== null ||
       (files.snapshot.file?.status.kind === 'failed' &&
-        files.snapshot.failedDocumentText === generatedSnapshot &&
-        files.snapshot.forceWrite === 0) ||
+        files.snapshot.failedDocumentText === generatedSnapshot) ||
       (files.snapshot.file?.status.kind === 'refused' &&
-        files.snapshot.refusedDocumentText === generatedSnapshot &&
-        files.snapshot.forceWrite === 0)
+        files.snapshot.refusedDocumentText === generatedSnapshot)
     ) {
       return;
     }
@@ -922,6 +918,13 @@ export function BuilderPage({
       name: opened.value.name,
       contents: written.value,
       canonicalText: text,
+    });
+    dispatchFiles({
+      type: 'write-succeeded',
+      kind,
+      contents: written.value,
+      text: written.value.text,
+      documentText: text,
     });
     setFileMessage(undefined);
   }

@@ -131,6 +131,7 @@ export function attachedFilesReducer(
         lastText: action.contents.text,
         lastDocumentText: action.canonicalText,
         conflict: null,
+        forceWrite: 0,
         failedDocumentText: null,
         refusedDocumentText: null,
       };
