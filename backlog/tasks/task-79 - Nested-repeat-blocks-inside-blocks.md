@@ -1,0 +1,32 @@
+---
+id: TASK-79
+title: 'Nested repeat: blocks inside blocks'
+status: To Do
+assignee: []
+created_date: '2026-11-16T06:49:00Z'
+labels:
+  - format-v4
+dependencies:
+  - TASK-78
+references:
+  - _bmad-output/specs/spec-muster-roll/preset-format.md
+  - _bmad-output/specs/spec-muster-roll/storage-and-sync.md
+  - _bmad-output/specs/spec-muster-roll/stories.yaml
+type: feature
+ordinal: 106000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+A repeat tab per NPC is useless unless the NPC can hold its own lists, such as attacks or items. Format v4 allows a repeat scope inside a repeat block, addressed by a path of (scope id, block id) pairs under the sheet. Story 11 of _bmad-output/specs/spec-muster-roll/stories.yaml (done checkpoint); CAP-42, CAP-30, CAP-13. Removes the temporary nesting refusal.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 A repeat section or row inside a repeat tab, section or row gives each block its own nested blocks, stored under a `blk:` key with more than one scope pair
+- [ ] #2 A formula id resolves in its block, then each enclosing block, then the sheet; `resolveFieldReference` and formula rename follow the same chain; a formula in an attack reads `hp` of its NPC and a field of the sheet
+- [ ] #3 Duplicating a block copies its nested blocks and numbers its `nameField`; the duplicate and its nested blocks have no token link
+- [ ] #4 Snapshot import drops blocks whose scope path the preset lacks and counts them with the dropped values; the upload confirmation counts the values of nested blocks
+- [ ] #5 Checked in a live Owlbear room by the owner: an NPC sheet with a repeat tab, an attacks section per NPC and a token cell per NPC, and a GM and a player editing different fields of one sheet at once with no edit lost
+<!-- AC:END -->
