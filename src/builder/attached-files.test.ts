@@ -20,7 +20,9 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const CREW_PRESET = createCrewPreset();
 const DISK_PRESET = createCrewPreset('С диска');
+const LATER_DISK_PRESET = createCrewPreset('Поздняя версия с диска');
 const LOCAL_PRESET = createCrewPreset('Моя версия');
+const NEWER_LOCAL_PRESET = createCrewPreset('Новая версия');
 
 const SNAPSHOT_TEXT = JSON.stringify({
   v: 3,
@@ -42,6 +44,19 @@ const EXTERNAL_SNAPSHOT_TEXT = JSON.stringify({
     {
       id: 'crew',
       rows: { strength: { strength: 21 } },
+      repeats: {},
+    },
+  ],
+  links: [],
+});
+
+const NEWER_SNAPSHOT_TEXT = JSON.stringify({
+  v: 3,
+  type: 'muster-roll/snapshot',
+  sheets: [
+    {
+      id: 'crew',
+      rows: { strength: { strength: 34 } },
       repeats: {},
     },
   ],
@@ -449,6 +464,61 @@ describe('attached Builder files', () => {
     }).toEqual({ page: expected, disk: expected });
   });
 
+  test.each([
+    ['Взять из файла', DISK_PRESET],
+    ['Оставить мои', LOCAL_PRESET],
+  ] as const)(
+    'resolves a conflict after a newer local preset was queued with “%s”',
+    async (choice, expected) => {
+      // #given
+      const access = new TestFileAccessFake();
+      const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
+      const store = createBuilderStore(memoryStorage());
+
+      store.open(CREW_PRESET, CREW_PRESET, 'crew');
+      await mount(store, access);
+      await openAttachedFile(access, file, 'Пресет');
+      access.readRequests.splice(0);
+      access.writeRequests.splice(0);
+      access.pauseReads();
+
+      editTemplateTitle(store, 'Промежуточная версия');
+      await settle();
+      editTemplateTitle(store, 'Моя версия');
+      await settle();
+
+      access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
+      access.externalWriteSilently(file, JSON.stringify(DISK_PRESET));
+
+      // #when
+      await act(async () => {
+        access.releaseReads();
+      });
+      await settle();
+
+      const actionsBeforeChoice = conflictActions();
+      const pageBeforeChoice = toPreset(store.$state.get().step.document);
+
+      await click(button(choice));
+      await settle();
+
+      const disk = await access.read(file);
+
+      // #then
+      expect({
+        pageBeforeChoice,
+        actionsBeforeChoice,
+        page: toPreset(store.$state.get().step.document),
+        disk: disk.ok ? JSON.parse(disk.value.text) : null,
+      }).toEqual({
+        pageBeforeChoice: LOCAL_PRESET,
+        actionsBeforeChoice: { takeFile: true, keepMine: true },
+        page: expected,
+        disk: expected,
+      });
+    },
+  );
+
   test('keeps a pending-write conflict until the user chooses', async () => {
     // #given
     const access = new TestFileAccessFake();
@@ -506,6 +576,58 @@ describe('attached Builder files', () => {
       diskAfterOwnEcho: LOCAL_PRESET,
     });
   });
+
+  test.each([
+    ['Взять из файла', LATER_DISK_PRESET],
+    ['Оставить мои', LOCAL_PRESET],
+  ] as const)(
+    'keeps a pending conflict through a later external preset and resolves “%s”',
+    async (choice, expected) => {
+      // #given
+      const access = new TestFileAccessFake();
+      const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
+      const store = createBuilderStore(memoryStorage());
+
+      store.open(CREW_PRESET, CREW_PRESET, 'crew');
+      await mount(store, access);
+      await openAttachedFile(access, file, 'Пресет');
+      access.writeRequests.splice(0);
+      access.pauseWrites();
+      editTemplateTitle(store, 'Моя версия');
+      await settle();
+
+      access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
+      await act(async () => {
+        access.externalWrite(file, JSON.stringify(DISK_PRESET));
+      });
+
+      expect(conflictActions()).toEqual({ takeFile: true, keepMine: true });
+
+      access.releaseWrites();
+      await settle();
+
+      // #when
+      access.setModifiedAt(new Date('2026-11-16T18:08:00.000Z'));
+      await act(async () => {
+        access.externalWrite(file, JSON.stringify(LATER_DISK_PRESET));
+      });
+
+      const actionsAfterLaterFile = conflictActions();
+
+      // #then
+      expect(actionsAfterLaterFile).toEqual({ takeFile: true, keepMine: true });
+
+      await click(button(choice));
+      await settle();
+
+      const disk = await access.read(file);
+
+      expect({
+        page: toPreset(store.$state.get().step.document),
+        disk: disk.ok ? JSON.parse(disk.value.text) : null,
+      }).toEqual({ page: expected, disk: expected });
+    },
+  );
 
   test('stops after a failed write and resumes only for a new edit', async () => {
     // #given
@@ -623,6 +745,137 @@ describe('attached Builder files', () => {
     }).toEqual({
       document: CREW_PRESET,
       block: 'Пресетcrew.jsonФайл не подошёл: это не JSON. Ничего не изменено.',
+    });
+  });
+
+  test('suppresses malformed preset preflight retries until repaired file and new page work', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    await mount(store, access);
+    await openAttachedFile(access, file, 'Пресет');
+    access.readRequests.splice(0);
+    access.writeRequests.splice(0);
+    access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
+    access.externalWriteSilently(file, '{');
+    access.pauseReadsAfter(1);
+
+    // #when
+    editTemplateTitle(store, 'Моя версия');
+    await settle();
+    await settle();
+
+    const refused = {
+      reads: access.readRequests.length,
+      page: toPreset(store.$state.get().step.document),
+      block: fileBlock('Пресет').textContent,
+    };
+
+    access.setModifiedAt(new Date('2026-11-16T18:08:00.000Z'));
+    await act(async () => {
+      access.externalWrite(file, JSON.stringify(LOCAL_PRESET));
+      access.releaseReads();
+    });
+    await settle();
+
+    const repaired = {
+      page: toPreset(store.$state.get().step.document),
+      block: fileBlock('Пресет').textContent,
+    };
+
+    editTemplateTitle(store, 'Новая версия');
+    await settle();
+
+    const readsAfterNewEdit = access.readRequests.length;
+    const disk = await access.read(file);
+
+    // #then
+    expect({
+      refused,
+      repaired,
+      readsAfterNewEdit,
+      disk: disk.ok ? JSON.parse(disk.value.text) : null,
+    }).toEqual({
+      refused: {
+        reads: 1,
+        page: LOCAL_PRESET,
+        block: 'Пресетcrew.jsonФайл не подошёл: это не JSON. Ничего не изменено.',
+      },
+      repaired: {
+        page: LOCAL_PRESET,
+        block: 'Пресетcrew.jsonсохранено в файл в 18:08',
+      },
+      readsAfterNewEdit: 2,
+      disk: NEWER_LOCAL_PRESET,
+    });
+  });
+
+  test('suppresses malformed snapshot preflight retries until repaired file and new page work', async () => {
+    // #given
+    const access = new TestFileAccessFake();
+    const file = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
+    const store = createBuilderStore(memoryStorage());
+
+    store.open(CREW_PRESET, CREW_PRESET, 'crew');
+    store.setSnapshot(snapshotRecords(SNAPSHOT_TEXT));
+    await mount(store, access);
+    await openAttachedFile(access, file, 'Снимок');
+    access.readRequests.splice(0);
+    access.writeRequests.splice(0);
+    access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
+    access.externalWriteSilently(file, '{');
+    access.pauseReadsAfter(1);
+
+    // #when
+    act(() => store.setSnapshot(snapshotRecords(EXTERNAL_SNAPSHOT_TEXT)));
+    await settle();
+    await settle();
+
+    const refused = {
+      reads: access.readRequests.length,
+      pageValue: previewValue('Сила'),
+      block: fileBlock('Снимок').textContent,
+    };
+
+    access.setModifiedAt(new Date('2026-11-16T18:08:00.000Z'));
+    await act(async () => {
+      access.externalWrite(file, EXTERNAL_SNAPSHOT_TEXT);
+      access.releaseReads();
+    });
+    await settle();
+
+    const repaired = {
+      pageValue: previewValue('Сила'),
+      block: fileBlock('Снимок').textContent,
+    };
+
+    act(() => store.setSnapshot(snapshotRecords(NEWER_SNAPSHOT_TEXT)));
+    await settle();
+
+    const readsAfterNewEdit = access.readRequests.length;
+    const disk = await access.read(file);
+
+    // #then
+    expect({
+      refused,
+      repaired,
+      readsAfterNewEdit,
+      disk: disk.ok ? JSON.parse(disk.value.text) : null,
+    }).toEqual({
+      refused: {
+        reads: 1,
+        pageValue: '21',
+        block: 'Снимокcrew-snapshot.jsonФайл не подошёл: это не JSON. Ничего не изменено.',
+      },
+      repaired: {
+        pageValue: '21',
+        block: 'Снимокcrew-snapshot.jsonсохранено в файл в 18:08',
+      },
+      readsAfterNewEdit: 2,
+      disk: JSON.parse(NEWER_SNAPSHOT_TEXT),
     });
   });
 

@@ -181,6 +181,20 @@ const EDITING_SNAPSHOT = {
   ),
 };
 
+const EDITING_SNAPSHOT_WITHOUT_FIRST_REPEAT = {
+  ...EDITING_SNAPSHOT,
+  sheets: EDITING_SNAPSHOT.sheets.map((sheet) =>
+    sheet.id === 'anya'
+      ? {
+          ...sheet,
+          repeats: {
+            item: [{ instanceId: 'gear-2', order: 0, cells: { item: 'Фляга' } }],
+          },
+        }
+      : sheet,
+  ),
+};
+
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 1000 });
   await installBrowserFileAccessFake(page);
@@ -334,6 +348,80 @@ test('editing a repeat field changes only the clicked instance', async ({ page }
       { instanceId: 'gear-2', order: 1, cells: { item: 'Фляга' } },
     ],
   });
+});
+
+test('Enter edits the specifically selected repeat instance and leaves the other unchanged', async ({
+  page,
+}) => {
+  // #given
+  await openEditingPreview(page);
+
+  const items = preview(page).getByRole('group', { name: 'Вещь', exact: true });
+
+  await items.nth(1).click();
+  await expect(page.getByRole('row', { name: 'item · Текст', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+
+  // #when
+  await page.keyboard.press('Enter');
+
+  const controls = preview(page).getByRole('textbox', { name: 'Вещь', exact: true });
+  const focused = page.locator('textarea:focus');
+
+  await expect(controls).toHaveCount(1);
+  await expect(focused).toHaveCount(1);
+  await expect(focused).toHaveValue('Фляга');
+  await focused.fill('Компас');
+  await focused.press('Enter');
+
+  const downloaded = await downloadSnapshot(page);
+  const anya = downloaded.file.sheets.find((sheet) => sheet.id === 'anya');
+
+  // #then
+  expect(anya?.repeats.item).toEqual([
+    { instanceId: 'gear-1', order: 0, cells: { item: 'Верёвка' } },
+    { instanceId: 'gear-2', order: 1, cells: { item: 'Компас' } },
+  ]);
+});
+
+test('Enter on a selected repeat field with its instance missing does not trap later editing', async ({
+  page,
+}) => {
+  // #given
+  await openEditingPreview(page);
+
+  const items = preview(page).getByRole('group', { name: 'Вещь', exact: true });
+
+  await items.first().click();
+  await expect(page.getByRole('row', { name: 'item · Текст', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await openSnapshot(page, JSON.stringify(EDITING_SNAPSHOT_WITHOUT_FIRST_REPEAT));
+
+  const remaining = preview(page).getByRole('group', { name: 'Вещь', exact: true });
+
+  await expect(remaining).toHaveCount(1);
+  await expect(remaining).toHaveText('Фляга');
+
+  // #when
+  await page.keyboard.press('Enter');
+
+  const controlsAfterEnter = preview(page).getByRole('textbox', {
+    name: 'Вещь',
+    exact: true,
+  });
+
+  await expect(controlsAfterEnter).toHaveCount(0);
+  await remaining.click();
+
+  // #then
+  const focused = page.locator('textarea:focus');
+
+  await expect(focused).toHaveCount(1);
+  await expect(focused).toHaveValue('Фляга');
 });
 
 for (const field of [

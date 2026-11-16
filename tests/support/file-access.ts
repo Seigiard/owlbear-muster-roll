@@ -44,6 +44,11 @@ type PendingWrite = {
   resolve: (result: TestFileAccessResult<TestFileContents>) => void;
 };
 
+type PendingRead = {
+  file: TestFileReference;
+  resolve: (result: TestFileAccessResult<TestFileContents>) => void;
+};
+
 type BrowserFileAccessControl = {
   queueFile: (name: string, text: string) => void;
 };
@@ -150,6 +155,7 @@ export async function queueBrowserFile(page: Page, name: string, text: string): 
 export class TestFileAccessFake implements TestFileAccessPort {
   readonly followRequests: TestFileReference[] = [];
   readonly openRequests: TestOpenRequest[] = [];
+  readonly readRequests: TestFileReference[] = [];
   readonly writeRequests: { file: TestFileReference; text: string }[] = [];
   readonly capability: TestFileAccessCapability;
 
@@ -159,9 +165,11 @@ export class TestFileAccessFake implements TestFileAccessPort {
     string,
     Set<(result: TestFileAccessResult<TestFileContents>) => void>
   >();
+  private readonly pendingReads: PendingRead[] = [];
   private readonly pendingWrites: PendingWrite[] = [];
   private readonly writeFailures: string[] = [];
   private nextModifiedAt = new Date('2026-11-16T18:06:00.000Z');
+  private readsBeforePause: number | null = null;
   private writesPaused = false;
 
   constructor(capability: TestFileAccessCapability = 'write-and-follow') {
@@ -190,6 +198,30 @@ export class TestFileAccessFake implements TestFileAccessPort {
 
   queueWriteFailure(reason: string): void {
     this.writeFailures.push(reason);
+  }
+
+  pauseReads(): void {
+    this.readsBeforePause = 0;
+  }
+
+  pauseReadsAfter(completedReads: number): void {
+    this.readsBeforePause = completedReads;
+  }
+
+  releaseNextRead(): void {
+    const pending = this.pendingReads.shift();
+
+    if (pending !== undefined) {
+      pending.resolve(this.completeRead(pending.file));
+    }
+  }
+
+  releaseReads(): void {
+    this.readsBeforePause = null;
+
+    while (this.pendingReads.length > 0) {
+      this.releaseNextRead();
+    }
   }
 
   pauseWrites(): void {
@@ -250,7 +282,25 @@ export class TestFileAccessFake implements TestFileAccessPort {
     return { ok: true, value: this.openQueue.shift() ?? null };
   }
 
-  async read(file: TestFileReference): Promise<TestFileAccessResult<TestFileContents>> {
+  read(file: TestFileReference): Promise<TestFileAccessResult<TestFileContents>> {
+    this.readRequests.push(file);
+
+    if (this.readsBeforePause === null) {
+      return Promise.resolve(this.completeRead(file));
+    }
+
+    if (this.readsBeforePause > 0) {
+      this.readsBeforePause -= 1;
+
+      return Promise.resolve(this.completeRead(file));
+    }
+
+    return new Promise((resolve) => {
+      this.pendingReads.push({ file, resolve });
+    });
+  }
+
+  private completeRead(file: TestFileReference): TestFileAccessResult<TestFileContents> {
     const current = this.files.get(file.id);
 
     return current === undefined
