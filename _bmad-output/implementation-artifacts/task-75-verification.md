@@ -547,4 +547,3 @@ The full changed-path checks on the committed metadata candidate, plus Backlog v
 | Accepted replay matrix | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/controls/final-replay-matrix.json |
 | Final replay results | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/replay-3/results.json |
 | Accepted lock checks | /Users/seigiard/.claude/artifacts/tdd-20261115-task75/TASK-75/calibration-4/checks/results.json |
-
