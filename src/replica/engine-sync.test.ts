@@ -11,6 +11,7 @@ import type { PlayerRole, StorageOperation } from '@/platform/ports';
 import type { Wait } from '@/platform/send-queue';
 import {
   createRoomRig,
+  pause,
   send,
   shown,
   storageKey,
@@ -564,6 +565,36 @@ describe('gate', () => {
     });
   });
 
+  test('a stopped engine ignores newer-format room ingress after live ingress worked', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const wire = listen(room);
+    const gm = await startClient(room, 'gm-a');
+
+    await startClient(room, 'gm-b');
+    wire.post('gm-b', commit([sheet('live-control', 1, 'gm-b')]));
+    await waitUntil(() => shown(gm, 'sheet:live-control') !== undefined);
+    await pause(20);
+
+    const sentBeforeStop = gm.local.length;
+    gm.engine.stop();
+
+    // #when
+    wire.post('gm-b', { v: 4, t: 'commit', unread: 'newer build data' });
+    await pause(30);
+
+    // #then
+    expect({
+      control: shown(gm, 'sheet:live-control'),
+      postStop: gm.local.slice(sentBeforeStop),
+      notices: gm.store.$notices.get(),
+    }).toEqual({
+      control: sheet('live-control', 1, 'gm-b'),
+      postStop: [],
+      notices: [],
+    });
+  });
+
   test.each<[string, JsonValue]>([
     ['a record that fails its schema', commit([{ ...sheet('lisa'), c: 0 }])],
     ['an unknown type', { v: 3, g: INITIAL, t: 'shout', records: [] }],
@@ -639,6 +670,29 @@ describe('remote record', () => {
       deltas: gm.deltas() - deltasBefore,
       writes: writes.mock.calls.map(([key]) => key),
     }).toEqual({ shown: local, deltas: 1, writes: [storageKey('sheet:marker')] });
+  });
+
+  test('an unchanged winner does not read failed persistence or raise a notice', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+    const wire = listen(room);
+    const local = sheet('brok', 5, 'seed');
+    const gm = await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, local] });
+
+    await startClient(room, 'gm-b');
+    gm.platform.setFailingStorageOperations(['read']);
+
+    // #when
+    wire.post('gm-b', commit([sheet('brok', 2, 'gm-b')]));
+    await pause(30);
+
+    // #then
+    expect({
+      shown: shown(gm, local.k),
+      notices: gm.store.$notices.get(),
+    }).toEqual({ shown: local, notices: [] });
   });
 });
 

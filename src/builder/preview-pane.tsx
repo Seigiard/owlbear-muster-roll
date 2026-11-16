@@ -1,14 +1,30 @@
+import clsx from 'clsx';
 import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
+import { Button as AriaButton } from 'react-aria-components';
 
+import { rollDiceCell } from '@/core/dice-roll';
+import type { Command, RollOutcome } from '@/core/ui-messages';
+import {
+  acceptedFieldValue,
+  findPatchField,
+  patchRecordKey,
+  patchedRecord,
+} from '@/core/field-patch';
 import { DEFAULT_WINDOW_SIZE } from '@/core/preset';
-import type { VersionedRecord } from '@/core/records';
+import { recordSchema, type VersionedRecord } from '@/core/records';
+import { TIMING } from '@/core/timing';
 import { sheetName } from '@/core/sheets';
-import { createStubRolling } from '@/ui/stub-rolling';
+import { tabShownTo, templateShownTo, visibleRecordMap, type PlayerRole } from '@/core/visibility';
 import { copy } from '@/copy';
+import { SECONDARY_BUTTON_CLASS } from '@/ui/primitives/button';
 import { CellPreviewContext, type CellPreview } from '@/ui/sheet/preset-cell';
 import { SheetBody } from '@/ui/sheet/sheet-body';
 import { SheetHeader } from '@/ui/sheet/sheet-header';
+import type { DiceRolling } from '@/ui/sheet/dice-button';
+import { createFieldFlushes, type FieldEditing } from '@/ui/sheet/use-field-edit';
+import { createLocalFieldValues } from '@/ui/sheet/local-field-values';
+import type { ReplicaClient } from '@/ui/replica-client';
 import {
   builderSidebarEntries,
   type SidebarEntries,
@@ -43,6 +59,7 @@ import {
   type PreviewSheetNavigationAction,
   type ShownTab,
 } from './preview-navigation';
+import { previewEditingReducer } from './preview-editing';
 import type { BuilderProblem } from './problems';
 
 type PreviewPaneProps = {
@@ -53,8 +70,7 @@ type PreviewPaneProps = {
   problems: readonly BuilderProblem[];
 };
 
-// One stub for the page: the preview takes no roll.
-const stubRolling = createStubRolling();
+type PreviewRollOutcome = Exclude<RollOutcome, { code: 'waiting-access' }>;
 
 const CELL_PREVIEW: CellPreview = { placeholders: true };
 
@@ -70,8 +86,7 @@ const MIN_FRAME_PX = 120;
 
 // CAP-22, AD-23: the template that holds the selected item, drawn by the window's own sheet
 // components in a frame of the preset's window size, on the tab that holds the selected item, else
-// on the tab shown before. Read-only, with every field empty. A click on a cell, row, section, tab
-// or sidebar entry selects its item.
+// on the tab shown before. A click on a cell, row, section, tab or sidebar entry selects its item.
 export function PreviewPane({
   store,
   document,
@@ -82,13 +97,100 @@ export function PreviewPane({
   const headingId = useId();
   const area = useRef<HTMLDivElement>(null);
   const areaWidth = useWidth(area);
+  const [role, setRole] = useState<PlayerRole>('GM');
 
-  const records = useMemo(
+  const sourceRecords = useMemo(
     () => new Map(snapshotRecords.map((record) => [record.k, record])),
     [snapshotRecords],
   );
 
   const preset = useMemo(() => toPreset(document), [document]);
+
+  const records = useMemo(
+    () => visibleRecordMap(role, preset, sourceRecords),
+    [preset, role, sourceRecords],
+  );
+
+  const localValues = useMemo(createLocalFieldValues, []);
+  const pageHideFlushes = useMemo(createFieldFlushes, []);
+
+  useEffect(() => {
+    const flush = (): void => {
+      pageHideFlushes.flushAll();
+    };
+
+    window.addEventListener('pagehide', flush);
+
+    return () => {
+      window.removeEventListener('pagehide', flush);
+    };
+  }, [pageHideFlushes]);
+
+  const fieldEditing = useMemo<FieldEditing>(
+    () => ({
+      // SAFETY: the preview sends only field patches; every other command is answered without side
+      // effects, and field patches always have an undefined answer.
+      sendCommand: ((command: Command) => {
+        if (command.type !== 'field-patch') {
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
+        const fieldTemplate = selection === null ? null : templateOf(document, selection);
+
+        const editable =
+          role === 'GM' || (fieldTemplate?.kind === 'single' && fieldTemplate.players === 'edit');
+
+        if (!editable) {
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
+        const layout = fieldTemplate === null ? null : templateToPreset(fieldTemplate);
+
+        const field =
+          layout === null ? null : findPatchField(layout, command.target, command.fieldId);
+
+        const value = field === null ? null : acceptedFieldValue(field, command.value);
+
+        if (value === null || !value.ok) {
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
+        const key = patchRecordKey(command.sheetId, command.target);
+        const current = records.get(key);
+
+        const patched = patchedRecord(
+          command.sheetId,
+          command.target,
+          current,
+          command.fieldId,
+          value.value,
+        );
+
+        if (!patched.ok) {
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
+        const next = recordSchema.parse({
+          ...patched.value,
+          c: (current?.c ?? 0) + 1,
+          a: 'builder',
+        });
+
+        const nextRecords = snapshotRecords.some((record) => record.k === key)
+          ? snapshotRecords.map((record) => (record.k === key ? next : record))
+          : [...snapshotRecords, next];
+
+        store.setSnapshot(nextRecords);
+
+        return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+      }) as ReplicaClient['sendCommand'],
+      pauseMs: TIMING.fieldSavePauseMs,
+      pageHideFlushes,
+      localValues,
+    }),
+    [document, localValues, pageHideFlushes, records, role, selection, snapshotRecords, store],
+  );
+
   const size = document.window ?? DEFAULT_WINDOW_SIZE;
   const width = Math.max(size.width, MIN_FRAME_PX);
   const height = Math.max(size.height, MIN_FRAME_PX);
@@ -101,14 +203,55 @@ export function PreviewPane({
     [docTemplate],
   );
 
+  const rolling = useMemo<DiceRolling>(
+    () => ({
+      requestRoll: (request) => {
+        const result =
+          template === null
+            ? { ok: false as const, error: { code: 'not-dice' as const } }
+            : rollDiceCell(
+                template,
+                records,
+                request.sheetId,
+                request.place,
+                new Map(Object.entries(request.shown)),
+                () => Math.random(),
+              );
+
+        const answer: PreviewRollOutcome = result.ok
+          ? { code: 'rolled' }
+          : result.error.code === 'field'
+            ? { code: 'field', field: result.error.field }
+            : result.error.code === 'arithmetic'
+              ? { code: 'arithmetic' }
+              : { code: 'refused' };
+
+        return Promise.resolve({ kind: 'answered' as const, answer });
+      },
+      localValues,
+    }),
+    [localValues, records, template],
+  );
+
   const sidebar = useMemo(
     () =>
       builderSidebarEntries(
         preset,
         records,
-        document.templates.map((template) => template.uid),
+        document.templates.map((entry) => entry.uid),
+        role,
       ),
-    [document.templates, preset, records],
+    [document.templates, preset, records, role],
+  );
+
+  const allSidebar = useMemo(
+    () =>
+      builderSidebarEntries(
+        preset,
+        sourceRecords,
+        document.templates.map((entry) => entry.uid),
+      ),
+    [document.templates, preset, sourceRecords],
   );
 
   const [shownSheetId, dispatchSheet] = useReducer(previewSheetNavigationReducer, null);
@@ -124,25 +267,109 @@ export function PreviewPane({
 
   const selectedSheet = selectedSidebarSheet(sidebar, docTemplate?.uid ?? null, shownSheetId);
 
+  const selectedSourceSheet = selectedSidebarSheet(
+    allSidebar,
+    docTemplate?.uid ?? null,
+    shownSheetId,
+  );
+
   const sample = selectedSheet?.sample === true;
   const activeSheetId = selectedSheet?.sheetId ?? null;
   const renderSheetId = sample ? PREVIEW_SHEET_ID : activeSheetId;
+  const hiddenTemplate = role === 'PLAYER' && template !== null && !templateShownTo(role, template);
 
   const renderRecords = useMemo(
     () =>
-      template === null || renderSheetId === null
+      template === null
         ? null
-        : sample
-          ? previewRecords(template)
-          : records,
-    [records, renderSheetId, sample, template],
+        : renderSheetId === null
+          ? hiddenTemplate
+            ? records
+            : null
+          : sample
+            ? previewRecords(template)
+            : records,
+    [hiddenTemplate, records, renderSheetId, sample, template],
   );
 
+  const hiddenSheetNote =
+    hiddenTemplate && template !== null
+      ? copy.builder.hiddenSheet(sheetNameFor(selectedSourceSheet, sourceRecords, preset, template))
+      : null;
+
   const [shownTab, dispatch] = useReducer(previewNavigationReducer, null);
+  const [editingUid, dispatchEditing] = useReducer(previewEditingReducer, null);
+  const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
+  const previewSelection = useRef<string | null>(null);
+
+  const canEdit =
+    role === 'GM' || (docTemplate?.kind === 'single' && docTemplate.players === 'edit');
+
+  useEffect(() => {
+    dispatchEditing({ type: 'selection-changed', uid: selection });
+
+    if (previewSelection.current === selection) {
+      previewSelection.current = null;
+    } else {
+      setEditingInstanceId(null);
+    }
+  }, [selection]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (
+        event.key !== 'Enter' ||
+        editingUid !== null ||
+        isTextEntryTarget(event.target) ||
+        selection === null
+      ) {
+        return;
+      }
+
+      const path = locate(document, selection);
+
+      const cell =
+        path?.kind === 'cell'
+          ? document.templates[path.template]?.tabs[path.tab]?.sections[path.section]?.rows[
+              path.row
+            ]?.cells[path.cell]
+          : undefined;
+
+      if (cell?.kind !== 'field') {
+        return;
+      }
+
+      if (
+        editingInstanceId !== null &&
+        area.current?.querySelector(`[data-repeat-block="${CSS.escape(editingInstanceId)}"]`) ===
+          null
+      ) {
+        setEditingInstanceId(null);
+
+        return;
+      }
+
+      event.preventDefault();
+      dispatchEditing({ type: 'enter-pressed', uid: selection, editable: canEdit });
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [canEdit, document, editingInstanceId, editingUid, selection]);
 
   const selectedTab = useMemo(
     () => (selection === null ? null : tabIndexOf(document, selection)),
     [document, selection],
+  );
+
+  const tabIsShown = useMemo(
+    () =>
+      (index: number): boolean =>
+        template === null || tabShownTo(role, template, index),
+    [role, template],
   );
 
   const navigationTemplate = useMemo<PreviewNavigationTemplate | null>(
@@ -152,8 +379,13 @@ export function PreviewPane({
   );
 
   const navigationAction = useMemo<PreviewNavigationAction>(
-    () => ({ type: 'selection-changed', template: navigationTemplate, selectedTab }),
-    [navigationTemplate, selectedTab],
+    () => ({
+      type: 'selection-changed',
+      template: navigationTemplate,
+      selectedTab,
+      tabShown: tabIsShown,
+    }),
+    [navigationTemplate, selectedTab, tabIsShown],
   );
 
   const nextShownTab = previewNavigationReducer(shownTab, navigationAction);
@@ -167,11 +399,11 @@ export function PreviewPane({
   }, [sheetNavigationAction]);
 
   const templateUid = docTemplate?.uid ?? null;
-  const openTab = template === null ? 0 : (nextShownTab?.tab ?? 0);
+  const openTab = template === null ? null : (nextShownTab?.tab ?? null);
 
   const scale = areaWidth === null ? 1 : Math.min(1, areaWidth / width);
 
-  const visibleIndexes = template?.tabs.map((_tab, index) => index) ?? [];
+  const visibleIndexes = template?.tabs.map((_tab, index) => index).filter(tabIsShown) ?? [];
 
   const tabs: ShellTab[] = visibleIndexes.map((index) => {
     const templateTab = template?.tabs[index];
@@ -182,6 +414,22 @@ export function PreviewPane({
       dataTabIndex: index,
     };
   });
+
+  const activeEditingUid = canEdit && editingUid === selection ? editingUid : null;
+
+  const preview = useMemo<CellPreview>(
+    () => ({
+      placeholders: true,
+      editableCell:
+        activeEditingUid === null
+          ? null
+          : previewCellKey(document, activeEditingUid, templateUid, openTab, editingInstanceId),
+      onEscape: () => {
+        dispatchEditing({ type: 'escape-pressed' });
+      },
+    }),
+    [activeEditingUid, document, editingInstanceId, openTab, templateUid],
+  );
 
   const header =
     template === null || renderRecords === null || renderSheetId === null ? null : (
@@ -199,11 +447,14 @@ export function PreviewPane({
         sheetId={renderSheetId}
         records={renderRecords}
         openTab={openTab}
+        editing={activeEditingUid === null ? null : fieldEditing}
+        rolling={rolling}
+        preview={preview}
       />
     );
 
   function handleClick(event: MouseEvent<HTMLDivElement>): void {
-    if (docTemplate === null || !(event.target instanceof Element)) {
+    if (docTemplate === null || openTab === null || !(event.target instanceof Element)) {
       return;
     }
 
@@ -211,10 +462,48 @@ export function PreviewPane({
       return;
     }
 
+    if (editingUid === selection && event.target.closest('input, select, textarea') !== null) {
+      return;
+    }
+
     const uid = clickedUid(document, docTemplate.uid, openTab, event.target);
 
-    if (uid !== null) {
+    if (uid === null) {
+      return;
+    }
+
+    const cellTarget = event.target.closest('[data-cell]');
+    const selected = selection === uid;
+    const path = locate(document, uid);
+
+    const cell =
+      path?.kind === 'cell'
+        ? document.templates[path.template]?.tabs[path.tab]?.sections[path.section]?.rows[path.row]
+            ?.cells[path.cell]
+        : undefined;
+
+    const editable = !sample && cell?.kind === 'field' && canEdit;
+
+    if (!selected) {
+      previewSelection.current = uid;
       store.select(uid);
+      setEditingInstanceId(repeatBlockId(event.target));
+      dispatchEditing({ type: 'cell-clicked', uid, selected: false, editable });
+
+      if (cellTarget !== null) {
+        event.stopPropagation();
+      }
+
+      return;
+    }
+
+    if (cell?.kind === 'field') {
+      setEditingInstanceId(repeatBlockId(event.target));
+      dispatchEditing({ type: 'cell-clicked', uid, selected: true, editable });
+
+      if (cellTarget !== null) {
+        event.stopPropagation();
+      }
     }
   }
 
@@ -233,66 +522,107 @@ export function PreviewPane({
           sidebar,
           templateUid,
           selectedSheet?.id ?? null,
-          openTab,
+          openTab ?? 0,
           selection,
           problems,
         )}
       </style>
       <div ref={area} className="min-w-0">
-        {docTemplate === null || template === null || renderRecords === null ? (
+        {docTemplate === null || template === null ? (
           <p className="text-text-muted">{copy.builder.emptyPreset}</p>
         ) : (
-          <div style={{ width: width * scale, height: height * scale }}>
-            <div
-              className="origin-top-left overflow-clip rounded-window bg-surface text-body text-text"
-              style={{ width, height, transform: scale === 1 ? undefined : `scale(${scale})` }}
-              onClickCapture={handleClick}
-              data-preview-frame
-            >
-              <WindowFrame
-                layout={{
-                  sidebar,
-                  selectedSidebarEntry: selectedSheet?.id ?? '',
-                  onSelectSidebarEntry: (id) => {
-                    const entry = findSidebarSheet(sidebar, id);
+          <div className="flex flex-col gap-2">
+            <PreviewRoleSwitch role={role} onRole={setRole} />
+            {renderRecords === null ? (
+              <p className="text-text-muted">{copy.builder.emptyPreset}</p>
+            ) : (
+              <div style={{ width: width * scale, height: height * scale }}>
+                <div
+                  className="origin-top-left overflow-clip rounded-window bg-surface text-body text-text"
+                  style={{ width, height, transform: scale === 1 ? undefined : `scale(${scale})` }}
+                  onClickCapture={handleClick}
+                  data-preview-frame
+                >
+                  <WindowFrame
+                    layout={{
+                      sidebar,
+                      selectedSidebarEntry: selectedSheet?.id ?? '',
+                      onSelectSidebarEntry: (id) => {
+                        const entry = findSidebarSheet(sidebar, id);
 
-                    if (entry === null) {
-                      return;
-                    }
+                        if (entry === null) {
+                          return;
+                        }
 
-                    dispatchSheet({ type: 'sheet-selected', sheetId: entry.sheetId });
+                        dispatchSheet({ type: 'sheet-selected', sheetId: entry.sheetId });
 
-                    if (entry.templateUid !== undefined) {
-                      store.select(entry.templateUid);
-                    }
-                  },
-                  onAddSidebarEntry: (setId) => {
-                    store.addSheet(setId);
-                  },
-                  tabs,
-                  selectedTab: openTab === null ? null : templateTabKey(openTab),
-                  onSelectTab: (id) => {
-                    const index = templateIndexFromKey(id);
+                        if (entry.templateUid !== undefined) {
+                          store.select(entry.templateUid);
+                        }
+                      },
+                      onAddSidebarEntry:
+                        role === 'GM' ? (setId) => store.addSheet(setId) : undefined,
+                      tabs,
+                      selectedTab: openTab === null ? null : templateTabKey(openTab),
+                      onSelectTab: (id) => {
+                        const index = templateIndexFromKey(id);
 
-                    const uid =
-                      index === null
-                        ? null
-                        : uidAt(document, [templateIndexOf(document, docTemplate.uid), index]);
+                        const uid =
+                          index === null
+                            ? null
+                            : uidAt(document, [templateIndexOf(document, docTemplate.uid), index]);
 
-                    if (uid !== null) {
-                      store.select(uid);
-                    }
-                  },
-                  header,
-                  content,
-                  frameClassName: 'h-full',
-                }}
-              />
-            </div>
+                        if (uid !== null) {
+                          store.select(uid);
+                        }
+                      },
+                      header: hiddenSheetNote === null ? header : null,
+                      content: hiddenSheetNote === null ? content : <p>{hiddenSheetNote}</p>,
+                      frameClassName: 'h-full',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
     </section>
+  );
+}
+
+function PreviewRoleSwitch({
+  role,
+  onRole,
+}: {
+  role: PlayerRole;
+  onRole: (role: PlayerRole) => void;
+}): ReactNode {
+  return (
+    <div
+      role="group"
+      aria-label={copy.builder.previewRole}
+      className="flex flex-wrap items-center gap-1"
+    >
+      <AriaButton
+        className={clsx(SECONDARY_BUTTON_CLASS, role === 'GM' && 'bg-fill-strong')}
+        aria-pressed={role === 'GM'}
+        onPress={() => {
+          onRole('GM');
+        }}
+      >
+        {copy.builder.previewGm}
+      </AriaButton>
+      <AriaButton
+        className={clsx(SECONDARY_BUTTON_CLASS, role === 'PLAYER' && 'bg-fill-strong')}
+        aria-pressed={role === 'PLAYER'}
+        onPress={() => {
+          onRole('PLAYER');
+        }}
+      >
+        {copy.builder.previewPlayer}
+      </AriaButton>
+    </div>
   );
 }
 
@@ -309,6 +639,42 @@ function sheetNameFor(
   return selected === null
     ? previewSheetName(template)
     : (sheetName(records, preset, selected.sheetId) ?? previewSheetName(template));
+}
+
+function previewCellKey(
+  document: BuilderDocument,
+  uid: string,
+  templateUid: string | null,
+  openTab: number | null,
+  instanceId: string | null,
+): string | null {
+  const path = locate(document, uid);
+
+  if (
+    path?.kind !== 'cell' ||
+    document.templates[path.template]?.uid !== templateUid ||
+    path.tab !== openTab
+  ) {
+    return null;
+  }
+
+  return `${path.tab}.${path.section}.${path.row}.${path.cell}.${instanceId ?? ''}`;
+}
+
+function repeatBlockId(target: Element): string | null {
+  return target.closest('[data-repeat-block]')?.getAttribute('data-repeat-block') ?? null;
+}
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (target instanceof HTMLTextAreaElement) {
+    return true;
+  }
+
+  if (target instanceof HTMLInputElement) {
+    return true;
+  }
+
+  return target instanceof HTMLElement && target.isContentEditable;
 }
 
 function noop(): void {
@@ -346,21 +712,27 @@ function PreviewBody({
   sheetId,
   records,
   openTab,
+  editing,
+  rolling,
+  preview,
 }: {
   template: ReturnType<typeof templateToPreset>;
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
   openTab: number | null;
+  editing: FieldEditing | null;
+  rolling: DiceRolling;
+  preview: CellPreview;
 }): ReactNode {
   return (
-    <CellPreviewContext value={CELL_PREVIEW}>
+    <CellPreviewContext value={preview}>
       <SheetBody
         template={template}
         sheetId={sheetId}
         openTab={openTab}
         records={records}
-        editing={null}
-        rolling={stubRolling}
+        editing={editing}
+        rolling={rolling}
         pending={null}
       />
     </CellPreviewContext>

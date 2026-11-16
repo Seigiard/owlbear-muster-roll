@@ -1,9 +1,11 @@
 ---
 id: TASK-73
 title: Read, write and follow the attached files in Chromium
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@opencode'
 created_date: '2026-11-15T17:45:00Z'
+updated_date: '2026-11-16T09:16:00Z'
 labels:
   - one-editor
 dependencies:
@@ -22,11 +24,34 @@ The owner wants to edit a preset or snapshot in a text editor and in the page, w
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 In Chromium an edit in the page is written to the attached file at once, and the status says when
-- [ ] #2 A save on disk redraws the preview with no reload
-- [ ] #3 When both changed, a prompt offers «Взять из файла» or «Оставить мои»
-- [ ] #4 A preset with problems is not written and the status says so; writing resumes when the problems are fixed
-- [ ] #5 A file on disk that fails the checks leaves the last good content, and the block shows the refusal message
-- [ ] #6 Safari and Firefox keep open and download only
-- [ ] #7 The File System Access API sits behind a port with a fake for bun and Playwright tests
+- [x] #1 In Chromium an edit in the page is written to the attached file at once, and the status says when
+- [x] #2 A save on disk redraws the preview with no reload
+- [x] #3 When both changed, a prompt offers «Взять из файла» or «Оставить мои»
+- [x] #4 A preset with problems is not written and the status says so; writing resumes when the problems are fixed
+- [x] #5 A file on disk that fails the checks leaves the last good content, and the block shows the refusal message
+- [x] #6 Safari and Firefox keep open and download only
+- [x] #7 The File System Access API sits behind a port with a fake for bun and Playwright tests
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Introduce the browser file-access port with Chromium implementation and Bun/Playwright fakes, without reload reattachment.
+2. Lock page-write, external-follow, conflict-choice, refusal and unsupported-browser behavior before production implementation.
+3. Integrate write/follow through the existing file blocks, pure flow decisions and React-owned effects.
+4. Preserve current snapshot encoding, per-empty-set samples, history, visibility and field semantics; run all chain and changed-path checks.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Attached files now write and follow through the typed port. Save File/Save As writes and attaches the selected handle; Download Copy stays separate. Recovery protects companion snapshot values on preset follow and preserves conflict choices after pending writes. Clear/Undo updates both page and linked file. Final checks passed: 3208 unit tests (one existing environment skip), 547 browser tests, formatting, lint, types and build. Mutation controls and a fresh real-Chromium OPFS handle control passed. Native picker permission/cancellation and actual external OS-process delivery remain unverified.
+
+Integration closeout at e233c3a04fa0ab9335c4989b0828b4d8dac9a3cb: own echoes preserve identity/history; writes serialize and detect disk conflicts; both choices deliver their named disk result; failed/refused attempts stop until new work or explicit retry. Preset/snapshot forced-failure owners prove stop, new-edit recovery and Save As retry. Final checks: 3205 Bun pass, one environment skip, 541 Chromium pass, all static/build checks green. Final review has no critical or major findings. Deferred minor attachment-transition cases can misapply a read or delay a queued edit during replacement; first-follow baseline and stale async open/status remain deferred. The owner rejected a no-write-on-open rule, so existing snapshot reconciliation/writing is preserved. Native permission UI and real OS-editor delivery remain unverified on this candidate; prior OPFS proof applies to the TASK-73 recovery tip.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Chromium file blocks write page edits, follow valid disk changes, show refusals and keep both conflict choices. Invalid drafts pause writes until repaired. Save As attaches the selected file; confirmed Clear and Undo update both copies. Other browsers keep open/download only, with no reload reattachment. Local checks and native OPFS flow control passed; picker permission and OS-process delivery still need manual observation.
+<!-- SECTION:FINAL_SUMMARY:END -->

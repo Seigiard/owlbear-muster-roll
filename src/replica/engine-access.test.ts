@@ -4,6 +4,9 @@ import type { PartyEntry } from '@/core/access';
 import { ownerOf } from '@/core/merge';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
+import { parseEngineMessage } from '@/core/ui-messages';
+import type { MockPlatform } from '@/platform/current';
+import type { PartyMember } from '@/platform/ports';
 import {
   createRoomRig,
   rejection,
@@ -708,14 +711,133 @@ describe('party in the projection', () => {
     // #then
     expect(player.store.$party.get()).toEqual([]);
   });
+
+  test('does not publish an initial party read that resolves after the engine stops', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    room.join('p-oly', 'PLAYER', 'Оля');
+    const held = holdInitialPartyRead();
+    const client = roomRig.createClient(room, 'gm-a', { platform: held.platform });
+    await client.startEngine();
+    client.openWindow();
+    await waitUntil(() => client.store.$loaded.get() && client.store.$sync.get().state === 'live');
+
+    const beforeParty = sortedParty(client);
+    const deltaOffset = partyDeltas(client).length;
+    const initialReadStarted = held.started();
+
+    // #when
+    client.engine.stop();
+    held.release(PARTY_AFTER_INITIAL_READ);
+    await roomRig.pause(0);
+
+    // #then
+    expect({
+      beforeParty,
+      initialReadStarted,
+      party: sortedParty(client),
+      deltas: partyDeltas(client).slice(deltaOffset),
+    }).toEqual({
+      beforeParty: [],
+      initialReadStarted: true,
+      party: [],
+      deltas: [],
+    });
+  });
+
+  test('publishes the same delayed initial party read while the engine is live', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    room.join('p-oly', 'PLAYER', 'Оля');
+    const held = holdInitialPartyRead();
+    const client = roomRig.createClient(room, 'gm-a', { platform: held.platform });
+    await client.startEngine();
+    client.openWindow();
+    await waitUntil(() => client.store.$loaded.get() && client.store.$sync.get().state === 'live');
+
+    const beforeParty = sortedParty(client);
+    const deltaOffset = partyDeltas(client).length;
+    const initialReadStarted = held.started();
+
+    // #when
+    held.release(PARTY_AFTER_INITIAL_READ);
+    await waitUntil(() => partyDeltas(client).length === deltaOffset + 1);
+
+    // #then
+    expect({
+      beforeParty,
+      initialReadStarted,
+      party: sortedParty(client),
+      deltas: partyDeltas(client).slice(deltaOffset),
+    }).toEqual({
+      beforeParty: [],
+      initialReadStarted: true,
+      party: [{ id: 'p-oly', name: 'Оля', role: 'PLAYER' }],
+      deltas: [[{ id: 'p-oly', name: 'Оля', role: 'PLAYER' }]],
+    });
+  });
 });
 
 const roomRig = createRoomRig({ seeded: BASE });
+
+const PARTY_AFTER_INITIAL_READ: PartyMember[] = [
+  { id: 'p-oly', connectionId: 'p-oly', name: 'Оля', role: 'PLAYER' },
+];
+
+type Deferred<Value> = {
+  promise: Promise<Value>;
+  resolve: (value: Value) => void;
+};
+
+type HeldInitialPartyRead = {
+  platform: (platform: MockPlatform) => MockPlatform;
+  started: () => boolean;
+  release: (players: PartyMember[]) => void;
+};
+
+function holdInitialPartyRead(): HeldInitialPartyRead {
+  const read = deferred<PartyMember[]>();
+  let reads = 0;
+
+  return {
+    platform: (platform) => ({
+      ...platform,
+      party: {
+        ...platform.party,
+        getPlayers: () => {
+          reads += 1;
+
+          return reads === 1 ? read.promise : platform.party.getPlayers();
+        },
+      },
+    }),
+    started: () => reads > 0,
+    release: read.resolve,
+  };
+}
+
+function deferred<Value>(): Deferred<Value> {
+  let resolve!: (value: Value) => void;
+
+  const promise = new Promise<Value>((next) => {
+    resolve = next;
+  });
+
+  return { promise, resolve };
+}
 
 function sortedParty(client: Client): PartyEntry[] {
   return [...client.store.$party.get()].sort((first, second) =>
     first.id < second.id ? -1 : first.id > second.id ? 1 : 0,
   );
+}
+
+function partyDeltas(client: Client): PartyEntry[][] {
+  return client.local.flatMap((message) => {
+    const parsed = parseEngineMessage(message);
+
+    return parsed.ok && parsed.value.t === 'delta' ? [parsed.value.party] : [];
+  });
 }
 
 // The records one client sent to the room in commits, in send order.

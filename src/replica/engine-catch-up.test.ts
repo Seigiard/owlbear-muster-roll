@@ -4,7 +4,7 @@ import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { decodeStateRecords, encodeStateRecords } from '@/core/state-records';
-import type { Generation } from '@/core/storage-key';
+import { generationMarkerKey, type Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
 import type { Command, SyncState } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
@@ -175,6 +175,23 @@ async function catchingUpAgain(room: Room, connectionId: string): Promise<Client
 }
 
 describe('start', () => {
+  test('flushNow without queued intents leaves ordinary catch-up held until its GM answer', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const client = await catchingUpAgain(room, 'gm-a');
+    const request = lastRequest(room, 'gm-a');
+
+    // #when
+    client.engine.flushNow();
+    await pause(20);
+    const during = sync(client).state;
+    room.post(GHOST, stateMessage(request, []));
+    await waitUntil(() => sync(client).state === 'live');
+
+    // #then
+    expect({ during, after: sync(client).state }).toEqual({ during: 'catching-up', after: 'live' });
+  });
+
   test('a GM client enters catching-up with its persisted records and asks with a nonce', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -266,6 +283,207 @@ describe('start', () => {
       shown: [shown(late, BROK.k), shown(late, liza.k), shown(late, 'preset')],
       stored: [storedRecord(late, BROK.k), storedRecord(late, liza.k)],
     }).toEqual({ shown: [BROK, liza, PRESET_RECORD], stored: [BROK, liza] });
+  });
+});
+
+describe('engine catch-up decisions', () => {
+  test('answers two remote nonces after their independent delays', async () => {
+    // #given
+    const room = roomRig.openRoom();
+
+    room.join('asker-a', 'PLAYER');
+    room.join('asker-b', 'PLAYER');
+
+    await startClient(room, 'gm-a', {
+      timing: { stateAnswerDelayMinMs: 30, stateAnswerDelayMaxMs: 30 },
+      until: 'live',
+    });
+
+    // #when
+    room.post('asker-a', { v: 3, g: INITIAL, t: 'state-request', r: 'r-a' });
+    room.post('asker-b', { v: 3, g: INITIAL, t: 'state-request', r: 'r-b' });
+    await pause(80);
+
+    // #then
+    expect(
+      heardOf(room, 'gm-a', 'state')
+        .map((message) => Object(message).r)
+        .sort((left, right) => String(left).localeCompare(String(right))),
+    ).toEqual(['r-a', 'r-b']);
+  });
+
+  test('advertises a fresh digest after a remote commit changes the replica', async () => {
+    // #given
+    const room = roomRig.openRoom();
+
+    room.join(GHOST, 'GM');
+
+    await startClient(room, 'gm-a', { until: 'live' });
+
+    room.post(GHOST, { v: 3, g: INITIAL, t: 'ping' });
+    await waitUntil(() => heardOf(room, 'gm-a', 'alive').length === 1);
+
+    const changed: VersionedRecord = { ...BROK, c: 2, a: GHOST };
+
+    // #when
+    room.post(GHOST, commit([changed]));
+    room.post(GHOST, { v: 3, g: INITIAL, t: 'ping' });
+    await waitUntil(() => heardOf(room, 'gm-a', 'alive').length === 2);
+
+    // #then
+    expect(heardOf(room, 'gm-a', 'alive').map((message) => Object(message).digest)).toEqual([
+      690848185, 1553416285,
+    ]);
+  });
+
+  test('surfaces persisted corruption discovered on a later catch-up', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const client = await startClient(room, 'gm-a', { until: 'live' });
+
+    client.backing.set(storageKey('row:bad:name'), '{not json');
+
+    // #when
+    client.engine.catchUp();
+    await pause(30);
+
+    // #then
+    expect(client.store.$notices.get()).toEqual(['local-save-failed']);
+  });
+
+  test('skips an oversized persisted record and reports it on a later catch-up', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const client = await startClient(room, 'gm-a', { until: 'live' });
+
+    const huge: VersionedRecord = {
+      k: 'row:brok:name',
+      d: { name: 'x'.repeat(14900) },
+      c: 2,
+      a: 'other-tab',
+    };
+
+    client.backing.set(storageKey(huge.k), JSON.stringify(huge));
+
+    // #when
+    client.engine.catchUp();
+    await pause(30);
+
+    // #then
+    expect({
+      shown: shown(client, huge.k) ?? null,
+      notices: client.store.$notices.get(),
+    }).toEqual({ shown: null, notices: ['local-save-failed'] });
+  });
+
+  test('still enters catch-up when the persisted generation cannot be read again', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+
+    room.join(GHOST, 'GM');
+
+    const client = await startClient(room, 'gm-a', {
+      timing: { catchUpTimeoutMs: 100 },
+      until: 'live',
+    });
+
+    client.platform.setFailingStorageOperations(['list']);
+
+    // #when
+    expect(() => client.engine.catchUp()).not.toThrow();
+    await waitUntil(() => sync(client).state === 'catching-up');
+
+    const during = sync(client).state;
+
+    await waitUntil(() => sync(client).state === 'live');
+
+    // #then
+    expect({ during, after: sync(client).state }).toEqual({ during: 'catching-up', after: 'live' });
+  });
+
+  test('a GM without readable persistence can re-enter catch-up', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+
+    const client = await startClient(room, 'gm-a', {
+      platform: (platform) => {
+        platform.setFailingStorageOperations(['list']);
+
+        return platform;
+      },
+      until: 'live',
+    });
+
+    // #when
+    let thrown: string | null = null;
+
+    try {
+      client.engine.catchUp();
+    } catch (error) {
+      thrown = error instanceof Error ? error.message : 'unknown error';
+    }
+
+    // #then
+    expect({
+      thrown,
+      notices: client.store.$notices.get(),
+    }).toEqual({
+      thrown: null,
+      notices: ['local-save-failed'],
+    });
+  });
+
+  test('publishes catch-up entry before pending room and party reads settle', async () => {
+    // #given
+    const room = roomRig.openRoom();
+
+    room.join(GHOST, 'GM');
+
+    const client = await startClient(room, 'gm-a', {
+      timing: { catchUpTimeoutMs: 200 },
+      until: 'live',
+    });
+
+    const never = new Promise<never>(() => undefined);
+
+    client.platform.metadata.getMetadata = () => never;
+    client.platform.party.getPlayers = () => never;
+
+    // #when
+    client.engine.catchUp();
+    await pause(20);
+
+    // #then
+    expect(sync(client).state).toBe('catching-up');
+  });
+
+  test('forgets digest mismatches when a GM connection leaves the party', async () => {
+    // #given
+    const room = roomRig.openRoom();
+
+    room.join(GHOST, 'GM');
+
+    const client = await startClient(room, 'gm-a', {
+      timing: { catchUpTimeoutMs: 100, gmLinkTimeoutMs: 20 },
+      until: 'live',
+    });
+
+    room.post(GHOST, { v: 3, g: INITIAL, t: 'alive', digest: 0 });
+    await pause(11);
+    room.room.leave(GHOST);
+    room.join(GHOST, 'GM');
+    await pause(11);
+
+    // #when
+    room.post(GHOST, { v: 3, g: INITIAL, t: 'alive', digest: 0 });
+    await pause(20);
+
+    // #then
+    expect(sync(client).state).toBe('live');
   });
 });
 
@@ -1225,6 +1443,183 @@ describe('player visibility', () => {
 
     // #then
     expect(shown(client, skeletonHp.k)).toEqual(skeletonHp);
+  });
+
+  test('a demoted player does not persist a later room commit', async () => {
+    // #given
+    const room = roomRig.openRoom();
+
+    room.join(GHOST, 'GM');
+
+    const client = await startClient(room, 'gm-a', {
+      timing: { catchUpTimeoutMs: 100 },
+      until: 'live',
+    });
+
+    client.platform.setRole('PLAYER');
+    await waitUntil(() => sync(client).role === 'PLAYER');
+
+    const changed: VersionedRecord = { ...BROK, c: 2, a: GHOST };
+
+    // #when
+    room.post(GHOST, commit([changed]));
+    await waitUntil(() => shown(client, BROK.k)?.c === 2);
+
+    // #then
+    expect(storedRecord(client, BROK.k)).toEqual(BROK);
+  });
+
+  test('a failed storage probe on promotion keeps persistence disabled and shows the notice', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+
+    const client = await startClient(room, 'player-p', {
+      role: 'PLAYER',
+      seeded: [],
+      until: 'live',
+    });
+
+    client.platform.setFailingStorageOperations(['list']);
+
+    // #when
+    client.platform.setRole('GM');
+    await waitUntil(() => sync(client).role === 'GM');
+    await pause(30);
+
+    // #then
+    expect(client.store.$notices.get()).toEqual(['local-save-failed']);
+  });
+
+  test('re-reads its role on a party change even without a role-change event', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    let currentRole: PlayerRole = 'GM';
+
+    const client = await startClient(room, 'gm-a', {
+      platform: (platform) => ({
+        ...platform,
+        player: { ...platform.player, getRole: () => Promise.resolve(currentRole) },
+      }),
+      until: 'live',
+    });
+
+    currentRole = 'PLAYER';
+
+    // #when
+    room.join('new-player', 'PLAYER');
+    await pause(30);
+
+    // #then
+    expect(sync(client).role).toBe('PLAYER');
+  });
+
+  test('keeps the newest result when two role reads resolve out of order', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const reads: ((role: PlayerRole) => void)[] = [];
+    let initial = true;
+
+    const client = await startClient(room, 'gm-a', {
+      platform: (platform) => ({
+        ...platform,
+        player: {
+          ...platform.player,
+          getRole: () => {
+            if (initial) {
+              initial = false;
+
+              return Promise.resolve('GM');
+            }
+
+            return new Promise<PlayerRole>((resolve) => {
+              reads.push(resolve);
+            });
+          },
+        },
+      }),
+      until: 'live',
+    });
+
+    room.join('first-change', 'PLAYER');
+    await waitUntil(() => reads.length === 1);
+    room.join('second-change', 'PLAYER');
+    await waitUntil(() => reads.length === 2);
+
+    // #when
+    reads[1]?.('PLAYER');
+    await waitUntil(() => sync(client).role === 'PLAYER');
+    reads[0]?.('GM');
+    await pause(30);
+
+    // #then
+    expect(sync(client).role).toBe('PLAYER');
+  });
+
+  test('persists promotion data once, not on every later catch-up', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+    const client = await answeredPlayer(room, 100);
+
+    client.platform.setRole('GM');
+    await waitUntil(() => sync(client).role === 'GM' && sync(client).state === 'live');
+    await waitUntil(() => storedRecord(client, BROK.k) !== undefined);
+    const changed: VersionedRecord = { ...BROK, c: 2, a: GHOST };
+
+    room.post(GHOST, commit([changed]));
+    await waitUntil(() => shown(client, BROK.k)?.c === 2);
+    client.backing.set(storageKey(BROK.k), JSON.stringify(BROK));
+    client.platform.setFailingStorageOperations(['write']);
+
+    // #when
+    client.engine.catchUp();
+    await waitUntil(() => sync(client).state === 'catching-up');
+    await waitUntil(() => sync(client).state === 'live');
+
+    // #then
+    expect(client.store.$notices.get()).toEqual([]);
+  });
+
+  test('keeps an empty adopted generation when a promoted client restarts', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const generation: Generation = { n: 1, a: GHOST };
+
+    room.join(GHOST, 'GM');
+
+    const client = await startClient(room, 'player-p', {
+      role: 'PLAYER',
+      seeded: [],
+      until: 'live',
+    });
+
+    room.post(GHOST, { v: 3, g: generation, t: 'reset' });
+    await waitUntil(() => sync(client).state === 'catching-up');
+    room.post(GHOST, stateMessage(lastRequest(room, 'player-p'), [], 1, 1, generation));
+    await waitUntil(() => sync(client).state === 'live');
+
+    client.platform.setRole('GM');
+    await waitUntil(() => sync(client).role === 'GM' && sync(client).state === 'live');
+    await pause(20);
+    const marker = generationMarkerKey(client.platform.metadata.getRoomId(), generation);
+
+    expect(marker.ok ? client.backing.get(marker.value) : null).toBe('1');
+
+    room.room.leave(GHOST);
+    await pause(20);
+    client.engine.stop();
+    await client.startEngine();
+
+    // #when
+    const id = send(client, { type: 'wipe' });
+    await waitUntil(() => outcome(client, id) !== undefined);
+    await waitUntil(() => heardOf(room, 'player-p', 'reset').length === 1);
+
+    // #then
+    expect(Object(heardOf(room, 'player-p', 'reset')[0]).g).toEqual({ n: 2, a: 'player-p' });
   });
 
   test('a catch-up that ends by timeout leaves gmAnswered false', async () => {

@@ -198,17 +198,24 @@ describe('parseBaseline', () => {
     ]);
   });
 
-  test('loads 65 survivor entries and 3 timeout entries from the committed baseline', async () => {
+  test('preserves 65 survivor entries and 3 timeout entries for the original replica modules', async () => {
     // #given
     const path = new URL('../probe-baseline.json', import.meta.url).pathname;
 
+    const originalModules = new Set([
+      'src/replica/catch-up.ts',
+      'src/replica/room-copy.ts',
+      'src/replica/window-publisher.ts',
+    ]);
+
     // #when
     const baseline = await loadBaseline(path);
+    const originalBaseline = baseline.filter(({ file }) => originalModules.has(file));
 
     // #then
     expect({
-      survivors: baseline.filter(({ verdict }) => verdict !== 'timeout').length,
-      timeouts: baseline.filter(({ verdict }) => verdict === 'timeout').length,
+      survivors: originalBaseline.filter(({ verdict }) => verdict !== 'timeout').length,
+      timeouts: originalBaseline.filter(({ verdict }) => verdict === 'timeout').length,
     }).toEqual({ survivors: 65, timeouts: 3 });
   });
 });

@@ -6,6 +6,7 @@ import { applyTheme } from '@/ui/theme';
 
 import { BuilderPage } from './builder-page';
 import { createBuilderStore, type DraftStorage } from './builder-store';
+import { createBrowserFileAccess } from './file-access';
 import { readThemeChoice } from './theme-choice';
 
 const container = document.getElementById('root');
@@ -19,7 +20,7 @@ applyTheme(PREVIEW_THEMES[readThemeChoice()], document.documentElement);
 
 const store = createBuilderStore(pageStorage());
 
-createRoot(container).render(<BuilderPage store={store} />);
+createRoot(container).render(<BuilderPage store={store} fileAccess={createBrowserFileAccess()} />);
 
 // A browser that blocks site data throws on the first read of `localStorage`.
 function pageStorage(): DraftStorage | null {

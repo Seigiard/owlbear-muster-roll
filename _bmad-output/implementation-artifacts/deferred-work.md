@@ -425,6 +425,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
   summary: Remove the obsolete default-dev sentence when TASK-74 rewrites the dev instructions.
   evidence: TASK-68 review found that CLAUDE.md still describes default dev as the Owlbear adapter beside its new builder description. Story 1 explicitly defers the old block rewrite to story 7.
+  resolution: Completed in TASK-74. CLAUDE.md now describes the standalone builder and separate dev:owlbear command.
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
   summary: Consider bounded shutdown escalation if a cloudflared child is observed not to terminate.
   evidence: The launcher waits for cloudflared before signaling Vite and ignores repeated signals. The reviewer constructed an unresponsive child; no such occurrence was observed in the CLI test or live control.
@@ -434,3 +435,27 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
   summary: Consider a permanent missing-cloudflared launcher regression test.
   evidence: TASK-68 has a direct missing-executable failure control and a cleanup catch path, but its permanent CLI test covers successful startup and termination only. Review established no production behavior gap.
+
+## Deferred from: TASK-70–74 integration review (2026-11-16)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Guard preflight results and failures when the attached file changes during I/O.
+  evidence: The final review constructed a file replacement during a pending read. The result can be compared with the replacement attachment and supply the wrong conflict contents. This requires overlapping picker/confirmation work with slow I/O; it was graded minor and deferred at closeout.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Drain a new attachment's queued edit when the old attachment's write completes.
+  evidence: Replacing and editing a file while the previous file's write is pending can leave the new edit queued. The draft retains it, and a later edit flushes it. The final review graded this narrow attachment-transition case minor.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Keep an empty sheet set's sample read-only when Enter starts editing.
+  evidence: Mouse editing checks the sample flag, but Enter checks only edit permission. A typed sample value disappears and leaves an unused row and undo step in the draft. No real sheet or exported file value is lost; the final review graded it minor.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Define the initial follow baseline while attachment confirmation is open.
+  evidence: The first integration review identified a disk change between the initial open read and attachment completion. Later preflight checks protect ordinary attached writes; the attachment-baseline policy remains deferred.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Define arbitration for stale asynchronous snapshot opens and old-attachment status results.
+  evidence: The first integration review constructed reversed open completion and a prior attachment's late status result. Those redesigns were left outside the repair scope.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Consider duplicate adapter reads, repeated cell lookup, an unused port re-export and file-block styling cleanup.
+  evidence: The first integration review found no reported behavior failure for these items. Physical spacing/alignment utilities and status truncation remain deliberate polish omissions.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Observe native picker permission dialogs and real external-editor saves on the final integration.
+  evidence: Deterministic Bun/Chromium owners prove application behavior. A real native OPFS control passed at the TASK-73 recovery commit; it does not prove final permission dialogs or delivery from an external OS process.

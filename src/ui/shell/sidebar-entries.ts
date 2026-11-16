@@ -11,7 +11,7 @@ import {
   sheetPolicy,
   type SheetPolicy,
 } from '@/core/sheets';
-import { visibleSheets, type PlayerRole } from '@/core/visibility';
+import { templateShownTo, visibleSheets, type PlayerRole } from '@/core/visibility';
 
 // One sheet listed by the window sidebar. The policy is kept here because the selected sheet's
 // content uses the same resolved template as the navigation model.
@@ -184,10 +184,15 @@ export function builderSidebarEntries(
   preset: Preset,
   records: ReadonlyMap<string, VersionedRecord>,
   templateUids: readonly string[],
+  role: PlayerRole = 'GM',
 ): SidebarEntries {
   const sections: SidebarSection[] = [];
 
   for (const [templateIndex, template] of preset.templates.entries()) {
+    if (!templateShownTo(role, template)) {
+      continue;
+    }
+
     const templateUid = templateUids[templateIndex] ?? template.id;
     const ownerPreset = { ...preset, templates: [template] };
 
@@ -196,12 +201,16 @@ export function builderSidebarEntries(
         .map((sheet) => builderSidebarSheet(records, ownerPreset, templateUid, sheet.sheetId))
         .filter((sheet): sheet is SidebarSheet => sheet !== null);
 
+      if (role === 'PLAYER' && sheets.length === 0) {
+        continue;
+      }
+
       sections.push({
         kind: 'group',
         id: template.id,
         title: template.title,
         sheets: sheets.length === 0 ? [sampleSheet(template, templateUid)] : sheets,
-        canAdd: true,
+        canAdd: role === 'GM',
       });
     } else {
       const sheet = builderSidebarSheet(records, ownerPreset, templateUid, template.id);

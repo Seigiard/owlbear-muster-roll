@@ -4,7 +4,7 @@ import { copy } from '@/copy';
 import type { DieFace } from '@/core/formula-evaluate';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { ok, type Result } from '@/core/result';
+import { err, ok, type Result } from '@/core/result';
 import type { Generation } from '@/core/storage-key';
 import type { RollMessage } from '@/core/room-messages';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
@@ -210,6 +210,34 @@ test('reports the field label when the pending value cannot be evaluated', () =>
 
   // #then
   expect(harness.outcomes).toEqual([{ code: 'field', field: 'Strike' }]);
+});
+
+test('refuses a roll request whose address is not a dice cell', async () => {
+  // #given
+  const harness = createHarness();
+  const flow = createRollFlow(harness.ports);
+
+  // #when
+  const result = Promise.resolve().then(() => {
+    flow.handleRollRequest({
+      ...REQUEST,
+      id: 'request-not-dice',
+      place: { ...REQUEST.place, cellIndex: 1 },
+    });
+
+    return { outcomes: harness.outcomes, sent: harness.sent };
+  });
+
+  const [settled] = await Promise.allSettled([result]);
+
+  // #then
+  expect(settled).toEqual({
+    status: 'fulfilled',
+    value: {
+      outcomes: [{ code: 'refused' }],
+      sent: [],
+    },
+  });
 });
 
 test('reports arithmetic when a prepared roll divides by zero', () => {
@@ -533,4 +561,66 @@ test('shows a received roll under the sender name from the party', async () => {
 
   // #then
   expect(notifications).toEqual(['Party member: Ada, Strike — 9']);
+});
+
+test('a repeated roll request id rolls and answers once', async () => {
+  // #given
+  const harness = createHarness();
+  const flow = createRollFlow(harness.ports);
+
+  // #when
+  flow.handleRollRequest(REQUEST);
+  flow.handleRollRequest(REQUEST);
+  await drain();
+
+  // #then
+  expect({ outcomes: harness.outcomes, sent: harness.sent.length }).toEqual({
+    outcomes: [{ code: 'rolled' }],
+    sent: 1,
+  });
+});
+
+test('a stopped dice operation produces no fallback roll or outcome', async () => {
+  // #given
+  const harness = createHarness({
+    dice: {
+      ready: async () => 'permitted',
+      roll: async () => err({ code: 'stopped' }),
+    },
+  });
+
+  const flow = createRollFlow(harness.ports);
+
+  // #when
+  flow.handleRollRequest({ ...REQUEST, id: 'dice-stopped' });
+  await drain();
+
+  // #then
+  expect({ outcomes: harness.outcomes, sent: harness.sent }).toEqual({ outcomes: [], sent: [] });
+});
+
+test('an oversized roll is refused before the room transport', async () => {
+  // #given
+  let sends = 0;
+
+  const harness = createHarness({
+    playerName: async () => 'A'.repeat(16000),
+    sendRemote: async () => {
+      sends += 1;
+
+      return true;
+    },
+  });
+
+  const flow = createRollFlow(harness.ports);
+
+  // #when
+  flow.handleRollRequest({ ...REQUEST, id: 'oversized' });
+  await drain();
+
+  // #then
+  expect({ outcomes: harness.outcomes, sends }).toEqual({
+    outcomes: [{ code: 'failed' }],
+    sends: 0,
+  });
 });

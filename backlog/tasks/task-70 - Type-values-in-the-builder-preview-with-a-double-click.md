@@ -1,9 +1,11 @@
 ---
 id: TASK-70
 title: Type values in the builder preview with a double click
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@opencode'
 created_date: '2026-11-15T17:45:00Z'
+updated_date: '2026-11-16T09:16:00Z'
 labels:
   - one-editor
 dependencies:
@@ -22,8 +24,31 @@ With a snapshot in the window, a GM needs to fill values where the sheet is, and
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The first click on a preview cell selects its tree item and the form shows it
-- [ ] #2 A second click or Enter on the selected cell types a value into the snapshot; Esc leaves typing and keeps the selection
-- [ ] #3 A second click on a dice cell rolls
-- [ ] #4 A structure edit applies to every sheet of its template
+- [x] #1 The first click on a preview cell selects its tree item and the form shows it
+- [x] #2 A second click or Enter on the selected cell types a value into the snapshot; Esc leaves typing and keeps the selection
+- [x] #3 A second click on a dice cell rolls
+- [x] #4 A structure edit applies to every sheet of its template
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Extend the existing preview interaction and builder-store seams for selected-cell snapshot editing and local dice rolls.
+2. Lock behavioral tests before production implementation through the tdd chain.
+3. Preserve selection, Escape behavior, template-wide structure edits and whole-step history.
+4. Run all changed-path checks and return the validated branch for integration; no per-ticket review.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+The TDD chain locked browser interactions before implementation. Final validation passed: 3192 unit tests (one existing environment skip), 537 browser tests, formatting, lint, typecheck and build. A real-preview deterministic RNG control confirmed the second-click dice route. The preview does not render a numeric dice face.
+
+Integration closeout: selected repeat-block Enter, Escape, pagehide and field-kind regressions are covered by the Builder browser owners. Final application/test commit e233c3a04fa0ab9335c4989b0828b4d8dac9a3cb passed 3205 Bun tests (one environment skip), 541 Chromium tests and all static/build checks. The final review left only minor findings. Enter on an empty set sample remains deferred; it affects an unused draft record, not a real sheet.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The builder selects cells on first click and edits snapshot values on second click or Enter. Escape leaves typing and keeps selection. Dice cells evaluate on second click, and structure edits still reach every template sheet. All required local checks passed.
+<!-- SECTION:FINAL_SUMMARY:END -->

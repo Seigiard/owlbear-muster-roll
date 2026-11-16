@@ -12,6 +12,7 @@ import { presetDataSchema, recordSchema, type VersionedRecord } from '@/core/rec
 import { err } from '@/core/result';
 import type { SnapshotFile } from '@/core/snapshot-file';
 import { encodeSnapshotFileData } from '@/core/snapshot-import';
+import type { Timing } from '@/core/timing';
 import { UI_CHANNEL, type Command } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole, SendResult } from '@/platform/ports';
@@ -23,6 +24,7 @@ import {
   storageKey,
   type RigClient,
   type RigPage,
+  type RigRoom,
   waitUntil,
 } from '../../tests/support/room-rig';
 
@@ -92,6 +94,7 @@ type WireMessage = {
 type Rig = {
   client: RigClient;
   platform: MockPlatform;
+  room: RigRoom;
   wire: WireMessage[];
 };
 
@@ -109,12 +112,15 @@ function silenceErrors(): void {
 function createRig(
   role: PlayerRole = 'GM',
   platform?: (platform: MockPlatform) => MockPlatform,
+  timing?: Partial<Timing>,
 ): Rig {
-  const client = roomRig.createClient(roomRig.openRoom(), 'mock-connection', { role, platform });
+  const room = roomRig.openRoom();
+  const client = roomRig.createClient(room, 'mock-connection', { role, platform, timing });
 
   return {
     client,
     platform: client.platform,
+    room,
     get wire() {
       // SAFETY: the test reads only messages the code under test put on the UI channel.
       return client.local as WireMessage[];
@@ -243,6 +249,152 @@ async function rejectionOf(view: WindowView, command: Command): Promise<string |
 function unchanged(rig: Rig, view: WindowView): Aftermath {
   return { records: byKey(recordsOf(view.store)), deltas: deltas(rig).length };
 }
+
+describe('command id ownership', () => {
+  test('answers a repeated raw window command id once', async () => {
+    // #given
+    const rig = createRig();
+    seedRecords(rig, PRESET_RECORD);
+    await startEngine(rig);
+
+    const message = {
+      t: 'command',
+      id: 'repeat-command',
+      command: { type: 'sheet-create', sheetId: 'ada', set: 'pc' },
+    } as const;
+
+    // #when
+    await post(rig, message);
+    await post(rig, message);
+    await waitUntil(
+      () =>
+        rig.wire.filter(
+          (candidate) =>
+            candidate.id === message.id &&
+            (candidate.t === 'command-done' || candidate.t === 'command-rejected'),
+        ).length > 0,
+    );
+    await pause(20);
+
+    // #then
+    expect(
+      rig.wire
+        .filter(
+          (candidate) =>
+            candidate.id === message.id &&
+            (candidate.t === 'command-done' || candidate.t === 'command-rejected'),
+        )
+        .map(({ t, id, reason }) => ({ t, id, reason })),
+    ).toEqual([{ t: 'command-done', id: 'repeat-command', reason: undefined }]);
+  });
+
+  test('ignores local commands and room commits after stop', async () => {
+    // #given
+    const rig = createRig();
+    seedRecords(rig, PRESET_RECORD);
+    rig.room.join('gm-b', 'GM');
+    const engine = await startEngine(rig);
+    engine.stop();
+    const localBefore = rig.wire.length;
+
+    // #when
+    await post(rig, {
+      t: 'command',
+      id: 'after-stop',
+      command: { type: 'sheet-create', sheetId: 'late', set: 'pc' },
+    });
+    rig.room.post('gm-b', {
+      v: 3,
+      g: { n: 0, a: '' },
+      t: 'commit',
+      records: [{ k: 'row:late:name', d: { name: 'Late' }, c: 1, a: 'gm-b' }],
+    });
+    await pause(20);
+
+    // #then
+    expect({
+      engineMessagesAfterStop: rig.wire
+        .slice(localBefore)
+        .filter((message) => message.t !== 'command'),
+      stored: storedRecords(rig).map((record) => record.k),
+    }).toEqual({ engineMessagesAfterStop: [], stored: ['preset'] });
+  });
+
+  test('does not release a held commit after stop', async () => {
+    // #given
+    const rig = createRig('GM', undefined, { sendSpacingMs: 80 });
+
+    seedRecords(rig, PRESET_RECORD);
+    const engine = await startEngine(rig);
+    const view = await openAndLoad(rig);
+
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'late', set: 'pc' });
+    await waitUntil(() => recordsOf(view.store).some((record) => record.k === 'sheet:late'));
+
+    // #when
+    engine.stop();
+    await pause(250);
+
+    // #then
+    expect(rig.room.heard.filter((message) => Object(message.data).t === 'commit')).toEqual([]);
+  });
+
+  test('flushNow sends a held commit before its save pause ends', async () => {
+    // #given
+    const rig = createRig('GM', undefined, { fieldSavePauseMs: 1000, sendSpacingMs: 1000 });
+
+    seedRecords(rig, PRESET_RECORD);
+    const engine = await startEngine(rig);
+    const view = await openAndLoad(rig);
+
+    view.client.sendCommand({ type: 'sheet-create', sheetId: 'now', set: 'pc' });
+    await waitUntil(() => recordsOf(view.store).some((record) => record.k === 'sheet:now'));
+
+    // #when
+    engine.flushNow();
+    await pause(30);
+
+    // #then
+    expect(
+      rig.room.heard
+        .filter((message) => Object(message.data).t === 'commit')
+        .flatMap((message) => Object(message.data).records)
+        .map((record) => Object(record).k),
+    ).toEqual(['sheet:now']);
+  });
+});
+
+test('engine startup waits for the initial catch-up deadline when a room-copy read never settles', async () => {
+  // #given
+  const room = roomRig.openRoom();
+
+  const client = roomRig.createClient(room, 'gm-a', {
+    timing: { catchUpTimeoutMs: 80 },
+    platform: (platform) => ({
+      ...platform,
+      metadata: {
+        ...platform.metadata,
+        getMetadata: () => new Promise(() => undefined),
+      },
+    }),
+  });
+
+  let resolved = false;
+
+  const started = client.startEngine().then(() => {
+    resolved = true;
+  });
+
+  // #when
+  await pause(20);
+
+  const early = resolved;
+
+  await started;
+
+  // #then
+  expect({ early, final: resolved }).toEqual({ early: false, final: true });
+});
 
 describe('GM start', () => {
   test('puts every persisted record of the current generation in the replica', async () => {
@@ -1698,6 +1850,39 @@ describe('write failure', () => {
       }).toEqual({ notices: ['local-save-failed'], calls: 0 });
     },
   );
+
+  test('starts with an empty read-only replica when the highest-generation read alone fails', async () => {
+    // #given
+    let keyReads = 0;
+
+    const rig = createRig('GM', (platform) => ({
+      ...platform,
+      storage: {
+        ...platform.storage,
+        keys: () => {
+          keyReads += 1;
+
+          return keyReads === 3
+            ? err({ operation: 'list', reason: 'highest generation unavailable' })
+            : platform.storage.keys();
+        },
+      },
+    }));
+
+    silenceErrors();
+    seedRecords(rig, PRESET_RECORD);
+
+    // #when
+    const [startup] = await Promise.allSettled([startEngine(rig)]);
+    const view = startup.status === 'fulfilled' ? await openAndLoad(rig) : undefined;
+
+    // #then
+    expect({
+      startup: startup.status,
+      records: view === undefined ? null : recordsOf(view.store),
+      notices: view === undefined ? null : view.store.$notices.get(),
+    }).toEqual({ startup: 'fulfilled', records: [], notices: ['local-save-failed'] });
+  });
 });
 
 describe('preset upload', () => {

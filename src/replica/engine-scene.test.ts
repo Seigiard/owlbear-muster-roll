@@ -272,6 +272,19 @@ describe('a token deleted from the open scene', () => {
     }).toEqual({ sceneCalls: 0, sent: [], link: BROK });
   });
 
+  test('does not show the unlink failure notice for an unrelated rejected command', async () => {
+    // #given
+    const room = openRoom(['t1']);
+    const player = await startClient(room, 'player-a', { role: 'PLAYER' });
+
+    // #when
+    const id = send(player, { type: 'sheet-create', sheetId: 'late', set: 'pc' });
+    await waitUntil(() => player.rejections.includes(id));
+
+    // #then
+    expect(player.platform.shownNotifications()).toEqual([]);
+  });
+
   test('starts to watch when a player becomes GM, with no removal from before', async () => {
     // #given
     const room = openRoom(['t1', 't2']);
@@ -298,6 +311,29 @@ describe('a token deleted from the open scene', () => {
 });
 
 describe('the watch', () => {
+  test('subscribes again after a demotion and later promotion', async () => {
+    // #given
+    const room = openRoom(['t1', 't2']);
+    const client = await startClient(room, 'gm-a');
+
+    client.platform.setRole('PLAYER');
+    await waitUntil(() => client.store.$sync.get().role === 'PLAYER');
+    client.platform.setRole('GM');
+    await waitUntil(() => isLive(client) && client.store.$sync.get().role === 'GM');
+
+    // #when
+    client.platform.removeSceneItems(['t1']);
+    await pause(SETTLE_MS);
+
+    // #then
+    expect(storedRecord(client, 'link:t1')).toEqual({
+      k: 'link:t1',
+      d: null,
+      c: 2,
+      a: 'gm-a',
+    });
+  });
+
   test('stops, with the removals it held, when the GM becomes a player', async () => {
     // #given: a catch-up held open keeps the removal of t1 waiting.
     const room = openRoom(['t1', 't2']);
@@ -430,10 +466,13 @@ describe('two GM clients', () => {
     await waitUntil(() => isLive(second));
     first.platform.removeSceneItems(['t1']);
     await waitUntil(() => storedRecord(second, 'link:t1')?.d === null);
+    first.platform.addSceneItems(['map']);
+    await pause(SETTLE_MS);
 
     // #when
     send(second, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
-    await waitUntil(() => storedRecord(second, 'link:t1')?.c === 4);
+    await waitUntil(() => (storedRecord(second, 'link:t1')?.c ?? 0) >= 3);
+    await pause(SETTLE_MS);
 
     // #then
     expect({
@@ -444,6 +483,55 @@ describe('two GM clients', () => {
       first: null,
       second: null,
       cleared: [{ k: 'link:t1', d: null, c: 4, a: 'gm-a' }],
+    });
+  });
+
+  test('forgets the oldest deletion after the bounded scene history fills', async () => {
+    // #given
+    const removed = Array.from({ length: 1025 }, (_, index) => `old-${index}`);
+    const room = openRoom([...removed, 'anchor']);
+    const oldest: VersionedRecord = { k: 'link:old-0', d: BROK, c: 1, a: 'seed' };
+    const first = await startClient(room, 'gm-a', { seeded: [...SEEDED, oldest] });
+
+    room.join(GHOST, 'GM');
+    await pause(SETTLE_MS);
+    first.platform.removeSceneItems(removed);
+    await pause(SETTLE_MS);
+
+    const relinked: VersionedRecord = { ...oldest, c: 3, a: GHOST };
+
+    // #when
+    post(room, GHOST, commit([relinked]));
+    await waitUntil(() => (storedRecord(first, oldest.k)?.c ?? 0) >= 3);
+    await pause(SETTLE_MS);
+
+    // #then
+    expect(storedRecord(first, oldest.k)).toEqual(relinked);
+  });
+
+  test('remembers the oldest deletion at the exact scene-history limit', async () => {
+    // #given
+    const removed = Array.from({ length: 1024 }, (_, index) => `old-${index}`);
+    const room = openRoom([...removed, 'anchor']);
+    const oldest: VersionedRecord = { k: 'link:old-0', d: BROK, c: 1, a: 'seed' };
+    const first = await startClient(room, 'gm-a', { seeded: [...SEEDED, oldest] });
+
+    room.join(GHOST, 'GM');
+    await pause(SETTLE_MS);
+    first.platform.removeSceneItems(removed);
+    await pause(SETTLE_MS);
+
+    // #when
+    post(room, GHOST, commit([{ ...oldest, c: 3, a: GHOST }]));
+    await waitUntil(() => (storedRecord(first, oldest.k)?.c ?? 0) >= 3);
+    await pause(SETTLE_MS);
+
+    // #then
+    expect(storedRecord(first, oldest.k)).toEqual({
+      k: oldest.k,
+      d: null,
+      c: 4,
+      a: 'gm-a',
     });
   });
 

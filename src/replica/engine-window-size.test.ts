@@ -269,6 +269,19 @@ describe('the window size after a preset change', () => {
     expect(gm.platform.actionSizes()).toEqual([DEFAULT, WIDE]);
   });
 
+  test('a wipe returns a sized window to the default size', async () => {
+    // #given
+    const room = openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: [presetRecord(SIZED)] });
+
+    // #when
+    send(gm, { type: 'wipe' });
+    await pause(50);
+
+    // #then
+    expect(gm.platform.actionSizes()).toEqual([WIDE, DEFAULT]);
+  });
+
   test('a size that failed is logged and asked for again on the next replica change', async () => {
     // #given
     const logged = spyOn(console, 'error').mockImplementation(() => {});
@@ -290,6 +303,54 @@ describe('the window size after a preset change', () => {
     expect({ failures, sizes: gm.platform.actionSizes() }).toEqual({
       failures: 1,
       sizes: [WIDE, WIDE],
+    });
+  });
+
+  test('an unrelated replica change does not schedule an in-flight size retry before rejection', async () => {
+    // #given
+    const logged = spyOn(console, 'error').mockImplementation(() => {});
+    const sizes: WindowSizeCall[] = [];
+    let rejectFirst = (_error: Error): void => undefined;
+
+    const firstSize = new Promise<void>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+
+    const gm = await startClient(openRoom(), 'gm-a', {
+      seeded: [presetRecord(SIZED)],
+      beforeStart: (platform) => {
+        spyOn(platform.action, 'setSize').mockImplementation((width, height) => {
+          sizes.push({ width, height });
+
+          return sizes.length === 1 ? firstSize : Promise.resolve();
+        });
+      },
+    });
+
+    // #when
+    send(gm, { type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    await waitUntil(() => gm.store.$records.get().has('sheet:brok'));
+
+    rejectFirst(new Error('first size failed'));
+    await pause(20);
+
+    const afterRejection = [...sizes];
+
+    send(gm, { type: 'sheet-create', sheetId: 'anya', set: 'pc' });
+    await waitUntil(() => gm.store.$records.get().has('sheet:anya'));
+    await pause(20);
+
+    // #then
+    expect({
+      afterRejection,
+      afterNextChange: sizes,
+      failures: logged.mock.calls.filter(
+        ([message]) => message === 'Muster Roll could not size its window',
+      ).length,
+    }).toEqual({
+      afterRejection: [WIDE],
+      afterNextChange: [WIDE, WIDE],
+      failures: 1,
     });
   });
 });

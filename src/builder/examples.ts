@@ -4,7 +4,7 @@ import d6PoolText from '../../tests/fixtures/presets/d6-pool.json?raw';
 
 import { copy } from '@/copy';
 
-// The repository presets the builder offers under "Открыть…". `name` starts the download file name.
+// The standalone files the Builder offers under "Открыть…". `name` starts the download file name.
 export type BuilderExample = { key: string; label: string; name: string; text: string };
 
 export const BUILDER_EXAMPLES: readonly BuilderExample[] = [

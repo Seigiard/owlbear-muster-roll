@@ -353,9 +353,199 @@ describe('check', () => {
     // #then
     expect(Object(answer).reason).toBe('invalid-snapshot');
   });
+
+  test('refuses a snapshot placement whose record cannot fit one message', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
+
+    const data = encodeSnapshotFileData({
+      ...FILE,
+      sheets: [
+        {
+          id: 'huge',
+          set: 'pc',
+          order: 0,
+          rows: { name: { name: 'x'.repeat(14900) } },
+          repeats: {},
+        },
+      ],
+      links: [],
+    });
+
+    // #when
+    const answer = await check(gm, data);
+
+    // #then
+    expect(answer).toMatchObject({ reason: 'too-large' });
+  });
+
+  test('refuses a snapshot check when the current preset record cannot be decoded', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const unreadable: VersionedRecord = { ...PRESET_RECORD, d: btoa('not deflate') };
+
+    const gm = await startClient(room, 'gm-a', {
+      seeded: [unreadable, BROK],
+      until: 'live',
+    });
+
+    // #when
+    void gm.window.requestSnapshotCheck(DATA).catch(() => undefined);
+
+    const id = gm.mintedIds.at(-1);
+
+    await pause(50);
+
+    // #then
+    expect(
+      gm.local.find(
+        (message) => Object(message).id === id && Object(message).t === 'command-rejected',
+      ),
+    ).toMatchObject({ reason: 'preset-unreadable' });
+  });
 });
 
 describe('import', () => {
+  test('refuses a generation above the safe counter without changing the save notice', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const highest = { n: Number.MAX_SAFE_INTEGER, a: 'old' };
+
+    const gm = await startClient(room, 'gm-a', {
+      entries: {
+        [storageKey('preset', highest)]: JSON.stringify(PRESET_RECORD),
+        [storageKey(BROK.k, highest)]: JSON.stringify(BROK),
+      },
+      seeded: [],
+      until: 'live',
+    });
+
+    // #when
+    const digest = String(Object(await check(gm)).digest);
+    const id = send(gm, { type: 'snapshot-import', data: DATA, expectedDigest: digest });
+
+    await pause(100);
+
+    // #then
+    const terminal = gm.local.filter(
+      (message) =>
+        Object(message).id === id &&
+        (Object(message).t === 'command-rejected' || Object(message).t === 'snapshot-imported'),
+    );
+
+    expect({
+      reason: Object(terminal[0]).reason,
+      notices: gm.store.$notices.get(),
+      resets: heardOf(room, 'gm-a', 'reset'),
+      terminal: terminal.map((message) => Object(message).t),
+    }).toEqual({
+      reason: 'write-failed',
+      notices: [],
+      resets: [],
+      terminal: ['command-rejected'],
+    });
+  });
+
+  test('gives no terminal import result when the engine stops during the room-copy write', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const { gate, opened } = createWriteGate();
+
+    const gm = await startClient(room, 'gm-a', {
+      until: 'live',
+      platform: gatedWrites(gate, opened),
+    });
+
+    const digest = String(Object(await check(gm)).digest);
+    const id = send(gm, { type: 'snapshot-import', data: DATA, expectedDigest: digest });
+
+    await roomRig.waitUntil(() => gate.calls === 1);
+
+    // #when
+    gm.engine.stop();
+    gate.open();
+    await pause(30);
+
+    // #then
+    expect(
+      gm.local.filter(
+        (message) =>
+          Object(message).id === id &&
+          (Object(message).t === 'command-rejected' || Object(message).t === 'snapshot-imported'),
+      ),
+    ).toEqual([]);
+  });
+
+  test('clears old digest mismatch evidence when a local import replaces the generation', async () => {
+    // #given
+    const room = roomRig.openRoom();
+
+    room.join(GHOST, 'GM');
+
+    const gm = await startClient(room, 'gm-a', {
+      timing: { catchUpTimeoutMs: 100, gmLinkTimeoutMs: 20 },
+      until: 'live',
+    });
+
+    room.post(GHOST, { v: 3, g: INITIAL, t: 'alive', digest: 0 });
+    await pause(11);
+
+    // #when
+    await importFile(gm);
+    await pause(11);
+    room.post(GHOST, { v: 3, g: newGenerationOf('gm-a'), t: 'alive', digest: 0 });
+    await pause(20);
+
+    // #then
+    expect(sync(gm).state).toBe('live');
+  });
+
+  test('answers a ping with the replacement replica digest after import', async () => {
+    // #given
+    const room = roomRig.openRoom();
+
+    room.join(GHOST, 'GM');
+
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
+
+    room.post(GHOST, { v: 3, g: INITIAL, t: 'ping' });
+    await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'alive').length === 1);
+
+    // #when
+    await importFile(gm);
+    room.post(GHOST, { v: 3, g: newGenerationOf('gm-a'), t: 'ping' });
+    await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'alive').length === 2);
+
+    // #then
+    expect(heardOf(room, 'gm-a', 'alive').map((message) => Object(message).digest)).toEqual([
+      474322444, 513966548,
+    ]);
+  });
+
+  test('answers a ping with the empty replica digest after a wipe', async () => {
+    // #given
+    const room = roomRig.openRoom();
+
+    room.join(GHOST, 'GM');
+
+    const gm = await startClient(room, 'gm-a', { until: 'live' });
+
+    room.post(GHOST, { v: 3, g: INITIAL, t: 'ping' });
+    await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'alive').length === 1);
+
+    // #when
+    const id = send(gm, { type: 'wipe' });
+    await roomRig.waitUntil(() => outcome(gm, id) !== undefined);
+    room.post(GHOST, { v: 3, g: newGenerationOf('gm-a'), t: 'ping' });
+    await roomRig.waitUntil(() => heardOf(room, 'gm-a', 'alive').length === 2);
+
+    // #then
+    expect(heardOf(room, 'gm-a', 'alive').map((message) => Object(message).digest)).toEqual([
+      474322444, 0,
+    ]);
+  });
+
   test('drops a file sheet of no template of the preset with its values and counts it', async () => {
     // #given: a sheet of a sheet set the preset does not have, holding one value.
     const room = roomRig.openRoom();
@@ -902,6 +1092,119 @@ describe('import', () => {
 });
 
 describe('adoption', () => {
+  test('leaves catch-up on its deadline after a room copy completes adoption', async () => {
+    // #given
+    const room = roomRig.openRoom();
+
+    room.join(GHOST, 'GM');
+
+    const gm = await startClient(room, 'gm-b', {
+      timing: { catchUpTimeoutMs: 50, incompleteRequestStartMs: 1000 },
+      until: 'live',
+    });
+
+    // #when
+    room.room.setMetadata({
+      [KEY]: copyValue(newGenerationOf('gm-a'), [
+        PRESET_RECORD,
+        importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 }),
+      ]),
+    });
+    await roomRig.waitUntil(() => sync(gm).state === 'catching-up');
+
+    const during = sync(gm).state;
+
+    await pause(100);
+
+    // #then
+    expect({ during, after: sync(gm).state }).toEqual({
+      during: 'catching-up',
+      after: 'live',
+    });
+  });
+
+  test('does not stage a lower room copy into an adoption already targeting a higher generation', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const lower: Generation = { n: 1, a: GHOST };
+    const higher: Generation = { n: 2, a: GHOST };
+    const mira = importedRecord(GHOST, 'sheet:mira', { set: 'pc', order: 0 });
+    const anya = importedRecord(GHOST, 'sheet:anya', { set: 'pc', order: 1 });
+
+    room.join(GHOST, 'GM');
+
+    const gm = await startClient(room, 'gm-b', { until: 'live' });
+    const asked = heardOf(room, 'gm-b', 'state-request').length;
+
+    room.post(GHOST, { v: 3, g: higher, t: 'reset' });
+    await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > asked);
+
+    room.room.setMetadata({ [KEY]: copyValue(lower, [PRESET_RECORD, mira]) });
+    await pause(30);
+
+    // #when
+    room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), [PRESET_RECORD, anya], higher));
+    await roomRig.waitUntil(() => sync(gm).state === 'live');
+
+    // #then
+    expect(shownKeys(gm)).toEqual(['preset', 'sheet:anya']);
+  });
+
+  test('does not save an oversized record from a compressed higher-generation room copy', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const generation = newGenerationOf('gm-a');
+
+    const huge: VersionedRecord = {
+      k: 'row:brok:name',
+      d: { name: 'x'.repeat(14900) },
+      c: 1,
+      a: 'gm-a',
+    };
+
+    room.room.setMetadata({ [KEY]: copyValue(generation, [PRESET_RECORD, BROK, huge]) });
+
+    // #when
+    const gm = roomRig.createClient(room, 'gm-b', {
+      engine: { random: () => 0, dataReplaced: DATA_REPLACED },
+    });
+
+    await gm.startEngine();
+    await pause(100);
+
+    // #then
+    expect(gm.backing.get(storageKey(huge.k, generation))).toBeNull();
+  });
+
+  test('persists the next edit under the generation adopted from the room copy', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const generation = newGenerationOf('gm-a');
+
+    room.room.setMetadata({ [KEY]: copyValue(generation, [PRESET_RECORD, BROK]) });
+
+    const gm = await startClient(room, 'gm-b', { until: 'live' });
+
+    // #when
+    send(gm, {
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'row', rowId: 'str' },
+      fieldId: 'str',
+      value: 19,
+    });
+    await pause(50);
+
+    // #then
+    expect({
+      adopted: storedRecord(gm, BROK_STR.k, generation),
+      old: storedRecord(gm, BROK_STR.k, INITIAL) ?? null,
+    }).toEqual({
+      adopted: { k: BROK_STR.k, d: { str: 19 }, c: 1, a: 'gm-b' },
+      old: null,
+    });
+  });
+
   test('a second GM adopts on reset alone: it drops its old data, saves the new and notifies', async () => {
     // #given: the copy cannot be saved, so only reset and catch-up bring the data.
     const room = roomRig.openRoom();
@@ -1008,6 +1311,36 @@ describe('adoption', () => {
       ],
       notified: [DATA_REPLACED],
     });
+  });
+
+  test('a generation replacement starts a fresh window projection stream', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-b', { until: 'live' });
+
+    const before = new Set(
+      gm.local
+        .filter((message) => Object(message).t === 'projection' || Object(message).t === 'delta')
+        .map((message) => String(Object(message).engine)),
+    );
+
+    // #when
+    room.room.setMetadata({
+      [KEY]: copyValue(newGenerationOf('gm-a'), [
+        PRESET_RECORD,
+        importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 }),
+      ]),
+    });
+    await roomRig.waitUntil(() => shown(gm, 'sheet:anya') !== undefined);
+
+    const after = new Set(
+      gm.local
+        .filter((message) => Object(message).t === 'projection' || Object(message).t === 'delta')
+        .map((message) => String(Object(message).engine)),
+    );
+
+    // #then
+    expect({ before: before.size, after: after.size }).toEqual({ before: 1, after: 2 });
   });
 
   test('while incomplete it keeps its data, writes no copy, answers nothing and asks again with backoff', async () => {
@@ -1140,6 +1473,54 @@ describe('adoption', () => {
 });
 
 describe('adoption guards', () => {
+  test('keeps an unreadable-storage notice when a player-style adoption replaces the replica', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+    const generation = newGenerationOf('gm-a');
+    const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
+
+    const gm = await startClient(room, 'gm-b', {
+      platform: (platform) => {
+        platform.setFailingStorageOperations(['list']);
+
+        return platform;
+      },
+      until: 'live',
+    });
+
+    gm.platform.setFailingStorageOperations([]);
+
+    // #when
+    room.room.setMetadata({ [KEY]: copyValue(generation, [PRESET_RECORD, anya]) });
+    await roomRig.waitUntil(() => shown(gm, anya.k) !== undefined);
+
+    // #then
+    expect(gm.store.$notices.get()).toEqual(['local-save-failed']);
+  });
+
+  test('clears an obsolete corrupt-record notice when a higher generation replaces the replica', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const generation = newGenerationOf('gm-a');
+    const anya = importedRecord('gm-a', 'sheet:anya', { set: 'pc', order: 0 });
+
+    const gm = await startClient(room, 'gm-b', {
+      entries: { [storageKey('row:bad:name')]: '{not json' },
+      until: 'live',
+    });
+
+    expect(gm.store.$notices.get()).toEqual(['local-save-failed']);
+
+    // #when
+    room.room.setMetadata({ [KEY]: copyValue(generation, [PRESET_RECORD, anya]) });
+    await roomRig.waitUntil(() => shown(gm, anya.k) !== undefined);
+
+    // #then
+    expect(gm.store.$notices.get()).toEqual([]);
+  });
+
   test('a commit held in the outbox when adoption starts never goes out under the new generation', async () => {
     // #given
     const room = roomRig.openRoom();

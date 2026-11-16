@@ -5,11 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --open /builder.html",
-    "dev:mock": "vite --mode mock",
     "dev:owlbear": "bun scripts/dev-owlbear.ts",
-    "preview": "bun scripts/preview.ts",
     "port-contract:live": "bun scripts/port-contract-live.ts",
-    "room": "bun scripts/room.ts",
     "build": "vite build",
     "lint": "oxlint --type-aware",
     "format": "oxfmt --ignore-path .gitignore .",

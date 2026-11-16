@@ -7,9 +7,10 @@ import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { encodeStateRecords } from '@/core/state-records';
 import type { Timing } from '@/core/timing';
-import type { Command } from '@/core/ui-messages';
+import { UI_CHANNEL, type Command } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole } from '@/platform/ports';
+import type { Wait } from '@/platform/send-queue';
 import {
   createRoomRig,
   heardOf,
@@ -146,6 +147,7 @@ type ClientOptions = {
   platform?: (platform: MockPlatform) => MockPlatform;
   seeded?: readonly VersionedRecord[];
   timing?: Partial<Timing>;
+  sendWait?: Wait;
 };
 
 describe('a GM client answers a proposal', () => {
@@ -199,6 +201,58 @@ describe('a GM client answers a proposal', () => {
     );
   });
 
+  test('an idempotent proposal does not owe an unchanged room-copy write', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+    let metadataWrites = 0;
+    let rejectMetadata = false;
+
+    const gm = await startClient(room, 'gm-a', {
+      timing: { snapshotPauseMs: 10 },
+      platform: (platform) => {
+        const metadata = platform.metadata;
+
+        return {
+          ...platform,
+          metadata: {
+            ...metadata,
+            setMetadata: (update) => {
+              if (!rejectMetadata) {
+                return metadata.setMetadata(update);
+              }
+
+              metadataWrites += 1;
+
+              return Promise.reject(new Error('metadata write failed'));
+            },
+          },
+        };
+      },
+    });
+
+    const proposed: VersionedRecord = { ...STR_ROW, d: { str: 11 }, c: 3, a: PLAYER_SOCKET };
+
+    joinPlayerSocket(room);
+    propose(room, proposed);
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 1);
+    await pause(30);
+
+    rejectMetadata = true;
+
+    // #when
+    propose(room, proposed);
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 2);
+    await pause(50);
+
+    // #then
+    expect({ metadataWrites, notices: gm.store.$notices.get() }).toEqual({
+      metadataWrites: 0,
+      notices: [],
+    });
+  });
+
   test("that removes a removed repeat block: commits the existing tombstone with the proposer's echo", async () => {
     // #given
     const room = roomRig.openRoom();
@@ -214,6 +268,86 @@ describe('a GM client answers a proposal', () => {
     expect({ sent: heardOf(room, 'gm-a', 'commit'), stored: storedRecord(gm, REMOVED.k) }).toEqual({
       sent: [commit([REMOVED], [{ k: REMOVED.k, c: 1, a: PLAYER_SOCKET }])],
       stored: REMOVED,
+    });
+  });
+
+  test('a repeat tombstone with no links does not owe an unchanged room-copy write', async () => {
+    // #given
+    spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const room = roomRig.openRoom();
+    let metadataWrites = 0;
+
+    const gm = await startClient(room, 'gm-a', {
+      timing: { snapshotPauseMs: 10 },
+      platform: (platform) => ({
+        ...platform,
+        metadata: {
+          ...platform.metadata,
+          setMetadata: () => {
+            metadataWrites += 1;
+
+            return Promise.reject(new Error('metadata write failed'));
+          },
+        },
+      }),
+    });
+
+    joinPlayerSocket(room);
+
+    // #when
+    propose(room, { ...REMOVED, c: 1, a: PLAYER_SOCKET });
+    await waitUntil(() => heardOf(room, 'gm-a', 'commit').length === 1);
+    await pause(50);
+
+    // #then
+    expect({ metadataWrites, notices: gm.store.$notices.get() }).toEqual({
+      metadataWrites: 0,
+      notices: [],
+    });
+  });
+
+  test.each([
+    {
+      name: 'immediately publishes links removed by an existing repeat tombstone',
+      snapshotPauseMs: 60_000,
+      observationPauseMs: 0,
+      copied: undefined,
+    },
+    {
+      name: 'persists links removed by an existing repeat tombstone in the room copy',
+      snapshotPauseMs: 10,
+      observationPauseMs: 50,
+      copied: { k: 'link:late', d: null, c: 2, a: 'gm-a' },
+    },
+  ])('$name', async ({ snapshotPauseMs, observationPauseMs, copied }) => {
+    // #given
+    const room = roomRig.openRoom();
+    const link: VersionedRecord = { k: 'link:late', d: { s: 'brok', i: 'r2' }, c: 1, a: 'seed' };
+
+    const gm = await startClient(room, 'gm-a', {
+      seeded: [...BASE, link],
+      timing: { snapshotPauseMs },
+    });
+
+    joinPlayerSocket(room);
+
+    // #when
+    propose(room, { ...REMOVED, c: 1, a: PLAYER_SOCKET });
+    await waitUntil(() => committedRecords(room, 'gm-a').some((record) => record.k === REMOVED.k));
+    await pause(observationPauseMs);
+
+    // #then
+    expect({
+      sent: committedRecords(room, 'gm-a'),
+      stored: storedRecord(gm, link.k),
+      shown: shown(gm, link.k),
+      copied: roomCopyRecords(room)?.find((record) => record.k === link.k),
+    }).toEqual({
+      sent: [REMOVED, { k: link.k, d: null, c: 2, a: 'gm-a' }],
+      stored: { k: link.k, d: null, c: 2, a: 'gm-a' },
+      shown: { k: link.k, d: null, c: 2, a: 'gm-a' },
+      copied,
     });
   });
 
@@ -529,6 +663,70 @@ describe('a GM client answers a proposal', () => {
 });
 
 describe("a player's edit", () => {
+  test('a paced proposal cancelled while still a player sends no null record', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a');
+    let held = false;
+    let release = (): void => undefined;
+
+    const sendWait: Wait = (milliseconds) =>
+      held
+        ? new Promise<void>((resolve) => {
+            release = resolve;
+          })
+        : pause(milliseconds);
+
+    const player = await startClient(room, PLAYER_ID, {
+      role: 'PLAYER',
+      seeded: [],
+      sendWait,
+    });
+
+    await waitUntil(() => shown(player, SWORD.k) !== undefined);
+    gm.engine.stop();
+    held = true;
+
+    send(player, strEdit('str', 11));
+    await waitUntil(() => heardOf(room, PLAYER_ID, 'propose').length === 1);
+
+    await player.platform.broadcast.sendMessage(
+      UI_CHANNEL,
+      { t: 'command', id: 'queued-sword', command: swordEdit(3) },
+      { destination: 'LOCAL' },
+    );
+
+    const accepted: VersionedRecord = {
+      ...SWORD,
+      d: { order: 0, cells: { item: 'Меч', qty: 3 } },
+      c: 2,
+      a: PLAYER_ID,
+    };
+
+    // #when
+    answer(room, commit([accepted], [{ k: accepted.k, c: accepted.c, a: accepted.a }]));
+    await pause(20);
+    held = false;
+    release();
+    await pause(30);
+
+    // #then
+    expect({
+      role: player.store.$sync.get().role,
+      sent: heardOf(room, PLAYER_ID, 'propose'),
+    }).toEqual({
+      role: 'PLAYER',
+      sent: [
+        {
+          v: 3,
+          g: GENERATION,
+          t: 'propose',
+          records: [{ k: STR_ROW.k, d: { str: 11 }, c: 3, a: PLAYER_ID }],
+        },
+      ],
+    });
+  });
+
   test("answers when pending edits accepts it, and the GM's later reject is no second answer", async () => {
     // #given
     const { room, player } = await playerWithSilentGm();

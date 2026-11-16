@@ -105,4 +105,20 @@ describe('previewNavigationReducer', () => {
     // #then
     expect(shownTab).toEqual({ template: 'characters', tab: 1 });
   });
+
+  test('keeps a null tab when the selected role can see no tabs', () => {
+    // #given
+    const template = previewTemplate('private');
+
+    // #when
+    const shownTab = previewNavigationReducer(null, {
+      type: 'selection-changed',
+      template,
+      selectedTab: null,
+      tabShown: () => false,
+    });
+
+    // #then
+    expect(shownTab).toBeNull();
+  });
 });

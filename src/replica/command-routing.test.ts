@@ -23,6 +23,53 @@ type RouteCase = {
 
 const GM_LIVE: CommandRouteContext = { role: 'GM', importing: false, live: true };
 
+function routingPorts(overrides: Partial<CommandRoutingPorts> = {}): CommandRoutingPorts {
+  return {
+    role: () => 'GM',
+    importing: () => false,
+    live: () => true,
+    acceptCommand: () => true,
+    composers: {
+      compose: () => ({ ok: true, value: [] }),
+      composePatches: () => ({ record: null, refusals: [] }),
+      composePresetUpload: () => ({ ok: false, error: { reason: 'invalid-preset' } }),
+      presetDiffResult: () => ({ ok: false, error: 'invalid-preset' }),
+    },
+    records: () => new Map(),
+    liveContext: () => ({
+      records: new Map(),
+      mint: () => ({ c: 1, a: 'gm' }),
+      newRecordId: () => 'unused',
+      isGmPlayer: () => true,
+    }),
+    dryContext: () => ({
+      records: new Map(),
+      mint: () => ({ c: 1, a: 'gm' }),
+      newRecordId: () => 'unused',
+      isGmPlayer: () => true,
+    }),
+    newRecordId: () => 'unused',
+    pending: createPendingQueue(),
+    pendingEdits: {
+      edit: () => ({ ok: false, error: 'not-allowed' }),
+      overlay: () => undefined,
+    },
+    apply: () => [],
+    reject: () => undefined,
+    commandDone: () => undefined,
+    notifyDenied: () => undefined,
+    publish: () => undefined,
+    hasPersistence: () => false,
+    flushOutbox: () => undefined,
+    addCommits: () => undefined,
+    roomCopyEdited: () => undefined,
+    importFromSnapshot: async () => undefined,
+    wipe: async () => undefined,
+    reply: () => undefined,
+    ...overrides,
+  };
+}
+
 const COMMAND_ROUTES: readonly RouteCase[] = [
   {
     name: 'sends a player command to pending edits before GM-only checks',
@@ -253,5 +300,192 @@ test('pending replay continues after a partial entry and composes the next entry
     actual: { applied: [firstA, secondAfterFirstA], completed: ['first', 'second'] },
     appliedGroups: [['row:first:a', 'row:first:b'], ['row:second:after-first-a']],
     composeContexts: [[], ['row:first:a']],
+  });
+});
+
+test('a repeated window command id runs its command once', () => {
+  // #given
+  const events: string[] = [];
+  let accepted = 0;
+
+  const routing = createCommandRouting(
+    routingPorts({
+      acceptCommand: () => {
+        accepted += 1;
+
+        return accepted === 1;
+      },
+      composers: {
+        compose: () => {
+          events.push('compose');
+
+          return { ok: true, value: [] };
+        },
+        composePatches: () => ({ record: null, refusals: [] }),
+        composePresetUpload: () => ({ ok: false, error: { reason: 'invalid-preset' } }),
+        presetDiffResult: () => ({ ok: false, error: 'invalid-preset' }),
+      },
+      commandDone: () => {
+        events.push('done');
+      },
+      publish: () => {
+        events.push('publish');
+      },
+    }),
+  );
+
+  // #when
+  routing.handleCommand({
+    t: 'command',
+    id: 'repeat',
+    command: { type: 'sheet-create', sheetId: 'a', set: 'pc' },
+  });
+  routing.handleCommand({
+    t: 'command',
+    id: 'repeat',
+    command: { type: 'sheet-create', sheetId: 'a', set: 'pc' },
+  });
+
+  // #then
+  expect(events).toEqual(['compose', 'publish', 'done']);
+});
+
+test('a queued intent that becomes invalid is rejected on catch-up exit', () => {
+  // #given
+  const rejections: string[] = [];
+  const applyInputs: unknown[] = [];
+  const pending = createPendingQueue();
+  pending.add('queued', { type: 'sheet-create', sheetId: 'a', set: 'pc' });
+
+  const routing = createCommandRouting(
+    routingPorts({
+      composers: {
+        compose: () => ({ ok: false, error: 'deleted-sheet' }),
+        composePatches: () => ({ record: null, refusals: [] }),
+        composePresetUpload: () => ({ ok: false, error: { reason: 'invalid-preset' } }),
+        presetDiffResult: () => ({ ok: false, error: 'invalid-preset' }),
+      },
+      pending,
+      apply: (records) => {
+        applyInputs.push(records);
+
+        return [];
+      },
+      reject: (id, reason) => {
+        rejections.push(`${id}:${reason}`);
+      },
+    }),
+  );
+
+  // #when
+  const actual = routing.replayPending();
+
+  // #then
+  expect({ actual, rejections, applyInputs }).toEqual({
+    actual: { applied: [], completed: [] },
+    rejections: ['queued:deleted-sheet'],
+    applyInputs: [],
+  });
+});
+
+test('a repeated preset diff id produces one terminal result', () => {
+  // #given
+  let accepted = 0;
+  const replies: string[] = [];
+
+  const routing = createCommandRouting(
+    routingPorts({
+      acceptCommand: () => {
+        accepted += 1;
+
+        return accepted === 1;
+      },
+      composers: {
+        ...routingPorts().composers,
+        presetDiffResult: () => ({
+          ok: true,
+          value: { count: 0, sheets: 0, digest: 'none' },
+        }),
+      },
+      reply: (message) => replies.push(`${message.t}:${'id' in message ? message.id : ''}`),
+    }),
+  );
+
+  // #when
+  routing.handlePresetDiff({ t: 'preset-diff', id: 'same', data: '{}' });
+  routing.handlePresetDiff({ t: 'preset-diff', id: 'same', data: '{}' });
+
+  // #then
+  expect(replies).toEqual(['preset-diff-result:same']);
+});
+
+test('a denied player edit shows its notice once', () => {
+  // #given
+  const effects: string[] = [];
+
+  const routing = createCommandRouting(
+    routingPorts({
+      role: () => 'PLAYER',
+      pendingEdits: {
+        edit: () => ({ ok: true, value: { notify: true } }),
+        overlay: () => undefined,
+      },
+      notifyDenied: () => effects.push('denied'),
+      publish: () => effects.push('publish'),
+      commandDone: () => effects.push('done'),
+    }),
+  );
+
+  // #when
+  routing.runCommand('edit', {
+    type: 'field-patch',
+    sheetId: 'a',
+    target: { kind: 'row', rowId: 'name' },
+    fieldId: 'name',
+    value: 'Ada',
+  });
+
+  // #then
+  expect(effects).toEqual(['denied', 'publish', 'done']);
+});
+
+test('a fully refused queued patch batch is never applied', () => {
+  // #given
+  const pending = createPendingQueue();
+  pending.add('patch', {
+    type: 'field-patch',
+    sheetId: 'a',
+    target: { kind: 'row', rowId: 'name' },
+    fieldId: 'name',
+    value: 'Ada',
+  });
+  const effects: string[] = [];
+
+  const routing = createCommandRouting(
+    routingPorts({
+      pending,
+      composers: {
+        ...routingPorts().composers,
+        composePatches: () => ({
+          record: null,
+          refusals: [{ id: 'patch', reason: 'not-allowed' }],
+        }),
+      },
+      apply: () => {
+        effects.push('apply');
+
+        return [];
+      },
+      reject: (id, reason) => effects.push(`reject:${id}:${reason}`),
+    }),
+  );
+
+  // #when
+  const replayed = routing.replayPending();
+
+  // #then
+  expect({ effects, replayed }).toEqual({
+    effects: ['reject:patch:not-allowed'],
+    replayed: { applied: [], completed: [] },
   });
 });
