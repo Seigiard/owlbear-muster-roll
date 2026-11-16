@@ -264,7 +264,7 @@ test('a GM on the NPC tab who opens another repeat block from its token scrolls 
   await clickOpen(background, 't-npc');
   // #then
   await expect(repeatBlock(page, 'Дракон')).toBeInViewport();
-  await expect(repeatBlock(page, 'Дракон')).toBeFocused();
+  await expect(tokenCell(page, `npc${NPCS.length - 1}`)).toBeFocused();
 });
 
 test('a player press that races onto an NPC token opens nothing', async ({ context }) => {
@@ -297,7 +297,7 @@ test('with the focus in the window, the opened tab takes it', async ({ page, con
   // #when
   await clickOpen(background, 't-last');
   // #then
-  await expect(page.getByRole('tab', { name: 'Ярослава' })).toBeFocused();
+  await expect(tokenCell(page, 'root')).toBeFocused();
 });
 
 test('with the focus in the window, an opened NPC repeat block takes it', async ({
@@ -311,7 +311,7 @@ test('with the focus in the window, an opened NPC repeat block takes it', async 
   // #when
   await clickOpen(background, 't-npc');
   // #then
-  await expect(repeatBlock(page, 'Дракон')).toBeFocused();
+  await expect(tokenCell(page, `npc${NPCS.length - 1}`)).toBeFocused();
 });
 
 test('with the focus outside the window, an open leaves it alone', async ({ page, context }) => {
@@ -353,7 +353,7 @@ test('a request for a sheet the window does not list is acknowledged and selects
   await page.evaluate((channel) => {
     void window.mockPlatform.broadcast.sendMessage(
       channel,
-      { t: 'open-sheet', id: 'stray', sheetId: 'nobody', instanceId: null },
+      { t: 'open-sheet', id: 'stray', sheetId: 'nobody', cellId: 'token' },
       { destination: 'LOCAL' },
     );
   }, UI_CHANNEL);
@@ -400,4 +400,8 @@ function openIcons(background: Page): Promise<
 // A repeat block is a group named by its first field.
 function repeatBlock(page: Page, name: string): Locator {
   return page.getByRole('tabpanel').getByRole('group', { name, exact: true });
+}
+
+function tokenCell(page: Page, scope: string): Locator {
+  return page.getByRole('tabpanel').locator(`[data-cell-id="token"][data-cell-scope="${scope}"]`);
 }

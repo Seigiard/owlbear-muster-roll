@@ -63,7 +63,7 @@ const BAD_FILES: readonly (readonly [string, string, string])[] = [
       repeat: { id: 'item', nameField: 'item' },
       rows: [{ cells: [{ kind: 'text', text: 'Вещь' }] }, { cells: [] }],
     }),
-    'в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем',
+    'в наборе «item» нет текстового поля «item» вне повторяемых секций',
   ],
   [
     'two repeat sections that start with one id',
@@ -313,7 +313,7 @@ test('a file from a newer version asks for a reload and changes nothing', async 
   await openWindowAndBackground(page, context);
   await watchWire(page);
   // #when
-  await uploadFile(page, JSON.stringify({ v: 4, anything: [] }));
+  await uploadFile(page, JSON.stringify({ v: 5, anything: [] }));
   // #then
   await expect(page.getByText('Файл из более новой версии. Перезагрузите страницу.')).toBeVisible();
   expect(await windowSideRefusal(page)).toEqual({ commands: 0, stored: [] });

@@ -329,7 +329,11 @@ test('a removed repeat row stays dimmed with the mark at once, inputs disabled a
   await expect(attack(player.window)).toHaveValue('Меч');
   await expect(attack(player.window)).toBeDisabled();
   await expect(magic(player.window)).toBeDisabled();
-  await expect(attack(player.window).locator('..')).toHaveCSS('opacity', '0.5');
+  const pendingRow = attack(player.window).locator('xpath=ancestor::*[@data-row][1]');
+  await expect(pendingRow.locator(':scope > :not([data-row-control])').first()).toHaveCSS(
+    'opacity',
+    '0.5',
+  );
   await expect(mark(player.window)).toHaveCSS('opacity', '1');
   await expect(deleteFirstRow(player.window)).toHaveCount(0);
   await expect(attack(player.window)).toHaveAccessibleDescription(PENDING);

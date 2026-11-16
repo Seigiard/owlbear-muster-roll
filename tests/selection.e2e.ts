@@ -139,7 +139,10 @@ test('a GM selects the token of one repeat block from the keyboard', async ({ pa
   await selectOnMap(page, ['t-s1']);
   await page.getByRole('tab', { name: 'NPC, токен выделен' }).click();
   // #when
-  await page.getByRole('button', { name: 'Выделить блок 2 на карте' }).focus();
+  await page
+    .getByRole('group', { name: 'Скелет 2', exact: true })
+    .getByRole('button', { name: SELECT_ON_MAP })
+    .focus();
   await page.keyboard.press('Enter');
   // #then
   await expect.poll(() => mapSelection(page)).toEqual(['t-s1', 't-s2']);

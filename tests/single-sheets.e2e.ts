@@ -128,7 +128,7 @@ test('a single sheet\'s header shows its title, not editable, with no "Дост�
   }).toEqual({ nameFields: 0, access: 0, actions: 0, tokenStatus: 0 });
 });
 
-test('a linkable single sheet shows the GM its token status in the header', async ({
+test('a linkable single sheet shows the GM its token status in its token cell', async ({
   page,
   context,
 }) => {
@@ -140,7 +140,7 @@ test('a linkable single sheet shows the GM its token status in the header', asyn
   await expect(
     page
       .getByRole('tabpanel', { name: 'Инвентарь' })
-      .locator('header')
+      .locator('[data-cell-id="token"][data-cell-scope="root"]')
       .getByRole('img', { name: NO_TOKEN }),
   ).toBeVisible();
 });

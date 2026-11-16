@@ -49,6 +49,9 @@ const PRESET = {
                     { kind: 'dice', formula: '1d1 + secret' },
                   ],
                 },
+                {
+                  cells: [{ kind: 'token', id: 'token' }],
+                },
               ],
             },
           ],
@@ -64,7 +67,6 @@ const PRESET = {
                   cells: [
                     { kind: 'text', text: 'Имя' },
                     { kind: 'field', type: 'text', id: 'name' },
-                    { kind: 'token', id: 'token' },
                   ],
                 },
                 {

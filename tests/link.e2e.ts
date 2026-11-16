@@ -124,20 +124,20 @@ test(`the picker with no target shows "${NO_SHEETS}"`, async ({ page, context })
   expect(await picker.getByRole('button').count()).toBe(0);
 });
 
-test('a pick writes the link, closes the popover, and both headers show the status', async ({
+test('a pick writes the link, closes the popover, and the token cell shows the status', async ({
   page,
   context,
 }) => {
   // #given
   await openRoom(page, context, ROOM);
   const picker = await openPicker(context, 'tok-new');
-  const before = await headerStatus(page);
+  const before = await rootTokenStatus(page);
   // #when
   await picker.getByRole('button', { name: 'Брок' }).click();
   await expect.poll(() => closedPopovers(picker)).toEqual([PICKER_POPOVER]);
   // #then
   await page.getByRole('tab', { name: 'Брок' }).click();
-  await expect(headerOf(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
+  await expect(rootTokenCell(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
   expect({ before, link: await storedData(page, 'link:tok-new') }).toEqual({
     before: NO_TOKEN,
     link: { s: 'brok', c: 'token' },
@@ -151,8 +151,8 @@ test('each NPC repeat block shows its token status, read-only', async ({ page, c
   await page.getByRole('tab', { name: 'NPC' }).click();
   // #then
   expect({
-    goblin: await repeatBlock(page, 'Гоблин').getByText(TOKEN_LINKED).count(),
-    skeleton: await repeatBlock(page, 'Скелет').getByText(NO_TOKEN).count(),
+    goblin: await blockTokenCell(page, 'Гоблин').getByRole('img', { name: TOKEN_LINKED }).count(),
+    skeleton: await blockTokenCell(page, 'Скелет').getByRole('img', { name: NO_TOKEN }).count(),
     controls: await repeatBlock(page, 'Гоблин').getByRole('button', { name: TOKEN_LINKED }).count(),
   }).toEqual({ goblin: 1, skeleton: 1, controls: 0 });
 });
@@ -169,7 +169,9 @@ test('a pick of a repeat block links the token to it and its status shows on the
   await expect.poll(() => closedPopovers(picker)).toEqual([PICKER_POPOVER]);
   // #then
   await page.getByRole('tab', { name: 'NPC' }).click();
-  await expect(repeatBlock(page, 'Скелет').getByText(TOKEN_LINKED)).toBeVisible();
+  await expect(
+    blockTokenCell(page, 'Скелет').getByRole('img', { name: TOKEN_LINKED }),
+  ).toBeVisible();
   expect(await storedData(page, 'link:tok-new')).toEqual({
     s: 'npc',
     path: ['npc_name', 'skel'],
@@ -177,18 +179,18 @@ test('a pick of a repeat block links the token to it and its status shows on the
   });
 });
 
-test('"Отвязать лист" tombstones the link and the header shows "Нет токена"', async ({
+test('"Отвязать лист" tombstones the link and the token cell shows "Нет токена"', async ({
   page,
   context,
 }) => {
   // #given
   const background = await openRoom(page, context, ROOM);
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
-  await expect(headerOf(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
+  await expect(rootTokenCell(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
   // #when
   await clickMenuItem(background, UNLINK_ITEM, 't-anya');
   // #then
-  await expect(headerOf(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
+  await expect(rootTokenCell(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
   expect({
     link: await storedData(page, 'link:t-anya'),
     sheet: await storedData(page, 'blk:anya'),
@@ -239,7 +241,7 @@ test('a pick of a sheet deleted while the picker was open shows the failure and 
   }).toEqual({ closed: [], link: ABSENT });
 });
 
-test(`a token deleted from the scene clears its link, and the header shows "${NO_TOKEN}"`, async ({
+test(`a token deleted from the scene clears its link, and the token cell shows "${NO_TOKEN}"`, async ({
   page,
   context,
 }) => {
@@ -247,11 +249,11 @@ test(`a token deleted from the scene clears its link, and the header shows "${NO
   const background = await openRoom(page, context, ROOM);
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
   await changeScene(background, [{ add: ['t-anya', 't-gob', 'map'] }]);
-  await expect(headerOf(page).getByRole('button', { name: SELECT_ON_MAP })).toBeVisible();
+  await expect(rootTokenCell(page).getByRole('button', { name: SELECT_ON_MAP })).toBeVisible();
   // #when
   await changeScene(background, [{ remove: ['t-anya'] }]);
   // #then
-  await expect(headerOf(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
+  await expect(rootTokenCell(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
   expect({
     link: await storedData(page, 'link:t-anya'),
     other: await storedData(page, 'link:t-gob'),
@@ -271,12 +273,14 @@ test('a scene change keeps the links of the scene left behind', async ({ page, c
   // #when: the GM opens the second scene and deletes the goblin's token there.
   await changeScene(background, [{ ready: false }, { items: ['t-gob'] }, { ready: true }]);
   await page.getByRole('tab', { name: 'NPC' }).click();
-  await expect(repeatBlock(page, 'Гоблин').getByText(TOKEN_LINKED)).toBeVisible();
+  await expect(
+    blockTokenCell(page, 'Гоблин').getByRole('img', { name: TOKEN_LINKED }),
+  ).toBeVisible();
   await changeScene(background, [{ remove: ['t-gob'] }]);
-  await expect(repeatBlock(page, 'Гоблин').getByText(NO_TOKEN)).toBeVisible();
+  await expect(blockTokenCell(page, 'Гоблин').getByRole('img', { name: NO_TOKEN })).toBeVisible();
   // #then
   await page.getByRole('tab', { name: 'Аня' }).click();
-  await expect(headerOf(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
+  await expect(rootTokenCell(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
   expect({
     anya: await storedData(page, 'link:t-anya'),
     goblin: await storedData(page, 'link:t-gob'),
@@ -384,7 +388,7 @@ test('"Отвязать лист" leaves the token label as it is', async ({ pag
   });
   // #when
   await clickMenuItem(background, UNLINK_ITEM, 't-anya');
-  await expect(headerOf(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
+  await expect(rootTokenCell(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
   // #then
   expect({
     link: await storedData(page, 'link:t-anya'),
@@ -521,14 +525,18 @@ function closedPopovers(page: Page): Promise<string[]> {
   return page.evaluate(() => window.mockPlatform.closedPopovers());
 }
 
-function headerOf(page: Page): Locator {
-  return page.getByRole('tabpanel').locator('header');
+function rootTokenCell(page: Page): Locator {
+  return page.getByRole('tabpanel').locator('[data-cell-id="token"][data-cell-scope="root"]');
 }
 
-async function headerStatus(page: Page): Promise<string> {
+function blockTokenCell(page: Page, name: string): Locator {
+  return repeatBlock(page, name).locator('[data-cell-id="token"]');
+}
+
+async function rootTokenStatus(page: Page): Promise<string> {
   await page.getByRole('tab', { name: 'Брок' }).click();
 
-  const status = headerOf(page).getByRole('img', {
+  const status = rootTokenCell(page).getByRole('img', {
     name: new RegExp(`^(${TOKEN_LINKED}|${NO_TOKEN})$`),
   });
 
