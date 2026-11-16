@@ -202,7 +202,7 @@ export function attachedFilesReducer(
               ...current,
               lastText: action.text,
               lastDocumentText: action.documentText,
-              conflict: null,
+              conflict: current.conflict,
               forceWrite: 0,
               restoreText:
                 current.restoreDocumentText !== null &&

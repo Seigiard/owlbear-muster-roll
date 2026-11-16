@@ -427,9 +427,14 @@ export function BuilderPage({
       return;
     }
 
+    if (files.preset.conflict !== null) {
+      return;
+    }
+
     void writeFile('preset', file, textForWrite(files.preset, presetText), presetText);
   }, [
     fileAccess,
+    files.preset.conflict,
     files.preset.file,
     files.preset.forceWrite,
     files.preset.lastDocumentText,
@@ -460,6 +465,10 @@ export function BuilderPage({
       files.snapshot.forceWrite === 0 &&
       files.snapshot.file?.status.kind !== 'blocked'
     ) {
+      return;
+    }
+
+    if (files.snapshot.conflict !== null) {
       return;
     }
 
@@ -541,7 +550,7 @@ export function BuilderPage({
 
   function applyAttachedText(parsed: AttachedText): void {
     if (parsed.kind === 'preset') {
-      store.open(parsed.preset, parsed.preset, store.$state.get().step.name);
+      store.replacePreset(parsed.preset, parsed.preset, store.$state.get().step.name);
     } else {
       store.setSnapshot(parsed.records);
     }
@@ -603,6 +612,49 @@ export function BuilderPage({
     });
   }
 
+  async function saveAs(kind: FileBlockKind): Promise<void> {
+    const text = kind === 'preset' ? download : generatedSnapshot;
+
+    if (text === null) {
+      return;
+    }
+
+    const suggestedName =
+      kind === 'preset'
+        ? downloadFileName(store.$state.get().step.name, new Date())
+        : snapshotFileName(new Date());
+
+    const opened = await fileAccess.open({ mode: 'save', suggestedName });
+
+    if (!opened.ok) {
+      setFileMessage({ variant: 'danger', text: opened.error.reason });
+
+      return;
+    }
+
+    if (opened.value === null) {
+      return;
+    }
+
+    const written = await fileAccess.write(opened.value, text);
+
+    if (!written.ok) {
+      setFileMessage({ variant: 'danger', text: written.error.reason });
+
+      return;
+    }
+
+    dispatchFiles({
+      type: 'attach',
+      kind,
+      reference: opened.value,
+      name: opened.value.name,
+      contents: written.value,
+      canonicalText: text,
+    });
+    setFileMessage(undefined);
+  }
+
   function attachedFile(kind: FileBlockKind): AttachedFile | null {
     return filesRef.current[kind].file;
   }
@@ -643,6 +695,22 @@ export function BuilderPage({
         onSelectFile={openPresetInput}
         onOpenSnapshotFile={() => openAttachedFile('snapshot')}
         onSelectSnapshotFile={openSnapshotInput}
+        onSavePreset={() => {
+          void saveAs('preset').catch(() => {
+            setFileMessage({
+              variant: 'danger',
+              text: 'File access failed',
+            });
+          });
+        }}
+        onSaveSnapshot={() => {
+          void saveAs('snapshot').catch(() => {
+            setFileMessage({
+              variant: 'danger',
+              text: 'File access failed',
+            });
+          });
+        }}
         onDetachPreset={() => {
           dispatchFiles({ type: 'detach', kind: 'preset' });
         }}
@@ -773,6 +841,8 @@ type TopBarProps = {
   onSelectFile: (file: File) => void;
   onOpenSnapshotFile: () => Promise<boolean>;
   onSelectSnapshotFile: (file: File) => void;
+  onSavePreset: () => void;
+  onSaveSnapshot: () => void;
   onDetachPreset: () => void;
   onDetachSnapshot: () => void;
   onClearPreset: () => void;
@@ -795,6 +865,8 @@ function TopBar({
   onSelectFile,
   onOpenSnapshotFile,
   onSelectSnapshotFile,
+  onSavePreset,
+  onSaveSnapshot,
   onDetachPreset,
   onDetachSnapshot,
   onClearPreset,
@@ -848,11 +920,7 @@ function TopBar({
           onSelectFile={onSelectFile}
           canAttach={canAttach}
           onOpenExample={onOpenExample}
-          onSaveAs={() => {
-            if (download !== null) {
-              downloadJsonFile(downloadFileName(state.step.name, new Date()), download);
-            }
-          }}
+          onSaveAs={onSavePreset}
           onDownloadCopy={() => {
             if (download !== null) {
               downloadJsonFile(downloadFileName(state.step.name, new Date()), download);
@@ -869,11 +937,7 @@ function TopBar({
           onOpenFile={onOpenSnapshotFile}
           onSelectFile={onSelectSnapshotFile}
           canAttach={canAttach}
-          onSaveAs={() => {
-            if (snapshotDownload !== null) {
-              downloadJsonFile(snapshotFileName(new Date()), snapshotDownload);
-            }
-          }}
+          onSaveAs={onSaveSnapshot}
           onDownloadCopy={() => {
             if (snapshotDownload !== null) {
               downloadJsonFile(snapshotFileName(new Date()), snapshotDownload);

@@ -63,6 +63,7 @@ export type BuilderStore = {
   // A document edit, with the origin and the name kept.
   edit: (edit: (document: BuilderDocument) => DocumentEdit | null, coalesce?: string) => void;
   open: (preset: Preset, origin: Preset | null, name: string) => void;
+  replacePreset: (preset: Preset, origin: Preset | null, name: string) => void;
   setSnapshot: (records: readonly VersionedRecord[]) => void;
   addSheet: (setId: string) => void;
   undo: () => void;
@@ -171,6 +172,21 @@ export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
 
         return {
           step: { document, origin, name, records: [] },
+          changed: firstSelection(document) ?? WINDOW_UID,
+        };
+      });
+    },
+    replacePreset: (preset, origin, name) => {
+      apply((step) => {
+        const document = fromPreset(preset);
+
+        return {
+          step: {
+            document,
+            origin,
+            name,
+            records: reconcileRecords(step.records, toPreset(step.document), preset),
+          },
           changed: firstSelection(document) ?? WINDOW_UID,
         };
       });
