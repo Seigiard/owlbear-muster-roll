@@ -1,0 +1,1248 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<title>Единое дерево пресета</title>
+<meta name="kit-build" content="32ef129">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Render kit, see ~/.claude/shared/render-kit.md: one base layer styles bare semantic HTML from CSS variables. It loads no external stylesheet, because Claude Artifacts block them. assemble.py places this at the kit head marker. -->
+<style>
+  /* Colours are the Harmony palette (github.com/evilmartians/harmony 1.4.0): OKLCH, and every hue has the same APCA contrast on the same step. Each role takes one step, light and dark in one light-dark() token. Text steps 700/300 give Lc 70 or more on the page and on a fill; labels (ins, del) take 800/200. The theme is color-scheme alone: the system sets it, and a host's data-theme overrides it. */
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(oklch(98.8% 0.005 275), oklch(19.3% 0.016 275));      /* gray 50 / 950 */
+    --surface: light-dark(oklch(100% 0 none), oklch(30.3% 0.016 275));      /* white / gray 900 */
+    --tint: light-dark(oklch(96.5% 0.016 275), oklch(30.3% 0.016 275));     /* gray 100 / 900 */
+    --fg: light-dark(oklch(30.3% 0.016 275), oklch(96.5% 0.016 275));       /* gray 900 / 100 */
+    --muted: light-dark(oklch(52.3% 0.016 275), oklch(85.4% 0.016 275));    /* gray 700 / 300 */
+    --line: light-dark(oklch(91.8% 0.016 275), oklch(41.2% 0.016 275));     /* gray 200 / 800 */
+    --accent: light-dark(oklch(53.3% 0.116 300), oklch(85.9% 0.078 300));   /* purple 700 / 300 */
+    --good: light-dark(oklch(40% 0.091 140), oklch(91.4% 0.042 140));       /* emerald 800 / 200 */
+    --bad: light-dark(oklch(42% 0.091 20), oklch(92.2% 0.042 20));          /* red 800 / 200 */
+    --good-fill: light-dark(oklch(96.3% 0.017 140), oklch(29.5% 0.066 140));       /* emerald 100 / 900, behind a diff's added lines */
+    --bad-fill: light-dark(oklch(96.7% 0.017 20), oklch(30.7% 0.066 20));          /* red 100 / 900, behind a diff's removed lines */
+    --code-bg: light-dark(oklch(96.5% 0.016 275), oklch(30.3% 0.016 275));  /* gray 100 / 900 */
+    --c-kwd: var(--accent);                                                 /* purple 700 / 300 */
+    --c-str: light-dark(oklch(51.2% 0.116 140), oklch(84.6% 0.078 140));    /* emerald 700 / 300 */
+    --c-num: light-dark(oklch(53.1% 0.116 43.3), oklch(85.9% 0.078 43.3));  /* orange 700 / 300 */
+    --c-fn: light-dark(oklch(51.8% 0.116 240), oklch(85% 0.078 240));       /* blue 700 / 300 */
+    --c-type: light-dark(oklch(53.7% 0.116 340), oklch(86.3% 0.078 340));   /* pink 700 / 300 */
+    --c-cmnt: light-dark(oklch(61.3% 0.016 275), oklch(78.9% 0.016 275));   /* gray 600 / 400, quieter on purpose */
+    /* Type from modernfontstacks.com: installed system fonts only, so nothing downloads and a page renders the same offline. Neo-Grotesque text, Old Style headings, Monospace Code; each stack falls through to fonts with Cyrillic. */
+    --sans: Inter, Roboto, 'Helvetica Neue', 'Arial Nova', 'Nimbus Sans', Arial, sans-serif;
+    --serif: 'Iowan Old Style', 'Palatino Linotype', 'URW Palladio L', P052, serif;
+    --mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+    --radius: 6px;
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+
+  * { box-sizing: border-box; }
+  html { font-size: 18px; text-wrap: pretty; -webkit-text-size-adjust: 100%; }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+  /* Stated on body, not inherited from html: a host page (Claude Artifacts) resets body to its own 14px font and colours. */
+  body { margin: 0; font: 1rem / 1.6 var(--sans); background: var(--bg); color: var(--fg); }
+
+  /* The page: text on the left, the contents beside it. A long path, URL or hash has no space to break at and would push a phone page wider, so it breaks anywhere; table cells keep whole words and the table scrolls instead. */
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 14.5rem; column-gap: 3.25rem; max-inline-size: 66rem; margin-inline: auto; padding: 2rem 1rem 8rem; overflow-wrap: anywhere; counter-reset: frame; }
+  main > * { grid-column: 1; min-inline-size: 0; }
+  /* Contents: sticky beside the text. scroll-target-group lets Chrome light the current section in CSS; scripts.html does the same where it cannot. */
+  main > nav { grid-column: 2; grid-row: 1 / span 200; position: sticky; inset-block-start: 1.5rem; align-self: start; padding-block-start: .5rem; scroll-target-group: auto; }
+  nav ul { list-style: none; margin: 0; padding: 0; border-inline-start: 1px solid var(--line); }
+  nav li { max-inline-size: none; }
+  nav a { display: block; padding: .38rem .9rem; margin-inline-start: -1px; border-inline-start: 2px solid transparent; color: var(--muted); font-size: .9rem; line-height: 1.35; text-decoration: none; }
+  @media (hover: hover) and (pointer: fine) { nav a:hover { color: var(--fg); } }
+  nav a.cur { color: var(--accent); border-inline-start-color: var(--accent); font-weight: 600; }
+  nav a:target-current { color: var(--accent); border-inline-start-color: var(--accent); font-weight: 600; }
+  /* A phone or a narrow window has no room beside the text: the contents becomes a row of pills above it. 936px is 52rem at the page's 18px. */
+  @media (max-width: 936px) {
+    main { display: block; }
+    main > nav { position: static; padding: 0; margin-block-start: 1.25rem; }
+    nav ul { display: flex; flex-wrap: wrap; gap: .25rem .5rem; border: 0; margin-block-end: 1.5rem; }
+    nav a { border: 1px solid var(--line); border-radius: 99px; padding: .2rem .7rem; margin: 0; }
+    nav a.cur, nav a:target-current { border-color: var(--accent); }
+  }
+
+  h1, h2, h3, h4 { font-family: var(--serif); text-wrap: balance; }
+  h1 { margin: 0 0 .4rem; font-size: clamp(1.9rem, 1rem + 3.2vw, 2.4rem); font-weight: 650; line-height: 1.12; letter-spacing: -.015em; }
+  hgroup { padding-block-end: 1.25rem; border-block-end: 1px solid var(--line); }
+  hgroup p { margin: 0; color: var(--muted); }
+  h2 { margin: 2.75rem 0 1rem; padding-block-start: 1.75rem; border-block-start: 1px solid var(--line); font-size: 1.6rem; font-weight: 650; line-height: 1.25; letter-spacing: -.015em; }
+  nav + h2 { border-block-start: 0; padding-block-start: 0; margin-block-start: 1.5rem; }
+  h3 { margin: 1.7rem 0 .5rem; font-size: 1.25rem; font-weight: 650; line-height: 1.3; }
+  h4 { margin: 1.4rem 0 .4rem; font-size: 1.05rem; font-weight: 650; line-height: 1.3; }
+  /* Prose keeps a reading measure; code, frames, tables and diagrams use the full column. */
+  p { margin: 0 0 1rem; max-inline-size: 68ch; }
+  li { max-inline-size: 68ch; }
+  ul, ol { margin: 0 0 1rem; padding-inline-start: 1.3rem; }
+  a { color: var(--accent); }
+  strong { font-weight: 650; }
+  small { color: var(--muted); }
+  code { font: .875em var(--mono); background: var(--code-bg); padding: .1em .35em; border-radius: 3px; }
+
+  /* Labels: ins is good, del bad, mark new, small neutral. Beside a heading a label is small uppercase text; in a card header or a table cell it is a pill. A label keeps the text face whatever stack the heading uses. */
+  ins, del, mark, small { text-decoration: none; background: none; }
+  ins { color: var(--good); }
+  del { color: var(--bad); }
+  mark { color: var(--accent); }
+  :is(h2, h3, h4) :is(ins, del, mark, small) { margin-inline-start: .5rem; font: 600 .78rem var(--sans); letter-spacing: .08em; text-transform: uppercase; vertical-align: middle; }
+  :is(article > header, td) :is(ins, del, mark, small) { display: inline-block; padding: .05rem .55rem; border: 1px solid currentColor; border-radius: 1rem; font: 600 .78rem / 1.6 var(--sans); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; vertical-align: middle; }
+
+  /* A card is a soft fill, not a box with a border. */
+  article { margin: 1.25rem 0; padding: 1rem 1.25rem; background: var(--tint); border-radius: var(--radius); }
+  article > header { margin-block-end: .8rem; padding-block-end: .6rem; border-block-end: 1px solid var(--line); }
+  article > footer { margin-block-start: .8rem; padding-block-start: .6rem; border-block-start: 1px solid var(--line); font-size: .9em; color: var(--muted); }
+  article > :last-child:not(footer) { margin-block-end: 0; }
+  main > footer { margin-block-start: 2.5rem; padding-block-start: 1rem; border-block-start: 1px solid var(--line); }
+
+  /* Labelled rows: any dl, labels in the accent colour, one column on a phone. */
+  dl { display: grid; grid-template-columns: fit-content(40%) minmax(0, 1fr); gap: .45rem 1rem; margin: 0 0 1rem; }
+  dt { font-weight: 600; color: var(--accent); }
+  dd { margin: 0; }
+  dd > ul { margin: 0; }
+  @media (max-width: 612px) { dl { grid-template-columns: 1fr; gap: 0; } dd { margin-block-end: .6rem; } }
+
+  blockquote { margin: 1.25rem 0; padding: .2rem 1rem; border-inline-start: 2px solid var(--accent); color: var(--muted); }
+  blockquote > :last-child { margin: 0; }
+
+  details { margin: 1.25rem 0; }
+  details[open] > summary { margin-block-end: 1rem; }
+  summary { display: inline-block; padding: .4rem 1rem; list-style: none; background: var(--tint); border-radius: var(--radius); color: var(--muted); cursor: pointer; }
+  @media (hover: hover) and (pointer: fine) { summary:hover { color: var(--fg); } }
+
+  /* A table scrolls inside itself, so no table widens a phone page; rows alternate a fill. */
+  table { display: block; max-inline-size: 100%; margin: 1rem 0; overflow-x: auto; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: .5rem .75rem; border-block-end: 1px solid var(--line); text-align: start; vertical-align: top; overflow-wrap: normal; }
+  th { color: var(--muted); font-size: .9em; font-weight: 650; }
+  tbody tr:nth-child(odd) { background: var(--tint); }
+
+  /* A checklist is any ul that holds a checkbox. The box hangs outside the label's text, so the text keeps flowing as one line of mixed code and words. */
+  ul:has(input[type="checkbox"]) { list-style: none; padding: 0; }
+  ul:has(input[type="checkbox"]) li { margin: .55rem 0; }
+  label:has(> input[type="checkbox"]) { display: block; position: relative; padding-inline-start: 1.75rem; }
+  label > input[type="checkbox"] { position: absolute; inset-inline-start: 0; inset-block-start: .3em; inline-size: 1.1em; block-size: 1.1em; margin: 0; accent-color: var(--accent); }
+
+  :focus-visible { outline: max(2px, .08em) solid var(--accent); outline-offset: .25em; }
+  :is(summary, nav a):active { transform: scale(.97); }
+  @media (prefers-reduced-motion: no-preference) { :is(summary, nav a) { transition: transform 160ms ease-out; } }
+</style>
+<style>
+/* Render kit components, see ~/.claude/shared/render-kit.md. Placed by assemble.py at the kit components marker, after the head's base layer. Variables from the base layer only, so both themes follow. */
+
+/* A frame sits bare: the image, then a muted caption numbered by a CSS counter, so the caption belongs to its frame and not to the prose around it. */
+figure { counter-increment: frame; margin: 1.25rem 0; }
+/* A tall frame stops at three quarters of the screen, centred, so it does not bury the page; the lightbox shows it whole. */
+figure img { display: block; max-inline-size: 100%; max-block-size: 75vh; inline-size: auto; block-size: auto; margin-inline: auto; border: 1px solid var(--line); border-radius: var(--radius); cursor: zoom-in; }
+figcaption { margin-block-start: .5rem; padding-block-start: .5rem; font-size: .9em; color: var(--muted); }
+figcaption::before { content: "Frame " counter(frame) ". "; font-weight: 600; color: var(--accent); }
+:lang(ru) figcaption::before { content: "Кадр " counter(frame) ". "; }
+/* Two frames side by side, to compare states: a bare div that holds two figures. */
+div:has(> figure + figure) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+div:has(> figure + figure) > figure { margin: 0; }
+@media (max-width: 612px) { div:has(> figure + figure) { grid-template-columns: 1fr; } }
+
+/* Lightbox: frames are downscaled inline and reviewers need the pixels. A click on a frame opens it at natural size in a dialog that scrolls when the frame is wider than the screen; auto margins centre a smaller frame without clipping a larger one. */
+dialog.lightbox { inline-size: 100%; block-size: 100%; max-inline-size: none; max-block-size: none; margin: 0; padding: 1rem; border: 0; background: color-mix(in oklch, var(--bg) 94%, transparent); overflow: auto; cursor: zoom-out; }
+dialog.lightbox[open] { display: flex; align-items: flex-start; justify-content: flex-start; }
+dialog.lightbox img { flex: none; max-inline-size: none; max-block-size: none; margin: auto; cursor: inherit; }
+
+/* Annotations: the dock overlays the page and never changes its layout. */
+#kit-annotations { color: var(--fg); font: .875rem / 1.4 var(--sans); }
+#kit-annotations button { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--fg); padding: .4rem .75rem; cursor: pointer; font: inherit; white-space: nowrap; }
+#kit-annotations button:active { transform: scale(.97); }
+#kit-annotations button:focus-visible, #kit-annotations textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#kit-annotations .kit-annotations-quiet { border-color: transparent; background: none; color: var(--muted); }
+#kit-annotations .kit-annotations-quiet:focus-visible { color: var(--fg); }
+#kit-annotations .kit-annotations-primary { inline-size: 100%; background: var(--fg); border-color: var(--fg); color: var(--bg); font-weight: 600; }
+#kit-annotations .kit-annotations-primary:disabled { opacity: .45; cursor: not-allowed; }
+#kit-annotations .kit-annotations-primary.is-copied { background: var(--good); border-color: var(--good); }
+#kit-annotations [hidden] { display: none; }
+.kit-annotations-start { position: fixed; inset-block-end: 1rem; inset-inline-end: 1rem; z-index: 20; box-shadow: 0 .2rem .8rem color-mix(in oklch, var(--fg) 14%, transparent); }
+.kit-annotations-start[aria-pressed="true"] { display: none; }
+.kit-annotations-dock { position: fixed; z-index: 20; inset-block: 0; inset-inline-end: 0; inline-size: min(24rem, 100%); max-inline-size: 100%; display: flex; flex-direction: column; background: var(--surface); border-inline-start: 1px solid var(--line); box-shadow: -.3rem 0 1rem color-mix(in oklch, var(--fg) 8%, transparent); }
+.kit-annotations-dock[hidden] { display: none; }
+.kit-annotations-header { display: flex; align-items: flex-start; gap: .5rem; padding: .7rem 1rem; border-block-end: 1px solid var(--line); }
+.kit-annotations-header .kit-annotations-what { flex: 1; min-inline-size: 0; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.kit-annotations-dot { inline-size: .5rem; block-size: .5rem; flex: none; border-radius: 50%; background: var(--accent); }
+.kit-annotations-header strong { white-space: nowrap; }
+.kit-annotations-header .kit-annotations-hint { flex-basis: 100%; padding-inline-start: 1rem; color: var(--muted); overflow: clip; text-overflow: ellipsis; white-space: nowrap; }
+.kit-annotations-main { display: flex; flex: 1; min-block-size: 0; flex-direction: column; }
+.kit-annotations-heading { display: flex; align-items: center; gap: .5rem; padding: .7rem 1rem .2rem; }
+#kit-annotations .kit-annotations-heading h2 { margin: 0; margin-inline-end: auto; padding: 0; border: 0; font: 600 .95rem / 1.3 var(--sans); }
+.kit-annotations-heading h2 span { color: var(--muted); font-weight: 400; }
+.kit-annotations-list { flex: 1; min-block-size: 0; overflow: auto; padding: .2rem 1rem .8rem; }
+.kit-annotations-empty { padding: 1rem .25rem; color: var(--muted); }
+.kit-annotations-empty strong { display: block; margin-block-end: .2rem; color: var(--fg); }
+.kit-annotations-mark { position: relative; display: block; margin: .6rem 0 1.2rem; padding-inline: 0; border-radius: var(--radius); font: .78rem / 1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+#kit-annotations .kit-annotations-open { display: block; inline-size: 100%; border: 0; border-radius: var(--radius); background: none; color: inherit; padding-block: .1rem; padding-inline: .2rem 2rem; text-align: start; cursor: pointer; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+#kit-annotations .kit-annotations-open:focus-visible { background: var(--tint); }
+.kit-annotations-section { margin: .4rem 0 .2rem; font: 700 .78rem / 1.55 var(--mono); }
+.kit-annotations-quote { color: var(--muted); }
+.kit-annotations-after { color: var(--muted); }
+.kit-annotations-kind { font-weight: 700; }
+.kit-annotations-kind[data-kind="comment"], .kit-annotations-kind[data-kind="replace"] { color: var(--accent); }
+.kit-annotations-kind[data-kind="delete"] { color: var(--bad); }
+.kit-annotations-remove { display: inline-grid; place-items: center; inline-size: 1.5rem; block-size: 1.5rem; border: 0 !important; border-radius: var(--radius); background: none !important; color: var(--muted) !important; padding: .3rem !important; line-height: 0; }
+.kit-annotations-remove:focus-visible { background: var(--bad-fill) !important; color: var(--bad) !important; }
+.kit-annotations-mark > .kit-annotations-remove { position: absolute; inset-block-start: 0; inset-inline-end: 0; opacity: .45; }
+.kit-annotations-mark > .kit-annotations-remove:focus-visible { opacity: 1; }
+@media (hover: none) { .kit-annotations-mark > .kit-annotations-remove { opacity: 1; } }
+@media (hover: hover) and (pointer: fine) {
+  #kit-annotations .kit-annotations-quiet:hover { color: var(--fg); }
+  .kit-annotations-mark:hover { background: var(--tint); }
+  #kit-annotations .kit-annotations-open:hover { background: var(--tint); }
+  .kit-annotations-remove:hover { background: var(--bad-fill) !important; color: var(--bad) !important; }
+  .kit-annotations-mark:hover > .kit-annotations-remove { opacity: 1; }
+}
+.kit-annotations-footer { display: grid; gap: .5rem; padding: .7rem 1rem; border-block-start: 1px solid var(--line); }
+.kit-annotations-page-comment { display: grid; gap: .35rem; }
+.kit-annotations-page-comment label { display: flex; justify-content: space-between; color: var(--muted); font-size: .8rem; }
+.kit-annotations-page-comment textarea, .kit-annotations-copy-fallback textarea { box-sizing: border-box; inline-size: 100%; min-block-size: 3lh; max-block-size: 10lh; resize: none; field-sizing: content; padding: .45rem .55rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); font: inherit; }
+.kit-annotations-clear-confirmation { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
+.kit-annotations-clear-confirmation span { margin-inline-end: auto; }
+.kit-annotations-danger { background: var(--bad) !important; border-color: var(--bad) !important; color: var(--bg) !important; font-weight: 600; }
+.kit-annotations-copy-fallback { padding-block-start: .5rem; border-block-start: 1px solid var(--line); }
+.kit-annotations-copy-fallback label { display: grid; gap: .2rem; color: var(--muted); font-size: .8rem; }
+.kit-annotations-copy-fallback p { margin: .4rem 0 0; color: var(--muted); font-size: .8rem; }
+.kit-annotations-status { min-block-size: 1.4em; margin: 0; color: var(--muted); }
+.kit-annotations-popover { position: fixed; z-index: 21; inline-size: min(25rem, calc(100vw - 1rem)); max-inline-size: calc(100vw - 1rem); max-block-size: calc(100dvh - 1rem); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: calc(var(--radius) + 4px); box-shadow: 0 .3rem 1rem color-mix(in oklch, var(--fg) 20%, transparent); }
+.kit-annotations-popover[hidden] { display: none; }
+.kit-annotations-tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-block-end: 1px solid var(--line); }
+#kit-annotations .kit-annotations-tabs button { border: 0; border-block-end: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: .7rem .35rem .6rem; margin-block-end: -1px; display: flex; align-items: baseline; justify-content: center; gap: .35rem; }
+#kit-annotations .kit-annotations-tabs button[aria-pressed="true"] { color: var(--fg); font-weight: 600; }
+#kit-annotations .kit-annotations-tabs button[data-kind="comment"][aria-pressed="true"], #kit-annotations .kit-annotations-tabs button[data-kind="replace"][aria-pressed="true"] { border-block-end-color: var(--accent); }
+#kit-annotations .kit-annotations-tabs button[data-kind="delete"][aria-pressed="true"] { border-block-end-color: var(--bad); }
+.kit-annotations-sample { padding-inline: .15rem; border-radius: 2px; font-weight: 600; }
+.kit-annotations-sample[data-kind="comment"] { background: color-mix(in oklch, var(--accent) 22%, transparent); box-shadow: 0 2px 0 var(--accent); }
+.kit-annotations-sample[data-kind="delete"] { color: var(--bad); text-decoration: line-through; }
+.kit-annotations-sample[data-kind="replace"] { color: var(--accent); text-decoration: line-through; }
+.kit-annotations-popover-body { display: grid; gap: .5rem; padding: .75rem; }
+.kit-annotations-popover-body label { color: var(--muted); font-size: .8rem; }
+.kit-annotations-popover textarea { box-sizing: border-box; inline-size: 100%; min-block-size: 3lh; max-block-size: 12lh; padding: .45rem .55rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); font: inherit; resize: none; field-sizing: content; }
+.kit-annotations-popover-footer { display: flex; align-items: center; gap: .4rem; }
+.kit-annotations-popover-footer small { margin-inline-end: auto; color: var(--muted); font-size: .75rem; }
+.kit-annotations-anchor { position: fixed; z-index: 0; inline-size: 0; block-size: 0; pointer-events: none; opacity: 0; anchor-name: --kit-annotations-range; }
+.kit-annotations-preview { position: fixed; inset: 0; z-index: 19; pointer-events: none; overflow: clip; }
+.kit-annotations-preview span { position: fixed; inline-size: max-content; max-inline-size: calc(100vw - 1rem); box-sizing: border-box; overflow: clip; text-overflow: ellipsis; color: var(--accent); border-block-end: 1px dashed var(--accent); background: var(--surface); white-space: nowrap; anchor-name: --kit-annotations-preview; }
+@supports (position-area: block-end) {
+  @position-try --kit-annotations-preview-clamp {
+    position-area: block-start span-all;
+    justify-self: anchor-center;
+    max-inline-size: calc(100% - 1rem);
+    margin-inline: .5rem;
+  }
+  @position-try --kit-annotations-preview-clamp-below {
+    position-area: block-end span-all;
+    justify-self: anchor-center;
+    max-inline-size: calc(100% - 1rem);
+    margin-inline: .5rem;
+    margin-block-start: calc(var(--kit-annotations-range-tail-size, 0px) + .25rem);
+  }
+  @position-try --kit-annotations-popover-clamp-below {
+    position-area: block-end span-all;
+    justify-self: anchor-center;
+    inline-size: min(25rem, calc(100% - 1rem));
+    max-inline-size: calc(100% - 1rem);
+    margin-inline: .5rem;
+  }
+  @position-try --kit-annotations-popover-clamp-above {
+    position-area: block-start span-all;
+    justify-self: anchor-center;
+    inline-size: min(25rem, calc(100% - 1rem));
+    max-inline-size: calc(100% - 1rem);
+    margin-inline: .5rem;
+    margin-block-start: 0;
+    margin-block-end: .5rem;
+  }
+  @position-try --kit-annotations-popover-above {
+    position-area: block-start span-inline-end;
+    margin-block-start: 0;
+    margin-block-end: .5rem;
+  }
+  .kit-annotations-preview span { position-anchor: --kit-annotations-range; position-area: block-start span-inline-end; position-try-fallbacks: --kit-annotations-preview-clamp, --kit-annotations-preview-clamp-below, flip-block, flip-inline; margin-block-end: .25rem; }
+  .kit-annotations-popover { position-anchor: --kit-annotations-range; position-area: block-end span-inline-end; position-try-fallbacks: --kit-annotations-popover-clamp-below, --kit-annotations-popover-above, --kit-annotations-popover-clamp-above, flip-inline; margin: 0; margin-block-start: calc(var(--kit-annotations-range-tail-size, 0px) + .5rem); }
+  .kit-annotations-popover.kit-annotations-popover-with-preview { position-anchor: --kit-annotations-preview; margin-block-start: calc(var(--kit-annotations-range-block-size, 0px) + .75rem); }
+}
+::highlight(kit-annotation) { background: color-mix(in oklch, var(--accent) 22%, transparent); color: var(--fg); text-decoration: underline; text-decoration-color: var(--accent); }
+::highlight(kit-annotation-delete) { color: var(--bad); text-decoration: line-through; text-decoration-color: var(--bad); }
+::highlight(kit-annotation-replace) { color: var(--accent); text-decoration: line-through; text-decoration-color: var(--accent); }
+
+/* Code: a pre holding <code class="language-x">. The kit script hands the code to the highlighter, which wraps tokens in shj-syn-* spans; the six colour variables of the base layer paint them. */
+pre { margin: 1rem 0; padding: .9rem 1.1rem; overflow-x: auto; background: var(--code-bg); border: 1px solid var(--line); border-radius: var(--radius); font: .875em / 1.65 var(--mono); tab-size: 4; }
+pre code { padding: 0; background: none; font: inherit; }
+.shj-syn-cmnt { color: var(--c-cmnt); font-style: italic; }
+:is(.shj-syn-kwd, .shj-syn-err) { color: var(--c-kwd); }
+.shj-syn-str { color: var(--c-str); }
+:is(.shj-syn-num, .shj-syn-bool, .shj-syn-class) { color: var(--c-num); }
+:is(.shj-syn-func, .shj-syn-section) { color: var(--c-fn); }
+:is(.shj-syn-type, .shj-syn-oper, .shj-syn-var) { color: var(--c-type); }
+/* A diff line is tinted across the whole block width, the tint bleeding into the block's padding; a hunk header is muted. */
+code.language-diff :is(.shj-syn-insert, .shj-syn-deleted) { display: inline-block; min-inline-size: calc(100% + 1.1rem); padding-inline: .55rem; margin-inline: -.55rem; }
+code.language-diff .shj-syn-insert { color: var(--good); background: var(--good-fill); }
+code.language-diff .shj-syn-deleted { color: var(--bad); background: var(--bad-fill); }
+code.language-diff .shj-syn-section { color: var(--muted); }
+
+/* Mermaid block: <pre class="mermaid"> rendered by the kit's Mermaid loader. Diagrams keep their natural size and scroll when wider than the column: scaled down to a phone, a wide flowchart's text becomes unreadable. */
+pre.mermaid { background: var(--surface); text-align: center; font-family: var(--sans); padding: 1rem; }
+/* A host that draws the diagram itself (Claude Artifacts) ignores the loader's theme, but the svg sits in this page, so the page recolours it from the variables, in both themes. Mermaid scopes its own colours by the diagram's id, which only !important outweighs. */
+pre.mermaid :is(.node, .cluster) :is(rect, polygon, circle, ellipse, path), pre.mermaid :is(rect.actor, .note) { fill: var(--tint) !important; stroke: var(--accent) !important; }
+pre.mermaid .state-start, pre.mermaid .node.end circle { fill: var(--fg) !important; stroke: var(--fg) !important; }
+pre.mermaid :is(.flowchart-link, .transition, .actor-line, .messageLine0, .messageLine1) { stroke: var(--muted) !important; }
+pre.mermaid :is(.arrowMarkerPath, marker path) { fill: var(--muted) !important; stroke: var(--muted) !important; }
+pre.mermaid :is(.nodeLabel, .edgeLabel, .labelBkg, .label) { color: var(--fg) !important; }
+pre.mermaid :is(.edgeLabel, .labelBkg, .edgeLabel p) { background-color: var(--surface) !important; }
+pre.mermaid :is(text, tspan) { fill: var(--fg) !important; stroke: none !important; }
+
+/* Term: <dfn title="…"> as the author writes it. The kit script moves the title to data-tooltip, so the browser's own tooltip does not double the bubble, and makes the term focusable. Without the script the browser's tooltip still shows. */
+dfn[data-tooltip] { position: relative; font-style: normal; border-block-end: 1px dotted var(--muted); cursor: help; }
+dfn[data-tooltip]::after { content: attr(data-tooltip); position: absolute; inset-inline-start: 0; inset-block-end: calc(100% + .4rem); inline-size: max-content; max-inline-size: min(20rem, 70vw); padding: .5rem .7rem; background: var(--fg); color: var(--bg); border-radius: var(--radius); font: 400 .875rem / 1.4 var(--sans); white-space: normal; opacity: 0; pointer-events: none; z-index: 10; }
+@media (prefers-reduced-motion: no-preference) { dfn[data-tooltip]::after { transition: opacity 120ms ease-out; } }
+dfn[data-tooltip]:is(:hover, :focus)::after { opacity: 1; }
+/* Where the browser supports anchor positioning, the bubble is anchored to its own term (a pseudo-element's implicit anchor is the element it belongs to) and flips below or sideways at the edge of the screen, so it never clips. */
+@supports (position-area: block-start) {
+  dfn[data-tooltip]::after { position: fixed; inset: auto; margin: 0; margin-block-end: .4rem; position-area: block-start span-inline-end; position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline; }
+}
+
+/* Print: the contents is navigation only; blocks stay whole; external links show their address. */
+@media print {
+  nav { display: none; }
+  main { display: block; }
+  pre, figure, article { break-inside: avoid; }
+  dialog.lightbox { display: none; }
+  #kit-annotations { display: none; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: .8em; }
+}
+</style>
+<style>
+  .seal { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; margin: 1.5rem 0; }
+  .seal svg { width: 9rem; height: 9rem; flex: none; }
+  .seal .wax { fill: var(--accent); }
+  .seal .ring { fill: none; stroke: var(--bg); stroke-width: 2; stroke-dasharray: 4 3; }
+  .seal text { fill: var(--bg); font-weight: 800; letter-spacing: 0.08em; font-family: inherit; }
+  .persona-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.75rem; }
+</style>
+</head>
+<body>
+<main lang="ru">
+<hgroup>
+  <h1>Единое дерево пресета: итог проверки идеи</h1>
+  <p>Muster Roll · bmad-forge-idea · 2026-11-16 · сессия <code>_bmad-output/forge/uniform-preset-tree/</code></p>
+</hgroup>
+<nav aria-label="Contents"><ul>
+  <li><a href="#outcome">Итог</a></li>
+  <li><a href="#registry">Реестр</a></li>
+  <li><a href="#locked">Что решено</a></li>
+  <li><a href="#rejected">Что отклонено</a></li>
+  <li><a href="#weak">Слабые места</a></li>
+  <li><a href="#voices">Голоса</a></li>
+</ul></nav>
+
+<h2 id="outcome">Итог</h2>
+<div class="seal">
+  <svg viewBox="0 0 120 120" role="img" aria-label="Печать: HARDENED">
+    <path class="wax" d="M60 4 C72 8 80 2 90 12 C100 20 112 22 114 36 C118 48 112 56 116 66 C118 80 108 88 102 98 C94 110 82 108 72 116 C60 120 52 112 40 114 C26 114 22 104 14 96 C6 86 8 74 4 62 C2 50 10 42 8 30 C10 18 22 14 32 8 C42 2 50 6 60 4 Z"/>
+    <circle class="ring" cx="60" cy="60" r="44"/>
+    <text x="60" y="56" text-anchor="middle" font-size="14">HARDENED</text>
+    <text x="60" y="74" text-anchor="middle" font-size="9">MUSTER ROLL</text>
+  </svg>
+  <div>
+    <p><strong>Идея закалена.</strong> Исходный вопрос «почему схема такая сложная» привёл не к реестру для билдера, а к формату v4: пять уровней с одним словарём ключей, <code>repeat</code> на каждом контейнере, токен как ячейка-закладка и записи значений по блоку с версией на ячейку.</p>
+    <p>Сессия началась как проверка идеи и перешла в «сделать лучше»: пять исходных предпосылок уточнились или отпали, и на их месте закреплены девять решений.</p>
+    <p>Передача в работу: <code>forged-idea.md</code> рядом с журналом. Он подходит на вход <code>bmad-spec</code> для обновления <code>SPEC.md</code> и формата, затем <code>bmad-build</code>.</p>
+  </div>
+</div>
+
+<h2 id="registry">Реестр</h2>
+<table>
+  <thead><tr><th>Узел</th><th>Свойства в сайдбаре билдера</th><th>Дети</th></tr></thead>
+  <tbody>
+    <tr><td>preset</td><td><code>v</code>, <code>window?</code></td><td><code>templates[]</code>, не меньше одного</td></tr>
+    <tr><td>window</td><td><code>width</code>, <code>height</code></td><td>—</td></tr>
+    <tr><td>template</td><td><code>id</code>, <code>title</code>, <code>visibility?</code>, <code>repeat?: { nameField }</code>, <code>players?: "edit"</code></td><td><code>tabs[]</code>, не меньше одной</td></tr>
+    <tr><td>tab</td><td><code>title?</code> обязателен при двух и более вкладках, <code>visibility?</code>, <code>repeat?: { id, nameField }</code></td><td><code>sections[]</code></td></tr>
+    <tr><td>section</td><td><code>title?</code>, <code>width?</code>, <code>columns?</code>, <code>visibility?</code>, <code>repeat?: { id, nameField }</code></td><td><code>rows[]</code></td></tr>
+    <tr><td>row</td><td><code>visibility?</code>, <code>repeat?: { id, nameField }</code></td><td><code>cells[]</code></td></tr>
+    <tr><td>cell</td><td><code>text { text }</code> · <code>field { type, id, name?, options? }</code> · <code>dice { formula, name? }</code> · <code>token {}</code></td><td>—</td></tr>
+  </tbody>
+</table>
+<p>Проверками, а не схемой, остаются: уникальность id в области, <code>nameField</code> указывает на <code>text</code>-поле внутри своей области, id в формулах, ширина ряда против <code>columns</code>. Ни одного правила «ключ зависит от другого ключа» в схеме не осталось.</p>
+
+<h2 id="locked">Что решено</h2>
+<dl>
+  <dt>Глубина</dt><dd>Фиксированная: <code>template → tab → section → row → cell</code>. Каждый контейнер держит один вид детей. Автору, который хочет «просто список», билдер делает секцию без заголовка сам.</dd>
+  <dt><code>repeat</code></dt><dd>На шаблоне, вкладке, секции и ряду. Значит «по одному блоку на экземпляр»; вид узла решает, как блоки показаны: шаблон — листы в сайдбаре, вкладка — вкладки с «+», секция и ряд — блоки друг под другом. <code>kind: "set" | "single"</code> уходит: набор это шаблон с <code>repeat</code>. Слова «набор» и «одиночный лист» остаются подписями в билдере и глоссарии.</dd>
+  <dt><code>repeat</code> как объект</dt><dd><code>repeat: { id, nameField }</code> на вкладке, секции и ряду; <code>repeat: { nameField }</code> на шаблоне, у которого <code>id</code> есть и так. Три ключа, которые всегда шли вместе, стали одним объектом, и правило «только вместе» исчезло.</dd>
+  <dt><code>nameField</code></dt><dd>Имя блока принадлежит его области и заменяет правило «первое поле именует блок». Сайдбар, броски, рендер блока, «+» и подпись токена читают одно место.</dd>
+  <dt>Вложенные повторы</dt><dd>Разрешены. Адрес блока — путь пар «id области : id блока» под листом. Формула ищет id в своём блоке, потом в каждом внешнем, потом в листе. Дубликат блока копирует вложенные блоки.</dd>
+  <dt>Id</dt><dd>Только там, куда кто-то ссылается: шаблон, поле, токен-ячейка, повторяемая область. Вкладка и обычные секция и ряд без id. Смена id области стирает её блоки, как сегодня смена id шаблона стирает листы. Билдер чеканит id из заголовков, как уже делает для полей.</dd>
+  <dt>Токен</dt><dd>Ячейка <code>{ kind: "token" }</code> и закладка: токен открывает лист, прокрученный к этой ячейке. Закладок на листе может быть несколько. Подпись — от ближайшего предка с именем: <code>nameField</code> блока, затем <code>title</code> секции, затем имя листа или <code>title</code> шаблона. <code>tokens: true</code> на шаблоне и секции уходит вместе с правилом «только с repeat».</dd>
+  <dt>Записи значений</dt><dd>Одна запись на блок, лист тоже блок: <code>blk:&lt;лист&gt;[:&lt;id области&gt;:&lt;id блока&gt;]*</code> → <code>{ order, cells }</code>, у каждой ячейки своя тройка <code>[значение, счётчик, автор]</code>. Слияние по ячейке, пустая запись удаляет блок. Ключи <code>row:</code> и <code>rep:</code> уходят. Запасной вариант — запись на поле.</dd>
+  <dt>Видимость</dt><dd>На шаблоне, вкладке, секции и ряду. Узел виден, когда виден он и каждый предок. У ячейки видимости нет. Сценарий: поле заметок мастера прямо в листе персонажа.</dd>
+  <dt><code>players: "edit"</code></dt><dd>На любом шаблоне. На повторяемом значит «все игроки правят все листы набора»; доступ по игроку остаётся поверх, как сегодня.</dd>
+</dl>
+
+<h3>Измерение записей значений</h3>
+<p>Синтетическая комната: 6 персонажей по 40 полей и 10 блоков инвентаря, 60 NPC по 5 полей. Снимок считан как deflate + base64, лимит метаданных комнаты 15 500 байт.</p>
+<table>
+  <thead><tr><th>Единица записи</th><th>Записей</th><th>Снимок, байт</th><th>Правка теряется, когда</th></tr></thead>
+  <tbody>
+    <tr><td>Сегодня: ряд раскладки</td><td>198</td><td>4 644</td><td>два человека правят поля одного ряда</td></tr>
+    <tr><td>Блок целиком</td><td>132</td><td>4 040</td><td>два человека правят любые поля одного листа или блока</td></tr>
+    <tr><td>Поле</td><td>846</td><td>9 048</td><td>никогда</td></tr>
+    <tr><td><mark>Блок с версией ячейки</mark></td><td>126</td><td>7 436</td><td>никогда</td></tr>
+  </tbody>
+</table>
+
+<h2 id="rejected">Что отклонено</h2>
+<table>
+  <thead><tr><th>Вариант</th><th>Почему нет</th></tr></thead>
+  <tbody>
+    <tr><td>Только реестр для билдера поверх текущего формата</td><td>Сложность идёт из нерегулярности формата, а не из отсутствия таблицы. Реестр над нерегулярным форматом особых случаев не убирает, это проверено 2026-11-12.</td></tr>
+    <tr><td>Свойство «из какого поля брать имя» на токен-ячейке</td><td>Второй источник имени области. Имя читают пять потребителей, токен один из них.</td></tr>
+    <tr><td>Токен как роль на поле (<code>token: true</code>)</td><td>Инвентарь без поля имени не линкуется, либо <code>tokens</code> остаётся на шаблоне и единообразие ломается.</td></tr>
+    <tr><td>Id на каждом узле</td><td>Id вкладки и обычной секции никто не читает. Билдер их чеканит, автор пишет, доки описывают — зря.</td></tr>
+    <tr><td>Запрет вложенных повторов, или одна ступень</td><td>Вкладка-NPC без своих списков атак и предметов бессмысленна. Одна ступень — исключение, которое реестр должен знать.</td></tr>
+    <tr><td>Смешанная вложенность: ряды во вкладке, ячейки в секции</td><td>Секция без заголовка уже рисуется без него. Минус одна скобка в JSON ценой двух форм в каждом потребителе.</td></tr>
+    <tr><td>Запись на блок с общей версией</td><td>Самый маленький снимок, но игрок и мастер, правящие один лист в одну секунду, теряют правку.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="weak">Слабые места, которые остаются</h2>
+<blockquote>Слияние по ячейке меняет <code>src/core/merge.ts</code> с «запись целиком» на «по ячейке». Это ядро синхронизации. Запасной вариант «запись на поле» существует ради этого риска.</blockquote>
+<blockquote>Скрытый ряд посреди сетки <code>columns</code> оставит дырку или сдвинет сетку. Принято как выбор автора.</blockquote>
+<blockquote>Снимок той же комнаты вырастает примерно на 60 % против сегодня: 7 436 байт против 4 644 при лимите 15 500.</blockquote>
+<blockquote>Поднятый <code>v</code> отклоняет все текущие пресеты и снимки. Допустимо, пока живых пользователей нет.</blockquote>
+
+<h2 id="voices">Голоса</h2>
+<div class="persona-grid">
+  <article><header>🏗️ Winston · архитектор <small>BMad</small></header><p>Один слот на область — проверка правил, не схемы. Слова «набор» и «одиночный лист» остаются подписями, меняется ключ и дискриминация типа.</p></article>
+  <article><header>🎯 Yui · мастер простоты <small>свой</small></header><p>Один ключ: пусть <code>nameField</code> живёт на каждой повторяемой области, а токен его читает. Красивая рекурсия — одна форма узла и один шаг вниз.</p></article>
+  <article><header>😤 Grumbal · критик <small>свой</small></header><p>Два ключа с одним смыслом — баг, ждущий переименования. Запрет вложенности превращает вкладку-NPC в витрину без содержимого.</p></article>
+  <article><header>🎲 Ира · ведущая, пишет пресет для кампании <small>сгенерирована</small></header><p>Хочу, чтобы токен подписывался именем NPC, но у Инвентаря имени нет. Отсюда правило «подпись от ближайшего предка».</p></article>
+</div>
+</main>
+<!-- Render kit scripts, placed by assemble.py at the kit scripts marker, at the end of <body>: the highlighter, the Mermaid loader, the term upgrade, the contents fallback, the frame lightbox and annotations. -->
+<script type="module">
+  // Each <pre><code class="language-x"> goes to the highlighter, which wraps tokens in shj-syn-* spans that the base layer colours. A language it has no grammar for prints as plain text.
+  import { highlightElement } from "https://cdn.jsdelivr.net/npm/@speed-highlight/core@2.1.0/dist/index.js";
+  for (const code of document.querySelectorAll("pre > code[class*='language-']")) {
+    const language = [...code.classList].find((name) => name.startsWith("language-")).slice("language-".length);
+    highlightElement(code, language, { block: false });
+  }
+</script>
+<script>
+  // Annotations are a self-contained, storage-backed dock. It deliberately uses only
+  // DOM paths and text quotes for anchors so assembled pages work from file:// and in iframes.
+  (() => {
+    const root = document.createElement("aside");
+    root.id = "kit-annotations";
+    root.innerHTML = `
+      <button class="kit-annotations-start" type="button" aria-pressed="false">Annotate</button>
+      <section class="kit-annotations-dock" aria-label="Annotations" hidden>
+        <header class="kit-annotations-header">
+          <div class="kit-annotations-what"><span class="kit-annotations-dot" aria-hidden="true"></span><strong>Annotating</strong><span class="kit-annotations-hint">Select text within one section</span></div>
+          <button class="kit-annotations-done kit-annotations-quiet" type="button">Done</button>
+        </header>
+        <div class="kit-annotations-main">
+          <div class="kit-annotations-heading"><h2>Annotations <span class="kit-annotations-count">0</span></h2><button class="kit-annotations-clear kit-annotations-quiet" type="button">Clear</button></div>
+          <div class="kit-annotations-list"></div>
+          <footer class="kit-annotations-footer">
+            <div class="kit-annotations-page-comment">
+              <label for="kit-annotations-page-input"><span>Page comment</span><span>saved as you type</span></label>
+              <textarea id="kit-annotations-page-input" autocomplete="off" placeholder="About the whole page, not one passage"></textarea>
+            </div>
+            <div class="kit-annotations-clear-confirmation" hidden><span>Clear all marks and the page comment?</span><button class="kit-annotations-quiet kit-annotations-clear-cancel" type="button">Cancel</button><button class="kit-annotations-danger kit-annotations-clear-confirm" type="button">Clear all</button></div>
+            <div class="kit-annotations-copy-fallback" hidden><label>Markdown<textarea readonly aria-label="Markdown to copy"></textarea></label><p>Press ⌘C / Ctrl+C to copy.</p></div>
+            <p class="kit-annotations-status" role="status"></p>
+            <button class="kit-annotations-copy kit-annotations-primary" type="button" disabled>Copy Markdown</button>
+          </footer>
+        </div>
+      </section>
+      <div class="kit-annotations-anchor" aria-hidden="true"></div>
+      <div class="kit-annotations-preview" aria-hidden="true"></div>
+      <form class="kit-annotations-popover" hidden>
+        <div class="kit-annotations-tabs" role="tablist" aria-label="Kind of mark">
+          <button type="button" data-kind="comment" role="tab" aria-pressed="true"><span class="kit-annotations-sample" data-kind="comment">Aa</span>Comment</button>
+          <button type="button" data-kind="replace" role="tab" aria-pressed="false"><span class="kit-annotations-sample" data-kind="replace">Aa</span>Replace</button>
+          <button type="button" data-kind="delete" role="tab" aria-pressed="false"><span class="kit-annotations-sample" data-kind="delete">Aa</span>Delete</button>
+        </div>
+        <div class="kit-annotations-popover-body">
+          <label><span class="kit-annotations-popover-label">Comment</span><textarea name="text" autocomplete="off"></textarea></label>
+          <div class="kit-annotations-popover-footer"><small>⌥1–3 kind · Esc close · saved as you type</small><button type="button" class="kit-annotations-remove" aria-label="Remove mark" title="Remove mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></div>
+        </div>
+      </form>`;
+    document.body.appendChild(root);
+
+    const start = root.querySelector(".kit-annotations-start");
+    const dock = root.querySelector(".kit-annotations-dock");
+    const count = root.querySelector(".kit-annotations-count");
+    const list = root.querySelector(".kit-annotations-list");
+    const pageComment = root.querySelector(".kit-annotations-page-comment");
+    const pageInput = root.querySelector("#kit-annotations-page-input");
+    const clearConfirmation = root.querySelector(".kit-annotations-clear-confirmation");
+    const copy = root.querySelector(".kit-annotations-copy");
+    const copyFallback = root.querySelector(".kit-annotations-copy-fallback");
+    const copyTextarea = copyFallback.querySelector("textarea");
+    const status = root.querySelector(".kit-annotations-status");
+    const anchor = root.querySelector(".kit-annotations-anchor");
+    const preview = root.querySelector(".kit-annotations-preview");
+    const popover = root.querySelector(".kit-annotations-popover");
+    const tabs = [...popover.querySelectorAll("[data-kind]")];
+    const input = popover.querySelector("textarea");
+    const popoverLabel = popover.querySelector(".kit-annotations-popover-label");
+    const popoverBody = popover.querySelector(".kit-annotations-popover-body");
+    const popoverFooter = popover.querySelector(".kit-annotations-popover-footer");
+    const remove = popover.querySelector(".kit-annotations-remove");
+    const LABELS = { comment: "Comment", replace: "Replace with", delete: "Reason (optional)" };
+    const KINDS = ["comment", "replace", "delete"];
+    const title = document.title || "Untitled";
+    const build = document.querySelector('meta[name="kit-build"]')?.content || "none";
+    const storageKey = `render-kit-annotations:${title}:${build}`;
+    const modeKey = `render-kit-annotate-mode:${title}`;
+
+    const read = (key, fallback) => {
+      try {
+        const value = localStorage.getItem(key);
+        return value ? JSON.parse(value) : fallback;
+      } catch { return fallback; }
+    };
+    const write = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
+    const normalizeText = (text) => text.replace(/\s+/g, " ").trim();
+    const textFor = (annotation) => annotation.text ?? annotation.comment ?? "";
+    const cleanText = (value) => value.replace(/\r\n?/g, "\n").trim();
+    // Text of more than one line goes into a fence longer than any backtick run inside it, so blank lines, "> " and "## " in it stay text.
+    const actionText = (text) => {
+      if (!text) return "";
+      if (!text.includes("\n")) return ` ${text}`;
+      const fence = "`".repeat(Math.max(3, ...(text.match(/`+/g) || []).map((run) => run.length + 1)));
+      return `\n${fence}text\n${text}\n${fence}`;
+    };
+    const isEmptyMark = (annotation) => ["comment", "replace"].includes(annotation.kind) && !textFor(annotation).trim();
+    let enabled = read(modeKey, false) === true;
+    let pending = null;
+    let popoverAnchorRange = null;
+    let pendingKind = "comment";
+    let editing = null;
+    let confirming = false;
+    let copied = false;
+    let copiedTimer;
+    let rawAnnotations = read(storageKey, []);
+    if (!Array.isArray(rawAnnotations)) rawAnnotations = [];
+    const legacyNotes = rawAnnotations.filter((annotation) => annotation?.kind === "page");
+    let pageNoteId = legacyNotes[0]?.id || `${Date.now()}-page`;
+    let pageNote = legacyNotes.map((annotation) => annotation.note ?? textFor(annotation)).join("\n");
+    let annotations = rawAnnotations.filter((annotation) => annotation?.kind !== "page" && !isEmptyMark(annotation));
+
+    const textMarks = () => annotations.filter((annotation) => KINDS.includes(annotation.kind) && !isEmptyMark(annotation));
+    const hasContent = () => textMarks().length > 0 || pageNote.trim() !== "";
+    const persist = () => {
+      const stored = textMarks().filter((annotation) => !isEmptyMark(annotation));
+      if (pageNote.trim() !== "") stored.push({ id: pageNoteId, kind: "page", note: pageNote });
+      write(storageKey, stored);
+    };
+    if (legacyNotes.length) persist();
+
+    const pathOf = (node) => {
+      const path = [];
+      while (node && node !== document.body) {
+        const parent = node.parentNode;
+        if (!parent) break;
+        path.unshift([...parent.childNodes].indexOf(node));
+        node = parent;
+      }
+      return path;
+    };
+    const nodeAt = (path) => Array.isArray(path)
+      ? path.reduce((node, index) => node?.childNodes[index], document.body)
+      : null;
+    const headingText = (heading) => normalizeText(heading.textContent);
+    const isBefore = (first, second) => first === second
+      || Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const sectionBounds = (section, headingOrdinal) => {
+      const headings = [...document.querySelectorAll("h1, h2, h3, h4")];
+      const matches = headings.filter((heading) => headingText(heading) === section);
+      const start = headingOrdinal === undefined
+        ? headings.find((heading) => heading.id === section || headingText(heading) === section)
+        : matches[headingOrdinal];
+      if (!start) return { start: null, end: null };
+      const level = Number(start.tagName.slice(1));
+      const end = headings.find((heading) => heading !== start && isBefore(start, heading)
+        && Number(heading.tagName.slice(1)) <= level);
+      return { start, end };
+    };
+    const isPageText = (node, bounds) => {
+      const parent = node.parentElement;
+      if (!parent || root.contains(node) || parent.closest("script, style, #kit-annotations")) return false;
+      if (!bounds.start) return true;
+      return isBefore(bounds.start, node) && (!bounds.end || isBefore(node, bounds.end));
+    };
+    const rangeByText = (text, section, after = "", headingOrdinal) => {
+      if (!text) return null;
+      const bounds = sectionBounds(section, headingOrdinal);
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => isPageText(node, bounds) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+      });
+      const nodes = [];
+      let content = "";
+      while (walker.nextNode()) {
+        nodes.push({ node: walker.currentNode, start: content.length });
+        content += walker.currentNode.nodeValue;
+      }
+      const starts = [];
+      let index = content.indexOf(text);
+      while (index >= 0) { starts.push(index); index = content.indexOf(text, index + 1); }
+      const start = after ? starts.find((position) => content.slice(0, position).endsWith(after)) : starts[0];
+      if (start === undefined) return null;
+      const end = start + text.length;
+      const range = document.createRange();
+      const startNode = nodes.find((item) => start >= item.start && start <= item.start + item.node.length);
+      const endNode = nodes.find((item) => end >= item.start && end <= item.start + item.node.length);
+      if (!startNode || !endNode) return null;
+      range.setStart(startNode.node, start - startNode.start);
+      range.setEnd(endNode.node, end - endNode.start);
+      return range;
+    };
+    const rangeFor = (annotation) => {
+      const textRange = rangeByText(annotation.rawQuote || annotation.quote, annotation.section, annotation.rawAfter || "", annotation.headingOrdinal);
+      if (textRange) return textRange;
+      const startNode = nodeAt(annotation.startPath);
+      const endNode = nodeAt(annotation.endPath);
+      if (!startNode || !endNode) return null;
+      const range = document.createRange();
+      try { range.setStart(startNode, annotation.startOffset); range.setEnd(endNode, annotation.endOffset); return range; } catch { return null; }
+    };
+    const blockSelector = "address, article, aside, blockquote, dd, div, dl, dt, figure, figcaption, footer, h1, h2, h3, h4, h5, h6, header, li, main, nav, ol, p, pre, section, table, tbody, td, tfoot, th, thead, tr, ul";
+    const selectedText = (range, node) => {
+      const nodeRange = document.createRange();
+      nodeRange.selectNodeContents(node);
+      if (!range.intersectsNode(node)) return "";
+      const intersection = range.cloneRange();
+      if (range.compareBoundaryPoints(Range.START_TO_START, nodeRange) < 0) intersection.setStart(nodeRange.startContainer, nodeRange.startOffset);
+      if (range.compareBoundaryPoints(Range.END_TO_END, nodeRange) > 0) intersection.setEnd(nodeRange.endContainer, nodeRange.endOffset);
+      return intersection.toString();
+    };
+    const selectedTextNodes = (range) => {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let first = null;
+      let last = null;
+      while (walker.nextNode()) {
+        if (root.contains(walker.currentNode) || !selectedText(range, walker.currentNode).trim()) continue;
+        first ||= walker.currentNode;
+        last = walker.currentNode;
+      }
+      return { first, last };
+    };
+    const quoteText = (text, range) => {
+      const runs = [];
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        if (root.contains(walker.currentNode)) continue;
+        const selected = selectedText(range, walker.currentNode);
+        if (!selected) continue;
+        const block = walker.currentNode.parentElement?.closest(`${blockSelector}, summary, caption, legend`) || document.body;
+        const previous = runs.at(-1);
+        if (previous?.block === block) previous.text += selected;
+        else runs.push({ block, text: selected });
+      }
+      const lines = runs.map(({ text: run }) => normalizeText(run)).filter(Boolean);
+      return lines.length > 1 ? lines.join("\n") : normalizeText(text);
+    };
+    const headingFor = (node) => {
+      if (!node) return null;
+      const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+      let found = null;
+      for (const heading of document.querySelectorAll("h1, h2, h3, h4")) {
+        if (isBefore(heading, element)) found = heading; else break;
+      }
+      return found;
+    };
+    const sectionFor = (range) => {
+      const { first } = selectedTextNodes(range);
+      const heading = headingFor(first);
+      if (!heading) return { section: title };
+      const section = heading.id || headingText(heading);
+      const sameName = [...document.querySelectorAll("h1, h2, h3, h4")].filter((item) => headingText(item) === section);
+      return { section, ...(heading.id ? {} : { headingOrdinal: sameName.indexOf(heading) }) };
+    };
+    // A heading without an id that shares its text with another h1–h4 heading is named by its place among them: "Evidence #2".
+    const sectionLabel = (annotation) => {
+      if (annotation.headingOrdinal === undefined) return annotation.section;
+      const sameName = [...document.querySelectorAll("h1, h2, h3, h4")].filter((heading) => headingText(heading) === annotation.section);
+      return sameName.length > 1 ? `${annotation.section} #${annotation.headingOrdinal + 1}` : annotation.section;
+    };
+    const headingAtRangeEnd = (range) => {
+      const container = range.endContainer;
+      if (container.nodeType === Node.TEXT_NODE) return range.endOffset === 0 ? container.parentElement?.closest("h1, h2, h3, h4") : null;
+      if (range.endOffset === 0) return container.closest("h1, h2, h3, h4");
+      const child = container.childNodes[range.endOffset];
+      return child?.nodeType === Node.ELEMENT_NODE && child.matches("h1, h2, h3, h4") ? child : null;
+    };
+    const trimRangeEnd = (range) => {
+      if (!headingAtRangeEnd(range)) return range;
+      const { last } = selectedTextNodes(range);
+      if (!last) return range;
+      const trimmed = range.cloneRange();
+      trimmed.setEnd(last, last.length);
+      return trimmed;
+    };
+    const isWithinOneSection = (range) => {
+      const { first, last } = selectedTextNodes(range);
+      return Boolean(first && last && headingFor(first) === headingFor(last));
+    };
+    const normalizedContent = (content) => {
+      const offsets = [];
+      let text = "";
+      let match;
+      const words = /\S+/g;
+      while ((match = words.exec(content))) {
+        if (text) { text += " "; offsets.push(match.index - 1); }
+        for (let index = 0; index < match[0].length; index += 1) { text += match[0][index]; offsets.push(match.index + index); }
+      }
+      return { text, offsets };
+    };
+    const occurrencesFor = (text, section, headingOrdinal) => {
+      const bounds = sectionBounds(section, headingOrdinal);
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => isPageText(node, bounds) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+      });
+      let content = "";
+      while (walker.nextNode()) content += walker.currentNode.nodeValue;
+      const normalized = normalizedContent(content);
+      const normalizedQuote = normalizeText(text);
+      const starts = [];
+      let start = normalized.text.indexOf(normalizedQuote);
+      while (start >= 0) { starts.push(normalized.offsets[start]); start = normalized.text.indexOf(normalizedQuote, start + 1); }
+      return { content, starts };
+    };
+    const afterFor = (range, section, headingOrdinal) => {
+      const rawQuote = range.toString();
+      const bounds = sectionBounds(section, headingOrdinal);
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => isPageText(node, bounds) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+      });
+      // content is the raw text the browser re-anchors on; spaced puts a space between blocks, as the Markdown's **after:** reads.
+      let content = "";
+      let spaced = "";
+      const nodes = [];
+      let previousBlock = null;
+      let selectedStart = -1;
+      while (walker.nextNode()) {
+        const block = walker.currentNode.parentElement.closest(`${blockSelector}, summary, caption, legend`) || document.body;
+        if (previousBlock && block !== previousBlock) spaced += " ";
+        previousBlock = block;
+        nodes.push({ raw: content.length, spaced: spaced.length });
+        if (walker.currentNode === range.startContainer) selectedStart = content.length + range.startOffset;
+        else if (selectedStart < 0) {
+          const boundary = range.cloneRange();
+          boundary.collapse(true);
+          if (boundary.comparePoint(walker.currentNode, 0) >= 0) selectedStart = content.length;
+        }
+        content += walker.currentNode.nodeValue;
+        spaced += walker.currentNode.nodeValue;
+      }
+      if (selectedStart < 0) selectedStart = content.length;
+      const spacedAt = (position) => {
+        const node = nodes.findLast((item) => item.raw <= position);
+        return node ? node.spaced + position - node.raw : position;
+      };
+      const rawAt = (position) => {
+        const node = nodes.findLast((item) => item.spaced <= position);
+        return node ? node.raw + position - node.spaced : position;
+      };
+      const starts = occurrencesFor(rawQuote, section, headingOrdinal).starts;
+      if (starts.length < 2 || selectedStart < 0) return { after: "", rawAfter: "" };
+      const end = spacedAt(selectedStart);
+      for (let length = 1; length <= end; length += 1) {
+        const begin = end - length;
+        const startsAtWordBoundary = begin === 0 || /[^\p{L}\p{N}]/u.test(spaced[begin - 1]);
+        const after = normalizeText(spaced.slice(begin, end));
+        if (startsAtWordBoundary && after.length >= 12 && starts.filter((startAt) => normalizeText(spaced.slice(0, spacedAt(startAt))).endsWith(after)).length === 1) {
+          return { after, rawAfter: content.slice(rawAt(begin), selectedStart) };
+        }
+      }
+      return { after: normalizeText(spaced.slice(0, end)), rawAfter: content.slice(0, selectedStart) };
+    };
+    const ordered = () => textMarks().map((annotation) => ({ annotation, range: rangeFor(annotation) })).filter((item) => item.range).sort((first, second) => first.range.compareBoundaryPoints(Range.START_TO_START, second.range));
+    const paint = () => {
+      if (!CSS.highlights) return;
+      for (const kind of KINDS) {
+        const name = kind === "comment" ? "kit-annotation" : `kit-annotation-${kind}`;
+        CSS.highlights.delete(name);
+        const items = ordered().filter(({ annotation }) => annotation.kind === kind);
+        const ranges = items.map(({ range }) => range);
+        if (editing?.kind === kind && !items.some(({ annotation }) => annotation.id === editing.id)) {
+          const editingRange = rangeFor(editing);
+          if (editingRange) ranges.push(editingRange);
+        }
+        if (!editing && pending && pendingKind === kind) ranges.push(pending);
+        if (ranges.length) CSS.highlights.set(name, new Highlight(...ranges));
+      }
+    };
+    const icon = () => {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "2");
+      svg.setAttribute("stroke-linecap", "round");
+      svg.setAttribute("stroke-linejoin", "round");
+      svg.innerHTML = '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>';
+      svg.setAttribute("aria-hidden", "true");
+      return svg;
+    };
+    const renderList = () => {
+      list.replaceChildren();
+      const groups = new Map();
+      for (const item of ordered()) {
+        const section = sectionLabel(item.annotation);
+        if (!groups.has(section)) groups.set(section, []);
+        groups.get(section).push(item.annotation);
+      }
+      if (!groups.size) {
+        const empty = document.createElement("div");
+        empty.className = "kit-annotations-empty";
+        empty.innerHTML = "<strong>No marks yet</strong>Select text on the page to add a Comment, Replace or Delete.";
+        list.append(empty);
+      }
+      for (const [section, entries] of groups) {
+        const heading = document.createElement("div");
+        heading.className = "kit-annotations-section";
+        heading.textContent = `## ${section}`;
+        list.append(heading);
+        for (const annotation of entries) {
+          const block = document.createElement("div");
+          block.className = "kit-annotations-mark";
+          block.dataset.annotationId = annotation.id;
+          const open = document.createElement("button");
+          open.type = "button";
+          open.className = "kit-annotations-open";
+          open.dataset.annotationId = annotation.id;
+          open.setAttribute("aria-label", `Open ${annotation.kind} mark: ${annotation.quote}`);
+          const quote = document.createElement("span");
+          quote.className = "kit-annotations-quote";
+          quote.textContent = annotation.quote.split("\n").map((line) => `> ${line}`).join("\n");
+          open.append(quote);
+          if (annotation.after) {
+            const after = document.createElement("span");
+            after.className = "kit-annotations-after";
+            after.textContent = `\n**after:** ${annotation.after}`;
+            open.append(after);
+          }
+          const kind = document.createElement("span");
+          kind.className = "kit-annotations-kind";
+          kind.dataset.kind = annotation.kind;
+          kind.textContent = `\n**${annotation.kind}:**`;
+          open.append(kind);
+          if (textFor(annotation)) open.append(document.createTextNode(actionText(textFor(annotation))));
+          block.append(open);
+          const trash = document.createElement("button");
+          trash.type = "button";
+          trash.className = "kit-annotations-remove";
+          trash.dataset.removeId = annotation.id;
+          trash.setAttribute("aria-label", "Remove mark");
+          trash.title = "Remove mark";
+          trash.append(icon());
+          block.append(trash);
+          list.append(block);
+        }
+      }
+      count.textContent = String(textMarks().length);
+      paint();
+      paintPreview();
+    };
+    const renderDock = () => {
+      dock.hidden = !enabled;
+      start.setAttribute("aria-pressed", String(enabled));
+      start.hidden = enabled;
+      count.textContent = String(textMarks().length);
+      pageInput.value = pageNote;
+      copy.disabled = !hasContent();
+      copy.textContent = copied ? "Copied" : "Copy Markdown";
+      copy.classList.toggle("is-copied", copied);
+      pageComment.hidden = confirming;
+      clearConfirmation.hidden = !confirming;
+      copyFallback.hidden = confirming || copyFallback.hidden;
+      renderList();
+    };
+    const closePopover = () => {
+      const removeEmpty = editing && ["comment", "replace"].includes(editing.kind) && !textFor(editing).trim();
+      if (removeEmpty) {
+        annotations = annotations.filter((annotation) => annotation.id !== editing.id);
+        persist();
+      }
+      popover.hidden = true;
+      pending = null;
+      popoverAnchorRange = null;
+      pendingKind = "comment";
+      editing = null;
+      popoverBody.hidden = false;
+      if (document.activeElement === input) input.blur();
+      paintPreview();
+      if (removeEmpty) renderDock();
+    };
+    const syncPopover = () => {
+      const kind = editing?.kind || pendingKind;
+      tabs.forEach((tab) => tab.setAttribute("aria-pressed", String(tab.dataset.kind === kind)));
+      popoverLabel.textContent = LABELS[kind];
+      remove.hidden = !editing;
+      input.placeholder = kind === "delete" ? "Optional reason" : "";
+    };
+    const showSelectionError = (range) => {
+      pending = null;
+      popoverAnchorRange = range.cloneRange();
+      editing = null;
+      popover.hidden = false;
+      popover.querySelector(".kit-annotations-tabs").hidden = true;
+      input.hidden = true;
+      popoverLabel.textContent = "Select text within one section.";
+      popoverFooter.hidden = true;
+      remove.hidden = true;
+      paintPreview();
+    };
+    const showPopover = (range) => {
+      if (!popover.hidden) closePopover();
+      range = trimRangeEnd(range);
+      if (!isWithinOneSection(range)) return showSelectionError(range);
+      pending = range.cloneRange();
+      pendingKind = "comment";
+      editing = null;
+      popover.hidden = false;
+      popover.querySelector(".kit-annotations-tabs").hidden = false;
+      input.hidden = false;
+      popoverFooter.hidden = false;
+      input.value = "";
+      syncPopover();
+      input.focus();
+      paintPreview();
+    };
+    const showAnnotation = (annotation, range) => {
+      if (!popover.hidden && editing?.id === annotation.id) return;
+      if (!popover.hidden) closePopover();
+      pending = range.cloneRange();
+      pendingKind = annotation.kind;
+      editing = annotation;
+      popover.hidden = false;
+      popover.querySelector(".kit-annotations-tabs").hidden = false;
+      input.hidden = false;
+      popoverFooter.hidden = false;
+      input.value = textFor(annotation);
+      syncPopover();
+      const contentAnchor = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+      contentAnchor?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      input.focus();
+      paintPreview();
+    };
+    const createMark = (kind, range, text = "") => {
+      const section = sectionFor(range);
+      const annotation = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        kind,
+        text,
+        quote: quoteText(range.toString(), range),
+        rawQuote: range.toString(),
+        ...section,
+        ...afterFor(range, section.section, section.headingOrdinal),
+        startPath: pathOf(range.startContainer),
+        startOffset: range.startOffset,
+        endPath: pathOf(range.endContainer),
+        endOffset: range.endOffset,
+      };
+      annotations.push(annotation);
+      editing = annotation;
+      pending = range.cloneRange();
+      persist();
+      renderDock();
+      syncPopover();
+      return annotation;
+    };
+    const chooseKind = (kind) => {
+      if (!KINDS.includes(kind) || !pending) return;
+      if (!editing) {
+        pendingKind = kind;
+        if (kind === "delete") createMark(kind, pending, "");
+        else { syncPopover(); paintPreview(); }
+      } else {
+        editing.kind = kind;
+        editing.text = cleanText(input.value);
+        persist();
+        syncPopover();
+        renderDock();
+      }
+      input.focus();
+      paintPreview();
+    };
+    const updateText = () => {
+      const kind = editing?.kind || pendingKind;
+      const value = cleanText(input.value);
+      if (!editing && pending && value) createMark(kind, pending, value);
+      else if (editing) { editing.text = value; persist(); renderDock(); }
+      paintPreview();
+    };
+    const markdownFor = () => {
+      const groups = new Map();
+      for (const { annotation } of ordered().filter(({ annotation }) => !isEmptyMark(annotation))) {
+        const section = sectionLabel(annotation);
+        if (!groups.has(section)) groups.set(section, []);
+        groups.get(section).push(annotation);
+      }
+      const sections = [];
+      for (const [section, entries] of groups) {
+        const blocks = entries.map((annotation) => {
+          const quote = annotation.quote.split("\n").map((line) => `> ${line}`).join("\n");
+          const after = annotation.after ? `\n**after:** ${annotation.after}` : "";
+          return `${quote}${after}\n**${annotation.kind}:**${actionText(textFor(annotation))}`;
+        });
+        sections.push(`## ${section}\n${blocks.join("\n\n")}`);
+      }
+      if (pageNote.trim() !== "") sections.push(`## Page\n**note:** ${pageNote}`);
+      const header = `# Annotations · ${title} · build ${build}`;
+      const hint = `_Apply per ~/.claude/shared/render-kit.md, section "Receiving annotations"._`;
+      return `${header}\n${hint}${sections.length ? `\n\n${sections.join("\n\n")}` : ""}\n`;
+    };
+    const canSelectFallback = () => {
+      const probe = document.createElement("textarea");
+      const active = document.activeElement;
+      probe.value = "copy";
+      probe.tabIndex = -1;
+      probe.style.cssText = "position:fixed;inline-size:1px;block-size:1px;opacity:0;pointer-events:none;";
+      document.body.appendChild(probe);
+      try { probe.focus({ preventScroll: true }); probe.select(); return probe.selectionStart === 0 && probe.selectionEnd === probe.value.length; }
+      catch { return false; }
+      finally { probe.remove(); try { active?.focus?.({ preventScroll: true }); } catch {} }
+    };
+    const hideLayer = () => root.remove();
+    const showCopyFallback = (markdown) => {
+      copyFallback.hidden = false;
+      copyTextarea.value = markdown;
+      try { copyTextarea.focus({ preventScroll: true }); copyTextarea.select(); }
+      catch { hideLayer(); return false; }
+      if (copyTextarea.selectionStart !== 0 || copyTextarea.selectionEnd !== markdown.length) { hideLayer(); return false; }
+      status.textContent = "";
+      return true;
+    };
+    const canUseClipboard = () => typeof navigator.clipboard?.writeText === "function";
+    const flashCopied = () => {
+      copied = true;
+      renderDock();
+      clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => { copied = false; renderDock(); }, 1800);
+    };
+    const copyMarkdown = async () => {
+      const markdown = markdownFor();
+      if (canUseClipboard()) {
+        try { await navigator.clipboard.writeText(markdown); copyFallback.hidden = true; flashCopied(); return; } catch {}
+      }
+      showCopyFallback(markdown);
+    };
+    const paintPreview = () => {
+      paint();
+      preview.replaceChildren();
+      popover.classList.remove("kit-annotations-popover-with-preview");
+      const annotation = editing;
+      const range = annotation ? rangeFor(annotation) : pending || popoverAnchorRange;
+      if (!range) {
+        anchor.style.insetInlineStart = "0px";
+        anchor.style.insetBlockStart = "0px";
+        anchor.style.inlineSize = "0px";
+        anchor.style.blockSize = "0px";
+        root.style.setProperty("--kit-annotations-range-block-size", "0px");
+        root.style.setProperty("--kit-annotations-range-tail-size", "0px");
+        return;
+      }
+      const rects = [...range.getClientRects()];
+      const first = rects[0];
+      if (!first) return;
+      const bounds = range.getBoundingClientRect();
+      anchor.style.left = `${first.left}px`;
+      anchor.style.top = `${first.top}px`;
+      anchor.style.inlineSize = `${first.width}px`;
+      anchor.style.blockSize = `${first.height}px`;
+      root.style.setProperty("--kit-annotations-range-block-size", `${bounds.height}px`);
+      root.style.setProperty("--kit-annotations-range-tail-size", `${Math.max(0, bounds.height - first.height)}px`);
+      const replacement = annotation?.kind === "replace" ? textFor(annotation) : "";
+      if (!replacement) return;
+      const after = document.createElement("span");
+      after.textContent = replacement;
+      preview.append(after);
+      popover.classList.add("kit-annotations-popover-with-preview");
+    };
+
+    start.addEventListener("click", () => {
+      enabled = true;
+      write(modeKey, true);
+      renderDock();
+    });
+    root.querySelector(".kit-annotations-done").addEventListener("click", () => {
+      enabled = false;
+      write(modeKey, false);
+      closePopover();
+      renderDock();
+    });
+    root.querySelector(".kit-annotations-clear").addEventListener("click", () => { confirming = true; copyFallback.hidden = true; renderDock(); });
+    root.querySelector(".kit-annotations-clear-cancel").addEventListener("click", () => { confirming = false; renderDock(); });
+    root.querySelector(".kit-annotations-clear-confirm").addEventListener("click", () => {
+      annotations = [];
+      pageNote = "";
+      confirming = false;
+      persist();
+      closePopover();
+      copyFallback.hidden = true;
+      renderDock();
+    });
+    copy.addEventListener("click", copyMarkdown);
+    copyTextarea.addEventListener("copy", flashCopied);
+    pageInput.addEventListener("input", () => {
+      pageNote = pageInput.value;
+      persist();
+      copy.disabled = !hasContent();
+    });
+    popover.addEventListener("submit", (event) => event.preventDefault());
+    popover.addEventListener("click", (event) => {
+      const tab = event.target.closest("[data-kind]");
+      if (tab) chooseKind(tab.dataset.kind);
+      if (event.target.closest(".kit-annotations-remove") && editing) {
+        annotations = annotations.filter((annotation) => annotation.id !== editing.id);
+        persist();
+        closePopover();
+        renderDock();
+      }
+    });
+    input.addEventListener("input", updateText);
+    list.addEventListener("click", (event) => {
+      const trash = event.target.closest("[data-remove-id]");
+      if (trash) {
+        event.stopPropagation();
+        const id = trash.dataset.removeId;
+        annotations = annotations.filter((annotation) => annotation.id !== id);
+        if (editing?.id === id) closePopover();
+        persist();
+        renderDock();
+        return;
+      }
+      const block = event.target.closest("[data-annotation-id]");
+      if (block) {
+        const item = ordered().find(({ annotation }) => annotation.id === block.dataset.annotationId);
+        if (item) showAnnotation(item.annotation, item.range);
+      }
+    });
+    list.addEventListener("keydown", (event) => {
+      if (event.target.closest("[data-remove-id]") || !["Enter", " "].includes(event.key)) return;
+      const block = event.target.closest("[data-annotation-id]");
+      if (!block) return;
+      event.preventDefault();
+      const item = ordered().find(({ annotation }) => annotation.id === block.dataset.annotationId);
+      if (item) showAnnotation(item.annotation, item.range);
+    });
+    document.addEventListener("click", (event) => {
+      if (!enabled || root.contains(event.target)) return;
+      if (!getSelection()?.isCollapsed) return;
+      const point = document.caretPositionFromPoint?.(event.clientX, event.clientY) || document.caretRangeFromPoint?.(event.clientX, event.clientY);
+      if (!point) { if (!popover.hidden) closePopover(); return; }
+      const node = point.offsetNode || point.startContainer;
+      const offset = point.offset ?? point.startOffset;
+      const item = node && ordered().find(({ range }) => range.isPointInRange(node, offset));
+      if (item) showAnnotation(item.annotation, item.range);
+      else if (!popover.hidden) closePopover();
+    });
+    document.addEventListener("selectionchange", () => {
+      if (!enabled || document.activeElement === input) return;
+      const selection = getSelection();
+      if (!selection || selection.isCollapsed || !selection.rangeCount) { if (!popover.hidden && !editing) closePopover(); return; }
+      const range = selection.getRangeAt(0);
+      const node = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+      if (!node || root.contains(node) || !document.body.contains(node)) closePopover();
+    });
+    const showSettledSelection = () => {
+      if (!enabled || document.activeElement === input) return;
+      const selection = getSelection();
+      if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+      const range = selection.getRangeAt(0);
+      if (!selectedTextNodes(range).first) return;
+      const node = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+      if (!node || root.contains(node) || !document.body.contains(node)) return;
+      showPopover(range);
+    };
+    document.addEventListener("pointerup", () => setTimeout(showSettledSelection));
+    document.addEventListener("keyup", (event) => {
+      if (event.key !== "Escape" && (event.key === "Shift" || !event.shiftKey)) showSettledSelection();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !popover.hidden) { closePopover(); return; }
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.getModifierState?.("AltGraph")
+        || popover.hidden || !popover.contains(document.activeElement)
+        || !["Digit1", "Digit2", "Digit3"].includes(event.code)) return;
+      event.preventDefault();
+      chooseKind(KINDS[Number(event.code.slice(-1)) - 1]);
+    });
+    addEventListener("scroll", () => {
+      if (editing || pending || popoverAnchorRange) paintPreview();
+    }, { passive: true });
+    addEventListener("resize", () => {
+      paintPreview();
+    });
+
+    const fallbackAvailable = canSelectFallback();
+    if (!fallbackAvailable && !canUseClipboard()) { hideLayer(); return; }
+    renderDock();
+    const scheduleRepaint = (() => {
+      let timer;
+      return () => { clearTimeout(timer); timer = setTimeout(renderDock, 50); };
+    })();
+    new MutationObserver((mutations) => {
+      if (mutations.some((mutation) => !root.contains(mutation.target))) scheduleRepaint();
+    }).observe(document.body, { childList: true, characterData: true, subtree: true });
+  })();
+</script>
+<script type="module">
+  // Mermaid loads only on a page that has a diagram; offline, the diagram's source text still reads. Its colours come from the page's CSS (components.css), which also recolours a diagram that the host draws itself.
+  if (document.querySelector("pre.mermaid")) {
+    const { default: mermaid } = await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs");
+    mermaid.initialize({
+      startOnLoad: false,
+      fontFamily: getComputedStyle(document.body).fontFamily,
+      flowchart: { useMaxWidth: false }, sequence: { useMaxWidth: false }, state: { useMaxWidth: false },
+    });
+    await mermaid.run();
+  }
+</script>
+<script>
+  // A term is written <dfn title="…">. The title moves to data-tooltip so the browser's tooltip does not double the page's bubble, and the term takes keyboard focus; without this script the browser's own tooltip still shows.
+  for (const term of document.querySelectorAll("dfn[title]")) {
+    term.dataset.tooltip = term.title;
+    term.removeAttribute("title");
+    term.tabIndex = 0;
+  }
+</script>
+<script>
+  // The contents lights the current section in CSS (:target-current) where the browser has it. Elsewhere this does it: the last section whose heading has passed 30% of the screen is current.
+  if (!CSS.supports("selector(:target-current)")) {
+    const links = [...document.querySelectorAll("main > nav a[href^='#']")];
+    let waiting = false;
+    const update = () => {
+      waiting = false;
+      let current = links[0];
+      for (const link of links) {
+        const heading = document.getElementById(link.getAttribute("href").slice(1));
+        if (heading && heading.getBoundingClientRect().top <= innerHeight * 0.3) current = link;
+      }
+      for (const link of links) link.classList.toggle("cur", link === current);
+    };
+    addEventListener("scroll", () => { if (!waiting) { waiting = true; requestAnimationFrame(update); } }, { passive: true });
+    update();
+  }
+</script>
+<script>
+  // Lightbox: a click on a frame opens it at natural size; a click anywhere or Escape (native to dialog) closes it.
+  (() => {
+    const box = document.createElement("dialog");
+    box.className = "lightbox";
+    const full = box.appendChild(document.createElement("img"));
+    box.addEventListener("click", () => box.close());
+    document.body.appendChild(box);
+    for (const img of document.querySelectorAll("figure img")) {
+      img.addEventListener("click", () => { full.src = img.src; full.alt = img.alt; box.showModal(); });
+    }
+  })();
+</script>
+</body>
+</html>
