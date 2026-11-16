@@ -207,20 +207,20 @@ _Avoid_: reset, clear, purge
 ## Builder
 
 **Builder**:
-A separate page of the deployed site where a GM makes or changes a preset without writing JSON, then downloads it. In the interface: «Конструктор пресетов».
+A separate page of the deployed site where a GM makes or changes a preset and its snapshot without writing JSON, then saves either file or downloads a copy. In the interface: «Конструктор пресетов».
 _Avoid_: editor, configurator, constructor, designer
 
 **Preview**:
-A sheet drawn from a preset that is not in a room, with sample or empty values, so a GM sees the preset as the extension draws it.
+The extension window in the Builder that shows its snapshot as a GM or a player would see it, with value editing and dice rolls under that role's write policy. An empty sheet set uses a pale «Образец» until a real sheet is added.
 _Avoid_: mockup, render
 
-**Local room**:
-A dev-only page opened by `bun run room` that seeds a mock room and shows its GM and player windows together.
-_Avoid_: local preview
-
 **Draft**:
-The one unfinished preset the builder keeps by itself and opens again on the next visit, with no prompt.
+The one unfinished preset and snapshot the Builder keeps by itself and opens again on the next visit, with no prompt.
 _Avoid_: autosave, work in progress
+
+**File block**:
+The Builder button that shows one preset or snapshot file, its name and status, and opens that file's actions.
+_Avoid_: file card, file control
 
 **Problem**:
 One reason the builder's preset would be refused as a file, tied to the tree item it comes from. Its text is the bad file message for that reason. Download stays off while one is left. In the interface: «Проблема».

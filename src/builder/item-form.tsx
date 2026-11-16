@@ -3,12 +3,7 @@ import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { fieldFormulaCount } from '@/core/formula-rename';
-import {
-  DEFAULT_WINDOW_SIZE,
-  layoutSections,
-  type Preset,
-  type PresetSection,
-} from '@/core/preset';
+import { DEFAULT_WINDOW_SIZE, type Preset, type PresetSection } from '@/core/preset';
 import { copy } from '@/copy';
 import { Button } from '@/ui/primitives/button';
 
@@ -58,13 +53,7 @@ const HINT_CLASS = 'text-label-sm text-text-muted';
 // CAP-22: the form of the selected item. A change applies at once, through the store, and the
 // preview redraws at once. "Удалить" ends each form and asks nothing, as undo restores the item.
 // Typing in one input is one undo step, keyed by the item and the property.
-export function ItemForm({
-  store,
-  document,
-  origin,
-  selection,
-  problems,
-}: ItemFormProps): ReactNode {
+export function ItemForm({ store, document, selection, problems }: ItemFormProps): ReactNode {
   const headingId = useId();
   const path = selection === null ? null : locate(document, selection);
 
@@ -99,7 +88,7 @@ export function ItemForm({
         </ul>
       )}
       {path === null ? null : (
-        <FormBody store={store} document={document} origin={origin} uid={selection} path={path} />
+        <FormBody store={store} document={document} uid={selection} path={path} />
       )}
     </section>
   );
@@ -108,12 +97,11 @@ export function ItemForm({
 type FormBodyProps = {
   store: BuilderStore;
   document: BuilderDocument;
-  origin: Preset | null;
   uid: string;
   path: ItemPath;
 };
 
-function FormBody({ store, document, origin, uid, path }: FormBodyProps): ReactNode {
+function FormBody({ store, document, uid, path }: FormBodyProps): ReactNode {
   if (path.kind === 'window') {
     return <WindowForm store={store} document={document} />;
   }
@@ -129,7 +117,7 @@ function FormBody({ store, document, origin, uid, path }: FormBodyProps): ReactN
   if (path.kind === 'template') {
     return (
       <>
-        <TemplateForm store={store} template={template} origin={origin} />
+        <TemplateForm store={store} template={template} />
         {remove}
       </>
     );
@@ -177,7 +165,7 @@ function FormBody({ store, document, origin, uid, path }: FormBodyProps): ReactN
 
   return (
     <>
-      <CellForm store={store} template={template} origin={origin} cell={cell} path={path} />
+      <CellForm store={store} template={template} cell={cell} path={path} />
       {remove}
     </>
   );
@@ -296,9 +284,9 @@ function WindowForm({
   );
 }
 
-type TemplateFormProps = { store: BuilderStore; template: DocTemplate; origin: Preset | null };
+type TemplateFormProps = { store: BuilderStore; template: DocTemplate };
 
-function TemplateForm({ store, template, origin }: TemplateFormProps): ReactNode {
+function TemplateForm({ store, template }: TemplateFormProps): ReactNode {
   const { uid } = template;
   const form = copy.builder.form;
 
@@ -323,13 +311,9 @@ function TemplateForm({ store, template, origin }: TemplateFormProps): ReactNode
         id={template.id}
         hint={null}
         onCommit={(next) => {
-          const oldId = template.id;
-
           update((current) => ({ ...current, id: next }));
 
-          return origin?.templates.some((other) => other.id === oldId) === true
-            ? [copy.builder.templateSheetsDeleted(oldId)]
-            : [];
+          return [];
         }}
       />
       <SelectInput
@@ -514,12 +498,11 @@ function SectionForm({ store, section }: { store: BuilderStore; section: DocSect
 type CellFormProps = {
   store: BuilderStore;
   template: DocTemplate;
-  origin: Preset | null;
   cell: DocCell;
   path: Extract<ItemPath, { kind: 'cell' }>;
 };
 
-function CellForm({ store, template, origin, cell, path }: CellFormProps): ReactNode {
+function CellForm({ store, template, cell, path }: CellFormProps): ReactNode {
   const { uid } = cell;
   const form = copy.builder.form;
   const formulaId = useId();
@@ -656,7 +639,6 @@ function CellForm({ store, template, origin, cell, path }: CellFormProps): React
         id={cell.id}
         hint={form.fieldUses(uses)}
         onCommit={(next) => {
-          const oldId = cell.id;
           const renamed = renameField(store.$state.get().step.document, uid, next);
 
           if (renamed === null) {
@@ -665,20 +647,7 @@ function CellForm({ store, template, origin, cell, path }: CellFormProps): React
 
           store.edit(() => renamed);
 
-          const fileTemplate = origin?.templates.find((other) => other.id === template.id);
-
-          const fromFile =
-            fileTemplate !== undefined &&
-            layoutSections(fileTemplate).some((section) =>
-              section.rows.some((row) =>
-                row.some((other) => other.kind === 'field' && other.id === oldId),
-              ),
-            );
-
-          return [
-            copy.builder.formulasChanged(renamed.formulas),
-            ...(fromFile ? [copy.builder.fieldValuesErased(oldId)] : []),
-          ];
+          return [copy.builder.formulasChanged(renamed.formulas)];
         }}
       />
     </>

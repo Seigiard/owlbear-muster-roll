@@ -8,10 +8,11 @@ Muster Roll is an Owlbear Rodeo extension that keeps the sheets of one room, suc
 - `src/replica/` - the engine that runs in the background page and owns the room's data
 - `src/platform/` - ports, plus the `obr/` adapter (Owlbear SDK) and the `mock/` adapter (dev and tests)
 - `src/ui/` - the React window, token picker and settings
-- `src/preview/`, `scripts/`, `preview.html` - the dev-only preset preview
+- `scripts/` - the dev and live port-contract launchers
 - `tests/` - Playwright e2e (`*.e2e.ts`) plus shared support; `tests/support/room-rig.ts` is Bun-only and `tests/support/room.ts` is browser support
 - `docs/` - the user-facing preset format and example; decisions in `docs/adr/`
-- `presets/` - preset files the preview lists
+- `presets/` - standalone preset examples checked by `src/core/preset.test.ts`
+- Builder examples are `docs/example-preset.json` and `tests/fixtures/presets/`.
 - `public/` - `manifest.json` and `_headers`
 - `tools/oxlint/` - vendored anti-slop lint rules
 - `backlog/` - tasks, managed by the `backlog` CLI
@@ -22,15 +23,12 @@ Muster Roll is an Owlbear Rodeo extension that keeps the sheets of one room, suc
 
 Name domain concepts with the terms in [GLOSSARY.md](GLOSSARY.md) wherever you write. Read it before you use or coin a domain term. A new term or a changed meaning lands in the glossary in the same commit.
 
-<important if="you are running dev, preview, or room scripts">
+<important if="you are running dev or Owlbear scripts">
 
 `package.json` lists the scripts. What it does not say:
 
-- `bun run dev` serves the Owlbear adapter and needs a tunnel for a live room; `bun run dev:mock` needs no Owlbear.
 - `bun run dev` serves and opens the standalone builder with no Owlbear or tunnel.
 - `bun run dev:owlbear` serves the Owlbear adapter through cloudflared and prints its manifest URL.
-- `bun run preview [path]` adds that preset file to the preview's list and opens it first.
-- `bun run room` opens a seeded GM and player mock room on one local page.
 </important>
 
 <important if="you are preparing a commit, resolving a merge, or choosing or running local checks">

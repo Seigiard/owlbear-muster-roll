@@ -226,23 +226,13 @@ A refused file changes nothing. The message under the button names the first pro
 
 ## Build a preset without JSON
 
-The builder page, `/builder.html`, makes a preset with no JSON to write. Open it with "Конструктор пресетов" in the Пресет section of Settings. It opens in a new tab. The page starts from an empty preset, an example or a file, and edits it as a tree with a form for each item: template, tab, section, row and cell. A new template starts with one untitled tab; "Добавить вкладку" adds another, and a section can be dragged to another tab. The preview shows the tab of the selected item, and a click on a tab in the preview selects it. "Скачать пресет" is enabled only when the preset has no problems, so each file it gives is one that "Загрузить пресет" accepts.
+The builder page, `/builder.html`, makes a preset with no JSON to write. Open it with "Конструктор пресетов" in the Пресет section of Settings. It opens in a new tab. The page starts from an empty preset, an example or a file, and edits it as a tree with a form for each item: template, tab, section, row and cell. A new template starts with one untitled tab; "Добавить вкладку" adds another, and a section can be dragged to another tab.
 
-## Preview a preset
+The Builder's bundled examples are `docs/example-preset.json` and the files in `tests/fixtures/presets/`. Files in `presets/` are standalone examples checked by `src/core/preset.test.ts`.
 
-To see a preset while you edit it, with no Owlbear room, run:
+The preview shows the tab of the selected item. A first cell click selects its tree item; a second click or Enter edits its snapshot value or rolls a dice cell. The "Мастер / Игрок" switch shows the same snapshot under each role's visibility and write policy.
 
-```
-bun run preview [path/to/preset.json]
-```
-
-The command starts the dev server in the mock mode and opens `/preview.html`. The page lists `docs/example-preset.json`, `tests/fixtures/presets/*.json` and `presets/*.json`. Only the `.json` files right in each folder are listed, not those in subfolders. A path given to the command can be anywhere on disk. It joins the list, is marked "(launch file)", and opens first. A relative path is read from the repository root. A path with no file stops the command with an error.
-
-The page draws one sheet of each template read-only, as a player sees it, each in a frame of the preset's window size. A hidden template is drawn too, so its author can see it. Each frame shows the sidebar with every template, and a click on an entry shows that template in the frame. A sheet with more than one tab shows its tab row, and a click switches the tab in that frame. "Sample values" fills every field and gives each repeat section two blocks; off, the sheets are empty, as just after they are added. "Light theme" switches from Owlbear's dark theme. The page address keeps the chosen file and both switches. The address names a launch file by its absolute path, so a link to it works only on the same machine.
-
-To inspect a seeded mock room with GM and player windows together, run `bun run room`.
-
-Each save of a listed file draws the page again. A file that fails the checks shows the same message as an upload, and the next good save draws the sheets again. Dice cells do not roll. The page never writes to a file.
+The Пресет and Снимок file blocks contain each document's actions. "Скачать копию" downloads the current document. Preset saving and download stay off while the preset has problems. In Chromium, saving attaches the selected file: later page edits write to it, and valid file changes redraw the page. A conflict offers "Взять из файла" or "Оставить мои". Other browsers keep open and download only. Reload does not reattach files.
 
 ## Annotated example
 

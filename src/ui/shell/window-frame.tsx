@@ -293,14 +293,19 @@ function SidebarTab({
   const named = sheet.owned ? `${label}, ${copy.ownMark}` : label;
   const accessibleName = sheet.selectedOnMap ? copy.label.selectedOnMap(named) : named;
 
+  const style = {
+    order,
+    color: sheet.sample === true ? 'var(--color-text-muted)' : undefined,
+  };
+
   return (
     <Tab
       id={sheet.id}
       aria-label={accessibleName}
       aria-describedby={describedBy}
       data-sidebar-entry
-      style={{ order }}
       className={SIDEBAR_TAB_CLASS}
+      style={style}
     >
       {selected ? (
         <CellTooltip name={label} className="min-w-0 flex-1 truncate">

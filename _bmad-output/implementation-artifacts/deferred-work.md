@@ -398,9 +398,34 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-66-replica-mutation-gaps.md`
   summary: Investigate intermittent focus loss when a GM opens an NPC repeat block from its token.
   evidence: One post-review browser run at `44e21453d8146c43ca38e36bdeb24e7bfa2f7a13` passed 520 tests but failed `tests/open.e2e.ts:307`: the Dragon group was visible but inactive after five seconds. Ten exact-scenario serial repeats and a full unchanged 521-test recheck passed. No expectation, retry setting or application code changed; the cause is unverified. Original context is saved in the TASK-66 run's `browser-focus-diagnosis/original-failure/`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Decide whether Add should open a newly created sheet in a nonempty or different sheet set.
+  evidence: Review B4 found that creation succeeds without switching the current sheet. TASK-69 specifies creation and the empty-set sample transition, not this navigation policy.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Define builder reconciliation when a preset edit produces a record above the transport limit.
+  evidence: Review B5/E4 constructed a row regrouping of large text fields; importSnapshot rejects the new record and reconcileRecords retains the prior records. No affected user occurrence was supplied; changing rejection or data-loss policy needs its own contract.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Give snapshot file-read Promise rejection a user-visible refusal.
+  evidence: Review B6/E5 found that file.text rejection reaches a console-only catch. The approved malformed, unsupported and oversized file scenarios do not establish a read-failure occurrence or its message.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Define arbitration for overlapping snapshot reads and preset replacement during a read.
+  evidence: Review B7/E6 constructed reversed asynchronous completion; no request identity guard exists. No observed reversed completion was supplied.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Decide partial draft recovery when a snapshot record is corrupt but its preset is readable.
+  evidence: Review B8 found that the joint draft schema rejects the complete draft. TASK-69 preserves old drafts with a missing snapshot field; no app-produced corrupt-record occurrence or partial-recovery policy was supplied.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Guard generated builder sheet IDs against template IDs if a collision occurrence is found.
+  evidence: Review E2 constructed a nanoid result equal to a template ID that has no sheet record. The current guard checks existing sheet keys; no collision occurrence was supplied.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Define ordering for imported sheet orders too large to increase by one.
+  evidence: Review E3 constructed an unsafe numeric order for which highest + 1 equals highest. Ordinary builder creation starts at zero; no affected imported snapshot occurrence was supplied.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-69-builder-snapshot.md`
+  summary: Pin the snapshot policy for opening another preset before testing that policy.
+  evidence: Review V2 found no test with a nonempty snapshot before preset replacement. The current open clears records; TASK-69 does not explicitly choose clearing versus reconciliation, so a new policy-specific test would assert an implementation choice.
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
   summary: Remove the obsolete default-dev sentence when TASK-74 rewrites the dev instructions.
   evidence: TASK-68 review found that CLAUDE.md still describes default dev as the Owlbear adapter beside its new builder description. Story 1 explicitly defers the old block rewrite to story 7.
+  resolution: Completed in TASK-74. CLAUDE.md now describes the standalone builder and separate dev:owlbear command.
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
   summary: Consider bounded shutdown escalation if a cloudflared child is observed not to terminate.
   evidence: The launcher waits for cloudflared before signaling Vite and ignores repeated signals. The reviewer constructed an unresponsive child; no such occurrence was observed in the CLI test or live control.
@@ -410,3 +435,27 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-68-dev-commands.md`
   summary: Consider a permanent missing-cloudflared launcher regression test.
   evidence: TASK-68 has a direct missing-executable failure control and a cleanup catch path, but its permanent CLI test covers successful startup and termination only. Review established no production behavior gap.
+
+## Deferred from: TASK-70–74 integration review (2026-11-16)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Guard preflight results and failures when the attached file changes during I/O.
+  evidence: The final review constructed a file replacement during a pending read. The result can be compared with the replacement attachment and supply the wrong conflict contents. This requires overlapping picker/confirmation work with slow I/O; it was graded minor and deferred at closeout.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Drain a new attachment's queued edit when the old attachment's write completes.
+  evidence: Replacing and editing a file while the previous file's write is pending can leave the new edit queued. The draft retains it, and a later edit flushes it. The final review graded this narrow attachment-transition case minor.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Keep an empty sheet set's sample read-only when Enter starts editing.
+  evidence: Mouse editing checks the sample flag, but Enter checks only edit permission. A typed sample value disappears and leaves an unused row and undo step in the draft. No real sheet or exported file value is lost; the final review graded it minor.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Define the initial follow baseline while attachment confirmation is open.
+  evidence: The first integration review identified a disk change between the initial open read and attachment completion. Later preflight checks protect ordinary attached writes; the attachment-baseline policy remains deferred.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Define arbitration for stale asynchronous snapshot opens and old-attachment status results.
+  evidence: The first integration review constructed reversed open completion and a prior attachment's late status result. Those redesigns were left outside the repair scope.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Consider duplicate adapter reads, repeated cell lookup, an unused port re-export and file-block styling cleanup.
+  evidence: The first integration review found no reported behavior failure for these items. Physical spacing/alignment utilities and status truncation remain deliberate polish omissions.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
+  summary: Observe native picker permission dialogs and real external-editor saves on the final integration.
+  evidence: Deterministic Bun/Chromium owners prove application behavior. A real native OPFS control passed at the TASK-73 recovery commit; it does not prove final permission dialogs or delivery from an external OS process.

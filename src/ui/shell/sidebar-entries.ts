@@ -1,8 +1,17 @@
 import { ownedFirst, ownedSheetIds } from '@/core/access';
 import type { Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { isSheetSet, resolveSheet, sheetKey, sheetName, type SheetPolicy } from '@/core/sheets';
-import { visibleSheets, type PlayerRole } from '@/core/visibility';
+import { copy } from '@/copy';
+import {
+  isSheetSet,
+  liveSheets,
+  resolveSheet,
+  sheetKey,
+  sheetName,
+  sheetPolicy,
+  type SheetPolicy,
+} from '@/core/sheets';
+import { templateShownTo, visibleSheets, type PlayerRole } from '@/core/visibility';
 
 // One sheet listed by the window sidebar. The policy is kept here because the selected sheet's
 // content uses the same resolved template as the navigation model.
@@ -13,6 +22,8 @@ export type SidebarSheet = {
   name: string;
   owned: boolean;
   selectedOnMap: boolean;
+  sample?: boolean;
+  templateUid?: string;
 };
 
 export type SidebarGroup = {
@@ -165,4 +176,87 @@ export function previewSidebarEntries(
   }
 
   return { sections };
+}
+
+// The builder uses the same grouping and ordering as the room window, but supplies a pale sample
+// entry while a sheet set has no real sheets.
+export function builderSidebarEntries(
+  preset: Preset,
+  records: ReadonlyMap<string, VersionedRecord>,
+  templateUids: readonly string[],
+  role: PlayerRole = 'GM',
+): SidebarEntries {
+  const sections: SidebarSection[] = [];
+
+  for (const [templateIndex, template] of preset.templates.entries()) {
+    if (!templateShownTo(role, template)) {
+      continue;
+    }
+
+    const templateUid = templateUids[templateIndex] ?? template.id;
+    const ownerPreset = { ...preset, templates: [template] };
+
+    if (isSheetSet(template)) {
+      const sheets = liveSheets(records.values(), ownerPreset, template.id)
+        .map((sheet) => builderSidebarSheet(records, ownerPreset, templateUid, sheet.sheetId))
+        .filter((sheet): sheet is SidebarSheet => sheet !== null);
+
+      if (role === 'PLAYER' && sheets.length === 0) {
+        continue;
+      }
+
+      sections.push({
+        kind: 'group',
+        id: template.id,
+        title: template.title,
+        sheets: sheets.length === 0 ? [sampleSheet(template, templateUid)] : sheets,
+        canAdd: role === 'GM',
+      });
+    } else {
+      const sheet = builderSidebarSheet(records, ownerPreset, templateUid, template.id);
+
+      if (sheet !== null) {
+        sections.push({ kind: 'single', sheet });
+      }
+    }
+  }
+
+  return { sections };
+}
+
+export function builderSidebarEntryId(templateUid: string, sheetId: string): string {
+  return `builder-sheet:${templateUid}:${sheetId}`;
+}
+
+function builderSidebarSheet(
+  records: ReadonlyMap<string, VersionedRecord>,
+  preset: Preset,
+  templateUid: string,
+  sheetId: string,
+): SidebarSheet | null {
+  const sheet = sidebarSheet(records, preset, sheetId, false);
+
+  return sheet === null
+    ? null
+    : {
+        ...sheet,
+        id: builderSidebarEntryId(templateUid, sheetId),
+        templateUid,
+      };
+}
+
+function sampleSheet(
+  template: Extract<Preset['templates'][number], { kind: 'set' }>,
+  templateUid: string,
+): SidebarSheet {
+  return {
+    id: builderSidebarEntryId(templateUid, template.id),
+    sheetId: template.id,
+    policy: sheetPolicy(template, template.id),
+    name: copy.builder.previewSample,
+    owned: false,
+    selectedOnMap: false,
+    sample: true,
+    templateUid,
+  };
 }
