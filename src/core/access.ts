@@ -1,6 +1,6 @@
 import { acceptedFieldValue, targetFields } from '@/core/field-patch';
 import { compareCells, ownersBySheet } from '@/core/merge';
-import { plainRowIdOf, type Preset } from '@/core/preset';
+import { plainRowIdOf, repeatTabById, type Preset } from '@/core/preset';
 import {
   blockDataSchema,
   parseRepKey,
@@ -364,9 +364,11 @@ function proposalJudgement(
 
   if (policy === null || !playerMayEdit(policy, context.records, playerId)) return 'denied';
   const current = context.records.get(record.k);
+  const repeatTab = repeat === null ? null : repeatTabById(policy.template, repeat.sectionId);
 
   if (record.d === null) {
     return repeat !== null &&
+      repeatTab === null &&
       playerMayEditField(policy, context.records, playerId, {
         kind: 'rep',
         sectionId: repeat.sectionId,
@@ -386,6 +388,7 @@ function proposalJudgement(
   if (
     current === undefined &&
     (repeat === null ||
+      repeatTab !== null ||
       data.set !== undefined ||
       record.l === undefined ||
       record.l[0] > record.c ||
