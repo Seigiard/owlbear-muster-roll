@@ -73,8 +73,7 @@ export type ComposeContext = {
   mint: (key: string, highestKnownCounter: number) => Version;
   newRecordId: (kind: RecordIdKind, role: string) => string;
   isGmPlayer: (playerId: string) => boolean;
-  // Kept optional for narrow composer test doubles; engine contexts always set it explicitly.
-  mode?: ComposeMode;
+  mode: ComposeMode;
 };
 
 // TASK-37: new ids are short, so a drawn id can collide. A command that draws its own ids draws a
@@ -336,14 +335,7 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(patched.value.k, existing?.c ?? 0);
 
-    return ok(
-      mintedPatch(
-        patched.value,
-        existing,
-        { c, a },
-        context.mode === 'persisted' ? context.records.get('preset')?.c : undefined,
-      ),
-    );
+    return ok(mintedPatch(patched.value, existing, { c, a }, context.mode));
   }
 
   // A patch that changes nothing on the record built so far is skipped in silence: the window
@@ -387,12 +379,7 @@ export function createComposers(connectionId: string): Composers {
     const { c, a } = context.mint(working.k, existing?.c ?? 0);
 
     return {
-      record: mintedPatch(
-        working,
-        existing,
-        { c, a },
-        context.mode === 'persisted' ? context.records.get('preset')?.c : undefined,
-      ),
+      record: mintedPatch(working, existing, { c, a }, context.mode),
       refusals,
     };
   }
@@ -1020,8 +1007,7 @@ function mintedPatch(
   patched: PatchedRecord,
   existing: VersionedRecord | undefined,
   version: Version,
-  presetVersion?: number,
-  emitRemovedClears = true,
+  mode: ComposeMode,
 ): VersionedRecord {
   const before = blockDataSchema.safeParse(existing?.d).data;
 
@@ -1032,7 +1018,7 @@ function mintedPatch(
   );
 
   const removed =
-    emitRemovedClears && presetVersion !== undefined
+    mode === 'persisted'
       ? Object.fromEntries(
           Object.entries(before?.cells ?? {})
             .filter(([id, [value]]) => value !== null && !Object.hasOwn(patched.d.cells, id))
