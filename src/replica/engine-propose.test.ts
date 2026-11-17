@@ -535,6 +535,194 @@ describe('a GM client answers a proposal', () => {
       stored: STR_ROW,
     });
   });
+  test('re-proposes only the edited field and retains the GM tuple when a large stale read-back arrives in two fragments', async () => {
+    // #given
+    const { room, player } = await playerWithSilentGm();
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1);
+    const current = fixturePatch(STR_ROW, { str: 20, note: 'ы'.repeat(7000) }, 5, 'gm-a');
+    const first = fixturePatch(current, { str: 20 }, current.c, current.a);
+    const second = fixturePatch(current, { note: 'ы'.repeat(7000) }, current.c, current.a);
+    // #when
+    answer(room, {
+      ...reject({ k: STR_ROW.k, c: 3, a: PLAYER_ID }, 'stale'),
+      current: first,
+      i: 1,
+      n: 2,
+    });
+    answer(room, {
+      ...reject({ k: STR_ROW.k, c: 3, a: PLAYER_ID }, 'stale'),
+      current: second,
+      i: 2,
+      n: 2,
+    });
+    await pause(30);
+    // #then
+    expect({
+      sent: proposals(room).slice(1),
+      shown: shown(player, STR_ROW.k),
+      pending: pendingKeys(player),
+    }).toEqual({
+      sent: [fixturePatch(STR_ROW, { str: 11 }, 6, PLAYER_ID)],
+      shown: {
+        k: STR_ROW.k,
+        d: {
+          set: 'pc',
+          order: 0,
+          cells: {
+            str: [11, 6, PLAYER_ID],
+            note: ['ы'.repeat(7000), 5, 'gm-a'],
+          },
+        },
+        c: 6,
+        a: PLAYER_ID,
+        l: [1, 'seed'],
+      },
+      pending: [STR_ROW.k],
+    });
+  });
+  test('does not acknowledge or persist a proposal with more than 32 fragments, then accepts a control proposal', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a');
+    const proposed = fixturePatch(STR_ROW, { str: 11 }, 3, PLAYER_SOCKET);
+    const control = fixturePatch(SWORD, { qty: 2 }, 2, PLAYER_SOCKET);
+    const acceptedControl = fixturePatch(SWORD, { item: 'Меч', qty: 2 }, 2, PLAYER_SOCKET);
+    joinPlayerSocket(room);
+    // #when
+
+    for (let i = 1; i <= 33; i += 1) {
+      proposeFragment(room, proposed, i, 33);
+    }
+
+    await pause(50);
+    propose(room, control);
+    await waitUntil(() =>
+      committedRecords(room, 'gm-a').some(
+        (record) => record.k === control.k && record.c === control.c && record.a === control.a,
+      ),
+    );
+    // #then
+    expect({
+      commits: heardOf(room, 'gm-a', 'commit'),
+      stored: [storedRecord(gm, proposed.k), storedRecord(gm, control.k)],
+    }).toEqual({
+      commits: [commit([acceptedControl], [{ k: control.k, c: control.c, a: control.a }])],
+      stored: [STR_ROW, acceptedControl],
+    });
+  });
+  test('evicts the oldest of 33 incomplete proposals before a later part completes it, then accepts a control proposal', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a');
+    const oldest = fixturePatch(STR_ROW, { str: 11 }, 3, PLAYER_SOCKET);
+    const control = fixturePatch(SWORD, { qty: 2 }, 2, PLAYER_SOCKET);
+    const acceptedControl = fixturePatch(SWORD, { item: 'Меч', qty: 2 }, 2, PLAYER_SOCKET);
+    joinPlayerSocket(room);
+    // #when
+
+    for (let counter = oldest.c; counter < oldest.c + 33; counter += 1) {
+      proposeFragment(room, { ...oldest, c: counter }, 1, 2);
+    }
+
+    proposeFragment(room, oldest, 2, 2);
+    await pause(50);
+    propose(room, control);
+    await waitUntil(() =>
+      committedRecords(room, 'gm-a').some(
+        (record) => record.k === control.k && record.c === control.c && record.a === control.a,
+      ),
+    );
+    // #then
+    expect({
+      commits: heardOf(room, 'gm-a', 'commit'),
+      stored: [storedRecord(gm, oldest.k), storedRecord(gm, control.k)],
+    }).toEqual({
+      commits: [commit([acceptedControl], [{ k: control.k, c: control.c, a: control.a }])],
+      stored: [STR_ROW, acceptedControl],
+    });
+  });
+  test('expires an incomplete proposal when its second part arrives after 60 seconds, then accepts a control proposal', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a');
+    const proposed = fixturePatch(STR_ROW, { str: 11 }, 3, PLAYER_SOCKET);
+    const control = fixturePatch(SWORD, { qty: 2 }, 2, PLAYER_SOCKET);
+    const acceptedControl = fixturePatch(SWORD, { item: 'Меч', qty: 2 }, 2, PLAYER_SOCKET);
+    let now = 1_000;
+    const clock = spyOn(Date, 'now').mockImplementation(() => now);
+    joinPlayerSocket(room);
+    // #when
+
+    try {
+      proposeFragment(room, proposed, 1, 2);
+      await pause(20);
+      now += 60_001;
+      proposeFragment(room, proposed, 2, 2);
+      await pause(20);
+      propose(room, control);
+      await waitUntil(() =>
+        committedRecords(room, 'gm-a').some(
+          (record) => record.k === control.k && record.c === control.c && record.a === control.a,
+        ),
+      );
+      // #then
+      expect({
+        commits: heardOf(room, 'gm-a', 'commit'),
+        stored: [storedRecord(gm, proposed.k), storedRecord(gm, control.k)],
+      }).toEqual({
+        commits: [commit([acceptedControl], [{ k: control.k, c: control.c, a: control.a }])],
+        stored: [STR_ROW, acceptedControl],
+      });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+  test('does not persist or acknowledge a duplicate partial proposal before a forbidden second part, then accepts a control proposal', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a');
+    const edit = fixturePatch(STR_ROW, { str: 11 }, 3, PLAYER_SOCKET);
+    const forbidden = fixturePatch(STR_ROW, { secret: 'Лич' }, edit.c, edit.a);
+    const control = fixturePatch(SWORD, { qty: 2 }, 2, PLAYER_SOCKET);
+    const acceptedControl = fixturePatch(SWORD, { item: 'Меч', qty: 2 }, 2, PLAYER_SOCKET);
+    joinPlayerSocket(room);
+    // #when
+    proposeFragment(room, edit, 1, 2);
+    proposeFragment(room, edit, 1, 2);
+    await pause(20);
+
+    const beforeCompletion = {
+      commits: heardOf(room, 'gm-a', 'commit'),
+      rejects: heardOf(room, 'gm-a', 'reject'),
+      stored: storedRecord(gm, edit.k),
+    };
+
+    proposeFragment(room, forbidden, 2, 2);
+    await waitUntil(() => heardOf(room, 'gm-a', 'reject').length === 1);
+    propose(room, control);
+    await waitUntil(() =>
+      committedRecords(room, 'gm-a').some(
+        (record) => record.k === control.k && record.c === control.c && record.a === control.a,
+      ),
+    );
+    // #then
+    expect({
+      beforeCompletion,
+      afterCompletion: {
+        commits: heardOf(room, 'gm-a', 'commit'),
+        rejects: heardOf(room, 'gm-a', 'reject'),
+        stored: [storedRecord(gm, edit.k), storedRecord(gm, control.k)],
+      },
+    }).toEqual({
+      beforeCompletion: { commits: [], rejects: [], stored: STR_ROW },
+      afterCompletion: {
+        commits: [commit([acceptedControl], [{ k: control.k, c: control.c, a: control.a }])],
+        rejects: [reject(edit, 'denied')],
+        stored: [STR_ROW, acceptedControl],
+      },
+    });
+  });
   test('on two GM clients: both store the same record and both commit its echo', async () => {
     // #given
     const room = roomRig.openRoom();
@@ -623,6 +811,30 @@ describe('a GM client answers a proposal', () => {
     );
 
     expect(heardOf(room, 'gm-a', 'reject')).toEqual([{ ...reject(proposed, 'stale'), current }]);
+  });
+  test('with a supported oversized stale read-back: emits stale fragments instead of denied', async () => {
+    // #given
+    const socket = `p-${'x'.repeat(1000)}`;
+    const text = 'ы'.repeat(7000);
+    const current = fixturePatch(STR_ROW, { str: text, note: text }, 3, 'gm-a');
+    const proposed = fixturePatch(STR_ROW, { str: text, note: text }, 2, socket);
+    const first = fixturePatch(current, { str: text });
+    const second = fixturePatch(current, { note: text });
+    const room = roomRig.openRoom();
+    await startClient(room, 'gm-a', {
+      seeded: [...BASE.filter((one) => one.k !== current.k), current],
+    });
+    room.room.join({ id: PLAYER_ID, connectionId: socket, name: 'Оля', role: 'PLAYER' });
+    // #when
+    proposeFragment(room, fixturePatch(proposed, { str: text }), 1, 2, socket);
+    proposeFragment(room, fixturePatch(proposed, { note: text }), 2, 2, socket);
+    await waitUntil(() => heardOf(room, 'gm-a', 'reject').length >= 1);
+    await pause(30);
+    // #then
+    expect(heardOf(room, 'gm-a', 'reject')).toEqual([
+      { ...reject(proposed, 'stale'), current: first, i: 1, n: 2 },
+      { ...reject(proposed, 'stale'), current: second, i: 2, n: 2 },
+    ]);
   });
   test('whose storage could not be read: neither commits nor rejects', async () => {
     // #given
@@ -1088,6 +1300,16 @@ function roomCopyRecords(room: Room): VersionedRecord[] | null {
 
 function propose(room: Room, record: VersionedRecord, from = PLAYER_SOCKET): void {
   room.post(from, { v: 4, g: GENERATION, t: 'propose', i: 1, n: 1, records: [record] });
+}
+
+function proposeFragment(
+  room: Room,
+  record: VersionedRecord,
+  i: number,
+  n: number,
+  from = PLAYER_SOCKET,
+): void {
+  room.post(from, { v: 4, g: GENERATION, t: 'propose', i, n, records: [record] });
 }
 
 // A message from the GM client the test speaks for.
