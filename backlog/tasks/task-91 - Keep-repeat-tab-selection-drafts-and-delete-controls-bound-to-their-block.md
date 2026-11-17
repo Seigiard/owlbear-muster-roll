@@ -1,9 +1,11 @@
 ---
 id: TASK-91
 title: Keep repeat-tab selection, drafts and delete controls bound to their block
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@openai'
 created_date: '2026-11-17T11:03:00Z'
+updated_date: '2026-11-17T11:44:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -51,3 +53,9 @@ Review finding: adversarial-claude-2
 - [ ] #4 After deleting a non-final block, the next block's delete controls start outside confirmation/waiting state and remain usable.
 - [ ] #5 Browser regressions cover remote lifecycle changes during a delayed field save and consecutive local deletion/cancel flows.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Lock browser regressions for stable selection under remote add/delete, delayed draft ownership, Notes selection, and consecutive deletion/cancel. 2. Bind navigation, content keys and delete controls to stable tab/block identity using the existing reducer. 3. Validate browser owners and required source checks; integrate through the TASK-77–98 parent with one closing review.
+<!-- SECTION:PLAN:END -->

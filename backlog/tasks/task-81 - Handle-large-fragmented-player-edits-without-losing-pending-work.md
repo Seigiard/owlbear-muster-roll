@@ -5,9 +5,8 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T15:14:00Z'
-updated_date: '2026-11-17T10:38:00Z'
-labels:
-  - blocked
+updated_date: '2026-11-17T11:44:00Z'
+labels: []
 dependencies: []
 references:
   - src/replica/room-protocol.ts
@@ -32,6 +31,12 @@ TASK-76 introduced cell-level transport fragments when one block no longer fits 
 - [ ] #4 A targeted two-part proposal test proves no persistence or ACK before all unique parts arrive, including duplicate and forbidden second parts.
 <!-- AC:END -->
 
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Re-lock the stale-fragment oracle against the existing ordinary-stale per-cell contract: re-propose only player intent and retain untouched GM tuples. 2. On a fresh accepted baseline, validate reusable test/code slices from the rejected candidate; implement bounded assembly and correctly sized fragmented replies/projections without preserveReadBack/preserveCells semantics. 3. Validate focused owners and all required source checks; parent owns the single integration review.
+<!-- SECTION:PLAN:END -->
+
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
@@ -43,4 +48,6 @@ Earlier progress below is historical; the current status above supersedes it.
 CURRENT: Active implementation on feature/preset-v4-task-81, based on a5abdc3. Locked public regressions cover fragmented stale rebase, projection byte limits, assembly count/bytes/lifetime and two-part admission. The writer has reproduced the failures; production repair and stable full checks are in progress. Nothing from TASK-81 is merged yet.
 
 CURRENT BLOCKER: Not merged. Parent found a contradictory stale-fragment regression: after editing only str, it expects untouched note to be sent again at counter 6/player. The existing ordinary stale owner requires str-only proposal and preserves note at its original GM tuple. The candidate adds a fragmented-only preserveReadBack/preserveCells path that restamps every read-back cell and bypasses stripping, risking overwrite of an independent GM edit. The bounded attempt is closing without acceptance. Continuation must correct the locked oracle and preserve the same per-cell/access semantics for fragmented and ordinary replies.
+
+2026-11-17 continuation: owner approved TASK-77–98 separate ticket chains. Restarting TASK-81 from the accepted integration baseline with a corrected oracle; the old candidate remains preserved and unmerged. Earlier blocker is historical, not proof of repair.
 <!-- SECTION:NOTES:END -->

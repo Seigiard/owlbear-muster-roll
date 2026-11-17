@@ -1,9 +1,11 @@
 ---
 id: TASK-89
 title: Keep repeat-tab fields out of root migration and edit scopes
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@openai'
 created_date: '2026-11-17T11:03:00Z'
+updated_date: '2026-11-17T11:44:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -41,3 +43,9 @@ Review finding: adversarial-claude-4
 - [ ] #3 Removing a root field is detected and counted even when a same-id field remains in a repeat tab.
 - [ ] #4 Public consumer regressions reproduce the reported loss before repair and preserve independent root and tab-block values after repair.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Lock public-consumer regressions for independent root/tab field ids, unchanged upload, edit/proposal/import scopes and counted root removal. 2. Repair shared root scope collection without changing accepted nested support. 3. Validate focused regressions and required source checks; integrate through the TASK-77–98 parent with one closing review.
+<!-- SECTION:PLAN:END -->

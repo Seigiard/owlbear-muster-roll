@@ -2,7 +2,8 @@
 title: 'Complete preset v4 through TASK-98'
 type: 'feature'
 created: '2026-11-17'
-status: 'draft'
+status: 'in-progress'
+baseline_commit: '88b7db235528ca5d7561c306851bf68bd8339586'
 route: 'dispatch'
 review_loop_iteration: 0
 context:
@@ -83,6 +84,8 @@ Start with 89 (scope isolation), 91 (stable tab identity), and the 81 oracle rep
 Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed hours with bounded parallelism and required checks. This is a range, not a run budget. Use 60–90 minute implementation windows, with the first window budgeted at 90 minutes; stop starting new work at twice that budget. Expected combined footprint is approximately 30–45 source and 20–30 test files, with substantial overlap. These are planning bounds; record each ticket's exact paths before dispatch.
 
 ## Implementation Notes
+
+- 2026-11-17: The owner approved separate ticket specs and chains, at most three parallel lanes, and a first 90-minute implementation window. Initial tickets: 89, 91 and the 81 oracle repair. The current checkout remains the integration workspace.
 
 ## Spec Change Log
 
