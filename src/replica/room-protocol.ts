@@ -85,6 +85,38 @@ const PROPOSAL_MAX_BYTES = 480_000;
 const PROPOSAL_MAX_ASSEMBLIES = 32;
 const PROPOSAL_RETENTION_MS = 60_000;
 
+function staleReplyFragments(
+  stale: RejectMessage,
+  current: VersionedRecord,
+): VersionedRecord[] | null {
+  let reserveBytes = jsonByteLength(stale) - jsonByteLength(current) + 1;
+  let fragments = fragmentRecord(current, reserveBytes);
+
+  for (;;) {
+    if (!fragments.ok) {
+      return null;
+    }
+
+    const total = fragments.value.length;
+
+    if (total === 1) {
+      return fragments.value;
+    }
+
+    // The fragment count changes the numbered envelope. Repack until the count and its reserve
+    // agree, rather than reserving for an unrelated proposal-part limit.
+    const numbered = { ...stale, i: total, n: total };
+    reserveBytes = jsonByteLength(numbered) - jsonByteLength(current) + 1;
+    const next = fragmentRecord(current, reserveBytes);
+
+    if (!next.ok || next.value.length === total) {
+      return next.ok ? next.value : null;
+    }
+
+    fragments = next;
+  }
+}
+
 type ProposalAssembly = {
   n: number;
   parts: Map<number, VersionedRecord>;
@@ -358,18 +390,17 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
       case 'stale': {
         const current = proposalReadBack(verdict.current, record);
         const stale = rejectMessage(ports.generation(), edit, { reason: 'stale', current });
-        const reserveBytes = jsonByteLength(stale) - jsonByteLength(current) + 1;
-        const fragments = fragmentRecord(current, reserveBytes);
+        const fragments = staleReplyFragments(stale, current);
 
-        if (!fragments.ok) {
+        if (fragments === null) {
           sendRoom(rejectMessage(ports.generation(), edit, { reason: 'denied' }));
 
           break;
         }
 
-        const total = fragments.value.length;
+        const total = fragments.length;
 
-        for (const [index, fragment] of fragments.value.entries()) {
+        for (const [index, fragment] of fragments.entries()) {
           const answer =
             total === 1
               ? stale

@@ -536,18 +536,23 @@ function WindowRoot({
 
     if (tab === undefined) return;
 
-    const index = visibleTemplateTabs(tab).findIndex(
+    const visible = visibleTemplateTabs(tab);
+
+    const index = visible.findIndex(
       (candidate) =>
         candidate.block?.scopeId === creatingBlock.scopeId &&
         candidate.block.instanceId === creatingBlock.instanceId,
     );
 
-    if (index === -1) return;
+    const created = index === -1 ? undefined : visible[index];
+
+    if (created === undefined) return;
 
     dispatch({
       type: 'select-template-tab',
       sheet: tab.id,
       index,
+      key: templateTabKey(created),
       visible: true,
     });
     setCreatingBlock(null);
