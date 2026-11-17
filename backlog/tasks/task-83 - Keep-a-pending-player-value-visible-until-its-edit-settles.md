@@ -1,9 +1,10 @@
 ---
 id: TASK-83
 title: Keep a pending player value visible until its edit settles
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-16T15:15:00Z'
+updated_date: '2026-11-17T07:57:00Z'
 labels: []
 dependencies: []
 references:
@@ -26,3 +27,11 @@ TASK-76 changed pending projection assembly to use the replica conflict merge. I
 - [ ] #2 The pending marker and visible value agree until acceptance, rejection or cancellation settles the edit.
 - [ ] #3 A focused projection-store regression covers an applied value newer than the local pending cell and settlement afterward.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add a public ProjectionStore regression for a pending cell value 20, newer applied value 30, and its later withdrawal.
+2. Apply the same display-only pending overlay to shown records and PendingEntry records without changing $replica merging.
+3. Run the focused owner and the required changed-path checks with durable logs.
+<!-- SECTION:PLAN:END -->
