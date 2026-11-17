@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T09:40:00Z'
+updated_date: '2026-11-17T09:47:00Z'
 labels:
   - active
 dependencies: []
@@ -27,6 +27,14 @@ After TASK-76 every plain row refers to one shared root block. sheetValuesSignat
 - [ ] #1 The formula invalidation signature considers each unique root or repeat block once per signature computation.
 - [ ] #2 A change to any relevant cell on another tab still invalidates dependent formulas.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Collect each root block key once while scanning plain rows.
+2. Keep all matching repeat blocks, including blocks from other tabs, in the formula invalidation signature.
+3. Reuse the cross-tab dice browser owner and run the required stable full checks.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
