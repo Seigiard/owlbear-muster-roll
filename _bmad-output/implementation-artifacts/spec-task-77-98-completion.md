@@ -101,6 +101,7 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - Window 3 completed TASK-82, 97 and 98. Unchanged cells retain their tuples during preset upload; persisted recovery clears removed fields without contaminating player proposals. Shared add controls distinguish colliding scope titles, and remote repeat-tab edits clear stale dice feedback.
 - Remaining frontier: TASK-79, then TASK-80 and TASK-88/77; TASK-86 remains owner-run. TASK-79's rejected candidate remains preserved. No new frontier task started in this window.
 - Window 3 exceeded its 90-minute estimate because the concurrent oracle, pending/persisted boundary and duplicate-title coverage needed repair, followed by serialized browser checks. Closing work stayed within the existing three-ticket frontier.
+- 2026-11-17 window 4: Owner requested completion of TASK-79 → 80 and TASK-88 → 77 from `3b779818ccaaec60c48fbc29be73046565d0ffdb`. Start at 20:10:54Z, budget 90 minutes. TASK-79 is the initial automated frontier; port useful parts of the preserved candidate only with new-baseline validation and faithful owners for both reproduced path defects. TASK-80 follows accepted automated nested runtime behavior. TASK-88 records the proven boundary, then TASK-77 AC2 can close through its explicit supersession rule. TASK-79 AC5 and TASK-86 remain owner-only; they do not authorize a mock-based live completion claim. Serialize browser suites and shared source edits.
 
 ## Spec Change Log
 
