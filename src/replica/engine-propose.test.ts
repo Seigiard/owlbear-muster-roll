@@ -20,6 +20,7 @@ import {
   rejection,
   send,
   shown,
+  storageKey,
   storedRecord,
   type RigClient,
   type RigRoom,
@@ -851,6 +852,86 @@ describe('a GM client answers a proposal', () => {
         { ...reject(proposed, 'stale'), current: first, i: 1, n: 2 },
         { ...reject(proposed, 'stale'), current: second, i: 2, n: 2 },
       ],
+    });
+  });
+  test('a tightly packed numbered stale read-back reaches the player and rebases its pending edit', async () => {
+    // #given
+    const densePreset = structuredClone(PRESET);
+    densePreset.templates[0]!.tabs[0]!.sections[0]!.rows[0]!.cells.push({
+      kind: 'field',
+      type: 'text',
+      id: 'bio',
+    });
+
+    const denseBase: VersionedRecord[] = BASE.map((record): VersionedRecord =>
+      record.k === 'preset'
+        ? { k: 'preset', d: encodePreset(densePreset), c: record.c, a: record.a }
+        : record,
+    );
+
+    const remoteText = {
+      name: 'a'.repeat(7_300),
+      note: 'b'.repeat(7_448),
+      bio: 'c'.repeat(7_300),
+    };
+
+    const current = fixturePatch(STR_ROW, { str: 20, ...remoteText }, 5, 'gm-a');
+    const staleProposal = fixturePatch(STR_ROW, { str: 11, ...remoteText }, 3, PLAYER_ID);
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: denseBase });
+
+    const player = await startClient(room, PLAYER_ID, {
+      role: 'PLAYER',
+      seeded: [],
+    });
+
+    await waitUntil(() => shown(player, STR_ROW.k) !== undefined);
+    gm.engine.stop();
+    send(player, strEdit('str', 11));
+    await waitUntil(() => proposals(room).length === 1);
+    gm.backing.set(storageKey(current.k), JSON.stringify(current));
+    await gm.startEngine();
+    await waitUntil(() => gm.store.$sync.get().state === 'live');
+
+    // #when
+    proposeFragment(room, fixturePatch(staleProposal, { str: 11 }), 1, 4, PLAYER_ID);
+    proposeFragment(room, fixturePatch(staleProposal, { name: remoteText.name }), 2, 4, PLAYER_ID);
+    proposeFragment(room, fixturePatch(staleProposal, { note: remoteText.note }), 3, 4, PLAYER_ID);
+    proposeFragment(room, fixturePatch(staleProposal, { bio: remoteText.bio }), 4, 4, PLAYER_ID);
+    await waitUntil(() => heardOf(room, 'gm-a', 'reject').length >= 1);
+    await pause(50);
+
+    // #then
+    const replies = heardOf(room, 'gm-a', 'reject');
+    const again = fixturePatch(STR_ROW, { str: 11 }, 6, PLAYER_ID);
+
+    const shownAgain: VersionedRecord = {
+      k: STR_ROW.k,
+      d: {
+        set: 'pc',
+        order: 0,
+        cells: {
+          str: [11, 6, PLAYER_ID],
+          name: [remoteText.name, 5, 'gm-a'],
+          note: [remoteText.note, 5, 'gm-a'],
+          bio: [remoteText.bio, 5, 'gm-a'],
+        },
+      },
+      c: 6,
+      a: PLAYER_ID,
+      l: [1, 'seed'],
+    };
+
+    expect({
+      replyFits: replies.map((reply) => jsonByteLength(reply) < 15_000),
+      rebased: proposals(room).filter((record) => record.c === 6),
+      shown: shown(player, STR_ROW.k),
+      pending: pendingKeys(player),
+    }).toEqual({
+      replyFits: [true, true],
+      rebased: [again],
+      shown: shownAgain,
+      pending: [],
     });
   });
   test('whose storage could not be read: neither commits nor rejects', async () => {

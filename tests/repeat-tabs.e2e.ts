@@ -257,6 +257,27 @@ test('a remote repeat-block add keeps the selected non-repeat Notes tab open', a
   await expect(sheetTab(selected.window, 'Notes')).toHaveAttribute('aria-selected', 'true');
 });
 
+test('a remote preceding delete keeps a locally created block selected', async ({ context }) => {
+  // #given
+  const creating = await openSeededClient(context, GM);
+  const remote = await openSeededClient(context, { ...GM, client: 'gm-2' });
+  await sheetTab(creating.window, '+').click();
+  await creating.window.getByRole('textbox', { name: 'name' }).fill('Created C');
+  await expect(sheetTab(remote.window, 'Created C')).toBeVisible();
+
+  // #when
+  await sheetTab(remote.window, 'Alpha').click();
+  await remote.window.getByRole('button', { name: copy.command.delete }).click();
+  await remote.window.getByRole('button', { name: copy.command.delete, exact: true }).click();
+  await expect(sheetTab(creating.window, 'Alpha')).toHaveCount(0);
+
+  // #then
+  expect({
+    selected: await sheetTab(creating.window, 'Created C').getAttribute('aria-selected'),
+    nameFields: await creating.window.getByRole('textbox', { name: 'name' }).count(),
+  }).toEqual({ selected: 'true', nameFields: 1 });
+});
+
 test('the GM final plus adds and opens an empty block', async ({ context }) => {
   // #given
   const gm = await openSeededClient(context, GM);
