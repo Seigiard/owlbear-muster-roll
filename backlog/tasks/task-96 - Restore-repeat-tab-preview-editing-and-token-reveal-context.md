@@ -1,9 +1,11 @@
 ---
 id: TASK-96
 title: Restore repeat-tab preview editing and token reveal context
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@seigiard'
 created_date: '2026-11-17T11:05:00Z'
+updated_date: '2026-11-17T15:16:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -39,3 +41,12 @@ Review finding: bugs+impl-codex-7
 - [ ] #3 Opening a linked token cell below the visible area of a repeat tab scrolls to that cell and gives it focus when the open-flow focus policy requires it.
 - [ ] #4 Browser regressions verify actual edit entry/value output and below-fold reveal/focus, not only selected-tab labels.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add the selected repeat-tab block as the body context so Builder preview edit entry keeps the block instance id.
+2. Add the same repeat-block context to the selected tab body so token reveal finds, scrolls, and focuses its target under the established policy.
+3. Lock focused browser regressions in a new dedicated test file for Builder edit/value output and below-fold token reveal/focus.
+4. Run focused browser evidence and the required source checks; leave full browser-suite scheduling to the parent.
+<!-- SECTION:PLAN:END -->

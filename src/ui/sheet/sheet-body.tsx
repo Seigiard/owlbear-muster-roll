@@ -166,6 +166,44 @@ export function SheetBody({
   const displayedTabIndex = displayedTab?.sourceIndex ?? openTab;
   const displayedTabBlock = displayedTab?.block ?? null;
 
+  const sections = (template.tabs[displayedTabIndex]?.sections ?? []).flatMap((section, index) =>
+    sectionShownTo(role, template, displayedTabIndex, index)
+      ? [
+          <SheetSection
+            key={`${displayedTabKey}.${index}`}
+            template={template}
+            section={section}
+            tabIndex={displayedTabIndex}
+            sectionIndex={index}
+            templateTitle={template.title}
+            sheetId={sheetId}
+            records={shownRecords}
+            readOnly={editing === null}
+            pending={pending}
+            blockTools={blockTools}
+            tabBlock={displayedTabBlock}
+            role={role}
+          />,
+        ]
+      : [],
+  );
+
+  const tabContent = (
+    <>
+      {sections}
+      {displayedTabBlock !== null && tabBlockEditing !== null && role === 'GM' ? (
+        <TabBlockControls
+          key={displayedTabKey}
+          sheetId={sheetId}
+          scopeId={displayedTabBlock.scopeId}
+          instanceId={displayedTabBlock.instanceId}
+          name={displayedTabBlock.name}
+          editing={tabBlockEditing}
+        />
+      ) : null}
+    </>
+  );
+
   return (
     <FieldEditingContext value={editing}>
       <DiceSheetContext value={diceSheet}>
@@ -176,37 +214,13 @@ export function SheetBody({
             data-sheet-body
             data-tab-index={displayedTabIndex}
           >
-            {(template.tabs[displayedTabIndex]?.sections ?? []).flatMap((section, index) =>
-              sectionShownTo(role, template, displayedTabIndex, index)
-                ? [
-                    <SheetSection
-                      key={`${displayedTabKey}.${index}`}
-                      template={template}
-                      section={section}
-                      tabIndex={displayedTabIndex}
-                      sectionIndex={index}
-                      templateTitle={template.title}
-                      sheetId={sheetId}
-                      records={shownRecords}
-                      readOnly={editing === null}
-                      pending={pending}
-                      blockTools={blockTools}
-                      tabBlock={displayedTabBlock}
-                      role={role}
-                    />,
-                  ]
-                : [],
+            {displayedTabBlock === null ? (
+              tabContent
+            ) : (
+              <div className="contents" data-repeat-block={displayedTabBlock.instanceId}>
+                {tabContent}
+              </div>
             )}
-            {displayedTabBlock !== null && tabBlockEditing !== null && role === 'GM' ? (
-              <TabBlockControls
-                key={displayedTabKey}
-                sheetId={sheetId}
-                scopeId={displayedTabBlock.scopeId}
-                instanceId={displayedTabBlock.instanceId}
-                name={displayedTabBlock.name}
-                editing={tabBlockEditing}
-              />
-            ) : null}
           </div>
         </div>
       </DiceSheetContext>
