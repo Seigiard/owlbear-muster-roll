@@ -238,6 +238,7 @@ function sheetValuesSignature(
   localChanges: number,
 ): string {
   const versions: string[] = [];
+  const rootKeys = new Set<string>();
   const repeatPrefixes: string[] = [];
 
   for (const section of layoutSections(template)) {
@@ -260,11 +261,15 @@ function sheetValuesSignature(
       const id = firstFieldId(row);
 
       if (id !== null) {
-        const record = records.get(rowKey(sheetId, id));
-
-        versions.push(record === undefined ? '' : versionOf(record));
+        rootKeys.add(rowKey(sheetId, id));
       }
     }
+  }
+
+  for (const key of rootKeys) {
+    const record = records.get(key);
+
+    versions.push(record === undefined ? '' : versionOf(record));
   }
 
   for (const record of records.values()) {
