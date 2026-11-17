@@ -12,6 +12,7 @@ import {
   storedData,
   storedRecords,
   watchCommands,
+  putOnScene,
   type ClientParams,
   type StoredRecord,
 } from './support/room';
@@ -265,6 +266,7 @@ test('a linked token opens and marks only its exact block tab', async ({ context
   // #given
   const gm = await openSeededClient(context, GM);
   await sheetTab(gm.window, 'Overview').click();
+  await putOnScene(gm.window, ['beta']);
 
   // #when
   await gm.background.evaluate(() =>
@@ -276,7 +278,7 @@ test('a linked token opens and marks only its exact block tab', async ({ context
   await expect(gm.window.getByRole('textbox', { name: 'hp' })).toHaveValue('9');
 
   // #when
-  await gm.window.getByRole('button', { name: copy.label.selectBlockOnMap(2) }).click();
+  await gm.window.getByRole('button', { name: copy.command.selectOnMap }).click();
 
   // #then
   await expect(sheetTab(gm.window, copy.label.selectedOnMap('Блок 2'))).toHaveCount(1);
