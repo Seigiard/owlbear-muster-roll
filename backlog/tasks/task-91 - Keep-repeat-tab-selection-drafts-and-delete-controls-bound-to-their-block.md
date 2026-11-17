@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-17T11:03:00Z'
-updated_date: '2026-11-17T11:49:00Z'
+updated_date: '2026-11-17T12:35:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -61,3 +61,9 @@ Review finding: adversarial-claude-2
 2. Use the existing pure navigation reducer to store stable rendered identity; derive identity-based shell/content keys so a removed target unmounts rather than redirects a draft.
 3. Validate focused browser ownership, then source checks; leave TASK-95/96/97 unchanged.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+TDD chain recorded: locked browser regressions at 43e889182dbfb5b878ef8437aae31fe9c81108c0; production fix at 3e31b0110b6ca6637d3f610aa4ff86b49888453b. Focused browser 20 passed; full browser with 2 workers 562 passed. Five browser assertions calibrated against positional-identity, redirected-draft, Notes-selection, and inherited delete-control mutations. Parent owns final acceptance and integration review.
+<!-- SECTION:NOTES:END -->
