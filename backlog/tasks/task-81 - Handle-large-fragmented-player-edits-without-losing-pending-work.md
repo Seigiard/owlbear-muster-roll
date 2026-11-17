@@ -5,9 +5,9 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T15:14:00Z'
-updated_date: '2026-11-17T09:28:00Z'
+updated_date: '2026-11-17T09:39:00Z'
 labels:
-  - active
+  - blocked
 dependencies: []
 references:
   - src/replica/room-protocol.ts
@@ -36,4 +36,6 @@ TASK-76 introduced cell-level transport fragments when one block no longer fits 
 
 <!-- SECTION:NOTES:BEGIN -->
 CURRENT: Active implementation on feature/preset-v4-task-81, based on a5abdc3. Locked public regressions cover fragmented stale rebase, projection byte limits, assembly count/bytes/lifetime and two-part admission. The writer has reproduced the failures; production repair and stable full checks are in progress. Nothing from TASK-81 is merged yet.
+
+CURRENT BLOCKER: Not merged. Parent found a contradictory stale-fragment regression: after editing only str, it expects untouched note to be sent again at counter 6/player. The existing ordinary stale owner requires str-only proposal and preserves note at its original GM tuple. The candidate adds a fragmented-only preserveReadBack/preserveCells path that restamps every read-back cell and bypasses stripping, risking overwrite of an independent GM edit. The bounded attempt is closing without acceptance. Continuation must correct the locked oracle and preserve the same per-cell/access semantics for fragmented and ordinary replies.
 <!-- SECTION:NOTES:END -->

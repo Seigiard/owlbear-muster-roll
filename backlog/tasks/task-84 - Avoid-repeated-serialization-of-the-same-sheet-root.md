@@ -1,12 +1,13 @@
 ---
 id: TASK-84
 title: Avoid repeated serialization of the same sheet root
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@openai'
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T09:28:00Z'
+updated_date: '2026-11-17T09:40:00Z'
 labels:
-  - queued
+  - active
 dependencies: []
 references:
   - src/ui/sheet/sheet-body.tsx
@@ -31,4 +32,6 @@ After TASK-76 every plain row refers to one shared root block. sheetValuesSignat
 
 <!-- SECTION:NOTES:BEGIN -->
 CURRENT: Queued after TASK-81. No implementation or validation yet in this pass; the signature deduplication and cross-tab invalidation criteria remain open.
+
+CURRENT: Preparing the isolated signature-deduplication change. TASK-81 is closing as blocked and will not enter this baseline. Source implementation starts after its worker settles; no TASK-84 result is claimed yet.
 <!-- SECTION:NOTES:END -->
