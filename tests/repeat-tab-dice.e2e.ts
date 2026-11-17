@@ -100,31 +100,26 @@ test('a room roll uses hp from the selected repeat-tab block', async ({ context 
 test('Builder Preview rolls from the selected repeat-tab block', async ({ page }) => {
   // #given
   const frame = await openBuilderPreview(page);
-  await sheetTab(frame, 'Alpha').click();
+  const source = page.getByRole('row', { name: 'NPC', exact: true });
+  await source.click();
+  await expect(source).toHaveAttribute('aria-selected', 'true');
+  const beta = sheetTab(frame, 'Beta');
+  await beta.click();
+  await expect(beta).toHaveAttribute('aria-selected', 'true');
   const dice = diceButton(frame);
-  await dice.click();
-  await page.evaluate(() => {
-    document.documentElement.dataset.diceRandomCalls = '0';
-    Math.random = () => {
-      const calls = Number(document.documentElement.dataset.diceRandomCalls ?? '0') + 1;
-      document.documentElement.dataset.diceRandomCalls = String(calls);
-
-      return 0;
-    };
-  });
 
   // #when
   await dice.click();
+  await dice.click();
+  await expect(messageUnder(dice)).toHaveText('Нельзя бросить: поле «Хиты» пустое или не число');
+  const alpha = sheetTab(frame, 'Alpha');
+  await alpha.click();
+  await expect(alpha).toHaveAttribute('aria-selected', 'true');
+  await dice.click();
+  await dice.click();
 
   // #then
-  await expect
-    .poll(async () => ({
-      randomCalls: await page.evaluate(() =>
-        Number(document.documentElement.dataset.diceRandomCalls ?? '0'),
-      ),
-      message: await messageUnder(dice).textContent(),
-    }))
-    .toEqual({ randomCalls: 1, message: '' });
+  await expect(messageUnder(dice)).toHaveText('');
 });
 
 async function openRoom(context: BrowserContext): Promise<RoomClient> {
