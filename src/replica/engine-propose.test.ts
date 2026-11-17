@@ -1492,28 +1492,42 @@ describe('a player and a GM client together', () => {
 
     await waitUntil(() => shown(player, block.k) !== undefined);
     // #when
-    send(player, {
+
+    const playerCommandId = send(player, {
       type: 'field-patch',
       sheetId: 'brok',
       target: { kind: 'rep', sectionId: 'quest', instanceId: 'q1' },
       fieldId: 'quest',
       value: 'Найти щит',
     });
-    await waitUntil(() => storedRecord(gm, block.k)?.c === playerEdit.c);
-    send(gm, {
+
+    await pause(10);
+
+    const gmCommandId = send(gm, {
       type: 'field-patch',
       sheetId: 'brok',
       target: { kind: 'rep', sectionId: 'quest', instanceId: 'q1' },
       fieldId: 'secret',
       value: 'Ключ',
     });
-    await waitUntil(() => storedRecord(gm, block.k)?.c === gmEdit.c);
+
+    await pause(10);
     // #then
     expect({
-      playerProposal: proposals(room),
+      player: {
+        outcome: outcome(player, playerCommandId),
+        reason: rejection(player, playerCommandId),
+        proposal: proposals(room),
+      },
+      gm: outcome(gm, gmCommandId),
       stored: storedRecord(gm, block.k),
     }).toEqual({
-      playerProposal: [playerEdit],
+      player: {
+        outcome: { kind: 'answered', answer: undefined },
+        reason: undefined,
+        proposal: [playerEdit],
+      },
+      gm: { kind: 'answered', answer: undefined },
       stored: gmEdit,
     });
   });
