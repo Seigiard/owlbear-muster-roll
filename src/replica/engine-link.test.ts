@@ -43,6 +43,7 @@ const PRESET: Preset = {
 
       tabs: [
         {
+          title: 'Основное',
           sections: [
             {
               rows: [
@@ -58,6 +59,33 @@ const PRESET: Preset = {
             {
               repeat: { id: 'item', nameField: 'item' },
               rows: [{ cells: [{ kind: 'field', type: 'text', id: 'item' }] }],
+            },
+          ],
+        },
+        {
+          title: 'Задания',
+          repeat: { id: 'quest', nameField: 'quest' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'quest' },
+                    { kind: 'token', id: 'visible_token' },
+                  ],
+                },
+              ],
+            },
+            {
+              visibility: 'gm',
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'secret' },
+                    { kind: 'token', id: 'secret_token' },
+                  ],
+                },
+              ],
             },
           ],
         },
@@ -107,6 +135,16 @@ const BASE: readonly VersionedRecord[] = [
   {
     k: 'blk:brok:item:sword',
     d: { order: 0, cells: { item: ['Меч', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  {
+    k: 'blk:brok:quest:q1',
+    d: {
+      order: 0,
+      cells: { quest: ['Найти меч', 1, 'seed'], secret: ['Лич', 1, 'seed'] },
+    },
     c: 1,
     a: 'seed',
     l: [1, 'seed'],
@@ -512,6 +550,80 @@ describe('a repeat block removal', () => {
 });
 
 describe('token menu', () => {
+  test('a player press on a GM-only source-section token in a visible repeat tab opens nothing while a visible token opens', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    await startClient(room, 'gm-a', {
+      seeded: [
+        ...BASE,
+        {
+          k: 'link:t-visible',
+          d: { s: 'brok', path: ['quest', 'q1'], c: 'visible_token' },
+          c: 1,
+          a: 'seed',
+        },
+        {
+          k: 'link:t-secret',
+          d: { s: 'brok', path: ['quest', 'q1'], c: 'secret_token' },
+          c: 1,
+          a: 'seed',
+        },
+      ],
+    });
+    const player = await startClient(room, 'player-a', { role: 'PLAYER', seeded: [] });
+    await waitUntil(() => itemOf(player, OPEN_ITEM) !== undefined);
+    // #when
+    player.platform.clickContextMenuItem(OPEN_ITEM, ['t-secret']);
+    await pause(20);
+    player.platform.clickContextMenuItem(OPEN_ITEM, ['t-visible']);
+    await waitUntil(() => player.store.$openRequest.get() !== null);
+    const request = player.store.$openRequest.get();
+    // #then
+    expect({
+      actionOpens: player.platform.actionOpens(),
+      target:
+        request === null
+          ? null
+          : { sheetId: request.sheetId, path: request.path, cellId: request.cellId },
+    }).toEqual({
+      actionOpens: 1,
+      target: { sheetId: 'brok', path: ['quest', 'q1'], cellId: 'visible_token' },
+    });
+  });
+  test('a GM press on a GM-only source-section token in a visible repeat tab opens it', async () => {
+    // #given
+
+    const room = roomRig.openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      seeded: [
+        ...BASE,
+        {
+          k: 'link:t-secret',
+          d: { s: 'brok', path: ['quest', 'q1'], c: 'secret_token' },
+          c: 1,
+          a: 'seed',
+        },
+      ],
+    });
+
+    await waitUntil(() => itemOf(gm, OPEN_ITEM) !== undefined);
+    // #when
+    gm.platform.clickContextMenuItem(OPEN_ITEM, ['t-secret']);
+    await waitUntil(() => gm.store.$openRequest.get() !== null);
+    const request = gm.store.$openRequest.get();
+    // #then
+    expect({
+      actionOpens: gm.platform.actionOpens(),
+      target:
+        request === null
+          ? null
+          : { sheetId: request.sheetId, path: request.path, cellId: request.cellId },
+    }).toEqual({
+      actionOpens: 1,
+      target: { sheetId: 'brok', path: ['quest', 'q1'], cellId: 'secret_token' },
+    });
+  });
   test('gives a GM with no link only "Привязать лист…", for one token of the character layer', async () => {
     // #given
     const room = roomRig.openRoom();
