@@ -147,16 +147,13 @@ export function repeatBlockTabIndex(
   return index === -1 ? null : index;
 }
 
-// AD-19: a link is live only while its sheet is live, its repeat block is live when it names one,
-// and the template, for a sheet link, or the repeat section, for a repeat block link, is linkable.
-// `null`: the link is inert, and every view and the token menu treat it as no link.
+// AD-19: a link is live only while its sheet, target token cell, and, when named, repeat block are
+// live. `null`: the link is inert, and every view and the token menu treat it as no link.
 export function liveLinkTarget(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset | null,
   target: LinkTarget,
-  blocks: BlockIndex = blockIndex(records.values()),
 ): LiveLinkTarget | null {
-  void blocks;
   const policy = resolveSheet(records, preset, target.sheetId);
 
   if (policy === null) {

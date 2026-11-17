@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import {
-  blockIndex,
   linkDataOf,
   linkTargetKey,
   linkTargetOf,
@@ -58,9 +57,9 @@ export type TokenMenuAction = 'link' | 'unlink' | 'open';
 // One filter per icon of the item, in the order Owlbear tries them.
 export type TokenMenuEntry = { action: TokenMenuAction; filters: TokenMenuFilter[] };
 
-// One target of the link picker. `sheetName` is the sheet's name and `blockName` the repeat block's
-// first field value, "" when empty; `blockName` is `null` for a sheet target. `linked`: a live link
-// names the target already.
+// One target of the link picker. `sheetName` is the sheet's name and `blockName` the repeat scope's
+// explicit nameField value, "" when empty; `blockName` is `null` for a sheet target. `linked`: a
+// live link names the target already.
 export type PickerTarget = {
   target: LinkTarget;
   cellId: string;
@@ -70,8 +69,8 @@ export type PickerTarget = {
   linked: boolean;
 };
 
-// One group of the link picker: a linkable template's sheets, with `section` `null`, or the repeat
-// blocks of one linkable repeat section of a template across its sheets.
+// One group of the link picker: the token-cell targets of a template, with `section` `null`, or the
+// repeat blocks of one repeat scope with a token cell across the template's sheets.
 export type PickerGroup = {
   template: Template;
   section: PresetSection | null;
@@ -124,7 +123,6 @@ export function liveLinks(
   preset: Preset | null,
 ): Map<string, LiveLinkTarget> {
   const links = new Map<string, LiveLinkTarget>();
-  const blocks = blockIndex(records.values());
 
   for (const [key, record] of records) {
     if (!key.startsWith('link:')) {
@@ -133,7 +131,7 @@ export function liveLinks(
 
     const tokenId = tokenIdSchema.safeParse(key.slice('link:'.length));
     const target = linkTargetOf(record.d);
-    const live = target === null ? null : liveLinkTarget(records, preset, target, blocks);
+    const live = target === null ? null : liveLinkTarget(records, preset, target);
 
     // A token id no command could write never reaches a menu filter.
     if (tokenId.success && live !== null) {

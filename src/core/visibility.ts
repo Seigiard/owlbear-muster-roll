@@ -1,4 +1,4 @@
-import { blockIndex, linkTargetOf, liveLinkTarget, type LiveLinkTarget } from '@/core/link-target';
+import { linkTargetOf, liveLinkTarget, type LiveLinkTarget } from '@/core/link-target';
 import type { DicePlace } from '@/core/dice-roll';
 import {
   firstFieldId,
@@ -172,8 +172,6 @@ export function visibleRecords(
     return records.filter((record) => record.k === 'preset');
   }
 
-  const blocks = blockIndex(known.values());
-
   return records.filter((record) => {
     if (record.k.startsWith('blk:') && record.k.split(':').length === 2) {
       return record.d === null || sheetShownTo(known, preset, record.k.slice('blk:'.length), role);
@@ -181,7 +179,7 @@ export function visibleRecords(
 
     if (record.k.startsWith('link:')) {
       const target = linkTargetOf(record.d);
-      const live = target === null ? null : liveLinkTarget(known, preset, target, blocks);
+      const live = target === null ? null : liveLinkTarget(known, preset, target);
 
       return live !== null && linkTargetShownTo(role, live);
     }

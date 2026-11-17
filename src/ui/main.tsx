@@ -55,7 +55,7 @@ import type { ShellTab } from '@/ui/shell/tab-bar';
 import { WindowFrame } from '@/ui/shell/window-frame';
 import { followTheme } from '@/ui/theme';
 import { useWindowView } from '@/ui/window-view';
-import { tokenCellPickerUrl } from '@/core/token-links';
+import { LINK_PICKER_POPOVER_ID, tokenCellPickerUrl } from '@/core/token-links';
 
 import './main.css';
 
@@ -279,7 +279,7 @@ function WindowRoot({
       open: (target) => {
         void platform.popover
           .open({
-            id: 'app.muster-roll/link-picker',
+            id: LINK_PICKER_POPOVER_ID,
             url: tokenCellPickerUrl(target),
             width: 320,
             height: 420,
@@ -601,7 +601,7 @@ function WindowRoot({
   const loading = <p>{copy.loading}</p>;
 
   // A GM edits every sheet. A sheet of a sheet set has the access panel when its template is
-  // visible, and "Удалить". A linkable template shows its token status.
+  // visible, and "Удалить". A template with token cells shows its token status.
   function gmSheetParts(
     tab: SidebarSheet,
     openTab: number | null,
