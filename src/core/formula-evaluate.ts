@@ -8,6 +8,7 @@ import { parseNumberInput } from '@/core/number-input';
 import {
   plainRow,
   resolveFieldReference,
+  repeatSectionAt,
   sectionAt,
   type PresetCell,
   type PresetFieldCell,
@@ -242,6 +243,7 @@ export function formulaDiceFieldLookup(
   ownBlock: FieldValues = NO_VALUES,
 ): DiceFieldLookup {
   const section = sectionAt(layout, from);
+  const repeatSection = repeatSectionAt(layout, from);
 
   return (id) => {
     const reference = resolveFieldReference(layout, from, id);
@@ -252,7 +254,7 @@ export function formulaDiceFieldLookup(
 
     const cell =
       reference.scope === 'block'
-        ? fieldInRows(section.rows, id)
+        ? fieldInRows(repeatSection?.rows ?? [], id)
         : fieldInCells(plainRow(layout, reference.rowId) ?? [], id);
 
     if (cell === null || cell.type !== 'dice-choice') {
@@ -334,6 +336,7 @@ export function formulaFieldLookup(
   ownBlock: FieldValues = NO_VALUES,
 ): FieldLookup {
   const section = sectionAt(layout, from);
+  const repeatSection = repeatSectionAt(layout, from);
 
   return (id) => {
     const reference = resolveFieldReference(layout, from, id);
@@ -344,7 +347,7 @@ export function formulaFieldLookup(
 
     const cell =
       reference.scope === 'block'
-        ? fieldInRows(section.rows, id)
+        ? fieldInRows(repeatSection?.rows ?? [], id)
         : fieldInCells(plainRow(layout, reference.rowId) ?? [], id);
 
     if (cell === null) {

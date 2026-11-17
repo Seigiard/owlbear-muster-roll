@@ -408,6 +408,17 @@ export function repeatSectionById(layout: TemplateLayout, id: string): PresetSec
   };
 }
 
+export function repeatSectionAt(
+  layout: TemplateLayout,
+  from: TemplateRowPlace,
+): PresetSection | null {
+  const section = sectionAt(layout, from);
+  const row = section?.rows[from.rowIndex];
+  const scopeId = row?.repeat?.id ?? section?.repeat?.id ?? layout.tabs[from.tabIndex]?.repeat?.id;
+
+  return scopeId === undefined ? null : repeatSectionById(layout, scopeId);
+}
+
 export function repeatSectionPlace(
   layout: TemplateLayout,
   id: string,

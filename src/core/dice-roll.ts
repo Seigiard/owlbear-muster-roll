@@ -14,6 +14,7 @@ import { parseFormula, writeDiceFields } from '@/core/formula';
 import {
   plainRow,
   repeatSectionId,
+  repeatSectionAt,
   resolveFieldReference,
   sectionAt,
   type PresetCell,
@@ -254,7 +255,7 @@ function fieldLabel(layout: TemplateLayout, from: TemplateRowPlace, id: string):
 
   const rows: readonly (readonly PresetCell[])[] =
     reference.scope === 'block'
-      ? (sectionAt(layout, from)?.rows.map((row) => row.cells) ?? [])
+      ? (repeatSectionAt(layout, from)?.rows.map((row) => row.cells) ?? [])
       : [plainRow(layout, reference.rowId) ?? []];
 
   for (const row of rows) {
