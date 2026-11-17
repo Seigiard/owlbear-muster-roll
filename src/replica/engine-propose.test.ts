@@ -1389,6 +1389,40 @@ describe("a player's entry over its lifetime", () => {
 });
 
 describe('a player and a GM client together', () => {
+  test('commits a player field edit to an existing visible repeat-tab block at the receiving GM', async () => {
+    // #given
+    const repeatTab: VersionedRecord = {
+      k: 'blk:brok:quest:q1',
+      d: { order: 0, cells: { quest: ['Найти меч', 1, 'seed'] } },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    };
+
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: [...BASE, repeatTab] });
+    const player = await startClient(room, PLAYER_ID, { role: 'PLAYER', seeded: [] });
+    const edited = fixturePatch(repeatTab, { quest: 'Найти щит' }, 2, PLAYER_ID);
+
+    await waitUntil(() => shown(player, repeatTab.k) !== undefined);
+    // #when
+    send(player, {
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'rep', sectionId: 'quest', instanceId: 'q1' },
+      fieldId: 'quest',
+      value: 'Найти щит',
+    });
+    await waitUntil(() => storedRecord(gm, repeatTab.k)?.c === edited.c);
+    // #then
+    expect({
+      committed: heardOf(room, 'gm-a', 'commit'),
+      stored: storedRecord(gm, repeatTab.k),
+    }).toEqual({
+      committed: [commit([edited], [{ k: edited.k, c: edited.c, a: edited.a }])],
+      stored: edited,
+    });
+  });
   test('commits a visible field edit from the player while the GM creates a repeat-tab block', async () => {
     // #given
     const room = roomRig.openRoom();
