@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { isTemplateId } from '@/core/field-id';
+import { isFieldId, isTemplateId } from '@/core/field-id';
 import type { JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
 
@@ -50,7 +50,7 @@ export const cellSchema = z.tuple([
   z.string().min(1),
 ]);
 
-export const cellsSchema = dictionaryOf(z.string().min(1), cellSchema);
+export const cellsSchema = dictionaryOf(z.string().refine(isFieldId), cellSchema);
 
 export const presetDataSchema = z.base64().min(1);
 
@@ -81,13 +81,15 @@ export const linkDataSchema = z.strictObject({
   c: keySegmentSchema,
 });
 
-export const recordSchema = z.union([
-  versionedRecordOf(presetKeySchema, presetDataSchema),
-  versionedRecordOf(blockKeySchema, blockDataSchema).extend({ l: lifecycleSchema }),
-  versionedRecordOf(aclKeySchema, playerDataSchema),
-  versionedRecordOf(linkKeySchema, linkDataSchema),
-  versionedRecordOf(plinkKeySchema, playerDataSchema),
-]);
+export const recordSchema = z
+  .union([
+    versionedRecordOf(presetKeySchema, presetDataSchema),
+    versionedRecordOf(blockKeySchema, blockDataSchema).extend({ l: lifecycleSchema }),
+    versionedRecordOf(aclKeySchema, playerDataSchema),
+    versionedRecordOf(linkKeySchema, linkDataSchema),
+    versionedRecordOf(plinkKeySchema, playerDataSchema),
+  ])
+  .refine((record) => record.k.startsWith('blk:') || record.l === undefined);
 
 export type VersionedRecord = z.infer<typeof recordSchema>;
 

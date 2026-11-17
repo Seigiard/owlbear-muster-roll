@@ -10,7 +10,12 @@ export function fixtureCells(
 }
 
 export function fixtureRecord(k: string, data: JsonValue, c = 1, a = 'seed'): VersionedRecord {
-  if (!k.startsWith('blk:') || data === null || !(data instanceof Object)) {
+  if (!k.startsWith('blk:')) {
+    // SAFETY: negative parser tests intentionally construct invalid records.
+    return { k, d: data, c, a } as VersionedRecord;
+  }
+
+  if (data === null || !(data instanceof Object)) {
     // SAFETY: negative parser tests intentionally construct invalid records.
     return { k, d: data, c, a, l: [1, 'seed'] } as VersionedRecord;
   }
@@ -38,8 +43,13 @@ export function fixturePatch(
 ): VersionedRecord {
   const record = fixtureRecord(base.k, data, c, a);
 
-  if (record.d === null || !base.k.startsWith('blk:')) {
-    // SAFETY: non-block and tombstone fixtures preserve the deliberately supplied record variant.
+  if (!base.k.startsWith('blk:')) {
+    // SAFETY: non-block fixtures preserve the deliberately supplied record variant.
+    return record;
+  }
+
+  if (record.d === null) {
+    // SAFETY: block tombstone fixtures preserve the supplied lifecycle variant.
     return { ...record, l: base.l } as VersionedRecord;
   }
 
@@ -47,11 +57,17 @@ export function fixturePatch(
   const previous = base.d as { order: number; set?: string; cells: Cells } | null;
   // SAFETY: fixtureRecord constructed this block data.
   const next = record.d as { order: number; set?: string; cells: Cells };
+  // SAFETY: fixturePatch accepts the same JSON object shape as fixtureRecord.
+  const body = data as JsonObject;
+  // SAFETY: fixturePatch accepts block data with either direct cells or a block body.
+  const suppliedValues = ('order' in body ? (body.cells ?? {}) : body) as Record<string, JsonValue>;
 
   for (const [id, cell] of Object.entries(next.cells)) {
     const held = previous?.cells[id];
 
-    if (held !== undefined && held[0] === cell[0]) next.cells[id] = held;
+    if (held !== undefined && !Array.isArray(suppliedValues[id]) && held[0] === cell[0]) {
+      next.cells[id] = held;
+    }
   }
 
   const set = next.set ?? previous?.set;
