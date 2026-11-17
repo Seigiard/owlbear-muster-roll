@@ -3,6 +3,7 @@ import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, spyOn, test } from 'bun:test';
 import { inflateSync, strFromU8 } from 'fflate';
 import type { JsonValue } from '@/core/json';
+import { jsonByteLength } from '@/core/message-size';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { encodeStateRecords } from '@/core/state-records';
@@ -814,27 +815,43 @@ describe('a GM client answers a proposal', () => {
   });
   test('with a supported oversized stale read-back: emits stale fragments instead of denied', async () => {
     // #given
-    const socket = `p-${'x'.repeat(1000)}`;
-    const text = 'ы'.repeat(7000);
-    const current = fixturePatch(STR_ROW, { str: text, note: text }, 3, 'gm-a');
-    const proposed = fixturePatch(STR_ROW, { str: text, note: text }, 2, socket);
-    const first = fixturePatch(current, { str: text });
-    const second = fixturePatch(current, { note: text });
+
+    const name = randomText(0x5eed);
+    const note = randomText(0xbeef);
+    const current = fixturePatch(STR_ROW, { str: Number.MAX_SAFE_INTEGER, name, note }, 3, 'gm-a');
+    const proposed = fixturePatch(STR_ROW, { str: 11, name, note }, 2, PLAYER_SOCKET);
+    const first = fixturePatch(current, { str: Number.MAX_SAFE_INTEGER, name });
+    const second = fixturePatch(current, { note });
     const room = roomRig.openRoom();
     await startClient(room, 'gm-a', {
       seeded: [...BASE.filter((one) => one.k !== current.k), current],
     });
-    room.room.join({ id: PLAYER_ID, connectionId: socket, name: 'Оля', role: 'PLAYER' });
+    joinPlayerSocket(room);
     // #when
-    proposeFragment(room, fixturePatch(proposed, { str: text }), 1, 2, socket);
-    proposeFragment(room, fixturePatch(proposed, { note: text }), 2, 2, socket);
+    proposeFragment(room, fixturePatch(proposed, { str: 11 }), 1, 3);
+    proposeFragment(room, fixturePatch(proposed, { name }), 2, 3);
+    proposeFragment(room, fixturePatch(proposed, { note }), 3, 3);
     await waitUntil(() => heardOf(room, 'gm-a', 'reject').length >= 1);
     await pause(30);
     // #then
-    expect(heardOf(room, 'gm-a', 'reject')).toEqual([
-      { ...reject(proposed, 'stale'), current: first, i: 1, n: 2 },
-      { ...reject(proposed, 'stale'), current: second, i: 2, n: 2 },
-    ]);
+    const ingress = heardOf(room, PLAYER_SOCKET, 'propose');
+    const replies = heardOf(room, 'gm-a', 'reject');
+    const fullReply = { ...reject(proposed, 'stale'), current };
+
+    expect({
+      fullReplyAtLeast15_000Bytes: jsonByteLength(fullReply) >= 15_000,
+      ingressBelow15_000Bytes: ingress.every((fragment) => jsonByteLength(fragment) < 15_000),
+      repliesBelow15_000Bytes: replies.every((fragment) => jsonByteLength(fragment) < 15_000),
+      replies,
+    }).toEqual({
+      fullReplyAtLeast15_000Bytes: true,
+      ingressBelow15_000Bytes: true,
+      repliesBelow15_000Bytes: true,
+      replies: [
+        { ...reject(proposed, 'stale'), current: first, i: 1, n: 2 },
+        { ...reject(proposed, 'stale'), current: second, i: 2, n: 2 },
+      ],
+    });
   });
   test('whose storage could not be read: neither commits nor rejects', async () => {
     // #given
@@ -1310,6 +1327,16 @@ function proposeFragment(
   from = PLAYER_SOCKET,
 ): void {
   room.post(from, { v: 4, g: GENERATION, t: 'propose', i, n, records: [record] });
+}
+
+function randomText(initialSeed: number): string {
+  let seed = initialSeed;
+
+  return Array.from({ length: 7_300 }, () => {
+    seed = (seed * 1_664_525 + 1_013_904_223) >>> 0;
+
+    return String.fromCharCode(33 + (seed % 90));
+  }).join('');
 }
 
 // A message from the GM client the test speaks for.
