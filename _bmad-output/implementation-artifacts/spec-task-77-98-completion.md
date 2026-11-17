@@ -105,6 +105,10 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 
 ## Spec Change Log
 
+- Window 4 closeout: TASK-79 candidate `301dfcf` and TASK-88 evidence `41301d9` are merged at `62044f2`, but their acceptance was withdrawn after cumulative review. TASK-79, 80, 88 and 77 remain open. See `task-79-window4-review.md` for all findings and their owners.
+- TASK-80 candidate `8ddc9293745bd4e9e0220f61b42ab832490b54ee` remains unmerged in `task80-builder-w4-20261117`. Its test lock is unchanged. Calibration, full post-implementation checks and review remain.
+- The doubled window budget ended at 23:10:54Z. Porting TASK-79 exposed preservation regressions and required repeated repairs. No review-fix batch started. Resume with the six TASK-79 blockers and section→row dice lookup, then validate TASK-80 and TASK-88/77 against the repaired baseline.
+
 ## Review Triage Log
 
 - Round 01: `mixed`, 6/6 sources, two major findings fixed in `738bbf2`. Two minor test gaps share those regressions.
@@ -116,6 +120,10 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - Window 3 round 02: `final`, 2/2 sources, no degradation; exit 1. The same deferred risk remains, with an additional failed-preset-send trigger traced in code. No runtime reproduction is claimed. The loop closed with no caller-graded finding above minor; it did not produce an empty review. See the TASK-82 spec and `deferred-work.md`.
 
 ## Verification
+
+- Window 4 review: `mixed`, 6/6 sources, no degradation; one critical, five major and five minor findings. Zero fix rounds; acceptance is blocked. TASK-100 owns the same-id ancestor lookup follow-up; TASK-101 owns the maintenance follow-ups.
+- Window 4 clean integration `62044f2`: all six required checks passed; 3422 unit pass, one DOM skip, 573 browser pass. This evidence missed the reviewed defects and does not establish complete nested support.
+- TASK-80 final focused checks at `8ddc929`: 38 pass, zero fail. Implementer typecheck predates the final sibling-tab correction; full final validation is outstanding.
 
 - Ticket consumer regressions: expected behavior from the matrix and original task; estimate 1–3 minutes per run.
 - Required source checks from `CLAUDE.md`: format, lint, typecheck, Bun, browser and build; estimate 4–10 minutes per ticket state.

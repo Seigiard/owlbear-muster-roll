@@ -1,10 +1,10 @@
 ---
 id: TASK-80
 title: Builder covers preset format v4
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-17T10:38:00Z'
+updated_date: '2026-11-17T23:13:00Z'
 labels:
   - format-v4
   - blocked
@@ -37,14 +37,18 @@ After format v4 the builder still edits v3 shapes: no row form, `kind` instead o
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-CURRENT STATUS — 2026-11-17, after closing review:
+Window 4 preserves an UNMERGED candidate 8ddc9293745bd4e9e0220f61b42ab832490b54ee on feature/preset-v4-task-80-w4; lock d5b7e7691657e765ab3f090ae476fc1fe249063b is unchanged. Focused Builder checks pass 38/38; typecheck and commit hooks passed on recorded states. Calibration, post-implementation full unit/browser checks and integration review remain. TASK-79 closing-review blockers invalidate final baseline acceptance. Candidate includes v4 forms, scoped id suggestions and loaded-file warnings. Preserve checkout task80-builder-w4-20261117 and chain artifacts preset-v4-window4-20261117/task-80; no AC or Done claim.
+
+Historical notes before window 4:
+
+HISTORICAL STATUS — 2026-11-17, after closing review:
 NOT STARTED. Waiting for verified TASK-79 scope-path behavior and the unresolved TASK-78 review. Only a Builder draft exists; no TASK-80 implementation was merged.
 
-Earlier progress below is historical; the current status above supersedes it.
+These earlier notes are superseded by the window 4 status above.
 
 TASK-77 single-review carryover within this task: addCell currently allocates token ids from field-only taken ids, and withRepeat hard-codes repeat.id=repeat, so a second token cell/repeat section collides. sectionFromPreset also annotates an already typed row with any. Address valid unique defaults and the typed conversion while implementing the v4 forms; no separate follow-up issue is needed. Sources: src/builder/document.ts:134,417-421,539-667; review arch+quality-claude-5/8.
 
 Not started in the autonomous TASK-78–87 continuation because TASK-79 remains blocked on full-path scope admission and import ancestry. The Builder draft is retained outside the repository and must be reconciled with a verified TASK-79 candidate before implementation.
 
-CURRENT: Not started. Waiting for TASK-79 full-path validation/import repairs. The prepared Builder draft is not an accepted implementation; no TASK-80 source was merged.
+HISTORICAL: Not started. Waiting for TASK-79 full-path validation/import repairs. The prepared Builder draft is not an accepted implementation; no TASK-80 source was merged.
 <!-- SECTION:NOTES:END -->

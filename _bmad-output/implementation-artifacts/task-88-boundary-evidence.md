@@ -2,10 +2,12 @@
 
 ## Verdict
 
-The temporary refusal in TASK-77 AC2 is superseded. Format v4 supports repeat
-scopes on templates, tabs, sections, and rows. A nested scope is valid under
-its parent scope; its runtime block uses the complete parent-to-child path.
-There is no nesting-depth limit.
+**Not accepted after integration review.** The checks below prove selected
+parser and runtime paths. They do not establish complete nested support.
+`task-79-window4-review.md` records unsupported section→row rendering, nested
+player proposals, and incomplete full-path consumers. TASK-77 AC2 stays open.
+The earlier supersession conclusion and matrix below are provisional evidence,
+not an acceptance verdict. TASK-79 still owns the required runtime repairs.
 
 This record does not claim TASK-79 AC5. The live Owlbear GM/player scenario
 remains owned by TASK-86.

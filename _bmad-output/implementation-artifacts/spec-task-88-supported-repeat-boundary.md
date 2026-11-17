@@ -2,7 +2,7 @@
 title: 'TASK-88: Record the supported repeat boundary'
 type: 'bugfix'
 created: '2026-11-17'
-status: 'done'
+status: 'in-progress'
 route: 'oneshot'
 review_loop_iteration: 0
 context:
@@ -22,6 +22,11 @@ context:
 </frozen-after-approval>
 
 ## Implementation Notes
+
+- 2026-11-17 closing review: the supersession claim was rejected. Section→row
+  nesting, nested player proposals and other TASK-79 consumers remain broken.
+  `task-79-window4-review.md` records the blocking findings. TASK-88 and TASK-77
+  AC2 remain open; the checks-only result below is historical evidence only.
 
 - 2026-11-17: Took the checks-only path. TASK-88 has no new consumer behavior:
   existing public parser, Builder, upload, and accepted TASK-79 runtime owners
