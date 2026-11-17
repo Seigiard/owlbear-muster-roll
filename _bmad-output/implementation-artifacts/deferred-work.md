@@ -495,3 +495,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
   summary: "TASK-87: Share the picker popover id at the token-cell opener."
   evidence: "arch+quality-claude-11 found main.tsx duplicating LINK_PICKER_POPOVER_ID as a literal."
+
+## Deferred from: TASK-77–98 window 1 (2026-11-17)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-98-completion.md`
+  summary: Define cleanup for obsolete incomplete stale-reply assemblies.
+  evidence: "Review lean-codex-1 traced two GMs' A1/B1/A2/B2 reply interleave. After one tuple completes, a late fragment for the obsolete tuple can create another incomplete assembly, retained until clear or preset change. This is a code-traced retention risk, not a measured incident. TASK-81's proposal-assembly bounds do not define stale-reply cleanup. The final review left this minor finding deferred."

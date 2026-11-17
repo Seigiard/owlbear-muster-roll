@@ -1,11 +1,11 @@
 ---
 id: TASK-91
 title: Keep repeat-tab selection, drafts and delete controls bound to their block
-status: In Progress
+status: Done
 assignee:
   - '@openai'
 created_date: '2026-11-17T11:03:00Z'
-updated_date: '2026-11-17T12:35:00Z'
+updated_date: '2026-11-17T14:18:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -47,11 +47,11 @@ Review finding: adversarial-claude-2
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A remote add or delete before the selected tab preserves the selected source tab or block while that target still exists.
-- [ ] #2 With B being edited, deleting preceding block A cannot save B's draft into C; a removed draft target never writes into another block.
-- [ ] #3 A non-repeat Notes tab stays open when another GM adds a preceding repeat-tab block.
-- [ ] #4 After deleting a non-final block, the next block's delete controls start outside confirmation/waiting state and remain usable.
-- [ ] #5 Browser regressions cover remote lifecycle changes during a delayed field save and consecutive local deletion/cancel flows.
+- [x] #1 A remote add or delete before the selected tab preserves the selected source tab or block while that target still exists.
+- [x] #2 With B being edited, deleting preceding block A cannot save B's draft into C; a removed draft target never writes into another block.
+- [x] #3 A non-repeat Notes tab stays open when another GM adds a preceding repeat-tab block.
+- [x] #4 After deleting a non-final block, the next block's delete controls start outside confirmation/waiting state and remain usable.
+- [x] #5 Browser regressions cover remote lifecycle changes during a delayed field save and consecutive local deletion/cancel flows.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -66,4 +66,14 @@ Review finding: adversarial-claude-2
 
 <!-- SECTION:NOTES:BEGIN -->
 TDD chain recorded: locked browser regressions at 43e889182dbfb5b878ef8437aae31fe9c81108c0; production fix at 3e31b0110b6ca6637d3f610aa4ff86b49888453b. Focused browser 20 passed; full browser with 2 workers 562 passed. Five browser assertions calibrated against positional-identity, redirected-draft, Notes-selection, and inherited delete-control mutations. Parent owns final acceptance and integration review.
+
+2026-11-17: Accepted in the integration branch. Final integration evidence on clean 738bbf20a2193cd92d3d39c9a467398be9db1ea8: format, lint, typecheck, unit (3401 pass, 1 skip), browser (563 pass, workers=2), and build all exit 0. Closing review: mixed 6/6, two major fixes; final 2/2, no findings or open questions. See _bmad-output/implementation-artifacts/spec-task-77-98-completion.md.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Remote block changes preserve the selected live tab and delayed drafts stay with their block. Removed targets discard drafts; successor delete controls reset. Review fix 738bbf2 also preserves stable selection after local plus creation. Browser owners and mutations cover these paths.
+
+Final integration evidence on clean 738bbf20a2193cd92d3d39c9a467398be9db1ea8: format, lint, typecheck, unit (3401 pass, 1 skip), browser (563 pass, workers=2), and build all exit 0. Closing review: mixed 6/6, two major fixes; final 2/2, no findings or open questions. See _bmad-output/implementation-artifacts/spec-task-77-98-completion.md.
+<!-- SECTION:FINAL_SUMMARY:END -->

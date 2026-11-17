@@ -1,11 +1,11 @@
 ---
 id: TASK-94
 title: Reject root token links to cells that exist only in repeat tabs
-status: In Progress
+status: Done
 assignee:
   - '@openai'
 created_date: '2026-11-17T11:05:00Z'
-updated_date: '2026-11-17T13:04:00Z'
+updated_date: '2026-11-17T14:18:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -36,10 +36,10 @@ Review finding: arch+quality-claude-6
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A token cell that exists only in a repeat tab cannot be linked without its block scope and instance.
-- [ ] #2 Changing an ordinary token-bearing tab into a repeat tab removes or invalidates the obsolete root link through the existing preset-change contract.
-- [ ] #3 Root linkability and picker targets do not claim a root token target when only repeated token cells exist.
-- [ ] #4 Valid root token cells and properly scoped repeat-tab links remain supported, with public link/preset-change regressions for both.
+- [x] #1 A token cell that exists only in a repeat tab cannot be linked without its block scope and instance.
+- [x] #2 Changing an ordinary token-bearing tab into a repeat tab removes or invalidates the obsolete root link through the existing preset-change contract.
+- [x] #3 Root linkability and picker targets do not claim a root token target when only repeated token cells exist.
+- [x] #4 Valid root token cells and properly scoped repeat-tab links remain supported, with public link/preset-change regressions for both.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -56,4 +56,14 @@ Review finding: arch+quality-claude-6
 2026-11-17: Started isolated TDD chain from accepted TASK-89 baseline. Scope is limited to root-versus-repeat-tab token targets; TASK-92 visibility and TASK-95 navigation remain out of scope.
 
 2026-11-17: Locked and implemented root-versus-repeat-tab token targets. Stable evidence at 16e8cd2: focused public consumers, format, lint, typecheck, Bun, build, and browser 558/558. Four false-green calibrations passed. Awaiting parent integration and final acceptance; no criteria were checked here.
+
+2026-11-17: Accepted in the integration branch. Final integration evidence on clean 738bbf20a2193cd92d3d39c9a467398be9db1ea8: format, lint, typecheck, unit (3401 pass, 1 skip), browser (563 pass, workers=2), and build all exit 0. Closing review: mixed 6/6, two major fixes; final 2/2, no findings or open questions. See _bmad-output/implementation-artifacts/spec-task-77-98-completion.md.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Root token lookup, linkability and picker targets exclude repeat-tab-only cells. Preset changes remove obsolete root links. Valid root and properly scoped repeat-tab links remain supported; public consumer owners and calibration cover both.
+
+Final integration evidence on clean 738bbf20a2193cd92d3d39c9a467398be9db1ea8: format, lint, typecheck, unit (3401 pass, 1 skip), browser (563 pass, workers=2), and build all exit 0. Closing review: mixed 6/6, two major fixes; final 2/2, no findings or open questions. See _bmad-output/implementation-artifacts/spec-task-77-98-completion.md.
+<!-- SECTION:FINAL_SUMMARY:END -->

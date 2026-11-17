@@ -1,11 +1,11 @@
 ---
 id: TASK-89
 title: Keep repeat-tab fields out of root migration and edit scopes
-status: In Progress
+status: Done
 assignee:
   - '@openai'
 created_date: '2026-11-17T11:03:00Z'
-updated_date: '2026-11-17T12:20:00Z'
+updated_date: '2026-11-17T14:18:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -45,10 +45,10 @@ Review finding: adversarial-claude-4
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An unchanged preset upload preserves root hp=7 when a later repeat tab declares its own text field hp; it emits no root null-clear or unreported loss.
-- [ ] #2 Root field edits, player proposals, preset reconciliation and snapshot import resolve root fields independently from same-id repeat-tab fields.
-- [ ] #3 Removing a root field is detected and counted even when a same-id field remains in a repeat tab.
-- [ ] #4 Public consumer regressions reproduce the reported loss before repair and preserve independent root and tab-block values after repair.
+- [x] #1 An unchanged preset upload preserves root hp=7 when a later repeat tab declares its own text field hp; it emits no root null-clear or unreported loss.
+- [x] #2 Root field edits, player proposals, preset reconciliation and snapshot import resolve root fields independently from same-id repeat-tab fields.
+- [x] #3 Removing a root field is detected and counted even when a same-id field remains in a repeat tab.
+- [x] #4 Public consumer regressions reproduce the reported loss before repair and preserve independent root and tab-block values after repair.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -63,4 +63,14 @@ Review finding: adversarial-claude-4
 2026-11-17: Scoped the implementation to the shared `templateScopes` root/block boundary. The locked regression suite will cover unchanged upload, root edits, player proposals, snapshot import, and counted root removal; repeat-tab storage and nested support remain unchanged.
 
 2026-11-17: Locked and calibrated public-consumer regressions at 5fbccdd. Implemented the shared root/block scope repair at 5d66f13. Focused tests passed 143/143; format, lint, typecheck, unit, browser (workers=2), and build passed in durable runs on 5d66f13. Parent owns integration, final acceptance, and status.
+
+2026-11-17: Accepted in the integration branch. Final integration evidence on clean 738bbf20a2193cd92d3d39c9a467398be9db1ea8: format, lint, typecheck, unit (3401 pass, 1 skip), browser (563 pass, workers=2), and build all exit 0. Closing review: mixed 6/6, two major fixes; final 2/2, no findings or open questions. See _bmad-output/implementation-artifacts/spec-task-77-98-completion.md.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Root fields remain independent from same-id repeat-tab fields during unchanged uploads, edits, player proposals and snapshot import. Actual root removal is counted. Locked consumer regressions and calibration cover the prior loss.
+
+Final integration evidence on clean 738bbf20a2193cd92d3d39c9a467398be9db1ea8: format, lint, typecheck, unit (3401 pass, 1 skip), browser (563 pass, workers=2), and build all exit 0. Closing review: mixed 6/6, two major fixes; final 2/2, no findings or open questions. See _bmad-output/implementation-artifacts/spec-task-77-98-completion.md.
+<!-- SECTION:FINAL_SUMMARY:END -->

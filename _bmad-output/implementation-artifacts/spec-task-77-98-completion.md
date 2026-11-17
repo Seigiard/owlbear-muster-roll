@@ -5,7 +5,7 @@ created: '2026-11-17'
 status: 'in-progress'
 baseline_commit: '88b7db235528ca5d7561c306851bf68bd8339586'
 route: 'dispatch'
-review_loop_iteration: 0
+review_loop_iteration: 1
 context:
   - '{project-root}/GLOSSARY.md'
   - '{project-root}/docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md'
@@ -86,10 +86,20 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 ## Implementation Notes
 
 - 2026-11-17: The owner approved separate ticket specs and chains, at most three parallel lanes, and a first 90-minute implementation window. Initial tickets: 89, 91 and the 81 oracle repair. The current checkout remains the integration workspace.
+- 2026-11-17 window 1: Integrated TASK-89 (`7d2f6f6`), TASK-91 (`c1e9fdb`), TASK-94 (`05ef736`) and repaired TASK-81 (`1117177`). All four tasks passed their acceptance checks and the closing integration review.
+- TASK-81 uses the ordinary stale-reply per-cell contract. Corrected lock `37654a1` fails against baseline `c6822ca`: a 15,188-byte read-back becomes denied. Candidate `c8e595d` delivers two fragments while preserving local intent and untouched GM tuples.
+- Review regressions `aedc6f3` and fixes `738bbf2` cover complete numbered-envelope sizing and stable selection after local '+' creation. Both assertions passed mutation calibration.
+- Remaining tasks: 77, 79, 80, 82, 88, 90, 92, 93, 95, 96, 97 and 98. TASK-86 remains the owner's live-room gate. The umbrella stays in progress.
+- Resume with the repeat-tab follow-ups before TASK-79. Its saved candidate imports children under an incorrect parent path and rejects valid parent-local scope ids. TASK-80 waits for verified TASK-79. TASK-82 first needs a valid concurrent-edit oracle; its saved candidate fails player-proposal stripping. The rejected candidates remain available for diagnosis.
+- TASK-95 should reuse and verify the rendered-identity conversion already added by TASK-91. Numeric selection inputs remain available for Builder compatibility.
 
 ## Spec Change Log
 
 ## Review Triage Log
+
+- Round 01: `mixed`, 6/6 sources, two major findings fixed in `738bbf2`. Two minor test gaps share those regressions.
+- Round 02: `final`, 2/2 sources, no degraded sources, findings or open questions; exit 0. Cumulative base: `a87fc3c`; checked source: `738bbf2`.
+- Deferred `lean-codex-1`: obsolete incomplete stale-reply retention needs a cleanup contract. See `deferred-work.md`, TASK-77–98 window 1. Shared assembler and identity deduplication suggestions were immaterial.
 
 ## Verification
 
@@ -99,3 +109,4 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - Backlog-only changes: CLI reads, doctor and whitespace checks; estimate under 1 minute. Markdown is excluded from formatter coverage.
 - Baseline: five required checks passed; browser 557/558. NPC token focus failed in the full run and passed 3/3 isolated retries. Keep this unresolved instability visible.
 - Live Owlbear verification: TASK-86, owner scheduled; no autonomous runtime estimate or completion claim.
+- Final clean source `738bbf20a2193cd92d3d39c9a467398be9db1ea8`: format, lint, typecheck, unit, browser (`--workers=2`) and build all exit 0. Unit: 3401 pass, 1 skip, 0 fail. Browser: 563 pass. Later full green runs do not establish the cause of the baseline focus failure.
