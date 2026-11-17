@@ -85,7 +85,7 @@ test('a failed viewport read still lists every scene token with globally unlinke
 function listed(container: HTMLElement): { name: string; linked: boolean }[] {
   return [...container.querySelectorAll('li label')].map((label) => ({
     name: label.querySelector('span:first-of-type')?.textContent ?? '',
-    linked: label.textContent.includes('Токен привязан'),
+    linked: label.textContent.includes('Привязан к этой ячейке'),
   }));
 }
 

@@ -2,6 +2,8 @@ import type { JsonValue } from '@/core/json';
 import {
   repeatSectionById,
   repeatSectionPlace,
+  repeatTabById,
+  repeatScopeById,
   placedSections,
   type Preset,
   type PresetSection,
@@ -16,6 +18,7 @@ import {
   type LinkData,
   type VersionedRecord,
 } from '@/core/records';
+import { renderedTabs } from '@/core/rendered-tabs';
 import { resolveSheet, sheetIdSchema, type SheetPolicy } from '@/core/sheets';
 
 // A v4 link names a sheet, an optional sequence of (repeat scope, block id)
@@ -119,23 +122,38 @@ export function repeatBlockTabIndex(
   sheetId: string,
   instanceId: string,
 ): number | null {
-  const sectionId = blockIndex(records).get(blockIndexKey(sheetId, instanceId));
+  const recordList = [...records];
+  const sectionId = blockIndex(recordList).get(blockIndexKey(sheetId, instanceId));
+  const place = sectionId === undefined ? null : repeatSectionPlace(layout, sectionId);
 
-  return sectionId === undefined
-    ? null
-    : (repeatSectionPlace(layout, sectionId)?.place.tabIndex ?? null);
+  if (sectionId === undefined || place === null) return null;
+
+  const tabRepeat = repeatTabById(layout, sectionId);
+
+  const tabs = renderedTabs(
+    layout,
+    new Map(recordList.map((record) => [record.k, record] as const)),
+    sheetId,
+  );
+
+  const index = tabs.findIndex(
+    (tab) =>
+      tab.sourceIndex === place.place.tabIndex &&
+      (tabRepeat === null
+        ? tab.block === null
+        : tab.block?.scopeId === sectionId && tab.block.instanceId === instanceId),
+  );
+
+  return index === -1 ? null : index;
 }
 
-// AD-19: a link is live only while its sheet is live, its repeat block is live when it names one,
-// and the template, for a sheet link, or the repeat section, for a repeat block link, is linkable.
-// `null`: the link is inert, and every view and the token menu treat it as no link.
+// AD-19: a link is live only while its sheet, target token cell, and, when named, repeat block are
+// live. `null`: the link is inert, and every view and the token menu treat it as no link.
 export function liveLinkTarget(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset | null,
   target: LinkTarget,
-  blocks: BlockIndex = blockIndex(records.values()),
 ): LiveLinkTarget | null {
-  void blocks;
   const policy = resolveSheet(records, preset, target.sheetId);
 
   if (policy === null) {
@@ -187,18 +205,62 @@ export function tokenCellPlace(
     return null;
   }
 
-  for (const { place, section } of placedSections(template)) {
-    if (
-      (repeatSectionId === null && section.repeat !== undefined) ||
-      (repeatSectionId !== null && section.repeat?.id !== repeatSectionId)
-    ) {
-      continue;
+  if (repeatSectionId !== null) {
+    const tab = repeatTabById(template, repeatSectionId);
+
+    if (tab !== null) {
+      for (const [sectionIndex, section] of tab.tab.sections.entries()) {
+        if (section.repeat !== undefined) continue;
+
+        for (const [rowIndex, row] of section.rows.entries()) {
+          if (row.repeat !== undefined) continue;
+
+          if (row.cells.some((cell) => cell.kind === 'token' && cell.id === cellId)) {
+            return {
+              tabIndex: tab.place.tabIndex,
+              sectionIndex,
+              rowIndex,
+              section,
+              row,
+            };
+          }
+        }
+      }
+
+      return null;
     }
 
+    const scope = repeatScopeById(template, repeatSectionId);
+
+    if (scope === null) return null;
+
+    const rows =
+      scope.row === null
+        ? scope.section.rows.filter((row) => row.repeat === undefined)
+        : [scope.row];
+
+    const row = rows.find((candidate) =>
+      candidate.cells.some((cell) => cell.kind === 'token' && cell.id === cellId),
+    );
+
+    if (row !== undefined) {
+      return {
+        tabIndex: scope.place.tabIndex,
+        sectionIndex: scope.place.sectionIndex,
+        rowIndex: scope.section.rows.indexOf(row),
+        section: scope.section,
+        row,
+      };
+    }
+
+    return null;
+  }
+
+  for (const { place, section } of placedSections(template)) {
+    if (section.repeat !== undefined) continue;
+
     for (const [rowIndex, row] of section.rows.entries()) {
-      if (repeatSectionId === null && row.repeat !== undefined) {
-        continue;
-      }
+      if (row.repeat !== undefined) continue;
 
       if (row.cells.some((cell) => cell.kind === 'token' && cell.id === cellId)) {
         return {

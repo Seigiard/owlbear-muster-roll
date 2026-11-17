@@ -1167,6 +1167,27 @@ describe('openTabIndex', () => {
   });
 });
 
+test('parsePresetFile accepts a repeat tab with its explicit name field', () => {
+  // #given
+  const text = presetOf({
+    id: 'npc',
+    title: 'NPC',
+    tabs: [
+      {
+        title: 'NPC',
+        repeat: { id: 'npc', nameField: 'name' },
+        sections: [{ rows: [{ cells: [TEXT_FIELD('name')] }] }],
+      },
+    ],
+  });
+
+  // #when
+  const parsed = parsePresetFile(text);
+
+  // #then
+  expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+});
+
 describe('parsePresetFile with a window size', () => {
   test.each<[string, WindowSize]>([
     ['a common size', { width: 900, height: 700 }],

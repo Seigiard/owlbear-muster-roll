@@ -1,12 +1,14 @@
 ---
 id: TASK-79
 title: 'Nested repeat: blocks inside blocks'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-16T22:52:00Z'
+updated_date: '2026-11-17T10:38:00Z'
 labels:
   - format-v4
+  - blocked
 dependencies:
   - TASK-78
 references:
@@ -35,5 +37,14 @@ A repeat tab per NPC is useless unless the NPC can hold its own lists, such as a
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
+CURRENT STATUS — 2026-11-17, after closing review:
+BLOCKED, NOT MERGED. Candidate d4fd388 on feature/preset-v4-task-79 is preserved. Invalid nested-parent paths survive snapshot import without loss accounting; the same repeat scope id under different parents is rejected globally. Resume only after TASK-78 review blockers are addressed and these two defects have faithful owners. No full nested-repeat completion is claimed.
+
+Earlier progress below is historical; the current status above supersedes it.
+
 TASK-77 review found renameFieldId updates template.repeat.nameField but not the repeated section/row nameField, and Builder withContent loses those repeat updates. Renaming the example attack field to weapon leaves nameField=attack and makes the preset invalid. Include nearest-scope nameField propagation with the existing AC2 ancestor-chain rename work, and carry it through TASK-80 Builder conversion. Source: src/core/formula-rename.ts:81-97 and src/builder/document.ts:789-812; review adversarial-claude-6.
+
+Autonomous continuation preserved nested core/UI work on feature/preset-v4-task-79 but did not merge it. Parent reproduced a real full-path admission gap: with npc -> attack and independent loot in the preset, importing loot:l1:attack:a1 keeps its value and reports zero losses; it must drop that child and count one lost value. Reusing attack under distinct npc and boss parents is also rejected globally instead of within each parent scope. The bounded attempt is skipped pending a full-path scope resolver repair. AC5 remains owner-only under TASK-86. Evidence: preset-v4-78-87-20261117/task-79/parent-observation.md and observe-scope-paths.log in the local artifact run.
+
+CURRENT: Blocked; candidate d4fd388 remains on feature/preset-v4-task-79 and is NOT merged. Two reproduced defects remain: import retains a child under an invalid parent path without counting its lost value, and repeated scope ids under different parent scopes are rejected globally. TASK-80 waits for this repair. This autonomous pass skips further repair; acceptance remains open.
 <!-- SECTION:NOTES:END -->

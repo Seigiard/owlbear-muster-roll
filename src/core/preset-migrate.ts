@@ -1,7 +1,6 @@
 import { acceptedFieldValue } from '@/core/field-patch';
 import { sameJson } from '@/core/json';
-import { blockIndex, linkTargetOf, liveLinkTarget } from '@/core/link-target';
-import { compareVersions } from '@/core/merge';
+import { linkTargetOf, liveLinkTarget } from '@/core/link-target';
 import {
   firstFieldId,
   layoutSections,
@@ -16,7 +15,6 @@ import {
   blockKey,
   cellValues,
   parseRepKey,
-  repKey,
   type BlockData,
   type Cells,
   type FieldValue,
@@ -86,9 +84,6 @@ export function presetDiff(
         .sort((a, b) => (a.k < b.k ? -1 : 1));
 
       const lostBefore = erased.length;
-      const claimed = new Set<string>();
-      const highest = new Map<string, number>();
-      const offsets = new Map<string, number>();
       const sectionIds = [...before.sections.keys()];
 
       const moving = blocks
@@ -100,16 +95,12 @@ export function presetDiff(
           const rank = (part: typeof firstPart): number =>
             part === null || after === null
               ? -1
-              : sectionTarget(part.sectionId, before.sections.get(part.sectionId) ?? [], after) ===
-                  part.sectionId
+              : sectionTarget(part.sectionId, after) === part.sectionId
                 ? 0
                 : sectionIds.indexOf(part.sectionId) + 1;
 
           const target = (part: typeof firstPart): string =>
-            part === null || after === null
-              ? ''
-              : (sectionTarget(part.sectionId, before.sections.get(part.sectionId) ?? [], after) ??
-                '');
+            part === null || after === null ? '' : (sectionTarget(part.sectionId, after) ?? '');
 
           return (
             target(firstPart).localeCompare(target(secondPart)) ||
@@ -118,51 +109,7 @@ export function presetDiff(
           );
         });
 
-      const relocatedSources = new Set<string>();
-      const relocatedTargets = new Set<string>();
-
-      if (after !== null) {
-        for (const source of moving) {
-          const parts = parseRepKey(source.k);
-
-          if (parts === null) continue;
-          const oldFields = before.sections.get(parts.sectionId) ?? [];
-          const scope = sectionTarget(parts.sectionId, oldFields, after);
-
-          if (scope === null) continue;
-          const target = repKey(sheetId, scope, parts.instanceId);
-
-          if (target === source.k) continue;
-          const written = records.get(target);
-
-          if (
-            written?.d !== null &&
-            written !== undefined &&
-            compareVersions(
-              {
-                c: written.l?.[0] ?? written.c,
-                a: written.l?.[1] ?? written.a,
-              },
-              {
-                c: source.l?.[0] ?? source.c,
-                a: source.l?.[1] ?? source.a,
-              },
-            ) > 0
-          ) {
-            relocatedSources.add(source.k);
-            relocatedTargets.add(target);
-          }
-        }
-      }
-
       for (const record of moving) {
-        if (relocatedTargets.has(record.k)) continue;
-
-        if (relocatedSources.has(record.k)) {
-          last.push({ k: record.k, d: null });
-          continue;
-        }
-
         const data = blockDataSchema.safeParse(record.d).data;
 
         if (data === undefined) continue;
@@ -181,7 +128,7 @@ export function presetDiff(
           continue;
         }
 
-        const scope = parts === null ? null : sectionTarget(parts.sectionId, oldFields, after);
+        const scope = parts === null ? null : sectionTarget(parts.sectionId, after);
 
         if (parts !== null && scope === null) {
           lose(template.id, record.k, shown);
@@ -205,53 +152,14 @@ export function presetDiff(
         );
 
         lose(template.id, record.k, lost);
-        const target = parts === null ? record.k : repKey(sheetId, scope ?? '', parts.instanceId);
+        const cleared: Cells = { ...cells };
 
-        if (target !== record.k) {
-          if (claimed.has(target)) {
-            lose(template.id, record.k, cells);
-          } else {
-            claimed.add(target);
-            const group = `${scope ?? ''}:${parts?.sectionId ?? ''}`;
-
-            if (!offsets.has(group)) {
-              const lowest = Math.min(
-                ...moving.flatMap((candidate) => {
-                  const part = parseRepKey(candidate.k);
-                  const held = blockDataSchema.safeParse(candidate.d).data;
-
-                  return part?.sectionId === parts?.sectionId && held !== undefined
-                    ? [held.order]
-                    : [];
-                }),
-              );
-
-              const held = highest.get(scope ?? '');
-
-              offsets.set(group, held !== undefined && held >= lowest ? held + 1 - lowest : 0);
-            }
-
-            const order = data.order + (offsets.get(group) ?? 0);
-            highest.set(scope ?? '', Math.max(highest.get(scope ?? '') ?? -Infinity, order));
-            first.push({ k: target, d: { ...data, order, cells }, relocate: true });
-          }
-
-          last.push({ k: record.k, d: null });
-        } else {
-          if (parts !== null)
-            highest.set(
-              parts.sectionId,
-              Math.max(highest.get(parts.sectionId) ?? -Infinity, data.order),
-            );
-          const cleared: Cells = { ...cells };
-
-          for (const [id, cell] of Object.entries(data.cells)) {
-            if (!Object.hasOwn(cells, id)) cleared[id] = [null, cell[1], cell[2]];
-          }
-
-          if (!sameJson(data.cells, cleared))
-            last.push({ k: record.k, d: { ...data, cells: cleared } });
+        for (const [id, cell] of Object.entries(data.cells)) {
+          if (!Object.hasOwn(cells, id)) cleared[id] = [null, cell[1], cell[2]];
         }
+
+        if (!sameJson(data.cells, cleared))
+          last.push({ k: record.k, d: { ...data, cells: cleared } });
       }
 
       if (next === undefined) {
@@ -296,17 +204,14 @@ export function presetDiff(
     });
   }
 
-  const beforeBlocks = blockIndex(records.values());
-  const afterBlocks = blockIndex(after.values());
-
   for (const record of records.values()) {
     const target = record.k.startsWith('link:') ? linkTargetOf(record.d) : null;
 
     if (
       target !== null &&
       oldPreset !== null &&
-      liveLinkTarget(records, oldPreset, target, beforeBlocks) !== null &&
-      liveLinkTarget(after, newPreset, target, afterBlocks) === null &&
+      liveLinkTarget(records, oldPreset, target) !== null &&
+      liveLinkTarget(after, newPreset, target) === null &&
       !effectiveLast.some((write) => write.k === record.k)
     )
       effectiveLast.push({ k: record.k, d: null });
@@ -365,24 +270,15 @@ export function keptValues(values: FieldValues, fields: readonly PresetFieldCell
 }
 
 export function presetMoves(before: TemplateLayout, after: TemplateLayout): PresetMoves {
-  const old = templateScopes(before);
   const next = templateScopes(after);
 
   return {
     rowOf: (id) => next.rowFields.get(id)?.rowId ?? null,
-    sectionOf: (id) => sectionTarget(id, old.sections.get(id) ?? [], next),
+    sectionOf: (id) => sectionTarget(id, next),
   };
 }
 
-export function sectionTarget(
-  sectionId: string,
-  fields: readonly PresetFieldCell[],
-  after: TemplateScopes,
-  allowTextForSelect = false,
-): string | null {
-  void fields;
-  void allowTextForSelect;
-
+export function sectionTarget(sectionId: string, after: TemplateScopes): string | null {
   // v4 repeat ids are stable scope identities. Matching fields is not a relocation
   // rule: changing the scope id erases its blocks.
   return after.sections.has(sectionId) ? sectionId : null;
@@ -391,13 +287,40 @@ export function sectionTarget(
 export function templateScopes(layout: TemplateLayout): TemplateScopes {
   const scopes: TemplateScopes = { rows: new Map(), rowFields: new Map(), sections: new Map() };
 
+  for (const tab of layout.tabs) {
+    if (tab.repeat !== undefined) {
+      scopes.sections.set(
+        tab.repeat.id,
+        tab.sections.flatMap((section) =>
+          section.repeat === undefined
+            ? section.rows.flatMap((row) =>
+                row.repeat === undefined
+                  ? row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field')
+                  : [],
+              )
+            : [],
+        ),
+      );
+    }
+  }
+
   for (const section of layoutSections(layout)) {
     const sectionId = repeatSectionId(section);
 
     if (sectionId !== null) {
       scopes.sections.set(sectionId, sectionFields(section));
-    } else if (section.repeat === undefined) {
+    } else {
       for (const row of section.rows) {
+        const rowRepeatId = row.repeat?.id;
+
+        if (rowRepeatId !== undefined) {
+          scopes.sections.set(
+            rowRepeatId,
+            row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field'),
+          );
+          continue;
+        }
+
         const id = firstFieldId(row);
 
         if (id === null) continue;

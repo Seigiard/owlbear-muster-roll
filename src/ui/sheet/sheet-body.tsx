@@ -1,18 +1,23 @@
 import { useStore } from '@nanostores/react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import {
   firstFieldId,
   layoutSections,
   repeatSectionId,
+  type RenderedTab,
   type Template,
   type TemplateLayout,
 } from '@/core/preset';
 import { repKeyPrefix, rowKey, type VersionedRecord } from '@/core/records';
+import { sectionShownTo } from '@/core/visibility';
+import { copy } from '@/copy';
+import { IconButton } from '@/ui/primitives/icon-button';
 import { revealElement } from '@/ui/reveal';
 
 import { DiceSheetContext, type DiceRolling, type DiceSheet } from './dice-button';
+import { DeleteConfirmation } from './delete-confirmation';
 import { withRemovedRows, type SheetPending } from './pending-mark';
 import { SheetSection, type BlockTools } from './preset-section';
 import { FieldEditingContext, type FieldEditing } from './use-field-edit';
@@ -24,10 +29,11 @@ export type BlockReveal = { instanceId: string | null; cellId: string; focus: bo
 type SheetBodyProps = {
   // The sheet's template, as `core/sheets` resolves it.
   // The title names an untitled repeat section's "Добавить".
-  template: Pick<Template, 'tabs' | 'title'>;
+  template: Template;
   sheetId: string;
   // The tab this sheet shows, as the caller's one AD-26 open-tab check picks it.
   openTab: number | null;
+  renderedTab?: RenderedTab | null;
   records: ReadonlyMap<string, VersionedRecord>;
   // `null` shows every value read-only, with no row controls: a player with no access to the sheet.
   editing: FieldEditing | null;
@@ -35,6 +41,8 @@ type SheetBodyProps = {
   rolling: DiceRolling;
   // A player's edits that wait for a GM (UX-DR28). `null` for a GM, whose edits never wait.
   pending: SheetPending | null;
+  tabBlockEditing?: Pick<FieldEditing, 'sendCommand'> | null;
+  role?: 'GM' | 'PLAYER';
   // The GM's controls on each repeat block, `null` for a player and the preview.
   blockTools?: BlockTools | null;
   reveal?: BlockReveal | null;
@@ -46,10 +54,13 @@ export function SheetBody({
   template,
   sheetId,
   openTab,
+  renderedTab = null,
   records,
   editing,
   rolling,
   pending,
+  tabBlockEditing = null,
+  role = 'GM',
   blockTools = null,
   reveal = null,
   onRevealed,
@@ -111,6 +122,8 @@ export function SheetBody({
     return null;
   }
 
+  const tabBlock = renderedTab?.block ?? null;
+
   return (
     <FieldEditingContext value={editing}>
       <DiceSheetContext value={diceSheet}>
@@ -121,24 +134,98 @@ export function SheetBody({
             data-sheet-body
             data-tab-index={openTab}
           >
-            {(template.tabs[openTab]?.sections ?? []).map((section, index) => (
-              <SheetSection
-                key={`${openTab}.${index}`}
-                section={section}
-                tabIndex={openTab}
-                sectionIndex={index}
-                templateTitle={template.title}
+            {(template.tabs[openTab]?.sections ?? []).flatMap((section, index) =>
+              sectionShownTo(role, template, openTab, index)
+                ? [
+                    <SheetSection
+                      key={`${openTab}.${index}`}
+                      template={template}
+                      section={section}
+                      tabIndex={openTab}
+                      sectionIndex={index}
+                      templateTitle={template.title}
+                      sheetId={sheetId}
+                      records={shownRecords}
+                      readOnly={editing === null}
+                      pending={pending}
+                      blockTools={blockTools}
+                      tabBlock={tabBlock}
+                      role={role}
+                    />,
+                  ]
+                : [],
+            )}
+            {tabBlock !== null && tabBlockEditing !== null && role === 'GM' ? (
+              <TabBlockControls
                 sheetId={sheetId}
-                records={shownRecords}
-                readOnly={editing === null}
-                pending={pending}
-                blockTools={blockTools}
+                scopeId={tabBlock.scopeId}
+                instanceId={tabBlock.instanceId}
+                name={tabBlock.name}
+                editing={tabBlockEditing}
               />
-            ))}
+            ) : null}
           </div>
         </div>
       </DiceSheetContext>
     </FieldEditingContext>
+  );
+}
+
+function TabBlockControls({
+  sheetId,
+  scopeId,
+  instanceId,
+  name,
+  editing,
+}: {
+  sheetId: string;
+  scopeId: string;
+  instanceId: string;
+  name: string;
+  editing: Pick<FieldEditing, 'sendCommand'>;
+}): ReactNode {
+  const [asking, setAsking] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+
+  function confirm(): void {
+    if (waiting) return;
+
+    setWaiting(true);
+    void editing
+      .sendCommand({
+        type: 'repeat-block-delete',
+        sheetId,
+        sectionId: scopeId,
+        instanceId,
+      })
+      .then((outcome) => {
+        if (outcome.kind !== 'answered') {
+          setWaiting(false);
+        }
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not settle a tab block deletion', error);
+        setWaiting(false);
+      });
+  }
+
+  return asking ? (
+    <DeleteConfirmation
+      name={name === '' ? copy.unnamed : name}
+      onConfirm={confirm}
+      onCancel={() => {
+        if (!waiting) setAsking(false);
+      }}
+    />
+  ) : (
+    <IconButton
+      icon={<span aria-hidden>×</span>}
+      label={copy.command.delete}
+      tone="danger"
+      onPress={() => {
+        setAsking(true);
+      }}
+    />
   );
 }
 
@@ -151,6 +238,7 @@ function sheetValuesSignature(
   localChanges: number,
 ): string {
   const versions: string[] = [];
+  const rootKeys = new Set<string>();
   const repeatPrefixes: string[] = [];
 
   for (const section of layoutSections(template)) {
@@ -165,14 +253,23 @@ function sheetValuesSignature(
     }
 
     for (const row of section.rows) {
+      if (row.repeat !== undefined) {
+        repeatPrefixes.push(repKeyPrefix(sheetId, row.repeat.id));
+        continue;
+      }
+
       const id = firstFieldId(row);
 
       if (id !== null) {
-        const record = records.get(rowKey(sheetId, id));
-
-        versions.push(record === undefined ? '' : versionOf(record));
+        rootKeys.add(rowKey(sheetId, id));
       }
     }
+  }
+
+  for (const key of rootKeys) {
+    const record = records.get(key);
+
+    versions.push(record === undefined ? '' : versionOf(record));
   }
 
   for (const record of records.values()) {

@@ -143,13 +143,6 @@ export type SheetSetTemplate = Omit<Template, 'repeat'> & { repeat: { nameField:
 
 export type SingleSheetTemplate = Omit<Template, 'repeat'> & { repeat?: undefined };
 
-export function isSheetSet<T extends { repeat?: unknown }>(
-  template: T,
-): template is T & { repeat: { nameField: string } };
-export function isSheetSet(template: { repeat?: { nameField: string } }): boolean {
-  return template.repeat !== undefined;
-}
-
 export type TemplateLayout = { tabs: readonly PresetTab[] };
 
 export type PresetTab = z.infer<typeof tab>;
@@ -161,6 +154,15 @@ export type PresetRow = z.infer<typeof row>;
 export type PresetCell = z.infer<typeof cell>;
 
 export type PresetFieldCell = z.infer<typeof fieldCell>;
+
+export type TabBlock = { scopeId: string; instanceId: string; name: string };
+
+export type RenderedTab = {
+  sourceIndex: number;
+  tab: PresetTab;
+  block: TabBlock | null;
+  blockIndex?: number;
+};
 
 export type WindowSize = { width: number; height: number };
 
@@ -329,35 +331,135 @@ export function openTabIndex(
   layout: TemplateLayout,
   chosen: number | undefined,
   shown?: (index: number) => boolean,
+  rendered: readonly unknown[] = layout.tabs,
 ): number | null {
   if (
     chosen !== undefined &&
     Number.isInteger(chosen) &&
     chosen >= 0 &&
-    chosen < layout.tabs.length &&
+    chosen < rendered.length &&
     (shown === undefined || shown(chosen))
   )
     return chosen;
 
   if (shown === undefined) return 0;
-  const index = layout.tabs.findIndex((_tab, i) => shown(i));
+  const index = rendered.findIndex((_tab, i) => shown(i));
 
   return index === -1 ? null : index;
 }
 
+export function expandedTabs(
+  layout: TemplateLayout,
+  blocks: ReadonlyMap<string, readonly TabBlock[]> = new Map(),
+): RenderedTab[] {
+  const result: RenderedTab[] = [];
+
+  layout.tabs.forEach((tab, sourceIndex) => {
+    if (tab.repeat === undefined) {
+      result.push({ sourceIndex, tab, block: null });
+
+      return;
+    }
+
+    result.push(
+      ...(blocks.get(tab.repeat.id) ?? []).map((block, blockIndex) => ({
+        sourceIndex,
+        tab,
+        block,
+        blockIndex: blockIndex + 1,
+      })),
+    );
+  });
+
+  return result;
+}
+
+export type RepeatTabPlace = { place: { tabIndex: number }; tab: PresetTab };
+
+export function repeatTabById(layout: TemplateLayout, id: string): RepeatTabPlace | null {
+  const tabIndex = layout.tabs.findIndex((candidate) => candidate.repeat?.id === id);
+  const tab = tabIndex === -1 ? undefined : layout.tabs[tabIndex];
+
+  return tab === undefined ? null : { place: { tabIndex }, tab };
+}
+
 export function repeatSectionById(layout: TemplateLayout, id: string): PresetSection | null {
-  return repeatSectionPlace(layout, id)?.section ?? null;
+  const scope = repeatScopeById(layout, id);
+
+  if (scope !== null) {
+    return scope.row === null
+      ? scope.section
+      : { ...scope.section, repeat: scope.row.repeat, rows: [scope.row] };
+  }
+
+  const tab = repeatTabById(layout, id);
+
+  if (tab === null) return null;
+
+  return {
+    title: tab.tab.title,
+    visibility: tab.tab.visibility,
+    repeat: tab.tab.repeat,
+    rows: tab.tab.sections.flatMap((candidate) =>
+      candidate.repeat === undefined
+        ? candidate.rows.filter((row) => row.repeat === undefined)
+        : [],
+    ),
+  };
 }
 
 export function repeatSectionPlace(
   layout: TemplateLayout,
   id: string,
 ): { place: TemplateSectionPlace; section: PresetSection } | null {
-  return placedSections(layout).find(({ section }) => repeatSectionId(section) === id) ?? null;
+  const scope = repeatScopeById(layout, id);
+
+  if (scope !== null) {
+    return {
+      place: scope.place,
+      section:
+        scope.row === null
+          ? scope.section
+          : { ...scope.section, repeat: scope.row.repeat, rows: [scope.row] },
+    };
+  }
+
+  const tab = repeatTabById(layout, id);
+
+  if (tab === null) return null;
+
+  const section = repeatSectionById(layout, id);
+
+  if (section === null) return null;
+
+  return {
+    place: { tabIndex: tab.place.tabIndex, sectionIndex: 0 },
+    section,
+  };
+}
+
+export type RepeatScope = {
+  place: TemplateSectionPlace;
+  section: PresetSection;
+  row: PresetRow | null;
+};
+
+export function repeatScopeById(layout: TemplateLayout, id: string): RepeatScope | null {
+  for (const { place, section } of placedSections(layout)) {
+    if (section.repeat?.id === id) return { place, section, row: null };
+
+    const row = section.rows.find((candidate) => candidate.repeat?.id === id);
+
+    if (row !== undefined) return { place, section, row };
+  }
+
+  return null;
 }
 
 export function plainRow(layout: TemplateLayout, rowId: string): readonly PresetCell[] | null {
-  for (const section of layoutSections(layout)) {
+  for (const { place, section } of placedSections(layout)) {
+    if (layout.tabs[place.tabIndex]?.repeat !== undefined) continue;
+
     if (repeatSectionId(section) !== null) continue;
     const row = section.rows.find((item) => firstFieldId(item) === rowId);
 
@@ -368,7 +470,9 @@ export function plainRow(layout: TemplateLayout, rowId: string): readonly Preset
 }
 
 export function plainRowIdOf(layout: TemplateLayout, fieldId: string): string | null {
-  for (const section of layoutSections(layout)) {
+  for (const { place, section } of placedSections(layout)) {
+    if (layout.tabs[place.tabIndex]?.repeat !== undefined) continue;
+
     if (repeatSectionId(section) !== null) continue;
 
     const row = section.rows.find((item) =>
@@ -466,16 +570,20 @@ export function presetProblems(preset: Preset): PresetProblem[] {
 }
 
 function templateHasNameField(template: Template, id: string): boolean {
-  return layoutSections(template)
-    .filter((section) => section.repeat === undefined)
-    .some((section) =>
-      section.rows
-        .filter((row) => row.repeat === undefined)
-        .some((row) =>
-          row.cells.some(
-            (candidate) =>
-              candidate.kind === 'field' && candidate.id === id && candidate.type === 'text',
-          ),
+  return template.tabs
+    .filter((tab) => tab.repeat === undefined)
+    .some((tab) =>
+      tab.sections
+        .filter((section) => section.repeat === undefined)
+        .some((section) =>
+          section.rows
+            .filter((row) => row.repeat === undefined)
+            .some((row) =>
+              row.cells.some(
+                (candidate) =>
+                  candidate.kind === 'field' && candidate.id === id && candidate.type === 'text',
+              ),
+            ),
         ),
     );
 }
@@ -609,6 +717,8 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
   const repeatIds = new Set<string>();
   const tabRepeatIds = new Set<string>();
   template.tabs.forEach((tab, ti) => {
+    const tabScope = tab.repeat === undefined ? rootFields : new Set<string>();
+
     if (tab.repeat !== undefined) {
       if (!validRepeat(tab.repeat))
         problems.push({ failure: { code: 'bad-repeat' }, path: [...templatePath, ti] });
@@ -621,6 +731,7 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
       }
 
       tabRepeatIds.add(tab.repeat.id);
+      repeatIds.add(tab.repeat.id);
 
       if (!hasTextFieldInScope(tab, tab.repeat.nameField, true)) {
         problems.push({
@@ -649,27 +760,27 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
         repeatIds.add(section.repeat.id);
       }
 
-      const scope = section.repeat === undefined ? rootFields : new Set<string>();
-      const rowRepeatIds = new Set<string>();
+      const scope = section.repeat === undefined ? tabScope : new Set<string>();
       section.rows.forEach((item, ri) => {
         const rowPath = [...sectionPath, ri];
 
         if (item.repeat !== undefined && !validRepeat(item.repeat))
           problems.push({ failure: { code: 'bad-repeat' }, path: rowPath });
 
-        if (item.repeat !== undefined && rowRepeatIds.has(item.repeat.id)) {
+        if (item.repeat !== undefined && repeatIds.has(item.repeat.id)) {
           problems.push({
             failure: { code: 'duplicate-section', detail: short(item.repeat.id) },
             path: rowPath,
           });
         }
 
-        if (item.repeat !== undefined) rowRepeatIds.add(item.repeat.id);
+        if (item.repeat !== undefined) repeatIds.add(item.repeat.id);
 
         if (section.columns !== undefined && item.cells.length > section.columns)
           problems.push({ failure: { code: 'row-too-wide' }, path: rowPath });
+        const rowScope = item.repeat === undefined ? scope : new Set<string>();
         item.cells.forEach((candidate, ci) => {
-          const failure = cellFailure(candidate, scope);
+          const failure = cellFailure(candidate, rowScope);
 
           if (failure !== null) problems.push({ failure, path: [...rowPath, ci] });
         });
@@ -806,8 +917,4 @@ function short(value: string): string {
   return chars.length > DETAIL_MAX_CHARACTERS
     ? `${chars.slice(0, DETAIL_MAX_CHARACTERS).join('')}…`
     : value;
-}
-
-export function hasField(row: PresetRow, id: string): boolean {
-  return rowCells(row).some((item) => item.kind === 'field' && item.id === id);
 }

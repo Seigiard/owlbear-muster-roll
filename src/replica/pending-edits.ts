@@ -2,7 +2,7 @@ import { playerMayEdit, proposalAllowed, type ProposalContext } from '@/core/acc
 import type { FieldPatchTarget } from '@/core/field-patch';
 import { counterAbove, mergeRecords, type Version } from '@/core/merge';
 import { recordFitsOneMessage } from '@/core/message-size';
-import { plainRowIdOf, type Preset, type Template } from '@/core/preset';
+import { plainRowIdOf, repeatTabById, type Preset, type Template } from '@/core/preset';
 import { presetMoves, stripToTemplate, type PresetMoves } from '@/core/preset-migrate';
 import { dependentSheetId, resolveSheet } from '@/core/sheets';
 import {
@@ -97,6 +97,13 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     const policy = resolveSheet(view, presetOf(view.get('preset')), command.sheetId);
 
     if (policy === null || !playerMayEdit(policy, view, options.playerId)) {
+      return err('not-allowed');
+    }
+
+    if (
+      (command.type === 'repeat-block-add' || command.type === 'repeat-block-delete') &&
+      repeatTabById(policy.template, command.sectionId) !== null
+    ) {
       return err('not-allowed');
     }
 

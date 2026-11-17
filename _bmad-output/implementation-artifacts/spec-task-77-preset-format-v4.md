@@ -110,6 +110,7 @@ Declare independent oracles before test edits; calibrate red then green. No broa
 ## Spec Change Log
 
 - Recovery settled at source candidate `9fa7179caa4d0f69dfb823d91454ec14976a1fae`: lint, typecheck, 3363 Bun tests (one environment skip), 542 browser tests and build passed. The single report-only review then found five in-scope behavior gaps: picker cell identity, refused-command handling, current-cell link status, repeat-row runtime support, and player section/row visibility. These gaps prevent feature acceptance despite the green suites. One bounded review-fix TDD batch is authorized; no second TASK-77 review round will run. The user authorized autonomous continuation through TASK-78, TASK-79 and TASK-80. TASK-86 records the owner's live-room gate; TASK-87 records deferred internal cleanup. Neither is claimed complete.
+- Batch6 repaired all five reviewed behavior gaps at `db11acc8cb09c1f9cd057e5b38d4d3ad6fcf8f39`. Its extended 115-path lock is enforced. All six clean-state checks passed: formatting, typecheck, build, lint (256 warnings, zero errors), Bun (3375 pass, one environment skip), and browser (542/542). Two old status literals and one new textarea observation were corrected without production test workarounds. Partial-success/rejected-promise variants lack independent new-owner execution; no calibrated coverage is claimed. The excluded D19 temporary refusal remains unproved, so Backlog AC2 stays unchecked while TASK-78/79 advance those forms. No second review ran.
 
 ## Review Triage Log
 

@@ -19,11 +19,16 @@ export type ShellTab = {
   label: string;
   selectedOnMap?: boolean;
   dataTabIndex?: number;
+  sourceTabIndex?: number;
+  addScopeId?: string;
 };
 
-type TabBarProps = { tabs: readonly ShellTab[] };
+type TabBarProps = {
+  tabs: readonly ShellTab[];
+  onAddTab: (id: string) => void;
+};
 
-export function TabBar({ tabs }: TabBarProps): ReactNode {
+export function TabBar({ tabs, onAddTab }: TabBarProps): ReactNode {
   useTabKeyEntersAtSelection();
 
   return (
@@ -37,6 +42,14 @@ export function TabBar({ tabs }: TabBarProps): ReactNode {
               aria-label={tabName(tab)}
               data-frame-tab
               data-tab-index={tab.dataTabIndex}
+              data-source-tab-index={tab.sourceTabIndex}
+              onPress={
+                tab.addScopeId === undefined
+                  ? undefined
+                  : () => {
+                      onAddTab(tab.id);
+                    }
+              }
               className={TAB_CLASS}
             >
               <span className="min-w-0 truncate">

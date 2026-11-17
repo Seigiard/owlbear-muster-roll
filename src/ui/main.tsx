@@ -1,11 +1,12 @@
 import { useStore } from '@nanostores/react';
-import { useCallback, useEffect, useMemo, useReducer } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { playerMayEdit, playerMayEditField } from '@/core/access';
-import { newSheetId } from '@/core/ids';
-import { openTabIndex, type SheetSetTemplate } from '@/core/preset';
+import { newInstanceId, newSheetId } from '@/core/ids';
+import { openTabIndex, type RenderedTab, type SheetSetTemplate } from '@/core/preset';
+import { renderedTabs as renderTabs } from '@/core/rendered-tabs';
 import { isSheetSet, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
 import {
@@ -54,7 +55,7 @@ import type { ShellTab } from '@/ui/shell/tab-bar';
 import { WindowFrame } from '@/ui/shell/window-frame';
 import { followTheme } from '@/ui/theme';
 import { useWindowView } from '@/ui/window-view';
-import { tokenCellPickerUrl } from '@/core/token-links';
+import { LINK_PICKER_POPOVER_ID, tokenCellPickerUrl } from '@/core/token-links';
 
 import './main.css';
 
@@ -175,6 +176,12 @@ function WindowRoot({
   const presetState = !ready ? 'unknown' : preset === null ? 'absent' : 'present';
   const [navigation, dispatch] = useReducer(transition, initialState);
 
+  const [creatingBlock, setCreatingBlock] = useState<{
+    sheet: string;
+    scopeId: string;
+    instanceId: string;
+  } | null>(null);
+
   // CAP-34, AD-26: the template tab this window chose on each sheet, by the sheet's tab id. It is
   // client UI state: it never enters a record, a message or a snapshot.
   const {
@@ -272,7 +279,7 @@ function WindowRoot({
       open: (target) => {
         void platform.popover
           .open({
-            id: 'app.muster-roll/link-picker',
+            id: LINK_PICKER_POPOVER_ID,
             url: tokenCellPickerUrl(target),
             width: 320,
             height: 420,
@@ -347,11 +354,21 @@ function WindowRoot({
         ? null
         : repeatBlockTabIndex(records.values(), template, openRequest.sheetId, block);
 
-    const cellTab =
+    const listed = tab === null ? undefined : tabs.find((candidate) => candidate.id === tab);
+    const visible = listed === undefined ? [] : visibleTemplateTabs(listed);
+
+    const sourceCellTab =
       template === undefined
         ? null
         : (tokenCellPlace(template, openRequest.cellId, openRequest.path?.[0] ?? null)?.tabIndex ??
           null);
+
+    const sourceCellIndex =
+      sourceCellTab === null
+        ? -1
+        : visible.findIndex((candidate) => candidate.sourceIndex === sourceCellTab);
+
+    const cellTab = sourceCellIndex === -1 ? null : sourceCellIndex;
 
     dispatch({
       type: 'open-request',
@@ -410,32 +427,98 @@ function WindowRoot({
 
   // AD-26: the chosen tab stays while this role sees it; otherwise the first tab this role sees, else
   // none.
-  function visibleTemplateTabIndexes(tab: SidebarSheet): number[] {
-    return tab.policy.template.tabs.flatMap((_tab, index) =>
-      tabShownTo(role, tab.policy.template, index) ? [index] : [],
+  function visibleTemplateTabs(tab: SidebarSheet): RenderedTab[] {
+    return renderTabs(tab.policy.template, records, tab.sheetId).filter((candidate) =>
+      tabShownTo(role, tab.policy.template, candidate.sourceIndex),
     );
   }
 
-  function openTemplateTab(tab: SidebarSheet): number | null {
-    return openTabIndex(tab.policy.template, chosenTemplateTabs.get(tab.id), (index) =>
-      tabShownTo(role, tab.policy.template, index),
+  function openTemplateTab(tab: SidebarSheet): { index: number; tab: RenderedTab } | null {
+    const visible = visibleTemplateTabs(tab);
+
+    const index = openTabIndex(
+      tab.policy.template,
+      chosenTemplateTabs.get(tab.id),
+      undefined,
+      visible,
     );
+
+    return index === null || visible[index] === undefined ? null : { index, tab: visible[index] };
   }
 
-  function templateTabHasSelection(tab: SidebarSheet, index: number): boolean {
-    return [...links.values()].some(
-      (live) =>
-        live.target.sheetId === tab.sheetId &&
-        live.target.instanceId !== null &&
-        mapMarks.targets.has(linkTargetKey(live.target)) &&
-        repeatBlockTabIndex(
-          records.values(),
-          tab.policy.template,
-          tab.sheetId,
-          live.target.instanceId,
-        ) === index,
-    );
+  function templateTabHasSelection(tab: SidebarSheet, rendered: RenderedTab): boolean {
+    const targetTabs = renderTabs(tab.policy.template, records, tab.sheetId);
+
+    return [...links.values()].some((live) => {
+      if (
+        live.target.sheetId !== tab.sheetId ||
+        live.target.instanceId === null ||
+        !mapMarks.targets.has(linkTargetKey(live.target))
+      ) {
+        return false;
+      }
+
+      const targetIndex = repeatBlockTabIndex(
+        records.values(),
+        tab.policy.template,
+        tab.sheetId,
+        live.target.instanceId,
+      );
+
+      const targetTab = targetIndex === null ? undefined : targetTabs[targetIndex];
+
+      return (
+        targetTab?.sourceIndex === rendered.sourceIndex &&
+        targetTab.block?.scopeId === rendered.block?.scopeId &&
+        targetTab.block?.instanceId === rendered.block?.instanceId
+      );
+    });
   }
+
+  function addTabBlock(tab: SidebarSheet, scopeId: string): void {
+    if (!isGm) return;
+
+    const instanceId = newInstanceId();
+
+    setCreatingBlock({ sheet: tab.id, scopeId, instanceId });
+    void sendCommand({
+      type: 'repeat-block-add',
+      sheetId: tab.sheetId,
+      sectionId: scopeId,
+      instanceId,
+    })
+      .then((outcome) => {
+        if (outcome.kind !== 'answered') setCreatingBlock(null);
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not settle a tab block creation', error);
+        setCreatingBlock(null);
+      });
+  }
+
+  useEffect(() => {
+    if (creatingBlock === null) return;
+
+    const tab = tabs.find((candidate) => candidate.id === creatingBlock.sheet);
+
+    if (tab === undefined) return;
+
+    const index = visibleTemplateTabs(tab).findIndex(
+      (candidate) =>
+        candidate.block?.scopeId === creatingBlock.scopeId &&
+        candidate.block.instanceId === creatingBlock.instanceId,
+    );
+
+    if (index === -1) return;
+
+    dispatch({
+      type: 'select-template-tab',
+      sheet: tab.id,
+      index,
+      visible: true,
+    });
+    setCreatingBlock(null);
+  }, [creatingBlock, records, tabs]);
 
   function askDelete(tab: SidebarSheet): void {
     // A new request remounts the block, so a repeated "Удалить" takes the focus again.
@@ -518,8 +601,12 @@ function WindowRoot({
   const loading = <p>{copy.loading}</p>;
 
   // A GM edits every sheet. A sheet of a sheet set has the access panel when its template is
-  // visible, and "Удалить". A linkable template shows its token status.
-  function gmSheetParts(tab: SidebarSheet, openTab: number | null): SheetFrameParts {
+  // visible, and "Удалить". A template with token cells shows its token status.
+  function gmSheetParts(
+    tab: SidebarSheet,
+    openTab: number | null,
+    renderedTab: RenderedTab | null,
+  ): SheetFrameParts {
     const { policy } = tab;
     const ofSet = isSheetSet(policy.template);
 
@@ -558,11 +645,14 @@ function WindowRoot({
           template={policy.template}
           sheetId={tab.sheetId}
           openTab={openTab}
+          renderedTab={renderedTab}
           records={records}
           editing={editing}
           rolling={rolling}
           pending={null}
+          role="GM"
           blockTools={blockTools}
+          tabBlockEditing={editing}
           reveal={blockReveal?.sheet === tab.id ? blockReveal : null}
           onRevealed={clearBlockReveal}
         />
@@ -573,7 +663,11 @@ function WindowRoot({
   // FR3: a live `acl:`, or a player-editable single sheet, makes the fields editable and shows the
   // repeat block controls. Each edit waits for a GM client's check (AD-4), and the pending view
   // shows it meanwhile.
-  function playerSheetParts(tab: SidebarSheet, openTab: number | null): SheetFrameParts {
+  function playerSheetParts(
+    tab: SidebarSheet,
+    openTab: number | null,
+    renderedTab: RenderedTab | null,
+  ): SheetFrameParts {
     const mayEdit = playerMayEdit(tab.policy, records, playerId);
 
     const headerMayEdit =
@@ -603,10 +697,12 @@ function WindowRoot({
           template={tab.policy.template}
           sheetId={tab.sheetId}
           openTab={openTab}
+          renderedTab={renderedTab}
           records={records}
           editing={mayEdit ? editing : null}
           rolling={rolling}
           pending={pendingBySheet.get(tab.sheetId) ?? null}
+          role="PLAYER"
           reveal={blockReveal?.sheet === tab.id ? blockReveal : null}
           onRevealed={clearBlockReveal}
         />
@@ -650,24 +746,54 @@ function WindowRoot({
     const sheet = tabs.find((tab) => tab.id === shownTab) ?? null;
     const settingsSelected = isGm && shownTab === SETTINGS_TAB;
     const contentFor = isGm ? gmSheetParts : playerSheetParts;
-    const openTab = sheet === null ? null : openTemplateTab(sheet);
-    const visibleIndexes = sheet === null ? [] : visibleTemplateTabIndexes(sheet);
+    const opened = sheet === null ? null : openTemplateTab(sheet);
+    const openTab = opened?.tab.sourceIndex ?? null;
+    const visibleTabs = sheet === null ? [] : visibleTemplateTabs(sheet);
 
-    const shellTabs: ShellTab[] =
+    const visibleRepeatTabs =
       sheet === null
         ? []
-        : visibleIndexes.map((index) => {
-            const templateTab = sheet.policy.template.tabs[index];
+        : sheet.policy.template.tabs
+            .filter(
+              (candidate, sourceIndex) =>
+                candidate.repeat !== undefined &&
+                tabShownTo(role, sheet.policy.template, sourceIndex),
+            )
+            .filter(
+              (candidate, index, all) =>
+                all.findIndex((other) => other.repeat?.id === candidate.repeat?.id) === index,
+            );
 
+    const shellTabs: ShellTab[] = [
+      ...(sheet === null
+        ? []
+        : visibleTabs.map((rendered, index): ShellTab => {
             return {
               id: templateTabKey(index),
-              label: templateTabLabel(templateTab?.title),
-              selectedOnMap: templateTabHasSelection(sheet, index),
+              label:
+                rendered.block === null
+                  ? templateTabLabel(rendered.tab.title)
+                  : rendered.block.name === ''
+                    ? `Блок ${rendered.blockIndex ?? index + 1}`
+                    : rendered.block.name,
+              selectedOnMap: templateTabHasSelection(sheet, rendered),
+              dataTabIndex: index,
+              sourceTabIndex: rendered.sourceIndex,
             };
-          });
+          })),
+      ...(isGm
+        ? visibleRepeatTabs.map((candidate): ShellTab => ({
+            id: `template-tab-add:${candidate.repeat?.id ?? ''}`,
+            label: '+',
+            addScopeId: candidate.repeat?.id ?? '',
+          }))
+        : []),
+    ];
 
     const sheetParts =
-      sheet === null || !ready || preset === null ? null : contentFor(sheet, openTab);
+      sheet === null || !ready || preset === null
+        ? null
+        : contentFor(sheet, openTab, opened?.tab ?? null);
 
     let content: ReactNode;
 
@@ -728,8 +854,18 @@ function WindowRoot({
           }
         : undefined,
       tabs: shellTabs,
-      selectedTab: openTab === null ? null : templateTabKey(openTab),
+      selectedTab: opened === null ? null : templateTabKey(opened.index),
       onSelectTab: (id) => {
+        const addScopeId = id.startsWith('template-tab-add:')
+          ? id.slice('template-tab-add:'.length)
+          : null;
+
+        if (addScopeId !== null && addScopeId !== '') {
+          if (sheet !== null) addTabBlock(sheet, addScopeId);
+
+          return;
+        }
+
         const index = templateIndexFromKey(id);
 
         if (sheet !== null && index !== null) {
@@ -737,7 +873,7 @@ function WindowRoot({
             type: 'select-template-tab',
             sheet: sheet.id,
             index,
-            visible: tabShownTo(role, sheet.policy.template, index),
+            visible: index >= 0 && index < visibleTabs.length,
           });
         }
       },

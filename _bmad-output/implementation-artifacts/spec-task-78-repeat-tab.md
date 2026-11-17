@@ -2,8 +2,9 @@
 title: 'TASK-78: Repeat tab — one tab per block'
 type: 'feature'
 created: '2026-11-16'
-status: 'draft'
+status: 'in-progress'
 route: 'dispatch'
+baseline_commit: '2b3ead7ec919cdbda9d87ce18381cb1baa4b4147'
 review_loop_iteration: 0
 context:
   - '_bmad-output/specs/spec-muster-roll/preset-format.md'
@@ -72,6 +73,10 @@ context:
 Reconcile this map with the committed TASK-77 review fix before implementation.
 
 Estimated footprint: 16–18 source files, 6–8 test files, 1.5 hours including verification. Keep this cohesive task under the user's autonomous 77 → 78 → 79 → 80 authorization.
+
+The user's overnight authorization covers implementation without a routine approval stop. The parent re-read this spec, reconciled it with the verified row-scope repair at `db11acc8cb09c1f9cd057e5b38d4d3ad6fcf8f39`, and froze its intent before dispatch. `repeatScopeById` now resolves rows as well as sections; its section-shaped adapters retain the original row position. Extend this mechanism rather than restoring section-only assumptions. TASK-77 AC2's unproved temporary guard stays unchecked; this task advances tab support, not a claim that the earlier refusal existed.
+
+The 90-minute run stopped bounded and unaccepted at `e3ab0d423e970c77729c7f7682a9ed1fbca39288`, after four phase turns. D6 remains: both extension and preview derive the final add action from rendered blocks, so zero blocks produce no "+"; deleting the last block leaves no way to add another. Use visible source repeat scopes for those actions. No scoped review ran. D5 also remains: readable outputs show 3377 Bun passes, one environment skip and 552 browser passes, but final-state attribution is report-only; the final format artifact is missing and exact final lint/typecheck/build logs and exits are unavailable. This is not six-check verification. The final four-path lock is `6e44fa3122cd8aedeac0099422c9ab2190307c64`, with accepted test-only fixture/locator corrections and unchanged behavioral expectations. All workers settled; no source work or review continues in the background. The run directory is `/Users/seigiard/.claude/artifacts/tdd-20261116-235951/task-78-repeat-tab`.
 
 ## Spec Change Log
 

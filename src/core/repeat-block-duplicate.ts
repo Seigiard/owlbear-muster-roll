@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { sectionFields, sectionFirstField, type PresetSection } from '@/core/preset';
+import { sectionFields, type PresetSection } from '@/core/preset';
 import type { FieldValue, FieldValues } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 
@@ -31,17 +31,15 @@ export type DuplicateNameFailure = 'name-too-long';
 type NumberedName = { base: string; number: bigint };
 
 // CAP-30: the cells of `count` duplicates of the repeat block `source`, in order. Every value is
-// copied as is. When the section's first field is a `text` field with a value, each copy numbers it
-// by `duplicateNames` over the first field values of `siblings`, the section's repeat blocks of the
-// same sheet.
+// copied as is. When the section's explicit repeat.nameField is a `text` field with a value, each
+// copy numbers it by `duplicateNames` over the configured nameField values of `siblings`.
 export function duplicateBlockCells(
   section: PresetSection,
   source: FieldValues,
   siblings: readonly FieldValues[],
   count: number,
 ): Result<FieldValues[], DuplicateNameFailure> {
-  const first = sectionFirstField(section);
-  const nameId = section.repeat?.nameField ?? first?.id ?? null;
+  const nameId = section.repeat?.nameField ?? null;
 
   const nameField =
     nameId === null ? null : (sectionFields(section).find((field) => field.id === nameId) ?? null);

@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import {
-  blockIndex,
   linkDataOf,
   linkTargetKey,
   linkTargetOf,
@@ -11,7 +10,7 @@ import {
 } from '@/core/link-target';
 import {
   layoutSections,
-  repeatSectionId,
+  repeatSectionById,
   rowCells,
   type Preset,
   type PresetSection,
@@ -58,9 +57,9 @@ export type TokenMenuAction = 'link' | 'unlink' | 'open';
 // One filter per icon of the item, in the order Owlbear tries them.
 export type TokenMenuEntry = { action: TokenMenuAction; filters: TokenMenuFilter[] };
 
-// One target of the link picker. `sheetName` is the sheet's name and `blockName` the repeat block's
-// first field value, "" when empty; `blockName` is `null` for a sheet target. `linked`: a live link
-// names the target already.
+// One target of the link picker. `sheetName` is the sheet's name and `blockName` the repeat scope's
+// explicit nameField value, "" when empty; `blockName` is `null` for a sheet target. `linked`: a
+// live link names the target already.
 export type PickerTarget = {
   target: LinkTarget;
   cellId: string;
@@ -70,13 +69,33 @@ export type PickerTarget = {
   linked: boolean;
 };
 
-// One group of the link picker: a linkable template's sheets, with `section` `null`, or the repeat
-// blocks of one linkable repeat section of a template across its sheets.
+// One group of the link picker: the token-cell targets of a template, with `section` `null`, or the
+// repeat blocks of one repeat scope with a token cell across the template's sheets.
 export type PickerGroup = {
   template: Template;
   section: PresetSection | null;
   targets: PickerTarget[];
 };
+
+const groupMeta = new WeakMap<
+  PickerGroup,
+  { heading: string; collisionHeading: string; cellId: string }
+>();
+
+const distinctTargetCells = new WeakSet<PickerTarget>();
+
+export function pickerGroupHeading(group: PickerGroup): string {
+  return (
+    groupMeta.get(group)?.heading ??
+    (group.section === null
+      ? group.template.title
+      : (sectionTitle(group.section) ?? group.template.title))
+  );
+}
+
+export function pickerTargetNeedsCellIdentity(choice: PickerTarget): boolean {
+  return distinctTargetCells.has(choice);
+}
 
 // The icons of "Открыть лист", GM first. Owlbear shows the first icon whose filter matches.
 const OPEN_ROLES: readonly PlayerRole[] = ['GM', 'PLAYER'];
@@ -104,7 +123,6 @@ export function liveLinks(
   preset: Preset | null,
 ): Map<string, LiveLinkTarget> {
   const links = new Map<string, LiveLinkTarget>();
-  const blocks = blockIndex(records.values());
 
   for (const [key, record] of records) {
     if (!key.startsWith('link:')) {
@@ -113,7 +131,7 @@ export function liveLinks(
 
     const tokenId = tokenIdSchema.safeParse(key.slice('link:'.length));
     const target = linkTargetOf(record.d);
-    const live = target === null ? null : liveLinkTarget(records, preset, target, blocks);
+    const live = target === null ? null : liveLinkTarget(records, preset, target);
 
     // A token id no command could write never reaches a menu filter.
     if (tokenId.success && live !== null) {
@@ -198,26 +216,39 @@ export function pickerGroups(
     const sheetIds = templateSheetIds(records.values(), preset, template);
 
     for (const { cellId, section } of tokenCells(template, null)) {
-      groups.push({
+      const group: PickerGroup = {
         template,
         section: null,
         targets: sheetIds.map((sheetId) =>
           targetOf(template, { sheetId, instanceId: null, cellId }, cellId, null, section),
         ),
+      };
+
+      groups.push(group);
+      groupMeta.set(group, {
+        heading: template.title,
+        collisionHeading: sectionTitle(section) ?? template.title,
+        cellId,
       });
     }
 
-    for (const section of layoutSections(template)) {
-      const sectionId = repeatSectionId(section);
+    const repeatIds = [
+      ...template.tabs.flatMap((tab) => (tab.repeat === undefined ? [] : [tab.repeat.id])),
+      ...layoutSections(template).flatMap((section) => [
+        ...(section.repeat === undefined ? [] : [section.repeat.id]),
+        ...section.rows.flatMap((row) => (row.repeat === undefined ? [] : [row.repeat.id])),
+      ]),
+    ];
 
-      if (sectionId === null) {
-        continue;
-      }
+    for (const sectionId of repeatIds) {
+      const repeatedSection = repeatSectionById(template, sectionId);
+
+      if (repeatedSection === null) continue;
 
       for (const { cellId } of tokenCells(template, sectionId)) {
-        groups.push({
+        const group: PickerGroup = {
           template,
-          section,
+          section: repeatedSection,
           targets: sheetIds.flatMap((sheetId) =>
             repeatBlocks(records, sheetId, sectionId).map((block) =>
               targetOf(
@@ -229,42 +260,100 @@ export function pickerGroups(
                   cellId,
                 },
                 cellId,
-                repeatBlockName(records, sheetId, section, block.instanceId),
-                section,
+                repeatBlockName(records, sheetId, repeatedSection, block.instanceId),
+                repeatedSection,
               ),
             ),
           ),
-        });
+        };
+
+        groups.push(group);
+        const heading = sectionTitle(repeatedSection) ?? template.title;
+
+        groupMeta.set(group, { heading, collisionHeading: heading, cellId });
       }
     }
   }
 
-  return groups.flatMap((group) =>
-    group.targets.length === 0 ? [] : [{ ...group, targets: noTokenFirst(group.targets) }],
-  );
+  const headingCounts = new Map<string, number>();
+
+  for (const group of groups) {
+    const heading = pickerGroupHeading(group);
+    headingCounts.set(heading, (headingCounts.get(heading) ?? 0) + 1);
+  }
+
+  return groups.flatMap((group) => {
+    if (group.targets.length === 0) return [];
+
+    const heading = pickerGroupHeading(group);
+    const meta = groupMeta.get(group);
+    const cellId = meta?.cellId ?? group.targets[0]?.cellId ?? '';
+    const distinct = (headingCounts.get(heading) ?? 0) > 1;
+
+    if (distinct) for (const target of group.targets) distinctTargetCells.add(target);
+
+    const result = { ...group, targets: noTokenFirst(group.targets) };
+    groupMeta.set(result, {
+      heading: distinct ? `${meta?.collisionHeading ?? heading} — ${cellId}` : heading,
+      collisionHeading: meta?.collisionHeading ?? heading,
+      cellId,
+    });
+
+    return [result];
+  });
 }
 
 function tokenCells(
   template: Template,
   repeatId: string | null,
 ): { cellId: string; section: PresetSection }[] {
+  if (repeatId === null) {
+    return template.tabs.flatMap((tab) =>
+      tab.repeat === undefined
+        ? tab.sections.flatMap((section) =>
+            section.repeat === undefined
+              ? section.rows
+                  .filter((row) => row.repeat === undefined)
+                  .flatMap((row) =>
+                    rowCells(row).flatMap((cell) =>
+                      cell.kind === 'token' ? [{ cellId: cell.id, section }] : [],
+                    ),
+                  )
+              : [],
+          )
+        : [],
+    );
+  }
+
+  const repeatedTab = template.tabs.find((tab) => tab.repeat?.id === repeatId);
+
+  if (repeatedTab !== undefined) {
+    return repeatedTab.sections.flatMap((section) =>
+      section.repeat === undefined
+        ? section.rows
+            .filter((row) => row.repeat === undefined)
+            .flatMap((row) =>
+              rowCells(row).flatMap((cell) =>
+                cell.kind === 'token' ? [{ cellId: cell.id, section }] : [],
+              ),
+            )
+        : [],
+    );
+  }
+
   return layoutSections(template).flatMap((section) => {
-    if (
-      (repeatId === null && section.repeat !== undefined) ||
-      (repeatId !== null && section.repeat?.id !== repeatId)
-    ) {
-      return [];
-    }
+    const rows =
+      section.repeat?.id === repeatId
+        ? section.rows.filter((row) => row.repeat === undefined)
+        : section.repeat === undefined
+          ? section.rows.filter((row) => row.repeat?.id === repeatId)
+          : [];
 
-    return section.rows.flatMap((row) => {
-      if (repeatId === null && row.repeat !== undefined) {
-        return [];
-      }
-
-      return rowCells(row).flatMap((cell) =>
+    return rows.flatMap((row) =>
+      rowCells(row).flatMap((cell) =>
         cell.kind === 'token' ? [{ cellId: cell.id, section }] : [],
-      );
-    });
+      ),
+    );
   });
 }
 

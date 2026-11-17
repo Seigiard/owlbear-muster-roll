@@ -1,4 +1,4 @@
-import { blockIndex, linkTargetOf, liveLinkTarget, type LiveLinkTarget } from '@/core/link-target';
+import { linkTargetOf, liveLinkTarget, type LiveLinkTarget } from '@/core/link-target';
 import type { DicePlace } from '@/core/dice-roll';
 import {
   firstFieldId,
@@ -46,6 +46,38 @@ export function tabShownTo(role: PlayerRole, template: Template, tabIndex: numbe
     tab !== undefined &&
     templateShownTo(role, template) &&
     (role === 'GM' || tab.visibility !== 'gm')
+  );
+}
+
+export function sectionShownTo(
+  role: PlayerRole,
+  template: Template,
+  tabIndex: number,
+  sectionIndex: number,
+): boolean {
+  const section = template.tabs[tabIndex]?.sections[sectionIndex];
+
+  return (
+    section !== undefined &&
+    tabShownTo(role, template, tabIndex) &&
+    (role === 'GM' || section.visibility !== 'gm')
+  );
+}
+
+export function rowShownTo(
+  role: PlayerRole,
+  template: Template,
+  tabIndex: number,
+  sectionIndex: number,
+  rowIndex: number,
+): boolean {
+  const section = template.tabs[tabIndex]?.sections[sectionIndex];
+  const row = section?.rows[rowIndex];
+
+  return (
+    row !== undefined &&
+    sectionShownTo(role, template, tabIndex, sectionIndex) &&
+    (role === 'GM' || row.visibility !== 'gm')
   );
 }
 
@@ -140,8 +172,6 @@ export function visibleRecords(
     return records.filter((record) => record.k === 'preset');
   }
 
-  const blocks = blockIndex(known.values());
-
   return records.filter((record) => {
     if (record.k.startsWith('blk:') && record.k.split(':').length === 2) {
       return record.d === null || sheetShownTo(known, preset, record.k.slice('blk:'.length), role);
@@ -149,7 +179,7 @@ export function visibleRecords(
 
     if (record.k.startsWith('link:')) {
       const target = linkTargetOf(record.d);
-      const live = target === null ? null : liveLinkTarget(known, preset, target, blocks);
+      const live = target === null ? null : liveLinkTarget(known, preset, target);
 
       return live !== null && linkTargetShownTo(role, live);
     }

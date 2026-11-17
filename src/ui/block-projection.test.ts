@@ -89,3 +89,55 @@ test('a pending edit back to the applied value still names only the touched fiel
   // #then
   expect([...(projection.$pending.get().get(root.k)?.fields ?? [])]).toEqual([['a', 'base']]);
 });
+
+test('keeps a pending field visible when a newer remote value arrives before its withdrawal', () => {
+  // #given
+  const projection = createProjectionStore();
+
+  const pending: VersionedRecord = fixturePatch(
+    root,
+    { order: 0, cells: { a: [20, 2, 'player'] } },
+    2,
+    'player',
+  );
+
+  const applied: VersionedRecord = fixturePatch(
+    root,
+    { order: 0, cells: { a: [30, 3, 'gm'] } },
+    3,
+    'gm',
+  );
+
+  projection.replaceAll([root], [pending], [], sync);
+  // #when
+  projection.applyDelta([applied], [], [], [], sync);
+  const beforeWithdrawal = projection.$pending.get().get(root.k);
+
+  const before = {
+    shown: cellValues(blockDataSchema.parse(projection.$records.get().get(root.k)?.d).cells),
+    pending: [...(beforeWithdrawal?.fields ?? [])],
+    pendingRecord: cellValues(blockDataSchema.parse(beforeWithdrawal?.record.d).cells),
+    applied: cellValues(blockDataSchema.parse(projection.$replica.get().get(root.k)?.d).cells),
+  };
+
+  projection.applyDelta([applied], [], [root.k], [], sync);
+  // #then
+  expect({
+    before,
+    after: {
+      shown: cellValues(blockDataSchema.parse(projection.$records.get().get(root.k)?.d).cells),
+      pending: [...projection.$pending.get().keys()],
+    },
+  }).toEqual({
+    before: {
+      shown: { a: 20 },
+      pending: [['a', 20]],
+      pendingRecord: { a: 20 },
+      applied: { a: 30 },
+    },
+    after: {
+      shown: { a: 30 },
+      pending: [],
+    },
+  });
+});

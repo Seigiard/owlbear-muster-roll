@@ -101,6 +101,7 @@ declare global {
   interface Window {
     seenCommands: SeenCommand[];
     rejectedCommandIds: string[];
+    rejectedCommands: { id: string; reason: string }[];
   }
 }
 
@@ -460,6 +461,7 @@ export async function watchCommands(page: Page): Promise<void> {
     ([channel, probePrefix]) => {
       window.seenCommands = [];
       window.rejectedCommandIds = [];
+      window.rejectedCommands = [];
       window.mockPlatform.broadcast.onMessage(channel, (event) => {
         const message = Object(event.data);
         const id = String(message.id);
@@ -468,6 +470,7 @@ export async function watchCommands(page: Page): Promise<void> {
           window.seenCommands.push({ id, type: String(Object(message.command).type) });
         } else if (message.t === 'command-rejected') {
           window.rejectedCommandIds.push(id);
+          window.rejectedCommands.push({ id, reason: String(message.reason) });
         }
       });
     },

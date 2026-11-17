@@ -79,6 +79,8 @@ export const copy = {
     readOnly: 'Только чтение',
     canEdit: 'Можно править',
     tokenLinked: 'Токен привязан',
+    tokenLinkedCurrent: 'Привязан к этой ячейке',
+    tokenLinkedElsewhere: 'Привязан к другой ячейке',
     noToken: 'Нет токена',
     tokenCellPicker: 'Выберите токены для этой ячейки',
     noSceneTokens: 'На сцене нет токенов.',
