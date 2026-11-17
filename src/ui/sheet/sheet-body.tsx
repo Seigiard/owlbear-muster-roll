@@ -11,6 +11,7 @@ import {
   type TemplateLayout,
 } from '@/core/preset';
 import { repKeyPrefix, rowKey, type VersionedRecord } from '@/core/records';
+import { repeatBlocks } from '@/core/sheet-values';
 import { sectionShownTo } from '@/core/visibility';
 import { copy } from '@/copy';
 import { IconButton } from '@/ui/primitives/icon-button';
@@ -118,11 +119,52 @@ export function SheetBody({
     };
   }, [reveal, openTab, onRevealed]);
 
+  const renderedTabKey =
+    renderedTab === null
+      ? JSON.stringify([openTab, null, null])
+      : JSON.stringify([
+          renderedTab.sourceIndex,
+          renderedTab.block?.scopeId ?? null,
+          renderedTab.block?.instanceId ?? null,
+        ]);
+
+  const previousRenderedTab = useRef<RenderedTab | null>(null);
+
+  const [settledVanishedTab, setSettledVanishedTab] = useState<string | null>(null);
+
+  const vanishedTab =
+    previousRenderedTab.current !== null &&
+    renderedTab !== null &&
+    previousRenderedTab.current.block !== null &&
+    !sameRenderedTab(previousRenderedTab.current, renderedTab) &&
+    !hasRepeatBlock(records, sheetId, previousRenderedTab.current) &&
+    settledVanishedTab !== renderedTabKey;
+
+  const displayedTab = vanishedTab ? previousRenderedTab.current : renderedTab;
+
+  const displayedTabKey =
+    displayedTab === null
+      ? JSON.stringify([openTab, null, null])
+      : JSON.stringify([
+          displayedTab.sourceIndex,
+          displayedTab.block?.scopeId ?? null,
+          displayedTab.block?.instanceId ?? null,
+        ]);
+
+  useEffect(() => {
+    previousRenderedTab.current = renderedTab;
+
+    if (vanishedTab) {
+      setSettledVanishedTab(renderedTabKey);
+    }
+  }, [renderedTab, renderedTabKey, vanishedTab]);
+
   if (openTab === null) {
     return null;
   }
 
-  const tabBlock = renderedTab?.block ?? null;
+  const displayedTabIndex = displayedTab?.sourceIndex ?? openTab;
+  const displayedTabBlock = displayedTab?.block ?? null;
 
   return (
     <FieldEditingContext value={editing}>
@@ -132,16 +174,16 @@ export function SheetBody({
             ref={body}
             className="flex flex-wrap gap-x-4 gap-y-6"
             data-sheet-body
-            data-tab-index={openTab}
+            data-tab-index={displayedTabIndex}
           >
-            {(template.tabs[openTab]?.sections ?? []).flatMap((section, index) =>
-              sectionShownTo(role, template, openTab, index)
+            {(template.tabs[displayedTabIndex]?.sections ?? []).flatMap((section, index) =>
+              sectionShownTo(role, template, displayedTabIndex, index)
                 ? [
                     <SheetSection
-                      key={`${openTab}.${index}`}
+                      key={`${displayedTabKey}.${index}`}
                       template={template}
                       section={section}
-                      tabIndex={openTab}
+                      tabIndex={displayedTabIndex}
                       sectionIndex={index}
                       templateTitle={template.title}
                       sheetId={sheetId}
@@ -149,18 +191,19 @@ export function SheetBody({
                       readOnly={editing === null}
                       pending={pending}
                       blockTools={blockTools}
-                      tabBlock={tabBlock}
+                      tabBlock={displayedTabBlock}
                       role={role}
                     />,
                   ]
                 : [],
             )}
-            {tabBlock !== null && tabBlockEditing !== null && role === 'GM' ? (
+            {displayedTabBlock !== null && tabBlockEditing !== null && role === 'GM' ? (
               <TabBlockControls
+                key={displayedTabKey}
                 sheetId={sheetId}
-                scopeId={tabBlock.scopeId}
-                instanceId={tabBlock.instanceId}
-                name={tabBlock.name}
+                scopeId={displayedTabBlock.scopeId}
+                instanceId={displayedTabBlock.instanceId}
+                name={displayedTabBlock.name}
                 editing={tabBlockEditing}
               />
             ) : null}
@@ -168,6 +211,29 @@ export function SheetBody({
         </div>
       </DiceSheetContext>
     </FieldEditingContext>
+  );
+}
+
+function sameRenderedTab(left: RenderedTab, right: RenderedTab): boolean {
+  return (
+    left.sourceIndex === right.sourceIndex &&
+    left.block?.scopeId === right.block?.scopeId &&
+    left.block?.instanceId === right.block?.instanceId
+  );
+}
+
+function hasRepeatBlock(
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  renderedTab: RenderedTab,
+): boolean {
+  const block = renderedTab.block;
+
+  return (
+    block !== null &&
+    repeatBlocks(records, sheetId, block.scopeId).some(
+      (candidate) => candidate.instanceId === block.instanceId,
+    )
   );
 }
 

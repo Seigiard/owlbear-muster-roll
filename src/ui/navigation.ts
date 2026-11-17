@@ -20,9 +20,11 @@ export type NavigationFocusAfterLoss =
 
 export type NavigationTabReveal = { tab: string; focus: boolean };
 
+export type TemplateTabSelection = number | string;
+
 export type NavigationState = {
   selectedTab: string;
-  chosenTemplateTabs: ReadonlyMap<string, number>;
+  chosenTemplateTabs: ReadonlyMap<string, TemplateTabSelection>;
   seenPresetState: PresetState;
   created: string | null;
   deleting: string | null;
@@ -38,7 +40,13 @@ export type NavigationState = {
 export type NavigationEvent =
   | { type: 'projection'; isGm: boolean; tabIds: readonly string[]; presetState: PresetState }
   | { type: 'select-sidebar-entry'; id: string; listed: boolean }
-  | { type: 'select-template-tab'; sheet: string; index: number; visible: boolean }
+  | {
+      type: 'select-template-tab';
+      sheet: string;
+      index: number;
+      key?: string;
+      visible: boolean;
+    }
   | { type: 'create-sent'; sheet: string; isGm: boolean; presetState: PresetState }
   | { type: 'create-outcome'; sheet: string; outcome: CommandOutcome<undefined> }
   | { type: 'ask-delete'; sheet: string; isGm: boolean; isSheetSet: boolean }
@@ -58,6 +66,7 @@ export type NavigationEvent =
       blockTab: number | null;
       block: string | null;
       cellTab: number | null;
+      tabKey?: string;
       ready: boolean;
     }
   | { type: 'name-focused'; sheet: string }
@@ -99,7 +108,10 @@ export function transition(state: NavigationState, event: NavigationEvent): Navi
       return event.visible
         ? {
             ...state,
-            chosenTemplateTabs: new Map(state.chosenTemplateTabs).set(event.sheet, event.index),
+            chosenTemplateTabs: new Map(state.chosenTemplateTabs).set(
+              event.sheet,
+              event.key ?? event.index,
+            ),
           }
         : state;
     case 'create-sent':
@@ -276,9 +288,11 @@ function openRequestTransition(
     blockReveal,
     tabReveal: { tab: event.tab, focus: event.focusInWindow && blockReveal === null },
     chosenTemplateTabs:
-      (event.blockTab ?? event.cellTab) === null
-        ? state.chosenTemplateTabs
-        : new Map(state.chosenTemplateTabs).set(event.tab, event.blockTab ?? event.cellTab ?? 0),
+      event.tabKey !== undefined
+        ? new Map(state.chosenTemplateTabs).set(event.tab, event.tabKey)
+        : (event.blockTab ?? event.cellTab) === null
+          ? state.chosenTemplateTabs
+          : new Map(state.chosenTemplateTabs).set(event.tab, event.blockTab ?? event.cellTab ?? 0),
     // Another tab, a sheet deleted elsewhere, or a role that cannot delete closes the confirmation
     // for good, so returning to the tab does not bring it back.
     deleteAsk: state.deleteAsk?.sheet === event.tab ? state.deleteAsk : null,
