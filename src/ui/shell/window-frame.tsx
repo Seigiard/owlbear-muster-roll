@@ -76,6 +76,12 @@ export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
       className="flex min-h-0 flex-1 flex-col"
       selectedKey={layout.selectedTab ?? undefined}
       onSelectionChange={(key: Key) => {
+        const tab = layout.tabs.find((candidate) => candidate.id === String(key));
+
+        if (tab?.addScopeId !== undefined) {
+          return;
+        }
+
         layout.onSelectTab(String(key));
       }}
     >
@@ -83,7 +89,7 @@ export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
         {layout.header === undefined ? null : (
           <div className="shrink-0 p-3 pb-0">{layout.header}</div>
         )}
-        <TabBar tabs={layout.tabs} />
+        <TabBar tabs={layout.tabs} onAddTab={layout.onSelectTab} />
         {layout.selectedTab === null ? null : (
           <div
             key={`${layout.selectedSidebarEntry}:${layout.selectedTab}`}
