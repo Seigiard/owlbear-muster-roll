@@ -51,6 +51,22 @@ export function previewRecords(
     }
   }
 
+  for (const tab of template.tabs) {
+    const scopeId = tab.repeat?.id;
+
+    if (scopeId === undefined) continue;
+
+    const key = repKey(sheetId, scopeId, SAMPLE_INSTANCE_ID);
+
+    records.set(key, {
+      k: key,
+      d: { order: 1, cells: {} },
+      c: PREVIEW_COUNTER,
+      a: PREVIEW_AUTHOR,
+      l: [PREVIEW_COUNTER, PREVIEW_AUTHOR],
+    });
+  }
+
   return records;
 }
 

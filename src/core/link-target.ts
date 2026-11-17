@@ -2,6 +2,7 @@ import type { JsonValue } from '@/core/json';
 import {
   repeatSectionById,
   repeatSectionPlace,
+  repeatTabById,
   repeatScopeById,
   placedSections,
   type Preset,
@@ -17,6 +18,7 @@ import {
   type LinkData,
   type VersionedRecord,
 } from '@/core/records';
+import { renderedTabs } from '@/core/rendered-tabs';
 import { resolveSheet, sheetIdSchema, type SheetPolicy } from '@/core/sheets';
 
 // A v4 link names a sheet, an optional sequence of (repeat scope, block id)
@@ -120,11 +122,29 @@ export function repeatBlockTabIndex(
   sheetId: string,
   instanceId: string,
 ): number | null {
-  const sectionId = blockIndex(records).get(blockIndexKey(sheetId, instanceId));
+  const recordList = [...records];
+  const sectionId = blockIndex(recordList).get(blockIndexKey(sheetId, instanceId));
+  const place = sectionId === undefined ? null : repeatSectionPlace(layout, sectionId);
 
-  return sectionId === undefined
-    ? null
-    : (repeatSectionPlace(layout, sectionId)?.place.tabIndex ?? null);
+  if (sectionId === undefined || place === null) return null;
+
+  const tabRepeat = repeatTabById(layout, sectionId);
+
+  const tabs = renderedTabs(
+    layout,
+    new Map(recordList.map((record) => [record.k, record] as const)),
+    sheetId,
+  );
+
+  const index = tabs.findIndex(
+    (tab) =>
+      tab.sourceIndex === place.place.tabIndex &&
+      (tabRepeat === null
+        ? tab.block === null
+        : tab.block?.scopeId === sectionId && tab.block.instanceId === instanceId),
+  );
+
+  return index === -1 ? null : index;
 }
 
 // AD-19: a link is live only while its sheet is live, its repeat block is live when it names one,
@@ -189,6 +209,30 @@ export function tokenCellPlace(
   }
 
   if (repeatSectionId !== null) {
+    const tab = repeatTabById(template, repeatSectionId);
+
+    if (tab !== null) {
+      for (const [sectionIndex, section] of tab.tab.sections.entries()) {
+        if (section.repeat !== undefined) continue;
+
+        for (const [rowIndex, row] of section.rows.entries()) {
+          if (row.repeat !== undefined) continue;
+
+          if (row.cells.some((cell) => cell.kind === 'token' && cell.id === cellId)) {
+            return {
+              tabIndex: tab.place.tabIndex,
+              sectionIndex,
+              rowIndex,
+              section,
+              row,
+            };
+          }
+        }
+      }
+
+      return null;
+    }
+
     const scope = repeatScopeById(template, repeatSectionId);
 
     if (scope === null) return null;

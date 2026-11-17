@@ -26,9 +26,9 @@ cell     = text { text }
 
 Every object is strict. A key that is not listed here makes the file invalid.
 `repeat` is part of the v4 vocabulary at templates, tabs, sections and rows.
-The current release temporarily rejects repeat tabs and nested repeat scopes by
-rule checks. This release boundary does not remove those keys from the v4
-model or from the future block-path model.
+The current release temporarily rejects nested repeat scopes by rule checks.
+This release boundary does not remove those keys from the v4 model or from the
+future block-path model.
 
 ## Keys
 
@@ -71,7 +71,7 @@ open tab locally; it is not stored or sent.
 | --- | --- | --- |
 | `title` | string, optional | The tab name. It is required and non-blank when the template has more than one tab. |
 | `visibility` | `"all"` or `"gm"`, optional | `"all"` is the default. `"gm"` hides the tab and its content from players in the interface. |
-| `repeat` | `{ id, nameField }`, optional | Reserves a repeat scope whose blocks are tabs named by `nameField`. The current release rejects this form; the v4 model retains it for the future. |
+| `repeat` | `{ id, nameField }`, optional | Makes one tab per block, named by `nameField`. A final `+` tab lets the GM add a block. |
 | `sections` | array, required | The sections of the tab, in display order. |
 
 Tabs change layout only. Fields outside repeat scopes share one scope across
@@ -163,9 +163,8 @@ blocks appear:
 | Row | Blocks stacked as rows | Anyone with write access |
 
 The current release supports the non-nested repeat forms used by the shipped
-preset examples. It temporarily rejects repeat tabs and nested block scopes.
-The reserved forms remain in the schema vocabulary and in the approved future
-model.
+preset examples. It temporarily rejects nested block scopes. The nested form
+remains in the schema vocabulary and in the approved future model.
 
 A block is addressed by a sheet and a path of `(scope id, block id)` pairs.
 The path can contain nested pairs in the future. A record and a token link use
@@ -201,7 +200,7 @@ confirmation names values and sheets that will be lost.
 | Change a field type, including `select` and `dice-choice` | Its values are erased after confirmation. |
 | Add a single sheet | Its empty sidebar entry appears. |
 | Remove a template, change its id, or add/remove template `repeat` | Its sheets and their values, links, owners and access are removed after confirmation. |
-| Add, remove or change `repeat` on a tab, section or row | Blocks in that scope are removed after confirmation. The current release rejects tab and nested repeat forms before this change is applied. |
+| Add, remove or change `repeat` on a tab, section or row | Blocks in that scope are removed after confirmation. The current release rejects nested repeat forms before this change is applied. |
 | Change `repeat.id` | The old blocks are removed after confirmation. |
 | Change `repeat.nameField` | Block identity and values are kept; displayed names change. |
 | Remove a token cell or its block | Its token links are removed. Links are not counted in the confirmation. |

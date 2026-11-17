@@ -391,6 +391,23 @@ export function sectionTarget(
 export function templateScopes(layout: TemplateLayout): TemplateScopes {
   const scopes: TemplateScopes = { rows: new Map(), rowFields: new Map(), sections: new Map() };
 
+  for (const tab of layout.tabs) {
+    if (tab.repeat !== undefined) {
+      scopes.sections.set(
+        tab.repeat.id,
+        tab.sections.flatMap((section) =>
+          section.repeat === undefined
+            ? section.rows.flatMap((row) =>
+                row.repeat === undefined
+                  ? row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field')
+                  : [],
+              )
+            : [],
+        ),
+      );
+    }
+  }
+
   for (const section of layoutSections(layout)) {
     const sectionId = repeatSectionId(section);
 

@@ -10,6 +10,7 @@ import {
   repeatSectionId,
   repeatScopeById,
   sectionFields,
+  type TabBlock,
   type PresetCell,
   type PresetSection,
   type Template,
@@ -84,6 +85,7 @@ type SheetSectionProps = {
   // A player's edits that wait for a GM, or `null` for a GM, whose edits never wait.
   pending: SheetPending | null;
   blockTools: BlockTools | null;
+  tabBlock: TabBlock | null;
   role: 'GM' | 'PLAYER';
 };
 
@@ -124,6 +126,7 @@ export function SheetSection({
   readOnly,
   pending,
   blockTools,
+  tabBlock,
   role,
 }: SheetSectionProps): ReactNode {
   const headingId = useId();
@@ -148,6 +151,7 @@ export function SheetSection({
     records,
     pending,
     blockTools,
+    tabBlock,
     role,
   };
 
@@ -163,6 +167,7 @@ export function SheetSection({
         readOnly={readOnly}
         pending={pending}
         blockTools={blockTools}
+        tabBlock={tabBlock}
         role={role}
       />
     ) : sectionId === null ? (
@@ -223,11 +228,23 @@ function PlainContent({
   readOnly,
   pending,
   blockTools,
+  tabBlock,
   role,
 }: PlainContentProps): ReactNode {
   const rows = useMemo(
-    () => plainRows(template, section, tabIndex, sectionIndex, sheetId, records, pending, role),
-    [template, section, tabIndex, sectionIndex, sheetId, records, pending, role],
+    () =>
+      plainRows(
+        template,
+        section,
+        tabIndex,
+        sectionIndex,
+        sheetId,
+        records,
+        pending,
+        role,
+        tabBlock,
+      ),
+    [template, section, tabIndex, sectionIndex, sheetId, records, pending, role, tabBlock],
   );
 
   return (
@@ -248,6 +265,7 @@ function RowRepeatContent({
   readOnly,
   pending,
   blockTools,
+  tabBlock,
   role,
 }: SheetSectionProps): ReactNode {
   const plain = plainRows(
@@ -259,6 +277,7 @@ function RowRepeatContent({
     records,
     pending,
     role,
+    tabBlock,
   );
 
   const repeated = section.rows.flatMap((row, rowIndex) => {
@@ -293,6 +312,7 @@ function RowRepeatContent({
             pending={pending}
             sectionId={id}
             blockTools={blockTools}
+            tabBlock={tabBlock}
             role={role}
           />
         ) : (
@@ -308,6 +328,7 @@ function RowRepeatContent({
             pending={pending}
             sectionId={id}
             blockTools={blockTools}
+            tabBlock={tabBlock}
             role={role}
           />
         ),
@@ -778,7 +799,10 @@ function tokenTargetOf(
     : {
         sheetId: row.sheetId,
         instanceId: row.instanceId,
-        path: [sectionId ?? '', row.instanceId],
+        path: [
+          sectionId ?? (row.target?.kind === 'rep' ? row.target.sectionId : ''),
+          row.instanceId,
+        ],
         cellId: cell.id,
       };
 }
@@ -792,7 +816,15 @@ function plainRows(
   records: ReadonlyMap<string, VersionedRecord>,
   pending: SheetPending | null,
   role: 'GM' | 'PLAYER',
+  tabBlock: TabBlock | null,
 ): SheetRow[] {
+  const blockValues =
+    tabBlock === null
+      ? null
+      : (repeatBlocks(records, sheetId, tabBlock.scopeId).find(
+          (block) => block.instanceId === tabBlock.instanceId,
+        )?.values ?? new Map());
+
   return section.rows.flatMap((row, index) => {
     if (row.repeat !== undefined || !rowShownTo(role, template, tabIndex, sectionIndex, index)) {
       return [];
@@ -800,7 +832,13 @@ function plainRows(
 
     const cells = row.cells;
     const rowId = firstFieldId(row);
-    const target: FieldPatchTarget | null = rowId === null ? null : { kind: 'row', rowId };
+
+    const target: FieldPatchTarget | null =
+      tabBlock === null
+        ? rowId === null
+          ? null
+          : { kind: 'row', rowId }
+        : { kind: 'rep', sectionId: tabBlock.scopeId, instanceId: tabBlock.instanceId };
 
     return [
       {
@@ -812,14 +850,14 @@ function plainRows(
           false,
         ),
         cells,
-        values: rowValues(records, sheetId, rowId),
+        values: blockValues ?? rowValues(records, sheetId, rowId),
         place: target === null ? null : placeOf(records, sheetId, target),
         dice: {
           sheetId,
           tabIndex,
           sectionIndex,
           rowIndex: index,
-          instanceId: null,
+          instanceId: tabBlock?.instanceId ?? null,
           target,
           fieldIds: fieldIdsOf(cells),
         },

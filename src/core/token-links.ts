@@ -234,10 +234,13 @@ export function pickerGroups(
       });
     }
 
-    const repeatIds = layoutSections(template).flatMap((section) => [
-      ...(section.repeat === undefined ? [] : [section.repeat.id]),
-      ...section.rows.flatMap((row) => (row.repeat === undefined ? [] : [row.repeat.id])),
-    ]);
+    const repeatIds = [
+      ...template.tabs.flatMap((tab) => (tab.repeat === undefined ? [] : [tab.repeat.id])),
+      ...layoutSections(template).flatMap((section) => [
+        ...(section.repeat === undefined ? [] : [section.repeat.id]),
+        ...section.rows.flatMap((row) => (row.repeat === undefined ? [] : [row.repeat.id])),
+      ]),
+    ];
 
     for (const sectionId of repeatIds) {
       const repeatedSection = repeatSectionById(template, sectionId);
@@ -306,17 +309,47 @@ function tokenCells(
   template: Template,
   repeatId: string | null,
 ): { cellId: string; section: PresetSection }[] {
+  if (repeatId === null) {
+    return template.tabs.flatMap((tab) =>
+      tab.repeat === undefined
+        ? tab.sections.flatMap((section) =>
+            section.repeat === undefined
+              ? section.rows
+                  .filter((row) => row.repeat === undefined)
+                  .flatMap((row) =>
+                    rowCells(row).flatMap((cell) =>
+                      cell.kind === 'token' ? [{ cellId: cell.id, section }] : [],
+                    ),
+                  )
+              : [],
+          )
+        : [],
+    );
+  }
+
+  const repeatedTab = template.tabs.find((tab) => tab.repeat?.id === repeatId);
+
+  if (repeatedTab !== undefined) {
+    return repeatedTab.sections.flatMap((section) =>
+      section.repeat === undefined
+        ? section.rows
+            .filter((row) => row.repeat === undefined)
+            .flatMap((row) =>
+              rowCells(row).flatMap((cell) =>
+                cell.kind === 'token' ? [{ cellId: cell.id, section }] : [],
+              ),
+            )
+        : [],
+    );
+  }
+
   return layoutSections(template).flatMap((section) => {
     const rows =
-      repeatId === null
-        ? section.repeat === undefined
-          ? section.rows.filter((row) => row.repeat === undefined)
-          : []
-        : section.repeat?.id === repeatId
-          ? section.rows.filter((row) => row.repeat === undefined)
-          : section.repeat === undefined
-            ? section.rows.filter((row) => row.repeat?.id === repeatId)
-            : [];
+      section.repeat?.id === repeatId
+        ? section.rows.filter((row) => row.repeat === undefined)
+        : section.repeat === undefined
+          ? section.rows.filter((row) => row.repeat?.id === repeatId)
+          : [];
 
     return rows.flatMap((row) =>
       rowCells(row).flatMap((cell) =>

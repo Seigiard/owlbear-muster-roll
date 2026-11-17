@@ -19,6 +19,8 @@ export type ShellTab = {
   label: string;
   selectedOnMap?: boolean;
   dataTabIndex?: number;
+  sourceTabIndex?: number;
+  addScopeId?: string;
 };
 
 type TabBarProps = { tabs: readonly ShellTab[] };
@@ -37,6 +39,7 @@ export function TabBar({ tabs }: TabBarProps): ReactNode {
               aria-label={tabName(tab)}
               data-frame-tab
               data-tab-index={tab.dataTabIndex}
+              data-source-tab-index={tab.sourceTabIndex}
               className={TAB_CLASS}
             >
               <span className="min-w-0 truncate">
