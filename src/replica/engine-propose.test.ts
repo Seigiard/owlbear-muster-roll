@@ -75,6 +75,22 @@ const PRESET: Preset = {
           ],
         },
         {
+          title: 'Задания',
+          repeat: { id: 'quest', nameField: 'quest' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'quest' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
           title: 'Заметки мастера',
           visibility: 'gm',
           sections: [
@@ -419,6 +435,77 @@ describe('a GM client answers a proposal', () => {
       sent: [reject(record, 'denied')],
       commits: [],
       stored: BASE.find((seeded) => seeded.k === record.k) ?? null,
+    });
+  });
+  test('from a player that creates a repeat-tab block: rejects it without a commit, GM record, or room copy', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { timing: { snapshotPauseMs: 10 } });
+
+    const proposed: VersionedRecord = {
+      k: 'blk:brok:quest:q1',
+      d: { order: 0, cells: { quest: ['Найти меч', 1, PLAYER_SOCKET] } },
+      c: 1,
+      a: PLAYER_SOCKET,
+      l: [1, PLAYER_SOCKET],
+    };
+
+    joinPlayerSocket(room);
+    // #when
+    propose(room, proposed);
+    await waitUntil(
+      () => heardOf(room, 'gm-a', 'reject').length + heardOf(room, 'gm-a', 'commit').length === 1,
+    );
+    await pause(30);
+    // #then
+    expect({
+      rejected: heardOf(room, 'gm-a', 'reject'),
+      commits: heardOf(room, 'gm-a', 'commit'),
+      stored: storedRecord(gm, proposed.k),
+      copied: roomCopyRecords(room)?.find((record) => record.k === proposed.k),
+    }).toEqual({
+      rejected: [reject(proposed, 'denied')],
+      commits: [],
+      stored: null,
+      copied: undefined,
+    });
+  });
+  test('from a player that deletes a repeat-tab block: rejects it and preserves its token link', async () => {
+    // #given
+    const block: VersionedRecord = {
+      k: 'blk:brok:quest:q1',
+      d: { order: 0, cells: { quest: ['Найти меч', 1, 'seed'] } },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    };
+
+    const link: VersionedRecord = {
+      k: 'link:quest-token',
+      d: { s: 'brok', path: ['quest', 'q1'], c: 'token' },
+      c: 1,
+      a: 'seed',
+    };
+
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: [...BASE, block, link] });
+    const proposed = fixturePatch(block, null, 2, PLAYER_SOCKET);
+
+    joinPlayerSocket(room);
+    // #when
+    propose(room, proposed);
+    await waitUntil(
+      () => heardOf(room, 'gm-a', 'reject').length + heardOf(room, 'gm-a', 'commit').length === 1,
+    );
+    // #then
+    expect({
+      rejected: heardOf(room, 'gm-a', 'reject'),
+      commits: heardOf(room, 'gm-a', 'commit'),
+      stored: [storedRecord(gm, block.k), storedRecord(gm, link.k)],
+    }).toEqual({
+      rejected: [reject(proposed, 'denied')],
+      commits: [],
+      stored: [block, link],
     });
   });
   test('of a single sheet every player edits, from a player with no access: commits it', async () => {
@@ -1302,6 +1389,67 @@ describe("a player's entry over its lifetime", () => {
 });
 
 describe('a player and a GM client together', () => {
+  test('commits a visible field edit from the player while the GM creates a repeat-tab block', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a');
+    const player = await startClient(room, PLAYER_ID, { role: 'PLAYER', seeded: [] });
+
+    const repeatTab: VersionedRecord = {
+      k: 'blk:brok:quest:q1',
+      d: { order: 0, cells: {} },
+      c: 1,
+      a: 'gm-a',
+      l: [1, 'gm-a'],
+    };
+
+    await waitUntil(() => shown(player, SWORD.k) !== undefined);
+    // #when
+    send(player, strEdit('str', 11));
+    send(gm, {
+      type: 'repeat-block-add',
+      sheetId: 'brok',
+      sectionId: 'quest',
+      instanceId: 'q1',
+    });
+    await waitUntil(
+      () =>
+        storedRecord(gm, STR_ROW.k)?.c === 3 && storedRecord(gm, repeatTab.k)?.c === repeatTab.c,
+    );
+    // #then
+    expect({
+      field: storedRecord(gm, STR_ROW.k),
+      lifecycle: storedRecord(gm, repeatTab.k),
+    }).toEqual({
+      field: fixturePatch(STR_ROW, { str: 11 }, 3, PLAYER_ID),
+      lifecycle: repeatTab,
+    });
+  });
+  test('allows the GM to delete a repeat-tab block through its public command', async () => {
+    // #given
+    const block: VersionedRecord = {
+      k: 'blk:brok:quest:q1',
+      d: { order: 0, cells: { quest: ['Найти меч', 1, 'seed'] } },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    };
+
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: [...BASE, block] });
+    const removed = fixtureRecord(block.k, null, 2, 'gm-a');
+
+    // #when
+    send(gm, {
+      type: 'repeat-block-delete',
+      sheetId: 'brok',
+      sectionId: 'quest',
+      instanceId: 'q1',
+    });
+    await waitUntil(() => storedRecord(gm, block.k)?.d === null);
+    // #then
+    expect(storedRecord(gm, block.k)).toEqual(removed);
+  });
   test("apply a player's field edit, repeat block add and repeat block removal on both clients", async () => {
     // #given
     const room = roomRig.openRoom();
