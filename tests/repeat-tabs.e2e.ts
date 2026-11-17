@@ -417,6 +417,7 @@ test('the GM can add and open the first Builder preview block from zero', async 
 
   // #when
   await sheetTab(frame, '+').click();
+  await frame.getByRole('group', { name: 'name', exact: true }).dblclick();
 
   // #then
   await expectFirstBlockOpen(frame);
@@ -438,6 +439,7 @@ test('deleting the final Builder preview block retains add and opens its replace
 
   // #when
   await sheetTab(frame, '+').click();
+  await frame.getByRole('group', { name: 'name', exact: true }).dblclick();
 
   // #then
   await expectFirstBlockOpen(frame);
