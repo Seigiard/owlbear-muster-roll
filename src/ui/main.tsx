@@ -750,6 +750,20 @@ function WindowRoot({
     const openTab = opened?.tab.sourceIndex ?? null;
     const visibleTabs = sheet === null ? [] : visibleTemplateTabs(sheet);
 
+    const visibleRepeatTabs =
+      sheet === null
+        ? []
+        : sheet.policy.template.tabs
+            .filter(
+              (candidate, sourceIndex) =>
+                candidate.repeat !== undefined &&
+                tabShownTo(role, sheet.policy.template, sourceIndex),
+            )
+            .filter(
+              (candidate, index, all) =>
+                all.findIndex((other) => other.repeat?.id === candidate.repeat?.id) === index,
+            );
+
     const shellTabs: ShellTab[] = [
       ...(sheet === null
         ? []
@@ -768,19 +782,11 @@ function WindowRoot({
             };
           })),
       ...(isGm
-        ? visibleTabs
-            .filter((rendered) => rendered.tab.repeat !== undefined)
-            .filter(
-              (rendered, index, all) =>
-                all.findIndex(
-                  (candidate) => candidate.tab.repeat?.id === rendered.tab.repeat?.id,
-                ) === index,
-            )
-            .map((rendered): ShellTab => ({
-              id: `template-tab-add:${rendered.tab.repeat?.id ?? ''}`,
-              label: '+',
-              addScopeId: rendered.tab.repeat?.id ?? '',
-            }))
+        ? visibleRepeatTabs.map((candidate): ShellTab => ({
+            id: `template-tab-add:${candidate.repeat?.id ?? ''}`,
+            label: '+',
+            addScopeId: candidate.repeat?.id ?? '',
+          }))
         : []),
     ];
 

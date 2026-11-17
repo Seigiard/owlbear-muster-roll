@@ -457,6 +457,21 @@ export function PreviewPane({
     [renderRecords, renderSheetId, tabIsShown, template],
   );
 
+  const visibleRepeatTabs = useMemo(
+    () =>
+      template === null || renderSheetId === null
+        ? []
+        : template.tabs
+            .filter(
+              (candidate, sourceIndex) => candidate.repeat !== undefined && tabIsShown(sourceIndex),
+            )
+            .filter(
+              (candidate, index, all) =>
+                all.findIndex((other) => other.repeat?.id === candidate.repeat?.id) === index,
+            ),
+    [renderSheetId, tabIsShown, template],
+  );
+
   const navigationTemplate = useMemo<PreviewNavigationTemplate | null>(
     () =>
       docTemplate === null || template === null ? null : { uid: docTemplate.uid, ...template },
@@ -533,19 +548,11 @@ export function PreviewPane({
     }))
     .concat(
       role === 'GM'
-        ? visibleRenderedTabs
-            .filter((rendered) => rendered.tab.repeat !== undefined)
-            .filter(
-              (rendered, index, all) =>
-                all.findIndex(
-                  (candidate) => candidate.tab.repeat?.id === rendered.tab.repeat?.id,
-                ) === index,
-            )
-            .map((rendered) => ({
-              id: `template-tab-add:${rendered.tab.repeat?.id ?? ''}`,
-              label: '+',
-              addScopeId: rendered.tab.repeat?.id ?? '',
-            }))
+        ? visibleRepeatTabs.map((candidate) => ({
+            id: `template-tab-add:${candidate.repeat?.id ?? ''}`,
+            label: '+',
+            addScopeId: candidate.repeat?.id ?? '',
+          }))
         : [],
     );
 
