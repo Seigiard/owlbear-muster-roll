@@ -4,7 +4,7 @@ title: Keep a pending player value visible until its edit settles
 status: In Progress
 assignee: []
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T08:21:00Z'
+updated_date: '2026-11-17T08:26:00Z'
 labels: []
 dependencies: []
 references:
@@ -41,7 +41,9 @@ TASK-76 changed pending projection assembly to use the replica conflict merge. I
 <!-- SECTION:NOTES:BEGIN -->
 Implemented and locked the public ProjectionStore regression: pending 20 / applied 30 remains shown and pending 20, then withdrawal shows 30 with no pending entry.
 
-Evidence: focused 21/21 and stable source checks format, lint, typecheck, unit, browser 558/558, and build all exit 0 at addcd6c963c38e9d5b37e5e90a538600169db442. Durable logs: /Users/seigiard/.claude/artifacts/preset-v4-78-87-20261117/task-83/final-checks/checks.json.
+Durable red evidence: the locked test replayed in an owned detached worktree at 6c7d8b7b9be569e7de0f0f160bca16b05cbaa197; the focused command exited 1 with 20 pass / 1 fail and expected 20 / received 30. Log: /Users/seigiard/.claude/artifacts/preset-v4-78-87-20261117/task-83/focused-red-replay.log.
 
-The test-writer broad run is preserved at task-83/writer-red-checks but is non-final: concurrent source changed during it and its saved typecheck exited 1. The observed focused red is recorded in task-83/test-writer-1.report.md; no separate mutation/calibration project was warranted.
+Stable source checks format, lint, typecheck, unit, browser 558/558, and build all exit 0 at addcd6c963c38e9d5b37e5e90a538600169db442. Durable logs: /Users/seigiard/.claude/artifacts/preset-v4-78-87-20261117/task-83/final-checks/checks.json.
+
+The saved writer broad run is non-final because source changed during it; its bun log passes the new owner. No separate mutation/calibration project was warranted.
 <!-- SECTION:NOTES:END -->
