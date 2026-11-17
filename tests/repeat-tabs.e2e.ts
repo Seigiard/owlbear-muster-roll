@@ -83,8 +83,38 @@ const SNAPSHOT = {
   links: [{ tokenId: 'beta', sheetId: 'npc', path: ['npc', 'b'], cellId: 'portrait' }],
 };
 
+const EMPTY_SNAPSHOT = {
+  v: 4,
+  type: 'muster-roll/snapshot',
+  sheets: [
+    {
+      id: 'npc',
+      cells: fixtureSnapshotCells({}),
+      blocks: fixtureSnapshotBlocks({}),
+    },
+  ],
+  links: [],
+};
+
+const SINGLE_BLOCK_SNAPSHOT = {
+  v: 4,
+  type: 'muster-roll/snapshot',
+  sheets: [
+    {
+      id: 'npc',
+      cells: fixtureSnapshotCells({}),
+      blocks: fixtureSnapshotBlocks({
+        npc: [{ instanceId: 'a', order: 0, cells: { name: 'Alpha', hp: 7 } }],
+      }),
+    },
+  ],
+  links: [],
+};
+
 const TAB_NAMES = ['Overview', 'Alpha', 'Блок 2', 'Notes'];
 const GM_TAB_NAMES = [...TAB_NAMES, '+'];
+const EMPTY_GM_TAB_NAMES = ['Overview', 'Notes', '+'];
+const FIRST_BLOCK_TAB_NAMES = ['Overview', 'Блок 1', 'Notes', '+'];
 const GM: ClientParams = { client: 'gm', device: 'repeat-tabs', name: 'Мастер' };
 
 const PLAYER: ClientParams = {
@@ -135,6 +165,42 @@ test('the GM final plus adds and opens an empty block', async ({ context }) => {
     'true',
   );
   await expect(gm.window.getByRole('textbox', { name: 'name' })).toHaveValue('');
+});
+
+test('the GM can add and open the first extension block from zero', async ({ context }) => {
+  // #given
+  const gm = await openSeededClient(context, GM, []);
+
+  // #then
+  expect(await tabNames(gm.window)).toEqual(EMPTY_GM_TAB_NAMES);
+
+  // #when
+  await sheetTab(gm.window, '+').click();
+
+  // #then
+  await expectFirstBlockOpen(gm.window);
+});
+
+test('deleting the final extension block retains add and opens its replacement', async ({
+  context,
+}) => {
+  // #given
+  const records = [record('blk:npc:npc:a', { order: 0, cells: { name: 'Alpha', hp: 7 } })];
+  const gm = await openSeededClient(context, GM, records);
+  await sheetTab(gm.window, 'Alpha').click();
+
+  // #when
+  await gm.window.getByRole('button', { name: copy.command.delete }).click();
+  await gm.window.getByRole('button', { name: copy.command.delete, exact: true }).click();
+
+  // #then
+  await expect.poll(() => tabNames(gm.window)).toEqual(EMPTY_GM_TAB_NAMES);
+
+  // #when
+  await sheetTab(gm.window, '+').click();
+
+  // #then
+  await expectFirstBlockOpen(gm.window);
 });
 
 test('a refused add leaves the GM tab list and selection unchanged', async ({ context }) => {
@@ -342,6 +408,41 @@ test('Builder preview add and delete change only its snapshot', async ({ page, c
   expect(await storedRecords(extension.window, 'blk:npc:npc:')).toEqual(extensionBefore);
 });
 
+test('the GM can add and open the first Builder preview block from zero', async ({ page }) => {
+  // #given
+  const frame = await openBuilderPreview(page, EMPTY_SNAPSHOT);
+
+  // #then
+  expect(await tabNames(frame)).toEqual(EMPTY_GM_TAB_NAMES);
+
+  // #when
+  await sheetTab(frame, '+').click();
+
+  // #then
+  await expectFirstBlockOpen(frame);
+});
+
+test('deleting the final Builder preview block retains add and opens its replacement', async ({
+  page,
+}) => {
+  // #given
+  const frame = await openBuilderPreview(page, SINGLE_BLOCK_SNAPSHOT);
+  await sheetTab(frame, 'Alpha').click();
+
+  // #when
+  await frame.getByRole('button', { name: copy.command.delete }).click();
+  await frame.getByRole('button', { name: copy.command.delete, exact: true }).click();
+
+  // #then
+  await expect.poll(() => tabNames(frame)).toEqual(EMPTY_GM_TAB_NAMES);
+
+  // #when
+  await sheetTab(frame, '+').click();
+
+  // #then
+  await expectFirstBlockOpen(frame);
+});
+
 async function openSeededClient(
   context: BrowserContext,
   params: ClientParams,
@@ -353,6 +454,19 @@ async function openSeededClient(
   await expect(sheetTabs(window)).toBeVisible();
 
   return { window, background };
+}
+
+async function openBuilderPreview(page: Page, snapshot: JsonValue): Promise<Locator> {
+  await installBrowserFileAccessFake(page);
+  await page.goto('/builder.html');
+  await queueBrowserFile(page, 'repeat-tabs.json', JSON.stringify(PRESET));
+  await page.getByRole('button', { name: /^Пресет/ }).click();
+  await page.getByRole('menuitem', { name: /Открыть/ }).click();
+  await queueBrowserFile(page, 'repeat-tabs-snapshot.json', JSON.stringify(snapshot));
+  await page.getByRole('button', { name: /^Снимок/ }).click();
+  await page.getByRole('menuitem', { name: /Открыть/ }).click();
+
+  return page.locator('[data-preview-frame]');
 }
 
 async function openUnseededClient(
@@ -380,6 +494,12 @@ async function tabNames(root: Page | Locator): Promise<string[]> {
     .evaluateAll((tabs) =>
       tabs.map((tab) => tab.getAttribute('aria-label') ?? tab.textContent ?? ''),
     );
+}
+
+async function expectFirstBlockOpen(root: Page | Locator): Promise<void> {
+  await expect.poll(() => tabNames(root)).toEqual(FIRST_BLOCK_TAB_NAMES);
+  await expect(sheetTab(root, 'Блок 1')).toHaveAttribute('aria-selected', 'true');
+  await expect(root.getByRole('textbox', { name: 'name' })).toHaveValue('');
 }
 
 async function sentCommandId(page: Page, type: string): Promise<string> {
