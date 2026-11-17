@@ -2,7 +2,7 @@
 title: 'Invalidate repeat-tab dice feedback after remote block edits'
 type: 'bugfix'
 created: '2026-11-17'
-status: 'done'
+status: 'in-progress'
 route: 'dispatch'
 context:
   - '{project-root}/GLOSSARY.md'
