@@ -162,6 +162,55 @@ function dataOf(records: ReadonlyMap<string, VersionedRecord>, key: string): Jso
 }
 
 describe('importSnapshot', () => {
+  test('keeps a root number when a repeat tab has a same-id text field', () => {
+    // #given
+    const preset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'npc',
+          title: 'NPC',
+          tabs: [
+            {
+              title: 'Основное',
+              sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }],
+            },
+            {
+              title: 'Состояния',
+              repeat: { id: 'condition', nameField: 'condition_name' },
+              sections: [
+                {
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'condition_name' },
+                        { kind: 'field', type: 'text', id: 'hp' },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const input = file([single('npc', { rows: { hp: { hp: 7 } } })]);
+
+    // #when
+    const result = importSnapshot(input, { preset, data: CURRENT.data }, AUTHOR);
+
+    // #then
+    if (!result.ok) {
+      throw new Error(`the import failed: ${result.error}`);
+    }
+
+    expect({
+      row: dataOf(assembleRecords(result.value.records), 'blk:npc'),
+      count: result.value.count,
+    }).toEqual({ row: { hp: 7 }, count: 0 });
+  });
   test('writes every record at c: 1 with the current preset and the file links, and no acl: or plink:', () => {
     // #given
     const input = file(

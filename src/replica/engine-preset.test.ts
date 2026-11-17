@@ -306,6 +306,91 @@ describe('a preset diff', () => {
 });
 
 describe('a preset upload', () => {
+  test('preserves a root number when a later repeat tab has a same-id text field', async () => {
+    // #given
+    const preset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'pc',
+          title: 'Персонажи',
+          repeat: { nameField: 'name' },
+          tabs: [
+            {
+              title: 'Основное',
+              sections: [
+                { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] },
+                { rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] },
+              ],
+            },
+            {
+              title: 'Состояния',
+              repeat: { id: 'condition', nameField: 'condition_name' },
+              sections: [
+                {
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'condition_name' },
+                        { kind: 'field', type: 'text', id: 'hp' },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const room = roomRig.openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      seeded: [
+        { k: 'preset', d: encodePreset(preset), c: 1, a: 'seed' },
+        {
+          k: 'blk:brok',
+          d: { set: 'pc', order: 0, cells: { hp: [7, 1, 'seed'] } },
+          c: 1,
+          a: 'seed',
+          l: [1, 'seed'],
+        },
+        {
+          k: 'blk:brok:condition:c1',
+          d: {
+            order: 0,
+            cells: {
+              condition_name: ['Ранен', 1, 'seed'],
+              hp: ['критично', 1, 'seed'],
+            },
+          },
+          c: 1,
+          a: 'seed',
+          l: [1, 'seed'],
+        },
+      ],
+    });
+
+    // #when
+    const id = send(gm, uploadOf(preset, 0));
+    await waitUntil(() => result(gm, id) !== undefined || rejection(gm, id) !== undefined);
+
+    // #then
+    expect({
+      result: result(gm, id),
+      rejection: rejection(gm, id),
+      cells: cellValues(Object(storedRecord(gm, 'blk:brok')?.d).cells),
+      condition: cellValues(Object(storedRecord(gm, 'blk:brok:condition:c1')?.d).cells),
+      commits: heardOf(room, 'gm-a', 'commit').map(keysOf),
+    }).toEqual({
+      result: { count: 0, sheets: 0 },
+      rejection: undefined,
+      cells: { hp: 7 },
+      condition: { condition_name: 'Ранен', hp: 'критично' },
+      commits: [['preset']],
+    });
+  });
   test('puts the applied preset in the next room copy', async () => {
     // #given
     const room = roomRig.openRoom();
