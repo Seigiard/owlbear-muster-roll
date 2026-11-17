@@ -1,9 +1,10 @@
 ---
 id: TASK-90
 title: Reject player repeat-tab creation and deletion at the receiving GM
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-17T11:03:00Z'
+updated_date: '2026-11-17T14:40:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -39,3 +40,12 @@ Review finding: bugs+impl-codex-1
 - [ ] #3 Authorized player field edits to existing visible tab blocks and GM lifecycle actions remain allowed.
 - [ ] #4 Regression coverage exercises public receiving-GM proposal admission, not only the player's local command guard or hidden UI.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Lock room-rig regressions for raw player repeat-tab creation and deletion at a real receiving GM, including persistence, commit/ACK, value and token-link observations.
+2. Preserve public admission of an authorized visible-block field edit and existing GM lifecycle behavior.
+3. Restrict `src/core/access.ts` lifecycle admission without changing player-local guards or broader policy.
+4. Calibrate protected assertions and run the required source checks; request the parent browser slot before the full browser suite.
+<!-- SECTION:PLAN:END -->
