@@ -27,13 +27,13 @@ export type SendFailure = { kind: 'rate-limited' } | { kind: 'failed'; reason: s
 
 export type SendResult = Result<void, SendFailure>;
 
+export type BroadcastSend = {
+  (channel: string, data: JsonValue, options: BroadcastOptions): Promise<SendResult>;
+  (channel: string, data: ReadonlyJsonValue, options: BroadcastOptions): Promise<SendResult>;
+};
+
 export type BroadcastPort = {
-  sendMessage(channel: string, data: JsonValue, options: BroadcastOptions): Promise<SendResult>;
-  sendMessage(
-    channel: string,
-    data: ReadonlyJsonValue,
-    options: BroadcastOptions,
-  ): Promise<SendResult>;
+  sendMessage: BroadcastSend;
   onMessage: (channel: string, callback: (event: BroadcastEvent) => void) => Unsubscribe;
 };
 

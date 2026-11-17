@@ -897,8 +897,9 @@ export function createComposers(connectionId: string): Composers {
   };
 }
 
-// AD-19: the tombstones of every link that names the repeat block `instanceId` of the sheet. The GM
-// client that removes a repeat block, or commits a player's removal of one, writes them.
+// AD-19: the tombstones of every link that names the repeat block `instanceId` of the sheet. Legacy
+// links may carry the wrong scope id, so their instance id remains authoritative only when their
+// complete path does not name another live block.
 export function blockLinkTombstones(
   context: ComposeContext,
   sheetId: string,
@@ -918,9 +919,17 @@ export function blockLinkTombstones(
       targetPath.length >= path.length &&
       path.every((part, index) => targetPath[index] === part);
 
+    const isLegacyInstanceTarget =
+      path !== undefined &&
+      targetPath !== null &&
+      targetPath.at(-1) === instanceId &&
+      !validBlockPath(context.records, sheetId, targetPath);
+
     if (
       target?.sheetId === sheetId &&
-      (isDescendant || (path === undefined && target?.instanceId === instanceId))
+      (isDescendant ||
+        isLegacyInstanceTarget ||
+        (path === undefined && target?.instanceId === instanceId))
     ) {
       doomed.push(record);
     }

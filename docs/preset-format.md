@@ -26,9 +26,7 @@ cell     = text { text }
 
 Every object is strict. A key that is not listed here makes the file invalid.
 `repeat` is part of the v4 vocabulary at templates, tabs, sections and rows.
-The current release temporarily rejects nested repeat scopes by rule checks.
-This release boundary does not remove those keys from the v4 model or from the
-future block-path model.
+Repeat scopes can be nested at any depth.
 
 ## Keys
 
@@ -98,7 +96,7 @@ link a token cell inside each of its blocks.
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `visibility` | `"all"` or `"gm"`, optional | Visibility for the row and its cells. |
-| `repeat` | `{ id, nameField }`, optional | Makes the row a repeat scope. Each parent block can hold its own row blocks. The current release rejects a nested repeat scope. |
+| `repeat` | `{ id, nameField }`, optional | Makes the row a repeat scope. Each parent block can hold its own row blocks. |
 | `cells` | array, required | The cells in the row. |
 
 A row with more cells than its section's `columns` is invalid. A plain row has
@@ -162,15 +160,13 @@ blocks appear:
 | Section | Blocks stacked in the section | Anyone with write access |
 | Row | Blocks stacked as rows | Anyone with write access |
 
-The current release supports the non-nested repeat forms used by the shipped
-preset examples. It temporarily rejects nested block scopes. The nested form
-remains in the schema vocabulary and in the approved future model.
-
 A block is addressed by a sheet and a path of `(scope id, block id)` pairs.
-The path can contain nested pairs in the future. A record and a token link use
-that path. Changing a repeat scope id creates a new scope and removes its old
-blocks. Changing `nameField` keeps block identity and values while changing
-the names shown in the interface.
+The path contains every pair from the outermost block through the block itself.
+A record and a token link store that complete path. Snapshot import keeps a
+nested block only when every ancestor pair names a scope in the preset and a
+live parent block. Changing a repeat scope id creates a new scope and removes
+its old blocks. Changing `nameField` keeps block identity and values while
+changing the names shown in the interface.
 
 ## Dice formulas
 
@@ -200,7 +196,7 @@ confirmation names values and sheets that will be lost.
 | Change a field type, including `select` and `dice-choice` | Its values are erased after confirmation. |
 | Add a single sheet | Its empty sidebar entry appears. |
 | Remove a template, change its id, or add/remove template `repeat` | Its sheets and their values, links, owners and access are removed after confirmation. |
-| Add, remove or change `repeat` on a tab, section or row | Blocks in that scope are removed after confirmation. The current release rejects nested repeat forms before this change is applied. |
+| Add, remove or change `repeat` on a tab, section or row | Blocks in that scope and their nested blocks are removed after confirmation. |
 | Change `repeat.id` | The old blocks are removed after confirmation. |
 | Change `repeat.nameField` | Block identity and values are kept; displayed names change. |
 | Remove a token cell or its block | Its token links are removed. Links are not counted in the confirmation. |
