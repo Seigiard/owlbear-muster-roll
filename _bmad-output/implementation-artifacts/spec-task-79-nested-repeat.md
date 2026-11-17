@@ -2,9 +2,10 @@
 title: 'TASK-79: Nested repeat blocks inside blocks'
 type: 'feature'
 created: '2026-11-17'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
+baseline_commit: 'b0f8db3fd0261ec4274af655fc1f4922fb1cd0f8'
 context:
   - '{project-root}/GLOSSARY.md'
   - '{project-root}/_bmad-output/specs/spec-muster-roll/preset-format.md'
