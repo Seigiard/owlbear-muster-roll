@@ -592,51 +592,64 @@ test('Room and Builder name two scoped add tabs and activate each by mouse and k
   // #given
   const room = await openSeededClient(context, GM, [], TWO_SCOPE_PRESET);
   const frame = await openBuilderPreview(page, EMPTY_SNAPSHOT, TWO_SCOPE_PRESET);
-  await addTabs(room.window).nth(1).waitFor();
-  await addTabs(frame).nth(1).waitFor();
-  const roomAddNames = await accessibleNames(addTabs(room.window));
-  const builderAddNames = await accessibleNames(addTabs(frame));
-  const roomAddLabels = await addTabs(room.window).allTextContents();
-  const builderAddLabels = await addTabs(frame).allTextContents();
 
-  // #when
-  await addTabs(room.window).nth(0).click();
-  await repeatBlockTabs(room.window).nth(0).waitFor();
-  await addTabs(room.window).nth(1).press('Enter');
-  await repeatBlockTabs(room.window).nth(1).waitFor();
-  await addTabs(frame).nth(0).click();
-  await repeatBlockTabs(frame).nth(0).waitFor();
-  await addTabs(frame).nth(1).press('Enter');
-  await repeatBlockTabs(frame).nth(1).waitFor();
+  const roomNpcAdd = sheetTabs(room.window).getByRole('tab', {
+    name: 'Добавить в «NPC»',
+    exact: true,
+  });
+
+  const roomGearAdd = sheetTabs(room.window).getByRole('tab', {
+    name: 'Добавить в «Gear»',
+    exact: true,
+  });
+
+  const builderNpcAdd = sheetTabs(frame).getByRole('tab', {
+    name: 'Добавить в «NPC»',
+    exact: true,
+  });
+
+  const builderGearAdd = sheetTabs(frame).getByRole('tab', {
+    name: 'Добавить в «Gear»',
+    exact: true,
+  });
 
   // #then
-  expect({
-    room: {
-      addNames: roomAddNames,
-      addLabels: roomAddLabels,
-      blockScopes: await sourceTabIndexes(repeatBlockTabs(room.window)),
-      selectedScope: await selectedSourceTabIndex(room.window),
-    },
-    builder: {
-      addNames: builderAddNames,
-      addLabels: builderAddLabels,
-      blockScopes: await sourceTabIndexes(repeatBlockTabs(frame)),
-      selectedScope: await selectedSourceTabIndex(frame),
-    },
-  }).toEqual({
-    room: {
-      addNames: ['Добавить в «NPC»', 'Добавить в «Gear»'],
-      addLabels: ['+', '+'],
-      blockScopes: ['1', '2'],
-      selectedScope: '2',
-    },
-    builder: {
-      addNames: ['Добавить в «NPC»', 'Добавить в «Gear»'],
-      addLabels: ['+', '+'],
-      blockScopes: ['1', '2'],
-      selectedScope: '2',
-    },
-  });
+  await expect(roomNpcAdd).toBeVisible();
+  await expect(roomNpcAdd).toHaveText('+');
+  await expect(roomGearAdd).toBeVisible();
+  await expect(roomGearAdd).toHaveText('+');
+  await expect(builderNpcAdd).toBeVisible();
+  await expect(builderNpcAdd).toHaveText('+');
+  await expect(builderGearAdd).toBeVisible();
+  await expect(builderGearAdd).toHaveText('+');
+
+  // #when
+  await roomNpcAdd.click();
+
+  // #then
+  await expect(room.window.getByRole('textbox', { name: 'name' })).toBeVisible();
+
+  // #when
+  await roomGearAdd.press('Enter');
+
+  // #then
+  await expect(room.window.getByRole('textbox', { name: 'item' })).toBeVisible();
+
+  // #when
+  await builderNpcAdd.click();
+  await frame.getByRole('group', { name: 'name', exact: true }).click();
+  await page.keyboard.press('Enter');
+
+  // #then
+  await expect(frame.getByRole('textbox', { name: 'name', exact: true })).toBeVisible();
+
+  // #when
+  await builderGearAdd.press('Enter');
+  await frame.getByRole('group', { name: 'item', exact: true }).click();
+  await page.keyboard.press('Enter');
+
+  // #then
+  await expect(frame.getByRole('textbox', { name: 'item', exact: true })).toBeVisible();
 });
 
 test('Builder preview add and delete change only its snapshot', async ({ page, context }) => {
@@ -782,30 +795,6 @@ function sheetTabs(root: Page | Locator): Locator {
 
 function sheetTab(root: Page | Locator, name: string): Locator {
   return sheetTabs(root).getByRole('tab', { name, exact: true });
-}
-
-function addTabs(root: Page | Locator): Locator {
-  return sheetTabs(root).getByRole('tab').filter({ hasText: /^\+$/ });
-}
-
-function repeatBlockTabs(root: Page | Locator): Locator {
-  return sheetTabs(root).getByRole('tab', { name: 'Блок 1', exact: true });
-}
-
-async function accessibleNames(tabs: Locator): Promise<(string | null)[]> {
-  return tabs.evaluateAll((items) => items.map((item) => item.getAttribute('aria-label')));
-}
-
-async function sourceTabIndexes(tabs: Locator): Promise<(string | null)[]> {
-  return tabs.evaluateAll((items) =>
-    items.map((item) => item.getAttribute('data-source-tab-index')),
-  );
-}
-
-async function selectedSourceTabIndex(root: Page | Locator): Promise<string | null> {
-  return sheetTabs(root)
-    .locator('[role="tab"][aria-selected="true"]')
-    .getAttribute('data-source-tab-index');
 }
 
 async function tabNames(root: Page | Locator): Promise<string[]> {
