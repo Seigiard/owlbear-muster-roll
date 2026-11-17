@@ -67,49 +67,51 @@ type WindowFrameProps = { layout: WindowFrameLayout; banner?: BannerMessage };
 // AD-26: the only frame for the room window and both previews. It owns the sidebar, banner, tab
 // row and content area; callers provide only the navigation model and the selected content.
 export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
-  const content =
-    layout.tabs.length > 1 ? (
-      <Tabs
-        key={layout.selectedSidebarEntry}
-        className="flex min-h-0 flex-1 flex-col"
-        selectedKey={layout.selectedTab ?? undefined}
-        onSelectionChange={(key: Key) => {
-          layout.onSelectTab(String(key));
-        }}
-      >
-        <div role="tabpanel" className="flex min-h-0 flex-1 flex-col overflow-auto">
-          {layout.header === undefined ? null : (
-            <div className="shrink-0 p-3 pb-0">{layout.header}</div>
-          )}
-          <TabBar tabs={layout.tabs} />
-          {layout.selectedTab === null ? null : (
-            <div
-              key={`${layout.selectedSidebarEntry}:${layout.selectedTab}`}
-              id={layout.selectedTab}
-              className={MULTI_TAB_CONTENT_CLASS}
-            >
-              {layout.content}
-            </div>
-          )}
-        </div>
-      </Tabs>
-    ) : layout.selectedTab === null ? (
-      <div key={layout.selectedSidebarEntry} role="tabpanel" className={CONTENT_CLASS}>
-        {layout.header}
-        {layout.content}
+  const hasAddAction = layout.tabs.some((tab) => tab.addScopeId !== undefined);
+  const showTabRow = layout.tabs.length > 1 || hasAddAction;
+
+  const content = showTabRow ? (
+    <Tabs
+      key={layout.selectedSidebarEntry}
+      className="flex min-h-0 flex-1 flex-col"
+      selectedKey={layout.selectedTab ?? undefined}
+      onSelectionChange={(key: Key) => {
+        layout.onSelectTab(String(key));
+      }}
+    >
+      <div role="tabpanel" className="flex min-h-0 flex-1 flex-col overflow-auto">
+        {layout.header === undefined ? null : (
+          <div className="shrink-0 p-3 pb-0">{layout.header}</div>
+        )}
+        <TabBar tabs={layout.tabs} />
+        {layout.selectedTab === null ? null : (
+          <div
+            key={`${layout.selectedSidebarEntry}:${layout.selectedTab}`}
+            id={layout.selectedTab}
+            className={MULTI_TAB_CONTENT_CLASS}
+          >
+            {layout.content}
+          </div>
+        )}
       </div>
-    ) : (
-      <div
-        key={layout.selectedSidebarEntry}
-        id={layout.selectedTab}
-        role="tabpanel"
-        aria-label={layout.panelLabel ?? layout.tabs[0]?.label}
-        className={CONTENT_CLASS}
-      >
-        {layout.header}
-        {layout.content}
-      </div>
-    );
+    </Tabs>
+  ) : layout.selectedTab === null ? (
+    <div key={layout.selectedSidebarEntry} role="tabpanel" className={CONTENT_CLASS}>
+      {layout.header}
+      {layout.content}
+    </div>
+  ) : (
+    <div
+      key={layout.selectedSidebarEntry}
+      id={layout.selectedTab}
+      role="tabpanel"
+      aria-label={layout.panelLabel ?? layout.tabs[0]?.label}
+      className={CONTENT_CLASS}
+    >
+      {layout.header}
+      {layout.content}
+    </div>
+  );
 
   return (
     <main
