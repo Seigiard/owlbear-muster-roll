@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-17T11:03:00Z'
-updated_date: '2026-11-17T11:44:00Z'
+updated_date: '2026-11-17T11:49:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -57,5 +57,7 @@ Review finding: adversarial-claude-2
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Lock browser regressions for stable selection under remote add/delete, delayed draft ownership, Notes selection, and consecutive deletion/cancel. 2. Bind navigation, content keys and delete controls to stable tab/block identity using the existing reducer. 3. Validate browser owners and required source checks; integrate through the TASK-77–98 parent with one closing review.
+1. Lock focused browser regressions for selected repeat-block/source-tab identity, delayed-save target loss, and successor delete/cancel.
+2. Use the existing pure navigation reducer to store stable rendered identity; derive identity-based shell/content keys so a removed target unmounts rather than redirects a draft.
+3. Validate focused browser ownership, then source checks; leave TASK-95/96/97 unchanged.
 <!-- SECTION:PLAN:END -->
