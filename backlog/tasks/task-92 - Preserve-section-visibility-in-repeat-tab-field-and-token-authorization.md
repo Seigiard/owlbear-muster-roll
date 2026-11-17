@@ -1,9 +1,10 @@
 ---
 id: TASK-92
 title: Preserve section visibility in repeat-tab field and token authorization
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-17T11:04:00Z'
+updated_date: '2026-11-17T15:30:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -39,3 +40,12 @@ Review finding: bugs+impl-codex-2
 - [ ] #3 Inherited tab, section and row visibility is preserved for authorization; visible authorized fields remain editable and GM access remains unchanged.
 - [ ] #4 Public action-boundary regressions cover a visible repeat tab containing both visible and GM-only sections, without claiming record-level privacy.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Lock room-rig regressions for a visible repeat tab that contains both visible and GM-only source sections; exercise command, raw proposal, and token-open boundaries.
+2. Preserve source section visibility when field and token authorization resolves repeat-tab targets.
+3. Verify visible player fields and GM access remain allowed; retain TASK-90 lifecycle coverage.
+4. Run focused evidence, calibration, and the required checks; request the parent browser slot before a full browser run.
+<!-- SECTION:PLAN:END -->

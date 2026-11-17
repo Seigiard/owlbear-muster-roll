@@ -134,7 +134,7 @@ export function linkTargetShownTo(role: PlayerRole, live: LiveLinkTarget): boole
 
   return (
     tabShownTo(role, live.policy.template, live.cell.tabIndex) &&
-    (role === 'GM' || (live.section.visibility !== 'gm' && live.cell.row.visibility !== 'gm'))
+    (role === 'GM' || (live.cell.section.visibility !== 'gm' && live.cell.row.visibility !== 'gm'))
   );
 }
 
@@ -251,6 +251,27 @@ function fieldTargetTabIndex(template: Template, target: FieldVisibilityTarget):
 
     if (target.fieldId === undefined) {
       return section.visibility === 'gm' ? null : place.tabIndex;
+    }
+
+    // A repeat tab projects its plain rows into one synthetic section, so recover the source
+    // section before authorizing a field.
+    if (template.tabs[place.tabIndex]?.repeat?.id === target.sectionId) {
+      const source = template.tabs[place.tabIndex]?.sections
+        .filter((candidate) => candidate.repeat === undefined)
+        .flatMap((candidate) =>
+          candidate.rows
+            .filter((row) => row.repeat === undefined)
+            .map((row) => ({ row, section: candidate })),
+        )
+        .find(({ row }) =>
+          row.cells.some((cell) => cell.kind === 'field' && cell.id === target.fieldId),
+        );
+
+      return source === undefined ||
+        source.row.visibility === 'gm' ||
+        source.section.visibility === 'gm'
+        ? null
+        : place.tabIndex;
     }
 
     const row = section.rows.find((candidate) =>

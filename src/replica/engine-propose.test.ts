@@ -88,6 +88,10 @@ const PRESET: Preset = {
                 },
               ],
             },
+            {
+              visibility: 'gm',
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'secret' }] }],
+            },
           ],
         },
         {
@@ -468,6 +472,39 @@ describe('a GM client answers a proposal', () => {
       commits: [],
       stored: null,
       copied: undefined,
+    });
+  });
+  test('from a player that changes a GM-only source-section field in a visible repeat tab: rejects it and keeps the block', async () => {
+    // #given
+    const block: VersionedRecord = {
+      k: 'blk:brok:quest:q1',
+      d: {
+        order: 0,
+        cells: { quest: ['Найти меч', 1, 'seed'], secret: ['Лич', 1, 'seed'] },
+      },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    };
+
+    const proposed = fixturePatch(block, { secret: 'Ключ' }, 2, PLAYER_SOCKET);
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: [...BASE, block] });
+    joinPlayerSocket(room);
+    // #when
+    propose(room, proposed);
+    await waitUntil(
+      () => heardOf(room, 'gm-a', 'reject').length + heardOf(room, 'gm-a', 'commit').length === 1,
+    );
+    // #then
+    expect({
+      rejected: heardOf(room, 'gm-a', 'reject'),
+      commits: heardOf(room, 'gm-a', 'commit'),
+      stored: storedRecord(gm, block.k),
+    }).toEqual({
+      rejected: [reject(proposed, 'denied')],
+      commits: [],
+      stored: block,
     });
   });
   test('from a player that deletes a repeat-tab block: rejects it and preserves its token link', async () => {
@@ -1389,6 +1426,111 @@ describe("a player's entry over its lifetime", () => {
 });
 
 describe('a player and a GM client together', () => {
+  test('refuses a player command for a GM-only source-section field in a visible repeat tab', async () => {
+    // #given
+    const block: VersionedRecord = {
+      k: 'blk:brok:quest:q1',
+      d: {
+        order: 0,
+        cells: { quest: ['Найти меч', 1, 'seed'], secret: ['Лич', 1, 'seed'] },
+      },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    };
+
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: [...BASE, block] });
+    const player = await startClient(room, PLAYER_ID, { role: 'PLAYER', seeded: [] });
+    await waitUntil(() => shown(player, block.k) !== undefined);
+    // #when
+
+    const id = send(player, {
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'rep', sectionId: 'quest', instanceId: 'q1' },
+      fieldId: 'secret',
+      value: 'Ключ',
+    });
+
+    await waitUntil(() => rejection(player, id) !== undefined || proposals(room).length === 1);
+    // #then
+    expect({
+      reason: rejection(player, id),
+      proposed: proposals(room),
+      stored: storedRecord(gm, block.k),
+    }).toEqual({
+      reason: 'not-allowed',
+      proposed: [],
+      stored: block,
+    });
+  });
+  test('keeps a visible player field and a GM-only source-section field editable in a visible repeat tab', async () => {
+    // #given
+    const block: VersionedRecord = {
+      k: 'blk:brok:quest:q1',
+      d: {
+        order: 0,
+        cells: { quest: ['Найти меч', 1, 'seed'], secret: ['Лич', 1, 'seed'] },
+      },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    };
+
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: [...BASE, block] });
+    const player = await startClient(room, PLAYER_ID, { role: 'PLAYER', seeded: [] });
+    const playerEdit = fixturePatch(block, { quest: 'Найти щит' }, 2, PLAYER_ID);
+
+    const gmEdit = fixturePatch(
+      block,
+      { quest: ['Найти щит', 2, PLAYER_ID], secret: 'Ключ' },
+      3,
+      'gm-a',
+    );
+
+    await waitUntil(() => shown(player, block.k) !== undefined);
+    // #when
+
+    const playerCommandId = send(player, {
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'rep', sectionId: 'quest', instanceId: 'q1' },
+      fieldId: 'quest',
+      value: 'Найти щит',
+    });
+
+    await pause(10);
+
+    const gmCommandId = send(gm, {
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'rep', sectionId: 'quest', instanceId: 'q1' },
+      fieldId: 'secret',
+      value: 'Ключ',
+    });
+
+    await pause(10);
+    // #then
+    expect({
+      player: {
+        outcome: outcome(player, playerCommandId),
+        reason: rejection(player, playerCommandId),
+        proposal: proposals(room),
+      },
+      gm: outcome(gm, gmCommandId),
+      stored: storedRecord(gm, block.k),
+    }).toEqual({
+      player: {
+        outcome: { kind: 'answered', answer: undefined },
+        reason: undefined,
+        proposal: [playerEdit],
+      },
+      gm: { kind: 'answered', answer: undefined },
+      stored: gmEdit,
+    });
+  });
   test('commits a player field edit to an existing visible repeat-tab block at the receiving GM', async () => {
     // #given
     const repeatTab: VersionedRecord = {
