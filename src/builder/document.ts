@@ -5,6 +5,7 @@ import type {
   Preset,
   PresetCell,
   PresetFieldCell,
+  PresetRow,
   PresetSection,
   PresetTab,
   SheetSetTemplate,
@@ -20,7 +21,7 @@ import { copy } from '@/copy';
 
 export type DocCell = PresetCell & { uid: string };
 
-export type DocRow = { uid: string; cells: readonly DocCell[] };
+export type DocRow = Omit<PresetRow, 'cells'> & { uid: string; cells: readonly DocCell[] };
 
 export type DocSection = Omit<PresetSection, 'rows'> & { uid: string; rows: readonly DocRow[] };
 
@@ -131,7 +132,7 @@ function sectionFromPreset(section: PresetSection): DocSection {
   return {
     ...section,
     uid: mintUid(),
-    rows: section.rows.map((row: any) => ({
+    rows: section.rows.map((row) => ({
       ...row,
       uid: mintUid(),
       cells: row.cells.map(cellFromPreset),
@@ -400,6 +401,28 @@ export function scopeFieldIds(
   return new Set(sections.flatMap((section) => sectionFieldIds(section, except)));
 }
 
+// The ids that share a scope with a token cell. Token and repeat ids are not formula fields, but
+// they still need distinct suggestions in the builder.
+export function scopeIds(template: DocTemplate, spot: SectionSpot): Set<string> {
+  const own = sectionOf(template, spot);
+
+  const sections =
+    own?.repeat !== undefined
+      ? [own]
+      : templateSections(template).filter((section) => section.repeat === undefined);
+
+  return new Set([
+    ...scopeFieldIds(template, spot),
+    ...sections.flatMap((section) => [
+      ...(section.repeat === undefined ? [] : [section.repeat.id]),
+      ...section.rows.flatMap((row) => [
+        ...(row.repeat === undefined ? [] : [row.repeat.id]),
+        ...row.cells.flatMap((cell) => (cell.kind === 'token' ? [cell.id] : [])),
+      ]),
+    ]),
+  ]);
+}
+
 // The field ids a formula in a row of the section at `spot` can read, for completion: its own
 // repeat section's ids first, then the template's ids outside repeat sections, on any tab.
 export function formulaFieldIds(template: DocTemplate, spot: SectionSpot): string[] {
@@ -537,7 +560,7 @@ export function addCell(
   } else if (kind === 'dice') {
     cell = { kind: 'dice', formula: copy.builder.newFormula, uid };
   } else if (kind === 'token') {
-    cell = { kind: 'token', id: suggestFieldId('token', scopeFieldIds(template, path)), uid };
+    cell = { kind: 'token', id: suggestFieldId('token', scopeIds(template, path)), uid };
   } else {
     const labels = row.cells.flatMap((other) =>
       other.kind === 'text' && other.text.trim() !== '' ? [other.text] : [],
@@ -598,6 +621,16 @@ export function updateSection(
   return next === null ? null : { document: next, changed: uid };
 }
 
+export function updateRow(
+  document: BuilderDocument,
+  uid: string,
+  update: (row: DocRow) => DocRow,
+): DocumentEdit | null {
+  const next = mapRow(document, uid, update);
+
+  return next === null ? null : { document: next, changed: uid };
+}
+
 export function updateCell(
   document: BuilderDocument,
   uid: string,
@@ -645,29 +678,117 @@ export function withTemplateKind(template: DocTemplate, kind: TemplateKind): Doc
 
 // The text fields outside repeat sections, on any tab, which may name a sheet of a sheet set.
 export function nameFieldCandidates(template: DocTemplate): string[] {
-  return templateSections(template).flatMap((section) =>
-    section.repeat !== undefined
-      ? []
-      : section.rows.flatMap((row) =>
-          row.cells.flatMap((cell) =>
-            cell.kind === 'field' && cell.type === 'text' ? [cell.id] : [],
-          ),
-        ),
+  return repeatNameFieldCandidates(template, { kind: 'template', template: 0 });
+}
+
+export type RepeatItemPath = Extract<ItemPath, { kind: 'template' | 'tab' | 'section' | 'row' }>;
+
+export function repeatNameFieldCandidates(template: DocTemplate, path: RepeatItemPath): string[] {
+  if (path.kind === 'template') {
+    return templateSections(template).flatMap((section) =>
+      section.repeat === undefined ? sectionNameFieldIds(section) : [],
+    );
+  }
+
+  const tab = template.tabs[path.tab];
+
+  if (path.kind === 'tab') {
+    return (
+      tab?.sections.flatMap((section) =>
+        section.repeat === undefined ? sectionNameFieldIds(section) : [],
+      ) ?? []
+    );
+  }
+
+  const section = tab?.sections[path.section];
+
+  if (path.kind === 'section') {
+    return section === undefined ? [] : sectionNameFieldIds(section);
+  }
+
+  const row = section?.rows[path.row];
+
+  return row === undefined ? [] : textFieldIds(row);
+}
+
+export function repeatIdsAt(template: DocTemplate, path: RepeatItemPath): Set<string> {
+  if (path.kind === 'template') {
+    return new Set();
+  }
+
+  const tab = template.tabs[path.tab];
+
+  if (path.kind === 'tab') {
+    return new Set(template.tabs.flatMap((item) => (item.repeat ? [item.repeat.id] : [])));
+  }
+
+  const section = tab?.sections[path.section];
+
+  if (path.kind === 'section') {
+    return new Set(tab?.sections.flatMap((item) => (item.repeat ? [item.repeat.id] : [])) ?? []);
+  }
+
+  return new Set(section?.rows.flatMap((item) => (item.repeat ? [item.repeat.id] : [])) ?? []);
+}
+
+function sectionNameFieldIds(section: DocSection): string[] {
+  return section.rows.filter((row) => row.repeat === undefined).flatMap((row) => textFieldIds(row));
+}
+
+function textFieldIds(row: DocRow): string[] {
+  return row.cells.flatMap((cell) =>
+    cell.kind === 'field' && cell.type === 'text' ? [cell.id] : [],
   );
 }
 
-// A section that stops repeating loses its repeat block identity.
-export function withRepeat(section: DocSection, repeat: boolean): DocSection {
+// A repeatable node that stops repeating loses its repeat block identity.
+export function withRepeat(
+  item: DocTab,
+  repeat: boolean,
+  taken: ReadonlySet<string> = new Set(),
+  label?: string,
+): DocTab;
+export function withRepeat(
+  item: DocSection,
+  repeat: boolean,
+  taken?: ReadonlySet<string>,
+  label?: string,
+): DocSection;
+export function withRepeat(
+  item: DocRow,
+  repeat: boolean,
+  taken?: ReadonlySet<string>,
+  label?: string,
+): DocRow;
+export function withRepeat(
+  item: DocTab | DocSection | DocRow,
+  repeat: boolean,
+  taken: ReadonlySet<string> = new Set(),
+  label?: string,
+): DocTab | DocSection | DocRow {
   if (repeat) {
-    const nameField =
-      section.rows
-        .flatMap((row) => row.cells)
-        .find((cell) => cell.kind === 'field' && cell.type === 'text')?.id ?? 'name';
+    const candidates =
+      'cells' in item ? textFieldIds(item) : 'rows' in item ? sectionNameFieldIds(item) : [];
 
-    return { ...section, repeat: { id: 'repeat', nameField } };
+    const nameField = candidates[0] ?? 'name';
+    const id = suggestFieldId(label ?? ('title' in item ? (item.title ?? 'repeat') : 'row'), taken);
+
+    return { ...item, repeat: { id, nameField } };
   }
 
-  const { repeat: _repeat, ...rest } = section;
+  if ('cells' in item) {
+    const { repeat: _repeat, ...rest } = item;
+
+    return rest;
+  }
+
+  if ('rows' in item) {
+    const { repeat: _repeat, ...rest } = item;
+
+    return rest;
+  }
+
+  const { repeat: _repeat, ...rest } = item;
 
   return rest;
 }
