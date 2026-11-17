@@ -746,6 +746,7 @@ export function PreviewPane({
                               ]);
 
                         if (uid !== null) {
+                          previewSelection.current = uid;
                           setSelectedRenderedTab(index);
                           store.select(uid);
                         }
