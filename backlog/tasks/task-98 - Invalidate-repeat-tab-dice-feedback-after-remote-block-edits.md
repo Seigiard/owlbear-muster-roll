@@ -1,9 +1,11 @@
 ---
 id: TASK-98
 title: Invalidate repeat-tab dice feedback after remote block edits
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@seigiard'
 created_date: '2026-11-17T11:05:00Z'
+updated_date: '2026-11-17T17:51:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -39,3 +41,11 @@ Review finding: adversarial-claude-6
 - [ ] #3 Cross-tab dependent formulas, ordinary repeat behavior and local edit invalidation remain correct.
 - [ ] #4 Coverage uses the public dice/field feedback boundary; it adds no source-shape assertion or broad benchmark project.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Lock a public mock-room browser regression: visible dice field error, a second GM edits the selected repeat-tab block, then the first client sees feedback clear.
+2. Extend the consumer signature to include repeat-tab records once alongside root, repeat-section and repeat-row records.
+3. Calibrate the locked regression, run the six required checks, then record objective evidence.
+<!-- SECTION:PLAN:END -->
