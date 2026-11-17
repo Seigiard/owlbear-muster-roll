@@ -15,6 +15,7 @@ import {
   plainRow,
   repeatSectionByPath,
   repeatSectionId,
+  repeatScopePathAt,
   resolveFieldReference,
   sectionAt,
   type PresetCell,
@@ -333,7 +334,9 @@ function fieldLabel(layout: TemplateLayout, from: TemplateRowPlace, id: string):
 
   const rows: readonly (readonly PresetCell[])[] =
     reference.scope === 'block'
-      ? scopeRows(layout, reference.scopePath).map((row) => row.cells)
+      ? scopeRows(layout, reference.scopePath ?? repeatScopePathAt(layout, from)).map(
+          (row) => row.cells,
+        )
       : [plainRow(layout, reference.rowId) ?? []];
 
   for (const row of rows) {

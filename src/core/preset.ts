@@ -186,7 +186,7 @@ export const WINDOW_SIZE_LIMITS = {
 } as const;
 
 export type FieldReference =
-  | { scope: 'block'; scopeId?: string; scopePath: readonly string[] }
+  | { scope: 'block'; scopeId?: string; scopePath?: readonly string[] }
   | { scope: 'sheet'; rowId: string };
 
 export type PresetFailure =
@@ -624,6 +624,10 @@ export function resolveFieldReference(
     const scopePath = scopeIds.slice(index).reverse();
 
     if (scopeFieldsAt(layout, from, scopeId, scopePath).some((field) => field.id === id)) {
+      if (scopePath.length === 1 && scopeIds.length === 1) {
+        return { scope: 'block' };
+      }
+
       return index === 0 ? { scope: 'block', scopePath } : { scope: 'block', scopeId, scopePath };
     }
   }
@@ -682,15 +686,15 @@ export function scopeFieldsAt(
     const tab = layout.tabs[from.tabIndex];
     const last = path.at(-1);
 
-    if (row?.repeat?.id === last && path.length === currentPath.length) {
+    if (row !== undefined && row.repeat?.id === last && path.length === currentPath.length) {
       return row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field');
     }
 
-    if (section?.repeat?.id === last && path.length === currentPath.length) {
+    if (section !== null && section.repeat?.id === last && path.length === currentPath.length) {
       return sectionFields(section);
     }
 
-    if (tab?.repeat?.id === last && path.length === 1) {
+    if (tab !== undefined && tab.repeat?.id === last && path.length === 1) {
       return tab.sections.flatMap((candidate) =>
         candidate.repeat === undefined
           ? candidate.rows

@@ -8,6 +8,7 @@ import { parseNumberInput } from '@/core/number-input';
 import {
   plainRow,
   repeatScopeIdsAt,
+  repeatScopePathAt,
   resolveFieldReference,
   scopeFieldsAt,
   sectionAt,
@@ -254,13 +255,16 @@ export function formulaDiceFieldLookup(
       return null;
     }
 
+    const scopePath =
+      reference.scope === 'block' ? (reference.scopePath ?? repeatScopePathAt(layout, from)) : [];
+
     const cell =
       reference.scope === 'block'
         ? (scopeFieldsAt(
             layout,
             from,
             reference.scopeId ?? repeatScopeIdsAt(layout, from)[0] ?? '',
-            reference.scopePath,
+            scopePath,
           ).find((field) => field.id === id) ?? null)
         : fieldInCells(plainRow(layout, reference.rowId) ?? [], id);
 
@@ -270,7 +274,7 @@ export function formulaDiceFieldLookup(
 
     const values =
       reference.scope === 'block'
-        ? blockValuesFor(layout, from, reference.scopePath, ownBlock, blockAt)
+        ? blockValuesFor(layout, from, scopePath, ownBlock, blockAt)
         : sheetRow(reference.rowId);
 
     return diceChoiceSides(valueText(values.get(id)));
@@ -355,13 +359,16 @@ export function formulaFieldLookup(
       return null;
     }
 
+    const scopePath =
+      reference.scope === 'block' ? (reference.scopePath ?? repeatScopePathAt(layout, from)) : [];
+
     const cell =
       reference.scope === 'block'
         ? (scopeFieldsAt(
             layout,
             from,
             reference.scopeId ?? repeatScopeIdsAt(layout, from)[0] ?? '',
-            reference.scopePath,
+            scopePath,
           ).find((field) => field.id === id) ?? null)
         : fieldInCells(plainRow(layout, reference.rowId) ?? [], id);
 
@@ -371,7 +378,7 @@ export function formulaFieldLookup(
 
     const values =
       reference.scope === 'block'
-        ? blockValuesFor(layout, from, reference.scopePath, ownBlock, blockAt)
+        ? blockValuesFor(layout, from, scopePath, ownBlock, blockAt)
         : sheetRow(reference.rowId);
 
     return fieldNumber(cell, values.get(id));

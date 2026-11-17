@@ -58,18 +58,22 @@ import type { Command, RejectionReason } from '@/core/ui-messages';
 
 export type FieldPatchCommand = Extract<Command, { type: 'field-patch' }>;
 
+export type ComposeMode = 'persisted' | 'pending';
+
 // The records a command is composed over, and how a new version is minted. The engine composes over
 // its replica with its minter. The pending view composes over the replica with the queued intents
 // applied, and mints nothing. `newRecordId` gives the ids a command makes itself, such as a
 // duplicate's, of a kind and each named by its role in the command. The pending view composes a
 // queued command many times, so one role must get one id each time, whatever records come or go in
-// between. `isGmPlayer` is true for a player id the party lists as a GM, and for this client's own
-// one.
+// between. `mode` permits reconciliation clears in persisted writes; pending views and player
+// proposals must omit them, or a valid proposal can fail unknown-field admission. `isGmPlayer`
+// is true for a player id the party lists as a GM, and for this client's own one.
 export type ComposeContext = {
   records: ReadonlyMap<string, VersionedRecord>;
   mint: (key: string, highestKnownCounter: number) => Version;
   newRecordId: (kind: RecordIdKind, role: string) => string;
   isGmPlayer: (playerId: string) => boolean;
+  mode: ComposeMode;
 };
 
 // TASK-37: new ids are short, so a drawn id can collide. A command that draws its own ids draws a
@@ -186,6 +190,14 @@ export function createComposers(connectionId: string): Composers {
 
       if (!write.k.startsWith('blk:')) return { k: write.k, d: null, ...version };
 
+      const currentData = blockDataSchema.safeParse(current?.d).data;
+
+      const reminted = Object.fromEntries(
+        Object.entries(write.d?.cells ?? {})
+          .filter(([id, [value]]) => currentData?.cells[id]?.[0] !== value)
+          .map(([id, [value]]) => [id, value]),
+      );
+
       return {
         k: write.k,
         ...version,
@@ -195,13 +207,7 @@ export function createComposers(connectionId: string): Composers {
             ? null
             : {
                 ...write.d,
-                cells: versionCells(
-                  Object.fromEntries(
-                    Object.entries(write.d.cells).map(([id, [value]]) => [id, value]),
-                  ),
-                  version.c,
-                  version.a,
-                ),
+                cells: { ...write.d.cells, ...versionCells(reminted, version.c, version.a) },
               },
       };
     };
@@ -348,7 +354,7 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(patched.value.k, existing?.c ?? 0);
 
-    return ok(mintedPatch(patched.value, existing, { c, a }));
+    return ok(mintedPatch(patched.value, existing, { c, a }, context.mode));
   }
 
   // A patch that changes nothing on the record built so far is skipped in silence: the window
@@ -391,7 +397,7 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(working.k, existing?.c ?? 0);
 
-    return { record: mintedPatch(working, existing, { c, a }), refusals };
+    return { record: mintedPatch(working, existing, { c, a }, context.mode), refusals };
   }
 
   // A new repeat block goes after every repeat block this sheet has in the section. The id is the
@@ -572,7 +578,12 @@ export function createComposers(connectionId: string): Composers {
   // The sheet must be a sheet a template owns, and the section a repeat section of that template.
   function repeatSectionOf(
     context: ComposeContext,
-    command: { sheetId: string; sectionId: string },
+    command: {
+      sheetId: string;
+      sectionId: string;
+      instanceId: string;
+      path?: readonly string[];
+    },
   ): Result<{ policy: SheetPolicy; section: PresetSection }, RejectionReason> {
     const policy = sheetPolicyOf(context, command.sheetId, 'unknown-section');
 
@@ -944,7 +955,7 @@ function composeLinkClear(
 // The repeat blocks one sheet has in one section, live ones only, with their data.
 function sectionBlocks(
   context: ComposeContext,
-  command: { sheetId: string; sectionId: string; path?: string[] },
+  command: { sheetId: string; sectionId: string; path?: readonly string[] },
 ): { order: number; cells: FieldValues }[] {
   const path =
     'path' in command && command.path !== undefined
@@ -1082,7 +1093,7 @@ function mintedSheet(
 // A tombstone holds no order, so only live repeat blocks count.
 function nextBlockOrder(
   context: ComposeContext,
-  command: { sheetId: string; sectionId: string; path?: string[] },
+  command: { sheetId: string; sectionId: string; path?: readonly string[] },
 ): number {
   let highest = -1;
 
@@ -1152,6 +1163,7 @@ function mintedPatch(
   patched: PatchedRecord,
   existing: VersionedRecord | undefined,
   version: Version,
+  mode: ComposeMode,
 ): VersionedRecord {
   const before = blockDataSchema.safeParse(existing?.d).data;
 
@@ -1161,11 +1173,23 @@ function mintedPatch(
       .map(([id, [value]]) => [id, value]),
   );
 
+  const removed =
+    mode === 'persisted'
+      ? Object.fromEntries(
+          Object.entries(before?.cells ?? {})
+            .filter(([id, [value]]) => value !== null && !Object.hasOwn(patched.d.cells, id))
+            .map(([id]) => [id, null]),
+        )
+      : {};
+
   return {
     k: patched.k,
     ...version,
     l: existing?.l ?? [version.c, version.a],
-    d: { ...patched.d, cells: versionCells(changed, version.c, version.a) },
+    d: {
+      ...patched.d,
+      cells: versionCells({ ...changed, ...removed }, version.c, version.a),
+    },
   };
 }
 

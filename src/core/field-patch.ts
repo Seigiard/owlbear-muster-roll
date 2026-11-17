@@ -35,6 +35,23 @@ export const fieldPatchTargetSchema = z.discriminatedUnion('kind', [
       .array(targetIdSchema)
       .min(2)
       .refine((parts) => parts.length % 2 === 0)
+      .readonly()
+      .optional(),
+  }),
+]);
+
+// The wire message keeps arrays mutable for the JSON transport. Public callers may still provide
+// readonly tuples; the client copies them at the transport boundary.
+export const fieldPatchTargetWireSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('row'), rowId: targetIdSchema }),
+  z.strictObject({
+    kind: z.literal('rep'),
+    sectionId: targetIdSchema,
+    instanceId: targetIdSchema,
+    path: z
+      .array(targetIdSchema)
+      .min(2)
+      .refine((parts) => parts.length % 2 === 0)
       .optional(),
   }),
 ]);

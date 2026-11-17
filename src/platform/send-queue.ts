@@ -1,6 +1,6 @@
 import type { JsonValue } from '@/core/json';
 import type { Timing } from '@/core/timing';
-import type { BroadcastOptions, BroadcastPort } from '@/platform/ports';
+import type { BroadcastOptions, SendResult } from '@/platform/ports';
 
 export type Wait = (milliseconds: number) => Promise<void>;
 
@@ -28,6 +28,10 @@ export type SendQueue = {
   flushNow: () => void;
 };
 
+type MutableBroadcastPort = {
+  sendMessage: (channel: string, data: JsonValue, options: BroadcastOptions) => Promise<SendResult>;
+};
+
 type Message = { channel: string; data: JsonValue; options: BroadcastOptions };
 
 type Composer = () => JsonValue | null;
@@ -45,7 +49,7 @@ type QueuedSend = {
 type InFlight = { item: QueuedSend; message: Message };
 
 export function createSendQueue(
-  broadcast: Pick<BroadcastPort, 'sendMessage'>,
+  broadcast: MutableBroadcastPort,
   timing: Timing,
   wait: Wait = waitWithTimer,
 ): SendQueue {

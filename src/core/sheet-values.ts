@@ -38,7 +38,7 @@ export function repeatBlocks(
   sheetId: string,
   sectionId: string | readonly string[],
 ): RepeatBlock[] {
-  const scopePath = Array.isArray(sectionId) ? [...sectionId] : sectionId.split(':');
+  const scopePath = isScopePath(sectionId) ? [...sectionId] : sectionId.split(':');
 
   if (
     scopePath.length === 0 ||
@@ -86,6 +86,10 @@ export function repeatBlocks(
   });
 
   return blocks;
+}
+
+function isScopePath(value: string | readonly string[]): value is readonly string[] {
+  return Array.isArray(value);
 }
 
 function hasLiveAncestors(

@@ -190,8 +190,8 @@ function resolvesToField(
 
   if (reference.scope === 'block') {
     return (
-      scopeKeyAt(layout, from, reference.scopePath) === scopeOfField(layout, field) &&
-      isFirstHolder(layout, id, field)
+      scopeKeyAt(layout, from, reference.scopePath ?? repeatScopePathAt(layout, from)) ===
+        scopeOfField(layout, field) && isFirstHolder(layout, id, field)
     );
   }
 

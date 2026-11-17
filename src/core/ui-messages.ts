@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { PARTY_LIMIT, PLAYER_NAME_MAX_LENGTH, type PartyEntry } from '@/core/access';
 import { dicePlaceSchema, shownValueSchema } from '@/core/dice-roll';
-import { fieldPatchTargetSchema } from '@/core/field-patch';
+import { fieldPatchTargetWireSchema, type FieldPatchTarget } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
 import { playerIdSchema, recordSchema } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
@@ -218,7 +218,7 @@ const snapshotImportSchema = z.strictObject({
 const fieldPatchSchema = z.strictObject({
   type: z.literal('field-patch'),
   sheetId: z.string(),
-  target: fieldPatchTargetSchema,
+  target: fieldPatchTargetWireSchema,
   fieldId: z.string(),
   value: z.json(),
 });
@@ -489,7 +489,13 @@ export type RoomCopyOutcome = z.infer<typeof roomCopyOutcomeSchema>;
 
 export type PartyList = z.infer<typeof partySchema>;
 
-export type Command = z.infer<typeof commandIntentSchema>;
+type WireCommand = z.infer<typeof commandIntentSchema>;
+
+type ReadonlyFieldPatchCommand = Omit<Extract<WireCommand, { type: 'field-patch' }>, 'target'> & {
+  target: FieldPatchTarget;
+};
+
+export type Command = Exclude<WireCommand, { type: 'field-patch' }> | ReadonlyFieldPatchCommand;
 
 export type CommandMessage = z.infer<typeof commandSchema>;
 
@@ -538,13 +544,21 @@ export type ProjectionMessage = z.infer<typeof projectionSchema>;
 
 export type DeltaMessage = z.infer<typeof deltaSchema>;
 
-export type WindowMessage = z.infer<typeof windowMessageSchema>;
+type WireWindowMessage = z.infer<typeof windowMessageSchema>;
+
+type PublicCommandMessage = Omit<Extract<WireWindowMessage, { t: 'command' }>, 'command'> & {
+  command: Command;
+};
+
+export type WindowMessage = Exclude<WireWindowMessage, { t: 'command' }> | PublicCommandMessage;
 
 export type EngineMessage = z.infer<typeof engineMessageSchema>;
 
 export type UiMessageFailure = 'invalid-message';
 
-export function parseWindowMessage(candidate: JsonValue): Result<WindowMessage, UiMessageFailure> {
+export function parseWindowMessage(
+  candidate: JsonValue | WindowMessage,
+): Result<WindowMessage, UiMessageFailure> {
   const parsed = windowMessageSchema.safeParse(candidate);
 
   return parsed.success ? ok(parsed.data) : err('invalid-message');
