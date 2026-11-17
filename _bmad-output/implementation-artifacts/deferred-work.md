@@ -501,3 +501,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-77-98-completion.md`
   summary: Define cleanup for obsolete incomplete stale-reply assemblies.
   evidence: "Review lean-codex-1 traced two GMs' A1/B1/A2/B2 reply interleave. After one tuple completes, a late fragment for the obsolete tuple can create another incomplete assembly, retained until clear or preset change. This is a code-traced retention risk, not a measured incident. TASK-81's proposal-assembly bounds do not define stale-reply cleanup. The final review left this minor finding deferred."
+
+## Deferred from: TASK-77–98 window 2 (2026-11-17)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-92-preserve-repeat-tab-section-visibility.md`
+  summary: Collapse identical link visibility branches.
+  evidence: "Review arch+quality-claude-1 found that both branches of linkTargetShownTo now check the token cell's tab, section and row. The live.section === null split no longer changes the result. This is code duplication without a demonstrated behavior defect; it remains deferred after the final review."

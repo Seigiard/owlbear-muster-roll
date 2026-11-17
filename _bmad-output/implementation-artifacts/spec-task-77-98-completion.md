@@ -5,7 +5,7 @@ created: '2026-11-17'
 status: 'in-progress'
 baseline_commit: '88b7db235528ca5d7561c306851bf68bd8339586'
 route: 'dispatch'
-review_loop_iteration: 1
+review_loop_iteration: 2
 context:
   - '{project-root}/GLOSSARY.md'
   - '{project-root}/docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md'
@@ -89,10 +89,14 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - 2026-11-17 window 1: Integrated TASK-89 (`7d2f6f6`), TASK-91 (`c1e9fdb`), TASK-94 (`05ef736`) and repaired TASK-81 (`1117177`). All four tasks passed their acceptance checks and the closing integration review.
 - TASK-81 uses the ordinary stale-reply per-cell contract. Corrected lock `37654a1` fails against baseline `c6822ca`: a 15,188-byte read-back becomes denied. Candidate `c8e595d` delivers two fragments while preserving local intent and untouched GM tuples.
 - Review regressions `aedc6f3` and fixes `738bbf2` cover complete numbered-envelope sizing and stable selection after local '+' creation. Both assertions passed mutation calibration.
-- Remaining tasks: 77, 79, 80, 82, 88, 90, 92, 93, 95, 96, 97 and 98. TASK-86 remains the owner's live-room gate. The umbrella stays in progress.
+- After window 1, remaining tasks were 77, 79, 80, 82, 88, 90, 92, 93, 95, 96, 97 and 98. TASK-86 remains the owner's live-room gate. The umbrella stays in progress.
 - Resume with the repeat-tab follow-ups before TASK-79. Its saved candidate imports children under an incorrect parent path and rejects valid parent-local scope ids. TASK-80 waits for verified TASK-79. TASK-82 first needs a valid concurrent-edit oracle; its saved candidate fails player-proposal stripping. The rejected candidates remain available for diagnosis.
 - TASK-95 should reuse and verify the rendered-identity conversion already added by TASK-91. Numeric selection inputs remain available for Builder compatibility.
 - 2026-11-17 window 2: Owner requested the next window. Start from `1fc8a7c2bd08608331a33873e3f3a6de4ba71554`, with a 90-minute budget and at most three ticket lanes. Initial frontier: TASK-90 receiving-GM admission, TASK-93 room/preview dice, TASK-95 role-filtered token opening. Queue TASK-92 after 90, TASK-96 after 95, TASK-97 after 96, and TASK-98 after 93 and 96 to serialize shared files. Full browser suites run one at a time with two workers. The parent owns integration and one closing review.
+- Window 2 completed TASK-90, 92, 93, 95 and 96. Player proposals cannot create or delete repeat-tab blocks or change their hidden fields. Token opening respects source-section visibility and selects the correct player-visible block. Preview edits retain the selected block; linked cells below the viewport reveal and focus.
+- TASK-93 now resolves numeric fields, dice-choice fields and field labels across all plain sections of a repeat tab. Review regression `08a18e0` failed with a field error instead of 8; repair `077bb74` passed it. Restoring the numeric section-only lookup made the same assertion fail again.
+- TASK-95 reuses TASK-91's production repair and adds calibrated public browser regressions. Preview dice evidence is exact field-error → empty-feedback; core and Room independently assert the numeric result 8.
+- Remaining implementation: TASK-97/98, then TASK-79 and the TASK-88/77 boundary plus TASK-80; TASK-82 still needs its concurrent-edit oracle repaired. TASK-86 remains owner-run. Rejected candidates remain available.
 
 ## Spec Change Log
 
@@ -101,6 +105,8 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - Round 01: `mixed`, 6/6 sources, two major findings fixed in `738bbf2`. Two minor test gaps share those regressions.
 - Round 02: `final`, 2/2 sources, no degraded sources, findings or open questions; exit 0. Cumulative base: `a87fc3c`; checked source: `738bbf2`.
 - Deferred `lean-codex-1`: obsolete incomplete stale-reply retention needs a cleanup contract. See `deferred-work.md`, TASK-77–98 window 1. Shared assembler and identity deduplication suggestions were immaterial.
+- Window 2 round 01: `mixed`, 6/6 sources. Cross-section dice lookup was major and fixed in `077bb74`. Identical link visibility branches were minor and deferred.
+- Window 2 round 02: `final`, 2/2 sources, no degraded sources, findings or open questions; exit 0. Cumulative base `1fc8a7c`; checked source `077bb74`. The deferred minor remains recorded in `deferred-work.md`.
 
 ## Verification
 
@@ -111,3 +117,4 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - Baseline: five required checks passed; browser 557/558. NPC token focus failed in the full run and passed 3/3 isolated retries. Keep this unresolved instability visible.
 - Live Owlbear verification: TASK-86, owner scheduled; no autonomous runtime estimate or completion claim.
 - Final clean source `738bbf20a2193cd92d3d39c9a467398be9db1ea8`: format, lint, typecheck, unit, browser (`--workers=2`) and build all exit 0. Unit: 3401 pass, 1 skip, 0 fail. Browser: 563 pass. Later full green runs do not establish the cause of the baseline focus failure.
+- Window 2 final clean source `077bb748d66e4ea8b5324399ce52b67cdbb5f37b`: all six checks exit 0. Unit: 3413 pass, 1 skip, 0 fail. Browser: 570 pass with two workers. Focused dice-roll: 32 pass. This proves application behavior under the mock adapter, not live Owlbear acceptance.

@@ -1,11 +1,11 @@
 ---
 id: TASK-96
 title: Restore repeat-tab preview editing and token reveal context
-status: In Progress
+status: Done
 assignee:
   - '@seigiard'
 created_date: '2026-11-17T11:05:00Z'
-updated_date: '2026-11-17T15:16:00Z'
+updated_date: '2026-11-17T16:55:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -36,10 +36,10 @@ Review finding: bugs+impl-codex-7
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Double-click or Enter starts editing a field in the selected repeat-tab block in Builder preview.
-- [ ] #2 The edit changes only the selected block's snapshot value and preserves the existing role/write policy.
-- [ ] #3 Opening a linked token cell below the visible area of a repeat tab scrolls to that cell and gives it focus when the open-flow focus policy requires it.
-- [ ] #4 Browser regressions verify actual edit entry/value output and below-fold reveal/focus, not only selected-tab labels.
+- [x] #1 Double-click or Enter starts editing a field in the selected repeat-tab block in Builder preview.
+- [x] #2 The edit changes only the selected block's snapshot value and preserves the existing role/write policy.
+- [x] #3 Opening a linked token cell below the visible area of a repeat tab scrolls to that cell and gives it focus when the open-flow focus policy requires it.
+- [x] #4 Browser regressions verify actual edit entry/value output and below-fold reveal/focus, not only selected-tab labels.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -50,3 +50,17 @@ Review finding: bugs+impl-codex-7
 3. Lock focused browser regressions in a new dedicated test file for Builder edit/value output and below-fold token reveal/focus.
 4. Run focused browser evidence and the required source checks; leave full browser-suite scheduling to the parent.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Merge a6b5d6c27ae5209e1e845c7171371db5d3fd899c; lock f067bf6c34d8e83a14831388c12a3225a099e063; production 69e47753ea165a60cc2f6153056ed33974c45fb0. The first rendered-block selection is preserved across source selection.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Enter starts editing the selected repeat-tab field in Builder Preview. Saving changes only that block in the downloaded snapshot. Opening a linked cell below the viewport reveals and focuses the exact cell. Three public browser owners are calibrated.
+
+Verified on clean integrated source 077bb748d66e4ea8b5324399ce52b67cdbb5f37b: format, lint, typecheck, unit, browser and build all exit 0; 3413 unit pass, 1 skip; 570 browser pass with two workers. Cumulative review: mixed 6/6, then final 2/2 without gating findings. Mock-adapter evidence does not replace the owner-run live Owlbear gate TASK-86.
+<!-- SECTION:FINAL_SUMMARY:END -->

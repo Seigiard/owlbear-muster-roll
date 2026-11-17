@@ -2,9 +2,9 @@
 title: 'Restore repeat-tab preview editing and token reveal context'
 type: 'bugfix'
 created: '2026-11-17'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
-review_loop_iteration: 0
+review_loop_iteration: 2
 context:
   - '{project-root}/GLOSSARY.md'
   - '{project-root}/docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md'
@@ -43,8 +43,8 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/ui/sheet/sheet-body.tsx` -- expose the selected rendered tab block through the established DOM context -- lets Builder edit selection and token reveal resolve the same instance.
-- [ ] `tests/repeat-tab-context.e2e.ts` -- add public browser flows for Builder edit/value output and below-fold linked-token reveal/focus -- prevents label-only false greens.
+- [x] `src/ui/sheet/sheet-body.tsx` -- expose the selected rendered tab block through the established DOM context -- lets Builder edit selection and token reveal resolve the same instance.
+- [x] `tests/repeat-tab-context.e2e.ts` -- add public browser flows for Builder edit/value output and below-fold linked-token reveal/focus -- prevents label-only false greens.
 
 **Acceptance Criteria:**
 - Given a selected Builder repeat-tab block, when the user double-clicks or presses Enter on its field, then edit entry targets that block.
@@ -53,11 +53,18 @@ context:
 
 ## Implementation Notes
 
+- The body exposes `data-repeat-block` through a generic `contents` wrapper. Preview marks tab-driven source selection before the store update, so the first selected block remains active.
+- Three browser owners prove Enter edit entry, selected-block-only snapshot output and below-fold token reveal/focus. Each protected assertion failed under its targeted mutation.
+
 ## Spec Change Log
 
 ## Review Triage Log
 
+- Accepted through window 2 cumulative review: `mixed` 6/6, then `final` 2/2. No gating finding remains for this task.
+
 ## Verification
+
+- Final integrated source `077bb748d66e4ea8b5324399ce52b67cdbb5f37b`: all six checks pass; 3413 unit pass, 1 skip; 570 browser pass with two workers. Live Owlbear context-menu delivery remains the owner's TASK-86 check.
 
 **Commands:**
 - `bunx playwright test tests/repeat-tab-context.e2e.ts --workers=1` -- expected: Builder edit/value and below-fold reveal/focus regressions pass.

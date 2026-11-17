@@ -1,11 +1,11 @@
 ---
 id: TASK-95
 title: Open the correct player block tab after preceding GM-only tabs
-status: In Progress
+status: Done
 assignee:
   - '@seigiard'
 created_date: '2026-11-17T11:05:00Z'
-updated_date: '2026-11-17T14:40:00Z'
+updated_date: '2026-11-17T16:55:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -38,10 +38,10 @@ Review finding: adversarial-claude-3
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With tabs Secrets (GM-only), Stats and Gear containing a repeat section, a player opening a Gear token selects and reveals Gear rather than falling back to Stats.
-- [ ] #2 A player opening repeat-tab block A after a preceding GM-only tab selects A, not B.
-- [ ] #3 Hidden targets remain unavailable to players and GM token opening remains correct.
-- [ ] #4 Browser regression coverage verifies the selected target and reveal through the public token-open flow for repeat sections and repeat tabs.
+- [x] #1 With tabs Secrets (GM-only), Stats and Gear containing a repeat section, a player opening a Gear token selects and reveals Gear rather than falling back to Stats.
+- [x] #2 A player opening repeat-tab block A after a preceding GM-only tab selects A, not B.
+- [x] #3 Hidden targets remain unavailable to players and GM token opening remains correct.
+- [x] #4 Browser regression coverage verifies the selected target and reveal through the public token-open flow for repeat sections and repeat tabs.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -52,3 +52,17 @@ Review finding: adversarial-claude-3
 3. Preserve the existing implementation if the new lock proves it; otherwise repair only role-filtered token opening in main.tsx/navigation.
 4. Calibrate each target-selection assertion against the prior positional-index behavior and run required checks; request the shared full-browser slot only after the other checks are green.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Merge 67fe4a894f7004fd02808b84ae51c345ff843a79; lock/tip 35a6097b35bcd9f36bca3ec4ac178fa509d8a885. TASK-96 supplies below-fold reveal and Preview block context.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Public token opening selects Gear and repeat-tab block A correctly after a preceding GM-only tab. Browser regressions verify target selection and reveal; hidden-target and GM controls remain green. TASK-91 already supplied the production repair, so this task adds calibrated regressions.
+
+Verified on clean integrated source 077bb748d66e4ea8b5324399ce52b67cdbb5f37b: format, lint, typecheck, unit, browser and build all exit 0; 3413 unit pass, 1 skip; 570 browser pass with two workers. Cumulative review: mixed 6/6, then final 2/2 without gating findings. Mock-adapter evidence does not replace the owner-run live Owlbear gate TASK-86.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,7 +1,7 @@
 document-map v1
 Source: "deferred-work.md"
-SHA256: 2bbf4d34a200058cd5c31a2e9315870745bc4a977a9bd95d3f653bc7aefb421e
-Total lines: 503
+SHA256: 5169e00d5c327bf4e4eaf0e3086e8c7d7c3f3b5adf5e9499827aee41845553e3
+Total lines: 509
 
 Preamble — lines 1–95
 From spec-3-3-apply-a-players-edit-after-a-gm-check (TASK-22) — lines 96–103
@@ -28,4 +28,5 @@ Deferred from: build of spec-task-50-room-copy-module (2026-11-13) — lines 286
 Deferred from: TASK-61.6 second-flow picker experiment (2026-11-14) — lines 292–438
 Deferred from: TASK-70–74 integration review (2026-11-16) — lines 439–477
 Deferred from: TASK-77 single review (2026-11-16) — lines 478–498
-Deferred from: TASK-77–98 window 1 (2026-11-17) — lines 499–503
+Deferred from: TASK-77–98 window 1 (2026-11-17) — lines 499–504
+Deferred from: TASK-77–98 window 2 (2026-11-17) — lines 505–509

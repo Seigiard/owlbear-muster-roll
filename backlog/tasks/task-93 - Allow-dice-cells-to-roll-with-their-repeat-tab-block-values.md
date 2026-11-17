@@ -1,11 +1,11 @@
 ---
 id: TASK-93
 title: Allow dice cells to roll with their repeat-tab block values
-status: In Progress
+status: Done
 assignee:
   - '@seigiard'
 created_date: '2026-11-17T11:05:00Z'
-updated_date: '2026-11-17T14:40:00Z'
+updated_date: '2026-11-17T16:55:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -36,10 +36,10 @@ Review finding: arch+quality-claude-5
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A repeat-tab block with hp=7 rolls 1d1 + hp as 8 through the normal room roll path.
-- [ ] #2 The same supported roll succeeds in the Builder preview and reads values from the selected block rather than a sibling or the root.
-- [ ] #3 Ordinary root, repeat-section and repeat-row dice behavior remains unchanged.
-- [ ] #4 Consumer regressions demonstrate the reported not-dice failure before repair and successful room/preview rolls after repair.
+- [x] #1 A repeat-tab block with hp=7 rolls 1d1 + hp as 8 through the normal room roll path.
+- [x] #2 The same supported roll succeeds in the Builder preview and reads values from the selected block rather than a sibling or the root.
+- [x] #3 Ordinary root, repeat-section and repeat-row dice behavior remains unchanged.
+- [x] #4 Consumer regressions demonstrate the reported not-dice failure before repair and successful room/preview rolls after repair.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -49,3 +49,17 @@ Review finding: arch+quality-claude-5
 2. Extend dice preparation to recognize tab repeat scope and resolve the selected block.
 3. Calibrate each consumer assertion, then run required source checks; coordinate before a full browser suite.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Initial merge c4c7580d35cefeebd261316d4b053a97d2e7f7bf; cross-section lock 08a18e0a3b3031050ef0d68bca20612d152ef06c and repair 077bb748d66e4ea8b5324399ce52b67cdbb5f37b. Numeric, dice-choice and field-label lookups share the complete repeat scope. Exact-result calibration fails on the restored numeric defect. TASK-98 still owns remote feedback invalidation.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Repeat-tab dice resolve values from the selected block, including fields in other plain sections. Core and Room assert 1d1 + hp = 8 for hp=7. Builder Preview proves selected-block field-error and successful empty-feedback states; it does not display the numeric result. Existing dice suites remain green.
+
+Verified on clean integrated source 077bb748d66e4ea8b5324399ce52b67cdbb5f37b: format, lint, typecheck, unit, browser and build all exit 0; 3413 unit pass, 1 skip; 570 browser pass with two workers. Cumulative review: mixed 6/6, then final 2/2 without gating findings. Mock-adapter evidence does not replace the owner-run live Owlbear gate TASK-86.
+<!-- SECTION:FINAL_SUMMARY:END -->

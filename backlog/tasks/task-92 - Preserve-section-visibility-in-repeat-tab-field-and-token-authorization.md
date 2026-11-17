@@ -1,10 +1,10 @@
 ---
 id: TASK-92
 title: Preserve section visibility in repeat-tab field and token authorization
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-17T11:04:00Z'
-updated_date: '2026-11-17T15:30:00Z'
+updated_date: '2026-11-17T16:55:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -35,10 +35,10 @@ Review finding: bugs+impl-codex-2
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A player cannot edit a field in a GM-only section of a visible repeat tab through either a command or a raw proposal.
-- [ ] #2 A token cell in such a hidden section is not an allowed player link/open target.
-- [ ] #3 Inherited tab, section and row visibility is preserved for authorization; visible authorized fields remain editable and GM access remains unchanged.
-- [ ] #4 Public action-boundary regressions cover a visible repeat tab containing both visible and GM-only sections, without claiming record-level privacy.
+- [x] #1 A player cannot edit a field in a GM-only section of a visible repeat tab through either a command or a raw proposal.
+- [x] #2 A token cell in such a hidden section is not an allowed player link/open target.
+- [x] #3 Inherited tab, section and row visibility is preserved for authorization; visible authorized fields remain editable and GM access remains unchanged.
+- [x] #4 Public action-boundary regressions cover a visible repeat tab containing both visible and GM-only sections, without claiming record-level privacy.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -49,3 +49,17 @@ Review finding: bugs+impl-codex-2
 3. Verify visible player fields and GM access remain allowed; retain TASK-90 lifecycle coverage.
 4. Run focused evidence, calibration, and the required checks; request the parent browser slot before a full browser run.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Merge e83c2390f24b3756b3e1e08a66c0a77d91a1f987; lock/tip 7493f49c5ebd7f88bdfeb6754508dc0969cb9e8a. Deferred minor arch+quality-claude-1: identical linkTargetShownTo branches; see deferred-work.md. The positive control uses two 10ms queue turns.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Player commands and raw proposals cannot edit a GM-only source section inside a visible repeat tab. Hidden token targets cannot open for a player. Visible-field and GM controls remain allowed. Public action regressions are calibrated.
+
+Verified on clean integrated source 077bb748d66e4ea8b5324399ce52b67cdbb5f37b: format, lint, typecheck, unit, browser and build all exit 0; 3413 unit pass, 1 skip; 570 browser pass with two workers. Cumulative review: mixed 6/6, then final 2/2 without gating findings. Mock-adapter evidence does not replace the owner-run live Owlbear gate TASK-86.
+<!-- SECTION:FINAL_SUMMARY:END -->
