@@ -17,7 +17,7 @@ references:
   - tools/oxlint/anti-slop/index.ts
 parent_task_id: TASK-65
 type: task
-ordinal: 87000
+ordinal: 91000
 ---
 
 ## Description

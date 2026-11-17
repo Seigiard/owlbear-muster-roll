@@ -20,7 +20,7 @@ references:
   - src/ui/main.css
 parent_task_id: TASK-65
 type: task
-ordinal: 89000
+ordinal: 93000
 ---
 
 ## Description

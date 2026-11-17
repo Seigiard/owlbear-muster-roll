@@ -15,7 +15,7 @@ references:
   - tools/mutants/probe-baseline.json
   - _bmad-output/implementation-artifacts/spec-task-76-block-records.md
 type: feature
-ordinal: 103000
+ordinal: 108000
 ---
 
 ## Description

@@ -14,7 +14,7 @@ references:
   - _bmad-output/implementation-artifacts/task-66-verification.md
 priority: medium
 type: task
-ordinal: 95000
+ordinal: 100000
 ---
 
 ## Description

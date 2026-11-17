@@ -14,7 +14,7 @@ references:
   - CLAUDE.md
 parent_task_id: TASK-65
 type: docs
-ordinal: 88000
+ordinal: 92000
 ---
 
 ## Description

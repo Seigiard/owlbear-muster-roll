@@ -14,7 +14,7 @@ dependencies:
 references:
   - _bmad-output/specs/spec-muster-roll/builder-and-dev.md
 type: chore
-ordinal: 101000
+ordinal: 106000
 ---
 
 ## Description

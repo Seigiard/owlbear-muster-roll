@@ -12,7 +12,7 @@ dependencies:
 documentation:
   - _bmad-output/implementation-artifacts/spec-task-75-replica-probe-baseline.md
 priority: medium
-ordinal: 102000
+ordinal: 107000
 ---
 
 ## Description
