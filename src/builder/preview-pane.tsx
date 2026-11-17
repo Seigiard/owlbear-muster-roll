@@ -541,7 +541,7 @@ export function PreviewPane({
         rendered.block === null
           ? templateTabLabel(rendered.tab.title)
           : rendered.block.name === ''
-            ? `Блок ${rendered.blockIndex ?? index + 1}`
+            ? copy.unnamedBlock(rendered.blockIndex ?? index + 1)
             : rendered.block.name,
       dataTabIndex: index,
       sourceTabIndex: rendered.sourceIndex,
@@ -550,8 +550,10 @@ export function PreviewPane({
       role === 'GM'
         ? visibleRepeatTabs.map((candidate) => ({
             id: `template-tab-add:${candidate.repeat?.id ?? ''}`,
-            label: '+',
+            label: copy.addTab,
             addScopeId: candidate.repeat?.id ?? '',
+            addScopeTitle:
+              visibleRepeatTabs.length > 1 ? templateTabLabel(candidate.title) : undefined,
           }))
         : [],
     );

@@ -1,9 +1,11 @@
 ---
 id: TASK-97
 title: Share repeat-tab copy and distinguish add controls by scope
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@t3s2'
 created_date: '2026-11-17T11:05:00Z'
+updated_date: '2026-11-17T17:51:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -37,3 +39,12 @@ Review finding: arch+quality-claude-8
 - [ ] #2 Two visible repeat scopes have distinct accessible add-control names that identify their target scope.
 - [ ] #3 Visible labels, explicit activation, keyboard behavior and GM-only lifecycle policy remain correct in both consumers.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add shared copy functions for blank repeat-block tab labels and scoped add-tab accessible names.
+2. Pass the scoped accessible name through the shared shell tab seam and adopt it in Room and Builder, preserving the visible + label and existing activation/lifecycle branches.
+3. Add one browser regression that renders two visible repeat scopes in Room and Builder, asserts their distinct scoped add-tab names, and activates each control.
+4. Run the focused browser regression, then format, lint, typecheck, Bun tests, the serialized full browser suite, and build.
+<!-- SECTION:PLAN:END -->

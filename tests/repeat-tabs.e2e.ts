@@ -71,6 +71,36 @@ const ADD_ONLY_PRESET = {
   ],
 } as const;
 
+const TWO_SCOPE_PRESET = {
+  ...PRESET,
+  templates: [
+    {
+      ...PRESET.templates[0],
+      tabs: [
+        PRESET.templates[0].tabs[0],
+        PRESET.templates[0].tabs[1],
+        {
+          title: 'NPC',
+          repeat: { id: 'gear', nameField: 'item' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'item' },
+                    { kind: 'field', type: 'number', id: 'quantity' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        PRESET.templates[0].tabs[2],
+      ],
+    },
+  ],
+} as const;
+
 const RECORDS = [
   record('blk:npc:npc:a', { order: 0, cells: { name: 'Alpha', hp: 7 } }),
   record('blk:npc:npc:b', { order: 1, cells: { hp: 9 } }),
@@ -147,7 +177,7 @@ const PLAYER: ClientParams = {
   role: 'PLAYER',
 };
 
-type RepeatTabsPreset = typeof PRESET | typeof ADD_ONLY_PRESET;
+type RepeatTabsPreset = typeof PRESET | typeof ADD_ONLY_PRESET | typeof TWO_SCOPE_PRESET;
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 700, height: 700 });
@@ -553,6 +583,73 @@ test('a token link to a removed tab block leaves the current tab selected', asyn
   // #then
   await expect(sheetTab(gm.window, 'Overview')).toHaveAttribute('aria-selected', 'true');
   await expect(sheetTab(gm.window, 'Блок 2')).toHaveCount(0);
+});
+
+test('Room and Builder name two scoped add tabs and activate each by mouse and keyboard', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const room = await openSeededClient(context, GM, [], TWO_SCOPE_PRESET);
+  const frame = await openBuilderPreview(page, EMPTY_SNAPSHOT, TWO_SCOPE_PRESET);
+
+  const roomNpcAdd = sheetTabs(room.window).getByRole('tab', {
+    name: 'Добавить в «NPC» (npc)',
+    exact: true,
+  });
+
+  const roomGearAdd = sheetTabs(room.window).getByRole('tab', {
+    name: 'Добавить в «NPC» (gear)',
+    exact: true,
+  });
+
+  const builderNpcAdd = sheetTabs(frame).getByRole('tab', {
+    name: 'Добавить в «NPC» (npc)',
+    exact: true,
+  });
+
+  const builderGearAdd = sheetTabs(frame).getByRole('tab', {
+    name: 'Добавить в «NPC» (gear)',
+    exact: true,
+  });
+
+  // #then
+  await expect(roomNpcAdd).toBeVisible();
+  await expect(roomNpcAdd).toHaveText('+');
+  await expect(roomGearAdd).toBeVisible();
+  await expect(roomGearAdd).toHaveText('+');
+  await expect(builderNpcAdd).toBeVisible();
+  await expect(builderNpcAdd).toHaveText('+');
+  await expect(builderGearAdd).toBeVisible();
+  await expect(builderGearAdd).toHaveText('+');
+
+  // #when
+  await roomNpcAdd.click();
+
+  // #then
+  await expect(room.window.getByRole('textbox', { name: 'name' })).toBeVisible();
+
+  // #when
+  await roomGearAdd.press('Enter');
+
+  // #then
+  await expect(room.window.getByRole('textbox', { name: 'item' })).toBeVisible();
+
+  // #when
+  await builderNpcAdd.click();
+  await frame.getByRole('group', { name: 'name', exact: true }).click();
+  await page.keyboard.press('Enter');
+
+  // #then
+  await expect(frame.getByRole('textbox', { name: 'name', exact: true })).toBeVisible();
+
+  // #when
+  await builderGearAdd.press('Enter');
+  await frame.getByRole('group', { name: 'item', exact: true }).click();
+  await page.keyboard.press('Enter');
+
+  // #then
+  await expect(frame.getByRole('textbox', { name: 'item', exact: true })).toBeVisible();
 });
 
 test('Builder preview add and delete change only its snapshot', async ({ page, context }) => {
