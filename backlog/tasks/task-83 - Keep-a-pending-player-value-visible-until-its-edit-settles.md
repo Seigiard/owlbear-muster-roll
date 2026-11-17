@@ -4,9 +4,9 @@ title: Keep a pending player value visible until its edit settles
 status: In Progress
 assignee: []
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T09:28:00Z'
+updated_date: '2026-11-17T10:38:00Z'
 labels:
-  - awaiting-review
+  - validated
 dependencies: []
 references:
   - src/ui/projection-store.ts
@@ -40,6 +40,11 @@ TASK-76 changed pending projection assembly to use the replica conflict merge. I
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
+CURRENT STATUS — 2026-11-17, after closing review:
+IMPLEMENTED AND VALIDATED, NOT FINALLY ACCEPTED. Merged at 7335dbf; checked source addcd6c has focused 21/21 and all six green checks. Pending display remains 20 over applied replica 30 until withdrawal, then shows 30 without a marker. Closing review reported no TASK-83-specific finding, but overall integration acceptance remains blocked by TASK-78. Status stays In Progress rather than claiming the whole branch is ready.
+
+Earlier progress below is historical; the current status above supersedes it.
+
 Implemented and locked the public ProjectionStore regression: pending 20 / applied 30 remains shown and pending 20, then withdrawal shows 30 with no pending entry.
 
 Durable red evidence: the locked test replayed in an owned detached worktree at 6c7d8b7b9be569e7de0f0f160bca16b05cbaa197; the focused command exited 1 with 20 pass / 1 fail and expected 20 / received 30. Log: /Users/seigiard/.claude/artifacts/preset-v4-78-87-20261117/task-83/focused-red-replay.log.

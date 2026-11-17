@@ -5,9 +5,10 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T09:54:00Z'
+updated_date: '2026-11-17T10:38:00Z'
 labels:
-  - awaiting-review
+  - blocked
+  - review-blocked
 dependencies: []
 references:
   - src/ui/sheet/sheet-body.tsx
@@ -39,6 +40,11 @@ After TASK-76 every plain row refers to one shared root block. sheetValuesSignat
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
+CURRENT STATUS — 2026-11-17, after closing review:
+PARTIALLY IMPLEMENTED; REVIEW GAP REMAINS. Merged at a4895cc; checked source e83f7dd deduplicates the root and passes all six checks. Closing review found that sheetValuesSignature still omits repeat-tab block prefixes, so a remote tab-block change does not clear a stale dice result. AC1/AC2 are not fully established for repeat tabs. Address this with TASK-78 dice/block identity repairs; no measured speedup or new performance-test claim.
+
+Earlier progress below is historical; the current status above supersedes it.
+
 CURRENT: Queued after TASK-81. No implementation or validation yet in this pass; the signature deduplication and cross-tab invalidation criteria remain open.
 
 CURRENT: Preparing the isolated signature-deduplication change. TASK-81 is closing as blocked and will not enter this baseline. Source implementation starts after its worker settles; no TASK-84 result is claimed yet.

@@ -5,10 +5,11 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-17T09:28:00Z'
+updated_date: '2026-11-17T10:38:00Z'
 labels:
   - format-v4
-  - awaiting-review
+  - blocked
+  - review-blocked
 dependencies:
   - TASK-77
 references:
@@ -42,6 +43,11 @@ A GM wants an NPC sheet where each NPC is a tab with its own sections, not a row
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
+CURRENT STATUS — 2026-11-17, after closing review:
+REVIEW BLOCKED. The implementation is merged, but the complete 6/6-source closing review found 3 critical and 6 major defects. Critical: repeat-tab fields leak into root migration maps and can silently clear values; the receiving GM accepts player tab-block creation/deletion; index-based selection can retarget a pending draft after a remote add/delete. Also open: hidden-section authorization, dice rolls, root token links, role-filtered token opening, Builder/reveal DOM context and delete-control state. The branch is NOT release-ready. Correct these public behavior owners before another repair attempt. Review snapshot: 7dcd100; fixed base: ffd1051; review-01.md and review-01.json in preset-v4-78-87-20261117 contain all findings. No review fixes were started after the global finish-mode boundary.
+
+Earlier progress below is historical; the current status above supersedes it.
+
 Bounded run stopped after about 90 minutes at clean candidate e3ab0d423e970c77729c7f7682a9ed1fbca39288. Blocking D6: when a repeat-tab scope has zero blocks, including after the last block is deleted, extension and Builder preview derive the add action from rendered block tabs, so the GM has no plus action. Derive actions from visible source repeat scopes, then observe zero-block and last-delete behavior. No scoped review ran. Actual output artifacts show Bun3377 pass/1 environment skip/0 fail and browser552 passed including all10 repeat-tab owners, but final-state attribution is report-only; final format artifact is missing and exact final lint/typecheck/build logs and exits are unavailable. Do not treat this candidate as six-check verified or accepted. Lock6e44fa3122cd8aedeac0099422c9ab2190307c64 is enforced; initial lock and candidate remain reachable. Four phase turns; no live workload, push or deployment. TASK79/80 implementation has not started. Evidence: /Users/seigiard/.claude/artifacts/tdd-20261116-235951/task-78-repeat-tab/ticket.md and implementer-1.report.md.
 
 CURRENT: Implementation merged into feature/preset-v4-tasks-77-80 at e53781794550125c0feab568ac55a4015c97b0b7. The earlier zero-block and automatic-add blockers are repaired. All six checks pass at e0a332d; full browser recovery passed 558 tests. One earlier NPC focus failure did not reproduce and remains disclosed. Remaining: the single closing integration review and final acceptance. No deployment.

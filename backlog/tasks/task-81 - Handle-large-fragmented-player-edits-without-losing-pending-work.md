@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T15:14:00Z'
-updated_date: '2026-11-17T09:39:00Z'
+updated_date: '2026-11-17T10:38:00Z'
 labels:
   - blocked
 dependencies: []
@@ -35,6 +35,11 @@ TASK-76 introduced cell-level transport fragments when one block no longer fits 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
+CURRENT STATUS — 2026-11-17, after closing review:
+BLOCKED, NOT MERGED. Clean final candidate 78925c4 (source c6c900b) on feature/preset-v4-task-81 is preserved. Its new stale-fragment oracle wrongly requires re-stamping and re-proposing an untouched GM cell. The candidate satisfies that wrong expectation through preserveReadBack/preserveCells and skips stripping. Correct the oracle against the existing ordinary-stale per-cell contract before repair. Focused 77/77 and supporting 207/207 do NOT establish correctness of that suspect owner; no final six-check run or acceptance claim.
+
+Earlier progress below is historical; the current status above supersedes it.
+
 CURRENT: Active implementation on feature/preset-v4-task-81, based on a5abdc3. Locked public regressions cover fragmented stale rebase, projection byte limits, assembly count/bytes/lifetime and two-part admission. The writer has reproduced the failures; production repair and stable full checks are in progress. Nothing from TASK-81 is merged yet.
 
 CURRENT BLOCKER: Not merged. Parent found a contradictory stale-fragment regression: after editing only str, it expects untouched note to be sent again at counter 6/player. The existing ordinary stale owner requires str-only proposal and preserves note at its original GM tuple. The candidate adds a fragmented-only preserveReadBack/preserveCells path that restamps every read-back cell and bypasses stripping, risking overwrite of an independent GM edit. The bounded attempt is closing without acceptance. Continuation must correct the locked oracle and preserve the same per-cell/access semantics for fragmented and ordinary replies.

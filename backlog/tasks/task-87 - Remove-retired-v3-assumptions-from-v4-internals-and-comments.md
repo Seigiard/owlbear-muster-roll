@@ -5,10 +5,10 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-17T10:20:00Z'
+updated_date: '2026-11-17T10:38:00Z'
 labels:
   - format-v4
-  - awaiting-review
+  - validated
 dependencies: []
 references:
   - src/core/link-target.ts
@@ -48,6 +48,11 @@ The single TASK-77 review found v3-only paths still present after stable repeat 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
+CURRENT STATUS — 2026-11-17, after closing review:
+IMPLEMENTED AND VALIDATED, NOT FINALLY ACCEPTED. Merged at d724a84; source 31dc845 passed 300 existing behavior owners and all six checks, including browser 558. Retired preparation/helpers/comments were removed without test edits; picker id is shared. Closing review reported no cleanup-specific regression; overall integration acceptance remains blocked by TASK-78. Existing root-link semantics are part of the TASK-78 blocker, not a claim that the entire branch is correct.
+
+Earlier progress below is historical; the current status above supersedes it.
+
 CURRENT: Queued after the remaining source work. No cleanup was implemented in this pass yet; behavior-preserving removal and comment updates remain open.
 
 CURRENT: Starting the isolated behavior-preserving v3 cleanup after TASK-84. Blocked TASK-79/80/81/82 candidates are excluded. No source result is claimed yet; the next step is the small cleanup and stable validation.

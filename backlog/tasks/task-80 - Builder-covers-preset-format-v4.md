@@ -4,7 +4,7 @@ title: Builder covers preset format v4
 status: To Do
 assignee: []
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-17T09:28:00Z'
+updated_date: '2026-11-17T10:38:00Z'
 labels:
   - format-v4
   - blocked
@@ -37,6 +37,11 @@ After format v4 the builder still edits v3 shapes: no row form, `kind` instead o
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
+CURRENT STATUS — 2026-11-17, after closing review:
+NOT STARTED. Waiting for verified TASK-79 scope-path behavior and the unresolved TASK-78 review. Only a Builder draft exists; no TASK-80 implementation was merged.
+
+Earlier progress below is historical; the current status above supersedes it.
+
 TASK-77 single-review carryover within this task: addCell currently allocates token ids from field-only taken ids, and withRepeat hard-codes repeat.id=repeat, so a second token cell/repeat section collides. sectionFromPreset also annotates an already typed row with any. Address valid unique defaults and the typed conversion while implementing the v4 forms; no separate follow-up issue is needed. Sources: src/builder/document.ts:134,417-421,539-667; review arch+quality-claude-5/8.
 
 Not started in the autonomous TASK-78–87 continuation because TASK-79 remains blocked on full-path scope admission and import ancestry. The Builder draft is retained outside the repository and must be reconciled with a verified TASK-79 candidate before implementation.
