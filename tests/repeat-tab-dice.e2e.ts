@@ -21,6 +21,12 @@ const GM: ClientParams = {
   name: 'Мастер',
 };
 
+const SECOND_GM: ClientParams = {
+  client: 'repeat-tab-dice-2',
+  device: 'repeat-tab-dice-2',
+  name: 'Второй мастер',
+};
+
 const PRESET = {
   v: 4,
   templates: [
@@ -55,7 +61,7 @@ const PRESET = {
 const ROOM_RECORDS = [
   record('blk:npc', { hp: 41 }),
   record('blk:npc:npc:a', { order: 0, cells: { name: 'Alpha', hp: 7 } }),
-  record('blk:npc:npc:b', { order: 1, cells: { name: 'Beta', hp: 9 } }),
+  record('blk:npc:npc:b', { order: 1, cells: { name: 'Beta' } }),
 ];
 
 const PREVIEW_SNAPSHOT = {
@@ -97,6 +103,28 @@ test('a room roll uses hp from the selected repeat-tab block', async ({ context 
     .toEqual({ notifications: ['Мастер: NPC, Хиты — 8'], message: '' });
 });
 
+test('a remote repeat-tab edit clears the stale dice field error', async ({ context }) => {
+  // #given
+  const first = await openRoom(context);
+  const second = await openRoom(context, SECOND_GM);
+  await sheetTab(first.window, 'Beta').click();
+  await sheetTab(second.window, 'Beta').click();
+  const dice = diceButton(first.window);
+  await dice.click();
+  await expect(messageUnder(dice)).toHaveText('Нельзя бросить: поле «Хиты» пустое или не число');
+
+  // #when
+  await second.window.getByRole('textbox', { name: 'Хиты', exact: true }).fill('10');
+
+  // #then
+  await expect
+    .poll(async () => ({
+      field: await first.window.getByRole('textbox', { name: 'Хиты', exact: true }).inputValue(),
+      message: await messageUnder(dice).textContent(),
+    }))
+    .toEqual({ field: '10', message: '' });
+});
+
 test('Builder Preview rolls from the selected repeat-tab block', async ({ page }) => {
   // #given
   const frame = await openBuilderPreview(page);
@@ -122,13 +150,13 @@ test('Builder Preview rolls from the selected repeat-tab block', async ({ page }
   await expect(messageUnder(dice)).toHaveText('');
 });
 
-async function openRoom(context: BrowserContext): Promise<RoomClient> {
-  const window = await openClientWindow(context, GM);
-  await seedStorage(window, ROOM_RECORDS, JSON.stringify(PRESET), GM.device);
-  const background = await openClientBackground(context, GM);
+async function openRoom(context: BrowserContext, params = GM): Promise<RoomClient> {
+  const window = await openClientWindow(context, params);
+  await seedStorage(window, ROOM_RECORDS, JSON.stringify(PRESET), params.device);
+  const background = await openClientBackground(context, params);
   await expect(sheetTab(window, 'Alpha')).toBeVisible();
 
-  return { window, background, connectionId: connectionIdOf(GM) };
+  return { window, background, connectionId: connectionIdOf(params) };
 }
 
 async function openBuilderPreview(page: Page): Promise<Locator> {
