@@ -46,8 +46,8 @@ import { sidebarEntries, type SidebarEntries, type SidebarSheet } from '@/ui/she
 import {
   focusSidebarEntry,
   revealSidebarEntry,
-  templateIndexFromKey,
   templateTabKey,
+  templateTabSourceIndexFromKey,
   templateTabLabel,
   type WindowFrameLayout,
 } from '@/ui/shell/window-frame';
@@ -357,6 +357,9 @@ function WindowRoot({
     const listed = tab === null ? undefined : tabs.find((candidate) => candidate.id === tab);
     const visible = listed === undefined ? [] : visibleTemplateTabs(listed);
 
+    const rendered =
+      template === undefined ? [] : renderTabs(template, records, openRequest.sheetId);
+
     const sourceCellTab =
       template === undefined
         ? null
@@ -370,6 +373,20 @@ function WindowRoot({
 
     const cellTab = sourceCellIndex === -1 ? null : sourceCellIndex;
 
+    const blockRendered = blockTab === null ? null : (rendered[blockTab] ?? null);
+
+    const blockVisible =
+      blockRendered === null
+        ? null
+        : (visible.find((candidate) => sameRenderedTab(candidate, blockRendered)) ?? null);
+
+    const cellVisible =
+      sourceCellTab === null
+        ? null
+        : (visible.find((candidate) => candidate.sourceIndex === sourceCellTab) ?? null);
+
+    const openedTab = blockVisible ?? cellVisible;
+
     dispatch({
       type: 'open-request',
       request: openRequest,
@@ -378,6 +395,7 @@ function WindowRoot({
       blockTab,
       block,
       cellTab,
+      tabKey: openedTab === null ? undefined : templateTabKey(openedTab),
       ready,
     });
   }, [openRequest, preset, ready, records, tabIds, tabs, takenOpen]);
@@ -435,15 +453,30 @@ function WindowRoot({
 
   function openTemplateTab(tab: SidebarSheet): { index: number; tab: RenderedTab } | null {
     const visible = visibleTemplateTabs(tab);
+    const chosen = chosenTemplateTabs.get(tab.id);
 
-    const index = openTabIndex(
-      tab.policy.template,
-      chosenTemplateTabs.get(tab.id),
-      undefined,
-      visible,
-    );
+    const chosenIndex = isLegacyTemplateTabSelection(chosen)
+      ? chosen
+      : chosen === undefined
+        ? undefined
+        : visible.findIndex((candidate) => templateTabKey(candidate) === chosen);
+
+    const fallbackIndex =
+      chosen !== undefined && !isLegacyTemplateTabSelection(chosen) && chosenIndex === -1
+        ? visible.findIndex(
+            (candidate) => candidate.sourceIndex === templateTabSourceIndexFromKey(chosen),
+          )
+        : chosenIndex;
+
+    const index = openTabIndex(tab.policy.template, fallbackIndex, undefined, visible);
 
     return index === null || visible[index] === undefined ? null : { index, tab: visible[index] };
+  }
+
+  function isLegacyTemplateTabSelection(
+    value: ReturnType<typeof chosenTemplateTabs.get>,
+  ): value is number {
+    return Number.isInteger(value);
   }
 
   function templateTabHasSelection(tab: SidebarSheet, rendered: RenderedTab): boolean {
@@ -769,7 +802,7 @@ function WindowRoot({
         ? []
         : visibleTabs.map((rendered, index): ShellTab => {
             return {
-              id: templateTabKey(index),
+              id: templateTabKey(rendered),
               label:
                 rendered.block === null
                   ? templateTabLabel(rendered.tab.title)
@@ -794,6 +827,13 @@ function WindowRoot({
       sheet === null || !ready || preset === null
         ? null
         : contentFor(sheet, openTab, opened?.tab ?? null);
+
+    const chosen = sheet === null ? undefined : chosenTemplateTabs.get(sheet.id);
+
+    const contentSourceIndex =
+      chosen !== undefined && !isLegacyTemplateTabSelection(chosen)
+        ? (templateTabSourceIndexFromKey(chosen) ?? opened?.tab.sourceIndex ?? null)
+        : (opened?.tab.sourceIndex ?? null);
 
     let content: ReactNode;
 
@@ -854,7 +894,8 @@ function WindowRoot({
           }
         : undefined,
       tabs: shellTabs,
-      selectedTab: opened === null ? null : templateTabKey(opened.index),
+      selectedTab: opened === null ? null : templateTabKey(opened.tab),
+      contentKey: `${shownTab}:source-${contentSourceIndex ?? 'none'}`,
       onSelectTab: (id) => {
         const addScopeId = id.startsWith('template-tab-add:')
           ? id.slice('template-tab-add:'.length)
@@ -866,14 +907,15 @@ function WindowRoot({
           return;
         }
 
-        const index = templateIndexFromKey(id);
+        const selected = visibleTabs.find((candidate) => templateTabKey(candidate) === id);
 
-        if (sheet !== null && index !== null) {
+        if (sheet !== null && selected !== undefined) {
           dispatch({
             type: 'select-template-tab',
             sheet: sheet.id,
-            index,
-            visible: index >= 0 && index < visibleTabs.length,
+            index: visibleTabs.indexOf(selected),
+            key: id,
+            visible: true,
           });
         }
       },
@@ -895,4 +937,12 @@ function focusInWindow(): boolean {
   const active = document.activeElement;
 
   return active !== null && active !== document.body && active !== document.documentElement;
+}
+
+function sameRenderedTab(left: RenderedTab, right: RenderedTab): boolean {
+  return (
+    left.sourceIndex === right.sourceIndex &&
+    left.block?.scopeId === right.block?.scopeId &&
+    left.block?.instanceId === right.block?.instanceId
+  );
 }

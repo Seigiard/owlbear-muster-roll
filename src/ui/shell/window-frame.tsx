@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import type { Key, ReactNode } from 'react';
 import { Button, Tab, TabList, Tabs } from 'react-aria-components';
 
+import type { RenderedTab } from '@/core/preset';
 import { copy } from '@/copy';
 import { Banner } from '@/ui/primitives/banner';
 import type { BannerMessage } from '@/ui/primitives/banner';
@@ -27,8 +28,38 @@ const SIDEBAR_FLOW_CLASS = 'flex min-h-full flex-col gap-px';
 
 type SidebarSettings = { id: string; label: string; accessibleName: string };
 
-export function templateTabKey(index: number): string {
-  return `template-tab-${index}`;
+type TemplateTabIdentity = Pick<RenderedTab, 'sourceIndex' | 'block'>;
+
+export function templateTabKey(index: number): string;
+export function templateTabKey(tab: TemplateTabIdentity): string;
+export function templateTabKey(value: number | TemplateTabIdentity): string {
+  if (isLegacyTemplateTabKeyInput(value)) {
+    return `template-tab-${value}`;
+  }
+
+  const block = value.block;
+
+  return block === null
+    ? `template-tab-${value.sourceIndex}-root`
+    : `template-tab-${value.sourceIndex}-block-${encodeURIComponent(
+        block.scopeId,
+      )}-${encodeURIComponent(block.instanceId)}`;
+}
+
+function isLegacyTemplateTabKeyInput(value: number | TemplateTabIdentity): value is number {
+  return Number.isInteger(value);
+}
+
+export function templateTabSourceIndexFromKey(key: string): number | null {
+  const prefix = 'template-tab-';
+
+  if (!key.startsWith(prefix)) {
+    return null;
+  }
+
+  const sourceIndex = Number(key.slice(prefix.length).split('-')[0]);
+
+  return Number.isInteger(sourceIndex) && sourceIndex >= 0 ? sourceIndex : null;
 }
 
 export function templateIndexFromKey(key: string): number | null {
@@ -57,6 +88,7 @@ export type WindowFrameLayout = {
   selectedTab: string | null;
   onSelectTab: (id: string) => void;
   panelLabel?: string;
+  contentKey?: string;
   header?: ReactNode;
   content: ReactNode;
   frameClassName?: string;
@@ -92,7 +124,9 @@ export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
         <TabBar tabs={layout.tabs} onAddTab={layout.onSelectTab} />
         {layout.selectedTab === null ? null : (
           <div
-            key={`${layout.selectedSidebarEntry}:${layout.selectedTab}`}
+            key={
+              layout.contentKey ?? `${layout.selectedSidebarEntry}:${layout.selectedTab ?? 'none'}`
+            }
             id={layout.selectedTab}
             className={MULTI_TAB_CONTENT_CLASS}
           >
