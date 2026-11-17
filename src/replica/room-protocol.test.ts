@@ -275,6 +275,7 @@ function createPorts(
       mint: (_key, highestKnownCounter) => ({ c: highestKnownCounter + 1, a: 'test' }),
       newRecordId: () => 'record',
       isGmPlayer: () => false,
+      mode: 'persisted',
     }),
     receiveRecords: () => {
       effects.push('receive-records');

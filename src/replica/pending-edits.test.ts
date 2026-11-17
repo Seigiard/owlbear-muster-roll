@@ -935,6 +935,7 @@ function createHarness(
           mint: (key, highestKnownCounter) => ({ c: highestKnownCounter + 1, a: CONNECTION }),
           newRecordId: (_kind, role) => role,
           isGmPlayer: () => false,
+          mode: 'pending',
         },
         command,
       ),
