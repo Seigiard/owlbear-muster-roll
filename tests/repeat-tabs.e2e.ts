@@ -21,6 +21,7 @@ import {
 
 const UI_CHANNEL = 'app.muster-roll/ui';
 const COMMAND_TIMEOUT_MS = 16_000;
+const PAST_SAVE_PAUSE_MS = 1300;
 
 const PRESET = {
   v: 4,
@@ -75,6 +76,12 @@ const RECORDS = [
   record('blk:npc:npc:b', { order: 1, cells: { hp: 9 } }),
   record('link:alpha', { s: 'npc', path: ['npc', 'a'], c: 'portrait' }),
   record('link:beta', { s: 'npc', path: ['npc', 'b'], c: 'portrait' }),
+] as const;
+
+const IDENTITY_RECORDS = [
+  record('blk:npc:npc:a', { order: 0, cells: { name: 'Alpha', hp: 7 } }),
+  record('blk:npc:npc:b', { order: 1, cells: { name: 'Beta', hp: 9 } }),
+  record('blk:npc:npc:c', { order: 2, cells: { name: 'Gamma', hp: 13 } }),
 ] as const;
 
 const SNAPSHOT = {
@@ -163,6 +170,91 @@ test('the extension expands one tab per block in source position and keeps selec
   await expect(sheetTab(first.window, 'Alpha')).toHaveAttribute('aria-selected', 'true');
   await expect(sheetTab(second.window, 'Overview')).toHaveAttribute('aria-selected', 'true');
   await expect(first.window.getByRole('textbox', { name: 'hp' })).toHaveValue('7');
+});
+
+test('a remote preceding delete keeps the edited block selected and its delayed save bound to it', async ({
+  context,
+}) => {
+  // #given
+  const editing = await openSeededClient(context, GM, IDENTITY_RECORDS);
+  const remote = await openSeededClient(context, { ...GM, client: 'gm-2' }, IDENTITY_RECORDS);
+  await watchFieldPatchTargets(editing.window);
+  await sheetTab(editing.window, 'Beta').click();
+  await editing.window.getByRole('textbox', { name: 'hp' }).fill('42');
+
+  // #when
+  await sheetTab(remote.window, 'Alpha').click();
+  await remote.window.getByRole('button', { name: copy.command.delete }).click();
+  await remote.window.getByRole('button', { name: copy.command.delete, exact: true }).click();
+  await expect(sheetTab(editing.window, 'Alpha')).toHaveCount(0);
+  await editing.window.waitForTimeout(PAST_SAVE_PAUSE_MS);
+
+  // #then
+  await expect
+    .poll(async () => ({
+      betaSelected: await sheetTab(editing.window, 'Beta').getAttribute('aria-selected'),
+      beta: await storedData(editing.window, 'blk:npc:npc:b'),
+      gamma: await storedData(editing.window, 'blk:npc:npc:c'),
+      patchTargets: await fieldPatchTargets(editing.window),
+    }))
+    .toEqual({
+      betaSelected: 'true',
+      beta: {
+        order: 1,
+        cells: { name: ['Beta', 1, 'seed'], hp: [42, 2, 'mock-connection-gm'] },
+      },
+      gamma: {
+        order: 2,
+        cells: { name: ['Gamma', 1, 'seed'], hp: [13, 1, 'seed'] },
+      },
+      patchTargets: ['b'],
+    });
+});
+
+test('a remote delete of the edited block cannot redirect its delayed save to the successor', async ({
+  context,
+}) => {
+  // #given
+  const editing = await openSeededClient(context, GM, IDENTITY_RECORDS);
+  const remote = await openSeededClient(context, { ...GM, client: 'gm-2' }, IDENTITY_RECORDS);
+  await watchFieldPatchTargets(editing.window);
+  await sheetTab(editing.window, 'Beta').click();
+  await editing.window.getByRole('textbox', { name: 'hp' }).fill('42');
+
+  // #when
+  await sheetTab(remote.window, 'Beta').click();
+  await remote.window.getByRole('button', { name: copy.command.delete }).click();
+  await remote.window.getByRole('button', { name: copy.command.delete, exact: true }).click();
+  await expect(sheetTab(editing.window, 'Beta')).toHaveCount(0);
+  await editing.window.waitForTimeout(PAST_SAVE_PAUSE_MS);
+
+  // #then
+  expect({
+    gamma: await storedData(editing.window, 'blk:npc:npc:c'),
+    patchTargets: await fieldPatchTargets(editing.window),
+  }).toEqual({
+    gamma: {
+      order: 2,
+      cells: { name: ['Gamma', 1, 'seed'], hp: [13, 1, 'seed'] },
+    },
+    patchTargets: [],
+  });
+});
+
+test('a remote repeat-block add keeps the selected non-repeat Notes tab open', async ({
+  context,
+}) => {
+  // #given
+  const selected = await openSeededClient(context, GM);
+  const remote = await openSeededClient(context, { ...GM, client: 'gm-2' });
+  await sheetTab(selected.window, 'Notes').click();
+
+  // #when
+  await sheetTab(remote.window, '+').click();
+  await expect(sheetTab(selected.window, 'Блок 3')).toBeVisible();
+
+  // #then
+  await expect(sheetTab(selected.window, 'Notes')).toHaveAttribute('aria-selected', 'true');
 });
 
 test('the GM final plus adds and opens an empty block', async ({ context }) => {
@@ -367,6 +459,36 @@ test('cancel preserves a tab block and confirm removes its values and token link
   await expect(sheetTab(gm.window, 'Alpha')).toHaveCount(0);
   await expect.poll(() => storedData(gm.window, 'blk:npc:npc:a')).toBeNull();
   await expect.poll(() => storedData(gm.window, 'link:alpha')).toBeNull();
+});
+
+test('the successor starts with fresh delete controls after a non-final block is deleted', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openSeededClient(context, GM, IDENTITY_RECORDS);
+  await sheetTab(gm.window, 'Alpha').click();
+  await gm.window.getByRole('button', { name: copy.command.delete }).click();
+
+  // #when
+  await gm.window.getByRole('button', { name: copy.command.delete, exact: true }).click();
+  await expect(sheetTab(gm.window, 'Alpha')).toHaveCount(0);
+
+  // #then
+  await expect(gm.window.getByRole('button', { name: copy.command.cancel })).toHaveCount(0);
+  const successorDelete = gm.window.getByRole('button', { name: copy.command.delete });
+  await expect(successorDelete).toBeVisible();
+
+  // #when
+  await successorDelete.click();
+  await gm.window.getByRole('button', { name: copy.command.cancel }).click();
+
+  // #then
+  await expect(successorDelete).toBeVisible();
+  await expect(sheetTab(gm.window, 'Beta')).toHaveAttribute('aria-selected', 'true');
+  expect(await storedData(gm.window, 'blk:npc:npc:b')).toEqual({
+    order: 1,
+    cells: { name: ['Beta', 1, 'seed'], hp: [9, 1, 'seed'] },
+  });
 });
 
 test('a linked token opens and marks only its exact block tab', async ({ context }) => {
@@ -646,4 +768,37 @@ async function postUiMessage(page: Page, message: JsonValue): Promise<void> {
       }),
     [UI_CHANNEL, JSON.stringify(message)] as const,
   );
+}
+
+async function watchFieldPatchTargets(page: Page): Promise<void> {
+  await page.evaluate((channel) => {
+    document.documentElement.dataset.fieldPatchTargets = '[]';
+    window.mockPlatform.broadcast.onMessage(channel, (event) => {
+      const message = Object(event.data);
+      const command = Object(message.command);
+      const target = Object(command.target);
+
+      if (message.t !== 'command' || command.type !== 'field-patch') {
+        return;
+      }
+
+      const targets: unknown = JSON.parse(
+        document.documentElement.dataset.fieldPatchTargets ?? '[]',
+      );
+
+      const previous = Array.isArray(targets) ? targets.map(String) : [];
+      document.documentElement.dataset.fieldPatchTargets = JSON.stringify([
+        ...previous,
+        String(target.instanceId),
+      ]);
+    });
+  }, UI_CHANNEL);
+}
+
+async function fieldPatchTargets(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const targets: unknown = JSON.parse(document.documentElement.dataset.fieldPatchTargets ?? '[]');
+
+    return Array.isArray(targets) ? targets.map(String) : [];
+  });
 }
