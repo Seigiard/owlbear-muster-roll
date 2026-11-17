@@ -535,6 +535,41 @@ describe('strippedPatch', () => {
     // #then
     expect(strippedPatch('blk:brok', patch, TEMPLATE)).toBe(patch);
   });
+  test('keeps a root number proposal when a repeat tab has a same-id text field', () => {
+    // #given
+    const template: TemplateLayout = {
+      tabs: [
+        {
+          title: 'Основное',
+          sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }],
+        },
+        {
+          title: 'Состояния',
+          repeat: { id: 'condition', nameField: 'condition_name' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'condition_name' },
+                    { kind: 'field', type: 'text', id: 'hp' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const patch = { kind: 'fields', values: { hp: 8 } } as const;
+
+    // #when
+    const stripped = strippedPatch('blk:brok', patch, template);
+
+    // #then
+    expect(stripped).toBe(patch);
+  });
   test('drops the fields the row no longer has, and values of another type', () => {
     // #when
     const stripped = strippedPatch(

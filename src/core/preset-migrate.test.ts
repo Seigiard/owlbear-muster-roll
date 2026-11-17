@@ -180,6 +180,86 @@ function summary(migration: PresetMigration) {
 }
 
 describe('presetDiff', () => {
+  test('keeps a root number when a later repeat tab has a text field with the same id', () => {
+    // #given
+    const duplicate: Preset = {
+      v: 4,
+      templates: [
+        sheetSet([], {
+          tabs: [
+            { title: 'Основное', sections: [rows([text('notes')], [number('hp')])] },
+            {
+              title: 'Состояния',
+              repeat: { id: 'condition', nameField: 'condition_name' },
+              sections: [rows([text('condition_name'), text('hp')])],
+            },
+          ],
+        }),
+      ],
+    };
+
+    const records = replica(sheet('brok'), row('brok', 'hp', { hp: 7 }));
+
+    // #when
+    const migration = presetDiff(records, duplicate, duplicate);
+
+    // #then
+    expect(summary(migration)).toEqual({
+      count: 0,
+      sheets: 0,
+      removed: {},
+      first: [],
+      last: [],
+    });
+  });
+  test('counts and clears a removed root field despite a same-id repeat-tab field', () => {
+    // #given
+    const old: Preset = {
+      v: 4,
+      templates: [
+        sheetSet([], {
+          tabs: [
+            { title: 'Основное', sections: [rows([text('notes')], [number('hp')])] },
+            {
+              title: 'Состояния',
+              repeat: { id: 'condition', nameField: 'condition_name' },
+              sections: [rows([text('condition_name'), text('hp')])],
+            },
+          ],
+        }),
+      ],
+    };
+
+    const next: Preset = {
+      ...old,
+      templates: [
+        sheetSet([], {
+          tabs: [
+            { title: 'Основное', sections: [rows([text('notes')])] },
+            {
+              title: 'Состояния',
+              repeat: { id: 'condition', nameField: 'condition_name' },
+              sections: [rows([text('condition_name'), text('hp')])],
+            },
+          ],
+        }),
+      ],
+    };
+
+    const records = replica(sheet('brok'), row('brok', 'hp', { hp: 7 }));
+
+    // #when
+    const migration = presetDiff(records, old, next);
+
+    // #then
+    expect(summary(migration)).toEqual({
+      count: 1,
+      sheets: 0,
+      removed: { pc: ['hp'] },
+      first: [],
+      last: ['blk:brok={"order":0,"set":"pc","cells":{"hp":[null,2,"seed"]}}'],
+    });
+  });
   test('erases and moves nothing when only the window size changes', () => {
     // #given
     const resized: Preset = { ...BASE, window: { width: 900, height: 700 } };
