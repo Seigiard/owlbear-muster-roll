@@ -102,10 +102,20 @@ const rejectSchema = z
     a: z.string().min(1),
     reason: z.enum(['denied', 'stale']),
     current: recordSchema.optional(),
+    i: z.number().int().positive().optional(),
+    n: z.number().int().positive().optional(),
   })
-  .refine((message) =>
-    message.reason === 'stale' ? message.current?.k === message.k : message.current === undefined,
-  );
+  .refine((message) => {
+    if (message.reason === 'denied') {
+      return message.current === undefined && message.i === undefined && message.n === undefined;
+    }
+
+    return (
+      message.current?.k === message.k &&
+      ((message.i === undefined && message.n === undefined) ||
+        (message.i !== undefined && message.n !== undefined && message.i <= message.n))
+    );
+  });
 
 // AD-7: a client's catch-up nonce `r`, a nanoid.
 const nonceSchema = z.string().min(1).max(64);

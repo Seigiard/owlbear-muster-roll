@@ -25,8 +25,11 @@ export function recordFitsOneMessage(record: VersionedRecord): boolean {
   return fragmentRecord(record).ok;
 }
 
-export function fragmentRecord(record: VersionedRecord): Result<VersionedRecord[], SplitFailure> {
-  if (recordFragmentFits(record)) return ok([record]);
+export function fragmentRecord(
+  record: VersionedRecord,
+  reserveBytes = RECORD_ENVELOPE_RESERVE_BYTES,
+): Result<VersionedRecord[], SplitFailure> {
+  if (recordFragmentFits(record, reserveBytes)) return ok([record]);
   const block = record.k.startsWith('blk:') ? blockDataSchema.safeParse(record.d).data : undefined;
 
   if (block === undefined) return err('item-too-large');
@@ -39,12 +42,14 @@ export function fragmentRecord(record: VersionedRecord): Result<VersionedRecord[
     d: { ...block, cells: values },
   });
 
-  if (!recordFragmentFits(part({}))) return err('item-too-large');
+  if (!recordFragmentFits(part({}), reserveBytes)) return err('item-too-large');
 
   for (const [id, cell] of Object.entries(block.cells)) {
-    if (!recordFragmentFits(part({ [id]: cell }))) return err('item-too-large');
+    if (!recordFragmentFits(part({ [id]: cell }), reserveBytes)) {
+      return err('item-too-large');
+    }
 
-    if (!recordFragmentFits(part({ ...cells, [id]: cell }))) {
+    if (!recordFragmentFits(part({ ...cells, [id]: cell }), reserveBytes)) {
       fragments.push(part(cells));
       cells = {};
     }
@@ -57,16 +62,19 @@ export function fragmentRecord(record: VersionedRecord): Result<VersionedRecord[
   return ok(fragments);
 }
 
-export function fragmentRecords(records: readonly VersionedRecord[]): VersionedRecord[] {
+export function fragmentRecords(
+  records: readonly VersionedRecord[],
+  reserveBytes = RECORD_ENVELOPE_RESERVE_BYTES,
+): VersionedRecord[] {
   return records.flatMap((record) => {
-    const result = fragmentRecord(record);
+    const result = fragmentRecord(record, reserveBytes);
 
     return result.ok ? result.value : [record];
   });
 }
 
-function recordFragmentFits(record: VersionedRecord): boolean {
-  const limit = MESSAGE_BYTE_LIMIT - RECORD_ENVELOPE_RESERVE_BYTES;
+function recordFragmentFits(record: VersionedRecord, reserveBytes: number): boolean {
+  const limit = MESSAGE_BYTE_LIMIT - reserveBytes;
 
   return jsonByteLength(record) < limit && deflateToBase64(JSON.stringify([record])).length < limit;
 }
