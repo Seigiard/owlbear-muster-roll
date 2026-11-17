@@ -1,17 +1,17 @@
 ---
 id: TASK-84
 title: Avoid repeated serialization of the same sheet root
-status: In Progress
+status: Done
 assignee:
   - '@openai'
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T10:38:00Z'
+updated_date: '2026-11-17T11:07:00Z'
 labels:
-  - blocked
-  - review-blocked
+  - follow-ups-open
 dependencies: []
 references:
   - src/ui/sheet/sheet-body.tsx
+  - TASK-98
 priority: low
 type: enhancement
 ordinal: 111000
@@ -40,8 +40,9 @@ After TASK-76 every plain row refers to one shared root block. sheetValuesSignat
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-CURRENT STATUS — 2026-11-17, after closing review:
-PARTIALLY IMPLEMENTED; REVIEW GAP REMAINS. Merged at a4895cc; checked source e83f7dd deduplicates the root and passes all six checks. Closing review found that sheetValuesSignature still omits repeat-tab block prefixes, so a remote tab-block change does not clear a stale dice result. AC1/AC2 are not fully established for repeat tabs. Address this with TASK-78 dice/block identity repairs; no measured speedup or new performance-test claim.
+CURRENT STATUS — Done, review defects transferred to follow-up bugs.
+Root serialization is deduplicated; the retained repeat-tab invalidation gap has a separate bug owner. Closed by explicit user decision with remaining review defects transferred to TASK-98. Unproven acceptance checkboxes remain unchecked; Done closes this delivery record and does not claim those defects were fixed. The branch remains blocked for release by TASK-89, TASK-90, TASK-91, TASK-92, TASK-93, TASK-94, TASK-95, TASK-96.
+Each follow-up records the reviewed failure, source references, evidence limits and independently testable acceptance criteria. No source code changed during this transfer.
 
 Earlier progress below is historical; the current status above supersedes it.
 
@@ -53,3 +54,9 @@ CURRENT: Implemented the isolated signature deduplication. `rootKeys` records th
 
 CURRENT: Implementation is merged into feature/preset-v4-tasks-77-80. Stable source e83f7dd passes all six checks, including browser 558/558. Root serialization is deduplicated; the all-tab traversal and repeat-record scan remain unchanged. Remaining: closing integration review and final acceptance.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Root serialization is deduplicated; the retained repeat-tab invalidation gap has a separate bug owner. Closed by explicit user decision with remaining review defects transferred to TASK-98. Unproven acceptance checkboxes remain unchecked; Done closes this delivery record and does not claim those defects were fixed. The branch remains blocked for release by TASK-89, TASK-90, TASK-91, TASK-92, TASK-93, TASK-94, TASK-95, TASK-96.
+<!-- SECTION:FINAL_SUMMARY:END -->

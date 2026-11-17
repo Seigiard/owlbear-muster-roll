@@ -1,20 +1,29 @@
 ---
 id: TASK-78
 title: 'Repeat tab: one tab per block'
-status: In Progress
+status: Done
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-17T10:38:00Z'
+updated_date: '2026-11-17T11:07:00Z'
 labels:
   - format-v4
-  - blocked
-  - review-blocked
+  - follow-ups-open
 dependencies:
   - TASK-77
 references:
   - _bmad-output/specs/spec-muster-roll/preset-format.md
   - _bmad-output/specs/spec-muster-roll/stories.yaml
+  - TASK-89
+  - TASK-90
+  - TASK-91
+  - TASK-92
+  - TASK-93
+  - TASK-94
+  - TASK-95
+  - TASK-96
+  - TASK-97
+  - TASK-88
 type: feature
 ordinal: 105000
 ---
@@ -43,8 +52,9 @@ A GM wants an NPC sheet where each NPC is a tab with its own sections, not a row
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-CURRENT STATUS — 2026-11-17, after closing review:
-REVIEW BLOCKED. The implementation is merged, but the complete 6/6-source closing review found 3 critical and 6 major defects. Critical: repeat-tab fields leak into root migration maps and can silently clear values; the receiving GM accepts player tab-block creation/deletion; index-based selection can retarget a pending draft after a remote add/delete. Also open: hidden-section authorization, dice rolls, root token links, role-filtered token opening, Builder/reveal DOM context and delete-control state. The branch is NOT release-ready. Correct these public behavior owners before another repair attempt. Review snapshot: 7dcd100; fixed base: ffd1051; review-01.md and review-01.json in preset-v4-78-87-20261117 contain all findings. No review fixes were started after the global finish-mode boundary.
+CURRENT STATUS — Done, review defects transferred to follow-up bugs.
+Repeat-tab delivery is merged, including zero-block explicit addition and the shared room/Builder frame. Closed by explicit user decision with remaining review defects transferred to TASK-89, TASK-90, TASK-91, TASK-92, TASK-93, TASK-94, TASK-95, TASK-96, TASK-97, TASK-88. Unproven acceptance checkboxes remain unchecked; Done closes this delivery record and does not claim those defects were fixed. The branch remains blocked for release by TASK-89, TASK-90, TASK-91, TASK-92, TASK-93, TASK-94, TASK-95, TASK-96.
+Each follow-up records the reviewed failure, source references, evidence limits and independently testable acceptance criteria. No source code changed during this transfer.
 
 Earlier progress below is historical; the current status above supersedes it.
 
@@ -52,3 +62,9 @@ Bounded run stopped after about 90 minutes at clean candidate e3ab0d423e970c7772
 
 CURRENT: Implementation merged into feature/preset-v4-tasks-77-80 at e53781794550125c0feab568ac55a4015c97b0b7. The earlier zero-block and automatic-add blockers are repaired. All six checks pass at e0a332d; full browser recovery passed 558 tests. One earlier NPC focus failure did not reproduce and remains disclosed. Remaining: the single closing integration review and final acceptance. No deployment.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Repeat-tab delivery is merged, including zero-block explicit addition and the shared room/Builder frame. Closed by explicit user decision with remaining review defects transferred to TASK-89, TASK-90, TASK-91, TASK-92, TASK-93, TASK-94, TASK-95, TASK-96, TASK-97, TASK-88. Unproven acceptance checkboxes remain unchecked; Done closes this delivery record and does not claim those defects were fixed. The branch remains blocked for release by TASK-89, TASK-90, TASK-91, TASK-92, TASK-93, TASK-94, TASK-95, TASK-96.
+<!-- SECTION:FINAL_SUMMARY:END -->
