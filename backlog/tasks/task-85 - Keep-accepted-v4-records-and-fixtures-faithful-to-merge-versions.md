@@ -1,12 +1,11 @@
 ---
 id: TASK-85
 title: Keep accepted v4 records and fixtures faithful to merge versions
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T10:38:00Z'
-labels:
-  - validated
+updated_date: '2026-11-17T10:49:00Z'
+labels: []
 dependencies: []
 references:
   - src/core/records.ts
@@ -25,10 +24,10 @@ TASK-76 review found record-boundary edge cases and a fixture gap. recordSchema 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every accepted non-block record has a deterministic merge result in both argument orders, including lifecycle metadata validation.
-- [ ] #2 A parsed cell cannot disappear because its id resolves to an inherited object property; rejection or safe preservation is explicit.
-- [ ] #3 A fixture with an explicitly supplied newer cell tuple preserves its counter and author even when its value is unchanged.
-- [ ] #4 Narrow tests cover those schema, merge and fixture boundaries without adding old-format compatibility.
+- [x] #1 Every accepted non-block record has a deterministic merge result in both argument orders, including lifecycle metadata validation.
+- [x] #2 A parsed cell cannot disappear because its id resolves to an inherited object property; rejection or safe preservation is explicit.
+- [x] #3 A fixture with an explicitly supplied newer cell tuple preserves its counter and author even when its value is unchanged.
+- [x] #4 Narrow tests cover those schema, merge and fixture boundaries without adding old-format compatibility.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -42,8 +41,9 @@ TASK-76 review found record-boundary edge cases and a fixture gap. recordSchema 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-CURRENT STATUS — 2026-11-17, after closing review:
-IMPLEMENTED AND VALIDATED, NOT FINALLY ACCEPTED. Merged at a5abdc3; source 91db190 passes all six checks, including Bun 3382 pass/1 environment skip and browser 558. Parser lifecycle/field-id hardening and explicit newer fixture tuples have direct regression evidence. Closing review reported no TASK-85-specific finding; overall integration acceptance remains blocked by TASK-78.
+CURRENT STATUS — Done.
+Non-block lifecycle metadata and invalid cell ids are rejected; explicitly supplied newer same-value fixture tuples are preserved. Direct regressions and all six checks passed at 91db190, including Bun 3382 pass/1 environment skip and browser 558. Closing review found no task-specific defect.
+This task is complete independently of TASK-78/TASK-84. Their integration/release blockers do not reopen this task; the whole branch is still not release-ready.
 
 Earlier progress below is historical; the current status above supersedes it.
 
@@ -51,3 +51,9 @@ Implemented record-boundary hardening at source SHA 91db19053060ca215fe702371875
 
 CURRENT: Implementation merged at a5abdc3f1be8c639face9be3ed2fd2c4a7cde7e4. Invalid lifecycle placement and inherited field ids are rejected; explicit newer same-value fixture tuples are preserved. All six checks pass at 91db190: Bun 3382 pass with one environment skip, browser 558 pass. Remaining: closing integration review and final acceptance.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Non-block lifecycle metadata and invalid cell ids are rejected; explicitly supplied newer same-value fixture tuples are preserved. Direct regressions and all six checks passed at 91db190, including Bun 3382 pass/1 environment skip and browser 558. Closing review found no task-specific defect.
+<!-- SECTION:FINAL_SUMMARY:END -->

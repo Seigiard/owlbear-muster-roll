@@ -1,12 +1,11 @@
 ---
 id: TASK-83
 title: Keep a pending player value visible until its edit settles
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T10:38:00Z'
-labels:
-  - validated
+updated_date: '2026-11-17T10:49:00Z'
+labels: []
 dependencies: []
 references:
   - src/ui/projection-store.ts
@@ -24,9 +23,9 @@ TASK-76 changed pending projection assembly to use the replica conflict merge. I
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A remote value received before ACK does not replace the visible local pending intent for that same field.
-- [ ] #2 The pending marker and visible value agree until acceptance, rejection or cancellation settles the edit.
-- [ ] #3 A focused projection-store regression covers an applied value newer than the local pending cell and settlement afterward.
+- [x] #1 A remote value received before ACK does not replace the visible local pending intent for that same field.
+- [x] #2 The pending marker and visible value agree until acceptance, rejection or cancellation settles the edit.
+- [x] #3 A focused projection-store regression covers an applied value newer than the local pending cell and settlement afterward.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -40,8 +39,9 @@ TASK-76 changed pending projection assembly to use the replica conflict merge. I
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-CURRENT STATUS — 2026-11-17, after closing review:
-IMPLEMENTED AND VALIDATED, NOT FINALLY ACCEPTED. Merged at 7335dbf; checked source addcd6c has focused 21/21 and all six green checks. Pending display remains 20 over applied replica 30 until withdrawal, then shows 30 without a marker. Closing review reported no TASK-83-specific finding, but overall integration acceptance remains blocked by TASK-78. Status stays In Progress rather than claiming the whole branch is ready.
+CURRENT STATUS — Done.
+Pending player intent stays visible until settlement while the applied replica retains newer remote values. The public regression covers pending 20/applied 30 and withdrawal. Focused 21/21 and all six checks passed at addcd6c; closing review found no task-specific defect.
+This task is complete independently of TASK-78/TASK-84. Their integration/release blockers do not reopen this task; the whole branch is still not release-ready.
 
 Earlier progress below is historical; the current status above supersedes it.
 
@@ -55,3 +55,9 @@ The saved writer broad run is non-final because source changed during it; its bu
 
 CURRENT: Implementation merged at 7335dbfd766d0747a835fd3d7c35a549f47aad0a. Pending player value 20 stays visible while the applied replica keeps newer value 30; withdrawal shows 30 and clears the marker. Focused 21/21 and all six checks pass at addcd6c. Remaining: closing integration review and final acceptance.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Pending player intent stays visible until settlement while the applied replica retains newer remote values. The public regression covers pending 20/applied 30 and withdrawal. Focused 21/21 and all six checks passed at addcd6c; closing review found no task-specific defect.
+<!-- SECTION:FINAL_SUMMARY:END -->

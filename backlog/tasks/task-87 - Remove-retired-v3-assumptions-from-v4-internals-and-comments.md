@@ -1,14 +1,13 @@
 ---
 id: TASK-87
 title: Remove retired v3 assumptions from v4 internals and comments
-status: In Progress
+status: Done
 assignee:
   - '@openai'
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-17T10:38:00Z'
+updated_date: '2026-11-17T10:49:00Z'
 labels:
   - format-v4
-  - validated
 dependencies: []
 references:
   - src/core/link-target.ts
@@ -32,9 +31,9 @@ The single TASK-77 review found v3-only paths still present after stable repeat 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Link resolution and preset reconciliation no longer construct unused indexes or execute unreachable relocation preparation; surviving values, order and clear markers stay unchanged.
-- [ ] #2 Touched comments describe explicit repeat.nameField and token-cell targets, with no retired first-field or tokens/linkable guarantee.
-- [ ] #3 Unused duplicate preset helpers are removed and the token-cell picker opener shares the existing popover id constant.
+- [x] #1 Link resolution and preset reconciliation no longer construct unused indexes or execute unreachable relocation preparation; surviving values, order and clear markers stay unchanged.
+- [x] #2 Touched comments describe explicit repeat.nameField and token-cell targets, with no retired first-field or tokens/linkable guarantee.
+- [x] #3 Unused duplicate preset helpers are removed and the token-cell picker opener shares the existing popover id constant.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -48,8 +47,9 @@ The single TASK-77 review found v3-only paths still present after stable repeat 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-CURRENT STATUS — 2026-11-17, after closing review:
-IMPLEMENTED AND VALIDATED, NOT FINALLY ACCEPTED. Merged at d724a84; source 31dc845 passed 300 existing behavior owners and all six checks, including browser 558. Retired preparation/helpers/comments were removed without test edits; picker id is shared. Closing review reported no cleanup-specific regression; overall integration acceptance remains blocked by TASK-78. Existing root-link semantics are part of the TASK-78 blocker, not a claim that the entire branch is correct.
+CURRENT STATUS — Done.
+Retired v3 preparation, unused helpers and stale comments were removed; the token picker uses the shared popover id. Existing behavior owners 300/300 and all six checks passed at 31dc845, including browser 558. Closing review found no cleanup-specific regression.
+This task is complete independently of TASK-78/TASK-84. Their integration/release blockers do not reopen this task; the whole branch is still not release-ready.
 
 Earlier progress below is historical; the current status above supersedes it.
 
@@ -63,3 +63,9 @@ CURRENT: Source cleanup committed as 31dc8450411e0ef60cbf3b5c71d2f3822bcdc109. E
 
 CURRENT: Implementation merged into feature/preset-v4-tasks-77-80. Existing behavior owners 300/300 and all six checks pass at 31dc845; browser 558/558, Bun 3382 pass with one environment skip. No test changed. Values, ordering, null clears and picker identity are preserved. Remaining: closing integration review and final acceptance.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Retired v3 preparation, unused helpers and stale comments were removed; the token picker uses the shared popover id. Existing behavior owners 300/300 and all six checks passed at 31dc845, including browser 558. Closing review found no cleanup-specific regression.
+<!-- SECTION:FINAL_SUMMARY:END -->
