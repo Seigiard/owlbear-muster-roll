@@ -143,13 +143,6 @@ export type SheetSetTemplate = Omit<Template, 'repeat'> & { repeat: { nameField:
 
 export type SingleSheetTemplate = Omit<Template, 'repeat'> & { repeat?: undefined };
 
-export function isSheetSet<T extends { repeat?: unknown }>(
-  template: T,
-): template is T & { repeat: { nameField: string } };
-export function isSheetSet(template: { repeat?: { nameField: string } }): boolean {
-  return template.repeat !== undefined;
-}
-
 export type TemplateLayout = { tabs: readonly PresetTab[] };
 
 export type PresetTab = z.infer<typeof tab>;
@@ -924,8 +917,4 @@ function short(value: string): string {
   return chars.length > DETAIL_MAX_CHARACTERS
     ? `${chars.slice(0, DETAIL_MAX_CHARACTERS).join('')}…`
     : value;
-}
-
-export function hasField(row: PresetRow, id: string): boolean {
-  return rowCells(row).some((item) => item.kind === 'field' && item.id === id);
 }

@@ -39,10 +39,11 @@ type LinkPickerProps = {
   timing?: LinkPickerTiming;
 };
 
-// UX-DR22: the targets a token can link to, in groups in preset order: one per linkable sheet set
-// or single sheet, and one per linkable repeat section. In each group the targets with no token
-// come first. A pick stays on screen until its link is in the replica, so a refused one, such as
-// for a sheet deleted meanwhile, shows a message here instead of closing the picker.
+// UX-DR22: the token-cell targets a token can link to, in groups in preset order: one per token cell
+// on a sheet set or single sheet, and one per token cell in a repeat scope. In each group the
+// targets with no token come first. A pick stays on screen until its link is in the replica, so a
+// refused one, such as for a sheet deleted meanwhile, shows a message here instead of closing the
+// picker.
 export function LinkPicker({
   tokenId,
   store,
@@ -292,8 +293,8 @@ export function LinkPicker({
 
     const outcome = sendCommand(command);
 
-    // The offered label is the target's name: a sheet's, or a repeat block's first field. An empty
-    // name sets none.
+    // The offered label is the target's name: a sheet's, or a repeat block's configured nameField.
+    // An empty name sets none.
     const name = choice.label;
 
     dispatch({

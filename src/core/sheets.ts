@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 import {
   plainRowIdOf,
-  sectionFirstField,
   sectionFields,
   type Preset,
   type PresetFieldCell,
@@ -53,7 +52,7 @@ export type SheetPolicy = {
   write: WriteRule;
   // `null`: the template's `title` names the sheet.
   nameField: NameField | null;
-  // `tokens`: a token can link to the whole sheet.
+  // Whether the template has a token cell that can be linked to the sheet.
   linkable: boolean;
 };
 
@@ -203,17 +202,16 @@ export function sheetName(
   return Array.from(name).slice(0, SHEET_NAME_MAX_LENGTH).join('');
 }
 
-// A repeat block is named by its first field's value, "" when it has none.
+// A repeat block is named by its repeat scope's explicit nameField value, "" when it has none.
 export function repeatBlockName(
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
   section: PresetSection,
   instanceId: string,
 ): string {
-  const first = sectionFirstField(section);
-  const nameField = section.repeat?.nameField ?? first?.id ?? null;
+  const nameField = section.repeat?.nameField ?? null;
 
-  if (first === null || nameField === null || section.repeat?.id === undefined) {
+  if (nameField === null || section.repeat?.id === undefined) {
     return '';
   }
 

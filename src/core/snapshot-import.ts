@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 import { FORMAT_VERSION } from '@/core/format-version';
-import { blockIndex, linkDataOf, liveLinkTarget } from '@/core/link-target';
+import { linkDataOf, liveLinkTarget } from '@/core/link-target';
 import { recordFitsOneMessage } from '@/core/message-size';
 import {
   PRESET_FILE_BYTE_LIMIT,
@@ -193,7 +193,6 @@ export function importSnapshot(
   }
 
   const placed = new Map(records.map((record) => [record.k, record]));
-  const blocks = blockIndex(records);
 
   for (const link of file.links) {
     const target = {
@@ -203,7 +202,7 @@ export function importSnapshot(
       cellId: link.cellId,
     };
 
-    if (liveLinkTarget(placed, current.preset, target, blocks) !== null) {
+    if (liveLinkTarget(placed, current.preset, target) !== null) {
       records.push({ k: `link:${link.tokenId}`, d: linkDataOf(target), c: 1, a: author });
     }
   }
