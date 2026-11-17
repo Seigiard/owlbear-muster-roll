@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-17T11:03:00Z'
-updated_date: '2026-11-17T11:49:00Z'
+updated_date: '2026-11-17T12:20:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -17,6 +17,13 @@ references:
   - src/core/preset-migrate.ts
   - >-
     https://reports.1218217.xyz/reports/owlbear-muster-roll/20261117T105007Z-401dcadf/review.html#adversarial-claude-4
+modified_files:
+  - src/core/preset-migrate.ts
+  - src/core/preset-migrate.test.ts
+  - src/replica/engine-preset.test.ts
+  - src/replica/composers.test.ts
+  - src/replica/proposal-queue.test.ts
+  - src/core/snapshot-import.test.ts
 priority: high
 type: bug
 ordinal: 116000
@@ -54,4 +61,6 @@ Review finding: adversarial-claude-4
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-17: Scoped the implementation to the shared `templateScopes` root/block boundary. The locked regression suite will cover unchanged upload, root edits, player proposals, snapshot import, and counted root removal; repeat-tab storage and nested support remain unchanged.
+
+2026-11-17: Locked and calibrated public-consumer regressions at 5fbccdd. Implemented the shared root/block scope repair at 5d66f13. Focused tests passed 143/143; format, lint, typecheck, unit, browser (workers=2), and build passed in durable runs on 5d66f13. Parent owns integration, final acceptance, and status.
 <!-- SECTION:NOTES:END -->
