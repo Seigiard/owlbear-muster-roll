@@ -1,0 +1,22 @@
+document-map v1
+Source: "preset-format.md"
+SHA256: 713e005e47dfe42476866a009464308277828ad241a2dd3944b20c25fcc79a24
+Total lines: 293
+
+Preset file format — lines 1–293
+  Shape — lines 11–32
+  Keys — lines 33–138
+    File — lines 35–42
+    Template — lines 43–62
+    Tab — lines 63–81
+    Section — lines 82–95
+    Row — lines 96–107
+    Cell — lines 108–127
+    Cell names — lines 128–138
+  Ids and scopes — lines 139–152
+  Repeat scopes and blocks — lines 153–174
+  Dice formulas — lines 175–189
+  Preset changes — lines 190–207
+  Limits and versions — lines 208–223
+  Build a preset without JSON — lines 224–234
+  Annotated example — lines 235–293
