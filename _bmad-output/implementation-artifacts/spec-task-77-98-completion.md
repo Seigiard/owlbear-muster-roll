@@ -92,6 +92,7 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - Remaining tasks: 77, 79, 80, 82, 88, 90, 92, 93, 95, 96, 97 and 98. TASK-86 remains the owner's live-room gate. The umbrella stays in progress.
 - Resume with the repeat-tab follow-ups before TASK-79. Its saved candidate imports children under an incorrect parent path and rejects valid parent-local scope ids. TASK-80 waits for verified TASK-79. TASK-82 first needs a valid concurrent-edit oracle; its saved candidate fails player-proposal stripping. The rejected candidates remain available for diagnosis.
 - TASK-95 should reuse and verify the rendered-identity conversion already added by TASK-91. Numeric selection inputs remain available for Builder compatibility.
+- 2026-11-17 window 2: Owner requested the next window. Start from `1fc8a7c2bd08608331a33873e3f3a6de4ba71554`, with a 90-minute budget and at most three ticket lanes. Initial frontier: TASK-90 receiving-GM admission, TASK-93 room/preview dice, TASK-95 role-filtered token opening. Queue TASK-92 after 90, TASK-96 after 95, TASK-97 after 96, and TASK-98 after 93 and 96 to serialize shared files. Full browser suites run one at a time with two workers. The parent owns integration and one closing review.
 
 ## Spec Change Log
 
