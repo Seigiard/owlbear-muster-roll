@@ -1,11 +1,11 @@
 ---
 id: TASK-98
 title: Invalidate repeat-tab dice feedback after remote block edits
-status: In Progress
+status: Done
 assignee:
   - '@seigiard'
 created_date: '2026-11-17T11:05:00Z'
-updated_date: '2026-11-17T17:51:00Z'
+updated_date: '2026-11-17T18:23:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -36,10 +36,10 @@ Review finding: adversarial-claude-6
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The formula invalidation signature represents every relevant root, repeat-section, repeat-row and repeat-tab block once per computation across all tabs.
-- [ ] #2 After a remote change to a repeat-tab block, its displayed stale dice result or field error is cleared through the existing consumer behavior.
-- [ ] #3 Cross-tab dependent formulas, ordinary repeat behavior and local edit invalidation remain correct.
-- [ ] #4 Coverage uses the public dice/field feedback boundary; it adds no source-shape assertion or broad benchmark project.
+- [x] #1 The formula invalidation signature represents every relevant root, repeat-section, repeat-row and repeat-tab block once per computation across all tabs.
+- [x] #2 After a remote change to a repeat-tab block, its displayed stale dice result or field error is cleared through the existing consumer behavior.
+- [x] #3 Cross-tab dependent formulas, ordinary repeat behavior and local edit invalidation remain correct.
+- [x] #4 Coverage uses the public dice/field feedback boundary; it adds no source-shape assertion or broad benchmark project.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -49,3 +49,15 @@ Review finding: adversarial-claude-6
 2. Extend the consumer signature to include repeat-tab records once alongside root, repeat-section and repeat-row records.
 3. Calibrate the locked regression, run the six required checks, then record objective evidence.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Accepted final SHA 5baf4f475107cbd7d0f4064552c466a4f8389b9d. Locked E2E test 7c4fea5 is unchanged. Focused red, calibrated mutation, focused green, and all six required checks have raw evidence in /Users/seigiard/.claude/artifacts/preset-v4-window3-20261117/task-98/orchestrator.report.md. Full browser: 571 passed with two workers. The mock/live Owlbear boundary remains a stated risk.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added repeat-tab scope records to the sheet-value signature, so existing dice feedback clears when a remote update reaches that block. A two-GM browser regression proves visible stale feedback, delivery of the remote block edit, and cleared feedback. All required checks pass on 5baf4f4; calibration fails when the new prefix loop is removed. Live Owlbear remains outside automated mock coverage.
+<!-- SECTION:FINAL_SUMMARY:END -->

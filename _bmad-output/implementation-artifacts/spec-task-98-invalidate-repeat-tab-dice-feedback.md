@@ -2,7 +2,7 @@
 title: 'Invalidate repeat-tab dice feedback after remote block edits'
 type: 'bugfix'
 created: '2026-11-17'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 context:
   - '{project-root}/GLOSSARY.md'
@@ -42,9 +42,9 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Lock a public mock-room regression that shows an error, performs a second-GM field edit in the selected repeat-tab block, and observes the error clear.
-- [ ] Add repeat-tab scope records once to the sheet-value signature, retaining all established scopes.
-- [ ] Calibrate the regression by excluding the repeat-tab scope from the signature and observing that stale feedback remains.
+- [x] Lock a public mock-room regression that shows an error, performs a second-GM field edit in the selected repeat-tab block, and observes the error clear.
+- [x] Add repeat-tab scope records once to the sheet-value signature, retaining all established scopes.
+- [x] Calibrate the regression by excluding the repeat-tab scope from the signature and observing that stale feedback remains.
 
 **Acceptance Criteria:**
 - Every relevant root, repeat-section, repeat-row and repeat-tab block contributes once per computation across all tabs.
@@ -61,3 +61,14 @@ context:
 - `bun test`
 - `bun run test:browser`
 - `bun run build`
+
+Final SHA `5baf4f475107cbd7d0f4064552c466a4f8389b9d`:
+
+- The focused regression first failed on the old behavior, then passed after the repair. It uses two mock-room GMs, sees the exact field error under the first GM's dice button, changes the selected repeat-tab block through the second GM's field control, and sees the first feedback live region clear.
+- Calibration removed only the repeat-tab prefix loop. The focused command exited 1 at the protected assertion: remote `hp` became `10` while the old field error stayed. Raw mutation diff and output: `/Users/seigiard/.claude/artifacts/preset-v4-window3-20261117/task-98/calibration-repeat-tab-prefix.{diff,log}`.
+- Format, lint, typecheck, unit and build checks exited 0 in `/Users/seigiard/.cache/herdr-run/task98-w3-nonbrowser-5baf4f.{sh,log,exit,meta}`; unit result: 3413 pass, 1 skip, 0 fail.
+- The parent-reserved full browser check `bun run test:browser --workers=2` exited 0 with 571 passed in `/Users/seigiard/.cache/herdr-run/task98-w3-full-browser-5baf4f.{sh,log,exit,meta}`.
+
+## Risks
+
+- The mock-room regression proves application behavior only. A live Owlbear-room check remains outside this ticket's automated scope: roll `Beta` with missing `hp` in one GM client, edit `Beta` from another, and confirm the first feedback live region clears.
