@@ -1,9 +1,11 @@
 ---
 id: TASK-93
 title: Allow dice cells to roll with their repeat-tab block values
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@seigiard'
 created_date: '2026-11-17T11:05:00Z'
+updated_date: '2026-11-17T14:40:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -39,3 +41,11 @@ Review finding: arch+quality-claude-5
 - [ ] #3 Ordinary root, repeat-section and repeat-row dice behavior remains unchanged.
 - [ ] #4 Consumer regressions demonstrate the reported not-dice failure before repair and successful room/preview rolls after repair.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Lock core and dedicated repeat-tab room/Builder consumer regressions with distinct root, selected and sibling hp values.
+2. Extend dice preparation to recognize tab repeat scope and resolve the selected block.
+3. Calibrate each consumer assertion, then run required source checks; coordinate before a full browser suite.
+<!-- SECTION:PLAN:END -->

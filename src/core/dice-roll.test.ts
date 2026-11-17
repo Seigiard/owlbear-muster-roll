@@ -631,4 +631,58 @@ describe('rollDiceCell across tabs', () => {
     // #then
     expect(rolled).toEqual({ ok: false, error: { code: 'not-dice' } });
   });
+  test('rolls with the selected repeat-tab block instead of the root or a sibling', () => {
+    // #given
+    const layout: TemplateLayout = {
+      tabs: [
+        {
+          repeat: { id: 'npc', nameField: 'name' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'text', text: 'Хиты' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                    { kind: 'dice', formula: '1d1 + hp' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const records = new Map<string, VersionedRecord>([
+      ['blk:npc', fixtureRecord('blk:npc', { hp: 41 })],
+      [
+        'blk:npc:npc:a',
+        fixtureRecord('blk:npc:npc:a', { order: 0, cells: { name: 'Alpha', hp: 7 } }),
+      ],
+      [
+        'blk:npc:npc:b',
+        fixtureRecord('blk:npc:npc:b', { order: 1, cells: { name: 'Beta', hp: 9 } }),
+      ],
+    ]);
+
+    // #when
+    const rolled = rollDiceCell(
+      layout,
+      records,
+      'npc',
+      { tabIndex: 0, sectionIndex: 0, rowIndex: 0, cellIndex: 2, instanceId: 'a' },
+      new Map(),
+      randomFaces(SEVEN),
+    );
+
+    // #then
+    expect(rolled).toEqual({
+      ok: true,
+      value: {
+        cell: 'Хиты',
+        result: { roll: 8, faces: [1], target: null, targetFaces: [], outcome: null },
+      },
+    });
+  });
 });

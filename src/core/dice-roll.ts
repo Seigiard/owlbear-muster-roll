@@ -17,7 +17,6 @@ import {
   resolveFieldReference,
   sectionAt,
   type PresetCell,
-  type PresetSection,
   type TemplateLayout,
   type TemplateRowPlace,
 } from '@/core/preset';
@@ -102,10 +101,13 @@ export function prepareDiceRoll(
   place: DicePlace,
   shown: ShownValues,
 ): Result<PreparedDiceRoll, DiceRollFailure> {
+  const tab = layout.tabs[place.tabIndex];
   const section = sectionAt(layout, place);
   const row = section?.rows[place.rowIndex];
   const cell = row?.cells[place.cellIndex];
-  const repeat = section?.repeat !== undefined || row?.repeat !== undefined;
+
+  const repeat =
+    tab?.repeat !== undefined || section?.repeat !== undefined || row?.repeat !== undefined;
 
   if (
     section === null ||
@@ -125,7 +127,8 @@ export function prepareDiceRoll(
   let ownBlock: FieldValues | undefined;
 
   if (place.instanceId !== null) {
-    const block = blockValues(records, sheetId, section, row, place.instanceId);
+    const scopeId = repeatSectionId(section) ?? row.repeat?.id ?? tab?.repeat?.id ?? null;
+    const block = blockValues(records, sheetId, scopeId, place.instanceId);
 
     if (block === null) {
       return err({ code: 'not-dice' });
@@ -210,17 +213,14 @@ export function prepareDiceRoll(
 function blockValues(
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
-  section: PresetSection,
-  row: PresetSection['rows'][number],
+  scopeId: string | null,
   instanceId: string,
 ): FieldValues | null {
-  const sectionId = repeatSectionId(section) ?? row.repeat?.id ?? null;
-
-  if (sectionId === null) {
+  if (scopeId === null) {
     return null;
   }
 
-  const data = repDataSchema.safeParse(records.get(repKey(sheetId, sectionId, instanceId))?.d);
+  const data = repDataSchema.safeParse(records.get(repKey(sheetId, scopeId, instanceId))?.d);
 
   return data.success ? new Map(Object.entries(cellValues(data.data.cells))) : null;
 }
