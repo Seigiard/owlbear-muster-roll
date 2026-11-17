@@ -5,10 +5,10 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-17T10:18:00Z'
+updated_date: '2026-11-17T10:20:00Z'
 labels:
   - format-v4
-  - active
+  - awaiting-review
 dependencies: []
 references:
   - src/core/link-target.ts
@@ -55,4 +55,6 @@ CURRENT: Starting the isolated behavior-preserving v3 cleanup after TASK-84. Blo
 CURRENT: Investigation is complete at 04fea980fd9d2341c79dc4632008cfadd8c2a79c. The committed spec is `_bmad-output/implementation-artifacts/spec-task-87-retired-v3-cleanup.md`; it confirms the read block-index parameter, stable-id relocation preparation, obsolete preset exports, naming fallbacks/comments, and literal token-cell picker id. TASK-79/80/81/82 candidates remain excluded. Next phase: delegated checks-only cleanup, then stable validation.
 
 CURRENT: Source cleanup committed as 31dc8450411e0ef60cbf3b5c71d2f3822bcdc109. Existing behavior owners passed 300/300; the stable six-check launcher passed at the same commit (format, lint, typecheck, Bun, browser 558, build). Durable evidence: `/Users/seigiard/.claude/artifacts/preset-v4-78-87-20261117/task-87/final-checks/checks.json` and `owners.log`. No task acceptance was checked; parent-owned closing review remains.
+
+CURRENT: Implementation merged into feature/preset-v4-tasks-77-80. Existing behavior owners 300/300 and all six checks pass at 31dc845; browser 558/558, Bun 3382 pass with one environment skip. No test changed. Values, ordering, null clears and picker identity are preserved. Remaining: closing integration review and final acceptance.
 <!-- SECTION:NOTES:END -->
