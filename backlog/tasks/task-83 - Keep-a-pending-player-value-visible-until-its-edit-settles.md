@@ -4,7 +4,7 @@ title: Keep a pending player value visible until its edit settles
 status: In Progress
 assignee: []
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T07:57:00Z'
+updated_date: '2026-11-17T08:21:00Z'
 labels: []
 dependencies: []
 references:
@@ -35,3 +35,13 @@ TASK-76 changed pending projection assembly to use the replica conflict merge. I
 2. Apply the same display-only pending overlay to shown records and PendingEntry records without changing $replica merging.
 3. Run the focused owner and the required changed-path checks with durable logs.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented and locked the public ProjectionStore regression: pending 20 / applied 30 remains shown and pending 20, then withdrawal shows 30 with no pending entry.
+
+Evidence: focused 21/21 and stable source checks format, lint, typecheck, unit, browser 558/558, and build all exit 0 at addcd6c963c38e9d5b37e5e90a538600169db442. Durable logs: /Users/seigiard/.claude/artifacts/preset-v4-78-87-20261117/task-83/final-checks/checks.json.
+
+The test-writer broad run is preserved at task-83/writer-red-checks but is non-final: concurrent source changed during it and its saved typecheck exited 1. The observed focused red is recorded in task-83/test-writer-1.report.md; no separate mutation/calibration project was warranted.
+<!-- SECTION:NOTES:END -->
