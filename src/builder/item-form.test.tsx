@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { Preset } from '@/core/preset';
 import { createBuilderStore, type BuilderStore } from './builder-store';
-import { uidAt } from './document';
+import { toPreset, uidAt } from './document';
 import { ItemForm } from './item-form';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -19,6 +19,59 @@ const FIELD_PRESET: Preset = {
           sections: [
             {
               rows: [{ cells: [{ kind: 'field', type: 'text', id: 'strength' }] }],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const REPEAT_PRESET: Preset = {
+  v: 4,
+  templates: [
+    {
+      id: 'crew',
+      title: 'Экипаж',
+      tabs: [
+        {
+          title: 'Бой',
+          sections: [
+            {
+              title: 'Атаки',
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'field', type: 'text', id: 'nickname' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const LOADED_REPEAT_PRESET: Preset = {
+  v: 4,
+  templates: [
+    {
+      id: 'crew',
+      title: 'Экипаж',
+      tabs: [
+        {
+          sections: [
+            {
+              title: 'Атаки',
+              repeat: { id: 'attacks', nameField: 'name' },
+              rows: [
+                {
+                  cells: [{ kind: 'field', type: 'text', id: 'name' }],
+                },
+              ],
             },
           ],
         },
@@ -57,42 +110,282 @@ describe('field id keyboard confirmation', () => {
   });
 });
 
+describe('v4 node forms', () => {
+  test.each([
+    [
+      'template',
+      [0],
+      {
+        repeat: { nameField: 'nickname' },
+        controls: [
+          'Id:input:text',
+          'Заголовок:input:text',
+          'Игроки могут править:input:checkbox',
+          'Повторяемая:input:checkbox',
+          'Поле имени:select',
+          'Видят:select',
+        ],
+      },
+    ],
+    [
+      'tab',
+      [0, 0],
+      {
+        repeat: { id: 'boy', nameField: 'nickname' },
+        controls: [
+          'Id:input:text',
+          'Заголовок:input:text',
+          'Повторяемая:input:checkbox',
+          'Поле имени:select',
+          'Видят:select',
+        ],
+      },
+    ],
+    [
+      'section',
+      [0, 0, 0],
+      {
+        repeat: { id: 'ataki', nameField: 'nickname' },
+        controls: [
+          'Id:input:text',
+          'Заголовок:input:text',
+          'Колонки:input:text',
+          'Повторяемая:input:checkbox',
+          'Поле имени:select',
+          'Ширина:select',
+          'Видят:select',
+        ],
+      },
+    ],
+    [
+      'row',
+      [0, 0, 0, 0],
+      {
+        repeat: { id: 'stroka_1', nameField: 'nickname' },
+        controls: [
+          'Id:input:text',
+          'Повторяемая:input:checkbox',
+          'Поле имени:select',
+          'Видят:select',
+        ],
+      },
+    ],
+  ] as const)(
+    'adds and edits repeat through the %s form with the applicable registry controls',
+    async (_kind, path, expected) => {
+      // #given
+      const form = await openForm(REPEAT_PRESET, path, null);
+
+      // #when
+      const actual = await capture(async () => {
+        await changeCheck(inputControl(form.container, 'Повторяемая'), true);
+        await form.rerender();
+        const nameField = selectControl(form.container, 'Поле имени');
+        const choices = Array.from(nameField.options, (option) => option.value);
+        await choose(nameField, 'nickname');
+
+        return {
+          controls: formControls(form.container),
+          choices,
+          repeat: repeatAt(form.store, path),
+        };
+      });
+
+      // #then
+      expect(actual).toEqual({
+        result: {
+          controls: new Set(expected.controls),
+          choices: ['name', 'nickname'],
+          repeat: expected.repeat,
+        },
+      });
+    },
+  );
+
+  test('suggests a distinct repeat id from a repeated section with the same title', async () => {
+    // #given
+    const preset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'crew',
+          title: 'Экипаж',
+          tabs: [
+            {
+              sections: [
+                {
+                  title: 'Атаки',
+                  repeat: { id: 'ataki', nameField: 'first' },
+                  rows: [
+                    {
+                      cells: [{ kind: 'field', type: 'text', id: 'first' }],
+                    },
+                  ],
+                },
+                {
+                  title: 'Атаки',
+                  rows: [
+                    {
+                      cells: [{ kind: 'field', type: 'text', id: 'second' }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const path = [0, 0, 1] as const;
+    const form = await openForm(preset, path, null);
+
+    // #when
+    const actual = await capture(async () => {
+      await changeCheck(inputControl(form.container, 'Повторяемая'), true);
+
+      return repeatAt(form.store, path);
+    });
+
+    // #then
+    expect(actual).toEqual({
+      result: { id: 'ataki_2', nameField: 'second' },
+    });
+  });
+
+  test('shows and rewrites a token id through the token form', async () => {
+    // #given
+    const preset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'crew',
+          title: 'Экипаж',
+          tabs: [
+            {
+              sections: [
+                {
+                  rows: [{ cells: [{ kind: 'token', id: 'portrait' }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const form = await openForm(preset, [0, 0, 0, 0, 0], null);
+    const id = inputControl(form.container, 'Id');
+
+    // #when
+    await enterText(id, 'miniature');
+    await pressKey(id, 'Enter');
+
+    // #then
+    expect(toPreset(form.store.$state.get().step.document).templates[0]?.tabs[0]?.sections).toEqual(
+      [
+        {
+          rows: [{ cells: [{ kind: 'token', id: 'miniature' }] }],
+        },
+      ],
+    );
+  });
+});
+
+describe('loaded repeat warnings', () => {
+  test.each([
+    ['changes its id', 'id'],
+    ['turns repeat off', 'off'],
+  ] as const)(
+    'warns that room blocks will be erased when a loaded scope %s',
+    async (_name, edit) => {
+      // #given
+      const loaded = await openForm(LOADED_REPEAT_PRESET, [0, 0, 0], LOADED_REPEAT_PRESET);
+      const draft = await openForm(LOADED_REPEAT_PRESET, [0, 0, 0], null);
+      const unrelated = await openForm(LOADED_REPEAT_PRESET, [0, 0, 0], LOADED_REPEAT_PRESET);
+
+      // #when
+      const actual = await capture(async () => {
+        await editRepeat(loaded, edit);
+        await editRepeat(draft, edit);
+        await choose(selectControl(unrelated.container, 'Ширина'), '1/2');
+        await unrelated.rerender();
+
+        return {
+          loaded: liveMessages(loaded.container),
+          draft: liveMessages(draft.container),
+          unrelatedLoadedEdit: liveMessages(unrelated.container),
+        };
+      });
+
+      // #then
+      expect(actual).toEqual({
+        result: {
+          loaded: ['Блоки «attacks» в комнате будут стёрты при загрузке пресета.'],
+          draft: [],
+          unrelatedLoadedEdit: [],
+        },
+      });
+    },
+  );
+});
+
 type FieldForm = {
   input: HTMLInputElement;
   store: BuilderStore;
 };
 
 async function openFieldForm(): Promise<FieldForm> {
-  const store = createBuilderStore(null);
-  store.open(FIELD_PRESET, null, 'preset');
-  const document = store.$state.get().step.document;
-  const selection = uidAt(document, [0, 0, 0, 0, 0]);
-
-  if (selection === null) {
-    throw new Error('the field fixture has no field cell');
-  }
-
-  const container = documentNode();
-  const root = createRoot(container);
-  mounted.push(root);
-  await act(async () => {
-    root.render(
-      <ItemForm
-        store={store}
-        document={document}
-        origin={null}
-        selection={selection}
-        problems={[]}
-      />,
-    );
-  });
-  const input = container.querySelector<HTMLInputElement>('input[autocomplete="off"]');
+  const form = await openForm(FIELD_PRESET, [0, 0, 0, 0, 0], null);
+  const input = form.container.querySelector<HTMLInputElement>('input[autocomplete="off"]');
 
   if (input === null) {
     throw new Error('the public item form has no field id input');
   }
 
-  return { input, store };
+  return { input, store: form.store };
+}
+
+type OpenForm = {
+  container: HTMLDivElement;
+  rerender: () => Promise<void>;
+  store: BuilderStore;
+};
+
+async function openForm(
+  preset: Preset,
+  path: readonly number[],
+  origin: Preset | null,
+): Promise<OpenForm> {
+  const store = createBuilderStore(null);
+  store.open(preset, origin, 'preset');
+  const selection = uidAt(store.$state.get().step.document, path);
+
+  if (selection === null) {
+    throw new Error(`the form fixture has no item at ${path.join('.')}`);
+  }
+
+  const container = documentNode();
+  const root = createRoot(container);
+  mounted.push(root);
+
+  const rerender = async (): Promise<void> => {
+    await act(async () => {
+      root.render(
+        <ItemForm
+          store={store}
+          document={store.$state.get().step.document}
+          origin={origin}
+          selection={selection}
+          problems={[]}
+        />,
+      );
+    });
+  };
+
+  await rerender();
+
+  return { container, rerender, store };
 }
 
 function documentNode(): HTMLDivElement {
@@ -102,11 +395,113 @@ function documentNode(): HTMLDivElement {
   return container;
 }
 
+function labeledControl(container: HTMLElement, label: string): HTMLElement | null {
+  const owner = Array.from(container.querySelectorAll('label')).find(
+    (candidate) => candidate.textContent?.trim() === label,
+  );
+
+  return owner?.control ?? null;
+}
+
+function inputControl(container: HTMLElement, label: string): HTMLInputElement {
+  const found = labeledControl(container, label);
+
+  if (!(found instanceof HTMLInputElement)) {
+    throw new Error(`the public item form has no "${label}" input`);
+  }
+
+  return found;
+}
+
+function selectControl(container: HTMLElement, label: string): HTMLSelectElement {
+  const found = labeledControl(container, label);
+
+  if (!(found instanceof HTMLSelectElement)) {
+    throw new Error(`the public item form has no "${label}" select`);
+  }
+
+  return found;
+}
+
+function formControls(container: HTMLElement): Set<string> {
+  const controls = Array.from(container.querySelectorAll('label')).flatMap((label) => {
+    const owned = label.control;
+
+    if (!(owned instanceof HTMLInputElement || owned instanceof HTMLSelectElement)) {
+      return [];
+    }
+
+    const kind = owned instanceof HTMLSelectElement ? 'select' : `input:${owned.type}`;
+
+    return [`${label.textContent?.trim() ?? ''}:${kind}`];
+  });
+
+  return new Set(controls);
+}
+
+type RepeatValue = { id: string; nameField: string } | { nameField: string } | undefined;
+
+function repeatAt(store: BuilderStore, path: readonly number[]): RepeatValue {
+  const preset = toPreset(store.$state.get().step.document);
+  const template = preset.templates[path[0] ?? -1];
+
+  if (path.length === 1) {
+    return template?.repeat;
+  }
+
+  const tab = template?.tabs[path[1] ?? -1];
+
+  if (path.length === 2) {
+    return tab?.repeat;
+  }
+
+  const section = tab?.sections[path[2] ?? -1];
+
+  if (path.length === 3) {
+    return section?.repeat;
+  }
+
+  return section?.rows[path[3] ?? -1]?.repeat;
+}
+
+function liveMessages(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll('[aria-live]'))
+    .map((region) => region.textContent?.trim() ?? '')
+    .filter((message) => message !== '');
+}
+
 function fieldId(store: BuilderStore): string | null {
   const cell =
     store.$state.get().step.document.templates[0]?.tabs[0]?.sections[0]?.rows[0]?.cells[0];
 
   return cell?.kind === 'field' ? cell.id : null;
+}
+
+async function changeCheck(input: HTMLInputElement, checked: boolean): Promise<void> {
+  await act(async () => {
+    if (input.checked !== checked) {
+      input.click();
+    }
+  });
+}
+
+async function choose(select: HTMLSelectElement, value: string): Promise<void> {
+  await act(async () => {
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+async function editRepeat(form: OpenForm, edit: 'id' | 'off'): Promise<void> {
+  if (edit === 'id') {
+    const id = inputControl(form.container, 'Id');
+    await enterText(id, 'moves');
+    await pressKey(id, 'Enter');
+  } else {
+    await changeCheck(inputControl(form.container, 'Повторяемая'), false);
+  }
+
+  await form.rerender();
 }
 
 async function enterText(input: HTMLInputElement, text: string): Promise<void> {
@@ -144,4 +539,14 @@ async function pressKey(
 
     element.dispatchEvent(event);
   });
+}
+
+async function capture<Result>(
+  operation: () => Promise<Result>,
+): Promise<{ result: Result } | { threw: string }> {
+  try {
+    return { result: await operation() };
+  } catch (error) {
+    return { threw: error instanceof Error ? error.message : String(error) };
+  }
 }

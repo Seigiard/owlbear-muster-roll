@@ -350,6 +350,39 @@ describe('addCell', () => {
     // #then
     expect(findCell(added.document, added.changed)).toMatchObject({ id: 'field_2' });
   });
+  test('token ids are unique beside other token ids in their scope', () => {
+    // #given
+    const document = fromPreset({
+      templates: [
+        {
+          id: 'crew',
+          title: 'Экипаж',
+          tabs: [
+            {
+              sections: [
+                {
+                  rows: [{ cells: [{ kind: 'token', id: 'token' }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const row = uid(document, 0, 0, 0, 0);
+
+    // #when
+    const second = applied(addCell(document, row, 'token'));
+    const third = applied(addCell(second.document, row, 'token'));
+
+    // #then
+    expect(toPreset(third.document).templates[0]?.tabs[0]?.sections[0]?.rows[0]?.cells).toEqual([
+      { kind: 'token', id: 'token' },
+      { kind: 'token', id: 'token_2' },
+      { kind: 'token', id: 'token_3' },
+    ]);
+  });
 });
 
 describe('moveItem', () => {
