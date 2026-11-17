@@ -1,10 +1,11 @@
 ---
 id: TASK-79
 title: 'Nested repeat: blocks inside blocks'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-16T22:52:00Z'
+updated_date: '2026-11-17T06:37:00Z'
 labels:
   - format-v4
 dependencies:
@@ -36,4 +37,6 @@ A repeat tab per NPC is useless unless the NPC can hold its own lists, such as a
 
 <!-- SECTION:NOTES:BEGIN -->
 TASK-77 review found renameFieldId updates template.repeat.nameField but not the repeated section/row nameField, and Builder withContent loses those repeat updates. Renaming the example attack field to weapon leaves nameField=attack and makes the preset invalid. Include nearest-scope nameField propagation with the existing AC2 ancestor-chain rename work, and carry it through TASK-80 Builder conversion. Source: src/core/formula-rename.ts:81-97 and src/builder/document.ts:789-812; review adversarial-claude-6.
+
+Autonomous continuation preserved nested core/UI work on feature/preset-v4-task-79 but did not merge it. Parent reproduced a real full-path admission gap: with npc -> attack and independent loot in the preset, importing loot:l1:attack:a1 keeps its value and reports zero losses; it must drop that child and count one lost value. Reusing attack under distinct npc and boss parents is also rejected globally instead of within each parent scope. The bounded attempt is skipped pending a full-path scope resolver repair. AC5 remains owner-only under TASK-86. Evidence: preset-v4-78-87-20261117/task-79/parent-observation.md and observe-scope-paths.log in the local artifact run.
 <!-- SECTION:NOTES:END -->
