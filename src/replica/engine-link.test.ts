@@ -246,6 +246,97 @@ describe('link-set', () => {
       sent: [expected],
     });
   });
+  test('refuses a root link to a token cell that exists only in a repeat tab', async () => {
+    // #given
+    const preset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'literal',
+          title: 'Обычный',
+          tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'token', id: 'root' }] }] }] }],
+        },
+        {
+          id: 'repeat_only',
+          title: 'Повторы',
+          tabs: [
+            {
+              repeat: { id: 'member', nameField: 'name' },
+              sections: [
+                {
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'name' },
+                        { kind: 'token', id: 'token' },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const room = roomRig.openRoom();
+
+    const client = await startClient(room, 'gm-a', {
+      seeded: [
+        ...BASE,
+        { k: 'preset', d: encodePreset(preset), c: 2, a: 'seed' },
+        {
+          k: 'blk:repeat_only:member:one',
+          d: { order: 0, cells: { name: ['One', 1, 'seed'] } },
+          c: 1,
+          a: 'seed',
+          l: [1, 'seed'],
+        },
+      ],
+    });
+
+    // #when
+    const id = send(client, {
+      type: 'link-set',
+      tokenId: 't1',
+      sheetId: 'repeat_only',
+      cellId: 'token',
+    });
+
+    send(client, { type: 'link-set', tokenId: 't2', sheetId: 'literal', cellId: 'root' });
+    send(client, {
+      type: 'link-set',
+      tokenId: 't3',
+      sheetId: 'repeat_only',
+      path: ['member', 'one'],
+      cellId: 'token',
+    });
+    await waitUntil(
+      () =>
+        (rejection(client, id) !== undefined || shown(client, 'link:t1') !== undefined) &&
+        shown(client, 'link:t2') !== undefined &&
+        shown(client, 'link:t3') !== undefined,
+    );
+
+    // #then
+    expect({
+      reason: rejection(client, id),
+      repeatLink: storedRecord(client, 'link:t1'),
+      rootLink: storedRecord(client, 'link:t2'),
+      scopedRepeatLink: storedRecord(client, 'link:t3'),
+    }).toEqual({
+      reason: 'not-linkable',
+      repeatLink: null,
+      rootLink: { k: 'link:t2', d: { s: 'literal', c: 'root' }, c: 1, a: 'gm-a' },
+      scopedRepeatLink: {
+        k: 'link:t3',
+        d: { s: 'repeat_only', path: ['member', 'one'], c: 'token' },
+        c: 1,
+        a: 'gm-a',
+      },
+    });
+  });
 
   for (const [sheetId, path, reason] of [
     ['liza', undefined, 'deleted-sheet'],

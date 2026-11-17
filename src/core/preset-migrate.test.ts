@@ -980,6 +980,75 @@ describe('presetDiff', () => {
       last: ['link:t2=null'],
     });
   });
+  test('tombstones only a root link when its token cell moves into a repeat tab', () => {
+    // #given
+    const old: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'npc',
+          title: 'NPC',
+          tabs: [{ sections: [rows([{ kind: 'token', id: 'obsolete' }])] }],
+        },
+        {
+          id: 'root',
+          title: 'Root',
+          tabs: [{ sections: [rows([{ kind: 'token', id: 'literal' }])] }],
+        },
+        {
+          id: 'repeat',
+          title: 'Repeat',
+          tabs: [
+            {
+              repeat: { id: 'member', nameField: 'name' },
+              sections: [rows([text('name'), { kind: 'token', id: 'scoped' }])],
+            },
+          ],
+        },
+      ],
+    };
+
+    const next: Preset = {
+      ...old,
+      templates: [
+        {
+          id: 'npc',
+          title: 'NPC',
+          tabs: [
+            {
+              repeat: { id: 'member', nameField: 'name' },
+              sections: [rows([text('name'), { kind: 'token', id: 'obsolete' }])],
+            },
+          ],
+        },
+        ...old.templates.slice(1),
+      ],
+    };
+
+    const records = replica(
+      fixtureRecord('blk:npc', { order: 0, cells: {} }, 1, 'seed'),
+      fixtureRecord('blk:root', { order: 0, cells: {} }, 1, 'seed'),
+      fixtureRecord('blk:repeat', { order: 0, cells: {} }, 1, 'seed'),
+      rep('repeat', 'member', 'one', { name: 'One' }),
+      fixtureRecord('link:obsolete', { s: 'npc', c: 'obsolete' }, 1, 'seed'),
+      fixtureRecord('link:literal', { s: 'root', c: 'literal' }, 1, 'seed'),
+      fixtureRecord(
+        'link:scoped',
+        { s: 'repeat', path: ['member', 'one'], c: 'scoped' },
+        1,
+        'seed',
+      ),
+    );
+
+    // #when
+    const migration = presetDiff(records, old, next);
+
+    // #then
+    expect(writes(migration)).toEqual({
+      first: [],
+      last: ['link:obsolete=null'],
+    });
+  });
   test('tombstones the link to a repeat block whose section has no place in the new preset', () => {
     // #given
     const old = presetOf(single('npc', [linkable(repeat(text('npc_name'), number('hp')))]));

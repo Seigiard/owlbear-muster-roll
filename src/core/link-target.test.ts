@@ -353,6 +353,54 @@ describe('liveLinkTarget', () => {
     // #then
     expect(live(target)).toEqual({ target, template: NPC, section: NPC_SECTION });
   });
+  test('keeps literal root and scoped repeat-tab targets but not a root target for the repeat-tab cell', () => {
+    // #given
+    const template: Template = {
+      id: 'npc',
+      title: 'NPC',
+      tabs: [
+        {
+          sections: [{ rows: [{ cells: [{ kind: 'token', id: 'root' }] }] }],
+        },
+        {
+          repeat: { id: 'member', nameField: 'name' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'repeat' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const records = assembleRecords([
+      record('blk:npc:member:one', { order: 0, cells: { name: 'One' } }),
+    ]);
+
+    const root = { sheetId: 'npc', instanceId: null, cellId: 'root' };
+
+    const repeat = {
+      sheetId: 'npc',
+      instanceId: 'one',
+      path: ['member', 'one'],
+      cellId: 'repeat',
+    };
+
+    // #when
+    const targets = [root, { sheetId: 'npc', instanceId: null, cellId: 'repeat' }, repeat].map(
+      (target) => liveLinkTarget(records, { v: 4, templates: [template] }, target),
+    );
+
+    // #then
+    expect(targets.map((target) => target?.target ?? null)).toEqual([root, null, repeat]);
+  });
   test.each<[string, LinkTarget]>([
     [
       'a sheet of a template with no root token',

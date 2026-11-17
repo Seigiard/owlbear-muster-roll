@@ -257,6 +257,8 @@ export function tokenCellPlace(
   }
 
   for (const { place, section } of placedSections(template)) {
+    if (template.tabs[place.tabIndex]?.repeat !== undefined) continue;
+
     if (section.repeat !== undefined) continue;
 
     for (const [rowIndex, row] of section.rows.entries()) {
