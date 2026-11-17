@@ -125,10 +125,12 @@ export function sheetPolicy(template: Template, sheetId: string): SheetPolicy {
 }
 
 function templateHasToken(template: Template): boolean {
-  return template.tabs.some((tab) =>
-    tab.sections.some((section) =>
-      section.rows.some((row) => row.cells.some((cell) => cell.kind === 'token')),
-    ),
+  return template.tabs.some(
+    (tab) =>
+      tab.repeat === undefined &&
+      tab.sections.some((section) =>
+        section.rows.some((row) => row.cells.some((cell) => cell.kind === 'token')),
+      ),
   );
 }
 
