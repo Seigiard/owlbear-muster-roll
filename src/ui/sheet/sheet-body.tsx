@@ -321,6 +321,12 @@ function sheetValuesSignature(
   const rootKeys = new Set<string>();
   const repeatPrefixes: string[] = [];
 
+  for (const tab of template.tabs) {
+    if (tab.repeat !== undefined) {
+      repeatPrefixes.push(repKeyPrefix(sheetId, tab.repeat.id));
+    }
+  }
+
   for (const section of layoutSections(template)) {
     const sectionId = repeatSectionId(section);
 
