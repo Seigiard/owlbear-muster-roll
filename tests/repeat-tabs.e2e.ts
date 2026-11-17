@@ -80,7 +80,7 @@ const TWO_SCOPE_PRESET = {
         PRESET.templates[0].tabs[0],
         PRESET.templates[0].tabs[1],
         {
-          title: 'Gear',
+          title: 'NPC',
           repeat: { id: 'gear', nameField: 'item' },
           sections: [
             {
@@ -594,22 +594,22 @@ test('Room and Builder name two scoped add tabs and activate each by mouse and k
   const frame = await openBuilderPreview(page, EMPTY_SNAPSHOT, TWO_SCOPE_PRESET);
 
   const roomNpcAdd = sheetTabs(room.window).getByRole('tab', {
-    name: 'Добавить в «NPC»',
+    name: 'Добавить в «NPC» (npc)',
     exact: true,
   });
 
   const roomGearAdd = sheetTabs(room.window).getByRole('tab', {
-    name: 'Добавить в «Gear»',
+    name: 'Добавить в «NPC» (gear)',
     exact: true,
   });
 
   const builderNpcAdd = sheetTabs(frame).getByRole('tab', {
-    name: 'Добавить в «NPC»',
+    name: 'Добавить в «NPC» (npc)',
     exact: true,
   });
 
   const builderGearAdd = sheetTabs(frame).getByRole('tab', {
-    name: 'Добавить в «Gear»',
+    name: 'Добавить в «NPC» (gear)',
     exact: true,
   });
 
