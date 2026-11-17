@@ -1,9 +1,11 @@
 ---
 id: TASK-94
 title: Reject root token links to cells that exist only in repeat tabs
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@openai'
 created_date: '2026-11-17T11:05:00Z'
+updated_date: '2026-11-17T12:23:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -39,3 +41,9 @@ Review finding: arch+quality-claude-6
 - [ ] #3 Root linkability and picker targets do not claim a root token target when only repeated token cells exist.
 - [ ] #4 Valid root token cells and properly scoped repeat-tab links remain supported, with public link/preset-change regressions for both.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Lock public link-command, preset-change and picker regressions that distinguish root token cells from repeat-tab cells, with valid root/scoped positive controls. 2. Make root token lookup and root linkability use the same repeat boundary while retaining scoped tab links. 3. Run focused owners and the required stable checks; parent integrates and performs the single closing review.
+<!-- SECTION:PLAN:END -->
