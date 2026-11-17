@@ -4,7 +4,7 @@ title: Keep accepted v4 records and fixtures faithful to merge versions
 status: In Progress
 assignee: []
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T08:56:00Z'
+updated_date: '2026-11-17T08:58:00Z'
 labels: []
 dependencies: []
 references:
@@ -41,5 +41,5 @@ TASK-76 review found record-boundary edge cases and a fixture gap. recordSchema 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Implemented record-boundary hardening at source SHA 91db19053060ca215fe70237187548e27400e81b. Locked tests: 3fc7bfc63ee5876f4ab00d20cc76b2c5c644abb5. Final source checks passed at 91db190: format, lint, typecheck, bun test (3382 passed, 1 environment skip), browser (558 passed), build; manifest: /Users/seigiard/.claude/artifacts/preset-v4-78-87-20261117/task-85/final-checks/checks.json. Calibration: criteria 1 and 2 calibrated; criterion 3 is explicitly uncalibrated because the parent stopped calibration. No acceptance criteria were checked and status remains In Progress.
+Implemented record-boundary hardening at source SHA 91db19053060ca215fe70237187548e27400e81b. Locked tests: 3fc7bfc63ee5876f4ab00d20cc76b2c5c644abb5. Final source checks passed at 91db190: format, lint, typecheck, bun test (3382 passed, 1 environment skip), browser (558 passed), build; manifest: /Users/seigiard/.claude/artifacts/preset-v4-78-87-20261117/task-85/final-checks/checks.json. Calibration criteria 1 and 2 passed; additional calibration stopped at the parent boundary. Criterion 3 retains direct red-to-green evidence from its positive tuple owner; no additional mutation verdict is claimed. No acceptance criteria were checked and status remains In Progress.
 <!-- SECTION:NOTES:END -->
