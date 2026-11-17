@@ -5,9 +5,9 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T09:52:00Z'
+updated_date: '2026-11-17T09:54:00Z'
 labels:
-  - active
+  - awaiting-review
 dependencies: []
 references:
   - src/ui/sheet/sheet-body.tsx
@@ -44,4 +44,6 @@ CURRENT: Queued after TASK-81. No implementation or validation yet in this pass;
 CURRENT: Preparing the isolated signature-deduplication change. TASK-81 is closing as blocked and will not enter this baseline. Source implementation starts after its worker settles; no TASK-84 result is claimed yet.
 
 CURRENT: Implemented the isolated signature deduplication. `rootKeys` records the shared sheet root once while the existing repeat-prefix scan continues to include matching repeat blocks across all tabs. No test or calibration was added: multiplicity has no independent consumer oracle, and the requested source-shape/instrumentation/benchmark alternatives are out of scope. Stable full checks all exit 0 at e83f7dd136ff0583192fe45f0deba10a16297b41; durable evidence: /Users/seigiard/.claude/artifacts/preset-v4-78-87-20261117/task-84/final-checks/checks.json. Awaiting parent closing review and acceptance.
+
+CURRENT: Implementation is merged into feature/preset-v4-tasks-77-80. Stable source e83f7dd passes all six checks, including browser 558/558. Root serialization is deduplicated; the all-tab traversal and repeat-record scan remain unchanged. Remaining: closing integration review and final acceptance.
 <!-- SECTION:NOTES:END -->
