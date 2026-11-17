@@ -257,6 +257,72 @@ describe('blockIndex', () => {
 });
 
 describe('liveLinkTarget', () => {
+  test('resolves a token cell inside the exact repeat tab block named by the link path', () => {
+    // #given
+    const template: Template = {
+      id: 'npc',
+      title: 'NPC',
+      tabs: [
+        {
+          title: 'Overview',
+          sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'count' }] }] }],
+        },
+        {
+          title: 'NPC',
+          repeat: { id: 'npc', nameField: 'name' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'portrait' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          title: 'Notes',
+          sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'notes' }] }] }],
+        },
+      ],
+    };
+
+    const records = assembleRecords([
+      record('blk:npc', { order: 0, cells: {} }),
+      record('blk:npc:npc:b', { order: 1, cells: { name: 'Beta' } }),
+    ]);
+
+    const target: LinkTarget = {
+      sheetId: 'npc',
+      instanceId: 'b',
+      path: ['npc', 'b'],
+      cellId: 'portrait',
+    };
+
+    // #when
+    const found = liveLinkTarget(records, { v: 4, templates: [template] }, target);
+
+    // #then
+    expect(
+      found === null
+        ? null
+        : {
+            target: found.target,
+            tabIndex: found.cell.tabIndex,
+            sectionIndex: found.cell.sectionIndex,
+            rowIndex: found.cell.rowIndex,
+          },
+    ).toEqual({
+      target,
+      tabIndex: 1,
+      sectionIndex: 0,
+      rowIndex: 0,
+    });
+  });
+
   test('keeps a link to a live sheet of a linkable template', () => {
     // #given
     const target = { sheetId: 'brok', instanceId: null, cellId: 'token' };
