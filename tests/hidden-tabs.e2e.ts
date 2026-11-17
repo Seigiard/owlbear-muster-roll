@@ -126,6 +126,14 @@ const HIDDEN_LINK_RECORDS = RECORDS.filter((one) => one.k !== 'link:t-sheet');
 const NO_LINK_RECORDS = RECORDS.filter((one) => !one.k.startsWith('link:'));
 const READ_ONLY_RECORDS = RECORDS.filter((one) => one.k !== 'acl:brok:lisa');
 
+type TokenOpeningTarget = 'repeat-section' | 'repeat-tab';
+
+type TokenOpeningFixture = {
+  presetText: string;
+  records: readonly StoredRecord[];
+  tokenId: string;
+};
+
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 500 });
 });
@@ -243,15 +251,48 @@ test('a selected token linked to a hidden-tab repeat block gives a player no sel
   // #then
   await expect(gm.window.getByRole('tab', { name: 'Брок, токен выделен' })).toBeVisible();
   await expect(player.window.getByRole('tab', { name: /токен выделен/ })).toHaveCount(0);
-  await expect(sheetTab(player.window, /токен выделен/)).toHaveCount(0);
+  await expect(sheetTabs(player.window).getByRole('tab', { name: /токен выделен/ })).toHaveCount(0);
+});
+
+test('a player token opens Gear and reveals its repeat block after a GM-only tab', async ({
+  context,
+}) => {
+  // #given
+  const fixture = tokenOpeningFixture('repeat-section');
+  await openGm(context, fixture.records, fixture.presetText);
+  const player = await openPlayer(context);
+  await expect.poll(() => playerOpenTokens(player.background)).toEqual([fixture.tokenId]);
+
+  // #when
+  await clickOpen(player.background, fixture.tokenId);
+
+  // #then
+  await expect(sheetTab(player.window, 'Gear')).toHaveAttribute('aria-selected', 'true');
+  await expect(repeatBlock(player.window, 'Gear block')).toBeVisible();
+});
+
+test('a player token opens repeat tab A rather than B after a GM-only tab', async ({ context }) => {
+  // #given
+  const fixture = tokenOpeningFixture('repeat-tab');
+  await openGm(context, fixture.records, fixture.presetText);
+  const player = await openPlayer(context);
+  await expect.poll(() => playerOpenTokens(player.background)).toEqual([fixture.tokenId]);
+
+  // #when
+  await clickOpen(player.background, fixture.tokenId);
+
+  // #then
+  await expect(sheetTab(player.window, 'A')).toHaveAttribute('aria-selected', 'true');
+  await expect(player.window.getByRole('textbox', { name: 'content' })).toHaveValue('A content');
 });
 
 async function openGm(
   context: BrowserContext,
   records: readonly StoredRecord[] = RECORDS,
+  presetText = JSON.stringify(PRESET),
 ): Promise<RoomClient> {
   const window = await openClientWindow(context, GM);
-  await seedStorage(window, records, JSON.stringify(PRESET), GM.device);
+  await seedStorage(window, records, presetText, GM.device);
   const background = await openClientBackground(context, GM);
   await expect(window.getByRole('button', { name: ADD })).toBeVisible();
 
@@ -266,12 +307,97 @@ async function openPlayer(context: BrowserContext): Promise<RoomClient> {
   return { window, background, connectionId: connectionIdOf(PLAYER) };
 }
 
-function sheetTab(page: Page, name: string | RegExp): Locator {
-  return page.getByRole('tablist', { name: copy.label.sheetTabs }).getByRole('tab', { name });
+function sheetTab(page: Page, name: string): Locator {
+  return sheetTabs(page).getByRole('tab', { name, exact: true });
+}
+
+function sheetTabs(page: Page): Locator {
+  return page.getByRole('tablist', { name: copy.label.sheetTabs });
+}
+
+function repeatBlock(page: Page, name: string): Locator {
+  return page.getByRole('tabpanel').getByRole('group', { name, exact: true });
 }
 
 async function shownNotifications(client: RoomClient): Promise<string[]> {
   return client.background.evaluate(() => window.mockPlatform.shownNotifications());
+}
+
+function tokenOpeningFixture(target: TokenOpeningTarget): TokenOpeningFixture {
+  const isRepeatSection = target === 'repeat-section';
+  const sectionId = isRepeatSection ? 'gear' : 'entry';
+  const instanceId = isRepeatSection ? 'gear' : 'a';
+  const blockName = isRepeatSection ? 'Gear block' : 'A';
+  const tokenId = isRepeatSection ? 'token-gear' : 'token-a';
+
+  const rows = [
+    {
+      cells: [
+        { kind: 'field', type: 'text', id: 'label' },
+        { kind: 'field', type: 'text', id: 'content' },
+        { kind: 'token', id: 'token' },
+      ],
+    },
+  ];
+
+  const openingTab = isRepeatSection
+    ? {
+        title: 'Gear',
+        sections: [{ repeat: { id: sectionId, nameField: 'label' }, rows }],
+      }
+    : {
+        title: 'Entry',
+        repeat: { id: sectionId, nameField: 'label' },
+        sections: [{ rows }],
+      };
+
+  const tabs = [
+    {
+      title: 'Secrets',
+      visibility: 'gm',
+      sections: [{ rows: [{ cells: [{ kind: 'text', text: 'GM only' }] }] }],
+    },
+    {
+      title: 'Stats',
+      sections: [
+        {
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }],
+        },
+      ],
+    },
+    openingTab,
+  ];
+
+  const blocks = [
+    repRecord('brok', sectionId, instanceId, 0, {
+      label: blockName,
+      content: isRepeatSection ? 'Gear content' : 'A content',
+    }),
+  ];
+
+  if (!isRepeatSection) {
+    blocks.push(
+      repRecord('brok', sectionId, 'b', 1, {
+        label: 'B',
+        content: 'B content',
+      }),
+    );
+  }
+
+  return {
+    presetText: JSON.stringify({
+      v: 4,
+      templates: [{ id: 'pc', title: 'Персонажи', repeat: { nameField: 'name' }, tabs }],
+    }),
+    records: [
+      record('blk:brok', { set: 'pc', order: 0 }),
+      record('blk:brok', { name: 'Брок' }),
+      record('acl:brok:lisa', { name: 'Лиза' }),
+      ...blocks,
+      record(`link:${tokenId}`, { s: 'brok', path: [sectionId, instanceId], c: 'token' }),
+    ],
+    tokenId,
+  };
 }
 
 async function playerOpenTokens(background: Page): Promise<unknown[]> {
@@ -287,4 +413,13 @@ async function playerOpenTokens(background: Page): Promise<unknown[]> {
         ) ?? [],
     OPEN_ITEM,
   );
+}
+
+async function clickOpen(background: Page, tokenId: string): Promise<void> {
+  const clicked = await background.evaluate(
+    ([item, token]) => window.mockPlatform.clickContextMenuItem(item, [token]),
+    [OPEN_ITEM, tokenId] as const,
+  );
+
+  expect(clicked).toBe(true);
 }
