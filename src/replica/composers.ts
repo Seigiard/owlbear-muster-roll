@@ -58,18 +58,23 @@ import type { Command, RejectionReason } from '@/core/ui-messages';
 
 export type FieldPatchCommand = Extract<Command, { type: 'field-patch' }>;
 
+export type ComposeMode = 'persisted' | 'pending';
+
 // The records a command is composed over, and how a new version is minted. The engine composes over
 // its replica with its minter. The pending view composes over the replica with the queued intents
 // applied, and mints nothing. `newRecordId` gives the ids a command makes itself, such as a
 // duplicate's, of a kind and each named by its role in the command. The pending view composes a
 // queued command many times, so one role must get one id each time, whatever records come or go in
-// between. `isGmPlayer` is true for a player id the party lists as a GM, and for this client's own
-// one.
+// between. `mode` distinguishes records that will be persisted from records shown only in a
+// pending view. `isGmPlayer` is true for a player id the party lists as a GM, and for this client's
+// own one.
 export type ComposeContext = {
   records: ReadonlyMap<string, VersionedRecord>;
   mint: (key: string, highestKnownCounter: number) => Version;
   newRecordId: (kind: RecordIdKind, role: string) => string;
   isGmPlayer: (playerId: string) => boolean;
+  // Kept optional for narrow composer test doubles; engine contexts always set it explicitly.
+  mode?: ComposeMode;
 };
 
 // TASK-37: new ids are short, so a drawn id can collide. A command that draws its own ids draws a
@@ -331,7 +336,14 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(patched.value.k, existing?.c ?? 0);
 
-    return ok(mintedPatch(patched.value, existing, { c, a }, context.records.get('preset')?.c));
+    return ok(
+      mintedPatch(
+        patched.value,
+        existing,
+        { c, a },
+        context.mode === 'persisted' ? context.records.get('preset')?.c : undefined,
+      ),
+    );
   }
 
   // A patch that changes nothing on the record built so far is skipped in silence: the window
@@ -374,7 +386,15 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(working.k, existing?.c ?? 0);
 
-    return { record: mintedPatch(working, existing, { c, a }, undefined, false), refusals };
+    return {
+      record: mintedPatch(
+        working,
+        existing,
+        { c, a },
+        context.mode === 'persisted' ? context.records.get('preset')?.c : undefined,
+      ),
+      refusals,
+    };
   }
 
   // A new repeat block goes after every repeat block this sheet has in the section. The id is the
@@ -1015,12 +1035,7 @@ function mintedPatch(
     emitRemovedClears && presetVersion !== undefined
       ? Object.fromEntries(
           Object.entries(before?.cells ?? {})
-            .filter(
-              ([id, [value, cellVersion]]) =>
-                value !== null &&
-                !Object.hasOwn(patched.d.cells, id) &&
-                cellVersion <= presetVersion,
-            )
+            .filter(([id, [value]]) => value !== null && !Object.hasOwn(patched.d.cells, id))
             .map(([id]) => [id, null]),
         )
       : {};
