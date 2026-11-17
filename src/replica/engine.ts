@@ -935,7 +935,13 @@ export async function startReplicaEngine(
   }
 
   function liveContext(): ComposeContext {
-    return { records: replica, mint: minter.mint, newRecordId: newRecordIdOf, isGmPlayer };
+    return {
+      records: replica,
+      mint: minter.mint,
+      newRecordId: newRecordIdOf,
+      isGmPlayer,
+      mode: 'persisted',
+    };
   }
 
   // FR19: a GM owns no sheet, so neither this client's player id nor one the party lists as a GM
@@ -957,6 +963,7 @@ export async function startReplicaEngine(
       }),
       newRecordId: newRecordIdOf,
       isGmPlayer,
+      mode: 'pending',
     };
   }
 

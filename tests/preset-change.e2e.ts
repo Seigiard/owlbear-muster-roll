@@ -268,7 +268,7 @@ test('a confirmed upload erases the removed values on every client, keeps rename
     preset: JSON.parse(REMOVES_TWO),
     dex: [null, 2, gm.connectionId],
     tired: [null, 2, gm.connectionId],
-    str: [14, 2, gm.connectionId],
+    str: [14, 1, 'seed'],
     bonus: [2, 1, 'seed'],
     otherGenerations: [],
   });

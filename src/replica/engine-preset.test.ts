@@ -306,6 +306,84 @@ describe('a preset diff', () => {
 });
 
 describe('a preset upload', () => {
+  test('keeps GM B’s hp tuple when GM A removes armor after confirming the diff', async () => {
+    // #given
+    const withArmor = pcTemplate([
+      {
+        rows: [
+          NAME_ROW,
+          {
+            cells: [
+              { kind: 'field', type: 'number', id: 'hp' },
+              { kind: 'field', type: 'number', id: 'armor' },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const withoutArmor = pcTemplate([
+      {
+        rows: [NAME_ROW, { cells: [{ kind: 'field', type: 'number', id: 'hp' }] }],
+      },
+    ]);
+
+    const root: VersionedRecord = {
+      k: 'blk:brok',
+      d: {
+        set: 'pc',
+        order: 0,
+        cells: { hp: [10, 3, 'seed'], armor: [5, 3, 'seed'] },
+      },
+      c: 3,
+      a: 'seed',
+      l: [3, 'seed'],
+    };
+
+    const room = roomRig.openRoom();
+
+    const gmA = await startClient(room, 'gm-a', {
+      seeded: [
+        { k: 'preset', d: encodePreset({ v: 4, templates: [withArmor] }), c: 1, a: 'seed' },
+        root,
+      ],
+    });
+
+    const gmB = await startClient(room, 'gm-b', {
+      seeded: [
+        { k: 'preset', d: encodePreset({ v: 4, templates: [withArmor] }), c: 1, a: 'seed' },
+        root,
+      ],
+    });
+
+    const diff = requestDiff(gmA, { v: 4, templates: [withoutArmor] });
+    await waitUntil(() => result(gmA, diff) !== undefined);
+
+    const found = Object(result(gmA, diff));
+
+    send(gmB, {
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'row', rowId: 'hp' },
+      fieldId: 'hp',
+      value: 20,
+    });
+    await waitUntil(() => Object(storedRecord(gmA, root.k)?.d).cells.hp?.[1] === 4);
+
+    // #when
+    const upload = send(gmA, {
+      type: 'preset-upload',
+      data: encodePreset({ v: 4, templates: [withoutArmor] }),
+      expectedCount: found.count,
+      expectedSheets: found.sheets,
+      expectedDigest: found.digest,
+    });
+
+    await waitUntil(() => result(gmA, upload) !== undefined);
+
+    // #then
+    expect(Object(storedRecord(gmA, root.k)?.d).cells.hp).toEqual([20, 4, 'gm-b']);
+  });
   test('preserves a root number when a later repeat tab has a same-id text field', async () => {
     // #given
     const preset: Preset = {
@@ -715,6 +793,47 @@ describe('a preset upload that removes a template', () => {
 });
 
 describe('a write after an upload', () => {
+  test('of a GM field writes a versioned armor clear after an interrupted upload', async () => {
+    // #given: the preset committed before its migration could clear this old root.
+    const withoutArmor = pcTemplate([
+      {
+        rows: [NAME_ROW, { cells: [{ kind: 'field', type: 'number', id: 'hp' }] }],
+      },
+    ]);
+
+    const root: VersionedRecord = {
+      k: 'blk:brok',
+      d: {
+        set: 'pc',
+        order: 0,
+        cells: { hp: [10, 2, 'seed'], armor: [5, 3, 'seed'] },
+      },
+      c: 3,
+      a: 'seed',
+      l: [3, 'seed'],
+    };
+
+    const room = roomRig.openRoom();
+
+    const gm = await startClient(room, 'gm-a', {
+      seeded: [
+        { k: 'preset', d: encodePreset({ v: 4, templates: [withoutArmor] }), c: 2, a: 'gm-a' },
+        root,
+      ],
+    });
+
+    // #when
+    send(gm, {
+      type: 'field-patch',
+      sheetId: 'brok',
+      target: { kind: 'row', rowId: 'hp' },
+      fieldId: 'hp',
+      value: 20,
+    });
+    await waitUntil(() => storedRecord(gm, root.k)?.c === 4);
+    // #then
+    expect(Object(storedRecord(gm, root.k)?.d).cells.armor).toEqual([null, 4, 'gm-a']);
+  });
   test('of a GM field strips the values its row no longer has', async () => {
     // #given
     const room = roomRig.openRoom();

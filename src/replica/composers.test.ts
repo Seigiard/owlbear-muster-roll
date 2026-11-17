@@ -67,6 +67,7 @@ describe('createComposers', () => {
         mint: (_key, highestKnownCounter) => ({ c: highestKnownCounter + 1, a: 'gm' }),
         newRecordId: (_kind, role) => role,
         isGmPlayer: () => true,
+        mode: 'persisted',
       },
       {
         type: 'field-patch',

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { VersionedRecord } from '@/core/records';
 import type { Command, RejectionReason } from '@/core/ui-messages';
-import type { ComposeContext } from '@/replica/composers';
+import type { ComposeContext, ComposeMode } from '@/replica/composers';
 import { createPendingQueue } from '@/replica/pending-queue';
 import {
   createCommandRouting,
@@ -39,12 +39,14 @@ function routingPorts(overrides: Partial<CommandRoutingPorts> = {}): CommandRout
       mint: () => ({ c: 1, a: 'gm' }),
       newRecordId: () => 'unused',
       isGmPlayer: () => true,
+      mode: 'persisted',
     }),
     dryContext: () => ({
       records: new Map(),
       mint: () => ({ c: 1, a: 'gm' }),
       newRecordId: () => 'unused',
       isGmPlayer: () => true,
+      mode: 'pending',
     }),
     newRecordId: () => 'unused',
     pending: createPendingQueue(),
@@ -242,11 +244,12 @@ test('pending replay continues after a partial entry and composes the next entry
   const appliedGroups: string[][] = [];
   const pending = createPendingQueue();
 
-  const context = (): ComposeContext => ({
+  const context = (mode: ComposeMode): ComposeContext => ({
     records,
     mint: () => ({ c: 1, a: 'gm' }),
     newRecordId: () => 'unused',
     isGmPlayer: () => true,
+    mode,
   });
 
   pending.add('first', first);
@@ -275,8 +278,8 @@ test('pending replay continues after a partial entry and composes the next entry
       presetDiffResult: () => ({ ok: false, error: 'invalid-preset' }),
     },
     records: () => records,
-    liveContext: context,
-    dryContext: context,
+    liveContext: () => context('persisted'),
+    dryContext: () => context('pending'),
     newRecordId: () => 'unused',
     pending,
     pendingEdits: {
