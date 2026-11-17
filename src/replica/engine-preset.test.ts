@@ -806,11 +806,11 @@ describe('a write after an upload', () => {
       d: {
         set: 'pc',
         order: 0,
-        cells: { hp: [10, 2, 'seed'], armor: [5, 2, 'seed'] },
+        cells: { hp: [10, 2, 'seed'], armor: [5, 3, 'seed'] },
       },
-      c: 2,
+      c: 3,
       a: 'seed',
-      l: [2, 'seed'],
+      l: [3, 'seed'],
     };
 
     const room = roomRig.openRoom();
@@ -830,9 +830,9 @@ describe('a write after an upload', () => {
       fieldId: 'hp',
       value: 20,
     });
-    await waitUntil(() => storedRecord(gm, root.k)?.c === 3);
+    await waitUntil(() => storedRecord(gm, root.k)?.c === 4);
     // #then
-    expect(Object(storedRecord(gm, root.k)?.d).cells.armor).toEqual([null, 3, 'gm-a']);
+    expect(Object(storedRecord(gm, root.k)?.d).cells.armor).toEqual([null, 4, 'gm-a']);
   });
   test('of a GM field strips the values its row no longer has', async () => {
     // #given
