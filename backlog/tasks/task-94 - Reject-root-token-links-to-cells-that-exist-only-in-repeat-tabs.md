@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-17T11:05:00Z'
-updated_date: '2026-11-17T12:26:00Z'
+updated_date: '2026-11-17T13:04:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -54,4 +54,6 @@ Review finding: arch+quality-claude-6
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-17: Started isolated TDD chain from accepted TASK-89 baseline. Scope is limited to root-versus-repeat-tab token targets; TASK-92 visibility and TASK-95 navigation remain out of scope.
+
+2026-11-17: Locked and implemented root-versus-repeat-tab token targets. Stable evidence at 16e8cd2: focused public consumers, format, lint, typecheck, Bun, build, and browser 558/558. Four false-green calibrations passed. Awaiting parent integration and final acceptance; no criteria were checked here.
 <!-- SECTION:NOTES:END -->
