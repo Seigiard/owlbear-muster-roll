@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { copy } from '@/copy';
 import type { JsonValue } from '@/core/json';
+import { snapshotFileSchema, type SnapshotFile } from '@/core/snapshot-file';
 import { fixtureSnapshotBlocks, fixtureSnapshotCells } from './support/block-fixtures';
 import { installBrowserFileAccessFake, queueBrowserFile } from './support/file-access';
 import {
@@ -115,6 +117,7 @@ const TAB_NAMES = ['Overview', 'Alpha', 'Блок 2', 'Notes'];
 const GM_TAB_NAMES = [...TAB_NAMES, '+'];
 const EMPTY_GM_TAB_NAMES = ['Overview', 'Notes', '+'];
 const FIRST_BLOCK_TAB_NAMES = ['Overview', 'Блок 1', 'Notes', '+'];
+const GENERATED_BLOCK_ID = /^[A-Za-z0-9_-]{8}$/;
 const GM: ClientParams = { client: 'gm', device: 'repeat-tabs', name: 'Мастер' };
 
 const PLAYER: ClientParams = {
@@ -417,10 +420,9 @@ test('the GM can add and open the first Builder preview block from zero', async 
 
   // #when
   await sheetTab(frame, '+').click();
-  await frame.getByRole('group', { name: 'name', exact: true }).dblclick();
 
   // #then
-  await expectFirstBlockOpen(frame);
+  await expectFirstBuilderBlockOpen(page, frame);
 });
 
 test('deleting the final Builder preview block retains add and opens its replacement', async ({
@@ -439,10 +441,9 @@ test('deleting the final Builder preview block retains add and opens its replace
 
   // #when
   await sheetTab(frame, '+').click();
-  await frame.getByRole('group', { name: 'name', exact: true }).dblclick();
 
   // #then
-  await expectFirstBlockOpen(frame);
+  await expectFirstBuilderBlockOpen(page, frame);
 });
 
 async function openSeededClient(
@@ -502,6 +503,53 @@ async function expectFirstBlockOpen(root: Page | Locator): Promise<void> {
   await expect.poll(() => tabNames(root)).toEqual(FIRST_BLOCK_TAB_NAMES);
   await expect(sheetTab(root, 'Блок 1')).toHaveAttribute('aria-selected', 'true');
   await expect(root.getByRole('textbox', { name: 'name' })).toHaveValue('');
+}
+
+async function expectFirstBuilderBlockOpen(page: Page, root: Locator): Promise<void> {
+  await expect.poll(() => tabNames(root)).toEqual(FIRST_BLOCK_TAB_NAMES);
+  await expect(sheetTab(root, 'Блок 1')).toHaveAttribute('aria-selected', 'true');
+
+  const downloaded = await downloadBuilderSnapshot(page);
+  const firstBlock = downloaded.sheets[0]?.blocks[0];
+
+  const normalized = {
+    ...downloaded,
+    sheets: downloaded.sheets.map((sheet) => ({
+      ...sheet,
+      blocks: sheet.blocks.map((block) => ({
+        ...block,
+        path: [...block.path.slice(0, -1), '<generated>'],
+      })),
+    })),
+  };
+
+  expect({
+    generatedId: GENERATED_BLOCK_ID.test(firstBlock?.path.at(-1) ?? ''),
+    snapshot: normalized,
+  }).toEqual({
+    generatedId: true,
+    snapshot: {
+      v: 4,
+      type: 'muster-roll/snapshot',
+      sheets: [
+        {
+          id: 'npc',
+          cells: {},
+          blocks: [{ path: ['npc', '<generated>'], order: 0, cells: {} }],
+        },
+      ],
+      links: [],
+    },
+  });
+}
+
+async function downloadBuilderSnapshot(page: Page): Promise<SnapshotFile> {
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', { name: /^Снимок/ }).click();
+  await page.getByRole('menuitem', { name: 'Скачать копию' }).click();
+  const download = await downloading;
+
+  return snapshotFileSchema.parse(JSON.parse(readFileSync(await download.path(), 'utf8')));
 }
 
 async function sentCommandId(page: Page, type: string): Promise<string> {
