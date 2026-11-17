@@ -1,9 +1,10 @@
 ---
 id: TASK-83
 title: Keep a pending player value visible until its edit settles
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-16T15:15:00Z'
+updated_date: '2026-11-17T08:26:00Z'
 labels: []
 dependencies: []
 references:
@@ -26,3 +27,23 @@ TASK-76 changed pending projection assembly to use the replica conflict merge. I
 - [ ] #2 The pending marker and visible value agree until acceptance, rejection or cancellation settles the edit.
 - [ ] #3 A focused projection-store regression covers an applied value newer than the local pending cell and settlement afterward.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add a public ProjectionStore regression for a pending cell value 20, newer applied value 30, and its later withdrawal.
+2. Apply the same display-only pending overlay to shown records and PendingEntry records without changing $replica merging.
+3. Run the focused owner and the required changed-path checks with durable logs.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented and locked the public ProjectionStore regression: pending 20 / applied 30 remains shown and pending 20, then withdrawal shows 30 with no pending entry.
+
+Durable red evidence: the locked test replayed in an owned detached worktree at 6c7d8b7b9be569e7de0f0f160bca16b05cbaa197; the focused command exited 1 with 20 pass / 1 fail and expected 20 / received 30. Log: /Users/seigiard/.claude/artifacts/preset-v4-78-87-20261117/task-83/focused-red-replay.log.
+
+Stable source checks format, lint, typecheck, unit, browser 558/558, and build all exit 0 at addcd6c963c38e9d5b37e5e90a538600169db442. Durable logs: /Users/seigiard/.claude/artifacts/preset-v4-78-87-20261117/task-83/final-checks/checks.json.
+
+The saved writer broad run is non-final because source changed during it; its bun log passes the new owner. No separate mutation/calibration project was warranted.
+<!-- SECTION:NOTES:END -->
