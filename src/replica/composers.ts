@@ -186,6 +186,14 @@ export function createComposers(connectionId: string): Composers {
 
       if (!write.k.startsWith('blk:')) return { k: write.k, d: null, ...version };
 
+      const currentData = blockDataSchema.safeParse(current?.d).data;
+
+      const reminted = Object.fromEntries(
+        Object.entries(write.d?.cells ?? {})
+          .filter(([id, [value]]) => currentData?.cells[id]?.[0] !== value)
+          .map(([id, [value]]) => [id, value]),
+      );
+
       return {
         k: write.k,
         ...version,
@@ -195,13 +203,7 @@ export function createComposers(connectionId: string): Composers {
             ? null
             : {
                 ...write.d,
-                cells: versionCells(
-                  Object.fromEntries(
-                    Object.entries(write.d.cells).map(([id, [value]]) => [id, value]),
-                  ),
-                  version.c,
-                  version.a,
-                ),
+                cells: { ...write.d.cells, ...versionCells(reminted, version.c, version.a) },
               },
       };
     };
@@ -329,7 +331,7 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(patched.value.k, existing?.c ?? 0);
 
-    return ok(mintedPatch(patched.value, existing, { c, a }));
+    return ok(mintedPatch(patched.value, existing, { c, a }, context.records.get('preset')?.c));
   }
 
   // A patch that changes nothing on the record built so far is skipped in silence: the window
@@ -372,7 +374,7 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(working.k, existing?.c ?? 0);
 
-    return { record: mintedPatch(working, existing, { c, a }), refusals };
+    return { record: mintedPatch(working, existing, { c, a }, undefined, false), refusals };
   }
 
   // A new repeat block goes after every repeat block this sheet has in the section. The id is the
@@ -998,6 +1000,8 @@ function mintedPatch(
   patched: PatchedRecord,
   existing: VersionedRecord | undefined,
   version: Version,
+  presetVersion?: number,
+  emitRemovedClears = true,
 ): VersionedRecord {
   const before = blockDataSchema.safeParse(existing?.d).data;
 
@@ -1007,11 +1011,28 @@ function mintedPatch(
       .map(([id, [value]]) => [id, value]),
   );
 
+  const removed =
+    emitRemovedClears && presetVersion !== undefined
+      ? Object.fromEntries(
+          Object.entries(before?.cells ?? {})
+            .filter(
+              ([id, [value, cellVersion]]) =>
+                value !== null &&
+                !Object.hasOwn(patched.d.cells, id) &&
+                cellVersion <= presetVersion,
+            )
+            .map(([id]) => [id, null]),
+        )
+      : {};
+
   return {
     k: patched.k,
     ...version,
     l: existing?.l ?? [version.c, version.a],
-    d: { ...patched.d, cells: versionCells(changed, version.c, version.a) },
+    d: {
+      ...patched.d,
+      cells: versionCells({ ...changed, ...removed }, version.c, version.a),
+    },
   };
 }
 
