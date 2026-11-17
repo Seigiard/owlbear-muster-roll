@@ -80,7 +80,7 @@ const SNAPSHOT = {
       }),
     },
   ],
-  links: [{ token: 'beta', sheet: 'npc', path: ['npc', 'b'], cell: 'portrait' }],
+  links: [{ tokenId: 'beta', sheetId: 'npc', path: ['npc', 'b'], cellId: 'portrait' }],
 };
 
 const TAB_NAMES = ['Overview', 'Alpha', 'Блок 2', 'Notes'];
