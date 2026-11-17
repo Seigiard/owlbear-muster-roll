@@ -512,4 +512,5 @@
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-82-preserve-cell-versions.md`
   summary: Distinguish genuine field removals from fields defined by a not-yet-received preset.
+  task: TASK-99
   evidence: "Reviews adversarial-claude-1 (mixed 6/6) and bugs+impl-1 (final 2/2) trace a GM holding an older preset but a newer block with an added field. Editing another field makes persisted mintedPatch emit a winning null for the absent field. Cross-sender reorder or a failed preset send followed by later block sends can create this state. Neither trigger was reproduced at runtime. Reviewers grade it major; caller grades the constructed, unrecorded input class minor and defers the required provenance decision outside the removal occurrences in TASK-82. A cell/preset counter cutoff conflicts with the calibrated interrupted-removal case. The data-loss risk remains open on a6af377; the final review is not empty."
