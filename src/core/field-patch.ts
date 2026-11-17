@@ -5,12 +5,14 @@ import { recordFitsOneMessage } from '@/core/message-size';
 import {
   plainRow,
   repeatSectionById,
+  repeatSectionByPath,
   sectionFields,
   type PresetFieldCell,
   type TemplateLayout,
 } from '@/core/preset';
 import {
   blockDataSchema,
+  blockPathKey,
   repDataSchema,
   repKey,
   rowKey,
@@ -29,6 +31,11 @@ export const fieldPatchTargetSchema = z.discriminatedUnion('kind', [
     kind: z.literal('rep'),
     sectionId: targetIdSchema,
     instanceId: targetIdSchema,
+    path: z
+      .array(targetIdSchema)
+      .min(2)
+      .refine((parts) => parts.length % 2 === 0)
+      .optional(),
   }),
 ]);
 
@@ -57,7 +64,9 @@ export type FieldPatchFailure = 'unknown-instance' | 'unchanged';
 export function patchRecordKey(sheetId: string, target: FieldPatchTarget): string {
   return target.kind === 'row'
     ? rowKey(sheetId, target.rowId)
-    : repKey(sheetId, target.sectionId, target.instanceId);
+    : target.path === undefined
+      ? repKey(sheetId, target.sectionId, target.instanceId)
+      : blockPathKey(sheetId, target.path);
 }
 
 // The field with this id in the target: the plain row whose first field is `rowId`, or any row of
@@ -75,10 +84,20 @@ export function findPatchField(
 // row or section.
 export function targetFields(
   layout: TemplateLayout,
-  target: { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string },
+  target:
+    | { kind: 'row'; rowId: string }
+    | { kind: 'rep'; sectionId: string; path?: readonly string[] },
 ): PresetFieldCell[] | null {
   if (target.kind === 'rep') {
-    const section = repeatSectionById(layout, target.sectionId);
+    const scopePath =
+      target.path === undefined
+        ? null
+        : [...target.path.slice(0, -2).filter((_part, index) => index % 2 === 0), target.sectionId];
+
+    const section =
+      scopePath === null
+        ? repeatSectionById(layout, target.sectionId)
+        : repeatSectionByPath(layout, scopePath);
 
     return section === null ? null : sectionFields(section);
   }

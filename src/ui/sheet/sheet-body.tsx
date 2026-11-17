@@ -5,13 +5,13 @@ import type { ReactNode } from 'react';
 import {
   firstFieldId,
   layoutSections,
-  repeatSectionId,
   type RenderedTab,
   type Template,
   type TemplateLayout,
 } from '@/core/preset';
-import { repKeyPrefix, rowKey, type VersionedRecord } from '@/core/records';
+import { rowKey, type VersionedRecord } from '@/core/records';
 import { repeatBlocks } from '@/core/sheet-values';
+import type { Command } from '@/core/ui-messages';
 import { sectionShownTo } from '@/core/visibility';
 import { copy } from '@/copy';
 import { IconButton } from '@/ui/primitives/icon-button';
@@ -182,6 +182,7 @@ export function SheetBody({
             pending={pending}
             blockTools={blockTools}
             tabBlock={displayedTabBlock}
+            parentPath={displayedTabBlock?.path ?? null}
             role={role}
           />,
         ]
@@ -197,6 +198,7 @@ export function SheetBody({
           sheetId={sheetId}
           scopeId={displayedTabBlock.scopeId}
           instanceId={displayedTabBlock.instanceId}
+          path={displayedTabBlock.path}
           name={displayedTabBlock.name}
           editing={tabBlockEditing}
         />
@@ -245,7 +247,7 @@ function hasRepeatBlock(
 
   return (
     block !== null &&
-    repeatBlocks(records, sheetId, block.scopeId).some(
+    repeatBlocks(records, sheetId, block.path.slice(0, -1)).some(
       (candidate) => candidate.instanceId === block.instanceId,
     )
   );
@@ -255,12 +257,14 @@ function TabBlockControls({
   sheetId,
   scopeId,
   instanceId,
+  path,
   name,
   editing,
 }: {
   sheetId: string;
   scopeId: string;
   instanceId: string;
+  path: readonly string[];
   name: string;
   editing: Pick<FieldEditing, 'sendCommand'>;
 }): ReactNode {
@@ -271,13 +275,20 @@ function TabBlockControls({
     if (waiting) return;
 
     setWaiting(true);
+
+    const command: Extract<Command, { type: 'repeat-block-delete' }> = {
+      type: 'repeat-block-delete',
+      sheetId,
+      sectionId: scopeId,
+      instanceId,
+    };
+
+    if (path.length > 2) {
+      command.path = [...path];
+    }
+
     void editing
-      .sendCommand({
-        type: 'repeat-block-delete',
-        sheetId,
-        sectionId: scopeId,
-        instanceId,
-      })
+      .sendCommand(command)
       .then((outcome) => {
         if (outcome.kind !== 'answered') {
           setWaiting(false);
@@ -319,28 +330,14 @@ function sheetValuesSignature(
 ): string {
   const versions: string[] = [];
   const rootKeys = new Set<string>();
-  const repeatPrefixes: string[] = [];
-
-  for (const tab of template.tabs) {
-    if (tab.repeat !== undefined) {
-      repeatPrefixes.push(repKeyPrefix(sheetId, tab.repeat.id));
-    }
-  }
 
   for (const section of layoutSections(template)) {
-    const sectionId = repeatSectionId(section);
-
     if (section.repeat !== undefined) {
-      if (sectionId !== null) {
-        repeatPrefixes.push(repKeyPrefix(sheetId, sectionId));
-      }
-
       continue;
     }
 
     for (const row of section.rows) {
       if (row.repeat !== undefined) {
-        repeatPrefixes.push(repKeyPrefix(sheetId, row.repeat.id));
         continue;
       }
 
@@ -358,8 +355,10 @@ function sheetValuesSignature(
     versions.push(record === undefined ? '' : versionOf(record));
   }
 
+  const repeatPrefix = `blk:${sheetId}:`;
+
   for (const record of records.values()) {
-    if (repeatPrefixes.some((prefix) => record.k.startsWith(prefix))) {
+    if (record.k.startsWith(repeatPrefix)) {
       versions.push(versionOf(record));
     }
   }

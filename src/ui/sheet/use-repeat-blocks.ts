@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { RefCallback, RefObject } from 'react';
 
 import { newInstanceId } from '@/core/ids';
+import type { Command } from '@/core/ui-messages';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
 
 import { useFieldEditing } from './use-field-edit';
@@ -39,6 +40,7 @@ export function useRepeatBlocks(
   sheetId: string,
   sectionId: string,
   instanceIds: readonly string[],
+  parentPath: readonly string[] | null = null,
 ): RepeatBlockControls {
   const editing = useFieldEditing();
   const [wait, setWait] = useState<FocusWait | null>(null);
@@ -130,22 +132,34 @@ export function useRepeatBlocks(
       // collision writes over nothing.
       const instanceId = newInstanceId();
 
-      const outcome = editing.sendCommand({
+      const command: Extract<Command, { type: 'repeat-block-add' }> = {
         type: 'repeat-block-add',
         sheetId,
         sectionId,
         instanceId,
-      });
+      };
+
+      if (parentPath !== null) {
+        command.path = [...parentPath, sectionId, instanceId];
+      }
+
+      const outcome = editing.sendCommand(command);
 
       setWait({ kind: 'added', instanceId, outcome });
     },
     remove: (instanceId) => {
-      const outcome = editing.sendCommand({
+      const command: Extract<Command, { type: 'repeat-block-delete' }> = {
         type: 'repeat-block-delete',
         sheetId,
         sectionId,
         instanceId,
-      });
+      };
+
+      if (parentPath !== null) {
+        command.path = [...parentPath, sectionId, instanceId];
+      }
+
+      const outcome = editing.sendCommand(command);
 
       setWait({
         kind: 'deleted',

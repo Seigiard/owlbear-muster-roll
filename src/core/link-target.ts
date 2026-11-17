@@ -1,6 +1,6 @@
 import type { JsonValue } from '@/core/json';
 import {
-  repeatSectionById,
+  repeatSectionByPath,
   repeatSectionPlace,
   repeatTabById,
   repeatScopeById,
@@ -12,9 +12,9 @@ import {
 } from '@/core/preset';
 import {
   linkDataSchema,
-  parseRepKey,
+  blockPathKey,
+  parseBlockPathKey,
   repDataSchema,
-  repKey,
   type LinkData,
   type VersionedRecord,
 } from '@/core/records';
@@ -96,19 +96,25 @@ export function blockIndex(records: Iterable<VersionedRecord>): BlockIndex {
   const keys = new Map<string, string>();
 
   for (const record of records) {
-    const parts = parseRepKey(record.k);
+    const parts = parseBlockPathKey(record.k);
 
     if (parts === null || !repDataSchema.safeParse(record.d).success) {
       continue;
     }
 
-    const key = blockIndexKey(parts.sheetId, parts.instanceId);
+    const instanceId = parts.path.at(-1);
+
+    if (instanceId === undefined) continue;
+
+    const key = blockIndexKey(parts.sheetId, instanceId);
     const held = keys.get(key);
 
     if (held === undefined || record.k < held) {
       keys.set(key, record.k);
-      index.set(key, parts.sectionId);
+      index.set(key, parts.path.at(-2) ?? '');
     }
+
+    index.set(`${parts.sheetId}:${parts.path.join(':')}`, parts.path.at(-2) ?? '');
   }
 
   return index;
@@ -147,13 +153,16 @@ export function repeatBlockTabIndex(
   return index === -1 ? null : index;
 }
 
-// AD-19: a link is live only while its sheet, target token cell, and, when named, repeat block are
-// live. `null`: the link is inert, and every view and the token menu treat it as no link.
+// AD-19: a link is live only while its sheet is live, its repeat block is live when it names one,
+// and the template, for a sheet link, or the repeat section, for a repeat block link, is linkable.
+// `null`: the link is inert, and every view and the token menu treat it as no link.
 export function liveLinkTarget(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset | null,
   target: LinkTarget,
+  blocks: BlockIndex = blockIndex(records.values()),
 ): LiveLinkTarget | null {
+  void blocks;
   const policy = resolveSheet(records, preset, target.sheetId);
 
   if (policy === null) {
@@ -166,23 +175,27 @@ export function liveLinkTarget(
     return policy.linkable && cell !== null ? { target, policy, section: null, cell } : null;
   }
 
-  const sectionId = target.path?.[0];
-  const instanceId = target.path?.[1];
+  const sectionId = target.path?.at(-2);
+  const instanceId = target.path?.at(-1);
 
   if (
     target.path === undefined ||
     target.path === null ||
-    target.path.length !== 2 ||
+    target.path.length < 2 ||
+    target.path.length % 2 !== 0 ||
     sectionId === undefined ||
     instanceId === undefined ||
     instanceId !== target.instanceId ||
-    !isLiveRepeatBlock(records, target.sheetId, sectionId, instanceId)
+    !isLiveRepeatBlock(records, target.sheetId, target.path)
   ) {
     return null;
   }
 
-  const section = repeatSectionById(policy.template, sectionId);
-  const cell = section === null ? null : tokenCellPlace(policy.template, target.cellId, sectionId);
+  const scopePath = target.path.filter((_part, index) => index % 2 === 0);
+  const section = repeatSectionByPath(policy.template, scopePath);
+
+  const cell =
+    section === null ? null : tokenCellPlace(policy.template, target.cellId, sectionId, scopePath);
 
   return section !== null && cell !== null ? { target, policy, section, cell } : null;
 }
@@ -190,19 +203,33 @@ export function liveLinkTarget(
 function isLiveRepeatBlock(
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
-  sectionId: string,
-  instanceId: string,
+  path: readonly string[],
 ): boolean {
-  return repDataSchema.safeParse(records.get(repKey(sheetId, sectionId, instanceId))?.d).success;
+  if (path.length < 2 || path.length % 2 !== 0) return false;
+
+  for (let length = 2; length <= path.length; length += 2) {
+    if (
+      !repDataSchema.safeParse(records.get(blockPathKey(sheetId, path.slice(0, length)))?.d).success
+    ) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export function tokenCellPlace(
   template: TemplateLayout,
   cellId: string | undefined,
   repeatSectionId: string | null,
+  repeatScopePath?: readonly string[],
 ): TokenCellPlace | null {
   if (cellId === undefined) {
     return null;
+  }
+
+  if (repeatScopePath !== undefined) {
+    return tokenCellPlaceAtPath(template, cellId, repeatScopePath);
   }
 
   if (repeatSectionId !== null) {
@@ -277,6 +304,96 @@ export function tokenCellPlace(
   }
 
   return null;
+}
+
+function tokenCellPlaceAtPath(
+  template: TemplateLayout,
+  cellId: string,
+  scopePath: readonly string[],
+): TokenCellPlace | null {
+  const [tabScopeId, childScopeId, rowScopeId] = scopePath;
+
+  for (const [tabIndex, tab] of template.tabs.entries()) {
+    if (tab.repeat?.id !== tabScopeId) {
+      if (scopePath.length !== 1 || tab.repeat !== undefined) continue;
+
+      for (const [sectionIndex, section] of tab.sections.entries()) {
+        if (section.repeat?.id !== tabScopeId) {
+          const row = section.rows.find((candidate) => candidate.repeat?.id === tabScopeId);
+
+          if (row !== undefined && rowHasToken(row, cellId)) {
+            return { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
+          }
+
+          continue;
+        }
+
+        const row = section.rows.find(
+          (candidate) => candidate.repeat === undefined && rowHasToken(candidate, cellId),
+        );
+
+        if (row !== undefined) {
+          return { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
+        }
+      }
+
+      continue;
+    }
+
+    if (scopePath.length === 1) {
+      for (const [sectionIndex, section] of tab.sections.entries()) {
+        if (section.repeat !== undefined) continue;
+
+        const row = section.rows.find(
+          (candidate) => candidate.repeat === undefined && rowHasToken(candidate, cellId),
+        );
+
+        if (row !== undefined) {
+          return { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
+        }
+      }
+
+      return null;
+    }
+
+    for (const [sectionIndex, section] of tab.sections.entries()) {
+      if (section.repeat?.id === childScopeId) {
+        if (scopePath.length === 2) {
+          const row = section.rows.find(
+            (candidate) => candidate.repeat === undefined && rowHasToken(candidate, cellId),
+          );
+
+          return row === undefined
+            ? null
+            : { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
+        }
+
+        const row = section.rows.find(
+          (candidate) => candidate.repeat?.id === rowScopeId && rowHasToken(candidate, cellId),
+        );
+
+        return row === undefined
+          ? null
+          : { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
+      }
+
+      if (childScopeId !== undefined && section.repeat === undefined && scopePath.length === 2) {
+        const row = section.rows.find(
+          (candidate) => candidate.repeat?.id === childScopeId && rowHasToken(candidate, cellId),
+        );
+
+        if (row !== undefined) {
+          return { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function rowHasToken(row: PresetRow, cellId: string): boolean {
+  return row.cells.some((cell) => cell.kind === 'token' && cell.id === cellId);
 }
 
 function blockIndexKey(sheetId: string, instanceId: string): string {

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { isFieldId, isTemplateId } from '@/core/field-id';
+import { isTemplateId } from '@/core/field-id';
 import type { JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
 
@@ -50,7 +50,7 @@ export const cellSchema = z.tuple([
   z.string().min(1),
 ]);
 
-export const cellsSchema = dictionaryOf(z.string().refine(isFieldId), cellSchema);
+export const cellsSchema = dictionaryOf(z.string().min(1), cellSchema);
 
 export const presetDataSchema = z.base64().min(1);
 
@@ -81,15 +81,13 @@ export const linkDataSchema = z.strictObject({
   c: keySegmentSchema,
 });
 
-export const recordSchema = z
-  .union([
-    versionedRecordOf(presetKeySchema, presetDataSchema),
-    versionedRecordOf(blockKeySchema, blockDataSchema).extend({ l: lifecycleSchema }),
-    versionedRecordOf(aclKeySchema, playerDataSchema),
-    versionedRecordOf(linkKeySchema, linkDataSchema),
-    versionedRecordOf(plinkKeySchema, playerDataSchema),
-  ])
-  .refine((record) => record.k.startsWith('blk:') || record.l === undefined);
+export const recordSchema = z.union([
+  versionedRecordOf(presetKeySchema, presetDataSchema),
+  versionedRecordOf(blockKeySchema, blockDataSchema).extend({ l: lifecycleSchema }),
+  versionedRecordOf(aclKeySchema, playerDataSchema),
+  versionedRecordOf(linkKeySchema, linkDataSchema),
+  versionedRecordOf(plinkKeySchema, playerDataSchema),
+]);
 
 export type VersionedRecord = z.infer<typeof recordSchema>;
 
@@ -195,24 +193,19 @@ export function parseBlockPathKey(key: string): BlockPathParts | null {
   return { sheetId, path };
 }
 
-// The ids of one repeat level, or null for a root or another key form.
+// The ids of one repeat level, or null for a root, nested block, or another key form.
 export function parseRepKey(key: string): RepKeyParts | null {
-  const [form, sheetId, sectionId, instanceId, ...rest] = key.split(':');
+  const parsed = parseBlockPathKey(key);
 
-  if (
-    form !== 'blk' ||
-    sheetId === undefined ||
-    sheetId === '' ||
-    sectionId === undefined ||
-    sectionId === '' ||
-    instanceId === undefined ||
-    instanceId === '' ||
-    rest.length > 0
-  ) {
+  if (parsed === null || parsed.path.length !== 2) {
     return null;
   }
 
-  return { sheetId, sectionId, instanceId };
+  const [sectionId, instanceId] = parsed.path;
+
+  return sectionId === undefined || instanceId === undefined
+    ? null
+    : { sheetId: parsed.sheetId, sectionId, instanceId };
 }
 
 // The key prefix of every `plink:` of one sheet. It ends with ":", so a sheet "a" never reads the

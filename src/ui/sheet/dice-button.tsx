@@ -32,6 +32,7 @@ export type DiceRow = {
   sectionIndex: number;
   rowIndex: number;
   instanceId: string | null;
+  path?: readonly string[];
   // The row's record, `null` for a row with no field.
   target: FieldPatchTarget | null;
   fieldIds: ReadonlySet<string>;
@@ -89,6 +90,10 @@ export function DiceButton({
       cellIndex,
       instanceId: row.instanceId,
     };
+
+    if (row.path !== undefined) {
+      place.path = [...row.path];
+    }
 
     const shown = shownForRoll(sheet.localValues.read(row.sheetId), row.target, row.fieldIds);
 

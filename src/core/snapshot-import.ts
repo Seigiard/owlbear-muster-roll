@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 import { FORMAT_VERSION } from '@/core/format-version';
-import { linkDataOf, liveLinkTarget } from '@/core/link-target';
+import { blockIndex, linkDataOf, liveLinkTarget } from '@/core/link-target';
 import { recordFitsOneMessage } from '@/core/message-size';
 import {
   PRESET_FILE_BYTE_LIMIT,
@@ -13,8 +13,8 @@ import {
 import { erasedDigest, keptValues, templateScopes } from '@/core/preset-migrate';
 import {
   blockKey,
+  blockPathKey,
   recordSchema,
-  repKey,
   versionCells,
   type FieldValues,
   type VersionedRecord,
@@ -157,18 +157,36 @@ export function importSnapshot(
       d,
     });
     const claimed = new Set<string>();
+    const acceptedPaths = new Set<string>();
 
-    for (const block of sheet.blocks) {
-      const [scope = '', id = ''] = block.path;
-      const key = repKey(sheet.id, scope, id);
-      const fields = block.path.length === 2 ? scopes?.sections.get(scope) : undefined;
+    const blocks = [...sheet.blocks].sort(
+      (first, second) =>
+        first.path.length - second.path.length ||
+        first.path.join(':').localeCompare(second.path.join(':')),
+    );
 
-      if (fields === undefined || claimed.has(id)) {
+    for (const block of blocks) {
+      const scope = block.path.at(-2);
+      const parentPath = block.path.slice(0, -2);
+      const parentScopePath = parentPath.filter((_part, index) => index % 2 === 0);
+      const fullPathKey = block.path.join(':');
+      const pathKey = block.path.length === 2 ? (block.path[1] ?? '') : fullPathKey;
+      const key = blockPathKey(sheet.id, block.path);
+
+      const fields =
+        scope === undefined || scopes === null
+          ? undefined
+          : scopes.sectionsByPath.get([...parentScopePath, scope].join(':'));
+
+      const parentExists = parentPath.length === 0 || acceptedPaths.has(parentPath.join(':'));
+
+      if (fields === undefined || !parentExists || claimed.has(pathKey)) {
         filter(key, block.cells, []);
         continue;
       }
 
-      claimed.add(id);
+      claimed.add(pathKey);
+      acceptedPaths.add(fullPathKey);
       records.push({
         k: key,
         c: 1,
@@ -193,6 +211,7 @@ export function importSnapshot(
   }
 
   const placed = new Map(records.map((record) => [record.k, record]));
+  const blocks = blockIndex(records);
 
   for (const link of file.links) {
     const target = {
@@ -202,7 +221,7 @@ export function importSnapshot(
       cellId: link.cellId,
     };
 
-    if (liveLinkTarget(placed, current.preset, target) !== null) {
+    if (liveLinkTarget(placed, current.preset, target, blocks) !== null) {
       records.push({ k: `link:${link.tokenId}`, d: linkDataOf(target), c: 1, a: author });
     }
   }

@@ -139,6 +139,11 @@ const repeatBlockDuplicateSchema = z.strictObject({
   sheetId: z.string(),
   sectionId: z.string(),
   instanceId: z.string(),
+  path: z
+    .array(z.string())
+    .min(2)
+    .refine((parts) => parts.length % 2 === 0)
+    .optional(),
   count: z.number(),
 });
 
@@ -225,6 +230,11 @@ const repeatBlockAddSchema = z.strictObject({
   sheetId: z.string(),
   sectionId: z.string(),
   instanceId: z.string(),
+  path: z
+    .array(z.string())
+    .min(2)
+    .refine((parts) => parts.length % 2 === 0)
+    .optional(),
 });
 
 // AD-19: the engine also removes the token links of the repeat block.
@@ -233,6 +243,11 @@ const repeatBlockDeleteSchema = z.strictObject({
   sheetId: z.string(),
   sectionId: z.string(),
   instanceId: z.string(),
+  path: z
+    .array(z.string())
+    .min(2)
+    .refine((parts) => parts.length % 2 === 0)
+    .optional(),
 });
 
 // AD-9, CAP-31: erases all room data in a new generation. The window asks its one confirmation
