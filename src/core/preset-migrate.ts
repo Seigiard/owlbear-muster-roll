@@ -3,7 +3,6 @@ import { sameJson } from '@/core/json';
 import { linkTargetOf, liveLinkTarget } from '@/core/link-target';
 import {
   firstFieldId,
-  layoutSections,
   repeatSectionId,
   sectionFields,
   type Preset,
@@ -304,30 +303,34 @@ export function templateScopes(layout: TemplateLayout): TemplateScopes {
     }
   }
 
-  for (const section of layoutSections(layout)) {
-    const sectionId = repeatSectionId(section);
+  for (const tab of layout.tabs) {
+    if (tab.repeat !== undefined) continue;
 
-    if (sectionId !== null) {
-      scopes.sections.set(sectionId, sectionFields(section));
-    } else {
-      for (const row of section.rows) {
-        const rowRepeatId = row.repeat?.id;
+    for (const section of tab.sections) {
+      const sectionId = repeatSectionId(section);
 
-        if (rowRepeatId !== undefined) {
-          scopes.sections.set(
-            rowRepeatId,
-            row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field'),
-          );
-          continue;
+      if (sectionId !== null) {
+        scopes.sections.set(sectionId, sectionFields(section));
+      } else {
+        for (const row of section.rows) {
+          const rowRepeatId = row.repeat?.id;
+
+          if (rowRepeatId !== undefined) {
+            scopes.sections.set(
+              rowRepeatId,
+              row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field'),
+            );
+            continue;
+          }
+
+          const id = firstFieldId(row);
+
+          if (id === null) continue;
+          const fields = row.cells.filter((cell) => cell.kind === 'field');
+          scopes.rows.set(id, fields);
+
+          for (const field of fields) scopes.rowFields.set(field.id, { rowId: id, field });
         }
-
-        const id = firstFieldId(row);
-
-        if (id === null) continue;
-        const fields = row.cells.filter((cell) => cell.kind === 'field');
-        scopes.rows.set(id, fields);
-
-        for (const field of fields) scopes.rowFields.set(field.id, { rowId: id, field });
       }
     }
   }
