@@ -82,11 +82,11 @@ export const linkDataSchema = z.strictObject({
 });
 
 export const recordSchema = z.union([
-  versionedRecordOf(presetKeySchema, presetDataSchema),
+  versionedRecordOf(presetKeySchema, presetDataSchema).refine((record) => record.l === undefined),
   versionedRecordOf(blockKeySchema, blockDataSchema).extend({ l: lifecycleSchema }),
-  versionedRecordOf(aclKeySchema, playerDataSchema),
-  versionedRecordOf(linkKeySchema, linkDataSchema),
-  versionedRecordOf(plinkKeySchema, playerDataSchema),
+  versionedRecordOf(aclKeySchema, playerDataSchema).refine((record) => record.l === undefined),
+  versionedRecordOf(linkKeySchema, linkDataSchema).refine((record) => record.l === undefined),
+  versionedRecordOf(plinkKeySchema, playerDataSchema).refine((record) => record.l === undefined),
 ]);
 
 export type VersionedRecord = z.infer<typeof recordSchema>;
@@ -229,6 +229,12 @@ function versionedRecordOf<Key extends z.ZodType, Data extends z.ZodType>(key: K
 export function dictionaryOf<Value extends z.ZodType>(key: z.ZodString, value: Value) {
   return z
     .unknown()
-    .refine((input) => !(input instanceof Object && Object.hasOwn(input, '__proto__')))
+    .refine(
+      (input) =>
+        !(
+          input instanceof Object &&
+          (Object.hasOwn(input, '__proto__') || Object.hasOwn(input, 'constructor'))
+        ),
+    )
     .pipe(z.record(key, value));
 }

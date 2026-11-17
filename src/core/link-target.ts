@@ -113,8 +113,6 @@ export function blockIndex(records: Iterable<VersionedRecord>): BlockIndex {
       keys.set(key, record.k);
       index.set(key, parts.path.at(-2) ?? '');
     }
-
-    index.set(`${parts.sheetId}:${parts.path.join(':')}`, parts.path.at(-2) ?? '');
   }
 
   return index;

@@ -6,6 +6,8 @@ import {
   plainRow,
   repeatSectionById,
   repeatSectionByPath,
+  repeatScopeById,
+  repeatScopeByPath,
   sectionFields,
   type PresetFieldCell,
   type TemplateLayout,
@@ -110,6 +112,15 @@ export function targetFields(
       target.path === undefined
         ? null
         : [...target.path.slice(0, -2).filter((_part, index) => index % 2 === 0), target.sectionId];
+
+    const scope =
+      scopePath === null
+        ? repeatScopeById(layout, target.sectionId)
+        : repeatScopeByPath(layout, scopePath);
+
+    if (scope?.row !== null && scope?.row !== undefined) {
+      return scope.row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field');
+    }
 
     const section =
       scopePath === null

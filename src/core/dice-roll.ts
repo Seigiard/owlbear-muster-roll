@@ -137,7 +137,16 @@ export function prepareDiceRoll(
   let ownBlock: FieldValues | undefined;
 
   if (place.instanceId !== null) {
-    const block = blockValues(records, sheetId, section, row, place.instanceId, place.path);
+    const block = blockValues(
+      layout,
+      records,
+      sheetId,
+      from,
+      section,
+      row,
+      place.instanceId,
+      place.path,
+    );
 
     if (block === null) {
       return err({ code: 'not-dice' });
@@ -230,14 +239,17 @@ export function prepareDiceRoll(
 
 // The values of one repeat block, or `null` for a repeat block that is gone.
 function blockValues(
+  layout: TemplateLayout,
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
+  from: TemplateRowPlace,
   section: PresetSection,
   row: PresetSection['rows'][number],
   instanceId: string,
   path: readonly string[] | undefined,
 ): FieldValues | null {
-  const sectionId = repeatSectionId(section) ?? row.repeat?.id ?? null;
+  const sectionId =
+    repeatSectionId(section) ?? row.repeat?.id ?? repeatScopePathAt(layout, from).at(-1) ?? null;
 
   if (sectionId === null) {
     return null;
