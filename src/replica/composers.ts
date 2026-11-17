@@ -65,9 +65,9 @@ export type ComposeMode = 'persisted' | 'pending';
 // applied, and mints nothing. `newRecordId` gives the ids a command makes itself, such as a
 // duplicate's, of a kind and each named by its role in the command. The pending view composes a
 // queued command many times, so one role must get one id each time, whatever records come or go in
-// between. `mode` distinguishes records that will be persisted from records shown only in a
-// pending view. `isGmPlayer` is true for a player id the party lists as a GM, and for this client's
-// own one.
+// between. `mode` permits reconciliation clears in persisted writes; pending views and player
+// proposals must omit them, or a valid proposal can fail unknown-field admission. `isGmPlayer`
+// is true for a player id the party lists as a GM, and for this client's own one.
 export type ComposeContext = {
   records: ReadonlyMap<string, VersionedRecord>;
   mint: (key: string, highestKnownCounter: number) => Version;
