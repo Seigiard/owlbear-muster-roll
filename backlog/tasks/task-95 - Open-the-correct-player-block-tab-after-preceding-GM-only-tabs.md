@@ -1,9 +1,11 @@
 ---
 id: TASK-95
 title: Open the correct player block tab after preceding GM-only tabs
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@seigiard'
 created_date: '2026-11-17T11:05:00Z'
+updated_date: '2026-11-17T14:40:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -41,3 +43,12 @@ Review finding: adversarial-claude-3
 - [ ] #3 Hidden targets remain unavailable to players and GM token opening remains correct.
 - [ ] #4 Browser regression coverage verifies the selected target and reveal through the public token-open flow for repeat sections and repeat tabs.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Verify TASK-91 rendered-tab identity conversion in the public token-open consumer and capture the baseline path.
+2. Lock browser regressions for a player opening a repeat section and repeat-tab block after a preceding GM-only tab.
+3. Preserve the existing implementation if the new lock proves it; otherwise repair only role-filtered token opening in main.tsx/navigation.
+4. Calibrate each target-selection assertion against the prior positional-index behavior and run required checks; request the shared full-browser slot only after the other checks are green.
+<!-- SECTION:PLAN:END -->
