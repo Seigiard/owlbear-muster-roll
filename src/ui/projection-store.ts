@@ -104,10 +104,7 @@ export function createProjectionStore(): ProjectionStore {
 
     for (const [key, record] of pendingView) {
       const applied = replica.get(key);
-      shown.set(
-        key,
-        key.startsWith('blk:') && applied !== undefined ? mergeRecords(applied, record) : record,
-      );
+      shown.set(key, pendingDisplayRecord(applied, record, sync.role !== 'GM'));
     }
 
     $records.set(shown);
@@ -184,7 +181,7 @@ export function pendingEntries(
 
   for (const [key, record] of pendingView) {
     const applied = replica.get(key);
-    const shown = applied === undefined ? record : mergeRecords(applied, record);
+    const shown = pendingDisplayRecord(applied, record, true);
 
     if (key.startsWith('blk:') && key.split(':').length > 2) {
       const after = repDataSchema.safeParse(record.d);
@@ -213,6 +210,38 @@ export function pendingEntries(
   }
 
   return entries;
+}
+
+function pendingDisplayRecord(
+  applied: VersionedRecord | undefined,
+  pending: VersionedRecord,
+  overlayPendingFields = false,
+): VersionedRecord {
+  if (!pending.k.startsWith('blk:') || applied === undefined) {
+    return pending;
+  }
+
+  const merged = mergeRecords(applied, pending);
+
+  if (!overlayPendingFields) {
+    return merged;
+  }
+
+  const mergedData = blockDataSchema.safeParse(merged.d);
+  const pendingData = blockDataSchema.safeParse(pending.d);
+
+  if (!mergedData.success || !pendingData.success) {
+    return merged;
+  }
+
+  // SAFETY: both block-data parses above prove the merged record carries block data; mergeRecords preserves the shared key and metadata.
+  return {
+    ...merged,
+    d: {
+      ...mergedData.data,
+      cells: { ...mergedData.data.cells, ...pendingData.data.cells },
+    },
+  } as VersionedRecord;
 }
 
 function pendingFields(
