@@ -5,7 +5,7 @@ created: '2026-11-17'
 status: 'in-progress'
 baseline_commit: '88b7db235528ca5d7561c306851bf68bd8339586'
 route: 'dispatch'
-review_loop_iteration: 2
+review_loop_iteration: 3
 context:
   - '{project-root}/GLOSSARY.md'
   - '{project-root}/docs/adr/0002-navigation-uses-pure-transitions-with-react-rendering.md'
@@ -98,6 +98,9 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - TASK-95 reuses TASK-91's production repair and adds calibrated public browser regressions. Preview dice evidence is exact field-error → empty-feedback; core and Room independently assert the numeric result 8.
 - Remaining implementation: TASK-97/98, then TASK-79 and the TASK-88/77 boundary plus TASK-80; TASK-82 still needs its concurrent-edit oracle repaired. TASK-86 remains owner-run. Rejected candidates remain available.
 - 2026-11-17 window 3: Owner requested continuation from `521716e092937648d3136c4a722ca9c3ef99a336`. Start at 17:45:02Z with a 90-minute budget. Frontier: TASK-97 shared copy and accessible add names, TASK-98 remote dice-feedback invalidation, and TASK-82 oracle recovery. Their UI and replica production paths are separate. Full browser suites retain the single two-worker slot. TASK-79 follows accepted repeat-tab work if the budget permits; the parent retains this checkout and the closing review.
+- Window 3 completed TASK-82, 97 and 98. Unchanged cells retain their tuples during preset upload; persisted recovery clears removed fields without contaminating player proposals. Shared add controls distinguish colliding scope titles, and remote repeat-tab edits clear stale dice feedback.
+- Remaining frontier: TASK-79, then TASK-80 and TASK-88/77; TASK-86 remains owner-run. TASK-79's rejected candidate remains preserved. No new frontier task started in this window.
+- Window 3 exceeded its 90-minute estimate because the concurrent oracle, pending/persisted boundary and duplicate-title coverage needed repair, followed by serialized browser checks. Closing work stayed within the existing three-ticket frontier.
 
 ## Spec Change Log
 
@@ -108,6 +111,8 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - Deferred `lean-codex-1`: obsolete incomplete stale-reply retention needs a cleanup contract. See `deferred-work.md`, TASK-77–98 window 1. Shared assembler and identity deduplication suggestions were immaterial.
 - Window 2 round 01: `mixed`, 6/6 sources. Cross-section dice lookup was major and fixed in `077bb74`. Identical link visibility branches were minor and deferred.
 - Window 2 round 02: `final`, 2/2 sources, no degraded sources, findings or open questions; exit 0. Cumulative base `1fc8a7c`; checked source `077bb74`. The deferred minor remains recorded in `deferred-work.md`.
+- Window 3 round 01: `mixed`, 6/6 sources; two mechanical documentation findings corrected in `d7920fb` and `a6af377`. A constructed stale-preset data-loss scenario was graded minor by the caller and deferred for a provenance contract.
+- Window 3 round 02: `final`, 2/2 sources, no degradation; exit 1. The same deferred risk remains, with an additional failed-preset-send trigger traced in code. No runtime reproduction is claimed. The loop closed with no caller-graded finding above minor; it did not produce an empty review. See the TASK-82 spec and `deferred-work.md`.
 
 ## Verification
 
@@ -119,3 +124,4 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - Live Owlbear verification: TASK-86, owner scheduled; no autonomous runtime estimate or completion claim.
 - Final clean source `738bbf20a2193cd92d3d39c9a467398be9db1ea8`: format, lint, typecheck, unit, browser (`--workers=2`) and build all exit 0. Unit: 3401 pass, 1 skip, 0 fail. Browser: 563 pass. Later full green runs do not establish the cause of the baseline focus failure.
 - Window 2 final clean source `077bb748d66e4ea8b5324399ce52b67cdbb5f37b`: all six checks exit 0. Unit: 3413 pass, 1 skip, 0 fail. Browser: 570 pass with two workers. Focused dice-roll: 32 pass. This proves application behavior under the mock adapter, not live Owlbear acceptance.
+- Window 3 integration `9f6f5b3`: focused engine 26 pass, focused browser 25 pass; all six checks exit 0. After the comment correction committed as `a6af377`, all six checks passed again: 3415 unit pass, 1 DOM skip, 572 browser pass with two workers. All three ticket locks remained byte-identical. This does not prove live Owlbear acceptance or the deferred stale-preset scenario.

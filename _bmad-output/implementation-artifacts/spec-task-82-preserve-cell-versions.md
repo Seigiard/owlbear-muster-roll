@@ -2,9 +2,9 @@
 title: 'TASK-82: Preserve cell versions during preset reconciliation'
 type: 'bugfix'
 created: '2026-11-17'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
-review_loop_iteration: 0
+review_loop_iteration: 2
 context:
   - '{project-root}/GLOSSARY.md'
   - '{project-root}/_bmad-output/implementation-artifacts/spec-task-76-block-records.md'
@@ -62,16 +62,16 @@ the preset loss confirmation.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/replica/engine-preset.test.ts` -- replace the uncalibrated concurrent fixture with two
+- [x] `src/replica/engine-preset.test.ts` -- replace the uncalibrated concurrent fixture with two
   actual GM clients, and preserve the interrupted-upload and player-proposal owners -- establish
   red/green evidence at the public engine boundary.
-- [ ] `src/replica/composers.ts` -- retain current tuples for unchanged migration cells and emit
+- [x] `src/replica/composers.ts` -- retain current tuples for unchanged migration cells and emit
   removed-field nulls only from persisted GM composition -- preserve merges without contaminating
   pending proposals.
-- [ ] `src/replica/pending-edits.ts` and only directly necessary routing code -- make the persisted
+- [x] `src/replica/engine.ts` context factories -- make the persisted
   versus pending boundary explicit if the public regression proves it is required -- retain player
   proposal semantics.
-- [ ] `backlog/tasks/task-82 - Preserve-untouched-cell-versions-during-preset-reconciliation.md`
+- [x] `backlog/tasks/task-82 - Preserve-untouched-cell-versions-during-preset-reconciliation.md`
   through the Backlog CLI -- record the calibrated outcome and any remaining blocker.
 
 **Acceptance Criteria:**
@@ -91,6 +91,27 @@ cell makes an unchanged value look newer than a concurrent GM value. The persist
 a null for a cell that `stripToTemplate` removes because this null is merge data. The pending
 composer is a display and proposal path: its output is later reduced to player intent, so it must
 not manufacture a clear outside that intent.
+
+## Implementation and Review Outcome
+
+- Integrated at `9f6f5b3`; final reviewed source `a6af377`. The two-GM owner preserves
+  `hp: [20,4,"gm-b"]`. The strengthened interrupted-upload owner uses an obsolete cell newer
+  than the preset and requires `armor: [null,4,"gm-a"]`. This is the recorded D1 fixture
+  correction to the earlier version-3 example, not a change to the versioned-clear contract.
+- `ComposeContext.mode` separates persisted writes from pending views and player proposals.
+  Both owners and the existing proposal owner passed mutation calibration.
+- All six required checks passed: 3415 unit tests, one DOM-precondition skip, 572 browser tests.
+  Review coverage was `mixed` 6/6 followed by `final` 2/2.
+- Deferred review risk: a GM may receive a block with a newly added field before receiving the
+  preset that defines it, then edit another field. The local strip treats that field as absent;
+  persisted reconciliation can write a winning null and lose the newer value. Reviewers traced
+  cross-sender reordering and a failed preset send followed by later block sends; neither was
+  reproduced at runtime. This opposite preset/block arrival state is outside the recorded
+  removal scenarios. The final review still reports it.
+- The current repair prioritizes required recovery under the current local preset. A simple
+  cell/preset counter cutoff would break the calibrated interrupted-removal owner. Distinguishing
+  a genuine removal from a not-yet-received addition needs a separate provenance contract.
+  See `deferred-work.md`, TASK-77–98 window 3. Stale-preset writes are not claimed safe.
 
 ## Verification
 

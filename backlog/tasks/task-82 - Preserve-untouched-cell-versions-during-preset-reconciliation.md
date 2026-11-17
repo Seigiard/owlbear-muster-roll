@@ -1,11 +1,11 @@
 ---
 id: TASK-82
 title: Preserve untouched cell versions during preset reconciliation
-status: In Progress
+status: Done
 assignee:
   - '@openai'
 created_date: '2026-11-16T15:15:00Z'
-updated_date: '2026-11-17T19:51:00Z'
+updated_date: '2026-11-17T20:07:00Z'
 labels: []
 dependencies: []
 references:
@@ -25,9 +25,9 @@ Review of TASK-76 found two preset-change edge cases in src/replica/composers.ts
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Removing armor while another GM updates hp preserves the exact concurrent hp value and its cell version.
-- [ ] #2 A field removed by the current preset receives a versioned clear during subsequent reconciliation, so old values cannot return through merge.
-- [ ] #3 Targeted regressions cover concurrent preset upload and edit, and a field write after an interrupted upload.
+- [x] #1 Removing armor while another GM updates hp preserves the exact concurrent hp value and its cell version.
+- [x] #2 A field removed by the current preset receives a versioned clear during subsequent reconciliation, so old values cannot return through merge.
+- [x] #3 Targeted regressions cover concurrent preset upload and edit, and a field write after an interrupted upload.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -41,7 +41,7 @@ Review of TASK-76 found two preset-change edge cases in src/replica/composers.ts
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-CURRENT STATUS — In Progress, integrated for acceptance review. TASK-82 merged at 9f6f5b3cc2e75ccf6474de7fb531695aa8436950. The final candidate preserves received concurrent hp tuples and separates persisted reconciliation clears from pending proposals. All six integration checks passed: 3415 unit pass, one DOM skip, 572 browser pass. The first review completed with 6/6 sources; its two documentation corrections are being finalized. AC/Done remain pending the confirming round.
+CURRENT STATUS — Done for the recorded TASK-82 removal scenarios. Integrated at 9f6f5b3; final reviewed source a6af377. All six checks passed: 3415 unit pass, one DOM skip, 572 browser pass. Reviews completed mixed 6/6 and final 2/2. The stale-preset/newer-field data-loss construction remains deferred, not fixed; see the TASK-82 spec and deferred-work.md. The earlier rejected candidate below remains historical.
 
 Historical evidence below concerns the rejected candidate and does not describe the integrated state.
 
@@ -56,3 +56,9 @@ Earlier attempt: Blocked; candidate 496ec87 remains on feature/preset-v4-task-82
 
 2026-11-17 window 3: restarted from integration bd81234. The old self-origin-frame red is rejected. The new owner uses two actual GM clients and only counts a red caused by the stored tuple overwrite.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Preset uploads preserve received concurrent cell tuples; persisted GM reconciliation clears obsolete fields, while pending/player composition omits those clears. Two-GM, interrupted-upload and player-proposal owners were calibrated; the browser fixture now requires the original unchanged str tuple. Verified source a6af377: 3415 unit pass, 1 DOM skip, 572 browser pass; format, lint, types and build passed. Reviews: mixed 6/6 and final 2/2. Deferred risk: a stale preset can misclassify a newly added field as removed and write a winning null; code-traced, not runtime-reproduced, outside the recorded removal occurrences. Provenance needs a separate contract decision; final review is not empty.
+<!-- SECTION:FINAL_SUMMARY:END -->
