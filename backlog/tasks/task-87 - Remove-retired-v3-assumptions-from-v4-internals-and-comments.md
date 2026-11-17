@@ -4,8 +4,10 @@ title: Remove retired v3 assumptions from v4 internals and comments
 status: To Do
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
+updated_date: '2026-11-17T09:28:00Z'
 labels:
   - format-v4
+  - queued
 dependencies: []
 references:
   - src/core/link-target.ts
@@ -33,3 +35,9 @@ The single TASK-77 review found v3-only paths still present after stable repeat 
 - [ ] #2 Touched comments describe explicit repeat.nameField and token-cell targets, with no retired first-field or tokens/linkable guarantee.
 - [ ] #3 Unused duplicate preset helpers are removed and the token-cell picker opener shares the existing popover id constant.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+CURRENT: Queued after the remaining source work. No cleanup was implemented in this pass yet; behavior-preserving removal and comment updates remain open.
+<!-- SECTION:NOTES:END -->

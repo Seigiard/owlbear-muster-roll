@@ -4,9 +4,11 @@ title: Verify nested-repeat v4 in a live Owlbear room
 status: To Do
 assignee: []
 created_date: '2026-11-16T22:18:00Z'
+updated_date: '2026-11-17T09:28:00Z'
 labels:
   - format-v4
   - owner-check
+  - blocked
 dependencies: []
 references:
   - TASK-79 AC 5
@@ -29,3 +31,9 @@ TASK-79 acceptance criterion 5 requires the owner to check the v4 candidate in a
 - [ ] #3 Linked tokens open their correct NPC tabs and each NPC retains its own nested attacks.
 - [ ] #4 The owner records pass/fail evidence and files any observed defects in Backlog; TASK-79 live-check acceptance remains unchecked until that evidence exists.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+CURRENT: External owner gate, not run by the agent. Requires a verified nested-repeat candidate from TASK-79 and an owner-run live Owlbear GM/player check. Mock/browser results do not close this task. No production deployment or live-room acceptance was performed.
+<!-- SECTION:NOTES:END -->

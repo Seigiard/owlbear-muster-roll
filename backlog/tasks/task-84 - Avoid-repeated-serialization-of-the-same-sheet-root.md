@@ -4,7 +4,9 @@ title: Avoid repeated serialization of the same sheet root
 status: To Do
 assignee: []
 created_date: '2026-11-16T15:15:00Z'
-labels: []
+updated_date: '2026-11-17T09:28:00Z'
+labels:
+  - queued
 dependencies: []
 references:
   - src/ui/sheet/sheet-body.tsx
@@ -24,3 +26,9 @@ After TASK-76 every plain row refers to one shared root block. sheetValuesSignat
 - [ ] #1 The formula invalidation signature considers each unique root or repeat block once per signature computation.
 - [ ] #2 A change to any relevant cell on another tab still invalidates dependent formulas.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+CURRENT: Queued after TASK-81. No implementation or validation yet in this pass; the signature deduplication and cross-tab invalidation criteria remain open.
+<!-- SECTION:NOTES:END -->

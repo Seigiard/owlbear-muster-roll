@@ -5,9 +5,10 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-17T01:30:00Z'
+updated_date: '2026-11-17T09:28:00Z'
 labels:
   - format-v4
+  - awaiting-review
 dependencies:
   - TASK-77
 references:
@@ -42,4 +43,6 @@ A GM wants an NPC sheet where each NPC is a tab with its own sections, not a row
 
 <!-- SECTION:NOTES:BEGIN -->
 Bounded run stopped after about 90 minutes at clean candidate e3ab0d423e970c77729c7f7682a9ed1fbca39288. Blocking D6: when a repeat-tab scope has zero blocks, including after the last block is deleted, extension and Builder preview derive the add action from rendered block tabs, so the GM has no plus action. Derive actions from visible source repeat scopes, then observe zero-block and last-delete behavior. No scoped review ran. Actual output artifacts show Bun3377 pass/1 environment skip/0 fail and browser552 passed including all10 repeat-tab owners, but final-state attribution is report-only; final format artifact is missing and exact final lint/typecheck/build logs and exits are unavailable. Do not treat this candidate as six-check verified or accepted. Lock6e44fa3122cd8aedeac0099422c9ab2190307c64 is enforced; initial lock and candidate remain reachable. Four phase turns; no live workload, push or deployment. TASK79/80 implementation has not started. Evidence: /Users/seigiard/.claude/artifacts/tdd-20261116-235951/task-78-repeat-tab/ticket.md and implementer-1.report.md.
+
+CURRENT: Implementation merged into feature/preset-v4-tasks-77-80 at e53781794550125c0feab568ac55a4015c97b0b7. The earlier zero-block and automatic-add blockers are repaired. All six checks pass at e0a332d; full browser recovery passed 558 tests. One earlier NPC focus failure did not reproduce and remains disclosed. Remaining: the single closing integration review and final acceptance. No deployment.
 <!-- SECTION:NOTES:END -->

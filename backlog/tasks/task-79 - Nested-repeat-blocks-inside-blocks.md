@@ -5,9 +5,10 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-17T06:37:00Z'
+updated_date: '2026-11-17T09:28:00Z'
 labels:
   - format-v4
+  - blocked
 dependencies:
   - TASK-78
 references:
@@ -39,4 +40,6 @@ A repeat tab per NPC is useless unless the NPC can hold its own lists, such as a
 TASK-77 review found renameFieldId updates template.repeat.nameField but not the repeated section/row nameField, and Builder withContent loses those repeat updates. Renaming the example attack field to weapon leaves nameField=attack and makes the preset invalid. Include nearest-scope nameField propagation with the existing AC2 ancestor-chain rename work, and carry it through TASK-80 Builder conversion. Source: src/core/formula-rename.ts:81-97 and src/builder/document.ts:789-812; review adversarial-claude-6.
 
 Autonomous continuation preserved nested core/UI work on feature/preset-v4-task-79 but did not merge it. Parent reproduced a real full-path admission gap: with npc -> attack and independent loot in the preset, importing loot:l1:attack:a1 keeps its value and reports zero losses; it must drop that child and count one lost value. Reusing attack under distinct npc and boss parents is also rejected globally instead of within each parent scope. The bounded attempt is skipped pending a full-path scope resolver repair. AC5 remains owner-only under TASK-86. Evidence: preset-v4-78-87-20261117/task-79/parent-observation.md and observe-scope-paths.log in the local artifact run.
+
+CURRENT: Blocked; candidate d4fd388 remains on feature/preset-v4-task-79 and is NOT merged. Two reproduced defects remain: import retains a child under an invalid parent path without counting its lost value, and repeated scope ids under different parent scopes are rejected globally. TASK-80 waits for this repair. This autonomous pass skips further repair; acceptance remains open.
 <!-- SECTION:NOTES:END -->
