@@ -30,8 +30,10 @@ export const copy = {
   label: {
     // The accessible name of a sheet set's «+ Добавить», by the sheet set's `title`.
     addToSet: (title: string): string => `Добавить: ${title}`,
-    // The accessible name of a repeat section's "Добавить", by the section's title.
-    addToSection: (title: string): string => `Добавить в «${title}»`,
+    // The accessible name of a repeat section's "Добавить", by the section's title and, when
+    // needed, its stable scope id.
+    addToSection: (title: string, scopeId?: string): string =>
+      scopeId === undefined ? `Добавить в «${title}»` : `Добавить в «${title}» (${scopeId})`,
     // The name in the header of a sheet of a sheet set, which edits its name field.
     sheetName: 'Имя листа',
     // The range is in the label, so sight and assistive tech both get it.

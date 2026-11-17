@@ -32,6 +32,10 @@ type TabBarProps = {
 export function TabBar({ tabs, onAddTab }: TabBarProps): ReactNode {
   useTabKeyEntersAtSelection();
 
+  const duplicateAddScopeTitles = duplicateValues(
+    tabs.flatMap((tab) => (tab.addScopeTitle === undefined ? [] : [tab.addScopeTitle])),
+  );
+
   return (
     <div className="px-3 pt-1" onWheel={scrollSideways}>
       <div data-tab-scroller className={SCROLLER_CLASS}>
@@ -40,7 +44,7 @@ export function TabBar({ tabs, onAddTab }: TabBarProps): ReactNode {
             <Tab
               key={tab.id}
               id={tab.id}
-              aria-label={tabName(tab)}
+              aria-label={tabName(tab, duplicateAddScopeTitles)}
               data-frame-tab
               data-tab-index={tab.dataTabIndex}
               data-source-tab-index={tab.sourceTabIndex}
@@ -73,15 +77,38 @@ export function TabBar({ tabs, onAddTab }: TabBarProps): ReactNode {
   );
 }
 
-function tabName(tab: ShellTab): string | undefined {
+function tabName(tab: ShellTab, duplicateAddScopeTitles: ReadonlySet<string>): string | undefined {
   const name =
-    tab.addScopeTitle === undefined ? tab.label : copy.label.addToSection(tab.addScopeTitle);
+    tab.addScopeTitle === undefined
+      ? tab.label
+      : copy.label.addToSection(
+          tab.addScopeTitle,
+          duplicateAddScopeTitles.has(tab.addScopeTitle) ? tab.addScopeId : undefined,
+        );
 
   if (tab.selectedOnMap === true) {
     return copy.label.selectedOnMap(name);
   }
 
   return name;
+}
+
+function duplicateValues(values: readonly string[]): ReadonlySet<string> {
+  const counts = new Map<string, number>();
+
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  const duplicates = new Set<string>();
+
+  for (const [value, count] of counts) {
+    if (count > 1) {
+      duplicates.add(value);
+    }
+  }
+
+  return duplicates;
 }
 
 // React Aria moves focus to the selected tab after a selection change. This also handles a tab row
