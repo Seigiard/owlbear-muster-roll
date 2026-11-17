@@ -103,6 +103,36 @@ describe('mergeRecords', () => {
     // #then
     expect(winners).toEqual([second, second]);
   });
+  test('picks the higher JSON text of non-block data for equal versions from either side', () => {
+    // #given
+    const first: VersionedRecord = { k: 'acl:s:p', d: { name: 'Ann' }, c: 5, a: 'a' };
+    const second: VersionedRecord = { k: 'acl:s:p', d: { name: 'Bob' }, c: 5, a: 'a' };
+    // #when
+    const winners = [mergeRecords(first, second), mergeRecords(second, first)];
+    // #then
+    expect(winners).toEqual([second, second]);
+  });
+  test('keeps an explicitly supplied newer cell tuple when its value is unchanged', () => {
+    // #given
+    const current = fixtureRecord(
+      'blk:s',
+      { order: 0, cells: { note: ['ready', 3, 'gm-old'] } },
+      3,
+      'gm-old',
+    );
+
+    const patch = fixturePatch(
+      current,
+      { order: 0, cells: { note: ['ready', 4, 'gm-new'] } },
+      4,
+      'gm-new',
+    );
+
+    // #when
+    const merged = mergeRecords(current, patch);
+    // #then
+    expect(merged.d).toEqual({ order: 0, cells: { note: ['ready', 4, 'gm-new'] } });
+  });
 });
 
 describe.each([

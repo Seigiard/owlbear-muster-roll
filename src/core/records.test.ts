@@ -85,6 +85,7 @@ const INVALID_DATA: [string, JsonValue][] = [
   ['blk:s', { order: 0, cells: { x: [1, 0, 'conn'] } }],
   ['blk:s', { order: 0, cells: { x: [1, 1, ''] } }],
   ['blk:s', { order: 0, cells: { x: [1, 1] } }],
+  ['blk:s', { order: 0, cells: { constructor: [1, 1, 'conn'] } }],
   ['acl:s:p', {}],
   ['acl:s:p', { name: 5 }],
   ['acl:s:p', { name: 'x', extra: 1 }],
@@ -187,6 +188,14 @@ describe('parseRecord refuses', () => {
       l: [1, 'conn'],
     });
 
+    // #then
+    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+  });
+  test('lifecycle metadata on a non-block record', () => {
+    // #given
+    const candidate = { k: 'acl:s:p', d: { name: 'Bob' }, c: 1, a: 'conn', l: [1, 'conn'] };
+    // #when
+    const parsed = parseRecord(candidate);
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
   });
