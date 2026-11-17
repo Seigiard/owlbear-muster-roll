@@ -347,11 +347,19 @@ function splitParts(
     return [{ records: [], pending: [] }];
   }
 
+  // `splitBatch` measures the whole message, so record fragmentation must reserve the same
+  // envelope plus the array item separator before batching.
+  const recordReserve = envelopeBytes + 1;
+
   const recordParts =
-    records.length === 0 ? null : splitBatch(fragmentRecords(records), envelopeBytes);
+    records.length === 0
+      ? null
+      : splitBatch(fragmentRecords(records, recordReserve), envelopeBytes);
 
   const pendingParts =
-    pendingView.length === 0 ? null : splitBatch(fragmentRecords(pendingView), envelopeBytes);
+    pendingView.length === 0
+      ? null
+      : splitBatch(fragmentRecords(pendingView, recordReserve), envelopeBytes);
 
   if (recordParts !== null && !recordParts.ok) {
     return null;

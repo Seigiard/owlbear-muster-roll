@@ -1,7 +1,12 @@
 import { checkProposal, type ProposalContext } from '@/core/access';
 import type { JsonValue } from '@/core/json';
 import { assembleRecords, compareGenerations } from '@/core/merge';
-import { fitsOneMessage, recordFitsOneMessage } from '@/core/message-size';
+import {
+  fitsOneMessage,
+  fragmentRecord,
+  jsonByteLength,
+  recordFitsOneMessage,
+} from '@/core/message-size';
 import {
   admitRoomMessage,
   editIdOf,
@@ -75,9 +80,21 @@ export type RoomProtocol = {
   receive: (event: RoomProtocolEvent) => void;
 };
 
+const PROPOSAL_MAX_PARTS = 32;
+const PROPOSAL_MAX_BYTES = 480_000;
+const PROPOSAL_MAX_ASSEMBLIES = 32;
+const PROPOSAL_RETENTION_MS = 60_000;
+
+type ProposalAssembly = {
+  n: number;
+  parts: Map<number, VersionedRecord>;
+  bytes: number;
+  receivedAt: number;
+};
+
 export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   let roomMessages: Promise<void> = Promise.resolve();
-  const proposals = new Map<string, { n: number; parts: Map<number, VersionedRecord> }>();
+  const proposals = new Map<string, ProposalAssembly>();
 
   function receive(event: RoomProtocolEvent): void {
     // One message at a time in arrival order, so a sender lookup never lets a later message
@@ -231,17 +248,63 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
 
     if (message.n > 1) {
       const key = JSON.stringify([sender, message.g, editIdOf(record)]);
+      const now = Date.now();
 
-      if (!proposals.has(key) && proposals.size >= 100)
-        proposals.delete(proposals.keys().next().value ?? '');
+      if (message.n > PROPOSAL_MAX_PARTS) return;
 
-      const assembly = proposals.get(key) ?? {
-        n: message.n,
-        parts: new Map<number, VersionedRecord>(),
-      };
+      for (const [assemblyKey, assembly] of proposals) {
+        if (now - assembly.receivedAt >= PROPOSAL_RETENTION_MS) {
+          proposals.delete(assemblyKey);
+        }
+      }
 
-      if (assembly.n !== message.n) return;
+      const existing = proposals.get(key);
+
+      const assembly =
+        existing ??
+        (() => {
+          if (proposals.size >= PROPOSAL_MAX_ASSEMBLIES) {
+            const oldest = proposals.keys().next().value;
+
+            if (oldest !== undefined) {
+              proposals.delete(oldest);
+            }
+          }
+
+          return {
+            n: message.n,
+            parts: new Map<number, VersionedRecord>(),
+            bytes: 0,
+            receivedAt: now,
+          };
+        })();
+
+      if (assembly.n !== message.n) {
+        proposals.delete(key);
+
+        return;
+      }
+
+      const previous = assembly.parts.get(message.i);
+
+      if (previous !== undefined) {
+        if (JSON.stringify(previous) !== JSON.stringify(record)) {
+          proposals.delete(key);
+        }
+
+        return;
+      }
+
+      const bytes = jsonByteLength(record);
+
+      if (assembly.bytes + bytes > PROPOSAL_MAX_BYTES) {
+        proposals.delete(key);
+
+        return;
+      }
+
       assembly.parts.set(message.i, record);
+      assembly.bytes += bytes;
       proposals.set(key, assembly);
 
       if (assembly.parts.size !== assembly.n) return;
@@ -293,17 +356,34 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
         sendRoom(rejectMessage(ports.generation(), edit, { reason: 'denied' }));
         break;
       case 'stale': {
-        const stale = rejectMessage(ports.generation(), edit, {
-          reason: 'stale',
-          current: proposalReadBack(verdict.current, record),
-        });
+        const current = proposalReadBack(verdict.current, record);
+        const stale = rejectMessage(ports.generation(), edit, { reason: 'stale', current });
+        const reserveBytes = jsonByteLength(stale) - jsonByteLength(current) + 1;
+        const fragments = fragmentRecord(current, reserveBytes);
 
-        // A current record too large to go with the answer leaves the player nothing to rebase on.
-        sendRoom(
-          fitsOneMessage(stale)
-            ? stale
-            : rejectMessage(ports.generation(), edit, { reason: 'denied' }),
-        );
+        if (!fragments.ok) {
+          sendRoom(rejectMessage(ports.generation(), edit, { reason: 'denied' }));
+
+          break;
+        }
+
+        const total = fragments.value.length;
+
+        for (const [index, fragment] of fragments.value.entries()) {
+          const answer =
+            total === 1
+              ? stale
+              : {
+                  ...rejectMessage(ports.generation(), edit, {
+                    reason: 'stale',
+                    current: fragment,
+                  }),
+                  i: index + 1,
+                  n: total,
+                };
+
+          sendRoom(answer);
+        }
 
         break;
       }

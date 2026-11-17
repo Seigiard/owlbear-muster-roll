@@ -1,6 +1,6 @@
 import { playerMayEdit, proposalAllowed, type ProposalContext } from '@/core/access';
 import type { FieldPatchTarget } from '@/core/field-patch';
-import { counterAbove, mergeRecords, type Version } from '@/core/merge';
+import { assembleRecords, counterAbove, mergeRecords, type Version } from '@/core/merge';
 import { recordFitsOneMessage } from '@/core/message-size';
 import { plainRowIdOf, repeatTabById, type Preset, type Template } from '@/core/preset';
 import { presetMoves, stripToTemplate, type PresetMoves } from '@/core/preset-migrate';
@@ -76,6 +76,8 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     enqueue: options.enqueue,
     schedule: options.schedule,
   });
+
+  const staleRejects = new Map<string, { n: number; parts: Map<number, VersionedRecord> }>();
 
   let lastDeniedAt = Number.NEGATIVE_INFINITY;
 
@@ -192,6 +194,13 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   // the GM would answer the same at once, so the new version waits for the running backoff, and the
   // preset that reaches one side in the meantime ends it.
   function rejected(message: RejectMessage): (Denial & { merge: VersionedRecord | null }) | null {
+    const complete = completeStaleReject(message);
+
+    if (complete === null) {
+      return null;
+    }
+
+    message = complete;
     const entry = proposals.matching(message);
 
     if (entry === undefined) {
@@ -316,12 +325,67 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       );
 
     proposals.clear();
+    staleRejects.clear();
 
     return commands;
   }
 
   function clear(): void {
     proposals.clear();
+    staleRejects.clear();
+  }
+
+  function completeStaleReject(message: RejectMessage): RejectMessage | null {
+    if (
+      message.reason !== 'stale' ||
+      message.current === undefined ||
+      message.i === undefined ||
+      message.n === undefined ||
+      message.n === 1
+    ) {
+      return message;
+    }
+
+    const key = JSON.stringify([message.k, message.c, message.a]);
+
+    const assembly = staleRejects.get(key) ?? {
+      n: message.n,
+      parts: new Map<number, VersionedRecord>(),
+    };
+
+    if (assembly.n !== message.n) {
+      staleRejects.delete(key);
+
+      return null;
+    }
+
+    const previous = assembly.parts.get(message.i);
+
+    if (previous !== undefined) {
+      if (JSON.stringify(previous) !== JSON.stringify(message.current)) {
+        staleRejects.delete(key);
+      }
+
+      return null;
+    }
+
+    assembly.parts.set(message.i, message.current);
+    staleRejects.set(key, assembly);
+
+    if (assembly.parts.size !== assembly.n) {
+      return null;
+    }
+
+    staleRejects.delete(key);
+    const current = assembleRecords(assembly.parts.values()).get(message.k);
+
+    if (current === undefined) {
+      return null;
+    }
+
+    const { i: _i, n: _n, current: _fragment, ...withoutFragment } = message;
+
+    return { ...withoutFragment, current };
   }
 
   // The newest version of an entry over `base`, the newest record of its key this client knows,

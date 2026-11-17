@@ -435,6 +435,37 @@ describe('window publisher', () => {
     });
     expect(harness.messages.every((message) => jsonByteLength(message) < 15000)).toBe(true);
   });
+  test('delivers a large accepted block below the limit with a 100-player projection envelope', async () => {
+    // #given
+    const large = record('blk:large', {
+      first: 'x'.repeat(4000),
+      second: 'x'.repeat(4000),
+      third: 'x'.repeat(4000),
+    });
+
+    const harness = publisherHarness(source('GM', [large]));
+    harness.source.party = party(100);
+    // #when
+    const window = harness.openWindow('large-party');
+    await settle();
+    // #then
+
+    const projections = harness.messages.filter(
+      (
+        message,
+      ): message is Extract<
+        EngineMessage,
+        {
+          t: 'projection';
+        }
+      > => message.t === 'projection',
+    );
+
+    expect({
+      bounded: projections.every((message) => jsonByteLength(message) < 15000),
+      records: [...window.store.$records.get().values()],
+    }).toEqual({ bounded: true, records: [large] });
+  });
   test('sends a later record after one delta cannot fit', async () => {
     // #given
     const oversized = record('blk:large', { value: 'ы'.repeat(7000) });

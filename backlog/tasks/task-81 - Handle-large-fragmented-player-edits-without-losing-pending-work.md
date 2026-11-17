@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T15:14:00Z'
-updated_date: '2026-11-17T11:44:00Z'
+updated_date: '2026-11-17T13:12:00Z'
 labels: []
 dependencies: []
 references:
@@ -50,4 +50,8 @@ CURRENT: Active implementation on feature/preset-v4-task-81, based on a5abdc3. L
 CURRENT BLOCKER: Not merged. Parent found a contradictory stale-fragment regression: after editing only str, it expects untouched note to be sent again at counter 6/player. The existing ordinary stale owner requires str-only proposal and preserves note at its original GM tuple. The candidate adds a fragmented-only preserveReadBack/preserveCells path that restamps every read-back cell and bypasses stripping, risking overwrite of an independent GM edit. The bounded attempt is closing without acceptance. Continuation must correct the locked oracle and preserve the same per-cell/access semantics for fragmented and ordinary replies.
 
 2026-11-17 continuation: owner approved TASK-77–98 separate ticket chains. Restarting TASK-81 from the accepted integration baseline with a corrected oracle; the old candidate remains preserved and unmerged. Earlier blocker is historical, not proof of repair.
+
+2026-11-17 repair chain: re-locking the stale fragmented-reply regression against the ordinary per-cell tuple contract before any candidate production code is reused.
+
+2026-11-17 repair chain: corrected oracle lock 37654a1 proves a 15,188-byte stale reply is denied on pre-production base c6822ca and emitted as two below-limit stale fragments by candidate c8e595d. Calibration passed. Stable checks on lock SHA passed: format, lint, typecheck, 3390 unit pass/1 environment skip, browser 558/558 with 2 workers, build. Parent owns integration, review, and final acceptance.
 <!-- SECTION:NOTES:END -->
