@@ -61,6 +61,10 @@ export const copy = {
   },
   // A tab with no title in the tab row, as a builder draft may hold one.
   untitledTab: 'Вкладка',
+  // The visible fallback label of a repeat block tab with no name.
+  unnamedBlock: (n: number): string => `Блок ${n}`,
+  // The visible label of a repeat-tab add control.
+  addTab: '+',
   // After the name on the sidebar entry of a sheet the player owns (UX-DR8).
   ownMark: 'вы',
   addSign: '+ Добавить',

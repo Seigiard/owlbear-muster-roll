@@ -21,6 +21,7 @@ export type ShellTab = {
   dataTabIndex?: number;
   sourceTabIndex?: number;
   addScopeId?: string;
+  addScopeTitle?: string;
 };
 
 type TabBarProps = {
@@ -73,11 +74,14 @@ export function TabBar({ tabs, onAddTab }: TabBarProps): ReactNode {
 }
 
 function tabName(tab: ShellTab): string | undefined {
+  const name =
+    tab.addScopeTitle === undefined ? tab.label : copy.label.addToSection(tab.addScopeTitle);
+
   if (tab.selectedOnMap === true) {
-    return copy.label.selectedOnMap(tab.label);
+    return copy.label.selectedOnMap(name);
   }
 
-  return tab.label;
+  return name;
 }
 
 // React Aria moves focus to the selected tab after a selection change. This also handles a tab row

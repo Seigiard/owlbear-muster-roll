@@ -812,7 +812,7 @@ function WindowRoot({
                 rendered.block === null
                   ? templateTabLabel(rendered.tab.title)
                   : rendered.block.name === ''
-                    ? `Блок ${rendered.blockIndex ?? index + 1}`
+                    ? copy.unnamedBlock(rendered.blockIndex ?? index + 1)
                     : rendered.block.name,
               selectedOnMap: templateTabHasSelection(sheet, rendered),
               dataTabIndex: index,
@@ -822,8 +822,10 @@ function WindowRoot({
       ...(isGm
         ? visibleRepeatTabs.map((candidate): ShellTab => ({
             id: `template-tab-add:${candidate.repeat?.id ?? ''}`,
-            label: '+',
+            label: copy.addTab,
             addScopeId: candidate.repeat?.id ?? '',
+            addScopeTitle:
+              visibleRepeatTabs.length > 1 ? templateTabLabel(candidate.title) : undefined,
           }))
         : []),
     ];
