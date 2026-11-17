@@ -1,13 +1,13 @@
 import { isFieldId } from '@/core/field-id';
 import {
   placedSections,
+  repeatScopePathAt,
   resolveFieldReference,
   sectionAt,
   type PresetCell,
   type Template,
   type TemplateLayout,
   type TemplateRowPlace,
-  type TemplateSectionPlace,
 } from '@/core/preset';
 
 // CAP-25, AD-24: a field id rename and the formulas that follow it.
@@ -44,6 +44,8 @@ export function renameFieldId(
   const rewrites = isFieldId(newId) && !scopeHolds(template, newId, place);
   let formulas = 0;
 
+  const ownerScope = repeatScopePathAt(template, place);
+
   const tabs = template.tabs.map((tab, tabIndex) => ({
     ...tab,
     sections: tab.sections.map((section, sectionIndex) => ({
@@ -78,22 +80,51 @@ export function renameFieldId(
     })),
   }));
 
-  const namesSheets =
-    template.repeat !== undefined &&
-    template.repeat.nameField === oldId &&
-    isFirstHolder(template, oldId, place, false);
-
-  const renamed: Template =
-    template.repeat !== undefined
-      ? {
-          ...template,
-          repeat: {
-            ...template.repeat,
-            nameField: namesSheets ? newId : template.repeat.nameField,
-          },
-          tabs,
-        }
-      : { ...template, tabs };
+  const renamed: Template = {
+    ...template,
+    repeat:
+      template.repeat !== undefined &&
+      ownerScope.length === 0 &&
+      template.repeat.nameField === oldId
+        ? { ...template.repeat, nameField: newId }
+        : template.repeat,
+    tabs: tabs.map((tab) => ({
+      ...tab,
+      repeat:
+        tab.repeat !== undefined &&
+        samePath(ownerScope, [tab.repeat.id]) &&
+        tab.repeat.nameField === oldId
+          ? { ...tab.repeat, nameField: newId }
+          : tab.repeat,
+      sections: tab.sections.map((section) => ({
+        ...section,
+        repeat:
+          section.repeat !== undefined &&
+          samePath(
+            ownerScope,
+            section.repeat === undefined
+              ? []
+              : [...(tab.repeat === undefined ? [] : [tab.repeat.id]), section.repeat.id],
+          ) &&
+          section.repeat.nameField === oldId
+            ? { ...section.repeat, nameField: newId }
+            : section.repeat,
+        rows: section.rows.map((row) => ({
+          ...row,
+          repeat:
+            row.repeat !== undefined &&
+            samePath(ownerScope, [
+              ...(tab.repeat === undefined ? [] : [tab.repeat.id]),
+              ...(section.repeat === undefined ? [] : [section.repeat.id]),
+              row.repeat.id,
+            ]) &&
+            row.repeat.nameField === oldId
+              ? { ...row.repeat, nameField: newId }
+              : row.repeat,
+        })),
+      })),
+    })),
+  };
 
   return { template: renamed, formulas };
 }
@@ -134,12 +165,13 @@ function cellAt(layout: TemplateLayout, place: TemplateCellPlace): PresetCell | 
   return sectionAt(layout, place)?.rows[place.rowIndex]?.cells[place.cellIndex];
 }
 
-function sameSection(a: TemplateSectionPlace, b: TemplateSectionPlace): boolean {
-  return a.tabIndex === b.tabIndex && a.sectionIndex === b.sectionIndex;
-}
-
 function samePlace(a: TemplateCellPlace, b: TemplateCellPlace): boolean {
-  return sameSection(a, b) && a.rowIndex === b.rowIndex && a.cellIndex === b.cellIndex;
+  return (
+    a.tabIndex === b.tabIndex &&
+    a.sectionIndex === b.sectionIndex &&
+    a.rowIndex === b.rowIndex &&
+    a.cellIndex === b.cellIndex
+  );
 }
 
 // Whether a formula in the row at `from` reads `id` from the field at `field`. The parser reads the
@@ -157,55 +189,74 @@ function resolvesToField(
   }
 
   if (reference.scope === 'block') {
-    return sameSection(from, field) && isFirstHolder(layout, id, field, true);
+    return (
+      scopeKeyAt(layout, from, reference.scopePath ?? repeatScopePathAt(layout, from)) ===
+        scopeOfField(layout, field) && isFirstHolder(layout, id, field)
+    );
   }
 
-  return isFirstHolder(layout, id, field, false);
+  return scopeOfField(layout, field) === '@root' && isFirstHolder(layout, id, field);
 }
 
-// Whether a field of `field`'s scope is `id`: its own repeat section, or every section that does not
-// repeat.
+// Whether the scope of `field` already holds `id`.
 function scopeHolds(layout: TemplateLayout, id: string, field: TemplateCellPlace): boolean {
-  const block = sectionAt(layout, field)?.repeat !== undefined;
+  const scope = scopeOfField(layout, field);
 
-  return placedSections(layout).some(
-    ({ place, section }) =>
-      (block ? sameSection(place, field) : section.repeat === undefined) &&
-      section.rows.some((row) => row.cells.some((cell) => cell.kind === 'field' && cell.id === id)),
+  return placedSections(layout).some(({ place, section }) =>
+    section.rows.some((row, rowIndex) => {
+      const rowScope = scopeOfField(layout, { ...place, rowIndex, cellIndex: 0 });
+
+      return (
+        rowScope === scope && row.cells.some((cell) => cell.kind === 'field' && cell.id === id)
+      );
+    }),
   );
 }
 
-// Whether `field` is the first field `id` of its scope: of its own repeat section when `block`,
-// otherwise of every section that does not repeat.
-function isFirstHolder(
-  layout: TemplateLayout,
-  id: string,
-  field: TemplateCellPlace,
-  block: boolean,
-): boolean {
-  const own = sectionAt(layout, field);
-
-  if (own === null || (own.repeat !== undefined) !== block) {
-    return false;
-  }
+// Whether `field` is the first field `id` in its lexical scope.
+function isFirstHolder(layout: TemplateLayout, id: string, field: TemplateCellPlace): boolean {
+  const scope = scopeOfField(layout, field);
 
   for (const { place, section } of placedSections(layout)) {
-    const inScope = block ? sameSection(place, field) : section.repeat === undefined;
-
-    if (!inScope) {
-      continue;
-    }
-
     for (const [rowIndex, row] of section.rows.entries()) {
       const cellIndex = row.cells.findIndex((cell) => cell.kind === 'field' && cell.id === id);
 
-      if (cellIndex !== -1) {
+      if (cellIndex !== -1 && scopeOfField(layout, { ...place, rowIndex, cellIndex }) === scope) {
         return samePlace({ ...place, rowIndex, cellIndex }, field);
       }
     }
   }
 
   return false;
+}
+
+function scopeOfField(layout: TemplateLayout, field: TemplateCellPlace): string {
+  return scopeKeyAt(layout, field, repeatScopePathAt(layout, field));
+}
+
+function scopeKeyAt(
+  layout: TemplateLayout,
+  from: TemplateRowPlace,
+  scopePath: readonly string[],
+): string {
+  const section = sectionAt(layout, from);
+  const row = section?.rows[from.rowIndex];
+  const last = scopePath.at(-1);
+
+  const owner =
+    row?.repeat?.id === last
+      ? `row:${from.tabIndex}:${from.sectionIndex}:${from.rowIndex}`
+      : section?.repeat?.id === last
+        ? `section:${from.tabIndex}:${from.sectionIndex}`
+        : layout.tabs[from.tabIndex]?.repeat?.id === last
+          ? `tab:${from.tabIndex}`
+          : 'root';
+
+  return scopePath.length === 0 ? '@root' : `${scopePath.join(':')}@${owner}`;
+}
+
+function samePath(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((part, index) => part === right[index]);
 }
 
 // `formula` with every whole-word `oldId` written as `newId`, or `null` when it names none. Words

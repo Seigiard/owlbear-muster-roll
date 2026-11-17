@@ -30,7 +30,11 @@ export function renderedTabs(
       repeatBlocks(records, sheetId, scopeId).map((block) => ({
         scopeId,
         instanceId: block.instanceId,
-        name: repeatBlockName(records, sheetId, section, block.instanceId),
+        path: [scopeId, block.instanceId],
+        name: repeatBlockName(records, sheetId, section, block.instanceId, [
+          scopeId,
+          block.instanceId,
+        ]),
       })),
     );
   }

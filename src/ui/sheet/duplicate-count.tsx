@@ -13,6 +13,7 @@ type DuplicateCountProps = {
   sheetId: string;
   sectionId: string;
   instanceId: string;
+  path?: readonly string[];
   sendCommand: (
     command: Extract<Command, { type: 'repeat-block-duplicate' }>,
   ) => CommandOutcomePromise<undefined>;
@@ -35,6 +36,7 @@ export function DuplicateCount({
   sheetId,
   sectionId,
   instanceId,
+  path,
   sendCommand,
   focusRequest,
   onDone,
@@ -93,14 +95,20 @@ export function DuplicateCount({
       return;
     }
 
+    const command: Extract<Command, { type: 'repeat-block-duplicate' }> = {
+      type: 'repeat-block-duplicate',
+      sheetId,
+      sectionId,
+      instanceId,
+      count: count.value,
+    };
+
+    if (path !== undefined) {
+      command.path = [...path];
+    }
+
     setSent({
-      outcome: sendCommand({
-        type: 'repeat-block-duplicate',
-        sheetId,
-        sectionId,
-        instanceId,
-        count: count.value,
-      }),
+      outcome: sendCommand(command),
     });
     setProblem(null);
   }

@@ -603,6 +603,121 @@ describe('importSnapshot', () => {
       count,
     }).toEqual({ keys: ['blk:brok', 'blk:npc'], count: 3 });
   });
+  test('keeps a valid nested child and counts one value below a child scope another parent lacks', () => {
+    // #given
+    const preset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'encounter',
+          title: 'Encounter',
+          tabs: [
+            {
+              repeat: { id: 'npc', nameField: 'npc_name' },
+              sections: [
+                {
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }],
+                },
+                {
+                  repeat: { id: 'attack', nameField: 'attack_name' },
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack_name' }] }],
+                },
+              ],
+            },
+            {
+              sections: [
+                {
+                  repeat: { id: 'loot', nameField: 'loot_name' },
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'loot_name' }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const input: SnapshotFile = {
+      v: 4,
+      type: 'muster-roll/snapshot',
+      sheets: [
+        {
+          id: 'encounter',
+          cells: {},
+          blocks: [
+            {
+              path: ['npc', 'n1'],
+              order: 0,
+              cells: { npc_name: 'Goblin' },
+            },
+            {
+              path: ['npc', 'n1', 'attack', 'a1'],
+              order: 0,
+              cells: { attack_name: 'Bite' },
+            },
+            {
+              path: ['loot', 'l1'],
+              order: 0,
+              cells: { loot_name: 'Chest' },
+            },
+            {
+              path: ['loot', 'l1', 'attack', 'a1'],
+              order: 0,
+              cells: { attack_name: 'Claw' },
+            },
+          ],
+        },
+      ],
+      links: [],
+    };
+
+    // #when
+    const result = importSnapshot(input, { preset, data: CURRENT.data }, AUTHOR);
+
+    if (!result.ok) {
+      throw new Error(`the import failed: ${result.error}`);
+    }
+
+    const records = assembleRecords(result.value.records);
+
+    const blockSummary = [...records.values()]
+      .flatMap((record) => {
+        if (!record.k.startsWith('blk:')) return [];
+        const data = blockDataSchema.parse(record.d);
+
+        return [
+          {
+            key: record.k,
+            order: data.order,
+            values: cellValues(data.cells),
+          },
+        ];
+      })
+      .sort((first, second) => first.key.localeCompare(second.key));
+
+    // #then
+    expect({ blocks: blockSummary, count: result.value.count }).toEqual({
+      blocks: [
+        { key: 'blk:encounter', order: 0, values: {} },
+        {
+          key: 'blk:encounter:loot:l1',
+          order: 0,
+          values: { loot_name: 'Chest' },
+        },
+        {
+          key: 'blk:encounter:npc:n1',
+          order: 0,
+          values: { npc_name: 'Goblin' },
+        },
+        {
+          key: 'blk:encounter:npc:n1:attack:a1',
+          order: 0,
+          values: { attack_name: 'Bite' },
+        },
+      ],
+      count: 1,
+    });
+  });
   test('keeps a known section and drops an unknown one without shifting orders', () => {
     // #given: `item` is current and `gear` is unknown.
     const input = file([

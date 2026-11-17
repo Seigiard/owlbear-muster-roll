@@ -14,7 +14,7 @@ import {
 import { DEFAULT_WINDOW_SIZE, type RenderedTab } from '@/core/preset';
 import { newInstanceId } from '@/core/ids';
 import { renderedTabs as renderTabs } from '@/core/rendered-tabs';
-import { repDataSchema, repKey, recordSchema, type VersionedRecord } from '@/core/records';
+import { blockPathKey, repDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
 import { TIMING } from '@/core/timing';
 import { sheetName } from '@/core/sheets';
 import { tabShownTo, templateShownTo, visibleRecordMap, type PlayerRole } from '@/core/visibility';
@@ -142,14 +142,14 @@ export function PreviewPane({
       // effects except local repeat-tab lifecycle, which changes only the builder snapshot.
       sendCommand: ((command: Command) => {
         if (command.type === 'repeat-block-add') {
-          const key = repKey(command.sheetId, command.sectionId, command.instanceId);
+          const path = command.path ?? [command.sectionId, command.instanceId];
+          const key = blockPathKey(command.sheetId, path);
+          const prefix = `${blockPathKey(command.sheetId, path.slice(0, -1))}:`;
 
           const blocks = snapshotRecords
             .map((record) => (repDataSchema.safeParse(record.d).success ? record : null))
             .filter((record): record is VersionedRecord => record !== null)
-            .filter((record) =>
-              record.k.startsWith(`blk:${command.sheetId}:${command.sectionId}:`),
-            );
+            .filter((record) => record.k.startsWith(prefix));
 
           const order =
             blocks.reduce((highest, record) => {
@@ -177,7 +177,8 @@ export function PreviewPane({
         }
 
         if (command.type === 'repeat-block-delete') {
-          const key = repKey(command.sheetId, command.sectionId, command.instanceId);
+          const path = command.path ?? [command.sectionId, command.instanceId];
+          const key = blockPathKey(command.sheetId, path);
           const current = snapshotRecords.find((record) => record.k === key);
 
           if (current !== undefined) {

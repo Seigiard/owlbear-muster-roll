@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { encodePreset, type Preset } from '@/core/preset';
-import { recordSchema, type VersionedRecord } from '@/core/records';
+import {
+  blockDataSchema,
+  cellValues,
+  recordSchema,
+  type FieldValues,
+  type VersionedRecord,
+} from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import type { Command } from '@/core/ui-messages';
@@ -545,6 +551,204 @@ describe('a repeat block removal', () => {
       ],
       kept: { k: 'link:t3', d: { s: 'brok', c: 'token' }, c: 1, a: 'seed' },
       menu: [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM],
+    });
+  });
+});
+
+describe('a nested repeat block duplicate', () => {
+  test('copies the nested subtree with a numbered name and no copied token links', async () => {
+    // #given
+    const nestedPreset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'encounter',
+          title: 'Encounter',
+          tabs: [
+            {
+              repeat: { id: 'npc', nameField: 'npc_name' },
+              sections: [
+                {
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'npc_name' },
+                        { kind: 'field', type: 'number', id: 'hp' },
+                        { kind: 'token', id: 'npc_token' },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  repeat: { id: 'attack', nameField: 'attack_name' },
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'attack_name' },
+                        { kind: 'field', type: 'number', id: 'damage' },
+                        { kind: 'token', id: 'attack_token' },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const seeded: VersionedRecord[] = [
+      { k: 'preset', d: encodePreset(nestedPreset), c: 1, a: 'seed' },
+      {
+        k: 'blk:encounter',
+        d: { order: 0, cells: {} },
+        c: 1,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+      {
+        k: 'blk:encounter:npc:n1',
+        d: {
+          order: 0,
+          cells: { npc_name: ['Goblin 1', 1, 'seed'], hp: [7, 1, 'seed'] },
+        },
+        c: 1,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+      {
+        k: 'blk:encounter:npc:n1:attack:a1',
+        d: {
+          order: 0,
+          cells: { attack_name: ['Claw', 1, 'seed'], damage: [3, 1, 'seed'] },
+        },
+        c: 1,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+      {
+        k: 'link:npc-source',
+        d: { s: 'encounter', path: ['npc', 'n1'], c: 'npc_token' },
+        c: 1,
+        a: 'seed',
+      },
+      {
+        k: 'link:attack-source',
+        d: {
+          s: 'encounter',
+          path: ['npc', 'n1', 'attack', 'a1'],
+          c: 'attack_token',
+        },
+        c: 1,
+        a: 'seed',
+      },
+    ];
+
+    const nestedRig = createRoomRig({ seeded });
+    const room = nestedRig.openRoom();
+
+    const client = await nestedRig.startClient(room, 'gm-a', {
+      engine: { menuCopy: MENU_COPY },
+    });
+
+    // #when
+    send(client, {
+      type: 'repeat-block-duplicate',
+      sheetId: 'encounter',
+      sectionId: 'npc',
+      instanceId: 'n1',
+      count: 1,
+    });
+
+    await waitUntil(() =>
+      [...client.store.$records.get().keys()].some(
+        (key) =>
+          key.startsWith('blk:encounter:npc:') &&
+          key.split(':').length === 4 &&
+          key !== 'blk:encounter:npc:n1',
+      ),
+    );
+
+    const records = client.store.$records.get();
+
+    const duplicate = [...records.values()].find(
+      (record) =>
+        record.k.startsWith('blk:encounter:npc:') &&
+        record.k.split(':').length === 4 &&
+        record.k !== 'blk:encounter:npc:n1',
+    );
+
+    const duplicateId = duplicate?.k.split(':').at(-1) ?? '';
+
+    const duplicateChildren = [...records.values()]
+      .filter((record) => record.k.startsWith(`blk:encounter:npc:${duplicateId}:attack:`))
+      .sort((first, second) => {
+        const firstOrder = blockDataSchema.safeParse(first.d).data?.order ?? 0;
+        const secondOrder = blockDataSchema.safeParse(second.d).data?.order ?? 0;
+
+        return firstOrder - secondOrder || first.k.localeCompare(second.k);
+      });
+
+    const beforeMutation = duplicateChildren.map((record) => ({
+      scope: record.k.split(':').at(-2),
+      order: blockDataSchema.parse(record.d).order,
+      values: valuesOf(record),
+    }));
+
+    const duplicateChild = duplicateChildren[0];
+
+    if (duplicateChild === undefined) {
+      throw new Error('the duplicated nested attack was not created');
+    }
+
+    const duplicateChildId = duplicateChild.k.split(':').at(-1) ?? '';
+
+    const target = {
+      kind: 'rep',
+      sectionId: 'attack',
+      instanceId: duplicateChildId,
+      path: ['npc', duplicateId, 'attack', duplicateChildId],
+    } as const;
+
+    send(client, {
+      type: 'field-patch',
+      sheetId: 'encounter',
+      target,
+      fieldId: 'attack_name',
+      value: 'Bite',
+    });
+    await waitUntil(() => valuesOf(shown(client, duplicateChild.k)).attack_name === 'Bite');
+    const afterMutation = client.store.$records.get();
+
+    // #then
+    expect({
+      beforeMutation,
+      source: {
+        npc: valuesOf(afterMutation.get('blk:encounter:npc:n1')),
+        attack: valuesOf(afterMutation.get('blk:encounter:npc:n1:attack:a1')),
+      },
+      duplicate: {
+        npc: valuesOf(afterMutation.get(duplicate?.k ?? '')),
+        child: valuesOf(afterMutation.get(duplicateChild.k)),
+      },
+      links: [...afterMutation.values()]
+        .flatMap((record) => (record.k.startsWith('link:') && record.d !== null ? [record.d] : []))
+        .sort((first, second) => JSON.stringify(first).localeCompare(JSON.stringify(second))),
+    }).toEqual({
+      beforeMutation: [{ scope: 'attack', order: 0, values: { attack_name: 'Claw', damage: 3 } }],
+      source: {
+        npc: { npc_name: 'Goblin 1', hp: 7 },
+        attack: { attack_name: 'Claw', damage: 3 },
+      },
+      duplicate: {
+        npc: { npc_name: 'Goblin 2', hp: 7 },
+        child: { attack_name: 'Bite', damage: 3 },
+      },
+      links: [
+        { s: 'encounter', path: ['npc', 'n1', 'attack', 'a1'], c: 'attack_token' },
+        { s: 'encounter', path: ['npc', 'n1'], c: 'npc_token' },
+      ],
     });
   });
 });
@@ -1110,4 +1314,8 @@ function menuOf(client: Client): OwlbearMenuItem[] {
     id: item.id,
     icons: item.icons.map((icon) => ({ label: icon.label, filter: icon.filter ?? null })),
   }));
+}
+
+function valuesOf(record: VersionedRecord | undefined): FieldValues {
+  return cellValues(blockDataSchema.parse(record?.d).cells);
 }

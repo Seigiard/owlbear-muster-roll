@@ -12,7 +12,7 @@ If the snapshot does not fit, the GM sees a notice and play continues by broadca
 
 ## Records
 
-Format version 4 keeps one record per block, the sheet root included. A block is a sheet root or one instance of a repeat scope (`preset-format.md`, Repeat). A block path is a sequence of `(scope id, block id)` pairs; the current release writes the supported non-nested form.
+Format version 4 keeps one record per block, the sheet root included. A block is a sheet root or one instance of a repeat scope (`preset-format.md`, Repeat). A block path is a sequence of `(scope id, block id)` pairs. A nested block stores the complete path from its outermost block through itself.
 
 | Record | Key | Holds |
 | --- | --- | --- |
@@ -41,7 +41,7 @@ Format version 4 keeps one record per block, the sheet root included. A block is
 | File | Holds | On import |
 | --- | --- | --- |
 | Preset | Version 4 structure only | Gives the same structure |
-| Room snapshot | Version 4 values and token links | Replaces all room data after confirmation. Drops values of field ids not in the current preset, blocks whose scope path the preset lacks, and sheets of a template the preset lacks, and shows the counts. Restores a token link where the token exists. Resets player links and write rights to read |
+| Room snapshot | Version 4 values and token links | Replaces all room data after confirmation. Validates every pair in a block's complete ancestry, drops blocks whose full scope path the preset lacks or whose parent block is absent, drops values of field ids not in the current preset and sheets of a template the preset lacks, and shows the counts. Restores a token link where the token exists. Resets player links and write rights to read |
 
 Preset and snapshot files use version 4. Versions 1 to 3 are refused and are
 not converted. A wipe («Очистить всё», CAP-31) removes the preset, every

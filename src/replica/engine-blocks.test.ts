@@ -3,7 +3,14 @@ import { expect, test } from 'bun:test';
 import { encodePreset, type Preset } from '@/core/preset';
 import { NOTHING_ERASED } from '@/core/preset-migrate';
 import { blockDataSchema, cellValues, type VersionedRecord } from '@/core/records';
-import { createRoomRig, send, shown, storedRecord } from '../../tests/support/room-rig';
+import {
+  createRoomRig,
+  pause,
+  rejection,
+  send,
+  shown,
+  storedRecord,
+} from '../../tests/support/room-rig';
 
 const preset: Preset = {
   v: 4,
@@ -178,6 +185,96 @@ test('deleting a block and its link defeats a later higher-counter cell commit',
     shown(first, 'link:token')?.d,
     shown(later, 'link:token')?.d,
   ]).toEqual([null, null, null, null]);
+});
+
+test('a child field command after its parent was deleted is refused without changing the child', async () => {
+  // #given
+  const nestedPreset: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'encounter',
+        title: 'Encounter',
+        tabs: [
+          {
+            repeat: { id: 'npc', nameField: 'npc_name' },
+            sections: [
+              {
+                rows: [
+                  {
+                    cells: [{ kind: 'field', type: 'text', id: 'npc_name' }],
+                  },
+                ],
+              },
+              {
+                repeat: { id: 'attack', nameField: 'attack_name' },
+                rows: [
+                  {
+                    cells: [{ kind: 'field', type: 'text', id: 'attack_name' }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const parentKey = 'blk:encounter:npc:n1';
+  const childKey = `${parentKey}:attack:a1`;
+
+  const nestedRig = createRoomRig({
+    seeded: [
+      { k: 'preset', d: encodePreset(nestedPreset), c: 1, a: 'seed' },
+      {
+        k: parentKey,
+        d: null,
+        c: 2,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+      {
+        k: childKey,
+        d: { order: 0, cells: { attack_name: ['Claw', 1, 'seed'] } },
+        c: 1,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+    ],
+  });
+
+  const room = nestedRig.openRoom();
+  const client = await nestedRig.startClient(room, 'gm-a');
+
+  // #when
+  const target = {
+    kind: 'rep',
+    sectionId: 'attack',
+    instanceId: 'a1',
+    path: ['npc', 'n1', 'attack', 'a1'],
+  } as const;
+
+  const id = send(client, {
+    type: 'field-patch',
+    sheetId: 'encounter',
+    target,
+    fieldId: 'attack_name',
+    value: 'Late bite',
+  });
+
+  await pause(25);
+
+  // #then
+  expect({
+    rejection: rejection(client, id),
+    parent: storedRecord(client, parentKey)?.d,
+    child: values(storedRecord(client, childKey)),
+  }).toEqual({
+    rejection: 'unknown-instance',
+    parent: null,
+    child: { attack_name: 'Claw' },
+  });
 });
 
 test('reordering fields keeps the explicit repeat identity and values', async () => {

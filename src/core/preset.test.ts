@@ -940,6 +940,43 @@ describe('parsePresetFile', () => {
     // #then
     expect(parsed.ok).toBe(true);
   });
+  test('accepts the same nested repeat id below two different parent scopes', () => {
+    // #given
+    const text = presetOf({
+      id: 'encounter',
+      title: 'Encounter',
+      tabs: [
+        {
+          title: 'NPC',
+          repeat: { id: 'npc', nameField: 'npc_name' },
+          sections: [
+            { rows: [{ cells: [TEXT_FIELD('npc_name')] }] },
+            {
+              repeat: { id: 'attack', nameField: 'attack_name' },
+              rows: [{ cells: [TEXT_FIELD('attack_name')] }],
+            },
+          ],
+        },
+        {
+          title: 'Boss',
+          repeat: { id: 'boss', nameField: 'boss_name' },
+          sections: [
+            { rows: [{ cells: [TEXT_FIELD('boss_name')] }] },
+            {
+              repeat: { id: 'attack', nameField: 'attack_name' },
+              rows: [{ cells: [TEXT_FIELD('attack_name')] }],
+            },
+          ],
+        },
+      ],
+    });
+
+    // #when
+    const parsed = parsePresetFile(text);
+
+    // #then
+    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+  });
   test('refuses a columns row with more cells than the grid', () => {
     // #given
     const text = fileOf([

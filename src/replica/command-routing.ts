@@ -6,6 +6,7 @@ import type {
   EngineMessage,
   PresetDiffMessage,
   RejectionReason,
+  WindowMessage,
 } from '@/core/ui-messages';
 import type { PlayerRole } from '@/core/visibility';
 import type { ComposeContext, Composers } from '@/replica/composers';
@@ -135,7 +136,7 @@ export type CommandRoutingPorts = {
 };
 
 export type CommandRouting = {
-  handleCommand: (message: CommandMessage) => void;
+  handleCommand: (message: CommandMessage | Extract<WindowMessage, { t: 'command' }>) => void;
   runCommand: (id: string, command: Command) => void;
   handlePresetDiff: (message: PresetDiffMessage) => void;
   pendingView: () => Map<string, VersionedRecord>;
@@ -164,7 +165,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     };
   }
 
-  function handleCommand(message: CommandMessage): void {
+  function handleCommand(message: CommandMessage | Extract<WindowMessage, { t: 'command' }>): void {
     if (ports.acceptCommand(message.id)) {
       runCommand(message.id, message.command);
     }

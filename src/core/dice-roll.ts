@@ -13,18 +13,20 @@ import {
 import { parseFormula, writeDiceFields } from '@/core/formula';
 import {
   plainRow,
+  repeatSectionByPath,
   repeatSectionId,
-  repeatSectionAt,
+  repeatScopePathAt,
   resolveFieldReference,
   sectionAt,
   type PresetCell,
+  type PresetSection,
   type TemplateLayout,
   type TemplateRowPlace,
 } from '@/core/preset';
 import {
   cellValues,
+  blockPathKey,
   repDataSchema,
-  repKey,
   type FieldValue,
   type VersionedRecord,
 } from '@/core/records';
@@ -45,6 +47,11 @@ export const dicePlaceSchema = z.strictObject({
   rowIndex: z.number().int().nonnegative(),
   cellIndex: z.number().int().nonnegative(),
   instanceId: z.string().min(1).max(64).nullable(),
+  path: z
+    .array(z.string().min(1))
+    .min(2)
+    .refine((parts) => parts.length % 2 === 0)
+    .optional(),
 });
 
 export type ShownValue = z.infer<typeof shownValueSchema>;
@@ -102,13 +109,14 @@ export function prepareDiceRoll(
   place: DicePlace,
   shown: ShownValues,
 ): Result<PreparedDiceRoll, DiceRollFailure> {
-  const tab = layout.tabs[place.tabIndex];
   const section = sectionAt(layout, place);
   const row = section?.rows[place.rowIndex];
   const cell = row?.cells[place.cellIndex];
 
   const repeat =
-    tab?.repeat !== undefined || section?.repeat !== undefined || row?.repeat !== undefined;
+    section?.repeat !== undefined ||
+    row?.repeat !== undefined ||
+    layout.tabs[place.tabIndex]?.repeat !== undefined;
 
   if (
     section === null ||
@@ -123,13 +131,22 @@ export function prepareDiceRoll(
     tabIndex: place.tabIndex,
     sectionIndex: place.sectionIndex,
     rowIndex: place.rowIndex,
+    path: place.path,
   };
 
   let ownBlock: FieldValues | undefined;
 
   if (place.instanceId !== null) {
-    const scopeId = repeatSectionId(section) ?? row.repeat?.id ?? tab?.repeat?.id ?? null;
-    const block = blockValues(records, sheetId, scopeId, place.instanceId);
+    const block = blockValues(
+      layout,
+      records,
+      sheetId,
+      from,
+      section,
+      row,
+      place.instanceId,
+      place.path,
+    );
 
     if (block === null) {
       return err({ code: 'not-dice' });
@@ -152,6 +169,11 @@ export function prepareDiceRoll(
     from,
     (rowId) => withShown(rowValues(records, sheetId, rowId), shown),
     ownBlock,
+    (scopePath) => {
+      const values = blockValuesAtScope(records, sheetId, place.path, scopePath);
+
+      return values === null ? null : withShown(values, shown);
+    },
   );
 
   const diceFieldLookup = formulaDiceFieldLookup(
@@ -159,6 +181,11 @@ export function prepareDiceRoll(
     from,
     (rowId) => withShown(rowValues(records, sheetId, rowId), shown),
     ownBlock,
+    (scopePath) => {
+      const values = blockValuesAtScope(records, sheetId, place.path, scopePath);
+
+      return values === null ? null : withShown(values, shown);
+    },
   );
 
   const resolved = resolveFormulaDiceFields(formula, diceFieldLookup);
@@ -212,18 +239,82 @@ export function prepareDiceRoll(
 
 // The values of one repeat block, or `null` for a repeat block that is gone.
 function blockValues(
+  layout: TemplateLayout,
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
-  scopeId: string | null,
+  from: TemplateRowPlace,
+  section: PresetSection,
+  row: PresetSection['rows'][number],
   instanceId: string,
+  path: readonly string[] | undefined,
 ): FieldValues | null {
-  if (scopeId === null) {
+  const sectionId =
+    repeatSectionId(section) ?? row.repeat?.id ?? repeatScopePathAt(layout, from).at(-1) ?? null;
+
+  if (sectionId === null) {
     return null;
   }
 
-  const data = repDataSchema.safeParse(records.get(repKey(sheetId, scopeId, instanceId))?.d);
+  const fullPath = path ?? [sectionId, instanceId];
+
+  if (
+    fullPath.at(-1) !== instanceId ||
+    fullPath.at(-2) !== sectionId ||
+    !liveBlockPath(records, sheetId, fullPath)
+  ) {
+    return null;
+  }
+
+  const data = repDataSchema.safeParse(records.get(blockPathKey(sheetId, fullPath))?.d);
 
   return data.success ? new Map(Object.entries(cellValues(data.data.cells))) : null;
+}
+
+function blockValuesAtScope(
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  path: readonly string[] | undefined,
+  scopePath: readonly string[],
+): FieldValues | null {
+  if (path === undefined) {
+    return null;
+  }
+
+  const scopeIndex = scopePath.reduce(
+    (last, scopeId, index) =>
+      path[index * 2] === scopeId && path[index * 2 + 1] !== undefined ? index : -1,
+    -1,
+  );
+
+  if (scopeIndex !== scopePath.length - 1) {
+    return null;
+  }
+
+  const ancestorPath = path.slice(0, (scopeIndex + 1) * 2);
+
+  if (!liveBlockPath(records, sheetId, ancestorPath)) {
+    return null;
+  }
+
+  const data = repDataSchema.safeParse(records.get(blockPathKey(sheetId, ancestorPath))?.d);
+
+  return data.success ? new Map(Object.entries(cellValues(data.data.cells))) : null;
+}
+
+function liveBlockPath(
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  path: readonly string[],
+): boolean {
+  for (let length = 2; length <= path.length; length += 2) {
+    if (
+      !repDataSchema.safeParse(records.get(blockPathKey(sheetId, path.slice(0, length)))?.d).success
+    ) {
+      return false;
+    }
+  }
+
+  return path.length > 0 && path.length % 2 === 0;
 }
 
 // A shown text stands in for the stored value, and an empty one for no value. Every row gets the
@@ -255,7 +346,9 @@ function fieldLabel(layout: TemplateLayout, from: TemplateRowPlace, id: string):
 
   const rows: readonly (readonly PresetCell[])[] =
     reference.scope === 'block'
-      ? (repeatSectionAt(layout, from)?.rows.map((row) => row.cells) ?? [])
+      ? scopeRows(layout, reference.scopePath ?? repeatScopePathAt(layout, from)).map(
+          (row) => row.cells,
+        )
       : [plainRow(layout, reference.rowId) ?? []];
 
   for (const row of rows) {
@@ -268,4 +361,10 @@ function fieldLabel(layout: TemplateLayout, from: TemplateRowPlace, id: string):
   }
 
   return id;
+}
+
+function scopeRows(layout: TemplateLayout, scopePath: readonly string[]): PresetSection['rows'] {
+  const section = repeatSectionByPath(layout, scopePath);
+
+  return section?.rows ?? [];
 }

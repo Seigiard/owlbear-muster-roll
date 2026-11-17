@@ -15,6 +15,7 @@ import {
   decodePreset,
   encodePreset,
   repeatSectionById,
+  repeatSectionByPath,
   templateById,
   type Preset,
   type PresetSection,
@@ -27,16 +28,15 @@ import {
 } from '@/core/preset-migrate';
 import {
   blockDataSchema,
+  blockPathKey,
   cellValues,
   versionCells,
-  parseRepKey,
+  parseBlockPathKey,
   playerDataSchema,
   playerIdSchema,
   plinkPrefix,
   presetDataSchema,
   repDataSchema,
-  repKey,
-  repKeyPrefix,
   sheetDataSchema,
   type FieldValues,
   type SheetData,
@@ -292,6 +292,25 @@ export function createComposers(connectionId: string): Composers {
     }
 
     const { template } = policy.value;
+
+    if (
+      command.target.kind === 'rep' &&
+      !matchesBlockTarget(command.target.path, command.target.sectionId, command.target.instanceId)
+    ) {
+      return err('unknown-instance');
+    }
+
+    if (
+      command.target.kind === 'rep' &&
+      !validBlockPath(
+        context.records,
+        command.sheetId,
+        command.target.path ?? [command.target.sectionId, command.target.instanceId],
+      )
+    ) {
+      return err('unknown-instance');
+    }
+
     const field = findPatchField(template, command.target, command.fieldId);
 
     if (field === null) {
@@ -378,10 +397,7 @@ export function createComposers(connectionId: string): Composers {
 
     const { c, a } = context.mint(working.k, existing?.c ?? 0);
 
-    return {
-      record: mintedPatch(working, existing, { c, a }, context.mode),
-      refusals,
-    };
+    return { record: mintedPatch(working, existing, { c, a }, context.mode), refusals };
   }
 
   // A new repeat block goes after every repeat block this sheet has in the section. The id is the
@@ -405,7 +421,13 @@ export function createComposers(connectionId: string): Composers {
       return err('instance-exists');
     }
 
-    const k = repKey(command.sheetId, command.sectionId, command.instanceId);
+    const path = command.path ?? [command.sectionId, command.instanceId];
+
+    if (!validBlockPath(context.records, command.sheetId, path.slice(0, -2))) {
+      return err('unknown-instance');
+    }
+
+    const k = blockPathKey(command.sheetId, path);
     const { c, a } = context.mint(k, 0);
 
     const record: VersionedRecord = {
@@ -430,17 +452,20 @@ export function createComposers(connectionId: string): Composers {
       return section;
     }
 
-    const current = context.records.get(
-      repKey(command.sheetId, command.sectionId, command.instanceId),
-    );
+    const path = command.path ?? [command.sectionId, command.instanceId];
+    const current = context.records.get(blockPathKey(command.sheetId, path));
 
-    if (current === undefined || current.d === null) {
+    if (
+      current === undefined ||
+      current.d === null ||
+      !validBlockPath(context.records, command.sheetId, path)
+    ) {
       return err('unknown-instance');
     }
 
     return ok([
       tombstone(context, current),
-      ...blockLinkTombstones(context, command.sheetId, command.instanceId),
+      ...blockLinkTombstones(context, command.sheetId, command.instanceId, path),
     ]);
   }
 
@@ -465,9 +490,12 @@ export function createComposers(connectionId: string): Composers {
 
     const { policy } = section.value;
 
-    const source = repDataSchema.safeParse(
-      context.records.get(repKey(command.sheetId, command.sectionId, command.instanceId))?.d,
-    );
+    const sourcePath = command.path ?? [command.sectionId, command.instanceId];
+    const sourceKey = blockPathKey(command.sheetId, sourcePath);
+
+    const source = validBlockPath(context.records, command.sheetId, sourcePath)
+      ? repDataSchema.safeParse(context.records.get(sourceKey)?.d)
+      : repDataSchema.safeParse(undefined);
 
     if (!source.success) {
       return err('unknown-instance');
@@ -499,13 +527,49 @@ export function createComposers(connectionId: string): Composers {
 
       taken.add(instanceId);
 
-      const k = repKey(command.sheetId, command.sectionId, instanceId);
+      const path = [...sourcePath.slice(0, -2), command.sectionId, instanceId];
+      const k = blockPathKey(command.sheetId, path);
       const version = context.mint(k, 0);
       const d = { order: firstOrder + index, cells: versionCells(values, version.c, version.a) };
       // AD-14: a copy holds only the fields the template has in the section.
       const stripped = stripToTemplate({ k, d }, policy.template);
 
       copies.push({ k, d: stripped.d, ...version, l: [version.c, version.a] });
+
+      for (const record of context.records.values()) {
+        const child = parseBlockPathKey(record.k);
+
+        if (
+          child === null ||
+          child.sheetId !== command.sheetId ||
+          record.d === null ||
+          child.path.length <= sourcePath.length ||
+          child.path
+            .slice(0, sourcePath.length)
+            .some((part, childIndex) => part !== sourcePath[childIndex])
+        ) {
+          continue;
+        }
+
+        const childPath = [...path, ...child.path.slice(sourcePath.length)];
+        const childKey = blockPathKey(command.sheetId, childPath);
+        const childVersion = context.mint(childKey, 0);
+        const childData = blockDataSchema.safeParse(record.d).data;
+
+        if (childData === undefined) continue;
+
+        const childStripped = stripToTemplate(
+          { k: childKey, d: { ...childData, cells: { ...childData.cells } } },
+          policy.template,
+        );
+
+        copies.push({
+          k: childKey,
+          d: childStripped.d,
+          ...childVersion,
+          l: [childVersion.c, childVersion.a],
+        });
+      }
     }
 
     return copies.every(recordFitsOneMessage) ? ok(copies) : err('too-large');
@@ -514,7 +578,12 @@ export function createComposers(connectionId: string): Composers {
   // The sheet must be a sheet a template owns, and the section a repeat section of that template.
   function repeatSectionOf(
     context: ComposeContext,
-    command: { sheetId: string; sectionId: string },
+    command: {
+      sheetId: string;
+      sectionId: string;
+      instanceId: string;
+      path?: readonly string[];
+    },
   ): Result<{ policy: SheetPolicy; section: PresetSection }, RejectionReason> {
     const policy = sheetPolicyOf(context, command.sheetId, 'unknown-section');
 
@@ -522,7 +591,16 @@ export function createComposers(connectionId: string): Composers {
       return policy;
     }
 
-    const section = repeatSectionById(policy.value.template, command.sectionId);
+    const section =
+      command.path === undefined
+        ? repeatSectionById(policy.value.template, command.sectionId)
+        : (() => {
+            const scopePath = commandScopePath(command);
+
+            return scopePath === null
+              ? null
+              : repeatSectionByPath(policy.value.template, scopePath);
+          })();
 
     return section === null ? err('unknown-section') : ok({ policy: policy.value, section });
   }
@@ -634,13 +712,10 @@ export function createComposers(connectionId: string): Composers {
         return err('invalid-instance-id');
       }
 
-      const sectionId = path[0];
-
       if (
-        sectionId === undefined ||
-        !repDataSchema.safeParse(
-          context.records.get(repKey(command.sheetId, sectionId, instanceId))?.d,
-        ).success
+        path.length % 2 !== 0 ||
+        path.at(-1) !== instanceId ||
+        !validBlockPath(context.records, command.sheetId, path)
       ) {
         return err('unknown-instance');
       }
@@ -822,19 +897,40 @@ export function createComposers(connectionId: string): Composers {
   };
 }
 
-// AD-19: the tombstones of every link that names the repeat block `instanceId` of the sheet. The GM
-// client that removes a repeat block, or commits a player's removal of one, writes them.
+// AD-19: the tombstones of every link that names the repeat block `instanceId` of the sheet. Legacy
+// links may carry the wrong scope id, so their instance id remains authoritative only when their
+// complete path does not name another live block.
 export function blockLinkTombstones(
   context: ComposeContext,
   sheetId: string,
   instanceId: string,
+  path?: readonly string[],
 ): VersionedRecord[] {
   const doomed: VersionedRecord[] = [];
 
   for (const [key, record] of context.records) {
     const target = key.startsWith('link:') ? linkTargetOf(record.d) : null;
 
-    if (target?.sheetId === sheetId && target.instanceId === instanceId) {
+    const targetPath = target?.path ?? null;
+
+    const isDescendant =
+      path !== undefined &&
+      targetPath !== null &&
+      targetPath.length >= path.length &&
+      path.every((part, index) => targetPath[index] === part);
+
+    const isLegacyInstanceTarget =
+      path !== undefined &&
+      targetPath !== null &&
+      targetPath.at(-1) === instanceId &&
+      !validBlockPath(context.records, sheetId, targetPath);
+
+    if (
+      target?.sheetId === sheetId &&
+      (isDescendant ||
+        isLegacyInstanceTarget ||
+        (path === undefined && target?.instanceId === instanceId))
+    ) {
       doomed.push(record);
     }
   }
@@ -868,22 +964,51 @@ function composeLinkClear(
 // The repeat blocks one sheet has in one section, live ones only, with their data.
 function sectionBlocks(
   context: ComposeContext,
-  command: { sheetId: string; sectionId: string },
+  command: { sheetId: string; sectionId: string; path?: readonly string[] },
 ): { order: number; cells: FieldValues }[] {
-  const prefix = repKeyPrefix(command.sheetId, command.sectionId);
+  const path =
+    'path' in command && command.path !== undefined
+      ? [...command.path.slice(0, -2), command.sectionId]
+      : [command.sectionId];
+
   const blocks: { order: number; cells: FieldValues }[] = [];
 
   for (const record of context.records.values()) {
-    if (record.k.startsWith(prefix)) {
-      const block = repDataSchema.safeParse(record.d);
+    const parsed = parseBlockPathKey(record.k);
 
-      if (block.success) {
-        blocks.push({ order: block.data.order, cells: cellValues(block.data.cells) });
-      }
+    if (
+      parsed === null ||
+      parsed.sheetId !== command.sheetId ||
+      parsed.path.length !== path.length + 1 ||
+      parsed.path.slice(0, path.length).some((part, index) => part !== path[index])
+    ) {
+      continue;
+    }
+
+    const block = repDataSchema.safeParse(record.d);
+
+    if (block.success) {
+      blocks.push({ order: block.data.order, cells: cellValues(block.data.cells) });
     }
   }
 
   return blocks;
+}
+
+function commandScopePath(command: {
+  sectionId: string;
+  instanceId: string;
+  path?: readonly string[];
+}): string[] | null {
+  const path = command.path;
+
+  if (!matchesBlockTarget(path, command.sectionId, command.instanceId)) {
+    return null;
+  }
+
+  return path === undefined
+    ? [command.sectionId]
+    : [...path.slice(0, -2).filter((_part, index) => index % 2 === 0), command.sectionId];
 }
 
 // AD-2: every instance id one sheet holds in any section, tombstones included.
@@ -891,10 +1016,12 @@ function sheetInstanceIds(context: ComposeContext, sheetId: string): Set<string>
   const ids = new Set<string>();
 
   for (const key of context.records.keys()) {
-    const parts = parseRepKey(key);
+    const parts = parseBlockPathKey(key);
 
     if (parts?.sheetId === sheetId) {
-      ids.add(parts.instanceId);
+      const instanceId = parts.path.at(-1);
+
+      if (instanceId !== undefined) ids.add(instanceId);
     }
   }
 
@@ -975,7 +1102,7 @@ function mintedSheet(
 // A tombstone holds no order, so only live repeat blocks count.
 function nextBlockOrder(
   context: ComposeContext,
-  command: { sheetId: string; sectionId: string },
+  command: { sheetId: string; sectionId: string; path?: readonly string[] },
 ): number {
   let highest = -1;
 
@@ -984,6 +1111,44 @@ function nextBlockOrder(
   }
 
   return highest + 1;
+}
+
+function validBlockPath(
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  path: readonly string[],
+): boolean {
+  if (path.length === 0) {
+    return true;
+  }
+
+  if (path.length % 2 !== 0) {
+    return false;
+  }
+
+  for (let length = 2; length <= path.length; length += 2) {
+    if (
+      !repDataSchema.safeParse(records.get(blockPathKey(sheetId, path.slice(0, length)))?.d).success
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function matchesBlockTarget(
+  path: readonly string[] | undefined,
+  sectionId: string,
+  instanceId: string,
+): boolean {
+  return (
+    path === undefined ||
+    (path.length >= 2 &&
+      path.length % 2 === 0 &&
+      path.at(-2) === sectionId &&
+      path.at(-1) === instanceId)
+  );
 }
 
 // After the last sheet of the sheet set, by `order`.

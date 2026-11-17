@@ -8,7 +8,7 @@ import {
   cellValues,
   fieldValuesSchema,
   keySegmentSchema,
-  parseRepKey,
+  parseBlockPathKey,
   templateIdSchema,
   type VersionedRecord,
 } from '@/core/records';
@@ -78,14 +78,15 @@ export const snapshotFileSchema = fileSchema.superRefine((file, context) => {
           path: ['sheets', index, 'blocks', blockIndex, 'path'],
         });
 
-      if (instances.has(instance))
+      if (block.path.length === 2 && instances.has(instance))
         context.addIssue({
           code: 'custom',
           message: 'duplicate block instance id',
           path: ['sheets', index, 'blocks', blockIndex, 'path'],
         });
       paths.add(path);
-      instances.add(instance);
+
+      if (block.path.length === 2) instances.add(instance);
     }
 
     sheets.set(sheet.id, instances);
@@ -98,13 +99,27 @@ export const snapshotFileSchema = fileSchema.superRefine((file, context) => {
       context.addIssue({ code: 'custom', message: 'duplicate token id', path: ['links', index] });
     tokens.add(link.tokenId);
     const blocks = sheets.get(link.sheetId);
-    const instanceId = link.path?.at(-1);
 
-    if (blocks === undefined || (instanceId !== undefined && !blocks.has(instanceId))) {
+    if (
+      blocks === undefined ||
+      (link.path !== undefined && !hasSnapshotPath(file.sheets, link.sheetId, link.path))
+    ) {
       context.addIssue({ code: 'custom', message: 'link to no block', path: ['links', index] });
     }
   }
 });
+
+function hasSnapshotPath(
+  sheets: readonly z.infer<typeof sheetSchema>[],
+  sheetId: string,
+  path: readonly string[],
+): boolean {
+  return (
+    sheets
+      .find((sheet) => sheet.id === sheetId)
+      ?.blocks.some((block) => block.path.join(':') === path.join(':')) ?? false
+  );
+}
 
 export type SnapshotFile = z.infer<typeof snapshotFileSchema>;
 
@@ -122,12 +137,12 @@ export function encodeSnapshotFile(
       const blocks: SnapshotFile['sheets'][number]['blocks'] = [];
 
       for (const record of records.values()) {
-        const parts = parseRepKey(record.k);
+        const parts = parseBlockPathKey(record.k);
         const data = blockDataSchema.safeParse(record.d).data;
 
         if (parts?.sheetId === sheet.sheetId && data !== undefined) {
           blocks.push({
-            path: [parts.sectionId, parts.instanceId],
+            path: parts.path,
             order: data.order,
             cells: sorted(cellValues(data.cells)),
           });

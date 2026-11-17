@@ -4,6 +4,37 @@ export type JsonObject = { [key: string]: JsonValue };
 
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
 
+export type ReadonlyJsonValue =
+  | JsonPrimitive
+  | readonly ReadonlyJsonValue[]
+  | { readonly [key: string]: ReadonlyJsonValue };
+
+export function mutableJson(value: ReadonlyJsonValue): JsonValue {
+  if (Array.isArray(value)) {
+    return value.map(mutableJson);
+  }
+
+  if (isReadonlyJsonPrimitive(value)) {
+    return value;
+  }
+
+  if (isReadonlyJsonObject(value)) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, mutableJson(item)]));
+  }
+
+  throw new Error('Unsupported readonly JSON value');
+}
+
+function isReadonlyJsonPrimitive(value: ReadonlyJsonValue): value is JsonPrimitive {
+  return value === null || Object(value) !== value;
+}
+
+function isReadonlyJsonObject(
+  value: ReadonlyJsonValue,
+): value is { readonly [key: string]: ReadonlyJsonValue } {
+  return value !== null && !Array.isArray(value) && Object(value) === value;
+}
+
 export function canonicalJson(value: JsonValue): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
 

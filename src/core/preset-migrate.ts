@@ -1,10 +1,10 @@
 import { acceptedFieldValue } from '@/core/field-patch';
 import { sameJson } from '@/core/json';
-import { linkTargetOf, liveLinkTarget } from '@/core/link-target';
+import { blockIndex, linkTargetOf, liveLinkTarget } from '@/core/link-target';
+import { compareVersions } from '@/core/merge';
 import {
   firstFieldId,
   repeatSectionId,
-  sectionFields,
   type Preset,
   type PresetFieldCell,
   type TemplateLayout,
@@ -12,8 +12,9 @@ import {
 import {
   blockDataSchema,
   blockKey,
+  blockPathKey,
   cellValues,
-  parseRepKey,
+  parseBlockPathKey,
   type BlockData,
   type Cells,
   type FieldValue,
@@ -37,11 +38,19 @@ export type TemplateScopes = {
   rows: Map<string, PresetFieldCell[]>;
   rowFields: Map<string, { rowId: string; field: PresetFieldCell }>;
   sections: Map<string, PresetFieldCell[]>;
+  parents: Map<string, string | null>;
+  sectionsByPath: Map<string, PresetFieldCell[]>;
 };
 
 export type PresetMoves = {
   rowOf: (fieldId: string) => string | null;
   sectionOf: (sectionId: string) => string | null;
+};
+
+type RepeatPathParts = {
+  sectionId: string;
+  instanceId: string;
+  parentPath: string[];
 };
 
 export const NOTHING_ERASED = erasedDigest([]);
@@ -83,23 +92,30 @@ export function presetDiff(
         .sort((a, b) => (a.k < b.k ? -1 : 1));
 
       const lostBefore = erased.length;
+      const claimed = new Set<string>();
+      const highest = new Map<string, number>();
+      const offsets = new Map<string, number>();
       const sectionIds = [...before.sections.keys()];
 
       const moving = blocks
         .filter((record) => record.d !== null)
         .sort((a, b) => {
-          const firstPart = parseRepKey(a.k);
-          const secondPart = parseRepKey(b.k);
+          const firstPart = parseRepeatPath(a.k);
+          const secondPart = parseRepeatPath(b.k);
 
           const rank = (part: typeof firstPart): number =>
             part === null || after === null
               ? -1
-              : sectionTarget(part.sectionId, after) === part.sectionId
+              : sectionTarget(part.sectionId, before.sections.get(part.sectionId) ?? [], after) ===
+                  part.sectionId
                 ? 0
                 : sectionIds.indexOf(part.sectionId) + 1;
 
           const target = (part: typeof firstPart): string =>
-            part === null || after === null ? '' : (sectionTarget(part.sectionId, after) ?? '');
+            part === null || after === null
+              ? ''
+              : (sectionTarget(part.sectionId, before.sections.get(part.sectionId) ?? [], after) ??
+                '');
 
           return (
             target(firstPart).localeCompare(target(secondPart)) ||
@@ -108,11 +124,55 @@ export function presetDiff(
           );
         });
 
+      const relocatedSources = new Set<string>();
+      const relocatedTargets = new Set<string>();
+
+      if (after !== null) {
+        for (const source of moving) {
+          const parts = parseRepeatPath(source.k);
+
+          if (parts === null) continue;
+          const oldFields = before.sections.get(parts.sectionId) ?? [];
+          const scope = sectionTarget(parts.sectionId, oldFields, after);
+
+          if (scope === null) continue;
+          const target = blockPathKey(sheetId, [...parts.parentPath, scope, parts.instanceId]);
+
+          if (target === source.k) continue;
+          const written = records.get(target);
+
+          if (
+            written?.d !== null &&
+            written !== undefined &&
+            compareVersions(
+              {
+                c: written.l?.[0] ?? written.c,
+                a: written.l?.[1] ?? written.a,
+              },
+              {
+                c: source.l?.[0] ?? source.c,
+                a: source.l?.[1] ?? source.a,
+              },
+            ) > 0
+          ) {
+            relocatedSources.add(source.k);
+            relocatedTargets.add(target);
+          }
+        }
+      }
+
       for (const record of moving) {
+        if (relocatedTargets.has(record.k)) continue;
+
+        if (relocatedSources.has(record.k)) {
+          last.push({ k: record.k, d: null });
+          continue;
+        }
+
         const data = blockDataSchema.safeParse(record.d).data;
 
         if (data === undefined) continue;
-        const parts = parseRepKey(record.k);
+        const parts = parseRepeatPath(record.k);
 
         const oldFields =
           parts === null
@@ -127,7 +187,7 @@ export function presetDiff(
           continue;
         }
 
-        const scope = parts === null ? null : sectionTarget(parts.sectionId, after);
+        const scope = parts === null ? null : sectionTarget(parts.sectionId, oldFields, after);
 
         if (parts !== null && scope === null) {
           lose(template.id, record.k, shown);
@@ -151,14 +211,65 @@ export function presetDiff(
         );
 
         lose(template.id, record.k, lost);
-        const cleared: Cells = { ...cells };
 
-        for (const [id, cell] of Object.entries(data.cells)) {
-          if (!Object.hasOwn(cells, id)) cleared[id] = [null, cell[1], cell[2]];
+        const target =
+          parts === null
+            ? record.k
+            : blockPathKey(sheetId, [...parts.parentPath, scope ?? '', parts.instanceId]);
+
+        if (target !== record.k) {
+          if (claimed.has(target)) {
+            lose(template.id, record.k, cells);
+          } else {
+            claimed.add(target);
+
+            const group = `${parts?.parentPath.join(':') ?? ''}:${scope ?? ''}:${
+              parts?.sectionId ?? ''
+            }`;
+
+            if (!offsets.has(group)) {
+              const lowest = Math.min(
+                ...moving.flatMap((candidate) => {
+                  const part = parseRepeatPath(candidate.k);
+                  const held = blockDataSchema.safeParse(candidate.d).data;
+
+                  return part?.sectionId === parts?.sectionId &&
+                    JSON.stringify(part?.parentPath) === JSON.stringify(parts?.parentPath) &&
+                    held !== undefined
+                    ? [held.order]
+                    : [];
+                }),
+              );
+
+              const held = highest.get(group);
+
+              offsets.set(group, held !== undefined && held >= lowest ? held + 1 - lowest : 0);
+            }
+
+            const order = data.order + (offsets.get(group) ?? 0);
+            highest.set(group, Math.max(highest.get(group) ?? -Infinity, order));
+            first.push({ k: target, d: { ...data, order, cells }, relocate: true });
+          }
+
+          last.push({ k: record.k, d: null });
+        } else {
+          if (parts !== null)
+            highest.set(
+              `${parts.parentPath.join(':')}:${parts.sectionId}`,
+              Math.max(
+                highest.get(`${parts.parentPath.join(':')}:${parts.sectionId}`) ?? -Infinity,
+                data.order,
+              ),
+            );
+          const cleared: Cells = { ...cells };
+
+          for (const [id, cell] of Object.entries(data.cells)) {
+            if (!Object.hasOwn(cells, id)) cleared[id] = [null, cell[1], cell[2]];
+          }
+
+          if (!sameJson(data.cells, cleared))
+            last.push({ k: record.k, d: { ...data, cells: cleared } });
         }
-
-        if (!sameJson(data.cells, cleared))
-          last.push({ k: record.k, d: { ...data, cells: cleared } });
       }
 
       if (next === undefined) {
@@ -203,14 +314,17 @@ export function presetDiff(
     });
   }
 
+  const beforeBlocks = blockIndex(records.values());
+  const afterBlocks = blockIndex(after.values());
+
   for (const record of records.values()) {
     const target = record.k.startsWith('link:') ? linkTargetOf(record.d) : null;
 
     if (
       target !== null &&
       oldPreset !== null &&
-      liveLinkTarget(records, oldPreset, target) !== null &&
-      liveLinkTarget(after, newPreset, target) === null &&
+      liveLinkTarget(records, oldPreset, target, beforeBlocks) !== null &&
+      liveLinkTarget(after, newPreset, target, afterBlocks) === null &&
       !effectiveLast.some((write) => write.k === record.k)
     )
       effectiveLast.push({ k: record.k, d: null });
@@ -235,12 +349,12 @@ export function stripToTemplate<Stripped extends Pick<VersionedRecord, 'k' | 'd'
 
   if (data === undefined) return record;
   const scopes = templateScopes(layout);
-  const parts = parseRepKey(record.k);
+  const parts = parseBlockPathKey(record.k);
 
   const fields =
     parts === null
       ? [...scopes.rowFields.values()].map((item) => item.field)
-      : (scopes.sections.get(parts.sectionId) ?? []);
+      : (scopes.sections.get(parts.path.at(-2) ?? '') ?? []);
 
   const cells = keptCells(data.cells, fields);
 
@@ -269,68 +383,95 @@ export function keptValues(values: FieldValues, fields: readonly PresetFieldCell
 }
 
 export function presetMoves(before: TemplateLayout, after: TemplateLayout): PresetMoves {
+  const old = templateScopes(before);
   const next = templateScopes(after);
 
   return {
     rowOf: (id) => next.rowFields.get(id)?.rowId ?? null,
-    sectionOf: (id) => sectionTarget(id, next),
+    sectionOf: (id) => sectionTarget(id, old.sections.get(id) ?? [], next),
   };
 }
 
-export function sectionTarget(sectionId: string, after: TemplateScopes): string | null {
+export function sectionTarget(
+  sectionId: string,
+  fields: readonly PresetFieldCell[],
+  after: TemplateScopes,
+  allowTextForSelect = false,
+): string | null {
+  void fields;
+  void allowTextForSelect;
+
   // v4 repeat ids are stable scope identities. Matching fields is not a relocation
   // rule: changing the scope id erases its blocks.
   return after.sections.has(sectionId) ? sectionId : null;
 }
 
 export function templateScopes(layout: TemplateLayout): TemplateScopes {
-  const scopes: TemplateScopes = { rows: new Map(), rowFields: new Map(), sections: new Map() };
+  const scopes: TemplateScopes = {
+    rows: new Map(),
+    rowFields: new Map(),
+    sections: new Map(),
+    parents: new Map(),
+    sectionsByPath: new Map(),
+  };
 
   for (const tab of layout.tabs) {
+    const tabPath = tab.repeat === undefined ? [] : [tab.repeat.id];
+
     if (tab.repeat !== undefined) {
-      scopes.sections.set(
-        tab.repeat.id,
-        tab.sections.flatMap((section) =>
-          section.repeat === undefined
-            ? section.rows.flatMap((row) =>
-                row.repeat === undefined
-                  ? row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field')
-                  : [],
+      const fields = tab.sections.flatMap((section) =>
+        section.repeat === undefined
+          ? section.rows
+              .filter((row) => row.repeat === undefined)
+              .flatMap((row) =>
+                row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field'),
               )
-            : [],
-        ),
+          : [],
       );
-    }
-  }
 
-  for (const tab of layout.tabs) {
-    if (tab.repeat !== undefined) continue;
+      scopes.parents.set(tab.repeat.id, null);
+      scopes.sections.set(tab.repeat.id, fields);
+      scopes.sectionsByPath.set(tabPath.join(':'), fields);
+    }
 
     for (const section of tab.sections) {
       const sectionId = repeatSectionId(section);
+      const sectionPath = sectionId === null ? tabPath : [...tabPath, sectionId];
 
       if (sectionId !== null) {
-        scopes.sections.set(sectionId, sectionFields(section));
-      } else {
-        for (const row of section.rows) {
-          const rowRepeatId = row.repeat?.id;
+        const fields = section.rows
+          .filter((row) => row.repeat === undefined)
+          .flatMap((row) =>
+            row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field'),
+          );
 
-          if (rowRepeatId !== undefined) {
-            scopes.sections.set(
-              rowRepeatId,
-              row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field'),
-            );
-            continue;
-          }
+        scopes.parents.set(sectionId, tab.repeat?.id ?? null);
+        scopes.sections.set(sectionId, fields);
+        scopes.sectionsByPath.set(sectionPath.join(':'), fields);
+      }
 
-          const id = firstFieldId(row);
+      for (const row of section.rows) {
+        const rowRepeatId = row.repeat?.id;
 
-          if (id === null) continue;
-          const fields = row.cells.filter((cell) => cell.kind === 'field');
-          scopes.rows.set(id, fields);
+        if (rowRepeatId !== undefined) {
+          const fields = row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field');
+          const rowPath = [...sectionPath, rowRepeatId];
 
-          for (const field of fields) scopes.rowFields.set(field.id, { rowId: id, field });
+          scopes.parents.set(rowRepeatId, sectionId ?? tab.repeat?.id ?? null);
+          scopes.sections.set(rowRepeatId, fields);
+          scopes.sectionsByPath.set(rowPath.join(':'), fields);
+          continue;
         }
+
+        if (sectionId !== null || tab.repeat !== undefined) continue;
+
+        const id = firstFieldId(row);
+
+        if (id === null) continue;
+        const fields = row.cells.filter((cell) => cell.kind === 'field');
+        scopes.rows.set(id, fields);
+
+        for (const field of fields) scopes.rowFields.set(field.id, { rowId: id, field });
       }
     }
   }
@@ -340,6 +481,25 @@ export function templateScopes(layout: TemplateLayout): TemplateScopes {
 
 export function holdsValue(field: PresetFieldCell | undefined, value: FieldValue): boolean {
   return field !== undefined && acceptedFieldValue(field, value).ok;
+}
+
+function parseRepeatPath(key: string): RepeatPathParts | null {
+  const parsed = parseBlockPathKey(key);
+
+  if (parsed === null) {
+    return null;
+  }
+
+  const sectionId = parsed.path.at(-2);
+  const instanceId = parsed.path.at(-1);
+
+  return sectionId === undefined || instanceId === undefined
+    ? null
+    : {
+        sectionId,
+        instanceId,
+        parentPath: parsed.path.slice(0, -2),
+      };
 }
 
 export function erasedDigest(erased: readonly string[]): string {

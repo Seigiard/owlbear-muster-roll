@@ -330,6 +330,28 @@
                       "id": "token"
                     }
                   ]
+                },
+                {
+                  "repeat": {
+                    "id": "attack",
+                    "nameField": "attack_name"
+                  },
+                  "cells": [
+                    {
+                      "kind": "field",
+                      "type": "text",
+                      "id": "attack_name"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "bonus"
+                    },
+                    {
+                      "kind": "dice",
+                      "formula": "1d20 + bonus + hp"
+                    }
+                  ]
                 }
               ]
             }

@@ -469,6 +469,122 @@ describe('a preset upload', () => {
       commits: [['preset']],
     });
   });
+  test("uses one confirmation's exact nested loss count and keeps the parent block", async () => {
+    // #given
+    const nestedPreset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'encounter',
+          title: 'Encounter',
+          tabs: [
+            {
+              repeat: { id: 'npc', nameField: 'npc_name' },
+              sections: [
+                {
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'npc_name' },
+                        { kind: 'field', type: 'number', id: 'hp' },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  repeat: { id: 'attack', nameField: 'attack_name' },
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'attack_name' },
+                        { kind: 'field', type: 'number', id: 'damage' },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const withoutAttacks: Preset = {
+      ...nestedPreset,
+      templates: nestedPreset.templates.map((template) => ({
+        ...template,
+        tabs: template.tabs.map((tab) => ({
+          ...tab,
+          sections: tab.sections.slice(0, 1),
+        })),
+      })),
+    };
+
+    const parentKey = 'blk:encounter:npc:n1';
+    const childKey = `${parentKey}:attack:a1`;
+
+    const nestedRig = createRoomRig({
+      seeded: [
+        { k: 'preset', d: encodePreset(nestedPreset), c: 1, a: 'seed' },
+        {
+          k: parentKey,
+          d: {
+            order: 0,
+            cells: { npc_name: ['Goblin', 1, 'seed'], hp: [7, 1, 'seed'] },
+          },
+          c: 1,
+          a: 'seed',
+          l: [1, 'seed'],
+        },
+        {
+          k: childKey,
+          d: {
+            order: 0,
+            cells: { attack_name: ['Old bite', 1, 'seed'] },
+          },
+          c: 1,
+          a: 'seed',
+          l: [1, 'seed'],
+        },
+      ],
+    });
+
+    const room = nestedRig.openRoom();
+
+    const gm = await nestedRig.startClient(room, 'gm-a', {
+      engine: { editDenied: DENIED },
+    });
+
+    const diffId = requestPresetDiff(gm, encodePreset(withoutAttacks));
+
+    await waitUntil(() => result(gm, diffId) !== undefined);
+    const confirmation = Object(result(gm, diffId));
+
+    // #when
+    const uploadId = send(gm, {
+      type: 'preset-upload',
+      data: encodePreset(withoutAttacks),
+      expectedCount: confirmation.count,
+      expectedSheets: confirmation.sheets,
+      expectedDigest: confirmation.digest,
+    });
+
+    await waitUntil(() => result(gm, uploadId) !== undefined);
+
+    // #then
+    expect({
+      confirmation: { count: confirmation.count, sheets: confirmation.sheets },
+      upload: result(gm, uploadId),
+      parent: cellValues(Object(storedRecord(gm, parentKey)?.d).cells),
+      child: storedRecord(gm, childKey)?.d,
+    }).toEqual({
+      confirmation: { count: 1, sheets: 0 },
+      upload: { count: 1, sheets: 0 },
+      parent: { npc_name: 'Goblin', hp: 7 },
+      child: null,
+    });
+  });
+
   test('puts the applied preset in the next room copy', async () => {
     // #given
     const room = roomRig.openRoom();

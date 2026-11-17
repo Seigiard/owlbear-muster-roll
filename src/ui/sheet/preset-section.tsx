@@ -6,9 +6,9 @@ import { patchRecordKey, type FieldPatchTarget } from '@/core/field-patch';
 import { linkTargetKey, type LinkTarget } from '@/core/link-target';
 import {
   firstFieldId,
-  repeatSectionById,
+  repeatSectionByPath,
+  repeatScopeByPath,
   repeatSectionId,
-  repeatScopeById,
   sectionFields,
   type TabBlock,
   type PresetCell,
@@ -86,6 +86,7 @@ type SheetSectionProps = {
   pending: SheetPending | null;
   blockTools: BlockTools | null;
   tabBlock: TabBlock | null;
+  parentPath: readonly string[] | null;
   role: 'GM' | 'PLAYER';
 };
 
@@ -105,6 +106,7 @@ type SheetRow = {
 // One repeat block: every row of its section, with the values of one descendant block record.
 type SheetBlock = {
   instanceId: string;
+  path: readonly string[];
   // The value of the section's first field, "" when empty.
   name: string;
   rows: SheetRow[];
@@ -127,6 +129,7 @@ export function SheetSection({
   pending,
   blockTools,
   tabBlock,
+  parentPath,
   role,
 }: SheetSectionProps): ReactNode {
   const headingId = useId();
@@ -152,6 +155,7 @@ export function SheetSection({
     pending,
     blockTools,
     tabBlock,
+    parentPath,
     role,
   };
 
@@ -168,6 +172,7 @@ export function SheetSection({
         pending={pending}
         blockTools={blockTools}
         tabBlock={tabBlock}
+        parentPath={parentPath}
         role={role}
       />
     ) : sectionId === null ? (
@@ -266,6 +271,7 @@ function RowRepeatContent({
   pending,
   blockTools,
   tabBlock,
+  parentPath,
   role,
 }: SheetSectionProps): ReactNode {
   const plain = plainRows(
@@ -287,7 +293,8 @@ function RowRepeatContent({
       return [];
     }
 
-    const repeatedSection = repeatSectionById(template, id);
+    const parentScopes = (parentPath ?? []).filter((_part, index) => index % 2 === 0);
+    const repeatedSection = repeatSectionByPath(template, [...parentScopes, id]);
 
     return repeatedSection === null ? [] : [{ id, section: repeatedSection }];
   });
@@ -313,6 +320,7 @@ function RowRepeatContent({
             sectionId={id}
             blockTools={blockTools}
             tabBlock={tabBlock}
+            parentPath={parentPath}
             role={role}
           />
         ) : (
@@ -329,6 +337,7 @@ function RowRepeatContent({
             sectionId={id}
             blockTools={blockTools}
             tabBlock={tabBlock}
+            parentPath={parentPath}
             role={role}
           />
         ),
@@ -350,6 +359,7 @@ function ReadOnlyRepeatContent({
   sectionId,
   blockTools,
   role,
+  parentPath,
 }: ReadOnlyRepeatContentProps): ReactNode {
   const blocks = useMemo(
     () =>
@@ -363,8 +373,20 @@ function ReadOnlyRepeatContent({
         records,
         pending,
         role,
+        parentPath,
       ),
-    [template, section, tabIndex, sectionIndex, sectionId, sheetId, records, pending, role],
+    [
+      template,
+      section,
+      tabIndex,
+      sectionIndex,
+      sectionId,
+      sheetId,
+      records,
+      pending,
+      role,
+      parentPath,
+    ],
   );
 
   return (
@@ -397,6 +419,7 @@ function RepeatContent({
   sectionId,
   blockTools,
   role,
+  parentPath,
 }: RepeatContentProps): ReactNode {
   const blocks = useMemo(
     () =>
@@ -410,8 +433,20 @@ function RepeatContent({
         records,
         pending,
         role,
+        parentPath,
       ),
-    [template, section, tabIndex, sectionIndex, sectionId, sheetId, records, pending, role],
+    [
+      template,
+      section,
+      tabIndex,
+      sectionIndex,
+      sectionId,
+      sheetId,
+      records,
+      pending,
+      role,
+      parentPath,
+    ],
   );
 
   // A repeat block whose removal waits for a GM counts as gone: its "Удалить" is gone, so the focus
@@ -421,7 +456,7 @@ function RepeatContent({
     [blocks],
   );
 
-  const controls = useRepeatBlocks(sheetId, sectionId, instanceIds);
+  const controls = useRepeatBlocks(sheetId, sectionId, instanceIds, parentPath);
   const title = sectionTitle(section) ?? templateTitle;
 
   return (
@@ -631,6 +666,7 @@ function Blocks({
             sheetId={sheetId}
             sectionId={sectionId}
             instanceId={block.instanceId}
+            path={block.path.length > 2 ? block.path : undefined}
             sendCommand={tools.sendCommand}
             focusRequest={duplicateAsk.request}
             onDone={closeDuplicate}
@@ -649,7 +685,7 @@ function Blocks({
             linkTargetKey({
               sheetId,
               instanceId: block.instanceId,
-              path: [sectionId, block.instanceId],
+              path: [...block.path],
               cellId: cell.id,
             }),
           ),
@@ -799,10 +835,13 @@ function tokenTargetOf(
     : {
         sheetId: row.sheetId,
         instanceId: row.instanceId,
-        path: [
-          sectionId ?? (row.target?.kind === 'rep' ? row.target.sectionId : ''),
-          row.instanceId,
-        ],
+        path:
+          row.target?.kind === 'rep' && row.target.path !== undefined
+            ? [...row.target.path]
+            : [
+                sectionId ?? (row.target?.kind === 'rep' ? row.target.sectionId : ''),
+                row.instanceId,
+              ],
         cellId: cell.id,
       };
 }
@@ -821,7 +860,7 @@ function plainRows(
   const blockValues =
     tabBlock === null
       ? null
-      : (repeatBlocks(records, sheetId, tabBlock.scopeId).find(
+      : (repeatBlocks(records, sheetId, tabBlock.path.slice(0, -1)).find(
           (block) => block.instanceId === tabBlock.instanceId,
         )?.values ?? new Map());
 
@@ -833,12 +872,20 @@ function plainRows(
     const cells = row.cells;
     const rowId = firstFieldId(row);
 
-    const target: FieldPatchTarget | null =
+    let target: FieldPatchTarget | null =
       tabBlock === null
         ? rowId === null
           ? null
           : { kind: 'row', rowId }
-        : { kind: 'rep', sectionId: tabBlock.scopeId, instanceId: tabBlock.instanceId };
+        : {
+            kind: 'rep',
+            sectionId: tabBlock.scopeId,
+            instanceId: tabBlock.instanceId,
+          };
+
+    if (target?.kind === 'rep' && tabBlock !== null && tabBlock.path.length > 2) {
+      target.path = [...tabBlock.path];
+    }
 
     return [
       {
@@ -858,6 +905,10 @@ function plainRows(
           sectionIndex,
           rowIndex: index,
           instanceId: tabBlock?.instanceId ?? null,
+          path:
+            tabBlock?.path !== undefined && tabBlock.path.length > 2
+              ? [...tabBlock.path]
+              : undefined,
           target,
           fieldIds: fieldIdsOf(cells),
         },
@@ -879,18 +930,36 @@ function repeatBlocksOf(
   records: ReadonlyMap<string, VersionedRecord>,
   pending: SheetPending | null,
   role: 'GM' | 'PLAYER',
+  parentPath: readonly string[] | null,
 ): SheetBlock[] {
   const fieldIds: ReadonlySet<string> = new Set(sectionFields(section).map((field) => field.id));
-  const scope = repeatScopeById(template, sectionId);
+  const scopePath = [...(parentPath ?? []), sectionId];
 
-  return repeatBlocks(records, sheetId, sectionId).map((block) => {
-    const target: FieldPatchTarget = { kind: 'rep', sectionId, instanceId: block.instanceId };
+  const scope = repeatScopeByPath(
+    template,
+    scopePath.filter((_part, index) => index % 2 === 0),
+  );
+
+  return repeatBlocks(records, sheetId, scopePath).map((block) => {
+    const path = [...scopePath, block.instanceId];
+
+    const target: FieldPatchTarget = {
+      kind: 'rep',
+      sectionId,
+      instanceId: block.instanceId,
+    };
+
+    if (parentPath !== null) {
+      target.path = path;
+    }
+
     const blockPending = rowPending(pending, patchRecordKey(sheetId, target), fieldIds, true);
     const place = placeOf(records, sheetId, target);
 
     return {
       instanceId: block.instanceId,
-      name: repeatBlockName(records, sheetId, section, block.instanceId),
+      path,
+      name: repeatBlockName(records, sheetId, section, block.instanceId, path),
       pending: blockPending,
       rows: section.rows.flatMap((row, rowIndex) => {
         const sourceIndex =
@@ -910,6 +979,7 @@ function repeatBlocksOf(
                   sectionIndex,
                   rowIndex: sourceIndex,
                   instanceId: block.instanceId,
+                  path,
                   target,
                   fieldIds,
                 },

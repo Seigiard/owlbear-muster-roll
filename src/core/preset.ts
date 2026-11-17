@@ -143,6 +143,13 @@ export type SheetSetTemplate = Omit<Template, 'repeat'> & { repeat: { nameField:
 
 export type SingleSheetTemplate = Omit<Template, 'repeat'> & { repeat?: undefined };
 
+export function isSheetSet<T extends { repeat?: unknown }>(
+  template: T,
+): template is T & { repeat: { nameField: string } };
+export function isSheetSet(template: { repeat?: { nameField: string } }): boolean {
+  return template.repeat !== undefined;
+}
+
 export type TemplateLayout = { tabs: readonly PresetTab[] };
 
 export type PresetTab = z.infer<typeof tab>;
@@ -155,7 +162,12 @@ export type PresetCell = z.infer<typeof cell>;
 
 export type PresetFieldCell = z.infer<typeof fieldCell>;
 
-export type TabBlock = { scopeId: string; instanceId: string; name: string };
+export type TabBlock = {
+  scopeId: string;
+  instanceId: string;
+  path: readonly string[];
+  name: string;
+};
 
 export type RenderedTab = {
   sourceIndex: number;
@@ -173,7 +185,9 @@ export const WINDOW_SIZE_LIMITS = {
   height: { min: 360, max: 1080 },
 } as const;
 
-export type FieldReference = { scope: 'block' } | { scope: 'sheet'; rowId: string };
+export type FieldReference =
+  | { scope: 'block'; scopeId?: string; scopePath?: readonly string[] }
+  | { scope: 'sheet'; rowId: string };
 
 export type PresetFailure =
   | { code: 'too-large' }
@@ -289,7 +303,11 @@ export function firstFieldId(row: PresetRow): string | null {
 
 export function sectionFields(section: PresetSection): PresetFieldCell[] {
   return section.rows.flatMap((item) =>
-    rowCells(item).filter((candidate): candidate is PresetFieldCell => candidate.kind === 'field'),
+    item.repeat === undefined
+      ? rowCells(item).filter(
+          (candidate): candidate is PresetFieldCell => candidate.kind === 'field',
+        )
+      : [],
   );
 }
 
@@ -307,7 +325,10 @@ export function layoutSections(layout: TemplateLayout): PresetSection[] {
 
 export type TemplateSectionPlace = { tabIndex: number; sectionIndex: number };
 
-export type TemplateRowPlace = TemplateSectionPlace & { rowIndex: number };
+export type TemplateRowPlace = TemplateSectionPlace & {
+  rowIndex: number;
+  path?: readonly string[];
+};
 
 export function sectionAt(
   layout: TemplateLayout,
@@ -408,15 +429,62 @@ export function repeatSectionById(layout: TemplateLayout, id: string): PresetSec
   };
 }
 
-export function repeatSectionAt(
+export function repeatSectionByPath(
   layout: TemplateLayout,
-  from: TemplateRowPlace,
+  scopePath: readonly string[],
 ): PresetSection | null {
-  const section = sectionAt(layout, from);
-  const row = section?.rows[from.rowIndex];
-  const scopeId = row?.repeat?.id ?? section?.repeat?.id ?? layout.tabs[from.tabIndex]?.repeat?.id;
+  const [tabScopeId, childScopeId, rowScopeId] = scopePath;
 
-  return scopeId === undefined ? null : repeatSectionById(layout, scopeId);
+  for (const tab of layout.tabs) {
+    const tabId = tab.repeat?.id;
+
+    if (tabId !== undefined && tabId === tabScopeId) {
+      if (scopePath.length === 1) return tabAsSection(tab);
+
+      for (const section of tab.sections) {
+        const sectionId = section.repeat?.id;
+
+        if (sectionId === childScopeId) {
+          if (scopePath.length === 2) return section;
+
+          const row = section.rows.find((candidate) => candidate.repeat?.id === rowScopeId);
+
+          return row === undefined ? null : { ...section, repeat: row.repeat, rows: [row] };
+        }
+
+        if (sectionId === undefined && scopePath.length === 2) {
+          const row = section.rows.find((candidate) => candidate.repeat?.id === childScopeId);
+
+          if (row !== undefined) return { ...section, repeat: row.repeat, rows: [row] };
+        }
+      }
+
+      return null;
+    }
+
+    if (tabId === undefined && scopePath.length === 1) {
+      for (const section of tab.sections) {
+        if (section.repeat?.id === tabScopeId) return section;
+
+        const row = section.rows.find((candidate) => candidate.repeat?.id === tabScopeId);
+
+        if (row !== undefined) return { ...section, repeat: row.repeat, rows: [row] };
+      }
+    }
+  }
+
+  return null;
+}
+
+function tabAsSection(tab: PresetTab): PresetSection {
+  return {
+    title: tab.title,
+    visibility: tab.visibility,
+    repeat: tab.repeat,
+    rows: tab.sections.flatMap((section) =>
+      section.repeat === undefined ? section.rows.filter((row) => row.repeat === undefined) : [],
+    ),
+  };
 }
 
 export function repeatSectionPlace(
@@ -454,6 +522,53 @@ export type RepeatScope = {
   section: PresetSection;
   row: PresetRow | null;
 };
+
+export function repeatScopeByPath(
+  layout: TemplateLayout,
+  scopePath: readonly string[],
+): RepeatScope | null {
+  const [tabScopeId, childScopeId, rowScopeId] = scopePath;
+
+  for (const [tabIndex, tab] of layout.tabs.entries()) {
+    if (tab.repeat?.id === tabScopeId) {
+      for (const [sectionIndex, section] of tab.sections.entries()) {
+        if (section.repeat?.id === childScopeId) {
+          if (scopePath.length === 2) {
+            return { place: { tabIndex, sectionIndex }, section, row: null };
+          }
+
+          const row = section.rows.find((candidate) => candidate.repeat?.id === rowScopeId);
+
+          return row === undefined ? null : { place: { tabIndex, sectionIndex }, section, row };
+        }
+
+        if (childScopeId !== undefined && section.repeat === undefined) {
+          const row = section.rows.find((candidate) => candidate.repeat?.id === childScopeId);
+
+          if (row !== undefined && scopePath.length === 2) {
+            return { place: { tabIndex, sectionIndex }, section, row };
+          }
+        }
+      }
+
+      return null;
+    }
+
+    if (scopePath.length === 1 && tab.repeat === undefined) {
+      for (const [sectionIndex, section] of tab.sections.entries()) {
+        if (section.repeat?.id === tabScopeId) {
+          return { place: { tabIndex, sectionIndex }, section, row: null };
+        }
+
+        const row = section.rows.find((candidate) => candidate.repeat?.id === tabScopeId);
+
+        if (row !== undefined) return { place: { tabIndex, sectionIndex }, section, row };
+      }
+    }
+  }
+
+  return null;
+}
 
 export function repeatScopeById(layout: TemplateLayout, id: string): RepeatScope | null {
   for (const { place, section } of placedSections(layout)) {
@@ -501,36 +616,20 @@ export function resolveFieldReference(
   from: TemplateRowPlace,
   id: string,
 ): FieldReference | null {
-  const section = sectionAt(layout, from);
+  if (sectionAt(layout, from)?.rows[from.rowIndex] === undefined) return null;
 
-  if (section === null) return null;
+  const scopeIds = repeatScopeIdsAt(layout, from);
 
-  const currentRow = section.rows[from.rowIndex];
+  for (const [index, scopeId] of scopeIds.entries()) {
+    const scopePath = scopeIds.slice(index).reverse();
 
-  if (currentRow === undefined) return null;
+    if (scopeFieldsAt(layout, from, scopeId, scopePath).some((field) => field.id === id)) {
+      if (scopePath.length === 1 && scopeIds.length === 1) {
+        return { scope: 'block' };
+      }
 
-  const tab = layout.tabs[from.tabIndex];
-
-  if (currentRow.repeat !== undefined && rowHasField(currentRow, id)) {
-    return { scope: 'block' };
-  }
-
-  if (
-    section.repeat !== undefined &&
-    section.rows.some((row) => row.repeat === undefined && rowHasField(row, id))
-  ) {
-    return { scope: 'block' };
-  }
-
-  if (
-    tab?.repeat !== undefined &&
-    tab.sections.some(
-      (candidate) =>
-        candidate.repeat === undefined &&
-        candidate.rows.some((row) => row.repeat === undefined && rowHasField(row, id)),
-    )
-  ) {
-    return { scope: 'block' };
+      return index === 0 ? { scope: 'block', scopePath } : { scope: 'block', scopeId, scopePath };
+    }
   }
 
   const rowId = plainRowIdOf(layout, id);
@@ -538,8 +637,105 @@ export function resolveFieldReference(
   return rowId === null ? null : { scope: 'sheet', rowId };
 }
 
-function rowHasField(row: PresetRow, id: string): boolean {
-  return row.cells.some((candidate) => candidate.kind === 'field' && candidate.id === id);
+export function repeatScopeIdsAt(layout: TemplateLayout, from: TemplateRowPlace): string[] {
+  const section = sectionAt(layout, from);
+  const row = section?.rows[from.rowIndex];
+  const tab = layout.tabs[from.tabIndex];
+  const ids: string[] = [];
+
+  if (row?.repeat !== undefined) ids.push(row.repeat.id);
+
+  if (section?.repeat !== undefined) ids.push(section.repeat.id);
+
+  if (tab?.repeat !== undefined) ids.push(tab.repeat.id);
+
+  return ids;
+}
+
+export function repeatScopePathAt(layout: TemplateLayout, from: TemplateRowPlace): string[] {
+  return repeatScopeIdsAt(layout, from).reverse();
+}
+
+export function scopeFields(layout: TemplateLayout, scopeId: string): PresetFieldCell[] {
+  const section = repeatSectionById(layout, scopeId);
+
+  return section === null ? [] : sectionFields(section);
+}
+
+export function scopeFieldsAt(
+  layout: TemplateLayout,
+  from: TemplateRowPlace,
+  scopeId: string,
+  scopePath?: readonly string[],
+): PresetFieldCell[] {
+  const path =
+    scopePath ??
+    (() => {
+      const currentPath = repeatScopePathAt(layout, from);
+      const index = currentPath.lastIndexOf(scopeId);
+
+      return index === -1 ? [] : currentPath.slice(0, index + 1);
+    })();
+
+  const currentPath = repeatScopePathAt(layout, from);
+  const isAncestor = path.every((part, index) => currentPath[index] === part);
+
+  if (isAncestor && path.length > 0) {
+    const section = sectionAt(layout, from);
+    const row = section?.rows[from.rowIndex];
+    const tab = layout.tabs[from.tabIndex];
+    const last = path.at(-1);
+
+    if (row !== undefined && row.repeat?.id === last && path.length === currentPath.length) {
+      return row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field');
+    }
+
+    if (section !== null && section.repeat?.id === last && path.length === currentPath.length) {
+      return sectionFields(section);
+    }
+
+    if (tab !== undefined && tab.repeat?.id === last && path.length === 1) {
+      return tab.sections.flatMap((candidate) =>
+        candidate.repeat === undefined
+          ? candidate.rows
+              .filter((candidateRow) => candidateRow.repeat === undefined)
+              .flatMap((candidateRow) =>
+                candidateRow.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field'),
+              )
+          : [],
+      );
+    }
+  }
+
+  const scoped = repeatSectionByPath(layout, path);
+
+  if (scoped !== null) return sectionFields(scoped);
+
+  const section = sectionAt(layout, from);
+  const row = section?.rows[from.rowIndex];
+  const tab = layout.tabs[from.tabIndex];
+
+  if (row?.repeat?.id === scopeId) {
+    return row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field');
+  }
+
+  if (section?.repeat?.id === scopeId) {
+    return sectionFields(section);
+  }
+
+  if (tab?.repeat?.id === scopeId) {
+    return tab.sections.flatMap((candidate) =>
+      candidate.repeat === undefined
+        ? candidate.rows
+            .filter((candidateRow) => candidateRow.repeat === undefined)
+            .flatMap((candidateRow) =>
+              candidateRow.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field'),
+            )
+        : [],
+    );
+  }
+
+  return scopeFields(layout, scopeId);
 }
 
 export function presetProblems(preset: Preset): PresetProblem[] {
@@ -666,33 +862,15 @@ function fieldReference(
   const reference = resolveFieldReference(template, from, id);
 
   if (reference === null) return null;
-  const section = sectionAt(template, from);
 
   if (reference.scope === 'block') {
-    const currentRow = section?.rows[from.rowIndex];
-    const tab = template.tabs[from.tabIndex];
-
-    if (currentRow?.repeat !== undefined) {
-      return fieldInRow(currentRow, id);
-    }
-
-    if (section?.repeat !== undefined) {
-      return fieldInRows(
-        section.rows.filter((row) => row.repeat === undefined),
-        id,
-      );
-    }
-
-    if (tab?.repeat !== undefined) {
-      return fieldInRows(
-        tab.sections
-          .filter((candidate) => candidate.repeat === undefined)
-          .flatMap((candidate) => candidate.rows.filter((row) => row.repeat === undefined)),
-        id,
-      );
-    }
-
-    return null;
+    return (
+      scopeFieldsAt(
+        template,
+        from,
+        reference.scopeId ?? repeatScopeIdsAt(template, from)[0] ?? '',
+      ).find((field) => field.id === id) ?? null
+    );
   }
 
   return (
@@ -703,46 +881,40 @@ function fieldReference(
   );
 }
 
-function fieldInRow(row: PresetRow, id: string): PresetFieldCell | null {
-  return (
-    row.cells.find(
-      (candidate): candidate is PresetFieldCell =>
-        candidate.kind === 'field' && candidate.id === id,
-    ) ?? null
-  );
-}
-
-function fieldInRows(rows: readonly PresetRow[], id: string): PresetFieldCell | null {
-  for (const row of rows) {
-    const field = fieldInRow(row, id);
-
-    if (field !== null) return field;
-  }
-
-  return null;
-}
-
 function treeProblems(template: Template, templatePath: number[]): PresetProblem[] {
   const problems: PresetProblem[] = [];
   const rootFields = new Set<string>();
-  const repeatIds = new Set<string>();
-  const tabRepeatIds = new Set<string>();
+  const repeatIdsByParent = new Map<string, Set<string>>();
+
+  const addRepeat = (
+    repeatValue: { id: string; nameField: string },
+    parentPath: readonly string[],
+    path: readonly number[],
+  ): string[] => {
+    const parentKey = parentPath.join(':');
+    const ids = repeatIdsByParent.get(parentKey) ?? new Set<string>();
+
+    if (ids.has(repeatValue.id)) {
+      problems.push({
+        failure: { code: 'duplicate-section', detail: short(repeatValue.id) },
+        path,
+      });
+    }
+
+    ids.add(repeatValue.id);
+    repeatIdsByParent.set(parentKey, ids);
+
+    return [...parentPath, repeatValue.id];
+  };
+
   template.tabs.forEach((tab, ti) => {
     const tabScope = tab.repeat === undefined ? rootFields : new Set<string>();
+    let tabRepeatPath: readonly string[] = [];
 
     if (tab.repeat !== undefined) {
       if (!validRepeat(tab.repeat))
         problems.push({ failure: { code: 'bad-repeat' }, path: [...templatePath, ti] });
-
-      if (tabRepeatIds.has(tab.repeat.id)) {
-        problems.push({
-          failure: { code: 'duplicate-section', detail: short(tab.repeat.id) },
-          path: [...templatePath, ti],
-        });
-      }
-
-      tabRepeatIds.add(tab.repeat.id);
-      repeatIds.add(tab.repeat.id);
+      tabRepeatPath = addRepeat(tab.repeat, [], [...templatePath, ti]);
 
       if (!hasTextFieldInScope(tab, tab.repeat.nameField, true)) {
         problems.push({
@@ -758,17 +930,12 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
 
     tab.sections.forEach((section, si) => {
       const sectionPath = [...templatePath, ti, si];
+      let sectionRepeatPath = tabRepeatPath;
 
       if (section.repeat !== undefined) {
         if (!validRepeat(section.repeat))
           problems.push({ failure: { code: 'bad-repeat' }, path: sectionPath });
-
-        if (repeatIds.has(section.repeat.id))
-          problems.push({
-            failure: { code: 'duplicate-section', detail: short(section.repeat.id) },
-            path: sectionPath,
-          });
-        repeatIds.add(section.repeat.id);
+        sectionRepeatPath = addRepeat(section.repeat, tabRepeatPath, sectionPath);
       }
 
       const scope = section.repeat === undefined ? tabScope : new Set<string>();
@@ -778,14 +945,9 @@ function treeProblems(template: Template, templatePath: number[]): PresetProblem
         if (item.repeat !== undefined && !validRepeat(item.repeat))
           problems.push({ failure: { code: 'bad-repeat' }, path: rowPath });
 
-        if (item.repeat !== undefined && repeatIds.has(item.repeat.id)) {
-          problems.push({
-            failure: { code: 'duplicate-section', detail: short(item.repeat.id) },
-            path: rowPath,
-          });
+        if (item.repeat !== undefined) {
+          addRepeat(item.repeat, sectionRepeatPath, rowPath);
         }
-
-        if (item.repeat !== undefined) repeatIds.add(item.repeat.id);
 
         if (section.columns !== undefined && item.cells.length > section.columns)
           problems.push({ failure: { code: 'row-too-wide' }, path: rowPath });
@@ -928,4 +1090,8 @@ function short(value: string): string {
   return chars.length > DETAIL_MAX_CHARACTERS
     ? `${chars.slice(0, DETAIL_MAX_CHARACTERS).join('')}…`
     : value;
+}
+
+export function hasField(row: PresetRow, id: string): boolean {
+  return rowCells(row).some((item) => item.kind === 'field' && item.id === id);
 }

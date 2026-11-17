@@ -288,6 +288,100 @@ describe('rollDiceCell', () => {
       },
     });
   });
+  test('a nested attack reads its own value, its NPC value and the sheet value', () => {
+    // #given
+    const layout: TemplateLayout = {
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [{ cells: [{ kind: 'field', type: 'number', id: 'sheet_bonus' }] }],
+            },
+          ],
+        },
+        {
+          repeat: { id: 'npc', nameField: 'npc_name' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'npc_name' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                  ],
+                },
+              ],
+            },
+            {
+              repeat: { id: 'attack', nameField: 'attack_name' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'damage' },
+                    { kind: 'dice', formula: 'damage + hp + sheet_bonus' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const records = new Map<string, VersionedRecord>([
+      [
+        'blk:encounter',
+        {
+          k: 'blk:encounter',
+          d: { order: 0, cells: { sheet_bonus: [2, 1, 'gm'] } },
+          c: 1,
+          a: 'gm',
+          l: [1, 'gm'],
+        },
+      ],
+      [
+        'blk:encounter:npc:n1',
+        {
+          k: 'blk:encounter:npc:n1',
+          d: { order: 0, cells: { npc_name: ['Goblin', 1, 'gm'], hp: [7, 1, 'gm'] } },
+          c: 1,
+          a: 'gm',
+          l: [1, 'gm'],
+        },
+      ],
+      [
+        'blk:encounter:npc:n1:attack:a1',
+        {
+          k: 'blk:encounter:npc:n1:attack:a1',
+          d: { order: 0, cells: { damage: [3, 1, 'gm'] } },
+          c: 1,
+          a: 'gm',
+          l: [1, 'gm'],
+        },
+      ],
+    ]);
+
+    const place = {
+      tabIndex: 1,
+      sectionIndex: 1,
+      rowIndex: 0,
+      cellIndex: 1,
+      instanceId: 'a1',
+      path: ['npc', 'n1', 'attack', 'a1'],
+    };
+
+    // #when
+    const rolled = rollDiceCell(layout, records, 'encounter', place, new Map(), randomFaces(SEVEN));
+
+    // #then
+    expect(rolled).toEqual({
+      ok: true,
+      value: {
+        cell: 'damage + hp + sheet_bonus',
+        result: { roll: 12, faces: [], target: null, targetFaces: [], outcome: null },
+      },
+    });
+  });
   test('names a roll by the dice cell name while keeping the formula as the roll expression', () => {
     // #given
     const layout: TemplateLayout = {

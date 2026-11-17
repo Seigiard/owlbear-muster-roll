@@ -1,5 +1,5 @@
-import { layoutSections, repeatSectionId, type Template } from '@/core/preset';
-import { repKey, type VersionedRecord } from '@/core/records';
+import { layoutSections, type PresetSection, type Template } from '@/core/preset';
+import { blockPathKey, type VersionedRecord } from '@/core/records';
 import { isSheetSet, sheetKey } from '@/core/sheets';
 import { copy } from '@/copy';
 
@@ -35,39 +35,59 @@ export function previewRecords(
     });
   }
 
-  for (const section of layoutSections(template)) {
-    const sectionId = repeatSectionId(section);
-
-    if (sectionId !== null) {
-      const key = repKey(sheetId, sectionId, SAMPLE_INSTANCE_ID);
-
-      records.set(key, {
-        k: key,
-        d: { order: 1, cells: {} },
-        c: PREVIEW_COUNTER,
-        a: PREVIEW_AUTHOR,
-        l: [PREVIEW_COUNTER, PREVIEW_AUTHOR],
-      });
-    }
-  }
-
   for (const tab of template.tabs) {
     const scopeId = tab.repeat?.id;
 
-    if (scopeId === undefined) continue;
+    const parentPath = scopeId === undefined ? [] : [scopeId, SAMPLE_INSTANCE_ID];
 
-    const key = repKey(sheetId, scopeId, SAMPLE_INSTANCE_ID);
+    if (scopeId !== undefined) {
+      addPreviewBlock(records, sheetId, parentPath);
+    }
 
-    records.set(key, {
-      k: key,
-      d: { order: 1, cells: {} },
-      c: PREVIEW_COUNTER,
-      a: PREVIEW_AUTHOR,
-      l: [PREVIEW_COUNTER, PREVIEW_AUTHOR],
-    });
+    for (const section of tab.sections) {
+      addNestedPreviewBlocks(records, sheetId, section, parentPath);
+    }
   }
 
   return records;
+}
+
+function addNestedPreviewBlocks(
+  records: Map<string, VersionedRecord>,
+  sheetId: string,
+  section: PresetSection,
+  parentPath: readonly string[],
+): void {
+  const sectionPath =
+    section.repeat === undefined
+      ? [...parentPath]
+      : [...parentPath, section.repeat.id, SAMPLE_INSTANCE_ID];
+
+  if (section.repeat !== undefined) {
+    addPreviewBlock(records, sheetId, sectionPath);
+  }
+
+  for (const row of section.rows) {
+    if (row.repeat !== undefined) {
+      addPreviewBlock(records, sheetId, [...sectionPath, row.repeat.id, SAMPLE_INSTANCE_ID]);
+    }
+  }
+}
+
+function addPreviewBlock(
+  records: Map<string, VersionedRecord>,
+  sheetId: string,
+  path: readonly string[],
+): void {
+  const key = blockPathKey(sheetId, path);
+
+  records.set(key, {
+    k: key,
+    d: { order: 1, cells: {} },
+    c: PREVIEW_COUNTER,
+    a: PREVIEW_AUTHOR,
+    l: [PREVIEW_COUNTER, PREVIEW_AUTHOR],
+  });
 }
 
 // The name a template's preview tab and header show. A single sheet shows its `title`. A sheet

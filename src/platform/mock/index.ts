@@ -1,4 +1,4 @@
-import type { JsonValue } from '@/core/json';
+import { mutableJson, type JsonValue } from '@/core/json';
 import type { WindowSize } from '@/core/preset';
 import { err, ok, type Result } from '@/core/result';
 import { TIMING, type Timing } from '@/core/timing';
@@ -341,9 +341,9 @@ export function createMockPlatform(
         // LOCAL stays within this client. REMOTE reaches the other clients of the room only, as
         // Owlbear never echoes it to its sender.
         if (options.destination === 'LOCAL') {
-          localBus.post(channel, data, connectionId);
+          localBus.post(channel, mutableJson(data), connectionId);
         } else {
-          room.postRemote(channel, data, connectionId);
+          room.postRemote(channel, mutableJson(data), connectionId);
         }
 
         return Promise.resolve(ok(undefined));

@@ -27,12 +27,12 @@ Every object is strict. Every level uses the same key vocabulary, and a per-kind
 
 Rule checks outside the schema: ids are unique in their scope, `nameField` names a `text` field inside its own scope, a formula's ids follow the id rules, a row is no wider than `columns`. No key depends on another key.
 
-## Release boundary
+## Nested repeat paths
 
-The v4 vocabulary reserves `repeat` on templates, tabs, sections and rows,
-and a block path is a sequence of `(scope id, block id)` pairs. The current
-release temporarily rejects nested block scopes through rule checks. This is a
-release boundary, not a change to the v4 tree or its future path model.
+The v4 vocabulary supports `repeat` on templates, tabs, sections and rows.
+Repeat scopes may be nested at any depth. A nested block stores its complete
+path as a sequence of `(scope id, block id)` pairs from the outermost block to
+the block itself.
 
 ## Templates
 
@@ -63,9 +63,6 @@ A template is the root of a sheet. Its interface words stay: a template with `re
 - A repeat scope may sit inside another repeat scope. Each block then has its own nested blocks: a repeat tab «Персонаж» with a repeat section «Атаки» gives every NPC its own attacks (CAP-42).
 - A block is addressed by the sheet and a path of `(scope id, block id)` pairs. A record and a link name a block by that path.
 - Ids resolve inside the block first, then in each enclosing block, then in the sheet across all its tabs. Fields outside every repeat scope of a template are one scope across its tabs.
-- The current release supports the non-nested repeat forms used by the shipped
-presets. It rejects nested repeat scopes by rule checks. The reserved nested
-form remains part of the approved future contract.
 - The GM can duplicate a block (CAP-30). A duplicate keeps the values and its nested blocks, takes a number in `nameField` when that field holds a value, and has no token link.
 - Rejected: forbidding nested repeat, or one level only. A repeat tab without its own lists is useless, and a depth limit is an exception the registry must know.
 

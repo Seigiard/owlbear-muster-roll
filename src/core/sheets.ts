@@ -9,6 +9,7 @@ import {
   type Template,
 } from '@/core/preset';
 import {
+  blockPathKey,
   blockDataSchema,
   blockKey,
   linkDataSchema,
@@ -210,6 +211,7 @@ export function repeatBlockName(
   sheetId: string,
   section: PresetSection,
   instanceId: string,
+  path?: readonly string[],
 ): string {
   const nameField = section.repeat?.nameField ?? null;
 
@@ -217,9 +219,12 @@ export function repeatBlockName(
     return '';
   }
 
-  const block = repDataSchema.safeParse(
-    records.get(repKey(sheetId, section.repeat.id, instanceId))?.d,
-  );
+  const key =
+    path === undefined
+      ? repKey(sheetId, section.repeat.id, instanceId)
+      : blockPathKey(sheetId, path);
+
+  const block = repDataSchema.safeParse(records.get(key)?.d);
 
   const named = sectionFields(section).find((field) => field.id === nameField);
 
