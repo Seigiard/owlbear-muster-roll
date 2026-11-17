@@ -97,6 +97,7 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - TASK-93 now resolves numeric fields, dice-choice fields and field labels across all plain sections of a repeat tab. Review regression `08a18e0` failed with a field error instead of 8; repair `077bb74` passed it. Restoring the numeric section-only lookup made the same assertion fail again.
 - TASK-95 reuses TASK-91's production repair and adds calibrated public browser regressions. Preview dice evidence is exact field-error → empty-feedback; core and Room independently assert the numeric result 8.
 - Remaining implementation: TASK-97/98, then TASK-79 and the TASK-88/77 boundary plus TASK-80; TASK-82 still needs its concurrent-edit oracle repaired. TASK-86 remains owner-run. Rejected candidates remain available.
+- 2026-11-17 window 3: Owner requested continuation from `521716e092937648d3136c4a722ca9c3ef99a336`. Start at 17:45:02Z with a 90-minute budget. Frontier: TASK-97 shared copy and accessible add names, TASK-98 remote dice-feedback invalidation, and TASK-82 oracle recovery. Their UI and replica production paths are separate. Full browser suites retain the single two-worker slot. TASK-79 follows accepted repeat-tab work if the budget permits; the parent retains this checkout and the closing review.
 
 ## Spec Change Log
 
