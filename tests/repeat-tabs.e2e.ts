@@ -60,6 +60,16 @@ const PRESET = {
   ],
 } as const;
 
+const ADD_ONLY_PRESET = {
+  ...PRESET,
+  templates: [
+    {
+      ...PRESET.templates[0],
+      tabs: [PRESET.templates[0].tabs[1]],
+    },
+  ],
+} as const;
+
 const RECORDS = [
   record('blk:npc:npc:a', { order: 0, cells: { name: 'Alpha', hp: 7 } }),
   record('blk:npc:npc:b', { order: 1, cells: { hp: 9 } }),
@@ -117,6 +127,8 @@ const TAB_NAMES = ['Overview', 'Alpha', 'Блок 2', 'Notes'];
 const GM_TAB_NAMES = [...TAB_NAMES, '+'];
 const EMPTY_GM_TAB_NAMES = ['Overview', 'Notes', '+'];
 const FIRST_BLOCK_TAB_NAMES = ['Overview', 'Блок 1', 'Notes', '+'];
+const ADD_ONLY_EMPTY_GM_TAB_NAMES = ['+'];
+const ADD_ONLY_FIRST_BLOCK_TAB_NAMES = ['Блок 1', '+'];
 const GENERATED_BLOCK_ID = /^[A-Za-z0-9_-]{8}$/;
 const GM: ClientParams = { client: 'gm', device: 'repeat-tabs', name: 'Мастер' };
 
@@ -127,6 +139,8 @@ const PLAYER: ClientParams = {
   player: 'p1',
   role: 'PLAYER',
 };
+
+type RepeatTabsPreset = typeof PRESET | typeof ADD_ONLY_PRESET;
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 700, height: 700 });
@@ -182,6 +196,30 @@ test('the GM can add and open the first extension block from zero', async ({ con
 
   // #then
   await expectFirstBlockOpen(gm.window);
+});
+
+test('the add-only extension waits for the GM before creating its first block', async ({
+  context,
+}) => {
+  // #given
+  const gm = await openSeededClient(context, GM, [], ADD_ONLY_PRESET);
+  const beforePress = await tabNames(gm.window);
+
+  // #when
+  await sheetTab(gm.window, '+').click();
+
+  // #then
+  await expect
+    .poll(async () => ({
+      beforePress,
+      afterPress: await tabNames(gm.window),
+    }))
+    .toEqual({
+      beforePress: ADD_ONLY_EMPTY_GM_TAB_NAMES,
+      afterPress: ADD_ONLY_FIRST_BLOCK_TAB_NAMES,
+    });
+  await expect(sheetTab(gm.window, 'Блок 1')).toHaveAttribute('aria-selected', 'true');
+  await expect(gm.window.getByRole('textbox', { name: 'name' })).toHaveValue('');
 });
 
 test('deleting the final extension block retains add and opens its replacement', async ({
@@ -425,6 +463,29 @@ test('the GM can add and open the first Builder preview block from zero', async 
   await expectFirstBuilderBlockOpen(page, frame);
 });
 
+test('the add-only Builder preview waits for the GM before creating its first block', async ({
+  page,
+}) => {
+  // #given
+  const frame = await openBuilderPreview(page, EMPTY_SNAPSHOT, ADD_ONLY_PRESET);
+  const beforePress = await tabNames(frame);
+
+  // #when
+  await sheetTab(frame, '+').click();
+
+  // #then
+  await expect
+    .poll(async () => ({
+      beforePress,
+      afterPress: await tabNames(frame),
+    }))
+    .toEqual({
+      beforePress: ADD_ONLY_EMPTY_GM_TAB_NAMES,
+      afterPress: ADD_ONLY_FIRST_BLOCK_TAB_NAMES,
+    });
+  await expectFirstBuilderBlockOpen(page, frame, ADD_ONLY_FIRST_BLOCK_TAB_NAMES);
+});
+
 test('deleting the final Builder preview block retains add and opens its replacement', async ({
   page,
 }) => {
@@ -450,19 +511,24 @@ async function openSeededClient(
   context: BrowserContext,
   params: ClientParams,
   records: readonly StoredRecord[] = RECORDS,
+  preset: RepeatTabsPreset = PRESET,
 ): Promise<{ window: Page; background: Page }> {
   const window = await openClientWindow(context, params);
-  await seedStorage(window, records, JSON.stringify(PRESET), params.device);
+  await seedStorage(window, records, JSON.stringify(preset), params.device);
   const background = await openClientBackground(context, params);
   await expect(sheetTabs(window)).toBeVisible();
 
   return { window, background };
 }
 
-async function openBuilderPreview(page: Page, snapshot: JsonValue): Promise<Locator> {
+async function openBuilderPreview(
+  page: Page,
+  snapshot: JsonValue,
+  preset: RepeatTabsPreset = PRESET,
+): Promise<Locator> {
   await installBrowserFileAccessFake(page);
   await page.goto('/builder.html');
-  await queueBrowserFile(page, 'repeat-tabs.json', JSON.stringify(PRESET));
+  await queueBrowserFile(page, 'repeat-tabs.json', JSON.stringify(preset));
   await page.getByRole('button', { name: /^Пресет/ }).click();
   await page.getByRole('menuitem', { name: /Открыть/ }).click();
   await queueBrowserFile(page, 'repeat-tabs-snapshot.json', JSON.stringify(snapshot));
@@ -505,8 +571,12 @@ async function expectFirstBlockOpen(root: Page | Locator): Promise<void> {
   await expect(root.getByRole('textbox', { name: 'name' })).toHaveValue('');
 }
 
-async function expectFirstBuilderBlockOpen(page: Page, root: Locator): Promise<void> {
-  await expect.poll(() => tabNames(root)).toEqual(FIRST_BLOCK_TAB_NAMES);
+async function expectFirstBuilderBlockOpen(
+  page: Page,
+  root: Locator,
+  expectedTabNames: string[] = FIRST_BLOCK_TAB_NAMES,
+): Promise<void> {
+  await expect.poll(() => tabNames(root)).toEqual(expectedTabNames);
   await expect(sheetTab(root, 'Блок 1')).toHaveAttribute('aria-selected', 'true');
 
   const downloaded = await downloadBuilderSnapshot(page);
