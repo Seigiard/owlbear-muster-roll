@@ -179,6 +179,70 @@ describe('renameFieldId', () => {
     expect(renamed.formulas).toBe(2);
     expect(formulas(renamed.template)).toEqual(['1d20+attack', '1d6+bonus', '1d8+attack']);
   });
+  test("renames a nested scope's name field and only formulas owned by that field", () => {
+    // #given
+    const template: Template = {
+      id: 'encounter',
+      title: 'Encounter',
+      tabs: [
+        {
+          sections: [
+            {
+              repeat: { id: 'loot', nameField: 'name' },
+              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }, dice('1d6+name')] }],
+            },
+          ],
+        },
+        {
+          repeat: { id: 'npc', nameField: 'npc_name' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'npc_name' },
+                    field('hp'),
+                    dice('1d20+name'),
+                  ],
+                },
+              ],
+            },
+            {
+              repeat: { id: 'attack', nameField: 'name' },
+              rows: [
+                {
+                  cells: [{ kind: 'field', type: 'text', id: 'name' }, dice('1d8+name+hp')],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    // #when
+    const renamed = renameFieldId(
+      template,
+      { tabIndex: 1, sectionIndex: 1, rowIndex: 0, cellIndex: 0 },
+      'name',
+      'weapon',
+    );
+
+    // #then
+    expect({
+      formulas: renamed.formulas,
+      formulaText: formulas(renamed.template),
+      lootNameField: renamed.template.tabs[0]?.sections[0]?.repeat?.nameField,
+      npcNameField: renamed.template.tabs[1]?.repeat?.nameField,
+      attackNameField: renamed.template.tabs[1]?.sections[1]?.repeat?.nameField,
+    }).toEqual({
+      formulas: 1,
+      formulaText: ['1d6+name', '1d20+name', '1d8+weapon+hp'],
+      lootNameField: 'name',
+      npcNameField: 'npc_name',
+      attackNameField: 'weapon',
+    });
+  });
   test('a second field of one id renames no formula, because formulas read the first', () => {
     // #given
     const template = single([
