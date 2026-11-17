@@ -71,6 +71,36 @@ const ADD_ONLY_PRESET = {
   ],
 } as const;
 
+const TWO_SCOPE_PRESET = {
+  ...PRESET,
+  templates: [
+    {
+      ...PRESET.templates[0],
+      tabs: [
+        PRESET.templates[0].tabs[0],
+        PRESET.templates[0].tabs[1],
+        {
+          title: 'Gear',
+          repeat: { id: 'gear', nameField: 'item' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'item' },
+                    { kind: 'field', type: 'number', id: 'quantity' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        PRESET.templates[0].tabs[2],
+      ],
+    },
+  ],
+} as const;
+
 const RECORDS = [
   record('blk:npc:npc:a', { order: 0, cells: { name: 'Alpha', hp: 7 } }),
   record('blk:npc:npc:b', { order: 1, cells: { hp: 9 } }),
@@ -147,7 +177,7 @@ const PLAYER: ClientParams = {
   role: 'PLAYER',
 };
 
-type RepeatTabsPreset = typeof PRESET | typeof ADD_ONLY_PRESET;
+type RepeatTabsPreset = typeof PRESET | typeof ADD_ONLY_PRESET | typeof TWO_SCOPE_PRESET;
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 700, height: 700 });
@@ -555,6 +585,60 @@ test('a token link to a removed tab block leaves the current tab selected', asyn
   await expect(sheetTab(gm.window, 'Блок 2')).toHaveCount(0);
 });
 
+test('Room and Builder name two scoped add tabs and activate each by mouse and keyboard', async ({
+  page,
+  context,
+}) => {
+  // #given
+  const room = await openSeededClient(context, GM, [], TWO_SCOPE_PRESET);
+  const frame = await openBuilderPreview(page, EMPTY_SNAPSHOT, TWO_SCOPE_PRESET);
+  await addTabs(room.window).nth(1).waitFor();
+  await addTabs(frame).nth(1).waitFor();
+  const roomAddNames = await accessibleNames(addTabs(room.window));
+  const builderAddNames = await accessibleNames(addTabs(frame));
+  const roomAddLabels = await addTabs(room.window).allTextContents();
+  const builderAddLabels = await addTabs(frame).allTextContents();
+
+  // #when
+  await addTabs(room.window).nth(0).click();
+  await repeatBlockTabs(room.window).nth(0).waitFor();
+  await addTabs(room.window).nth(1).press('Enter');
+  await repeatBlockTabs(room.window).nth(1).waitFor();
+  await addTabs(frame).nth(0).click();
+  await repeatBlockTabs(frame).nth(0).waitFor();
+  await addTabs(frame).nth(1).press('Enter');
+  await repeatBlockTabs(frame).nth(1).waitFor();
+
+  // #then
+  expect({
+    room: {
+      addNames: roomAddNames,
+      addLabels: roomAddLabels,
+      blockScopes: await sourceTabIndexes(repeatBlockTabs(room.window)),
+      selectedScope: await selectedSourceTabIndex(room.window),
+    },
+    builder: {
+      addNames: builderAddNames,
+      addLabels: builderAddLabels,
+      blockScopes: await sourceTabIndexes(repeatBlockTabs(frame)),
+      selectedScope: await selectedSourceTabIndex(frame),
+    },
+  }).toEqual({
+    room: {
+      addNames: ['Добавить в «NPC»', 'Добавить в «Gear»'],
+      addLabels: ['+', '+'],
+      blockScopes: ['1', '2'],
+      selectedScope: '2',
+    },
+    builder: {
+      addNames: ['Добавить в «NPC»', 'Добавить в «Gear»'],
+      addLabels: ['+', '+'],
+      blockScopes: ['1', '2'],
+      selectedScope: '2',
+    },
+  });
+});
+
 test('Builder preview add and delete change only its snapshot', async ({ page, context }) => {
   // #given
   const extension = await openSeededClient(context, GM);
@@ -698,6 +782,30 @@ function sheetTabs(root: Page | Locator): Locator {
 
 function sheetTab(root: Page | Locator, name: string): Locator {
   return sheetTabs(root).getByRole('tab', { name, exact: true });
+}
+
+function addTabs(root: Page | Locator): Locator {
+  return sheetTabs(root).getByRole('tab').filter({ hasText: /^\+$/ });
+}
+
+function repeatBlockTabs(root: Page | Locator): Locator {
+  return sheetTabs(root).getByRole('tab', { name: 'Блок 1', exact: true });
+}
+
+async function accessibleNames(tabs: Locator): Promise<(string | null)[]> {
+  return tabs.evaluateAll((items) => items.map((item) => item.getAttribute('aria-label')));
+}
+
+async function sourceTabIndexes(tabs: Locator): Promise<(string | null)[]> {
+  return tabs.evaluateAll((items) =>
+    items.map((item) => item.getAttribute('data-source-tab-index')),
+  );
+}
+
+async function selectedSourceTabIndex(root: Page | Locator): Promise<string | null> {
+  return sheetTabs(root)
+    .locator('[role="tab"][aria-selected="true"]')
+    .getAttribute('data-source-tab-index');
 }
 
 async function tabNames(root: Page | Locator): Promise<string[]> {
