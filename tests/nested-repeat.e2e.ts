@@ -78,6 +78,8 @@ test('editing one NPC attack through its nested tab leaves the sibling NPC attac
 
   // #then
   await expect(attackName(page)).toHaveValue('Bow');
+  await page.getByRole('tab', { name: 'Goblin', exact: true }).click();
+  await expect(attackName(page)).toHaveValue('Bite');
   expect({
     goblin: await storedCell(page, 'blk:encounter:npc:goblin:attack:claw', 'attack_name'),
     orc: await storedCell(page, 'blk:encounter:npc:orc:attack:bow', 'attack_name'),

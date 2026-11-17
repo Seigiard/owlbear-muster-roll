@@ -603,7 +603,7 @@ describe('importSnapshot', () => {
       count,
     }).toEqual({ keys: ['blk:brok', 'blk:npc'], count: 3 });
   });
-  test('keeps a valid parent and counts one value below a child scope that parent lacks', () => {
+  test('keeps a valid nested child and counts one value below a child scope another parent lacks', () => {
     // #given
     const preset: Preset = {
       v: 4,
@@ -645,6 +645,16 @@ describe('importSnapshot', () => {
           id: 'encounter',
           cells: {},
           blocks: [
+            {
+              path: ['npc', 'n1'],
+              order: 0,
+              cells: { npc_name: 'Goblin' },
+            },
+            {
+              path: ['npc', 'n1', 'attack', 'a1'],
+              order: 0,
+              cells: { attack_name: 'Bite' },
+            },
             {
               path: ['loot', 'l1'],
               order: 0,
@@ -693,6 +703,16 @@ describe('importSnapshot', () => {
           key: 'blk:encounter:loot:l1',
           order: 0,
           values: { loot_name: 'Chest' },
+        },
+        {
+          key: 'blk:encounter:npc:n1',
+          order: 0,
+          values: { npc_name: 'Goblin' },
+        },
+        {
+          key: 'blk:encounter:npc:n1:attack:a1',
+          order: 0,
+          values: { attack_name: 'Bite' },
         },
       ],
       count: 1,
