@@ -685,4 +685,67 @@ describe('rollDiceCell across tabs', () => {
       },
     });
   });
+  test('reads a field in another plain section of the selected repeat-tab block', () => {
+    // #given
+    const layout: TemplateLayout = {
+      tabs: [
+        {
+          repeat: { id: 'npc', nameField: 'name' },
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'text', text: 'Хиты' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                  ],
+                },
+              ],
+            },
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'text', text: 'Проверка хитов' },
+                    { kind: 'dice', formula: '1d1 + hp' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const records = new Map<string, VersionedRecord>([
+      ['blk:npc', fixtureRecord('blk:npc', { hp: 41 })],
+      [
+        'blk:npc:npc:a',
+        fixtureRecord('blk:npc:npc:a', { order: 0, cells: { name: 'Alpha', hp: 7 } }),
+      ],
+      [
+        'blk:npc:npc:b',
+        fixtureRecord('blk:npc:npc:b', { order: 1, cells: { name: 'Beta', hp: 9 } }),
+      ],
+    ]);
+
+    // #when
+    const rolled = rollDiceCell(
+      layout,
+      records,
+      'npc',
+      { tabIndex: 0, sectionIndex: 1, rowIndex: 0, cellIndex: 1, instanceId: 'a' },
+      new Map(),
+      randomFaces(SEVEN),
+    );
+
+    // #then
+    expect(rolled).toEqual({
+      ok: true,
+      value: {
+        cell: 'Проверка хитов',
+        result: { roll: 8, faces: [1], target: null, targetFaces: [], outcome: null },
+      },
+    });
+  });
 });
