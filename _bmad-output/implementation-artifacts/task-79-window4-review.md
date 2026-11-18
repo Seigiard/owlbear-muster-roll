@@ -43,6 +43,21 @@ finding remains part of TASK-79's required repair.
 
 ## Evidence
 
+### Owner scope decision, 2026-11-18
+
+The owner retained ordinary nested editing and token navigation as acceptance
+requirements. Multiple GMs and multiple windows of one GM are outside this
+completion scope. Existing accepted tests remain intact.
+
+Two new diagnostics are optional follow-ups, not blockers: TASK-102 covers a
+late child edit after parent deletion; TASK-103 covers preset field removal
+while a nested edit is pending. Commit `3abef2f` preserves both reproductions.
+The latter fails because a baseline field remains, not because the nested key
+is flattened. Its expected proposal shape needs checking before future work.
+Retiring these two tests records the scope decision; it does not claim either
+case is fixed. TASK-99 also needs evidence of relevance to one GM/window before
+implementation.
+
 - Review JSON and grading input:
   `/Users/seigiard/.claude/artifacts/preset-v4-window4-20261117/review-01.json`.
 - Integration check records:
