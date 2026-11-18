@@ -19,7 +19,6 @@ import {
   removeItem,
   renameField,
   setWindow,
-  toPreset,
   templateToPreset,
   updateCell,
   updateRow,
@@ -115,7 +114,7 @@ type FormBodyProps = {
 };
 
 function FormBody({ store, document, origin, uid, path }: FormBodyProps): ReactNode {
-  const warning = repeatWarning(document, origin, path);
+  const warning = repeatWarning(document, origin, uid, path);
 
   function withWarning(content: ReactNode): ReactNode {
     return (
@@ -213,34 +212,40 @@ function FormBody({ store, document, origin, uid, path }: FormBodyProps): ReactN
 function repeatWarning(
   document: BuilderDocument,
   origin: Preset | null,
+  uid: string,
   path: ItemPath,
 ): string | null {
-  if (origin === null || (path.kind !== 'tab' && path.kind !== 'section' && path.kind !== 'row')) {
+  if (origin === null || path.kind === 'window' || path.kind === 'cell') {
     return null;
   }
 
-  const original = repeatAt(origin, path);
-  const current = repeatAt(toPreset(document), path);
+  const originalId = document.originRepeatIds?.get(uid);
+  const currentId = repeatIdAt(document, path);
 
-  return original?.id !== undefined && current?.id !== original.id
-    ? copy.builder.repeatBlocksErased(original.id)
+  return originalId !== undefined && currentId !== originalId
+    ? copy.builder.repeatBlocksErased(originalId)
     : null;
 }
 
-function repeatAt(
-  preset: Pick<Preset, 'templates'>,
-  path: Extract<ItemPath, { kind: 'tab' | 'section' | 'row' }>,
-): { id: string; nameField: string } | undefined {
-  const template = preset.templates[path.template];
+function repeatIdAt(
+  document: BuilderDocument,
+  path: Exclude<ItemPath, { kind: 'window' | 'cell' }>,
+): string | undefined {
+  const template = document.templates[path.template];
+
+  if (path.kind === 'template') {
+    return template?.repeat === undefined ? undefined : template.id;
+  }
+
   const tab = template?.tabs[path.tab];
 
-  if (path.kind === 'tab') return tab?.repeat;
+  if (path.kind === 'tab') return tab?.repeat?.id;
 
   const section = tab?.sections[path.section];
 
-  if (path.kind === 'section') return section?.repeat;
+  if (path.kind === 'section') return section?.repeat?.id;
 
-  return section?.rows[path.row]?.repeat;
+  return section?.rows[path.row]?.repeat?.id;
 }
 
 function formHeading(document: BuilderDocument, path: ItemPath): string {
