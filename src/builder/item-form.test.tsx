@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { parsePresetFile, type Preset, type PresetSection } from '@/core/preset';
-import { createBuilderStore, type BuilderStore } from './builder-store';
-import { moveItem, removeItem, toPreset, uidAt } from './document';
+import { createBuilderStore, type BuilderStore, type DraftStorage } from './builder-store';
+import { moveItem, removeItem, toPreset, uidAt, WINDOW_UID } from './document';
 import { ItemForm } from './item-form';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -81,6 +81,18 @@ const LOADED_REPEAT_PRESET: Preset = {
 };
 
 const mounted: Root[] = [];
+
+class MemoryStorage implements DraftStorage {
+  readonly items = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.items.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.items.set(key, value);
+  }
+}
 
 afterEach(() => {
   for (const root of mounted.splice(0)) {
@@ -516,6 +528,83 @@ describe('loaded repeat warnings', () => {
     });
   });
 
+  test('restores the loaded repeat warning after a preceding section was removed', async () => {
+    // #given
+    const preset = loadedSectionsPreset();
+    const storage = new MemoryStorage();
+    const first = createBuilderStore(storage);
+    first.open(preset, preset, 'crew');
+    first.edit((document) => removeItem(document, requiredUid(first, [0, 0, 0])));
+
+    // #when
+    const restored = createBuilderStore(storage);
+    const form = await openStoredForm(restored, [0, 0, 0]);
+    const unchanged = liveMessages(form.container);
+    await editRepeat(form, 'id');
+
+    // #then
+    expect({
+      unchanged,
+      afterEdit: liveMessages(form.container),
+    }).toEqual({
+      unchanged: [],
+      afterEdit: ['Блоки «attacks» в комнате будут стёрты при загрузке пресета.'],
+    });
+  });
+
+  test('restores the warning identity of a loaded repeat after sections were reordered', async () => {
+    // #given
+    const preset = loadedSectionsPreset(true);
+    const storage = new MemoryStorage();
+    const first = createBuilderStore(storage);
+    first.open(preset, preset, 'crew');
+    const notes = requiredUid(first, [0, 0, 0]);
+    const attacks = requiredUid(first, [0, 0, 1]);
+    first.edit((document) => moveItem(document, attacks, { place: 'before', sibling: notes }));
+
+    // #when
+    const restored = createBuilderStore(storage);
+    const form = await openStoredForm(restored, [0, 0, 0]);
+    const unchanged = liveMessages(form.container);
+    await editRepeat(form, 'id');
+
+    // #then
+    expect({
+      unchanged,
+      afterEdit: liveMessages(form.container),
+    }).toEqual({
+      unchanged: [],
+      afterEdit: ['Блоки «attacks» в комнате будут стёрты при загрузке пресета.'],
+    });
+  });
+
+  test('keeps loaded repeat warning identity when custom window size is turned off', async () => {
+    // #given
+    const preset: Preset = {
+      ...loadedSectionsPreset(),
+      window: { width: 900, height: 700 },
+    };
+
+    const store = createBuilderStore(new MemoryStorage());
+    store.open(preset, preset, 'crew');
+    const windowForm = await openStoredSelection(store, WINDOW_UID);
+
+    // #when
+    await changeCheck(inputControl(windowForm.container, 'Свой размер окна'), false);
+    const form = await openStoredForm(store, [0, 0, 1]);
+    const unchanged = liveMessages(form.container);
+    await editRepeat(form, 'id');
+
+    // #then
+    expect({
+      unchanged,
+      afterEdit: liveMessages(form.container),
+    }).toEqual({
+      unchanged: [],
+      afterEdit: ['Блоки «attacks» в комнате будут стёрты при загрузке пресета.'],
+    });
+  });
+
   test.each([
     ['changes its id', 'id'],
     ['turns repeat off', 'off'],
@@ -596,6 +685,28 @@ async function openForm(
     throw new Error(`the form fixture has no item at ${path.join('.')}`);
   }
 
+  return openSelection(store, selection, origin);
+}
+
+async function openStoredForm(store: BuilderStore, path: readonly number[]): Promise<OpenForm> {
+  const selection = uidAt(store.$state.get().step.document, path);
+
+  if (selection === null) {
+    throw new Error(`the restored form fixture has no item at ${path.join('.')}`);
+  }
+
+  return openStoredSelection(store, selection);
+}
+
+async function openStoredSelection(store: BuilderStore, selection: string): Promise<OpenForm> {
+  return openSelection(store, selection, store.$state.get().step.origin);
+}
+
+async function openSelection(
+  store: BuilderStore,
+  selection: string,
+  origin: Preset | null,
+): Promise<OpenForm> {
   const container = documentNode();
   const root = createRoot(container);
   mounted.push(root);
