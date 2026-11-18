@@ -21,7 +21,7 @@ The decision has four parts, in the order they land:
 - Core keeps zod for the wire and the preset. UI flows keep the ADR-0002 reducer shape; a UI reducer may use the same table type when a flow has more than one phase, but nothing requires it.
 - The TASK-63 and TASK-64 criterion "no shared state-machine runtime is introduced" stands: a table type, a signal and a test helper are not a runtime. What changes is the shape rule: one shape for the state of every replica machine, so one check covers them all.
 - Timers remain schedulers, as CLAUDE.md requires: a timer fires an event into the table; the cell decides.
-- The failure sink and the pending-edits work land after TASK-114.2, which touches the same engine lines and adds one more parse drop that should go through `report` from the start. The catch-up table does not overlap with TASK-114 and runs in parallel.
+- The `better-result` swap lands after TASK-114.3, the last of the three block-address PRs, and the failure sink after it; TASK-114.2 touches the same engine lines and adds one more parse drop that should go through `report` from the start. The catch-up tables, the `AbortSignal` and the clock port do not depend on either and run in parallel with TASK-114.
 - `GLOSSARY.md` gains the two GM terms: the online GM, by messages, and the GM in the party, by the list.
 
 ## Considered options

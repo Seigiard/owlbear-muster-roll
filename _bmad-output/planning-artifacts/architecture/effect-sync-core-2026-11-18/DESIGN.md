@@ -224,7 +224,7 @@ One step per PR, the full check and a junit list equal to the baseline on each:
 | 7 | `pending-edits` and `room-protocol` judged; tables where the ticket finds more than two phases. After TASK-114.2, whose spec forbids merging `proposal-queue` into `pending-edits` | their module tests, `engine-propose`, `engine-client` |
 | 8 | Spine: the Replica row names `machine.ts`, the table rule, the signal and the clock port; `GLOSSARY.md` gains the two GM terms; ADR-0004 to accepted | docs checks |
 
-Each step is one backlog task under one epic, created when the owner accepts the ADR. Steps 0, 0b and 2 run in parallel with TASK-114; steps 4, 4b and 7 wait for TASK-114.2. Steps 5 to 7 are independent once 0 to 4 are in. The rig's move to explicit time is a task of its own, outside this table.
+Each step is one backlog task under one epic, created when the owner accepts the ADR. Order, as the owner set it on 2026-11-18: steps 0, 0b, 2 and 3 do not depend on `better-result` and run in parallel with TASK-114; step 1 lands after TASK-114.3 is merged, so after all three block-address PRs; step 4 follows step 1, and steps 4b and 7 also wait for TASK-114.2. Steps 5 to 7 are independent once 0 to 4 are in. The rig's move to explicit time is a task of its own, outside this table.
 
 ## When Effect comes back
 
