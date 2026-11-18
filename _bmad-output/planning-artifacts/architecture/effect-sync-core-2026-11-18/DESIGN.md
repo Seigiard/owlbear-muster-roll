@@ -34,7 +34,25 @@ TASK-64 (doc-4) mapped the machines and chose per-module shapes. Goal 3 needs on
 | 3, completeness | `TransitionTable` type plus `machine-check` | none; `fast-check` is already present |
 | 2, errors | `TaggedError` classes, exhaustive `.match`, `Result.gen` for linear chains | `better-result` 3.0.1, 3.4 KB gzip |
 | 1, simpler core | the table replaces each module's `switch` and closure variables; `Result.gen` replaces `if (!x.ok) return x` ladders | the two above |
-| 1, lifecycle (`stopped`, timers, sequencing) | deferred; Effect's `Scope`, `Queue`, `TestClock` | `effect`, when the ADR's revisit conditions hold |
+| 1, lifecycle (`stopped`, timers, epoch counters) | one `AbortSignal` from the engine replaces the `stopped` getters; timers and subscriptions hang on `abort` | none; Effect's `Scope` later becomes a mechanical swap |
+| 1, time | one clock port `{ now, schedule }` with the OBR and mock adapters; the rig moves time explicitly | none; Effect's `TestClock` is the later form |
+| 1, sequencing (`roomMessages` chain) | deferred | `effect` `Queue`, when the ADR's revisit conditions hold |
+
+## Findings folded in from the second review
+
+A parallel review of the same three goals (report of 2026-11-18, `https://reports.1218217.xyz/reports/owlbear-muster-roll/20261118T191918Z-ceea5a4b/index.html`) added facts this design now carries. Reports are cited by link, because candidate numbers differ between reports.
+
+| Finding | Where in the code | What the design does with it |
+| --- | --- | --- |
+| Two definitions of an online GM: `knowledge.gmLink` from GM-origin messages (the glossary's meaning) and `gmInRoom()` from the party list, used by the roll flow when dice readiness is unknown | `catch-up.ts:159-163`, `engine.ts:1040`, `roll-flow.ts:210` | They answer different questions. The party one is renamed `gmInParty` and both terms go to `GLOSSARY.md`; the owner may instead drop the party predicate. Decided in step 0 |
+| Eight phase-event pairs answered by a silent `return []`, plus the `fired` fallthrough that `deferred-work.md` already lists | `catch-up.ts:285, 340, 489, 534, 554-562, 649-655, 738-740, 753` | Each becomes an `'ignore'` cell or a transition in the table. The list is the step 0 checklist; the generated diagram shows every `'ignore'` to the reviewer |
+| The decision interpreter and the timer registry live in the engine: `catchUpTimers` keyed by string, `arm`/`disarm`, a 17-branch `runCatchUp` | `engine.ts:310, 517-558, 560-683` | Step 0b: `catch-up-effects.ts` with an injected scheduler; the engine loses about 180 lines. After step 0 is green, so the oracle sees one change at a time |
+| Seven failure patterns: `Result` up to the composition seam; `.catch` to console (about 40, 23 in the engine); `try/catch`, log, `null`; sentinel strings in `problemKeys`; a domain enum collapsed to one text (`too-large` shown as "Нет прав на правку"); silent zod rejections; silent drops of oversized messages | `engine.ts:80-84, 931, 1030-1038, 1343-1349`, `room-copy.ts:651`, `party-roster.ts:38`, `send-queue.ts:102, 121, 188`, `pending-edits.ts:561`, `room-protocol.ts:144-150, 285, 314, 332`, `dice-extension.ts:109, 126`, `commit-outbox.ts:73, 107` | Part 2 covers port failures. Domain verdicts keep their reason: `deniesEdit` returns the cause and the window shows `too-large` apart from `denied`. Silent drops become reported failures with a tag each |
+| Where the window never learns of a failure: a failed `commit`, `state` or `propose` send; a metadata read; a role read that leaves the old role; a party read; `action.open()` losing an open request; a GM not in `live` dropping a `propose` | `engine.ts:746-749, 1229`, `room-protocol.ts:271` | Each is a `ReplicaFailure` tag; the sink below publishes them |
+| `stopped` in six modules, four styles of timer ownership, five epoch counters, a `stop()` of thirteen calls, construction order held by a comment | `engine.ts:303, 1393-1413`, `room-copy.ts`, `commit-outbox.ts:42`, `scene-watch.ts:24`, `dice-extension.ts:97`, `proposal-queue.ts:389`, `party-roster.ts:21` | The lifecycle step below. The ADR's second revisit condition was already true when written; the ADR now says so |
+| Two time sources, `Date.now` and `performance.now`, five timer styles, and a rig that polls every 2 ms up to 2000 ms | `catch-up.ts:316`, `engine.ts:744, 771`, `room-protocol.ts:283`, `pending-edits.ts:212`, `dice-extension.ts:216, 312, 392`, `tests/support/room-rig.ts:37-38` | The clock port step below |
+| TASK-114.2 touches `engine.ts:740-797` and `1343-1349` and adds one more silent parse drop on purpose; its spec forbids merging `proposal-queue` into `pending-edits` there | spec-task-114-2 | The failure sink lands after TASK-114.2, so the new drop goes through `report` from the start. The catch-up table does not overlap and runs in parallel |
+| Helper port fans: `GenerationFlowPorts` 22, `RoomProtocolPorts` 24, `CommandRoutingPorts` 22, `RollFlowPorts` 15; `role`, `stopped`, `records`, `publish` repeat three to four times; about 300 lines of wiring | `engine.ts` | Recorded under the Effect option: a `Layer` graph before the modules are recut renames the fan without narrowing it |
 
 ## Part 1: the table
 
@@ -85,7 +103,13 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
 
 The engine, `runCatchUp` and the 48 module tests do not change. Module-private state moves into the phase record, so a cell is a pure function of its inputs and `machine-check` can generate it.
 
-Timer rule: `fired(timer)` is one event kind with the timer in its payload. The cell decides; the engine still owns `setTimeout`.
+Timer rule: `fired(timer)` is one event kind with the timer in its payload. The cell decides; the engine still owns `setTimeout` until step 0b.
+
+GM link: a second table, `livenessTable`, in the same module, with phases `unknown`, `online`, `offline`. The shell feeds each event to the catch-up table first and then to the liveness table, synchronously, so no runner is needed and the two tables never call each other. The `catching-up` phase still decides whether a GM answers `alive`; the liveness table only decides the link. `gmInRoom()` in the engine is a different question, whether a GM is in the party at all, asked by the roll flow when dice readiness is unknown; it is renamed `gmInParty` and both terms land in `GLOSSARY.md`, unless the owner drops it.
+
+Step 0 checklist, the silent pairs that become declared cells: `catch-up.ts:285` (`enter` while adopting), `:340` (adoption staged outside adopting), `:489` (a generation not higher than the target), `:534` (a party read for another nonce), `:554-562` (room-copy read outside the active request), `:649-655` (a state part for another nonce), `:738-740` (a request timer for another nonce), `:753` (the `fired` fallthrough).
+
+Step 0b: `catch-up-effects.ts` takes the 17-branch `runCatchUp`, `catchUpTimers`, `armCatchUpTimer` and `disarmCatchUpTimer` out of the engine, with the scheduler injected (`{ schedule(key, ms, fire), cancel(key) }`), so the interpreter is tested with a fake scheduler and the engine loses about 180 lines. It lands only after step 0 is green, so the engine suite sees one change at a time.
 
 ### machine-check
 
@@ -144,9 +168,15 @@ Three kinds of outcome, kept apart:
 | Domain verdict | `denied`, `stale`, `invalid-message`, `older-version` | a value in the ok channel, as today (`RejectMessage`, `RoomMessageFailure`) |
 | Bug | an unknown command, a cell that returns an impossible phase | thrown; `better-result` wraps a throw inside `gen` or `try` as `Panic` |
 
-### One place per failure
+### Policy in the module, delivery in one sink
 
-Each module gets a `report(failure)` that is an exhaustive `failure.match({...})` returning what to do: a `Notice` for the windows, a retry through the existing backoff, or a log line with the machine, phase and effect. Adding a failure class to a port's union fails to compile until every module that sees it answers. The 86 `console.error` calls become those `match` arms or disappear where a typed result is handled upstream.
+The module decides what a failure means for its flow, because only it knows: a failed room-copy write retries on the existing backoff, a failed role read keeps the old role, a failed `state` send waits for the next `state-request`. That decision is an exhaustive `failure.match({...})` per module, so adding a failure class to a port's union fails to compile until every module that sees it answers.
+
+Delivery is one place: `src/replica/failures.ts` exports `ReplicaFailure`, the union of every port failure class plus the replica's own tags (`send-dropped`, `record-too-large`, `message-rejected`, `open-request-lost`, `propose-dropped`), and `report(failure)`. The engine holds a bounded list of recent failures and publishes it to the windows as a `diagnostics` notice, beside the four notices that exist. Tests read the list instead of `spyOn(console, 'error')`, which about 15 tests do today and which pins the console as the sink. The console keeps one subscriber. The 86 `console.error` calls become `match` arms or `report` calls, or disappear where a typed result is handled upstream.
+
+Domain verdicts keep their reason. `deniesEdit` in `pending-edits.ts` collapses `gone` and `too-large` into one boolean and one text; it returns the cause instead, and the window shows "too large" apart from "no write access". The silent zod rejections in `engine.ts`, `room-protocol.ts` and `dice-extension.ts`, and the silent drops of oversized messages, become `message-rejected` and `record-too-large` reports.
+
+The error classes are `Error` subclasses and live in `src/platform/ports.ts`, not in `src/core`; core receives only `Result` values, which are plain data, so ADR-0003's rule for core holds.
 
 ## Machine catalog
 
@@ -179,25 +209,28 @@ One step per PR, the full check and a junit list equal to the baseline on each:
 
 | Step | Change | Oracle |
 | --- | --- | --- |
-| 0 | `src/replica/machine.ts`, `tests/support/machine-check.ts`, `docs/machines/`. `catch-up.ts` becomes a shell over `catch-up-table.ts`; the engine does not change | `catch-up.test.ts` and the engine suite; the generated `docs/machines/catch-up.md` |
+| 0 | `src/replica/machine.ts`, `tests/support/machine-check.ts`, `docs/machines/`. `catch-up.ts` becomes a shell over `catch-up-table.ts` and `livenessTable`; the eight silent pairs become declared cells; `gmInParty` named; the engine does not change | `catch-up.test.ts` and the engine suite; the generated `docs/machines/catch-up.md` |
+| 0b | `catch-up-effects.ts`: the interpreter and the timer registry leave the engine behind an injected scheduler | engine suite; interpreter tests on a fake scheduler |
 | 1 | `better-result` replaces `src/core/result.ts` in 48 files, no behavior change | `bun test`, `bun run test:browser` lists equal to the baseline |
-| 2 | Tagged failures in `ports.ts`; the four rejecting port methods return results; both adapters and the port contract updated; `console.error` in `src/replica` replaced by `match` arms | port contract, engine suite, `grep -c console.error src/replica` down to 0 |
-| 3 | `room-copy` as a table | `room-copy.test.ts`, `engine-room-copy` |
-| 4 | `generation-flow` as a table | `generation-flow.test.ts`, `engine-import`, `engine-catch-up` |
-| 5 | `pending-edits` and `room-protocol` judged; tables where the ticket finds more than two phases | their module tests, `engine-propose`, `engine-client` |
-| 6 | Spine: the Replica row names `machine.ts` and the table rule; ADR-0004 to accepted | docs checks |
+| 2 | Lifecycle: the engine owns one `AbortController`; helpers take `signal` instead of `stopped: () => boolean`; timers and subscriptions hang on `abort`; a stale read is dropped by `signal.aborted`, not an epoch counter; `stop()` is one `abort()` plus the outbox flush | engine suite; `grep -c stopped src/replica` down to the `room-copy` phase name; the five epoch counters gone |
+| 3 | Clock port `{ now, schedule }` in `ports.ts` with the OBR and mock adapters; `Date.now` and `performance.now` leave `src/replica`; the rig moves time explicitly where a test waits on a timer | engine suite; `waitUntil` polls remain only where a test waits on another client |
+| 4 | Tagged failures in `ports.ts`; the four rejecting port methods return results; both adapters and the port contract updated; `failures.ts` with `ReplicaFailure`, `report` and the `diagnostics` notice; `deniesEdit` returns its cause; `console.error` in `src/replica` replaced. After TASK-114.2 | port contract, engine suite, `grep -c console.error src/replica` down to 1 |
+| 5 | `room-copy` as a table | `room-copy.test.ts`, `engine-room-copy` |
+| 6 | `generation-flow` as a table | `generation-flow.test.ts`, `engine-import`, `engine-catch-up` |
+| 7 | `pending-edits` and `room-protocol` judged; tables where the ticket finds more than two phases. After TASK-114.2, whose spec forbids merging `proposal-queue` into `pending-edits` | their module tests, `engine-propose`, `engine-client` |
+| 8 | Spine: the Replica row names `machine.ts`, the table rule, the signal and the clock port; `GLOSSARY.md` gains the two GM terms; ADR-0004 to accepted | docs checks |
 
-Each step is one backlog task under one epic, created when the owner accepts the ADR. Steps 3 to 5 are independent once 0 to 2 are in.
+Each step is one backlog task under one epic, created when the owner accepts the ADR. Steps 0 and 0b run in parallel with TASK-114; steps 4 and 7 wait for TASK-114.2. Steps 5 to 7 are independent once 0 to 4 are in.
 
 ## When Effect comes back
 
 Reopen the deferred part when one of these is true, and then measure before deciding:
 
-- The engine tests stay racy under real timers after the tables land. Evidence today: the two-GM cases under mutation M5 in `deferred-work.md` (TASK-48). `TestClock` is the fix Effect offers; the spike runs it.
-- A second module grows its own `stopped` and timer bookkeeping beyond `room-copy`'s lifecycle. `Scope` and interruption are the fix.
-- The owner wants `engine-*.test.ts` on virtual time.
+- The engine tests stay racy after the clock port lands. Evidence today: the two-GM cases under mutation M5 in `deferred-work.md` (TASK-48). `TestClock` is the fuller form of the clock port.
+- After the `AbortSignal` step, places remain where one signal is not enough: a read that must outlive the client, or a cancellation that needs an order. `Scope` and interruption are the fix.
+- The `roomMessages` promise chain, the room-copy write mutex or the six hand-written backoffs need a second copy. `Queue` and `Schedule` are the fix.
 
-The spike's `runner.ts` is the shape to start from: the same tables, a `Queue` per machine, `Match.exhaustive` over effects, services over ports. Cost measured: 17 KB gzip with `Data.TaggedError`.
+The spike's `runner.ts` is the shape to start from: the same tables, a `Queue` per machine, `Match.exhaustive` over effects, services over ports. Cost measured: 17 KB gzip with `Data.TaggedError`. One argument against going earlier: the helper port fans (`GenerationFlowPorts` 22, `RoomProtocolPorts` 24, `CommandRoutingPorts` 22, `RollFlowPorts` 15) hand the engine's private state to each helper; a `Layer` graph before those modules are recut renames the fan without narrowing it. Two shapes in the engine do not fit structured concurrency and stay as they are under any path: `flushNow` on `pagehide` starts every send and waits for none, and broadcast sends are one-way, answered by a later room message rather than a promise.
 
 ## Risks and what bounds them
 
