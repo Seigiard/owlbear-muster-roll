@@ -2,7 +2,7 @@
 title: 'Complete preset v4 through TASK-98'
 type: 'feature'
 created: '2026-11-17'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '88b7db235528ca5d7561c306851bf68bd8339586'
 route: 'dispatch'
 review_loop_iteration: 3
@@ -85,6 +85,10 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 
 ## Implementation Notes
 
+- 2026-11-18 window 6 completed: TASK-109 and TASK-80 integrated at `6695d2346fbd2a0107e2fb24e19c9473bb28bf54`; TASK-110's verified browser journeys and profiles are included. TASK-88 records the supported boundary and TASK-77 AC2's explicit supersession. TASK-79 remains Done by the owner's earlier decision; TASK-86 remains the owner-run live check.
+- Full combined checks pass: format, lint, types, build; 3455 unit pass with one existing no-DOM skip; 583 browser pass with two workers, no skips/flaky/errors. Raw logs and exact-state metadata: `~/.cache/herdr-run/w6-final-*`. No source or tests changed during those runs.
+- TASK-109 final review returned no findings,2/2 sources. Builder's second confirmation returned one minor,2/2 sources, no degradation. TASK-111 tracks old draft provenance limits and TASK-112 tracks identical-file reopening warnings. Prior optional follow-ups remain optional.
+
 - 2026-11-18 window 6: Owner closed TASK-79 at `d66fb1a42bc32d7e5ea153854e59b3406fcc983c`, with remaining navigation work in TASK-109. Execute TASK-109 and the six owned TASK-80 defects, confirm checks, then close TASK-88 and TASK-77 AC2. TASK-79 stays Done. Start 08:45Z, budget 90 minutes, finish mode at 11:45Z. Two isolated test/implementation lanes reuse the existing runtime and Builder candidates. The Builder baseline is `517e8082849d8c1583d0c27fd383472c8f997297`; its initial implementation is already tested. Owner-only TASK-86 remains separate.
 
 - 2026-11-18 window 5: Owner requested another window after blocked closeout `51de85d9ab09bb32479760458905c4d2d6f8d8b9`. Start 05:24:55Z, budget 90 minutes, finish mode at 08:24:55Z. Resume the six TASK-79 review blockers plus the owned section→row dice finding in one TDD review-fix batch. Preserve the cumulative review base `3b779818ccaaec60c48fbc29be73046565d0ffdb` and saved TASK-80 candidate. TASK-80 and TASK-88/77 follow repaired automated runtime evidence; AC5 remains owner-only.
@@ -114,6 +118,8 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - The doubled window budget ended at 23:10:54Z. Porting TASK-79 exposed preservation regressions and required repeated repairs. No review-fix batch started. Resume with the six TASK-79 blockers and section→row dice lookup, then validate TASK-80 and TASK-88/77 against the repaired baseline.
 
 ## Review Triage Log
+
+- Window6: TASK-109 `01-initial` final profile,2/2 sources, no findings. Builder cumulative review retains base `3d0c96a`: round04 warning-lifecycle findings repaired after owner approval; round05 final profile,2/2 sources, one minor deferred to TASK-112. Two permitted fix rounds complete. Exact source matches the reviewed candidates; no remaining required major.
 
 - Round 01: `mixed`, 6/6 sources, two major findings fixed in `738bbf2`. Two minor test gaps share those regressions.
 - Round 02: `final`, 2/2 sources, no degraded sources, findings or open questions; exit 0. Cumulative base: `a87fc3c`; checked source: `738bbf2`.

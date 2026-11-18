@@ -1,11 +1,11 @@
 ---
 id: TASK-77
 title: 'Preset format v4: one node registry for the tree'
-status: In Progress
+status: Done
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-18T08:14:00Z'
+updated_date: '2026-11-18T10:06:00Z'
 labels:
   - format-v4
 dependencies:
@@ -27,7 +27,7 @@ Every irregularity of format v3 is a special case in the checks and the builder:
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 The schema is `template > tab > section > row > cell` with the keys of preset-format.md "Tree": `repeat: {nameField}` on a template, `repeat: {id, nameField}` on a section and a row, `visibility` on section and row, `players: "edit"` on any template, cell kinds text, field, dice and `token {id}`; `kind` and `tokens` are gone; `v` is 4 and v1-3 presets and snapshots are refused
-- [ ] #2 Rule checks refuse a duplicate id in a scope, a `nameField` that names no `text` field inside its scope, `repeat` on a tab and a repeat scope inside another (temporary), and each shows at its item in the builder and under the upload button
+- [x] #2 Rule checks refuse a duplicate id in a scope, a `nameField` that names no `text` field inside its scope, `repeat` on a tab and a repeat scope inside another (temporary), and each shows at its item in the builder and under the upload button
 - [x] #3 A sheet set is a template with `repeat`: sidebar groups, "+", sheet names, rolls and the duplicate number read `repeat.nameField`; a block key uses `repeat.id`; a repeat row draws as a block of one row
 - [x] #4 A token cell shows the GM an icon with the link status and a menu to link, unlink and select the linked tokens on the map, and players nothing; a link record names the sheet, the block path and the cell id; the picker offers the nearest ancestor name (block nameField, section title, sheet name or template title) as the label; several token cells per sheet work
 - [x] #5 A hidden section or row is invisible to players, its rolls show only on GM clients, and its token cells give players no menu, through src/core/visibility.ts
@@ -59,4 +59,12 @@ D19 now has a durable Backlog record: TASK-88. It tracks validation of unsupport
 Window 4 closing review leaves AC2 open. TASK-88 checks passed selected parser/Builder/upload paths, but TASK-79 still has blocking nested-runtime defects. The provisional supersession claim was withdrawn; no blanket repeat-tab ban was introduced. See _bmad-output/implementation-artifacts/task-79-window4-review.md.
 
 Window5: AC2 remains open with TASK-88. Runtime fixes are integrated at 3d0c96a and pass all required checks, but the final confirming review leaves TASK-109. TASK-108 is optional, not a reason to narrow parent-local ids. No complete preset-v4 acceptance is claimed.
+
+Window6 closes AC2 through TASK-88 at 6695d2346fbd2a0107e2fb24e19c9473bb28bf54. Duplicate scoped ids and invalid nameField values are refused at source item paths. The temporary rejection of repeat tabs/nesting is SUPERSEDED by implemented TASK-78/79 support, not claimed as tested. Remaining ordinary copied-token navigation is fixed by TASK-109; TASK-80 completes Builder controls. All required combined checks pass: format/lint/types/build, 3455 unit pass with1 existing environment skip,583 browser pass with0 skipped/flaky/errors. Boundary evidence: _bmad-output/implementation-artifacts/task-88-boundary-evidence.md. Optional follow-ups and owner-only TASK-86 remain separate.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Preset v4 uses one node registry across parsing, runtime and Builder. All seven criteria are accounted for; AC2 temporary refusal is explicitly superseded by verified repeat-tab and nested-scope support. The accepted source passes the full automated checks. Real Owlbear room acceptance remains the owner task TASK-86.
+<!-- SECTION:FINAL_SUMMARY:END -->

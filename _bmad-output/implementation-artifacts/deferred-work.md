@@ -541,3 +541,15 @@ The previous six owned failures and the two round02 ordinary-flow failures
 were repaired. The current owned blocker is TASK-109: a copied nested child's
 token reveals the source child on a plain tab. It remains required work,
 not optional scope. Evidence: `task-79-window5-review.md`.
+
+## Deferred from: TASK-77–98 window 6 (2026-11-18)
+
+- TASK-111: older Builder drafts have no durable original-node identity.
+  Their contents remain readable; exact provenance after historical moves
+  cannot be inferred. Optional compatibility UX, with no affected live user known.
+- TASK-112: opening a file identical to an origin-less draft skips establishing
+  loaded-file warning identity. Source-confirmed minor from Builder review05.
+  Runtime upload still confirms destructive changes.
+- TASK-109 is now repaired and independently reviewed. Its copied-child token
+  owner and the existing repeat-tab below-fold owner pass in the full 583-test
+  browser run at `6695d234`. The window5 blocker above is historical.

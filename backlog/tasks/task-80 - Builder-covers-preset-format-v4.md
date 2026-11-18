@@ -1,13 +1,12 @@
 ---
 id: TASK-80
 title: Builder covers preset format v4
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-18T08:48:00Z'
+updated_date: '2026-11-18T10:06:00Z'
 labels:
   - format-v4
-  - blocked
 dependencies:
   - TASK-79
   - TASK-71
@@ -26,18 +25,20 @@ After format v4 the builder still edits v3 shapes: no row form, `kind` instead o
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Each node kind has a form with one control per registry key: a row form with `visibility` and `repeat`; one `repeat` control on template, tab, section and row that opens `id` and `nameField`, whose choices are the `text` fields inside that scope
-- [ ] #2 A token cell is added, moved and removed like any cell; a repeat scope id and a token cell id are made from the title or place, shown and rewritable like a field id, and a rename follows the block chain (CAP-25)
-- [ ] #3 Turning `repeat` off, or changing a scope id, on a preset opened from a file warns that its blocks in the room will be erased
-- [ ] #4 Rows drag between sections and sections between tabs; drops keep one kind of child per container
-- [ ] #5 The preview draws the "+" tab and the token cell icon in the GM view only, and hides hidden sections and rows in the player view (CAP-37)
-- [ ] #6 Every example preset opens, round-trips and downloads unchanged; `parsePresetFile` gates the download
+- [x] #1 Each node kind has a form with one control per registry key: a row form with `visibility` and `repeat`; one `repeat` control on template, tab, section and row that opens `id` and `nameField`, whose choices are the `text` fields inside that scope
+- [x] #2 A token cell is added, moved and removed like any cell; a repeat scope id and a token cell id are made from the title or place, shown and rewritable like a field id, and a rename follows the block chain (CAP-25)
+- [x] #3 Turning `repeat` off, or changing a scope id, on a preset opened from a file warns that its blocks in the room will be erased
+- [x] #4 Rows drag between sections and sections between tabs; drops keep one kind of child per container
+- [x] #5 The preview draws the "+" tab and the token cell icon in the GM view only, and hides hidden sections and rows in the player view (CAP-37)
+- [x] #6 Every example preset opens, round-trips and downloads unchanged; `parsePresetFile` gates the download
 <!-- AC:END -->
 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Extend the existing locked tests at candidate517e808 for six accepted review defects. 2. Repair scoped ids, name-field defaults/choices, loaded-node warning identity, template warnings and field-rename propagation. 3. Validate and calibrate the repaired candidate, integrate TASK-109, then review and close the Builder acceptance criteria.
+
+Window6 repair round2 approved by owner: preserve loaded-node identity through draft save/restore and all document edits. Add rendered warning regressions for restore after reorder/removal and custom-window disable, repair the mechanism, then run combined checks and one confirming review.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -61,4 +62,14 @@ HISTORICAL: Not started. Waiting for TASK-79 full-path validation/import repairs
 CURRENT window5: preserve UNMERGED candidate517e808 on feature/preset-v4-task-80-w4, checkout task80-builder-w4-20261117. It includes runtime3d0c96a. All checks passed:3441 unit/1 skip,579 browser, format/lint/build at67effe2; corrected typecheck/format/lint at517e808, whose emitted JavaScript is identical. Three test owners calibrated. Complete mixed review03 ran through subscription,6/6 sources/no degradation: five owned major findings remain (scope-wide generated ids, tab default nameField, template nameField scope, warning identity after reorder/removal, missing template warning). Pre-existing field-rename/nameField loss is also explicitly owned by AC2. No repair round started before the window limit. Candidate spec ready-for-dev is stale; continue existing code, do not reimplement. Durable dispositions: _bmad-output/implementation-artifacts/task-80-window5-review.md. No AC or Done claim; TASK-109 runtime prerequisite and owner-only TASK-86 remain.
 
 Window6 owner authorized repair of six accepted defects. Continue clean existing candidate517e808; new batch evidence is ~/.claude/artifacts/preset-v4-window6-20261118/task-80/. No initial implementation restart. Parent owns full browser slot and task acceptance.
+
+Review04 final completed2/2 without degradation atd2b4260. Six previous defects repaired; new confirmed major gaps lose warning identity on draft restore and setWindow(undefined). Parent reproduced both through real document/store code. Owner chose to finish the mechanism rather than narrow acceptance. See active batch3 in ~/.claude/artifacts/preset-v4-window6-20261118/task-80/ticket.md.
+
+Window6 acceptance supersedes the historical UNMERGED/blocked notes. Builder e5090d881f91c44c8727f58fb7606ce6e1c84e36 is integrated at 6695d2346fbd2a0107e2fb24e19c9473bb28bf54. AC1-3: rendered/document/store owners pass, including scoped ids, field-name propagation and durable loaded warnings; 73 focused tests, F1-F5 calibrated. AC4-6: existing drag, preview/player-view, example round-trip and gated-download owners pass in the full combined run. Required checks: format/lint/types/build exit0; 3455 unit pass/1 existing no-DOM skip; 583 browser pass/no skipped, flaky or errors. Review05 final: 2/2 sources, no degradation, one minor deferred as TASK-112. TASK-111 records missing provenance in older drafts. Evidence and dispositions: _bmad-output/implementation-artifacts/task-80-window6-review.md and spec-task-80-builder-v4.md.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The Builder edits v4 nodes, allocates scoped ids and retains repeat name fields during rename. Loaded-file warnings stay attached to the original block through ordinary edits and draft restoration. Existing drag, preview, visibility and file flows pass the combined checks. Minor warning gaps remain explicit follow-ups TASK-111 and TASK-112; runtime upload still confirms destructive changes.
+<!-- SECTION:FINAL_SUMMARY:END -->

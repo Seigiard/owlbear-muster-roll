@@ -2,7 +2,7 @@
 title: 'TASK-77: Preset format v4'
 type: 'feature'
 created: '2026-11-16'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '650e9e5517c08f840a223c79a79944e74602b6cf'
 review_loop_iteration: 0
@@ -108,6 +108,8 @@ Declare independent oracles before test edits; calibrate red then green. No broa
 - On the user's repeated request, the parent reloaded both live skills and `recovery.md` again. Current code-review now explicitly permits `direct` fixes for reachable mechanical minor findings: exact known local change, no locked path, no added behavior, one commit per finding, caller diff/lock/check/clean-state verification. This exception supersedes the earlier blanket statement that all review fixes go to children. Non-mechanical fixes still follow the prescribed fresh tdd children; review remains blocked until browser recovery/base controls are reconciled. Current tdd still requires occurrence-grounded criteria, diagnosis/cause check before repair, unchanged lock enforcement and valid completed command evidence rather than report verdicts.
 
 ## Spec Change Log
+
+- 2026-11-18: TASK-88 closes the remaining AC2 at `6695d2346fbd2a0107e2fb24e19c9473bb28bf54`. TASK-78/79 supply verified repeat-tab and nested-scope support, so the temporary refusal is explicitly superseded. TASK-109 repairs copied-child token navigation; TASK-80 completes Builder controls. All required combined checks pass. See `task-88-boundary-evidence.md` for the accepted boundary and exact results. Earlier open-AC2 statements below are historical. TASK-86 remains the owner's live check.
 
 - Recovery settled at source candidate `9fa7179caa4d0f69dfb823d91454ec14976a1fae`: lint, typecheck, 3363 Bun tests (one environment skip), 542 browser tests and build passed. The single report-only review then found five in-scope behavior gaps: picker cell identity, refused-command handling, current-cell link status, repeat-row runtime support, and player section/row visibility. These gaps prevent feature acceptance despite the green suites. One bounded review-fix TDD batch is authorized; no second TASK-77 review round will run. The user authorized autonomous continuation through TASK-78, TASK-79 and TASK-80. TASK-86 records the owner's live-room gate; TASK-87 records deferred internal cleanup. Neither is claimed complete.
 - Batch6 repaired all five reviewed behavior gaps at `db11acc8cb09c1f9cd057e5b38d4d3ad6fcf8f39`. Its extended 115-path lock is enforced. All six clean-state checks passed: formatting, typecheck, build, lint (256 warnings, zero errors), Bun (3375 pass, one environment skip), and browser (542/542). Two old status literals and one new textarea observation were corrected without production test workarounds. Partial-success/rejected-promise variants lack independent new-owner execution; no calibrated coverage is claimed. The excluded D19 temporary refusal remains unproved, so Backlog AC2 stays unchecked while TASK-78/79 advance those forms. No second review ran.

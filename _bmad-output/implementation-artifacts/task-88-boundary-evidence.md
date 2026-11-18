@@ -1,6 +1,61 @@
 # TASK-88 boundary evidence
 
-## Verdict
+## Accepted boundary, window 6
+
+Accepted source: `6695d2346fbd2a0107e2fb24e19c9473bb28bf54`.
+The original integration checkout now contains this exact source.
+TASK-109 repairs the remaining copied-child token target. TASK-80 supplies
+the v4 forms, scoped ids, rename propagation and loaded-file warnings.
+
+TASK-77 AC2's temporary blanket refusal of repeat tabs and nesting is
+**superseded by implemented and verified support**, not claimed as tested.
+The public parser still rejects invalid structure, duplicate ids within one
+scope and invalid name fields. Valid repeat tabs and parent-local nested ids
+remain accepted.
+
+| Criterion | Current evidence |
+| --- | --- |
+| TASK-88 AC1 | `presetProblems` reports invalid items; `builderProblems` maps them to source nodes. Public upload validates before mutation. The full unit run passes the item-path, blocked-download and no-write upload owners. |
+| TASK-88 AC2 | The full run passes ordinary repeats, explicit repeat-tab name fields and the same nested id below different parents. |
+| TASK-88 AC3 / TASK-77 AC2 | Runtime and Builder tests now pass together, including full-path copied-child opening. The obsolete temporary refusal is superseded. |
+| TASK-88 AC4 | Published `docs/preset-format.md` and canonical `spec-muster-roll/preset-format.md` describe supported nesting and complete paths. Neither promises a blanket rejection. |
+
+All checks below ran on the clean accepted source in
+`preset-v4-final-w6-20261118`. No source or tests changed during the runs.
+
+| Command | Result |
+| --- | --- |
+| `bunx oxfmt --ignore-path .gitignore --check .` | exit 0; 394 matched files |
+| `bun run lint` | exit 0; 293 existing warnings, no errors |
+| `bun run typecheck` | exit 0 |
+| `bun test` | exit 0; 3455 pass, one existing no-DOM environment skip |
+| `bun run build` | exit 0 |
+| `bun run test:browser -- --config=playwright.verify.config.ts --workers=2` | exit 0; 583 pass, no skips, flaky cases or errors |
+
+Raw logs and revision/exit metadata:
+`~/.cache/herdr-run/w6-final-{format,lint,types,unit,build,browser}.*`.
+Browser JSON and traces:
+`preset-v4-final-w6-20261118/test-results/verify/window6-final/`.
+The unit log contains the six parser, Builder-path and no-write upload owners
+listed in the historical commands below, all passing in this final run.
+
+Independent review: TASK-109 `01-initial`, final profile, 2/2 sources,
+no findings; TASK-80 `05-after-fix`, final profile, 2/2 sources,
+one minor deferred as TASK-112. Neither run degraded.
+The loaded-warning test detects the former positional-restore bug under
+mutation; all five Builder calibration rows and the navigation row passed.
+
+This accepts the agreed automated scope, not every constructed edge case.
+TASK-99/100/101/102/103/105/106/108 remain optional.
+TASK-111 records unavailable warning identity in older drafts;
+TASK-112 records opening a file identical to an origin-less draft.
+Runtime upload still requires destructive-change confirmation.
+TASK-86 remains the owner's live Owlbear check.
+
+## Historical verdicts and evidence
+
+The records below explain earlier blocked states. They do not replace the
+window 6 acceptance above.
 
 **Window 5:** The earlier runtime failures were repaired at `3d0c96a`, with
 3432 unit tests and 579 browser tests passing. Confirming review then found

@@ -2,9 +2,9 @@
 title: 'TASK-80: Builder covers preset format v4'
 type: 'feature'
 created: '2026-11-17'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
-review_loop_iteration: 0
+review_loop_iteration: 2
 baseline_commit: '29ffe1719f3e881b12dbbe2dfc7ee200902ae937'
 context:
   - '{project-root}/_bmad-output/specs/spec-muster-roll/preset-builder.md'
@@ -47,10 +47,10 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/builder/document.ts` -- generalize repeat creation and scoped taken-id collection for tab, section, row, and token operations.
-- [ ] `src/builder/item-form.tsx` -- render the v4 node forms, selected name-field choices, and loaded-file destruction warnings.
-- [ ] `src/builder/{document,document-v4,item-form}.test.tsx` -- lock independent Builder behavior at pure document and rendered public form seams.
-- [ ] `_bmad-output/implementation-artifacts/spec-task-80-builder-v4.md` -- record lock, checks, calibration, and implementation result.
+- [x] `src/builder/document.ts` -- generalize repeat creation and scoped taken-id collection for tab, section, row, and token operations.
+- [x] `src/builder/item-form.tsx` -- render the v4 node forms, selected name-field choices, and loaded-file destruction warnings.
+- [x] `src/builder/{document,document-v4,item-form}.test.tsx` -- lock independent Builder behavior at pure document and rendered public form seams.
+- [x] `_bmad-output/implementation-artifacts/spec-task-80-builder-v4.md` -- record lock, checks, calibration, and implementation result.
 
 **Acceptance Criteria:**
 - Given a v4 Builder node, when its form is selected, then it has the applicable hand-written registry controls, including row visibility and repeat.
@@ -59,14 +59,28 @@ context:
 
 ## Implementation Notes
 
+- Completed at Builder `e5090d881f91c44c8727f58fb7606ce6e1c84e36`, integrated into `6695d2346fbd2a0107e2fb24e19c9473bb28bf54`.
+- Forms cover v4 controls. Scoped id suggestions and text-name choices match parser rules. Field renames retain repeat metadata. Loaded-node warning identity survives moves, removals, window edits and draft restore.
+- Drafts persist current node paths with original repeat ids, then restore them to fresh document uids. Older drafts retain their data without guessed provenance; TASK-111 owns making that limitation explicit.
+- Final lock `1989dc2fc06829282be0735c7922d49494bdde29` covers document, rendered form and store tests. Focused suite: 73 pass, 143 assertions. F1–F5 mutations failed at their protected assertions and production was restored byte-exact.
 - Footprint at planning: 2 source files and 3 focused test files; estimated 3–5 hours including browser validation. Existing browser owners supply TASK-80 AC4–6, so the implementation lock targets the uncovered forms and document operations.
 - The owner authorized autonomous execution in the TASK-80 orchestrator prompt. No product decision remains open: preparation resolves the apparent template-id contradiction in favor of `template.id`.
 
 ## Spec Change Log
 
+- 2026-11-18: Owner approved completing durable warning identity after review found loss on draft restore and window-size changes. The accepted criteria remain; historical draft provenance cannot be reconstructed.
+
 ## Review Triage Log
 
+- Round03: mixed,6/6 sources. Five new major defects and one owned pre-existing rename defect repaired in round1.
+- Round04: final,2/2 sources. Two warning-lifecycle defects repaired in round2 after the owner's mechanism decision.
+- Round05: final,2/2 sources, no degradation. No critical or major finding. Minor identical-file reopening warning gap deferred as TASK-112; destructive runtime upload confirmation remains.
+- Earlier test gaps were covered by the extended owners. This completion record resolves the stale ready-for-dev note. No source fix followed round05.
+- Styling check: the only added styling is the existing `text-danger-text` semantic token on the warning; no new layout or interaction styling.
+
 ## Verification
+
+Clean combined source `6695d2346fbd2a0107e2fb24e19c9473bb28bf54` passes all six required checks: format, lint, types, 3455 unit tests (one existing environment skip), 583 browser tests and build. Browser skips/flaky/errors are all zero. Logs: `~/.cache/herdr-run/w6-final-*.log`. TASK-110's three new journeys are included. These are mock-adapter results; TASK-86 owns live Owlbear acceptance.
 
 **Commands:**
 - `bun test src/builder/document.test.ts src/builder/document-v4.test.ts src/builder/item-form.test.tsx` -- expected: focused Builder document and form behavior passes. (1 minute)
