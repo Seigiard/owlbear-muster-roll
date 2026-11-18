@@ -111,6 +111,48 @@ test('an empty dice-choice field shows its labelled field error and sends no rol
   expect(await shownNotifications(gm)).toEqual([]);
 });
 
+test(
+  'a saved d1 survives option removal and both pages restarting, and still rolls one',
+  { tag: '@verify-quick' },
+  async ({ context }) => {
+    // #given
+    const gmWindow = await openClientWindow(context, GM);
+    const initialPreset = PRESET_TEXT.replace('["d4","d6","d8","d10","d12"]', '["d1","d6"]');
+    await seedStorage(gmWindow, SHEET, initialPreset, GM.device);
+    const background = await openClientBackground(context, GM);
+    await diePicker(gmWindow).selectOption('d1');
+    await expect(diePicker(gmWindow)).toHaveValue('d1');
+
+    // #when
+    await gmWindow.getByRole('tab', { name: 'Настройки', exact: true }).click();
+    const choosing = gmWindow.waitForEvent('filechooser');
+    await gmWindow
+      .getByRole('region', { name: 'Пресет', exact: true })
+      .getByRole('button', { name: 'Загрузить пресет', exact: true })
+      .click();
+    await (
+      await choosing
+    ).setFiles({
+      name: 'only-d6.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(initialPreset.replace('["d1","d6"]', '["d6"]')),
+    });
+    await expect(gmWindow.getByText('Формат листов изменён.', { exact: true })).toBeVisible();
+    await background.close();
+    await gmWindow.close();
+    const restartedWindow = await openClientWindow(context, GM);
+    const restartedBackground = await openClientBackground(context, GM);
+
+    // #then
+    await expect(diePicker(restartedWindow)).toHaveValue('d1');
+    await expect(diePicker(restartedWindow).locator('option:checked')).toHaveText('d1');
+    await damageButton(restartedWindow).click();
+    await expect
+      .poll(() => restartedBackground.evaluate(() => window.mockPlatform.shownNotifications()))
+      .toEqual(['Мастер: Брок, Урон (1d1) — 1']);
+  },
+);
+
 async function openGm(context: BrowserContext): Promise<RoomClient> {
   const window = await openClientWindow(context, GM);
   await seedStorage(window, SHEET, PRESET_TEXT, GM.device);

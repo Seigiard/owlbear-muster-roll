@@ -185,6 +185,64 @@ test('the downloaded snapshot holds the live sheets, their values and links, and
   });
 });
 
+test(
+  'a downloaded snapshot restores original values and repeat blocks after both pages restart',
+  { tag: '@verify-quick' },
+  async ({ page, context }, testInfo) => {
+    // #given
+    const background = await openRoom(page, context, RECORDS);
+    await page.getByRole('tab', { name: SETTINGS }).click();
+    const downloading = page.waitForEvent('download');
+    await snapshotSection(page).getByRole('button', { name: DOWNLOAD }).click();
+    const download = await downloading;
+    const snapshotPath = testInfo.outputPath('snapshot.json');
+    await download.saveAs(snapshotPath);
+
+    // #when
+    await page.getByRole('tab', { name: 'Брок', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Класс', exact: true }).fill('Маг');
+    await page.getByRole('textbox', { name: 'Уровень', exact: true }).fill('9');
+    await page
+      .getByRole('region', { name: 'Атаки', exact: true })
+      .getByRole('textbox', { name: 'attack', exact: true })
+      .first()
+      .fill('Копьё');
+    await page.keyboard.press('Tab');
+    await page.getByRole('tab', { name: SETTINGS }).click();
+    const choosing = page.waitForEvent('filechooser');
+    await importButton(page).click();
+    await (await choosing).setFiles(snapshotPath);
+    await confirmation(page).getByRole('button', { name: UPLOAD }).click();
+    await expect(confirmation(page)).toHaveCount(0);
+    await page.getByRole('tab', { name: 'Брок', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Класс', exact: true })).toHaveValue('Воин');
+    await background.close();
+    await page.close();
+    const restartedWindow = await openClientWindow(context);
+    await openClientBackground(context);
+    await restartedWindow.getByRole('tab', { name: 'Брок', exact: true }).click();
+
+    // #then
+    await expect(restartedWindow.getByRole('textbox', { name: 'Класс', exact: true })).toHaveValue(
+      'Воин',
+    );
+    await expect(
+      restartedWindow.getByRole('textbox', { name: 'Уровень', exact: true }),
+    ).toHaveValue('3');
+    const attacks = restartedWindow.getByRole('region', { name: 'Атаки', exact: true });
+    await expect(attacks.getByRole('textbox', { name: 'attack', exact: true })).toHaveCount(2);
+    await expect(attacks.getByRole('textbox', { name: 'attack', exact: true }).nth(0)).toHaveValue(
+      'Меч',
+    );
+    await expect(attacks.getByRole('textbox', { name: 'attack', exact: true }).nth(1)).toHaveValue(
+      'Топор',
+    );
+    await expect(attacks.getByRole('textbox', { name: 'bonus', exact: true }).nth(1)).toHaveValue(
+      '2',
+    );
+  },
+);
+
 test('with no preset, both snapshot buttons are disabled with the preset-first reason', async ({
   page,
   context,
