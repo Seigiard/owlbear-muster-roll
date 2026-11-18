@@ -1,0 +1,16 @@
+{
+  "name": "effect-machine-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc -p tsconfig.json",
+    "smoke": "bun run.ts",
+    "size": "bun build size-data-errors.ts --minify --target=browser --outdir=out-data && bun build size-schema-errors.ts --minify --target=browser --outdir=out-schema && gzip -9c out-data/size-data-errors.js | wc -c && gzip -9c out-schema/size-schema-errors.js | wc -c"
+  },
+  "dependencies": {
+    "effect": "4.1.4"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}
