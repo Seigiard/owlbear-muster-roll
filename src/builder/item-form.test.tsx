@@ -263,6 +263,7 @@ describe('v4 node forms', () => {
           title: 'Экипаж',
           tabs: [
             {
+              title: 'Первая команда',
               sections: [
                 {
                   rows: [{ cells: [{ kind: 'field', type: 'text', id: 'first_row_name' }] }],
@@ -277,6 +278,7 @@ describe('v4 node forms', () => {
               ],
             },
             {
+              title: 'Вторая команда',
               sections: [
                 {
                   title: 'Атаки',
