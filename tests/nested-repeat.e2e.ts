@@ -108,6 +108,7 @@ const PLAIN_SECTION_ROW_PRESET = {
                       name: 'Move',
                       formula: 'damage + bonus + sheet_bonus',
                     },
+                    { kind: 'token', id: 'move_token' },
                   ],
                 },
               ],
@@ -128,6 +129,23 @@ const PLAIN_SECTION_ROW_RECORDS = [
   record('blk:plain:group:g1:move:m1', {
     order: 0,
     cells: { move_name: 'Jab', damage: 3 },
+  }),
+] as const;
+
+const COPIED_PLAIN_SECTION_ROW_RECORDS = [
+  ...PLAIN_SECTION_ROW_RECORDS,
+  record('blk:plain:group:g2', {
+    order: 1,
+    cells: { group_name: 'Training 1', bonus: 2 },
+  }),
+  record('blk:plain:group:g2:move:m1', {
+    order: 0,
+    cells: { move_name: 'Jab', damage: 3 },
+  }),
+  record('link:t-copied-move', {
+    s: 'plain',
+    path: ['group', 'g2', 'move', 'm1'],
+    c: 'move_token',
   }),
 ] as const;
 
@@ -396,6 +414,43 @@ test('a nested token selects its parent and focuses the child token cell', async
   await expect(attackName(page)).toHaveValue('Bow');
   await expect(target).toBeVisible();
   await expect(target).toBeFocused();
+});
+
+test('a copied nested child opens and focuses from its complete token path', async ({
+  page,
+  context,
+}) => {
+  // #given
+  await page.goto('/index.html');
+  await seedStorage(
+    page,
+    COPIED_PLAIN_SECTION_ROW_RECORDS,
+    JSON.stringify(PLAIN_SECTION_ROW_PRESET),
+  );
+  const background = await openBackground(context);
+  await putOnScene(page, ['t-copied-move']);
+
+  const sourceTarget = page
+    .getByRole('group', { name: 'Training', exact: true })
+    .getByRole('group', { name: 'Jab', exact: true })
+    .locator('[data-cell-id="move_token"]');
+
+  const copiedTarget = page
+    .getByRole('group', { name: 'Training 1', exact: true })
+    .getByRole('group', { name: 'Jab', exact: true })
+    .locator('[data-cell-id="move_token"]');
+
+  await expect(sourceTarget).toBeVisible();
+  await expect(copiedTarget).toBeVisible();
+
+  // #when
+  const clicked = await background.evaluate(() =>
+    window.mockPlatform.clickContextMenuItem('app.muster-roll/open-sheet', ['t-copied-move']),
+  );
+
+  // #then
+  expect(clicked).toBe(true);
+  await expect(copiedTarget).toBeFocused();
 });
 
 test('an ordinary repeat block keeps its name and numbers its duplicate', async ({
