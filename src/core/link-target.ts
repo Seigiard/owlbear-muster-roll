@@ -2,6 +2,7 @@ import type { JsonValue } from '@/core/json';
 import {
   repeatSectionByPath,
   repeatSectionPlace,
+  repeatScopeByPath,
   repeatTabById,
   repeatScopeById,
   placedSections,
@@ -125,14 +126,34 @@ export function repeatBlockTabIndex(
   layout: TemplateLayout,
   sheetId: string,
   instanceId: string,
+  path?: readonly string[] | null,
 ): number | null {
   const recordList = [...records];
-  const sectionId = blockIndex(recordList).get(blockIndexKey(sheetId, instanceId));
-  const place = sectionId === undefined ? null : repeatSectionPlace(layout, sectionId);
+
+  const targetPath =
+    path === undefined || path === null ? null : path.filter((_part, index) => index % 2 === 0);
+
+  const sectionId =
+    targetPath?.at(-1) ?? blockIndex(recordList).get(blockIndexKey(sheetId, instanceId));
+
+  const scoped =
+    targetPath === null || targetPath.length === 0 ? null : repeatScopeByPath(layout, targetPath);
+
+  const place =
+    scoped === null
+      ? sectionId === undefined
+        ? null
+        : repeatSectionPlace(layout, sectionId)
+      : { place: scoped.place };
 
   if (sectionId === undefined || place === null) return null;
 
   const tabRepeat = repeatTabById(layout, sectionId);
+
+  const tab = layout.tabs[place.place.tabIndex];
+
+  const tabInstanceId =
+    targetPath !== null && tab?.repeat?.id === targetPath[0] ? (path?.[1] ?? null) : null;
 
   const tabs = renderedTabs(
     layout,
@@ -141,11 +162,15 @@ export function repeatBlockTabIndex(
   );
 
   const index = tabs.findIndex(
-    (tab) =>
-      tab.sourceIndex === place.place.tabIndex &&
+    (renderedTab) =>
+      renderedTab.sourceIndex === place.place.tabIndex &&
       (tabRepeat === null
-        ? tab.block === null
-        : tab.block?.scopeId === sectionId && tab.block.instanceId === instanceId),
+        ? tabInstanceId === null
+          ? renderedTab.block === null
+          : renderedTab.block?.scopeId === targetPath?.[0] &&
+            renderedTab.block?.instanceId === tabInstanceId
+        : renderedTab.block?.scopeId === sectionId &&
+          renderedTab.block?.instanceId === (tabInstanceId ?? instanceId)),
   );
 
   return index === -1 ? null : index;

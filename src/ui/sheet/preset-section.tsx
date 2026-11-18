@@ -110,8 +110,11 @@ type SheetBlock = {
   // The value of the section's first field, "" when empty.
   name: string;
   rows: SheetRow[];
+  nested: NestedRepeat[];
   pending: RowPending;
 };
+
+type NestedRepeat = { id: string; section: PresetSection };
 
 type RepeatContentProps = Omit<SheetSectionProps, 'readOnly'> & { sectionId: string };
 
@@ -392,8 +395,15 @@ function ReadOnlyRepeatContent({
   return (
     <Body>
       <Blocks
+        template={template}
+        tabIndex={tabIndex}
+        sectionIndex={sectionIndex}
         section={section}
         sheetId={sheetId}
+        records={records}
+        pending={pending}
+        templateTitle={sectionTitle(section) ?? ''}
+        role={role}
         sectionId={sectionId}
         blocks={blocks}
         readOnly
@@ -463,8 +473,15 @@ function RepeatContent({
     <>
       <Body>
         <Blocks
+          template={template}
+          tabIndex={tabIndex}
+          sectionIndex={sectionIndex}
           section={section}
           sheetId={sheetId}
+          records={records}
+          pending={pending}
+          templateTitle={templateTitle}
+          role={role}
           sectionId={sectionId}
           blocks={blocks}
           readOnly={false}
@@ -533,8 +550,15 @@ function PlainRows({
 }
 
 type BlocksProps = {
+  template: Template;
+  tabIndex: number;
+  sectionIndex: number;
   section: PresetSection;
   sheetId: string;
+  records: ReadonlyMap<string, VersionedRecord>;
+  pending: SheetPending | null;
+  templateTitle: string;
+  role: 'GM' | 'PLAYER';
   sectionId: string;
   blocks: readonly SheetBlock[];
   readOnly: boolean;
@@ -549,8 +573,15 @@ type DuplicateAsk = { instanceId: string; request: number };
 // Every repeat block in order, each holding all rows of the section. The block's control slot sits
 // in its first row.
 function Blocks({
+  template,
+  tabIndex,
+  sectionIndex,
   section,
   sheetId,
+  records,
+  pending,
+  templateTitle,
+  role,
   sectionId,
   blocks,
   readOnly,
@@ -641,7 +672,7 @@ function Blocks({
           { [REMOVED_ROW_CLASS]: block.pending.removed },
         )}
         data-row
-        data-row-index={rowIndex}
+        data-row-index={row.sourceIndex}
       >
         <Cells
           row={row}
@@ -653,6 +684,43 @@ function Blocks({
         {rowIndex === 0 ? slot : null}
       </div>
     ));
+
+    const nested = block.nested.map(({ id, section: nestedSection }) =>
+      readOnly ? (
+        <ReadOnlyRepeatContent
+          key={id}
+          template={template}
+          section={nestedSection}
+          tabIndex={tabIndex}
+          sectionIndex={sectionIndex}
+          sheetId={sheetId}
+          records={records}
+          pending={pending}
+          sectionId={id}
+          blockTools={tools}
+          tabBlock={null}
+          parentPath={block.path}
+          role={role}
+        />
+      ) : (
+        <RepeatContent
+          key={id}
+          template={template}
+          section={nestedSection}
+          tabIndex={tabIndex}
+          sectionIndex={sectionIndex}
+          templateTitle={templateTitle}
+          sheetId={sheetId}
+          records={records}
+          pending={pending}
+          sectionId={id}
+          blockTools={tools}
+          tabBlock={null}
+          parentPath={block.path}
+          role={role}
+        />
+      ),
+    );
 
     const duplicate =
       tools !== null && duplicateAsk?.instanceId === block.instanceId ? (
@@ -707,6 +775,7 @@ function Blocks({
         data-repeat-block={block.instanceId}
       >
         {rows}
+        {nested}
         {duplicate}
       </div>
     );
@@ -943,6 +1012,19 @@ function repeatBlocksOf(
   return repeatBlocks(records, sheetId, scopePath).map((block) => {
     const path = [...scopePath, block.instanceId];
 
+    const nested = section.rows.flatMap((row) => {
+      const id = row.repeat?.id;
+
+      if (id === undefined || id === section.repeat?.id) {
+        return [];
+      }
+
+      const parentScopes = (parentPath ?? []).filter((_part, index) => index % 2 === 0);
+      const nestedSection = repeatSectionByPath(template, [...parentScopes, sectionId, id]);
+
+      return nestedSection === null ? [] : [{ id, section: nestedSection }];
+    });
+
     const target: FieldPatchTarget = {
       kind: 'rep',
       sectionId,
@@ -960,8 +1042,13 @@ function repeatBlocksOf(
       instanceId: block.instanceId,
       path,
       name: repeatBlockName(records, sheetId, section, block.instanceId, path),
+      nested,
       pending: blockPending,
       rows: section.rows.flatMap((row, rowIndex) => {
+        if (row.repeat !== undefined && row.repeat.id !== section.repeat?.id) {
+          return [];
+        }
+
         const sourceIndex =
           scope === null || scope.row === null ? rowIndex : scope.section.rows.indexOf(scope.row);
 

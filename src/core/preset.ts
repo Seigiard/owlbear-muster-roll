@@ -303,7 +303,7 @@ export function firstFieldId(row: PresetRow): string | null {
 
 export function sectionFields(section: PresetSection): PresetFieldCell[] {
   return section.rows.flatMap((item) =>
-    item.repeat === undefined
+    item.repeat === undefined || item.repeat.id === section.repeat?.id
       ? rowCells(item).filter(
           (candidate): candidate is PresetFieldCell => candidate.kind === 'field',
         )
@@ -444,10 +444,13 @@ export function repeatSectionByPath(
       for (const section of tab.sections) {
         const sectionId = section.repeat?.id;
 
-        if (sectionId === childScopeId) {
+        if (childScopeId !== undefined && sectionId === childScopeId) {
           if (scopePath.length === 2) return section;
 
-          const row = section.rows.find((candidate) => candidate.repeat?.id === rowScopeId);
+          const row =
+            rowScopeId === undefined
+              ? undefined
+              : section.rows.find((candidate) => candidate.repeat?.id === rowScopeId);
 
           return row === undefined ? null : { ...section, repeat: row.repeat, rows: [row] };
         }
@@ -462,11 +465,20 @@ export function repeatSectionByPath(
       return null;
     }
 
-    if (tabId === undefined && scopePath.length === 1) {
+    if (tabId === undefined && (scopePath.length === 1 || scopePath.length === 2)) {
       for (const section of tab.sections) {
-        if (section.repeat?.id === tabScopeId) return section;
+        if (section.repeat?.id === tabScopeId) {
+          if (scopePath.length === 1) return section;
 
-        const row = section.rows.find((candidate) => candidate.repeat?.id === tabScopeId);
+          const row = section.rows.find((candidate) => candidate.repeat?.id === childScopeId);
+
+          return row === undefined ? null : { ...section, repeat: row.repeat, rows: [row] };
+        }
+
+        const row =
+          scopePath.length === 1
+            ? section.rows.find((candidate) => candidate.repeat?.id === tabScopeId)
+            : undefined;
 
         if (row !== undefined) return { ...section, repeat: row.repeat, rows: [row] };
       }
@@ -532,12 +544,15 @@ export function repeatScopeByPath(
   for (const [tabIndex, tab] of layout.tabs.entries()) {
     if (tab.repeat?.id === tabScopeId) {
       for (const [sectionIndex, section] of tab.sections.entries()) {
-        if (section.repeat?.id === childScopeId) {
+        if (childScopeId !== undefined && section.repeat?.id === childScopeId) {
           if (scopePath.length === 2) {
             return { place: { tabIndex, sectionIndex }, section, row: null };
           }
 
-          const row = section.rows.find((candidate) => candidate.repeat?.id === rowScopeId);
+          const row =
+            rowScopeId === undefined
+              ? undefined
+              : section.rows.find((candidate) => candidate.repeat?.id === rowScopeId);
 
           return row === undefined ? null : { place: { tabIndex, sectionIndex }, section, row };
         }
@@ -554,13 +569,22 @@ export function repeatScopeByPath(
       return null;
     }
 
-    if (scopePath.length === 1 && tab.repeat === undefined) {
+    if ((scopePath.length === 1 || scopePath.length === 2) && tab.repeat === undefined) {
       for (const [sectionIndex, section] of tab.sections.entries()) {
         if (section.repeat?.id === tabScopeId) {
+          if (scopePath.length === 2) {
+            const row = section.rows.find((candidate) => candidate.repeat?.id === childScopeId);
+
+            return row === undefined ? null : { place: { tabIndex, sectionIndex }, section, row };
+          }
+
           return { place: { tabIndex, sectionIndex }, section, row: null };
         }
 
-        const row = section.rows.find((candidate) => candidate.repeat?.id === tabScopeId);
+        const row =
+          scopePath.length === 1
+            ? section.rows.find((candidate) => candidate.repeat?.id === tabScopeId)
+            : undefined;
 
         if (row !== undefined) return { place: { tabIndex, sectionIndex }, section, row };
       }

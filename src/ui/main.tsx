@@ -352,7 +352,13 @@ function WindowRoot({
     const blockTab =
       block === null || template === undefined
         ? null
-        : repeatBlockTabIndex(records.values(), template, openRequest.sheetId, block);
+        : repeatBlockTabIndex(
+            records.values(),
+            template,
+            openRequest.sheetId,
+            block,
+            openRequest.path,
+          );
 
     const listed = tab === null ? undefined : tabs.find((candidate) => candidate.id === tab);
     const visible = listed === undefined ? [] : visibleTemplateTabs(listed);
@@ -363,8 +369,12 @@ function WindowRoot({
     const sourceCellTab =
       template === undefined
         ? null
-        : (tokenCellPlace(template, openRequest.cellId, openRequest.path?.[0] ?? null)?.tabIndex ??
-          null);
+        : (tokenCellPlace(
+            template,
+            openRequest.cellId,
+            openRequest.path?.[0] ?? null,
+            openRequest.path?.filter((_part, index) => index % 2 === 0),
+          )?.tabIndex ?? null);
 
     const sourceCellIndex =
       sourceCellTab === null
@@ -496,6 +506,7 @@ function WindowRoot({
         tab.policy.template,
         tab.sheetId,
         live.target.instanceId,
+        live.target.path,
       );
 
       const targetTab = targetIndex === null ? undefined : targetTabs[targetIndex];

@@ -8,6 +8,7 @@ import { dependentSheetId, resolveSheet } from '@/core/sheets';
 import {
   blockDataSchema,
   cellValues,
+  parseBlockPathKey,
   repDataSchema,
   type FieldValue,
   type VersionedRecord,
@@ -583,10 +584,16 @@ function patchOf(command: PlayerEditCommand, record: VersionedRecord): ProposalP
 // The commands that make a player's entry again as a GM's own edit: a removal, or a new repeat
 // block and then its cells, or the fields it sets and clears.
 function commandsOf(entry: ProposalEntry, template: Template | null): PlayerEditCommand[] {
-  const [, sheetId = '', id, instanceId = ''] = entry.k.split(':');
+  const parsed = parseBlockPathKey(entry.k);
+  const sectionId = parsed?.path.at(-2);
+  const instanceId = parsed?.path.at(-1);
+  const path = parsed?.path.length === 2 ? undefined : parsed?.path;
+  const sheetId = parsed?.sheetId ?? entry.k.split(':')[1] ?? '';
 
   const target: FieldPatchTarget =
-    id !== undefined ? { kind: 'rep', sectionId: id, instanceId } : { kind: 'row', rowId: '' };
+    sectionId === undefined
+      ? { kind: 'row', rowId: '' }
+      : repeatTarget(sectionId, instanceId ?? '', path);
 
   const fieldPatches = (values: Readonly<Record<string, FieldValue | null>>): PlayerEditCommand[] =>
     Object.entries(values).map(([fieldId, value]) => ({
@@ -604,18 +611,49 @@ function commandsOf(entry: ProposalEntry, template: Template | null): PlayerEdit
     }));
 
   switch (entry.patch.kind) {
-    case 'remove':
-      return [{ type: 'repeat-block-delete', sheetId, sectionId: id ?? '', instanceId }];
-    case 'add':
-      return [
-        { type: 'repeat-block-add', sheetId, sectionId: id ?? '', instanceId },
-        ...fieldPatches(cellValues(entry.patch.d.cells)),
-      ];
+    case 'remove': {
+      const command: Extract<PlayerEditCommand, { type: 'repeat-block-delete' }> = {
+        type: 'repeat-block-delete',
+        sheetId,
+        sectionId: sectionId ?? '',
+        instanceId: instanceId ?? '',
+      };
+
+      if (path !== undefined) command.path = path;
+
+      return [command];
+    }
+
+    case 'add': {
+      const command: Extract<PlayerEditCommand, { type: 'repeat-block-add' }> = {
+        type: 'repeat-block-add',
+        sheetId,
+        sectionId: sectionId ?? '',
+        instanceId: instanceId ?? '',
+      };
+
+      if (path !== undefined) command.path = path;
+
+      return [command, ...fieldPatches(cellValues(entry.patch.d.cells))];
+    }
+
     case 'fields':
       return fieldPatches(entry.patch.values);
     default:
       return unknownPatch(entry.patch);
   }
+}
+
+function repeatTarget(
+  sectionId: string,
+  instanceId: string,
+  path: readonly string[] | undefined,
+): FieldPatchTarget {
+  const target: FieldPatchTarget = { kind: 'rep', sectionId, instanceId };
+
+  if (path !== undefined) target.path = path;
+
+  return target;
 }
 
 // AD-14: where a block's values go when its sheet's template changes from its form in `before` to
