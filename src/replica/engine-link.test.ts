@@ -556,7 +556,7 @@ describe('a repeat block removal', () => {
 });
 
 describe('a nested repeat block duplicate', () => {
-  test('copies the nested subtree with a numbered name and no copied token links', async () => {
+  test('keeps an edited nested source independent when its duplicate receives its first edit', async () => {
     // #given
     const nestedPreset: Preset = {
       v: 4,
@@ -654,6 +654,22 @@ describe('a nested repeat block duplicate', () => {
 
     // #when
     send(client, {
+      type: 'field-patch',
+      sheetId: 'encounter',
+      target: {
+        kind: 'rep',
+        sectionId: 'attack',
+        instanceId: 'a1',
+        path: ['npc', 'n1', 'attack', 'a1'],
+      },
+      fieldId: 'attack_name',
+      value: 'Rake',
+    });
+    await waitUntil(
+      () => valuesOf(shown(client, 'blk:encounter:npc:n1:attack:a1')).attack_name === 'Rake',
+    );
+
+    send(client, {
       type: 'repeat-block-duplicate',
       sheetId: 'encounter',
       sectionId: 'npc',
@@ -711,6 +727,8 @@ describe('a nested repeat block duplicate', () => {
       path: ['npc', duplicateId, 'attack', duplicateChildId],
     } as const;
 
+    const commitsBeforeCopyEdit = commits(room, 'gm-a').length;
+
     send(client, {
       type: 'field-patch',
       sheetId: 'encounter',
@@ -718,7 +736,7 @@ describe('a nested repeat block duplicate', () => {
       fieldId: 'attack_name',
       value: 'Bite',
     });
-    await waitUntil(() => valuesOf(shown(client, duplicateChild.k)).attack_name === 'Bite');
+    await waitUntil(() => commits(room, 'gm-a').length > commitsBeforeCopyEdit);
     const afterMutation = client.store.$records.get();
 
     // #then
@@ -736,10 +754,10 @@ describe('a nested repeat block duplicate', () => {
         .flatMap((record) => (record.k.startsWith('link:') && record.d !== null ? [record.d] : []))
         .sort((first, second) => JSON.stringify(first).localeCompare(JSON.stringify(second))),
     }).toEqual({
-      beforeMutation: [{ scope: 'attack', order: 0, values: { attack_name: 'Claw', damage: 3 } }],
+      beforeMutation: [{ scope: 'attack', order: 0, values: { attack_name: 'Rake', damage: 3 } }],
       source: {
         npc: { npc_name: 'Goblin 1', hp: 7 },
-        attack: { attack_name: 'Claw', damage: 3 },
+        attack: { attack_name: 'Rake', damage: 3 },
       },
       duplicate: {
         npc: { npc_name: 'Goblin 2', hp: 7 },
