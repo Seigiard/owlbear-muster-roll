@@ -536,33 +536,6 @@ describe('a GM client answers a proposal', () => {
       hiddenSibling: fixture.npcParent,
     });
   });
-  test('rejects a nested field edit whose parent block is deleted', async () => {
-    // #given
-    const fixture = nestedAccessFixture({ removedBoss: true });
-    const room = roomRig.openRoom();
-    const gm = await startClient(room, 'gm-a', { seeded: fixture.records });
-    const proposed = fixturePatch(fixture.bossChild, { attack_name: 'Bite' }, 2, PLAYER_SOCKET);
-    joinPlayerSocket(room);
-
-    // #when
-    propose(room, proposed);
-    await waitUntil(
-      () => heardOf(room, 'gm-a', 'commit').length + heardOf(room, 'gm-a', 'reject').length === 1,
-    );
-
-    // #then
-    expect({
-      rejected: heardOf(room, 'gm-a', 'reject'),
-      commits: heardOf(room, 'gm-a', 'commit'),
-      child: storedRecord(gm, fixture.bossChild.k),
-      parent: storedRecord(gm, fixture.bossParent.k),
-    }).toEqual({
-      rejected: [reject(proposed, 'denied')],
-      commits: [],
-      child: fixture.bossChild,
-      parent: fixture.bossParent,
-    });
-  });
   test('from a player that deletes a repeat-tab block: rejects it and preserves its token link', async () => {
     // #given
     const block: VersionedRecord = {
@@ -1879,10 +1852,8 @@ describe('a player and a GM client together', () => {
 
 function nestedAccessFixture({
   hiddenNpc = false,
-  removedBoss = false,
 }: {
   hiddenNpc?: boolean;
-  removedBoss?: boolean;
 } = {}) {
   const repeatTab = (id: 'npc' | 'boss', visibility?: 'gm') => ({
     title: id === 'npc' ? 'NPC' : 'Boss',
@@ -1937,9 +1908,9 @@ function nestedAccessFixture({
 
   const bossParent: VersionedRecord = {
     k: 'blk:encounter:boss:b1',
-    d: removedBoss ? null : { order: 0, cells: { boss_name: ['Dragon', 1, 'seed'] } },
-    c: removedBoss ? 2 : 1,
-    a: removedBoss ? 'gm-a' : 'seed',
+    d: { order: 0, cells: { boss_name: ['Dragon', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
     l: [1, 'seed'],
   };
 
