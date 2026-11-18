@@ -705,7 +705,7 @@ function linkSet(name: TargetName): Command {
   };
 
   if (target.block.path.length > 0) {
-    command.path = target.block.path;
+    command.path = [...target.block.path];
   }
 
   return command;
