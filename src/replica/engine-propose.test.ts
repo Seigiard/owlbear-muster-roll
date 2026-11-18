@@ -1426,6 +1426,154 @@ describe("a player's entry over its lifetime", () => {
 });
 
 describe('a player and a GM client together', () => {
+  test('commits a permitted nested field edit to its child without changing its parent or sibling', async () => {
+    // #given
+    const nestedPreset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'encounter',
+          title: 'Encounter',
+          players: 'edit',
+          tabs: [
+            {
+              title: 'NPC',
+              repeat: { id: 'npc', nameField: 'npc_name' },
+              sections: [
+                {
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'npc_name' },
+                        { kind: 'field', type: 'number', id: 'hp' },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  repeat: { id: 'attack', nameField: 'attack_name' },
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'attack_name' },
+                        { kind: 'field', type: 'number', id: 'damage' },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const parent: VersionedRecord = {
+      k: 'blk:encounter:npc:goblin',
+      d: { order: 0, cells: { npc_name: ['Goblin', 1, 'seed'], hp: [7, 1, 'seed'] } },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    };
+
+    const child: VersionedRecord = {
+      k: `${parent.k}:attack:claw`,
+      d: {
+        order: 0,
+        cells: { attack_name: ['Claw', 1, 'seed'], damage: [3, 1, 'seed'] },
+      },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    };
+
+    const sibling: VersionedRecord = {
+      k: `${parent.k}:attack:bow`,
+      d: {
+        order: 1,
+        cells: { attack_name: ['Bow', 1, 'seed'], damage: [4, 1, 'seed'] },
+      },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    };
+
+    const nestedRig = createRoomRig({
+      seeded: [
+        { k: 'preset', d: encodePreset(nestedPreset), c: 1, a: 'seed' },
+        {
+          k: 'blk:encounter',
+          d: { order: 0, cells: {} },
+          c: 1,
+          a: 'seed',
+          l: [1, 'seed'],
+        },
+        parent,
+        child,
+        sibling,
+      ],
+    });
+
+    const room = nestedRig.openRoom();
+
+    const gm = await nestedRig.startClient(room, 'gm-a', {
+      engine: { editDenied: DENIED },
+    });
+
+    const player = await nestedRig.startClient(room, PLAYER_ID, {
+      role: 'PLAYER',
+      playerId: PLAYER_ID,
+      seeded: [],
+      engine: { editDenied: DENIED },
+    });
+
+    await waitUntil(() => shown(player, child.k) !== undefined);
+
+    // #when
+    const commandId = send(player, {
+      type: 'field-patch',
+      sheetId: 'encounter',
+      target: {
+        kind: 'rep',
+        sectionId: 'attack',
+        instanceId: 'claw',
+        path: ['npc', 'goblin', 'attack', 'claw'],
+      },
+      fieldId: 'attack_name',
+      value: 'Bite',
+    });
+
+    await waitUntil(
+      () => rejection(player, commandId) !== undefined || storedRecord(gm, child.k)?.c === 2,
+    );
+
+    // #then
+    expect({
+      rejection: rejection(player, commandId),
+      child: storedRecord(gm, child.k),
+      parent: storedRecord(gm, parent.k),
+      sibling: storedRecord(gm, sibling.k),
+      pending: player.store.$pending.get().size,
+    }).toEqual({
+      rejection: undefined,
+      child: {
+        ...child,
+        d: {
+          order: 0,
+          cells: {
+            attack_name: ['Bite', 2, PLAYER_ID],
+            damage: [3, 1, 'seed'],
+          },
+        },
+        c: 2,
+        a: PLAYER_ID,
+      },
+      parent,
+      sibling,
+      pending: 0,
+    });
+  });
+
   test('refuses a player command for a GM-only source-section field in a visible repeat tab', async () => {
     // #given
     const block: VersionedRecord = {
