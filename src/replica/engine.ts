@@ -7,7 +7,7 @@ import { recordDigest } from '@/core/digest';
 import { newRecordId, type RecordIdKind } from '@/core/ids';
 import { recordFitsOneMessage } from '@/core/message-size';
 import { compareGenerations, mergeRecords, type Version } from '@/core/merge';
-import { blockOfLinkTarget, liveLinkTarget, type LinkTarget } from '@/core/link-target';
+import { liveLinkTarget, type LinkTarget } from '@/core/link-target';
 import { decodePreset, windowSizeOf, type Preset } from '@/core/preset';
 import { NOTHING_ERASED } from '@/core/preset-migrate';
 import { presetDataSchema, type VersionedRecord } from '@/core/records';
@@ -738,7 +738,7 @@ export async function startReplicaEngine(
 
     const id = newId();
 
-    const block = blockOfLinkTarget(target);
+    const block = target.block;
 
     heldOpen =
       block.path.length === 0

@@ -2,8 +2,9 @@ import { createContext, useContext, useId } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import clsx from 'clsx';
 
+import { blockIdOf } from '@/core/block-address';
 import type { PresetCell, PresetFieldCell } from '@/core/preset';
-import { blockOfLinkTarget, linkTargetKey, type LinkTarget } from '@/core/link-target';
+import { linkTargetKey, type LinkTarget } from '@/core/link-target';
 import {
   cellLabel,
   cellVisibleLabel,
@@ -135,7 +136,7 @@ export function SheetCell({
         cell.kind === 'token'
           ? tokenTarget === null || tokenTarget === undefined
             ? 'root'
-            : (blockOfLinkTarget(tokenTarget).path.at(-1) ?? 'root')
+            : (blockIdOf(tokenTarget.block) ?? 'root')
           : undefined
       }
       tabIndex={cell.kind === 'token' ? -1 : undefined}

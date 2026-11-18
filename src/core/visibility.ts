@@ -1,10 +1,4 @@
-import {
-  blockAddress,
-  parseBlockKey,
-  scopePathOf,
-  sectionIdOf,
-  type BlockAddress,
-} from '@/core/block-address';
+import { parseBlockKey, scopePathOf, sectionIdOf, type BlockAddress } from '@/core/block-address';
 import { linkTargetOf, liveLinkTarget, type LiveLinkTarget } from '@/core/link-target';
 import type { DicePlace } from '@/core/dice-roll';
 import {
@@ -29,14 +23,7 @@ export type PlayerRole = 'GM' | 'PLAYER';
 
 type FieldVisibilityTarget =
   | { kind: 'row'; rowId: string }
-  | { kind: 'rep'; block: BlockAddress; fieldId?: string }
-  | {
-      kind: 'rep';
-      sectionId: string;
-      instanceId?: string;
-      fieldId?: string;
-      path?: readonly string[];
-    };
+  | { kind: 'rep'; block: BlockAddress; fieldId?: string };
 
 // One template as the sidebar lists it: a sheet set with its live sheets, or a single sheet, whose
 // sheet id is its template id.
@@ -258,21 +245,7 @@ export function rollShownTo(role: PlayerRole, hidden: boolean): boolean {
 
 function fieldTargetTabIndex(template: Template, target: FieldVisibilityTarget): number | null {
   if (target.kind === 'rep') {
-    const block =
-      'block' in target
-        ? target.block
-        : target.path === undefined
-          ? null
-          : blockAddress('', target.path);
-
-    const scopePath =
-      'block' in target
-        ? scopePathOf(target.block)
-        : target.path === undefined
-          ? [target.sectionId]
-          : block === null
-            ? []
-            : scopePathOf(block);
+    const scopePath = scopePathOf(target.block);
 
     const scoped = repeatScopeByPath(template, scopePath);
 
@@ -307,10 +280,7 @@ function fieldTargetTabIndex(template: Template, target: FieldVisibilityTarget):
 
     // A repeat tab projects its plain rows into one synthetic section, so recover the source
     // section before authorizing a field.
-    if (
-      template.tabs[place.tabIndex]?.repeat?.id ===
-      ('block' in target ? sectionIdOf(target.block) : target.sectionId)
-    ) {
+    if (template.tabs[place.tabIndex]?.repeat?.id === sectionIdOf(target.block)) {
       const source = template.tabs[place.tabIndex]?.sections
         .filter((candidate) => candidate.repeat === undefined)
         .flatMap((candidate) =>

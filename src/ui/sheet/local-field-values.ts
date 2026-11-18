@@ -87,14 +87,5 @@ function sameTarget(first: FieldPatchTarget, second: FieldPatchTarget): boolean 
 
   if (second.kind !== 'rep') return false;
 
-  if ('block' in first) {
-    return 'block' in second && sameAddress(first.block, second.block);
-  }
-
-  return (
-    !('block' in second) &&
-    first.sectionId === second.sectionId &&
-    first.instanceId === second.instanceId &&
-    JSON.stringify(first.path ?? null) === JSON.stringify(second.path ?? null)
-  );
+  return second.kind === 'rep' && sameAddress(first.block, second.block);
 }

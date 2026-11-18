@@ -1,4 +1,4 @@
-import { blockOfLinkTarget, linkTargetKey, type LiveLinkTarget } from '@/core/link-target';
+import { linkTargetKey, type LiveLinkTarget } from '@/core/link-target';
 
 // CAP-32: what one client's map selection marks in its window: the sheet of every target a selected
 // token's live link names, and the `linkTargetKey` of each such target, a repeat block included.
@@ -21,7 +21,7 @@ export function selectionMarks(
     const live = links.get(itemId);
 
     if (live !== undefined) {
-      sheetIds.add(blockOfLinkTarget(live.target).sheetId);
+      sheetIds.add(live.target.block.sheetId);
       targets.add(linkTargetKey(live.target));
     }
   }

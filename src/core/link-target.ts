@@ -3,9 +3,9 @@ import {
   blockAddress,
   blockIdOf,
   isLiveBlock,
+  sameAddress,
   scopePathOf,
   sectionIdOf,
-  sheetRootAddress,
   type BlockAddress,
 } from '@/core/block-address';
 import {
@@ -22,20 +22,10 @@ import { linkDataSchema, type LinkData, type VersionedRecord } from '@/core/reco
 import { renderedTabs } from '@/core/rendered-tabs';
 import { resolveSheet, sheetIdSchema, type SheetPolicy } from '@/core/sheets';
 
-type AddressLinkTarget = {
+export type LinkTarget = {
   block: BlockAddress;
   cellId?: string;
 };
-
-type LegacyLinkTarget = {
-  block?: any;
-  sheetId: string;
-  instanceId: string | null;
-  path?: readonly string[] | null;
-  cellId?: string;
-};
-
-export type LinkTarget = AddressLinkTarget | LegacyLinkTarget;
 
 // A target a live link may name: its sheet's policy, and for a repeat block its section.
 export type LiveLinkTarget = {
@@ -62,45 +52,27 @@ export function linkTargetOf(d: JsonValue): LinkTarget | null {
     return null;
   }
 
-  const block =
-    data.data.path === undefined
-      ? sheetRootAddress(data.data.s)
-      : { sheetId: data.data.s, path: data.data.path };
+  const block = blockAddress(data.data.s, data.data.path ?? []);
 
-  return { block, cellId: data.data.c };
+  return block === null ? null : { block, cellId: data.data.c };
 }
 
 // The `link:` record data for a target.
 export function linkDataOf(target: LinkTarget): LinkData {
-  const block = blockOfLinkTarget(target);
-  const { sheetId, path } = block;
+  const { sheetId, path } = target.block;
 
   return path.length === 0
-    ? { s: sheetId, c: targetCellId(target) ?? '' }
-    : { s: sheetId, path: [...path], c: targetCellId(target) ?? '' };
+    ? { s: sheetId, c: target.cellId ?? '' }
+    : { s: sheetId, path: [...path], c: target.cellId ?? '' };
 }
 
 // One string per target, so targets can be kept in a set.
 export function linkTargetKey(target: LinkTarget): string {
-  const block = blockOfLinkTarget(target);
-
-  return `${block.sheetId}:${block.path.join(':')}:${targetCellId(target) ?? ''}`;
+  return `${target.block.sheetId}:${target.block.path.join(':')}:${target.cellId ?? ''}`;
 }
 
 export function sameLinkTarget(first: LinkTarget, second: LinkTarget): boolean {
-  if (!('block' in first) && !('block' in second)) {
-    return (
-      first.sheetId === second.sheetId &&
-      first.instanceId === second.instanceId &&
-      first.cellId === second.cellId &&
-      JSON.stringify(first.path ?? null) === JSON.stringify(second.path ?? null)
-    );
-  }
-
-  return (
-    sameBlock(blockOfLinkTarget(first), blockOfLinkTarget(second)) &&
-    targetCellId(first) === targetCellId(second)
-  );
+  return sameAddress(first.block, second.block) && first.cellId === second.cellId;
 }
 
 // The tab that holds a live repeat block of a sheet: the tab of the repeat section its block path
@@ -160,7 +132,7 @@ export function liveLinkTarget(
   preset: Preset | null,
   target: LinkTarget,
 ): LiveLinkTarget | null {
-  const block = blockOfLinkTarget(target);
+  const block = target.block;
   const policy = resolveSheet(records, preset, block.sheetId);
 
   if (policy === null) {
@@ -168,7 +140,7 @@ export function liveLinkTarget(
   }
 
   if (block.path.length === 0) {
-    const cell = tokenCellPlace(policy.template, targetCellId(target), null);
+    const cell = tokenCellPlace(policy.template, target.cellId, null);
 
     return policy.linkable && cell !== null ? { target, policy, section: null, cell } : null;
   }
@@ -180,28 +152,9 @@ export function liveLinkTarget(
   const scopePath = scopePathOf(block);
   const section = repeatSectionByPath(policy.template, scopePath);
 
-  const cell =
-    section === null ? null : tokenCellPlace(policy.template, targetCellId(target), scopePath);
+  const cell = section === null ? null : tokenCellPlace(policy.template, target.cellId, scopePath);
 
   return section !== null && cell !== null ? { target, policy, section, cell } : null;
-}
-
-export function blockOfLinkTarget(target: LinkTarget): BlockAddress {
-  return 'block' in target
-    ? target.block
-    : (blockAddress(target.sheetId, target.path ?? []) ?? sheetRootAddress(target.sheetId));
-}
-
-function targetCellId(target: LinkTarget): string | undefined {
-  return target.cellId;
-}
-
-function sameBlock(first: BlockAddress, second: BlockAddress): boolean {
-  return (
-    first.sheetId === second.sheetId &&
-    first.path.length === second.path.length &&
-    first.path.every((segment, index) => second.path[index] === segment)
-  );
 }
 
 export function tokenCellPlace(

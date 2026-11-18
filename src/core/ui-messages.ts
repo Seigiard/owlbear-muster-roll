@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { PARTY_LIMIT, PLAYER_NAME_MAX_LENGTH, type PartyEntry } from '@/core/access';
 import { dicePlaceSchema, shownValueSchema } from '@/core/dice-roll';
-import { fieldPatchTargetWireSchema, type FieldPatchTarget } from '@/core/field-patch';
+import { fieldPatchTargetWireSchema, type FieldPatchWireTarget } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
 import { playerIdSchema, recordSchema } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
@@ -492,7 +492,7 @@ export type PartyList = z.infer<typeof partySchema>;
 type WireCommand = z.infer<typeof commandIntentSchema>;
 
 type ReadonlyFieldPatchCommand = Omit<Extract<WireCommand, { type: 'field-patch' }>, 'target'> & {
-  target: FieldPatchTarget;
+  target: FieldPatchWireTarget;
 };
 
 export type Command = Exclude<WireCommand, { type: 'field-patch' }> | ReadonlyFieldPatchCommand;

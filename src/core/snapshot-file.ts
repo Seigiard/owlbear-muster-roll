@@ -13,7 +13,6 @@ import {
   type VersionedRecord,
 } from '@/core/records';
 import { isSheetSet, liveSheets } from '@/core/sheets';
-import { blockOfLinkTarget } from '@/core/link-target';
 import { liveLinks, tokenIdSchema } from '@/core/token-links';
 
 export const SNAPSHOT_FILE_TYPE = 'muster-roll/snapshot';
@@ -159,7 +158,7 @@ export function encodeSnapshotFile(
   const links = [...liveLinks(records, preset)]
     .sort(([a], [b]) => compare(a, b))
     .map(([tokenId, { target }]) => {
-      const block = blockOfLinkTarget(target);
+      const block = target.block;
 
       return block.path.length === 0
         ? { tokenId, sheetId: block.sheetId, cellId: target.cellId ?? '' }

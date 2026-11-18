@@ -1,10 +1,12 @@
 import { aclKey, playerName, plinkKey } from '@/core/access';
 import {
+  blockAddress,
   type AddressFieldPatchTarget,
   blockIdOf,
   fieldPatchTargetOf,
   hasValidSegments,
   isLiveBlock,
+  sheetRootAddress,
 } from '@/core/block-address';
 import {
   acceptedFieldValue,
@@ -15,13 +17,7 @@ import {
   type PatchedRecord,
 } from '@/core/field-patch';
 import type { RecordIdKind } from '@/core/ids';
-import {
-  blockOfLinkTarget,
-  linkDataOf,
-  linkTargetOf,
-  liveLinkTarget,
-  type LinkTarget,
-} from '@/core/link-target';
+import { linkDataOf, linkTargetOf, liveLinkTarget, type LinkTarget } from '@/core/link-target';
 import { recordFitsOneMessage } from '@/core/message-size';
 import type { Version } from '@/core/merge';
 import {
@@ -717,13 +713,6 @@ export function createComposers(connectionId: string): Composers {
 
     const path = command.path ?? null;
 
-    const target: LinkTarget = {
-      sheetId: command.sheetId,
-      instanceId: path === null ? null : (path.at(-1) ?? null),
-      path,
-      cellId: command.cellId,
-    };
-
     if (path !== null) {
       const instanceId = path.at(-1);
 
@@ -739,6 +728,15 @@ export function createComposers(connectionId: string): Composers {
         return err('unknown-instance');
       }
     }
+
+    const block =
+      path === null ? sheetRootAddress(command.sheetId) : blockAddress(command.sheetId, path);
+
+    if (block === null) {
+      return err('unknown-instance');
+    }
+
+    const target: LinkTarget = { block, cellId: command.cellId };
 
     if (liveLinkTarget(context.records, currentPreset(context), target) === null) {
       return err('not-linkable');
@@ -930,7 +928,7 @@ export function blockLinkTombstones(
   for (const [key, record] of context.records) {
     const target = key.startsWith('link:') ? linkTargetOf(record.d) : null;
 
-    const targetBlock = target === null ? null : blockOfLinkTarget(target);
+    const targetBlock = target?.block ?? null;
     const targetPath = targetBlock?.path ?? null;
 
     const isDescendant =
@@ -1124,10 +1122,6 @@ function addressFieldPatchTargetOf(
   target: FieldPatchCommand['target'],
 ): AddressFieldTarget | null {
   if (target.kind === 'row') {
-    return target;
-  }
-
-  if ('block' in target) {
     return target;
   }
 

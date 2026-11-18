@@ -1,12 +1,6 @@
 import { z } from 'zod';
 
-import {
-  blockAddress,
-  blockKeyOf,
-  blockPathSchema,
-  scopePathOf,
-  type BlockAddress,
-} from '@/core/block-address';
+import { blockKeyOf, blockPathSchema, scopePathOf, type BlockAddress } from '@/core/block-address';
 import type { JsonValue } from '@/core/json';
 import { recordFitsOneMessage } from '@/core/message-size';
 import {
@@ -53,6 +47,10 @@ export const fieldPatchTargetWireSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+export type FieldPatchWireTarget =
+  | { kind: 'row'; rowId: string }
+  | { kind: 'rep'; sectionId: string; instanceId: string; path?: readonly string[] };
+
 // zod's number refuses Infinity and NaN. An empty text is a clear, sent as `null`.
 const VALUE_SCHEMAS = {
   number: z.number(),
@@ -66,22 +64,9 @@ const VALUE_SCHEMAS = {
 // window does not know the background's connection id, and both sides must measure the same record.
 const AUTHOR_STAND_IN = 'a'.repeat(64);
 
-type AddressRepeatTarget = {
-  kind: 'rep';
-  block: BlockAddress;
-};
-
-type LegacyRepeatTarget = {
-  kind: 'rep';
-  sectionId: string;
-  instanceId: string;
-  path?: readonly string[];
-};
-
 export type FieldPatchTarget =
   | { kind: 'row'; rowId: string }
-  | AddressRepeatTarget
-  | LegacyRepeatTarget;
+  | { kind: 'rep'; block: BlockAddress };
 
 // A clear remains a cell, so delayed values cannot restore it.
 export type FieldPatchValue = FieldValue | null;
@@ -93,14 +78,7 @@ export type FieldPatchFailure = 'unknown-instance' | 'unchanged';
 export function patchRecordKey(sheetId: string, target: FieldPatchTarget): string {
   if (target.kind === 'row') return rowKey(sheetId, target.rowId);
 
-  const block =
-    'block' in target
-      ? target.block
-      : blockAddress(sheetId, target.path ?? [target.sectionId, target.instanceId ?? '']);
-
-  if (block === null) throw new Error('Repeat target path must have an even length');
-
-  return blockKeyOf(block);
+  return blockKeyOf(target.block);
 }
 
 // The field with this id in the target: the plain row whose first field is `rowId`, or any row of
@@ -121,14 +99,7 @@ export function targetFields(
   target: FieldPatchTarget,
 ): PresetFieldCell[] | null {
   if (target.kind === 'rep') {
-    const block =
-      'block' in target
-        ? target.block
-        : blockAddress('', target.path ?? [target.sectionId, target.instanceId ?? '']);
-
-    if (block === null) return null;
-
-    const scopePath = scopePathOf(block);
+    const scopePath = scopePathOf(target.block);
     const scope = repeatScopeByPath(layout, scopePath);
 
     if (scope?.row !== null && scope?.row !== undefined) {

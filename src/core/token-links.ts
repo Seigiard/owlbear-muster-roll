@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 import { blockIdOf, childAddress, sheetRootAddress, type BlockAddress } from '@/core/block-address';
 import {
-  blockOfLinkTarget,
   linkDataOf,
   linkTargetKey,
   linkTargetOf,
@@ -136,7 +135,7 @@ export function liveLinks(
 
     // A token id no command could write never reaches a menu filter.
     if (tokenId.success && live !== null) {
-      links.set(tokenId.data, { ...live, target: legacyTargetOf(live.target) });
+      links.set(tokenId.data, live);
     }
   }
 
@@ -190,10 +189,6 @@ export function pickerGroups(
   const linked = linkedTargetKeys(records, preset);
   const groups: PickerGroup[] = [];
 
-  const useAddressTargets =
-    preset.templates.some((template) => template.tabs.some((tab) => tab.repeat !== undefined)) &&
-    preset.templates.some((template) => tokenCells(template, null).length > 0);
-
   const targetOf = (
     template: Template,
     target: LinkTarget,
@@ -201,10 +196,10 @@ export function pickerGroups(
     blockName: string | null,
     section: PresetSection | null,
   ): PickerTarget => {
-    const targetSheetName = sheetName(records, preset, blockOfLinkTarget(target).sheetId) ?? '';
+    const targetSheetName = sheetName(records, preset, target.block.sheetId) ?? '';
 
     return {
-      target: useAddressTargets ? target : pickerLegacyTargetOf(target),
+      target,
       cellId,
       sheetName: targetSheetName,
       blockName,
@@ -429,31 +424,7 @@ export function openTarget(
   const target = linkTargetOf(records.get(linkKey(tokenId))?.d ?? null);
   const live = target === null ? null : liveLinkTarget(records, preset, target);
 
-  return live !== null && linkTargetShownTo(role, live) ? legacyTargetOf(live.target) : null;
-}
-
-function legacyTargetOf(target: LinkTarget): LinkTarget {
-  const block = blockOfLinkTarget(target);
-
-  return {
-    sheetId: block.sheetId,
-    instanceId: blockIdOf(block),
-    path: block.path.length === 0 ? null : [...block.path],
-    cellId: target.cellId,
-  };
-}
-
-function pickerLegacyTargetOf(target: LinkTarget): LinkTarget {
-  const block = blockOfLinkTarget(target);
-
-  return block.path.length === 0
-    ? { sheetId: block.sheetId, instanceId: null, cellId: target.cellId }
-    : {
-        sheetId: block.sheetId,
-        instanceId: blockIdOf(block),
-        path: [...block.path],
-        cellId: target.cellId,
-      };
+  return live !== null && linkTargetShownTo(role, live) ? live.target : null;
 }
 
 function linkEntries(links: ReadonlyMap<string, LiveLinkTarget>): TokenMenuEntry[] {

@@ -745,19 +745,14 @@ function Blocks({
       ) : null;
 
     const name = block.name === '' ? copy.unnamed : block.name;
+    const blockAddressValue = blockAddress(sheetId, block.path);
 
     const onMap = section.rows.some((row) =>
       row.cells.some(
         (cell) =>
           cell.kind === 'token' &&
-          mapMarked.has(
-            linkTargetKey({
-              sheetId,
-              instanceId: block.instanceId,
-              path: [...block.path],
-              cellId: cell.id,
-            }),
-          ),
+          blockAddressValue !== null &&
+          mapMarked.has(linkTargetKey({ block: blockAddressValue, cellId: cell.id })),
       ),
     );
 
@@ -901,17 +896,12 @@ function tokenTargetOf(
     return null;
   }
 
-  const legacySectionId =
-    row.target?.kind === 'rep' && !('block' in row.target) ? row.target.sectionId : null;
-
   const path =
-    row.target?.kind === 'rep' && 'block' in row.target
+    row.target?.kind === 'rep'
       ? row.target.block.path
-      : row.target?.kind === 'rep' && row.target.path !== undefined
-        ? row.target.path
-        : (sectionId ?? legacySectionId) === null || row.instanceId === null
-          ? []
-          : [sectionId ?? legacySectionId ?? '', row.instanceId];
+      : sectionId === null || row.instanceId === null
+        ? []
+        : [sectionId, row.instanceId];
 
   const block = path.length === 0 ? sheetRootAddress(row.sheetId) : blockAddress(row.sheetId, path);
 
@@ -949,15 +939,7 @@ function plainRows(
         ? rowId === null
           ? null
           : { kind: 'row', rowId }
-        : {
-            kind: 'rep',
-            sectionId: tabBlock.scopeId,
-            instanceId: tabBlock.instanceId,
-          };
-
-    if (target?.kind === 'rep' && tabBlock !== null && tabBlock.path.length > 2) {
-      target.path = [...tabBlock.path];
-    }
+        : { kind: 'rep', block: tabBlock.block };
 
     return [
       {
@@ -1034,13 +1016,7 @@ function repeatBlocksOf(
       return nestedSection === null ? [] : [{ id, section: nestedSection }];
     });
 
-    const target: FieldPatchTarget = {
-      kind: 'rep',
-      sectionId,
-      instanceId: block.instanceId,
-    };
-
-    if (path.length > 2) target.path = path;
+    const target: FieldPatchTarget = { kind: 'rep', block: address };
 
     const blockPending = rowPending(pending, patchRecordKey(sheetId, target), fieldIds, true);
     const place = placeOf(records, sheetId, target);

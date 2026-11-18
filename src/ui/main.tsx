@@ -11,7 +11,6 @@ import { renderedTabs as renderTabs } from '@/core/rendered-tabs';
 import { isSheetSet, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
 import {
-  blockOfLinkTarget,
   linkTargetKey,
   repeatBlockTabIndex,
   tokenCellPlace,
@@ -491,8 +490,8 @@ function WindowRoot({
 
     return [...links.values()].some((live) => {
       if (
-        blockOfLinkTarget(live.target).sheetId !== tab.sheetId ||
-        blockOfLinkTarget(live.target).path.length === 0 ||
+        live.target.block.sheetId !== tab.sheetId ||
+        live.target.block.path.length === 0 ||
         !mapMarks.targets.has(linkTargetKey(live.target))
       ) {
         return false;
@@ -501,7 +500,7 @@ function WindowRoot({
       const targetIndex = repeatBlockTabIndex(
         records.values(),
         tab.policy.template,
-        blockOfLinkTarget(live.target),
+        live.target.block,
       );
 
       const targetTab = targetIndex === null ? undefined : targetTabs[targetIndex];
