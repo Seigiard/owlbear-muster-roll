@@ -190,6 +190,64 @@ test('a token linked to a repeat block on the second tab opens that tab, scrolle
   await expect(repeatBlock(gm.window, 'Сокол')).toBeInViewport();
 });
 
+test(
+  'uploading a preset moves a populated repeat section between ordinary tabs without losing block order',
+  { tag: '@verify-quick' },
+  async ({ context }) => {
+    // #given
+    const gm = await openGm(context);
+    await sheetTab(gm.window, 'Бой').click();
+    await expect(repeatBlock(gm.window, 'Волк')).toBeVisible();
+    await expect(repeatBlock(gm.window, 'Сокол')).toBeVisible();
+    const [main, combat] = PRESET.templates[0]!.tabs;
+
+    const movedPreset = {
+      ...PRESET,
+      templates: [
+        {
+          ...PRESET.templates[0],
+          tabs: [
+            { ...main, sections: [...main!.sections, ...combat!.sections.slice(1)] },
+            { ...combat, sections: combat!.sections.slice(0, 1) },
+          ],
+        },
+        ...PRESET.templates.slice(1),
+      ],
+    };
+
+    // #when
+    await gm.window.getByRole('tab', { name: 'Настройки', exact: true }).click();
+    const choosing = gm.window.waitForEvent('filechooser');
+    await gm.window
+      .getByRole('region', { name: 'Пресет', exact: true })
+      .getByRole('button', { name: 'Загрузить пресет', exact: true })
+      .click();
+    await (
+      await choosing
+    ).setFiles({
+      name: 'moved-pets.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(movedPreset)),
+    });
+    await expect(gm.window.getByText('Формат листов изменён.', { exact: true })).toBeVisible();
+    await gm.window.getByRole('tab', { name: 'Брок', exact: true }).click();
+    await sheetTab(gm.window, 'Основное').click();
+
+    // #then
+    const pets = gm.window.getByRole('region', { name: 'Питомцы', exact: true });
+    await expect(pets.getByRole('textbox', { name: 'pet', exact: true })).toHaveCount(2);
+    await expect(pets.getByRole('textbox', { name: 'pet', exact: true }).nth(0)).toHaveValue(
+      'Волк',
+    );
+    await expect(pets.getByRole('textbox', { name: 'pet', exact: true }).nth(1)).toHaveValue(
+      'Сокол',
+    );
+    await sheetTab(gm.window, 'Бой').click();
+    await expect(sectionHeading(gm.window, 'Удары')).toBeVisible();
+    await expect(sectionHeading(gm.window, 'Питомцы')).toHaveCount(0);
+  },
+);
+
 async function openGm(context: BrowserContext): Promise<RoomClient> {
   const window = await openClientWindow(context, GM);
   await seedStorage(window, RECORDS, JSON.stringify(PRESET), GM.device);
