@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import type { Preset } from '@/core/preset';
+import { parsePresetFile, type Preset, type PresetSection } from '@/core/preset';
 import { createBuilderStore, type BuilderStore } from './builder-store';
-import { toPreset, uidAt } from './document';
+import { moveItem, removeItem, toPreset, uidAt } from './document';
 import { ItemForm } from './item-form';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -253,6 +253,149 @@ describe('v4 node forms', () => {
     });
   });
 
+  test('suggests unique repeat ids across plain containers in one parent repeat path', async () => {
+    // #given
+    const preset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'crew',
+          title: 'Экипаж',
+          tabs: [
+            {
+              sections: [
+                {
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'first_row_name' }] }],
+                },
+                {
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'second_row_name' }] }],
+                },
+                {
+                  title: 'Атаки',
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'first_attack' }] }],
+                },
+              ],
+            },
+            {
+              sections: [
+                {
+                  title: 'Атаки',
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'second_attack' }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const first = await openForm(preset, [0, 0, 0, 0], null);
+
+    // #when
+    await changeCheck(inputControl(first.container, 'Повторяемая'), true);
+    const second = await openForm(preset, [0, 0, 1, 0], null, first.store);
+    await changeCheck(inputControl(second.container, 'Повторяемая'), true);
+    const third = await openForm(preset, [0, 0, 2], null, first.store);
+    await changeCheck(inputControl(third.container, 'Повторяемая'), true);
+    const fourth = await openForm(preset, [0, 1, 0], null, first.store);
+    await changeCheck(inputControl(fourth.container, 'Повторяемая'), true);
+    const result = toPreset(first.store.$state.get().step.document);
+
+    // #then
+    expect({
+      ids: [
+        result.templates[0]?.tabs[0]?.sections[0]?.rows[0]?.repeat?.id,
+        result.templates[0]?.tabs[0]?.sections[1]?.rows[0]?.repeat?.id,
+        result.templates[0]?.tabs[0]?.sections[2]?.repeat?.id,
+        result.templates[0]?.tabs[1]?.sections[0]?.repeat?.id,
+      ],
+      presetAccepted: parsePresetFile(JSON.stringify(result)).ok,
+    }).toEqual({
+      ids: ['stroka_1', 'stroka_1_2', 'ataki', 'ataki_2'],
+      presetAccepted: true,
+    });
+  });
+
+  test('uses a tab text field when repeat is enabled', async () => {
+    // #given
+    const preset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'crew',
+          title: 'Экипаж',
+          tabs: [
+            {
+              title: 'Pets',
+              sections: [
+                {
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'pet_name' }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const form = await openForm(preset, [0, 0], null);
+
+    // #when
+    await changeCheck(inputControl(form.container, 'Повторяемая'), true);
+    const result = toPreset(form.store.$state.get().step.document);
+
+    // #then
+    expect({
+      repeat: result.templates[0]?.tabs[0]?.repeat,
+      presetAccepted: parsePresetFile(JSON.stringify(result)).ok,
+    }).toEqual({
+      repeat: { id: 'pets', nameField: 'pet_name' },
+      presetAccepted: true,
+    });
+  });
+
+  test('offers a template only text fields outside repeat tabs', async () => {
+    // #given
+    const preset: Preset = {
+      v: 4,
+      templates: [
+        {
+          id: 'crew',
+          title: 'Экипаж',
+          repeat: { nameField: 'root_name' },
+          tabs: [
+            {
+              sections: [
+                {
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'root_name' }] }],
+                },
+              ],
+            },
+            {
+              repeat: { id: 'npcs', nameField: 'npc_name' },
+              sections: [
+                {
+                  rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const form = await openForm(preset, [0], null);
+
+    // #when
+    const choices = Array.from(
+      selectControl(form.container, 'Поле имени').options,
+      (option) => option.value,
+    );
+
+    // #then
+    expect(choices).toEqual(['root_name']);
+  });
+
   test('shows and rewrites a token id through the token form', async () => {
     // #given
     const preset: Preset = {
@@ -328,6 +471,87 @@ describe('loaded repeat warnings', () => {
       });
     },
   );
+
+  test('keeps the warning with a loaded repeat after a preceding section is removed', async () => {
+    // #given
+    const preset = loadedSectionsPreset();
+    const form = await openForm(preset, [0, 0, 1], preset);
+    const preceding = requiredUid(form.store, [0, 0, 0]);
+    form.store.edit((document) => removeItem(document, preceding));
+    await form.rerender();
+
+    // #when
+    await editRepeat(form, 'id');
+
+    // #then
+    expect(liveMessages(form.container)).toEqual([
+      'Блоки «attacks» в комнате будут стёрты при загрузке пресета.',
+    ]);
+  });
+
+  test('does not warn when an unchanged loaded repeat section is reordered', async () => {
+    // #given
+    const preset = loadedSectionsPreset(true);
+    const form = await openForm(preset, [0, 0, 1], preset);
+    const selected = requiredUid(form.store, [0, 0, 1]);
+    const first = requiredUid(form.store, [0, 0, 0]);
+
+    // #when
+    form.store.edit((document) =>
+      moveItem(document, selected, { place: 'before', sibling: first }),
+    );
+    await form.rerender();
+    const afterMove = liveMessages(form.container);
+    await editRepeat(form, 'id');
+
+    // #then
+    expect({
+      afterMove,
+      afterEdit: liveMessages(form.container),
+    }).toEqual({
+      afterMove: [],
+      afterEdit: ['Блоки «attacks» в комнате будут стёрты при загрузке пресета.'],
+    });
+  });
+
+  test.each([
+    ['changes its id', 'id'],
+    ['turns repeat off', 'off'],
+  ] as const)(
+    'warns that room blocks will be erased when a loaded repeat template %s',
+    async (_name, edit) => {
+      // #given
+      const preset: Preset = {
+        v: 4,
+        templates: [
+          {
+            id: 'crew',
+            title: 'Экипаж',
+            repeat: { nameField: 'name' },
+            tabs: [
+              {
+                sections: [
+                  {
+                    rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+
+      const form = await openForm(preset, [0], preset);
+
+      // #when
+      await editRepeat(form, edit);
+
+      // #then
+      expect(liveMessages(form.container)).toEqual([
+        'Блоки «crew» в комнате будут стёрты при загрузке пресета.',
+      ]);
+    },
+  );
 });
 
 type FieldForm = {
@@ -356,9 +580,14 @@ async function openForm(
   preset: Preset,
   path: readonly number[],
   origin: Preset | null,
+  existingStore?: BuilderStore,
 ): Promise<OpenForm> {
-  const store = createBuilderStore(null);
-  store.open(preset, origin, 'preset');
+  const store = existingStore ?? createBuilderStore(null);
+
+  if (existingStore === undefined) {
+    store.open(preset, origin, 'preset');
+  }
+
   const selection = uidAt(store.$state.get().step.document, path);
 
   if (selection === null) {
@@ -386,6 +615,49 @@ async function openForm(
   await rerender();
 
   return { container, rerender, store };
+}
+
+function loadedSectionsPreset(bothRepeat = false): Preset {
+  const first: PresetSection = {
+    title: 'Заметки',
+    rows: [{ cells: [{ kind: 'field', type: 'text', id: 'note' }] }],
+  };
+
+  if (bothRepeat) {
+    first.repeat = { id: 'notes', nameField: 'note' };
+  }
+
+  return {
+    v: 4,
+    templates: [
+      {
+        id: 'crew',
+        title: 'Экипаж',
+        tabs: [
+          {
+            sections: [
+              first,
+              {
+                title: 'Атаки',
+                repeat: { id: 'attacks', nameField: 'attack' },
+                rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack' }] }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function requiredUid(store: BuilderStore, path: readonly number[]): string {
+  const found = uidAt(store.$state.get().step.document, path);
+
+  if (found === null) {
+    throw new Error(`the form fixture has no item at ${path.join('.')}`);
+  }
+
+  return found;
 }
 
 function documentNode(): HTMLDivElement {
