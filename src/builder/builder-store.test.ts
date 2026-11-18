@@ -296,6 +296,42 @@ describe('the draft', () => {
     expect(second.$state.get().selection).toBe(uid(second, 0));
     expect(second.$state.get().undo).toEqual([]);
   });
+  test('opens an existing v4 draft without warning identity metadata', () => {
+    // #given
+    const storage = new MemoryStorage();
+
+    const preset: Preset = {
+      ...D20,
+      templates: D20.templates.map((template, index) =>
+        index === 0 ? { ...template, title: 'Герои' } : template,
+      ),
+    };
+
+    const records = [
+      { k: 'blk:anya', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'test', l: [1, 'seed'] },
+    ] satisfies VersionedRecord[];
+
+    storage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({ preset, origin: D20, name: 'existing-draft', records }),
+    );
+
+    // #when
+    const store = createBuilderStore(storage);
+
+    // #then
+    expect({
+      preset: presetOf(store),
+      origin: store.$state.get().step.origin,
+      name: store.$state.get().step.name,
+      records: store.$state.get().step.records,
+    }).toEqual({
+      preset,
+      origin: D20,
+      name: 'existing-draft',
+      records,
+    });
+  });
   test('a draft that fails the structure check is dropped for the empty preset', () => {
     // #given
     const storage = new MemoryStorage();

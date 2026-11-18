@@ -14,6 +14,8 @@ import {
   EMPTY_DOCUMENT,
   fromPreset,
   locate,
+  restoreOriginRepeatIds,
+  serializeOriginRepeatIds,
   toPreset,
   WINDOW_UID,
   type BuilderDocument,
@@ -83,6 +85,9 @@ const draftSchema = z.object({
   origin: z.json().nullable(),
   name: z.string(),
   records: z.array(recordSchema).optional(),
+  originRepeatIds: z
+    .array(z.object({ path: z.array(z.number().int().nonnegative()), id: z.string() }))
+    .optional(),
 });
 
 const BUILDER_AUTHOR = 'builder';
@@ -324,7 +329,7 @@ function parseDraft(text: string, blank: BuilderStep): BuilderStep {
   const origin = draft.data.origin === null ? null : parsePresetStructure(draft.data.origin);
 
   return {
-    document: fromPreset(preset, origin ?? undefined),
+    document: restoreOriginRepeatIds(fromPreset(preset), draft.data.originRepeatIds ?? []),
     origin,
     name: draft.data.name,
     records: draft.data.records ?? [],
@@ -344,6 +349,7 @@ function writeDraft(storage: DraftStorage | null, step: BuilderStep): DraftStatu
         origin: step.origin,
         name: step.name,
         records: step.records,
+        originRepeatIds: serializeOriginRepeatIds(step.document),
       }),
     );
 

@@ -45,6 +45,11 @@ export type BuilderDocument = {
   originRepeatIds?: ReadonlyMap<string, string>;
 };
 
+export type SerializedOriginRepeatId = {
+  path: readonly number[];
+  id: string;
+};
+
 export type CellKind = PresetCell['kind'];
 
 export type TemplateKind = 'set' | 'single';
@@ -88,7 +93,7 @@ export function mintUid(): string {
 
 export function fromPreset(
   preset: Pick<Preset, 'window' | 'templates'>,
-  origin: Pick<Preset, 'templates'> = preset,
+  origin?: Pick<Preset, 'templates'>,
 ): BuilderDocument {
   const templates = preset.templates.map((template): DocTemplate => ({
     ...template,
@@ -99,7 +104,9 @@ export function fromPreset(
   const document =
     preset.window === undefined ? { templates } : { window: preset.window, templates };
 
-  return { ...document, originRepeatIds: collectOriginRepeatIds(templates, origin.templates) };
+  return origin === undefined
+    ? document
+    : { ...document, originRepeatIds: collectOriginRepeatIds(templates, origin.templates) };
 }
 
 export function toPreset(document: BuilderDocument): Preset {
@@ -595,8 +602,8 @@ export function addCell(
 }
 
 export function setWindow(document: BuilderDocument, window: WindowSize | undefined): DocumentEdit {
-  const next: BuilderDocument =
-    window === undefined ? { templates: document.templates } : { ...document, window };
+  const { window: _window, ...withoutWindow } = document;
+  const next: BuilderDocument = window === undefined ? withoutWindow : { ...document, window };
 
   return { document: next, changed: WINDOW_UID };
 }
@@ -1052,6 +1059,35 @@ function collectOriginRepeatIds(
   });
 
   return ids;
+}
+
+export function serializeOriginRepeatIds(
+  document: BuilderDocument,
+): readonly SerializedOriginRepeatId[] {
+  return [...(document.originRepeatIds ?? [])].flatMap(([uid, id]) => {
+    const path = locate(document, uid);
+
+    return path === null || path.kind === 'window' || path.kind === 'cell'
+      ? []
+      : [{ path: indexPath(path), id }];
+  });
+}
+
+export function restoreOriginRepeatIds(
+  document: BuilderDocument,
+  entries: readonly SerializedOriginRepeatId[],
+): BuilderDocument {
+  const ids = new Map<string, string>();
+
+  for (const { path, id } of entries) {
+    const uid = uidAt(document, path);
+
+    if (uid !== null) {
+      ids.set(uid, id);
+    }
+  }
+
+  return ids.size === 0 ? document : { ...document, originRepeatIds: ids };
 }
 
 type MovedItem =
