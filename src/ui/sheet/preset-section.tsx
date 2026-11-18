@@ -773,6 +773,7 @@ function Blocks({
           [MAP_MARK_CLASS]: onMap,
         })}
         data-repeat-block={block.instanceId}
+        data-repeat-path={JSON.stringify(block.path)}
       >
         {rows}
         {nested}

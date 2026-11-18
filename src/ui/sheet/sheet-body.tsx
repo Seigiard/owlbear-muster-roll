@@ -24,8 +24,12 @@ import { SheetSection, type BlockTools } from './preset-section';
 import { FieldEditingContext, type FieldEditing } from './use-field-edit';
 
 // FR14: the token cell "Открыть лист" asked for. It scrolls into view once, and takes the focus
-// when `focus` is set. A null instance addresses a root cell.
-export type BlockReveal = { instanceId: string | null; cellId: string; focus: boolean };
+// when `focus` is set. A null path addresses a root cell.
+export type BlockReveal = {
+  path: readonly string[] | null;
+  cellId: string;
+  focus: boolean;
+};
 
 type SheetBodyProps = {
   // The sheet's template, as `core/sheets` resolves it.
@@ -91,15 +95,15 @@ export function SheetBody({
 
     const frame = requestAnimationFrame(() => {
       const scope =
-        reveal.instanceId === null
+        reveal.path === null
           ? body.current
-          : body.current?.querySelector<HTMLElement>(
-              `[data-repeat-block="${CSS.escape(reveal.instanceId)}"]`,
-            );
+          : body.current === null
+            ? null
+            : repeatBlockForPath(body.current, reveal.path);
 
       const cell = scope?.querySelector<HTMLElement>(
         `[data-cell-id="${CSS.escape(reveal.cellId)}"][data-cell-scope="${CSS.escape(
-          reveal.instanceId ?? 'root',
+          reveal.path?.at(-1) ?? 'root',
         )}"]`,
       );
 
@@ -219,7 +223,11 @@ export function SheetBody({
             {displayedTabBlock === null ? (
               tabContent
             ) : (
-              <div className="contents" data-repeat-block={displayedTabBlock.instanceId}>
+              <div
+                className="contents"
+                data-repeat-block={displayedTabBlock.instanceId}
+                data-repeat-path={JSON.stringify(displayedTabBlock.path)}
+              >
                 {tabContent}
               </div>
             )}
@@ -235,6 +243,16 @@ function sameRenderedTab(left: RenderedTab, right: RenderedTab): boolean {
     left.sourceIndex === right.sourceIndex &&
     left.block?.scopeId === right.block?.scopeId &&
     left.block?.instanceId === right.block?.instanceId
+  );
+}
+
+function repeatBlockForPath(body: HTMLElement, path: readonly string[]): HTMLElement | null {
+  const serializedPath = JSON.stringify(path);
+
+  return (
+    [...body.querySelectorAll<HTMLElement>('[data-repeat-path]')].find(
+      (candidate) => candidate.getAttribute('data-repeat-path') === serializedPath,
+    ) ?? null
   );
 }
 
