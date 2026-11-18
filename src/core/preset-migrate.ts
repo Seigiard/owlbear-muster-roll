@@ -44,7 +44,7 @@ export type TemplateScopes = {
 
 export type PresetMoves = {
   rowOf: (fieldId: string) => string | null;
-  sectionOf: (sectionId: string) => string | null;
+  sectionOf: (sectionId: string, path?: readonly string[]) => string | null;
 };
 
 type RepeatPathParts = {
@@ -106,16 +106,12 @@ export function presetDiff(
           const rank = (part: typeof firstPart): number =>
             part === null || after === null
               ? -1
-              : sectionTarget(part.sectionId, before.sections.get(part.sectionId) ?? [], after) ===
-                  part.sectionId
+              : repeatScopeTarget(part, after) === part.sectionId
                 ? 0
                 : sectionIds.indexOf(part.sectionId) + 1;
 
           const target = (part: typeof firstPart): string =>
-            part === null || after === null
-              ? ''
-              : (sectionTarget(part.sectionId, before.sections.get(part.sectionId) ?? [], after) ??
-                '');
+            part === null || after === null ? '' : (repeatScopeTarget(part, after) ?? '');
 
           return (
             target(firstPart).localeCompare(target(secondPart)) ||
@@ -132,8 +128,7 @@ export function presetDiff(
           const parts = parseRepeatPath(source.k);
 
           if (parts === null) continue;
-          const oldFields = before.sections.get(parts.sectionId) ?? [];
-          const scope = sectionTarget(parts.sectionId, oldFields, after);
+          const scope = repeatScopeTarget(parts, after);
 
           if (scope === null) continue;
           const target = blockPathKey(sheetId, [...parts.parentPath, scope, parts.instanceId]);
@@ -174,10 +169,7 @@ export function presetDiff(
         if (data === undefined) continue;
         const parts = parseRepeatPath(record.k);
 
-        const oldFields =
-          parts === null
-            ? [...before.rowFields.values()].map((entry) => entry.field)
-            : (before.sections.get(parts.sectionId) ?? []);
+        const oldFields = fieldsForRepeatPath(parts, before);
 
         const shown = keptCells(data.cells, oldFields);
 
@@ -187,7 +179,7 @@ export function presetDiff(
           continue;
         }
 
-        const scope = parts === null ? null : sectionTarget(parts.sectionId, oldFields, after);
+        const scope = parts === null ? null : repeatScopeTarget(parts, after);
 
         if (parts !== null && scope === null) {
           lose(template.id, record.k, shown);
@@ -195,10 +187,10 @@ export function presetDiff(
           continue;
         }
 
-        const newFields =
-          parts === null
-            ? [...after.rowFields.values()].map((entry) => entry.field)
-            : (after.sections.get(scope ?? '') ?? []);
+        const newFields = fieldsForRepeatPath(
+          parts === null ? null : { ...parts, sectionId: scope ?? parts.sectionId },
+          after,
+        );
 
         const compatible = newFields.filter((field) =>
           oldFields.some((old) => old.id === field.id && old.type === field.type),
@@ -354,7 +346,9 @@ export function stripToTemplate<Stripped extends Pick<VersionedRecord, 'k' | 'd'
   const fields =
     parts === null
       ? [...scopes.rowFields.values()].map((item) => item.field)
-      : (scopes.sections.get(parts.path.at(-2) ?? '') ?? []);
+      : (scopes.sectionsByPath.get(
+          parts.path.filter((_part, index) => index % 2 === 0).join(':'),
+        ) ?? []);
 
   const cells = keptCells(data.cells, fields);
 
@@ -388,7 +382,12 @@ export function presetMoves(before: TemplateLayout, after: TemplateLayout): Pres
 
   return {
     rowOf: (id) => next.rowFields.get(id)?.rowId ?? null,
-    sectionOf: (id) => sectionTarget(id, old.sections.get(id) ?? [], next),
+    sectionOf: (id, path) =>
+      path === undefined
+        ? sectionTarget(id, old.sections.get(id) ?? [], next)
+        : next.sectionsByPath.has(scopePathKey(path))
+          ? id
+          : null,
   };
 }
 
@@ -500,6 +499,27 @@ function parseRepeatPath(key: string): RepeatPathParts | null {
         instanceId,
         parentPath: parsed.path.slice(0, -2),
       };
+}
+
+function repeatScopePath(parts: RepeatPathParts): string[] {
+  return [...parts.parentPath, parts.sectionId].filter((_part, index) => index % 2 === 0);
+}
+
+function scopePathKey(path: readonly string[]): string {
+  return path.filter((_part, index) => index % 2 === 0).join(':');
+}
+
+function fieldsForRepeatPath(
+  parts: RepeatPathParts | null,
+  scopes: TemplateScopes,
+): PresetFieldCell[] {
+  return parts === null
+    ? [...scopes.rowFields.values()].map((entry) => entry.field)
+    : (scopes.sectionsByPath.get(repeatScopePath(parts).join(':')) ?? []);
+}
+
+function repeatScopeTarget(parts: RepeatPathParts, after: TemplateScopes): string | null {
+  return after.sectionsByPath.has(repeatScopePath(parts).join(':')) ? parts.sectionId : null;
 }
 
 export function erasedDigest(erased: readonly string[]): string {

@@ -249,7 +249,11 @@ function blockValues(
   path: readonly string[] | undefined,
 ): FieldValues | null {
   const sectionId =
-    repeatSectionId(section) ?? row.repeat?.id ?? repeatScopePathAt(layout, from).at(-1) ?? null;
+    path?.at(-2) ??
+    repeatSectionId(section) ??
+    row.repeat?.id ??
+    repeatScopePathAt(layout, from).at(-1) ??
+    null;
 
   if (sectionId === null) {
     return null;

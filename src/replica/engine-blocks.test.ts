@@ -1,6 +1,6 @@
 import { fixturePatch } from '../../tests/support/block-fixtures';
 import { expect, test } from 'bun:test';
-import { encodePreset, type Preset } from '@/core/preset';
+import { encodePreset, presetProblems, type Preset } from '@/core/preset';
 import { NOTHING_ERASED } from '@/core/preset-migrate';
 import { blockDataSchema, cellValues, type VersionedRecord } from '@/core/records';
 import {
@@ -197,6 +197,7 @@ test('a child field command after its parent was deleted is refused without chan
         title: 'Encounter',
         tabs: [
           {
+            title: 'NPC',
             repeat: { id: 'npc', nameField: 'npc_name' },
             sections: [
               {
@@ -227,6 +228,13 @@ test('a child field command after its parent was deleted is refused without chan
   const nestedRig = createRoomRig({
     seeded: [
       { k: 'preset', d: encodePreset(nestedPreset), c: 1, a: 'seed' },
+      {
+        k: 'blk:encounter',
+        d: { order: 0, cells: {} },
+        c: 1,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
       {
         k: parentKey,
         d: null,
@@ -274,6 +282,177 @@ test('a child field command after its parent was deleted is refused without chan
     rejection: 'unknown-instance',
     parent: null,
     child: { attack_name: 'Claw' },
+  });
+});
+
+test('a GM edit keeps every field in same-named child scopes under different parents', async () => {
+  // #given
+  const nestedPreset: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'encounter',
+        title: 'Encounter',
+        tabs: [
+          {
+            title: 'NPC',
+            repeat: { id: 'npc', nameField: 'npc_name' },
+            sections: [
+              {
+                rows: [
+                  {
+                    cells: [{ kind: 'field', type: 'text', id: 'npc_name' }],
+                  },
+                ],
+              },
+              {
+                repeat: { id: 'attack', nameField: 'attack_name' },
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'attack_name' },
+                      { kind: 'field', type: 'number', id: 'damage' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            title: 'Boss',
+            repeat: { id: 'boss', nameField: 'boss_name' },
+            sections: [
+              {
+                rows: [
+                  {
+                    cells: [{ kind: 'field', type: 'text', id: 'boss_name' }],
+                  },
+                ],
+              },
+              {
+                repeat: { id: 'attack', nameField: 'attack_name' },
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'attack_name' },
+                      { kind: 'field', type: 'number', id: 'range' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const npcAttack = 'blk:encounter:npc:goblin:attack:claw';
+  const bossAttack = 'blk:encounter:boss:dragon:attack:bite';
+
+  const nestedRig = createRoomRig({
+    seeded: [
+      { k: 'preset', d: encodePreset(nestedPreset), c: 1, a: 'seed' },
+      {
+        k: 'blk:encounter',
+        d: { order: 0, cells: {} },
+        c: 1,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+      {
+        k: 'blk:encounter:npc:goblin',
+        d: { order: 0, cells: { npc_name: ['Goblin', 1, 'seed'] } },
+        c: 1,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+      {
+        k: npcAttack,
+        d: {
+          order: 0,
+          cells: { attack_name: ['Claw', 2, 'seed'], damage: [3, 3, 'seed'] },
+        },
+        c: 3,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+      {
+        k: 'blk:encounter:boss:dragon',
+        d: { order: 0, cells: { boss_name: ['Dragon', 1, 'seed'] } },
+        c: 1,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+      {
+        k: bossAttack,
+        d: {
+          order: 0,
+          cells: { attack_name: ['Bite', 4, 'seed'], range: [30, 5, 'seed'] },
+        },
+        c: 5,
+        a: 'seed',
+        l: [1, 'seed'],
+      },
+    ],
+  });
+
+  const room = nestedRig.openRoom();
+  const client = await nestedRig.startClient(room, 'gm-a');
+
+  // #when
+  const commandId = send(client, {
+    type: 'field-patch',
+    sheetId: 'encounter',
+    target: {
+      kind: 'rep',
+      sectionId: 'attack',
+      instanceId: 'claw',
+      path: ['npc', 'goblin', 'attack', 'claw'],
+    },
+    fieldId: 'attack_name',
+    value: 'Bite',
+  });
+
+  await nestedRig.waitUntil(
+    () => rejection(client, commandId) !== undefined || storedRecord(client, npcAttack)?.c === 4,
+  );
+
+  // #then
+  expect({
+    problems: presetProblems(nestedPreset),
+    rejection: rejection(client, commandId),
+    npc: storedRecord(client, npcAttack),
+    boss: storedRecord(client, bossAttack),
+  }).toEqual({
+    problems: [],
+    rejection: undefined,
+    npc: {
+      k: npcAttack,
+      d: {
+        order: 0,
+        cells: {
+          attack_name: ['Bite', 4, 'gm-a'],
+          damage: [3, 3, 'seed'],
+        },
+      },
+      c: 4,
+      a: 'gm-a',
+      l: [1, 'seed'],
+    },
+    boss: {
+      k: bossAttack,
+      d: {
+        order: 0,
+        cells: {
+          attack_name: ['Bite', 4, 'seed'],
+          range: [30, 5, 'seed'],
+        },
+      },
+      c: 5,
+      a: 'seed',
+      l: [1, 'seed'],
+    },
   });
 });
 

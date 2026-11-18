@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-17T10:38:00Z'
+updated_date: '2026-11-18T06:48:00Z'
 labels:
   - format-v4
   - blocked
@@ -37,14 +37,22 @@ A repeat tab per NPC is useless unless the NPC can hold its own lists, such as a
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-CURRENT STATUS — 2026-11-17, after closing review:
+CURRENT — window 4 closing review supersedes earlier NOT MERGED notes. Candidate 301dfcf is now merged in integration 62044f2, but NOT ACCEPTED: mixed review 6/6 reported one critical and five major owned defects. Full-path field maps still collide, preset upload undercounts descendants after parent changes, section-to-row nesting fails, ordinary repeat-row metadata regressed, nested player proposals are denied, and nested token navigation loses the parent tab. Exact findings and evidence: _bmad-output/implementation-artifacts/task-79-window4-review.md. All six checks are green (3422 unit pass/1 skip; 573 browser pass), but coverage missed these behaviors. No AC is checked; AC5 remains TASK-86 owner-only. The doubled 90-minute window budget ended before a review-fix batch. Preserve the merged work and repair the mechanism in a new authorized window.
+
+Historical notes before window 4:
+
+HISTORICAL STATUS — 2026-11-17, after closing review:
 BLOCKED, NOT MERGED. Candidate d4fd388 on feature/preset-v4-task-79 is preserved. Invalid nested-parent paths survive snapshot import without loss accounting; the same repeat scope id under different parents is rejected globally. Resume only after TASK-78 review blockers are addressed and these two defects have faithful owners. No full nested-repeat completion is claimed.
 
-Earlier progress below is historical; the current status above supersedes it.
+These earlier notes are superseded by the window 4 status above.
 
 TASK-77 review found renameFieldId updates template.repeat.nameField but not the repeated section/row nameField, and Builder withContent loses those repeat updates. Renaming the example attack field to weapon leaves nameField=attack and makes the preset invalid. Include nearest-scope nameField propagation with the existing AC2 ancestor-chain rename work, and carry it through TASK-80 Builder conversion. Source: src/core/formula-rename.ts:81-97 and src/builder/document.ts:789-812; review adversarial-claude-6.
 
 Autonomous continuation preserved nested core/UI work on feature/preset-v4-task-79 but did not merge it. Parent reproduced a real full-path admission gap: with npc -> attack and independent loot in the preset, importing loot:l1:attack:a1 keeps its value and reports zero losses; it must drop that child and count one lost value. Reusing attack under distinct npc and boss parents is also rejected globally instead of within each parent scope. The bounded attempt is skipped pending a full-path scope resolver repair. AC5 remains owner-only under TASK-86. Evidence: preset-v4-78-87-20261117/task-79/parent-observation.md and observe-scope-paths.log in the local artifact run.
 
-CURRENT: Blocked; candidate d4fd388 remains on feature/preset-v4-task-79 and is NOT merged. Two reproduced defects remain: import retains a child under an invalid parent path without counting its lost value, and repeated scope ids under different parent scopes are rejected globally. TASK-80 waits for this repair. This autonomous pass skips further repair; acceptance remains open.
+HISTORICAL: Blocked; candidate d4fd388 remains on feature/preset-v4-task-79 and is NOT merged. Two reproduced defects remain: import retains a child under an invalid parent path without counting its lost value, and repeated scope ids under different parent scopes are rejected globally. TASK-80 waits for this repair. This autonomous pass skips further repair; acceptance remains open.
+
+Window 5 authorized by owner on 2026-11-18. Resume six owned critical/major findings and section-to-row dice lookup through one TDD review-fix batch from integration 51de85d. Budget 90 minutes from 05:24:55Z; finish mode 08:24:55Z. Cumulative review base stays 3b779818. TASK-80 and TASK-88/77 wait for repaired runtime evidence; AC5 remains owner-only.
+
+Owner scope decision, 2026-11-18: keep ordinary visible nested editing and nested token navigation in current acceptance. Delayed child edits after parent deletion and preset replacement while nested edits are pending are optional follow-ups TASK-102 and TASK-103, not acceptance blockers or dependencies. Multiple GMs and multiple windows of one GM are outside this completion scope. Retire only the two new diagnostic tests from 3abef2f; preserve prior accepted tests and retain the diagnostic commit as evidence.
 <!-- SECTION:NOTES:END -->

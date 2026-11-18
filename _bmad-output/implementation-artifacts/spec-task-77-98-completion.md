@@ -85,6 +85,8 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 
 ## Implementation Notes
 
+- 2026-11-18 window 5: Owner requested another window after blocked closeout `51de85d9ab09bb32479760458905c4d2d6f8d8b9`. Start 05:24:55Z, budget 90 minutes, finish mode at 08:24:55Z. Resume the six TASK-79 review blockers plus the owned section→row dice finding in one TDD review-fix batch. Preserve the cumulative review base `3b779818ccaaec60c48fbc29be73046565d0ffdb` and saved TASK-80 candidate. TASK-80 and TASK-88/77 follow repaired automated runtime evidence; AC5 remains owner-only.
+
 - 2026-11-17: The owner approved separate ticket specs and chains, at most three parallel lanes, and a first 90-minute implementation window. Initial tickets: 89, 91 and the 81 oracle repair. The current checkout remains the integration workspace.
 - 2026-11-17 window 1: Integrated TASK-89 (`7d2f6f6`), TASK-91 (`c1e9fdb`), TASK-94 (`05ef736`) and repaired TASK-81 (`1117177`). All four tasks passed their acceptance checks and the closing integration review.
 - TASK-81 uses the ordinary stale-reply per-cell contract. Corrected lock `37654a1` fails against baseline `c6822ca`: a 15,188-byte read-back becomes denied. Candidate `c8e595d` delivers two fragments while preserving local intent and untouched GM tuples.
@@ -105,6 +107,10 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 
 ## Spec Change Log
 
+- Window 4 closeout: TASK-79 candidate `301dfcf` and TASK-88 evidence `41301d9` are merged at `62044f2`, but their acceptance was withdrawn after cumulative review. TASK-79, 80, 88 and 77 remain open. See `task-79-window4-review.md` for all findings and their owners.
+- TASK-80 candidate `8ddc9293745bd4e9e0220f61b42ab832490b54ee` remains unmerged in `task80-builder-w4-20261117`. Its test lock is unchanged. Calibration, full post-implementation checks and review remain.
+- The doubled window budget ended at 23:10:54Z. Porting TASK-79 exposed preservation regressions and required repeated repairs. No review-fix batch started. Resume with the six TASK-79 blockers and section→row dice lookup, then validate TASK-80 and TASK-88/77 against the repaired baseline.
+
 ## Review Triage Log
 
 - Round 01: `mixed`, 6/6 sources, two major findings fixed in `738bbf2`. Two minor test gaps share those regressions.
@@ -116,6 +122,10 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 - Window 3 round 02: `final`, 2/2 sources, no degradation; exit 1. The same deferred risk remains, with an additional failed-preset-send trigger traced in code. No runtime reproduction is claimed. The loop closed with no caller-graded finding above minor; it did not produce an empty review. See the TASK-82 spec and `deferred-work.md`.
 
 ## Verification
+
+- Window 4 review: `mixed`, 6/6 sources, no degradation; one critical, five major and five minor findings. Zero fix rounds; acceptance is blocked. TASK-100 owns the same-id ancestor lookup follow-up; TASK-101 owns the maintenance follow-ups.
+- Window 4 clean integration `62044f2`: all six required checks passed; 3422 unit pass, one DOM skip, 573 browser pass. This evidence missed the reviewed defects and does not establish complete nested support.
+- TASK-80 final focused checks at `8ddc929`: 38 pass, zero fail. Implementer typecheck predates the final sibling-tab correction; full final validation is outstanding.
 
 - Ticket consumer regressions: expected behavior from the matrix and original task; estimate 1–3 minutes per run.
 - Required source checks from `CLAUDE.md`: format, lint, typecheck, Bun, browser and build; estimate 4–10 minutes per ticket state.

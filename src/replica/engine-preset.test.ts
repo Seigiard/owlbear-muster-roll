@@ -469,7 +469,7 @@ describe('a preset upload', () => {
       commits: [['preset']],
     });
   });
-  test("uses one confirmation's exact nested loss count and keeps the parent block", async () => {
+  test('removes only one full-path child scope and counts its exact populated values', async () => {
     // #given
     const nestedPreset: Preset = {
       v: 4,
@@ -479,6 +479,7 @@ describe('a preset upload', () => {
           title: 'Encounter',
           tabs: [
             {
+              title: 'NPC',
               repeat: { id: 'npc', nameField: 'npc_name' },
               sections: [
                 {
@@ -504,6 +505,33 @@ describe('a preset upload', () => {
                 },
               ],
             },
+            {
+              title: 'Boss',
+              repeat: { id: 'boss', nameField: 'boss_name' },
+              sections: [
+                {
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'boss_name' },
+                        { kind: 'field', type: 'number', id: 'hp' },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  repeat: { id: 'attack', nameField: 'attack_name' },
+                  rows: [
+                    {
+                      cells: [
+                        { kind: 'field', type: 'text', id: 'attack_name' },
+                        { kind: 'field', type: 'number', id: 'range' },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
           ],
         },
       ],
@@ -513,21 +541,34 @@ describe('a preset upload', () => {
       ...nestedPreset,
       templates: nestedPreset.templates.map((template) => ({
         ...template,
-        tabs: template.tabs.map((tab) => ({
-          ...tab,
-          sections: tab.sections.slice(0, 1),
-        })),
+        tabs: template.tabs.map((tab, index) =>
+          index === 0
+            ? {
+                ...tab,
+                sections: tab.sections.slice(0, 1),
+              }
+            : tab,
+        ),
       })),
     };
 
-    const parentKey = 'blk:encounter:npc:n1';
-    const childKey = `${parentKey}:attack:a1`;
+    const npcParentKey = 'blk:encounter:npc:n1';
+    const npcChildKey = `${npcParentKey}:attack:a1`;
+    const bossParentKey = 'blk:encounter:boss:b1';
+    const bossChildKey = `${bossParentKey}:attack:a1`;
 
     const nestedRig = createRoomRig({
       seeded: [
         { k: 'preset', d: encodePreset(nestedPreset), c: 1, a: 'seed' },
         {
-          k: parentKey,
+          k: 'blk:encounter',
+          d: { order: 0, cells: {} },
+          c: 1,
+          a: 'seed',
+          l: [1, 'seed'],
+        },
+        {
+          k: npcParentKey,
           d: {
             order: 0,
             cells: { npc_name: ['Goblin', 1, 'seed'], hp: [7, 1, 'seed'] },
@@ -537,10 +578,30 @@ describe('a preset upload', () => {
           l: [1, 'seed'],
         },
         {
-          k: childKey,
+          k: npcChildKey,
           d: {
             order: 0,
-            cells: { attack_name: ['Old bite', 1, 'seed'] },
+            cells: { attack_name: ['Old bite', 1, 'seed'], damage: [3, 1, 'seed'] },
+          },
+          c: 1,
+          a: 'seed',
+          l: [1, 'seed'],
+        },
+        {
+          k: bossParentKey,
+          d: {
+            order: 0,
+            cells: { boss_name: ['Dragon', 1, 'seed'], hp: [20, 1, 'seed'] },
+          },
+          c: 1,
+          a: 'seed',
+          l: [1, 'seed'],
+        },
+        {
+          k: bossChildKey,
+          d: {
+            order: 0,
+            cells: { attack_name: ['Breath', 1, 'seed'], range: [30, 1, 'seed'] },
           },
           c: 1,
           a: 'seed',
@@ -575,15 +636,181 @@ describe('a preset upload', () => {
     expect({
       confirmation: { count: confirmation.count, sheets: confirmation.sheets },
       upload: result(gm, uploadId),
-      parent: cellValues(Object(storedRecord(gm, parentKey)?.d).cells),
-      child: storedRecord(gm, childKey)?.d,
+      npcParent: cellValues(Object(storedRecord(gm, npcParentKey)?.d).cells),
+      npcChild: storedRecord(gm, npcChildKey)?.d,
+      bossParent: cellValues(Object(storedRecord(gm, bossParentKey)?.d).cells),
+      bossChild: cellValues(Object(storedRecord(gm, bossChildKey)?.d).cells),
     }).toEqual({
-      confirmation: { count: 1, sheets: 0 },
-      upload: { count: 1, sheets: 0 },
-      parent: { npc_name: 'Goblin', hp: 7 },
-      child: null,
+      confirmation: { count: 2, sheets: 0 },
+      upload: { count: 2, sheets: 0 },
+      npcParent: { npc_name: 'Goblin', hp: 7 },
+      npcChild: null,
+      bossParent: { boss_name: 'Dragon', hp: 20 },
+      bossChild: { attack_name: 'Breath', range: 30 },
     });
   });
+  test('an unchanged upload preserves same-named child scopes with their exact fields and versions', async () => {
+    // #given
+    const fixture = nestedScopesFixture();
+    const nestedRig = createRoomRig({ seeded: fixture.records });
+    const room = nestedRig.openRoom();
+
+    const gm = await nestedRig.startClient(room, 'gm-a', {
+      engine: { editDenied: DENIED },
+    });
+
+    const diffId = requestPresetDiff(gm, encodePreset(fixture.preset));
+    await waitUntil(() => result(gm, diffId) !== undefined);
+    const confirmation = Object(result(gm, diffId));
+
+    // #when
+    const uploadId = send(gm, {
+      type: 'preset-upload',
+      data: encodePreset(fixture.preset),
+      expectedCount: confirmation.count,
+      expectedSheets: confirmation.sheets,
+      expectedDigest: confirmation.digest,
+    });
+
+    await waitUntil(() => result(gm, uploadId) !== undefined);
+
+    // #then
+    expect({
+      confirmation: { count: confirmation.count, sheets: confirmation.sheets },
+      upload: result(gm, uploadId),
+      npc: storedRecord(gm, fixture.npcChild.k),
+      boss: storedRecord(gm, fixture.bossChild.k),
+    }).toEqual({
+      confirmation: { count: 0, sheets: 0 },
+      upload: { count: 0, sheets: 0 },
+      npc: fixture.npcChild,
+      boss: fixture.bossChild,
+    });
+  });
+  test.each(['removed', 'renamed'] as const)(
+    'when an NPC parent scope is %s, removes that parent and its child but keeps the boss path',
+    async (change) => {
+      // #given
+      const fixture = nestedScopesFixture();
+      const template = fixture.preset.templates[0];
+
+      if (template === undefined) {
+        throw new Error('the nested scope fixture needs an Encounter template');
+      }
+
+      const [npcTab, bossTab] = template.tabs;
+
+      if (npcTab === undefined || bossTab === undefined) {
+        throw new Error('the nested scope fixture needs NPC and Boss tabs');
+      }
+
+      const changedPreset: Preset = {
+        ...fixture.preset,
+        templates: [
+          {
+            ...template,
+            tabs:
+              change === 'removed'
+                ? [bossTab]
+                : [
+                    {
+                      ...npcTab,
+                      repeat: { id: 'creature', nameField: 'npc_name' },
+                    },
+                    bossTab,
+                  ],
+          },
+        ],
+      };
+
+      const nestedRig = createRoomRig({ seeded: fixture.records });
+      const room = nestedRig.openRoom();
+
+      const gm = await nestedRig.startClient(room, 'gm-a', {
+        engine: { editDenied: DENIED },
+      });
+
+      const diffId = requestPresetDiff(gm, encodePreset(changedPreset));
+      await waitUntil(() => result(gm, diffId) !== undefined);
+      const confirmation = Object(result(gm, diffId));
+
+      // #when
+      const uploadId = send(gm, {
+        type: 'preset-upload',
+        data: encodePreset(changedPreset),
+        expectedCount: confirmation.count,
+        expectedSheets: confirmation.sheets,
+        expectedDigest: confirmation.digest,
+      });
+
+      await waitUntil(() => result(gm, uploadId) !== undefined);
+
+      // #then
+      expect({
+        confirmation: { count: confirmation.count, sheets: confirmation.sheets },
+        upload: result(gm, uploadId),
+        root: storedRecord(gm, fixture.root.k),
+        npcParent: storedRecord(gm, fixture.npcParent.k)?.d,
+        npcChild: storedRecord(gm, fixture.npcChild.k)?.d,
+        bossParent: storedRecord(gm, fixture.bossParent.k),
+        bossChild: storedRecord(gm, fixture.bossChild.k),
+      }).toEqual({
+        confirmation: { count: 4, sheets: 0 },
+        upload: { count: 4, sheets: 0 },
+        root: fixture.root,
+        npcParent: null,
+        npcChild: null,
+        bossParent: fixture.bossParent,
+        bossChild: fixture.bossChild,
+      });
+    },
+  );
+  test.each([
+    {
+      scope: 'npc',
+      sourceId: 'n1',
+    },
+    {
+      scope: 'boss',
+      sourceId: 'b1',
+    },
+  ] as const)(
+    'duplicates the $scope parent with only that path’s same-named child fields',
+    async ({ scope, sourceId }) => {
+      // #given
+      const fixture = nestedScopesFixture();
+      const nestedRig = createRoomRig({ seeded: fixture.records });
+      const room = nestedRig.openRoom();
+
+      const gm = await nestedRig.startClient(room, 'gm-a', {
+        engine: { editDenied: DENIED },
+      });
+
+      // #when
+      send(gm, {
+        type: 'repeat-block-duplicate',
+        sheetId: 'encounter',
+        sectionId: scope,
+        instanceId: sourceId,
+        count: 1,
+      });
+      await waitUntil(() => nestedDuplicate(gm, scope, sourceId) !== null);
+
+      // #then
+      const expected: JsonValue =
+        scope === 'npc'
+          ? {
+              parent: { npc_name: 'Goblin 1', hp: 7 },
+              child: { attack_name: 'Old bite', damage: 3 },
+            }
+          : {
+              parent: { boss_name: 'Dragon 1', hp: 20 },
+              child: { attack_name: 'Breath', range: 30 },
+            };
+
+      expect(nestedDuplicate(gm, scope, sourceId)).toEqual(expected);
+    },
+  );
 
   test('puts the applied preset in the next room copy', async () => {
     // #given
@@ -1122,6 +1349,169 @@ describe("a player's pending edit when the preset changes", () => {
     }).toEqual({ pending: [], notifications: [] });
   });
 });
+
+function nestedScopesFixture() {
+  const preset: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'encounter',
+        title: 'Encounter',
+        tabs: [
+          {
+            title: 'NPC',
+            repeat: { id: 'npc', nameField: 'npc_name' },
+            sections: [
+              {
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'npc_name' },
+                      { kind: 'field', type: 'number', id: 'hp' },
+                    ],
+                  },
+                ],
+              },
+              {
+                repeat: { id: 'attack', nameField: 'attack_name' },
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'attack_name' },
+                      { kind: 'field', type: 'number', id: 'damage' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            title: 'Boss',
+            repeat: { id: 'boss', nameField: 'boss_name' },
+            sections: [
+              {
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'boss_name' },
+                      { kind: 'field', type: 'number', id: 'hp' },
+                    ],
+                  },
+                ],
+              },
+              {
+                repeat: { id: 'attack', nameField: 'attack_name' },
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'attack_name' },
+                      { kind: 'field', type: 'number', id: 'range' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const root: VersionedRecord = {
+    k: 'blk:encounter',
+    d: { order: 0, cells: {} },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  };
+
+  const npcParent: VersionedRecord = {
+    k: 'blk:encounter:npc:n1',
+    d: {
+      order: 0,
+      cells: { npc_name: ['Goblin', 1, 'seed'], hp: [7, 1, 'seed'] },
+    },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  };
+
+  const npcChild: VersionedRecord = {
+    k: `${npcParent.k}:attack:a1`,
+    d: {
+      order: 0,
+      cells: { attack_name: ['Old bite', 1, 'seed'], damage: [3, 1, 'seed'] },
+    },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  };
+
+  const bossParent: VersionedRecord = {
+    k: 'blk:encounter:boss:b1',
+    d: {
+      order: 0,
+      cells: { boss_name: ['Dragon', 1, 'seed'], hp: [20, 1, 'seed'] },
+    },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  };
+
+  const bossChild: VersionedRecord = {
+    k: `${bossParent.k}:attack:a1`,
+    d: {
+      order: 0,
+      cells: { attack_name: ['Breath', 1, 'seed'], range: [30, 1, 'seed'] },
+    },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  };
+
+  const records = [
+    { k: 'preset', d: encodePreset(preset), c: 1, a: 'seed' },
+    root,
+    npcParent,
+    npcChild,
+    bossParent,
+    bossChild,
+  ] satisfies VersionedRecord[];
+
+  return { preset, records, root, npcParent, npcChild, bossParent, bossChild };
+}
+
+function nestedDuplicate(
+  client: Client,
+  scope: 'npc' | 'boss',
+  sourceId: string,
+): JsonValue | null {
+  const parentPrefix = `blk:encounter:${scope}:`;
+
+  const parent = [...client.store.$records.get().values()].find(
+    (record) =>
+      record.d !== null &&
+      record.k.startsWith(parentPrefix) &&
+      record.k.split(':').length === 4 &&
+      record.k !== `${parentPrefix}${sourceId}`,
+  );
+
+  if (parent === undefined) return null;
+
+  const child = [...client.store.$records.get().values()].find(
+    (record) =>
+      record.d !== null &&
+      record.k.startsWith(`${parent.k}:attack:`) &&
+      record.k.split(':').length === 6,
+  );
+
+  if (child === undefined) return null;
+
+  return {
+    parent: cellValues(Object(parent.d).cells),
+    child: cellValues(Object(child.d).cells),
+  };
+}
 
 async function playerWithSilentGm(seeded: readonly VersionedRecord[] = BASE): Promise<{
   room: Room;

@@ -4,6 +4,7 @@ import {
   firstFieldId,
   placedSections,
   repeatSectionPlace,
+  repeatScopeByPath,
   type Preset,
   type Template,
 } from '@/core/preset';
@@ -21,7 +22,7 @@ export type PlayerRole = 'GM' | 'PLAYER';
 
 type FieldVisibilityTarget =
   | { kind: 'row'; rowId: string }
-  | { kind: 'rep'; sectionId: string; fieldId?: string };
+  | { kind: 'rep'; sectionId: string; fieldId?: string; path?: readonly string[] };
 
 // One template as the sidebar lists it: a sheet set with its live sheets, or a single sheet, whose
 // sheet id is its template id.
@@ -241,7 +242,18 @@ export function rollShownTo(role: PlayerRole, hidden: boolean): boolean {
 
 function fieldTargetTabIndex(template: Template, target: FieldVisibilityTarget): number | null {
   if (target.kind === 'rep') {
-    const repeated = repeatSectionPlace(template, target.sectionId);
+    const scoped =
+      target.path === undefined
+        ? null
+        : repeatScopeByPath(
+            template,
+            target.path.filter((_part, index) => index % 2 === 0),
+          );
+
+    const repeated =
+      scoped === null
+        ? repeatSectionPlace(template, target.sectionId)
+        : { place: scoped.place, section: scoped.section };
 
     if (repeated === null) {
       return null;
@@ -250,7 +262,17 @@ function fieldTargetTabIndex(template: Template, target: FieldVisibilityTarget):
     const { section, place } = repeated;
 
     if (target.fieldId === undefined) {
-      return section.visibility === 'gm' ? null : place.tabIndex;
+      return section.visibility === 'gm' || scoped?.row?.visibility === 'gm'
+        ? null
+        : place.tabIndex;
+    }
+
+    if (scoped?.row !== null && scoped?.row !== undefined) {
+      return scoped.row.visibility === 'gm' ||
+        section.visibility === 'gm' ||
+        !scoped.row.cells.some((cell) => cell.kind === 'field' && cell.id === target.fieldId)
+        ? null
+        : place.tabIndex;
     }
 
     // A repeat tab projects its plain rows into one synthetic section, so recover the source

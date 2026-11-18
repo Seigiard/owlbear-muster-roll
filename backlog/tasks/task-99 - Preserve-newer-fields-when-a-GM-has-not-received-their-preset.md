@@ -4,6 +4,7 @@ title: Preserve newer fields when a GM has not received their preset
 status: To Do
 assignee: []
 created_date: '2026-11-17T20:14:00Z'
+updated_date: '2026-11-18T06:48:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -14,7 +15,7 @@ references:
   - src/replica/engine.ts
   - _bmad-output/implementation-artifacts/deferred-work.md
   - _bmad-output/implementation-artifacts/spec-task-82-preserve-cell-versions.md
-priority: high
+priority: low
 type: bug
 ordinal: 126000
 ---
@@ -32,3 +33,9 @@ Window-3 reviews of a6af377 found a code-traced data-loss risk in persisted reco
 - [ ] #3 Interrupted removal recovery still emits a versioned null for a genuinely removed field, including when the obsolete cell version exceeds the preset version; pending player proposals remain limited to their valid intent.
 - [ ] #4 The reconciliation contract distinguishes supported preservation and removal cases, and docs and acceptance claims match the proven delivery behavior.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Owner scope decision, 2026-11-18: multiple GMs and multiple windows of one GM are outside current acceptance. This optional follow-up must establish relevance to one GM in one window before implementation; cross-sender constructions alone do not justify work. No dependency or blocker for preset-v4 completion.
+<!-- SECTION:NOTES:END -->

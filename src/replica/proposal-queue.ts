@@ -1,4 +1,4 @@
-import { acceptedFieldValue, targetFields } from '@/core/field-patch';
+import { acceptedFieldValue } from '@/core/field-patch';
 import { sameJson } from '@/core/json';
 import type { Version } from '@/core/merge';
 import type { TemplateLayout } from '@/core/preset';
@@ -6,8 +6,9 @@ import { keptCells, templateScopes, type PresetMoves } from '@/core/preset-migra
 import {
   blockDataSchema,
   blockKey,
+  blockPathKey,
+  parseBlockPathKey,
   versionCells,
-  repKey,
   type FieldValue,
   type RepData,
   type Lifecycle,
@@ -295,12 +296,13 @@ export function strippedPatch(
   patch: ProposalPatch,
   template: TemplateLayout,
 ): ProposalPatch | null {
-  const [, , id] = key.split(':');
+  const parsed = parseBlockPathKey(key);
+  const scopes = templateScopes(template);
 
   const fields =
-    id !== undefined
-      ? targetFields(template, { kind: 'rep', sectionId: id })
-      : [...templateScopes(template).rowFields.values()].map((entry) => entry.field);
+    parsed === null
+      ? [...scopes.rowFields.values()].map((entry) => entry.field)
+      : (scopes.sectionsByPath.get(scopePathKey(parsed.path)) ?? null);
 
   if (fields === null) {
     return null;
@@ -339,12 +341,22 @@ export function movedPatches(
   patch: ProposalPatch,
   moves: PresetMoves,
 ): { k: string; patch: ProposalPatch }[] {
-  const [, sheetId = '', id, instanceId = ''] = key.split(':');
+  const parsed = parseBlockPathKey(key);
+  const sheetId = parsed?.sheetId ?? key.split(':')[1] ?? '';
 
-  if (id !== undefined) {
-    const target = moves.sectionOf(id);
+  if (parsed !== null) {
+    const sectionId = parsed.path.at(-2);
+    const instanceId = parsed.path.at(-1);
+    const target = sectionId === undefined ? null : moves.sectionOf(sectionId, parsed.path);
 
-    return target === null ? [] : [{ k: repKey(sheetId, target, instanceId), patch }];
+    return target === null || instanceId === undefined
+      ? []
+      : [
+          {
+            k: blockPathKey(parsed.sheetId, [...parsed.path.slice(0, -2), target, instanceId]),
+            patch,
+          },
+        ];
   }
 
   if (patch.kind !== 'fields') {
@@ -368,6 +380,10 @@ export function movedPatches(
   return Object.keys(values).length === 0
     ? []
     : [{ k: blockKey(sheetId), patch: { kind: 'fields', values } }];
+}
+
+function scopePathKey(path: readonly string[]): string {
+  return path.filter((_part, index) => index % 2 === 0).join(':');
 }
 
 function scheduleWithTimer(run: () => void, delay: number): () => void {

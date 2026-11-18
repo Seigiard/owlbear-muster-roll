@@ -3,7 +3,7 @@ import { compareCells, ownersBySheet } from '@/core/merge';
 import { plainRowIdOf, repeatTabById, type Preset } from '@/core/preset';
 import {
   blockDataSchema,
-  parseRepKey,
+  parseBlockPathKey,
   playerDataSchema,
   playerIdSchema,
   plinkPrefix,
@@ -98,7 +98,7 @@ export function canEdit(
 
 export type PlayerEditTarget =
   | { kind: 'row'; rowId: string }
-  | { kind: 'rep'; sectionId: string; fieldId?: string };
+  | { kind: 'rep'; sectionId: string; fieldId?: string; path?: readonly string[] };
 
 // AD-4, one edit check: this three-argument form answers only the player's sheet-level right. Field
 // checks use playerMayEditField, which requires an explicit row or repeat-section target so the
@@ -357,14 +357,20 @@ function proposalJudgement(
   if (!record.k.startsWith('blk:')) return 'denied';
   const parts = record.k.split(':');
   const sheetId = parts[1] ?? '';
-  const repeat = parseRepKey(record.k);
+  const repeat = repeatTargetOf(record.k);
 
   if (repeat === null && parts.length !== 2) return 'denied';
   const policy = resolveSheet(context.records, context.preset, sheetId);
 
   if (policy === null || !playerMayEdit(policy, context.records, playerId)) return 'denied';
   const current = context.records.get(record.k);
-  const repeatTab = repeat === null ? null : repeatTabById(policy.template, repeat.sectionId);
+
+  const repeatTab =
+    repeat === null || repeat.path.length !== 2
+      ? null
+      : repeatTabById(policy.template, repeat.sectionId);
+
+  const repeatTarget = repeat === null ? undefined : { path: repeat.path };
 
   if (record.d === null) {
     return repeat !== null &&
@@ -372,6 +378,7 @@ function proposalJudgement(
       playerMayEditField(policy, context.records, playerId, {
         kind: 'rep',
         sectionId: repeat.sectionId,
+        ...repeatTarget,
       })
       ? 'allowed'
       : 'denied';
@@ -401,6 +408,7 @@ function proposalJudgement(
     !playerMayEditField(policy, context.records, playerId, {
       kind: 'rep',
       sectionId: repeat.sectionId,
+      ...repeatTarget,
     })
   )
     return 'denied';
@@ -417,7 +425,7 @@ function proposalJudgement(
     const target: PlayerEditTarget =
       repeat === null
         ? { kind: 'row', rowId: rowId ?? '' }
-        : { kind: 'rep', sectionId: repeat.sectionId, fieldId: id };
+        : { kind: 'rep', sectionId: repeat.sectionId, fieldId: id, ...repeatTarget };
 
     const field = targetFields(policy.template, target)?.find((item) => item.id === id);
 
@@ -438,14 +446,14 @@ function instanceHeldElsewhere(
   records: ReadonlyMap<string, VersionedRecord>,
   key: string,
 ): boolean {
-  const block = parseRepKey(key);
+  const block = repeatTargetOf(key);
 
   if (block === null) {
     return false;
   }
 
   for (const other of records.keys()) {
-    const held = parseRepKey(other);
+    const held = repeatTargetOf(other);
 
     if (
       held !== null &&
@@ -458,6 +466,26 @@ function instanceHeldElsewhere(
   }
 
   return false;
+}
+
+type RepeatTarget = {
+  sheetId: string;
+  sectionId: string;
+  instanceId: string;
+  path: string[];
+};
+
+function repeatTargetOf(key: string): RepeatTarget | null {
+  const parsed = parseBlockPathKey(key);
+
+  if (parsed === null) return null;
+
+  const sectionId = parsed.path.at(-2);
+  const instanceId = parsed.path.at(-1);
+
+  return sectionId === undefined || instanceId === undefined
+    ? null
+    : { sheetId: parsed.sheetId, sectionId, instanceId, path: parsed.path };
 }
 
 function byName(first: AccessRow, second: AccessRow): number {

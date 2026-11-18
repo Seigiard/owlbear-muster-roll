@@ -514,3 +514,17 @@
   summary: Distinguish genuine field removals from fields defined by a not-yet-received preset.
   task: TASK-99
   evidence: "Reviews adversarial-claude-1 (mixed 6/6) and bugs+impl-1 (final 2/2) trace a GM holding an older preset but a newer block with an added field. Editing another field makes persisted mintedPatch emit a winning null for the absent field. Cross-sender reorder or a failed preset send followed by later block sends can create this state. Neither trigger was reproduced at runtime. Reviewers grade it major; caller grades the constructed, unrecorded input class minor and defers the required provenance decision outside the removal occurrences in TASK-82. A cell/preset counter cutoff conflicts with the calibrated interrupted-removal case. The data-loss risk remains open on a6af377; the final review is not empty."
+
+## Deferred from: TASK-77–98 window 4 (2026-11-17)
+
+- source_spec: `_bmad-output/implementation-artifacts/task-79-window4-review.md`
+  summary: Resolve ancestor fields when parent and child repeat scopes share an id.
+  task: TASK-100
+  evidence: "Review bugs+impl-codex-7 traces a constructed same-id lookup failure at 62044f2. No separate user occurrence or parent-run runtime reproduction is claimed."
+- source_spec: `_bmad-output/implementation-artifacts/task-79-window4-review.md`
+  summary: Remove unused nested-runtime work and correct the lookup comment.
+  task: TASK-101
+  evidence: "Review arch+quality-claude-6, lean-codex-3 and docs+tests-codex-4 identify unused block-index construction, unreachable relocation state and a stale formula lookup comment. Reassess after TASK-79's full-path repairs."
+
+The six critical/major findings and section→row dice lookup remain owned by
+TASK-79. They block acceptance and are not deferred follow-up scope.

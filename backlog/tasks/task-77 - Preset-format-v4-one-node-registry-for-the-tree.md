@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-17T03:46:00Z'
+updated_date: '2026-11-17T23:10:00Z'
 labels:
   - format-v4
 dependencies:
@@ -55,4 +55,6 @@ Confirmed token-cell behavior: the GM picks individual linked tokens to unlink, 
 The single review and its bounded fix batch are complete at db11acc8cb09c1f9cd057e5b38d4d3ad6fcf8f39. Five behavior gaps were repaired: distinct token-cell picker identity, failed-command outcomes, current/elsewhere link status, repeat-row blocks and inherited player visibility. Final clean-state checks: format/typecheck/build pass; lint 0 errors/256 warnings; Bun3375 pass/1 environment skip; browser542/542. No second review. Partial-success and rejected-promise variants are handled in source but not independently exercised by new owners. AC2 remains unchecked: duplicate/nameField checks are covered, but the previously excluded temporary repeat-tab/nesting guard D19 was not established; dependent TASK78/79 implement those forms rather than treating this as a completed refusal check. Durable evidence: /Users/seigiard/.claude/artifacts/tdd-20261116-235057/task-77-review-fix/final-handoff.md.
 
 D19 now has a durable Backlog record: TASK-88. It tracks validation of unsupported repeat shapes and the unresolved AC2 evidence. This does not authorize reintroducing a blanket repeat-tab ban after TASK-78 support, or checking the historical temporary refusal without proof.
+
+Window 4 closing review leaves AC2 open. TASK-88 checks passed selected parser/Builder/upload paths, but TASK-79 still has blocking nested-runtime defects. The provisional supersession claim was withdrawn; no blanket repeat-tab ban was introduced. See _bmad-output/implementation-artifacts/task-79-window4-review.md.
 <!-- SECTION:NOTES:END -->

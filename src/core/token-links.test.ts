@@ -125,6 +125,37 @@ const JOURNAL: Template = {
 
 const PRESET: Preset = { v: 4, templates: [PC, NPC, INVENTORY, JOURNAL] };
 
+const NESTED_TOKEN_SECTION: PresetSection = {
+  title: 'Атаки',
+  repeat: { id: 'attack', nameField: 'attack_name' },
+  rows: [
+    {
+      cells: [
+        { kind: 'field', type: 'text', id: 'attack_name' },
+        { kind: 'token', id: 'attack_token' },
+      ],
+    },
+  ],
+};
+
+const NESTED_TOKEN_TEMPLATE: Template = {
+  id: 'encounter',
+  title: 'Схватка',
+  tabs: [
+    {
+      repeat: { id: 'npc', nameField: 'npc_name' },
+      sections: [
+        {
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }],
+        },
+        NESTED_TOKEN_SECTION,
+      ],
+    },
+  ],
+};
+
+const NESTED_TOKEN_PRESET: Preset = { v: 4, templates: [NESTED_TOKEN_TEMPLATE] };
+
 describe('liveLinks', () => {
   test('maps each token to the live target its link names, two tokens to one sheet included', () => {
     // #given
@@ -328,6 +359,42 @@ describe('pickerGroups', () => {
   test('lists nothing with no decoded preset', () => {
     // #then
     expect(pickerGroups(byKey([...pc('a', 'Аня', 0)]), null)).toEqual([]);
+  });
+  test('lists a nested token target with its full repeat path and child label', () => {
+    // #given
+    const records = byKey([
+      record('blk:encounter:npc:n1', { order: 0, cells: { npc_name: 'Орк' } }),
+      record('blk:encounter:npc:n1:attack:a1', {
+        order: 0,
+        cells: { attack_name: 'Топор' },
+      }),
+    ]);
+
+    // #when
+    const groups = pickerGroups(records, NESTED_TOKEN_PRESET);
+
+    // #then
+    expect(groups).toEqual([
+      {
+        template: NESTED_TOKEN_TEMPLATE,
+        section: NESTED_TOKEN_SECTION,
+        targets: [
+          {
+            target: {
+              sheetId: 'encounter',
+              instanceId: 'a1',
+              path: ['npc', 'n1', 'attack', 'a1'],
+              cellId: 'attack_token',
+            },
+            cellId: 'attack_token',
+            sheetName: 'Схватка',
+            blockName: 'Топор',
+            label: 'Топор',
+            linked: false,
+          },
+        ],
+      },
+    ]);
   });
 });
 
