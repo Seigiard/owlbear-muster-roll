@@ -73,6 +73,8 @@ context:
 
 ## Review Triage Log
 
+- Window 4 integration review rejected acceptance at `62044f2eb6c02760c1b35beff88f39efe7c751f2`. `task-79-window4-review.md` records six critical/major blockers and the section→row dice defect. Window 5 resumes these owned behaviors through one TDD batch; TASK-100/101 remain separate follow-ups.
+
 ## Verification
 
 **Commands:**

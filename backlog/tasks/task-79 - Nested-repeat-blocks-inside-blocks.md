@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-17T23:13:00Z'
+updated_date: '2026-11-18T05:26:00Z'
 labels:
   - format-v4
   - blocked
@@ -51,4 +51,6 @@ TASK-77 review found renameFieldId updates template.repeat.nameField but not the
 Autonomous continuation preserved nested core/UI work on feature/preset-v4-task-79 but did not merge it. Parent reproduced a real full-path admission gap: with npc -> attack and independent loot in the preset, importing loot:l1:attack:a1 keeps its value and reports zero losses; it must drop that child and count one lost value. Reusing attack under distinct npc and boss parents is also rejected globally instead of within each parent scope. The bounded attempt is skipped pending a full-path scope resolver repair. AC5 remains owner-only under TASK-86. Evidence: preset-v4-78-87-20261117/task-79/parent-observation.md and observe-scope-paths.log in the local artifact run.
 
 HISTORICAL: Blocked; candidate d4fd388 remains on feature/preset-v4-task-79 and is NOT merged. Two reproduced defects remain: import retains a child under an invalid parent path without counting its lost value, and repeated scope ids under different parent scopes are rejected globally. TASK-80 waits for this repair. This autonomous pass skips further repair; acceptance remains open.
+
+Window 5 authorized by owner on 2026-11-18. Resume six owned critical/major findings and section-to-row dice lookup through one TDD review-fix batch from integration 51de85d. Budget 90 minutes from 05:24:55Z; finish mode 08:24:55Z. Cumulative review base stays 3b779818. TASK-80 and TASK-88/77 wait for repaired runtime evidence; AC5 remains owner-only.
 <!-- SECTION:NOTES:END -->

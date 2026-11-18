@@ -85,6 +85,8 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 
 ## Implementation Notes
 
+- 2026-11-18 window 5: Owner requested another window after blocked closeout `51de85d9ab09bb32479760458905c4d2d6f8d8b9`. Start 05:24:55Z, budget 90 minutes, finish mode at 08:24:55Z. Resume the six TASK-79 review blockers plus the owned section→row dice finding in one TDD review-fix batch. Preserve the cumulative review base `3b779818ccaaec60c48fbc29be73046565d0ffdb` and saved TASK-80 candidate. TASK-80 and TASK-88/77 follow repaired automated runtime evidence; AC5 remains owner-only.
+
 - 2026-11-17: The owner approved separate ticket specs and chains, at most three parallel lanes, and a first 90-minute implementation window. Initial tickets: 89, 91 and the 81 oracle repair. The current checkout remains the integration workspace.
 - 2026-11-17 window 1: Integrated TASK-89 (`7d2f6f6`), TASK-91 (`c1e9fdb`), TASK-94 (`05ef736`) and repaired TASK-81 (`1117177`). All four tasks passed their acceptance checks and the closing integration review.
 - TASK-81 uses the ordinary stale-reply per-cell contract. Corrected lock `37654a1` fails against baseline `c6822ca`: a 15,188-byte read-back becomes denied. Candidate `c8e595d` delivers two fragments while preserving local intent and untouched GM tuples.
