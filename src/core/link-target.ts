@@ -338,9 +338,21 @@ function tokenCellPlaceAtPath(
 
   for (const [tabIndex, tab] of template.tabs.entries()) {
     if (tab.repeat?.id !== tabScopeId) {
-      if (scopePath.length !== 1 || tab.repeat !== undefined) continue;
+      if ((scopePath.length !== 1 && scopePath.length !== 2) || tab.repeat !== undefined) continue;
 
       for (const [sectionIndex, section] of tab.sections.entries()) {
+        if (section.repeat?.id === tabScopeId && scopePath.length === 2) {
+          const row = section.rows.find(
+            (candidate) => candidate.repeat?.id === childScopeId && rowHasToken(candidate, cellId),
+          );
+
+          if (row !== undefined) {
+            return { tabIndex, sectionIndex, rowIndex: section.rows.indexOf(row), section, row };
+          }
+
+          continue;
+        }
+
         if (section.repeat?.id !== tabScopeId) {
           const row = section.rows.find((candidate) => candidate.repeat?.id === tabScopeId);
 

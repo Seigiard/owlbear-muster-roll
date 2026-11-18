@@ -408,6 +408,7 @@ function proposalJudgement(
     !playerMayEditField(policy, context.records, playerId, {
       kind: 'rep',
       sectionId: repeat.sectionId,
+      ...repeatTarget,
     })
   )
     return 'denied';
