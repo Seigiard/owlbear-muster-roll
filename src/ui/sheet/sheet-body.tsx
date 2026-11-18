@@ -223,7 +223,11 @@ export function SheetBody({
             {displayedTabBlock === null ? (
               tabContent
             ) : (
-              <div className="contents" data-repeat-block={displayedTabBlock.instanceId}>
+              <div
+                className="contents"
+                data-repeat-block={displayedTabBlock.instanceId}
+                data-repeat-path={JSON.stringify(displayedTabBlock.path)}
+              >
                 {tabContent}
               </div>
             )}
