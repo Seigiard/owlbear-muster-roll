@@ -21,7 +21,7 @@ export function selectionMarks(
     const live = links.get(itemId);
 
     if (live !== undefined) {
-      sheetIds.add(live.target.sheetId);
+      sheetIds.add(live.target.block.sheetId);
       targets.add(linkTargetKey(live.target));
     }
   }

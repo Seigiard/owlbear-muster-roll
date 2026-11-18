@@ -1117,6 +1117,121 @@ describe('presetDiff', () => {
   });
 });
 
+describe('repeat identity migration', () => {
+  const repeatIdentityPreset: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'pc',
+        title: 'Персонажи',
+        repeat: { nameField: 'name' },
+        tabs: [
+          {
+            sections: [
+              { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] },
+              {
+                repeat: { id: 'attacks', nameField: 'attack' },
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'attack' },
+                      { kind: 'field', type: 'text', id: 'alias' },
+                      { kind: 'field', type: 'number', id: 'bonus' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  function withRepeat(id: string, nameField: string): Preset {
+    const next = structuredClone(repeatIdentityPreset);
+    const repeatSection = next.templates[0]?.tabs[0]?.sections[1];
+
+    if (repeatSection === undefined) throw new Error('fixture must contain the repeat section');
+
+    repeatSection.repeat = { id, nameField };
+
+    return next;
+  }
+
+  test('changing repeat.id erases its blocks instead of relocating matching fields', () => {
+    // #given
+    const records = assembleRecords([
+      fixtureRecord('blk:brok', {
+        set: 'pc',
+        order: 0,
+        cells: { name: ['Брок', 1, 'seed'] },
+      }),
+      fixtureRecord('blk:brok:attacks:a1', {
+        order: 0,
+        cells: {
+          attack: ['Меч', 1, 'seed'],
+          alias: ['Клинок', 1, 'seed'],
+          bonus: [2, 1, 'seed'],
+        },
+      }),
+    ]);
+
+    const next = withRepeat('moves', 'attack');
+
+    // #when
+    const migration = presetDiff(records, repeatIdentityPreset, next);
+
+    // #then
+    expect({
+      count: migration.count,
+      sheets: migration.sheets,
+      removed: migration.removed,
+      first: migration.first,
+      last: migration.last,
+    }).toEqual({
+      count: 3,
+      sheets: 0,
+      removed: { pc: ['alias', 'attack', 'bonus'] },
+      first: [],
+      last: [{ k: 'blk:brok:attacks:a1', d: null }],
+    });
+  });
+
+  test('changing repeat.nameField keeps the block identity and every value', () => {
+    // #given
+    const records = assembleRecords([
+      fixtureRecord('blk:brok', {
+        set: 'pc',
+        order: 0,
+        cells: { name: ['Брок', 1, 'seed'] },
+      }),
+      fixtureRecord('blk:brok:attacks:a1', {
+        order: 0,
+        cells: {
+          attack: ['Меч', 1, 'seed'],
+          alias: ['Клинок', 1, 'seed'],
+          bonus: [2, 1, 'seed'],
+        },
+      }),
+    ]);
+
+    const next = withRepeat('attacks', 'alias');
+
+    // #when
+    const migration = presetDiff(records, repeatIdentityPreset, next);
+
+    // #then
+    expect({
+      count: migration.count,
+      sheets: migration.sheets,
+      removed: migration.removed,
+      first: migration.first,
+      last: migration.last,
+    }).toEqual({ count: 0, sheets: 0, removed: {}, first: [], last: [] });
+  });
+});
+
 function capture<Result>(operation: () => Result):
   | {
       result: Result;

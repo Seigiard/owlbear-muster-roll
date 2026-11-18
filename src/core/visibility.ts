@@ -1,9 +1,10 @@
+import { parseBlockKey, scopePathOf, sectionIdOf, type BlockAddress } from '@/core/block-address';
 import { linkTargetOf, liveLinkTarget, type LiveLinkTarget } from '@/core/link-target';
 import type { DicePlace } from '@/core/dice-roll';
 import {
   firstFieldId,
   placedSections,
-  repeatSectionPlace,
+  repeatSectionPlaceByPath,
   repeatScopeByPath,
   type Preset,
   type Template,
@@ -22,7 +23,7 @@ export type PlayerRole = 'GM' | 'PLAYER';
 
 type FieldVisibilityTarget =
   | { kind: 'row'; rowId: string }
-  | { kind: 'rep'; sectionId: string; fieldId?: string; path?: readonly string[] };
+  | { kind: 'rep'; block: BlockAddress; fieldId?: string };
 
 // One template as the sidebar lists it: a sheet set with its live sheets, or a single sheet, whose
 // sheet id is its template id.
@@ -174,8 +175,10 @@ export function visibleRecords(
   }
 
   return records.filter((record) => {
-    if (record.k.startsWith('blk:') && record.k.split(':').length === 2) {
-      return record.d === null || sheetShownTo(known, preset, record.k.slice('blk:'.length), role);
+    const block = parseBlockKey(record.k);
+
+    if (block?.path.length === 0) {
+      return record.d === null || sheetShownTo(known, preset, block.sheetId, role);
     }
 
     if (record.k.startsWith('link:')) {
@@ -242,20 +245,20 @@ export function rollShownTo(role: PlayerRole, hidden: boolean): boolean {
 
 function fieldTargetTabIndex(template: Template, target: FieldVisibilityTarget): number | null {
   if (target.kind === 'rep') {
-    const scoped =
-      target.path === undefined
-        ? null
-        : repeatScopeByPath(
-            template,
-            target.path.filter((_part, index) => index % 2 === 0),
-          );
+    const scopePath = scopePathOf(target.block);
+
+    const scoped = repeatScopeByPath(template, scopePath);
 
     const repeated =
       scoped === null
-        ? repeatSectionPlace(template, target.sectionId)
-        : { place: scoped.place, section: scoped.section };
+        ? (() => {
+            const placed = repeatSectionPlaceByPath(template, scopePath);
 
-    if (repeated === null) {
+            return placed === null ? null : { ...placed, row: null };
+          })()
+        : scoped;
+
+    if (repeated === null || repeated.section === undefined) {
       return null;
     }
 
@@ -277,7 +280,7 @@ function fieldTargetTabIndex(template: Template, target: FieldVisibilityTarget):
 
     // A repeat tab projects its plain rows into one synthetic section, so recover the source
     // section before authorizing a field.
-    if (template.tabs[place.tabIndex]?.repeat?.id === target.sectionId) {
+    if (template.tabs[place.tabIndex]?.repeat?.id === sectionIdOf(target.block)) {
       const source = template.tabs[place.tabIndex]?.sections
         .filter((candidate) => candidate.repeat === undefined)
         .flatMap((candidate) =>

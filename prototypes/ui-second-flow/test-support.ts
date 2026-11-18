@@ -1,8 +1,8 @@
 import { createPickerCaller, type PickerPorts } from './picker-caller';
 import type { PickerFacts } from './picker-flow';
 
-export const TARGET = { sheetId: 'arag', instanceId: null };
-export const BLOCK = { sheetId: 'npc', instanceId: 'gob' };
+export const TARGET = { block: { sheetId: 'arag', path: [] } };
+export const BLOCK = { block: { sheetId: 'npc', path: ['npc_name', 'gob'] } };
 
 export const READY: PickerFacts = {
   loaded: true,
@@ -47,7 +47,7 @@ export function rig(tokenId = 't1'): PickerRig {
       return enqueue(reads);
     },
     link: (id, target) => {
-      calls.push(`link:${id}:${target.sheetId}:${target.instanceId ?? '-'}`);
+      calls.push(`link:${id}:${target.block.sheetId}:${target.block.path.at(-1) ?? '-'}`);
 
       return enqueue(links);
     },

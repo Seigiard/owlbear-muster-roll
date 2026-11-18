@@ -1,12 +1,11 @@
 import { z } from 'zod';
 
+import { blockKeyOf, blockPathSchema, scopePathOf, type BlockAddress } from '@/core/block-address';
 import type { JsonValue } from '@/core/json';
 import { recordFitsOneMessage } from '@/core/message-size';
 import {
   plainRow,
-  repeatSectionById,
   repeatSectionByPath,
-  repeatScopeById,
   repeatScopeByPath,
   sectionFields,
   type PresetFieldCell,
@@ -14,9 +13,7 @@ import {
 } from '@/core/preset';
 import {
   blockDataSchema,
-  blockPathKey,
   repDataSchema,
-  repKey,
   rowKey,
   type FieldValue,
   type VersionedRecord,
@@ -31,14 +28,10 @@ export const fieldPatchTargetSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('row'), rowId: targetIdSchema }),
   z.strictObject({
     kind: z.literal('rep'),
-    sectionId: targetIdSchema,
-    instanceId: targetIdSchema,
-    path: z
-      .array(targetIdSchema)
-      .min(2)
-      .refine((parts) => parts.length % 2 === 0)
-      .readonly()
-      .optional(),
+    block: z.strictObject({
+      sheetId: targetIdSchema,
+      path: blockPathSchema,
+    }),
   }),
 ]);
 
@@ -50,13 +43,13 @@ export const fieldPatchTargetWireSchema = z.discriminatedUnion('kind', [
     kind: z.literal('rep'),
     sectionId: targetIdSchema,
     instanceId: targetIdSchema,
-    path: z
-      .array(targetIdSchema)
-      .min(2)
-      .refine((parts) => parts.length % 2 === 0)
-      .optional(),
+    path: blockPathSchema.optional(),
   }),
 ]);
+
+export type FieldPatchWireTarget =
+  | { kind: 'row'; rowId: string }
+  | { kind: 'rep'; sectionId: string; instanceId: string; path?: readonly string[] };
 
 // zod's number refuses Infinity and NaN. An empty text is a clear, sent as `null`.
 const VALUE_SCHEMAS = {
@@ -71,7 +64,9 @@ const VALUE_SCHEMAS = {
 // window does not know the background's connection id, and both sides must measure the same record.
 const AUTHOR_STAND_IN = 'a'.repeat(64);
 
-export type FieldPatchTarget = z.infer<typeof fieldPatchTargetSchema>;
+export type FieldPatchTarget =
+  | { kind: 'row'; rowId: string }
+  | { kind: 'rep'; block: BlockAddress };
 
 // A clear remains a cell, so delayed values cannot restore it.
 export type FieldPatchValue = FieldValue | null;
@@ -81,11 +76,9 @@ export type PatchedRecord = { k: string; d: z.infer<typeof blockDataSchema> };
 export type FieldPatchFailure = 'unknown-instance' | 'unchanged';
 
 export function patchRecordKey(sheetId: string, target: FieldPatchTarget): string {
-  return target.kind === 'row'
-    ? rowKey(sheetId, target.rowId)
-    : target.path === undefined
-      ? repKey(sheetId, target.sectionId, target.instanceId)
-      : blockPathKey(sheetId, target.path);
+  if (target.kind === 'row') return rowKey(sheetId, target.rowId);
+
+  return blockKeyOf(target.block);
 }
 
 // The field with this id in the target: the plain row whose first field is `rowId`, or any row of
@@ -103,29 +96,17 @@ export function findPatchField(
 // row or section.
 export function targetFields(
   layout: TemplateLayout,
-  target:
-    | { kind: 'row'; rowId: string }
-    | { kind: 'rep'; sectionId: string; path?: readonly string[] },
+  target: FieldPatchTarget,
 ): PresetFieldCell[] | null {
   if (target.kind === 'rep') {
-    const scopePath =
-      target.path === undefined
-        ? null
-        : [...target.path.slice(0, -2).filter((_part, index) => index % 2 === 0), target.sectionId];
-
-    const scope =
-      scopePath === null
-        ? repeatScopeById(layout, target.sectionId)
-        : repeatScopeByPath(layout, scopePath);
+    const scopePath = scopePathOf(target.block);
+    const scope = repeatScopeByPath(layout, scopePath);
 
     if (scope?.row !== null && scope?.row !== undefined) {
       return scope.row.cells.filter((cell): cell is PresetFieldCell => cell.kind === 'field');
     }
 
-    const section =
-      scopePath === null
-        ? repeatSectionById(layout, target.sectionId)
-        : repeatSectionByPath(layout, scopePath);
+    const section = repeatSectionByPath(layout, scopePath);
 
     return section === null ? null : sectionFields(section);
   }

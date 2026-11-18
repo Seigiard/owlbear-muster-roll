@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { blockAddress } from '@/core/block-address';
 import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
 import { linkDataOf, type LinkTarget } from '@/core/link-target';
 import { encodePreset, type Preset } from '@/core/preset';
@@ -99,15 +100,18 @@ const SHEETS: readonly VersionedRecord[] = [
 ];
 
 // The targets a test picks: the sheet "Арагорн", and the repeat block "Гоблин" of the NPC sheet.
+function linkTarget(sheetId: string, path: readonly string[], cellId: string): LinkTarget {
+  const block = blockAddress(sheetId, path);
+
+  if (block === null) throw new Error('fixture must be a block address');
+
+  return { block, cellId };
+}
+
 const TARGETS = {
-  arag: { sheetId: 'arag', instanceId: null, cellId: 'token' },
-  gob: {
-    sheetId: 'npc',
-    instanceId: 'gob',
-    path: ['npc_name', 'gob'],
-    cellId: 'token',
-  },
-} as const satisfies Record<string, LinkTarget>;
+  arag: linkTarget('arag', [], 'token'),
+  gob: linkTarget('npc', ['npc_name', 'gob'], 'token'),
+} satisfies Record<string, LinkTarget>;
 
 type TargetName = keyof typeof TARGETS;
 
@@ -696,12 +700,12 @@ function linkSet(name: TargetName): Command {
   const command: Extract<Command, { type: 'link-set' }> = {
     type: 'link-set',
     tokenId: TOKEN,
-    sheetId: target.sheetId,
+    sheetId: target.block.sheetId,
     cellId: target.cellId ?? '',
   };
 
-  if ('path' in target && target.path !== null) {
-    command.path = target.path;
+  if (target.block.path.length > 0) {
+    command.path = [...target.block.path];
   }
 
   return command;

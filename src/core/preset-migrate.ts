@@ -1,6 +1,17 @@
 import { acceptedFieldValue } from '@/core/field-patch';
+import {
+  blockIdOf,
+  blockKeyOf,
+  childAddress,
+  parentOf,
+  parseBlockKey,
+  scopePathOf,
+  sectionIdOf,
+  sheetRootAddress,
+  type BlockAddress,
+} from '@/core/block-address';
 import { sameJson } from '@/core/json';
-import { blockIndex, linkTargetOf, liveLinkTarget } from '@/core/link-target';
+import { linkTargetOf, liveLinkTarget } from '@/core/link-target';
 import { compareVersions } from '@/core/merge';
 import {
   firstFieldId,
@@ -12,9 +23,7 @@ import {
 import {
   blockDataSchema,
   blockKey,
-  blockPathKey,
   cellValues,
-  parseBlockPathKey,
   type BlockData,
   type Cells,
   type FieldValue,
@@ -48,6 +57,7 @@ export type PresetMoves = {
 };
 
 type RepeatPathParts = {
+  address: BlockAddress;
   sectionId: string;
   instanceId: string;
   parentPath: string[];
@@ -86,9 +96,7 @@ export function presetDiff(
 
     for (const sheetId of templateSheetIds(records.values(), oldPreset!, template).sort()) {
       const blocks = [...records.values()]
-        .filter(
-          (record) => record.k.startsWith(`blk:${sheetId}:`) || record.k === blockKey(sheetId),
-        )
+        .filter((record) => parseBlockKey(record.k)?.sheetId === sheetId)
         .sort((a, b) => (a.k < b.k ? -1 : 1));
 
       const lostBefore = erased.length;
@@ -131,7 +139,8 @@ export function presetDiff(
           const scope = repeatScopeTarget(parts, after);
 
           if (scope === null) continue;
-          const target = blockPathKey(sheetId, [...parts.parentPath, scope, parts.instanceId]);
+          const parent = parentOf(parts.address) ?? sheetRootAddress(sheetId);
+          const target = blockKeyOf(childAddress(parent, scope, parts.instanceId));
 
           if (target === source.k) continue;
           const written = records.get(target);
@@ -207,7 +216,13 @@ export function presetDiff(
         const target =
           parts === null
             ? record.k
-            : blockPathKey(sheetId, [...parts.parentPath, scope ?? '', parts.instanceId]);
+            : blockKeyOf(
+                childAddress(
+                  parentOf(parts.address) ?? sheetRootAddress(sheetId),
+                  scope ?? '',
+                  parts.instanceId,
+                ),
+              );
 
         if (target !== record.k) {
           if (claimed.has(target)) {
@@ -306,17 +321,14 @@ export function presetDiff(
     });
   }
 
-  const beforeBlocks = blockIndex(records.values());
-  const afterBlocks = blockIndex(after.values());
-
   for (const record of records.values()) {
     const target = record.k.startsWith('link:') ? linkTargetOf(record.d) : null;
 
     if (
       target !== null &&
       oldPreset !== null &&
-      liveLinkTarget(records, oldPreset, target, beforeBlocks) !== null &&
-      liveLinkTarget(after, newPreset, target, afterBlocks) === null &&
+      liveLinkTarget(records, oldPreset, target) !== null &&
+      liveLinkTarget(after, newPreset, target) === null &&
       !effectiveLast.some((write) => write.k === record.k)
     )
       effectiveLast.push({ k: record.k, d: null });
@@ -341,14 +353,12 @@ export function stripToTemplate<Stripped extends Pick<VersionedRecord, 'k' | 'd'
 
   if (data === undefined) return record;
   const scopes = templateScopes(layout);
-  const parts = parseBlockPathKey(record.k);
+  const parts = parseBlockKey(record.k);
 
   const fields =
-    parts === null
+    parts === null || parts.path.length === 0
       ? [...scopes.rowFields.values()].map((item) => item.field)
-      : (scopes.sectionsByPath.get(
-          parts.path.filter((_part, index) => index % 2 === 0).join(':'),
-        ) ?? []);
+      : (scopes.sectionsByPath.get(scopePathOf(parts).join(':')) ?? []);
 
   const cells = keptCells(data.cells, fields);
 
@@ -483,30 +493,32 @@ export function holdsValue(field: PresetFieldCell | undefined, value: FieldValue
 }
 
 function parseRepeatPath(key: string): RepeatPathParts | null {
-  const parsed = parseBlockPathKey(key);
+  const parsed = parseBlockKey(key);
 
-  if (parsed === null) {
+  if (parsed === null || parsed.path.length === 0) {
     return null;
   }
 
-  const sectionId = parsed.path.at(-2);
-  const instanceId = parsed.path.at(-1);
+  const sectionId = sectionIdOf(parsed);
+  const instanceId = blockIdOf(parsed);
+  const parent = parentOf(parsed);
 
-  return sectionId === undefined || instanceId === undefined
+  return sectionId === null || instanceId === null || parent === null
     ? null
     : {
+        address: parsed,
         sectionId,
         instanceId,
-        parentPath: parsed.path.slice(0, -2),
+        parentPath: [...parent.path],
       };
 }
 
 function repeatScopePath(parts: RepeatPathParts): string[] {
-  return [...parts.parentPath, parts.sectionId].filter((_part, index) => index % 2 === 0);
+  return scopePathOf(parts.address);
 }
 
 function scopePathKey(path: readonly string[]): string {
-  return path.filter((_part, index) => index % 2 === 0).join(':');
+  return path.join(':');
 }
 
 function fieldsForRepeatPath(

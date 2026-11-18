@@ -4,6 +4,7 @@ import type { MouseEvent, ReactNode } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 
 import { rollDiceCell } from '@/core/dice-roll';
+import { fieldPatchTargetOf } from '@/core/block-address';
 import type { Command, RollOutcome } from '@/core/ui-messages';
 import {
   acceptedFieldValue,
@@ -144,7 +145,7 @@ export function PreviewPane({
         if (command.type === 'repeat-block-add') {
           const path = command.path ?? [command.sectionId, command.instanceId];
           const key = blockPathKey(command.sheetId, path);
-          const prefix = `${blockPathKey(command.sheetId, path.slice(0, -1))}:`;
+          const prefix = `${key.slice(0, key.lastIndexOf(':'))}:`;
 
           const blocks = snapshotRecords
             .map((record) => (repDataSchema.safeParse(record.d).success ? record : null))
@@ -214,8 +215,15 @@ export function PreviewPane({
 
         const layout = fieldTemplate === null ? null : templateToPreset(fieldTemplate);
 
+        const target =
+          command.target.kind === 'row'
+            ? command.target
+            : fieldPatchTargetOf(command.sheetId, command.target);
+
         const field =
-          layout === null ? null : findPatchField(layout, command.target, command.fieldId);
+          layout === null || target === null
+            ? null
+            : findPatchField(layout, target, command.fieldId);
 
         const value = field === null ? null : acceptedFieldValue(field, command.value);
 
@@ -223,12 +231,16 @@ export function PreviewPane({
           return Promise.resolve({ kind: 'answered' as const, answer: undefined });
         }
 
-        const key = patchRecordKey(command.sheetId, command.target);
+        if (target === null) {
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
+        const key = patchRecordKey(command.sheetId, target);
         const current = records.get(key);
 
         const patched = patchedRecord(
           command.sheetId,
-          command.target,
+          target,
           current,
           command.fieldId,
           value.value,

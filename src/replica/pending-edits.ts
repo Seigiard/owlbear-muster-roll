@@ -1,5 +1,4 @@
 import { playerMayEdit, proposalAllowed, type ProposalContext } from '@/core/access';
-import type { FieldPatchTarget } from '@/core/field-patch';
 import { assembleRecords, counterAbove, mergeRecords, type Version } from '@/core/merge';
 import { recordFitsOneMessage } from '@/core/message-size';
 import { plainRowIdOf, repeatTabById, type Preset, type Template } from '@/core/preset';
@@ -33,6 +32,8 @@ export type PlayerEditCommand = Extract<
   Command,
   { type: 'field-patch' | 'repeat-block-add' | 'repeat-block-delete' }
 >;
+
+type FieldPatchCommandTarget = Extract<Command, { type: 'field-patch' }>['target'];
 
 export type Denial = { notify: boolean };
 
@@ -590,7 +591,7 @@ function commandsOf(entry: ProposalEntry, template: Template | null): PlayerEdit
   const path = parsed?.path.length === 2 ? undefined : parsed?.path;
   const sheetId = parsed?.sheetId ?? entry.k.split(':')[1] ?? '';
 
-  const target: FieldPatchTarget =
+  const target: FieldPatchCommandTarget =
     sectionId === undefined
       ? { kind: 'row', rowId: '' }
       : repeatTarget(sectionId, instanceId ?? '', path);
@@ -648,8 +649,8 @@ function repeatTarget(
   sectionId: string,
   instanceId: string,
   path: readonly string[] | undefined,
-): FieldPatchTarget {
-  const target: FieldPatchTarget = { kind: 'rep', sectionId, instanceId };
+): FieldPatchCommandTarget {
+  const target: FieldPatchCommandTarget = { kind: 'rep', sectionId, instanceId };
 
   if (path !== undefined) target.path = path;
 

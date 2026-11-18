@@ -1,10 +1,12 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 
+import { wireFieldPatchTargetOf } from '@/core/block-address';
 import {
   patchedRecord,
   patchedRecordFits,
   sameFieldValue,
+  type FieldPatchWireTarget,
   type FieldPatchTarget,
   type FieldPatchValue,
 } from '@/core/field-patch';
@@ -225,7 +227,7 @@ export function useTextFieldEdit(
       {
         type: 'field-patch',
         sheetId: current.place.sheetId,
-        target: current.place.target,
+        target: wireFieldPatchTarget(current.place.target),
         fieldId: current.fieldId,
         value: parsed.value,
       },
@@ -374,7 +376,7 @@ export function useCheckFieldEdit({ place, fieldId, recordValue }: FieldArgument
       const sent = editing.sendCommand({
         type: 'field-patch',
         sheetId: place.sheetId,
-        target: place.target,
+        target: wireFieldPatchTarget(place.target),
         fieldId,
         value: !checked,
       });
@@ -405,7 +407,7 @@ export function useSelectFieldEdit({
       const sent = editing.sendCommand({
         type: 'field-patch',
         sheetId: place.sheetId,
-        target: place.target,
+        target: wireFieldPatchTarget(place.target),
         fieldId,
         value: next,
       });
@@ -423,6 +425,26 @@ export function useFieldEditing(): FieldEditing {
   }
 
   return editing;
+}
+
+function wireFieldPatchTarget(target: FieldPatchTarget): FieldPatchWireTarget {
+  if (target.kind === 'row') {
+    return target;
+  }
+
+  const wire = wireFieldPatchTargetOf(target);
+
+  const result: FieldPatchWireTarget = {
+    kind: 'rep',
+    sectionId: wire.sectionId,
+    instanceId: wire.instanceId,
+  };
+
+  if (wire.path !== undefined) {
+    result.path = [...wire.path];
+  }
+
+  return result;
 }
 
 // The record value, or a held one until the projection brings it back or a rejection names it.

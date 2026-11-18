@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { sheetRootAddress } from '@/core/block-address';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type { Command, SyncState } from '@/core/ui-messages';
@@ -10,7 +11,7 @@ import { TokenCellPicker } from './link-picker';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-const TARGET = { sheetId: 'shared', instanceId: null, cellId: 'portrait' };
+const TARGET = { block: sheetRootAddress('shared'), cellId: 'portrait' };
 
 const SYNC: SyncState = {
   state: 'live',

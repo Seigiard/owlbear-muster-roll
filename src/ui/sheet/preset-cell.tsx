@@ -2,6 +2,7 @@ import { createContext, useContext, useId } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import clsx from 'clsx';
 
+import { blockIdOf } from '@/core/block-address';
 import type { PresetCell, PresetFieldCell } from '@/core/preset';
 import { linkTargetKey, type LinkTarget } from '@/core/link-target';
 import {
@@ -131,7 +132,13 @@ export function SheetCell({
     <div
       className={clsx(cell.kind === 'token' ? 'inline-flex min-h-px min-w-px' : 'contents')}
       data-cell-id={cell.kind === 'token' ? cell.id : undefined}
-      data-cell-scope={cell.kind === 'token' ? (tokenTarget?.instanceId ?? 'root') : undefined}
+      data-cell-scope={
+        cell.kind === 'token'
+          ? tokenTarget === null || tokenTarget === undefined
+            ? 'root'
+            : (blockIdOf(tokenTarget.block) ?? 'root')
+          : undefined
+      }
       tabIndex={cell.kind === 'token' ? -1 : undefined}
       {...(preview === null
         ? {}

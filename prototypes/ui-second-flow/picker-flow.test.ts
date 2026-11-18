@@ -64,7 +64,7 @@ test('wrong repeat block arrival does not finish the chosen block', () => {
   // #when
   const step = transition(picked, {
     type: 'facts',
-    facts: { ...READY, arrived: { sheetId: 'npc', instanceId: 'other' } },
+    facts: { ...READY, arrived: { block: { sheetId: 'npc', path: ['npc_name', 'other'] } } },
   });
 
   // #then

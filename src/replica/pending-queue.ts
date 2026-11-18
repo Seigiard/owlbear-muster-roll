@@ -1,3 +1,4 @@
+import { fieldPatchTargetOf } from '@/core/block-address';
 import { patchRecordKey } from '@/core/field-patch';
 import type { Command } from '@/core/ui-messages';
 import type { FieldPatchCommand, IdentifiedPatch } from '@/replica/composers';
@@ -19,7 +20,12 @@ export function createPendingQueue(): PendingQueue {
   let entries: PendingEntry[] = [];
 
   function addPatch(id: string, command: FieldPatchCommand): void {
-    const key = patchRecordKey(command.sheetId, command.target);
+    const target =
+      command.target.kind === 'row'
+        ? command.target
+        : fieldPatchTargetOf(command.sheetId, command.target);
+
+    const key = target === null ? `invalid:${id}` : patchRecordKey(command.sheetId, target);
     const entry = entries.find((pending) => pending.kind === 'patches' && pending.key === key);
 
     if (entry?.kind !== 'patches') {

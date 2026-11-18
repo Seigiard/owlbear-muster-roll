@@ -99,6 +99,33 @@ const PRESET: Preset = {
 const CURRENT: CurrentPreset = { preset: PRESET, data: 'eJwrSS0uAQAEXQHB' };
 const AUTHOR = 'importer';
 
+const REPEAT_ROW_PRESET: Preset = {
+  v: 4,
+  templates: [
+    {
+      id: 'journal',
+      title: 'Журнал',
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  repeat: { id: 'conditions', nameField: 'name' },
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'field', type: 'number', id: 'severity' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 type SnapshotSheet = SnapshotFile['sheets'][number];
 
 type SheetParts = {
@@ -162,6 +189,59 @@ function dataOf(records: ReadonlyMap<string, VersionedRecord>, key: string): Jso
 }
 
 describe('importSnapshot', () => {
+  test('round-trips a repeat-row block through the public snapshot import boundary', () => {
+    // #given
+    const records = new Map<string, VersionedRecord>([
+      [
+        'blk:journal',
+        { k: 'blk:journal', d: { order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
+      ],
+      [
+        'blk:journal:conditions:c1',
+        {
+          k: 'blk:journal:conditions:c1',
+          d: {
+            order: 0,
+            cells: { name: ['Отравлен', 1, 'seed'], severity: [2, 1, 'seed'] },
+          },
+          c: 1,
+          a: 'seed',
+          l: [1, 'seed'],
+        },
+      ],
+    ]);
+
+    const snapshot = encodeSnapshotFile(records, REPEAT_ROW_PRESET);
+
+    // #when
+    const importResult = importSnapshot(
+      snapshot,
+      { preset: REPEAT_ROW_PRESET, data: CURRENT.data },
+      'import',
+    );
+
+    // #then
+    if (!importResult.ok) throw new Error(importResult.error);
+
+    const assembled = assembleRecords(importResult.value.records);
+    const parsedBlock = blockDataSchema.safeParse(assembled.get('blk:journal:conditions:c1')?.d);
+    expect({
+      snapshot: snapshot.sheets[0]?.blocks,
+      values: parsedBlock.success ? cellValues(parsedBlock.data.cells) : null,
+      erased: importResult.value.count,
+    }).toEqual({
+      snapshot: [
+        {
+          path: ['conditions', 'c1'],
+          order: 0,
+          cells: { name: 'Отравлен', severity: 2 },
+        },
+      ],
+      values: { name: 'Отравлен', severity: 2 },
+      erased: 0,
+    });
+  });
+
   test('keeps a root number when a repeat tab has a same-id text field', () => {
     // #given
     const preset: Preset = {

@@ -274,20 +274,21 @@ export function LinkPicker({
     }
 
     const { target } = choice;
+    const block = target.block;
 
     const command =
-      target.path === undefined || target.path === null
+      block.path.length === 0
         ? {
             type: 'link-set' as const,
             tokenId,
-            sheetId: target.sheetId,
+            sheetId: block.sheetId,
             cellId: target.cellId ?? choice.cellId,
           }
         : {
             type: 'link-set' as const,
             tokenId,
-            sheetId: target.sheetId,
-            path: target.path,
+            sheetId: block.sheetId,
+            path: [...block.path],
             cellId: target.cellId ?? choice.cellId,
           };
 
@@ -527,8 +528,8 @@ export function TokenCellPicker({
           sendCommand({
             type: 'link-set',
             tokenId,
-            sheetId: target.sheetId,
-            path: target.path ?? undefined,
+            sheetId: target.block.sheetId,
+            path: target.block.path.length === 0 ? undefined : [...target.block.path],
             cellId: target.cellId ?? '',
           }),
         ),

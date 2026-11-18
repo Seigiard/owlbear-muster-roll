@@ -1,11 +1,12 @@
 import {
   expandedTabs,
-  repeatSectionById,
+  repeatSectionByPath,
   type RenderedTab,
   type TabBlock,
   type TemplateLayout,
 } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
+import { childAddress, sheetRootAddress } from '@/core/block-address';
 import { repeatBlocks } from '@/core/sheet-values';
 import { repeatBlockName } from '@/core/sheets';
 
@@ -21,13 +22,14 @@ export function renderedTabs(
 
     if (scopeId === undefined) continue;
 
-    const section = repeatSectionById(template, scopeId);
+    const section = repeatSectionByPath(template, [scopeId]);
 
     if (section === null) continue;
 
     blocks.set(
       scopeId,
-      repeatBlocks(records, sheetId, scopeId).map((block) => ({
+      repeatBlocks(records, sheetRootAddress(sheetId), scopeId).map((block) => ({
+        block: childAddress(sheetRootAddress(sheetId), scopeId, block.instanceId),
         scopeId,
         instanceId: block.instanceId,
         path: [scopeId, block.instanceId],

@@ -1,10 +1,17 @@
+import {
+  blockIdOf,
+  isDescendantOf,
+  isLiveBlock,
+  parseBlockKey,
+  sectionIdOf,
+  sheetRootAddress,
+  type BlockAddress,
+} from '@/core/block-address';
 import type { PresetCell, PresetSection } from '@/core/preset';
 import {
   blockDataSchema,
-  blockPathKey,
   blockKey,
   cellValues,
-  parseBlockPathKey,
   repDataSchema,
   type FieldValue,
   type VersionedRecord,
@@ -35,29 +42,22 @@ export function rowValues(
 // Ties compare by code unit, not by locale, so every client and reload gets the same order.
 export function repeatBlocks(
   records: ReadonlyMap<string, VersionedRecord>,
-  sheetId: string,
-  sectionId: string | readonly string[],
+  parent: BlockAddress | string,
+  scopeId: string,
 ): RepeatBlock[] {
-  const scopePath = isScopePath(sectionId) ? [...sectionId] : sectionId.split(':');
-
-  if (
-    scopePath.length === 0 ||
-    scopePath.length % 2 === 0 ||
-    !hasLiveAncestors(records, sheetId, scopePath)
-  ) {
-    return [];
-  }
+  const parentAddress = parent instanceof Object ? parent : sheetRootAddress(parent);
 
   const blocks: RepeatBlock[] = [];
 
   for (const record of records.values()) {
-    const parsed = parseBlockPathKey(record.k);
+    const parsed = parseBlockKey(record.k);
 
     if (
       parsed === null ||
-      parsed.sheetId !== sheetId ||
-      parsed.path.length !== scopePath.length + 1 ||
-      parsed.path.slice(0, scopePath.length).some((part, index) => part !== scopePath[index])
+      !isDescendantOf(parsed, parentAddress) ||
+      parsed.path.length !== parentAddress.path.length + 2 ||
+      sectionIdOf(parsed) !== scopeId ||
+      !isLiveBlock(records, parsed)
     ) {
       continue;
     }
@@ -66,7 +66,7 @@ export function repeatBlocks(
 
     if (data.success) {
       blocks.push({
-        instanceId: parsed.path.at(-1) ?? '',
+        instanceId: blockIdOf(parsed) ?? '',
         order: data.data.order,
         values: new Map(Object.entries(cellValues(data.data.cells))),
       });
@@ -86,28 +86,6 @@ export function repeatBlocks(
   });
 
   return blocks;
-}
-
-function isScopePath(value: string | readonly string[]): value is readonly string[] {
-  return Array.isArray(value);
-}
-
-function hasLiveAncestors(
-  records: ReadonlyMap<string, VersionedRecord>,
-  sheetId: string,
-  scopePath: readonly string[],
-): boolean {
-  for (let length = 2; length < scopePath.length; length += 2) {
-    const parent = repDataSchema.safeParse(
-      records.get(blockPathKey(sheetId, scopePath.slice(0, length)))?.d,
-    );
-
-    if (!parent.success) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 // `before` holds the cells before this one in its row. A `text` cell shows its own text. A field's

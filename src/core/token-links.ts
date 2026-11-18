@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { blockIdOf, childAddress, sheetRootAddress, type BlockAddress } from '@/core/block-address';
 import {
   linkDataOf,
   linkTargetKey,
@@ -195,7 +196,7 @@ export function pickerGroups(
     blockName: string | null,
     section: PresetSection | null,
   ): PickerTarget => {
-    const targetSheetName = sheetName(records, preset, target.sheetId) ?? '';
+    const targetSheetName = sheetName(records, preset, target.block.sheetId) ?? '';
 
     return {
       target,
@@ -219,7 +220,7 @@ export function pickerGroups(
         template,
         section: null,
         targets: sheetIds.map((sheetId) =>
-          targetOf(template, { sheetId, instanceId: null, cellId }, cellId, null, section),
+          targetOf(template, { block: sheetRootAddress(sheetId), cellId }, cellId, null, section),
         ),
       };
 
@@ -241,17 +242,17 @@ export function pickerGroups(
           template,
           section: repeatedSection,
           targets: sheetIds.flatMap((sheetId) =>
-            repeatBlockPaths(records, sheetId, scopePath).flatMap((path) => {
-              const instanceId = path.at(-1);
+            repeatBlockPaths(records, sheetId, scopePath).flatMap((block) => {
+              const instanceId = blockIdOf(block);
 
-              return instanceId === undefined
+              return instanceId === null
                 ? []
                 : [
                     targetOf(
                       template,
-                      { sheetId, instanceId, path, cellId },
+                      { block, cellId },
                       cellId,
-                      repeatBlockName(records, sheetId, repeatedSection, instanceId, path),
+                      repeatBlockName(records, sheetId, repeatedSection, instanceId, block.path),
                       repeatedSection,
                     ),
                   ];
@@ -365,26 +366,26 @@ function repeatBlockPaths(
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
   scopePath: readonly string[],
-): string[][] {
-  const paths: string[][] = [];
+): BlockAddress[] {
+  const paths: BlockAddress[] = [];
 
-  function visit(parentPath: readonly string[], scopeIndex: number): void {
+  function visit(parent: BlockAddress, scopeIndex: number): void {
     const scopeId = scopePath[scopeIndex];
 
     if (scopeId === undefined) return;
 
-    for (const block of repeatBlocks(records, sheetId, [...parentPath, scopeId])) {
-      const path = [...parentPath, scopeId, block.instanceId];
+    for (const item of repeatBlocks(records, parent, scopeId)) {
+      const block = childAddress(parent, scopeId, item.instanceId);
 
       if (scopeIndex === scopePath.length - 1) {
-        paths.push(path);
+        paths.push(block);
       } else {
-        visit(path, scopeIndex + 1);
+        visit(block, scopeIndex + 1);
       }
     }
   }
 
-  visit([], 0);
+  visit(sheetRootAddress(sheetId), 0);
 
   return paths;
 }

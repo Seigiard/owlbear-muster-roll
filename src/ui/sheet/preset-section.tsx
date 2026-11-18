@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefCallback } from 'react';
 
+import { blockAddress, childAddress, sheetRootAddress } from '@/core/block-address';
 import { patchRecordKey, type FieldPatchTarget } from '@/core/field-patch';
 import { linkTargetKey, type LinkTarget } from '@/core/link-target';
 import {
@@ -744,19 +745,14 @@ function Blocks({
       ) : null;
 
     const name = block.name === '' ? copy.unnamed : block.name;
+    const blockAddressValue = blockAddress(sheetId, block.path);
 
     const onMap = section.rows.some((row) =>
       row.cells.some(
         (cell) =>
           cell.kind === 'token' &&
-          mapMarked.has(
-            linkTargetKey({
-              sheetId,
-              instanceId: block.instanceId,
-              path: [...block.path],
-              cellId: cell.id,
-            }),
-          ),
+          blockAddressValue !== null &&
+          mapMarked.has(linkTargetKey({ block: blockAddressValue, cellId: cell.id })),
       ),
     );
 
@@ -900,20 +896,16 @@ function tokenTargetOf(
     return null;
   }
 
-  return row.instanceId === null
-    ? { sheetId: row.sheetId, instanceId: null, cellId: cell.id }
-    : {
-        sheetId: row.sheetId,
-        instanceId: row.instanceId,
-        path:
-          row.target?.kind === 'rep' && row.target.path !== undefined
-            ? [...row.target.path]
-            : [
-                sectionId ?? (row.target?.kind === 'rep' ? row.target.sectionId : ''),
-                row.instanceId,
-              ],
-        cellId: cell.id,
-      };
+  const path =
+    row.target?.kind === 'rep'
+      ? row.target.block.path
+      : sectionId === null || row.instanceId === null
+        ? []
+        : [sectionId, row.instanceId];
+
+  const block = path.length === 0 ? sheetRootAddress(row.sheetId) : blockAddress(row.sheetId, path);
+
+  return block === null ? null : { block, cellId: cell.id };
 }
 
 function plainRows(
@@ -930,7 +922,7 @@ function plainRows(
   const blockValues =
     tabBlock === null
       ? null
-      : (repeatBlocks(records, sheetId, tabBlock.path.slice(0, -1)).find(
+      : (repeatBlocks(records, sheetRootAddress(sheetId), tabBlock.scopeId).find(
           (block) => block.instanceId === tabBlock.instanceId,
         )?.values ?? new Map());
 
@@ -947,15 +939,7 @@ function plainRows(
         ? rowId === null
           ? null
           : { kind: 'row', rowId }
-        : {
-            kind: 'rep',
-            sectionId: tabBlock.scopeId,
-            instanceId: tabBlock.instanceId,
-          };
-
-    if (target?.kind === 'rep' && tabBlock !== null && tabBlock.path.length > 2) {
-      target.path = [...tabBlock.path];
-    }
+        : { kind: 'rep', block: tabBlock.block };
 
     return [
       {
@@ -1010,8 +994,14 @@ function repeatBlocksOf(
     scopePath.filter((_part, index) => index % 2 === 0),
   );
 
-  return repeatBlocks(records, sheetId, scopePath).map((block) => {
-    const path = [...scopePath, block.instanceId];
+  const parent =
+    parentPath === null
+      ? sheetRootAddress(sheetId)
+      : (blockAddress(sheetId, parentPath) ?? sheetRootAddress(sheetId));
+
+  return repeatBlocks(records, parent, sectionId).map((block) => {
+    const address = childAddress(parent, sectionId, block.instanceId);
+    const path = [...address.path];
 
     const nested = section.rows.flatMap((row) => {
       const id = row.repeat?.id;
@@ -1026,15 +1016,7 @@ function repeatBlocksOf(
       return nestedSection === null ? [] : [{ id, section: nestedSection }];
     });
 
-    const target: FieldPatchTarget = {
-      kind: 'rep',
-      sectionId,
-      instanceId: block.instanceId,
-    };
-
-    if (parentPath !== null) {
-      target.path = path;
-    }
+    const target: FieldPatchTarget = { kind: 'rep', block: address };
 
     const blockPending = rowPending(pending, patchRecordKey(sheetId, target), fieldIds, true);
     const place = placeOf(records, sheetId, target);

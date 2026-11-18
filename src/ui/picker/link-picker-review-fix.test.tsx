@@ -2,6 +2,8 @@ import { afterEach, expect, test } from 'bun:test';
 import { act, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
+import { sheetRootAddress } from '@/core/block-address';
+import type { LinkTarget } from '@/core/link-target';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type { Command, SyncState } from '@/core/ui-messages';
@@ -68,6 +70,10 @@ const timeoutRig = createRoomRig({ timing: { commandTimeoutMs: 5, linkSetTimeout
 
 type ReverseSend = ComponentProps<typeof TokenCellPicker>['sendCommand'];
 
+function rootTarget(sheetId: string, cellId: string): LinkTarget {
+  return { block: sheetRootAddress(sheetId), cellId };
+}
+
 afterEach(() => {
   for (const root of mounted.splice(0)) {
     act(() => root.unmount());
@@ -120,7 +126,7 @@ test('keeps the reverse picker open and announces a refused real command batch',
   const closed: string[] = [];
 
   const picker = await renderReversePicker({
-    target: { sheetId: 'brok', instanceId: null, cellId: 'removed-cell' },
+    target: rootTarget('brok', 'removed-cell'),
     store: gm.store,
     sendCommand: gm.window.sendCommand,
     ids: ['free', 'second-free'],
@@ -154,7 +160,7 @@ test('keeps the reverse picker open and announces a timed-out real command', asy
   const closed: string[] = [];
 
   const picker = await renderReversePicker({
-    target: { sheetId: 'brok', instanceId: null, cellId: 'portrait' },
+    target: rootTarget('brok', 'portrait'),
     store,
     sendCommand: orphan.window.sendCommand,
     ids: ['free'],
@@ -234,7 +240,7 @@ test('keeps the reverse picker open when a real unlink becomes stale and is refu
   }) as ReverseSend;
 
   const picker = await renderReversePicker({
-    target: { sheetId: 'brok', instanceId: null, cellId: 'portrait' },
+    target: rootTarget('brok', 'portrait'),
     store: gm.store,
     sendCommand: staleUnlink,
     ids: ['current'],
@@ -271,7 +277,7 @@ async function reversePicker(
   store.replaceAll(records, [], [], LIVE);
 
   return renderReversePicker({
-    target: { sheetId: 'brok', instanceId: null, cellId: 'portrait' },
+    target: rootTarget('brok', 'portrait'),
     store,
     sendCommand,
     ids: ['current', 'elsewhere', 'free'],
@@ -286,7 +292,7 @@ async function renderReversePicker({
   ids,
   onLinked,
 }: {
-  target: { sheetId: string; instanceId: null; cellId: string };
+  target: LinkTarget;
   store: ReturnType<typeof createProjectionStore>;
   sendCommand: ReverseSend;
   ids: string[];

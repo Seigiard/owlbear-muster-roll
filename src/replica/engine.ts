@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 
 import { partyEntries } from '@/core/access';
+import { blockAddress, sheetRootAddress } from '@/core/block-address';
 import { createBoundedIdSet } from '@/core/bounded-id-set';
 import { recordDigest } from '@/core/digest';
 import { newRecordId, type RecordIdKind } from '@/core/ids';
@@ -737,10 +738,12 @@ export async function startReplicaEngine(
 
     const id = newId();
 
+    const block = target.block;
+
     heldOpen =
-      target.path === null || target.path === undefined
-        ? { id, sheetId: target.sheetId, cellId: target.cellId ?? '' }
-        : { id, sheetId: target.sheetId, path: target.path, cellId: target.cellId ?? '' };
+      block.path.length === 0
+        ? { id, sheetId: block.sheetId, cellId: target.cellId ?? '' }
+        : { id, sheetId: block.sheetId, path: [...block.path], cellId: target.cellId ?? '' };
     heldOpenUntil = Date.now() + timing.openRequestTtlMs;
     // No window opens for it, so a window opened by hand later does not jump to it.
     platform.action.open().catch((error) => {
@@ -782,10 +785,11 @@ export async function startReplicaEngine(
   }
 
   function openRequestTarget(request: OpenSheetRequest): LinkTarget {
+    const block =
+      blockAddress(request.sheetId, request.path ?? []) ?? sheetRootAddress(request.sheetId);
+
     return {
-      sheetId: request.sheetId,
-      instanceId: request.path?.at(-1) ?? null,
-      path: request.path,
+      block,
       cellId: request.cellId,
     };
   }

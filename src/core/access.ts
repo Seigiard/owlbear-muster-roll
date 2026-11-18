@@ -1,9 +1,9 @@
-import { acceptedFieldValue, targetFields } from '@/core/field-patch';
+import { acceptedFieldValue, targetFields, type FieldPatchTarget } from '@/core/field-patch';
+import { blockIdOf, parseBlockKey, sectionIdOf, type BlockAddress } from '@/core/block-address';
 import { compareCells, ownersBySheet } from '@/core/merge';
 import { plainRowIdOf, repeatTabById, type Preset } from '@/core/preset';
 import {
   blockDataSchema,
-  parseBlockPathKey,
   playerDataSchema,
   playerIdSchema,
   plinkPrefix,
@@ -98,7 +98,7 @@ export function canEdit(
 
 export type PlayerEditTarget =
   | { kind: 'row'; rowId: string }
-  | { kind: 'rep'; sectionId: string; fieldId?: string; path?: readonly string[] };
+  | { kind: 'rep'; block: BlockAddress; fieldId?: string };
 
 // AD-4, one edit check: this three-argument form answers only the player's sheet-level right. Field
 // checks use playerMayEditField, which requires an explicit row or repeat-section target so the
@@ -355,11 +355,14 @@ function proposalJudgement(
   record: VersionedRecord,
 ): ProposalJudgement {
   if (!record.k.startsWith('blk:')) return 'denied';
-  const parts = record.k.split(':');
-  const sheetId = parts[1] ?? '';
+  const block = parseBlockKey(record.k);
+
+  if (block === null) return 'denied';
+
+  const sheetId = block.sheetId;
   const repeat = repeatTargetOf(record.k);
 
-  if (repeat === null && parts.length !== 2) return 'denied';
+  if (repeat === null && block.path.length !== 0) return 'denied';
   const policy = resolveSheet(context.records, context.preset, sheetId);
 
   if (policy === null || !playerMayEdit(policy, context.records, playerId)) return 'denied';
@@ -368,18 +371,12 @@ function proposalJudgement(
   const repeatTab =
     repeat === null || repeat.path.length !== 2
       ? null
-      : repeatTabById(policy.template, repeat.sectionId);
-
-  const repeatTarget = repeat === null ? undefined : { path: repeat.path };
+      : repeatTabById(policy.template, sectionIdOf(repeat) ?? '');
 
   if (record.d === null) {
     return repeat !== null &&
       repeatTab === null &&
-      playerMayEditField(policy, context.records, playerId, {
-        kind: 'rep',
-        sectionId: repeat.sectionId,
-        ...repeatTarget,
-      })
+      playerMayEditField(policy, context.records, playerId, { kind: 'rep', block: repeat })
       ? 'allowed'
       : 'denied';
   }
@@ -405,11 +402,7 @@ function proposalJudgement(
 
   if (
     repeat !== null &&
-    !playerMayEditField(policy, context.records, playerId, {
-      kind: 'rep',
-      sectionId: repeat.sectionId,
-      ...repeatTarget,
-    })
+    !playerMayEditField(policy, context.records, playerId, { kind: 'rep', block: repeat })
   )
     return 'denied';
   let verdict: ProposalJudgement = 'allowed';
@@ -425,9 +418,12 @@ function proposalJudgement(
     const target: PlayerEditTarget =
       repeat === null
         ? { kind: 'row', rowId: rowId ?? '' }
-        : { kind: 'rep', sectionId: repeat.sectionId, fieldId: id, ...repeatTarget };
+        : { kind: 'rep', block: repeat, fieldId: id };
 
-    const field = targetFields(policy.template, target)?.find((item) => item.id === id);
+    const fieldTarget: FieldPatchTarget =
+      repeat === null ? { kind: 'row', rowId: rowId ?? '' } : { kind: 'rep', block: repeat };
+
+    const field = targetFields(policy.template, fieldTarget)?.find((item) => item.id === id);
 
     if (field === undefined) verdict = 'unknown-field';
     else if (
@@ -458,8 +454,8 @@ function instanceHeldElsewhere(
     if (
       held !== null &&
       held.sheetId === block.sheetId &&
-      held.instanceId === block.instanceId &&
-      held.sectionId !== block.sectionId
+      blockIdOf(held) === blockIdOf(block) &&
+      sectionIdOf(held) !== sectionIdOf(block)
     ) {
       return true;
     }
@@ -468,24 +464,10 @@ function instanceHeldElsewhere(
   return false;
 }
 
-type RepeatTarget = {
-  sheetId: string;
-  sectionId: string;
-  instanceId: string;
-  path: string[];
-};
+function repeatTargetOf(key: string): BlockAddress | null {
+  const parsed = parseBlockKey(key);
 
-function repeatTargetOf(key: string): RepeatTarget | null {
-  const parsed = parseBlockPathKey(key);
-
-  if (parsed === null) return null;
-
-  const sectionId = parsed.path.at(-2);
-  const instanceId = parsed.path.at(-1);
-
-  return sectionId === undefined || instanceId === undefined
-    ? null
-    : { sheetId: parsed.sheetId, sectionId, instanceId, path: parsed.path };
+  return parsed === null || parsed.path.length === 0 ? null : parsed;
 }
 
 function byName(first: AccessRow, second: AccessRow): number {

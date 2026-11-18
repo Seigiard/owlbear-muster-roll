@@ -1,6 +1,18 @@
 import { z } from 'zod';
 
 import {
+  blockAddress,
+  blockIdOf,
+  blockKeyOf,
+  blockPathSchema,
+  childAddress,
+  isLiveBlock,
+  scopePathOf,
+  sectionIdOf,
+  sheetRootAddress,
+  type BlockAddress,
+} from '@/core/block-address';
+import {
   evaluateFormula,
   formulaDiceFieldLookup,
   formulaDiceTerms,
@@ -14,7 +26,6 @@ import { parseFormula, writeDiceFields } from '@/core/formula';
 import {
   plainRow,
   repeatSectionByPath,
-  repeatSectionId,
   repeatScopePathAt,
   resolveFieldReference,
   sectionAt,
@@ -23,13 +34,7 @@ import {
   type TemplateLayout,
   type TemplateRowPlace,
 } from '@/core/preset';
-import {
-  cellValues,
-  blockPathKey,
-  repDataSchema,
-  type FieldValue,
-  type VersionedRecord,
-} from '@/core/records';
+import { cellValues, repDataSchema, type FieldValue, type VersionedRecord } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 import { cellLabel, rowValues, type FieldValues } from '@/core/sheet-values';
 
@@ -47,11 +52,7 @@ export const dicePlaceSchema = z.strictObject({
   rowIndex: z.number().int().nonnegative(),
   cellIndex: z.number().int().nonnegative(),
   instanceId: z.string().min(1).max(64).nullable(),
-  path: z
-    .array(z.string().min(1))
-    .min(2)
-    .refine((parts) => parts.length % 2 === 0)
-    .optional(),
+  path: blockPathSchema.optional(),
 });
 
 export type ShownValue = z.infer<typeof shownValueSchema>;
@@ -60,6 +61,41 @@ export type ShownValue = z.infer<typeof shownValueSchema>;
 export type ShownValues = ReadonlyMap<string, ShownValue>;
 
 export type DicePlace = z.infer<typeof dicePlaceSchema>;
+
+export function diceBlockOf(
+  layout: TemplateLayout,
+  sheetId: string,
+  place: DicePlace,
+): BlockAddress | null {
+  if (place.instanceId === null) return null;
+
+  const section = sectionAt(layout, place);
+
+  const from: TemplateRowPlace = {
+    tabIndex: place.tabIndex,
+    sectionIndex: place.sectionIndex,
+    rowIndex: place.rowIndex,
+    path: place.path,
+  };
+
+  const addressFromPath = place.path === undefined ? null : blockAddress(sheetId, place.path);
+
+  const sectionId =
+    (addressFromPath === null ? null : sectionIdOf(addressFromPath)) ??
+    section?.repeat?.id ??
+    section?.rows[place.rowIndex]?.repeat?.id ??
+    repeatScopePathAt(layout, from).at(-1) ??
+    null;
+
+  if (sectionId === null) return null;
+
+  const block =
+    addressFromPath ?? blockAddress(sheetId, place.path ?? [sectionId, place.instanceId]);
+
+  return block !== null && sectionIdOf(block) === sectionId && blockIdOf(block) === place.instanceId
+    ? block
+    : null;
+}
 
 // `cell` is the preceding text label, or the formula with each Nd(id) written as NdM.
 export type DiceRoll = { cell: string; result: RollResult };
@@ -137,16 +173,7 @@ export function prepareDiceRoll(
   let ownBlock: FieldValues | undefined;
 
   if (place.instanceId !== null) {
-    const block = blockValues(
-      layout,
-      records,
-      sheetId,
-      from,
-      section,
-      row,
-      place.instanceId,
-      place.path,
-    );
+    const block = blockValues(layout, records, sheetId, place);
 
     if (block === null) {
       return err({ code: 'not-dice' });
@@ -242,34 +269,15 @@ function blockValues(
   layout: TemplateLayout,
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
-  from: TemplateRowPlace,
-  section: PresetSection,
-  row: PresetSection['rows'][number],
-  instanceId: string,
-  path: readonly string[] | undefined,
+  place: DicePlace,
 ): FieldValues | null {
-  const sectionId =
-    path?.at(-2) ??
-    repeatSectionId(section) ??
-    row.repeat?.id ??
-    repeatScopePathAt(layout, from).at(-1) ??
-    null;
+  const block = diceBlockOf(layout, sheetId, place);
 
-  if (sectionId === null) {
+  if (block === null || !isLiveBlock(records, block)) {
     return null;
   }
 
-  const fullPath = path ?? [sectionId, instanceId];
-
-  if (
-    fullPath.at(-1) !== instanceId ||
-    fullPath.at(-2) !== sectionId ||
-    !liveBlockPath(records, sheetId, fullPath)
-  ) {
-    return null;
-  }
-
-  const data = repDataSchema.safeParse(records.get(blockPathKey(sheetId, fullPath))?.d);
+  const data = repDataSchema.safeParse(records.get(blockKeyOf(block))?.d);
 
   return data.success ? new Map(Object.entries(cellValues(data.data.cells))) : null;
 }
@@ -284,41 +292,40 @@ function blockValuesAtScope(
     return null;
   }
 
-  const scopeIndex = scopePath.reduce(
-    (last, scopeId, index) =>
-      path[index * 2] === scopeId && path[index * 2 + 1] !== undefined ? index : -1,
-    -1,
-  );
+  const block = blockAddress(sheetId, path);
 
-  if (scopeIndex !== scopePath.length - 1) {
+  if (block === null) {
     return null;
   }
 
-  const ancestorPath = path.slice(0, (scopeIndex + 1) * 2);
+  const actualScopePath = scopePathOf(block);
 
-  if (!liveBlockPath(records, sheetId, ancestorPath)) {
+  if (
+    scopePath.length === 0 ||
+    scopePath.length > actualScopePath.length ||
+    scopePath.some((scopeId, index) => actualScopePath[index] !== scopeId)
+  ) {
     return null;
   }
 
-  const data = repDataSchema.safeParse(records.get(blockPathKey(sheetId, ancestorPath))?.d);
+  let ancestor = sheetRootAddress(sheetId);
+
+  for (let index = 0; index < scopePath.length; index += 1) {
+    const scopeId = block.path[index * 2];
+    const instanceId = block.path[index * 2 + 1];
+
+    if (scopeId === undefined || instanceId === undefined) return null;
+
+    ancestor = childAddress(ancestor, scopeId, instanceId);
+  }
+
+  if (!isLiveBlock(records, ancestor)) {
+    return null;
+  }
+
+  const data = repDataSchema.safeParse(records.get(blockKeyOf(ancestor))?.d);
 
   return data.success ? new Map(Object.entries(cellValues(data.data.cells))) : null;
-}
-
-function liveBlockPath(
-  records: ReadonlyMap<string, VersionedRecord>,
-  sheetId: string,
-  path: readonly string[],
-): boolean {
-  for (let length = 2; length <= path.length; length += 2) {
-    if (
-      !repDataSchema.safeParse(records.get(blockPathKey(sheetId, path.slice(0, length)))?.d).success
-    ) {
-      return false;
-    }
-  }
-
-  return path.length > 0 && path.length % 2 === 0;
 }
 
 // A shown text stands in for the stored value, and an empty one for no value. Every row gets the

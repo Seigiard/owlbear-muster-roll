@@ -24,18 +24,36 @@ import type { ProjectionStore } from '@/ui/projection-store';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
 
+function wireCommand(command: Command): CommandMessage['command'] {
+  if (command.type === 'field-patch') {
+    if (command.target.kind === 'row') {
+      return {
+        ...command,
+        target: { kind: 'row', rowId: command.target.rowId },
+      };
+    }
+
+    const target: Extract<CommandMessage['command'], { type: 'field-patch' }>['target'] = {
+      kind: 'rep',
+      sectionId: command.target.sectionId,
+      instanceId: command.target.instanceId,
+    };
+
+    if (command.target.path !== undefined) {
+      target.path = [...command.target.path];
+    }
+
+    return { ...command, target };
+  }
+
+  return command;
+}
+
 type Assembly = {
   engine: string;
   seq: number;
   n: number;
   parts: Map<number, ProjectionMessage>;
-};
-
-type WireRepeatTarget = {
-  kind: 'rep';
-  sectionId: string;
-  instanceId: string;
-  path?: string[];
 };
 
 // `urgent` skips the spacing queue, for a window that is closing.
@@ -122,28 +140,6 @@ export type ReplicaClient = {
   flushNow: () => void;
   stop: () => void;
 };
-
-function wireCommand(command: Command): CommandMessage['command'] {
-  if (command.type !== 'field-patch') {
-    return command;
-  }
-
-  if (command.target.kind === 'row') {
-    return { ...command, target: { kind: 'row', rowId: command.target.rowId } };
-  }
-
-  const target: WireRepeatTarget = {
-    kind: 'rep',
-    sectionId: command.target.sectionId,
-    instanceId: command.target.instanceId,
-  };
-
-  if (command.target.path !== undefined) {
-    target.path = [...command.target.path];
-  }
-
-  return { ...command, target };
-}
 
 export function startReplicaClient(
   broadcast: Pick<BroadcastPort, 'onMessage'>,
