@@ -73,6 +73,10 @@ export function rowPending(
     return { removed: false, rowMarked: false, markedFields: new Set(marked) };
   }
 
+  if (entry.fields.size > 0) {
+    return NOT_PENDING;
+  }
+
   if (!recordMarked) {
     return NOT_PENDING;
   }

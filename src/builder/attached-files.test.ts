@@ -1,7 +1,7 @@
+import { fixtureSnapshotCells, fixtureSnapshotBlocks } from '../../tests/support/block-fixtures';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-
 import { encodePreset, parsePresetFile, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type { SnapshotFile } from '@/core/snapshot-file';
@@ -11,7 +11,6 @@ import {
   type TestFileAccessPort,
   type TestFileReference,
 } from '../../tests/support/file-access';
-
 import { BuilderPage } from './builder-page';
 import { createBuilderStore, type BuilderStore } from './builder-store';
 import { toPreset, uidAt, updateTemplate } from './document';
@@ -26,89 +25,90 @@ const LOCAL_PRESET = createCrewPreset('Моя версия');
 const NEWER_LOCAL_PRESET = createCrewPreset('Новая версия');
 
 const SNAPSHOT_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   type: 'muster-roll/snapshot',
   sheets: [
     {
       id: 'crew',
-      rows: { strength: { strength: 12 } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ strength: { strength: 12 } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
   ],
   links: [],
 });
 
 const EXTERNAL_SNAPSHOT_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   type: 'muster-roll/snapshot',
   sheets: [
     {
       id: 'crew',
-      rows: { strength: { strength: 21 } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ strength: { strength: 21 } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
   ],
   links: [],
 });
 
 const NEWER_SNAPSHOT_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   type: 'muster-roll/snapshot',
   sheets: [
     {
       id: 'crew',
-      rows: { strength: { strength: 34 } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ strength: { strength: 34 } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
   ],
   links: [],
 });
 
 const RESUMED_SNAPSHOT_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   type: 'muster-roll/snapshot',
   sheets: [
     {
       id: 'crew',
-      rows: { strength: { strength: 55 } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ strength: { strength: 55 } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
   ],
   links: [],
 });
 
-const EMPTY_PRESET: Preset = { v: 3, templates: [] };
+const EMPTY_PRESET: Preset = { v: 4, templates: [] };
 
 const EMPTY_SNAPSHOT = {
-  v: 3,
+  v: 4,
   type: 'muster-roll/snapshot',
-  sheets: [{ id: 'crew', rows: {}, repeats: {} }],
+  sheets: [{ id: 'crew', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) }],
   links: [],
 };
 
 const CREW_PRESET_TEXT = `{
-  "v": 3,
+  "v": 4,
   "templates": [
     {
       "id": "crew",
-      "kind": "single",
       "title": "Экипаж",
       "tabs": [
         {
           "sections": [
             {
               "rows": [
-                [
-                  {
-                    "kind": "text",
-                    "text": "Сила"
-                  },
-                  {
-                    "kind": "field",
-                    "type": "number",
-                    "id": "strength"
-                  }
-                ]
+                {
+                  "cells": [
+                    {
+                      "kind": "text",
+                      "text": "Сила"
+                    },
+                    {
+                      "kind": "field",
+                      "type": "number",
+                      "id": "strength"
+                    }
+                  ]
+                }
               ]
             }
           ]
@@ -119,17 +119,15 @@ const CREW_PRESET_TEXT = `{
 }`;
 
 const SNAPSHOT_DOCUMENT_TEXT = `{
-  "v": 3,
+  "v": 4,
   "type": "muster-roll/snapshot",
   "sheets": [
     {
       "id": "crew",
-      "rows": {
-        "strength": {
-          "strength": 12
-        }
+      "cells": {
+        "strength": 12
       },
-      "repeats": {}
+      "blocks": []
     }
   ],
   "links": []
@@ -151,16 +149,13 @@ describe('attached Builder files', () => {
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
     access.writeRequests.splice(0);
-
     // #when
     editTemplateTitle(store, 'Моя версия');
     await settle();
-
     // #then
     expect({
       writes: access.writeRequests.map((request) => ({
@@ -178,37 +173,28 @@ describe('attached Builder files', () => {
       block: 'Пресетcrew.jsonсохранено в файл в 18:06',
     });
   });
-
   test('serializes attached writes and leaves the newest page text on disk', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
     access.writeRequests.splice(0);
     access.pauseWrites();
-
     // #when
     editTemplateTitle(store, 'Первая версия');
     await settle();
     editTemplateTitle(store, 'Вторая версия');
     await settle();
-
     const requestsBeforeFirstCompletion = access.writeRequests.length;
-
     access.releaseNextWrite();
     await settle();
-
     const requestsAfterFirstCompletion = access.writeRequests.length;
-
     access.releaseWrites();
     await settle();
-
     const disk = await access.read(file);
-
     // #then
     expect({
       requestsBeforeFirstCompletion,
@@ -222,25 +208,21 @@ describe('attached Builder files', () => {
       disk: createCrewPreset('Вторая версия'),
     });
   });
-
   test('Save File writes the current preset and attaches the selected handle for later edits', async () => {
     // #given
     const access = new TestFileAccessFake();
     const selected = access.addFile('saved-preset', 'saved-crew.json', '');
     const unrelated = access.addFile('unrelated', 'unrelated.json', '');
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     access.queueOpen(selected);
-
     // #when
     await click(fileBlock('Пресет'));
     await click(menuItem('Сохранить в файл…'));
     await settle();
     editTemplateTitle(store, 'Моя версия');
     await settle();
-
     // #then
     expect({
       modes: access.openRequests.map((request) => request.mode),
@@ -262,14 +244,12 @@ describe('attached Builder files', () => {
       unrelatedIsFollowed: false,
     });
   });
-
   test('Save As replaces the snapshot handle and keeps later snapshot edits attached', async () => {
     // #given
     const access = new TestFileAccessFake();
     const original = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
     const selected = access.addFile('saved-snapshot', 'saved-snapshot.json', '');
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     store.setSnapshot(snapshotRecords(SNAPSHOT_TEXT));
     await mount(store, access);
@@ -277,14 +257,12 @@ describe('attached Builder files', () => {
     access.openRequests.splice(0);
     access.writeRequests.splice(0);
     access.queueOpen(selected);
-
     // #when
     await click(fileBlock('Снимок'));
     await click(menuItem('Сохранить как…'));
     await settle();
     act(() => store.setSnapshot(snapshotRecords(EXTERNAL_SNAPSHOT_TEXT)));
     await settle();
-
     // #then
     expect({
       modes: access.openRequests.map((request) => request.mode),
@@ -306,29 +284,23 @@ describe('attached Builder files', () => {
       originalIsFollowed: false,
     });
   });
-
   test('confirmed preset clear empties the linked file and undo restores both', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
     access.writeRequests.splice(0);
-
     // #when
     await click(fileBlock('Пресет'));
     await click(menuItem('Очистить пресет…'));
     await click(button('Очистить'));
     await settle();
-
     const cleared = toPreset(store.$state.get().step.document);
-
     await click(button('Отменить правку'));
     await settle();
-
     // #then
     expect({
       cleared,
@@ -340,30 +312,24 @@ describe('attached Builder files', () => {
       fileWrites: [EMPTY_PRESET, CREW_PRESET],
     });
   });
-
   test('confirmed snapshot clear empties the linked file and undo restores both', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     store.setSnapshot(snapshotRecords(SNAPSHOT_TEXT));
     await mount(store, access);
     await openAttachedFile(access, file, 'Снимок');
     access.writeRequests.splice(0);
-
     // #when
     await click(fileBlock('Снимок'));
     await click(menuItem('Очистить снимок…'));
     await click(button('Очистить'));
     await settle();
-
     const cleared = store.$state.get().step.records;
-
     await click(button('Отменить правку'));
     await settle();
-
     // #then
     expect({
       cleared,
@@ -375,25 +341,21 @@ describe('attached Builder files', () => {
       fileWrites: [EMPTY_SNAPSHOT, JSON.parse(SNAPSHOT_TEXT)],
     });
   });
-
   test('applies a valid external snapshot result to the visible preview without reload', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     store.setSnapshot(snapshotRecords(SNAPSHOT_TEXT));
     await mount(store, access);
     await openAttachedFile(access, file, 'Снимок');
     const before = previewValue('Сила');
-
     // #when
     access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
     await act(async () => {
       access.externalWrite(file, EXTERNAL_SNAPSHOT_TEXT);
     });
-
     // #then
     expect({
       before,
@@ -403,25 +365,20 @@ describe('attached Builder files', () => {
       value: '21',
     });
   });
-
   test('detects a disk change before a page write can overwrite it', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
     access.writeRequests.splice(0);
     access.externalWriteSilently(file, JSON.stringify(DISK_PRESET));
-
     // #when
     editTemplateTitle(store, 'Моя версия');
     await settle();
-
     const disk = await access.read(file);
-
     // #then
     expect({
       writes: access.writeRequests,
@@ -433,7 +390,6 @@ describe('attached Builder files', () => {
       actions: { takeFile: true, keepMine: true },
     });
   });
-
   test.each([
     ['Взять из файла', DISK_PRESET],
     ['Оставить мои', LOCAL_PRESET],
@@ -442,7 +398,6 @@ describe('attached Builder files', () => {
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
@@ -450,34 +405,27 @@ describe('attached Builder files', () => {
     access.pauseWrites();
     editTemplateTitle(store, 'Моя версия');
     await settle();
-
     // #when
     access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
     await act(async () => {
       access.externalWrite(file, JSON.stringify(DISK_PRESET));
     });
-
     const takeFile = button('Взять из файла');
     const keepMine = button('Оставить мои');
-
     expect({ takeFile: takeFile !== null, keepMine: keepMine !== null }).toEqual({
       takeFile: true,
       keepMine: true,
     });
-
     await click(choice === 'Взять из файла' ? takeFile : keepMine);
     access.releaseWrites();
     await settle();
-
     const disk = await access.read(file);
-
     // #then
     expect({
       page: toPreset(store.$state.get().step.document),
       disk: disk.ok ? JSON.parse(disk.value.text) : null,
     }).toEqual({ page: expected, disk: expected });
   });
-
   test.each([
     ['Взять из файла', DISK_PRESET],
     ['Оставить мои', LOCAL_PRESET],
@@ -488,36 +436,28 @@ describe('attached Builder files', () => {
       const access = new TestFileAccessFake();
       const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
       const store = createBuilderStore(memoryStorage());
-
       store.open(CREW_PRESET, CREW_PRESET, 'crew');
       await mount(store, access);
       await openAttachedFile(access, file, 'Пресет');
       access.readRequests.splice(0);
       access.writeRequests.splice(0);
       access.pauseReads();
-
       editTemplateTitle(store, 'Промежуточная версия');
       await settle();
       editTemplateTitle(store, 'Моя версия');
       await settle();
-
       access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
       access.externalWriteSilently(file, JSON.stringify(DISK_PRESET));
-
       // #when
       await act(async () => {
         access.releaseReads();
       });
       await settle();
-
       const actionsBeforeChoice = conflictActions();
       const pageBeforeChoice = toPreset(store.$state.get().step.document);
-
       await click(button(choice));
       await settle();
-
       const disk = await access.read(file);
-
       // #then
       expect({
         pageBeforeChoice,
@@ -532,13 +472,11 @@ describe('attached Builder files', () => {
       });
     },
   );
-
   test('keeps a pending-write conflict until the user chooses', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
@@ -546,13 +484,11 @@ describe('attached Builder files', () => {
     access.pauseWrites();
     editTemplateTitle(store, 'Моя версия');
     await settle();
-
     // #when
     access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
     await act(async () => {
       access.externalWrite(file, JSON.stringify(DISK_PRESET));
     });
-
     const diskBeforeRelease = await access.read(file);
 
     const beforeRelease = {
@@ -565,9 +501,7 @@ describe('attached Builder files', () => {
     await act(async () => {
       access.externalWrite(file, JSON.stringify(LOCAL_PRESET));
     });
-
     const diskAfterOwnEcho = await access.read(file);
-
     // #then
     expect({
       diskBeforeRelease: diskBeforeRelease.ok ? JSON.parse(diskBeforeRelease.value.text) : null,
@@ -590,7 +524,6 @@ describe('attached Builder files', () => {
       diskAfterOwnEcho: LOCAL_PRESET,
     });
   });
-
   test.each([
     ['Взять из файла', LATER_DISK_PRESET],
     ['Оставить мои', LOCAL_PRESET],
@@ -601,7 +534,6 @@ describe('attached Builder files', () => {
       const access = new TestFileAccessFake();
       const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
       const store = createBuilderStore(memoryStorage());
-
       store.open(CREW_PRESET, CREW_PRESET, 'crew');
       await mount(store, access);
       await openAttachedFile(access, file, 'Пресет');
@@ -609,61 +541,46 @@ describe('attached Builder files', () => {
       access.pauseWrites();
       editTemplateTitle(store, 'Моя версия');
       await settle();
-
       access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
       await act(async () => {
         access.externalWrite(file, JSON.stringify(DISK_PRESET));
       });
-
       expect(conflictActions()).toEqual({ takeFile: true, keepMine: true });
-
       access.releaseWrites();
       await settle();
-
       // #when
       access.setModifiedAt(new Date('2026-11-16T18:08:00.000Z'));
       await act(async () => {
         access.externalWrite(file, JSON.stringify(LATER_DISK_PRESET));
       });
-
       const actionsAfterLaterFile = conflictActions();
-
       // #then
       expect(actionsAfterLaterFile).toEqual({ takeFile: true, keepMine: true });
-
       await click(button(choice));
       await settle();
-
       const disk = await access.read(file);
-
       expect({
         page: toPreset(store.$state.get().step.document),
         disk: disk.ok ? JSON.parse(disk.value.text) : null,
       }).toEqual({ page: expected, disk: expected });
     },
   );
-
   test('stops after a failed write and resumes only for a new edit', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
     access.writeRequests.splice(0);
     access.queueWriteFailure('native write denied');
-
     // #when
     editTemplateTitle(store, 'Первая версия');
     await settle();
-
     const requestsAfterFailure = access.writeRequests.length;
-
     editTemplateTitle(store, 'Вторая версия');
     await settle();
-
     // #then
     expect({
       requestsAfterFailure,
@@ -673,7 +590,6 @@ describe('attached Builder files', () => {
       writes: [createCrewPreset('Первая версия'), createCrewPreset('Вторая версия')],
     });
   });
-
   test.each([
     ['preset', 'Пресет', 'crew.json'],
     ['snapshot', 'Снимок', 'crew-snapshot.json'],
@@ -682,10 +598,8 @@ describe('attached Builder files', () => {
     async (kind, label, fileName) => {
       // #given
       const scenario = await failForcedKeepMineWrite(kind);
-
       // #when
       await settle();
-
       // #then
       expect({
         reads: scenario.access.readRequests.length,
@@ -708,7 +622,6 @@ describe('attached Builder files', () => {
       });
     },
   );
-
   test.each([
     ['preset', 'Пресет'],
     ['snapshot', 'Снимок'],
@@ -717,18 +630,14 @@ describe('attached Builder files', () => {
     async (kind, label) => {
       // #given
       const scenario = await failForcedKeepMineWrite(kind);
-
       scenario.access.readRequests.splice(0);
       scenario.access.writeRequests.splice(0);
-
       // #when
       applyResumedEdit(scenario);
       scenario.access.releaseReads();
       await settle();
-
       const readsAfterEdit = scenario.access.readRequests.length;
       const disk = await readFakeDocument(scenario.kind, scenario.access, scenario.file);
-
       // #then
       expect({
         readsAfterEdit,
@@ -753,7 +662,6 @@ describe('attached Builder files', () => {
       });
     },
   );
-
   test.each([
     ['preset', 'Пресет'],
     ['snapshot', 'Снимок'],
@@ -762,22 +670,18 @@ describe('attached Builder files', () => {
     async (kind, label) => {
       // #given
       const scenario = await failForcedKeepMineWrite(kind);
-
       scenario.access.openRequests.splice(0);
       scenario.access.readRequests.splice(0);
       scenario.access.writeRequests.splice(0);
       scenario.access.queueOpen(scenario.file);
-
       // #when
       await click(fileBlock(label));
       await click(menuItem('Сохранить как…'));
       await settle();
       scenario.access.releaseReads();
       await settle();
-
       const readsAfterRetry = scenario.access.readRequests.length;
       const disk = await readFakeDocument(scenario.kind, scenario.access, scenario.file);
-
       // #then
       expect({
         modes: scenario.access.openRequests.map((request) => request.mode),
@@ -804,37 +708,30 @@ describe('attached Builder files', () => {
       });
     },
   );
-
   test('does not expose native file-operation details in the attached-file status', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
-
     // #when
     await act(async () => {
       access.externalFailure(file, 'native permission denied');
     });
-
     // #then
     expect(fileBlock('Пресет').textContent?.includes('native permission denied')).toBe(false);
   });
-
   test('pauses writes for a preset problem and resumes after the repair', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
     access.writeRequests.splice(0);
-
     // #when
     editTemplateId(store, 'bad id');
     await settle();
@@ -851,7 +748,6 @@ describe('attached Builder files', () => {
 
     editTemplateId(store, 'crew');
     await settle();
-
     // #then
     expect({
       invalidState,
@@ -867,22 +763,18 @@ describe('attached Builder files', () => {
       repairedBlock: 'Пресетcrew.jsonсохранено в файл в 18:06',
     });
   });
-
   test('keeps the last good preset when an external result is refused', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
-
     // #when
     await act(async () => {
       access.externalWrite(file, '{');
     });
-
     // #then
     expect({
       document: toPreset(store.$state.get().step.document),
@@ -892,13 +784,11 @@ describe('attached Builder files', () => {
       block: 'Пресетcrew.jsonФайл не подошёл: это не JSON. Ничего не изменено.',
     });
   });
-
   test('suppresses malformed preset preflight retries until repaired file and new page work', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
@@ -907,7 +797,6 @@ describe('attached Builder files', () => {
     access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
     access.externalWriteSilently(file, '{');
     access.pauseReadsAfter(1);
-
     // #when
     editTemplateTitle(store, 'Моя версия');
     await settle();
@@ -933,10 +822,8 @@ describe('attached Builder files', () => {
 
     editTemplateTitle(store, 'Новая версия');
     await settle();
-
     const readsAfterNewEdit = access.readRequests.length;
     const disk = await access.read(file);
-
     // #then
     expect({
       refused,
@@ -957,13 +844,11 @@ describe('attached Builder files', () => {
       disk: NEWER_LOCAL_PRESET,
     });
   });
-
   test('suppresses malformed snapshot preflight retries until repaired file and new page work', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     store.setSnapshot(snapshotRecords(SNAPSHOT_TEXT));
     await mount(store, access);
@@ -973,7 +858,6 @@ describe('attached Builder files', () => {
     access.setModifiedAt(new Date('2026-11-16T18:07:00.000Z'));
     access.externalWriteSilently(file, '{');
     access.pauseReadsAfter(1);
-
     // #when
     act(() => store.setSnapshot(snapshotRecords(EXTERNAL_SNAPSHOT_TEXT)));
     await settle();
@@ -999,10 +883,8 @@ describe('attached Builder files', () => {
 
     act(() => store.setSnapshot(snapshotRecords(NEWER_SNAPSHOT_TEXT)));
     await settle();
-
     const readsAfterNewEdit = access.readRequests.length;
     const disk = await access.read(file);
-
     // #then
     expect({
       refused,
@@ -1023,20 +905,17 @@ describe('attached Builder files', () => {
       disk: JSON.parse(NEWER_SNAPSHOT_TEXT),
     });
   });
-
   test('keeps an attached compatible snapshot through preset own-write echo and external follow', async () => {
     // #given
     const access = new TestFileAccessFake();
     const presetFile = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const snapshotFile = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, presetFile, 'Пресет');
     await openAttachedFile(access, snapshotFile, 'Снимок');
     access.writeRequests.splice(0);
-
     const before = visiblePresetAndSnapshot(access, snapshotFile);
     editTemplateTitle(store, 'Моя версия');
     await settle();
@@ -1051,13 +930,11 @@ describe('attached Builder files', () => {
       access.externalWrite(presetFile, ownWrite.text);
     });
     const afterOwnWriteEcho = visiblePresetAndSnapshot(access, snapshotFile);
-
     access.setModifiedAt(new Date('2026-11-16T18:08:00.000Z'));
     await act(async () => {
       access.externalWrite(presetFile, JSON.stringify(DISK_PRESET));
     });
     const afterExternalTitleUpdate = visiblePresetAndSnapshot(access, snapshotFile);
-
     // #then
     expect({
       before,
@@ -1084,20 +961,17 @@ describe('attached Builder files', () => {
       },
     });
   });
-
   test('keeps preset selection and undo/redo identity through its own canonical echo', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('preset', 'crew.json', JSON.stringify(CREW_PRESET));
     const store = createBuilderStore(memoryStorage());
-
     await mount(store, access);
     await openAttachedFile(access, file, 'Пресет');
     editTemplateTitle(store, 'Моя версия');
     await settle();
     act(() => store.undo());
     await settle();
-
     const selected = uidAt(store.$state.get().step.document, [0, 0, 0, 0, 1]);
 
     if (selected === null) {
@@ -1105,16 +979,12 @@ describe('attached Builder files', () => {
     }
 
     act(() => store.select(selected));
-
     const documentBefore = store.$state.get().step.document;
-
     // #when
     await act(async () => {
       access.externalWrite(file, CREW_PRESET_TEXT);
     });
-
     const state = store.$state.get();
-
     // #then
     expect({
       documentIdentityPreserved: state.step.document === documentBefore,
@@ -1128,13 +998,11 @@ describe('attached Builder files', () => {
       redoSteps: 1,
     });
   });
-
   test('keeps snapshot records and undo/redo identity through its own canonical echo', async () => {
     // #given
     const access = new TestFileAccessFake();
     const file = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     await mount(store, access);
     await openAttachedFile(access, file, 'Снимок');
@@ -1142,16 +1010,12 @@ describe('attached Builder files', () => {
     await settle();
     act(() => store.undo());
     await settle();
-
     const recordsBefore = store.$state.get().step.records;
-
     // #when
     await act(async () => {
       access.externalWrite(file, SNAPSHOT_TEXT);
     });
-
     const state = store.$state.get();
-
     // #then
     expect({
       recordsIdentityPreserved: state.step.records === recordsBefore,
@@ -1163,7 +1027,6 @@ describe('attached Builder files', () => {
       redoSteps: 1,
     });
   });
-
   test('opening an identical preset attaches it without clearing the companion snapshot', async () => {
     // #given
     const access = new TestFileAccessFake();
@@ -1171,16 +1034,13 @@ describe('attached Builder files', () => {
     const secondPreset = access.addFile('preset-2', 'crew-copy.json', JSON.stringify(CREW_PRESET));
     const snapshotFile = access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, CREW_PRESET, 'crew');
     store.setSnapshot(snapshotRecords(SNAPSHOT_TEXT));
     await mount(store, access);
     await openAttachedFile(access, firstPreset, 'Пресет');
     await openAttachedFile(access, snapshotFile, 'Снимок');
-
     // #when
     await openAttachedFile(access, secondPreset, 'Пресет');
-
     // #then
     expect({
       snapshotValue: previewValue('Сила'),
@@ -1194,22 +1054,17 @@ describe('attached Builder files', () => {
       secondPresetIsFollowed: true,
     });
   });
-
   test('keeps open and download without write or follow claims in an unsupported browser', async () => {
     // #given
     const access = new TestFileAccessFake('open-only');
     const store = createBuilderStore(memoryStorage());
-
     store.open(CREW_PRESET, null, 'crew');
     await mount(store, access);
-
     // #when
     await click(fileBlock('Пресет'));
     const items = menuItems();
-
     editTemplateTitle(store, 'Моя версия');
     await settle();
-
     // #then
     expect({
       items,
@@ -1231,19 +1086,15 @@ describe('attached Builder files', () => {
       follows: [],
     });
   });
-
   test('keeps a valid open-only preset edit free of validation-problem status', async () => {
     // #given
     const access = new TestFileAccessFake('open-only');
     const store = createBuilderStore(memoryStorage());
-
     await mount(store, access);
     await openInputFile('preset', 'crew.json', CREW_PRESET_TEXT);
-
     // #when
     editTemplateTitle(store, 'Моя версия');
     await settle();
-
     // #then
     expect({
       blocked: fileBlock('Пресет').textContent?.includes('не сохранено: исправьте проблемы'),
@@ -1259,21 +1110,23 @@ describe('attached Builder files', () => {
 
 function createCrewPreset(title = 'Экипаж'): Preset {
   return {
-    v: 3,
+    v: 4,
     templates: [
       {
         id: 'crew',
-        kind: 'single',
+
         title,
         tabs: [
           {
             sections: [
               {
                 rows: [
-                  [
-                    { kind: 'text', text: 'Сила' },
-                    { kind: 'field', type: 'number', id: 'strength' },
-                  ],
+                  {
+                    cells: [
+                      { kind: 'text', text: 'Сила' },
+                      { kind: 'field', type: 'number', id: 'strength' },
+                    ],
+                  },
                 ],
               },
             ],
@@ -1337,7 +1190,6 @@ async function failForcedKeepMineWrite(kind: AttachedFileKind): Promise<FailedFo
       : access.addFile('snapshot', 'crew-snapshot.json', SNAPSHOT_TEXT);
 
   const store = createBuilderStore(memoryStorage());
-
   store.open(CREW_PRESET, CREW_PRESET, 'crew');
 
   if (kind === 'snapshot') {
@@ -1368,7 +1220,6 @@ async function failForcedKeepMineWrite(kind: AttachedFileKind): Promise<FailedFo
   access.writeRequests.splice(0);
   access.queueWriteFailure('native write denied');
   access.pauseReadsAfter(1);
-
   await click(button('Оставить мои'));
   await settle();
   await settle();
@@ -1430,13 +1281,10 @@ function parseAttachedDocument(kind: AttachedFileKind, text: string): Preset | S
 async function mount(store: BuilderStore, fileAccess: TestFileAccessPort): Promise<void> {
   const container = document.createElement('div');
   const root = createRoot(container);
-
   document.body.append(container);
   mounted.push(root);
-
   await act(async () => {
     const props = { store, fileAccess };
-
     root.render(createElement(BuilderPage, props));
   });
 }
@@ -1470,7 +1318,6 @@ async function openInputFile(
     configurable: true,
     value: [new File([text], name, { type: 'application/json' })],
   });
-
   await act(async () => {
     input.dispatchEvent(new Event('change', { bubbles: true }));
   });
@@ -1552,7 +1399,10 @@ function visiblePresetAndSnapshot(access: TestFileAccessFake, snapshotFile: Test
 function parsedWrite(
   access: TestFileAccessFake,
   index: number,
-): { file: TestFileReference; document: unknown } | null {
+): {
+  file: TestFileReference;
+  document: unknown;
+} | null {
   const request = access.writeRequests[index];
 
   return request === undefined ? null : { file: request.file, document: JSON.parse(request.text) };

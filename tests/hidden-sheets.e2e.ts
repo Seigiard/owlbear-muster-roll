@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import type { ContextMenuIconFilter } from '@/platform/ports';
-
 import {
   ADD,
   clientQuery,
@@ -26,7 +24,6 @@ const UNNAMED = 'Без имени';
 // The GM's background runs a fake dice extension whose every die shows 5, so each roll has one
 // known result.
 const GM: ClientParams = { client: 'a', device: 'a', name: 'Мастер', diceFaces: [5] };
-
 const SECOND_GM: ClientParams = { client: 'b', device: 'b', name: 'Второй' };
 
 const PLAYER: ClientParams = {
@@ -44,8 +41,8 @@ const ROOM: readonly StoredRecord[] = [
   ...pcSheet('anya', 'Аня', 0),
   record('acl:anya:lisa', { name: 'Лиза' }),
   npcBlock('gob', 'Гоблин', 0, { str: 3 }),
-  record('link:t-anya', { s: 'anya' }),
-  record('link:t-gob', { s: 'npc', i: 'gob' }),
+  record('link:t-anya', { s: 'anya', c: 'token' }),
+  record('link:t-gob', { s: 'npc', path: ['npc_name', 'gob'], c: 'token' }),
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -57,10 +54,8 @@ test('a player has no tab of the hidden NPC sheet and sees none of its NPCs', as
 }) => {
   // #given
   await openGm(context, ROOM);
-
   // #when
   const player = await openPlayer(context);
-
   // #then
   await expect(player.window.getByRole('tab')).toHaveText(['Аня', 'Инвентарь']);
   await expect(player.window.getByText('Гоблин')).toHaveCount(0);
@@ -71,10 +66,8 @@ test('a player gets "Открыть лист" on a character token and none on a
 }) => {
   // #given
   await openGm(context, ROOM);
-
   // #when
   const player = await openPlayer(context);
-
   // #then: the player icon names Аня's token only, and the GM icon is Owlbear's to hide.
   await expect
     .poll(() => openIconTokens(player.background))
@@ -88,16 +81,13 @@ test('a GM roll on the hidden NPC sheet shows on GM clients only', async ({ cont
   // #given
   const gm = await openGm(context, ROOM);
   const player = await openPlayer(context);
-
   await expect(player.window.getByRole('tab', { name: 'Аня' })).toBeVisible();
   await gm.window.getByRole('tab', { name: 'NPC' }).click();
-
   // #when: the hidden roll goes first, so the visible one after it proves it had its turn.
   await npcRow(gm.window, 'Гоблин').getByRole('button', { name: 'Сила', exact: true }).click();
   await expect.poll(() => shownNotifications(gm)).toEqual(['Мастер: NPC, Сила — 5, провал']);
   await gm.window.getByRole('tab', { name: 'Аня' }).click();
   await diceButton(gm.window, 'Удача').click();
-
   // #then: 5 + 5 + 1 for "Удача".
   await expect.poll(() => shownNotifications(player)).toEqual(['Мастер: Аня, Удача — 11']);
   expect(await shownNotifications(gm)).toEqual([
@@ -113,13 +103,10 @@ test('a GM rename in the header shows in the tab, header and link picker of ever
   const gm = await openGm(context, ROOM);
   const second = await openSecondGm(context);
   const player = await openPlayer(context);
-
   await expect(player.window.getByRole('tab', { name: 'Аня' })).toBeVisible();
-
   // #when
   await nameInput(gm.window).fill('Аня Смелая');
   await nameInput(gm.window).press('Enter');
-
   // #then
   await expectNamed(second, player, 'Аня Смелая');
 });
@@ -131,13 +118,10 @@ test('a player with write access renames the sheet in its header, and every clie
   const gm = await openGm(context, ROOM);
   const second = await openSecondGm(context);
   const player = await openPlayer(context);
-
   await expect(nameInput(player.window)).toHaveValue('Аня');
-
   // #when
   await nameInput(player.window).fill('Аня Храбрая');
   await nameInput(player.window).press('Enter');
-
   // #then
   await expect(gm.window.getByRole('tab', { name: 'Аня Храбрая' })).toBeVisible();
   await expect(nameInput(gm.window)).toHaveValue('Аня Храбрая');
@@ -150,15 +134,11 @@ test('an edit of the name field in the sheet renames the tab and header too', as
   // #given
   const gm = await openGm(context, ROOM);
   const player = await openPlayer(context);
-
   await expect(player.window.getByRole('tab', { name: 'Аня' })).toBeVisible();
-
   // #when: "Имя" is the name field in the preset's "Персонаж" section.
   const field = gm.window.getByRole('tabpanel').getByRole('textbox', { name: 'Имя', exact: true });
-
   await field.fill('Аня Тихая');
   await field.press('Enter');
-
   // #then
   await expect(nameInput(gm.window)).toHaveValue('Аня Тихая');
   await expect(player.window.getByRole('tab', { name: 'Аня Тихая' })).toBeVisible();
@@ -171,10 +151,8 @@ test(`a sheet with an empty name shows "${UNNAMED}" in its tab, header, picker a
   // #given
   const gm = await openGm(context, [...pcSheet('blank', '', 0)]);
   const player = await openPlayer(context);
-
   // #when
   const picker = await openPicker(context, 'tok-new', GM);
-
   // #then
   await diceButton(gm.window, 'Удача').click();
   await expect.poll(() => shownNotifications(player)).toEqual([`Мастер: ${UNNAMED}, Удача — 11`]);
@@ -202,11 +180,8 @@ async function openGm(
   records: readonly StoredRecord[],
 ): Promise<RoomClient> {
   const window = await openClientWindow(context, GM);
-
   await seedStorage(window, records, EXAMPLE_PRESET_TEXT, GM.device);
-
   const background = await openClientBackground(context, GM);
-
   await expect(window.getByRole('button', { name: ADD })).toBeVisible();
 
   return { window, background, connectionId: connectionIdOf(GM) };
@@ -216,7 +191,6 @@ async function openGm(
 async function openSecondGm(context: BrowserContext): Promise<RoomClient> {
   const window = await openClientWindow(context, SECOND_GM);
   const background = await openClientBackground(context, SECOND_GM);
-
   await expect(window.getByRole('tab', { name: 'Аня' })).toBeVisible();
 
   return { window, background, connectionId: connectionIdOf(SECOND_GM) };
@@ -238,9 +212,7 @@ async function expectNamed(
 ): Promise<void> {
   await expect(second.window.getByRole('tab', { name })).toBeVisible();
   await expect(nameInput(second.window)).toHaveValue(name);
-
   const picker = await openPicker(second.window.context(), 'tok-new', SECOND_GM);
-
   await expect(
     picker.getByRole('region', { name: 'Персонажи' }).getByRole('button', { name }),
   ).toBeVisible();
@@ -259,7 +231,6 @@ async function openPicker(
 ): Promise<Page> {
   const picker = await context.newPage();
   const query = new URLSearchParams(clientQuery(client));
-
   query.set('token', tokenId);
   await picker.goto(`/picker.html?${query.toString()}`);
   await expect(picker.locator('main')).toBeVisible();
@@ -289,9 +260,12 @@ async function shownNotifications(client: RoomClient): Promise<string[]> {
 
 // The roles and token ids of each icon of "Открыть лист". The mock does not apply filters, so a
 // test reads them as data.
-function openIconTokens(
-  background: Page,
-): Promise<{ roles: ContextMenuIconFilter['roles']; ids: unknown[] | undefined }[]> {
+function openIconTokens(background: Page): Promise<
+  {
+    roles: ContextMenuIconFilter['roles'];
+    ids: unknown[] | undefined;
+  }[]
+> {
   return background.evaluate(
     (id) =>
       window.mockPlatform

@@ -1,9 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-import type { FieldValue, VersionedRecord } from '@/core/records';
-
+import {
+  blockDataSchema,
+  versionCells,
+  type FieldValue,
+  type LinkData,
+  type VersionedRecord,
+} from '@/core/records';
 import { INSTANCE_ID_LENGTH, SHEET_ID_LENGTH } from './ids';
 import {
   encodePreset,
@@ -28,11 +32,9 @@ import {
 // the task notes, and enforces the 1500 bytes of margin TASK-37 set: a failure here needs an owner
 // decision, as TASK-34 was. A v1 room copy is wiped, not read, so no v2 room holds the 21-character
 // ids made before TASK-37.
-
 // The larger Story 1.11 fixture: a linkable sheet set `pc`, the linkable NPC single sheet `npc` and
 // three other single sheets.
 const FIXTURE_PATH = join(import.meta.dir, '../../tests/fixtures/presets/d20.json');
-
 const CHARACTER_COUNT = 6;
 const CHARACTER_ATTACKS = 4;
 
@@ -48,29 +50,22 @@ const CONNECTION_ID_LENGTH = 21;
 
 // TASK-37 AC 3: the margin the room copy must keep, written out by hand.
 const REQUIRED_MARGIN = 1500;
-
 const CLASSES = ['Следопыт', 'Волшебница', 'Паладин', 'Плут', 'Жрица', 'Варвар'];
 const HEROES = ['Брок Железнобокий', 'Лиза Ветреная', 'Агнесса', 'Мирон Тень', 'Дарья', 'Гром'];
 const PLAYERS = ['Андрей', 'Лиза', 'Катя', 'Миша', 'Даша', 'Гоша'];
-
 const MONSTERS = ['Гоблин-лучник', 'Скелет-воин', 'Орк-берсерк', 'Культист', 'Волк', 'Разбойник'];
-
 const ATTACKS = ['Длинный меч', 'Короткий лук', 'Кинжал с ядом', 'Огненный снаряд', 'Укус'];
 
 describe('room copy size of the TASK-41 worst case', () => {
   test('6 sheets of a sheet set, 60 linked NPC blocks and 3 other single sheets with Russian text encode, read back whole and leave the margin', () => {
     // #given
     const records = room(loadPreset());
-
     // #when
     const encoded = encodedCopy(records);
     const bytes = copyBytes(encoded);
     const margin = ROOM_METADATA_BYTE_LIMIT - bytes;
-
     console.log(`snapshot bytes: ${bytes}, margin: ${margin}`);
-
     const readBack = readSnapshot({ [SNAPSHOT_KEY]: encoded });
-
     // #then
     expect(readBack.ok ? readBack.value?.records.length : null).toBe(records.length);
     expect(margin).toBeGreaterThanOrEqual(REQUIRED_MARGIN);
@@ -110,6 +105,7 @@ type Maker = {
   author: () => string;
   counter: () => number;
   instanceId: () => string;
+  rootAuthor: string;
 };
 
 // Every template of the preset filled: each sheet set with its sheets, each single sheet once. A
@@ -124,6 +120,7 @@ function room(preset: Preset): VersionedRecord[] {
     author: () => gms[Math.floor(random() * gms.length)] ?? '',
     counter: () => 1 + Math.floor(random() * 40),
     instanceId: () => nanoid(random, INSTANCE_ID_LENGTH),
+    rootAuthor: gms[0] ?? '',
   };
 
   const records: VersionedRecord[] = [
@@ -131,7 +128,7 @@ function room(preset: Preset): VersionedRecord[] {
   ];
 
   for (const template of preset.templates) {
-    if (template.kind === 'single') {
+    if (template.repeat === undefined) {
       records.push(...sheetRecords(template, template.id, 0, maker));
       continue;
     }
@@ -140,10 +137,9 @@ function room(preset: Preset): VersionedRecord[] {
       const sheetId = nanoid(random, SHEET_ID_LENGTH);
       const playerId = uuid(random);
       const player = { name: at(PLAYERS, index) };
-
+      const rootAuthor = maker.author();
       records.push(
-        { k: `sheet:${sheetId}`, d: { set: template.id, order: index }, c: 1, a: maker.author() },
-        ...sheetRecords(template, sheetId, index, maker),
+        ...sheetRecords(template, sheetId, index, maker, rootAuthor),
         { k: `acl:${sheetId}:${playerId}`, d: player, c: 1, a: maker.author() },
         { k: `plink:${sheetId}:${playerId}`, d: player, c: 1, a: maker.author() },
       );
@@ -153,45 +149,74 @@ function room(preset: Preset): VersionedRecord[] {
   return records;
 }
 
-// One sheet's `row:` and `rep:` records, and its token links.
+// One sheet's root and descendant block records, and its token links.
 function sheetRecords(
   template: Template,
   sheetId: string,
   index: number,
   maker: Maker,
+  rootAuthor = maker.rootAuthor,
 ): VersionedRecord[] {
   const records: VersionedRecord[] = [];
 
-  if (template.tokens === true) {
-    records.push(linkRecord(maker, { s: sheetId }));
+  const root: VersionedRecord = {
+    k: `blk:${sheetId}`,
+    c: 1,
+    a: rootAuthor,
+    l: [1, rootAuthor],
+    d:
+      template.repeat !== undefined
+        ? { order: index, set: template.id, cells: {} }
+        : { order: index, cells: {} },
+  };
+
+  const rootToken = layoutSections(template)
+    .filter((section) => section.repeat === undefined)
+    .flatMap((section) => section.rows)
+    .flatMap((row) => row.cells)
+    .find((cell) => cell.kind === 'token');
+
+  if (rootToken !== undefined) {
+    records.push(linkRecord(maker, { s: sheetId, c: rootToken.id }));
   }
 
   for (const section of layoutSections(template)) {
     const sectionId = repeatSectionId(section);
 
     if (sectionId === null) {
-      records.push(...plainRows(section, sheetId, index, maker));
+      const data = blockDataSchema.parse(root.d);
+
+      for (const row of plainRows(section, sheetId, index, maker)) {
+        Object.assign(data.cells, blockDataSchema.parse(row.d).cells);
+        root.c = Math.max(root.c, row.c);
+      }
+
+      root.d = data;
       continue;
     }
 
     for (let order = 0; order < blockCount(template); order += 1) {
       const instanceId = maker.instanceId();
-      const cells = fieldValues(section, maker, template.kind === 'set' ? index : order);
-
+      const cells = fieldValues(section, maker, template.repeat !== undefined ? index : order);
+      const c = maker.counter();
+      const a = maker.author();
       records.push({
-        k: `rep:${sheetId}:${sectionId}:${instanceId}`,
-        d: { order, cells },
-        c: maker.counter(),
-        a: maker.author(),
+        k: `blk:${sheetId}:${sectionId}:${instanceId}`,
+        d: { order, cells: versionCells(cells, c, a) },
+        c,
+        a,
+        l: [1, a],
       });
 
-      if (section.tokens === true) {
-        records.push(linkRecord(maker, { s: sheetId, i: instanceId }));
+      const token = section.rows.flatMap((row) => row.cells).find((cell) => cell.kind === 'token');
+
+      if (token !== undefined) {
+        records.push(linkRecord(maker, { s: sheetId, path: [sectionId, instanceId], c: token.id }));
       }
     }
   }
 
-  return records;
+  return [root, ...records];
 }
 
 function plainRows(
@@ -202,29 +227,33 @@ function plainRows(
 ): VersionedRecord[] {
   return section.rows.flatMap((row): VersionedRecord[] => {
     const rowId = firstFieldId(row);
+    const values = rowId === null ? null : fieldValues({ rows: [row] }, maker, index);
+    const c = values === null ? 1 : maker.counter();
+    const a = values === null ? maker.rootAuthor : maker.author();
 
-    return rowId === null
+    return values === null
       ? []
       : [
           {
-            k: `row:${sheetId}:${rowId}`,
-            d: fieldValues({ rows: [row] }, maker, index),
-            c: maker.counter(),
-            a: maker.author(),
+            k: `blk:${sheetId}`,
+            d: { order: index, cells: versionCells(values, c, a) },
+            c,
+            a,
+            l: [1, maker.rootAuthor],
           },
         ];
   });
 }
 
 function blockCount(template: Template): number {
-  if (template.kind === 'set') {
+  if (template.repeat !== undefined) {
     return CHARACTER_ATTACKS;
   }
 
   return template.id === 'npc' ? NPC_COUNT : SINGLE_SHEET_BLOCKS;
 }
 
-function linkRecord(maker: Maker, d: { s: string; i?: string }): VersionedRecord {
+function linkRecord(maker: Maker, d: LinkData): VersionedRecord {
   return { k: `link:${uuid(maker.random)}`, d, c: 1, a: maker.author() };
 }
 
@@ -289,9 +318,7 @@ function seeded(seed: number): () => number {
 
   return () => {
     state = (state + 0x6d2b79f5) | 0;
-
     let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
-
     mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
 
     return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;

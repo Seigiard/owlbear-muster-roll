@@ -1,7 +1,9 @@
 import { createContext, useContext, useId } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
+import clsx from 'clsx';
 
 import type { PresetCell, PresetFieldCell } from '@/core/preset';
+import { linkTargetKey, type LinkTarget } from '@/core/link-target';
 import {
   cellLabel,
   cellVisibleLabel,
@@ -14,6 +16,7 @@ import { CellTooltip } from '@/ui/primitives/tooltip';
 
 import { DiceButton, type DiceRow } from './dice-button';
 import { PendingMark } from './pending-mark';
+import { TokenCellControl } from './map-toggle';
 import {
   useCheckFieldEdit,
   useSelectFieldEdit,
@@ -35,6 +38,13 @@ type SheetCellProps = {
   pending: CellPending;
   autoFocus?: boolean;
   onEscape?: () => void;
+  tokenTarget?: LinkTarget | null;
+  tokenTools?: TokenCellTools | null;
+};
+
+export type TokenCellTools = {
+  linkedTargets: ReadonlySet<string>;
+  open: (target: LinkTarget) => void;
 };
 
 // UX-DR28: `disabled` for a field of a row whose removal waits for a GM. `marked` shows the field's
@@ -58,12 +68,12 @@ const ERROR_TEXT: Record<FieldErrorKind, string> = {
 
 // The content sizes the control, so a long value widens its grid column as plain text would.
 const VALUE_CLASS =
-  'touch-target field-ghost min-w-[3rem] max-w-full resize-none px-2 py-[6px] text-text tabular-nums [field-sizing:content] [overflow-wrap:anywhere]';
+  'touch-target field-ghost min-w-[3rem] max-w-full resize-none px-2 py-[6px] text-text tabular-nums field-sizing-content wrap-anywhere';
 
 // A read-only value takes the place and size of the control, with a transparent edge, so a sheet
 // keeps its layout for both roles. It is no form control, so only a named value is a Tab stop.
 const READ_ONLY_VALUE_CLASS =
-  'touch-target inline-flex min-w-[3rem] max-w-full items-center whitespace-pre-wrap border border-transparent px-2 text-text tabular-nums [overflow-wrap:anywhere]';
+  'touch-target inline-flex min-w-[3rem] max-w-full items-center whitespace-pre-wrap border border-transparent px-2 text-text tabular-nums wrap-anywhere';
 
 // The box of a check, as the checkbox of the GM draws it.
 const READ_ONLY_CHECK_CLASS =
@@ -93,6 +103,8 @@ export function SheetCell({
   row,
   cellIndex,
   pending,
+  tokenTarget,
+  tokenTools,
 }: SheetCellProps): ReactNode {
   const preview = useContext(CellPreviewContext);
   const cellKey = `${row.tabIndex}.${row.sectionIndex}.${row.rowIndex}.${cellIndex}.${row.instanceId ?? ''}`;
@@ -110,15 +122,20 @@ export function SheetCell({
       pending={pending}
       autoFocus={previewEditable}
       onEscape={preview?.onEscape}
+      tokenTarget={tokenTarget}
+      tokenTools={tokenTools}
     />
   );
 
-  return preview === null ? (
-    node
-  ) : (
+  return (
     <div
-      className="contents"
-      data-cell={`${row.tabIndex}.${row.sectionIndex}.${row.rowIndex}.${cellIndex}`}
+      className={clsx(cell.kind === 'token' ? 'inline-flex min-h-px min-w-px' : 'contents')}
+      data-cell-id={cell.kind === 'token' ? cell.id : undefined}
+      data-cell-scope={cell.kind === 'token' ? (tokenTarget?.instanceId ?? 'root') : undefined}
+      tabIndex={cell.kind === 'token' ? -1 : undefined}
+      {...(preview === null
+        ? {}
+        : { 'data-cell': `${row.tabIndex}.${row.sectionIndex}.${row.rowIndex}.${cellIndex}` })}
     >
       {node}
     </div>
@@ -136,8 +153,11 @@ function CellContent({
   pending,
   autoFocus = false,
   onEscape,
+  tokenTarget,
+  tokenTools,
 }: SheetCellProps): ReactNode {
   const label = cellLabel(cell, before);
+  const tools = tokenTools ?? null;
   let content: ReactNode;
 
   // Anyone who sees a sheet rolls it, with or without write access.
@@ -152,6 +172,17 @@ function CellContent({
         disabledReasonId={pending.disabled ? (pending.rowMarkId ?? undefined) : undefined}
       />
     );
+  } else if (cell.kind === 'token') {
+    content =
+      readOnly || tokenTarget === null || tokenTarget === undefined || tools === null ? null : (
+        <TokenCellControl
+          target={tokenTarget}
+          linked={tools.linkedTargets.has(linkTargetKey(tokenTarget))}
+          onOpen={() => {
+            tools.open(tokenTarget);
+          }}
+        />
+      );
   } else if (cell.kind !== 'field' || place === null) {
     content = <span className="text-text-muted">{label}</span>;
   } else if (readOnly) {
@@ -191,7 +222,7 @@ function CellContent({
       );
   }
 
-  return cell.kind === 'text' || cell.name === undefined ? (
+  return cell.kind === 'text' || cell.kind === 'token' || cell.name === undefined ? (
     content
   ) : (
     <CellTooltip name={cell.name}>{content}</CellTooltip>

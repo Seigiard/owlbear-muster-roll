@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Page } from '@playwright/test';
-
 import { UI_CHANNEL } from '@/core/ui-messages';
-
 import {
   ADD,
   connectionIdOf,
@@ -23,7 +21,6 @@ const NEW_VERSION = 'Вышла новая версия. Перезагрузи�
 
 // Short enough to watch the link go offline and come back within one test.
 const GM_LINK_TIMEOUT_MS = 1000;
-
 const GM: ClientParams = { client: 'a', device: 'a', gmLinkTimeoutMs: GM_LINK_TIMEOUT_MS };
 
 const PLAYER: ClientParams = {
@@ -35,30 +32,33 @@ const PLAYER: ClientParams = {
 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
               ],
             },
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
           ],
@@ -67,17 +67,21 @@ const PRESET_TEXT = JSON.stringify({
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
   ],
 });
 
 const RECORDS: StoredRecord[] = [...pcSheet('brok', 'Брок', 0)];
 
-type SyncRead = { state: string; firstCatchUpDone: boolean; gmLink: string; role: string };
+type SyncRead = {
+  state: string;
+  firstCatchUpDone: boolean;
+  gmLink: string;
+  role: string;
+};
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
@@ -90,22 +94,17 @@ test('a player sees the no-GM banner once the GM pages close, and loses it when 
   const gm = await openGm(context);
   const player = await openClient(context, PLAYER, null);
   const banner = player.window.getByRole('status');
-
   await expect(player.window.getByRole('tab', { name: 'Брок' })).toBeVisible();
   // Two timeouts with only pings and their answers from the GM.
   await player.window.waitForTimeout(2 * GM_LINK_TIMEOUT_MS);
   await expect(banner).toHaveText('');
-
   // #when
   await gm.background.close({ runBeforeUnload: true });
   await gm.window.close();
-
   // #then
   await expect(banner).toHaveText(NO_GM);
-
   // #when
   await openGm(context);
-
   // #then
   await expect(banner).toHaveText('');
 });
@@ -115,10 +114,8 @@ test('a GM alone in the room never shows the no-GM banner, though its link is of
 }) => {
   // #given
   const gm = await openGm(context);
-
   // #when
   await gm.window.waitForTimeout(2 * GM_LINK_TIMEOUT_MS);
-
   // #then
   expect({
     banner: await gm.window.getByRole('status').textContent(),
@@ -138,16 +135,12 @@ test('a failed local save shows over the no-GM banner', async ({ context }) => {
   };
 
   const gmWindow = await openClientWindow(context, params);
-
   await seedStorage(gmWindow, RECORDS, PRESET_TEXT);
   await gmWindow.evaluate((key) => {
     localStorage.setItem(key, '{not json');
-  }, `${STORAGE_PREFIX}sheet:bad`);
-
+  }, `${STORAGE_PREFIX}blk:bad`);
   const background = await openClientBackground(context, params);
-
   await expect(gmWindow.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
-
   // #when: it becomes a player with no GM in the room.
   await background.evaluate(() => {
     window.mockPlatform.setRole('PLAYER');
@@ -155,7 +148,6 @@ test('a failed local save shows over the no-GM banner', async ({ context }) => {
   await expect
     .poll(() => syncRead(gmWindow))
     .toEqual({ state: 'live', firstCatchUpDone: true, gmLink: 'offline', role: 'PLAYER' });
-
   // #then
   await expect(gmWindow.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
 });
@@ -163,12 +155,9 @@ test('a failed local save shows over the no-GM banner', async ({ context }) => {
 test('a new version shows over the no-GM banner', async ({ context }) => {
   // #given
   const player = await openClient(context, { ...PLAYER, catchUpTimeoutMs: 300 }, null);
-
   await expect(player.window.getByRole('status')).toHaveText(NO_GM);
-
   // #when
-  await postRemote(player.window, 'mock-connection-newer', { v: 4, t: 'ping' });
-
+  await postRemote(player.window, 'mock-connection-newer', { v: 5, t: 'ping' });
   // #then
   await expect(player.window.getByRole('status')).toHaveText(NEW_VERSION);
 });
@@ -176,7 +165,6 @@ test('a new version shows over the no-GM banner', async ({ context }) => {
 // A live GM whose device holds the preset and the records.
 async function openGm(context: BrowserContext): Promise<RoomClient> {
   const gm = await openClient(context, GM, RECORDS);
-
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
 
   return gm;

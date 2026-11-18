@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import { cssValue, renderedColor, tokenColor } from './support/colors';
 import {
   ADD,
@@ -29,9 +28,7 @@ const GUEST_NOTE =
   'Гость привязан к своему браузеру. Из другого браузера доступ придётся выдать снова.';
 
 const ACL_FAILED = 'Не удалось изменить доступ. Попробуйте ещё раз.';
-
 const UI_CHANNEL = 'app.muster-roll/ui';
-
 const SHEET_NAME = 'Имя листа';
 
 // The GM keeps its records in this browser's shared storage, so `storedData` reads them. The player
@@ -48,27 +45,30 @@ const PLAYER: ClientParams = {
 
 // A visible sheet set, the hidden single sheet NPC, a visible single sheet, and a hidden sheet set.
 const ACCESS_PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Основное',
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
           ],
@@ -77,7 +77,6 @@ const ACCESS_PRESET = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
@@ -85,13 +84,15 @@ const ACCESS_PRESET = {
           sections: [
             {
               title: 'Противники',
-              repeat: true,
+              repeat: { id: 'npc_name', nameField: 'npc_name' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'npc_name' },
-                  { kind: 'text', text: 'Хиты' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'npc_name' },
+                    { kind: 'text', text: 'Хиты' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                  ],
+                },
               ],
             },
           ],
@@ -100,7 +101,6 @@ const ACCESS_PRESET = {
     },
     {
       id: 'inventory',
-      kind: 'single',
       title: 'Инвентарь',
       players: 'edit',
       tabs: [
@@ -108,10 +108,12 @@ const ACCESS_PRESET = {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Золото' },
-                  { kind: 'field', type: 'number', id: 'gold' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Золото' },
+                    { kind: 'field', type: 'number', id: 'gold' },
+                  ],
+                },
               ],
             },
           ],
@@ -120,19 +122,20 @@ const ACCESS_PRESET = {
     },
     {
       id: 'agents',
-      kind: 'set',
       title: 'Агенты',
-      nameField: 'agent',
+      repeat: { nameField: 'agent' },
       visibility: 'gm',
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Агент' },
-                  { kind: 'field', type: 'text', id: 'agent' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Агент' },
+                    { kind: 'field', type: 'text', id: 'agent' },
+                  ],
+                },
               ],
             },
           ],
@@ -156,10 +159,12 @@ const TABBED_PRESET_TEXT = JSON.stringify({
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Заметка' },
-                  { kind: 'field', type: 'text', id: 'note' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Заметка' },
+                    { kind: 'field', type: 'text', id: 'note' },
+                  ],
+                },
               ],
             },
           ],
@@ -173,8 +178,8 @@ const TABBED_PRESET_TEXT = JSON.stringify({
 const RECORDS: StoredRecord[] = [
   ...pcSheet('brok', 'Брок', 0),
   npcBlock('skel', 'Скелет', 0),
-  record('sheet:spy', { set: 'agents', order: 0 }),
-  record('row:spy:agent', { agent: 'Шпион' }),
+  record('blk:spy', { set: 'agents', order: 0 }),
+  record('blk:spy', { agent: 'Шпион' }),
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -186,20 +191,16 @@ test('"Доступ" opens the panel inline under the header on surface-raised, 
 }) => {
   // #given
   const gm = await openGm(context, RECORDS);
-
   // #when
   await accessChip(gm.window).click();
-
   // #then
   const panel = accessPanel(gm.window);
-
   await expect(panel).toBeVisible();
   await expect(accessChip(gm.window)).toHaveAttribute('aria-expanded', 'true');
   await expect(accessChip(gm.window)).toHaveAttribute(
     'aria-controls',
     (await panel.getAttribute('id')) ?? '',
   );
-
   expect({
     afterHeader: await panel.evaluate((element) => element.previousElementSibling?.tagName ?? null),
     background: await renderedColor(panel, 'background-color'),
@@ -222,7 +223,6 @@ test('the open chip shows its pressed state, and a second press closes the panel
   const gm = await openGm(context, RECORDS);
   const chip = accessChip(gm.window);
   const closedBackground = await renderedColor(chip, 'background-color');
-
   // #when
   await chip.click();
   // The pressed fill fades in over 150 ms, so the check waits for it to settle.
@@ -230,9 +230,7 @@ test('the open chip shows its pressed state, and a second press closes the panel
     .poll(() => renderedColor(chip, 'background-color'))
     .toEqual(await tokenColor(gm.window, '--color-accent-soft'));
   const openBackground = await renderedColor(chip, 'background-color');
-
   await chip.click();
-
   // #then
   expect(openBackground).not.toEqual(closedBackground);
   await expect(accessPanel(gm.window)).toHaveCount(0);
@@ -245,10 +243,8 @@ test('"Esc" in the panel closes it and gives the focus back to "Доступ"', 
   await openClient(context, PLAYER, null);
   await accessChip(gm.window).click();
   await mayEdit(gm.window, 'Лиза').focus();
-
   // #when
   await gm.window.keyboard.press('Escape');
-
   // #then
   await expect(accessPanel(gm.window)).toHaveCount(0);
   await expect(accessChip(gm.window)).toBeFocused();
@@ -259,10 +255,8 @@ test('with no players the panel says "Пока никого нет" and shows th
 }) => {
   // #given
   const gm = await openGm(context, RECORDS);
-
   // #when
   await accessChip(gm.window).click();
-
   // #then
   await expect(accessPanel(gm.window)).toHaveText(`${NO_PLAYERS}${GUEST_NOTE}`);
   await expect(accessPanel(gm.window).getByRole('checkbox')).toHaveCount(0);
@@ -282,17 +276,13 @@ test('the panel lists each player id once by name, from the room and from the re
   ];
 
   const gm = await openGm(context, records);
-
   await openClient(context, PLAYER, null);
   await addPartyMember(gm.window, 'mock-connection-lisa-2', 'PLAYER', { id: 'lisa', name: 'Лиза' });
   await addPartyMember(gm.window, 'mock-connection-gm-2', 'GM', { id: 'gm-2', name: 'Ассистент' });
-
   // #when
   await accessChip(gm.window).click();
-
   // #then
   const panel = accessPanel(gm.window);
-
   await expect(panel.getByRole('group')).toHaveText([
     `Вова${MAY_EDIT}`,
     `Гена${MAY_EDIT}`,
@@ -309,10 +299,8 @@ test('a player who joins while the panel is open gets a row', async ({ context }
   const gm = await openGm(context, RECORDS);
   await accessChip(gm.window).click();
   await expect(accessPanel(gm.window).getByText(NO_PLAYERS, { exact: true })).toBeVisible();
-
   // #when
   await openClient(context, PLAYER, null);
-
   // #then
   await expect(accessPanel(gm.window).getByRole('group')).toHaveText([`Лиза${MAY_EDIT}`]);
 });
@@ -322,7 +310,6 @@ test('every access row and sheet field stays reachable on a two-tab sheet at min
 }) => {
   // #given
   const gm = await openGm(context, RECORDS, TABBED_PRESET_TEXT);
-
   await gm.window.setViewportSize({ width: 600, height: 360 });
   await addPartyMember(gm.window, 'mock-connection-anna', 'PLAYER', {
     id: 'anna',
@@ -341,22 +328,16 @@ test('every access row and sheet field stays reachable on a two-tab sheet at min
     name: 'Яна',
   });
   await accessChip(gm.window).click();
-
   const lastPlayerControl = accessPanel(gm.window).getByRole('checkbox').last();
   const sheetField = gm.window.getByRole('textbox', { name: 'Сила', exact: true });
-
   await expect(lastPlayerControl).toHaveAccessibleName('Яна: может править');
-
   // #when
   await lastPlayerControl.focus();
-
   // #then
   await expect(lastPlayerControl).toBeFocused();
   await expect.soft(lastPlayerControl).toBeInViewport();
-
   // #when
   await sheetField.focus();
-
   // #then
   await expect(sheetField).toBeFocused();
   await expect(sheetField).toBeInViewport();
@@ -367,7 +348,6 @@ test('every access row and sheet field stays reachable on a single-tab sheet at 
 }) => {
   // #given
   const gm = await openGm(context, RECORDS);
-
   await gm.window.setViewportSize({ width: 600, height: 360 });
   await addPartyMember(gm.window, 'mock-connection-anna', 'PLAYER', {
     id: 'anna',
@@ -386,22 +366,16 @@ test('every access row and sheet field stays reachable on a single-tab sheet at 
     name: 'Яна',
   });
   await accessChip(gm.window).click();
-
   const lastPlayerControl = accessPanel(gm.window).getByRole('checkbox').last();
   const sheetField = gm.window.getByRole('textbox', { name: 'Сила', exact: true });
-
   await expect(lastPlayerControl).toHaveAccessibleName('Яна: может править');
-
   // #when
   await lastPlayerControl.focus();
-
   // #then
   await expect(lastPlayerControl).toBeFocused();
   await expect(lastPlayerControl).toBeInViewport();
-
   // #when
   await sheetField.focus();
-
   // #then
   await expect(sheetField).toBeFocused();
   await expect(sheetField).toBeInViewport();
@@ -415,18 +389,14 @@ test('"Может править" writes acl: at once and the player header turn
   const player = await openClient(context, PLAYER, null);
   await expect(playerHeader(player.window).getByText(READ_ONLY, { exact: true })).toBeVisible();
   await accessChip(gm.window).click();
-
   // #when
   await mayEdit(gm.window, 'Лиза').check();
-
   // #then
   await expect(playerHeader(player.window).getByText(CAN_EDIT, { exact: true })).toBeVisible();
   await expect(mayEdit(gm.window, 'Лиза')).toBeChecked();
   expect(await storedData(gm.window, 'acl:brok:lisa')).toEqual({ name: 'Лиза' });
-
   // #when
   await mayEdit(gm.window, 'Лиза').uncheck();
-
   // #then
   await expect(playerHeader(player.window).getByText(READ_ONLY, { exact: true })).toBeVisible();
   await expect(mayEdit(gm.window, 'Лиза')).not.toBeChecked();
@@ -436,10 +406,8 @@ test('"Может править" writes acl: at once and the player header turn
 test('a player sees no "Доступ" chip and no panel', async ({ context }) => {
   // #given
   await openGm(context, RECORDS);
-
   // #when
   const player = await openClient(context, PLAYER, null);
-
   // #then
   await expect(playerHeader(player.window).getByText(READ_ONLY, { exact: true })).toBeVisible();
   await expect(accessChip(player.window)).toHaveCount(0);
@@ -452,12 +420,9 @@ for (const tab of ['NPC', 'Инвентарь', 'Шпион']) {
   }) => {
     // #given
     const gm = await openGm(context, RECORDS);
-
     await expect(accessChip(gm.window)).toHaveCount(1);
-
     // #when
     await gm.window.getByRole('tab', { name: tab }).click();
-
     // #then
     await expect(gm.window.getByRole('tab', { name: tab, selected: true })).toBeVisible();
     await expect(gm.window.getByRole('tabpanel').locator('header')).toBeVisible();
@@ -468,11 +433,9 @@ for (const tab of ['NPC', 'Инвентарь', 'Шпион']) {
 test('a sheet delete tombstones its acl: records', async ({ context }) => {
   // #given
   const gm = await openGm(context, [...RECORDS, record('acl:brok:vova', { name: 'Вова' })]);
-
   // #when
   await gm.window.getByRole('button', { name: 'Удалить лист' }).click();
   await gm.window.getByRole('button', { name: 'Удалить', exact: true }).click();
-
   // #then
   await expect(gm.window.getByRole('textbox', { name: SHEET_NAME })).toHaveCount(0);
   await expect.poll(() => storedData(gm.window, 'acl:brok:vova')).toBeNull();
@@ -481,17 +444,14 @@ test('a sheet delete tombstones its acl: records', async ({ context }) => {
 test('a refused change puts the box back and says so in the panel', async ({ context }) => {
   // #given: Вова is linked as owner and cannot edit. With the background closed, nothing answers.
   const gm = await openGm(context, [...RECORDS, record('plink:brok:vova', { name: 'Вова' })]);
-
   await accessChip(gm.window).click();
   await expect(mayEdit(gm.window, 'Вова')).not.toBeChecked();
   await watchCommands(gm.window);
   await gm.background.close();
   await mayEdit(gm.window, 'Вова').check();
   await expect(mayEdit(gm.window, 'Вова')).toBeChecked();
-
   // #when
   await postRejection(gm.window, await lastAclSet(gm.window));
-
   // #then: well before the timeout, so only the rejection can explain it.
   await expect(mayEdit(gm.window, 'Вова')).not.toBeChecked({ timeout: 2000 });
   await expect(accessPanel(gm.window).getByRole('status')).toHaveText(ACL_FAILED, {
@@ -504,13 +464,10 @@ test('a change with no answer is dropped after 5 s and says so in the panel', as
 }) => {
   // #given
   const gm = await openGm(context, [...RECORDS, record('plink:brok:vova', { name: 'Вова' })]);
-
   await accessChip(gm.window).click();
   await gm.background.close();
-
   // #when
   await mayEdit(gm.window, 'Вова').check();
-
   // #then
   await expect(mayEdit(gm.window, 'Вова')).toBeChecked();
   await expect(mayEdit(gm.window, 'Вова')).not.toBeChecked({ timeout: 8000 });
@@ -523,7 +480,6 @@ async function openGm(
   presetText = PRESET_TEXT,
 ): Promise<RoomClient> {
   const gm = await openClient(context, GM, records, presetText);
-
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
 
   return gm;

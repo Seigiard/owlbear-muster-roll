@@ -1,12 +1,11 @@
-import { blockIndex, linkTargetOf, liveLinkTarget, type LiveLinkTarget } from '@/core/link-target';
+import { linkTargetOf, liveLinkTarget, type LiveLinkTarget } from '@/core/link-target';
+import type { DicePlace } from '@/core/dice-roll';
 import {
   firstFieldId,
   placedSections,
-  repeatSectionId,
   repeatSectionPlace,
+  repeatScopeByPath,
   type Preset,
-  type SheetSetTemplate,
-  type SingleSheetTemplate,
   type Template,
 } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
@@ -21,13 +20,15 @@ import {
 
 export type PlayerRole = 'GM' | 'PLAYER';
 
-type FieldVisibilityTarget = { kind: 'row'; rowId: string } | { kind: 'rep'; sectionId: string };
+type FieldVisibilityTarget =
+  | { kind: 'row'; rowId: string }
+  | { kind: 'rep'; sectionId: string; fieldId?: string; path?: readonly string[] };
 
 // One template as the sidebar lists it: a sheet set with its live sheets, or a single sheet, whose
 // sheet id is its template id.
 export type VisibleTemplate =
-  | { kind: 'set'; template: SheetSetTemplate; sheets: SheetSummary[] }
-  | { kind: 'single'; template: SingleSheetTemplate };
+  | { kind: 'set'; template: Template; sheets: SheetSummary[] }
+  | { kind: 'single'; template: Template };
 
 // The templates a role sees, in preset order.
 export type VisibleSheets = VisibleTemplate[];
@@ -46,6 +47,62 @@ export function tabShownTo(role: PlayerRole, template: Template, tabIndex: numbe
     tab !== undefined &&
     templateShownTo(role, template) &&
     (role === 'GM' || tab.visibility !== 'gm')
+  );
+}
+
+export function sectionShownTo(
+  role: PlayerRole,
+  template: Template,
+  tabIndex: number,
+  sectionIndex: number,
+): boolean {
+  const section = template.tabs[tabIndex]?.sections[sectionIndex];
+
+  return (
+    section !== undefined &&
+    tabShownTo(role, template, tabIndex) &&
+    (role === 'GM' || section.visibility !== 'gm')
+  );
+}
+
+export function rowShownTo(
+  role: PlayerRole,
+  template: Template,
+  tabIndex: number,
+  sectionIndex: number,
+  rowIndex: number,
+): boolean {
+  const section = template.tabs[tabIndex]?.sections[sectionIndex];
+  const row = section?.rows[rowIndex];
+
+  return (
+    row !== undefined &&
+    sectionShownTo(role, template, tabIndex, sectionIndex) &&
+    (role === 'GM' || row.visibility !== 'gm')
+  );
+}
+
+// A dice cell inherits visibility from its template, tab, section and row. The place is already
+// checked by the roll parser, so an invalid layout position is not shown to a player.
+export function rollTargetShownTo(
+  role: PlayerRole,
+  template: Template,
+  place: Pick<DicePlace, 'tabIndex' | 'sectionIndex' | 'rowIndex'>,
+): boolean {
+  if (role === 'GM') {
+    return true;
+  }
+
+  const tab = template.tabs[place.tabIndex];
+  const section = tab?.sections[place.sectionIndex];
+  const row = section?.rows[place.rowIndex];
+
+  return (
+    row !== undefined &&
+    section !== undefined &&
+    tabShownTo(role, template, place.tabIndex) &&
+    section.visibility !== 'gm' &&
+    row.visibility !== 'gm'
   );
 }
 
@@ -69,13 +126,17 @@ export function linkTargetShownTo(role: PlayerRole, live: LiveLinkTarget): boole
   }
 
   if (live.section === null) {
-    return true;
+    return (
+      tabShownTo(role, live.policy.template, live.cell.tabIndex) &&
+      (role === 'GM' ||
+        (live.cell.section.visibility !== 'gm' && live.cell.row.visibility !== 'gm'))
+    );
   }
 
-  const sectionId = repeatSectionId(live.section);
-  const place = sectionId === null ? null : repeatSectionPlace(live.policy.template, sectionId);
-
-  return place !== null && tabShownTo(role, live.policy.template, place.place.tabIndex);
+  return (
+    tabShownTo(role, live.policy.template, live.cell.tabIndex) &&
+    (role === 'GM' || (live.cell.section.visibility !== 'gm' && live.cell.row.visibility !== 'gm'))
+  );
 }
 
 // True while a template owns `sheetId` and this role sees that template.
@@ -112,18 +173,14 @@ export function visibleRecords(
     return records.filter((record) => record.k === 'preset');
   }
 
-  const blocks = blockIndex(known.values());
-
   return records.filter((record) => {
-    if (record.k.startsWith('sheet:')) {
-      return (
-        record.d === null || sheetShownTo(known, preset, record.k.slice('sheet:'.length), role)
-      );
+    if (record.k.startsWith('blk:') && record.k.split(':').length === 2) {
+      return record.d === null || sheetShownTo(known, preset, record.k.slice('blk:'.length), role);
     }
 
     if (record.k.startsWith('link:')) {
       const target = linkTargetOf(record.d);
-      const live = target === null ? null : liveLinkTarget(known, preset, target, blocks);
+      const live = target === null ? null : liveLinkTarget(known, preset, target);
 
       return live !== null && linkTargetShownTo(role, live);
     }
@@ -185,12 +242,76 @@ export function rollShownTo(role: PlayerRole, hidden: boolean): boolean {
 
 function fieldTargetTabIndex(template: Template, target: FieldVisibilityTarget): number | null {
   if (target.kind === 'rep') {
-    return repeatSectionPlace(template, target.sectionId)?.place.tabIndex ?? null;
+    const scoped =
+      target.path === undefined
+        ? null
+        : repeatScopeByPath(
+            template,
+            target.path.filter((_part, index) => index % 2 === 0),
+          );
+
+    const repeated =
+      scoped === null
+        ? repeatSectionPlace(template, target.sectionId)
+        : { place: scoped.place, section: scoped.section };
+
+    if (repeated === null) {
+      return null;
+    }
+
+    const { section, place } = repeated;
+
+    if (target.fieldId === undefined) {
+      return section.visibility === 'gm' || scoped?.row?.visibility === 'gm'
+        ? null
+        : place.tabIndex;
+    }
+
+    if (scoped?.row !== null && scoped?.row !== undefined) {
+      return scoped.row.visibility === 'gm' ||
+        section.visibility === 'gm' ||
+        !scoped.row.cells.some((cell) => cell.kind === 'field' && cell.id === target.fieldId)
+        ? null
+        : place.tabIndex;
+    }
+
+    // A repeat tab projects its plain rows into one synthetic section, so recover the source
+    // section before authorizing a field.
+    if (template.tabs[place.tabIndex]?.repeat?.id === target.sectionId) {
+      const source = template.tabs[place.tabIndex]?.sections
+        .filter((candidate) => candidate.repeat === undefined)
+        .flatMap((candidate) =>
+          candidate.rows
+            .filter((row) => row.repeat === undefined)
+            .map((row) => ({ row, section: candidate })),
+        )
+        .find(({ row }) =>
+          row.cells.some((cell) => cell.kind === 'field' && cell.id === target.fieldId),
+        );
+
+      return source === undefined ||
+        source.row.visibility === 'gm' ||
+        source.section.visibility === 'gm'
+        ? null
+        : place.tabIndex;
+    }
+
+    const row = section.rows.find((candidate) =>
+      candidate.cells.some((cell) => cell.kind === 'field' && cell.id === target.fieldId),
+    );
+
+    return row === undefined || row.visibility === 'gm' || section.visibility === 'gm'
+      ? null
+      : place.tabIndex;
   }
 
   for (const { place, section } of placedSections(template)) {
-    if (section.repeat !== true && section.rows.some((row) => firstFieldId(row) === target.rowId)) {
-      return place.tabIndex;
+    if (section.repeat === undefined) {
+      const row = section.rows.find((item) => firstFieldId(item) === target.rowId);
+
+      if (row !== undefined && row.visibility !== 'gm' && section.visibility !== 'gm') {
+        return place.tabIndex;
+      }
     }
   }
 

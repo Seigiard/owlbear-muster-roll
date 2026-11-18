@@ -19,7 +19,7 @@ references:
 documentation:
   - _bmad-output/specs/spec-explicit-operation-state/SPEC.md
 type: enhancement
-ordinal: 72000
+ordinal: 75000
 ---
 
 ## Description

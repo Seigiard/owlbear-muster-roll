@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-
 import { revealElement } from '@/ui/reveal';
 
 const nativeMatchMedia = window.matchMedia;
@@ -16,7 +15,6 @@ describe('revealElement', () => {
     // #given
     const element = document.createElement('div');
     const calls: unknown[] = [];
-
     element.scrollIntoView = (options?: boolean | ScrollIntoViewOptions) => {
       calls.push(options);
     };
@@ -26,10 +24,8 @@ describe('revealElement', () => {
       Object.defineProperty(nativeMatchMedia.call(window, query), 'matches', {
         value: reduced && query === '(prefers-reduced-motion: reduce)',
       });
-
     // #when
     revealElement(element);
-
     // #then
     expect(calls).toEqual([{ block: 'nearest', inline: 'nearest', behavior }]);
   });

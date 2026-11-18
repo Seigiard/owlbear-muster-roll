@@ -1,10 +1,12 @@
-import type { VersionedRecord } from '@/core/records';
+import { blockDataSchema, type VersionedRecord } from '@/core/records';
+import { mergeRecords } from '@/core/merge';
 import type {
   Command,
   CommandMessage,
   EngineMessage,
   PresetDiffMessage,
   RejectionReason,
+  WindowMessage,
 } from '@/core/ui-messages';
 import type { PlayerRole } from '@/core/visibility';
 import type { ComposeContext, Composers } from '@/replica/composers';
@@ -134,7 +136,7 @@ export type CommandRoutingPorts = {
 };
 
 export type CommandRouting = {
-  handleCommand: (message: CommandMessage) => void;
+  handleCommand: (message: CommandMessage | Extract<WindowMessage, { t: 'command' }>) => void;
   runCommand: (id: string, command: Command) => void;
   handlePresetDiff: (message: PresetDiffMessage) => void;
   pendingView: () => Map<string, VersionedRecord>;
@@ -163,7 +165,7 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     };
   }
 
-  function handleCommand(message: CommandMessage): void {
+  function handleCommand(message: CommandMessage | Extract<WindowMessage, { t: 'command' }>): void {
     if (ports.acceptCommand(message.id)) {
       runCommand(message.id, message.command);
     }
@@ -371,7 +373,8 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
 
     for (const entry of ports.pending.entries()) {
       for (const record of composedEntry(context, entry)) {
-        view.set(record.k, record);
+        const previous = view.get(record.k);
+        view.set(record.k, previous === undefined ? record : mergeRecords(previous, record));
       }
     }
 
@@ -400,7 +403,13 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
   function pendingViewRecords(): Map<string, VersionedRecord> {
     const view = pendingView();
 
-    return new Map([...view].filter(([key, record]) => record !== ports.records().get(key)));
+    return new Map(
+      [...view].flatMap(([key, record]) => {
+        const applied = ports.records().get(key);
+
+        return record === applied ? [] : [[key, pendingRecord(record, applied)]];
+      }),
+    );
   }
 
   // AD-7 replay: every pending intent runs for real in arrival order. A refusal now goes to the
@@ -467,6 +476,30 @@ export function createCommandRouting(ports: CommandRoutingPorts): CommandRouting
     pendingViewRecords,
     replayPending: replayQueuedPending,
     clearPendingIds,
+  };
+}
+
+function pendingRecord(
+  record: VersionedRecord,
+  applied: VersionedRecord | undefined,
+): VersionedRecord {
+  const shown = blockDataSchema.safeParse(record.d);
+  const base = blockDataSchema.safeParse(applied?.d);
+
+  if (!shown.success || !base.success) return record;
+
+  const cells = Object.fromEntries(
+    Object.entries(shown.data.cells).filter(
+      ([id, cell]) => JSON.stringify(cell) !== JSON.stringify(base.data.cells[id]),
+    ),
+  );
+
+  return {
+    k: record.k,
+    c: record.c,
+    a: record.a,
+    l: record.l ?? [record.c, record.a],
+    d: { ...shown.data, cells },
   };
 }
 

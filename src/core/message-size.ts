@@ -1,6 +1,6 @@
 import { deflateToBase64 } from '@/core/deflate';
 import type { JsonValue } from '@/core/json';
-import type { VersionedRecord } from '@/core/records';
+import { blockDataSchema, type Cells, type VersionedRecord } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 
 export const MESSAGE_BYTE_LIMIT = 15000;
@@ -20,10 +20,61 @@ export function fitsOneMessage(message: JsonValue): boolean {
   return jsonByteLength(message) < MESSAGE_BYTE_LIMIT;
 }
 
-// A record must fit one message both as JSON (commit, projection) and alone after deflate and
-// base64 (`state`), or an answer would have to leave it out.
+// Acceptance checks fragments too, so an assembled block can grow beyond one message.
 export function recordFitsOneMessage(record: VersionedRecord): boolean {
-  const limit = MESSAGE_BYTE_LIMIT - RECORD_ENVELOPE_RESERVE_BYTES;
+  return fragmentRecord(record).ok;
+}
+
+export function fragmentRecord(
+  record: VersionedRecord,
+  reserveBytes = RECORD_ENVELOPE_RESERVE_BYTES,
+): Result<VersionedRecord[], SplitFailure> {
+  if (recordFragmentFits(record, reserveBytes)) return ok([record]);
+  const block = record.k.startsWith('blk:') ? blockDataSchema.safeParse(record.d).data : undefined;
+
+  if (block === undefined) return err('item-too-large');
+  const fragments: VersionedRecord[] = [];
+  let cells: Cells = {};
+
+  const part = (values: Cells): VersionedRecord => ({
+    ...record,
+    l: record.l ?? [record.c, record.a],
+    d: { ...block, cells: values },
+  });
+
+  if (!recordFragmentFits(part({}), reserveBytes)) return err('item-too-large');
+
+  for (const [id, cell] of Object.entries(block.cells)) {
+    if (!recordFragmentFits(part({ [id]: cell }), reserveBytes)) {
+      return err('item-too-large');
+    }
+
+    if (!recordFragmentFits(part({ ...cells, [id]: cell }), reserveBytes)) {
+      fragments.push(part(cells));
+      cells = {};
+    }
+
+    cells[id] = cell;
+  }
+
+  fragments.push(part(cells));
+
+  return ok(fragments);
+}
+
+export function fragmentRecords(
+  records: readonly VersionedRecord[],
+  reserveBytes = RECORD_ENVELOPE_RESERVE_BYTES,
+): VersionedRecord[] {
+  return records.flatMap((record) => {
+    const result = fragmentRecord(record, reserveBytes);
+
+    return result.ok ? result.value : [record];
+  });
+}
+
+function recordFragmentFits(record: VersionedRecord, reserveBytes: number): boolean {
+  const limit = MESSAGE_BYTE_LIMIT - reserveBytes;
 
   return jsonByteLength(record) < limit && deflateToBase64(JSON.stringify([record])).length < limit;
 }

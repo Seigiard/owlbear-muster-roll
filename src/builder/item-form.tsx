@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 
 import { fieldFormulaCount } from '@/core/formula-rename';
 import { DEFAULT_WINDOW_SIZE, type Preset, type PresetSection } from '@/core/preset';
+import { isSheetSet } from '@/core/sheets';
 import { copy } from '@/copy';
 import { Button } from '@/ui/primitives/button';
 
@@ -13,11 +14,14 @@ import {
   locate,
   nameFieldCandidates,
   PRESET_UID,
+  repeatIdsAt,
+  repeatNameFieldCandidates,
   removeItem,
   renameField,
   setWindow,
   templateToPreset,
   updateCell,
+  updateRow,
   updateSection,
   updateTab,
   updateTemplate,
@@ -30,6 +34,7 @@ import {
   type DocSection,
   type DocTab,
   type DocTemplate,
+  type DocRow,
   type ItemPath,
 } from './document';
 import { FormulaInput, INPUT_CLASS } from './formula-input';
@@ -53,7 +58,13 @@ const HINT_CLASS = 'text-label-sm text-text-muted';
 // CAP-22: the form of the selected item. A change applies at once, through the store, and the
 // preview redraws at once. "Удалить" ends each form and asks nothing, as undo restores the item.
 // Typing in one input is one undo step, keyed by the item and the property.
-export function ItemForm({ store, document, selection, problems }: ItemFormProps): ReactNode {
+export function ItemForm({
+  store,
+  document,
+  origin,
+  selection,
+  problems,
+}: ItemFormProps): ReactNode {
   const headingId = useId();
   const path = selection === null ? null : locate(document, selection);
 
@@ -88,7 +99,7 @@ export function ItemForm({ store, document, selection, problems }: ItemFormProps
         </ul>
       )}
       {path === null ? null : (
-        <FormBody store={store} document={document} uid={selection} path={path} />
+        <FormBody store={store} document={document} origin={origin} uid={selection} path={path} />
       )}
     </section>
   );
@@ -97,13 +108,29 @@ export function ItemForm({ store, document, selection, problems }: ItemFormProps
 type FormBodyProps = {
   store: BuilderStore;
   document: BuilderDocument;
+  origin: Preset | null;
   uid: string;
   path: ItemPath;
 };
 
-function FormBody({ store, document, uid, path }: FormBodyProps): ReactNode {
+function FormBody({ store, document, origin, uid, path }: FormBodyProps): ReactNode {
+  const warning = repeatWarning(document, origin, uid, path);
+
+  function withWarning(content: ReactNode): ReactNode {
+    return (
+      <>
+        {warning === null ? null : (
+          <p aria-live="polite" className="text-danger-text">
+            {warning}
+          </p>
+        )}
+        {content}
+      </>
+    );
+  }
+
   if (path.kind === 'window') {
-    return <WindowForm store={store} document={document} />;
+    return withWarning(<WindowForm store={store} document={document} />);
   }
 
   const template = document.templates[path.template];
@@ -115,11 +142,11 @@ function FormBody({ store, document, uid, path }: FormBodyProps): ReactNode {
   const remove = <RemoveButton store={store} uid={uid} />;
 
   if (path.kind === 'template') {
-    return (
+    return withWarning(
       <>
         <TemplateForm store={store} template={template} />
         {remove}
-      </>
+      </>,
     );
   }
 
@@ -130,11 +157,11 @@ function FormBody({ store, document, uid, path }: FormBodyProps): ReactNode {
   }
 
   if (path.kind === 'tab') {
-    return (
+    return withWarning(
       <>
-        <TabForm store={store} tab={tab} />
+        <TabForm store={store} template={template} tab={tab} path={path} />
         {remove}
-      </>
+      </>,
     );
   }
 
@@ -145,16 +172,27 @@ function FormBody({ store, document, uid, path }: FormBodyProps): ReactNode {
   }
 
   if (path.kind === 'section') {
-    return (
+    return withWarning(
       <>
-        <SectionForm store={store} section={section} />
+        <SectionForm store={store} template={template} section={section} path={path} />
         {remove}
-      </>
+      </>,
     );
   }
 
   if (path.kind === 'row') {
-    return remove;
+    const row = section.rows[path.row];
+
+    if (row === undefined) {
+      return null;
+    }
+
+    return withWarning(
+      <>
+        <RowForm store={store} template={template} row={row} path={path} />
+        {remove}
+      </>,
+    );
   }
 
   const cell = section.rows[path.row]?.cells[path.cell];
@@ -163,12 +201,51 @@ function FormBody({ store, document, uid, path }: FormBodyProps): ReactNode {
     return null;
   }
 
-  return (
+  return withWarning(
     <>
       <CellForm store={store} template={template} cell={cell} path={path} />
       {remove}
-    </>
+    </>,
   );
+}
+
+function repeatWarning(
+  document: BuilderDocument,
+  origin: Preset | null,
+  uid: string,
+  path: ItemPath,
+): string | null {
+  if (origin === null || path.kind === 'window' || path.kind === 'cell') {
+    return null;
+  }
+
+  const originalId = document.originRepeatIds?.get(uid);
+  const currentId = repeatIdAt(document, path);
+
+  return originalId !== undefined && currentId !== originalId
+    ? copy.builder.repeatBlocksErased(originalId)
+    : null;
+}
+
+function repeatIdAt(
+  document: BuilderDocument,
+  path: Exclude<ItemPath, { kind: 'window' | 'cell' }>,
+): string | undefined {
+  const template = document.templates[path.template];
+
+  if (path.kind === 'template') {
+    return template?.repeat === undefined ? undefined : template.id;
+  }
+
+  const tab = template?.tabs[path.tab];
+
+  if (path.kind === 'tab') return tab?.repeat?.id;
+
+  const section = tab?.sections[path.section];
+
+  if (path.kind === 'section') return section?.repeat?.id;
+
+  return section?.rows[path.row]?.repeat?.id;
 }
 
 function formHeading(document: BuilderDocument, path: ItemPath): string {
@@ -295,6 +372,7 @@ function TemplateForm({ store, template }: TemplateFormProps): ReactNode {
   }
 
   const candidates = nameFieldCandidates(template);
+  const set = isSheetSet(template);
 
   return (
     <>
@@ -316,32 +394,30 @@ function TemplateForm({ store, template }: TemplateFormProps): ReactNode {
           return [];
         }}
       />
-      <SelectInput
-        label={form.kind}
-        value={template.kind}
-        options={[
-          { value: 'set', label: form.kindSet },
-          { value: 'single', label: form.kindSingle },
-        ]}
-        onChange={(kind) => {
-          if (kind === 'set' || kind === 'single') {
-            update((current) => withTemplateKind(current, kind));
-          }
-        }}
-      />
-      {template.kind === 'set' ? (
+      {set ? (
         <SelectInput
           label={form.nameField}
-          value={template.nameField}
-          options={[...new Set([...candidates, template.nameField])].map((id) => ({
-            value: id,
-            label: id,
-          }))}
+          value={template.repeat?.nameField ?? ''}
+          options={[...new Set([...candidates, template.repeat?.nameField ?? ''])].flatMap((id) =>
+            id === '' ? [] : [{ value: id, label: id }],
+          )}
           onChange={(nameField) => {
-            update((current) => (current.kind === 'set' ? { ...current, nameField } : current));
+            update((current) =>
+              isSheetSet(current)
+                ? { ...current, repeat: { ...current.repeat, nameField } }
+                : current,
+            );
           }}
         />
       ) : null}
+      <CheckInput
+        label={form.repeat}
+        checked={set}
+        describedBy={undefined}
+        onChange={(checked) => {
+          update((current) => withTemplateKind(current, checked ? 'set' : 'single'));
+        }}
+      />
       <SelectInput
         label={form.visibility}
         value={template.visibility === 'gm' ? 'gm' : 'all'}
@@ -355,26 +431,12 @@ function TemplateForm({ store, template }: TemplateFormProps): ReactNode {
           );
         }}
       />
-      {template.kind === 'single' ? (
-        <CheckInput
-          label={form.playersEdit}
-          checked={template.players === 'edit'}
-          describedBy={undefined}
-          onChange={(checked) => {
-            update((current) =>
-              current.kind === 'single'
-                ? withOption(current, 'players', checked ? 'edit' : undefined)
-                : current,
-            );
-          }}
-        />
-      ) : null}
       <CheckInput
-        label={form.templateTokens}
-        checked={template.tokens === true}
+        label={form.playersEdit}
+        checked={template.players === 'edit'}
         describedBy={undefined}
         onChange={(checked) => {
-          update((current) => withOption(current, 'tokens', checked ? true : undefined));
+          update((current) => withOption(current, 'players', checked ? 'edit' : undefined));
         }}
       />
     </>
@@ -383,13 +445,30 @@ function TemplateForm({ store, template }: TemplateFormProps): ReactNode {
 
 // CAP-34: a tab's title, which a template with one tab may leave empty, and who sees it. `gm` hides
 // the tab from players; the key is kept.
-function TabForm({ store, tab }: { store: BuilderStore; tab: DocTab }): ReactNode {
+function TabForm({
+  store,
+  template,
+  tab,
+  path,
+}: {
+  store: BuilderStore;
+  template: DocTemplate;
+  tab: DocTab;
+  path: Extract<ItemPath, { kind: 'tab' }>;
+}): ReactNode {
   const { uid } = tab;
   const form = copy.builder.form;
 
   function update(change: (current: DocTab) => DocTab, coalesce?: string): void {
     store.edit((document) => updateTab(document, uid, change), coalesce);
   }
+
+  const candidates = repeatNameFieldCandidates(template, path);
+
+  const options = (current: DocTab) =>
+    [...new Set([...candidates, current.repeat?.nameField ?? ''])].flatMap((id) =>
+      id === '' ? [] : [{ value: id, label: id }],
+    );
 
   return (
     <>
@@ -417,6 +496,51 @@ function TabForm({ store, tab }: { store: BuilderStore; tab: DocTab }): ReactNod
           );
         }}
       />
+      <CheckInput
+        label={form.repeat}
+        checked={tab.repeat !== undefined}
+        describedBy={undefined}
+        onChange={(checked) => {
+          update((current) =>
+            withRepeat(
+              current,
+              checked,
+              repeatIdsAt(template, path),
+              tab.title ?? copy.builder.untitledTab,
+            ),
+          );
+        }}
+      />
+      {tab.repeat === undefined ? null : (
+        <>
+          <IdInput
+            label={form.id}
+            id={tab.repeat.id}
+            hint={null}
+            onCommit={(id) => {
+              update((current) =>
+                current.repeat === undefined
+                  ? current
+                  : { ...current, repeat: { ...current.repeat, id } },
+              );
+
+              return [];
+            }}
+          />
+          <SelectInput
+            label={form.nameField}
+            value={tab.repeat.nameField}
+            options={options(tab)}
+            onChange={(nameField) => {
+              update((current) =>
+                current.repeat === undefined
+                  ? current
+                  : { ...current, repeat: { ...current.repeat, nameField } },
+              );
+            }}
+          />
+        </>
+      )}
     </>
   );
 }
@@ -427,14 +551,29 @@ const WIDTHS: readonly { value: NonNullable<PresetSection['width']>; label: stri
   { value: '1/3', label: copy.builder.form.widthThird },
 ];
 
-function SectionForm({ store, section }: { store: BuilderStore; section: DocSection }): ReactNode {
+function SectionForm({
+  store,
+  template,
+  section,
+  path,
+}: {
+  store: BuilderStore;
+  template: DocTemplate;
+  section: DocSection;
+  path: Extract<ItemPath, { kind: 'section' }>;
+}): ReactNode {
   const { uid } = section;
   const form = copy.builder.form;
   const columnsHintId = useId();
+  const candidates = repeatNameFieldCandidates(template, path);
 
   function update(change: (current: DocSection) => DocSection, coalesce?: string): void {
     store.edit((document) => updateSection(document, uid, change), coalesce);
   }
+
+  const options = [...new Set([...candidates, section.repeat?.nameField ?? ''])].flatMap((id) =>
+    id === '' ? [] : [{ value: id, label: id }],
+  );
 
   return (
     <>
@@ -473,24 +612,151 @@ function SectionForm({ store, section }: { store: BuilderStore; section: DocSect
       <p id={columnsHintId} className={HINT_CLASS}>
         {form.columnsHint}
       </p>
-      <CheckInput
-        label={form.repeat}
-        checked={section.repeat === true}
-        describedBy={undefined}
-        onChange={(checked) => {
-          update((current) => withRepeat(current, checked));
+      <SelectInput
+        label={form.visibility}
+        value={section.visibility === 'gm' ? 'gm' : 'all'}
+        options={[
+          { value: 'all', label: form.visibilityAll },
+          { value: 'gm', label: form.visibilityGm },
+        ]}
+        onChange={(visibility) => {
+          update((current) =>
+            withOption(current, 'visibility', visibility === 'gm' ? 'gm' : undefined),
+          );
         }}
       />
-      {section.repeat === true ? (
-        <CheckInput
-          label={form.blockTokens}
-          checked={section.tokens === true}
-          describedBy={undefined}
-          onChange={(checked) => {
-            update((current) => withOption(current, 'tokens', checked ? true : undefined));
-          }}
-        />
-      ) : null}
+      <CheckInput
+        label={form.repeat}
+        checked={section.repeat !== undefined}
+        describedBy={undefined}
+        onChange={(checked) => {
+          update((current) =>
+            withRepeat(
+              current,
+              checked,
+              repeatIdsAt(template, path),
+              section.title ?? copy.builder.untitledSection,
+            ),
+          );
+        }}
+      />
+      {section.repeat === undefined ? null : (
+        <>
+          <IdInput
+            label={form.id}
+            id={section.repeat.id}
+            hint={null}
+            onCommit={(id) => {
+              update((current) =>
+                current.repeat === undefined
+                  ? current
+                  : { ...current, repeat: { ...current.repeat, id } },
+              );
+
+              return [];
+            }}
+          />
+          <SelectInput
+            label={form.nameField}
+            value={section.repeat.nameField}
+            options={options}
+            onChange={(nameField) => {
+              update((current) =>
+                current.repeat === undefined
+                  ? current
+                  : { ...current, repeat: { ...current.repeat, nameField } },
+              );
+            }}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
+function RowForm({
+  store,
+  template,
+  row,
+  path,
+}: {
+  store: BuilderStore;
+  template: DocTemplate;
+  row: DocRow;
+  path: Extract<ItemPath, { kind: 'row' }>;
+}): ReactNode {
+  const { uid } = row;
+  const form = copy.builder.form;
+  const candidates = repeatNameFieldCandidates(template, path);
+
+  const options = [...new Set([...candidates, row.repeat?.nameField ?? ''])].flatMap((id) =>
+    id === '' ? [] : [{ value: id, label: id }],
+  );
+
+  function update(change: (current: DocRow) => DocRow): void {
+    store.edit((document) => updateRow(document, uid, change));
+  }
+
+  return (
+    <>
+      <SelectInput
+        label={form.visibility}
+        value={row.visibility === 'gm' ? 'gm' : 'all'}
+        options={[
+          { value: 'all', label: form.visibilityAll },
+          { value: 'gm', label: form.visibilityGm },
+        ]}
+        onChange={(visibility) => {
+          update((current) =>
+            withOption(current, 'visibility', visibility === 'gm' ? 'gm' : undefined),
+          );
+        }}
+      />
+      <CheckInput
+        label={form.repeat}
+        checked={row.repeat !== undefined}
+        describedBy={undefined}
+        onChange={(checked) => {
+          update((current) =>
+            withRepeat(
+              current,
+              checked,
+              repeatIdsAt(template, path),
+              copy.builder.rowItem(path.row + 1),
+            ),
+          );
+        }}
+      />
+      {row.repeat === undefined ? null : (
+        <>
+          <IdInput
+            label={form.id}
+            id={row.repeat.id}
+            hint={null}
+            onCommit={(id) => {
+              update((current) =>
+                current.repeat === undefined
+                  ? current
+                  : { ...current, repeat: { ...current.repeat, id } },
+              );
+
+              return [];
+            }}
+          />
+          <SelectInput
+            label={form.nameField}
+            value={row.repeat.nameField}
+            options={options}
+            onChange={(nameField) => {
+              update((current) =>
+                current.repeat === undefined
+                  ? current
+                  : { ...current, repeat: { ...current.repeat, nameField } },
+              );
+            }}
+          />
+        </>
+      )}
     </>
   );
 }
@@ -567,6 +833,21 @@ function CellForm({ store, template, cell, path }: CellFormProps): ReactNode {
           onBlur={store.endRun}
         />
       </div>
+    );
+  }
+
+  if (cell.kind === 'token') {
+    return (
+      <IdInput
+        label={form.id}
+        id={cell.id}
+        hint={null}
+        onCommit={(id) => {
+          update((current) => (current.kind === 'token' ? { ...current, id } : current));
+
+          return [];
+        }}
+      />
     );
   }
 

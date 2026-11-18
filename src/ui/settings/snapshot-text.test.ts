@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { RejectionReason } from '@/core/ui-messages';
 import { snapshotRejectionText } from '@/ui/settings/snapshot-text';
 
@@ -18,7 +17,6 @@ describe('snapshotRejectionText', () => {
   ] satisfies [RejectionReason, string][])('says what %s means', (reason, text) => {
     // #when
     const shown = snapshotRejectionText(reason);
-
     // #then
     expect(shown).toBe(text);
   });

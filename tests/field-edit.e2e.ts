@@ -1,9 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { z } from 'zod';
-
 import type { JsonValue } from '@/core/json';
-
 import {
   ABSENT,
   ADD,
@@ -11,8 +9,7 @@ import {
   openRoom,
   pcSheet,
   record,
-  STORAGE_PREFIX,
-  storedData,
+  storedCell,
   type StoredRecord,
 } from './support/room';
 
@@ -27,13 +24,12 @@ const PAST_PAUSE_MS = 1300;
 const WITHIN_PAUSE_MS = 300;
 
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
@@ -41,52 +37,66 @@ const PRESET = {
               title: 'Сетка',
               columns: 3,
               rows: [
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'str_tired' },
-                ],
-                [
-                  { kind: 'text', text: 'Ловкость' },
-                  { kind: 'field', type: 'number', id: 'dex' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'str_tired' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Ловкость' },
+                    { kind: 'field', type: 'number', id: 'dex' },
+                  ],
+                },
               ],
             },
             {
               title: 'Строки',
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Заметки' },
-                  { kind: 'field', type: 'text', id: 'notes' },
-                ],
-                [
-                  { kind: 'text', text: 'Девиз' },
-                  { kind: 'field', type: 'text', id: 'motto' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Заметки' },
+                    { kind: 'field', type: 'text', id: 'notes' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Девиз' },
+                    { kind: 'field', type: 'text', id: 'motto' },
+                  ],
+                },
               ],
             },
             {
               title: 'Атаки',
               columns: 2,
-              repeat: true,
+              repeat: { id: 'attack', nameField: 'attack' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'attack' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'attack' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                  ],
+                },
               ],
             },
             {
               title: 'Отметки',
               rows: [
-                [
-                  { kind: 'text', text: 'Отдых' },
-                  { kind: 'field', type: 'check', id: 'rested' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Отдых' },
+                    { kind: 'field', type: 'check', id: 'rested' },
+                  ],
+                },
               ],
             },
           ],
@@ -99,9 +109,9 @@ const PRESET = {
 const RECORDS = [
   ...pcSheet('brok', 'Брок', 0),
   ...pcSheet('liza', 'Лиза', 1),
-  record('row:brok:str', { str: 14, str_tired: true }),
-  record('row:brok:notes', { notes: 'Первая' }),
-  record('rep:brok:attack:i1', { order: 1, cells: { attack: 'Меч', bonus: 3 } }),
+  record('blk:brok', { str: 14, str_tired: true }),
+  record('blk:brok', { notes: 'Первая' }),
+  record('blk:brok:attack:i1', { order: 1, cells: { attack: 'Меч', bonus: 3 } }),
 ] as const;
 
 const fieldPatchSchema = z.object({
@@ -133,14 +143,16 @@ test.beforeEach(async ({ page }) => {
 test('a click on a check saves at once, and unchecking stores false', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
-
   // #when
   await page.getByRole('checkbox', { name: 'Сила' }).click();
   await page.getByRole('checkbox', { name: 'Отдых' }).click();
-
   // #then
-  await expect.poll(() => storedData(page, 'row:brok:str')).toEqual({ str: 14, str_tired: false });
-  await expect.poll(() => storedData(page, 'row:brok:rested')).toEqual({ rested: true });
+  await expect
+    .poll(() => storedCell(page, 'blk:brok', 'str_tired'))
+    .toEqual([false, 2, 'mock-connection']);
+  await expect
+    .poll(() => storedCell(page, 'blk:brok', 'rested'))
+    .toEqual([true, 3, 'mock-connection']);
   await expect(page.getByRole('checkbox', { name: 'Сила' })).not.toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Отдых' })).toBeChecked();
 });
@@ -152,47 +164,46 @@ test('typing sends nothing per keystroke and one save after the pause', async ({
   // #given
   await openSheet(page, context);
   await watchWire(page);
-
   // #when
   await field(page, 'Ловкость').pressSequentially('123', { delay: 100 });
   await page.waitForTimeout(WITHIN_PAUSE_MS);
-
   const duringTyping = (await fieldPatches(page)).length;
-
   await page.waitForTimeout(PAST_PAUSE_MS);
-
   // #then
   expect({
     duringTyping,
     sent: (await fieldPatches(page)).map((sent) => sent.command.value),
-    stored: await storedData(page, 'row:brok:dex'),
+    stored: await storedCell(page, 'blk:brok', 'dex'),
     focused: await isFocused(field(page, 'Ловкость')),
-  }).toEqual({ duringTyping: 0, sent: [123], stored: { dex: 123 }, focused: true });
+  }).toEqual({
+    duringTyping: 0,
+    sent: [123],
+    stored: [123, 2, 'mock-connection'],
+    focused: true,
+  });
 });
 
 test('leaving a changed field saves it before the pause', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
   await field(page, 'Ловкость').fill('7');
-
   // #when
   await page.keyboard.press('Tab');
-
   // #then
-  await expect.poll(() => storedData(page, 'row:brok:dex'), { timeout: 700 }).toEqual({ dex: 7 });
+  await expect
+    .poll(() => storedCell(page, 'blk:brok', 'dex'), { timeout: 700 })
+    .toEqual([7, 2, 'mock-connection']);
 });
 
 test('a blur with no change since focus sends nothing', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
   await watchWire(page);
-
   // #when
   await field(page, 'Сила').focus();
   await field(page, 'Сила').fill('14,0');
   await page.keyboard.press('Tab');
   await page.waitForTimeout(PAST_PAUSE_MS);
-
   // #then
   expect({
     sent: (await fieldPatches(page)).length,
@@ -209,11 +220,9 @@ test('a blur after a pause save with no further change sends nothing more', asyn
   await watchWire(page);
   await field(page, 'Сила').fill('15');
   await page.waitForTimeout(PAST_PAUSE_MS);
-
   // #when
   await page.keyboard.press('Tab');
   await page.waitForTimeout(WITHIN_PAUSE_MS);
-
   // #then
   expect((await fieldPatches(page)).map((sent) => sent.command.value)).toEqual([15]);
 });
@@ -226,15 +235,12 @@ test('a focused field keeps its text through a change from elsewhere, and a blur
   await openSheet(page, context);
   await watchWire(page);
   await field(page, 'Сила').focus();
-
   // #when
   await commandFromElsewhere(page, { kind: 'row', rowId: 'str' }, 'str', 20);
-  await expect.poll(() => storedData(page, 'row:brok:str')).toEqual({ str: 20, str_tired: true });
-
+  await expect.poll(() => storedCell(page, 'blk:brok', 'str')).toEqual([20, 2, 'mock-connection']);
+  await expect.poll(() => storedCell(page, 'blk:brok', 'str_tired')).toEqual([true, 1, 'seed']);
   const whileFocused = await field(page, 'Сила').inputValue();
-
   await page.keyboard.press('Tab');
-
   // #then
   await expect(field(page, 'Сила')).toHaveValue('20');
   expect({ whileFocused, ownPatches: await ownFieldPatches(page) }).toEqual({
@@ -246,10 +252,8 @@ test('a focused field keeps its text through a change from elsewhere, and a blur
 test('a field not being edited shows a change from elsewhere', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
-
   // #when
   await commandFromElsewhere(page, { kind: 'row', rowId: 'notes' }, 'notes', 'Новая');
-
   // #then
   await expect(field(page, 'Заметки')).toHaveValue('Новая');
 });
@@ -261,17 +265,17 @@ test('a changed field is saved when its tab goes away before the pause or a blur
   // #given
   await openSheet(page, context);
   await field(page, 'Ловкость').fill('8');
-
   // #when: a script click changes the tab and leaves the focus where it is, so no blur comes.
   await page.getByRole('tab', { name: 'Лиза' }).evaluate((tab) => {
     if (tab instanceof HTMLElement) {
       tab.click();
     }
   });
-
   // #then
   await expect(page.getByRole('tab', { name: 'Лиза', selected: true })).toBeVisible();
-  await expect.poll(() => storedData(page, 'row:brok:dex'), { timeout: 700 }).toEqual({ dex: 8 });
+  await expect
+    .poll(() => storedCell(page, 'blk:brok', 'dex'), { timeout: 700 })
+    .toEqual([8, 2, 'mock-connection']);
 });
 
 test('an invalid value is not saved when its tab goes away', async ({ page, context }) => {
@@ -279,7 +283,6 @@ test('an invalid value is not saved when its tab goes away', async ({ page, cont
   await openSheet(page, context);
   await watchWire(page);
   await field(page, 'Ловкость').fill('abc');
-
   // #when
   await page.getByRole('tab', { name: 'Лиза' }).evaluate((tab) => {
     if (tab instanceof HTMLElement) {
@@ -287,11 +290,10 @@ test('an invalid value is not saved when its tab goes away', async ({ page, cont
     }
   });
   await page.waitForTimeout(PAST_PAUSE_MS);
-
   // #then
   expect({
     sent: (await fieldPatches(page)).length,
-    stored: await storedData(page, 'row:brok:dex'),
+    stored: await storedCell(page, 'blk:brok', 'dex'),
   }).toEqual({ sent: 0, stored: ABSENT });
 });
 
@@ -301,16 +303,13 @@ test('a changed field is saved when the window closes before the pause', async (
 }) => {
   // #given
   const background = await openSheet(page, context);
-
   await field(page, 'Ловкость').fill('9');
-
   // #when
   await page.close();
-
   // #then
   await expect
-    .poll(() => storedData(background, 'row:brok:dex'), { timeout: 700 })
-    .toEqual({ dex: 9 });
+    .poll(() => storedCell(background, 'blk:brok', 'dex'), { timeout: 700 })
+    .toEqual([9, 2, 'mock-connection']);
 });
 
 test('on close the queue held by a rate limit goes out, then the newer typed value', async ({
@@ -320,7 +319,6 @@ test('on close the queue held by a rate limit goes out, then the newer typed val
   // #given: the first save meets a rate limit, so the queue waits out its backoff, a second save
   // of the same field waits behind it, and a newer value of that field is typed and not left.
   const background = await openSheet(page, context);
-
   await page.evaluate(() => {
     window.mockPlatform.failNextSends([{ kind: 'rate-limited' }]);
   });
@@ -329,34 +327,32 @@ test('on close the queue held by a rate limit goes out, then the newer typed val
   await field(page, 'Ловкость').fill('8');
   await page.keyboard.press('Tab');
   await field(page, 'Ловкость').fill('9');
-
   // #when
   await page.close();
-
   // #then
   await expect
     .poll(
       async () => ({
-        str: await storedData(background, 'row:brok:str'),
-        dex: await storedData(background, 'row:brok:dex'),
+        str: await storedCell(background, 'blk:brok', 'str'),
+        dex: await storedCell(background, 'blk:brok', 'dex'),
       }),
       { timeout: 700 },
     )
-    .toEqual({ str: { str: 20, str_tired: true }, dex: { dex: 9 } });
+    .toEqual({
+      str: [20, 2, 'mock-connection'],
+      dex: [9, 4, 'mock-connection'],
+    });
 });
 
 test('an invalid value is not saved when the window closes', async ({ page, context }) => {
   // #given
   const background = await openSheet(page, context);
-
   await field(page, 'Ловкость').fill('abc');
-
   // #when
   await page.close();
   await background.waitForTimeout(PAST_PAUSE_MS);
-
   // #then
-  expect(await storedData(background, 'row:brok:dex')).toBe(ABSENT);
+  expect(await storedCell(background, 'blk:brok', 'dex')).toBe(ABSENT);
 });
 
 test('a number is stored as a JSON number, text as typed, and a cleared field has no key', async ({
@@ -365,41 +361,36 @@ test('a number is stored as a JSON number, text as typed, and a cleared field ha
 }) => {
   // #given
   await openSheet(page, context);
-
   // #when
   await field(page, 'Ловкость').fill('12');
   await field(page, 'Девиз').fill('abc');
   await field(page, 'Заметки').fill('');
   await page.keyboard.press('Tab');
-
   // #then
   await expect
     .poll(async () => ({
-      dex: await storedText(page, 'row:brok:dex'),
-      motto: await storedData(page, 'row:brok:motto'),
-      notes: await storedData(page, 'row:brok:notes'),
+      dex: await storedCell(page, 'blk:brok', 'dex'),
+      motto: await storedCell(page, 'blk:brok', 'motto'),
+      notes: await storedCell(page, 'blk:brok', 'notes'),
     }))
     .toEqual({
-      dex: '{"k":"row:brok:dex","d":{"dex":12},"c":1,"a":"mock-connection"}',
-      motto: { motto: 'abc' },
-      notes: {},
+      dex: [12, 2, 'mock-connection'],
+      motto: ['abc', 3, 'mock-connection'],
+      notes: [null, 4, 'mock-connection'],
     });
 });
 
 test('a saved value stays after a reload', async ({ page, context }) => {
   // #given
   const background = await openSheet(page, context);
-
   await field(page, 'Ловкость').fill('1,5');
   await page.keyboard.press('Tab');
-  await expect.poll(() => storedData(page, 'row:brok:dex')).toEqual({ dex: 1.5 });
-
+  await expect.poll(() => storedCell(page, 'blk:brok', 'dex')).toEqual([1.5, 2, 'mock-connection']);
   // #when
   await background.close();
   await page.reload();
   await openBackground(context);
   await expect(page.getByRole('button', { name: ADD })).toBeVisible();
-
   // #then
   await expect(field(page, 'Ловкость')).toHaveValue('1.5');
 });
@@ -407,15 +398,13 @@ test('a saved value stays after a reload', async ({ page, context }) => {
 test('a field of a repeat block saves into that repeat block', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
-
   // #when
   await field(page, 'bonus').fill('-2');
   await page.keyboard.press('Tab');
-
   // #then
   await expect
-    .poll(() => storedData(page, 'rep:brok:attack:i1'))
-    .toEqual({ order: 1, cells: { attack: 'Меч', bonus: -2 } });
+    .poll(() => storedCell(page, 'blk:brok:attack:i1', 'bonus'))
+    .toEqual([-2, 2, 'mock-connection']);
 });
 
 for (const [label, typed] of [
@@ -430,12 +419,10 @@ for (const [label, typed] of [
     // #given
     await openSheet(page, context);
     await watchWire(page);
-
     // #when
     await field(page, 'Сила').fill(typed);
     await page.keyboard.press('Tab');
     await page.waitForTimeout(PAST_PAUSE_MS);
-
     // #then
     await expect(field(page, 'Сила')).toHaveAccessibleDescription(BAD_NUMBER);
     expect({
@@ -443,13 +430,13 @@ for (const [label, typed] of [
       shown: await field(page, 'Сила').inputValue(),
       below: await messageBelow(page, field(page, 'Сила'), BAD_NUMBER),
       sent: (await fieldPatches(page)).length,
-      stored: await storedData(page, 'row:brok:str'),
+      stored: await storedCell(page, 'blk:brok', 'str'),
     }).toEqual({
       invalid: 'true',
       shown: typed,
       below: true,
       sent: 0,
-      stored: { str: 14, str_tired: true },
+      stored: [14, 1, 'seed'],
     });
   });
 }
@@ -460,14 +447,12 @@ test('the bad number message goes with the next valid save', async ({ page, cont
   await field(page, 'Сила').fill('abc');
   await page.keyboard.press('Tab');
   await expect(page.getByText(BAD_NUMBER)).toBeVisible();
-
   // #when
   await field(page, 'Сила').fill('16');
   await page.keyboard.press('Tab');
-
   // #then
   await expect(page.getByText(BAD_NUMBER)).toHaveCount(0);
-  await expect.poll(() => storedData(page, 'row:brok:str')).toEqual({ str: 16, str_tired: true });
+  await expect.poll(() => storedCell(page, 'blk:brok', 'str')).toEqual([16, 2, 'mock-connection']);
 });
 
 test('a value too long for its record shows the message under it, stays and is not saved', async ({
@@ -477,14 +462,11 @@ test('a value too long for its record shows the message under it, stays and is n
   // #given
   await openSheet(page, context);
   await watchWire(page);
-
   const long = 'ы'.repeat(7400);
-
   // #when
   await field(page, 'Заметки').fill(long);
   await page.keyboard.press('Tab');
   await page.waitForTimeout(PAST_PAUSE_MS);
-
   // #then
   await expect(field(page, 'Заметки')).toHaveAccessibleDescription(TOO_LONG);
   expect({
@@ -492,8 +474,14 @@ test('a value too long for its record shows the message under it, stays and is n
     kept: (await field(page, 'Заметки').inputValue()) === long,
     below: await messageBelow(page, field(page, 'Заметки'), TOO_LONG),
     sent: (await fieldPatches(page)).length,
-    stored: await storedData(page, 'row:brok:notes'),
-  }).toEqual({ invalid: 'true', kept: true, below: true, sent: 0, stored: { notes: 'Первая' } });
+    stored: await storedCell(page, 'blk:brok', 'notes'),
+  }).toEqual({
+    invalid: 'true',
+    kept: true,
+    below: true,
+    sent: 0,
+    stored: ['Первая', 1, 'seed'],
+  });
 });
 
 for (const name of ['Ловкость', 'Девиз'] as const) {
@@ -501,16 +489,14 @@ for (const name of ['Ловкость', 'Девиз'] as const) {
     // #given
     await openSheet(page, context);
     await field(page, name).fill('5');
-
     // #when
     await field(page, name).press('Enter');
-
     // #then
     await expect
-      .poll(async () => storedText(page, `row:brok:${name === 'Ловкость' ? 'dex' : 'motto'}`), {
+      .poll(async () => storedCell(page, 'blk:brok', name === 'Ловкость' ? 'dex' : 'motto'), {
         timeout: 700,
       })
-      .toContain(name === 'Ловкость' ? '"dex":5' : '"motto":"5"');
+      .toEqual([name === 'Ловкость' ? 5 : '5', 2, 'mock-connection']);
     expect(await isFocused(field(page, name))).toBe(true);
   });
 }
@@ -519,14 +505,14 @@ test('Shift+Enter adds a line in a text field', async ({ page, context }) => {
   // #given
   await openSheet(page, context);
   await field(page, 'Девиз').fill('Раз');
-
   // #when
   await field(page, 'Девиз').press('Shift+Enter');
   await field(page, 'Девиз').pressSequentially('Два');
   await page.keyboard.press('Tab');
-
   // #then
-  await expect.poll(() => storedData(page, 'row:brok:motto')).toEqual({ motto: 'Раз\nДва' });
+  await expect
+    .poll(() => storedCell(page, 'blk:brok', 'motto'))
+    .toEqual(['Раз\nДва', 2, 'mock-connection']);
 });
 
 test('Escape cancels the unsaved edit and shows the record value', async ({ page, context }) => {
@@ -534,13 +520,11 @@ test('Escape cancels the unsaved edit and shows the record value', async ({ page
   await openSheet(page, context);
   await watchWire(page);
   await field(page, 'Сила').fill('99');
-
   // #when
   await field(page, 'Сила').press('Escape');
   await page.waitForTimeout(PAST_PAUSE_MS);
   await page.keyboard.press('Tab');
   await page.waitForTimeout(WITHIN_PAUSE_MS);
-
   // #then
   expect({
     shown: await field(page, 'Сила').inputValue(),
@@ -551,19 +535,15 @@ test('Escape cancels the unsaved edit and shows the record value', async ({ page
 test('a refused save returns the record value to the field', async ({ page, context }) => {
   // #given: with no background, the save gets no answer but the one the test sends.
   const background = await openSheet(page, context);
-
   await watchWire(page);
   await background.close();
   await field(page, 'Сила').fill('30');
   await page.keyboard.press('Tab');
   await expect.poll(async () => (await fieldPatches(page)).length).toBe(1);
   await expect(field(page, 'Сила')).toHaveValue('30');
-
   const [sent] = await fieldPatches(page);
-
   // #when
   await postToWindow(page, { t: 'command-rejected', id: sent?.id ?? '', reason: 'unknown-field' });
-
   // #then
   await expect(field(page, 'Сила')).toHaveValue('14');
 });
@@ -574,18 +554,14 @@ test('a save the background finds too long returns the typed text with the messa
 }) => {
   // #given: with no background, the save gets no answer but the one the test sends.
   const background = await openSheet(page, context);
-
   await watchWire(page);
   await background.close();
   await field(page, 'Заметки').fill('Длинный текст');
   await page.keyboard.press('Tab');
   await expect.poll(async () => (await fieldPatches(page)).length).toBe(1);
-
   const [sent] = await fieldPatches(page);
-
   // #when
   await postToWindow(page, { t: 'command-rejected', id: sent?.id ?? '', reason: 'too-large' });
-
   // #then
   await expect(field(page, 'Заметки')).toHaveAccessibleDescription(TOO_LONG);
   await expect(field(page, 'Заметки')).toHaveValue('Длинный текст');
@@ -597,11 +573,10 @@ test('passing through a number field that holds a string or an exponent form cha
 }) => {
   // #given
   await openSheet(page, context, [
-    record('row:brok:str', { str: 'много', str_tired: true }),
-    record('row:brok:dex', { dex: 1e21 }),
+    record('blk:brok', { str: 'много', str_tired: true }, 2),
+    record('blk:brok', { dex: 1e21 }, 2),
   ]);
   await watchWire(page);
-
   // #when
   await field(page, 'Сила').focus();
   await page.keyboard.press('Tab');
@@ -609,7 +584,6 @@ test('passing through a number field that holds a string or an exponent form cha
   await page.keyboard.press('Enter');
   await page.keyboard.press('Tab');
   await page.waitForTimeout(PAST_PAUSE_MS);
-
   // #then
   expect({
     messages: await page.getByText(BAD_NUMBER).count(),
@@ -626,7 +600,6 @@ test('Tab goes through the sidebar, the header, then every field and repeat bloc
   // #given
   await openSheet(page, context);
   await page.getByRole('tab', { name: 'Брок' }).focus();
-
   const reached: string[] = [];
 
   // #when
@@ -664,11 +637,9 @@ test('an empty field is an editable area at least 32 px high', async ({ page, co
   // #given
   await openSheet(page, context);
   const empty = field(page, 'Ловкость');
-
   // #when
   await empty.click();
   await page.keyboard.type('4');
-
   // #then
   expect({
     height: ((await empty.boundingBox())?.height ?? 0) >= 32,
@@ -682,10 +653,8 @@ test('a text field is multi-line to assistive tech and a number field is not', a
 }) => {
   // #given
   await openSheet(page, context);
-
   // #when
   const multiline = await multilineByName(page);
-
   // #then
   expect({ notes: multiline.get('Заметки'), dex: multiline.get('Ловкость') ?? false }).toEqual({
     notes: true,
@@ -698,28 +667,22 @@ function field(page: Page, name: string): Locator {
   return page.getByRole('tabpanel').getByRole('textbox', { name, exact: true });
 }
 
-// `records` replace the seeded records of the same key.
+// Extra records are fragments of the seeded block and assemble with it.
 async function openSheet(
   page: Page,
   context: BrowserContext,
   records: readonly StoredRecord[] = [],
 ): Promise<Page> {
-  const keys = new Set(records.map((one) => one.k));
-
   const background = await openRoom(
     page,
     context,
-    [...RECORDS.filter((one) => !keys.has(one.k)), ...records],
+    [...RECORDS, ...records],
     JSON.stringify(PRESET),
   );
 
   await expect(page.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
 
   return background;
-}
-
-async function storedText(page: Page, key: string): Promise<string | null> {
-  return page.evaluate((storageKey) => localStorage.getItem(storageKey), `${STORAGE_PREFIX}${key}`);
 }
 
 async function isFocused(locator: Locator): Promise<boolean> {
@@ -729,7 +692,6 @@ async function isFocused(locator: Locator): Promise<boolean> {
 async function watchWire(page: Page): Promise<void> {
   await page.evaluate((channel) => {
     window.wireTexts = [];
-
     window.mockPlatform.broadcast.onMessage(channel, (event) => {
       window.wireTexts.push(JSON.stringify(event.data));
     });
@@ -769,7 +731,6 @@ async function postToWindow(page: Page, message: JsonValue): Promise<void> {
     ([channel, text]) => {
       // SAFETY: the text is the JSON.stringify of a JsonValue, one line below.
       const data = JSON.parse(text) as JsonValue;
-
       void window.mockPlatform.broadcast.sendMessage(channel, data, { destination: 'LOCAL' });
     },
     [CHANNEL, JSON.stringify(message)] as const,
@@ -816,7 +777,6 @@ async function multilineByName(page: Page): Promise<Map<string, JsonValue>> {
   for (const node of tree.nodes) {
     if (node.role?.value === 'textbox' && node.name !== undefined) {
       const property = node.properties?.find((one) => one.name === 'multiline');
-
       multiline.set(node.name.value, property?.value.value ?? false);
     }
   }

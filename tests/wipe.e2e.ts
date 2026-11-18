@@ -2,9 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
 import { z } from 'zod';
-
 import type { JsonValue } from '@/core/json';
-
 import {
   ADD,
   connectionIdOf,
@@ -48,14 +46,16 @@ const OLD_KEYS: readonly (readonly [string, string])[] = [
   ['mr1:mock-room:0::sheet:brok', '{"k":"sheet:brok","d":{"kind":"pc","name":"Брок","order":0}}'],
   ['mr1:mock-room:0::row:brok:str', '{"k":"row:brok:str","d":{"str":14}}'],
   ['mr1:other-room:0::sheet:anya', '{"k":"sheet:anya","d":{"kind":"pc","name":"Аня","order":0}}'],
-  ['mr3:other-room:0::sheet:anya', '{"k":"sheet:anya","d":{"set":"pc","order":0}}'],
+  [
+    'mr4:other-room:0::blk:anya',
+    '{"k":"blk:anya","d":{"set":"pc","order":0,"cells":{}},"c":1,"a":"seed","l":[1,"seed"]}',
+  ],
 ];
 
-const OTHER_ROOM_KEYS = ['mr1:other-room:0::sheet:anya', 'mr3:other-room:0::sheet:anya'];
+const OTHER_ROOM_KEYS = ['mr1:other-room:0::sheet:anya', 'mr4:other-room:0::blk:anya'];
 
 // A sheet in this format, for the GM devices that have used this build in the room since.
 const RECORDS: readonly StoredRecord[] = [...pcSheet('brok', 'Брок', 0)];
-
 const GM: ClientParams = { client: 'a', name: 'Мастер' };
 const OTHER_GM: ClientParams = { client: 'b', name: 'Второй', device: 'b' };
 
@@ -72,7 +72,6 @@ const ALONE_PLAYER: ClientParams = { ...PLAYER, catchUpTimeoutMs: 500 };
 
 // Short pauses, so a routine room copy write comes at once.
 const QUICK: Partial<ClientParams> = { snapshotPauseMs: 100, snapshotJitterMs: 0 };
-
 const copySchema = z.object({ v: z.number(), data: z.string() });
 
 test.beforeEach(async ({ page }) => {
@@ -84,9 +83,7 @@ test('a GM in a room whose copy is of version 1 sees the older-format banner, an
 }) => {
   // #given
   const gm = await openGm(context, { ...GM, ...QUICK }, RECORDS);
-
   await expect(gm.window.getByRole('status')).toHaveText(OLDER_FORMAT);
-
   // #when: an edit and a hidden page are the two routine triggers of a room copy write.
   await gm.window.getByRole('textbox', { name: 'Класс' }).fill('Воин');
   await gm.window.getByRole('textbox', { name: 'Класс' }).press('Enter');
@@ -96,7 +93,6 @@ test('a GM in a room whose copy is of version 1 sees the older-format banner, an
   });
   // Several write pauses pass with no write, as nothing signals a write that does not happen.
   await gm.window.waitForTimeout(1000);
-
   // #then
   await expect(gm.window.getByRole('status')).toHaveText(OLDER_FORMAT);
   expect(await roomCopy(gm.window)).toEqual(V1_COPY);
@@ -107,12 +103,9 @@ test('a player alone with a room copy of version 1 sees that it does not read', 
 }) => {
   // #given
   const window = await openClientWindow(context, ALONE_PLAYER);
-
   await seedOldRoom(window);
-
   // #when
   await openClientBackground(context, ALONE_PLAYER);
-
   // #then
   await expect(window.getByRole('main').getByText(UNREADABLE, { exact: true })).toBeVisible();
   await expect(window.getByRole('status')).toHaveText(NO_GM);
@@ -124,20 +117,15 @@ test('with no preset, "Очистить всё" in Settings asks once, focused o
   // #given: the room of AC4, with only the data of a version 1 build.
   const gm = await openGm(context, GM, null);
   const keysBefore = await allKeys(gm.window);
-
   await gm.window.getByRole('tab', { name: SETTINGS }).click();
-
   // #when
   await wipeButton(gm.window).click();
-
   // #then
   await expect(confirmation(gm.window)).toHaveAccessibleName(ASK);
   await expect(confirmation(gm.window).getByRole('button')).toHaveText([WIPE, CANCEL]);
   await expect(confirmation(gm.window).getByRole('button', { name: CANCEL })).toBeFocused();
-
   // #when
   await confirmation(gm.window).getByRole('button', { name: CANCEL }).click();
-
   // #then
   await expect(confirmation(gm.window)).toHaveCount(0);
   await expect(wipeButton(gm.window)).toBeFocused();
@@ -152,17 +140,14 @@ test('with no preset and Settings open, a confirmed wipe ends with "Очисти
 }) => {
   // #given
   const gm = await openGm(context, GM, null);
-
   await gm.window.getByRole('tab', { name: SETTINGS }).click();
   await wipeButton(gm.window).click();
-
   // #when
   await confirmation(gm.window).getByRole('button', { name: WIPE }).click();
-
   // #then
   await expect
     .poll(() => roomCopyContent(gm.window))
-    .toEqual({ v: 3, content: { g: { n: 1, a: gm.connectionId }, records: [] } });
+    .toEqual({ v: 4, content: { g: { n: 1, a: gm.connectionId }, records: [] } });
   await expect(confirmation(gm.window)).toHaveCount(0);
   await expect(wipeButton(gm.window)).toBeEnabled();
   await expect(wipeButton(gm.window)).toBeFocused();
@@ -174,14 +159,11 @@ test('Escape closes the wipe confirmation and changes nothing', async ({ context
   // #given
   const gm = await openGm(context, GM, RECORDS);
   const keysBefore = await allKeys(gm.window);
-
   await gm.window.getByRole('tab', { name: SETTINGS }).click();
   await wipeButton(gm.window).click();
   await expect(confirmation(gm.window).getByRole('button', { name: CANCEL })).toBeFocused();
-
   // #when
   await gm.window.keyboard.press('Escape');
-
   // #then
   await expect(confirmation(gm.window)).toHaveCount(0);
   await expect(gm.window.getByRole('tab', { name: 'Брок' })).toBeVisible();
@@ -198,12 +180,10 @@ test('a confirmed wipe of a room with a version 1 copy empties it on every clien
   const gm = await openGm(context, GM, RECORDS);
   const other = await openGm(context, OTHER_GM, RECORDS);
   const player = await openPlayer(context);
-
   await expect(player.window.getByRole('tab', { name: 'Брок' })).toBeVisible();
   await expect(other.window.getByRole('status')).toHaveText(OLDER_FORMAT);
   await gm.window.getByRole('tab', { name: SETTINGS }).click();
   await wipeButton(gm.window).click();
-
   // #when
   await confirmation(gm.window).getByRole('button', { name: WIPE }).click();
 
@@ -222,13 +202,11 @@ test('a confirmed wipe of a room with a version 1 copy empties it on every clien
   await expect.poll(() => shownNotifications(other)).toEqual([DATA_REPLACED]);
   await expect.poll(() => shownNotifications(player)).toEqual([DATA_REPLACED]);
   expect(await shownNotifications(gm)).toEqual([]);
-
   // AD-9: the room copy is written over with the new generation and no record.
   expect(await roomCopyContent(gm.window)).toEqual({
-    v: 3,
+    v: 4,
     content: { g: { n: 1, a: gm.connectionId }, records: [] },
   });
-
   // AD-9, AD-11: this room's records of every format are gone in the wiping GM's browser and on
   // the device of the GM that adopted the wipe. Other rooms keep theirs.
   await expect
@@ -241,7 +219,6 @@ test('a confirmed wipe of a room with a version 1 copy empties it on every clien
     wiping: otherRoomKeys(await keysUnder(gm.window, '')),
     adopting: otherRoomKeys(await keysUnder(gm.window, 'mock-device:b:')),
   }).toEqual({ wiping: OTHER_ROOM_KEYS, adopting: OTHER_ROOM_KEYS });
-
   // #when
   await uploadPreset(gm.window, EXAMPLE_PRESET_TEXT);
 
@@ -265,7 +242,6 @@ async function openGm(
 ): Promise<RoomClient> {
   const window = await openClientWindow(context, params);
   const device = params.device ?? '';
-
   await seedOldRoom(window, device);
 
   if (records !== null) {
@@ -273,7 +249,6 @@ async function openGm(
   }
 
   const background = await openClientBackground(context, params);
-
   await expect(
     window.getByRole('button', { name: records === null ? UPLOAD : ADD }).first(),
   ).toBeVisible();
@@ -291,11 +266,9 @@ async function openPlayer(context: BrowserContext): Promise<RoomClient> {
 // The version 1 room copy in the room metadata, and the old and other-room keys on one device.
 async function seedOldRoom(page: Page, device = ''): Promise<void> {
   const prefix = device === '' ? '' : `mock-device:${device}:`;
-
   await page.evaluate(
     ([metadataKey, copyKey, copy, keys]) => {
       const metadata: unknown = JSON.parse(localStorage.getItem(metadataKey) ?? '{}');
-
       localStorage.setItem(
         metadataKey,
         JSON.stringify({ ...Object(metadata), [copyKey]: JSON.parse(copy) }),
@@ -316,7 +289,10 @@ async function seedOldRoom(page: Page, device = ''): Promise<void> {
 
 function copyValue(
   v: number,
-  g: { n: number; a: string },
+  g: {
+    n: number;
+    a: string;
+  },
   records: readonly StoredRecord[],
 ): JsonValue {
   const content = JSON.stringify({ g, records });
@@ -336,7 +312,10 @@ async function roomCopy(page: Page): Promise<JsonValue> {
 }
 
 // The room copy's version and its content, decoded by hand with fflate.
-async function roomCopyContent(page: Page): Promise<{ v: number; content: JsonValue }> {
+async function roomCopyContent(page: Page): Promise<{
+  v: number;
+  content: JsonValue;
+}> {
   const copy = copySchema.parse(await roomCopy(page));
   const text = strFromU8(inflateSync(new Uint8Array(Buffer.from(copy.data, 'base64'))));
 
@@ -379,11 +358,8 @@ function confirmation(page: Page): Locator {
 
 async function uploadPreset(page: Page, text: string): Promise<void> {
   const choosing = page.waitForEvent('filechooser');
-
   await page.getByRole('button', { name: UPLOAD }).first().click();
-
   const chooser = await choosing;
-
   await chooser.setFiles({
     name: 'preset.json',
     mimeType: 'application/json',

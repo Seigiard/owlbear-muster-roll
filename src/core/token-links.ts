@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import {
-  blockIndex,
+  linkDataOf,
   linkTargetKey,
   linkTargetOf,
   liveLinkTarget,
@@ -9,14 +9,14 @@ import {
   type LiveLinkTarget,
 } from '@/core/link-target';
 import {
-  layoutSections,
-  repeatSectionId,
+  repeatSectionByPath,
+  rowCells,
   type Preset,
   type PresetSection,
   type Template,
 } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { repeatBlocks } from '@/core/sheet-values';
+import { repeatBlocks, sectionTitle } from '@/core/sheet-values';
 import { repeatBlockName, sheetName, templateSheetIds } from '@/core/sheets';
 import { linkTargetShownTo, type PlayerRole } from '@/core/visibility';
 
@@ -27,6 +27,7 @@ const TOKEN_LAYER = 'CHARACTER';
 export const LINK_PICKER_PATH = '/picker.html';
 
 export const LINK_PICKER_TOKEN_PARAM = 'token';
+export const LINK_PICKER_TARGET_PARAM = 'target';
 
 // One picker at a time: a second one opens under the same id.
 export const LINK_PICKER_POPOVER_ID = 'app.muster-roll/link-picker';
@@ -55,23 +56,45 @@ export type TokenMenuAction = 'link' | 'unlink' | 'open';
 // One filter per icon of the item, in the order Owlbear tries them.
 export type TokenMenuEntry = { action: TokenMenuAction; filters: TokenMenuFilter[] };
 
-// One target of the link picker. `sheetName` is the sheet's name and `blockName` the repeat block's
-// first field value, "" when empty; `blockName` is `null` for a sheet target. `linked`: a live link
-// names the target already.
+// One target of the link picker. `sheetName` is the sheet's name and `blockName` the repeat scope's
+// explicit nameField value, "" when empty; `blockName` is `null` for a sheet target. `linked`: a
+// live link names the target already.
 export type PickerTarget = {
   target: LinkTarget;
+  cellId: string;
   sheetName: string;
   blockName: string | null;
+  label: string;
   linked: boolean;
 };
 
-// One group of the link picker: a linkable template's sheets, with `section` `null`, or the repeat
-// blocks of one linkable repeat section of a template across its sheets.
+// One group of the link picker: the token-cell targets of a template, with `section` `null`, or the
+// repeat blocks of one repeat scope with a token cell across the template's sheets.
 export type PickerGroup = {
   template: Template;
   section: PresetSection | null;
   targets: PickerTarget[];
 };
+
+const groupMeta = new WeakMap<
+  PickerGroup,
+  { heading: string; collisionHeading: string; cellId: string }
+>();
+
+const distinctTargetCells = new WeakSet<PickerTarget>();
+
+export function pickerGroupHeading(group: PickerGroup): string {
+  return (
+    groupMeta.get(group)?.heading ??
+    (group.section === null
+      ? group.template.title
+      : (sectionTitle(group.section) ?? group.template.title))
+  );
+}
+
+export function pickerTargetNeedsCellIdentity(choice: PickerTarget): boolean {
+  return distinctTargetCells.has(choice);
+}
 
 // The icons of "Открыть лист", GM first. Owlbear shows the first icon whose filter matches.
 const OPEN_ROLES: readonly PlayerRole[] = ['GM', 'PLAYER'];
@@ -85,6 +108,12 @@ export function linkPickerUrl(tokenId: string): string {
   return `${LINK_PICKER_PATH}?${new URLSearchParams({ [LINK_PICKER_TOKEN_PARAM]: tokenId }).toString()}`;
 }
 
+export function tokenCellPickerUrl(target: LinkTarget): string {
+  return `${LINK_PICKER_PATH}?${new URLSearchParams({
+    [LINK_PICKER_TARGET_PARAM]: JSON.stringify(linkDataOf(target)),
+  }).toString()}`;
+}
+
 // AD-19: token id to target, for every live link. An inert link counts as no link everywhere. Only
 // `link:` records count, never the scene: a GM client tombstones the link of a token deleted from
 // the scene (`tokensToUnlink`), and a link to a token on another scene stays.
@@ -93,7 +122,6 @@ export function liveLinks(
   preset: Preset | null,
 ): Map<string, LiveLinkTarget> {
   const links = new Map<string, LiveLinkTarget>();
-  const blocks = blockIndex(records.values());
 
   for (const [key, record] of records) {
     if (!key.startsWith('link:')) {
@@ -102,7 +130,7 @@ export function liveLinks(
 
     const tokenId = tokenIdSchema.safeParse(key.slice('link:'.length));
     const target = linkTargetOf(record.d);
-    const live = target === null ? null : liveLinkTarget(records, preset, target, blocks);
+    const live = target === null ? null : liveLinkTarget(records, preset, target);
 
     // A token id no command could write never reaches a menu filter.
     if (tokenId.success && live !== null) {
@@ -147,10 +175,8 @@ export function linkedTargetKeys(
   );
 }
 
-// UX: one group per linkable template and per linkable repeat section, in preset order, a
-// template's own group before its sections'. A sheet set lists its live sheets, a single sheet
-// itself, and a section its repeat blocks, sheet by sheet. In each group the targets with no token
-// come first, and both parts keep their order. A group with no target is left out.
+// UX: one group per token cell and scope, in preset order. A root group lists sheets and a repeat
+// group lists blocks, sheet by sheet. In each group the targets with no token come first.
 export function pickerGroups(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset | null,
@@ -163,16 +189,24 @@ export function pickerGroups(
   const groups: PickerGroup[] = [];
 
   const targetOf = (
-    sheetId: string,
-    instanceId: string | null,
+    template: Template,
+    target: LinkTarget,
+    cellId: string,
     blockName: string | null,
+    section: PresetSection | null,
   ): PickerTarget => {
-    const target = { sheetId, instanceId };
+    const targetSheetName = sheetName(records, preset, target.sheetId) ?? '';
 
     return {
       target,
-      sheetName: sheetName(records, preset, sheetId) ?? '',
+      cellId,
+      sheetName: targetSheetName,
       blockName,
+      label:
+        blockName !== null && blockName !== ''
+          ? blockName
+          : ((section === null ? null : sectionTitle(section)) ??
+            (targetSheetName || template.title)),
       linked: linked.has(linkTargetKey(target)),
     };
   };
@@ -180,40 +214,179 @@ export function pickerGroups(
   for (const template of preset.templates) {
     const sheetIds = templateSheetIds(records.values(), preset, template);
 
-    if (template.tokens === true) {
-      groups.push({
+    for (const { cellId, section } of tokenCells(template, null)) {
+      const group: PickerGroup = {
         template,
         section: null,
-        targets: sheetIds.map((sheetId) => targetOf(sheetId, null, null)),
+        targets: sheetIds.map((sheetId) =>
+          targetOf(template, { sheetId, instanceId: null, cellId }, cellId, null, section),
+        ),
+      };
+
+      groups.push(group);
+      groupMeta.set(group, {
+        heading: template.title,
+        collisionHeading: sectionTitle(section) ?? template.title,
+        cellId,
       });
     }
 
-    for (const section of layoutSections(template)) {
-      const sectionId = repeatSectionId(section);
+    for (const scopePath of repeatScopePaths(template)) {
+      const repeatedSection = repeatSectionByPath(template, scopePath);
 
-      if (sectionId === null || section.tokens !== true) {
-        continue;
-      }
+      if (repeatedSection === null) continue;
 
-      groups.push({
-        template,
-        section,
-        targets: sheetIds.flatMap((sheetId) =>
-          repeatBlocks(records, sheetId, sectionId).map((block) =>
-            targetOf(
-              sheetId,
-              block.instanceId,
-              repeatBlockName(records, sheetId, section, block.instanceId),
-            ),
+      for (const { cellId } of tokenCells(template, scopePath)) {
+        const group: PickerGroup = {
+          template,
+          section: repeatedSection,
+          targets: sheetIds.flatMap((sheetId) =>
+            repeatBlockPaths(records, sheetId, scopePath).flatMap((path) => {
+              const instanceId = path.at(-1);
+
+              return instanceId === undefined
+                ? []
+                : [
+                    targetOf(
+                      template,
+                      { sheetId, instanceId, path, cellId },
+                      cellId,
+                      repeatBlockName(records, sheetId, repeatedSection, instanceId, path),
+                      repeatedSection,
+                    ),
+                  ];
+            }),
           ),
-        ),
-      });
+        };
+
+        groups.push(group);
+        const heading = sectionTitle(repeatedSection) ?? template.title;
+
+        groupMeta.set(group, { heading, collisionHeading: heading, cellId });
+      }
     }
   }
 
-  return groups.flatMap((group) =>
-    group.targets.length === 0 ? [] : [{ ...group, targets: noTokenFirst(group.targets) }],
-  );
+  const headingCounts = new Map<string, number>();
+
+  for (const group of groups) {
+    const heading = pickerGroupHeading(group);
+    headingCounts.set(heading, (headingCounts.get(heading) ?? 0) + 1);
+  }
+
+  return groups.flatMap((group) => {
+    if (group.targets.length === 0) return [];
+
+    const heading = pickerGroupHeading(group);
+    const meta = groupMeta.get(group);
+    const cellId = meta?.cellId ?? group.targets[0]?.cellId ?? '';
+    const distinct = (headingCounts.get(heading) ?? 0) > 1;
+
+    if (distinct) for (const target of group.targets) distinctTargetCells.add(target);
+
+    const result = { ...group, targets: noTokenFirst(group.targets) };
+    groupMeta.set(result, {
+      heading: distinct ? `${meta?.collisionHeading ?? heading} — ${cellId}` : heading,
+      collisionHeading: meta?.collisionHeading ?? heading,
+      cellId,
+    });
+
+    return [result];
+  });
+}
+
+function tokenCells(
+  template: Template,
+  scopePath: readonly string[] | null,
+): { cellId: string; section: PresetSection }[] {
+  if (scopePath === null) {
+    return template.tabs.flatMap((tab) =>
+      tab.repeat === undefined
+        ? tab.sections.flatMap((section) =>
+            section.repeat === undefined
+              ? section.rows
+                  .filter((row) => row.repeat === undefined)
+                  .flatMap((row) =>
+                    rowCells(row).flatMap((cell) =>
+                      cell.kind === 'token' ? [{ cellId: cell.id, section }] : [],
+                    ),
+                  )
+              : [],
+          )
+        : [],
+    );
+  }
+
+  const section = repeatSectionByPath(template, scopePath);
+  const scopeId = scopePath.at(-1);
+
+  if (section === null || scopeId === undefined) return [];
+
+  return section.rows
+    .filter((row) => row.repeat === undefined || row.repeat.id === scopeId)
+    .flatMap((row) =>
+      rowCells(row).flatMap((cell) =>
+        cell.kind === 'token' ? [{ cellId: cell.id, section }] : [],
+      ),
+    );
+}
+
+function repeatScopePaths(template: Template): string[][] {
+  const paths: string[][] = [];
+
+  for (const tab of template.tabs) {
+    if (tab.repeat !== undefined) {
+      paths.push([tab.repeat.id]);
+    }
+  }
+
+  for (const tab of template.tabs) {
+    const tabPath = tab.repeat === undefined ? [] : [tab.repeat.id];
+
+    for (const section of tab.sections) {
+      const sectionPath = section.repeat === undefined ? tabPath : [...tabPath, section.repeat.id];
+
+      if (section.repeat !== undefined) {
+        paths.push(sectionPath);
+      }
+
+      for (const row of section.rows) {
+        if (row.repeat !== undefined) {
+          paths.push([...sectionPath, row.repeat.id]);
+        }
+      }
+    }
+  }
+
+  return paths;
+}
+
+function repeatBlockPaths(
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  scopePath: readonly string[],
+): string[][] {
+  const paths: string[][] = [];
+
+  function visit(parentPath: readonly string[], scopeIndex: number): void {
+    const scopeId = scopePath[scopeIndex];
+
+    if (scopeId === undefined) return;
+
+    for (const block of repeatBlocks(records, sheetId, [...parentPath, scopeId])) {
+      const path = [...parentPath, scopeId, block.instanceId];
+
+      if (scopeIndex === scopePath.length - 1) {
+        paths.push(path);
+      } else {
+        visit(path, scopeIndex + 1);
+      }
+    }
+  }
+
+  visit([], 0);
+
+  return paths;
 }
 
 // AD-2 and UX-DR21: Owlbear filters match item keys only and do not change, so the menu is built

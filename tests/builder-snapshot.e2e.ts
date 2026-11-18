@@ -1,12 +1,11 @@
+import { assembleRecords } from '@/core/merge';
+import { fixtureSnapshotCells, fixtureSnapshotBlocks } from './support/block-fixtures';
 import { readFileSync } from 'node:fs';
-
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-
 import type { Preset, PresetCell, PresetSection } from '@/core/preset';
 import { recordSchema } from '@/core/records';
 import { encodeSnapshotFile, snapshotFileSchema, type SnapshotFile } from '@/core/snapshot-file';
-
 import { renderedColor, tokenColor } from './support/colors';
 import { installBrowserFileAccessFake, queueBrowserFile } from './support/file-access';
 
@@ -22,28 +21,33 @@ function createPreset({
   additionalSections?: readonly PresetSection[];
 } = {}): Preset {
   return {
-    v: 3,
+    v: 4,
     templates: [
       {
         id: 'pc',
-        kind: 'set',
+
         title: 'Экипаж',
-        nameField: 'name',
-        tokens: true,
+        repeat: { nameField: 'name' },
+
         tabs: [
           {
             sections: [
               {
                 rows: [
-                  [
-                    { kind: 'text', text: 'Имя' },
-                    { kind: 'field', type: 'text', id: 'name' },
-                  ],
-                  [
-                    { kind: 'text', text: 'Сила' },
-                    { kind: 'field', type: 'number', id: 'str' },
-                    ...strengthExtraCells,
-                  ],
+                  {
+                    cells: [
+                      { kind: 'text', text: 'Имя' },
+                      { kind: 'field', type: 'text', id: 'name' },
+                      { kind: 'token', id: 'token' },
+                    ],
+                  },
+                  {
+                    cells: [
+                      { kind: 'text', text: 'Сила' },
+                      { kind: 'field', type: 'number', id: 'str' },
+                      ...strengthExtraCells,
+                    ],
+                  },
                 ],
               },
               ...additionalSections,
@@ -53,17 +57,19 @@ function createPreset({
       },
       {
         id: 'inventory',
-        kind: 'single',
+
         title: 'Инвентарь',
         tabs: [
           {
             sections: [
               {
                 rows: [
-                  [
-                    { kind: 'text', text: 'Золото' },
-                    { kind: 'field', type: 'number', id: 'gold' },
-                  ],
+                  {
+                    cells: [
+                      { kind: 'text', text: 'Золото' },
+                      { kind: 'field', type: 'number', id: 'gold' },
+                    ],
+                  },
                 ],
               },
             ],
@@ -84,57 +90,65 @@ const EDITING_PRESET = createPreset({
   additionalSections: [
     {
       rows: [
-        [
-          { kind: 'text', text: 'Готов' },
-          { kind: 'field', type: 'check', id: 'ready' },
-        ],
-        [
-          { kind: 'text', text: 'Броня' },
-          { kind: 'field', type: 'select', id: 'armor', options: ['Кожа', 'Латы'] },
-        ],
-        [
-          { kind: 'text', text: 'Куб' },
-          { kind: 'field', type: 'dice-choice', id: 'die', options: ['d6', 'd8'] },
-        ],
+        {
+          cells: [
+            { kind: 'text', text: 'Готов' },
+            { kind: 'field', type: 'check', id: 'ready' },
+          ],
+        },
+        {
+          cells: [
+            { kind: 'text', text: 'Броня' },
+            { kind: 'field', type: 'select', id: 'armor', options: ['Кожа', 'Латы'] },
+          ],
+        },
+        {
+          cells: [
+            { kind: 'text', text: 'Куб' },
+            { kind: 'field', type: 'dice-choice', id: 'die', options: ['d6', 'd8'] },
+          ],
+        },
       ],
     },
     {
-      repeat: true,
+      repeat: { id: 'item', nameField: 'item' },
       rows: [
-        [
-          { kind: 'text', text: 'Вещь' },
-          { kind: 'field', type: 'text', id: 'item' },
-        ],
+        {
+          cells: [
+            { kind: 'text', text: 'Вещь' },
+            { kind: 'field', type: 'text', id: 'item' },
+          ],
+        },
       ],
     },
   ],
 });
 
 const SNAPSHOT = {
-  v: 3,
+  v: 4,
   type: 'muster-roll/snapshot',
   sheets: [
     {
       id: 'anya',
       set: 'pc',
       order: 0,
-      rows: { name: { name: 'Аня' }, str: { str: 12 } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ name: { name: 'Аня' }, str: { str: 12 } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
     {
       id: 'brok',
       set: 'pc',
       order: 1,
-      rows: { name: { name: 'Брок' }, str: { str: 18 } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ name: { name: 'Брок' }, str: { str: 18 } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
     {
       id: 'inventory',
-      rows: { gold: { gold: 7 } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ gold: { gold: 7 } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
   ],
-  links: [{ tokenId: 'token-a', sheetId: 'anya' }],
+  links: [{ tokenId: 'token-a', sheetId: 'anya', cellId: 'token' }],
 };
 
 const SNAPSHOT_WITHOUT_STRENGTH = {
@@ -144,15 +158,15 @@ const SNAPSHOT_WITHOUT_STRENGTH = {
       id: 'anya',
       set: 'pc',
       order: 0,
-      rows: { name: { name: 'Аня' } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ name: { name: 'Аня' } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
     {
       id: 'brok',
       set: 'pc',
       order: 1,
-      rows: { name: { name: 'Брок' } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ name: { name: 'Брок' } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
     SNAPSHOT.sheets[2],
   ],
@@ -164,18 +178,16 @@ const EDITING_SNAPSHOT = {
     sheet.id === 'anya'
       ? {
           ...sheet,
-          rows: {
-            ...sheet.rows,
-            ready: { ready: false },
-            armor: { armor: 'Кожа' },
-            die: { die: 'd6' },
+          cells: {
+            ...sheet.cells,
+            ready: false,
+            armor: 'Кожа',
+            die: 'd6',
           },
-          repeats: {
-            item: [
-              { instanceId: 'gear-1', order: 0, cells: { item: 'Верёвка' } },
-              { instanceId: 'gear-2', order: 1, cells: { item: 'Фляга' } },
-            ],
-          },
+          blocks: [
+            { path: ['item', 'gear-1'], order: 0, cells: { item: 'Верёвка' } },
+            { path: ['item', 'gear-2'], order: 1, cells: { item: 'Фляга' } },
+          ],
         }
       : sheet,
   ),
@@ -187,9 +199,7 @@ const EDITING_SNAPSHOT_WITHOUT_FIRST_REPEAT = {
     sheet.id === 'anya'
       ? {
           ...sheet,
-          repeats: {
-            item: [{ instanceId: 'gear-2', order: 0, cells: { item: 'Фляга' } }],
-          },
+          blocks: [{ path: ['item', 'gear-2'], order: 0, cells: { item: 'Фляга' } }],
         }
       : sheet,
   ),
@@ -206,10 +216,8 @@ test('opens and downloads the snapshot with both set sheets, the single sheet, v
   // #given
   await page.clock.setFixedTime(new Date(2026, 0, 5, 12, 0));
   await openPreset(page);
-
   // #when
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
-
   // #then
   expect(await sidebar(page).getByRole('tab').allTextContents()).toEqual([
     'Аня',
@@ -221,24 +229,18 @@ test('opens and downloads the snapshot with both set sheets, the single sheet, v
   );
   await expect(preview(page).getByRole('heading', { name: 'Аня', level: 1 })).toBeVisible();
   await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('12');
-
   // #when
   await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
-
   // #then
   await expect(preview(page).getByRole('heading', { name: 'Брок', level: 1 })).toBeVisible();
   await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
-
   // #when
   await sidebar(page).getByRole('tab', { name: 'Инвентарь', exact: true }).click();
-
   // #then
   await expect(preview(page).getByRole('heading', { name: 'Инвентарь', level: 1 })).toBeVisible();
   await expect(preview(page).getByRole('group', { name: 'Золото' })).toHaveText('7');
-
   // #when
   const downloaded = await downloadSnapshot(page);
-
   // #then
   expect(downloaded).toEqual({
     name: 'muster-roll-snapshot-2026-01-05.json',
@@ -252,13 +254,10 @@ test('the first click on a snapshot field selects its tree item and shows its fo
   // #given
   await openPreset(page);
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
-
   const strength = preview(page).getByRole('group', { name: 'Сила', exact: true });
   const treeField = page.getByRole('row', { name: 'str · Число', exact: true });
-
   // #when
   await strength.click();
-
   // #then
   await expect(treeField).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('textbox', { name: 'Id — имя для формул', exact: true })).toHaveValue(
@@ -272,80 +271,62 @@ test('the second click types a snapshot value, and Escape leaves typing with the
   // #given
   await openPreset(page);
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
-
   const strength = preview(page).getByRole('group', { name: 'Сила', exact: true });
   const treeField = page.getByRole('row', { name: 'str · Число', exact: true });
-
   await strength.click();
-
   // #when
   await strength.click();
-
   const input = preview(page).getByRole('textbox', { name: 'Сила', exact: true });
-
   await expect(input).toBeFocused();
   await input.fill('13');
   await input.press('Escape');
-
   const downloaded = await downloadSnapshot(page);
   const anya = downloaded.file.sheets.find((sheet) => sheet.id === 'anya');
-
   // #then
   await expect(input).toHaveCount(0);
   await expect(treeField).toHaveAttribute('aria-selected', 'true');
-  expect(anya?.rows.str).toEqual({ str: 13 });
+  expect(anya?.cells.str).toBe(13);
 });
 
 test('a preview checkbox writes its exact snapshot patch', async ({ page }) => {
   // #given
   await openEditingPreview(page);
-
   const ready = preview(page).getByRole('img', { name: 'Готов: не отмечено', exact: true });
-
   await ready.click();
   await ready.click();
-
   // #when
   await preview(page).getByRole('checkbox', { name: 'Готов', exact: true }).click();
-
   const downloaded = await downloadSnapshot(page);
   const anya = downloaded.file.sheets.find((sheet) => sheet.id === 'anya');
-
   // #then
-  expect(anya?.rows.ready).toEqual({ ready: true });
+  expect(anya?.cells.ready).toBe(true);
 });
 
 test('editing a repeat field changes only the clicked instance', async ({ page }) => {
   // #given
   await openEditingPreview(page);
-
   const items = preview(page).getByRole('group', { name: 'Вещь', exact: true });
-
   await items.first().click();
   await expect(page.getByRole('row', { name: 'item · Текст', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
   await items.first().click();
-
   // #when
   const controls = preview(page).getByRole('textbox', { name: 'Вещь', exact: true });
   const editingControls = await controls.count();
   const focused = page.locator('textarea:focus');
-
   await expect(focused).toHaveCount(1);
   await focused.fill('Факел');
   await focused.press('Enter');
-
   const downloaded = await downloadSnapshot(page);
   const anya = downloaded.file.sheets.find((sheet) => sheet.id === 'anya');
-
   // #then
-  expect({ editingControls, repeats: anya?.repeats.item }).toEqual({
+  expect({ editingControls, blocks: anya?.blocks }).toEqual({
     editingControls: 1,
-    repeats: [
-      { instanceId: 'gear-1', order: 0, cells: { item: 'Факел' } },
-      { instanceId: 'gear-2', order: 1, cells: { item: 'Фляга' } },
+    blocks: [
+      { path: ['item', 'gear-1'], order: 0, cells: { item: 'Факел' } },
+      { path: ['item', 'gear-2'], order: 1, cells: { item: 'Фляга' } },
     ],
   });
 });
@@ -355,34 +336,27 @@ test('Enter edits the specifically selected repeat instance and leaves the other
 }) => {
   // #given
   await openEditingPreview(page);
-
   const items = preview(page).getByRole('group', { name: 'Вещь', exact: true });
-
   await items.nth(1).click();
   await expect(page.getByRole('row', { name: 'item · Текст', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-
   // #when
   await page.keyboard.press('Enter');
-
   const controls = preview(page).getByRole('textbox', { name: 'Вещь', exact: true });
   const focused = page.locator('textarea:focus');
-
   await expect(controls).toHaveCount(1);
   await expect(focused).toHaveCount(1);
   await expect(focused).toHaveValue('Фляга');
   await focused.fill('Компас');
   await focused.press('Enter');
-
   const downloaded = await downloadSnapshot(page);
   const anya = downloaded.file.sheets.find((sheet) => sheet.id === 'anya');
-
   // #then
-  expect(anya?.repeats.item).toEqual([
-    { instanceId: 'gear-1', order: 0, cells: { item: 'Верёвка' } },
-    { instanceId: 'gear-2', order: 1, cells: { item: 'Компас' } },
+  expect(anya?.blocks).toEqual([
+    { path: ['item', 'gear-1'], order: 0, cells: { item: 'Верёвка' } },
+    { path: ['item', 'gear-2'], order: 1, cells: { item: 'Компас' } },
   ]);
 });
 
@@ -391,21 +365,16 @@ test('Enter on a selected repeat field with its instance missing does not trap l
 }) => {
   // #given
   await openEditingPreview(page);
-
   const items = preview(page).getByRole('group', { name: 'Вещь', exact: true });
-
   await items.first().click();
   await expect(page.getByRole('row', { name: 'item · Текст', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
   await openSnapshot(page, JSON.stringify(EDITING_SNAPSHOT_WITHOUT_FIRST_REPEAT));
-
   const remaining = preview(page).getByRole('group', { name: 'Вещь', exact: true });
-
   await expect(remaining).toHaveCount(1);
   await expect(remaining).toHaveText('Фляга');
-
   // #when
   await page.keyboard.press('Enter');
 
@@ -416,10 +385,8 @@ test('Enter on a selected repeat field with its instance missing does not trap l
 
   await expect(controlsAfterEnter).toHaveCount(0);
   await remaining.click();
-
   // #then
   const focused = page.locator('textarea:focus');
-
   await expect(focused).toHaveCount(1);
   await expect(focused).toHaveValue('Фляга');
 });
@@ -468,10 +435,8 @@ for (const field of [
     });
 
     await expect(control).toBeFocused();
-
     // #when
     await control.press('Escape');
-
     // #then
     await expect(control).toHaveCount(0);
     await expect(page.getByRole('row', { name: field.treeName, exact: true })).toHaveAttribute(
@@ -484,14 +449,10 @@ for (const field of [
 test('pagehide flushes a pending preview value into the Builder draft', async ({ page }) => {
   // #given
   await openEditingPreview(page);
-
   const strength = preview(page).getByRole('group', { name: 'Сила', exact: true });
-
   await strength.click();
   await strength.click();
-
   const input = preview(page).getByRole('textbox', { name: 'Сила', exact: true });
-
   await input.fill('13');
 
   // #when
@@ -507,33 +468,22 @@ test('pagehide flushes a pending preview value into the Builder draft', async ({
 
   const draft = JSON.parse(rawDraft);
   const records = recordSchema.array().parse(draft.records);
-
-  const snapshot = encodeSnapshotFile(
-    new Map(records.map((record) => [record.k, record])),
-    EDITING_PRESET,
-  );
-
+  const snapshot = encodeSnapshotFile(assembleRecords(records), EDITING_PRESET);
   const anya = snapshot.sheets.find((sheet) => sheet.id === 'anya');
-
   // #then
-  expect(anya?.rows.str).toEqual({ str: 13 });
+  expect(anya?.cells.str).toBe(13);
 });
 
 test('Enter on a selected snapshot field starts typing its current value', async ({ page }) => {
   // #given
   await openPreset(page);
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
-
   const strength = preview(page).getByRole('group', { name: 'Сила', exact: true });
-
   await strength.click();
-
   // #when
   await page.keyboard.press('Enter');
-
   // #then
   const input = preview(page).getByRole('textbox', { name: 'Сила', exact: true });
-
   await expect(input).toBeFocused();
   await expect(input).toHaveValue('12');
 });
@@ -544,7 +494,6 @@ test('a selected dice cell rolls only on the second click through its formula', 
   // #given
   await openPreset(page, PRESET_WITH_STRENGTH_DICE);
   await openSnapshot(page, JSON.stringify(SNAPSHOT_WITHOUT_STRENGTH));
-
   const dice = preview(page).getByRole('button', { name: 'Сила', exact: true });
   const treeDice = page.getByRole('row', { name: '1d20 <= str', exact: true });
 
@@ -554,14 +503,11 @@ test('a selected dice cell rolls only on the second click through its formula', 
 
   // #when
   await dice.click();
-
   // #then
   await expect(treeDice).toHaveAttribute('aria-selected', 'true');
   await expect(fieldError).toHaveCount(0);
-
   // #when
   await dice.click();
-
   // #then
   await expect(fieldError).toBeVisible();
 });
@@ -571,28 +517,20 @@ test('one template structure edit reaches both sheets and undo restores both', a
   await openPreset(page);
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
   await page.getByRole('row', { name: 'Сила', exact: true }).click();
-
   // #when
   await page.getByRole('textbox', { name: 'Текст', exact: true }).fill('Мощь');
-
   // #then
   await expect(preview(page).getByRole('group', { name: 'Мощь', exact: true })).toHaveText('12');
-
   // #when
   await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
-
   // #then
   await expect(preview(page).getByRole('group', { name: 'Мощь', exact: true })).toHaveText('18');
-
   // #when
   await page.getByRole('button', { name: 'Отменить правку', exact: true }).click();
-
   // #then
   await expect(preview(page).getByRole('group', { name: 'Сила', exact: true })).toHaveText('18');
-
   // #when
   await sidebar(page).getByRole('tab', { name: 'Аня', exact: true }).click();
-
   // #then
   await expect(preview(page).getByRole('group', { name: 'Сила', exact: true })).toHaveText('12');
 });
@@ -602,9 +540,7 @@ test('an empty set has a pale selectable sample outside the file, and add create
 }) => {
   // #given
   await openPreset(page);
-
   const sample = sidebar(page).getByRole('tab', { name: 'Образец', exact: true });
-
   // #then
   await expect(sample).toHaveAttribute('aria-selected', 'true');
   expect(await renderedColor(sample, 'color')).toEqual(
@@ -614,22 +550,21 @@ test('an empty set has a pale selectable sample outside the file, and add create
     '+ Добавить',
   );
   expect((await downloadSnapshot(page)).file).toEqual({
-    v: 3,
+    v: 4,
     type: 'muster-roll/snapshot',
-    sheets: [{ id: 'inventory', rows: {}, repeats: {} }],
+    sheets: [
+      { id: 'inventory', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) },
+    ],
     links: [],
   });
-
   // #when
   await preview(page).getByRole('button', { name: 'Добавить: Экипаж' }).click();
-
   // #then
   await expect(sample).toHaveCount(0);
   await expect(sidebar(page).getByRole('tab', { name: 'Без имени', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-
   const added = (await downloadSnapshot(page)).file;
 
   const normalizedSheets = added.sheets.map((sheet) => {
@@ -637,7 +572,6 @@ test('an empty set has a pale selectable sample outside the file, and add create
   });
 
   const generated = added.sheets.find((sheet: { set?: string }) => sheet.set === 'pc');
-
   expect({
     generatedId: GENERATED_SHEET_ID.test(generated?.id ?? ''),
     sheets: normalizedSheets,
@@ -648,10 +582,10 @@ test('an empty set has a pale selectable sample outside the file, and add create
         id: '<generated>',
         set: 'pc',
         order: 0,
-        rows: {},
-        repeats: {},
+        cells: fixtureSnapshotCells({}),
+        blocks: fixtureSnapshotBlocks({}),
       },
-      { id: 'inventory', rows: {}, repeats: {} },
+      { id: 'inventory', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) },
     ],
   });
 });
@@ -662,10 +596,8 @@ test('reload restores the preset and snapshot without a replacement prompt', asy
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
   await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
   await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
-
   // #when
   await page.reload();
-
   // #then
   await expect(page.getByRole('row', { name: 'Экипаж · Набор', exact: true })).toBeVisible();
   expect(await sidebar(page).getByRole('tab').allTextContents()).toEqual([
@@ -686,10 +618,8 @@ test('an old preset-only draft reopens with its preset and an empty snapshot', a
     },
     [DRAFT_STORAGE_KEY, JSON.stringify({ preset: PRESET, origin: PRESET, name: 'crew' })] as const,
   );
-
   // #when
   await page.reload();
-
   // #then
   await expect(page.getByRole('row', { name: 'Экипаж · Набор', exact: true })).toBeVisible();
   await expect(sidebar(page).getByRole('tab', { name: 'Образец', exact: true })).toHaveAttribute(
@@ -707,28 +637,21 @@ test('a preset edit drops values silently, and undo and redo restore the complet
   await openPreset(page);
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
   await page.getByRole('row', { name: 'str · Число', exact: true }).click();
-
   const fieldId = page.getByRole('textbox', { name: 'Id — имя для формул' });
-
   // #when
   await fieldId.fill('power');
   await fieldId.blur();
-
   // #then
   await expect(page.locator('[data-builder-rename]')).toHaveText('Формулы изменены: 0.');
   await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('power');
   expect((await downloadSnapshot(page)).file).toEqual(SNAPSHOT_WITHOUT_STRENGTH);
-
   // #when
   await page.getByRole('button', { name: 'Отменить правку' }).click();
-
   // #then
   await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('12');
   expect((await downloadSnapshot(page)).file).toEqual(SNAPSHOT);
-
   // #when
   await page.getByRole('button', { name: 'Повторить правку' }).click();
-
   // #then
   await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('power');
 });
@@ -738,9 +661,7 @@ test('an invalid template id keeps its structure selection and preview problem m
 }) => {
   // #given
   await openPreset(page);
-
   const template = page.getByRole('row', { name: 'Экипаж · Набор', exact: true });
-
   await template.click();
 
   // #when
@@ -750,13 +671,10 @@ test('an invalid template id keeps its structure selection and preview problem m
 
   await templateId.fill('bad id');
   await templateId.blur();
-
   // #then
   await expect(template).toHaveAttribute('aria-selected', 'true');
   await expect(template).toHaveAttribute('data-problem', 'true');
-
   const sample = sidebar(page).getByRole('tab', { name: 'Образец', exact: true });
-
   await expect(sample).toHaveAttribute('aria-selected', 'true');
   await expect(sample).toHaveCSS('box-shadow', /2px/);
 });
@@ -775,13 +693,10 @@ test('duplicate template ids keep each sidebar entry mapped to its document temp
 
   await templateId.fill('inventory');
   await templateId.blur();
-
   // #then
   expect(await sidebar(page).getByRole('tab').allTextContents()).toEqual(['Образец', 'Инвентарь']);
-
   // #when
   await sidebar(page).getByRole('tab', { name: 'Инвентарь', exact: true }).click();
-
   // #then
   await expect(
     page.getByRole('row', { name: 'Инвентарь · Одиночный лист', exact: true }),
@@ -801,15 +716,11 @@ test('add on an invalid set id refuses without throwing or changing snapshot rec
 
   await templateId.fill('bad id');
   await templateId.blur();
-
   const pageErrors: string[] = [];
-
   page.on('pageerror', (error) => {
     pageErrors.push(error.message);
   });
-
   const add = preview(page).getByRole('button', { name: 'Добавить: Экипаж' });
-
   await expect(add).toBeEnabled();
 
   const draftBefore = await page.evaluate(
@@ -845,10 +756,8 @@ test('a bad snapshot is refused and preserves the current preset and snapshot', 
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
   await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
   await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
-
   // #when
   await openSnapshot(page, '{');
-
   // #then
   await expect(page.getByText('Файл не подошёл: это не JSON. Ничего не изменено.')).toBeVisible();
   await expect(sidebar(page).getByRole('tab', { name: 'Брок', exact: true })).toHaveAttribute(
@@ -872,17 +781,15 @@ test('a schema-valid snapshot with an oversized record is refused and preserves 
       sheet.id === 'anya'
         ? {
             ...sheet,
-            rows: { ...sheet.rows, name: { name: 'я'.repeat(9000) } },
+            cells: { ...sheet.cells, name: 'я'.repeat(9000) },
           }
         : sheet,
     ),
   };
 
   const oversizedText = JSON.stringify(snapshotFileSchema.parse(oversized));
-
   // #when
   await openSnapshot(page, oversizedText);
-
   // #then
   await expect(
     page.getByText('Файл не подошёл: файл слишком большой. Ничего не изменено.'),
@@ -903,10 +810,8 @@ test('a failed snapshot draft write uses the existing failed status', async ({ p
     };
   });
   await openPreset(page);
-
   // #when
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
-
   // #then
   await expect(page.locator('header').getByRole('status')).toHaveText(
     'Черновик не сохраняется в этом браузере',
@@ -928,14 +833,12 @@ async function openPreset(
 ): Promise<void> {
   await page.goto(PAGE);
   await queueBrowserFile(page, 'crew-preset.json', JSON.stringify(preset));
-
   await page
     .locator('header')
     .getByRole('button')
     .filter({ hasText: /^Пресет/ })
     .click();
   await page.getByRole('menu').getByRole('menuitem', { name: 'Открыть файл…' }).click();
-
   await expect(page.getByRole('row', { name: 'Экипаж · Набор', exact: true })).toBeVisible();
 }
 
@@ -948,11 +851,9 @@ async function openSnapshot(page: Page, text: string): Promise<void> {
     .filter({ hasText: /^Снимок/ });
 
   await expect(block).toBeVisible();
-
   await block.click();
   const menu = page.getByRole('menu');
   const openAnother = menu.getByRole('menuitem', { name: 'Открыть другой файл…' });
-
   await (
     (await openAnother.count()) === 1
       ? openAnother
@@ -965,19 +866,19 @@ async function openEditingPreview(page: Page): Promise<void> {
   await openSnapshot(page, JSON.stringify(EDITING_SNAPSHOT));
 }
 
-async function downloadSnapshot(page: Page): Promise<{ name: string; file: SnapshotFile }> {
+async function downloadSnapshot(page: Page): Promise<{
+  name: string;
+  file: SnapshotFile;
+}> {
   const block = page
     .locator('header')
     .getByRole('button')
     .filter({ hasText: /^Снимок/ });
 
   await expect(block).toBeVisible();
-
   const downloading = page.waitForEvent('download');
-
   await block.click();
   await page.getByRole('menu').getByRole('menuitem', { name: 'Скачать копию' }).click();
-
   const download = await downloading;
 
   return {

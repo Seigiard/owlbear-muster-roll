@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { fieldValuesSchema, rowKey, type VersionedRecord } from '@/core/records';
+import { blockDataSchema, rowKey, type VersionedRecord } from '@/core/records';
 import type { NameField } from '@/core/sheets';
 import { copy } from '@/copy';
 import { IconButton } from '@/ui/primitives/icon-button';
@@ -11,7 +11,6 @@ import type { ProjectionStore } from '@/ui/projection-store';
 import type { ReplicaClient } from '@/ui/replica-client';
 
 import { AccessPanel } from './access-panel';
-import { TokenControl } from './map-toggle';
 import { FieldEditingContext, useTextFieldEdit, type FieldEditing } from './use-field-edit';
 
 const HEADER_CLASS = 'mb-6 flex items-center gap-1';
@@ -27,7 +26,6 @@ export type HeaderStatus = 'can-edit' | 'read-only';
 export type GmHeader = {
   playerId: string;
   access: boolean;
-  tokenLinked: boolean | null;
   onDelete: (() => void) | null;
   // True after the GM cancels a deletion, so the focus goes back where the GM asked from.
   focusActions: boolean;
@@ -98,7 +96,7 @@ export function SheetHeader({
         />
       </FieldEditingContext>
     ) : (
-      <h1 className={clsx('min-w-0 flex-1 px-2 [overflow-wrap:anywhere] text-text', NAME_CLASS)}>
+      <h1 className={clsx('min-w-0 flex-1 px-2 wrap-anywhere text-text', NAME_CLASS)}>
         {name === '' ? copy.unnamed : name}
       </h1>
     );
@@ -111,9 +109,6 @@ export function SheetHeader({
           <span className="shrink-0 self-center text-label-sm text-text-muted">
             {status === 'can-edit' ? copy.status.canEdit : copy.status.readOnly}
           </span>
-        )}
-        {gm === null || gm.tokenLinked === null ? null : (
-          <TokenControl target={{ sheetId, instanceId: null }} linked={gm.tokenLinked} />
         )}
         {gm?.access === true ? (
           <IconButton
@@ -173,12 +168,14 @@ function NameInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const errorId = useId();
   const record = records.get(rowKey(sheetId, nameField.rowId));
-  const values = fieldValuesSchema.safeParse(record?.d);
+  const values = blockDataSchema.safeParse(record?.d);
 
   const edit = useTextFieldEdit('text', {
     place: { sheetId, target: { kind: 'row', rowId: nameField.rowId }, record },
     fieldId: nameField.fieldId,
-    recordValue: values.success ? values.data[nameField.fieldId] : undefined,
+    recordValue: values.success
+      ? (values.data.cells[nameField.fieldId]?.[0] ?? undefined)
+      : undefined,
   });
 
   useEffect(() => {

@@ -23,7 +23,7 @@ import type { VersionedRecord } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 import type { Generation } from '@/core/storage-key';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
-import { rollShownTo, tabShownTo, type PlayerRole } from '@/core/visibility';
+import { rollShownTo, rollTargetShownTo, type PlayerRole } from '@/core/visibility';
 
 const RECENT_REQUEST_ID_LIMIT = 256;
 
@@ -125,8 +125,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     const preset = ports.presetOf(view.get('preset'));
     const policy = resolveSheet(view, preset, message.sheetId);
 
-    const hidden =
-      policy !== null && !tabShownTo('PLAYER', policy.template, message.place.tabIndex);
+    const hidden = policy !== null && !rollTargetShownTo('PLAYER', policy.template, message.place);
 
     if (policy === null || !rollShownTo(ports.role(), hidden)) {
       return err({ code: 'refused' });

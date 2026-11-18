@@ -1,9 +1,8 @@
 import { expect, test } from 'bun:test';
-
 import { copy } from '@/copy';
 import type { DieFace } from '@/core/formula-evaluate';
+import { assembleRecords } from '@/core/merge';
 import { encodePreset, type Preset } from '@/core/preset';
-import type { VersionedRecord } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 import type { Generation } from '@/core/storage-key';
 import type { RollMessage } from '@/core/room-messages';
@@ -11,29 +10,33 @@ import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
 import { createRollFlow, type RollDiceFailure, type RollFlowPorts } from './roll-flow';
 
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'hero',
-      kind: 'set',
+
       title: 'Heroes',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Main',
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Strike' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                  { kind: 'dice', formula: '1d20 + bonus' },
-                ],
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [
-                  { kind: 'text', text: 'Divide' },
-                  { kind: 'dice', formula: '1 / (bonus - bonus)' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Strike' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                    { kind: 'dice', formula: '1d20 + bonus' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Divide' },
+                    { kind: 'dice', formula: '1 / (bonus - bonus)' },
+                  ],
+                },
               ],
             },
           ],
@@ -44,11 +47,13 @@ const PRESET: Preset = {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Secret strike' },
-                  { kind: 'field', type: 'number', id: 'bonus' },
-                  { kind: 'dice', formula: '1d20 + bonus' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Secret strike' },
+                    { kind: 'field', type: 'number', id: 'bonus' },
+                    { kind: 'dice', formula: '1d20 + bonus' },
+                  ],
+                },
               ],
             },
           ],
@@ -58,11 +63,23 @@ const PRESET: Preset = {
   ],
 };
 
-const RECORDS = new Map<string, VersionedRecord>([
-  ['preset', { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' }],
-  ['sheet:ada', { k: 'sheet:ada', d: { set: 'hero', order: 0 }, c: 1, a: 'seed' }],
-  ['row:ada:bonus', { k: 'row:ada:bonus', d: { bonus: 2 }, c: 1, a: 'seed' }],
-  ['row:ada:name', { k: 'row:ada:name', d: { name: 'Ada' }, c: 1, a: 'seed' }],
+const RECORDS = assembleRecords([
+  { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
+  { k: 'blk:ada', d: { set: 'hero', order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
+  {
+    k: 'blk:ada',
+    d: { order: 0, cells: { bonus: [2, 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  {
+    k: 'blk:ada',
+    d: { order: 0, cells: { name: ['Ada', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
 ]);
 
 const REQUEST: RollRequestMessage = {
@@ -156,13 +173,11 @@ test('replies waiting-access before a permitted dice roll finishes', async () =>
   });
 
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest(REQUEST);
   await drain();
   diceResult.resolve(ok([{ sides: 20, face: 17 }]));
   await drain();
-
   // #then
   expect(harness.outcomes).toEqual([{ code: 'waiting-access' }, { code: 'rolled' }]);
 });
@@ -184,10 +199,8 @@ test('refuses a hidden request from a player before it asks the dice port', () =
   });
 
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest(HIDDEN_REQUEST);
-
   // #then
   expect({ outcomes: harness.outcomes, readinessCalls, sent: harness.sent }).toEqual({
     outcomes: [{ code: 'refused' }],
@@ -200,14 +213,12 @@ test('reports the field label when the pending value cannot be evaluated', () =>
   // #given
   const harness = createHarness();
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest({
     ...REQUEST,
     id: 'request-invalid-field',
     shown: { bonus: { kind: 'error' } },
   });
-
   // #then
   expect(harness.outcomes).toEqual([{ code: 'field', field: 'Strike' }]);
 });
@@ -229,7 +240,6 @@ test('refuses a roll request whose address is not a dice cell', async () => {
   });
 
   const [settled] = await Promise.allSettled([result]);
-
   // #then
   expect(settled).toEqual({
     status: 'fulfilled',
@@ -244,10 +254,8 @@ test('reports arithmetic when a prepared roll divides by zero', () => {
   // #given
   const harness = createHarness();
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest(DIVIDE_REQUEST);
-
   // #then
   expect(harness.outcomes).toEqual([{ code: 'arithmetic' }]);
 });
@@ -268,11 +276,9 @@ test('falls back to the local result when no dice extension is available', async
   });
 
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest(REQUEST);
   await drain();
-
   // #then
   expect({
     outcomes: harness.outcomes,
@@ -297,11 +303,9 @@ test('reports failed when the player name port rejects', async () => {
   });
 
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest(REQUEST);
   await drain();
-
   // #then
   expect({ outcomes: harness.outcomes, sent: harness.sent }).toEqual({
     outcomes: [{ code: 'failed' }],
@@ -322,11 +326,9 @@ test('reports failed when the remote roll send fails', async () => {
   });
 
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest(REQUEST);
   await drain();
-
   // #then
   expect({ outcomes: harness.outcomes, sends, sent: harness.sent }).toEqual({
     outcomes: [{ code: 'failed' }],
@@ -352,11 +354,9 @@ test('does not ask readiness when already stopped', async () => {
   });
 
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest({ ...REQUEST, id: 'stopped-before-ready' });
   await drain();
-
   // #then
   expect({ readinessCalls, outcomes: harness.outcomes, sent: harness.sent }).toEqual({
     readinessCalls: 0,
@@ -405,7 +405,6 @@ test('does not ask the dice port when stopped after readiness', async () => {
     id: 'permitted-dice-roll',
   });
   await drain();
-
   // #then
   expect({ stoppedDiceRolls, permittedDiceRolls }).toEqual({
     stoppedDiceRolls: 0,
@@ -427,14 +426,12 @@ test('does not report a malformed dice result after stopped during the dice wait
   });
 
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest({ ...REQUEST, id: 'stopped-during-dice' });
   await drain();
   stopped = true;
   diceResult.resolve(ok([{ sides: 6, face: 1 }]));
   await drain();
-
   // #then
   expect(harness.outcomes).toEqual([]);
 });
@@ -470,7 +467,6 @@ test('uses the live role after readiness and again before it sends', async () =>
     id: 'role-before-send',
   });
   await drain();
-
   // #then
   expect({
     roleAfterReadiness: {
@@ -515,11 +511,9 @@ test('uses the current generation and stops after a reported send', async () => 
   });
 
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest(REQUEST);
   await drain();
-
   // #then
   expect({
     generation: harness.sent.map((message) => message.g),
@@ -540,11 +534,10 @@ test('shows a received roll under the sender name from the party', async () => {
   });
 
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.receiveRoll(
     {
-      v: 3,
+      v: 4,
       g: { n: 0, a: '' },
       t: 'roll',
       id: 'remote-roll',
@@ -558,7 +551,6 @@ test('shows a received roll under the sender name from the party', async () => {
     { role: 'GM', name: 'Party member' },
   );
   await drain();
-
   // #then
   expect(notifications).toEqual(['Party member: Ada, Strike — 9']);
 });
@@ -567,12 +559,10 @@ test('a repeated roll request id rolls and answers once', async () => {
   // #given
   const harness = createHarness();
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest(REQUEST);
   flow.handleRollRequest(REQUEST);
   await drain();
-
   // #then
   expect({ outcomes: harness.outcomes, sent: harness.sent.length }).toEqual({
     outcomes: [{ code: 'rolled' }],
@@ -590,11 +580,9 @@ test('a stopped dice operation produces no fallback roll or outcome', async () =
   });
 
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest({ ...REQUEST, id: 'dice-stopped' });
   await drain();
-
   // #then
   expect({ outcomes: harness.outcomes, sent: harness.sent }).toEqual({ outcomes: [], sent: [] });
 });
@@ -613,11 +601,9 @@ test('an oversized roll is refused before the room transport', async () => {
   });
 
   const flow = createRollFlow(harness.ports);
-
   // #when
   flow.handleRollRequest({ ...REQUEST, id: 'oversized' });
   await drain();
-
   // #then
   expect({ outcomes: harness.outcomes, sends }).toEqual({
     outcomes: [{ code: 'failed' }],

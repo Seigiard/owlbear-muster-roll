@@ -1,0 +1,44 @@
+---
+id: TASK-86
+title: Verify nested-repeat v4 in a live Owlbear room
+status: To Do
+assignee: []
+created_date: '2026-11-16T22:18:00Z'
+updated_date: '2026-11-17T10:38:00Z'
+labels:
+  - format-v4
+  - owner-check
+  - blocked
+dependencies: []
+references:
+  - TASK-79 AC 5
+  - _bmad-output/specs/spec-muster-roll/stories.yaml
+priority: medium
+type: task
+ordinal: 113000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+TASK-79 acceptance criterion 5 requires the owner to check the v4 candidate in a real Owlbear room. Mock and Chromium runs prove application behavior but cannot establish host behavior. Deployment and the owner-run room check are outside the autonomous agent run; this task records that human verification gate without claiming it passed.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 The owner records the candidate commit and a live-room check with an NPC repeat tab, an attacks section per NPC and a token cell per NPC.
+- [ ] #2 A GM and a player edit different fields of one sheet concurrently; both literal values remain on both clients and after reload.
+- [ ] #3 Linked tokens open their correct NPC tabs and each NPC retains its own nested attacks.
+- [ ] #4 The owner records pass/fail evidence and files any observed defects in Backlog; TASK-79 live-check acceptance remains unchecked until that evidence exists.
+<!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+CURRENT STATUS — 2026-11-17, after closing review:
+OWNER-ONLY GATE, NOT RUN. Needs a verified TASK-79 nested-repeat candidate and a live Owlbear room with GM/player clients. Check distinct concurrent field edits on both clients and after reload, NPC tabs, independent nested attacks and linked token opening. Mock, Chromium and build results do not close this task. No deployment or live acceptance occurred.
+
+Earlier progress below is historical; the current status above supersedes it.
+
+CURRENT: External owner gate, not run by the agent. Requires a verified nested-repeat candidate from TASK-79 and an owner-run live Owlbear GM/player check. Mock/browser results do not close this task. No production deployment or live-room acceptance was performed.
+<!-- SECTION:NOTES:END -->

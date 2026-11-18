@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
-
 import type { Theme, ThemePort } from '@/platform/ports';
-
 import { applyTheme, followTheme, themeTokens } from './theme';
 
 const DARK: Theme = {
@@ -31,7 +29,6 @@ describe('themeTokens', () => {
   test('maps every token by the DESIGN.md runtime table', () => {
     // #when
     const tokens = themeTokens(DARK);
-
     // #then
     expect(tokens).toEqual({
       '--mr-surface': '#404142',
@@ -54,11 +51,9 @@ describe('themeTokens', () => {
       '--mr-accent-contrast': '#202122',
     });
   });
-
   test('darkens the light accent, focus and ink with the text colour', () => {
     // #when
     const tokens = themeTokens(LIGHT);
-
     // #then
     expect({
       accent: tokens['--mr-accent'],
@@ -78,10 +73,8 @@ describe('applyTheme', () => {
   test('sets the tokens and the mode on the root element', () => {
     // #given
     const root = document.createElement('div');
-
     // #when
     applyTheme(LIGHT, root);
-
     // #then
     expect({
       surface: root.style.getPropertyValue('--mr-surface'),
@@ -95,28 +88,21 @@ describe('followTheme', () => {
     // #given
     const root = document.createElement('div');
     const port = stubPort(() => Promise.resolve(DARK));
-
     // #when
     await followTheme(port.themePort, root);
-
     // #then
     expect(root.style.getPropertyValue('--mr-surface')).toBe('#404142');
   });
-
   test('applies a later theme change', async () => {
     // #given
     const root = document.createElement('div');
     const port = stubPort(() => Promise.resolve(DARK));
-
     await followTheme(port.themePort, root);
-
     // #when
     port.fireChange(LIGHT);
-
     // #then
     expect(root.dataset['themeMode']).toBe('LIGHT');
   });
-
   test('keeps a change that lands while the read is in flight', async () => {
     // #given
     const root = document.createElement('div');
@@ -130,44 +116,34 @@ describe('followTheme', () => {
     );
 
     const following = followTheme(port.themePort, root);
-
     // #when
     port.fireChange(LIGHT);
     finishRead(DARK);
     await following;
-
     // #then
     expect(root.dataset['themeMode']).toBe('LIGHT');
   });
-
   test('catches a failed read and reports it to the console', async () => {
     // #given
     const root = document.createElement('div');
     const failure = new Error('read failed');
     const consoleError = spyOn(console, 'error').mockImplementation(() => undefined);
     const port = stubPort(() => Promise.reject(failure));
-
     // #when
     await followTheme(port.themePort, root);
-
     // #then
     expect(consoleError.mock.calls).toEqual([
       ['Muster Roll could not read the Owlbear theme', failure],
     ]);
   });
-
   test('still follows changes after a failed read', async () => {
     // #given
     const root = document.createElement('div');
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     const port = stubPort(() => Promise.reject(new Error('read failed')));
-
     await followTheme(port.themePort, root);
-
     // #when
     port.fireChange(LIGHT);
-
     // #then
     expect(root.dataset['themeMode']).toBe('LIGHT');
   });

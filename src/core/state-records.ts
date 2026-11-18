@@ -2,7 +2,12 @@ import { z } from 'zod';
 
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 import { FORMAT_VERSION } from '@/core/format-version';
-import { fitsOneMessage, jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
+import {
+  fitsOneMessage,
+  fragmentRecords,
+  jsonByteLength,
+  MESSAGE_BYTE_LIMIT,
+} from '@/core/message-size';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 import type { StateMessage } from '@/core/room-messages';
@@ -92,7 +97,7 @@ export function stateAnswer(
     place(group.slice(middle));
   }
 
-  for (const group of rawGroups(records)) {
+  for (const group of rawGroups(fragmentRecords(records))) {
     place(group);
   }
 

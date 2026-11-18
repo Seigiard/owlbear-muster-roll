@@ -17,7 +17,7 @@ references:
   - src/builder/formula-input.tsx
 priority: medium
 type: bug
-ordinal: 71000
+ordinal: 74000
 ---
 
 ## Description

@@ -15,7 +15,7 @@ documentation:
   - _bmad-output/implementation-artifacts/task-66-verification.md
 priority: high
 type: task
-ordinal: 90000
+ordinal: 94000
 ---
 
 ## Description

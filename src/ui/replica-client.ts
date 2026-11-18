@@ -6,6 +6,7 @@ import {
   parseEngineMessage,
   UI_CHANNEL,
   type Command,
+  type CommandMessage,
   type CommandRejectedMessage,
   type DeltaMessage,
   type EngineMessage,
@@ -28,6 +29,13 @@ type Assembly = {
   seq: number;
   n: number;
   parts: Map<number, ProjectionMessage>;
+};
+
+type WireRepeatTarget = {
+  kind: 'rep';
+  sectionId: string;
+  instanceId: string;
+  path?: string[];
 };
 
 // `urgent` skips the spacing queue, for a window that is closing.
@@ -115,6 +123,28 @@ export type ReplicaClient = {
   stop: () => void;
 };
 
+function wireCommand(command: Command): CommandMessage['command'] {
+  if (command.type !== 'field-patch') {
+    return command;
+  }
+
+  if (command.target.kind === 'row') {
+    return { ...command, target: { kind: 'row', rowId: command.target.rowId } };
+  }
+
+  const target: WireRepeatTarget = {
+    kind: 'rep',
+    sectionId: command.target.sectionId,
+    instanceId: command.target.instanceId,
+  };
+
+  if (command.target.path !== undefined) {
+    target.path = [...command.target.path];
+  }
+
+  return { ...command, target };
+}
+
 export function startReplicaClient(
   broadcast: Pick<BroadcastPort, 'onMessage'>,
   sendQueue: SendQueue,
@@ -129,7 +159,10 @@ export function startReplicaClient(
   let incompleteTimer: ReturnType<typeof setTimeout> | undefined;
 
   function send(message: WindowMessage): Promise<void> {
-    return sendQueue.enqueue(UI_CHANNEL, message, LOCAL);
+    const wireMessage: Exclude<WindowMessage, { t: 'command' }> | CommandMessage =
+      message.t === 'command' ? { ...message, command: wireCommand(message.command) } : message;
+
+    return sendQueue.enqueue(UI_CHANNEL, wireMessage, LOCAL);
   }
 
   function sendRequest(): void {
@@ -396,7 +429,8 @@ export function startReplicaClient(
         store.setOpenRequest({
           id: message.id,
           sheetId: message.sheetId,
-          instanceId: message.instanceId,
+          path: message.path,
+          cellId: message.cellId,
         });
       }
     } else if (isAnswerMessage(message)) {
@@ -428,7 +462,7 @@ export function startReplicaClient(
     // result; this assertion exposes that relationship through the generic public method.
     sendCommand: ((command: Command, options?: SendCommandOptions) => {
       const id = newId();
-      const message: WindowMessage = { t: 'command', id, command };
+      const message: CommandMessage = { t: 'command', id, command: wireCommand(command) };
 
       if (!fitsOneMessage(message)) {
         const outcome = Promise.resolve({

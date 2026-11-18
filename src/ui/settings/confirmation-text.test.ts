@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-
 import { presetConfirmationText } from './preset-confirmation';
 import { snapshotConfirmationText } from './snapshot-confirmation';
 

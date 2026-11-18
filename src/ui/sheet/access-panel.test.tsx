@@ -1,13 +1,12 @@
+import { fixturePatch } from '../../../tests/support/block-fixtures';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-
 import type { VersionedRecord } from '@/core/records';
 import type { SyncState } from '@/core/ui-messages';
 import { copy } from '@/copy';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
 import type { CommandOutcome } from '@/ui/replica-client';
-
 import { AccessPanel } from './access-panel';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -33,7 +32,12 @@ type Harness = {
   answer: (outcome: AccessOutcome) => void;
 };
 
-type AccessOutcome = Exclude<CommandOutcome<never>, { kind: 'answered' }>;
+type AccessOutcome = Exclude<
+  CommandOutcome<never>,
+  {
+    kind: 'answered';
+  }
+>;
 
 const mounted: Root[] = [];
 
@@ -49,43 +53,35 @@ describe('access panel outcomes', () => {
   test('an unchanged refusal keeps the wanted state with no failure', async () => {
     // #given
     const panel = await openPanel([ACCESS]);
-
     // #when
     await clickAccess(panel);
-    await applyAccess(panel, { ...ACCESS, d: null, c: 2 });
+    await applyAccess(panel, fixturePatch(ACCESS, null, 2, ACCESS.a));
     await answer(panel, {
       kind: 'refused',
       rejection: { t: 'command-rejected', id: 'access-1', reason: 'unchanged' },
     });
-
     // #then
     expect(viewOf(panel)).toEqual({ checked: false, failure: '' });
   });
-
   test('the record settling a change prevents a later timeout failure', async () => {
     // #given
     const panel = await openPanel([]);
-
     // #when
     await clickAccess(panel);
     await applyAccess(panel, ACCESS);
     await answer(panel, { kind: 'timed-out' });
-
     // #then
     expect(viewOf(panel)).toEqual({ checked: true, failure: '' });
   });
-
   test('an ordinary refusal restores the records and shows the failure', async () => {
     // #given
     const panel = await openPanel([ACCESS]);
-
     // #when
     await clickAccess(panel);
     await answer(panel, {
       kind: 'refused',
       rejection: { t: 'command-rejected', id: 'access-1', reason: 'not-allowed' },
     });
-
     // #then
     expect(viewOf(panel)).toEqual({ checked: true, failure: copy.aclFailed });
   });
@@ -96,12 +92,10 @@ async function openPanel(records: readonly VersionedRecord[]): Promise<Harness> 
   const container = document.createElement('div');
   const root = createRoot(container);
   let resolveOutcome: ((outcome: CommandOutcome<never>) => void) | undefined;
-
   document.body.append(container);
   mounted.push(root);
   store.replaceAll(records, [], [], LIVE);
   store.setParty([{ id: 'player', name: 'Player', role: 'PLAYER' }]);
-
   await act(async () => {
     root.render(
       <AccessPanel

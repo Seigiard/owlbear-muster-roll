@@ -1,4 +1,5 @@
 import type { JsonObject } from '../../src/core/json';
+import { mergeRecords } from '../../src/core/merge';
 import type { VersionedRecord } from '../../src/core/records';
 import { encodeSnapshot, readSnapshot, SNAPSHOT_KEY } from '../../src/core/snapshot';
 import type { Generation } from '../../src/core/storage-key';
@@ -7,9 +8,24 @@ import { createRoomCopy } from '../../src/replica/room-copy';
 
 const INITIAL: Generation = { n: 0, a: '' };
 const HIGHER: Generation = { n: 1, a: 'other-gm' };
-const RECORD: VersionedRecord = { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' };
-const NEW_RECORD: VersionedRecord = { k: 'row:brok:str', d: { str: 14 }, c: 1, a: 'gm-a' };
-const RECORDS = [RECORD, NEW_RECORD];
+
+const RECORD: VersionedRecord = {
+  k: 'blk:brok',
+  d: { set: 'pc', order: 0, cells: {} },
+  c: 1,
+  a: 'seed',
+  l: [1, 'seed'],
+};
+
+const NEW_RECORD: VersionedRecord = {
+  k: 'blk:brok',
+  d: { order: 0, cells: { str: [14, 1, 'gm-a'] } },
+  c: 1,
+  a: 'gm-a',
+  l: [1, 'seed'],
+};
+
+const RECORDS = [mergeRecords(RECORD, NEW_RECORD)];
 
 function createHeldWriteCopy() {
   let metadata: JsonObject = {};
@@ -26,7 +42,6 @@ function createHeldWriteCopy() {
       writes += 1;
       activeWrites += 1;
       peakWrites = Math.max(peakWrites, activeWrites);
-
       const held = heldWrite;
       heldWrite = null;
       await held;
@@ -112,12 +127,10 @@ async function observeStoppedWrite(): Promise<void> {
   subject.holdWrite();
   subject.copy.pageHidden();
   await waitFor(() => subject.writes() === 1);
-
   const imported = subject.copy.writeImport(HIGHER, () => false);
   subject.copy.stop();
   subject.releaseWrite();
   await imported;
-
   console.log(
     JSON.stringify({
       event: 'stopped-write-import-complete',
@@ -133,11 +146,9 @@ async function observeLaterMacrotask(): Promise<void> {
   subject.holdWrite();
   subject.copy.pageHidden();
   await waitFor(() => subject.writes() === 1);
-
   const imported = subject.copy.writeImport(HIGHER, () => false);
   setTimeout(subject.releaseWrite, 0);
   await imported;
-
   console.log(
     JSON.stringify({
       event: 'later-macrotask-import-complete',
@@ -153,7 +164,6 @@ async function observeRoutineRerun(): Promise<void> {
   subject.copy.pageHidden();
   await waitFor(() => subject.writes() === 1);
   subject.copy.pageHidden();
-
   const imported = subject.copy.writeImport(HIGHER, () => false);
   subject.afterWrite(subject.holdWrite);
   subject.releaseWrite();
@@ -166,7 +176,6 @@ async function observeRoutineRerun(): Promise<void> {
 
   subject.releaseWrite();
   await imported;
-
   console.log(
     JSON.stringify({
       event: 'routine-rerun-import-complete',

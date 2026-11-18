@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { PARTY_LIMIT, PLAYER_NAME_MAX_LENGTH, type PartyEntry } from '@/core/access';
 import { dicePlaceSchema, shownValueSchema } from '@/core/dice-roll';
-import { fieldPatchTargetSchema } from '@/core/field-patch';
+import { fieldPatchTargetWireSchema, type FieldPatchTarget } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
 import { playerIdSchema, recordSchema } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
@@ -139,16 +139,22 @@ const repeatBlockDuplicateSchema = z.strictObject({
   sheetId: z.string(),
   sectionId: z.string(),
   instanceId: z.string(),
+  path: z
+    .array(z.string())
+    .min(2)
+    .refine((parts) => parts.length % 2 === 0)
+    .optional(),
   count: z.number(),
 });
 
-// AD-19: a token links to one sheet, or with `instanceId` to one repeat block of it, so a new link
-// replaces the token's old one. The engine checks the token id and that the target is live.
+// AD-19: a token links to one sheet, or with a repeat-scope path to one repeat block of it, and one
+// token cell. A new link replaces the token's old one. The engine checks the token id and target.
 const linkSetSchema = z.strictObject({
   type: z.literal('link-set'),
   tokenId: z.string(),
   sheetId: z.string(),
-  instanceId: z.string().nullable(),
+  path: z.array(z.string()).min(2).optional(),
+  cellId: z.string(),
 });
 
 // Tombstones the token's link. The sheet and the token stay.
@@ -212,7 +218,7 @@ const snapshotImportSchema = z.strictObject({
 const fieldPatchSchema = z.strictObject({
   type: z.literal('field-patch'),
   sheetId: z.string(),
-  target: fieldPatchTargetSchema,
+  target: fieldPatchTargetWireSchema,
   fieldId: z.string(),
   value: z.json(),
 });
@@ -224,6 +230,11 @@ const repeatBlockAddSchema = z.strictObject({
   sheetId: z.string(),
   sectionId: z.string(),
   instanceId: z.string(),
+  path: z
+    .array(z.string())
+    .min(2)
+    .refine((parts) => parts.length % 2 === 0)
+    .optional(),
 });
 
 // AD-19: the engine also removes the token links of the repeat block.
@@ -232,6 +243,11 @@ const repeatBlockDeleteSchema = z.strictObject({
   sheetId: z.string(),
   sectionId: z.string(),
   instanceId: z.string(),
+  path: z
+    .array(z.string())
+    .min(2)
+    .refine((parts) => parts.length % 2 === 0)
+    .optional(),
 });
 
 // AD-9, CAP-31: erases all room data in a new generation. The window asks its one confirmation
@@ -421,14 +437,15 @@ const rollOutcomeSchema = z.strictObject({
   ]),
 });
 
-// FR14: "Открыть лист" asks a window to show a sheet, and with `instanceId` to scroll to that
-// repeat block of it. The engine holds the request and sends it again after each projection until a
-// window acknowledges its id. A new press replaces it.
+// FR14: "Открыть лист" asks a window to show a sheet and its token cell. `path` names the repeat
+// block when the cell is inside one. The engine holds the request and sends it again after each
+// projection until a window acknowledges its id. A new press replaces it.
 const openSheetSchema = z.strictObject({
   t: z.literal('open-sheet'),
   id: idSchema,
   sheetId: idSchema,
-  instanceId: idSchema.nullable(),
+  path: z.array(idSchema).min(2).optional(),
+  cellId: idSchema,
 });
 
 // The window took the request: it selected the sheet's tab, or found no tab to select.
@@ -472,7 +489,13 @@ export type RoomCopyOutcome = z.infer<typeof roomCopyOutcomeSchema>;
 
 export type PartyList = z.infer<typeof partySchema>;
 
-export type Command = z.infer<typeof commandIntentSchema>;
+type WireCommand = z.infer<typeof commandIntentSchema>;
+
+type ReadonlyFieldPatchCommand = Omit<Extract<WireCommand, { type: 'field-patch' }>, 'target'> & {
+  target: FieldPatchTarget;
+};
+
+export type Command = Exclude<WireCommand, { type: 'field-patch' }> | ReadonlyFieldPatchCommand;
 
 export type CommandMessage = z.infer<typeof commandSchema>;
 
@@ -521,13 +544,21 @@ export type ProjectionMessage = z.infer<typeof projectionSchema>;
 
 export type DeltaMessage = z.infer<typeof deltaSchema>;
 
-export type WindowMessage = z.infer<typeof windowMessageSchema>;
+type WireWindowMessage = z.infer<typeof windowMessageSchema>;
+
+type PublicCommandMessage = Omit<Extract<WireWindowMessage, { t: 'command' }>, 'command'> & {
+  command: Command;
+};
+
+export type WindowMessage = Exclude<WireWindowMessage, { t: 'command' }> | PublicCommandMessage;
 
 export type EngineMessage = z.infer<typeof engineMessageSchema>;
 
 export type UiMessageFailure = 'invalid-message';
 
-export function parseWindowMessage(candidate: JsonValue): Result<WindowMessage, UiMessageFailure> {
+export function parseWindowMessage(
+  candidate: JsonValue | WindowMessage,
+): Result<WindowMessage, UiMessageFailure> {
   const parsed = windowMessageSchema.safeParse(candidate);
 
   return parsed.success ? ok(parsed.data) : err('invalid-message');

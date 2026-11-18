@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { z } from 'zod';
 
 import { encodePreset, parsePresetStructure, type Preset } from '@/core/preset';
+import { presetMoves } from '@/core/preset-migrate';
 import { recordSchema, templateIdSchema, type VersionedRecord } from '@/core/records';
 import { importSnapshot } from '@/core/snapshot-import';
 import { encodeSnapshotFile } from '@/core/snapshot-file';
@@ -13,6 +14,8 @@ import {
   EMPTY_DOCUMENT,
   fromPreset,
   locate,
+  restoreOriginRepeatIds,
+  serializeOriginRepeatIds,
   toPreset,
   WINDOW_UID,
   type BuilderDocument,
@@ -82,6 +85,9 @@ const draftSchema = z.object({
   origin: z.json().nullable(),
   name: z.string(),
   records: z.array(recordSchema).optional(),
+  originRepeatIds: z
+    .array(z.object({ path: z.array(z.number().int().nonnegative()), id: z.string() }))
+    .optional(),
 });
 
 const BUILDER_AUTHOR = 'builder';
@@ -168,7 +174,7 @@ export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
     },
     open: (preset, origin, name) => {
       apply(() => {
-        const document = fromPreset(preset);
+        const document = fromPreset(preset, origin ?? undefined);
 
         return {
           step: { document, origin, name, records: [] },
@@ -178,7 +184,7 @@ export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
     },
     replacePreset: (preset, origin, name) => {
       apply((step) => {
-        const document = fromPreset(preset);
+        const document = fromPreset(preset, origin ?? undefined);
 
         return {
           step: {
@@ -229,9 +235,10 @@ export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
 
         const record = recordSchema.parse({
           k: sheetKey(sheetId),
-          d: { set: setId, order },
+          d: { set: setId, order, cells: {} },
           c: 1,
           a: BUILDER_AUTHOR,
+          l: [1, BUILDER_AUTHOR],
         });
 
         return {
@@ -319,9 +326,11 @@ function parseDraft(text: string, blank: BuilderStep): BuilderStep {
     return blank;
   }
 
+  const origin = draft.data.origin === null ? null : parsePresetStructure(draft.data.origin);
+
   return {
-    document: fromPreset(preset),
-    origin: draft.data.origin === null ? null : parsePresetStructure(draft.data.origin),
+    document: restoreOriginRepeatIds(fromPreset(preset), draft.data.originRepeatIds ?? []),
+    origin,
     name: draft.data.name,
     records: draft.data.records ?? [],
   };
@@ -340,6 +349,7 @@ function writeDraft(storage: DraftStorage | null, step: BuilderStep): DraftStatu
         origin: step.origin,
         name: step.name,
         records: step.records,
+        originRepeatIds: serializeOriginRepeatIds(step.document),
       }),
     );
 
@@ -359,6 +369,26 @@ function reconcileRecords(
   }
 
   const file = encodeSnapshotFile(new Map(records.map((record) => [record.k, record])), before);
+
+  for (const sheet of file.sheets) {
+    const previous = before.templates.find((template) => template.id === (sheet.set ?? sheet.id));
+
+    const next = after.templates.find(
+      (template) =>
+        template.id === previous?.id &&
+        (template.repeat !== undefined) === (previous?.repeat !== undefined),
+    );
+
+    if (previous === undefined || next === undefined) continue;
+    const moves = presetMoves(previous, next);
+
+    for (const block of sheet.blocks) {
+      const scope = block.path[0];
+      const target = scope === undefined ? null : moves.sectionOf(scope);
+
+      if (target !== null) block.path = [target, ...block.path.slice(1)];
+    }
+  }
 
   const imported = importSnapshot(
     file,

@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import type { Key, ReactNode } from 'react';
 import { Button, Tab, TabList, Tabs } from 'react-aria-components';
 
+import type { RenderedTab } from '@/core/preset';
 import { copy } from '@/copy';
 import { Banner } from '@/ui/primitives/banner';
 import type { BannerMessage } from '@/ui/primitives/banner';
@@ -21,14 +22,44 @@ const SIDEBAR_TAB_CLASS =
   'touch-target inline-flex min-w-0 w-full items-center gap-1 rounded-md px-2 text-start text-text-muted -outline-offset-2 data-hovered:text-text [&[data-hovered]:not([data-selected])]:bg-fill data-selected:bg-fill-strong data-selected:font-medium data-selected:text-text';
 
 const SIDEBAR_SCROLLER_CLASS =
-  'min-h-0 flex-1 overflow-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+  'min-h-0 flex-1 overflow-auto p-2 scrollbar-none [&::-webkit-scrollbar]:hidden';
 
 const SIDEBAR_FLOW_CLASS = 'flex min-h-full flex-col gap-px';
 
 type SidebarSettings = { id: string; label: string; accessibleName: string };
 
-export function templateTabKey(index: number): string {
-  return `template-tab-${index}`;
+type TemplateTabIdentity = Pick<RenderedTab, 'sourceIndex' | 'block'>;
+
+export function templateTabKey(index: number): string;
+export function templateTabKey(tab: TemplateTabIdentity): string;
+export function templateTabKey(value: number | TemplateTabIdentity): string {
+  if (isLegacyTemplateTabKeyInput(value)) {
+    return `template-tab-${value}`;
+  }
+
+  const block = value.block;
+
+  return block === null
+    ? `template-tab-${value.sourceIndex}-root`
+    : `template-tab-${value.sourceIndex}-block-${encodeURIComponent(
+        block.scopeId,
+      )}-${encodeURIComponent(block.instanceId)}`;
+}
+
+function isLegacyTemplateTabKeyInput(value: number | TemplateTabIdentity): value is number {
+  return Number.isInteger(value);
+}
+
+export function templateTabSourceIndexFromKey(key: string): number | null {
+  const prefix = 'template-tab-';
+
+  if (!key.startsWith(prefix)) {
+    return null;
+  }
+
+  const sourceIndex = Number(key.slice(prefix.length).split('-')[0]);
+
+  return Number.isInteger(sourceIndex) && sourceIndex >= 0 ? sourceIndex : null;
 }
 
 export function templateIndexFromKey(key: string): number | null {
@@ -57,6 +88,7 @@ export type WindowFrameLayout = {
   selectedTab: string | null;
   onSelectTab: (id: string) => void;
   panelLabel?: string;
+  contentKey?: string;
   header?: ReactNode;
   content: ReactNode;
   frameClassName?: string;
@@ -67,49 +99,59 @@ type WindowFrameProps = { layout: WindowFrameLayout; banner?: BannerMessage };
 // AD-26: the only frame for the room window and both previews. It owns the sidebar, banner, tab
 // row and content area; callers provide only the navigation model and the selected content.
 export function WindowFrame({ layout, banner }: WindowFrameProps): ReactNode {
-  const content =
-    layout.tabs.length > 1 ? (
-      <Tabs
-        key={layout.selectedSidebarEntry}
-        className="flex min-h-0 flex-1 flex-col"
-        selectedKey={layout.selectedTab ?? undefined}
-        onSelectionChange={(key: Key) => {
-          layout.onSelectTab(String(key));
-        }}
-      >
-        <div role="tabpanel" className="flex min-h-0 flex-1 flex-col overflow-auto">
-          {layout.header === undefined ? null : (
-            <div className="shrink-0 p-3 pb-0">{layout.header}</div>
-          )}
-          <TabBar tabs={layout.tabs} />
-          {layout.selectedTab === null ? null : (
-            <div
-              key={`${layout.selectedSidebarEntry}:${layout.selectedTab}`}
-              id={layout.selectedTab}
-              className={MULTI_TAB_CONTENT_CLASS}
-            >
-              {layout.content}
-            </div>
-          )}
-        </div>
-      </Tabs>
-    ) : layout.selectedTab === null ? (
-      <div key={layout.selectedSidebarEntry} role="tabpanel" className={CONTENT_CLASS}>
-        {layout.header}
-        {layout.content}
+  const hasAddAction = layout.tabs.some((tab) => tab.addScopeId !== undefined);
+  const showTabRow = layout.tabs.length > 1 || hasAddAction;
+
+  const content = showTabRow ? (
+    <Tabs
+      key={layout.selectedSidebarEntry}
+      className="flex min-h-0 flex-1 flex-col"
+      selectedKey={layout.selectedTab ?? undefined}
+      onSelectionChange={(key: Key) => {
+        const tab = layout.tabs.find((candidate) => candidate.id === String(key));
+
+        if (tab?.addScopeId !== undefined) {
+          return;
+        }
+
+        layout.onSelectTab(String(key));
+      }}
+    >
+      <div role="tabpanel" className="flex min-h-0 flex-1 flex-col overflow-auto">
+        {layout.header === undefined ? null : (
+          <div className="shrink-0 p-3 pb-0">{layout.header}</div>
+        )}
+        <TabBar tabs={layout.tabs} onAddTab={layout.onSelectTab} />
+        {layout.selectedTab === null ? null : (
+          <div
+            key={
+              layout.contentKey ?? `${layout.selectedSidebarEntry}:${layout.selectedTab ?? 'none'}`
+            }
+            id={layout.selectedTab}
+            className={MULTI_TAB_CONTENT_CLASS}
+          >
+            {layout.content}
+          </div>
+        )}
       </div>
-    ) : (
-      <div
-        key={layout.selectedSidebarEntry}
-        id={layout.selectedTab}
-        role="tabpanel"
-        aria-label={layout.panelLabel ?? layout.tabs[0]?.label}
-        className={CONTENT_CLASS}
-      >
-        {layout.header}
-        {layout.content}
-      </div>
-    );
+    </Tabs>
+  ) : layout.selectedTab === null ? (
+    <div key={layout.selectedSidebarEntry} role="tabpanel" className={CONTENT_CLASS}>
+      {layout.header}
+      {layout.content}
+    </div>
+  ) : (
+    <div
+      key={layout.selectedSidebarEntry}
+      id={layout.selectedTab}
+      role="tabpanel"
+      aria-label={layout.panelLabel ?? layout.tabs[0]?.label}
+      className={CONTENT_CLASS}
+    >
+      {layout.header}
+      {layout.content}
+    </div>
+  );
 
   return (
     <main
@@ -199,7 +241,7 @@ function Sidebar({ entries, selected, onSelect, onAdd, settings }: SidebarProps)
           key={`divider:${section.id}`}
           aria-hidden
           style={{ order }}
-          className="mx-2 my-2 h-px shrink-0 bg-hairline"
+          className="m-2 h-px shrink-0 bg-hairline"
         />,
       );
       order += 1;

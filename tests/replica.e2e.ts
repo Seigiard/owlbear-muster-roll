@@ -1,9 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-
 import type { JsonValue } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
-
 import { openBackground, presetRecord, STORAGE_PREFIX } from './support/room';
 
 const CHANNEL = 'app.muster-roll/ui';
@@ -11,19 +9,21 @@ const LOCAL_SAVE_FAILED = 'Не удалось сохранить в брауз�
 
 // One sheet set, so a `sheet-create` names a sheet set the engine knows.
 const PRESET_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] }] }],
     },
   ],
 });
 
-type Projection = { records: VersionedRecord[]; notices: string[] };
+type Projection = {
+  records: VersionedRecord[];
+  notices: string[];
+};
 
 type WireMessage = {
   t: string;
@@ -50,13 +50,11 @@ test('the window leaves the loading text once its own client has the projection'
 }) => {
   // #given
   await page.goto('/index.html');
-  await seedStorage(page, 'sheet:bad', '{not json');
-
+  await seedStorage(page, 'blk:bad', '{not json');
   // #when
   await openBackground(context);
   // Only the projection delivered to the window's own client can raise this banner.
   await expect(page.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
-
   // #then: a room with no preset shows the GM the upload instead.
   await expect(page.getByRole('button', { name: 'Загрузить пресет' })).toBeVisible();
   await expect(page.getByText('Загрузка…')).toHaveCount(0);
@@ -65,12 +63,10 @@ test('the window leaves the loading text once its own client has the projection'
 test('a GM start puts the persisted records in the projection', async ({ page, context }) => {
   // #given
   await page.goto('/index.html');
-  await seedStorage(page, 'sheet:saved', JSON.stringify(sheet('saved')));
+  await seedStorage(page, 'blk:saved', JSON.stringify(sheet('saved')));
   await openBackground(context);
-
   // #when
   const projection = await requestProjection(page, 'load');
-
   // #then
   expect(projection).toEqual({ records: [sheet('saved')], notices: [] });
 });
@@ -78,12 +74,10 @@ test('a GM start puts the persisted records in the projection', async ({ page, c
 test('a corrupt stored record is skipped and shows the banner', async ({ page, context }) => {
   // #given
   await page.goto('/index.html');
-  await seedStorage(page, 'sheet:bad', '{not json');
+  await seedStorage(page, 'blk:bad', '{not json');
   await openBackground(context);
-
   // #when
   const projection = await requestProjection(page, 'corrupt');
-
   // #then
   expect(projection).toEqual({ records: [], notices: ['local-save-failed'] });
   await expect(page.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
@@ -96,11 +90,9 @@ test('a player client refuses a command and persists nothing', async ({ page, co
   await openBackground(context, '/background.html?mock-role=PLAYER');
   await requestProjection(page, 'player-ready');
   await startRecordingWire(page);
-
   // #when
   await sendCommand(page, 'player-command');
   await expect.poll(() => recordedTypes(page)).toContain('command-rejected');
-
   // #then
   expect({
     sheets: await projectedSheets(page, 'player-check'),
@@ -115,11 +107,9 @@ test('a command becomes a record in storage and a delta on the wire', async ({ p
   await openBackground(context);
   await requestProjection(page, 'before-command');
   await startRecordingWire(page);
-
   // #when
   await sendCommand(page, 'first-command');
   await expect.poll(() => recordedTypes(page)).toContain('delta');
-
   // #then
   expect(await storedKeys(page)).toHaveLength(1);
 });
@@ -132,10 +122,8 @@ test('a window that loads before the background page still gets its projection',
   await page.goto('/index.html');
   await startRecordingWire(page);
   await expect.poll(() => countRecorded(page, 'projection-request')).toBeGreaterThanOrEqual(2);
-
   // #when
   await openBackground(context);
-
   // #then
   await expect.poll(() => countRecorded(page, 'projection')).toBeGreaterThanOrEqual(1);
 });
@@ -146,7 +134,6 @@ test('a whole record in a command has no effect', async ({ page, context }) => {
   await seedPreset(page);
   await openBackground(context);
   await requestProjection(page, 'before-whole');
-
   // #when
   await postMessage(page, {
     t: 'command',
@@ -155,14 +142,14 @@ test('a whole record in a command has no effect', async ({ page, context }) => {
       type: 'sheet-create',
       sheetId: 'z',
       set: 'pc',
-      k: 'sheet:z',
+      k: 'blk:z',
       d: null,
       c: 9,
       a: 'x',
+      l: [1, 'seed'],
     },
   });
   await page.waitForTimeout(200);
-
   // #then
   expect(await projectedSheets(page, 'after-whole')).toEqual([]);
 });
@@ -173,15 +160,13 @@ test('a command delivered twice has one effect', async ({ page, context }) => {
   await seedPreset(page);
   await openBackground(context);
   await requestProjection(page, 'before-echo');
-
   // #when
   await sendCommand(page, 'echoed');
   await sendCommand(page, 'echoed');
-  await expect.poll(() => projectedSheets(page, 'echo-check')).toEqual(['sheet:echoed']);
+  await expect.poll(() => projectedSheets(page, 'echo-check')).toEqual(['blk:echoed']);
   await page.waitForTimeout(200);
-
   // #then
-  expect(await projectedSheets(page, 'echo-final')).toEqual(['sheet:echoed']);
+  expect(await projectedSheets(page, 'echo-final')).toEqual(['blk:echoed']);
 });
 
 test('a window closed and opened again shows the same records', async ({ page, context }) => {
@@ -190,16 +175,13 @@ test('a window closed and opened again shows the same records', async ({ page, c
   await seedPreset(page);
   await openBackground(context);
   await sendCommand(page, 'reopen');
-  await expect.poll(() => projectedSheets(page, 'reopen-check')).toEqual(['sheet:reopen']);
+  await expect.poll(() => projectedSheets(page, 'reopen-check')).toEqual(['blk:reopen']);
   await page.close();
-
   // #when
   const reopened = await context.newPage();
-
   await reopened.goto('/index.html');
-
   // #then
-  expect(await projectedSheets(reopened, 'reopen-final')).toEqual(['sheet:reopen']);
+  expect(await projectedSheets(reopened, 'reopen-final')).toEqual(['blk:reopen']);
 });
 
 test('a background restart over the same storage shows the same records', async ({
@@ -209,17 +191,13 @@ test('a background restart over the same storage shows the same records', async 
   // #given
   await page.goto('/index.html');
   await seedPreset(page);
-
   const background = await openBackground(context);
-
   await sendCommand(page, 'restart');
-  await expect.poll(() => projectedSheets(page, 'restart-check')).toEqual(['sheet:restart']);
-
+  await expect.poll(() => projectedSheets(page, 'restart-check')).toEqual(['blk:restart']);
   // #when
   await background.reload();
-
   // #then
-  expect(await projectedSheets(page, 'restart-final')).toEqual(['sheet:restart']);
+  expect(await projectedSheets(page, 'restart-final')).toEqual(['blk:restart']);
 });
 
 test('a failed write keeps the value and shows the banner across the content column as a live region', async ({
@@ -229,24 +207,20 @@ test('a failed write keeps the value and shows the banner across the content col
   // #given
   await page.goto('/index.html');
   await seedPreset(page);
-
   const background = await openBackground(context);
-
   await requestProjection(page, 'before-failure');
   await background.evaluate(() => {
     window.mockPlatform.setFailingStorageOperations(['write']);
   });
-
   // #when
   await sendCommand(page, 'failed-write');
   await expect(page.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
-
   // #then
   expect({
     sheets: await projectedSheets(page, 'after-failure'),
     width: (await page.getByRole('status').boundingBox())?.width,
   }).toEqual({
-    sheets: ['sheet:failed-write'],
+    sheets: ['blk:failed-write'],
     width: (await page.getByRole('tabpanel').boundingBox())?.width,
   });
 });
@@ -255,9 +229,7 @@ test('the banner goes when the notices clear', async ({ page }) => {
   // #given
   await page.goto('/index.html');
   await expect(page.getByRole('tabpanel')).toBeVisible();
-
   const nonce = await firstRequestNonce(page);
-
   await postMessage(page, {
     t: 'projection',
     nonce,
@@ -278,7 +250,6 @@ test('the banner goes when the notices clear', async ({ page }) => {
     roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null },
   });
   await expect(page.getByRole('status')).toHaveText(LOCAL_SAVE_FAILED);
-
   // #when
   await postMessage(page, {
     t: 'delta',
@@ -297,7 +268,6 @@ test('the banner goes when the notices clear', async ({ page }) => {
     },
     roomCopy: { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null },
   });
-
   // #then
   await expect(page.getByRole('status')).toBeEmpty();
 });
@@ -305,7 +275,6 @@ test('the banner goes when the notices clear', async ({ page }) => {
 test('the window and background load with no console error', async ({ page, context }) => {
   // #given
   const errors: string[] = [];
-
   page.on('console', (message) => {
     if (message.type() === 'error') {
       errors.push(message.text());
@@ -314,22 +283,21 @@ test('the window and background load with no console error', async ({ page, cont
   page.on('pageerror', (error) => {
     errors.push(error.message);
   });
-
   // #when
   await page.goto('/index.html');
   await openBackground(context);
   await requestProjection(page, 'no-errors');
-
   // #then
   expect(errors).toEqual([]);
 });
 
 function sheet(id: string): VersionedRecord {
   return {
-    k: `sheet:${id}`,
-    d: { set: 'pc', order: 0 },
+    k: `blk:${id}`,
+    d: { set: 'pc', order: 0, cells: {} },
     c: 1,
     a: 'mock-connection',
+    l: [1, 'seed'],
   };
 }
 
@@ -346,7 +314,7 @@ async function seedStorage(page: Page, key: string, value: string): Promise<void
 async function storedKeys(page: Page): Promise<string[]> {
   return page.evaluate(
     (prefix) => Object.keys(localStorage).filter((key) => key.startsWith(prefix)),
-    `${STORAGE_PREFIX}sheet:`,
+    `${STORAGE_PREFIX}blk:`,
   );
 }
 
@@ -365,7 +333,6 @@ async function postMessage(page: Page, message: JsonValue): Promise<void> {
     ([channel, text]) => {
       // SAFETY: the text is the JSON.stringify of a JsonValue, one line below.
       const data = JSON.parse(text) as JsonValue;
-
       void window.mockPlatform.broadcast.sendMessage(channel, data, { destination: 'LOCAL' });
     },
     [CHANNEL, JSON.stringify(message)] as const,
@@ -430,18 +397,16 @@ let projectionCounter = 0;
 // The keys of the live `sheet:` records in the projection.
 async function projectedSheets(page: Page, nonce: string): Promise<string[]> {
   projectionCounter += 1;
-
   const projection = await requestProjection(page, `${nonce}-${projectionCounter}`);
 
   return projection.records
-    .filter((record) => record.k.startsWith('sheet:') && record.d !== null)
+    .filter((record) => record.k.startsWith('blk:') && record.d !== null)
     .map((record) => record.k);
 }
 
 async function startRecordingWire(page: Page): Promise<void> {
   await page.evaluate((channel) => {
     window.recordedWire = [];
-
     window.mockPlatform.broadcast.onMessage(channel, (event) => {
       // SAFETY: the test reads only the type tag of each message.
       window.recordedWire.push((event.data as WireMessage).t);

@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type LinkData, type VersionedRecord } from '@/core/records';
@@ -20,7 +19,6 @@ import {
 
 // Long enough for a removal to reach the room through the paced queues if it were sent.
 const SETTLE_MS = 40;
-
 const GHOST = 'ghost-gm';
 const UNLINK_ITEM = 'app.muster-roll/unlink-sheet';
 const INITIAL = { n: 0, a: '' };
@@ -34,25 +32,49 @@ const MENU_COPY = {
 
 // "pc" links whole sheets, and "npc" links its repeat blocks.
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
         {
           sections: [
-            { repeat: true, tokens: true, rows: [[{ kind: 'field', type: 'text', id: 'mob' }]] },
+            {
+              repeat: { id: 'mob', nameField: 'mob' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'mob' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
           ],
         },
       ],
@@ -61,15 +83,27 @@ const PRESET: Preset = {
 };
 
 // The link data of "Брок" and of the NPC "Скелет".
-const BROK: LinkData = { s: 'brok' };
-const SKEL: LinkData = { s: 'npc', i: 'sk1' };
+const BROK: LinkData = { s: 'brok', c: 'token' };
+const SKEL: LinkData = { s: 'npc', path: ['mob', 'sk1'], c: 'token' };
 
 // "Брок" has the tokens t1 and t2, "Скелет" has t3.
 const SEEDED: readonly VersionedRecord[] = [
   { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
-  { k: 'sheet:brok', d: { set: 'pc', order: 0 }, c: 1, a: 'seed' },
-  { k: 'row:brok:name', d: { name: 'Брок' }, c: 1, a: 'seed' },
-  { k: 'rep:npc:mob:sk1', d: { order: 0, cells: { mob: 'Скелет' } }, c: 1, a: 'seed' },
+  { k: 'blk:brok', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'seed', l: [1, 'seed'] },
+  {
+    k: 'blk:brok',
+    d: { order: 0, cells: { name: ['Брок', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
+  {
+    k: 'blk:npc:mob:sk1',
+    d: { order: 0, cells: { mob: ['Скелет', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  },
   { k: 'link:t1', d: BROK, c: 1, a: 'seed' },
   { k: 'link:t2', d: BROK, c: 1, a: 'seed' },
   { k: 'link:t3', d: SKEL, c: 1, a: 'seed' },
@@ -97,30 +131,23 @@ describe('a token deleted from the open scene', () => {
     // #given
     const room = openRoom(['t1']);
     const client = await startClient(room, 'gm-a');
-
     // #when
     client.platform.removeSceneItems(['t1']);
     await waitUntil(() => committed(room, 'gm-a').length === 1);
     await pause(SETTLE_MS);
-
     // #then
     expect(client.local.filter((message) => Object(message).t === 'command-done').length).toBe(0);
   });
-
   test('tombstones its link through the GM command path: saved, sent, shown, menu updated', async () => {
     // #given
     const room = openRoom(['t1', 't2', 't3', 'map']);
     const client = await startClient(room, 'gm-a');
-
     await waitUntil(() => itemIds(client).includes(UNLINK_ITEM));
-
     // #when
     client.platform.removeSceneItems(['t1']);
     await waitUntil(() => committed(room, 'gm-a').length === 1);
-
     // #then
     const tombstone: VersionedRecord = { k: 'link:t1', d: null, c: 2, a: 'gm-a' };
-
     await waitUntil(() => shown(client, 'link:t1')?.d === null);
     expect({
       sent: committed(room, 'gm-a'),
@@ -139,16 +166,13 @@ describe('a token deleted from the open scene', () => {
       ],
     });
   });
-
   test('tombstones the link of every linked token deleted at once', async () => {
     // #given
     const room = openRoom(['t1', 't2', 't3', 'map']);
     const client = await startClient(room, 'gm-a');
-
     // #when
     client.platform.removeSceneItems(['t1', 't3', 'map']);
     await waitUntil(() => committed(room, 'gm-a').length === 2);
-
     // #then
     expect({
       sent: committed(room, 'gm-a').map((record) => [record.k, record.d]),
@@ -161,23 +185,19 @@ describe('a token deleted from the open scene', () => {
       kept: BROK,
     });
   });
-
   test('keeps the link of a token never seen in the open scene, as on another scene', async () => {
     // #given: t2 and t3 are not in this scene.
     const room = openRoom(['t1', 'map']);
     const client = await startClient(room, 'gm-a');
-
     // #when
     client.platform.removeSceneItems(['map']);
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sent: committed(room, 'gm-a'),
       links: ['t1', 't2', 't3'].map((tokenId) => storedRecord(client, `link:${tokenId}`)?.d),
     }).toEqual({ sent: [], links: [BROK, BROK, SKEL] });
   });
-
   test('keeps every link when the scene changes to another one and back', async () => {
     // #given
     const room = openRoom(['t1', 't2', 't3']);
@@ -204,23 +224,18 @@ describe('a token deleted from the open scene', () => {
       links: ['t1', 't2', 't3'].map((tokenId) => storedRecord(client, `link:${tokenId}`)?.d),
     }).toEqual({ sent: [], links: [BROK, BROK, SKEL] });
   });
-
   test('removes nothing while the scene is not ready, and counts removals once a ready list is seen', async () => {
     // #given: the scene is still loading when the engine starts.
     const room = openRoom(['t1', 't2', 't3'], false);
     const client = await startClient(room, 'gm-a');
-
     client.platform.removeSceneItems(['t1']);
     await pause(SETTLE_MS);
-
     const whileLoading = committed(room, 'gm-a');
-
     // #when
     client.platform.setSceneReady(true);
     await pause(SETTLE_MS);
     client.platform.removeSceneItems(['t2']);
     await waitUntil(() => committed(room, 'gm-a').length === 1);
-
     // #then
     expect({
       whileLoading,
@@ -228,19 +243,15 @@ describe('a token deleted from the open scene', () => {
       t1: storedRecord(client, 'link:t1')?.d,
     }).toEqual({ whileLoading: [], sent: ['link:t2'], t1: BROK });
   });
-
   test('leaves the link removed when the token comes back, as with an Owlbear undo', async () => {
     // #given
     const room = openRoom(['t1']);
     const client = await startClient(room, 'gm-a');
-
     client.platform.removeSceneItems(['t1']);
     await waitUntil(() => committed(room, 'gm-a').length === 1);
-
     // #when
     client.platform.addSceneItems(['t1']);
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sent: committed(room, 'gm-a').length,
@@ -250,20 +261,16 @@ describe('a token deleted from the open scene', () => {
       link: null,
     });
   });
-
   test('does nothing on a player client, which never reads the scene', async () => {
     // #given: the GM's link reached the player through a catch-up answer.
     const room = openRoom(['t1']);
     const gm = await startClient(room, 'gm-a');
     const player = await startClient(room, 'player-a', { role: 'PLAYER' });
-
     await waitUntil(() => sameData(shown(player, 'link:t1'), BROK));
     gm.stop();
-
     // #when
     player.platform.removeSceneItems(['t1']);
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sceneCalls: player.sceneCalls(),
@@ -271,36 +278,28 @@ describe('a token deleted from the open scene', () => {
       link: shown(player, 'link:t1')?.d,
     }).toEqual({ sceneCalls: 0, sent: [], link: BROK });
   });
-
   test('does not show the unlink failure notice for an unrelated rejected command', async () => {
     // #given
     const room = openRoom(['t1']);
     const player = await startClient(room, 'player-a', { role: 'PLAYER' });
-
     // #when
     const id = send(player, { type: 'sheet-create', sheetId: 'late', set: 'pc' });
     await waitUntil(() => player.rejections.includes(id));
-
     // #then
     expect(player.platform.shownNotifications()).toEqual([]);
   });
-
   test('starts to watch when a player becomes GM, with no removal from before', async () => {
     // #given
     const room = openRoom(['t1', 't2']);
     const client = await startClient(room, 'client-a', { role: 'PLAYER' });
-
     client.platform.removeSceneItems(['t1']);
     client.platform.setRole('GM');
     await waitUntil(() => isLive(client));
     await pause(SETTLE_MS);
-
     const beforeRemoval = committed(room, 'client-a');
-
     // #when
     client.platform.removeSceneItems(['t2']);
     await waitUntil(() => committed(room, 'client-a').length === 1);
-
     // #then
     expect({
       beforeRemoval,
@@ -315,16 +314,13 @@ describe('the watch', () => {
     // #given
     const room = openRoom(['t1', 't2']);
     const client = await startClient(room, 'gm-a');
-
     client.platform.setRole('PLAYER');
     await waitUntil(() => client.store.$sync.get().role === 'PLAYER');
     client.platform.setRole('GM');
     await waitUntil(() => isLive(client) && client.store.$sync.get().role === 'GM');
-
     // #when
     client.platform.removeSceneItems(['t1']);
     await pause(SETTLE_MS);
-
     // #then
     expect(storedRecord(client, 'link:t1')).toEqual({
       k: 'link:t1',
@@ -333,34 +329,24 @@ describe('the watch', () => {
       a: 'gm-a',
     });
   });
-
   test('stops, with the removals it held, when the GM becomes a player', async () => {
     // #given: a catch-up held open keeps the removal of t1 waiting.
     const room = openRoom(['t1', 't2']);
-
     room.join(GHOST, 'GM');
-
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 300 } });
-
     client.platform.removeSceneItems(['t1']);
     await pause(SETTLE_MS);
-
     // #when
     client.platform.setRole('PLAYER');
     await pause(SETTLE_MS);
-
     const calls = client.sceneCalls();
-
     client.platform.removeSceneItems(['t2']);
-
     const callsAsPlayer = client.sceneCalls() - calls;
-
     // A GM again, alone, so its catch-up ends at once: the removal held before is gone.
     room.room.leave(GHOST);
     client.platform.setRole('GM');
     await waitUntil(() => isLive(client));
     await pause(SETTLE_MS);
-
     // #then
     expect({
       callsAsPlayer,
@@ -368,20 +354,15 @@ describe('the watch', () => {
       links: [storedRecord(client, 'link:t1')?.d, storedRecord(client, 'link:t2')?.d],
     }).toEqual({ callsAsPlayer: 0, sent: [], links: [BROK, BROK] });
   });
-
   test('stops with the engine', async () => {
     // #given
     const room = openRoom(['t1']);
     const client = await startClient(room, 'gm-a');
-
     // #when
     client.stop();
-
     const calls = client.sceneCalls();
-
     client.platform.removeSceneItems(['t1']);
     await pause(SETTLE_MS);
-
     // #then
     expect({ calls: client.sceneCalls() - calls, sent: committed(room, 'gm-a') }).toEqual({
       calls: 0,
@@ -395,7 +376,6 @@ describe('during catch-up', () => {
     // #given: a GM in the party that never answers holds the catch-up open, and this client learns
     // of the link to t1 only after t1 was deleted.
     const room = openRoom(['t1', 't2']);
-
     room.join(GHOST, 'GM');
 
     const client = await startClient(room, 'gm-a', {
@@ -408,11 +388,8 @@ describe('during catch-up', () => {
     post(room, GHOST, commit([{ k: 'link:t1', d: BROK, c: 1, a: 'seed' }]));
     await waitUntil(() => sameData(storedRecord(client, 'link:t1'), BROK));
     await pause(SETTLE_MS);
-
     const during = { state: client.store.$sync.get().state, sent: committed(room, 'gm-a') };
-
     await waitUntil(() => committed(room, 'gm-a').length === 1);
-
     // #then
     expect({
       during,
@@ -424,23 +401,17 @@ describe('during catch-up', () => {
       kept: BROK,
     });
   });
-
   test('sends nothing and shows nothing when another GM cleared the link meanwhile', async () => {
     // #given
     const room = openRoom(['t1']);
-
     room.join(GHOST, 'GM');
-
     const client = await startClient(room, 'gm-a', { timing: { catchUpTimeoutMs: 300 } });
-
     client.platform.removeSceneItems(['t1']);
     post(room, GHOST, commit([{ k: 'link:t1', d: null, c: 2, a: GHOST }]));
     await waitUntil(() => storedRecord(client, 'link:t1')?.d === null);
-
     // #when
     await waitUntil(() => client.store.$sync.get().state === 'live');
     await pause(SETTLE_MS);
-
     // #then
     expect({
       sent: committed(room, 'gm-a'),
@@ -462,18 +433,21 @@ describe('two GM clients', () => {
     const room = openRoom(['t1']);
     const first = await startClient(room, 'gm-a');
     const second = await startClient(room, 'gm-b');
-
     await waitUntil(() => isLive(second));
     first.platform.removeSceneItems(['t1']);
     await waitUntil(() => storedRecord(second, 'link:t1')?.d === null);
     first.platform.addSceneItems(['map']);
     await pause(SETTLE_MS);
-
     // #when
-    send(second, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
+    send(second, {
+      type: 'link-set',
+      tokenId: 't1',
+      sheetId: 'npc',
+      path: ['mob', 'sk1'],
+      cellId: 'token',
+    });
     await waitUntil(() => (storedRecord(second, 'link:t1')?.c ?? 0) >= 3);
     await pause(SETTLE_MS);
-
     // #then
     expect({
       first: storedRecord(first, 'link:t1')?.d,
@@ -485,47 +459,38 @@ describe('two GM clients', () => {
       cleared: [{ k: 'link:t1', d: null, c: 4, a: 'gm-a' }],
     });
   });
-
   test('forgets the oldest deletion after the bounded scene history fills', async () => {
     // #given
     const removed = Array.from({ length: 1025 }, (_, index) => `old-${index}`);
     const room = openRoom([...removed, 'anchor']);
     const oldest: VersionedRecord = { k: 'link:old-0', d: BROK, c: 1, a: 'seed' };
     const first = await startClient(room, 'gm-a', { seeded: [...SEEDED, oldest] });
-
     room.join(GHOST, 'GM');
     await pause(SETTLE_MS);
     first.platform.removeSceneItems(removed);
     await pause(SETTLE_MS);
-
     const relinked: VersionedRecord = { ...oldest, c: 3, a: GHOST };
-
     // #when
     post(room, GHOST, commit([relinked]));
     await waitUntil(() => (storedRecord(first, oldest.k)?.c ?? 0) >= 3);
     await pause(SETTLE_MS);
-
     // #then
     expect(storedRecord(first, oldest.k)).toEqual(relinked);
   });
-
   test('remembers the oldest deletion at the exact scene-history limit', async () => {
     // #given
     const removed = Array.from({ length: 1024 }, (_, index) => `old-${index}`);
     const room = openRoom([...removed, 'anchor']);
     const oldest: VersionedRecord = { k: 'link:old-0', d: BROK, c: 1, a: 'seed' };
     const first = await startClient(room, 'gm-a', { seeded: [...SEEDED, oldest] });
-
     room.join(GHOST, 'GM');
     await pause(SETTLE_MS);
     first.platform.removeSceneItems(removed);
     await pause(SETTLE_MS);
-
     // #when
     post(room, GHOST, commit([{ ...oldest, c: 3, a: GHOST }]));
     await waitUntil(() => (storedRecord(first, oldest.k)?.c ?? 0) >= 3);
     await pause(SETTLE_MS);
-
     // #then
     expect(storedRecord(first, oldest.k)).toEqual({
       k: oldest.k,
@@ -534,24 +499,26 @@ describe('two GM clients', () => {
       a: 'gm-a',
     });
   });
-
   test('a token back in the scene, as after an undo, can be linked again', async () => {
     // #given
     const room = openRoom(['t1']);
     const first = await startClient(room, 'gm-a');
     const second = await startClient(room, 'gm-b');
-
     await waitUntil(() => isLive(second));
     first.platform.removeSceneItems(['t1']);
     await waitUntil(() => storedRecord(first, 'link:t1')?.d === null);
     first.platform.addSceneItems(['t1']);
     await pause(SETTLE_MS);
-
     // #when
-    send(second, { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'sk1' });
+    send(second, {
+      type: 'link-set',
+      tokenId: 't1',
+      sheetId: 'npc',
+      path: ['mob', 'sk1'],
+      cellId: 'token',
+    });
     await waitUntil(() => sameData(storedRecord(first, 'link:t1'), SKEL));
     await pause(SETTLE_MS);
-
     // #then
     expect({
       first: storedRecord(first, 'link:t1')?.d,
@@ -561,25 +528,20 @@ describe('two GM clients', () => {
       second: SKEL,
     });
   });
-
   test('both clear the link, both keep one record, and neither shows a message', async () => {
     // #given
     const room = openRoom(['t1']);
     const first = await startClient(room, 'gm-a');
     const second = await startClient(room, 'gm-b');
-
     await waitUntil(() => second.store.$sync.get().state === 'live');
-
     // #when
     first.platform.removeSceneItems(['t1']);
     await waitUntil(
       () => committed(room, 'gm-a').length === 1 && committed(room, 'gm-b').length === 1,
     );
     await pause(SETTLE_MS);
-
     // #then: the higher author wins the equal counter.
     const winner: VersionedRecord = { k: 'link:t1', d: null, c: 2, a: 'gm-b' };
-
     expect({
       first: storedRecord(first, 'link:t1'),
       second: storedRecord(second, 'link:t1'),
@@ -605,7 +567,6 @@ async function startClient(
     engine: { menuCopy: MENU_COPY },
     platform: (platform) => {
       const scene = platform.scene;
-
       platform.scene = {
         isReady: () => {
           sceneCalls += 1;
@@ -621,6 +582,11 @@ async function startClient(
           sceneCalls += 1;
 
           return scene.getItemIds();
+        },
+        getItemBounds: (itemIds) => {
+          sceneCalls += 1;
+
+          return scene.getItemBounds(itemIds);
         },
         onItemsChange: (callback) => {
           sceneCalls += 1;
@@ -638,7 +604,6 @@ async function startClient(
           return scene.setItemLabel(itemId, label);
         },
       };
-
       roomRig.cleanup(
         platform.broadcast.onMessage(UI_CHANNEL, (event) => {
           if (Object(event.data).t === 'command-rejected') {
@@ -668,7 +633,7 @@ function post(room: Room, from: string, data: JsonValue): void {
 }
 
 function commit(records: VersionedRecord[]): JsonValue {
-  return { v: 3, g: INITIAL, t: 'commit', records };
+  return { v: 4, g: INITIAL, t: 'commit', records };
 }
 
 function isLive(client: Client): boolean {

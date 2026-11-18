@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import {
   ABSENT,
   ADD,
@@ -24,12 +23,10 @@ const NOBODY = 'Никто';
 const CAN_EDIT = 'Можно править';
 const READ_ONLY = 'Только чтение';
 const ACL_FAILED = 'Не удалось изменить доступ. Попробуйте ещё раз.';
-
 const GM: ClientParams = { client: 'a', name: 'Мастер' };
 
 // A GM whose own player id the test names in a record.
 const GM_WITH_ID: ClientParams = { client: 'a', name: 'Мастер', player: 'master' };
-
 const UI_CHANNEL = 'app.muster-roll/ui';
 
 // `ACCESS_CHANGE_TIMEOUT_MS` in `src/core/timing.ts`.
@@ -54,26 +51,29 @@ const OTHER_PLAYER: ClientParams = {
 // A sheet set, the hidden single sheet NPC and a visible single sheet, so a player's tab bar holds
 // both sheets of a sheet set and a single sheet.
 const PRESET_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
           ],
@@ -82,7 +82,6 @@ const PRESET_TEXT = JSON.stringify({
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
@@ -90,10 +89,12 @@ const PRESET_TEXT = JSON.stringify({
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Хиты' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Хиты' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                  ],
+                },
               ],
             },
           ],
@@ -102,17 +103,18 @@ const PRESET_TEXT = JSON.stringify({
     },
     {
       id: 'inventory',
-      kind: 'single',
       title: 'Инвентарь',
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Золото' },
-                  { kind: 'field', type: 'number', id: 'gold' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Золото' },
+                    { kind: 'field', type: 'number', id: 'gold' },
+                  ],
+                },
               ],
             },
           ],
@@ -138,13 +140,10 @@ test('the panel has one radio group "Его лист" with "Никто" and one 
   // #given: Гена holds an owner link and is not in the room.
   const gm = await openGm(context, [...RECORDS, record('plink:brok:gena', { name: 'Гена' })]);
   await openClient(context, PLAYER, null);
-
   // #when
   await accessChip(gm.window).click();
-
   // #then
   const group = ownerGroup(gm.window);
-
   await expect(accessPanel(gm.window).getByRole('radiogroup')).toHaveCount(1);
   await expect(group.getByRole('radio')).toHaveCount(3);
   await expect(group.getByRole('radio', { name: NOBODY, exact: true })).not.toBeChecked();
@@ -161,10 +160,8 @@ test('picking a player writes plink: and acl: at once, and the player can edit',
   await expect(playerHeader(player.window).getByText(READ_ONLY, { exact: true })).toBeVisible();
   await accessChip(gm.window).click();
   await expect(ownerRadio(gm.window, NOBODY)).toBeChecked();
-
   // #when
   await ownerRadio(gm.window, 'Лиза').check();
-
   // #then
   await expect(ownerRadio(gm.window, 'Лиза')).toBeChecked();
   await expect(mayEdit(gm.window, 'Лиза')).toBeChecked();
@@ -187,10 +184,8 @@ test("picking another player moves the owner and leaves the previous owner's edi
   await openClient(context, OTHER_PLAYER, null);
   await accessChip(gm.window).click();
   await expect(ownerRadio(gm.window, 'Лиза')).toBeChecked();
-
   // #when
   await ownerRadio(gm.window, 'Вова').check();
-
   // #then
   await expect(ownerRadio(gm.window, 'Вова')).toBeChecked();
   await expect(ownerRadio(gm.window, 'Лиза')).not.toBeChecked();
@@ -212,10 +207,8 @@ test('"Никто" removes the owner link and leaves editing as it was', async (
   const player = await openClient(context, PLAYER, null);
   await expect(ownTab(player.window, 'Брок')).toBeVisible();
   await accessChip(gm.window).click();
-
   // #when
   await ownerRadio(gm.window, NOBODY).check();
-
   // #then
   await expect(ownerRadio(gm.window, NOBODY)).toBeChecked();
   await expect(ownerRadio(gm.window, 'Лиза')).not.toBeChecked();
@@ -235,10 +228,8 @@ test('clearing "Может править" for the owner turns editing off and k
   await accessChip(gm.window).click();
   await ownerRadio(gm.window, 'Лиза').check();
   await expect(playerHeader(player.window).getByText(CAN_EDIT, { exact: true })).toBeVisible();
-
   // #when
   await mayEdit(gm.window, 'Лиза').uncheck();
-
   // #then
   await expect(playerHeader(player.window).getByText(READ_ONLY, { exact: true })).toBeVisible();
   await expect.poll(() => storedData(gm.window, 'acl:brok:lisa')).toBeNull();
@@ -260,7 +251,6 @@ test('an owner who is not in the room keeps a row under the last known name', as
 
   // #when
   await accessChip(gm.window).click();
-
   // #then
   await expect(accessPanel(gm.window).getByRole('group')).toHaveText([
     'ВоваМожет править',
@@ -282,10 +272,8 @@ test('of two live plink: records every client shows the one with the highest (c,
 
   const lisa = await openClient(context, PLAYER, null);
   const vova = await openClient(context, OTHER_PLAYER, null);
-
   // #when
   await accessChip(gm.window).click();
-
   // #then
   await expect(ownerRadio(gm.window, 'Лиза')).toBeChecked();
   await expect(ownerRadio(gm.window, 'Вова')).not.toBeChecked();
@@ -304,10 +292,8 @@ test('the next pick after two live plink: records tombstones both', async ({ con
 
   await addPartyMember(gm.window, 'mock-connection-gena', 'PLAYER', { id: 'gena', name: 'Гена' });
   await accessChip(gm.window).click();
-
   // #when
   await ownerRadio(gm.window, 'Гена').check();
-
   // #then
   await expect.poll(() => storedData(gm.window, 'plink:brok:gena')).toEqual({ name: 'Гена' });
   expect([
@@ -320,11 +306,9 @@ test('the next pick after two live plink: records tombstones both', async ({ con
 test('a sheet delete tombstones its plink: records', async ({ context }) => {
   // #given
   const gm = await openGm(context, [...RECORDS, record('plink:brok:vova', { name: 'Вова' })]);
-
   // #when
   await gm.window.getByRole('button', { name: 'Удалить лист' }).click();
   await gm.window.getByRole('button', { name: 'Удалить', exact: true }).click();
-
   // #then
   await expect(gm.window.getByRole('tab', { name: 'Брок' })).toHaveCount(0);
   await expect.poll(() => storedData(gm.window, 'plink:brok:vova')).toBeNull();
@@ -335,10 +319,8 @@ test('the owner sees the owned sheet first, before the other sheets and the sing
 }) => {
   // #given
   await openGm(context, [...RECORDS, record('plink:yarl:lisa', { name: 'Лиза' })]);
-
   // #when
   const player = await openClient(context, PLAYER, null);
-
   // #then
   await expectTabNames(player.window, ['Ярл, вы', 'Брок', 'Кира', 'Инвентарь']);
   await expect(ownTab(player.window, 'Ярл')).toHaveAttribute('aria-selected', 'true');
@@ -354,10 +336,8 @@ test('a player who owns several sheets sees them first by (order, sheetId)', asy
     record('plink:yarl:lisa', { name: 'Лиза' }),
     record('plink:anya:lisa', { name: 'Лиза' }),
   ]);
-
   // #when
   const player = await openClient(context, PLAYER, null);
-
   // #then
   await expectTabNames(player.window, ['Аня, вы', 'Ярл, вы', 'Брок', 'Кира', 'Инвентарь']);
   await expect(ownTab(player.window, 'Аня')).toBeVisible();
@@ -373,10 +353,8 @@ test("a pick in the GM's panel moves the sheet to the front of the player's tab 
   await expectTabNames(player.window, ['Брок', 'Кира', 'Ярл', 'Инвентарь']);
   await gm.window.getByRole('tab', { name: 'Кира' }).click();
   await accessChip(gm.window).click();
-
   // #when
   await ownerRadio(gm.window, 'Лиза').check();
-
   // #then
   await expectTabNames(player.window, ['Кира, вы', 'Брок', 'Ярл', 'Инвентарь']);
   await expect(ownTab(player.window, 'Кира')).toBeVisible();
@@ -385,13 +363,10 @@ test("a pick in the GM's panel moves the sheet to the front of the player's tab 
 test('a pick with no answer goes back after 5 s and says so in the panel', async ({ context }) => {
   // #given: Вова holds access and is not in the room. With the background closed, nothing answers.
   const gm = await openGm(context, [...RECORDS, record('acl:brok:vova', { name: 'Вова' })]);
-
   await accessChip(gm.window).click();
   await gm.background.close();
-
   // #when
   await ownerRadio(gm.window, 'Вова').check();
-
   // #then
   await expect(ownerRadio(gm.window, 'Вова')).toBeChecked();
   await expect(ownerRadio(gm.window, NOBODY)).toBeChecked({ timeout: 8000 });
@@ -409,19 +384,15 @@ test('arrow keys move the focus over the options and pick nothing; Space picks t
   await accessChip(gm.window).click();
   await expect(ownerGroup(gm.window).getByRole('radio')).toHaveCount(4);
   await ownerRadio(gm.window, NOBODY).focus();
-
   // #when
   await gm.window.keyboard.press('ArrowDown');
   await gm.window.keyboard.press('ArrowDown');
   await gm.window.keyboard.press('ArrowDown');
-
   // #then
   await expect(ownerRadio(gm.window, 'Лиза')).toBeFocused();
   await expect(ownerRadio(gm.window, NOBODY)).toBeChecked();
-
   // #when
   await gm.window.keyboard.press('Space');
-
   // #then: the commands go in order, so any sent while passing would have landed first.
   await expect.poll(() => storedData(gm.window, 'plink:brok:lisa')).toEqual({ name: 'Лиза' });
   expect({
@@ -441,10 +412,8 @@ test('the radio group is apart from the rows, and only the checked option takes 
   // #given
   const gm = await openGm(context, [...RECORDS, record('plink:brok:lisa', { name: 'Лиза' })]);
   await openClient(context, PLAYER, null);
-
   // #when
   await accessChip(gm.window).click();
-
   // #then
   await expect(ownerGroup(gm.window).getByRole('checkbox')).toHaveCount(0);
   await expect(ownerGroup(gm.window).getByRole('group')).toHaveCount(0);
@@ -458,16 +427,13 @@ test('the radio group is apart from the rows, and only the checked option takes 
 test('a refused pick puts the radio back and says so in the panel', async ({ context }) => {
   // #given: with the background closed, nothing answers but the rejection.
   const gm = await openGm(context, [...RECORDS, record('acl:brok:vova', { name: 'Вова' })]);
-
   await accessChip(gm.window).click();
   await watchCommands(gm.window);
   await gm.background.close();
   await ownerRadio(gm.window, 'Вова').click();
   await expect(ownerRadio(gm.window, 'Вова')).toBeChecked();
-
   // #when
   await postRejection(gm.window, await lastCommand(gm.window, 'owner-set'));
-
   // #then: well before the timeout, so only the rejection can explain it.
   await expect(ownerRadio(gm.window, NOBODY)).toBeChecked({ timeout: 2000 });
   await expect(accessPanel(gm.window).getByRole('status')).toHaveText(ACL_FAILED, {
@@ -480,12 +446,10 @@ test('an answered pick shows no failure, also after the timeout', async ({ conte
   const gm = await openGm(context, RECORDS);
   await openClient(context, PLAYER, null);
   await accessChip(gm.window).click();
-
   // #when
   await ownerRadio(gm.window, 'Лиза').click();
   await expect.poll(() => storedData(gm.window, 'plink:brok:lisa')).toEqual({ name: 'Лиза' });
   await gm.window.waitForTimeout(ACCESS_CHANGE_TIMEOUT_MS + 1000);
-
   // #then
   await expect(accessPanel(gm.window).getByRole('status')).toHaveText('');
   await expect(ownerRadio(gm.window, 'Лиза')).toBeChecked();
@@ -500,10 +464,8 @@ test('picking a player whose acl: is not live checks their "Может прав�
   await accessChip(gm.window).click();
   await expect(mayEdit(gm.window, 'Вова')).not.toBeChecked();
   await gm.background.close();
-
   // #when
   await ownerRadio(gm.window, 'Вова').click();
-
   // #then
   await expect(ownerRadio(gm.window, 'Вова')).toBeChecked();
   await expect(mayEdit(gm.window, 'Вова')).toBeChecked();
@@ -528,7 +490,6 @@ async function openGm(
   records: readonly StoredRecord[],
 ): Promise<RoomClient> {
   const gm = await openClient(context, GM, records);
-
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
 
   return gm;
@@ -580,7 +541,6 @@ function ownTab(page: Page, name: string): Locator {
 // The accessible names of the tabs, in order.
 async function expectTabNames(page: Page, names: readonly string[]): Promise<void> {
   const tabs = page.getByRole('tab');
-
   await expect(tabs).toHaveCount(names.length);
 
   for (const [index, name] of names.entries()) {

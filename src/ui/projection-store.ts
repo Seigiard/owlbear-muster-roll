@@ -1,8 +1,10 @@
 import { atom, type ReadableAtom } from 'nanostores';
 
 import type { PartyEntry } from '@/core/access';
+import { assembleRecords, compareVersions, mergeRecords } from '@/core/merge';
 import {
-  fieldValuesSchema,
+  blockDataSchema,
+  cellValues,
   repDataSchema,
   type FieldValue,
   type FieldValues,
@@ -101,7 +103,8 @@ export function createProjectionStore(): ProjectionStore {
     const shown = new Map(replica);
 
     for (const [key, record] of pendingView) {
-      shown.set(key, record);
+      const applied = replica.get(key);
+      shown.set(key, pendingDisplayRecord(applied, record, sync.role !== 'GM'));
     }
 
     $records.set(shown);
@@ -122,9 +125,9 @@ export function createProjectionStore(): ProjectionStore {
     $openRequest,
     $party,
     replaceAll: (records, pending, notices, sync) => {
-      replica = new Map(records.map((record) => [record.k, record]));
+      replica = assembleRecords(records);
       // A live GM engine sends none. A player's holds its edits that wait for a GM (AD-4).
-      pendingView = new Map(pending.map((record) => [record.k, record]));
+      pendingView = assembleRecords(pending);
       show(notices, sync);
       $loaded.set(true);
     },
@@ -136,12 +139,19 @@ export function createProjectionStore(): ProjectionStore {
       }
 
       for (const record of records) {
-        replica.set(record.k, record);
+        const previous = replica.get(record.k);
+        replica.set(record.k, previous === undefined ? record : mergeRecords(previous, record));
       }
 
       // The engine withdraws each key that leaves its pending view, when catch-up ends too.
       for (const record of pending) {
-        pendingView.set(record.k, record);
+        const previous = pendingView.get(record.k);
+        pendingView.set(
+          record.k,
+          previous === undefined || compareVersions(previous, record) !== 0
+            ? record
+            : mergeRecords(previous, record),
+        );
       }
 
       show(notices, sync);
@@ -161,8 +171,8 @@ export function createProjectionStore(): ProjectionStore {
   };
 }
 
-// A player's pending view holds only its proposals, of `row:` and `rep:` keys (AD-4). Each is read
-// against the record the engine has applied to its key.
+// A player's pending view holds only its proposed block fragments (AD-4). Each is read against the
+// record the engine has applied to its key.
 export function pendingEntries(
   replica: ReadonlyMap<string, VersionedRecord>,
   pendingView: ReadonlyMap<string, VersionedRecord>,
@@ -171,42 +181,77 @@ export function pendingEntries(
 
   for (const [key, record] of pendingView) {
     const applied = replica.get(key);
+    const shown = pendingDisplayRecord(applied, record, true);
 
-    if (key.startsWith('rep:')) {
+    if (key.startsWith('blk:') && key.split(':').length > 2) {
       const after = repDataSchema.safeParse(record.d);
       const before = repDataSchema.safeParse(applied?.d);
 
       if (!after.success) {
-        entries.set(key, { kind: 'remove', fields: new Map(), record, applied });
+        entries.set(key, { kind: 'remove', fields: new Map(), record: shown, applied });
       } else if (!before.success) {
-        entries.set(key, { kind: 'add', fields: new Map(), record, applied });
+        entries.set(key, { kind: 'add', fields: new Map(), record: shown, applied });
       } else {
-        const fields = changedFields(before.data.cells, after.data.cells);
+        const fields = pendingFields(cellValues(after.data.cells), Object.keys(after.data.cells));
 
-        entries.set(key, { kind: 'edit', fields, record, applied });
+        entries.set(key, { kind: 'edit', fields, record: shown, applied });
       }
-    } else if (key.startsWith('row:')) {
-      const after = fieldValuesSchema.safeParse(record.d).data ?? {};
-      const before = fieldValuesSchema.safeParse(applied?.d).data ?? {};
+    } else if (key.startsWith('blk:')) {
+      const rawAfter = blockDataSchema.safeParse(record.d).data?.cells ?? {};
+      const after = cellValues(rawAfter);
 
-      entries.set(key, { kind: 'edit', fields: changedFields(before, after), record, applied });
+      entries.set(key, {
+        kind: 'edit',
+        fields: pendingFields(after, Object.keys(rawAfter)),
+        record: shown,
+        applied,
+      });
     }
   }
 
   return entries;
 }
 
-// Field values are JSON scalars, so `!==` compares them.
-function changedFields(
-  before: Readonly<FieldValues>,
+function pendingDisplayRecord(
+  applied: VersionedRecord | undefined,
+  pending: VersionedRecord,
+  overlayPendingFields = false,
+): VersionedRecord {
+  if (!pending.k.startsWith('blk:') || applied === undefined) {
+    return pending;
+  }
+
+  const merged = mergeRecords(applied, pending);
+
+  if (!overlayPendingFields) {
+    return merged;
+  }
+
+  const mergedData = blockDataSchema.safeParse(merged.d);
+  const pendingData = blockDataSchema.safeParse(pending.d);
+
+  if (!mergedData.success || !pendingData.success) {
+    return merged;
+  }
+
+  // SAFETY: both block-data parses above prove the merged record carries block data; mergeRecords preserves the shared key and metadata.
+  return {
+    ...merged,
+    d: {
+      ...mergedData.data,
+      cells: { ...mergedData.data.cells, ...pendingData.data.cells },
+    },
+  } as VersionedRecord;
+}
+
+function pendingFields(
   after: Readonly<FieldValues>,
+  fieldIds: readonly string[],
 ): Map<string, FieldValue | null> {
   const fields = new Map<string, FieldValue | null>();
 
-  for (const fieldId of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    if (before[fieldId] !== after[fieldId]) {
-      fields.set(fieldId, after[fieldId] ?? null);
-    }
+  for (const fieldId of fieldIds) {
+    fields.set(fieldId, after[fieldId] ?? null);
   }
 
   return fields;

@@ -1,9 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { inflateSync, strFromU8 } from 'fflate';
-
 import type { JsonValue } from '@/core/json';
-
 import {
   connectionIdOf,
   openClientBackground,
@@ -29,26 +27,29 @@ const QUICK: Partial<ClientParams> = { snapshotPauseMs: 100, snapshotJitterMs: 0
 const NEVER: Partial<ClientParams> = { snapshotPauseMs: 600000, snapshotJitterMs: 0 };
 
 const PRESET_TEXT = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
           ],
@@ -57,17 +58,13 @@ const PRESET_TEXT = JSON.stringify({
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
   ],
 });
 
-const RECORDS: StoredRecord[] = [
-  ...pcSheet('brok', 'Брок', 0),
-  record('row:brok:str', { str: 14 }),
-];
+const RECORDS: StoredRecord[] = [...pcSheet('brok', 'Брок', 0), record('blk:brok', { str: 14 })];
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
@@ -78,16 +75,13 @@ test('a GM writes the room copy after an edit, and a GM on a new device with no 
 }) => {
   // #given
   const a = await openClient(context, { client: 'a', device: 'a', ...QUICK }, RECORDS);
-
   await strength(a.window).fill('17');
   await strength(a.window).press('Tab');
-  await expect.poll(() => roomCopyRecordKeys(a.window)).toContain('row:brok:str');
+  await expect.poll(() => roomCopyRecordKeys(a.window)).toContain('blk:brok');
   await a.background.close({ runBeforeUnload: true });
   await a.window.close();
-
   // #when
   const b = await openClient(context, { client: 'b', device: 'b' }, null);
-
   // #then
   await expect(b.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
   await expect(strength(b.window)).toHaveValue('17');
@@ -96,19 +90,14 @@ test('a GM writes the room copy after an edit, and a GM on a new device with no 
 test('a GM writes the room copy at once when its page becomes hidden', async ({ context }) => {
   // #given
   const a = await openClient(context, { client: 'a', device: 'a', ...NEVER }, RECORDS);
-
   await expect(strength(a.window)).toHaveValue('14');
-
   // #when
   await a.background.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-
   // #then
-  await expect
-    .poll(() => roomCopyRecordKeys(a.window))
-    .toEqual(['preset', 'row:brok:name', 'row:brok:str', 'sheet:brok']);
+  await expect.poll(() => roomCopyRecordKeys(a.window)).toEqual(['blk:brok', 'blk:npc', 'preset']);
 });
 
 test('Settings shows "Не сохранена" with the free size before any copy, and "Сохранена" with sizes after one', async ({
@@ -116,23 +105,17 @@ test('Settings shows "Не сохранена" with the free size before any cop
 }) => {
   // #given
   const a = await openClient(context, { client: 'a', device: 'a', ...QUICK }, RECORDS);
-
   await a.window.getByRole('tab', { name: SETTINGS }).click();
-
   // The room metadata is `{}`: 2 bytes.
   const before = await roomCopyText(a.window).textContent();
-
   await a.window.getByRole('tab', { name: 'Брок' }).click();
-
   // #when
   await strength(a.window).fill('18');
   await strength(a.window).press('Tab');
-  await expect.poll(() => roomCopyRecordKeys(a.window)).toContain('row:brok:str');
+  await expect.poll(() => roomCopyRecordKeys(a.window)).toContain('blk:brok');
   await a.window.getByRole('tab', { name: SETTINGS }).click();
-
   // #then
   const total = await metadataBytes(a.window);
-
   await expect(roomCopyText(a.window)).toHaveText(
     `Сохранена. Занято ${kilobytes(total - 2)} кБ, свободно ${kilobytes(LIMIT - total)} кБ.`,
   );
@@ -144,15 +127,12 @@ test('a copy that does not fit next to the other metadata is not written, and th
 }) => {
   // #given
   const a = await openClient(context, { client: 'a', device: 'a', ...QUICK }, RECORDS);
-
   await a.window.evaluate(async (key) => {
     await window.mockPlatform.metadata.setMetadata({ [key]: 'x'.repeat(15400) });
   }, 'other.extension/data');
-
   // #when
   await strength(a.window).fill('19');
   await strength(a.window).press('Tab');
-
   // #then
   await expect(a.window.getByRole('status')).toHaveText(NOT_SAVED);
   await a.window.getByRole('tab', { name: SETTINGS }).click();

@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-
 import { copy } from '@/copy';
 
 const EXPERIENCE_PATH = join(
@@ -101,7 +100,6 @@ describe('copy catalog', () => {
   test('covers exactly the jobs of the Voice and Tone table', () => {
     // #when
     const jobs = [...CATALOG_BY_JOB.keys()];
-
     // #then
     expect(jobs).toEqual([...documented.keys()]);
   });
@@ -110,7 +108,6 @@ describe('copy catalog', () => {
     test(`holds the exact text of the "${job}" row`, () => {
       // #when
       const actual = CATALOG_BY_JOB.get(job);
-
       // #then
       expect(actual).toEqual(expected);
     });
@@ -130,7 +127,6 @@ function readVoiceAndToneTable(): ReadonlyMap<string, readonly string[]> {
   // The first two table lines are the header and the separator.
   for (const line of section.split('\n').filter(isTableRow).slice(2)) {
     const [, job = '', cell = ''] = line.split('|').map((part) => part.trim());
-
     table.set(job, quotedTexts(cell));
   }
 

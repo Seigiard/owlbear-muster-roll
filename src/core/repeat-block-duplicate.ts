@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { sectionFirstField, type PresetSection } from '@/core/preset';
+import { sectionFields, type PresetSection } from '@/core/preset';
 import type { FieldValue, FieldValues } from '@/core/records';
 import { err, ok, type Result } from '@/core/result';
 
@@ -31,31 +31,34 @@ export type DuplicateNameFailure = 'name-too-long';
 type NumberedName = { base: string; number: bigint };
 
 // CAP-30: the cells of `count` duplicates of the repeat block `source`, in order. Every value is
-// copied as is. When the section's first field is a `text` field with a value, each copy numbers it
-// by `duplicateNames` over the first field values of `siblings`, the section's repeat blocks of the
-// same sheet.
+// copied as is. When the section's explicit repeat.nameField is a `text` field with a value, each
+// copy numbers it by `duplicateNames` over the configured nameField values of `siblings`.
 export function duplicateBlockCells(
   section: PresetSection,
   source: FieldValues,
   siblings: readonly FieldValues[],
   count: number,
 ): Result<FieldValues[], DuplicateNameFailure> {
-  const first = sectionFirstField(section);
-  const value = first === null ? null : textValue(source[first.id]);
+  const nameId = section.repeat?.nameField ?? null;
 
-  if (first === null || first.type !== 'text' || value === null) {
+  const nameField =
+    nameId === null ? null : (sectionFields(section).find((field) => field.id === nameId) ?? null);
+
+  const value = nameId === null ? null : textValue(source[nameId]);
+
+  if (nameId === null || nameField === null || nameField.type !== 'text' || value === null) {
     return ok(Array.from({ length: count }, () => ({ ...source })));
   }
 
   const existing = siblings.flatMap((cells) => {
-    const name = textValue(cells[first.id]);
+    const name = textValue(cells[nameId]);
 
     return name === null ? [] : [name];
   });
 
   const names = duplicateNames(value, existing, count);
 
-  return names.ok ? ok(names.value.map((name) => ({ ...source, [first.id]: name }))) : names;
+  return names.ok ? ok(names.value.map((name) => ({ ...source, [nameId]: name }))) : names;
 }
 
 // UX-DR20: the source name without its trailing number, then the highest number any repeat block of

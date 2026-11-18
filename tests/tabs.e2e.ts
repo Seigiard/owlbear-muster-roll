@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import { copy } from '@/copy';
-
 import {
   ADD,
   connectionIdOf,
@@ -18,21 +16,18 @@ import {
 } from './support/room';
 
 // TASK-58, CAP-34: a sheet shows one tab of its template at a time.
-
 const OPEN_ITEM = 'app.muster-roll/open-sheet';
-
 const GM: ClientParams = { client: 'a', device: 'a', name: 'Мастер' };
 
 // "Персонажи" has two tabs: the dice cell on "Бой" reads `str` from "Основное", and the linkable
 // repeat section "Питомцы" sits on "Бой" below a tall section. "Журнал" has one tab.
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           title: 'Основное',
@@ -40,14 +35,18 @@ const PRESET = {
             {
               title: 'Характеристики',
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
           ],
@@ -58,21 +57,31 @@ const PRESET = {
             {
               title: 'Удары',
               rows: [
-                [
-                  { kind: 'text', text: 'Удар' },
-                  { kind: 'dice', formula: '1d1 + str' },
-                ],
-                ...Array.from({ length: 12 }, (_, index) => [
-                  { kind: 'text', text: `Приём ${index + 1}` },
-                  { kind: 'field', type: 'text', id: `move_${index + 1}` },
-                ]),
+                {
+                  cells: [
+                    { kind: 'text', text: 'Удар' },
+                    { kind: 'dice', formula: '1d1 + str' },
+                  ],
+                },
+                ...Array.from({ length: 12 }, (_, index) => ({
+                  cells: [
+                    { kind: 'text', text: `Приём ${index + 1}` },
+                    { kind: 'field', type: 'text', id: `move_${index + 1}` },
+                  ],
+                })),
               ],
             },
             {
               title: 'Питомцы',
-              repeat: true,
-              tokens: true,
-              rows: [[{ kind: 'field', type: 'text', id: 'pet' }]],
+              repeat: { id: 'pet', nameField: 'pet' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'pet' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
             },
           ],
         },
@@ -80,19 +89,20 @@ const PRESET = {
     },
     {
       id: 'journal',
-      kind: 'single',
       title: 'Журнал',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'weather' }]] }] }],
+      tabs: [
+        { sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'weather' }] }] }] },
+      ],
     },
   ],
 };
 
 const RECORDS: StoredRecord[] = [
   ...pcSheet('brok', 'Брок', 0),
-  record('row:brok:str', { str: 14 }),
+  record('blk:brok', { str: 14 }),
   repRecord('brok', 'pet', 'p1', 0, { pet: 'Волк' }),
   repRecord('brok', 'pet', 'p2', 1, { pet: 'Сокол' }),
-  record('link:t-pet', { s: 'brok', i: 'p2' }),
+  record('link:t-pet', { s: 'brok', path: ['pet', 'p2'], c: 'token' }),
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -104,23 +114,18 @@ test('a click on the second tab shows only its sections, and the sheet keeps it 
 }) => {
   // #given
   const gm = await openGm(context);
-
   await expect(sheetTab(gm.window, 'Основное')).toHaveAttribute('aria-selected', 'true');
   await expect(sectionHeading(gm.window, 'Характеристики')).toBeVisible();
-
   // #when
   await sheetTab(gm.window, 'Бой').click();
-
   // #then
   await expect(sheetTab(gm.window, 'Бой')).toHaveAttribute('aria-selected', 'true');
   await expect(sectionHeading(gm.window, 'Удары')).toBeVisible();
   await expect(sectionHeading(gm.window, 'Характеристики')).toHaveCount(0);
-
   // #when: another sheet, then back.
   await gm.window.getByRole('tab', { name: 'Журнал' }).click();
   await expect(gm.window.getByRole('textbox', { name: 'weather' })).toBeVisible();
   await gm.window.getByRole('tab', { name: 'Брок' }).click();
-
   // #then
   await expect(sheetTab(gm.window, 'Бой')).toHaveAttribute('aria-selected', 'true');
   await expect(sectionHeading(gm.window, 'Удары')).toBeVisible();
@@ -129,10 +134,8 @@ test('a click on the second tab shows only its sections, and the sheet keeps it 
 test('a sheet of a template with one tab draws no tab row', async ({ context }) => {
   // #given
   const gm = await openGm(context);
-
   // #when
   await gm.window.getByRole('tab', { name: 'Журнал' }).click();
-
   // #then
   await expect(gm.window.getByRole('textbox', { name: 'weather' })).toBeVisible();
   await expect(gm.window.getByRole('tablist', { name: copy.label.sheetTabs })).toHaveCount(0);
@@ -141,12 +144,9 @@ test('a sheet of a template with one tab draws no tab row', async ({ context }) 
 test('the arrow keys move between the tabs of a sheet', async ({ context }) => {
   // #given
   const gm = await openGm(context);
-
   await sheetTab(gm.window, 'Основное').focus();
-
   // #when
   await gm.window.keyboard.press('ArrowRight');
-
   // #then
   await expect(sheetTab(gm.window, 'Бой')).toBeFocused();
   await expect(sheetTab(gm.window, 'Бой')).toHaveAttribute('aria-selected', 'true');
@@ -155,12 +155,9 @@ test('the arrow keys move between the tabs of a sheet', async ({ context }) => {
 test('a dice cell on one tab rolls with a field on another tab', async ({ context }) => {
   // #given
   const gm = await openGm(context);
-
   await sheetTab(gm.window, 'Бой').click();
-
   // #when
   await gm.window.getByRole('button', { name: 'Удар', exact: true }).click();
-
   // #then: 1 + "Сила" 14 from "Основное".
   await expect.poll(() => shownNotifications(gm)).toEqual(['Мастер: Брок, Удар — 15']);
 });
@@ -170,7 +167,6 @@ test('a token linked to a repeat block on the second tab opens that tab, scrolle
 }) => {
   // #given
   const gm = await openGm(context);
-
   await expect
     .poll(() =>
       gm.background.evaluate(() => window.mockPlatform.contextMenuItems().map((item) => item.id)),
@@ -194,13 +190,68 @@ test('a token linked to a repeat block on the second tab opens that tab, scrolle
   await expect(repeatBlock(gm.window, 'Сокол')).toBeInViewport();
 });
 
+test(
+  'uploading a preset moves a populated repeat section between ordinary tabs without losing block order',
+  { tag: '@verify-quick' },
+  async ({ context }) => {
+    // #given
+    const gm = await openGm(context);
+    await sheetTab(gm.window, 'Бой').click();
+    await expect(repeatBlock(gm.window, 'Волк')).toBeVisible();
+    await expect(repeatBlock(gm.window, 'Сокол')).toBeVisible();
+    const [main, combat] = PRESET.templates[0]!.tabs;
+
+    const movedPreset = {
+      ...PRESET,
+      templates: [
+        {
+          ...PRESET.templates[0],
+          tabs: [
+            { ...main, sections: [...main!.sections, ...combat!.sections.slice(1)] },
+            { ...combat, sections: combat!.sections.slice(0, 1) },
+          ],
+        },
+        ...PRESET.templates.slice(1),
+      ],
+    };
+
+    // #when
+    await gm.window.getByRole('tab', { name: 'Настройки', exact: true }).click();
+    const choosing = gm.window.waitForEvent('filechooser');
+    await gm.window
+      .getByRole('region', { name: 'Пресет', exact: true })
+      .getByRole('button', { name: 'Загрузить пресет', exact: true })
+      .click();
+    await (
+      await choosing
+    ).setFiles({
+      name: 'moved-pets.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(movedPreset)),
+    });
+    await expect(gm.window.getByText('Формат листов изменён.', { exact: true })).toBeVisible();
+    await gm.window.getByRole('tab', { name: 'Брок', exact: true }).click();
+    await sheetTab(gm.window, 'Основное').click();
+
+    // #then
+    const pets = gm.window.getByRole('region', { name: 'Питомцы', exact: true });
+    await expect(pets.getByRole('textbox', { name: 'pet', exact: true })).toHaveCount(2);
+    await expect(pets.getByRole('textbox', { name: 'pet', exact: true }).nth(0)).toHaveValue(
+      'Волк',
+    );
+    await expect(pets.getByRole('textbox', { name: 'pet', exact: true }).nth(1)).toHaveValue(
+      'Сокол',
+    );
+    await sheetTab(gm.window, 'Бой').click();
+    await expect(sectionHeading(gm.window, 'Удары')).toBeVisible();
+    await expect(sectionHeading(gm.window, 'Питомцы')).toHaveCount(0);
+  },
+);
+
 async function openGm(context: BrowserContext): Promise<RoomClient> {
   const window = await openClientWindow(context, GM);
-
   await seedStorage(window, RECORDS, JSON.stringify(PRESET), GM.device);
-
   const background = await openClientBackground(context, GM);
-
   await expect(window.getByRole('button', { name: ADD })).toBeVisible();
   await expect(sheetTab(window, 'Основное')).toBeVisible();
 

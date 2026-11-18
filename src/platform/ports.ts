@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from '@/core/json';
+import type { JsonObject, JsonValue, ReadonlyJsonValue } from '@/core/json';
 import type { Result } from '@/core/result';
 import type { PlayerRole } from '@/core/visibility';
 
@@ -27,8 +27,13 @@ export type SendFailure = { kind: 'rate-limited' } | { kind: 'failed'; reason: s
 
 export type SendResult = Result<void, SendFailure>;
 
+export type BroadcastSend = {
+  (channel: string, data: JsonValue, options: BroadcastOptions): Promise<SendResult>;
+  (channel: string, data: ReadonlyJsonValue, options: BroadcastOptions): Promise<SendResult>;
+};
+
 export type BroadcastPort = {
-  sendMessage: (channel: string, data: JsonValue, options: BroadcastOptions) => Promise<SendResult>;
+  sendMessage: BroadcastSend;
   onMessage: (channel: string, callback: (event: BroadcastEvent) => void) => Unsubscribe;
 };
 
@@ -151,15 +156,28 @@ export type NotificationPort = {
   show: (message: string, variant?: NotificationVariant) => Promise<string>;
 };
 
+export type Point = { x: number; y: number };
+
+export type Bounds = { min: Point; max: Point; width: number; height: number; center: Point };
+
+export type ViewportPort = {
+  getBounds: () => Promise<Bounds>;
+};
+
 // The scene the room has open: its item ids, and the label of one item. Owlbear reports the scene
 // not ready while no scene is open and while it changes to another one.
 export type ScenePort = {
   isReady: () => Promise<boolean>;
   onReadyChange: (callback: (ready: boolean) => void) => Unsubscribe;
   getItemIds: () => Promise<string[]>;
+  // The full item list above powers lifecycle watches. This optional narrower read powers token
+  // pickers, which must not offer maps, drawings or other scene items.
+  getTokenIds?: () => Promise<string[]>;
   // Every item id of the scene after each item update. Owlbear calls back on any update, a drag
   // included, so the same list can come again and again.
   onItemsChange: (callback: (itemIds: string[]) => void) => Unsubscribe;
+  // Bounds are best-effort and are used only to rank reverse-picker choices.
+  getItemBounds: (itemIds: string[]) => Promise<Map<string, Bounds>>;
   // The text label Owlbear shows under one item: "" for an item with an empty label, `null` for an
   // item that is missing or has no label text. Only the link picker of a GM client calls the label
   // methods.
@@ -194,5 +212,6 @@ export type Platform = {
   action: ActionPort;
   notification: NotificationPort;
   scene: ScenePort;
+  viewport: ViewportPort;
   theme: ThemePort;
 };

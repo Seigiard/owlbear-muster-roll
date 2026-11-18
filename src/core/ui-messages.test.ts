@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { FieldPatchTarget } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
-
 import {
   parseEngineMessage,
   parseWindowMessage,
@@ -24,7 +22,6 @@ const LIVE: SyncState = {
 };
 
 const NO_COPY: RoomCopyStatus = { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null };
-
 const SHEET_CREATE: Command = { type: 'sheet-create', sheetId: 's1', set: 'pc' };
 
 describe('UI_CHANNEL', () => {
@@ -38,24 +35,19 @@ describe('parseWindowMessage', () => {
   test('accepts a projection request with a nonce', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'projection-request', nonce: 'n1' });
-
     // #then
     expect(parsed).toEqual({ ok: true, value: { t: 'projection-request', nonce: 'n1' } });
   });
-
   test('accepts a sheet-create command', () => {
     // #given
     const message: WindowMessage = { t: 'command', id: 'c1', command: SHEET_CREATE };
-
     // #when
     const parsed = parseWindowMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: message });
   });
-
   test.each([
-    ['k', { k: 'sheet:a' }],
+    ['k', { k: 'blk:a' }],
     ['d', { d: { set: 'pc', order: 0 } }],
     ['c', { c: 1 }],
     ['a', { a: 'conn' }],
@@ -70,20 +62,17 @@ describe('parseWindowMessage', () => {
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test.each([
-    ['k', { k: 'sheet:a' }],
+    ['k', { k: 'blk:a' }],
     ['d', { d: null }],
     ['c', { c: 1 }],
     ['a', { a: 'conn' }],
   ])('refuses a command message holding %s beside its intent', (_field, extra) => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command: SHEET_CREATE, ...extra });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test.each<[string, JsonValue]>([
     ['a create with no sheetId', { type: 'sheet-create', set: 'pc' }],
     ['a create with no set', { type: 'sheet-create', sheetId: 's1' }],
@@ -111,11 +100,9 @@ describe('parseWindowMessage', () => {
   ])('refuses %s', (_name, command) => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test('accepts a sheet-delete command that names only the sheet', () => {
     // #given
     const message: WindowMessage = {
@@ -126,24 +113,20 @@ describe('parseWindowMessage', () => {
 
     // #when
     const parsed = parseWindowMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: message });
   });
-
   test.each<[string, JsonValue]>([
     ['no sheetId', { type: 'sheet-delete' }],
     ['a kind beside the sheetId', { type: 'sheet-delete', sheetId: 's1', kind: 'pc' }],
     ['d beside the sheetId', { type: 'sheet-delete', sheetId: 's1', d: null }],
-    ['the keys to delete', { type: 'sheet-delete', sheetId: 's1', keys: ['row:s1:a'] }],
+    ['the keys to delete', { type: 'sheet-delete', sheetId: 's1', keys: ['blk:s1'] }],
   ])('refuses a sheet-delete command with %s', (_name, command) => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test.each<[string, Command]>([
     [
       'a repeat-block-add',
@@ -163,23 +146,29 @@ describe('parseWindowMessage', () => {
         count: 0.5,
       },
     ],
-    ['a link-set to a sheet', { type: 'link-set', tokenId: 't1', sheetId: 's1', instanceId: null }],
+    [
+      'a link-set to a sheet',
+      { type: 'link-set', tokenId: 't1', sheetId: 's1', cellId: 'portrait' },
+    ],
     [
       'a link-set to a repeat block',
-      { type: 'link-set', tokenId: 't1', sheetId: 'npc', instanceId: 'i1' },
+      {
+        type: 'link-set',
+        tokenId: 't1',
+        sheetId: 'npc',
+        path: ['npc_name', 'i1'],
+        cellId: 'portrait',
+      },
     ],
     ['a wipe', { type: 'wipe' }],
   ])('accepts %s command', (_name, command) => {
     // #given
     const message: WindowMessage = { t: 'command', id: 'c1', command };
-
     // #when
     const parsed = parseWindowMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: message });
   });
-
   test.each<[string, JsonValue]>([
     [
       'a repeat-block-add with no instanceId',
@@ -206,11 +195,9 @@ describe('parseWindowMessage', () => {
   ])('refuses %s command', (_name, command) => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test('accepts an owner-set command for a player and for no one', () => {
     // #given
     const messages: WindowMessage[] = [
@@ -228,11 +215,9 @@ describe('parseWindowMessage', () => {
 
     // #when
     const parsed = messages.map((message) => parseWindowMessage(message));
-
     // #then
     expect(parsed).toEqual(messages.map((value) => ({ ok: true, value })));
   });
-
   test.each<[string, JsonValue]>([
     ['no playerId', { type: 'owner-set', sheetId: 's1', name: 'Оля' }],
     ['no name', { type: 'owner-set', sheetId: 's1', playerId: 'p-1' }],
@@ -240,11 +225,9 @@ describe('parseWindowMessage', () => {
   ])('refuses an owner-set command with %s', (_name, command) => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test('accepts a preset-upload command carrying base64 data', () => {
     // #given
     const message: WindowMessage = {
@@ -261,7 +244,6 @@ describe('parseWindowMessage', () => {
 
     // #when
     const parsed = parseWindowMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: message });
   });
@@ -296,11 +278,9 @@ describe('parseWindowMessage', () => {
   ])('refuses a preset-upload command with %s', (_name, command) => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test.each<[string, FieldPatchTarget, JsonValue]>([
     ['a row field', { kind: 'row', rowId: 'str' }, 12],
     ['a repeat instance field', { kind: 'rep', sectionId: 'attack', instanceId: 'i1' }, 'Меч'],
@@ -316,11 +296,9 @@ describe('parseWindowMessage', () => {
 
     // #when
     const parsed = parseWindowMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: message });
   });
-
   test.each<[string, JsonValue]>([
     [
       'no value',
@@ -366,15 +344,12 @@ describe('parseWindowMessage', () => {
   ])('refuses a field-patch command with %s', (_name, command) => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test('refuses a command of an unknown type', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'command', id: 'c1', command: { type: 'other' } });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
@@ -390,13 +365,11 @@ describe('parseWindowMessage', () => {
   test('accepts a roll request with the place of its cell and the shown values', () => {
     // #when
     const parsed = parseWindowMessage(ROLL_REQUEST);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: ROLL_REQUEST });
   });
-
   test.each<[string, JsonValue]>([
-    ['a record key', { ...ROLL_REQUEST, k: 'row:brok:str' }],
+    ['a record key', { ...ROLL_REQUEST, k: 'blk:brok' }],
     ['a negative cell index', { ...ROLL_REQUEST, place: { ...ROLL_REQUEST.place, cellIndex: -1 } }],
     [
       'a place with no instance',
@@ -412,11 +385,9 @@ describe('parseWindowMessage', () => {
   ])('refuses a roll request with %s', (_name, message) => {
     // #when
     const parsed = parseWindowMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test('accepts a roll request on a sheet and an instance whose ids are as long as an id can be', () => {
     // #given: a sheet or a repeat row id is at most 64 characters.
     const longest = 'x'.repeat(64);
@@ -429,11 +400,9 @@ describe('parseWindowMessage', () => {
 
     // #when
     const parsed = parseWindowMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: message });
   });
-
   test('accepts an open-sheet acknowledgement and refuses one with a sheet or no id', () => {
     // #when
     const parsed = [
@@ -449,15 +418,12 @@ describe('parseWindowMessage', () => {
       { ok: false, error: 'invalid-message' },
     ]);
   });
-
   test('refuses a request without a nonce', () => {
     // #when
     const parsed = parseWindowMessage({ t: 'projection-request' });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test.each<[string, JsonValue]>([
     ['text', 'hello'],
     ['null', null],
@@ -465,7 +431,6 @@ describe('parseWindowMessage', () => {
   ])('refuses %s', (_name, message) => {
     // #when
     const parsed = parseWindowMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
@@ -486,22 +451,18 @@ describe('parseEngineMessage', () => {
   ])('accepts a rejection for the reason %s', (reason) => {
     // #when
     const parsed = parseEngineMessage({ t: 'command-rejected', id: 'c1', reason });
-
     // #then
     expect(parsed).toEqual({ ok: true, value: { t: 'command-rejected', id: 'c1', reason } });
   });
-
   test.each(['invalid-name', 'not-npc', 'not-character'])(
     'refuses a rejection for the reason %s of format 1',
     (reason) => {
       // #when
       const parsed = parseEngineMessage({ t: 'command-rejected', id: 'c1', reason });
-
       // #then
       expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
     },
   );
-
   test.each<[string, RollOutcome]>([
     ['rolled', { code: 'rolled' }],
     ['a field error with its field', { code: 'field', field: 'Сила' }],
@@ -511,57 +472,56 @@ describe('parseEngineMessage', () => {
   ])('accepts a roll outcome of %s', (_name, outcome) => {
     // #given
     const message: EngineMessage = { t: 'roll-outcome', id: 'r1', outcome };
-
     // #when
     const parsed = parseEngineMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: message });
   });
-
   test('accepts an open-sheet request for a sheet and for a repeat block of it', () => {
     // #given
     const messages: EngineMessage[] = [
-      { t: 'open-sheet', id: 'o1', sheetId: 'brok', instanceId: null },
-      { t: 'open-sheet', id: 'o2', sheetId: 'npc', instanceId: 'i1' },
+      { t: 'open-sheet', id: 'o1', sheetId: 'brok', cellId: 'portrait' },
+      {
+        t: 'open-sheet',
+        id: 'o2',
+        sheetId: 'npc',
+        path: ['npc_name', 'i1'],
+        cellId: 'portrait',
+      },
     ];
 
     // #when
     const parsed = messages.map((message) => parseEngineMessage(message));
-
     // #then
     expect(parsed).toEqual(messages.map((value) => ({ ok: true, value })));
   });
-
   test.each<[string, JsonValue]>([
-    ['no sheet', { t: 'open-sheet', id: 'o1', instanceId: null }],
-    ['an empty sheet id', { t: 'open-sheet', id: 'o1', sheetId: '', instanceId: null }],
-    ['no instanceId', { t: 'open-sheet', id: 'o1', sheetId: 'brok' }],
-    ['an empty instance id', { t: 'open-sheet', id: 'o1', sheetId: 'npc', instanceId: '' }],
+    ['no sheet', { t: 'open-sheet', id: 'o1', cellId: 'portrait' }],
+    ['an empty sheet id', { t: 'open-sheet', id: 'o1', sheetId: '', cellId: 'portrait' }],
+    ['no cell id', { t: 'open-sheet', id: 'o1', sheetId: 'brok' }],
+    ['an empty cell id', { t: 'open-sheet', id: 'o1', sheetId: 'npc', cellId: '' }],
+    [
+      'a one-segment repeat path',
+      { t: 'open-sheet', id: 'o1', sheetId: 'npc', path: ['npc_name'], cellId: 'portrait' },
+    ],
   ])('refuses an open-sheet request with %s', (_name, message) => {
     // #when
     const parsed = parseEngineMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test('refuses a field error that names no field', () => {
     // #when
     const parsed = parseEngineMessage({ t: 'roll-outcome', id: 'r1', outcome: { code: 'field' } });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test('refuses a rejection for an unknown reason', () => {
     // #when
     const parsed = parseEngineMessage({ t: 'command-rejected', id: 'c1', reason: 'other' });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test('takes a count, a sheet count and a digest with `count-changed` only', () => {
     // #given
     const changed = { t: 'command-rejected', id: 'c1', reason: 'count-changed' };
@@ -578,7 +538,6 @@ describe('parseEngineMessage', () => {
     // #then
     expect(parsed).toEqual([true, false, false, false, false]);
   });
-
   test.each<[string, EngineMessage]>([
     [
       'a preset diff result',
@@ -593,11 +552,9 @@ describe('parseEngineMessage', () => {
   ])('accepts %s with its sheet count', (_name, message) => {
     // #when
     const parsed = parseEngineMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: message });
   });
-
   test.each<[string, JsonValue]>([
     [
       'a preset diff result with no sheet count',
@@ -616,20 +573,26 @@ describe('parseEngineMessage', () => {
   ])('refuses %s', (_name, message) => {
     // #when
     const parsed = parseEngineMessage(message);
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
 
-  const PROJECTION: EngineMessage = {
+  const PROJECTION = {
     t: 'projection',
     nonce: 'n1',
     engine: 'e1',
     seq: 4,
     i: 1,
     n: 2,
-    records: [{ k: 'link:t', d: { s: 's' }, c: 1, a: 'conn' }],
-    pending: [{ k: 'link:u', d: { s: 's', i: 'i1' }, c: 2, a: 'conn' }],
+    records: [{ k: 'link:t', d: { s: 's', c: 'token' }, c: 1, a: 'conn' }],
+    pending: [
+      {
+        k: 'link:u',
+        d: { s: 's', path: ['npc_name', 'i1'], c: 'token' },
+        c: 2,
+        a: 'conn',
+      },
+    ],
     notices: ['local-save-failed'],
     sync: {
       state: 'catching-up',
@@ -640,24 +603,20 @@ describe('parseEngineMessage', () => {
     },
     roomCopy: NO_COPY,
     party: [],
-  };
+  } satisfies EngineMessage;
 
   test('accepts a projection part', () => {
     // #when
     const parsed = parseEngineMessage(PROJECTION);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: PROJECTION });
   });
-
   test('refuses a part numbered above its total', () => {
     // #when
     const parsed = parseEngineMessage({ ...PROJECTION, i: 3 });
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test('refuses a projection holding an invalid record', () => {
     // #when
     const parsed = parseEngineMessage({
@@ -668,7 +627,6 @@ describe('parseEngineMessage', () => {
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-
   test('accepts the catching-up rejection and refuses a part with no sync state', () => {
     // #given
     const { sync: _sync, ...withoutSync } = PROJECTION;
@@ -684,7 +642,6 @@ describe('parseEngineMessage', () => {
     // #then
     expect(parsed).toEqual([true, false, false, false]);
   });
-
   test('reads a projection part and a delta of an older background, with no party, as an empty party', () => {
     // #given
     const { party: _party, ...projection } = PROJECTION;
@@ -703,13 +660,11 @@ describe('parseEngineMessage', () => {
 
     // #when
     const parsed = [parseEngineMessage(projection), parseEngineMessage(delta)];
-
     // #then
     expect(
       parsed.map((result) => (result.ok && 'party' in result.value ? result.value.party : null)),
     ).toEqual([[], []]);
   });
-
   test('refuses a party over 100 player ids, or with a bad id or too long a name', () => {
     // #given
     const member = { id: 'p-1', name: 'Оля', role: 'PLAYER' };
@@ -728,7 +683,6 @@ describe('parseEngineMessage', () => {
     // #then
     expect(parsed).toEqual([true, false, false, false]);
   });
-
   test('accepts a delta and a rejected command', () => {
     // #given
     const delta: EngineMessage = {
@@ -745,17 +699,14 @@ describe('parseEngineMessage', () => {
     };
 
     const rejected: EngineMessage = { t: 'command-rejected', id: 'c1', reason: 'too-large' };
-
     // #when
     const parsed = [parseEngineMessage(delta), parseEngineMessage(rejected)];
-
     // #then
     expect(parsed).toEqual([
       { ok: true, value: delta },
       { ok: true, value: rejected },
     ]);
   });
-
   test('accepts a delta carrying the new-version notice and refuses an unknown notice', () => {
     // #given
     const delta: EngineMessage = {
@@ -783,7 +734,6 @@ describe('parseEngineMessage', () => {
       { ok: false, error: 'invalid-message' },
     ]);
   });
-
   test('accepts a delta carrying the older-format room copy notice', () => {
     // #given
     const delta: EngineMessage = {
@@ -801,11 +751,9 @@ describe('parseEngineMessage', () => {
 
     // #when
     const parsed = parseEngineMessage(delta);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: delta });
   });
-
   test('accepts a delta carrying the room-copy notice and a failed room copy', () => {
     // #given
     const delta: EngineMessage = {
@@ -823,11 +771,9 @@ describe('parseEngineMessage', () => {
 
     // #when
     const parsed = parseEngineMessage(delta);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: delta });
   });
-
   test('refuses a part with no room copy status or with an unknown room copy state', () => {
     // #given
     const { roomCopy: _roomCopy, ...withoutRoomCopy } = PROJECTION;
@@ -842,7 +788,6 @@ describe('parseEngineMessage', () => {
     // #then
     expect(parsed).toEqual([false, false, false]);
   });
-
   test('carries every room copy outcome a player reads, refuses an unknown one, and reads a missing one as null', () => {
     // #given
     const { outcome: _outcome, ...withoutOutcome } = NO_COPY;
@@ -854,7 +799,6 @@ describe('parseEngineMessage', () => {
     );
 
     const older = parseEngineMessage({ ...PROJECTION, roomCopy: withoutOutcome });
-
     // #then
     expect({
       parsed,

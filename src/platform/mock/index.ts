@@ -1,9 +1,10 @@
-import type { JsonValue } from '@/core/json';
+import { mutableJson, type JsonValue } from '@/core/json';
 import type { WindowSize } from '@/core/preset';
 import { err, ok, type Result } from '@/core/result';
 import { TIMING, type Timing } from '@/core/timing';
 import { sameItemIds } from '@/core/token-selection';
 import type {
+  Bounds,
   ContextMenuItem,
   PartyMember,
   Platform,
@@ -340,9 +341,9 @@ export function createMockPlatform(
         // LOCAL stays within this client. REMOTE reaches the other clients of the room only, as
         // Owlbear never echoes it to its sender.
         if (options.destination === 'LOCAL') {
-          localBus.post(channel, data, connectionId);
+          localBus.post(channel, mutableJson(data), connectionId);
         } else {
-          room.postRemote(channel, data, connectionId);
+          room.postRemote(channel, mutableJson(data), connectionId);
         }
 
         return Promise.resolve(ok(undefined));
@@ -501,12 +502,28 @@ export function createMockPlatform(
           }
         }),
       getItemIds: () => Promise.resolve(room.getScene().itemIds),
+      getTokenIds: () => Promise.resolve(room.getScene().itemIds),
       onItemsChange: (callback) =>
         room.onSceneChange((scene, change) => {
           if (change === 'items') {
             callback(scene.itemIds);
           }
         }),
+      getItemBounds: (itemIds) =>
+        Promise.resolve(
+          new Map(
+            itemIds.map((itemId, index) => [
+              itemId,
+              {
+                min: { x: index * 100, y: 0 },
+                max: { x: index * 100 + 50, y: 50 },
+                width: 50,
+                height: 50,
+                center: { x: index * 100 + 25, y: 25 },
+              } satisfies Bounds,
+            ]),
+          ),
+        ),
       getItemLabel: (itemId) => {
         labelCalls.push({ kind: 'read', itemId });
 
@@ -536,6 +553,16 @@ export function createMockPlatform(
 
         return Promise.resolve();
       },
+    },
+    viewport: {
+      getBounds: () =>
+        Promise.resolve({
+          min: { x: -500, y: -500 },
+          max: { x: 500, y: 500 },
+          width: 1000,
+          height: 1000,
+          center: { x: 0, y: 0 },
+        }),
     },
     theme: {
       getTheme: () => {

@@ -1,9 +1,9 @@
+import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, spyOn, test } from 'bun:test';
-
 import type { JsonValue } from '@/core/json';
 import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { encodePreset, type Preset } from '@/core/preset';
-import { recordSchema, type VersionedRecord } from '@/core/records';
+import { recordSchema, type BlockData, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Command } from '@/core/ui-messages';
 import { createMemoryBacking, type MockStorageBacking } from '@/platform/current';
@@ -29,24 +29,26 @@ const ROW_NAME = { kind: 'row', rowId: 'name' } as const;
 
 // A sheet set with a name row, a plain row with a number and a check, and a text row of its own.
 const PRESET: Preset = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
+
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'field', type: 'check', id: 'str_tired' },
-                ],
-                [{ kind: 'field', type: 'text', id: 'notes' }],
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                {
+                  cells: [
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'field', type: 'check', id: 'str_tired' },
+                  ],
+                },
+                { cells: [{ kind: 'field', type: 'text', id: 'notes' }] },
               ],
             },
           ],
@@ -55,16 +57,15 @@ const PRESET: Preset = {
     },
     {
       id: 'npc',
-      kind: 'single',
+
       title: 'NPC',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
   ],
 };
 
 const PRESET_RECORD: VersionedRecord = { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' };
-
 const BROK: VersionedRecord = sheet('brok');
 
 type ClientOptions = {
@@ -73,7 +74,10 @@ type ClientOptions = {
   backing?: MockStorageBacking;
   sendWait?: Wait;
   seeded?: readonly VersionedRecord[];
-  generation?: { n: number; a: string };
+  generation?: {
+    n: number;
+    a: string;
+  };
   // Fail from the start, so the engine meets them while it loads.
   failingStorage?: StorageOperation[];
 };
@@ -84,12 +88,18 @@ type Client = RigClient & {
   deltaKeys: string[];
 };
 
-type Heard = { from: string; data: JsonValue };
+type Heard = {
+  from: string;
+  data: JsonValue;
+};
 
-type Listener = { heard: Heard[]; post: (from: string, data: JsonValue) => void };
+type Listener = {
+  heard: Heard[];
+  post: (from: string, data: JsonValue) => void;
+};
 
 function sheet(id: string, c = 1, a = 'seed'): VersionedRecord {
-  return { k: `sheet:${id}`, d: { set: 'pc', order: 0 }, c, a };
+  return { k: `blk:${id}`, d: { set: 'pc', order: 0, cells: {} }, c, a, l: [1, 'seed'] };
 }
 
 const roomRig = createRoomRig({
@@ -161,7 +171,7 @@ function rename(sheetId: string, name: string) {
   } satisfies Command;
 }
 
-function commit(records: VersionedRecord[], g = INITIAL, v = 3): JsonValue {
+function commit(records: VersionedRecord[], g = INITIAL, v = 4): JsonValue {
   return { v, g, t: 'commit', records };
 }
 
@@ -174,7 +184,6 @@ async function afterMarker(
   client: Client,
 ): Promise<void> {
   const marker = sheet('marker', 1, from);
-
   post(from, commit([marker]));
   await waitUntil(() => shown(client, marker.k) !== undefined);
 }
@@ -190,21 +199,25 @@ describe('GM edit goes out', () => {
     const wire = listen(room);
     const gmA = await startClient(room, 'gm-a');
     const storedWhenSent: (VersionedRecord | null)[] = [];
-
     roomRig.cleanup(
       room.room.onRemote(SYNC_CHANNEL, 'probe', (event) => {
         if (Object(event.data).t === 'commit') {
-          storedWhenSent.push(storedRecord(gmA, 'row:brok:str'));
+          storedWhenSent.push(storedRecord(gmA, 'blk:brok'));
         }
       }),
     );
-
     // #when
     send(gmA, patch(ROW_STR, 'str', 12));
     await waitUntil(() => wire.heard.length === 1);
 
     // #then
-    const written = { k: 'row:brok:str', d: { str: 12 }, c: 1, a: 'gm-a' };
+    const written: VersionedRecord = {
+      k: 'blk:brok',
+      d: { set: 'pc', order: 0, cells: { str: [12, 2, 'gm-a'] } },
+      c: 2,
+      a: 'gm-a',
+      l: [1, 'seed'],
+    };
 
     expect({ heard: wire.heard, storedWhenSent, shown: shown(gmA, written.k) }).toEqual({
       heard: [{ from: 'gm-a', data: commit([written]) }],
@@ -212,34 +225,44 @@ describe('GM edit goes out', () => {
       shown: written,
     });
   });
-
   test('splits a commit over the message limit into parts that each fit and together hold all', async () => {
-    // #given: each row key is over 4000 bytes, so its tombstone is too.
+    // #given: enough descendant blocks exist that their tombstones need more than one message.
     const room = roomRig.openRoom();
     const wire = listen(room);
-    const rowKeys = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => `row:brok:${'ы'.repeat(2000)}${id}`);
-    const rows = rowKeys.map((k): VersionedRecord => ({ k, d: { str: 3 }, c: 1, a: 'seed' }));
-    const gmA = await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, BROK, ...rows] });
-    const gmB = await startClient(room, 'gm-b', { seeded: [PRESET_RECORD, BROK, ...rows] });
+
+    const blockKeys = Array.from(
+      { length: 300 },
+      (_, index) => `blk:brok:attack:i${String(index).padStart(3, '0')}`,
+    );
+
+    const blocks = blockKeys.map((k): VersionedRecord =>
+      fixtureRecord(k, { order: 0, cells: {} }, 1, 'seed'),
+    );
+
+    const gmA = await startClient(room, 'gm-a', {
+      seeded: [PRESET_RECORD, BROK, ...blocks],
+    });
+
+    const gmB = await startClient(room, 'gm-b', {
+      seeded: [PRESET_RECORD, BROK, ...blocks],
+    });
 
     // #when
     send(gmA, { type: 'sheet-delete', sheetId: 'brok' });
-    await waitUntil(() => rowKeys.every((k) => shown(gmB, k)?.d === null));
-
+    await waitUntil(() => blockKeys.every((k) => shown(gmB, k)?.d === null));
     // #then
     const sent = commitsFrom(wire.heard, 'gm-a');
     const records = sent.flatMap((message) => recordSchema.array().parse(Object(message).records));
-
     expect({
       parts: sent.length,
       underLimit: sent.every((message) => jsonByteLength(message) < MESSAGE_BYTE_LIMIT),
       keys: records.map((record) => record.k).sort(),
-      sheetOnB: shown(gmB, 'sheet:brok'),
+      sheetOnB: shown(gmB, 'blk:brok'),
     }).toEqual({
       parts: 2,
       underLimit: true,
-      keys: [...rowKeys, 'sheet:brok'].sort(),
-      sheetOnB: { k: 'sheet:brok', d: null, c: 2, a: 'gm-a' },
+      keys: [...blockKeys, 'blk:brok'].sort(),
+      sheetOnB: { k: 'blk:brok', d: null, c: 2, a: 'gm-a', l: [1, 'seed'] },
     });
   });
 });
@@ -256,16 +279,14 @@ describe('coalescing', () => {
       hold ?? new Promise((resolve) => setTimeout(resolve, milliseconds));
 
     const gmA = await startClient(room, 'gm-a', { sendWait: wait });
-
     hold = new Promise((resolve) => {
       releases.push(resolve);
     });
-
     // #when
     send(gmA, patch(ROW_STR, 'str', 1));
     send(gmA, patch(ROW_STR, 'str', 2));
     send(gmA, patch(ROW_NOTES, 'notes', 'Хромает'));
-    await waitUntil(() => storedRecord(gmA, 'row:brok:notes') !== null);
+    await waitUntil(() => storedRecord(gmA, 'blk:brok') !== null);
     hold = null;
 
     for (const release of releases) {
@@ -273,15 +294,26 @@ describe('coalescing', () => {
     }
 
     await waitUntil(() => wire.heard.length > 0);
-    await waitUntil(() => shown(gmA, 'row:brok:notes') !== undefined);
-
+    await waitUntil(() => shown(gmA, 'blk:brok') !== undefined);
     // #then
     expect(wire.heard).toEqual([
       {
         from: 'gm-a',
         data: commit([
-          { k: 'row:brok:str', d: { str: 2 }, c: 2, a: 'gm-a' },
-          { k: 'row:brok:notes', d: { notes: 'Хромает' }, c: 1, a: 'gm-a' },
+          {
+            k: 'blk:brok',
+            d: {
+              set: 'pc',
+              order: 0,
+              cells: {
+                str: [2, 3, 'gm-a'],
+                notes: ['Хромает', 4, 'gm-a'],
+              },
+            },
+            c: 4,
+            a: 'gm-a',
+            l: [1, 'seed'],
+          },
         ]),
       },
     ]);
@@ -292,142 +324,188 @@ describe('two GM clients', () => {
   test.each([
     ['on two devices', false],
     ['in two tabs of one browser', true],
-  ])('%s keep edits to different rows made at once, on both and in storage', async (_n, shared) => {
-    // #given
-    const room = roomRig.openRoom();
-    const backing = shared ? createMemoryBacking() : undefined;
-    const gmA = await startClient(room, 'gm-a', { backing });
-    const gmB = await startClient(room, 'gm-b', { backing });
+  ])(
+    '%s keep edits to different cells made at once, on both and in storage',
+    async (_n, shared) => {
+      // #given
+      const room = roomRig.openRoom();
+      const backing = shared ? createMemoryBacking() : undefined;
+      const gmA = await startClient(room, 'gm-a', { backing });
+      const gmB = await startClient(room, 'gm-b', { backing });
+      // #when
+      send(gmA, patch(ROW_STR, 'str', 12));
+      send(gmB, patch(ROW_NOTES, 'notes', 'Хромает'));
 
-    // #when
-    send(gmA, patch(ROW_STR, 'str', 12));
-    send(gmB, patch(ROW_NOTES, 'notes', 'Хромает'));
+      // #then
+      const merged: VersionedRecord = {
+        k: 'blk:brok',
+        d: {
+          set: 'pc',
+          order: 0,
+          cells: {
+            str: [12, 2, 'gm-a'],
+            notes: ['Хромает', 2, 'gm-b'],
+          },
+        },
+        c: 2,
+        a: 'gm-b',
+        l: [1, 'seed'],
+      };
 
-    // #then
-    const str = { k: 'row:brok:str', d: { str: 12 }, c: 1, a: 'gm-a' };
-    const notes = { k: 'row:brok:notes', d: { notes: 'Хромает' }, c: 1, a: 'gm-b' };
-
-    await waitUntil(() =>
-      [gmA, gmB].every((gm) => shown(gm, str.k) !== undefined && shown(gm, notes.k) !== undefined),
-    );
-
-    expect(
-      [gmA, gmB].map((gm) => ({
-        shown: [shown(gm, str.k), shown(gm, notes.k)],
-        stored: [storedRecord(gm, str.k), storedRecord(gm, notes.k)],
-      })),
-    ).toEqual([
-      { shown: [str, notes], stored: [str, notes] },
-      { shown: [str, notes], stored: [str, notes] },
-    ]);
-  });
-
-  test('settle on the record with the higher (c, a) when both edit one row at once', async () => {
+      await waitUntil(() =>
+        [gmA, gmB].every(
+          (gm) =>
+            Object(shown(gm, merged.k)?.d).cells?.str?.[0] === 12 &&
+            Object(shown(gm, merged.k)?.d).cells?.notes?.[0] === 'Хромает' &&
+            Object(storedRecord(gm, merged.k)?.d).cells?.str?.[0] === 12 &&
+            Object(storedRecord(gm, merged.k)?.d).cells?.notes?.[0] === 'Хромает',
+        ),
+      );
+      expect([gmA, gmB].map((gm) => [shown(gm, merged.k), storedRecord(gm, merged.k)])).toEqual([
+        [merged, merged],
+        [merged, merged],
+      ]);
+    },
+  );
+  test('keep both cells when both edit one block at once', async () => {
     // #given
     const room = roomRig.openRoom();
     const gmA = await startClient(room, 'gm-a');
     const gmB = await startClient(room, 'gm-b');
-
     // #when
     send(gmA, patch(ROW_STR, 'str', 12));
     send(gmB, patch(ROW_STR, 'str_tired', true));
 
-    // #then: both mint c 1, and "gm-b" is the higher author.
-    const winner = { k: 'row:brok:str', d: { str_tired: true }, c: 1, a: 'gm-b' };
+    // #then: both mint cell version 2, and the root takes the higher author.
+    const merged: VersionedRecord = {
+      k: 'blk:brok',
+      d: {
+        set: 'pc',
+        order: 0,
+        cells: { str: [12, 2, 'gm-a'], str_tired: [true, 2, 'gm-b'] },
+      },
+      c: 2,
+      a: 'gm-b',
+      l: [1, 'seed'],
+    };
 
-    await waitUntil(() => [gmA, gmB].every((gm) => shown(gm, winner.k)?.a === 'gm-b'));
-
-    expect([gmA, gmB].map((gm) => [shown(gm, winner.k), storedRecord(gm, winner.k)])).toEqual([
-      [winner, winner],
-      [winner, winner],
+    await waitUntil(() =>
+      [gmA, gmB].every(
+        (gm) =>
+          Object(shown(gm, merged.k)?.d).cells?.str?.[0] === 12 &&
+          Object(shown(gm, merged.k)?.d).cells?.str_tired?.[0] === true,
+      ),
+    );
+    expect([gmA, gmB].map((gm) => [shown(gm, merged.k), storedRecord(gm, merged.k)])).toEqual([
+      [merged, merged],
+      [merged, merged],
     ]);
   });
-
   test('edit a row the other just changed from the record it received', async () => {
     // #given
     const room = roomRig.openRoom();
     const gmA = await startClient(room, 'gm-a');
     const gmB = await startClient(room, 'gm-b');
-
     send(gmA, patch(ROW_STR, 'str', 12));
-    await waitUntil(() => shown(gmB, 'row:brok:str') !== undefined);
-
+    await waitUntil(() => Object(shown(gmB, 'blk:brok')?.d).cells?.str?.[0] === 12);
     // #when
     send(gmB, patch(ROW_STR, 'str_tired', true));
 
     // #then
-    const latest = { k: 'row:brok:str', d: { str: 12, str_tired: true }, c: 2, a: 'gm-b' };
+    const latest: VersionedRecord = {
+      k: 'blk:brok',
+      d: {
+        set: 'pc',
+        order: 0,
+        cells: { str: [12, 2, 'gm-a'], str_tired: [true, 3, 'gm-b'] },
+      },
+      c: 3,
+      a: 'gm-b',
+      l: [1, 'seed'],
+    };
 
-    await waitUntil(() => shown(gmA, latest.k)?.c === 2);
-
+    await waitUntil(() => shown(gmA, latest.k)?.c === 3);
     expect([shown(gmA, latest.k), storedRecord(gmA, latest.k), shown(gmB, latest.k)]).toEqual([
       latest,
       latest,
       latest,
     ]);
   });
-
   test('see a sheet created, renamed and deleted by the other', async () => {
     // #given
     const room = roomRig.openRoom();
     const gmA = await startClient(room, 'gm-a');
     const gmB = await startClient(room, 'gm-b');
-
     // #when
     send(gmA, { type: 'sheet-create', sheetId: 'lisa', set: 'pc' });
-    await waitUntil(() => shown(gmB, 'sheet:lisa') !== undefined);
-
-    const created = shown(gmB, 'sheet:lisa');
-
+    await waitUntil(() => shown(gmB, 'blk:lisa') !== undefined);
+    const created = shown(gmB, 'blk:lisa');
     send(gmA, rename('lisa', 'Лиза Смелая'));
-    await waitUntil(() => shown(gmB, 'row:lisa:name') !== undefined);
-
-    const renamed = shown(gmB, 'row:lisa:name');
-
+    await waitUntil(() => Object(shown(gmB, 'blk:lisa')?.d).cells?.name?.[0] === 'Лиза Смелая');
+    const renamed = shown(gmB, 'blk:lisa');
     send(gmA, { type: 'sheet-delete', sheetId: 'lisa' });
-    await waitUntil(() => shown(gmB, 'sheet:lisa')?.c === 2);
-
+    await waitUntil(() => shown(gmB, 'blk:lisa')?.c === 3);
     // #then
-    expect({ created, renamed, deleted: shown(gmB, 'sheet:lisa') }).toEqual({
-      created: { k: 'sheet:lisa', d: { set: 'pc', order: 1 }, c: 1, a: 'gm-a' },
-      renamed: { k: 'row:lisa:name', d: { name: 'Лиза Смелая' }, c: 1, a: 'gm-a' },
-      deleted: { k: 'sheet:lisa', d: null, c: 2, a: 'gm-a' },
+    expect({ created, renamed, deleted: shown(gmB, 'blk:lisa') }).toEqual({
+      created: {
+        k: 'blk:lisa',
+        d: { set: 'pc', order: 1, cells: {} },
+        c: 1,
+        a: 'gm-a',
+        l: [1, 'gm-a'],
+      },
+      renamed: {
+        k: 'blk:lisa',
+        d: {
+          set: 'pc',
+          order: 1,
+          cells: { name: ['Лиза Смелая', 2, 'gm-a'] },
+        },
+        c: 2,
+        a: 'gm-a',
+        l: [1, 'gm-a'],
+      },
+      deleted: { k: 'blk:lisa', d: null, c: 3, a: 'gm-a', l: [1, 'gm-a'] },
     });
   });
-
   test('of one player id are both known, so the commits of each apply on the other', async () => {
     // #given
     const room = roomRig.openRoom();
     const gmA = await startClient(room, 'gm-a', { playerId: 'owner' });
     const gmB = await startClient(room, 'gm-b', { playerId: 'owner' });
-
     // #when
     send(gmA, patch(ROW_STR, 'str', 12));
     send(gmB, patch(ROW_NOTES, 'notes', 'Хромает'));
-
     // #then
-    await waitUntil(
-      () => shown(gmA, 'row:brok:notes') !== undefined && shown(gmB, 'row:brok:str') !== undefined,
+    await waitUntil(() =>
+      [gmA, gmB].every(
+        (gm) =>
+          Object(shown(gm, 'blk:brok')?.d).cells?.str?.[0] === 12 &&
+          Object(shown(gm, 'blk:brok')?.d).cells?.notes?.[0] === 'Хромает',
+      ),
     );
 
-    expect([shown(gmA, 'row:brok:notes')?.a, shown(gmB, 'row:brok:str')?.a]).toEqual([
-      'gm-b',
-      'gm-a',
-    ]);
-  });
+    const merged: BlockData = {
+      set: 'pc',
+      order: 0,
+      cells: {
+        str: [12, 2, 'gm-a'],
+        notes: ['Хромает', 2, 'gm-b'],
+      },
+    };
 
+    expect([shown(gmA, 'blk:brok')?.d, shown(gmB, 'blk:brok')?.d]).toEqual([merged, merged]);
+  });
   test('do not send a received commit on again', async () => {
     // #given
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gmA = await startClient(room, 'gm-a');
     const gmB = await startClient(room, 'gm-b');
-
     // #when
     send(gmA, patch(ROW_STR, 'str', 12));
-    await waitUntil(() => shown(gmB, 'row:brok:str') !== undefined);
+    await waitUntil(() => shown(gmB, 'blk:brok') !== undefined);
     await afterMarker(wire.post, 'gm-a', gmB);
-
     // #then
     expect(commitsFrom(wire.heard, 'gm-b')).toEqual([]);
   });
@@ -439,67 +517,51 @@ describe('gate', () => {
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
-
     await startClient(room, 'gm-b');
     spyOn(gm.platform.party, 'getPlayers').mockResolvedValue([
       { id: 'owner', connectionId: 'late', name: 'late', role: 'GM' },
       { id: 'owner', connectionId: 'gm-b', name: 'gm-b', role: 'GM' },
     ]);
-
     // #when
     wire.post('late', commit([sheet('first', 1, 'late')]));
     wire.post('gm-b', commit([sheet('second', 1, 'gm-b')]));
-    await waitUntil(() => shown(gm, 'sheet:second') !== undefined);
-    await waitUntil(() => shown(gm, 'sheet:first') !== undefined);
-
+    await waitUntil(() => shown(gm, 'blk:second') !== undefined);
+    await waitUntil(() => shown(gm, 'blk:first') !== undefined);
     // #then
-    expect(gm.deltaKeys.filter((key) => key !== 'sheet:brok')).toEqual([
-      'sheet:first',
-      'sheet:second',
-    ]);
+    expect(gm.deltaKeys.filter((key) => key !== 'blk:brok')).toEqual(['blk:first', 'blk:second']);
   });
-
   test('drops a commit from a connection the party does not know after one re-read', async () => {
     // #given
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
-
     await startClient(room, 'gm-b');
-
     const reads = spyOn(gm.platform.party, 'getPlayers');
-
     // #when
     wire.post('stranger', commit([sheet('lisa', 1, 'stranger')]));
     await afterMarker(wire.post, 'gm-b', gm);
-
     // #then
-    expect({ shown: shown(gm, 'sheet:lisa'), reads: reads.mock.calls.length }).toEqual({
+    expect({ shown: shown(gm, 'blk:lisa'), reads: reads.mock.calls.length }).toEqual({
       shown: undefined,
       reads: 1,
     });
   });
-
   test('drops a commit from a known player', async () => {
     // #given
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
-
     await startClient(room, 'gm-b');
     await startClient(room, 'player-p', { role: 'PLAYER', playerId: 'lisa' });
-
     // #when
     wire.post('player-p', commit([sheet('lisa', 1, 'player-p')]));
     await afterMarker(wire.post, 'gm-b', gm);
-
     // #then
-    expect({ shown: shown(gm, 'sheet:lisa'), stored: storedRecord(gm, 'sheet:lisa') }).toEqual({
+    expect({ shown: shown(gm, 'blk:lisa'), stored: storedRecord(gm, 'blk:lisa') }).toEqual({
       shown: undefined,
       stored: null,
     });
   });
-
   test.each([
     ['higher', { n: 1, a: 'x' }, INITIAL],
     ['lower', INITIAL, { n: 1, a: 'x' }],
@@ -508,84 +570,68 @@ describe('gate', () => {
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a', { generation: ownGeneration });
-
     await startClient(room, 'gm-b', { generation: ownGeneration });
-
     // #when
     wire.post('gm-b', commit([sheet('lisa', 1, 'gm-b')], g));
     wire.post('gm-b', commit([sheet('marker', 1, 'gm-b')], ownGeneration));
-    await waitUntil(() => shown(gm, 'sheet:marker') !== undefined);
-
+    await waitUntil(() => shown(gm, 'blk:marker') !== undefined);
     // #then
     expect({
-      shown: shown(gm, 'sheet:lisa'),
-      stored: storedRecord(gm, 'sheet:lisa', ownGeneration),
+      shown: shown(gm, 'blk:lisa'),
+      stored: storedRecord(gm, 'blk:lisa', ownGeneration),
     }).toEqual({
       shown: undefined,
       stored: null,
     });
   });
-
   test('drops a message with a lower v and shows no notice', async () => {
     // #given
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
-
     await startClient(room, 'gm-b');
-
     // #when
     wire.post('gm-b', commit([sheet('lisa', 1, 'gm-b')], INITIAL, 1));
     await afterMarker(wire.post, 'gm-b', gm);
-
     // #then
-    expect({ shown: shown(gm, 'sheet:lisa'), notices: gm.store.$notices.get() }).toEqual({
+    expect({ shown: shown(gm, 'blk:lisa'), notices: gm.store.$notices.get() }).toEqual({
       shown: undefined,
       notices: [],
     });
   });
-
   test('drops a message with a higher v and keeps the new-version notice after later deltas', async () => {
     // #given
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
-
     await startClient(room, 'gm-b');
-
     // #when
-    wire.post('gm-b', { v: 4, t: 'commit', unread: 'a field of a newer build' });
+    wire.post('gm-b', { v: 5, t: 'commit', unread: 'a field of a newer build' });
     await waitUntil(() => gm.store.$notices.get().includes('new-version'));
     await afterMarker(wire.post, 'gm-b', gm);
-
     // #then
     expect({ notices: gm.store.$notices.get(), stored: storedKeys(gm).sort() }).toEqual({
       notices: ['new-version'],
-      stored: [storageKey('preset'), storageKey('sheet:brok'), storageKey('sheet:marker')],
+      stored: [storageKey('blk:brok'), storageKey('blk:marker'), storageKey('preset')],
     });
   });
-
   test('a stopped engine ignores newer-format room ingress after live ingress worked', async () => {
     // #given
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
-
     await startClient(room, 'gm-b');
     wire.post('gm-b', commit([sheet('live-control', 1, 'gm-b')]));
-    await waitUntil(() => shown(gm, 'sheet:live-control') !== undefined);
+    await waitUntil(() => shown(gm, 'blk:live-control') !== undefined);
     await pause(20);
-
     const sentBeforeStop = gm.local.length;
     gm.engine.stop();
-
     // #when
-    wire.post('gm-b', { v: 4, t: 'commit', unread: 'newer build data' });
+    wire.post('gm-b', { v: 5, t: 'commit', unread: 'newer build data' });
     await pause(30);
-
     // #then
     expect({
-      control: shown(gm, 'sheet:live-control'),
+      control: shown(gm, 'blk:live-control'),
       postStop: gm.local.slice(sentBeforeStop),
       notices: gm.store.$notices.get(),
     }).toEqual({
@@ -594,11 +640,10 @@ describe('gate', () => {
       notices: [],
     });
   });
-
   test.each<[string, JsonValue]>([
     ['a record that fails its schema', commit([{ ...sheet('lisa'), c: 0 }])],
-    ['an unknown type', { v: 3, g: INITIAL, t: 'shout', records: [] }],
-    ['a type with no handler yet', { v: 3, g: INITIAL, t: 'ping' }],
+    ['an unknown type', { v: 4, g: INITIAL, t: 'shout', records: [] }],
+    ['a type with no handler yet', { v: 4, g: INITIAL, t: 'ping' }],
     ['no envelope at all', 'commit'],
   ])('drops a message with the right v and %s, and throws nothing', async (_name, message) => {
     // #given
@@ -606,15 +651,12 @@ describe('gate', () => {
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
     const errors = spyOn(console, 'error');
-
     await startClient(room, 'gm-b');
-
     // #when
     wire.post('gm-b', message);
     await afterMarker(wire.post, 'gm-b', gm);
-
     // #then
-    expect({ shown: shown(gm, 'sheet:lisa'), errors: errors.mock.calls }).toEqual({
+    expect({ shown: shown(gm, 'blk:lisa'), errors: errors.mock.calls }).toEqual({
       shown: undefined,
       errors: [],
     });
@@ -627,19 +669,16 @@ describe('remote record', () => {
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
-
     spyOn(console, 'error').mockImplementation(() => undefined);
     await startClient(room, 'gm-b');
     gm.platform.setFailingStorageOperations(['write']);
-
     // #when
     wire.post('gm-b', commit([sheet('lisa', 1, 'gm-b')]));
-    await waitUntil(() => shown(gm, 'sheet:lisa') !== undefined);
-
+    await waitUntil(() => shown(gm, 'blk:lisa') !== undefined);
     // #then
     expect({
-      shown: shown(gm, 'sheet:lisa'),
-      stored: storedRecord(gm, 'sheet:lisa'),
+      shown: shown(gm, 'blk:lisa'),
+      stored: storedRecord(gm, 'blk:lisa'),
       notices: gm.store.$notices.get(),
     }).toEqual({
       shown: sheet('lisa', 1, 'gm-b'),
@@ -647,47 +686,37 @@ describe('remote record', () => {
       notices: ['local-save-failed'],
     });
   });
-
   test('that loses to the local one sends no delta and writes nothing', async () => {
     // #given: the GM holds Брок at c 5.
     const room = roomRig.openRoom();
     const wire = listen(room);
     const local = sheet('brok', 5, 'seed');
     const gm = await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, local] });
-
     await startClient(room, 'gm-b');
-
     const writes = spyOn(gm.backing, 'set');
     const deltasBefore = gm.deltas();
-
     // #when
     wire.post('gm-b', commit([sheet('brok', 2, 'gm-b')]));
     await afterMarker(wire.post, 'gm-b', gm);
-
     // #then: only the marker made a delta and a write.
     expect({
       shown: shown(gm, local.k),
       deltas: gm.deltas() - deltasBefore,
       writes: writes.mock.calls.map(([key]) => key),
-    }).toEqual({ shown: local, deltas: 1, writes: [storageKey('sheet:marker')] });
+    }).toEqual({ shown: local, deltas: 1, writes: [storageKey('blk:marker')] });
   });
-
   test('an unchanged winner does not read failed persistence or raise a notice', async () => {
     // #given
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     const room = roomRig.openRoom();
     const wire = listen(room);
     const local = sheet('brok', 5, 'seed');
     const gm = await startClient(room, 'gm-a', { seeded: [PRESET_RECORD, local] });
-
     await startClient(room, 'gm-b');
     gm.platform.setFailingStorageOperations(['read']);
-
     // #when
     wire.post('gm-b', commit([sheet('brok', 2, 'gm-b')]));
     await pause(30);
-
     // #then
     expect({
       shown: shown(gm, local.k),
@@ -701,11 +730,8 @@ describe('GM whose storage could not be read', () => {
     // #given
     const room = roomRig.openRoom();
     const wire = listen(room);
-
     spyOn(console, 'error').mockImplementation(() => undefined);
-
     const gm = await startClient(room, 'gm-a', { failingStorage: ['list'], seeded: [] });
-
     // #when: a new sheet needs a preset, and the GM holds none.
     send(gm, {
       type: 'preset-upload',
@@ -716,12 +742,10 @@ describe('GM whose storage could not be read', () => {
     });
     await waitUntil(() => shown(gm, 'preset') !== undefined);
     send(gm, { type: 'sheet-create', sheetId: 'lisa', set: 'pc' });
-    await waitUntil(() => shown(gm, 'sheet:lisa') !== undefined);
-
+    await waitUntil(() => shown(gm, 'blk:lisa') !== undefined);
     // A commit would sit in the queue ahead of the rename's delta.
     send(gm, rename('lisa', 'Лиза Смелая'));
-    await waitUntil(() => shown(gm, 'row:lisa:name') !== undefined);
-
+    await waitUntil(() => shown(gm, 'blk:lisa') !== undefined);
     // #then
     expect(wire.heard).toEqual([]);
   });
@@ -735,23 +759,22 @@ describe('remote record too large for one message', () => {
     const gm = await startClient(room, 'gm-a');
 
     const huge: VersionedRecord = {
-      k: 'row:brok:notes',
-      d: { notes: 'ы'.repeat(7300) },
+      k: 'blk:brok',
+      d: { order: 0, cells: { notes: ['ы'.repeat(7300), 1, 'gm-b'] } },
       c: 1,
       a: 'gm-b',
+      l: [1, 'seed'],
     };
 
     spyOn(console, 'error').mockImplementation(() => undefined);
     await startClient(room, 'gm-b');
-
     // #when
     wire.post('gm-b', commit([huge, sheet('lisa', 1, 'gm-b')]));
-    await waitUntil(() => shown(gm, 'sheet:lisa') !== undefined);
-
+    await waitUntil(() => shown(gm, 'blk:lisa') !== undefined);
     // #then
     expect({ shown: shown(gm, huge.k), stored: storedRecord(gm, huge.k) }).toEqual({
-      shown: undefined,
-      stored: null,
+      shown: BROK,
+      stored: BROK,
     });
   });
 });
@@ -784,18 +807,15 @@ describe('player client', () => {
     const room = roomRig.openRoom();
     const wire = listen(room);
     const player = await startClient(room, 'player-p', { role: 'PLAYER', seeded: [] });
-
     await startClient(room, 'gm-a');
     wire.post('gm-a', commit([PRESET_RECORD, BROK]));
     await waitUntil(() => shown(player, BROK.k) !== undefined);
     // The player heard gm-a as a GM return and caught up; its end sends a delta of its own.
     await waitUntil(() => player.store.$sync.get().state === 'live');
-
     const before = [...player.store.$records.get().values()];
     const deltasBefore = player.deltas();
     // #when
     const settled = await Promise.resolve(player.window.sendCommand(command));
-
     // #then
     expect({
       reason: settled.kind === 'refused' ? settled.rejection.reason : settled.kind,
@@ -804,21 +824,23 @@ describe('player client', () => {
       heard: commitsFrom(wire.heard, 'player-p'),
     }).toEqual({ reason: 'not-allowed', records: before, deltas: 0, heard: [] });
   });
-
   test('merges a GM commit into its replica and persists nothing', async () => {
     // #given
     const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a');
     const player = await startClient(room, 'player-p', { role: 'PLAYER', seeded: [] });
-
     // #when
     send(gm, { type: 'sheet-create', sheetId: 'lisa', set: 'pc' });
-
     // #then
-    await waitUntil(() => shown(player, 'sheet:lisa') !== undefined);
-
-    expect({ shown: shown(player, 'sheet:lisa'), stored: storedKeys(player) }).toEqual({
-      shown: { k: 'sheet:lisa', d: { set: 'pc', order: 1 }, c: 1, a: 'gm-a' },
+    await waitUntil(() => shown(player, 'blk:lisa') !== undefined);
+    expect({ shown: shown(player, 'blk:lisa'), stored: storedKeys(player) }).toEqual({
+      shown: {
+        k: 'blk:lisa',
+        d: { set: 'pc', order: 1, cells: {} },
+        c: 1,
+        a: 'gm-a',
+        l: [1, 'gm-a'],
+      },
       stored: [],
     });
   });

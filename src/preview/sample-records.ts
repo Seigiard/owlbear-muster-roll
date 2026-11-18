@@ -5,9 +5,12 @@ import {
   type Preset,
   type PresetCell,
   type PresetFieldCell,
+  type PresetRow,
   type Template,
 } from '@/core/preset';
 import {
+  versionCells,
+  blockDataSchema,
   repKey,
   rowKey,
   type FieldValue,
@@ -60,12 +63,15 @@ export function previewSheets(preset: Preset, content: PreviewContent): PreviewS
   const sheets = preset.templates.map((template, index): PreviewSheet => {
     const sheetId = isSheetSet(template) ? previewSheetId(index) : template.id;
 
-    if (isSheetSet(template)) {
+    {
       addRecord(records, {
         k: sheetKey(sheetId),
-        d: { set: template.id, order: 1 },
+        d: isSheetSet(template)
+          ? { set: template.id, order: 1, cells: {} }
+          : { order: 1, cells: {} },
         c: SAMPLE_COUNTER,
         a: SAMPLE_AUTHOR,
+        l: [SAMPLE_COUNTER, SAMPLE_AUTHOR],
       });
     }
 
@@ -94,9 +100,17 @@ function addSampleValues(
       for (let block = 1; block <= REPEAT_BLOCK_COUNT; block += 1) {
         addRecord(records, {
           k: repKey(sheetId, sectionId, `sample-${block}`),
-          d: { order: block, cells: sampleValues(section.rows, counters, block) },
+          d: {
+            order: block,
+            cells: versionCells(
+              sampleValues(section.rows, counters, block),
+              SAMPLE_COUNTER,
+              SAMPLE_AUTHOR,
+            ),
+          },
           c: SAMPLE_COUNTER,
           a: SAMPLE_AUTHOR,
+          l: [SAMPLE_COUNTER, SAMPLE_AUTHOR],
         });
       }
 
@@ -104,7 +118,7 @@ function addSampleValues(
     }
 
     // A section marked `repeat` with no field cannot pass the preset rules, so it has no record.
-    if (section.repeat === true) {
+    if (section.repeat !== undefined) {
       continue;
     }
 
@@ -113,11 +127,19 @@ function addSampleValues(
 
       // A row with no field has no record.
       if (rowId !== null) {
+        const root = blockDataSchema.parse(records.get(sheetKey(sheetId))?.d);
         addRecord(records, {
           k: rowKey(sheetId, rowId),
-          d: sampleValues([row], counters, null),
+          d: {
+            ...root,
+            cells: {
+              ...root.cells,
+              ...versionCells(sampleValues([row], counters, null), SAMPLE_COUNTER, SAMPLE_AUTHOR),
+            },
+          },
           c: SAMPLE_COUNTER,
           a: SAMPLE_AUTHOR,
+          l: [SAMPLE_COUNTER, SAMPLE_AUTHOR],
         });
       }
     }
@@ -131,16 +153,16 @@ function addRecord(records: Map<string, VersionedRecord>, record: VersionedRecor
 // A text field shows its own label, and in a repeat block the block's number after it, so it is
 // never empty: a stored text value is never "".
 function sampleValues(
-  rows: readonly (readonly PresetCell[])[],
+  rows: readonly PresetRow[],
   counters: ValueCounters,
   block: number | null,
 ): FieldValues {
   const values: [string, FieldValue][] = [];
 
   for (const row of rows) {
-    row.forEach((cell, index) => {
+    row.cells.forEach((cell, index) => {
       if (cell.kind === 'field') {
-        values.push([cell.id, sampleValue(cell, row.slice(0, index), counters, block)]);
+        values.push([cell.id, sampleValue(cell, row.cells.slice(0, index), counters, block)]);
       }
     });
   }

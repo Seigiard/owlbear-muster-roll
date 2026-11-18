@@ -1,9 +1,8 @@
+import { fixtureSnapshotCells, fixtureSnapshotBlocks } from './support/block-fixtures';
 import { readFileSync } from 'node:fs';
-
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { z } from 'zod';
-
 import { renderedColor, tokenColor } from './support/colors';
 import {
   ADD,
@@ -62,17 +61,17 @@ const RECORDS: StoredRecord[] = [
   ...pcSheet('brok', 'Брок', 1),
   ...pcSheet('anya', 'Аня', 0),
   npcBlock('skel', 'Скелет', 0, { hp: 7 }),
-  record('row:brok:class', { class: 'Воин', level: 3 }),
-  record('rep:brok:attack:i2', { order: 1, cells: { attack: 'Топор', bonus: 2 } }),
-  record('rep:brok:attack:i1', { order: 0, cells: { attack: 'Меч' } }),
+  record('blk:brok', { class: 'Воин', level: 3 }),
+  record('blk:brok:attack:i2', { order: 1, cells: { attack: 'Топор', bonus: 2 } }),
+  record('blk:brok:attack:i1', { order: 0, cells: { attack: 'Меч' } }),
   record('acl:brok:lisa', { name: 'Лиза' }),
   record('plink:brok:lisa', { name: 'Лиза' }),
-  record('link:t1', { s: 'brok' }),
-  record('link:t3', { s: 'npc', i: 'skel' }),
+  record('link:t1', { s: 'brok', c: 'token' }),
+  record('link:t3', { s: 'npc', path: ['npc_name', 'skel'], c: 'token' }),
   // A deleted sheet with a live row left behind, and a link to it.
-  record('sheet:gone', null, 2),
-  record('row:gone:class', { class: 'Лучник' }),
-  record('link:t2', { s: 'gone' }),
+  record('blk:gone', null, 2),
+  record('blk:gone', { class: 'Лучник' }),
+  record('link:t2', { s: 'gone', c: 'token' }),
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -85,13 +84,10 @@ test('Settings lists Пресет, Снимок, Копия в комнате, �
 }) => {
   // #given
   await openRoom(page, context, RECORDS);
-
   // #when
   await page.getByRole('tab', { name: SETTINGS }).click();
-
   // #then
   const section = snapshotSection(page);
-
   await expect(page.getByRole('tabpanel').getByRole('heading')).toHaveText([
     'Пресет',
     SNAPSHOT,
@@ -110,10 +106,8 @@ test('with a preset, "Скачать снимок" and "Загрузить сн�
 }) => {
   // #given
   await openRoom(page, context, RECORDS);
-
   // #when
   await page.getByRole('tab', { name: SETTINGS }).click();
-
   // #then
   await expect(snapshotSection(page).getByRole('button', { name: DOWNLOAD })).toBeEnabled();
   await expect(snapshotSection(page).getByRole('button', { name: UPLOAD })).toBeEnabled();
@@ -128,15 +122,11 @@ test('the downloaded snapshot holds the live sheets, their values and links, and
   await page.clock.setFixedTime(FIXED_NOW);
   await page.getByRole('tab', { name: SETTINGS }).click();
   await watchCommands(page);
-
   // #when
   const downloading = page.waitForEvent('download');
-
   await snapshotSection(page).getByRole('button', { name: DOWNLOAD }).click();
-
   const download = await downloading;
   const text = readFileSync(await download.path(), 'utf8');
-
   // #then
   expect({
     name: download.suggestedFilename(),
@@ -147,39 +137,126 @@ test('the downloaded snapshot holds the live sheets, their values and links, and
     // The templates in preset order: the sheets of "Персонажи" by order, then each single sheet
     // once, with values or none.
     file: {
-      v: 3,
+      v: 4,
       type: 'muster-roll/snapshot',
       sheets: [
-        { id: 'anya', set: 'pc', order: 0, rows: { name: { name: 'Аня' } }, repeats: {} },
+        {
+          id: 'anya',
+          set: 'pc',
+          order: 0,
+          cells: fixtureSnapshotCells({ name: { name: 'Аня' } }),
+          blocks: fixtureSnapshotBlocks({}),
+        },
         {
           id: 'brok',
           set: 'pc',
           order: 1,
-          rows: { class: { class: 'Воин', level: 3 }, name: { name: 'Брок' } },
-          repeats: {
+          cells: fixtureSnapshotCells({
+            class: { class: 'Воин', level: 3 },
+            name: { name: 'Брок' },
+          }),
+          blocks: fixtureSnapshotBlocks({
             attack: [
               { instanceId: 'i1', order: 0, cells: { attack: 'Меч' } },
               { instanceId: 'i2', order: 1, cells: { attack: 'Топор', bonus: 2 } },
             ],
-          },
+          }),
         },
         {
           id: 'npc',
-          rows: {},
-          repeats: {
+          cells: fixtureSnapshotCells({}),
+          blocks: fixtureSnapshotBlocks({
             npc_name: [{ instanceId: 'skel', order: 0, cells: { hp: 7, npc_name: 'Скелет' } }],
-          },
+          }),
         },
-        { id: 'inventory', rows: {}, repeats: {} },
+        { id: 'inventory', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) },
       ],
       links: [
-        { tokenId: 't1', sheetId: 'brok' },
-        { tokenId: 't3', sheetId: 'npc', instanceId: 'skel' },
+        { tokenId: 't1', sheetId: 'brok', cellId: 'token' },
+        {
+          tokenId: 't3',
+          sheetId: 'npc',
+          path: ['npc_name', 'skel'],
+          cellId: 'token',
+        },
       ],
     },
     commands: [],
   });
 });
+
+test(
+  'a downloaded snapshot restores original values and repeat blocks after both pages restart',
+  { tag: '@verify-quick' },
+  async ({ page, context }, testInfo) => {
+    // #given
+    const background = await openRoom(page, context, RECORDS);
+    await page.getByRole('tab', { name: SETTINGS }).click();
+    const downloading = page.waitForEvent('download');
+    await snapshotSection(page).getByRole('button', { name: DOWNLOAD }).click();
+    const download = await downloading;
+    const snapshotPath = testInfo.outputPath('snapshot.json');
+    await download.saveAs(snapshotPath);
+
+    // #when
+    await page.getByRole('tab', { name: 'Брок', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Класс', exact: true }).fill('Маг');
+    await page.getByRole('textbox', { name: 'Уровень', exact: true }).fill('9');
+    await page
+      .getByRole('region', { name: 'Атаки', exact: true })
+      .getByRole('textbox', { name: 'attack', exact: true })
+      .first()
+      .fill('Копьё');
+    await page.keyboard.press('Tab');
+    await page
+      .getByRole('region', { name: 'Атаки', exact: true })
+      .getByRole('button', { name: 'Удалить блок 2', exact: true })
+      .click();
+    await page.getByRole('tab', { name: SETTINGS }).click();
+    await page.getByRole('tab', { name: 'Брок', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Класс', exact: true })).toHaveValue('Маг');
+    await expect(page.getByRole('textbox', { name: 'Уровень', exact: true })).toHaveValue('9');
+    const changedAttacks = page.getByRole('region', { name: 'Атаки', exact: true });
+    await expect(changedAttacks.getByRole('textbox', { name: 'attack', exact: true })).toHaveCount(
+      1,
+    );
+    await expect(changedAttacks.getByRole('textbox', { name: 'attack', exact: true })).toHaveValue(
+      'Копьё',
+    );
+    await page.getByRole('tab', { name: SETTINGS }).click();
+    const choosing = page.waitForEvent('filechooser');
+    await importButton(page).click();
+    await (await choosing).setFiles(snapshotPath);
+    await confirmation(page).getByRole('button', { name: UPLOAD }).click();
+    await expect(confirmation(page)).toHaveCount(0);
+    await page.getByRole('tab', { name: 'Брок', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Класс', exact: true })).toHaveValue('Воин');
+    await background.close();
+    await page.close();
+    const restartedWindow = await openClientWindow(context);
+    await openClientBackground(context);
+    await restartedWindow.getByRole('tab', { name: 'Брок', exact: true }).click();
+
+    // #then
+    await expect(restartedWindow.getByRole('textbox', { name: 'Класс', exact: true })).toHaveValue(
+      'Воин',
+    );
+    await expect(
+      restartedWindow.getByRole('textbox', { name: 'Уровень', exact: true }),
+    ).toHaveValue('3');
+    const attacks = restartedWindow.getByRole('region', { name: 'Атаки', exact: true });
+    await expect(attacks.getByRole('textbox', { name: 'attack', exact: true })).toHaveCount(2);
+    await expect(attacks.getByRole('textbox', { name: 'attack', exact: true }).nth(0)).toHaveValue(
+      'Меч',
+    );
+    await expect(attacks.getByRole('textbox', { name: 'attack', exact: true }).nth(1)).toHaveValue(
+      'Топор',
+    );
+    await expect(attacks.getByRole('textbox', { name: 'bonus', exact: true }).nth(1)).toHaveValue(
+      '2',
+    );
+  },
+);
 
 test('with no preset, both snapshot buttons are disabled with the preset-first reason', async ({
   page,
@@ -189,14 +266,11 @@ test('with no preset, both snapshot buttons are disabled with the preset-first r
   await page.goto('/index.html');
   await openBackground(context);
   await expect(page.getByRole('button', { name: LOAD_PRESET })).toBeVisible();
-
   // #when
   await page.getByRole('tab', { name: SETTINGS }).click();
-
   // #then
   const download = snapshotSection(page).getByRole('button', { name: DOWNLOAD });
   const upload = snapshotSection(page).getByRole('button', { name: UPLOAD });
-
   await expect(download).toBeDisabled();
   await expect(download).toHaveAccessibleDescription(PRESET_REQUIRED);
   await expect(upload).toBeDisabled();
@@ -210,18 +284,21 @@ test('with no preset, both snapshot buttons are disabled with the preset-first r
 // The file of the 5.3 tests: one character the example preset places, and one value it has no
 // field for.
 const MIRA_FILE = {
-  v: 3,
+  v: 4,
   type: 'muster-roll/snapshot',
   sheets: [
     {
       id: 'mira',
       set: 'pc',
       order: 0,
-      rows: { name: { name: 'Мира' }, class: { class: 'Маг', level: 2, gone: 'x' } },
-      repeats: {},
+      cells: fixtureSnapshotCells({
+        name: { name: 'Мира' },
+        class: { class: 'Маг', level: 2, gone: 'x' },
+      }),
+      blocks: fixtureSnapshotBlocks({}),
     },
   ],
-  links: [{ tokenId: 't9', sheetId: 'mira' }],
+  links: [{ tokenId: 't9', sheetId: 'mira', cellId: 'token' }],
 };
 
 // MIRA_FILE with two sheets the example preset has no template for: a sheet of a sheet set
@@ -230,13 +307,19 @@ const UNKNOWN_TEMPLATES_FILE = {
   ...MIRA_FILE,
   sheets: [
     ...MIRA_FILE.sheets,
-    { id: 'ship', set: 'ships', order: 0, rows: {}, repeats: {} },
-    { id: 'journal', rows: {}, repeats: {} },
+    {
+      id: 'ship',
+      set: 'ships',
+      order: 0,
+      cells: fixtureSnapshotCells({}),
+      blocks: fixtureSnapshotBlocks({}),
+    },
+    { id: 'journal', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) },
   ],
   links: [
-    { tokenId: 't9', sheetId: 'mira' },
-    { tokenId: 't-ship', sheetId: 'ship' },
-    { tokenId: 't-journal', sheetId: 'journal' },
+    { tokenId: 't9', sheetId: 'mira', cellId: 'token' },
+    { tokenId: 't-ship', sheetId: 'ship', cellId: 'token' },
+    { tokenId: 't-journal', sheetId: 'journal', cellId: 'token' },
   ],
 };
 
@@ -245,12 +328,18 @@ const UNKNOWN_TEMPLATES_FILE = {
 const LINKED_FILE = {
   ...MIRA_FILE,
   sheets: [
-    { id: 'anya', set: 'pc', order: 0, rows: { name: { name: 'Аня' } }, repeats: {} },
+    {
+      id: 'anya',
+      set: 'pc',
+      order: 0,
+      cells: fixtureSnapshotCells({ name: { name: 'Аня' } }),
+      blocks: fixtureSnapshotBlocks({}),
+    },
     { ...MIRA_FILE.sheets[0], order: 1 },
   ],
   links: [
-    { tokenId: 't9', sheetId: 'mira' },
-    { tokenId: 't-absent', sheetId: 'anya' },
+    { tokenId: 't9', sheetId: 'mira', cellId: 'token' },
+    { tokenId: 't-absent', sheetId: 'anya', cellId: 'token' },
   ],
 };
 
@@ -276,7 +365,7 @@ test('a file that is no snapshot, or not JSON, or newer, is refused under the bu
   const cases: [string, string][] = [
     [EXAMPLE_PRESET_TEXT, NOT_SNAPSHOT],
     ['{', NOT_JSON],
-    [JSON.stringify({ v: 4, type: 'muster-roll/snapshot' }), NEWER],
+    [JSON.stringify({ v: 5, type: 'muster-roll/snapshot' }), NEWER],
     // AD-12: no migration from a version 1 file.
     [JSON.stringify({ ...MIRA_FILE, v: 1 }), UNSUPPORTED],
   ];
@@ -285,7 +374,6 @@ test('a file that is no snapshot, or not JSON, or newer, is refused under the bu
     // #when
     // oxlint-disable-next-line no-await-in-loop
     await chooseSnapshot(page, text);
-
     // #then
     // oxlint-disable-next-line no-await-in-loop
     await expect(underImport(page)).toHaveText(message);
@@ -293,7 +381,11 @@ test('a file that is no snapshot, or not JSON, or newer, is refused under the bu
     await expect(confirmation(page)).toHaveCount(0);
   }
 
-  expect(await storedRecords(page, 'sheet:brok')).toHaveLength(1);
+  expect((await storedRecords(page, 'blk:brok')).map((record) => record.k).sort()).toEqual([
+    'blk:brok',
+    'blk:brok:attack:i1',
+    'blk:brok:attack:i2',
+  ]);
 });
 
 test('a snapshot asks once, with the dropped count, and its focus starts on "Отменить"', async ({
@@ -303,10 +395,8 @@ test('a snapshot asks once, with the dropped count, and its focus starts on "О�
   // #given
   await openRoom(page, context, RECORDS);
   await page.getByRole('tab', { name: SETTINGS }).click();
-
   // #when
   await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
-
   // #then
   await expect(confirmation(page)).toHaveAccessibleName(ASK_DROPS_ONE);
   await expect(confirmation(page).getByRole('button')).toHaveText([UPLOAD, CANCEL]);
@@ -322,23 +412,20 @@ test('a file sheet of a template the preset lacks is dropped, counted, and stays
   await page.getByRole('tab', { name: SETTINGS }).click();
   await chooseSnapshot(page, JSON.stringify(UNKNOWN_TEMPLATES_FILE));
   await expect(confirmation(page)).toHaveAccessibleName(ASK_DROPS_SHEETS);
-
   // #when
   await confirmation(page).getByRole('button', { name: UPLOAD }).click();
-
   // #then
   await expect(page.getByRole('tab', { name: 'Мира' })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveText(['Мира', 'NPC', 'Инвентарь', SETTINGS]);
-
   // The old generation goes once the new one is complete, so only the import's keys stay.
   await expect
     .poll(async () =>
       (await roomKeys(page))
         .map((key) => storageKeyParts(key).recordKey)
-        .filter((key) => key.startsWith('link:') || key.startsWith('sheet:'))
+        .filter((key) => key.startsWith('link:') || key.startsWith('blk:'))
         .sort(),
     )
-    .toEqual(['link:t9', 'sheet:mira']);
+    .toEqual(['blk:inventory', 'blk:mira', 'blk:npc', 'link:t9']);
 });
 
 test('"Отменить" and Escape close the block and write nothing', async ({ page, context }) => {
@@ -346,28 +433,21 @@ test('"Отменить" and Escape close the block and write nothing', async ({
   await openRoom(page, context, RECORDS);
   await page.getByRole('tab', { name: SETTINGS }).click();
   await watchCommands(page);
-
   const keysBefore = await roomKeys(page);
-
   await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
-
   // #when
   await confirmation(page).getByRole('button', { name: CANCEL }).click();
-
   // #then
   await expect(confirmation(page)).toHaveCount(0);
   await expect(importButton(page)).toBeFocused();
-
   // #when
   await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
   await expect(confirmation(page).getByRole('button', { name: CANCEL })).toBeFocused();
   await page.keyboard.press('Escape');
-
   // #then
   await expect(confirmation(page)).toHaveCount(0);
   const commands = (await afterSettling(page)).commands;
   const keys = await roomKeys(page);
-
   expect({
     commands,
     keys,
@@ -384,10 +464,8 @@ test('a confirm after the preset changed asks again with the new count, focused 
   await page.getByRole('tab', { name: SETTINGS }).click();
   await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
   await expect(confirmation(page)).toHaveAccessibleName(ASK_DROPS_ONE);
-
   // #when: another window of the GM renames "level", so the file's level has no field either.
   const other = await openClientWindow(context, {});
-
   await other.getByRole('tab', { name: SETTINGS }).click();
   await uploadPreset(other, EXAMPLE_PRESET_TEXT.replaceAll('level', 'rank'));
   await other
@@ -396,7 +474,6 @@ test('a confirm after the preset changed asks again with the new count, focused 
     .click();
   await expect(other.getByRole('group', { name: /Загрузить пресет\?$/ })).toHaveCount(0);
   await confirmation(page).getByRole('button', { name: UPLOAD }).click();
-
   // #then
   await expect(confirmation(page)).toHaveAccessibleName(
     `${ASK} Не войдут значения удалённых полей: 2.`,
@@ -405,10 +482,8 @@ test('a confirm after the preset changed asks again with the new count, focused 
   expect(
     (await roomKeys(page)).every((key) => isStorageKeyInGeneration(key, { n: 0, a: '' })),
   ).toBe(true);
-
   // #when
   await confirmation(page).getByRole('button', { name: UPLOAD }).click();
-
   // #then
   await expect(confirmation(page)).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'Мира' })).toBeVisible();
@@ -420,20 +495,15 @@ test('a catch-up closes an open confirmation, writes nothing, and the focus come
 }) => {
   // #given
   const background = await openRoom(page, context, RECORDS);
-
   await page.getByRole('tab', { name: SETTINGS }).click();
-
   const keysBefore = await roomKeys(page);
-
   await chooseSnapshot(page, JSON.stringify(MIRA_FILE));
   await expect(confirmation(page)).toBeVisible();
-
   // #when: a GM that never answers joins, and the page comes back online.
   await addPartyMember(page, SILENT_GM, 'GM');
   await background.evaluate(() => {
     window.dispatchEvent(new Event('online'));
   });
-
   // #then
   await expect(confirmation(page)).toHaveCount(0);
   await expect(importButton(page)).toHaveAccessibleDescription('Загрузка…');
@@ -449,7 +519,6 @@ test('after an import a link to a token in the room opens its sheet, and one to 
 }) => {
   // #given
   const background = await openRoom(page, context, RECORDS);
-
   await page.getByRole('tab', { name: SETTINGS }).click();
   await chooseSnapshot(page, JSON.stringify(LINKED_FILE));
   await confirmation(page).getByRole('button', { name: UPLOAD }).click();
@@ -479,14 +548,11 @@ test('a confirmed import replaces the room on every client: another GM and a pla
   const gm = await openGm(context, GM);
   const other = await openGm(context, OTHER_GM);
   const player = await openPlayer(context);
-
   await expect(player.window.getByRole('tab', { name: 'Брок' })).toBeVisible();
   await gm.window.getByRole('tab', { name: SETTINGS }).click();
   await chooseSnapshot(gm.window, JSON.stringify(MIRA_FILE));
-
   // #when
   await confirmation(gm.window).getByRole('button', { name: UPLOAD }).click();
-
   // #then
   await expect(confirmation(gm.window)).toHaveCount(0);
 
@@ -502,22 +568,18 @@ test('a confirmed import replaces the room on every client: another GM and a pla
   expect(await shownNotifications(gm)).toEqual([]);
   // The old generation goes once the new one is complete.
   const imported = { n: 1, a: gm.connectionId };
-
   await expect
     .poll(async () =>
       (await roomKeys(gm.window)).every((key) => isStorageKeyInGeneration(key, imported)),
     )
     .toBe(true);
-  expect(await roomKeys(gm.window)).toContain(storageKey('sheet:mira', imported));
+  expect(await roomKeys(gm.window)).toContain(storageKey('blk:mira', imported));
 });
 
 async function openGm(context: BrowserContext, params: ClientParams): Promise<RoomClient> {
   const window = await openClientWindow(context, params);
-
   await seedStorage(window, RECORDS, undefined, params.device ?? '');
-
   const background = await openClientBackground(context, params);
-
   await expect(window.getByRole('button', { name: ADD })).toBeVisible();
 
   return { window, background, connectionId: connectionIdOf(params) };
@@ -532,14 +594,11 @@ async function openPlayer(context: BrowserContext): Promise<RoomClient> {
 
 async function uploadPreset(page: Page, text: string): Promise<void> {
   const choosing = page.waitForEvent('filechooser');
-
   await page
     .getByRole('region', { name: 'Пресет' })
     .getByRole('button', { name: LOAD_PRESET })
     .click();
-
   const chooser = await choosing;
-
   await chooser.setFiles({
     name: 'preset.json',
     mimeType: 'application/json',
@@ -549,11 +608,8 @@ async function uploadPreset(page: Page, text: string): Promise<void> {
 
 async function chooseSnapshot(page: Page, text: string): Promise<void> {
   const choosing = page.waitForEvent('filechooser');
-
   await importButton(page).click();
-
   const chooser = await choosing;
-
   await chooser.setFiles({
     name: 'snapshot.json',
     mimeType: 'application/json',

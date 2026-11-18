@@ -14,7 +14,7 @@ import type { RollCopy } from '@/core/roll-text';
 import {
   aliveMessage,
   pingMessage,
-  proposeMessage,
+  proposeMessages,
   stateRequestMessage,
   SYNC_CHANNEL,
 } from '@/core/room-messages';
@@ -216,9 +216,28 @@ export async function startReplicaEngine(
         () => {
           const record = compose();
 
-          return record === null || stopped || role === 'GM'
-            ? null
-            : proposeMessage(generationFlow.generation(), record);
+          if (record === null || stopped || role === 'GM') return null;
+          const generation = generationFlow.generation();
+          const [first, ...rest] = proposeMessages(generation, record);
+
+          for (const part of rest) {
+            sendQueue
+              .enqueueComposed(
+                SYNC_CHANNEL,
+                () =>
+                  stopped ||
+                  role === 'GM' ||
+                  compareGenerations(generation, generationFlow.generation()) !== 0
+                    ? null
+                    : part,
+                REMOTE,
+              )
+              .catch((error) =>
+                console.error('Muster Roll could not send a proposal fragment', error),
+              );
+          }
+
+          return first ?? null;
         },
         REMOTE,
       ),
@@ -718,7 +737,10 @@ export async function startReplicaEngine(
 
     const id = newId();
 
-    heldOpen = { id, sheetId: target.sheetId, instanceId: target.instanceId };
+    heldOpen =
+      target.path === null || target.path === undefined
+        ? { id, sheetId: target.sheetId, cellId: target.cellId ?? '' }
+        : { id, sheetId: target.sheetId, path: target.path, cellId: target.cellId ?? '' };
     heldOpenUntil = Date.now() + timing.openRequestTtlMs;
     // No window opens for it, so a window opened by hand later does not jump to it.
     platform.action.open().catch((error) => {
@@ -744,7 +766,10 @@ export async function startReplicaEngine(
   }
 
   function dropStaleOpen(): void {
-    if (heldOpen !== null && (Date.now() >= heldOpenUntil || !openTargetShown(heldOpen))) {
+    if (
+      heldOpen !== null &&
+      (Date.now() >= heldOpenUntil || !openTargetShown(openRequestTarget(heldOpen)))
+    ) {
       heldOpen = null;
     }
   }
@@ -754,6 +779,15 @@ export async function startReplicaEngine(
     const live = liveLinkTarget(replica, presetOf(replica.get('preset')), target);
 
     return live !== null && linkTargetShownTo(role, live);
+  }
+
+  function openRequestTarget(request: OpenSheetRequest): LinkTarget {
+    return {
+      sheetId: request.sheetId,
+      instanceId: request.path?.at(-1) ?? null,
+      path: request.path,
+      cellId: request.cellId,
+    };
   }
 
   function dropOpen(id: string): void {
@@ -901,7 +935,13 @@ export async function startReplicaEngine(
   }
 
   function liveContext(): ComposeContext {
-    return { records: replica, mint: minter.mint, newRecordId: newRecordIdOf, isGmPlayer };
+    return {
+      records: replica,
+      mint: minter.mint,
+      newRecordId: newRecordIdOf,
+      isGmPlayer,
+      mode: 'persisted',
+    };
   }
 
   // FR19: a GM owns no sheet, so neither this client's player id nor one the party lists as a GM
@@ -923,6 +963,7 @@ export async function startReplicaEngine(
       }),
       newRecordId: newRecordIdOf,
       isGmPlayer,
+      mode: 'pending',
     };
   }
 
@@ -943,7 +984,8 @@ export async function startReplicaEngine(
         break;
       }
 
-      applied.push(merge(persisted.record));
+      merge(persisted.record);
+      applied.push(record);
     }
 
     followReplica();

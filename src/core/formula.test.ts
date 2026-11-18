@@ -1,12 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-
 import { parseFormula, type FormulaFailure, type FormulaTree } from './formula';
 
 describe('parseFormula', () => {
   test('parses a roll-under check into one comparison over two sums', () => {
     // #when
     const parsed = parseFormula('1d20 <= str - 2*str_tired');
-
     // #then
     expect(parsed).toEqual({
       ok: true,
@@ -28,11 +26,9 @@ describe('parseFormula', () => {
       },
     });
   });
-
   test('parses floor and ceil calls', () => {
     // #when
     const parsed = parseFormula('floor(a/2)+ceil(b)');
-
     // #then
     expect(parsed).toEqual({
       ok: true,
@@ -53,11 +49,9 @@ describe('parseFormula', () => {
       },
     });
   });
-
   test('reads an upper-case D as a dice term', () => {
     // #when
     const parsed = parseFormula('2D6+1');
-
     // #then
     expect(parsed).toEqual({
       ok: true,
@@ -69,7 +63,6 @@ describe('parseFormula', () => {
       },
     });
   });
-
   test.each<[string, unknown]>([
     ['1d(weapon_die)', { kind: 'dice-field', count: 1, id: 'weapon_die' }],
     ['2D( weapon_die )', { kind: 'dice-field', count: 2, id: 'weapon_die' }],
@@ -77,15 +70,12 @@ describe('parseFormula', () => {
     // #when
     const parsed = parseFormula(formula);
     const actual: unknown = parsed;
-
     // #then
     expect(actual).toEqual({ ok: true, value: tree });
   });
-
   test('groups subtraction from the left and lets parentheses override it', () => {
     // #when
     const parsed = [parseFormula('a - b - c'), parseFormula('a - (b - c)')];
-
     // #then
     expect(parsed).toEqual([
       {
@@ -118,25 +108,20 @@ describe('parseFormula', () => {
       },
     ]);
   });
-
   test.each<[string, FormulaTree]>([
     ['1d1', { kind: 'dice', count: 1, sides: 1 }],
     ['100d1000', { kind: 'dice', count: 100, sides: 1000 }],
   ])('accepts the dice limit %s', (formula, tree) => {
     // #when
     const parsed = parseFormula(formula);
-
     // #then
     expect(parsed).toEqual({ ok: true, value: tree });
   });
-
   test('accepts a formula of exactly 200 characters', () => {
     // #given
     const formula = `a+${' '.repeat(197)}b`;
-
     // #when
     const parsed = parseFormula(formula);
-
     // #then
     expect(parsed).toEqual({
       ok: true,
@@ -148,18 +133,14 @@ describe('parseFormula', () => {
       },
     });
   });
-
   test('refuses a formula over 200 characters', () => {
     // #given
     const formula = `a+${' '.repeat(198)}b`;
-
     // #when
     const parsed = parseFormula(formula);
-
     // #then
     expect(parsed).toEqual({ ok: false, error: 'too-long' });
   });
-
   test.each<[string, FormulaFailure]>([
     ['0d6', 'dice-out-of-range'],
     ['101d6', 'dice-out-of-range'],
@@ -198,15 +179,12 @@ describe('parseFormula', () => {
   ])('refuses %j with %s', (formula, failure) => {
     // #when
     const parsed = parseFormula(formula);
-
     // #then
     expect(parsed).toEqual({ ok: false, error: failure });
   });
-
   test('accepts the largest safe integer', () => {
     // #when
     const parsed = parseFormula('9007199254740991');
-
     // #then
     expect(parsed).toEqual({ ok: true, value: { kind: 'integer', value: 9007199254740991 } });
   });

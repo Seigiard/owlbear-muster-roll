@@ -7,7 +7,10 @@ import type {
 import { parseNumberInput } from '@/core/number-input';
 import {
   plainRow,
+  repeatScopeIdsAt,
+  repeatScopePathAt,
   resolveFieldReference,
+  scopeFieldsAt,
   sectionAt,
   type PresetCell,
   type PresetFieldCell,
@@ -54,8 +57,10 @@ export type DiceTerm = { count: number; sides: number };
 // The face one die of `sides` shows.
 export type DieFace = { sides: number; face: number };
 
-// The values of the sheet's `row:` record named by `rowId`.
+// The values of the plain row named by `rowId`, read from the sheet's root block.
 export type SheetRowValues = (rowId: string) => FieldValues;
+
+export type BlockValues = (scopePath: readonly string[]) => FieldValues | null;
 
 // Walks the Story 1.5 tree in order, left before right, so dice faces come out in tree order. The
 // first failure stops the walk, and the faces rolled so far are discarded.
@@ -239,6 +244,7 @@ export function formulaDiceFieldLookup(
   from: TemplateRowPlace,
   sheetRow: SheetRowValues,
   ownBlock: FieldValues = NO_VALUES,
+  blockAt: BlockValues = () => null,
 ): DiceFieldLookup {
   const section = sectionAt(layout, from);
 
@@ -249,16 +255,27 @@ export function formulaDiceFieldLookup(
       return null;
     }
 
+    const scopePath =
+      reference.scope === 'block' ? (reference.scopePath ?? repeatScopePathAt(layout, from)) : [];
+
     const cell =
       reference.scope === 'block'
-        ? fieldIn(section.rows, id)
-        : fieldIn([plainRow(layout, reference.rowId) ?? []], id);
+        ? (scopeFieldsAt(
+            layout,
+            from,
+            reference.scopeId ?? repeatScopeIdsAt(layout, from)[0] ?? '',
+            scopePath,
+          ).find((field) => field.id === id) ?? null)
+        : fieldInCells(plainRow(layout, reference.rowId) ?? [], id);
 
     if (cell === null || cell.type !== 'dice-choice') {
       return null;
     }
 
-    const values = reference.scope === 'block' ? ownBlock : sheetRow(reference.rowId);
+    const values =
+      reference.scope === 'block'
+        ? blockValuesFor(layout, from, scopePath, ownBlock, blockAt)
+        : sheetRow(reference.rowId);
 
     return diceChoiceSides(valueText(values.get(id)));
   };
@@ -324,13 +341,14 @@ export function resolveFormulaDiceFields(
 
 // The lookup for a dice cell in the row at `from`. `sheetRow` reads rows of the same sheet only, so
 // an id never crosses sheets. An id resolves through `resolveFieldReference`: the cell's own repeat
-// block first, then the sheet's non-repeat scope. A repeat block has no `row:` record, so its
-// caller passes the block's values as `ownBlock`; without them its own fields read as empty.
+// block first, then the sheet's non-repeat scope. The caller passes repeat values as `ownBlock`;
+// without them the repeat block's own fields read as empty.
 export function formulaFieldLookup(
   layout: TemplateLayout,
   from: TemplateRowPlace,
   sheetRow: SheetRowValues,
   ownBlock: FieldValues = NO_VALUES,
+  blockAt: BlockValues = () => null,
 ): FieldLookup {
   const section = sectionAt(layout, from);
 
@@ -341,16 +359,27 @@ export function formulaFieldLookup(
       return null;
     }
 
+    const scopePath =
+      reference.scope === 'block' ? (reference.scopePath ?? repeatScopePathAt(layout, from)) : [];
+
     const cell =
       reference.scope === 'block'
-        ? fieldIn(section.rows, id)
-        : fieldIn([plainRow(layout, reference.rowId) ?? []], id);
+        ? (scopeFieldsAt(
+            layout,
+            from,
+            reference.scopeId ?? repeatScopeIdsAt(layout, from)[0] ?? '',
+            scopePath,
+          ).find((field) => field.id === id) ?? null)
+        : fieldInCells(plainRow(layout, reference.rowId) ?? [], id);
 
     if (cell === null) {
       return null;
     }
 
-    const values = reference.scope === 'block' ? ownBlock : sheetRow(reference.rowId);
+    const values =
+      reference.scope === 'block'
+        ? blockValuesFor(layout, from, scopePath, ownBlock, blockAt)
+        : sheetRow(reference.rowId);
 
     return fieldNumber(cell, values.get(id));
   };
@@ -417,14 +446,25 @@ function compare(operator: ComparisonOperator, roll: number, target: number): bo
   return roll > target;
 }
 
-function fieldIn(rows: readonly (readonly PresetCell[])[], id: string): PresetFieldCell | null {
-  for (const row of rows) {
-    const cell = row.find((candidate) => candidate.kind === 'field' && candidate.id === id);
-
-    if (cell?.kind === 'field') {
-      return cell;
-    }
+function blockValuesFor(
+  layout: TemplateLayout,
+  from: TemplateRowPlace,
+  scopePath: readonly string[],
+  ownBlock: FieldValues,
+  blockAt: BlockValues,
+): FieldValues {
+  if (
+    JSON.stringify(repeatScopeIdsAt(layout, from).slice(0, scopePath.length).reverse()) ===
+    JSON.stringify(scopePath)
+  ) {
+    return ownBlock;
   }
 
-  return null;
+  return blockAt(scopePath) ?? NO_VALUES;
+}
+
+function fieldInCells(cells: readonly PresetCell[], id: string): PresetFieldCell | null {
+  const cell = cells.find((candidate) => candidate.kind === 'field' && candidate.id === id);
+
+  return cell?.kind === 'field' ? cell : null;
 }

@@ -1,0 +1,35 @@
+document-map v1
+Source: "deferred-work.md"
+SHA256: dda189f66426e17d8b645dbaef3003295080486658c8cfe2b1980676b779104a
+Total lines: 543
+
+Preamble — lines 1–95
+From spec-3-3-apply-a-players-edit-after-a-gm-check (TASK-22) — lines 96–103
+From spec-3-4-see-when-an-edit-is-waiting-for-a-gm (TASK-23) — lines 104–108
+From spec-5-1-change-the-preset-over-existing-sheets (TASK-29) — lines 109–114
+From spec-5-2-download-a-room-snapshot (TASK-30) — lines 115–119
+From spec-5-3-replace-the-room-from-a-snapshot (TASK-31) — lines 120–125
+From spec-4-6 (TASK-39, token unlink) — lines 126–132
+From spec-4-7 (TASK-35, token label) — lines 133–137
+From spec-5-4 (TASK-33, window size) — lines 138–142
+From spec-4-8 (TASK-36, dice extension) — lines 143–148
+From spec-task-41 (sheet sets and single sheets) — lines 149–157
+From spec-task-38 (preset builder) — lines 158–178
+From spec-task-44 (Cairn 2e preset) — lines 179–201
+Deferred from: code review of spec-task-42-shadcn-aria and spec-task-44-cairn-2e-preset (2026-11-12) — lines 202–210
+Deferred from: build of spec-task-47-shared-engine-test-rig (2026-11-12) — lines 211–219
+Deferred from: build of spec-task-45-pending-edits-module (2026-11-12) — lines 220–228
+Deferred from: build of spec-task-54-roll-without-closing-the-window (2026-11-12) — lines 229–234
+Deferred from: build of spec-task-46-command-outcomes (2026-11-12) — lines 235–252
+Deferred from: build of spec-task-48-catch-up-state-machine (2026-11-12) — lines 253–261
+Deferred from: code review of TASK-59 hidden tabs (2026-11-13) — lines 262–270
+Deferred from: code review of TASK-60 sidebar (2026-11-13) — lines 271–285
+Deferred from: build of spec-task-50-room-copy-module (2026-11-13) — lines 286–291
+Deferred from: TASK-61.6 second-flow picker experiment (2026-11-14) — lines 292–438
+Deferred from: TASK-70–74 integration review (2026-11-16) — lines 439–477
+Deferred from: TASK-77 single review (2026-11-16) — lines 478–498
+Deferred from: TASK-77–98 window 1 (2026-11-17) — lines 499–504
+Deferred from: TASK-77–98 window 2 (2026-11-17) — lines 505–510
+Deferred from: TASK-77–98 window 3 (2026-11-17) — lines 511–517
+Deferred from: TASK-77–98 window 4 (2026-11-17) — lines 518–531
+Deferred from: TASK-77–98 window 5 (2026-11-18) — lines 532–543

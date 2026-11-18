@@ -1,7 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { RejectionReason } from '@/core/ui-messages';
-
 import { wipeRejectionText } from './wipe-actions';
 
 describe('wipeRejectionText', () => {

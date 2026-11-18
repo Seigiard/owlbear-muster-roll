@@ -11,8 +11,10 @@ import {
   patchRecordKey,
   patchedRecord,
 } from '@/core/field-patch';
-import { DEFAULT_WINDOW_SIZE } from '@/core/preset';
-import { recordSchema, type VersionedRecord } from '@/core/records';
+import { DEFAULT_WINDOW_SIZE, type RenderedTab } from '@/core/preset';
+import { newInstanceId } from '@/core/ids';
+import { renderedTabs as renderTabs } from '@/core/rendered-tabs';
+import { blockPathKey, repDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
 import { TIMING } from '@/core/timing';
 import { sheetName } from '@/core/sheets';
 import { tabShownTo, templateShownTo, visibleRecordMap, type PlayerRole } from '@/core/visibility';
@@ -114,6 +116,14 @@ export function PreviewPane({
   const localValues = useMemo(createLocalFieldValues, []);
   const pageHideFlushes = useMemo(createFieldFlushes, []);
 
+  const [createdTabBlock, setCreatedTabBlock] = useState<{
+    sheetId: string;
+    scopeId: string;
+    instanceId: string;
+  } | null>(null);
+
+  const [selectedRenderedTab, setSelectedRenderedTab] = useState<number | null>(null);
+
   useEffect(() => {
     const flush = (): void => {
       pageHideFlushes.flushAll();
@@ -129,16 +139,74 @@ export function PreviewPane({
   const fieldEditing = useMemo<FieldEditing>(
     () => ({
       // SAFETY: the preview sends only field patches; every other command is answered without side
-      // effects, and field patches always have an undefined answer.
+      // effects except local repeat-tab lifecycle, which changes only the builder snapshot.
       sendCommand: ((command: Command) => {
+        if (command.type === 'repeat-block-add') {
+          const path = command.path ?? [command.sectionId, command.instanceId];
+          const key = blockPathKey(command.sheetId, path);
+          const prefix = `${blockPathKey(command.sheetId, path.slice(0, -1))}:`;
+
+          const blocks = snapshotRecords
+            .map((record) => (repDataSchema.safeParse(record.d).success ? record : null))
+            .filter((record): record is VersionedRecord => record !== null)
+            .filter((record) => record.k.startsWith(prefix));
+
+          const order =
+            blocks.reduce((highest, record) => {
+              const data = repDataSchema.parse(record.d);
+
+              return Math.max(highest, data.order);
+            }, -1) + 1;
+
+          const record = recordSchema.parse({
+            k: key,
+            d: { order, cells: {} },
+            c: 1,
+            a: 'builder',
+            l: [1, 'builder'],
+          });
+
+          store.setSnapshot([...snapshotRecords, record]);
+          setCreatedTabBlock({
+            sheetId: command.sheetId,
+            scopeId: command.sectionId,
+            instanceId: command.instanceId,
+          });
+
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
+        if (command.type === 'repeat-block-delete') {
+          const path = command.path ?? [command.sectionId, command.instanceId];
+          const key = blockPathKey(command.sheetId, path);
+          const current = snapshotRecords.find((record) => record.k === key);
+
+          if (current !== undefined) {
+            store.setSnapshot(
+              snapshotRecords.map((record) =>
+                record.k === key
+                  ? {
+                      ...record,
+                      d: null,
+                      c: record.c + 1,
+                      a: 'builder',
+                      l: record.l ?? [record.c + 1, 'builder'],
+                    }
+                  : record,
+              ),
+            );
+          }
+
+          return Promise.resolve({ kind: 'answered' as const, answer: undefined });
+        }
+
         if (command.type !== 'field-patch') {
           return Promise.resolve({ kind: 'answered' as const, answer: undefined });
         }
 
         const fieldTemplate = selection === null ? null : templateOf(document, selection);
 
-        const editable =
-          role === 'GM' || (fieldTemplate?.kind === 'single' && fieldTemplate.players === 'edit');
+        const editable = role === 'GM' || fieldTemplate?.players === 'edit';
 
         if (!editable) {
           return Promise.resolve({ kind: 'answered' as const, answer: undefined });
@@ -174,6 +242,14 @@ export function PreviewPane({
           ...patched.value,
           c: (current?.c ?? 0) + 1,
           a: 'builder',
+          l: current?.l ?? [(current?.c ?? 0) + 1, 'builder'],
+          d: {
+            ...patched.value.d,
+            cells: {
+              ...patched.value.d.cells,
+              [command.fieldId]: [value.value, (current?.c ?? 0) + 1, 'builder'],
+            },
+          },
         });
 
         const nextRecords = snapshotRecords.some((record) => record.k === key)
@@ -302,8 +378,7 @@ export function PreviewPane({
   const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
   const previewSelection = useRef<string | null>(null);
 
-  const canEdit =
-    role === 'GM' || (docTemplate?.kind === 'single' && docTemplate.players === 'edit');
+  const canEdit = role === 'GM' || docTemplate?.players === 'edit';
 
   useEffect(() => {
     dispatchEditing({ type: 'selection-changed', uid: selection });
@@ -312,6 +387,7 @@ export function PreviewPane({
       previewSelection.current = null;
     } else {
       setEditingInstanceId(null);
+      setSelectedRenderedTab(null);
     }
   }, [selection]);
 
@@ -372,6 +448,31 @@ export function PreviewPane({
     [role, template],
   );
 
+  const visibleRenderedTabs = useMemo(
+    () =>
+      template === null || renderRecords === null || renderSheetId === null
+        ? []
+        : renderTabs(template, renderRecords, renderSheetId).filter((candidate) =>
+            tabIsShown(candidate.sourceIndex),
+          ),
+    [renderRecords, renderSheetId, tabIsShown, template],
+  );
+
+  const visibleRepeatTabs = useMemo(
+    () =>
+      template === null || renderSheetId === null
+        ? []
+        : template.tabs
+            .filter(
+              (candidate, sourceIndex) => candidate.repeat !== undefined && tabIsShown(sourceIndex),
+            )
+            .filter(
+              (candidate, index, all) =>
+                all.findIndex((other) => other.repeat?.id === candidate.repeat?.id) === index,
+            ),
+    [renderSheetId, tabIsShown, template],
+  );
+
   const navigationTemplate = useMemo<PreviewNavigationTemplate | null>(
     () =>
       docTemplate === null || template === null ? null : { uid: docTemplate.uid, ...template },
@@ -399,21 +500,64 @@ export function PreviewPane({
   }, [sheetNavigationAction]);
 
   const templateUid = docTemplate?.uid ?? null;
-  const openTab = template === null ? null : (nextShownTab?.tab ?? null);
+
+  const fallbackRenderedIndex =
+    nextShownTab === null
+      ? -1
+      : visibleRenderedTabs.findIndex((candidate) => candidate.sourceIndex === nextShownTab.tab);
+
+  const openRenderedIndex =
+    selectedRenderedTab !== null && visibleRenderedTabs[selectedRenderedTab] !== undefined
+      ? selectedRenderedTab
+      : fallbackRenderedIndex === -1
+        ? null
+        : fallbackRenderedIndex;
+
+  const openRenderedTab =
+    openRenderedIndex === null ? null : (visibleRenderedTabs[openRenderedIndex] ?? null);
+
+  const openTab = openRenderedTab?.sourceIndex ?? null;
+
+  useEffect(() => {
+    if (createdTabBlock === null) return;
+
+    const index = visibleRenderedTabs.findIndex(
+      (candidate) =>
+        candidate.block?.scopeId === createdTabBlock.scopeId &&
+        candidate.block.instanceId === createdTabBlock.instanceId,
+    );
+
+    if (index === -1) return;
+
+    setSelectedRenderedTab(index);
+    setCreatedTabBlock(null);
+  }, [createdTabBlock, visibleRenderedTabs]);
 
   const scale = areaWidth === null ? 1 : Math.min(1, areaWidth / width);
 
-  const visibleIndexes = template?.tabs.map((_tab, index) => index).filter(tabIsShown) ?? [];
-
-  const tabs: ShellTab[] = visibleIndexes.map((index) => {
-    const templateTab = template?.tabs[index];
-
-    return {
+  const tabs: ShellTab[] = visibleRenderedTabs
+    .map((rendered, index): ShellTab => ({
       id: templateTabKey(index),
-      label: templateTabLabel(templateTab?.title),
+      label:
+        rendered.block === null
+          ? templateTabLabel(rendered.tab.title)
+          : rendered.block.name === ''
+            ? copy.unnamedBlock(rendered.blockIndex ?? index + 1)
+            : rendered.block.name,
       dataTabIndex: index,
-    };
-  });
+      sourceTabIndex: rendered.sourceIndex,
+    }))
+    .concat(
+      role === 'GM'
+        ? visibleRepeatTabs.map((candidate) => ({
+            id: `template-tab-add:${candidate.repeat?.id ?? ''}`,
+            label: copy.addTab,
+            addScopeId: candidate.repeat?.id ?? '',
+            addScopeTitle:
+              visibleRepeatTabs.length > 1 ? templateTabLabel(candidate.title) : undefined,
+          }))
+        : [],
+    );
 
   const activeEditingUid = canEdit && editingUid === selection ? editingUid : null;
 
@@ -448,6 +592,9 @@ export function PreviewPane({
         records={renderRecords}
         openTab={openTab}
         editing={activeEditingUid === null ? null : fieldEditing}
+        tabBlockEditing={canEdit ? { sendCommand: fieldEditing.sendCommand } : null}
+        renderedTab={openRenderedTab}
+        role={role}
         rolling={rolling}
         preview={preview}
       />
@@ -563,16 +710,47 @@ export function PreviewPane({
                       onAddSidebarEntry:
                         role === 'GM' ? (setId) => store.addSheet(setId) : undefined,
                       tabs,
-                      selectedTab: openTab === null ? null : templateTabKey(openTab),
+                      selectedTab:
+                        openRenderedIndex === null ? null : templateTabKey(openRenderedIndex),
                       onSelectTab: (id) => {
+                        if (id.startsWith('template-tab-add:')) {
+                          const scopeId = id.slice('template-tab-add:'.length);
+                          const instanceId = newInstanceId();
+
+                          setCreatedTabBlock({
+                            sheetId: renderSheetId ?? '',
+                            scopeId,
+                            instanceId,
+                          });
+                          void fieldEditing
+                            .sendCommand({
+                              type: 'repeat-block-add',
+                              sheetId: renderSheetId ?? '',
+                              sectionId: scopeId,
+                              instanceId,
+                            })
+                            .catch((error) => {
+                              console.error('Muster Roll preview could not add a tab block', error);
+                              setCreatedTabBlock(null);
+                            });
+
+                          return;
+                        }
+
                         const index = templateIndexFromKey(id);
+                        const rendered = index === null ? undefined : visibleRenderedTabs[index];
 
                         const uid =
-                          index === null
+                          rendered === undefined
                             ? null
-                            : uidAt(document, [templateIndexOf(document, docTemplate.uid), index]);
+                            : uidAt(document, [
+                                templateIndexOf(document, docTemplate.uid),
+                                rendered.sourceIndex,
+                              ]);
 
                         if (uid !== null) {
+                          previewSelection.current = uid;
+                          setSelectedRenderedTab(index);
                           store.select(uid);
                         }
                       },
@@ -712,7 +890,10 @@ function PreviewBody({
   sheetId,
   records,
   openTab,
+  renderedTab,
   editing,
+  tabBlockEditing,
+  role,
   rolling,
   preview,
 }: {
@@ -720,7 +901,10 @@ function PreviewBody({
   sheetId: string;
   records: ReadonlyMap<string, VersionedRecord>;
   openTab: number | null;
+  renderedTab: RenderedTab | null;
   editing: FieldEditing | null;
+  tabBlockEditing: Pick<FieldEditing, 'sendCommand'> | null;
+  role: PlayerRole;
   rolling: DiceRolling;
   preview: CellPreview;
 }): ReactNode {
@@ -730,8 +914,11 @@ function PreviewBody({
         template={template}
         sheetId={sheetId}
         openTab={openTab}
+        renderedTab={renderedTab}
         records={records}
         editing={editing}
+        tabBlockEditing={tabBlockEditing}
+        role={role}
         rolling={rolling}
         pending={null}
       />
@@ -768,7 +955,12 @@ function clickedUid(
   const templateTab = target.closest('[role="tab"][data-tab-index]');
 
   if (templateTab !== null) {
-    return uidAt(document, [templateIndex, Number(templateTab.getAttribute('data-tab-index'))]);
+    const sourceIndex = Number(
+      templateTab.getAttribute('data-source-tab-index') ??
+        templateTab.getAttribute('data-tab-index'),
+    );
+
+    return uidAt(document, [templateIndex, sourceIndex]);
   }
 
   const cell = target.closest('[data-cell]')?.getAttribute('data-cell');

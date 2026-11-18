@@ -1,14 +1,14 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { deflateSync, strToU8 } from 'fflate';
-
 import type { JsonValue } from '@/core/json';
+import { assembleRecords } from '@/core/merge';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import { UI_CHANNEL } from '@/core/ui-messages';
-
 import {
   addPartyMember,
   connectionIdOf,
+  materializedRecords,
   npcBlock,
   openClientBackground,
   openClientWindow,
@@ -32,7 +32,6 @@ const UNREADABLE = 'Копия в комнате не читается. Дожд
 const NO_PRESET = 'ГМ ещё не настроил листы.';
 const NO_SHEETS = 'ГМ ещё не создал листы.';
 const READ_ONLY = 'Только чтение';
-
 const GM: ClientParams = { client: 'a', device: 'a' };
 
 // Short, so a player alone in the room stops waiting for an answer soon.
@@ -51,30 +50,33 @@ const SILENT_GM = 'mock-connection-silent';
 const OBSERVER: ClientParams = { client: 'o', role: 'PLAYER', player: 'olga', device: 'o' };
 
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
               ],
             },
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
           ],
@@ -83,19 +85,20 @@ const PRESET = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
         {
           sections: [
             {
-              repeat: true,
+              repeat: { id: 'npc_name', nameField: 'npc_name' },
               rows: [
-                [
-                  { kind: 'field', type: 'text', id: 'npc_name' },
-                  { kind: 'field', type: 'number', id: 'hp' },
-                ],
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'npc_name' },
+                    { kind: 'field', type: 'number', id: 'hp' },
+                  ],
+                },
               ],
             },
           ],
@@ -115,14 +118,17 @@ const PRESET_RECORD = record(
 
 const BROK = pcSheet('brok', 'Брок', 0);
 const MIRA = pcSheet('mira', 'Мира', 1);
-const BROK_STR = record('row:brok:str', { str: 14 });
+const BROK_STR = record('blk:brok', { str: 14 });
 
 // An NPC: a repeat block of the hidden single sheet NPC.
 const GOBLIN = npcBlock('gob', 'Гоблин', 0, { hp: 7 });
 
 declare global {
   interface Window {
-    roomTypes: { from: string; t: string }[];
+    roomTypes: {
+      from: string;
+      t: string;
+    }[];
   }
 }
 
@@ -135,10 +141,8 @@ test('a player alone reads every visible sheet from the room copy, read-only, wi
 }) => {
   // #given
   const copy = copyValue([PRESET_RECORD, ...BROK, ...MIRA, GOBLIN, BROK_STR]);
-
   // #when
   const player = await openPlayerAlone(context, copy);
-
   // #then
   await expect(player.window.getByRole('status')).toHaveText(NO_GM);
   await expect(player.window.getByRole('tab')).toHaveText(['Брок', 'Мира']);
@@ -154,7 +158,6 @@ test('a player alone with a room copy that holds a preset and only a hidden shee
 }) => {
   // #when
   const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, GOBLIN]));
-
   // #then
   await expect(player.window.getByRole('main').getByText(NO_SHEETS, { exact: true })).toBeVisible();
   await expect(player.window.getByRole('status')).toHaveText(NO_GM);
@@ -165,7 +168,6 @@ test('a player alone with a room copy that holds no preset sees that the GM has 
 }) => {
   // #when
   const player = await openPlayerAlone(context, copyValue([...BROK]));
-
   // #then
   await expect(player.window.getByRole('main').getByText(NO_PRESET, { exact: true })).toBeVisible();
   await expect(player.window.getByRole('status')).toHaveText(NO_GM);
@@ -176,7 +178,6 @@ test('a player alone with no room copy sees that no GM has been in the room', as
 }) => {
   // #when
   const player = await openPlayerAlone(context, null);
-
   // #then
   await expect(
     player.window.getByRole('main').getByText(NO_GM_NO_DATA, { exact: true }),
@@ -188,8 +189,7 @@ test('a room copy of a newer build is not read: the new-version banner shows and
   context,
 }) => {
   // #when
-  const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, ...BROK], 4));
-
+  const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, ...BROK], 5));
   // #then
   await expect(player.window.getByRole('status')).toHaveText(NEW_VERSION);
   await expect(player.window.getByRole('main').getByText(LOADING, { exact: true })).toBeVisible();
@@ -198,8 +198,7 @@ test('a room copy of a newer build is not read: the new-version banner shows and
 
 test('a room copy that does not decode says so, with the no-GM banner', async ({ context }) => {
   // #when
-  const player = await openPlayerAlone(context, { v: 3, data: 'bm90IGRlZmxhdGU=' });
-
+  const player = await openPlayerAlone(context, { v: 4, data: 'bm90IGRlZmxhdGU=' });
   // #then
   await expect(
     player.window.getByRole('main').getByText(UNREADABLE, { exact: true }),
@@ -211,7 +210,6 @@ test('a player alone sends no commit and no edit to the room', async ({ context 
   // #given: pings every 500 to 750 ms.
   const params: ClientParams = { ...PLAYER, gmLinkTimeoutMs: 1000 };
   const observer = await openClientWindow(context, OBSERVER);
-
   await watchRoom(observer);
 
   const player = await openPlayerAlone(
@@ -222,7 +220,6 @@ test('a player alone sends no commit and no edit to the room', async ({ context 
 
   await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
   await watchCommands(player.window);
-
   // #when: a field edit goes the way a window sends one, and is refused.
   await player.window.evaluate((channel) => {
     void window.mockPlatform.broadcast.sendMessage(
@@ -244,14 +241,11 @@ test('a player alone sends no commit and no edit to the room', async ({ context 
   await expect
     .poll(() => player.window.evaluate(() => window.rejectedCommandIds))
     .toContain('player-edit');
-
   // A ping heard after the refusal shows the room has had time to hear anything else.
   const pingsBefore = await heardCount(observer, connectionIdOf(PLAYER), 'ping');
-
   await expect
     .poll(() => heardCount(observer, connectionIdOf(PLAYER), 'ping'), { timeout: 3000 })
     .toBeGreaterThan(pingsBefore);
-
   // #then
   const types = await observer.evaluate(() => window.roomTypes);
 
@@ -268,15 +262,12 @@ test('a player alone with no copy keeps loading once a GM speaks without answeri
 }) => {
   // #given
   const player = await openPlayerAlone(context, null);
-
   await expect(
     player.window.getByRole('main').getByText(NO_GM_NO_DATA, { exact: true }),
   ).toBeVisible();
   await addPartyMember(player.window, SILENT_GM, 'GM');
-
   // #when: a GM-origin message, and no complete state.
-  await postRemote(player.window, SILENT_GM, { v: 3, g: { n: 0, a: '' }, t: 'ping' });
-
+  await postRemote(player.window, SILENT_GM, { v: 4, g: { n: 0, a: '' }, t: 'ping' });
   // #then: a GM is online but has not said what the room holds.
   await expect(player.window.getByRole('status')).toBeEmpty();
   await expect(player.window.getByRole('main').getByText(LOADING, { exact: true })).toBeVisible();
@@ -288,20 +279,16 @@ test('when a GM joins and answers, the no-GM banner goes and the sheets show cur
 }) => {
   // #given: the copy is older than what the GM's own device holds.
   const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, ...BROK, BROK_STR]));
-
   await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
-
   // #when
   const gmWindow = await openClientWindow(context, GM);
-
   await seedStorage(
     gmWindow,
-    [...BROK, ...MIRA, record('row:brok:str', { str: 18 }, 2)],
+    [...BROK, ...MIRA, record('blk:brok', { str: 18 }, 2)],
     PRESET_TEXT,
     GM.device,
   );
   await openClientBackground(context, GM);
-
   // #then
   await expect(player.window.getByRole('status')).toBeEmpty();
   await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('18');
@@ -311,17 +298,13 @@ test('when a GM joins and answers, the no-GM banner goes and the sheets show cur
 test('a player alone with no copy reads the GM sheets once a GM joins', async ({ context }) => {
   // #given
   const player = await openPlayerAlone(context, null);
-
   await expect(
     player.window.getByRole('main').getByText(NO_GM_NO_DATA, { exact: true }),
   ).toBeVisible();
-
   // #when
   const gmWindow = await openClientWindow(context, GM);
-
   await seedStorage(gmWindow, [...BROK, BROK_STR], PRESET_TEXT, GM.device);
   await openClientBackground(context, GM);
-
   // #then
   await expect(player.window.getByRole('status')).toBeEmpty();
   await expect(player.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
@@ -347,15 +330,18 @@ async function openPlayerAlone(
   }
 
   const background = await openClientBackground(context, params);
-
   await expect(page.getByRole('status')).not.toBeEmpty();
 
   return { window: page, background, connectionId: connectionIdOf(params) };
 }
 
 // The stored room copy as the 2.5 spec describes it, built by hand with fflate.
-function copyValue(records: readonly StoredRecord[], v = 3): JsonValue {
-  const content = JSON.stringify({ g: { n: 0, a: '' }, records: sortedByKey(records) });
+function copyValue(records: readonly StoredRecord[], v = 4): JsonValue {
+  const assembled = records.some((record) => record.k === 'preset')
+    ? materializedRecords(records, PRESET_TEXT)
+    : [...assembleRecords(records).values()];
+
+  const content = JSON.stringify({ g: { n: 0, a: '' }, records: sortedByKey(assembled) });
 
   return { v, data: Buffer.from(deflateSync(strToU8(content))).toString('base64') };
 }

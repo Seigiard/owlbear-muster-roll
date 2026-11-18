@@ -16,7 +16,7 @@ references:
   - https://github.com/lukeed/clsx
   - https://cva.style
 type: enhancement
-ordinal: 85000
+ordinal: 89000
 ---
 
 ## Description

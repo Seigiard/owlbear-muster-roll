@@ -1,13 +1,10 @@
 import { readFileSync } from 'node:fs';
-
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Page } from '@playwright/test';
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
 import { z } from 'zod';
-
 import type { JsonValue } from '@/core/json';
 import { MESSAGE_BYTE_LIMIT } from '@/core/message-size';
-
 import { renderedColor, tokenColor } from './support/colors';
 import {
   ABSENT,
@@ -31,45 +28,67 @@ const TOO_LARGE = 'Файл не подошёл: файл слишком бол�
 // 85 bytes, while its record, with the largest counter and the 512-byte reserve, does not.
 const RECORD_REFUSAL_MIN_DATA_BYTES = MESSAGE_BYTE_LIMIT - 400;
 const RECORD_REFUSAL_MAX_DATA_BYTES = MESSAGE_BYTE_LIMIT - 200;
-
 const EXAMPLE: JsonValue = z.json().parse(JSON.parse(EXAMPLE_PRESET_TEXT));
 
 const SAVED_SHEET: StoredRecord = {
-  k: 'sheet:saved',
-  d: { set: 'pc', order: 0 },
+  k: 'blk:saved',
+  d: { set: 'pc', order: 0, cells: {} },
   c: 1,
   a: 'mock-connection',
+  l: [1, 'seed'],
 };
 
 const BAD_FILES: readonly (readonly [string, string, string])[] = [
   ['a file that is not JSON', '{"v": 1,', 'это не JSON'],
   ['an unknown key', fileText({ title: 'x' }), 'неверная структура'],
-  ['an unknown cell kind', fileText({ rows: [[{ kind: 'image' }]] }), 'неверная структура'],
+  [
+    'an unknown cell kind',
+    fileText({ rows: [{ cells: [{ kind: 'image' }] }] }),
+    'неверная структура',
+  ],
   ['an unknown width', fileText({ width: '1/4', rows: [] }), 'неверная структура'],
-  ['a duplicate id', fileText({ rows: [[field('str'), field('str')]] }), 'поле «str» повторяется'],
+  [
+    'a duplicate id',
+    fileText({ rows: [{ cells: [field('str'), field('str')] }] }),
+    'поле «str» повторяется',
+  ],
   [
     'a bad field id',
-    fileText({ rows: [[field('__proto__')]] }),
+    fileText({ rows: [{ cells: [field('__proto__')] }] }),
     'недопустимый id поля «__proto__»',
   ],
   [
     'a repeat section whose rows hold no field',
-    fileText({ repeat: true, rows: [[{ kind: 'text', text: 'Вещь' }], []] }),
-    'в повторяемой секции нужна хотя бы одна строка хотя бы с одним полем',
+    fileText({
+      repeat: { id: 'item', nameField: 'item' },
+      rows: [{ cells: [{ kind: 'text', text: 'Вещь' }] }, { cells: [] }],
+    }),
+    'в наборе «item» нет текстового поля «item» вне повторяемых секций',
   ],
   [
     'two repeat sections that start with one id',
     templatesText([
       setTemplate('pc', [
-        { repeat: true, rows: [[field('a')]] },
-        { repeat: true, rows: [[field('a')]] },
+        {
+          repeat: { id: 'a', nameField: 'a' },
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'a' }] }],
+        },
+        {
+          repeat: { id: 'a', nameField: 'a' },
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'a' }] }],
+        },
       ]),
     ]),
     'две повторяемые секции с id «a»',
   ],
   [
     'a nameField that names a number field',
-    templatesText([{ ...setTemplate('pc', [{ rows: [[field('level')]] }]), nameField: 'level' }]),
+    templatesText([
+      {
+        ...setTemplate('pc', [{ rows: [{ cells: [field('level')] }] }]),
+        repeat: { nameField: 'level' },
+      },
+    ]),
     'в наборе «pc» нет текстового поля «level» вне повторяемых секций',
   ],
   [
@@ -77,11 +96,17 @@ const BAD_FILES: readonly (readonly [string, string, string])[] = [
     templatesText([
       {
         id: 'pc',
-        kind: 'set',
         title: 'Персонажи',
-        nameField: 'attack',
+        repeat: { nameField: 'attack' },
         tabs: [
-          { sections: [{ repeat: true, rows: [[{ kind: 'field', type: 'text', id: 'attack' }]] }] },
+          {
+            sections: [
+              {
+                repeat: { id: 'attack', nameField: 'attack' },
+                rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack' }] }],
+              },
+            ],
+          },
         ],
       },
     ]),
@@ -103,24 +128,19 @@ const BAD_FILES: readonly (readonly [string, string, string])[] = [
     'неверная структура',
   ],
   [
-    'players on a sheet set',
-    templatesText([{ ...setTemplate('pc', []), players: 'edit' }]),
-    'неверная структура',
-  ],
-  [
     'tokens on a section that is not a repeat section',
-    fileText({ tokens: true, rows: [[field('a')]] }),
+    fileText({ tokens: true, rows: [{ cells: [field('a')] }] }),
     'неверная структура',
   ],
   ['an empty template list', templatesText([]), 'неверная структура'],
   [
     'a row wider than its columns',
-    fileText({ columns: 1, rows: [[field('a'), field('b')]] }),
+    fileText({ columns: 1, rows: [{ cells: [field('a'), field('b')] }] }),
     'в строке больше ячеек, чем колонок',
   ],
   [
     'a bad formula',
-    fileText({ rows: [[{ kind: 'dice', formula: '1d0' }]] }),
+    fileText({ rows: [{ cells: [{ kind: 'dice', formula: '1d0' }] }] }),
     'ошибка в формуле «1d0»',
   ],
   [
@@ -154,10 +174,8 @@ test('before the first projection the GM sees the loading text and no upload', a
   // #given
   await page.goto('/index.html');
   await expect(page.getByRole('tabpanel')).toHaveText('Загрузка…');
-
   // #when
   await page.getByRole('tab', { name: SETTINGS }).click();
-
   // #then
   await expect(page.getByRole('tabpanel')).toHaveText('Загрузка…');
   await expect(page.getByRole('button', { name: UPLOAD })).toHaveCount(0);
@@ -169,7 +187,6 @@ test('a GM in a room with no preset sees the upload and Settings, and no sheet e
 }) => {
   // #when
   await openWindowAndBackground(page, context);
-
   // #then
   await expect(page.getByRole('button', { name: UPLOAD })).toBeVisible();
   await expect(page.getByRole('tab', { name: SETTINGS })).toHaveAttribute('aria-selected', 'true');
@@ -182,15 +199,11 @@ test('the Settings sidebar entry keeps Settings open when selected again', async
 }) => {
   // #given
   await openWindowAndBackground(page, context);
-
   const settings = page.getByRole('tab', { name: SETTINGS });
-
   await settings.click();
   await expect(page.getByRole('heading', { name: 'Пресет' })).toBeVisible();
-
   // #when
   await settings.click();
-
   // #then
   await expect(page.getByRole('heading', { name: 'Пресет' })).toBeVisible();
   await expect(settings).toHaveAttribute('aria-selected', 'true');
@@ -202,13 +215,10 @@ test('Settings with no preset puts the primary upload first and disables the dow
 }) => {
   // #given
   await openWindowAndBackground(page, context);
-
   // #when
   await page.getByRole('tab', { name: SETTINGS }).click();
-
   // #then
   const section = page.getByRole('region', { name: 'Пресет' });
-
   await expect(section.getByRole('button')).toHaveText([UPLOAD, DOWNLOAD]);
   await expect(section.getByRole('button', { name: DOWNLOAD })).toBeDisabled();
   await expect(section.getByRole('button', { name: DOWNLOAD })).toHaveAccessibleDescription(
@@ -230,11 +240,9 @@ test('a player sees only the loading text after the projection arrives', async (
   // #given
   await page.goto('/index.html?mock-role=PLAYER');
   await watchWire(page);
-
   // #when
   await openBackground(context, '/background.html?mock-role=PLAYER');
   await expect.poll(() => wireCount(page, 'projection')).toBeGreaterThan(0);
-
   // #then
   await expect(page.getByRole('main')).toHaveText('Загрузка…');
   await expect(page.getByRole('button')).toHaveCount(0);
@@ -246,11 +254,9 @@ test('a valid file is stored deflated and base64-encoded and stays after a reloa
 }) => {
   // #given
   const background = await openWindowAndBackground(page, context);
-
   await uploadFile(page, EXAMPLE_PRESET_TEXT);
   await expect(page.getByRole('tab', { name: SETTINGS })).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => storedPreset(page)).toEqual(EXAMPLE);
-
   // #when: the window reloads first, so it sees the projection that the new background sends.
   await background.close();
   await page.reload();
@@ -258,7 +264,6 @@ test('a valid file is stored deflated and base64-encoded and stays after a reloa
   await openBackground(context);
   await expect.poll(() => wireCount(page, 'projection')).toBeGreaterThan(0);
   await renderedFrames(page);
-
   // #then: a preset already in the room is not an arrival, so the NPC tab stays selected.
   await expect(page.getByRole('tab', { name: 'NPC' })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('tab', { name: SETTINGS }).click();
@@ -274,10 +279,8 @@ for (const [name, text, reason] of BAD_FILES) {
     // #given
     await openWindowAndBackground(page, context);
     await watchWire(page);
-
     // #when
     await uploadFile(page, text);
-
     // #then
     await expect(page.getByText(`Файл не подошёл: ${reason}. Ничего не изменено.`)).toBeVisible();
     expect(await windowSideRefusal(page)).toEqual({ commands: 0, stored: [] });
@@ -287,10 +290,8 @@ for (const [name, text, reason] of BAD_FILES) {
 test('the bad file message sits under the upload button', async ({ page, context }) => {
   // #given
   await openWindowAndBackground(page, context);
-
   // #when
   await uploadFile(page, '{');
-
   // #then
   const button = await page.getByRole('button', { name: UPLOAD }).boundingBox();
 
@@ -311,10 +312,8 @@ test('a file from a newer version asks for a reload and changes nothing', async 
   // #given
   await openWindowAndBackground(page, context);
   await watchWire(page);
-
   // #when
-  await uploadFile(page, JSON.stringify({ v: 4, anything: [] }));
-
+  await uploadFile(page, JSON.stringify({ v: 5, anything: [] }));
   // #then
   await expect(page.getByText('Файл из более новой версии. Перезагрузите страницу.')).toBeVisible();
   expect(await windowSideRefusal(page)).toEqual({ commands: 0, stored: [] });
@@ -326,10 +325,8 @@ test('a preset whose record cannot fit one message is refused by the replica', a
 }) => {
   // #given
   await openWindowAndBackground(page, context);
-
   // #when
   await uploadFile(page, fileJustOverTheRecordLimit());
-
   // #then: the message comes from the rejection, which the replica sends instead of a write.
   await expect(page.getByText(TOO_LARGE)).toBeVisible();
   expect(await roomKeys(page)).toEqual([]);
@@ -339,10 +336,11 @@ test('a preset too large for one command is refused in the window', async ({ pag
   // #given
   await openWindowAndBackground(page, context);
   await watchWire(page);
-
   // #when
-  await uploadFile(page, fileText({ rows: [[{ kind: 'text', text: randomLabel(30000) }]] }));
-
+  await uploadFile(
+    page,
+    fileText({ rows: [{ cells: [{ kind: 'text', text: randomLabel(30000) }] }] }),
+  );
   // #then
   await expect(page.getByText(TOO_LARGE)).toBeVisible();
   expect(await windowSideRefusal(page)).toEqual({ commands: 0, stored: [] });
@@ -358,10 +356,8 @@ test('a file the browser cannot read shows the not-JSON message and sends nothin
   await page.evaluate(() => {
     File.prototype.text = () => Promise.reject(new Error('the file cannot be read'));
   });
-
   // #when
   await uploadFile(page, EXAMPLE_PRESET_TEXT);
-
   // #then
   await expect(page.getByText('Файл не подошёл: это не JSON. Ничего не изменено.')).toBeVisible();
   expect(await windowSideRefusal(page)).toEqual({ commands: 0, stored: [] });
@@ -378,13 +374,10 @@ test('a rejection of an earlier upload goes once the next upload starts', async 
   await page.getByRole('tab', { name: SETTINGS }).click();
   await uploadFile(page, fileJustOverTheRecordLimit());
   await expect(page.getByText(TOO_LARGE)).toBeVisible();
-
   // #when
   await uploadFile(page, EXAMPLE_PRESET_TEXT);
-
   await expect.poll(() => storedPreset(page)).toEqual(EXAMPLE);
   await renderedFrames(page);
-
   // #then: the old rejection stays in the store, but it belongs to the earlier attempt.
   await expect(page.getByText(TOO_LARGE)).toHaveCount(0);
 });
@@ -394,10 +387,8 @@ test('a file error stays until the next upload attempt', async ({ page, context 
   await openWindowAndBackground(page, context);
   await uploadFile(page, '{');
   await expect(page.getByText('Файл не подошёл: это не JSON. Ничего не изменено.')).toBeVisible();
-
   // #when
   await uploadFile(page, EXAMPLE_PRESET_TEXT);
-
   // #then
   await expect(page.getByRole('tab', { name: SETTINGS })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText(/Файл не подошёл/)).toHaveCount(0);
@@ -411,18 +402,13 @@ test('the downloaded preset holds the structure at the current v and loads in an
   // #given
   await openWindowAndBackground(page, context);
   await uploadFile(page, EXAMPLE_PRESET_TEXT);
-
   const downloading = page.waitForEvent('download');
-
   await page.getByRole('button', { name: DOWNLOAD }).click();
-
   const download = await downloading;
   const downloadedText = readFileSync(await download.path(), 'utf8');
   const otherRoom = await browser.newContext();
   const otherPage = await otherRoom.newPage();
-
   await openWindowAndBackground(otherPage, otherRoom);
-
   // #when
   await uploadFile(otherPage, downloadedText);
   await expect(otherPage.getByRole('tab', { name: SETTINGS })).toHaveAttribute(
@@ -430,7 +416,6 @@ test('the downloaded preset holds the structure at the current v and loads in an
     'true',
   );
   await expect.poll(() => storedPreset(otherPage)).toEqual(EXAMPLE);
-
   // #then
   expect({
     name: download.suggestedFilename(),
@@ -445,10 +430,8 @@ test('while a sheet exists the upload stays enabled in both places', async ({ pa
   await page.goto('/index.html');
   await seedRecords(page, [SAVED_SHEET]);
   await openBackground(context);
-
   // #when
   const main = page.getByRole('button', { name: UPLOAD });
-
   await expect(main).toBeEnabled();
   await page.getByRole('tab', { name: SETTINGS }).click();
 
@@ -469,10 +452,8 @@ test('with a preset and a sheet, Settings enables the upload and the download', 
   await page.goto('/index.html');
   await seedStorage(page, [SAVED_SHEET], EXAMPLE_PRESET_TEXT);
   await openBackground(context);
-
   // #when
   await page.getByRole('tab', { name: SETTINGS }).click();
-
   // #then
   await expect(page.getByRole('button', { name: UPLOAD })).toBeEnabled();
   await expect(page.getByRole('button', { name: UPLOAD })).toHaveAccessibleDescription('');
@@ -489,21 +470,27 @@ function fileText(section: JsonValue): string {
 }
 
 function templatesText(templates: readonly JsonValue[]): string {
-  return JSON.stringify({ v: 3, templates });
+  return JSON.stringify({ v: 4, templates });
 }
 
 function setTemplate(id: string, sections: readonly JsonValue[]) {
   return {
     id,
-    kind: 'set',
     title: 'Персонажи',
-    nameField: 'name',
-    tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }, ...sections] }],
+    repeat: { nameField: 'name' },
+    tabs: [
+      {
+        sections: [
+          { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] },
+          ...sections,
+        ],
+      },
+    ],
   };
 }
 
 function singleTemplate(id: string) {
-  return { id, kind: 'single', title: 'Заметки', tabs: [{ sections: [] }] };
+  return { id, title: 'Заметки', tabs: [{ sections: [] }] };
 }
 
 function randomLabel(length: number): string {
@@ -520,7 +507,7 @@ function randomLabel(length: number): string {
 // Random labels barely deflate, so the data grows with the label until it lands in the window.
 function fileJustOverTheRecordLimit(): string {
   for (let length = 10000; length < 20000; length += 50) {
-    const text = fileText({ rows: [[{ kind: 'text', text: randomLabel(length) }]] });
+    const text = fileText({ rows: [{ cells: [{ kind: 'text', text: randomLabel(length) }] }] });
     const dataLength = Buffer.from(deflateSync(strToU8(text))).toString('base64').length;
 
     if (
@@ -536,9 +523,7 @@ function fileJustOverTheRecordLimit(): string {
 
 async function openWindowAndBackground(page: Page, context: BrowserContext): Promise<Page> {
   await page.goto('/index.html');
-
   const background = await openBackground(context);
-
   await expect(page.getByRole('button', { name: UPLOAD })).toBeVisible();
 
   return background;
@@ -546,11 +531,8 @@ async function openWindowAndBackground(page: Page, context: BrowserContext): Pro
 
 async function uploadFile(page: Page, text: string): Promise<void> {
   const choosing = page.waitForEvent('filechooser');
-
   await page.getByRole('button', { name: UPLOAD }).click();
-
   const chooser = await choosing;
-
   await chooser.setFiles({
     name: 'preset.json',
     mimeType: 'application/json',
@@ -573,7 +555,6 @@ async function storedPreset(page: Page): Promise<JsonValue> {
 async function watchWire(page: Page): Promise<void> {
   await page.evaluate((channel) => {
     window.wireTypes = [];
-
     window.mockPlatform.broadcast.onMessage(channel, (event) => {
       window.wireTypes.push(String(Object(event.data).t));
     });
@@ -587,7 +568,10 @@ async function wireCount(page: Page, type: string): Promise<number> {
 }
 
 // A refusal in the window means no command went out, so nothing can reach storage later.
-async function windowSideRefusal(page: Page): Promise<{ commands: number; stored: string[] }> {
+async function windowSideRefusal(page: Page): Promise<{
+  commands: number;
+  stored: string[];
+}> {
   return { commands: await wireCount(page, 'command'), stored: await roomKeys(page) };
 }
 

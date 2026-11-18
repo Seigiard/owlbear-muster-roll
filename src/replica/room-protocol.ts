@@ -1,7 +1,12 @@
 import { checkProposal, type ProposalContext } from '@/core/access';
 import type { JsonValue } from '@/core/json';
-import { compareGenerations } from '@/core/merge';
-import { fitsOneMessage, recordFitsOneMessage } from '@/core/message-size';
+import { assembleRecords, compareGenerations } from '@/core/merge';
+import {
+  fitsOneMessage,
+  fragmentRecord,
+  jsonByteLength,
+  recordFitsOneMessage,
+} from '@/core/message-size';
 import {
   admitRoomMessage,
   editIdOf,
@@ -17,7 +22,7 @@ import {
 import { decodeStateRecords } from '@/core/state-records';
 import type { Generation } from '@/core/storage-key';
 import type { Preset } from '@/core/preset';
-import { parseRepKey, type VersionedRecord } from '@/core/records';
+import { blockDataSchema, parseRepKey, type VersionedRecord } from '@/core/records';
 import type { PlayerRole } from '@/core/visibility';
 import type { ComposeContext } from '@/replica/composers';
 import { blockLinkTombstones } from '@/replica/composers';
@@ -75,8 +80,53 @@ export type RoomProtocol = {
   receive: (event: RoomProtocolEvent) => void;
 };
 
+const PROPOSAL_MAX_PARTS = 32;
+const PROPOSAL_MAX_BYTES = 480_000;
+const PROPOSAL_MAX_ASSEMBLIES = 32;
+const PROPOSAL_RETENTION_MS = 60_000;
+
+function staleReplyFragments(
+  stale: RejectMessage,
+  current: VersionedRecord,
+): VersionedRecord[] | null {
+  let reserveBytes = jsonByteLength(stale) - jsonByteLength(current) + 1;
+  let fragments = fragmentRecord(current, reserveBytes);
+
+  for (;;) {
+    if (!fragments.ok) {
+      return null;
+    }
+
+    const total = fragments.value.length;
+
+    if (total === 1) {
+      return fragments.value;
+    }
+
+    // The fragment count changes the numbered envelope. Repack until the count and its reserve
+    // agree, rather than reserving for an unrelated proposal-part limit.
+    const numbered = { ...stale, i: total, n: total };
+    reserveBytes = jsonByteLength(numbered) - jsonByteLength(current) + 1;
+    const next = fragmentRecord(current, reserveBytes);
+
+    if (!next.ok || next.value.length === total) {
+      return next.ok ? next.value : null;
+    }
+
+    fragments = next;
+  }
+}
+
+type ProposalAssembly = {
+  n: number;
+  parts: Map<number, VersionedRecord>;
+  bytes: number;
+  receivedAt: number;
+};
+
 export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   let roomMessages: Promise<void> = Promise.resolve();
+  const proposals = new Map<string, ProposalAssembly>();
 
   function receive(event: RoomProtocolEvent): void {
     // One message at a time in arrival order, so a sender lookup never lets a later message
@@ -154,10 +204,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   ): void {
     switch (message.t) {
       case 'commit': {
-        const cleared =
-          ports.role() === 'GM'
-            ? false
-            : ports.pendingEdits.answered([...message.acks, ...message.records.map(editIdOf)]);
+        const cleared = ports.role() === 'GM' ? false : ports.pendingEdits.answered(message.acks);
 
         // AD-8: another GM's edit changed the replica, so this GM writes too. The jitter keeps
         // GM clients from writing together.
@@ -225,10 +272,78 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
       return;
     }
 
-    const [record] = message.records;
+    let [record] = message.records;
 
     if (record === undefined) {
       return;
+    }
+
+    if (message.n > 1) {
+      const key = JSON.stringify([sender, message.g, editIdOf(record)]);
+      const now = Date.now();
+
+      if (message.n > PROPOSAL_MAX_PARTS) return;
+
+      for (const [assemblyKey, assembly] of proposals) {
+        if (now - assembly.receivedAt >= PROPOSAL_RETENTION_MS) {
+          proposals.delete(assemblyKey);
+        }
+      }
+
+      const existing = proposals.get(key);
+
+      const assembly =
+        existing ??
+        (() => {
+          if (proposals.size >= PROPOSAL_MAX_ASSEMBLIES) {
+            const oldest = proposals.keys().next().value;
+
+            if (oldest !== undefined) {
+              proposals.delete(oldest);
+            }
+          }
+
+          return {
+            n: message.n,
+            parts: new Map<number, VersionedRecord>(),
+            bytes: 0,
+            receivedAt: now,
+          };
+        })();
+
+      if (assembly.n !== message.n) {
+        proposals.delete(key);
+
+        return;
+      }
+
+      const previous = assembly.parts.get(message.i);
+
+      if (previous !== undefined) {
+        if (JSON.stringify(previous) !== JSON.stringify(record)) {
+          proposals.delete(key);
+        }
+
+        return;
+      }
+
+      const bytes = jsonByteLength(record);
+
+      if (assembly.bytes + bytes > PROPOSAL_MAX_BYTES) {
+        proposals.delete(key);
+
+        return;
+      }
+
+      assembly.parts.set(message.i, record);
+      assembly.bytes += bytes;
+      proposals.set(key, assembly);
+
+      if (assembly.parts.size !== assembly.n) return;
+      proposals.delete(key);
+      record = assembleRecords(assembly.parts.values()).get(record.k);
+
+      if (record === undefined) return;
     }
 
     const edit = editIdOf(record);
@@ -273,17 +388,33 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
         sendRoom(rejectMessage(ports.generation(), edit, { reason: 'denied' }));
         break;
       case 'stale': {
-        const stale = rejectMessage(ports.generation(), edit, {
-          reason: 'stale',
-          current: verdict.current,
-        });
+        const current = proposalReadBack(verdict.current, record);
+        const stale = rejectMessage(ports.generation(), edit, { reason: 'stale', current });
+        const fragments = staleReplyFragments(stale, current);
 
-        // A current record too large to go with the answer leaves the player nothing to rebase on.
-        sendRoom(
-          fitsOneMessage(stale)
-            ? stale
-            : rejectMessage(ports.generation(), edit, { reason: 'denied' }),
-        );
+        if (fragments === null) {
+          sendRoom(rejectMessage(ports.generation(), edit, { reason: 'denied' }));
+
+          break;
+        }
+
+        const total = fragments.length;
+
+        for (const [index, fragment] of fragments.entries()) {
+          const answer =
+            total === 1
+              ? stale
+              : {
+                  ...rejectMessage(ports.generation(), edit, {
+                    reason: 'stale',
+                    current: fragment,
+                  }),
+                  i: index + 1,
+                  n: total,
+                };
+
+          sendRoom(answer);
+        }
 
         break;
       }
@@ -390,6 +521,19 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   }
 
   return { receive };
+}
+
+function proposalReadBack(current: VersionedRecord, proposal: VersionedRecord): VersionedRecord {
+  const held = blockDataSchema.safeParse(current.d).data;
+  const patch = blockDataSchema.safeParse(proposal.d).data;
+
+  if (held === undefined || patch === undefined) return current;
+
+  const cells = Object.fromEntries(
+    Object.entries(held.cells).filter(([id]) => Object.hasOwn(patch.cells, id)),
+  );
+
+  return { ...current, l: current.l ?? [current.c, current.a], d: { ...held, cells } };
 }
 
 function unknownVerdict(verdict: never): never {

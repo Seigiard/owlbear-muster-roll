@@ -1,15 +1,22 @@
 import { useStore } from '@nanostores/react';
-import { useEffect, useId, useMemo, useReducer, useRef } from 'react';
+import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Button as AriaButton, Checkbox } from 'react-aria-components';
 
-import { linkTargetKey, linkTargetOf } from '@/core/link-target';
+import { linkTargetKey, linkTargetOf, type LinkTarget } from '@/core/link-target';
 import { repeatSectionId } from '@/core/preset';
-import { sectionTitle } from '@/core/sheet-values';
 import { LINK_PICKER_TIMING, type LinkPickerTiming } from '@/core/timing';
-import { linkKey, pickerGroups, type PickerGroup, type PickerTarget } from '@/core/token-links';
+import {
+  linkKey,
+  liveLinks,
+  pickerGroupHeading,
+  pickerGroups,
+  pickerTargetNeedsCellIdentity,
+  type PickerGroup,
+  type PickerTarget,
+} from '@/core/token-links';
 import type { Command } from '@/core/ui-messages';
-import type { NotificationPort, ScenePort } from '@/platform/ports';
+import type { Bounds, NotificationPort, ScenePort, ViewportPort } from '@/platform/ports';
 import { copy } from '@/copy';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
@@ -32,10 +39,11 @@ type LinkPickerProps = {
   timing?: LinkPickerTiming;
 };
 
-// UX-DR22: the targets a token can link to, in groups in preset order: one per linkable sheet set
-// or single sheet, and one per linkable repeat section. In each group the targets with no token
-// come first. A pick stays on screen until its link is in the replica, so a refused one, such as
-// for a sheet deleted meanwhile, shows a message here instead of closing the picker.
+// UX-DR22: the token-cell targets a token can link to, in groups in preset order: one per token cell
+// on a sheet set or single sheet, and one per token cell in a repeat scope. In each group the
+// targets with no token come first. A pick stays on screen until its link is in the replica, so a
+// refused one, such as for a sheet deleted meanwhile, shows a message here instead of closing the
+// picker.
 export function LinkPicker({
   tokenId,
   store,
@@ -267,16 +275,27 @@ export function LinkPicker({
 
     const { target } = choice;
 
-    const outcome = sendCommand({
-      type: 'link-set',
-      tokenId,
-      sheetId: target.sheetId,
-      instanceId: target.instanceId,
-    });
+    const command =
+      target.path === undefined || target.path === null
+        ? {
+            type: 'link-set' as const,
+            tokenId,
+            sheetId: target.sheetId,
+            cellId: target.cellId ?? choice.cellId,
+          }
+        : {
+            type: 'link-set' as const,
+            tokenId,
+            sheetId: target.sheetId,
+            path: target.path,
+            cellId: target.cellId ?? choice.cellId,
+          };
 
-    // The offered label is the target's name: a sheet's, or a repeat block's first field. An empty
-    // name sets none.
-    const name = choice.blockName ?? choice.sheetName;
+    const outcome = sendCommand(command);
+
+    // The offered label is the target's name: a sheet's, or a repeat block's configured nameField.
+    // An empty name sets none.
+    const name = choice.label;
 
     dispatch({
       type: 'pick',
@@ -299,9 +318,9 @@ export function LinkPicker({
               aria-label={targetAccessibleName(choice)}
               className="flex touch-target w-full items-center gap-2 rounded-sm px-3 text-left text-text data-disabled:opacity-50 data-hovered:bg-fill data-pressed:bg-fill-strong"
             >
-              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-                {shownName(choice.blockName ?? choice.sheetName)}
-                {choice.blockName === null ? null : (
+              <span className="min-w-0 flex-1 wrap-anywhere">
+                {shownName(targetIdentity(choice))}
+                {choice.blockName === null || choice.blockName === '' ? null : (
                   <span className="ml-2 text-label-sm text-text-muted">
                     {shownName(choice.sheetName)}
                   </span>
@@ -354,10 +373,7 @@ export function LinkPicker({
           )}
         </Checkbox>
         {hint === null ? null : (
-          <p
-            id={labelHintId}
-            className="col-start-2 text-label-sm [overflow-wrap:anywhere] text-text-muted"
-          >
+          <p id={labelHintId} className="col-start-2 text-label-sm wrap-anywhere text-text-muted">
             {hint}
           </p>
         )}
@@ -389,11 +405,11 @@ export function LinkPicker({
       <div aria-busy={picker.attempt !== null} className="flex flex-col gap-2">
         {labelOffer()}
         {groups.map((group) => {
-          const heading = groupHeading(group);
+          const heading = pickerGroupHeading(group);
 
           return (
             <section
-              key={`${group.template.id}:${group.section === null ? '' : (repeatSectionId(group.section) ?? '')}`}
+              key={`${group.template.id}:${group.section === null ? '' : (repeatSectionId(group.section) ?? '')}:${group.targets[0]?.cellId ?? ''}`}
               aria-label={heading}
               className="flex flex-col gap-1"
             >
@@ -416,20 +432,287 @@ export function LinkPicker({
   );
 }
 
-// A sheet set or a single sheet groups by its `title`, a repeat section by its own title, and an
-// untitled one by its template's.
-function groupHeading(group: PickerGroup): string {
-  return group.section === null
-    ? group.template.title
-    : (sectionTitle(group.section) ?? group.template.title);
+type TokenCellPickerProps = {
+  target: LinkTarget;
+  store: Pick<ProjectionStore, '$loaded' | '$records' | '$replica' | '$sync'>;
+  sendCommand: (
+    command: Extract<Command, { type: 'link-set' | 'link-clear' }>,
+  ) => CommandOutcomePromise<undefined>;
+  scene: Pick<ScenePort, 'getItemIds' | 'getItemBounds'> &
+    Partial<Pick<ScenePort, 'getTokenIds' | 'getItemLabel'>>;
+  viewport: Pick<ViewportPort, 'getBounds'>;
+  onLinked: () => Promise<void>;
+};
+
+// Reverse picker for a token cell. It deliberately uses the scene list as its boundary: a GM may
+// reassign any token currently in the scene, while existing links remain visible through the
+// checked state. The command path remains the authority for live-target validation.
+export function TokenCellPicker({
+  target,
+  store,
+  sendCommand,
+  scene,
+  viewport,
+  onLinked,
+}: TokenCellPickerProps): ReactNode {
+  const loaded = useStore(store.$loaded);
+  const sync = useStore(store.$sync);
+  const view = useWindowView(store, 'GM');
+  const [itemIds, setItemIds] = useState<string[] | null>(null);
+  const [names, setNames] = useState<ReadonlyMap<string, string>>(new Map());
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const targetKey = linkTargetKey(target);
+  const links = useMemo(() => liveLinks(view.records, view.preset), [view.records, view.preset]);
+
+  const linked = useMemo(() => new Set(links.keys()), [links]);
+
+  const linkedToTarget = useMemo(
+    () =>
+      new Set(
+        [...links].flatMap(([tokenId, live]) =>
+          linkTargetKey(live.target) === targetKey ? [tokenId] : [],
+        ),
+      ),
+    [links, targetKey],
+  );
+
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!loaded || !sync.firstCatchUpDone) {
+      return;
+    }
+
+    const getTokenIds = scene.getTokenIds ?? scene.getItemIds;
+
+    void getTokenIds()
+      .then(async (ids) => {
+        setNames(await readTokenNames(scene.getItemLabel, ids));
+
+        try {
+          const [itemBounds, viewportBounds] = await Promise.all([
+            scene.getItemBounds(ids),
+            viewport.getBounds(),
+          ]);
+
+          const visible = new Set(
+            ids.filter((id) => isInViewport(itemBounds.get(id), viewportBounds)),
+          );
+
+          setItemIds(orderReversePickerIds(ids, visible, linked));
+        } catch (error) {
+          console.error('Muster Roll could not rank scene tokens by viewport', error);
+          setItemIds(orderReversePickerIds(ids, new Set(), linked));
+        }
+      })
+      .catch((error) => {
+        console.error('Muster Roll could not read scene tokens', error);
+        setItemIds([]);
+      });
+  }, [linked, loaded, scene, sync.firstCatchUpDone, viewport]);
+
+  const tokens = itemIds ?? [];
+
+  async function apply(): Promise<void> {
+    if (busy || selected.size === 0) {
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const outcomes = await Promise.all(
+        [...selected].map((tokenId) =>
+          sendCommand({
+            type: 'link-set',
+            tokenId,
+            sheetId: target.sheetId,
+            path: target.path ?? undefined,
+            cellId: target.cellId ?? '',
+          }),
+        ),
+      );
+
+      if (!outcomes.every((outcome) => outcome.kind === 'answered')) {
+        setFailed(true);
+
+        return;
+      }
+
+      try {
+        await onLinked();
+      } catch {
+        setFailed(true);
+      }
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-full flex-col gap-3 p-3 text-text">
+      <h1 className="text-section-heading">{copy.command.linkSheet}</h1>
+      <p className="text-label-sm text-text-muted">{copy.status.tokenCellPicker}</p>
+      {tokens.length === 0 ? (
+        <p className="text-text-muted">{copy.status.noSceneTokens}</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {tokens.map((tokenId) => {
+            const isLinked = linked.has(tokenId);
+            const checked = selected.has(tokenId);
+
+            return (
+              <li key={tokenId}>
+                <label className="flex touch-target items-center gap-2 rounded-sm px-2 text-text hover:bg-fill">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      setSelected((current) => {
+                        const next = new Set(current);
+
+                        if (next.has(tokenId)) {
+                          next.delete(tokenId);
+                        } else {
+                          next.add(tokenId);
+                        }
+
+                        return next;
+                      });
+                    }}
+                  />
+                  <span className="min-w-0 flex-1 wrap-anywhere">
+                    {names.get(tokenId) || tokenId}
+                  </span>
+                  {isLinked ? (
+                    <span className="text-label-sm text-text-muted">
+                      {linkedToTarget.has(tokenId)
+                        ? copy.status.tokenLinkedCurrent
+                        : copy.status.tokenLinkedElsewhere}
+                    </span>
+                  ) : null}
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="mt-auto flex gap-2">
+        <AriaButton
+          isDisabled={busy || selected.size === 0}
+          onPress={() => {
+            void apply();
+          }}
+          className="touch-target rounded-sm bg-accent px-3 text-accent-contrast data-disabled:opacity-50"
+        >
+          {copy.command.linkSheet}
+        </AriaButton>
+        <AriaButton
+          isDisabled={
+            busy || selected.size === 0 || ![...selected].some((id) => linkedToTarget.has(id))
+          }
+          onPress={() => {
+            setBusy(true);
+            void Promise.all(
+              [...selected].flatMap((tokenId) =>
+                linkedToTarget.has(tokenId) ? [sendCommand({ type: 'link-clear', tokenId })] : [],
+              ),
+            )
+              .then(async (outcomes) => {
+                if (!outcomes.every((outcome) => outcome.kind === 'answered')) {
+                  setFailed(true);
+
+                  return;
+                }
+
+                try {
+                  await onLinked();
+                } catch {
+                  setFailed(true);
+                }
+              })
+              .catch(() => {
+                setFailed(true);
+              })
+              .finally(() => {
+                setBusy(false);
+              });
+          }}
+          className="touch-target rounded-sm border border-line-strong px-3 text-text data-disabled:opacity-50"
+        >
+          {copy.command.unlinkSheet}
+        </AriaButton>
+      </div>
+      <p aria-live="polite" className="text-label-sm text-danger-text empty:hidden">
+        {failed ? copy.linkFailed : null}
+      </p>
+    </div>
+  );
+}
+
+function isInViewport(bounds: Bounds | undefined, viewport: Bounds): boolean {
+  return (
+    bounds !== undefined &&
+    bounds.max.x >= viewport.min.x &&
+    bounds.min.x <= viewport.max.x &&
+    bounds.max.y >= viewport.min.y &&
+    bounds.min.y <= viewport.max.y
+  );
+}
+
+async function readTokenNames(
+  getItemLabel: ((itemId: string) => Promise<string | null>) | undefined,
+  ids: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  if (getItemLabel === undefined) {
+    return new Map();
+  }
+
+  const entries = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        return [id, (await getItemLabel(id)) ?? ''] as const;
+      } catch (error) {
+        console.error('Muster Roll could not read a scene token name', error);
+
+        return [id, ''] as const;
+      }
+    }),
+  );
+
+  return new Map(entries);
+}
+
+function orderReversePickerIds(
+  ids: readonly string[],
+  visible: ReadonlySet<string>,
+  linked: ReadonlySet<string>,
+): string[] {
+  const ordered: string[] = [];
+
+  for (let rank = 0; rank < 4; rank += 1) {
+    for (const id of ids) {
+      const idRank = (visible.has(id) ? 0 : 1) + (linked.has(id) ? 2 : 0);
+
+      if (idRank === rank) {
+        ordered.push(id);
+      }
+    }
+  }
+
+  return ordered;
 }
 
 // The visible parts joined by commas, so a screen reader does not run them together. Built here,
 // as the computed name of separate spans adds a space before each comma.
 export function targetAccessibleName(choice: PickerTarget): string {
   return [
-    shownName(choice.blockName ?? choice.sheetName),
-    choice.blockName === null ? null : shownName(choice.sheetName),
+    shownName(targetIdentity(choice)),
+    pickerTargetNeedsCellIdentity(choice) ? choice.cellId : null,
+    choice.blockName === null || choice.blockName === '' ? null : shownName(choice.sheetName),
     choice.linked ? copy.status.tokenLinked : null,
   ]
     .filter((part) => part !== null)
@@ -439,6 +722,10 @@ export function targetAccessibleName(choice: PickerTarget): string {
 // The one fallback label of an empty name.
 function shownName(name: string): string {
   return name === '' ? copy.unnamed : name;
+}
+
+function targetIdentity(choice: PickerTarget): string {
+  return choice.blockName === null ? choice.sheetName : choice.blockName;
 }
 
 // Rejects when `work` has not settled after `ms`, so a port call that never answers cannot hold the

@@ -233,7 +233,7 @@ export function CellTooltip({ name, children, className }: CellTooltipProps): Re
           triggerRef={triggerRef}
           placement="top"
           offset={8}
-          className="max-w-[100vw] rounded-md border border-transparent bg-surface-raised px-2 py-1 text-caption [overflow-wrap:anywhere] text-text shadow-popover"
+          className="max-w-[100vw] rounded-md border border-transparent bg-surface-raised px-2 py-1 text-caption wrap-anywhere text-text shadow-popover"
         >
           {name}
         </Tooltip>

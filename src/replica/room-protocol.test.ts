@@ -1,5 +1,5 @@
+import type { VersionedRecord } from '@/core/records';
 import { describe, expect, spyOn, test } from 'bun:test';
-
 import type { JsonValue } from '@/core/json';
 import {
   type GenerationRelation,
@@ -14,7 +14,15 @@ import { createRoomProtocol, type RoomProtocolPorts } from '@/replica/room-proto
 
 const OWN_GENERATION: Generation = { n: 1, a: '' };
 const HIGHER_GENERATION: Generation = { n: 2, a: '' };
-const RECORD = { k: 'sheet:a', d: { set: 'pc', order: 0 }, c: 1, a: 'gm-a' };
+
+const RECORD: VersionedRecord = {
+  k: 'blk:a',
+  d: { set: 'pc', order: 0, cells: {} },
+  c: 1,
+  a: 'gm-a',
+  l: [1, 'seed'],
+};
+
 const PLAYER: RoomSender = { role: 'PLAYER', playerId: 'player-a', name: 'Player' };
 const GM: RoomSender = { role: 'GM', playerId: 'gm-a', name: 'GM' };
 
@@ -267,6 +275,7 @@ function createPorts(
       mint: (_key, highestKnownCounter) => ({ c: highestKnownCounter + 1, a: 'test' }),
       newRecordId: () => 'record',
       isGmPlayer: () => false,
+      mode: 'persisted',
     }),
     receiveRecords: () => {
       effects.push('receive-records');
@@ -314,7 +323,6 @@ function createAdmissionPorts(
   senderOf: RoomProtocolPorts['senderOf'],
 ): RoomProtocolPorts {
   const ports = createPorts(handlerEffects, senderOf);
-
   ports.catchUp.adopting = () => HIGHER_GENERATION;
   ports.seeGeneration = () => {
     preAdmissionEffects.push('see-generation');
@@ -340,32 +348,24 @@ function generationFor(relation: GenerationRelation): Generation {
 function messageFor(type: RoomMessageType, g: Generation, request = 'request'): JsonValue {
   switch (type) {
     case 'commit':
-      return { v: 3, g, t: 'commit', records: [RECORD] };
+      return { v: 4, g, t: 'commit', records: [RECORD] };
     case 'propose':
-      return { v: 3, g, t: 'propose', records: [RECORD] };
+      return { v: 4, g, t: 'propose', records: [RECORD] };
     case 'reject':
-      return { v: 3, g, t: 'reject', k: RECORD.k, c: RECORD.c, a: RECORD.a, reason: 'denied' };
+      return { v: 4, g, t: 'reject', k: RECORD.k, c: RECORD.c, a: RECORD.a, reason: 'denied' };
     case 'ping':
-      return { v: 3, g, t: 'ping' };
+      return { v: 4, g, t: 'ping' };
     case 'alive':
-      return { v: 3, g, t: 'alive', digest: 1 };
+      return { v: 4, g, t: 'alive', digest: 1 };
     case 'state-request':
-      return { v: 3, g, t: 'state-request', r: request };
+      return { v: 4, g, t: 'state-request', r: request };
     case 'state':
-      return {
-        v: 3,
-        g,
-        t: 'state',
-        r: request,
-        i: 1,
-        n: 1,
-        records: encodeStateRecords([RECORD]),
-      };
+      return { v: 4, g, t: 'state', r: request, i: 1, n: 1, records: encodeStateRecords([RECORD]) };
     case 'reset':
-      return { v: 3, g, t: 'reset' };
+      return { v: 4, g, t: 'reset' };
     case 'roll':
       return {
-        v: 3,
+        v: 4,
         g,
         t: 'roll',
         id: 'roll',
@@ -430,14 +430,12 @@ describe('createRoomProtocol', () => {
     const beforeFirstLookup = [...effects];
     releaseFirst(PLAYER);
     await settleIngress();
-
     // #then
     expect([beforeFirstLookup, effects]).toEqual([
       [],
       ['state-request:request', 'state-request:second'],
     ]);
   });
-
   test('continues with the next room event after a handler throws', async () => {
     // #given
     const effects: string[] = [];
@@ -462,12 +460,11 @@ describe('createRoomProtocol', () => {
     // #then
     expect(effects).toEqual(['ping', 'state-request:request']);
   });
-
   test('drops a malformed room message before it reaches admission', async () => {
     // #given
     const handlerEffects: string[] = [];
     const senderLookups: string[] = [];
-    const malformed = { v: 3, g: OWN_GENERATION, t: 'state-request' };
+    const malformed = { v: 4, g: OWN_GENERATION, t: 'state-request' };
 
     const protocol = createRoomProtocol(
       createPorts(handlerEffects, async (connectionId) => {
@@ -480,7 +477,6 @@ describe('createRoomProtocol', () => {
     // #when
     protocol.receive(event(malformed));
     await settleIngress();
-
     // #then
     expect({ parsed: parseRoomMessage(malformed).ok, senderLookups, handlerEffects }).toEqual({
       parsed: false,
@@ -488,7 +484,6 @@ describe('createRoomProtocol', () => {
       handlerEffects: [],
     });
   });
-
   test.each(REJECTED_CASES)(
     '%s from %s with a %s generation has no handler effect after parsing',
     async (type, sender, relation) => {
@@ -517,7 +512,6 @@ describe('createRoomProtocol', () => {
         event(messageFor(type, generationFor(control.relation), 'control'), 'control'),
       );
       await settleIngress();
-
       // #then
       expect({
         parsed: parseRoomMessage(rejectedMessage).ok,
@@ -541,7 +535,6 @@ describe('createRoomProtocol', () => {
       });
     },
   );
-
   test('drops an in-flight room message when the engine stops during sender lookup', async () => {
     // #given
     const effects: string[] = [];
@@ -554,20 +547,16 @@ describe('createRoomProtocol', () => {
 
     const ports = createPorts(effects, () => sender);
     ports.stopped = () => stopped;
-
     const protocol = createRoomProtocol(ports);
-
     // #when
     protocol.receive(event(messageFor('state-request', OWN_GENERATION)));
     await settleIngress();
     stopped = true;
     release(PLAYER);
     await settleIngress();
-
     // #then
     expect(effects).toEqual([]);
   });
-
   test('an unrelated higher state answer does not retain the current nonce', async () => {
     // #given
     const effects: string[] = [];
@@ -582,15 +571,12 @@ describe('createRoomProtocol', () => {
     };
 
     const protocol = createRoomProtocol(ports);
-
     // #when
     protocol.receive(event(messageFor('state', HIGHER_GENERATION, 'other')));
     await settleIngress();
-
     // #then
     expect(keptNonce).toBe(false);
   });
-
   test('an idempotent commit still publishes a cleared pending edit', async () => {
     // #given
     const effects: string[] = [];
@@ -598,30 +584,24 @@ describe('createRoomProtocol', () => {
     ports.pendingEdits.answered = () => true;
     ports.receiveRecords = () => [];
     const protocol = createRoomProtocol(ports);
-
     // #when
     protocol.receive(event(messageFor('commit', OWN_GENERATION)));
     await settleIngress();
-
     // #then
     expect(effects).toEqual(['heard', 'publish']);
   });
-
   test('a stale rejection without denial does not show a denied notice', async () => {
     // #given
     const effects: string[] = [];
     const ports = createPorts(effects, async () => GM);
     ports.pendingEdits.rejected = () => ({ notify: false, merge: null });
     const protocol = createRoomProtocol(ports);
-
     // #when
     protocol.receive(event(messageFor('reject', OWN_GENERATION)));
     await settleIngress();
-
     // #then
     expect(effects).toEqual(['heard', 'publish']);
   });
-
   test('a higher state outside the current adoption target is not staged', async () => {
     // #given
     const effects: string[] = [];
@@ -631,11 +611,9 @@ describe('createRoomProtocol', () => {
     ports.seeGeneration = () => [];
     ports.stageGeneration = () => effects.push('stage');
     const protocol = createRoomProtocol(ports);
-
     // #when
     protocol.receive(event(messageFor('state', HIGHER_GENERATION)));
     await settleIngress();
-
     // #then
     expect(effects).toEqual(['heard']);
   });

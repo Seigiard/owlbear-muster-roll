@@ -1,54 +1,101 @@
+import { fixtureSnapshotCells, fixtureSnapshotBlocks } from './support/block-fixtures';
 import { readFileSync } from 'node:fs';
-
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import { parsePresetFile } from '@/core/preset';
 import type { Template } from '@/core/preset';
 import { copy } from '@/copy';
-
 import { installBrowserFileAccessFake, queueBrowserFile } from './support/file-access';
 import { openBackground } from './support/room';
 
 // TASK-38: the preset builder page (CAP-20 to CAP-28). It runs with no Owlbear and no background
 // page; the window and its background take part only where a file goes into a room.
-
 const PAGE = '/builder.html';
-
 const D6_POOL_TEXT = readFileSync('tests/fixtures/presets/d6-pool.json', 'utf8');
-
 const D20_TEXT = readFileSync('tests/fixtures/presets/d20.json', 'utf8');
 
-const DOWNLOAD_NAME = /^preset-\d{4}-\d{2}-\d{2}-\d{4}\.json$/;
+const ROW_DRAG_TEXT = JSON.stringify({
+  v: 4,
+  templates: [
+    {
+      id: 'inventory',
+      title: 'Инвентарь',
+      tabs: [
+        {
+          sections: [
+            {
+              title: 'Вещи',
+              repeat: { id: 'item', nameField: 'item' },
+              rows: [
+                {
+                  cells: [
+                    { kind: 'text', text: 'Вещь' },
+                    { kind: 'field', type: 'text', id: 'item' },
+                    { kind: 'text', text: 'Количество' },
+                    { kind: 'field', type: 'number', id: 'qty' },
+                  ],
+                },
+              ],
+            },
+            {
+              title: 'Деньги',
+              rows: [
+                {
+                  cells: [
+                    { kind: 'text', text: 'Золото' },
+                    { kind: 'field', type: 'number', id: 'gold' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+});
 
+const DOWNLOAD_NAME = /^preset-\d{4}-\d{2}-\d{2}-\d{4}\.json$/;
 const builder = copy.builder;
 
 const PLAYER_PREVIEW_SNAPSHOT = JSON.stringify({
-  v: 3,
+  v: 4,
   type: 'muster-roll/snapshot',
   sheets: [
     {
       id: 'aria',
       set: 'pc',
       order: 0,
-      rows: { name: { name: 'Ария' }, str: { str: 12 } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ name: { name: 'Ария' }, str: { str: 12 } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
-    { id: 'npc', rows: { hp: { hp: 7 } }, repeats: {} },
-    { id: 'inventory', rows: { gold: { gold: 10 } }, repeats: {} },
-    { id: 'journal', rows: {}, repeats: {} },
-    { id: 'gm_notes', rows: { plot: { plot: 'Тайный мост' } }, repeats: {} },
+    {
+      id: 'npc',
+      cells: fixtureSnapshotCells({ hp: { hp: 7 } }),
+      blocks: fixtureSnapshotBlocks({}),
+    },
+    {
+      id: 'inventory',
+      cells: fixtureSnapshotCells({ gold: { gold: 10 } }),
+      blocks: fixtureSnapshotBlocks({}),
+    },
+    { id: 'journal', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) },
+    {
+      id: 'gm_notes',
+      cells: fixtureSnapshotCells({ plot: { plot: 'Тайный мост' } }),
+      blocks: fixtureSnapshotBlocks({}),
+    },
     {
       id: 'lich',
       set: 'villains',
       order: 0,
-      rows: { villain: { villain: 'Лич' } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ villain: { villain: 'Лич' } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
     {
       id: 'private_tab',
-      rows: { secret: { secret: 'Скрытое значение' } },
-      repeats: {},
+      cells: fixtureSnapshotCells({ secret: { secret: 'Скрытое значение' } }),
+      blocks: fixtureSnapshotBlocks({}),
     },
   ],
   links: [],
@@ -88,7 +135,6 @@ function fileBlock(page: Page, kind: 'Пресет' | 'Снимок'): Locator {
 
 async function openFileMenu(page: Page, kind: 'Пресет' | 'Снимок'): Promise<Locator> {
   const block = fileBlock(page, kind);
-
   await expect(block).toBeVisible();
   await block.click();
 
@@ -129,7 +175,6 @@ async function dragOnto(page: Page, source: Locator, target: Locator): Promise<v
         requestAnimationFrame(() => requestAnimationFrame(resolve));
       }),
   );
-
   const from = await source.boundingBox();
   const to = await target.boundingBox();
 
@@ -146,16 +191,13 @@ async function dragOnto(page: Page, source: Locator, target: Locator): Promise<v
 
 async function openFromMenu(page: Page, label: string): Promise<void> {
   const menu = await openFileMenu(page, 'Пресет');
-
   await menu.getByRole('menuitem', { name: label }).click();
 }
 
 async function openFile(page: Page, name: string, text: string): Promise<void> {
   await queueBrowserFile(page, name, text);
-
   const menu = await openFileMenu(page, 'Пресет');
   const openAnother = menu.getByRole('menuitem', { name: 'Открыть другой файл…' });
-
   await (
     (await openAnother.count()) === 1
       ? openAnother
@@ -165,10 +207,8 @@ async function openFile(page: Page, name: string, text: string): Promise<void> {
 
 async function openSnapshotFile(page: Page, name: string, text: string): Promise<void> {
   await queueBrowserFile(page, name, text);
-
   const menu = await openFileMenu(page, 'Снимок');
   const openAnother = menu.getByRole('menuitem', { name: 'Открыть другой файл…' });
-
   await (
     (await openAnother.count()) === 1
       ? openAnother
@@ -192,24 +232,26 @@ function playerPreviewPreset(includePrivateTab = false): string {
   const hiddenTab = {
     title: 'Секреты мастера',
     visibility: 'gm' as const,
-    sections: [{ rows: [[{ kind: 'text' as const, text: 'Только мастер' }]] }],
+    sections: [{ rows: [{ cells: [{ kind: 'text' as const, text: 'Только мастер' }] }] }],
   };
 
   const hiddenSet: Template = {
     id: 'villains',
-    kind: 'set',
+
     title: 'Злодеи',
-    nameField: 'villain',
+    repeat: { nameField: 'villain' },
     visibility: 'gm',
     tabs: [
       {
         sections: [
           {
             rows: [
-              [
-                { kind: 'text', text: 'Имя' },
-                { kind: 'field', type: 'text', id: 'villain' },
-              ],
+              {
+                cells: [
+                  { kind: 'text', text: 'Имя' },
+                  { kind: 'field', type: 'text', id: 'villain' },
+                ],
+              },
             ],
           },
         ],
@@ -219,7 +261,7 @@ function playerPreviewPreset(includePrivateTab = false): string {
 
   const privateTab: Template = {
     id: 'private_tab',
-    kind: 'single',
+
     title: 'Закрытый лист',
     tabs: [
       {
@@ -228,10 +270,12 @@ function playerPreviewPreset(includePrivateTab = false): string {
         sections: [
           {
             rows: [
-              [
-                { kind: 'text', text: 'Секрет' },
-                { kind: 'field', type: 'text', id: 'secret' },
-              ],
+              {
+                cells: [
+                  { kind: 'text', text: 'Секрет' },
+                  { kind: 'field', type: 'text', id: 'secret' },
+                ],
+              },
             ],
           },
         ],
@@ -284,7 +328,6 @@ test('opens on the empty preset: one problem, download off, and the empty previe
 }) => {
   // #when
   await page.goto(PAGE);
-
   // #then
   expect(await rowNames(page)).toEqual([
     builder.windowItem(600, 600),
@@ -307,11 +350,9 @@ test('shows the preset and snapshot as complete file blocks instead of legacy co
 }) => {
   // #given
   await page.goto(PAGE);
-
   // #when
   const preset = fileBlock(page, 'Пресет');
   const snapshot = fileBlock(page, 'Снимок');
-
   // #then
   await expect(preset).toContainText('Пресет');
   await expect(preset).toContainText('пусто');
@@ -333,10 +374,8 @@ test('shows the preset and snapshot as complete file blocks instead of legacy co
 test('file block menus show file metadata and all actions for their document', async ({ page }) => {
   // #given
   await page.goto(PAGE);
-
   // #when
   const emptyPresetMenu = await openFileMenu(page, 'Пресет');
-
   // #then
   await expect(emptyPresetMenu.getByText('не подключён', { exact: true })).toBeVisible();
   await expect(emptyPresetMenu.getByRole('menuitem', { name: 'Открыть файл…' })).toBeVisible();
@@ -344,13 +383,10 @@ test('file block menus show file metadata and all actions for their document', a
   await expect(emptyPresetMenu.getByRole('menuitem', { name: 'Сохранить в файл…' })).toBeVisible();
   await expect(emptyPresetMenu.getByRole('menuitem', { name: 'Скачать копию' })).toBeVisible();
   await expect(emptyPresetMenu.getByRole('menuitem', { name: 'Очистить пресет…' })).toBeVisible();
-
   // #when
   await page.keyboard.press('Escape');
   await openFile(page, 'd6-pool-2026-11-01-1200.json', D6_POOL_TEXT);
-
   const linkedPresetMenu = await openFileMenu(page, 'Пресет');
-
   // #then
   await expect(linkedPresetMenu.getByText('Файл', { exact: true })).toBeVisible();
   await expect(linkedPresetMenu).toContainText('d6-pool-2026-11-01-1200.json');
@@ -363,12 +399,9 @@ test('file block menus show file metadata and all actions for their document', a
   await expect(
     linkedPresetMenu.getByRole('menuitem', { name: 'Отключить файл, оставить черновик' }),
   ).toBeVisible();
-
   // #when
   await page.keyboard.press('Escape');
-
   const snapshotMenu = await openFileMenu(page, 'Снимок');
-
   // #then
   await expect(snapshotMenu.getByText('не подключён', { exact: true })).toBeVisible();
   await expect(snapshotMenu.getByRole('menuitem', { name: 'Открыть файл…' })).toBeVisible();
@@ -382,13 +415,10 @@ test('download copy downloads the linked preset document', async ({ page }) => {
   // #given
   await page.goto(PAGE);
   await openFile(page, 'd6-pool.json', D6_POOL_TEXT);
-
   // #when
   const downloading = page.waitForEvent('download');
   const menu = await openFileMenu(page, 'Пресет');
-
   await menu.getByRole('menuitem', { name: 'Скачать копию' }).click();
-
   const download = await downloading;
   const path = await download.path();
 
@@ -405,38 +435,47 @@ test('download copy downloads the linked snapshot document', async ({ page }) =>
   await openPlayerPreview(
     page,
     JSON.stringify({
-      v: 3,
+      v: 4,
       type: 'muster-roll/snapshot',
       sheets: [
         {
           id: 'lich',
           set: 'villains',
           order: 0,
-          rows: { villain: { villain: 'Лич' } },
-          repeats: {},
+          cells: fixtureSnapshotCells({ villain: { villain: 'Лич' } }),
+          blocks: fixtureSnapshotBlocks({}),
         },
-        { id: 'gm_notes', rows: { plot: { plot: 'Тайный мост' } }, repeats: {} },
-        { id: 'journal', rows: {}, repeats: {} },
-        { id: 'inventory', rows: { gold: { gold: 10 } }, repeats: {} },
-        { id: 'npc', rows: { hp: { hp: 7 } }, repeats: {} },
+        {
+          id: 'gm_notes',
+          cells: fixtureSnapshotCells({ plot: { plot: 'Тайный мост' } }),
+          blocks: fixtureSnapshotBlocks({}),
+        },
+        { id: 'journal', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) },
+        {
+          id: 'inventory',
+          cells: fixtureSnapshotCells({ gold: { gold: 10 } }),
+          blocks: fixtureSnapshotBlocks({}),
+        },
+        {
+          id: 'npc',
+          cells: fixtureSnapshotCells({ hp: { hp: 7 } }),
+          blocks: fixtureSnapshotBlocks({}),
+        },
         {
           id: 'aria',
           set: 'pc',
           order: 0,
-          rows: { name: { name: 'Ария' }, str: { str: 12 } },
-          repeats: {},
+          cells: fixtureSnapshotCells({ name: { name: 'Ария' }, str: { str: 12 } }),
+          blocks: fixtureSnapshotBlocks({}),
         },
       ],
       links: [],
     }),
   );
-
   // #when
   const downloading = page.waitForEvent('download');
   const menu = await openFileMenu(page, 'Снимок');
-
   await menu.getByRole('menuitem', { name: 'Скачать копию' }).click();
-
   const download = await downloading;
   const path = await download.path();
 
@@ -446,26 +485,34 @@ test('download copy downloads the linked snapshot document', async ({ page }) =>
 
   // #then
   expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
-    v: 3,
+    v: 4,
     type: 'muster-roll/snapshot',
     sheets: [
       {
         id: 'aria',
         set: 'pc',
         order: 0,
-        rows: { name: { name: 'Ария' }, str: { str: 12 } },
-        repeats: {},
+        cells: fixtureSnapshotCells({ name: { name: 'Ария' }, str: { str: 12 } }),
+        blocks: fixtureSnapshotBlocks({}),
       },
-      { id: 'npc', rows: {}, repeats: {} },
-      { id: 'inventory', rows: { gold: { gold: 10 } }, repeats: {} },
-      { id: 'journal', rows: {}, repeats: {} },
-      { id: 'gm_notes', rows: { plot: { plot: 'Тайный мост' } }, repeats: {} },
+      { id: 'npc', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) },
+      {
+        id: 'inventory',
+        cells: fixtureSnapshotCells({ gold: { gold: 10 } }),
+        blocks: fixtureSnapshotBlocks({}),
+      },
+      { id: 'journal', cells: fixtureSnapshotCells({}), blocks: fixtureSnapshotBlocks({}) },
+      {
+        id: 'gm_notes',
+        cells: fixtureSnapshotCells({ plot: { plot: 'Тайный мост' } }),
+        blocks: fixtureSnapshotBlocks({}),
+      },
       {
         id: 'lich',
         set: 'villains',
         order: 0,
-        rows: { villain: { villain: 'Лич' } },
-        repeats: {},
+        cells: fixtureSnapshotCells({ villain: { villain: 'Лич' } }),
+        blocks: fixtureSnapshotBlocks({}),
       },
     ],
     links: [],
@@ -477,19 +524,14 @@ test('detaching a preset keeps its content as a draft', async ({ page }) => {
   await page.goto(PAGE);
   await openFile(page, 'd6-pool.json', D6_POOL_TEXT);
   await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
-
   // #when
   const menu = await openFileMenu(page, 'Пресет');
-
   await menu.getByRole('menuitem', { name: 'Отключить файл, оставить черновик' }).click();
-
   // #then
   await expect(fileBlock(page, 'Пресет')).toContainText('черновик');
   await expect(fileBlock(page, 'Пресет')).not.toContainText('d6-pool.json');
   await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
-
   const detachedMenu = await openFileMenu(page, 'Пресет');
-
   await expect(
     detachedMenu.getByRole('menuitem', { name: 'Отключить файл, оставить черновик' }),
   ).toHaveCount(0);
@@ -502,9 +544,7 @@ test('clears a linked preset after one named confirmation, and undo restores it'
   // #given
   await page.goto(PAGE);
   await openFile(page, 'd6-pool.json', D6_POOL_TEXT);
-
   const menu = await openFileMenu(page, 'Пресет');
-
   // #when
   await menu.getByRole('menuitem', { name: 'Очистить пресет…' }).click();
 
@@ -515,17 +555,13 @@ test('clears a linked preset after one named confirmation, and undo restores it'
   // #then
   await expect(confirmation).toHaveCount(1);
   await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
-
   // #when
   await confirmation.getByRole('button', { name: 'Очистить', exact: true }).click();
-
   // #then
   await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toHaveCount(0);
   await expect(page.getByText(builder.emptyPreset)).toBeVisible();
-
   // #when
   await page.getByRole('button', { name: builder.undo }).click();
-
   // #then
   await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
 });
@@ -536,9 +572,7 @@ test('clears a linked snapshot after one named confirmation, and undo restores i
   // #given
   await openPlayerPreview(page);
   await expect(preview(page).getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
-
   const menu = await openFileMenu(page, 'Снимок');
-
   // #when
   await menu.getByRole('menuitem', { name: 'Очистить снимок…' }).click();
 
@@ -549,19 +583,15 @@ test('clears a linked snapshot after one named confirmation, and undo restores i
   // #then
   await expect(confirmation).toHaveCount(1);
   await expect(preview(page).getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
-
   // #when
   await confirmation.getByRole('button', { name: 'Очистить', exact: true }).click();
-
   // #then
   await expect(preview(page).getByRole('tab', { name: 'Ария', exact: true })).toHaveCount(0);
   await expect(
     preview(page).getByRole('tab', { name: builder.previewSample, exact: true }),
   ).toHaveCount(2);
-
   // #when
   await page.getByRole('button', { name: builder.undo }).click();
-
   // #then
   await expect(preview(page).getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
 });
@@ -572,102 +602,89 @@ test('builds a preset with the tree and the forms, and the window loads the down
 }) => {
   // #given
   await page.goto(PAGE);
-
   // #when: a sheet set "Экипаж" with a section of three columns.
   await pick(item(page, builder.addSet));
   await form(page).getByRole('textbox', { name: builder.form.title }).fill('Экипаж');
   await pick(item(page, builder.addSection));
   await form(page).getByRole('textbox', { name: builder.form.title }).fill('Характеристики');
   await form(page).getByRole('textbox', { name: builder.form.columns }).fill('3');
-
   // #then: the preview redraws at once.
   await expect(preview(page).getByRole('heading', { name: 'Характеристики' })).toBeVisible();
-
   // #when: a row with the label "Сила", a field and a dice cell.
   await pick(item(page, builder.addRow).last());
   await pick(item(page, builder.addLabel).last());
   await form(page).getByRole('textbox', { name: builder.form.text }).fill('Сила');
   await pick(item(page, builder.addField).last());
-
   // #then: the field takes its id from the label.
   await expect(form(page).getByRole('textbox', { name: builder.form.fieldId })).toHaveValue('sila');
-
   // #when
   await pick(item(page, builder.addDice).last());
   await form(page).getByRole('combobox', { name: builder.form.formula }).fill('1d20 <= sila');
-
   // #then
   await expect(preview(page).getByRole('button', { name: 'Сила' })).toBeVisible();
   await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('sila');
-
   // #when: the id is renamed, and the formula follows.
   await pick(item(page, `sila · ${builder.form.typeNumber}`));
   await expect(form(page).getByText(builder.form.fieldUses(1))).toBeVisible();
   await form(page).getByRole('textbox', { name: builder.form.fieldId }).fill('str');
   await form(page).getByRole('textbox', { name: builder.form.fieldId }).press('Enter');
-
   // #then
   await expect(form(page).getByText(builder.formulasChanged(1))).toBeVisible();
   await expect(item(page, '1d20 <= str')).toBeVisible();
-
   // #when: the label changes, and the id stays.
   await pick(item(page, 'Сила'));
   await form(page).getByRole('textbox', { name: builder.form.text }).fill('Мощь');
-
   // #then
   await expect(item(page, `str · ${builder.form.typeNumber}`)).toBeVisible();
-
   // #when: a window size of its own.
   await pick(item(page, builder.windowItem(600, 600)));
   await form(page).getByRole('checkbox', { name: builder.form.ownWindowSize }).check();
   await form(page).getByRole('textbox', { name: builder.form.width }).fill('800');
-
   // #then
   await expect(page.getByRole('heading', { name: builder.preview(800, 600) })).toBeVisible();
   await expect(page.getByText(builder.noProblems)).toBeVisible();
-
   // #when
   const downloading = page.waitForEvent('download');
-
   await (await presetDownloadButton(page)).click();
-
   const download = await downloading;
   const path = await download.path();
   const text = readFileSync(path, 'utf8');
-
   // #then
   expect(download.suggestedFilename()).toMatch(DOWNLOAD_NAME);
   expect(parsePresetFile(text)).toEqual({
     ok: true,
     value: {
-      v: 3,
+      v: 4,
       window: { width: 800, height: 600 },
       templates: [
         {
           id: 'nabor',
-          kind: 'set',
           title: 'Экипаж',
-          nameField: 'imya',
+          repeat: { nameField: 'imya' },
           tabs: [
             {
               sections: [
                 {
                   rows: [
-                    [
-                      { kind: 'text', text: 'Имя' },
-                      { kind: 'field', type: 'text', id: 'imya' },
-                    ],
+                    {
+                      cells: [
+                        { kind: 'text', text: 'Имя' },
+                        { kind: 'field', type: 'text', id: 'imya' },
+                      ],
+                    },
                   ],
                 },
                 {
                   title: 'Характеристики',
                   columns: 3,
                   rows: [
-                    [
-                      { kind: 'text', text: 'Мощь' },
-                      { kind: 'field', type: 'number', id: 'str' },
-                      { kind: 'dice', formula: '1d20 <= str' },
-                    ],
+                    {
+                      cells: [
+                        { kind: 'text', text: 'Мощь' },
+                        { kind: 'field', type: 'number', id: 'str' },
+                        { kind: 'dice', formula: '1d20 <= str' },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -677,17 +694,12 @@ test('builds a preset with the tree and the forms, and the window loads the down
       ],
     },
   });
-
   // #when: the file goes through "Загрузить пресет" in an empty room.
   const window = await context.newPage();
-
   await openWindowAndBackground(window, context);
-
   const choosing = window.waitForEvent('filechooser');
-
   await window.getByRole('button', { name: copy.command.loadPreset }).click();
   await (await choosing).setFiles(path);
-
   // #then
   await expect(window.getByRole('button', { name: copy.label.addToSet('Экипаж') })).toBeVisible();
 });
@@ -702,7 +714,6 @@ test('builds, previews and downloads a select field, then drops its options on a
   await pick(item(page, builder.addLabel));
   await form(page).getByRole('textbox', { name: builder.form.text }).fill('Броня');
   await pick(item(page, builder.addField));
-
   const type = form(page).getByRole('combobox', { name: builder.form.fieldType });
 
   // #when
@@ -712,7 +723,6 @@ test('builds, previews and downloads a select field, then drops its options on a
 
   // #then
   expect(typeNames).toEqual(['Текст', 'Число', 'Флажок', 'Список', 'Выбор кубика']);
-
   // #when
   await type.selectOption({ label: 'Список' });
 
@@ -722,62 +732,51 @@ test('builds, previews and downloads a select field, then drops its options on a
 
   // #then
   await expect(options).toHaveValue('Вариант 1\nВариант 2');
-
   // #when
   await options.fill('  Кожаная  \n\n Кольчуга ');
   await options.blur();
-
   // #then
   await expect(item(page, 'bronya · Список')).toBeVisible();
   await expect(preview(page).getByRole('combobox', { name: 'Броня' })).toHaveCount(0);
-
   const previewField = preview(page).getByRole('group', { name: 'Броня' });
-
   await expect(previewField).toHaveText('bronya');
-
   // #when
   await previewField.click();
-
   // #then
   await expect(item(page, 'bronya · Список')).toHaveAttribute('aria-selected', 'true');
-
   // #when
   const selectDownloading = page.waitForEvent('download');
-
   await (await presetDownloadButton(page)).click();
-
   const selectPath = await (await selectDownloading).path();
   const selectFile = JSON.parse(readFileSync(selectPath, 'utf8'));
-
   // #then
-  expect(selectFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
-    { kind: 'text', text: 'Броня' },
-    {
-      kind: 'field',
-      type: 'select',
-      id: 'bronya',
-      options: ['Кожаная', 'Кольчуга'],
-    },
-  ]);
-
+  expect(selectFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual({
+    cells: [
+      { kind: 'text', text: 'Броня' },
+      {
+        kind: 'field',
+        type: 'select',
+        id: 'bronya',
+        options: ['Кожаная', 'Кольчуга'],
+      },
+    ],
+  });
   // #when
   await type.selectOption({ label: 'Текст' });
-
   const textDownloading = page.waitForEvent('download');
-
   await (await presetDownloadButton(page)).click();
-
   const textPath = await (await textDownloading).path();
   const textFile = JSON.parse(readFileSync(textPath, 'utf8'));
-
   // #then
   await expect(
     form(page).getByRole('textbox', { name: 'Варианты — по одному в строке' }),
   ).toHaveCount(0);
-  expect(textFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
-    { kind: 'text', text: 'Броня' },
-    { kind: 'field', type: 'text', id: 'bronya' },
-  ]);
+  expect(textFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual({
+    cells: [
+      { kind: 'text', text: 'Броня' },
+      { kind: 'field', type: 'text', id: 'bronya' },
+    ],
+  });
 });
 
 test('switches a field to dice-choice with the standard dice and downloads its tree type', async ({
@@ -790,7 +789,6 @@ test('switches a field to dice-choice with the standard dice and downloads its t
   await pick(item(page, builder.addLabel));
   await form(page).getByRole('textbox', { name: builder.form.text }).fill('Урон');
   await pick(item(page, builder.addField));
-
   const type = form(page).getByRole('combobox', { name: builder.form.fieldType });
 
   // #when
@@ -800,34 +798,30 @@ test('switches a field to dice-choice with the standard dice and downloads its t
 
   // #then
   expect(typeNames).toEqual(['Текст', 'Число', 'Флажок', 'Список', 'Выбор кубика']);
-
   // #when
   await type.selectOption({ label: 'Выбор кубика' });
-
   // #then
   await expect(
     form(page).getByRole('textbox', { name: 'Варианты — по одному в строке' }),
   ).toHaveValue('d4\nd6\nd8\nd10\nd12\nd20');
   await expect(item(page, 'uron · Выбор кубика')).toBeVisible();
-
   // #when
   const downloading = page.waitForEvent('download');
-
   await (await presetDownloadButton(page)).click();
-
   const path = await (await downloading).path();
   const file = JSON.parse(readFileSync(path, 'utf8'));
-
   // #then
-  expect(file.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
-    { kind: 'text', text: 'Урон' },
-    {
-      kind: 'field',
-      type: 'dice-choice',
-      id: 'uron',
-      options: ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'],
-    },
-  ]);
+  expect(file.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual({
+    cells: [
+      { kind: 'text', text: 'Урон' },
+      {
+        kind: 'field',
+        type: 'dice-choice',
+        id: 'uron',
+        options: ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'],
+      },
+    ],
+  });
 });
 
 test('sets and clears field and dice cell names, with the hint, in the downloaded preset', async ({
@@ -838,53 +832,43 @@ test('sets and clears field and dice cell names, with the hint, in the downloade
   await pick(item(page, builder.addSingle));
   await pick(item(page, builder.addRow));
   await pick(item(page, builder.addField));
-
   const name = form(page).getByRole('textbox', { name: 'Название', exact: true });
   const hint = 'Видно в подсказке. Пусто — ячейку называет подпись перед ней.';
-
   await expect(name).toBeVisible();
-
   // #when
   await name.fill('HP, максимум');
   await pick(item(page, builder.addDice));
-
   // #then
   await expect(form(page).getByText(hint, { exact: true })).toBeVisible();
-
   // #when
   await form(page).getByRole('textbox', { name: 'Название', exact: true }).fill('Спасбросок HP');
-
   const namedDownloading = page.waitForEvent('download');
-
   await (await presetDownloadButton(page)).click();
-
   const namedPath = await (await namedDownloading).path();
   const namedFile = JSON.parse(readFileSync(namedPath, 'utf8'));
-
   // #then
-  expect(namedFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
-    { kind: 'field', type: 'number', id: 'field', name: 'HP, максимум' },
-    { kind: 'dice', formula: '1d20', name: 'Спасбросок HP' },
-  ]);
-
+  expect(namedFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual({
+    cells: [
+      { kind: 'field', type: 'number', id: 'field', name: 'HP, максимум' },
+      { kind: 'dice', formula: '1d20', name: 'Спасбросок HP' },
+    ],
+  });
   // #when
   await pick(item(page, `field · ${builder.form.typeNumber}`));
   await form(page).getByRole('textbox', { name: 'Название', exact: true }).fill('   ');
   await pick(item(page, '1d20'));
   await form(page).getByRole('textbox', { name: 'Название', exact: true }).fill('');
-
   const clearedDownloading = page.waitForEvent('download');
-
   await (await presetDownloadButton(page)).click();
-
   const clearedPath = await (await clearedDownloading).path();
   const clearedFile = JSON.parse(readFileSync(clearedPath, 'utf8'));
-
   // #then
-  expect(clearedFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual([
-    { kind: 'field', type: 'number', id: 'field' },
-    { kind: 'dice', formula: '1d20' },
-  ]);
+  expect(clearedFile.templates[0]?.tabs[0]?.sections[0]?.rows[0]).toEqual({
+    cells: [
+      { kind: 'field', type: 'number', id: 'field' },
+      { kind: 'dice', formula: '1d20' },
+    ],
+  });
 });
 
 test('opens the draft again after a reload, with no prompt', async ({ page }) => {
@@ -893,10 +877,8 @@ test('opens the draft again after a reload, with no prompt', async ({ page }) =>
   await pick(item(page, builder.addSingle));
   await form(page).getByRole('textbox', { name: builder.form.title }).fill('Инвентарь');
   await expect(page.getByText(builder.draftSaved)).toBeVisible();
-
   // #when
   await page.reload();
-
   // #then
   await expect(item(page, `Инвентарь · ${builder.form.kindSingle}`)).toHaveAttribute(
     'aria-selected',
@@ -914,17 +896,13 @@ test('a file replaces the draft after one confirmation, and a refused file chang
   // #given
   await page.goto(PAGE);
   await pick(item(page, builder.addSingle));
-
   // #when
   await openFile(page, 'd6-pool-2026-11-01-1200.json', D6_POOL_TEXT);
-
   // #then
   await expect(page.getByText(builder.replaceDraft('d6-pool-2026-11-01-1200.json'))).toBeVisible();
   await expect(item(page, `${builder.newSingleTitle} · ${builder.form.kindSingle}`)).toBeVisible();
-
   // #when
   await page.getByRole('button', { name: builder.confirmOpen, exact: true }).click();
-
   // #then
   await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
   await expect(item(page, `Список заклинаний · ${builder.form.kindSingle}`)).toBeVisible();
@@ -935,35 +913,26 @@ test('a file replaces the draft after one confirmation, and a refused file chang
     'Инвентарь',
     'Список заклинаний',
   ]);
-
   // #when: a refused file.
   await openFile(page, 'broken.json', '{');
-
   // #then
   await expect(page.getByText('Файл не подошёл: это не JSON. Ничего не изменено.')).toBeVisible();
   await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
-
   // #when: an id the file had is renamed.
   await pick(item(page, `str · ${builder.form.typeNumber}`));
   await form(page).getByRole('textbox', { name: builder.form.fieldId }).fill('sila');
   await form(page).getByRole('textbox', { name: builder.form.fieldId }).blur();
-
   // #then
   await expect(form(page).locator('[data-builder-rename]')).toHaveText('Формулы изменены: 0.');
-
   // #when: the id of a template the file had changes.
   await pick(item(page, `Экипаж · ${builder.form.kindSet}`));
   await form(page).getByRole('textbox', { name: builder.form.id, exact: true }).fill('crew');
   await form(page).getByRole('textbox', { name: builder.form.id, exact: true }).blur();
-
   // #then
   await expect(form(page).locator('[data-builder-rename]')).toHaveText('');
-
   // #when: the download takes the file's name with no earlier time.
   const downloading = page.waitForEvent('download');
-
   await (await presetDownloadButton(page)).click();
-
   // #then
   expect((await downloading).suggestedFilename()).toMatch(
     /^d6-pool-\d{4}-\d{2}-\d{2}-\d{4}\.json$/,
@@ -973,10 +942,8 @@ test('a file replaces the draft after one confirmation, and a refused file chang
 test('an example opens with no confirmation while the draft is empty', async ({ page }) => {
   // #given
   await page.goto(PAGE);
-
   // #when
   await openFromMenu(page, builder.openD20);
-
   // #then
   await expect(item(page, `Персонажи · ${builder.form.kindSet}`)).toHaveAttribute(
     'aria-selected',
@@ -992,25 +959,19 @@ test('each problem marks its tree item and preview cell, and the counter goes to
   await page.goto(PAGE);
   await openFromMenu(page, builder.openD20);
   await expect(page.getByText(builder.noProblems)).toBeVisible();
-
   // #when
   await pick(item(page, '1d20+str').first());
   await form(page).getByRole('combobox', { name: builder.form.formula }).fill('1d20+');
-
   // #then
   await expect(problemCounter(page, 1)).toBeVisible();
   await expect(await presetDownloadButton(page)).toBeDisabled();
   await expect(item(page, '1d20+')).toHaveAttribute('data-problem', 'true');
   await expect(form(page).getByText('ошибка в формуле «1d20+»')).toBeVisible();
-
   const cell = preview(page).locator('[data-cell="0.1.0.3"] > *');
-
   await expect(cell).toHaveCSS('box-shadow', /.+px/);
-
   // #when: the selection moves away, and the counter takes it back.
   await pick(item(page, builder.windowItem(600, 600)));
   await problemCounter(page, 1).click();
-
   // #then
   await expect(item(page, '1d20+')).toBeFocused();
   await expect(item(page, '1d20+')).toHaveAttribute('aria-selected', 'true');
@@ -1022,20 +983,16 @@ test('a too-wide row is marked in the preview, and a click on a section heading 
   // #given
   await page.goto(PAGE);
   await openFromMenu(page, builder.openD20);
-
   // #when: "Характеристики" gets fewer columns than its rows have cells.
   await pick(item(page, 'Характеристики'));
   await form(page).getByRole('textbox', { name: builder.form.columns }).fill('3');
-
   // #then
   await expect(problemCounter(page, 2)).toBeVisible();
   await expect(
     preview(page).locator('[data-section-index="1"] [data-row-index="0"]').first(),
   ).toHaveCSS('box-shadow', /2px/);
-
   // #when
   await preview(page).getByRole('heading', { name: 'Хиты' }).click();
-
   // #then: the section, not its label of the same text.
   await expect(item(page, 'Хиты').and(page.locator('[aria-level="3"]'))).toHaveAttribute(
     'aria-selected',
@@ -1048,21 +1005,16 @@ test('the formula input completes a field id', async ({ page }) => {
   await page.goto(PAGE);
   await openFromMenu(page, builder.openD20);
   await pick(item(page, '1d20+str').first());
-
   const formula = form(page).getByRole('combobox', { name: builder.form.formula });
-
   // #when
   await formula.fill('');
   await formula.pressSequentially('1d20+dex_');
-
   // #then
   await expect(
     page.getByRole('listbox', { name: builder.form.completions }).getByRole('option'),
   ).toHaveText(['dex_save']);
-
   // #when
   await formula.press('Enter');
-
   // #then
   await expect(formula).toHaveValue('1d20+dex_save');
 });
@@ -1071,16 +1023,12 @@ test('a click on a preview cell selects its tree item', async ({ page }) => {
   // #given
   await page.goto(PAGE);
   await openFromMenu(page, builder.openD20);
-
   // #when
   await preview(page).getByRole('button', { name: 'Сила' }).click();
-
   // #then
   await expect(item(page, '1d20+str').first()).toHaveAttribute('aria-selected', 'true');
-
   // #when: a click on another tab selects that template.
   await preview(page).getByRole('tab', { name: 'NPC' }).click();
-
   // #then
   await expect(item(page, `NPC · ${builder.form.kindSingle}`)).toHaveAttribute(
     'aria-selected',
@@ -1095,20 +1043,15 @@ test('the preview sidebar lists templates in order and selects a template in the
   // #given
   await page.goto(PAGE);
   await openFromMenu(page, builder.openD20);
-
   const shown = preview(page);
   const sidebar = shown.getByRole('tablist').first();
-
   // #when
   const entries = await sidebar.getByRole('tab').allTextContents();
-
   // #then
   await expect(shown.getByRole('heading', { name: 'Персонажи', exact: true })).toBeVisible();
   expect(entries).toEqual(['Образец', 'NPC', 'Инвентарь', 'Журнал', 'Заметки ГМ']);
-
   // #when
   await sidebar.getByRole('tab', { name: 'NPC', exact: true }).click();
-
   // #then
   await expect(item(page, `NPC · ${builder.form.kindSingle}`)).toHaveAttribute(
     'aria-selected',
@@ -1119,19 +1062,15 @@ test('the preview sidebar lists templates in order and selects a template in the
 test('the player projection hides GM-only content from a visible sheet', async ({ page }) => {
   // #given
   await openPlayerPreview(page);
-
   const shown = preview(page);
-
   await expect(roleSwitch(page).getByRole('button', { name: 'Мастер' })).toBeVisible();
   await shown.getByRole('tab', { name: 'Ария', exact: true }).click();
   await expect(shown.getByRole('heading', { name: 'Ария', level: 1 })).toBeVisible();
   await expect(shown.getByRole('tab', { name: 'Секреты мастера', exact: true })).toBeVisible();
   await shown.getByRole('tab', { name: 'Секреты мастера', exact: true }).click();
   await expect(shown.getByText('Только мастер', { exact: true })).toBeVisible();
-
   // #when
   await roleSwitch(page).getByRole('button', { name: 'Игрок' }).click();
-
   // #then
   await expect(shown.getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
   await expect(shown.getByRole('heading', { name: 'Ария', level: 1 })).toBeVisible();
@@ -1147,19 +1086,14 @@ test('the role switch remains available for an empty sheet set', async ({ page }
   // #given
   await page.goto(PAGE);
   await openFromMenu(page, builder.openD20);
-
   const roles = roleSwitch(page);
-
   // #when
   await roles.getByRole('button', { name: 'Игрок' }).click();
-
   // #then
   await expect(roles.getByRole('button', { name: 'Игрок' })).toBeVisible();
   await expect(roles.getByRole('button', { name: 'Мастер' })).toBeVisible();
-
   // #when
   await roles.getByRole('button', { name: 'Мастер' }).click();
-
   // #then
   await expect(
     preview(page).getByRole('tab', { name: builder.previewSample, exact: true }).first(),
@@ -1171,17 +1105,13 @@ test('the player projection renders no hidden fallback tab when every tab is GM-
 }) => {
   // #given
   await openPlayerPreview(page, PLAYER_PREVIEW_SNAPSHOT, true);
-
   const shown = preview(page);
-
   await shown.getByRole('tab', { name: 'Закрытый лист', exact: true }).click();
   await expect(shown.getByRole('group', { name: 'Секрет', exact: true })).toHaveText(
     'Скрытое значение',
   );
-
   // #when
   await roleSwitch(page).getByRole('button', { name: 'Игрок' }).click();
-
   // #then
   await expect(shown.getByRole('tab', { name: 'Закрытый лист', exact: true })).toBeVisible();
   await expect(shown.getByRole('tab', { name: 'Только мастеру', exact: true })).toHaveCount(0);
@@ -1192,15 +1122,11 @@ test('the player projection renders no hidden fallback tab when every tab is GM-
 test('the player switch explains an open hidden sheet', async ({ page }) => {
   // #given
   await openPlayerPreview(page);
-
   const shown = preview(page);
-
   await shown.getByRole('tab', { name: 'Заметки ГМ', exact: true }).click();
   await expect(shown.getByText('Тайный мост', { exact: true })).toBeVisible();
-
   // #when
   await roleSwitch(page).getByRole('button', { name: 'Игрок' }).click();
-
   // #then
   await expect(
     shown.getByText('Игроки не видят «Заметки ГМ». В их окне этого листа нет.', {
@@ -1215,34 +1141,23 @@ test('the player cannot edit a sheet-set sheet and can edit a player-editable si
 }) => {
   // #given
   await openPlayerPreview(page);
-
   const playerView = roleSwitch(page).getByRole('button', { name: 'Игрок' });
-
   await expect(playerView).toBeVisible();
   await playerView.click();
-
   const shown = preview(page);
-
   await shown.getByRole('tab', { name: 'Ария', exact: true }).click();
-
   // #when
   const characterName = shown.getByRole('group', { name: 'Имя' });
-
   await characterName.click();
   await characterName.click();
-
   // #then
   await expect(shown.getByRole('textbox', { name: 'Имя' })).toHaveCount(0);
   await expect(shown.getByRole('group', { name: 'Имя' })).toHaveText('Ария');
-
   // #when
   await shown.getByRole('tab', { name: 'Инвентарь', exact: true }).click();
-
   const gold = shown.getByRole('group', { name: 'Золото' });
-
   await gold.click();
   await gold.click();
-
   // #then
   await expect(shown.getByRole('textbox', { name: 'Золото' })).toHaveValue('10');
   await expect(shown.getByRole('textbox', { name: 'Золото' })).toBeEditable();
@@ -1252,36 +1167,27 @@ test('undo and redo each change, and typing in one input is one step', async ({ 
   // #given
   await page.goto(PAGE);
   await pick(item(page, builder.addSet));
-
   const title = form(page).getByRole('textbox', { name: builder.form.title });
-
   // #when
   await title.selectText();
   await title.pressSequentially('Экипаж');
   await title.blur();
   await page.getByRole('button', { name: builder.undo }).click();
-
   // #then
   await expect(item(page, `${builder.newSetTitle} · ${builder.form.kindSet}`)).toBeVisible();
-
   // #when
   await page.getByRole('button', { name: builder.redo }).click();
-
   // #then
   await expect(item(page, `Экипаж · ${builder.form.kindSet}`)).toBeVisible();
-
   // #when: the keys undo outside text inputs.
   await pick(item(page, builder.addSection));
   await expect(tree(page).getByRole('row', { name: builder.untitledSection })).toHaveCount(2);
   await pick(item(page, builder.windowItem(600, 600)));
   await page.keyboard.press('ControlOrMeta+z');
-
   // #then
   await expect(tree(page).getByRole('row', { name: builder.untitledSection })).toHaveCount(1);
-
   // #when
   await page.keyboard.press('ControlOrMeta+Shift+z');
-
   // #then
   await expect(tree(page).getByRole('row', { name: builder.untitledSection })).toHaveCount(2);
 });
@@ -1305,13 +1211,10 @@ test('typing select options with a new line is one undo step', async ({ page }) 
   await options.pressSequentially('Кожаная');
   await options.press('Enter');
   await options.pressSequentially('Кольчуга');
-
   // #then
   await expect(options).toHaveValue('Кожаная\nКольчуга');
-
   // #when
   await page.getByRole('button', { name: builder.undo }).click();
-
   // #then
   await expect(options).toHaveValue('Вариант 1\nВариант 2');
 });
@@ -1321,9 +1224,8 @@ test('drags a row out of a repeat section, and the emptied repeat section shows 
 }) => {
   // #given
   await page.goto(PAGE);
-  await openFromMenu(page, builder.openD20);
+  await openFile(page, 'row-drag.json', ROW_DRAG_TEXT);
   await expect(page.getByText(builder.noProblems)).toBeVisible();
-
   const names = await rowNames(page);
 
   const row = tree(page)
@@ -1331,7 +1233,6 @@ test('drags a row out of a repeat section, and the emptied repeat section shows 
     .nth(names.indexOf('Вещи') + 1);
 
   await expect(row).toHaveAttribute('aria-label', builder.rowItem(1));
-
   // #when: the row of "Вещи" goes into "Деньги", away from the tree's edges where it scrolls.
   await item(page, 'Вещи').evaluate((element) => {
     const scroller = element.closest('[data-builder-tree]');
@@ -1341,27 +1242,25 @@ test('drags a row out of a repeat section, and the emptied repeat section shows 
     }
   });
   await dragOnto(page, row, item(page, 'Деньги'));
-
   // #then
   const after = await rowNames(page);
   const emptied = after.indexOf('Вещи');
   const money = after.indexOf('Деньги');
+  const moved = after.indexOf(builder.rowItem(2), money);
 
   expect(after.slice(emptied, emptied + 2)).toEqual(['Вещи', builder.addRow]);
-  expect(after.slice(money, money + 13)).toEqual([
+  expect(after.slice(money, money + 4)).toEqual([
     'Деньги',
     builder.rowItem(1),
     'Золото',
     `gold · ${builder.form.typeNumber}`,
-    builder.addLabel,
-    builder.addField,
-    builder.addDice,
+  ]);
+  expect(after.slice(moved, moved + 5)).toEqual([
     builder.rowItem(2),
     'Вещь',
     `item · ${builder.form.typeText}`,
     'Количество',
     `qty · ${builder.form.typeNumber}`,
-    builder.addLabel,
   ]);
   await expect(problemCounter(page, 1)).toBeVisible();
   await expect(item(page, 'Вещи')).toHaveAttribute('data-problem', 'true');
@@ -1374,23 +1273,18 @@ test('adds a tab, drags a section into it, and the preview shows the tab of the 
   await page.goto(PAGE);
   await openFromMenu(page, builder.openD20);
   await expect(page.getByText(builder.noProblems)).toBeVisible();
-
   // #when: a second tab on the first template. Two tabs need titles, so both are problems.
   await pick(item(page, builder.addTab).first());
-
   // #then
   await expect(problemCounter(page, 2)).toBeVisible();
-
   // #when
   await form(page).getByRole('textbox', { name: builder.form.title }).fill('Бой');
   await pick(item(page, builder.untitledTab).first());
   await form(page).getByRole('textbox', { name: builder.form.title }).fill('Основное');
-
   // #then: the tree shows the tab level under the template.
   await expect(page.getByText(builder.noProblems)).toBeVisible();
   await expect(item(page, 'Основное')).toHaveAttribute('aria-level', '2');
   await expect(item(page, 'Бой')).toHaveAttribute('aria-level', '2');
-
   // #when: "Атаки", the last section of "Основное", goes into "Бой", away from the tree's edges.
   await item(page, 'Атаки').evaluate((element) => {
     const scroller = element.closest('[data-builder-tree]');
@@ -1400,15 +1294,11 @@ test('adds a tab, drags a section into it, and the preview shows the tab of the 
     }
   });
   await dragOnto(page, item(page, 'Атаки'), item(page, 'Бой'));
-
   // #then
   const names = await rowNames(page);
-
   expect(names.slice(names.indexOf('Бой'), names.indexOf('Бой') + 2)).toEqual(['Бой', 'Атаки']);
-
   // #when: a cell on the moved section is selected.
   await pick(item(page, '1d20+bonus').first());
-
   // #then: the preview shows the tab that holds it.
   await expect(preview(page).getByRole('tab', { name: 'Бой' })).toHaveAttribute(
     'aria-selected',
@@ -1416,45 +1306,32 @@ test('adds a tab, drags a section into it, and the preview shows the tab of the 
   );
   await expect(preview(page).getByRole('heading', { name: 'Атаки' })).toBeVisible();
   await expect(preview(page).getByRole('heading', { name: 'Характеристики' })).toHaveCount(0);
-
   // #when: a click on a section heading of the shown tab.
   await pick(item(page, builder.windowItem(600, 600)));
   await preview(page).getByRole('tab', { name: 'Бой' }).click();
   await preview(page).getByRole('heading', { name: 'Атаки' }).click();
-
   // #then
   await expect(item(page, 'Атаки').first()).toHaveAttribute('aria-selected', 'true');
-
   // #when: a click on the other tab in the preview selects that tab.
   await preview(page).getByRole('tab', { name: 'Основное' }).click();
-
   // #then
   await expect(item(page, 'Основное')).toHaveAttribute('aria-selected', 'true');
   await expect(preview(page).getByRole('heading', { name: 'Характеристики' })).toBeVisible();
   await expect(preview(page).getByRole('heading', { name: 'Атаки' })).toHaveCount(0);
-
   // #when
   const downloading = page.waitForEvent('download');
-
   await (await presetDownloadButton(page)).click();
-
   const parsed = parsePresetFile(readFileSync(await (await downloading).path(), 'utf8'));
-
   // #then
   const tabs = parsed.ok ? parsed.value.templates[0]?.tabs : null;
-
   expect(tabs?.map((tab) => tab.title)).toEqual(['Основное', 'Бой']);
   expect(tabs?.[1]?.sections.map((section) => section.title)).toEqual(['Атаки']);
-
   // #when: "Персонаж", section 0 of "Основное", gets fewer columns than its rows have cells.
   await pick(item(page, 'Персонаж'));
   await form(page).getByRole('textbox', { name: builder.form.columns }).fill('1');
-
   const firstRow = preview(page).locator('[data-section-index="0"] [data-row-index="0"]').first();
-
   await expect(firstRow).toHaveCSS('box-shadow', /2px/);
   await preview(page).getByRole('tab', { name: 'Бой' }).click();
-
   // #then: "Атаки", section 0 of "Бой", carries no mark.
   await expect(preview(page).getByRole('heading', { name: 'Атаки' })).toBeVisible();
   await expect(firstRow).toBeVisible();
@@ -1464,13 +1341,10 @@ test('adds a tab, drags a section into it, and the preview shows the tab of the 
 test('Settings in the window links to the builder in a new tab', async ({ page, context }) => {
   // #given
   await openWindowAndBackground(page, context);
-
   // #when
   await page.getByRole('tab', { name: copy.place.settings }).click();
-
   // #then
   const link = page.getByRole('link', { name: builder.settingsLink });
-
   await expect(link).toHaveAttribute('href', '/builder.html');
   await expect(link).toHaveAttribute('target', '_blank');
   await expect(link).toHaveAttribute('rel', 'noopener');
@@ -1481,16 +1355,12 @@ test('the theme follows the switch and the browser keeps it', async ({ page }) =
   // #given
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto(PAGE);
-
   const toggle = page.getByRole('switch', { name: builder.lightTheme });
-
   await expect(toggle).not.toBeChecked();
   await expect(page.locator('html')).toHaveAttribute('data-theme-mode', 'DARK');
-
   // #when
   await toggle.check();
   await page.reload();
-
   // #then
   await expect(page.getByRole('switch', { name: builder.lightTheme })).toBeChecked();
   await expect(page.locator('html')).toHaveAttribute('data-theme-mode', 'LIGHT');

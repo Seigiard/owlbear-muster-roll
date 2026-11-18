@@ -19,7 +19,7 @@ documentation:
   - _bmad-output/specs/spec-explicit-operation-state/SPEC.md
 parent_task_id: TASK-63
 type: task
-ordinal: 73000
+ordinal: 76000
 ---
 
 ## Description

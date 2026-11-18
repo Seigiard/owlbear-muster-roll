@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
+import { blockDataSchema } from '@/core/records';
 import {
   ADD,
   addPartyMember,
@@ -12,7 +12,8 @@ import {
   record,
   seedStorage,
   STORAGE_PREFIX,
-  storedData,
+  storedCell,
+  storedRecords,
   type ClientParams,
   type RoomClient,
   type StoredRecord,
@@ -35,30 +36,33 @@ type Return = 'online' | 'resume' | 'visibilitychange';
 const SILENT_GM = 'mock-connection-silent';
 
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Имя' },
-                  { kind: 'field', type: 'text', id: 'name' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Имя' },
+                    { kind: 'field', type: 'text', id: 'name' },
+                  ],
+                },
               ],
             },
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Сила' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Сила' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                  ],
+                },
               ],
             },
           ],
@@ -67,20 +71,15 @@ const PRESET = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'number', id: 'hp' }]] }] }],
+      tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'number', id: 'hp' }] }] }] }],
     },
   ],
 };
 
 const PRESET_TEXT = JSON.stringify(PRESET);
-
-const RECORDS: StoredRecord[] = [
-  ...pcSheet('brok', 'Брок', 0),
-  record('row:brok:str', { str: 14 }),
-];
+const RECORDS: StoredRecord[] = [...pcSheet('brok', 'Брок', 0), record('blk:brok', { str: 14 })];
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 600 });
@@ -89,22 +88,14 @@ test.beforeEach(async ({ page }) => {
 test('a GM on a new device gets the sheets a live GM holds and saves them', async ({ context }) => {
   // #given
   const a = await openClient(context, { client: 'a', device: 'a' }, RECORDS);
-
   await expect(a.window.getByRole('button', { name: ADD })).toBeVisible();
-
   // #when
   const b = await openClient(context, { client: 'b', device: 'b' }, null);
-
   // #then
   await expect(b.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
   await expect(strength(b.window)).toHaveValue('14');
   expect((await deviceKeys(b.window, 'b')).sort()).toEqual(
-    [
-      `${STORAGE_PREFIX}preset`,
-      `${STORAGE_PREFIX}row:brok:name`,
-      `${STORAGE_PREFIX}row:brok:str`,
-      `${STORAGE_PREFIX}sheet:brok`,
-    ].sort(),
+    [`${STORAGE_PREFIX}preset`, `${STORAGE_PREFIX}blk:brok`, `${STORAGE_PREFIX}blk:npc`].sort(),
   );
 });
 
@@ -114,13 +105,10 @@ test('until its first catch-up ends, a window shows the known sidebar entries an
   // #given: another GM is listed and never answers, so catch-up ends on its timeout.
   const params: ClientParams = { client: 'b', catchUpTimeoutMs: 2500 };
   const window = await openClientWindow(context, params);
-
   await seedStorage(window, RECORDS, PRESET_TEXT);
   await addPartyMember(window, SILENT_GM, 'GM');
-
   // #when
   await openClientBackground(context, params);
-
   // #then
   await expect(window.getByRole('tab')).toHaveText(['Брок', 'NPC', SETTINGS]);
   await expect(window.getByRole('tabpanel')).toHaveText(LOADING);
@@ -135,12 +123,9 @@ test('the no-preset state shows only after the first catch-up ends', async ({ co
   // #given
   const params: ClientParams = { client: 'b', catchUpTimeoutMs: 2500 };
   const window = await openClientWindow(context, params);
-
   await addPartyMember(window, SILENT_GM, 'GM');
-
   // #when
   await openClientBackground(context, params);
-
   // #then
   await expect(window.getByText(LOADING)).toBeVisible();
   await expect(window.getByRole('button', { name: LOAD_PRESET })).toHaveCount(0);
@@ -152,7 +137,6 @@ test('a GM edit and a new sheet made during catch-up show at once and are saved 
 }) => {
   // #given
   const client = await openClient(context, { catchUpTimeoutMs: 8000 }, RECORDS);
-
   await expect(client.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
   await returnWithSilentGm(client, 'online');
   // The download locks only during catch-up, so this proves the edit below is made in it. The
@@ -160,7 +144,6 @@ test('a GM edit and a new sheet made during catch-up show at once and are saved 
   await client.window.getByRole('tab', { name: SETTINGS }).click();
   await expect(client.window.getByRole('button', { name: DOWNLOAD_PRESET })).toBeDisabled();
   await client.window.getByRole('tab', { name: 'Брок' }).click();
-
   // #when
   await strength(client.window).fill('16');
   await strength(client.window).press('Enter');
@@ -168,20 +151,15 @@ test('a GM edit and a new sheet made during catch-up show at once and are saved 
   // A live client saves within a few send spacings, so a value still unsaved after this pause
   // waits in the pending queue.
   await client.window.waitForTimeout(500);
-
-  const savedDuringCatchUp = await storedData(client.window, 'row:brok:str');
-
+  const savedDuringCatchUp = await storedCell(client.window, 'blk:brok', 'str');
   await client.window.getByRole('button', { name: ADD }).click();
-
   // #then
   await expect(client.window.getByRole('tab', { name: UNNAMED, selected: true })).toBeVisible();
   await expect(client.window.getByRole('textbox', { name: 'Имя листа' })).toBeFocused();
-  expect(savedDuringCatchUp).toEqual({ str: 14 });
+  expect(savedDuringCatchUp).toEqual([14, 1, 'seed']);
   await expect
-    .poll(() => storedData(client.window, 'row:brok:str'), { timeout: 12_000 })
-    .toEqual({
-      str: 16,
-    });
+    .poll(() => storedCell(client.window, 'blk:brok', 'str'), { timeout: 12000 })
+    .toEqual([16, 2, 'mock-connection']);
   await expect.poll(() => newSheetsStored(client.window)).toBe(1);
 });
 
@@ -190,16 +168,12 @@ test('during catch-up Settings disables the preset upload and download with the 
 }) => {
   // #given: no sheets, so only catch-up can lock the upload.
   const client = await openClient(context, { catchUpTimeoutMs: 2500 }, []);
-
   await client.window.getByRole('tab', { name: SETTINGS }).click();
   await expect(uploadButton(client.window)).toBeEnabled();
-
   // #when
   await returnWithSilentGm(client, 'resume');
-
   // #then
   const presetSection = client.window.getByRole('region', { name: 'Пресет' });
-
   await expect(uploadButton(client.window)).toBeDisabled();
   await expect(client.window.getByRole('button', { name: DOWNLOAD_PRESET })).toBeDisabled();
   await expect(presetSection.getByText(LOADING)).toHaveCount(2);
@@ -212,13 +186,10 @@ test('during catch-up Settings disables the snapshot download and upload with th
 }) => {
   // #given: a preset, so only catch-up can lock the download.
   const client = await openClient(context, { catchUpTimeoutMs: 2500 }, []);
-
   await client.window.getByRole('tab', { name: SETTINGS }).click();
   await expect(snapshotButton(client.window, DOWNLOAD_SNAPSHOT)).toBeEnabled();
-
   // #when
   await returnWithSilentGm(client, 'resume');
-
   // #then
   await expect(snapshotButton(client.window, DOWNLOAD_SNAPSHOT)).toBeDisabled();
   await expect(snapshotButton(client.window, DOWNLOAD_SNAPSHOT)).toHaveAccessibleDescription(
@@ -237,13 +208,10 @@ test('a page that becomes visible again catches up, and the upload waits for it'
 }) => {
   // #given
   const client = await openClient(context, { catchUpTimeoutMs: 2500 }, []);
-
   await client.window.getByRole('tab', { name: SETTINGS }).click();
   await expect(uploadButton(client.window)).toBeEnabled();
-
   // #when
   await returnWithSilentGm(client, 'visibilitychange');
-
   // #then
   await expect(uploadButton(client.window)).toBeDisabled();
   await expect(uploadButton(client.window)).toBeEnabled({ timeout: 6000 });
@@ -252,7 +220,6 @@ test('a page that becomes visible again catches up, and the upload waits for it'
 test('a player made GM gets the GM view without reopening the window', async ({ context }) => {
   // #given
   const gm = await openClient(context, { client: 'a', device: 'a' }, RECORDS);
-
   await expect(gm.window.getByRole('button', { name: ADD })).toBeVisible();
 
   const player = await openClient(
@@ -262,12 +229,10 @@ test('a player made GM gets the GM view without reopening the window', async ({ 
   );
 
   await expect(player.window.getByText(READ_ONLY)).toBeVisible();
-
   // #when: the role belongs to the background, which owns the replica.
   await player.background.evaluate(() => {
     window.mockPlatform.setRole('GM');
   });
-
   // #then
   await expect(player.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
   await expect(player.window.getByRole('button', { name: ADD })).toBeVisible();
@@ -320,11 +285,7 @@ function snapshotButton(page: Page, name: string): Locator {
 }
 
 async function newSheetsStored(page: Page): Promise<number> {
-  return page.evaluate(
-    (prefix) =>
-      Object.keys(localStorage).filter(
-        (key) => key.startsWith(`${prefix}sheet:`) && key !== `${prefix}sheet:brok`,
-      ).length,
-    STORAGE_PREFIX,
-  );
+  return (await storedRecords(page, 'blk:')).filter(
+    (record) => record.k !== 'blk:brok' && blockDataSchema.safeParse(record.d).data?.set === 'pc',
+  ).length;
 }

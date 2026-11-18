@@ -96,3 +96,84 @@
     presets/README.md, docs/preset-format.md "Preview a preset", and GLOSSARY.md: retire Local
     room. src/preview/sample-records.ts may still feed "Образец"; keep what the builder
     imports. Run the full check.
+- id: "8"
+  title: Value records per block, with a version per cell
+  description: >-
+    Replace the row: and rep: records with one blk: record per block, the sheet root included,
+    where each cell carries its own version, and merge per cell in src/core/merge.ts (CAP-9,
+    CAP-11, CAP-13; storage-and-sync.md "Records"). The preset stays v3 in this story, and a
+    repeat section's block id is still its first field id.
+  spec_checkpoint: true
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Key form blk:<sheet>[:<scopeId>:<blockId>]*; a null record deletes the block. A deleted block
+    wins over its cells. Snapshot encode and import, catch-up and commands move to the new
+    records; a v3 snapshot with row:/rep: is refused as older-version, no converter (no live
+    users). Measure the room copy on tests/fixtures/presets/d20.json with
+    src/core/snapshot-size.test.ts and record it in storage-and-sync.md; the per-field record
+    is the fallback if per-cell merge proves awkward, say so before switching.
+- id: "9"
+  title: Format v4, the node registry
+  description: >-
+    The preset tree becomes template > tab > section > row > cell with one key vocabulary:
+    repeat: {id, nameField} on template, section and row, visibility on section and row, the
+    token cell with an id, nameField in place of the first-field rule, v 4 and refusal of v1-3
+    (CAP-2, CAP-3, CAP-5, CAP-6, CAP-8, CAP-14, CAP-18, CAP-30, CAP-35; preset-format.md
+    "Tree", "Repeat", "Token cell"). repeat on a tab and a repeat scope inside another are
+    refused by a temporary check until stories 10 and 11.
+  spec_checkpoint: true
+  done_checkpoint: false
+  invoke_dev_with: >-
+    Blocks of a repeat section or row use repeat.id in the blk: key from story 8. kind set|single
+    goes; sheets.ts, sidebar-entries.ts, formula-rename.ts and the nameField check read repeat
+    instead. The token cell shows the GM an icon with the link status and a menu (link, unlink,
+    select on the map, CAP-32) and players nothing; the link record names the sheet, the block
+    path and the cell id, and the picker offers the nearest ancestor's name as the label. A
+    repeat row draws as a block of one row. Update docs/preset-format.md, docs/example-preset.json
+    (bun test src/core/preset.test.ts parses it), presets/*.json, test fixtures and GLOSSARY.md:
+    Repeat scope, Block, Token cell; retire Linkable and widen Repeat section.
+- id: "10"
+  title: Repeat tab
+  description: >-
+    A tab takes repeat: {id, nameField}: the tab row shows one tab per block titled by its name
+    field and, for the GM, a "+" tab last; a delete inside the tab removes the block with its
+    values and links (CAP-41; preset-format.md "Repeat"). Removes the temporary refusal from
+    story 9 for tabs.
+  spec_checkpoint: false
+  done_checkpoint: false
+  invoke_dev_with: >-
+    The "+" tab and the delete are GM-only, like the sheets of a set; players see the block tabs
+    only. A new block opens its tab. The open tab stays client-local (AD-26); openTabIndex must
+    count block tabs. A token cell inside the tab's block selects that tab (CAP-14, CAP-32).
+- id: "11"
+  title: Nested repeat
+  description: >-
+    A repeat scope inside a repeat block gives each block its own nested blocks: block paths
+    deeper than one pair, id resolution through the enclosing blocks to the sheet, duplicate
+    copies nested blocks, snapshot import drops blocks whose scope the preset lacks (CAP-42,
+    CAP-30, CAP-13; preset-format.md "Repeat"). Removes the temporary nesting refusal from
+    story 9.
+  spec_checkpoint: false
+  done_checkpoint: true
+  invoke_dev_with: >-
+    resolveFieldReference and formula-rename scopes become a chain: block, each enclosing block,
+    then the template's fields outside every repeat scope. The upload confirmation counts the
+    values of nested blocks. Verify in a live Owlbear room: an NPC sheet with a repeat tab, an
+    attacks repeat section per NPC, a token cell per NPC, and a GM and a player editing different
+    fields of one sheet at once with no edit lost (success signal, v4).
+- id: "12"
+  title: The builder covers format v4
+  description: >-
+    The builder's tree and forms follow the registry: a row form with visibility and repeat, one
+    repeat control that opens id and nameField on template, tab, section and row, the token cell,
+    ids for scopes and token cells, a warning when repeat is turned off on a loaded preset, rows
+    dragged between sections, hidden sections and rows in the player view (CAP-23, CAP-24,
+    CAP-25, CAP-37; preset-builder.md "Editing model", "Ids").
+  spec_checkpoint: true
+  done_checkpoint: false
+  invoke_dev_with: >-
+    Forms stay hand-written, one control per registry key; the nameField choices are the text
+    fields inside the scope. Id rename follows the block chain of story 11. The preview draws a
+    repeat tab's "+" and the token cell icon in the GM view only. Likely too large for one
+    chain: propose a split at the spec checkpoint (forms and tree first, preview and player
+    view second).

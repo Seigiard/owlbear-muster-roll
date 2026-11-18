@@ -245,10 +245,7 @@ function builderSidebarSheet(
       };
 }
 
-function sampleSheet(
-  template: Extract<Preset['templates'][number], { kind: 'set' }>,
-  templateUid: string,
-): SidebarSheet {
+function sampleSheet(template: Preset['templates'][number], templateUid: string): SidebarSheet {
   return {
     id: builderSidebarEntryId(templateUid, template.id),
     sheetId: template.id,

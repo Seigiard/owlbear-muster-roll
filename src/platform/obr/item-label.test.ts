@@ -1,7 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { Image, Item, TextContent } from '@owlbear-rodeo/sdk';
-
 import { itemLabel, writeItemLabel } from './item-label';
 
 describe('itemLabel', () => {
@@ -37,7 +35,6 @@ describe('itemLabel', () => {
   ])('reads %s', (_name, items, expected) => {
     // #when
     const label = itemLabel(items, 't1');
-
     // #then
     expect(label).toBe(expected);
   });
@@ -60,29 +57,22 @@ describe('writeItemLabel', () => {
 
     // #when
     const written = writeItemLabel(draft, 'Арагорн');
-
     // #then
     expect({ written, draft }).toEqual({ written: true, draft: expected });
   });
-
   test('leaves a non-image item as it is', () => {
     // #given
     const draft = drawingItem();
-
     // #when
     const written = writeItemLabel(draft, 'Арагорн');
-
     // #then
     expect({ written, draft }).toEqual({ written: false, draft: drawingItem() });
   });
-
   test('leaves a text item as it is, though it has text', () => {
     // #given
     const draft: Item = { ...imageItem('Note'), type: 'TEXT' };
-
     // #when
     const written = writeItemLabel(draft, 'Арагорн');
-
     // #then
     expect({ written, draft }).toEqual({
       written: false,
@@ -115,7 +105,11 @@ function richImageItem(plainText: string, lines: readonly string[]): Image {
 }
 
 // An image whose `text` breaks the SDK shape, as data from Owlbear could.
-type BrokenText = { plainText: string | number; richText: TextContent['richText']; type: string };
+type BrokenText = {
+  plainText: string | number;
+  richText: TextContent['richText'];
+  type: string;
+};
 
 function imageWithText(text: BrokenText): Item {
   const item = { ...baseItem('t1', 'CHARACTER'), type: 'IMAGE', text };

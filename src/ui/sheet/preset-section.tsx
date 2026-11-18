@@ -3,15 +3,20 @@ import { useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useSt
 import type { ReactNode, RefCallback } from 'react';
 
 import { patchRecordKey, type FieldPatchTarget } from '@/core/field-patch';
-import { linkTargetKey } from '@/core/link-target';
+import { linkTargetKey, type LinkTarget } from '@/core/link-target';
 import {
   firstFieldId,
+  repeatSectionByPath,
+  repeatScopeByPath,
   repeatSectionId,
   sectionFields,
+  type TabBlock,
   type PresetCell,
   type PresetSection,
+  type Template,
 } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
+import { rowShownTo } from '@/core/visibility';
 import { repeatBlockName } from '@/core/sheets';
 import { repeatBlocks, rowValues, sectionTitle, type FieldValues } from '@/core/sheet-values';
 import type { Command } from '@/core/ui-messages';
@@ -23,9 +28,9 @@ import type { CommandOutcomePromise } from '@/ui/replica-client';
 
 import type { DiceRow } from './dice-button';
 import { DuplicateCount } from './duplicate-count';
-import { MapSelectionContext, TokenControl } from './map-toggle';
+import { MapSelectionContext } from './map-toggle';
 import { PendingMark, rowPending, type RowPending, type SheetPending } from './pending-mark';
-import { SheetCell } from './preset-cell';
+import { SheetCell, type TokenCellTools } from './preset-cell';
 import type { FieldPlace } from './use-field-edit';
 import { useRepeatBlocks, type RepeatBlockControls } from './use-repeat-blocks';
 
@@ -57,7 +62,7 @@ const INDEX_KEY_PREFIX = '#';
 
 // CAP-30, CAP-18: what a GM gets on each repeat block: "Дублировать…", and the token status when
 // the section is linkable. A player and the preview get none.
-export type BlockTools = {
+export type BlockTools = TokenCellTools & {
   sendCommand: (
     command: Extract<Command, { type: 'repeat-block-duplicate' }>,
   ) => CommandOutcomePromise<undefined>;
@@ -66,6 +71,7 @@ export type BlockTools = {
 };
 
 type SheetSectionProps = {
+  template: Template;
   section: PresetSection;
   // The section's position in its template, its tab and its index within that tab, which a roll
   // request names.
@@ -79,9 +85,12 @@ type SheetSectionProps = {
   // A player's edits that wait for a GM, or `null` for a GM, whose edits never wait.
   pending: SheetPending | null;
   blockTools: BlockTools | null;
+  tabBlock: TabBlock | null;
+  parentPath: readonly string[] | null;
+  role: 'GM' | 'PLAYER';
 };
 
-type PlainContentProps = Omit<SheetSectionProps, 'blockTools' | 'templateTitle'>;
+type PlainContentProps = Omit<SheetSectionProps, 'templateTitle'>;
 
 // One row as its cells show it. Every row of a repeat block shares the block's record.
 type SheetRow = {
@@ -91,22 +100,28 @@ type SheetRow = {
   place: FieldPlace | null;
   dice: DiceRow;
   pending: RowPending;
+  sourceIndex: number;
 };
 
-// One repeat block: every row of its section, with the values of one `rep:` record.
+// One repeat block: every row of its section, with the values of one descendant block record.
 type SheetBlock = {
   instanceId: string;
+  path: readonly string[];
   // The value of the section's first field, "" when empty.
   name: string;
   rows: SheetRow[];
+  nested: NestedRepeat[];
   pending: RowPending;
 };
+
+type NestedRepeat = { id: string; section: PresetSection };
 
 type RepeatContentProps = Omit<SheetSectionProps, 'readOnly'> & { sectionId: string };
 
 type ReadOnlyRepeatContentProps = Omit<RepeatContentProps, 'templateTitle'>;
 
 export function SheetSection({
+  template,
   section,
   tabIndex,
   sectionIndex,
@@ -116,15 +131,25 @@ export function SheetSection({
   readOnly,
   pending,
   blockTools,
+  tabBlock,
+  parentPath,
+  role,
 }: SheetSectionProps): ReactNode {
   const headingId = useId();
   const title = sectionTitle(section);
   const sectionId = repeatSectionId(section);
+
+  const rowRepeatId =
+    sectionId === null
+      ? (section.rows.find((row) => row.repeat !== undefined)?.repeat?.id ?? null)
+      : null;
+
   const widthClass = section.width ? WIDTH_CLASSES[section.width] : WIDTH_CLASSES.full;
 
   const className = clsx('min-w-0 shrink-0 grow-0 basis-full', widthClass);
 
   const repeatProps = {
+    template,
     section,
     tabIndex,
     sectionIndex,
@@ -132,11 +157,15 @@ export function SheetSection({
     records,
     pending,
     blockTools,
+    tabBlock,
+    parentPath,
+    role,
   };
 
   const content =
-    sectionId === null ? (
+    sectionId === null && rowRepeatId === null ? (
       <PlainContent
+        template={template}
         section={section}
         tabIndex={tabIndex}
         sectionIndex={sectionIndex}
@@ -144,6 +173,17 @@ export function SheetSection({
         records={records}
         readOnly={readOnly}
         pending={pending}
+        blockTools={blockTools}
+        tabBlock={tabBlock}
+        parentPath={parentPath}
+        role={role}
+      />
+    ) : sectionId === null ? (
+      <RowRepeatContent
+        {...repeatProps}
+        templateTitle={templateTitle}
+        readOnly={readOnly}
+        role={role}
       />
     ) : readOnly ? (
       <ReadOnlyRepeatContent {...repeatProps} sectionId={sectionId} />
@@ -187,6 +227,7 @@ function Body({ children }: { children: ReactNode }): ReactNode {
 }
 
 function PlainContent({
+  template,
   section,
   tabIndex,
   sectionIndex,
@@ -194,22 +235,124 @@ function PlainContent({
   records,
   readOnly,
   pending,
+  blockTools,
+  tabBlock,
+  role,
 }: PlainContentProps): ReactNode {
   const rows = useMemo(
-    () => plainRows(section, tabIndex, sectionIndex, sheetId, records, pending),
-    [section, tabIndex, sectionIndex, sheetId, records, pending],
+    () =>
+      plainRows(
+        template,
+        section,
+        tabIndex,
+        sectionIndex,
+        sheetId,
+        records,
+        pending,
+        role,
+        tabBlock,
+      ),
+    [template, section, tabIndex, sectionIndex, sheetId, records, pending, role, tabBlock],
   );
 
   return (
     <Body>
-      <PlainRows section={section} rows={rows} readOnly={readOnly} />
+      <PlainRows section={section} rows={rows} readOnly={readOnly} tools={blockTools} />
     </Body>
+  );
+}
+
+function RowRepeatContent({
+  template,
+  section,
+  tabIndex,
+  sectionIndex,
+  templateTitle,
+  sheetId,
+  records,
+  readOnly,
+  pending,
+  blockTools,
+  tabBlock,
+  parentPath,
+  role,
+}: SheetSectionProps): ReactNode {
+  const plain = plainRows(
+    template,
+    section,
+    tabIndex,
+    sectionIndex,
+    sheetId,
+    records,
+    pending,
+    role,
+    tabBlock,
+  );
+
+  const repeated = section.rows.flatMap((row, rowIndex) => {
+    const id = row.repeat?.id;
+
+    if (id === undefined || !rowShownTo(role, template, tabIndex, sectionIndex, rowIndex)) {
+      return [];
+    }
+
+    const parentScopes = (parentPath ?? []).filter((_part, index) => index % 2 === 0);
+    const repeatedSection = repeatSectionByPath(template, [...parentScopes, id]);
+
+    return repeatedSection === null ? [] : [{ id, section: repeatedSection }];
+  });
+
+  return (
+    <>
+      {plain.length === 0 ? null : (
+        <Body>
+          <PlainRows section={section} rows={plain} readOnly={readOnly} tools={blockTools} />
+        </Body>
+      )}
+      {repeated.map(({ id, section: repeatedSection }) =>
+        readOnly ? (
+          <ReadOnlyRepeatContent
+            key={id}
+            template={template}
+            section={repeatedSection}
+            tabIndex={tabIndex}
+            sectionIndex={sectionIndex}
+            sheetId={sheetId}
+            records={records}
+            pending={pending}
+            sectionId={id}
+            blockTools={blockTools}
+            tabBlock={tabBlock}
+            parentPath={parentPath}
+            role={role}
+          />
+        ) : (
+          <RepeatContent
+            key={id}
+            template={template}
+            section={repeatedSection}
+            tabIndex={tabIndex}
+            sectionIndex={sectionIndex}
+            templateTitle={templateTitle}
+            sheetId={sheetId}
+            records={records}
+            pending={pending}
+            sectionId={id}
+            blockTools={blockTools}
+            tabBlock={tabBlock}
+            parentPath={parentPath}
+            role={role}
+          />
+        ),
+      )}
+    </>
   );
 }
 
 // A player's repeat section with no write access: the repeat blocks, with no "Удалить" and no
 // "Добавить".
 function ReadOnlyRepeatContent({
+  template,
   section,
   tabIndex,
   sectionIndex,
@@ -218,17 +361,49 @@ function ReadOnlyRepeatContent({
   pending,
   sectionId,
   blockTools,
+  role,
+  parentPath,
 }: ReadOnlyRepeatContentProps): ReactNode {
   const blocks = useMemo(
-    () => repeatBlocksOf(section, tabIndex, sectionIndex, sectionId, sheetId, records, pending),
-    [section, tabIndex, sectionIndex, sectionId, sheetId, records, pending],
+    () =>
+      repeatBlocksOf(
+        template,
+        section,
+        tabIndex,
+        sectionIndex,
+        sectionId,
+        sheetId,
+        records,
+        pending,
+        role,
+        parentPath,
+      ),
+    [
+      template,
+      section,
+      tabIndex,
+      sectionIndex,
+      sectionId,
+      sheetId,
+      records,
+      pending,
+      role,
+      parentPath,
+    ],
   );
 
   return (
     <Body>
       <Blocks
+        template={template}
+        tabIndex={tabIndex}
+        sectionIndex={sectionIndex}
         section={section}
         sheetId={sheetId}
+        records={records}
+        pending={pending}
+        templateTitle={sectionTitle(section) ?? ''}
+        role={role}
         sectionId={sectionId}
         blocks={blocks}
         readOnly
@@ -243,6 +418,7 @@ function ReadOnlyRepeatContent({
 // them. The accessible name of "Добавить" names the section by its title, or an untitled one by its
 // template's, so the buttons of two sections differ.
 function RepeatContent({
+  template,
   section,
   tabIndex,
   sectionIndex,
@@ -252,10 +428,35 @@ function RepeatContent({
   pending,
   sectionId,
   blockTools,
+  role,
+  parentPath,
 }: RepeatContentProps): ReactNode {
   const blocks = useMemo(
-    () => repeatBlocksOf(section, tabIndex, sectionIndex, sectionId, sheetId, records, pending),
-    [section, tabIndex, sectionIndex, sectionId, sheetId, records, pending],
+    () =>
+      repeatBlocksOf(
+        template,
+        section,
+        tabIndex,
+        sectionIndex,
+        sectionId,
+        sheetId,
+        records,
+        pending,
+        role,
+        parentPath,
+      ),
+    [
+      template,
+      section,
+      tabIndex,
+      sectionIndex,
+      sectionId,
+      sheetId,
+      records,
+      pending,
+      role,
+      parentPath,
+    ],
   );
 
   // A repeat block whose removal waits for a GM counts as gone: its "Удалить" is gone, so the focus
@@ -265,15 +466,22 @@ function RepeatContent({
     [blocks],
   );
 
-  const controls = useRepeatBlocks(sheetId, sectionId, instanceIds);
+  const controls = useRepeatBlocks(sheetId, sectionId, instanceIds, parentPath);
   const title = sectionTitle(section) ?? templateTitle;
 
   return (
     <>
       <Body>
         <Blocks
+          template={template}
+          tabIndex={tabIndex}
+          sectionIndex={sectionIndex}
           section={section}
           sheetId={sheetId}
+          records={records}
+          pending={pending}
+          templateTitle={templateTitle}
+          role={role}
           sectionId={sectionId}
           blocks={blocks}
           readOnly={false}
@@ -300,20 +508,22 @@ function PlainRows({
   section,
   rows,
   readOnly,
+  tools,
 }: {
   section: PresetSection;
   rows: readonly SheetRow[];
   readOnly: boolean;
+  tools: BlockTools | null;
 }): ReactNode {
   if (section.columns === undefined) {
-    return rows.map((row, index) => (
+    return rows.map((row) => (
       <div
         key={row.key}
         className={clsx('flex flex-wrap gap-y-1', ROW_CLASS)}
         data-row
-        data-row-index={index}
+        data-row-index={row.sourceIndex}
       >
-        <Cells row={row} readOnly={readOnly} rowMarkId={null} />
+        <Cells row={row} readOnly={readOnly} rowMarkId={null} tools={tools} />
       </div>
     ));
   }
@@ -325,14 +535,14 @@ function PlainRows({
       className="grid w-max min-w-full gap-x-2"
       style={{ gridTemplateColumns: `repeat(${section.columns}, auto)` }}
     >
-      {rows.map((row, index) => (
+      {rows.map((row) => (
         <div
           key={row.key}
           className={clsx('col-span-full grid grid-cols-subgrid', ROW_CLASS)}
           data-row
-          data-row-index={index}
+          data-row-index={row.sourceIndex}
         >
-          <Cells row={row} readOnly={readOnly} rowMarkId={null} />
+          <Cells row={row} readOnly={readOnly} rowMarkId={null} tools={tools} />
         </div>
       ))}
     </div>
@@ -340,8 +550,15 @@ function PlainRows({
 }
 
 type BlocksProps = {
+  template: Template;
+  tabIndex: number;
+  sectionIndex: number;
   section: PresetSection;
   sheetId: string;
+  records: ReadonlyMap<string, VersionedRecord>;
+  pending: SheetPending | null;
+  templateTitle: string;
+  role: 'GM' | 'PLAYER';
   sectionId: string;
   blocks: readonly SheetBlock[];
   readOnly: boolean;
@@ -356,8 +573,15 @@ type DuplicateAsk = { instanceId: string; request: number };
 // Every repeat block in order, each holding all rows of the section. The block's control slot sits
 // in its first row.
 function Blocks({
+  template,
+  tabIndex,
+  sectionIndex,
   section,
   sheetId,
+  records,
+  pending,
+  templateTitle,
+  role,
   sectionId,
   blocks,
   readOnly,
@@ -422,8 +646,6 @@ function Blocks({
       <BlockSlot
         block={block}
         index={index}
-        section={section}
-        sheetId={sheetId}
         controls={controls}
         tools={tools}
         column={columns === undefined ? undefined : columns + 1}
@@ -450,12 +672,55 @@ function Blocks({
           { [REMOVED_ROW_CLASS]: block.pending.removed },
         )}
         data-row
-        data-row-index={rowIndex}
+        data-row-index={row.sourceIndex}
       >
-        <Cells row={row} readOnly={readOnly} rowMarkId={rowMarkId} />
+        <Cells
+          row={row}
+          readOnly={readOnly}
+          rowMarkId={rowMarkId}
+          sectionId={sectionId}
+          tools={tools}
+        />
         {rowIndex === 0 ? slot : null}
       </div>
     ));
+
+    const nested = block.nested.map(({ id, section: nestedSection }) =>
+      readOnly ? (
+        <ReadOnlyRepeatContent
+          key={id}
+          template={template}
+          section={nestedSection}
+          tabIndex={tabIndex}
+          sectionIndex={sectionIndex}
+          sheetId={sheetId}
+          records={records}
+          pending={pending}
+          sectionId={id}
+          blockTools={tools}
+          tabBlock={null}
+          parentPath={block.path}
+          role={role}
+        />
+      ) : (
+        <RepeatContent
+          key={id}
+          template={template}
+          section={nestedSection}
+          tabIndex={tabIndex}
+          sectionIndex={sectionIndex}
+          templateTitle={templateTitle}
+          sheetId={sheetId}
+          records={records}
+          pending={pending}
+          sectionId={id}
+          blockTools={tools}
+          tabBlock={null}
+          parentPath={block.path}
+          role={role}
+        />
+      ),
+    );
 
     const duplicate =
       tools !== null && duplicateAsk?.instanceId === block.instanceId ? (
@@ -469,6 +734,7 @@ function Blocks({
             sheetId={sheetId}
             sectionId={sectionId}
             instanceId={block.instanceId}
+            path={block.path.length > 2 ? block.path : undefined}
             sendCommand={tools.sendCommand}
             focusRequest={duplicateAsk.request}
             onDone={closeDuplicate}
@@ -478,7 +744,21 @@ function Blocks({
       ) : null;
 
     const name = block.name === '' ? copy.unnamed : block.name;
-    const onMap = mapMarked.has(linkTargetKey({ sheetId, instanceId: block.instanceId }));
+
+    const onMap = section.rows.some((row) =>
+      row.cells.some(
+        (cell) =>
+          cell.kind === 'token' &&
+          mapMarked.has(
+            linkTargetKey({
+              sheetId,
+              instanceId: block.instanceId,
+              path: [...block.path],
+              cellId: cell.id,
+            }),
+          ),
+      ),
+    );
 
     return (
       <div
@@ -493,8 +773,10 @@ function Blocks({
           [MAP_MARK_CLASS]: onMap,
         })}
         data-repeat-block={block.instanceId}
+        data-repeat-path={JSON.stringify(block.path)}
       >
         {rows}
+        {nested}
         {duplicate}
       </div>
     );
@@ -517,8 +799,6 @@ function Blocks({
 type BlockSlotProps = {
   block: SheetBlock;
   index: number;
-  section: PresetSection;
-  sheetId: string;
   controls: RepeatBlockControls | undefined;
   tools: BlockTools | null;
   column: number | undefined;
@@ -535,8 +815,6 @@ type BlockSlotProps = {
 function BlockSlot({
   block,
   index,
-  section,
-  sheetId,
   controls,
   tools,
   column,
@@ -546,11 +824,6 @@ function BlockSlot({
 }: BlockSlotProps): ReactNode {
   const { instanceId } = block;
 
-  const linked =
-    tools !== null && section.tokens === true
-      ? tools.linkedTargets.has(linkTargetKey({ sheetId, instanceId }))
-      : null;
-
   return (
     <div
       className="flex flex-wrap items-center gap-x-1"
@@ -559,21 +832,6 @@ function BlockSlot({
       data-row-control
     >
       {block.pending.rowMarked ? <PendingMark id={markId} /> : null}
-      {linked === null ? null : (
-        <>
-          {/* The live region says a link change. The icon swaps between the status and the toggle as
-          the open scene changes, which is no news to announce, so it sits out of the region. */}
-          <span className="sr-only">{linked ? copy.status.tokenLinked : copy.status.noToken}</span>
-          <span aria-live="off" className="contents">
-            <TokenControl
-              target={{ sheetId, instanceId }}
-              linked={linked}
-              toggleName={copy.label.selectBlockOnMap(index + 1)}
-              statusHidden
-            />
-          </span>
-        </>
-      )}
       {tools === null || block.pending.removed ? null : (
         <IconButton
           ref={duplicateButton}
@@ -603,10 +861,14 @@ function Cells({
   row,
   readOnly,
   rowMarkId: markId,
+  sectionId = null,
+  tools = null,
 }: {
   row: SheetRow;
   readOnly: boolean;
   rowMarkId: string | null;
+  sectionId?: string | null;
+  tools?: BlockTools | null;
 }): ReactNode {
   return row.cells.map((cell, index) => (
     <SheetCell
@@ -623,49 +885,113 @@ function Cells({
         marked: cell.kind === 'field' && row.pending.markedFields.has(cell.id),
         rowMarkId: markId,
       }}
+      tokenTarget={tokenTargetOf(row.dice, cell, sectionId)}
+      tokenTools={tools}
     />
   ));
 }
 
+function tokenTargetOf(
+  row: DiceRow,
+  cell: PresetCell,
+  sectionId: string | null,
+): LinkTarget | null {
+  if (cell.kind !== 'token') {
+    return null;
+  }
+
+  return row.instanceId === null
+    ? { sheetId: row.sheetId, instanceId: null, cellId: cell.id }
+    : {
+        sheetId: row.sheetId,
+        instanceId: row.instanceId,
+        path:
+          row.target?.kind === 'rep' && row.target.path !== undefined
+            ? [...row.target.path]
+            : [
+                sectionId ?? (row.target?.kind === 'rep' ? row.target.sectionId : ''),
+                row.instanceId,
+              ],
+        cellId: cell.id,
+      };
+}
+
 function plainRows(
+  template: Template,
   section: PresetSection,
   tabIndex: number,
   sectionIndex: number,
   sheetId: string,
   records: ReadonlyMap<string, VersionedRecord>,
   pending: SheetPending | null,
+  role: 'GM' | 'PLAYER',
+  tabBlock: TabBlock | null,
 ): SheetRow[] {
-  return section.rows.map((cells, index) => {
-    const rowId = firstFieldId(cells);
-    const target: FieldPatchTarget | null = rowId === null ? null : { kind: 'row', rowId };
+  const blockValues =
+    tabBlock === null
+      ? null
+      : (repeatBlocks(records, sheetId, tabBlock.path.slice(0, -1)).find(
+          (block) => block.instanceId === tabBlock.instanceId,
+        )?.values ?? new Map());
 
-    return {
-      key: rowId ?? `${INDEX_KEY_PREFIX}${index}`,
-      pending: rowPending(
-        pending,
-        target === null ? null : patchRecordKey(sheetId, target),
-        fieldIdsOf(cells),
-        false,
-      ),
-      cells,
-      values: rowValues(records, sheetId, rowId),
-      place: target === null ? null : placeOf(records, sheetId, target),
-      dice: {
-        sheetId,
-        tabIndex,
-        sectionIndex,
-        rowIndex: index,
-        instanceId: null,
-        target,
-        fieldIds: fieldIdsOf(cells),
+  return section.rows.flatMap((row, index) => {
+    if (row.repeat !== undefined || !rowShownTo(role, template, tabIndex, sectionIndex, index)) {
+      return [];
+    }
+
+    const cells = row.cells;
+    const rowId = firstFieldId(row);
+
+    let target: FieldPatchTarget | null =
+      tabBlock === null
+        ? rowId === null
+          ? null
+          : { kind: 'row', rowId }
+        : {
+            kind: 'rep',
+            sectionId: tabBlock.scopeId,
+            instanceId: tabBlock.instanceId,
+          };
+
+    if (target?.kind === 'rep' && tabBlock !== null && tabBlock.path.length > 2) {
+      target.path = [...tabBlock.path];
+    }
+
+    return [
+      {
+        key: rowId ?? `${INDEX_KEY_PREFIX}${index}`,
+        pending: rowPending(
+          pending,
+          target === null ? null : patchRecordKey(sheetId, target),
+          fieldIdsOf(cells),
+          false,
+        ),
+        cells,
+        values: blockValues ?? rowValues(records, sheetId, rowId),
+        place: target === null ? null : placeOf(records, sheetId, target),
+        dice: {
+          sheetId,
+          tabIndex,
+          sectionIndex,
+          rowIndex: index,
+          instanceId: tabBlock?.instanceId ?? null,
+          path:
+            tabBlock?.path !== undefined && tabBlock.path.length > 2
+              ? [...tabBlock.path]
+              : undefined,
+          target,
+          fieldIds: fieldIdsOf(cells),
+        },
+        sourceIndex: index,
       },
-    };
+    ];
   });
 }
 
-// CAP-5: all rows of a repeat section form one repeat block, so every row of a block reads and
-// writes the block's one `rep:` record, and a formula in any of them reaches every field of it.
+// CAP-5: all rows of a repeat section form one repeat block, so every row reads and writes the same
+// descendant block record, and a formula in any row reaches every field of that block.
 function repeatBlocksOf(
+  template: Template,
   section: PresetSection,
   tabIndex: number,
   sectionIndex: number,
@@ -673,34 +999,83 @@ function repeatBlocksOf(
   sheetId: string,
   records: ReadonlyMap<string, VersionedRecord>,
   pending: SheetPending | null,
+  role: 'GM' | 'PLAYER',
+  parentPath: readonly string[] | null,
 ): SheetBlock[] {
   const fieldIds: ReadonlySet<string> = new Set(sectionFields(section).map((field) => field.id));
+  const scopePath = [...(parentPath ?? []), sectionId];
 
-  return repeatBlocks(records, sheetId, sectionId).map((block) => {
-    const target: FieldPatchTarget = { kind: 'rep', sectionId, instanceId: block.instanceId };
+  const scope = repeatScopeByPath(
+    template,
+    scopePath.filter((_part, index) => index % 2 === 0),
+  );
+
+  return repeatBlocks(records, sheetId, scopePath).map((block) => {
+    const path = [...scopePath, block.instanceId];
+
+    const nested = section.rows.flatMap((row) => {
+      const id = row.repeat?.id;
+
+      if (id === undefined || id === section.repeat?.id) {
+        return [];
+      }
+
+      const parentScopes = (parentPath ?? []).filter((_part, index) => index % 2 === 0);
+      const nestedSection = repeatSectionByPath(template, [...parentScopes, sectionId, id]);
+
+      return nestedSection === null ? [] : [{ id, section: nestedSection }];
+    });
+
+    const target: FieldPatchTarget = {
+      kind: 'rep',
+      sectionId,
+      instanceId: block.instanceId,
+    };
+
+    if (parentPath !== null) {
+      target.path = path;
+    }
+
     const blockPending = rowPending(pending, patchRecordKey(sheetId, target), fieldIds, true);
     const place = placeOf(records, sheetId, target);
 
     return {
       instanceId: block.instanceId,
-      name: repeatBlockName(records, sheetId, section, block.instanceId),
+      path,
+      name: repeatBlockName(records, sheetId, section, block.instanceId, path),
+      nested,
       pending: blockPending,
-      rows: section.rows.map((cells, rowIndex) => ({
-        key: firstFieldId(cells) ?? `${INDEX_KEY_PREFIX}${rowIndex}`,
-        cells,
-        values: block.values,
-        place,
-        pending: blockPending,
-        dice: {
-          sheetId,
-          tabIndex,
-          sectionIndex,
-          rowIndex,
-          instanceId: block.instanceId,
-          target,
-          fieldIds,
-        },
-      })),
+      rows: section.rows.flatMap((row, rowIndex) => {
+        if (row.repeat !== undefined && row.repeat.id !== section.repeat?.id) {
+          return [];
+        }
+
+        const sourceIndex =
+          scope === null || scope.row === null ? rowIndex : scope.section.rows.indexOf(scope.row);
+
+        return rowShownTo(role, template, tabIndex, sectionIndex, sourceIndex)
+          ? [
+              {
+                key: firstFieldId(row) ?? `${INDEX_KEY_PREFIX}${sourceIndex}`,
+                cells: row.cells,
+                values: block.values,
+                place,
+                pending: blockPending,
+                dice: {
+                  sheetId,
+                  tabIndex,
+                  sectionIndex,
+                  rowIndex: sourceIndex,
+                  instanceId: block.instanceId,
+                  path,
+                  target,
+                  fieldIds,
+                },
+                sourceIndex,
+              },
+            ]
+          : [];
+      }),
     };
   });
 }

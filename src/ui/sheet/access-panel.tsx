@@ -349,7 +349,7 @@ function OwnerGroup({ options, checked, onPick }: OwnerGroupProps): ReactNode {
             >
               {isChecked ? <span className="size-2 rounded-full bg-accent" /> : null}
             </span>
-            <span className="min-w-0 [overflow-wrap:anywhere]">{option.label}</span>
+            <span className="min-w-0 wrap-anywhere">{option.label}</span>
           </button>
         );
       })}
@@ -371,7 +371,7 @@ function AccessRowItem({ row, checked, onChange }: AccessRowItemProps): ReactNod
         aria-labelledby={nameId}
         className="flex flex-wrap items-center justify-between gap-x-3"
       >
-        <span id={nameId} className="min-w-0 [overflow-wrap:anywhere]">
+        <span id={nameId} className="min-w-0 wrap-anywhere">
           {name}
         </span>
         <label className="inline-flex touch-target shrink-0 items-center gap-2">

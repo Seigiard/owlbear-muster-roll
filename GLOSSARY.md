@@ -43,20 +43,16 @@ A template that is exactly one sheet in the room, such as NPCs, a shared invento
 _Avoid_: Лист (alone), page, one, global sheet
 
 **Name field**:
-The field of a sheet set whose value names each of its sheets on its tab, in token labels and in rolls.
+The text field named by a template or repeat scope whose value names each sheet or block in the interface, token labels and rolls.
 _Avoid_: title field, tab field, sheet name
 
 **Visibility**:
-Whether players can see the sheets of a template, or only GMs. A hidden sheet is hidden in the interface only.
+Whether players can see a template, tab, section or row, or only GMs. Visibility is inherited from every ancestor and hides the node in the interface only.
 _Avoid_: privacy, access, GM-only flag
 
 **Player-editable**:
-A single sheet that every player may edit, with no write access granted per player.
+A template whose sheets every player may edit, with no write access granted per player. A hidden template still gives players no edit access.
 _Avoid_: shared, public, open sheet
-
-**Linkable**:
-A sheet set, single sheet or repeat section whose sheets or repeat blocks tokens may link to.
-_Avoid_: token-enabled, bindable
 
 **Tab**:
   A titled group of sections inside a sheet. A template has at least one tab, and a sheet shows one tab at a time. A template with one tab draws no tab row. Each client keeps the open tab of each sheet for itself. Tabs change only the layout: field id scopes, formulas and stored values span all tabs of a template. In the interface: «Вкладка».
@@ -71,15 +67,19 @@ One item in the sidebar: a sheet, or Settings. A sheet set's «+ Добавит�
 _Avoid_: sheet tab, menu item
 
 **Hidden tab**:
-A tab whose `visibility` is `"gm"`. A GM sees its tab and sections; a player sees neither, and cannot roll from it, edit its fields, or open its repeat blocks from token links. Its records stay in every replica, so visible tabs can read its values and the sheet name can still show.
+A tab whose `visibility` is `"gm"`. A GM sees its tab and sections; a player sees neither, and cannot roll from it, edit its fields, or open its token cells from token links. Its records stay in every replica, so visible tabs can read its values and the sheet name can still show.
 _Avoid_: secret sheet, private page
 
 **Section**:
 A titled block of a tab that holds rows.
-_Avoid_: group, panel, block
+_Avoid_: group, panel
+
+**Repeat scope**:
+A template, tab, section or row marked with `repeat`, which can hold one block per instance. Its `id` identifies the scope and its `nameField` names each block.
+_Avoid_: repeating container, list scope
 
 **Repeat section**:
-A section whose rows form one block that each sheet may hold any number of times, such as attacks, inventory items or NPCs. It has at least one row with a field.
+A section used as a repeat scope. Each sheet may hold any number of its blocks, such as attacks, inventory items or NPCs. It has at least one row with a field.
 _Avoid_: list section, table, array
 
 **Row**:
@@ -87,7 +87,7 @@ One line of cells in a section.
 _Avoid_: line, entry
 
 **Cell**:
-One slot in a row: a label, a field or a dice cell.
+One slot in a row: a label, a field, a dice cell or a token cell.
 _Avoid_: element, widget, control
 
 **Label**:
@@ -115,12 +115,16 @@ The name of a field. Values are kept under it, and formulas refer to the field b
 _Avoid_: key, name, variable
 
 **Scope**:
-The set of fields a field id must be unique in. The fields outside repeat sections of one template form one scope, and the rows of each repeat section form a scope of their own. A formula in a repeat section sees its own scope first, then the outer one.
+The set of fields in which a field id must be unique. Fields outside repeat scopes of one template form one scope; each repeat scope forms another. A formula resolves its own block first, then enclosing blocks, then the sheet scope.
 _Avoid_: namespace, context
 
 **Dice cell**:
 A cell that rolls its formula when pressed. It holds no value.
 _Avoid_: dice button, roll cell, macro
+
+**Token cell**:
+A cell with a stable id that a token can link to. Opening the link selects the cell's tab and, when applicable, its repeat-block path; players see no token-cell control.
+_Avoid_: token flag, token field, linkable cell
 
 **Cell name**:
 The optional name a preset gives a field or a dice cell. It names the control for screen readers, names a dice cell in a roll, and shows in a tooltip. Without one, the nearest label before the cell in its row names it, else the field id or the formula. In the interface: «Название».
@@ -136,12 +140,16 @@ _Avoid_: macro, script, expression
 The values of one sheet in a room, laid out by its template: one of a sheet set's sheets, or a single sheet. In the interface: «лист».
 _Avoid_: card, record, profile, character (a character or an NPC is preset content, not a kind of sheet)
 
+**Block**:
+The stored root of a sheet or one instance of a repeat scope. A block has its own field values and can be addressed by its repeat-scope path.
+_Avoid_: record, row, instance
+
 **Value**:
 What one field holds on one sheet.
 _Avoid_: data, stat
 
 **Repeat block**:
-One copy of a repeat section's rows on one sheet, such as one NPC. Each sheet has its own number of repeat blocks.
+One instance of a repeat scope, such as one NPC, attack or inventory item. Each parent sheet or block has its own collection of repeat blocks.
 _Avoid_: repeat row, instance, item, entry
 
 **Duplicate**:
@@ -161,7 +169,7 @@ A player's edit that waits for an online GM to check write access. It applies on
 _Avoid_: draft edit, unsaved change, queued edit
 
 **Token link**:
-The bond between an Owlbear token and a sheet or a repeat block of a linkable template, so the token opens it. A token links to one sheet or repeat block, and each of those can have many tokens.
+The bond between an Owlbear token and a token cell, so the token opens the cell's sheet, tab and applicable repeat block. A token links to one cell, and each cell can have many tokens.
 _Avoid_: binding, attachment, token sheet
 
 **Map selection**:

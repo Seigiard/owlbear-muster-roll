@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import {
   connectionIdOf,
   openClientBackground,
@@ -25,24 +24,25 @@ const PLAYER: ClientParams = {
 
 // A visible sheet set and a hidden single sheet "NPC", both with a dice cell.
 const PRESET = {
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
+      repeat: { nameField: 'name' },
       tabs: [
         {
           sections: [
             {
               rows: [
-                [{ kind: 'field', type: 'text', id: 'name' }],
-                [
-                  { kind: 'text', text: 'Удар' },
-                  { kind: 'field', type: 'number', id: 'str' },
-                  { kind: 'dice', formula: '1d20 + str' },
-                ],
+                { cells: [{ kind: 'field', type: 'text', id: 'name' }] },
+                {
+                  cells: [
+                    { kind: 'text', text: 'Удар' },
+                    { kind: 'field', type: 'number', id: 'str' },
+                    { kind: 'dice', formula: '1d20 + str' },
+                  ],
+                },
               ],
             },
           ],
@@ -51,7 +51,6 @@ const PRESET = {
     },
     {
       id: 'npc',
-      kind: 'single',
       title: 'NPC',
       visibility: 'gm',
       tabs: [
@@ -59,11 +58,13 @@ const PRESET = {
           sections: [
             {
               rows: [
-                [
-                  { kind: 'text', text: 'Укус' },
-                  { kind: 'field', type: 'number', id: 'bite' },
-                  { kind: 'dice', formula: '1d20 + bite' },
-                ],
+                {
+                  cells: [
+                    { kind: 'text', text: 'Укус' },
+                    { kind: 'field', type: 'number', id: 'bite' },
+                    { kind: 'dice', formula: '1d20 + bite' },
+                  ],
+                },
               ],
             },
           ],
@@ -83,12 +84,9 @@ test("a roll with a dice extension shows the extension's face on every client", 
   // #given
   const gm = await openGm(context);
   const player = await openPlayer(context);
-
   await expect(player.window.getByRole('button', { name: 'Удар' })).toBeVisible();
-
   // #when
   await diceButton(gm.window).click();
-
   // #then: 17 + str 14, from the one request the extension took.
   await expect.poll(() => shownNotifications(player)).toEqual(['Мастер: Брок, Удар — 31']);
   expect({
@@ -105,15 +103,12 @@ test('the dice extension shows a visible roll to everyone and a hidden one to GM
   // #given
   const gm = await openGm(context);
   const player = await openPlayer(context);
-
   await expect(player.window.getByRole('button', { name: 'Удар' })).toBeVisible();
   await diceButton(gm.window).click();
   await expect.poll(() => shownNotifications(gm)).toEqual(['Мастер: Брок, Удар — 31']);
-
   // #when
   await gm.window.getByRole('tab', { name: 'NPC' }).click();
   await gm.window.getByRole('tabpanel').getByRole('button', { name: 'Укус', exact: true }).click();
-
   // #then: 17 + bite 2 shows on the GM only, and the visible roll before it reached the player.
   await expect
     .poll(() => shownNotifications(gm))
@@ -129,14 +124,11 @@ test('the dice extension shows a visible roll to everyone and a hidden one to GM
 test('a dice button says it is rolling while it waits for the dice', async ({ context }) => {
   // #given: the extension takes the request and never answers.
   const gm = await openGm(context);
-
   await gm.background.evaluate(() => {
     window.mockDiceExtension?.answerWith({ kind: 'silent' });
   });
-
   // #when
   await diceButton(gm.window).click();
-
   // #then
   await expect(
     diceButton(gm.window).locator('xpath=following-sibling::span[@aria-live]'),
@@ -150,19 +142,15 @@ test("a dice button says it waits for the GM's answer, and rolls with the extens
   // asked for at start.
   const gm = await openGm(context, { ...GM, diceAccess: 'unknown' });
   const status = diceButton(gm.window).locator('xpath=following-sibling::span[@aria-live]');
-
   await expect
     .poll(() => gm.background.evaluate(() => window.mockDiceExtension?.accessRequests().length))
     .toBe(1);
-
   // #when
   await diceButton(gm.window).click();
-
   await expect(status).toHaveText('Ждём разрешения ГМ…');
   await gm.background.evaluate(() => {
     window.mockDiceExtension?.answerPrompt('allowed');
   });
-
   // #then: 17 + str 14, from the extension, and the line under the button clears.
   await expect.poll(() => shownNotifications(gm)).toEqual(['Мастер: Брок, Удар — 31']);
   await expect(status).toHaveText('');
@@ -170,20 +158,17 @@ test("a dice button says it waits for the GM's answer, and rolls with the extens
 
 async function openGm(context: BrowserContext, params: ClientParams = GM): Promise<RoomClient> {
   const window = await openClientWindow(context, params);
-
   await seedStorage(
     window,
     [
       ...pcSheet('brok', 'Брок', 0),
-      record('row:brok:str', { str: 14 }),
-      record('row:npc:bite', { bite: 2 }),
+      record('blk:brok', { str: 14 }),
+      record('blk:npc', { bite: 2 }),
     ],
     JSON.stringify(PRESET),
     params.device,
   );
-
   const background = await openClientBackground(context, params);
-
   await expect(window.getByRole('tabpanel').getByRole('button', { name: 'Удар' })).toBeVisible();
 
   return { window, background, connectionId: connectionIdOf(params) };

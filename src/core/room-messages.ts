@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { FORMAT_VERSION } from '@/core/format-version';
+import { fragmentRecords } from '@/core/message-size';
 import type { JsonValue } from '@/core/json';
 import { compareGenerations } from '@/core/merge';
 import { recordSchema, type VersionedRecord } from '@/core/records';
@@ -77,12 +78,16 @@ const commitSchema = z.strictObject({
 
 // AD-4: a player's edit of one record, sent until a GM client answers it. The player never merges
 // it itself.
-const proposeSchema = z.strictObject({
-  v: z.literal(FORMAT_VERSION),
-  g: generationSchema,
-  t: z.literal('propose'),
-  records: z.array(recordSchema).length(1),
-});
+const proposeSchema = z
+  .strictObject({
+    v: z.literal(FORMAT_VERSION),
+    g: generationSchema,
+    t: z.literal('propose'),
+    records: z.array(recordSchema).length(1),
+    i: z.number().int().positive().default(1),
+    n: z.number().int().positive().default(1),
+  })
+  .refine((message) => message.i <= message.n);
 
 // AD-4: a GM client refused a proposal, echoing its `(k, c, a)`. `denied`: the player has no right
 // to it. `stale`: its `c` is not above the GM's, and `current` is the GM's record of the key, which
@@ -97,10 +102,20 @@ const rejectSchema = z
     a: z.string().min(1),
     reason: z.enum(['denied', 'stale']),
     current: recordSchema.optional(),
+    i: z.number().int().positive().optional(),
+    n: z.number().int().positive().optional(),
   })
-  .refine((message) =>
-    message.reason === 'stale' ? message.current?.k === message.k : message.current === undefined,
-  );
+  .refine((message) => {
+    if (message.reason === 'denied') {
+      return message.current === undefined && message.i === undefined && message.n === undefined;
+    }
+
+    return (
+      message.current?.k === message.k &&
+      ((message.i === undefined && message.n === undefined) ||
+        (message.i !== undefined && message.n !== undefined && message.i <= message.n))
+    );
+  });
 
 // AD-7: a client's catch-up nonce `r`, a nanoid.
 const nonceSchema = z.string().min(1).max(64);
@@ -270,7 +285,17 @@ export function commitEnvelope(generation: Generation): CommitEnvelope {
 }
 
 export function proposeMessage(generation: Generation, record: VersionedRecord): ProposeMessage {
-  return { v: FORMAT_VERSION, g: generation, t: 'propose', records: [record] };
+  return { v: FORMAT_VERSION, g: generation, t: 'propose', records: [record], i: 1, n: 1 };
+}
+
+export function proposeMessages(generation: Generation, record: VersionedRecord): ProposeMessage[] {
+  const fragments = fragmentRecords([record]);
+
+  return fragments.map((fragment, index) => ({
+    ...proposeMessage(generation, fragment),
+    i: index + 1,
+    n: fragments.length,
+  }));
 }
 
 // Why a GM client rejects a proposal: `stale` always carries the GM's current record, `denied` none.

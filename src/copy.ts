@@ -30,8 +30,10 @@ export const copy = {
   label: {
     // The accessible name of a sheet set's «+ Добавить», by the sheet set's `title`.
     addToSet: (title: string): string => `Добавить: ${title}`,
-    // The accessible name of a repeat section's "Добавить", by the section's title.
-    addToSection: (title: string): string => `Добавить в «${title}»`,
+    // The accessible name of a repeat section's "Добавить", by the section's title and, when
+    // needed, its stable scope id.
+    addToSection: (title: string, scopeId?: string): string =>
+      scopeId === undefined ? `Добавить в «${title}»` : `Добавить в «${title}» (${scopeId})`,
     // The name in the header of a sheet of a sheet set, which edits its name field.
     sheetName: 'Имя листа',
     // The range is in the label, so sight and assistive tech both get it.
@@ -61,6 +63,10 @@ export const copy = {
   },
   // A tab with no title in the tab row, as a builder draft may hold one.
   untitledTab: 'Вкладка',
+  // The visible fallback label of a repeat block tab with no name.
+  unnamedBlock: (n: number): string => `Блок ${n}`,
+  // The visible label of a repeat-tab add control.
+  addTab: '+',
   // After the name on the sidebar entry of a sheet the player owns (UX-DR8).
   ownMark: 'вы',
   addSign: '+ Добавить',
@@ -79,7 +85,11 @@ export const copy = {
     readOnly: 'Только чтение',
     canEdit: 'Можно править',
     tokenLinked: 'Токен привязан',
+    tokenLinkedCurrent: 'Привязан к этой ячейке',
+    tokenLinkedElsewhere: 'Привязан к другой ячейке',
     noToken: 'Нет токена',
+    tokenCellPicker: 'Выберите токены для этой ячейки',
+    noSceneTokens: 'На сцене нет токенов.',
   },
   loading: 'Загрузка…',
   playerNoPreset: 'ГМ ещё не настроил листы.',
@@ -274,8 +284,11 @@ export const copy = {
     addLabel: 'Добавить подпись',
     addField: 'Добавить поле',
     addDice: 'Добавить кубик',
+    addToken: 'Добавить токен',
     emptyPreset: 'Добавьте набор или одиночный лист.',
     formulasChanged: (n: number): string => `Формулы изменены: ${n}.`,
+    repeatBlocksErased: (id: string): string =>
+      `Блоки «${id}» в комнате будут стёрты при загрузке пресета.`,
     fieldValuesErased: (id: string): string =>
       `Значения поля «${id}» в комнате будут стёрты при загрузке пресета.`,
     templateSheetsDeleted: (id: string): string =>
@@ -289,6 +302,7 @@ export const copy = {
     fieldItem: (id: string, type: string): string => `${id} · ${type}`,
     emptyText: 'Пустая подпись',
     emptyFormula: 'Пустая формула',
+    tokenItem: (id: string): string => `Токен · ${id}`,
     untitled: 'Без заголовка',
     dragHandle: (name: string): string => `Перетащить: ${name}`,
     expand: (name: string): string => `Развернуть или свернуть: ${name}`,

@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-
 import type { Popover } from '@/platform/ports';
-
 import {
   ABSENT,
   ADD,
@@ -40,23 +38,36 @@ const ROOM: readonly StoredRecord[] = [
   ...pcSheet('brok', 'Брок', 1),
   npcBlock('gob', 'Гоблин', 0),
   npcBlock('skel', 'Скелет', 1),
-  record('sheet:gone', null, 2),
-  record('link:t-anya', { s: 'anya' }),
-  record('link:t-gob', { s: 'npc', i: 'gob' }),
-  record('link:t-gone', { s: 'gone' }),
+  record('blk:gone', null, 2),
+  record('link:t-anya', { s: 'anya', c: 'token' }),
+  record('link:t-gob', { s: 'npc', path: ['npc_name', 'gob'], c: 'token' }),
+  record('link:t-gone', { s: 'gone', c: 'token' }),
 ];
 
 // A preset whose one linkable template has no sheet yet.
 const NO_TARGET_PRESET = JSON.stringify({
-  v: 3,
+  v: 4,
   templates: [
     {
       id: 'pc',
-      kind: 'set',
       title: 'Персонажи',
-      nameField: 'name',
-      tokens: true,
-      tabs: [{ sections: [{ rows: [[{ kind: 'field', type: 'text', id: 'name' }]] }] }],
+      repeat: { nameField: 'name' },
+      tabs: [
+        {
+          sections: [
+            {
+              rows: [
+                {
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'name' },
+                    { kind: 'token', id: 'token' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
   ],
 });
@@ -71,12 +82,9 @@ test('"Привязать лист…" opens the picker in a small popover for t
 }) => {
   // #given
   const background = await openRoom(page, context, ROOM);
-
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
-
   // #when
   await clickMenuItem(background, LINK_ITEM, 'tok-new');
-
   // #then
   expect(await openedPopovers(background)).toEqual([
     {
@@ -95,10 +103,8 @@ test('the picker lists groups in preset order, each with the targets with no tok
 }) => {
   // #given
   await openRoom(page, context, ROOM);
-
   // #when
   const picker = await openPicker(context, 'tok-new');
-
   // #then: a sheet set lists its sheets, a linkable repeat section its repeat blocks by first field
   // and sheet name, and a linkable single sheet itself.
   expect(await pickerGroups(picker)).toEqual([
@@ -110,50 +116,43 @@ test('the picker lists groups in preset order, each with the targets with no tok
 
 test(`the picker with no target shows "${NO_SHEETS}"`, async ({ page, context }) => {
   // #given
-  await openRoom(page, context, [record('sheet:gone', null, 2)], NO_TARGET_PRESET);
-
+  await openRoom(page, context, [record('blk:gone', null, 2)], NO_TARGET_PRESET);
   // #when
   const picker = await openPicker(context, 'tok-new');
-
   // #then
   await expect(picker.getByText(NO_SHEETS)).toBeVisible();
   expect(await picker.getByRole('button').count()).toBe(0);
 });
 
-test('a pick writes the link, closes the popover, and both headers show the status', async ({
+test('a pick writes the link, closes the popover, and the token cell shows the status', async ({
   page,
   context,
 }) => {
   // #given
   await openRoom(page, context, ROOM);
-
   const picker = await openPicker(context, 'tok-new');
-  const before = await headerStatus(page);
-
+  const before = await rootTokenStatus(page);
   // #when
   await picker.getByRole('button', { name: 'Брок' }).click();
   await expect.poll(() => closedPopovers(picker)).toEqual([PICKER_POPOVER]);
-
   // #then
   await page.getByRole('tab', { name: 'Брок' }).click();
-  await expect(headerOf(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
+  await expect(rootTokenCell(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
   expect({ before, link: await storedData(page, 'link:tok-new') }).toEqual({
     before: NO_TOKEN,
-    link: { s: 'brok' },
+    link: { s: 'brok', c: 'token' },
   });
 });
 
 test('each NPC repeat block shows its token status, read-only', async ({ page, context }) => {
   // #given
   await openRoom(page, context, ROOM);
-
   // #when
   await page.getByRole('tab', { name: 'NPC' }).click();
-
   // #then
   expect({
-    goblin: await repeatBlock(page, 'Гоблин').getByText(TOKEN_LINKED).count(),
-    skeleton: await repeatBlock(page, 'Скелет').getByText(NO_TOKEN).count(),
+    goblin: await blockTokenCell(page, 'Гоблин').getByRole('img', { name: TOKEN_LINKED }).count(),
+    skeleton: await blockTokenCell(page, 'Скелет').getByRole('img', { name: NO_TOKEN }).count(),
     controls: await repeatBlock(page, 'Гоблин').getByRole('button', { name: TOKEN_LINKED }).count(),
   }).toEqual({ goblin: 1, skeleton: 1, controls: 0 });
 });
@@ -164,38 +163,41 @@ test('a pick of a repeat block links the token to it and its status shows on the
 }) => {
   // #given
   await openRoom(page, context, ROOM);
-
   const picker = await openPicker(context, 'tok-new');
-
   // #when
   await targetButton(picker, 'Скелет, NPC').click();
   await expect.poll(() => closedPopovers(picker)).toEqual([PICKER_POPOVER]);
-
   // #then
   await page.getByRole('tab', { name: 'NPC' }).click();
-  await expect(repeatBlock(page, 'Скелет').getByText(TOKEN_LINKED)).toBeVisible();
-  expect(await storedData(page, 'link:tok-new')).toEqual({ s: 'npc', i: 'skel' });
+  await expect(
+    blockTokenCell(page, 'Скелет').getByRole('img', { name: TOKEN_LINKED }),
+  ).toBeVisible();
+  expect(await storedData(page, 'link:tok-new')).toEqual({
+    s: 'npc',
+    path: ['npc_name', 'skel'],
+    c: 'token',
+  });
 });
 
-test('"Отвязать лист" tombstones the link and the header shows "Нет токена"', async ({
+test('"Отвязать лист" tombstones the link and the token cell shows "Нет токена"', async ({
   page,
   context,
 }) => {
   // #given
   const background = await openRoom(page, context, ROOM);
-
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
-  await expect(headerOf(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
-
+  await expect(rootTokenCell(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
   // #when
   await clickMenuItem(background, UNLINK_ITEM, 't-anya');
-
   // #then
-  await expect(headerOf(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
+  await expect(rootTokenCell(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
   expect({
     link: await storedData(page, 'link:t-anya'),
-    sheet: await storedData(page, 'sheet:anya'),
-  }).toEqual({ link: null, sheet: { set: 'pc', order: 0 } });
+    sheet: await storedData(page, 'blk:anya'),
+  }).toEqual({
+    link: null,
+    sheet: { set: 'pc', order: 0, cells: { name: ['Аня', 1, 'seed'] } },
+  });
 });
 
 test('a token id no link can hold shows the failure at once and no sheet to pick', async ({
@@ -204,10 +206,8 @@ test('a token id no link can hold shows the failure at once and no sheet to pick
 }) => {
   // #given: no `link:` key can hold a token id with ":".
   await openRoom(page, context, ROOM);
-
   // #when
   const picker = await openPicker(context, 'bad:token');
-
   // #then
   await expect(picker.getByText(LINK_FAILED)).toBeVisible();
   expect(await picker.getByRole('button').count()).toBe(0);
@@ -219,9 +219,7 @@ test('a pick of a sheet deleted while the picker was open shows the failure and 
 }) => {
   // #given: the picker misses the delta of the deletion, as one still on its way.
   await openRoom(page, context, ROOM);
-
   const picker = await openPicker(context, 'tok-new', { dropDeltas: true });
-
   await picker.evaluate(() => {
     Object.assign(window, { dropDeltas: true });
   });
@@ -232,11 +230,9 @@ test('a pick of a sheet deleted while the picker was open shows the failure and 
       { destination: 'LOCAL' },
     );
   }, UI_CHANNEL);
-  await expect.poll(() => storedData(page, 'sheet:brok')).toBeNull();
-
+  await expect.poll(() => storedData(page, 'blk:brok')).toBeNull();
   // #when
   await picker.getByRole('button', { name: 'Брок' }).click();
-
   // #then
   await expect(picker.getByText(LINK_FAILED)).toBeVisible();
   expect({
@@ -245,81 +241,72 @@ test('a pick of a sheet deleted while the picker was open shows the failure and 
   }).toEqual({ closed: [], link: ABSENT });
 });
 
-test(`a token deleted from the scene clears its link, and the header shows "${NO_TOKEN}"`, async ({
+test(`a token deleted from the scene clears its link, and the token cell shows "${NO_TOKEN}"`, async ({
   page,
   context,
 }) => {
   // #given
   const background = await openRoom(page, context, ROOM);
-
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
   await changeScene(background, [{ add: ['t-anya', 't-gob', 'map'] }]);
-  await expect(headerOf(page).getByRole('button', { name: SELECT_ON_MAP })).toBeVisible();
-
+  await expect(rootTokenCell(page).getByRole('button', { name: SELECT_ON_MAP })).toBeVisible();
   // #when
   await changeScene(background, [{ remove: ['t-anya'] }]);
-
   // #then
-  await expect(headerOf(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
+  await expect(rootTokenCell(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
   expect({
     link: await storedData(page, 'link:t-anya'),
     other: await storedData(page, 'link:t-gob'),
-    sheet: await storedData(page, 'sheet:anya'),
+    sheet: await storedData(page, 'blk:anya'),
   }).toEqual({
     link: null,
-    other: { s: 'npc', i: 'gob' },
-    sheet: { set: 'pc', order: 0 },
+    other: { s: 'npc', path: ['npc_name', 'gob'], c: 'token' },
+    sheet: { set: 'pc', order: 0, cells: { name: ['Аня', 1, 'seed'] } },
   });
 });
 
 test('a scene change keeps the links of the scene left behind', async ({ page, context }) => {
   // #given: "Аня" has her token on the first scene, "Гоблин" his on the second.
   const background = await openRoom(page, context, ROOM);
-
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
   await changeScene(background, [{ add: ['t-anya'] }]);
-
   // #when: the GM opens the second scene and deletes the goblin's token there.
   await changeScene(background, [{ ready: false }, { items: ['t-gob'] }, { ready: true }]);
   await page.getByRole('tab', { name: 'NPC' }).click();
-  await expect(repeatBlock(page, 'Гоблин').getByText(TOKEN_LINKED)).toBeVisible();
+  await expect(
+    blockTokenCell(page, 'Гоблин').getByRole('img', { name: TOKEN_LINKED }),
+  ).toBeVisible();
   await changeScene(background, [{ remove: ['t-gob'] }]);
-  await expect(repeatBlock(page, 'Гоблин').getByText(NO_TOKEN)).toBeVisible();
-
+  await expect(blockTokenCell(page, 'Гоблин').getByRole('img', { name: NO_TOKEN })).toBeVisible();
   // #then
   await page.getByRole('tab', { name: 'Аня' }).click();
-  await expect(headerOf(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
+  await expect(rootTokenCell(page).getByRole('img', { name: TOKEN_LINKED })).toBeVisible();
   expect({
     anya: await storedData(page, 'link:t-anya'),
     goblin: await storedData(page, 'link:t-gob'),
-  }).toEqual({ anya: { s: 'anya' }, goblin: null });
+  }).toEqual({ anya: { s: 'anya', c: 'token' }, goblin: null });
 });
 
-test('a pick on a token with no label, the offer checked, labels the token with the sheet name', async ({
+test('a pick on a token with no label, the offer checked, labels it with the nearest ancestor', async ({
   page,
   context,
 }) => {
   // #given
   const background = await openRoom(page, context, ROOM);
-
   await changeScene(background, [{ add: ['tok-new', 'map'] }]);
-
   const picker = await openPicker(context, 'tok-new');
   const offer = picker.getByRole('checkbox', { name: LABEL_OFFER });
-
   await expect(offer).toBeChecked();
   await expect(offer).toHaveAccessibleDescription(NO_LABEL);
-
   // #when
   await picker.getByRole('button', { name: 'Брок' }).click();
   await expect.poll(() => closedPopovers(picker)).toEqual([PICKER_POPOVER]);
-
   // #then
   expect({
     link: await storedData(page, 'link:tok-new'),
     label: await sceneLabel(background, 'tok-new'),
     other: await sceneLabel(background, 'map'),
-  }).toEqual({ link: { s: 'brok' }, label: 'Брок', other: '' });
+  }).toEqual({ link: { s: 'brok', c: 'token' }, label: 'Персонаж', other: '' });
 });
 
 test("a pick of a repeat block on a token with no label labels it with the block's first field", async ({
@@ -328,22 +315,20 @@ test("a pick of a repeat block on a token with no label labels it with the block
 }) => {
   // #given
   const background = await openRoom(page, context, ROOM);
-
   await changeScene(background, [{ add: ['tok-new'] }]);
-
   const picker = await openPicker(context, 'tok-new');
-
   await expect(picker.getByRole('checkbox', { name: LABEL_OFFER })).toBeChecked();
-
   // #when
   await targetButton(picker, 'Скелет, NPC').click();
   await expect.poll(() => closedPopovers(picker)).toEqual([PICKER_POPOVER]);
-
   // #then
   expect({
     link: await storedData(page, 'link:tok-new'),
     label: await sceneLabel(background, 'tok-new'),
-  }).toEqual({ link: { s: 'npc', i: 'skel' }, label: 'Скелет' });
+  }).toEqual({
+    link: { s: 'npc', path: ['npc_name', 'skel'], c: 'token' },
+    label: 'Скелет',
+  });
 });
 
 test('a token with a label shows it in the offer, unchecked, and a pick keeps it', async ({
@@ -352,27 +337,22 @@ test('a token with a label shows it in the offer, unchecked, and a pick keeps it
 }) => {
   // #given
   const background = await openRoom(page, context, ROOM);
-
   await changeScene(background, [{ add: ['tok-new'] }]);
   await background.evaluate(() => {
     window.mockPlatform.setSceneItemLabel('tok-new', 'Гоблин 2');
   });
-
   const picker = await openPicker(context, 'tok-new');
   const offer = picker.getByRole('checkbox', { name: LABEL_OFFER });
-
   await expect(offer).not.toBeChecked();
   await expect(offer).toHaveAccessibleDescription('Сейчас: «Гоблин 2»');
-
   // #when
   await picker.getByRole('button', { name: 'Брок' }).click();
   await expect.poll(() => closedPopovers(picker)).toEqual([PICKER_POPOVER]);
-
   // #then
   expect({
     link: await storedData(page, 'link:tok-new'),
     label: await sceneLabel(background, 'tok-new'),
-  }).toEqual({ link: { s: 'brok' }, label: 'Гоблин 2' });
+  }).toEqual({ link: { s: 'brok', c: 'token' }, label: 'Гоблин 2' });
 });
 
 test('a failed label write keeps the link, shows an Owlbear notification, and closes the picker', async ({
@@ -381,42 +361,34 @@ test('a failed label write keeps the link, shows an Owlbear notification, and cl
 }) => {
   // #given
   const background = await openRoom(page, context, ROOM);
-
   await changeScene(background, [{ add: ['tok-new'] }]);
-
   const picker = await openPicker(context, 'tok-new');
-
   await expect(picker.getByRole('checkbox', { name: LABEL_OFFER })).toBeChecked();
   await picker.evaluate(() => {
     window.mockPlatform.failNextSceneLabelCalls(['write']);
   });
-
   // #when
   await picker.getByRole('button', { name: 'Брок' }).click();
   await expect.poll(() => closedPopovers(picker)).toEqual([PICKER_POPOVER]);
-
   // #then
   expect({
     link: await storedData(page, 'link:tok-new'),
     label: await sceneLabel(background, 'tok-new'),
     notifications: await picker.evaluate(() => window.mockPlatform.shownNotifications()),
-  }).toEqual({ link: { s: 'brok' }, label: '', notifications: [LABEL_FAILED] });
+  }).toEqual({ link: { s: 'brok', c: 'token' }, label: '', notifications: [LABEL_FAILED] });
 });
 
 test('"Отвязать лист" leaves the token label as it is', async ({ page, context }) => {
   // #given
   const background = await openRoom(page, context, ROOM);
-
   await waitForMenu(background, [LINK_ITEM, OPEN_ITEM, UNLINK_ITEM]);
   await changeScene(background, [{ add: ['t-anya'] }]);
   await background.evaluate(() => {
     window.mockPlatform.setSceneItemLabel('t-anya', 'Аня');
   });
-
   // #when
   await clickMenuItem(background, UNLINK_ITEM, 't-anya');
-  await expect(headerOf(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
-
+  await expect(rootTokenCell(page).getByRole('img', { name: NO_TOKEN })).toBeVisible();
   // #then
   expect({
     link: await storedData(page, 'link:t-anya'),
@@ -430,21 +402,14 @@ test('a player picker reads and writes no label and shows no offer', async ({ co
   const gm: ClientParams = { client: 'a', device: 'a' };
   const player: ClientParams = { client: 'p', role: 'PLAYER', player: 'lisa', device: 'p' };
   const gmWindow = await openClientWindow(context, gm);
-
   await seedStorage(gmWindow, ROOM, undefined, gm.device);
-
   const gmBackground = await openClientBackground(context, gm);
-
   await expect(gmWindow.getByRole('button', { name: ADD })).toBeVisible();
   await changeScene(gmBackground, [{ add: ['tok-new'] }]);
-
   const playerBackground = await openClientBackground(context, player);
-
   await waitForMenu(playerBackground, [OPEN_ITEM]);
-
   // #when
   const picker = await openPicker(context, 'tok-new', { client: player });
-
   // #then
   expect({
     offers: await picker.getByRole('checkbox').count(),
@@ -477,7 +442,10 @@ const DROP_DELTAS = `
 async function openPicker(
   context: BrowserContext,
   tokenId: string,
-  options: { dropDeltas?: boolean; client?: ClientParams } = {},
+  options: {
+    dropDeltas?: boolean;
+    client?: ClientParams;
+  } = {},
 ): Promise<Page> {
   const picker = await context.newPage();
 
@@ -486,7 +454,6 @@ async function openPicker(
   }
 
   const query = new URLSearchParams(clientQuery(options.client ?? {}));
-
   query.set('token', tokenId);
   await picker.goto(`/picker.html?${query.toString()}`);
   await expect(picker.locator('main')).toBeVisible();
@@ -505,10 +472,18 @@ async function waitForMenu(background: Page, ids: readonly string[]): Promise<vo
 
 // One change of the room's scene, as Owlbear reports it.
 type SceneStep =
-  | { add: string[] }
-  | { remove: string[] }
-  | { items: string[] }
-  | { ready: boolean };
+  | {
+      add: string[];
+    }
+  | {
+      remove: string[];
+    }
+  | {
+      items: string[];
+    }
+  | {
+      ready: boolean;
+    };
 
 // Changes the room's scene through the background's mock, one step after another, as the GM would
 // in Owlbear.
@@ -550,14 +525,18 @@ function closedPopovers(page: Page): Promise<string[]> {
   return page.evaluate(() => window.mockPlatform.closedPopovers());
 }
 
-function headerOf(page: Page): Locator {
-  return page.getByRole('tabpanel').locator('header');
+function rootTokenCell(page: Page): Locator {
+  return page.getByRole('tabpanel').locator('[data-cell-id="token"][data-cell-scope="root"]');
 }
 
-async function headerStatus(page: Page): Promise<string> {
+function blockTokenCell(page: Page, name: string): Locator {
+  return repeatBlock(page, name).locator('[data-cell-id="token"]');
+}
+
+async function rootTokenStatus(page: Page): Promise<string> {
   await page.getByRole('tab', { name: 'Брок' }).click();
 
-  const status = headerOf(page).getByRole('img', {
+  const status = rootTokenCell(page).getByRole('img', {
     name: new RegExp(`^(${TOKEN_LINKED}|${NO_TOKEN})$`),
   });
 
@@ -578,7 +557,12 @@ function repeatBlock(page: Page, name: string): Locator {
 
 // Each group's heading and its buttons' text: the target's name, and the status when it has a
 // token.
-async function pickerGroups(picker: Page): Promise<{ group: string; targets: string[] }[]> {
+async function pickerGroups(picker: Page): Promise<
+  {
+    group: string;
+    targets: string[];
+  }[]
+> {
   return picker.locator('main section').evaluateAll((sections) =>
     sections.map((section) => ({
       group: section.getAttribute('aria-label') ?? '',

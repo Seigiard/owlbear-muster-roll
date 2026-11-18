@@ -459,3 +459,97 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-70-74-one-builder.md`
   summary: Observe native picker permission dialogs and real external-editor saves on the final integration.
   evidence: Deterministic Bun/Chromium owners prove application behavior. A real native OPFS control passed at the TASK-73 recovery commit; it does not prove final permission dialogs or delivery from an external OS process.
+- source_spec: `spec-task-76-block-records.md`
+  summary: "TASK-81: Handle large fragmented player edits, projection budgets and bounded assembly."
+  evidence: "Owner explicitly requested follow-up issues; review identified oversized stale responses, projection envelope overflow, unbounded assembly and missing multi-part acceptance coverage."
+- source_spec: `spec-task-76-block-records.md`
+  summary: "TASK-82: Preserve untouched cell versions during concurrent or interrupted preset reconciliation."
+  evidence: "Review reproduced overwritten concurrent hp during preset upload and traced omitted clear markers after interrupted uploads; tracked rather than expanding TASK-76."
+- source_spec: `spec-task-76-block-records.md`
+  summary: "TASK-83: Keep the local pending intent visible until settlement."
+  evidence: "Review reproduced a remote value 30 displayed while pending intent remained 20; owner requested follow-up tracking."
+- source_spec: `spec-task-76-block-records.md`
+  summary: "TASK-84: Avoid serializing the shared root once per plain row."
+  evidence: "Code-traced scaling risk in sheetValuesSignature; no measured performance incident is claimed."
+- source_spec: `spec-task-76-block-records.md`
+  summary: "TASK-85: Harden record merge boundaries and preserve explicit fixture versions."
+  evidence: "Schema accepts non-block lifecycle/prototype-named cells outside normal valid-preset commands; fixturePatch also discards explicit same-value tuple versions."
+
+## Deferred from: TASK-77 single review (2026-11-16)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Remove unread block-index construction and dead parameters."
+  evidence: "arch+quality-claude-6 traced liveLinkTarget's unused default block index; no measured slowdown is claimed."
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Remove unreachable preset block-relocation preparation."
+  evidence: "lean-codex-2 traced sectionTarget returning only the unchanged scope id or null."
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Replace first-field comments and unreachable name-field fallbacks."
+  evidence: "arch+quality-claude-12 found v3 naming assumptions after repeat.nameField became explicit."
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Remove duplicate unused preset helper exports."
+  evidence: "arch+quality-claude-7 found unused isSheetSet and hasField exports in preset.ts."
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Update retired Linkable and tokens comments."
+  evidence: "docs+tests-claude-6 found comments that still describe sheet-or-block links rather than token-cell targets."
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-preset-format-v4.md`
+  summary: "TASK-87: Share the picker popover id at the token-cell opener."
+  evidence: "arch+quality-claude-11 found main.tsx duplicating LINK_PICKER_POPOVER_ID as a literal."
+
+## Deferred from: TASK-77–98 window 1 (2026-11-17)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-77-98-completion.md`
+  summary: Define cleanup for obsolete incomplete stale-reply assemblies.
+  evidence: "Review lean-codex-1 traced two GMs' A1/B1/A2/B2 reply interleave. After one tuple completes, a late fragment for the obsolete tuple can create another incomplete assembly, retained until clear or preset change. This is a code-traced retention risk, not a measured incident. TASK-81's proposal-assembly bounds do not define stale-reply cleanup. The final review left this minor finding deferred."
+
+## Deferred from: TASK-77–98 window 2 (2026-11-17)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-92-preserve-repeat-tab-section-visibility.md`
+  summary: Collapse identical link visibility branches.
+  evidence: "Review arch+quality-claude-1 found that both branches of linkTargetShownTo now check the token cell's tab, section and row. The live.section === null split no longer changes the result. This is code duplication without a demonstrated behavior defect; it remains deferred after the final review."
+
+## Deferred from: TASK-77–98 window 3 (2026-11-17)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-82-preserve-cell-versions.md`
+  summary: Distinguish genuine field removals from fields defined by a not-yet-received preset.
+  task: TASK-99
+  evidence: "Reviews adversarial-claude-1 (mixed 6/6) and bugs+impl-1 (final 2/2) trace a GM holding an older preset but a newer block with an added field. Editing another field makes persisted mintedPatch emit a winning null for the absent field. Cross-sender reorder or a failed preset send followed by later block sends can create this state. Neither trigger was reproduced at runtime. Reviewers grade it major; caller grades the constructed, unrecorded input class minor and defers the required provenance decision outside the removal occurrences in TASK-82. A cell/preset counter cutoff conflicts with the calibrated interrupted-removal case. The data-loss risk remains open on a6af377; the final review is not empty."
+
+## Deferred from: TASK-77–98 window 4 (2026-11-17)
+
+- source_spec: `_bmad-output/implementation-artifacts/task-79-window4-review.md`
+  summary: Resolve ancestor fields when parent and child repeat scopes share an id.
+  task: TASK-100
+  evidence: "Review bugs+impl-codex-7 traces a constructed same-id lookup failure at 62044f2. No separate user occurrence or parent-run runtime reproduction is claimed."
+- source_spec: `_bmad-output/implementation-artifacts/task-79-window4-review.md`
+  summary: Remove unused nested-runtime work and correct the lookup comment.
+  task: TASK-101
+  evidence: "Review arch+quality-claude-6, lean-codex-3 and docs+tests-codex-4 identify unused block-index construction, unreachable relocation state and a stale formula lookup comment. Reassess after TASK-79's full-path repairs."
+
+The six critical/major findings and section→row dice lookup remain owned by
+TASK-79. They block acceptance and are not deferred follow-up scope.
+
+## Deferred from: TASK-77–98 window 5 (2026-11-18)
+
+- TASK-102: late child edits after parent deletion. Optional by owner decision S1.
+- TASK-103: pending nested edits during preset replacement. Optional by S1.
+- TASK-105: invalid local input during nested dice rolls. Optional; two constructed review cases.
+- TASK-106: snapshot accounting for children of deleted parents. Optional; no live value loss.
+- TASK-108: root and nested scopes with the same id. Optional constructed input; source-confirmed lookup gap.
+
+The previous six owned failures and the two round02 ordinary-flow failures
+were repaired. The current owned blocker is TASK-109: a copied nested child's
+token reveals the source child on a plain tab. It remains required work,
+not optional scope. Evidence: `task-79-window5-review.md`.
+
+## Deferred from: TASK-77–98 window 6 (2026-11-18)
+
+- TASK-111: older Builder drafts have no durable original-node identity.
+  Their contents remain readable; exact provenance after historical moves
+  cannot be inferred. Optional compatibility UX, with no affected live user known.
+- TASK-112: opening a file identical to an origin-less draft skips establishing
+  loaded-file warning identity. Source-confirmed minor from Builder review05.
+  Runtime upload still confirms destructive changes.
+- TASK-109 is now repaired and independently reviewed. Its copied-child token
+  owner and the existing repeat-tab below-fold owner pass in the full 583-test
+  browser run at `6695d234`. The window5 blocker above is historical.

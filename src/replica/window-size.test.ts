@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
-
 import type { WindowSize } from '@/core/preset';
 import { createMockPlatform } from '@/platform/current';
-
 import { createWindowSizer } from './window-size';
 
 const cleanups: (() => void)[] = [];
@@ -18,19 +16,16 @@ describe('createWindowSizer', () => {
     // #given
     const platform = createMockPlatform();
     const sizer = createWindowSizer(platform.action);
-
     // #when
     sizer.apply({ width: 900, height: 700 });
     sizer.apply({ width: 900, height: 700 });
     sizer.apply({ width: 600, height: 600 });
-
     // #then
     expect(platform.actionSizes()).toEqual([
       { width: 900, height: 700 },
       { width: 600, height: 600 },
     ]);
   });
-
   test.each<[string, WindowSize]>([
     ['the height', { width: 900, height: 800 }],
     ['the width', { width: 1000, height: 700 }],
@@ -38,16 +33,12 @@ describe('createWindowSizer', () => {
     // #given
     const platform = createMockPlatform();
     const sizer = createWindowSizer(platform.action);
-
     sizer.apply({ width: 900, height: 700 });
-
     // #when
     sizer.apply(next);
-
     // #then
     expect(platform.actionSizes()).toEqual([{ width: 900, height: 700 }, next]);
   });
-
   test('logs a failed size, reports it, and asks for the same size again next time', async () => {
     // #given
     const platform = createMockPlatform();
@@ -58,14 +49,11 @@ describe('createWindowSizer', () => {
     });
 
     const logged = silenceErrors();
-
     platform.failNextActionSize();
     sizer.apply({ width: 900, height: 700 });
     await settle();
-
     // #when
     sizer.apply({ width: 900, height: 700 });
-
     // #then
     expect({
       sizes: platform.actionSizes(),
@@ -80,7 +68,6 @@ describe('createWindowSizer', () => {
       failures: 1,
     });
   });
-
   test('sends a size again at once when it failed after the same size was asked for in flight', async () => {
     // #given
     const platform = createMockPlatform();
@@ -91,14 +78,11 @@ describe('createWindowSizer', () => {
     });
 
     silenceErrors();
-
     platform.failNextActionSize();
     sizer.apply({ width: 900, height: 700 });
-
     // #when
     sizer.apply({ width: 900, height: 700 });
     await settle();
-
     // #then
     expect({ sizes: platform.actionSizes(), failures }).toEqual({
       sizes: [
@@ -112,7 +96,6 @@ describe('createWindowSizer', () => {
 
 function silenceErrors() {
   const logged = spyOn(console, 'error').mockImplementation(() => {});
-
   cleanups.push(() => logged.mockRestore());
 
   return logged;

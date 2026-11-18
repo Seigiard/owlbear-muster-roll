@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
-
 import type { JsonValue } from '@/core/json';
 import type { Timing } from '@/core/timing';
 import { UI_CHANNEL, type CommandRejectedMessage, type EngineMessage } from '@/core/ui-messages';
@@ -50,7 +49,12 @@ const SYNC = {
 
 const ROOM_COPY = { state: 'none', usedBytes: 0, freeBytes: 15500, outcome: null } as const;
 
-const PROJECTION: Extract<EngineMessage, { t: 'projection' }> = {
+const PROJECTION: Extract<
+  EngineMessage,
+  {
+    t: 'projection';
+  }
+> = {
   t: 'projection',
   nonce: NONCE,
   engine: 'engine-1',
@@ -69,7 +73,8 @@ const OPEN: EngineMessage = {
   t: 'open-sheet',
   id: 'open-1',
   sheetId: 'npc',
-  instanceId: 'skeleton-1',
+  path: ['npc_name', 'skeleton-1'],
+  cellId: 'portrait',
 };
 
 type Harness = {
@@ -80,9 +85,17 @@ type Harness = {
 };
 
 type TestCommandOutcome =
-  | { kind: 'answered'; answer: JsonValue | undefined }
-  | { kind: 'refused'; rejection: CommandRejectedMessage }
-  | { kind: 'timed-out' };
+  | {
+      kind: 'answered';
+      answer: JsonValue | undefined;
+    }
+  | {
+      kind: 'refused';
+      rejection: CommandRejectedMessage;
+    }
+  | {
+      kind: 'timed-out';
+    };
 
 const cleanups: (() => void)[] = [];
 
@@ -98,17 +111,20 @@ describe('replica client open requests', () => {
   test('a window takes no open request before its projection, and takes one after it', async () => {
     // #given
     const harness = startHarness(['unused']);
-
     // #when
     await emit(harness, OPEN);
     const before = harness.store.$openRequest.get();
     await emit(harness, PROJECTION);
     await emit(harness, OPEN);
-
     // #then
     expect({ before, after: harness.store.$openRequest.get() }).toEqual({
       before: null,
-      after: { id: 'open-1', sheetId: 'npc', instanceId: 'skeleton-1' },
+      after: {
+        id: 'open-1',
+        sheetId: 'npc',
+        path: ['npc_name', 'skeleton-1'],
+        cellId: 'portrait',
+      },
     });
   });
 });
@@ -118,19 +134,16 @@ describe('replica client command outcomes', () => {
     // #given
     const harness = await loadedHarness(['wipe-own']);
     const outcome = Promise.resolve(harness.client.sendCommand({ type: 'wipe' }));
-
     // #when
     await emit(harness, { t: 'wiped', id: 'wipe-other' });
     const beforeOwn = await Promise.race([outcome, pause(5).then(() => 'pending' as const)]);
     await emit(harness, { t: 'wiped', id: 'wipe-own' });
-
     // #then
     expect({ beforeOwn, outcome: await outcome }).toEqual({
       beforeOwn: 'pending',
       outcome: { kind: 'answered', answer: undefined },
     });
   });
-
   test('answered outcomes keep every result field and generic commands answer after command-done', async () => {
     // #given
     const harness = await loadedHarness([
@@ -148,7 +161,6 @@ describe('replica client command outcomes', () => {
     );
 
     const presetDiff = Promise.resolve(harness.client.requestPresetDiff('Zg=='));
-
     const snapshotCheck = Promise.resolve(harness.client.requestSnapshotCheck('Zg=='));
 
     const presetUpload = Promise.resolve(
@@ -199,7 +211,6 @@ describe('replica client command outcomes', () => {
     await emit(harness, { t: 'snapshot-imported', id: 'snapshot-import' });
     await emit(harness, { t: 'wiped', id: 'wipe' });
     await emit(harness, { t: 'roll-outcome', id: 'roll', outcome: { code: 'rolled' } });
-
     // #then
     expect(
       await Promise.all([
@@ -221,7 +232,6 @@ describe('replica client command outcomes', () => {
       { kind: 'answered', answer: { code: 'rolled' } },
     ]);
   });
-
   test('a refusal keeps its reason and count-changed fields', async () => {
     // #given
     const harness = await loadedHarness(['own']);
@@ -241,11 +251,9 @@ describe('replica client command outcomes', () => {
 
     // #when
     await emit(harness, rejection);
-
     // #then
     expect(await outcome).toEqual({ kind: 'refused', rejection });
   });
-
   test('a foreign answer is dropped and a repeated answer cannot replace the first outcome', async () => {
     // #given
     const harness = await loadedHarness(['own']);
@@ -259,7 +267,6 @@ describe('replica client command outcomes', () => {
     const afterForeign = await Promise.race([outcome, pause(5).then(() => 'pending' as const)]);
     await emit(harness, { t: 'command-rejected', id: 'own', reason: 'unknown-template' });
     await emit(harness, { t: 'command-done', id: 'own' });
-
     // #then
     expect({ afterForeign, outcome: await outcome }).toEqual({
       afterForeign: 'pending',
@@ -269,21 +276,22 @@ describe('replica client command outcomes', () => {
       },
     });
   });
-
   test('an answer waits behind the projection and earlier deltas', async () => {
     // #given
     const harness = startHarness(['buffered']);
 
     const observed = Promise.resolve(
       harness.client.sendCommand({ type: 'sheet-create', sheetId: 'hero', set: 'pc' }),
-    ).then((outcome) => ({ outcome, record: harness.store.$records.get().get('sheet:hero') }));
+    ).then((outcome) => ({ outcome, record: harness.store.$records.get().get('blk:hero') }));
 
     await emit(harness, projectionPart(1, 2));
     await emit(harness, {
       t: 'delta',
       engine: 'engine-1',
       seq: 1,
-      records: [{ k: 'sheet:hero', d: { set: 'pc', order: 0 }, c: 1, a: 'gm' }],
+      records: [
+        { k: 'blk:hero', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'gm', l: [1, 'seed'] },
+      ],
       pending: [],
       withdrawn: [],
       notices: [],
@@ -291,7 +299,6 @@ describe('replica client command outcomes', () => {
       roomCopy: ROOM_COPY,
       party: [],
     });
-
     // #when
     await emit(harness, { t: 'command-done', id: 'buffered' });
 
@@ -301,17 +308,21 @@ describe('replica client command outcomes', () => {
     ]);
 
     await emit(harness, projectionPart(2, 2));
-
     // #then
     expect({ beforeProjection, observed: await observed }).toEqual({
       beforeProjection: 'pending',
       observed: {
         outcome: { kind: 'answered', answer: undefined },
-        record: { k: 'sheet:hero', d: { set: 'pc', order: 0 }, c: 1, a: 'gm' },
+        record: {
+          k: 'blk:hero',
+          d: { set: 'pc', order: 0, cells: {} },
+          c: 1,
+          a: 'gm',
+          l: [1, 'seed'],
+        },
       },
     });
   });
-
   test('an answer buffered before a projection restart settles after the replacement projection', async () => {
     // #given
     const harness = startHarness(['buffered', 'replacement'], {
@@ -321,53 +332,60 @@ describe('replica client command outcomes', () => {
 
     const observed = Promise.resolve(
       harness.client.sendCommand({ type: 'sheet-create', sheetId: 'hero', set: 'pc' }),
-    ).then((outcome) => ({ outcome, record: harness.store.$records.get().get('sheet:hero') }));
+    ).then((outcome) => ({ outcome, record: harness.store.$records.get().get('blk:hero') }));
 
     await emit(harness, projectionPart(1, 2));
     await emit(harness, { t: 'command-done', id: 'buffered' });
     await pause(15);
-
     // #when
     await emit(harness, {
       ...PROJECTION,
       nonce: 'replacement',
-      records: [{ k: 'sheet:hero', d: { set: 'pc', order: 0 }, c: 1, a: 'gm' }],
+      records: [
+        { k: 'blk:hero', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'gm', l: [1, 'seed'] },
+      ],
     });
-
     const settled = await Promise.race([observed, pause(20).then(() => 'still-waiting' as const)]);
-
     // #then
     expect({
       settled,
-      recordAfterProjection: harness.store.$records.get().get('sheet:hero'),
+      recordAfterProjection: harness.store.$records.get().get('blk:hero'),
     }).toEqual({
       settled: {
         outcome: { kind: 'answered', answer: undefined },
-        record: { k: 'sheet:hero', d: { set: 'pc', order: 0 }, c: 1, a: 'gm' },
+        record: {
+          k: 'blk:hero',
+          d: { set: 'pc', order: 0, cells: {} },
+          c: 1,
+          a: 'gm',
+          l: [1, 'seed'],
+        },
       },
       recordAfterProjection: {
-        k: 'sheet:hero',
-        d: { set: 'pc', order: 0 },
+        k: 'blk:hero',
+        d: { set: 'pc', order: 0, cells: {} },
         c: 1,
         a: 'gm',
+        l: [1, 'seed'],
       },
     });
   });
-
   test('an answer after a replayed sequence gap survives the replacement projection', async () => {
     // #given
     const harness = startHarness(['buffered', 'replacement']);
 
     const observed = Promise.resolve(
       harness.client.sendCommand({ type: 'sheet-create', sheetId: 'hero', set: 'pc' }),
-    ).then((outcome) => ({ outcome, record: harness.store.$records.get().get('sheet:hero') }));
+    ).then((outcome) => ({ outcome, record: harness.store.$records.get().get('blk:hero') }));
 
     await emit(harness, projectionPart(1, 2));
     await emit(harness, {
       t: 'delta',
       engine: 'engine-1',
       seq: 2,
-      records: [{ k: 'sheet:old', d: { set: 'pc', order: 0 }, c: 1, a: 'gm' }],
+      records: [
+        { k: 'blk:old', d: { set: 'pc', order: 0, cells: {} }, c: 1, a: 'gm', l: [1, 'seed'] },
+      ],
       pending: [],
       withdrawn: [],
       notices: [],
@@ -376,7 +394,6 @@ describe('replica client command outcomes', () => {
       party: [],
     });
     await emit(harness, { t: 'command-done', id: 'buffered' });
-
     // #when
     await emit(harness, projectionPart(2, 2));
 
@@ -388,24 +405,30 @@ describe('replica client command outcomes', () => {
     await emit(harness, {
       ...PROJECTION,
       nonce: 'replacement',
-      records: [{ k: 'sheet:hero', d: { set: 'pc', order: 1 }, c: 1, a: 'gm' }],
+      records: [
+        { k: 'blk:hero', d: { set: 'pc', order: 1, cells: {} }, c: 1, a: 'gm', l: [1, 'seed'] },
+      ],
     });
-
     // #then
     expect({
       beforeReplacement,
       observed: await Promise.race([observed, pause(20).then(() => 'still-waiting' as const)]),
-      oldRecord: harness.store.$records.get().get('sheet:old'),
+      oldRecord: harness.store.$records.get().get('blk:old'),
     }).toEqual({
       beforeReplacement: 'pending',
       observed: {
         outcome: { kind: 'answered', answer: undefined },
-        record: { k: 'sheet:hero', d: { set: 'pc', order: 1 }, c: 1, a: 'gm' },
+        record: {
+          k: 'blk:hero',
+          d: { set: 'pc', order: 1, cells: {} },
+          c: 1,
+          a: 'gm',
+          l: [1, 'seed'],
+        },
       },
       oldRecord: undefined,
     });
   });
-
   test('waiting-access reports progress and only the final roll code settles the outcome', async () => {
     // #given
     const harness = await loadedHarness(['roll']);
@@ -428,7 +451,6 @@ describe('replica client command outcomes', () => {
     await emit(harness, { t: 'roll-outcome', id: 'roll', outcome: { code: 'waiting-access' } });
     const afterProgress = await Promise.race([outcome, pause(5).then(() => 'pending' as const)]);
     await emit(harness, { t: 'roll-outcome', id: 'roll', outcome: { code: 'rolled' } });
-
     // #then
     expect({ waiting, afterProgress, outcome: await outcome }).toEqual({
       waiting: 1,
@@ -436,7 +458,6 @@ describe('replica client command outcomes', () => {
       outcome: { kind: 'answered', answer: { code: 'rolled' } },
     });
   });
-
   test('stop settles every waiting outcome as timed out without rejecting', async () => {
     // #given
     const harness = await loadedHarness(['command', 'roll']);
@@ -455,14 +476,12 @@ describe('replica client command outcomes', () => {
 
     // #when
     harness.client.stop();
-
     // #then
     expect(await Promise.all([command, roll])).toEqual([
       { kind: 'timed-out' },
       { kind: 'timed-out' },
     ]);
   });
-
   test('a command over one message is refused without a send or a timer', async () => {
     // #given
     const harness = await loadedHarness(['large']);
@@ -495,7 +514,6 @@ describe('replica client command outcomes', () => {
       timers: 0,
     });
   });
-
   test('a late answer after timeout is dropped', async () => {
     // #given
     const harness = await loadedHarness(['late'], { commandTimeoutMs: 5 });
@@ -507,7 +525,6 @@ describe('replica client command outcomes', () => {
     // #when
     await pause(15);
     await emit(harness, { t: 'command-done', id: 'late' });
-
     // #then
     expect(await outcome).toEqual({ kind: 'timed-out' });
   });
@@ -574,7 +591,12 @@ const TIMEOUT_CASES: readonly {
     name: 'link-set',
     field: 'linkSetTimeoutMs',
     begin: (client) =>
-      client.sendCommand({ type: 'link-set', tokenId: 'token', sheetId: 'hero', instanceId: null }),
+      client.sendCommand({
+        type: 'link-set',
+        tokenId: 'token',
+        sheetId: 'hero',
+        cellId: 'portrait',
+      }),
   },
   {
     name: 'roll',
@@ -648,7 +670,6 @@ function startHarness(ids: string[], timing: Partial<Timing> = {}): Harness {
 
 async function loadedHarness(ids: string[], timing: Partial<Timing> = {}): Promise<Harness> {
   const harness = startHarness(ids, timing);
-
   await emit(harness, PROJECTION);
 
   return harness;
@@ -659,7 +680,15 @@ async function emit(harness: Harness, message: JsonValue): Promise<void> {
   await pause(0);
 }
 
-function projectionPart(i: number, n: number): Extract<EngineMessage, { t: 'projection' }> {
+function projectionPart(
+  i: number,
+  n: number,
+): Extract<
+  EngineMessage,
+  {
+    t: 'projection';
+  }
+> {
   return { ...PROJECTION, i, n };
 }
 

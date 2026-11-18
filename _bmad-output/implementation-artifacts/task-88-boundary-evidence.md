@@ -1,0 +1,127 @@
+# TASK-88 boundary evidence
+
+## Accepted boundary, window 6
+
+Accepted source: `6695d2346fbd2a0107e2fb24e19c9473bb28bf54`.
+The original integration checkout now contains this exact source.
+TASK-109 repairs the remaining copied-child token target. TASK-80 supplies
+the v4 forms, scoped ids, rename propagation and loaded-file warnings.
+
+TASK-77 AC2's temporary blanket refusal of repeat tabs and nesting is
+**superseded by implemented and verified support**, not claimed as tested.
+The public parser still rejects invalid structure, duplicate ids within one
+scope and invalid name fields. Valid repeat tabs and parent-local nested ids
+remain accepted.
+
+| Criterion | Current evidence |
+| --- | --- |
+| TASK-88 AC1 | `presetProblems` reports invalid items; `builderProblems` maps them to source nodes. Public upload validates before mutation. The full unit run passes the item-path, blocked-download and no-write upload owners. |
+| TASK-88 AC2 | The full run passes ordinary repeats, explicit repeat-tab name fields and the same nested id below different parents. |
+| TASK-88 AC3 / TASK-77 AC2 | Runtime and Builder tests now pass together, including full-path copied-child opening. The obsolete temporary refusal is superseded. |
+| TASK-88 AC4 | Published `docs/preset-format.md` and canonical `spec-muster-roll/preset-format.md` describe supported nesting and complete paths. Neither promises a blanket rejection. |
+
+All checks below ran on the clean accepted source in
+`preset-v4-final-w6-20261118`. No source or tests changed during the runs.
+
+| Command | Result |
+| --- | --- |
+| `bunx oxfmt --ignore-path .gitignore --check .` | exit 0; 394 matched files |
+| `bun run lint` | exit 0; 293 existing warnings, no errors |
+| `bun run typecheck` | exit 0 |
+| `bun test` | exit 0; 3455 pass, one existing no-DOM environment skip |
+| `bun run build` | exit 0 |
+| `bun run test:browser -- --config=playwright.verify.config.ts --workers=2` | exit 0; 583 pass, no skips, flaky cases or errors |
+
+Raw logs and revision/exit metadata:
+`~/.cache/herdr-run/w6-final-{format,lint,types,unit,build,browser}.*`.
+Browser JSON and traces:
+`preset-v4-final-w6-20261118/test-results/verify/window6-final/`.
+The unit log contains the six parser, Builder-path and no-write upload owners
+listed in the historical commands below, all passing in this final run.
+
+Independent review: TASK-109 `01-initial`, final profile, 2/2 sources,
+no findings; TASK-80 `05-after-fix`, final profile, 2/2 sources,
+one minor deferred as TASK-112. Neither run degraded.
+The loaded-warning test detects the former positional-restore bug under
+mutation; all five Builder calibration rows and the navigation row passed.
+
+This accepts the agreed automated scope, not every constructed edge case.
+TASK-99/100/101/102/103/105/106/108 remain optional.
+TASK-111 records unavailable warning identity in older drafts;
+TASK-112 records opening a file identical to an origin-less draft.
+Runtime upload still requires destructive-change confirmation.
+TASK-86 remains the owner's live Owlbear check.
+
+## Historical verdicts and evidence
+
+The records below explain earlier blocked states. They do not replace the
+window 6 acceptance above.
+
+**Window 5:** The earlier runtime failures were repaired at `3d0c96a`, with
+3432 unit tests and 579 browser tests passing. Confirming review then found
+TASK-109: opening a copied nested child from its token can reveal the source
+child. TASK-79 remains blocked, so this record still does not claim complete
+support or close TASK-77 AC2. See `task-79-window5-review.md`.
+
+**Not accepted after integration review.** The checks below prove selected
+parser and runtime paths. They do not establish complete nested support.
+`task-79-window4-review.md` records unsupported section→row rendering, nested
+player proposals, and incomplete full-path consumers. TASK-77 AC2 stays open.
+The earlier supersession conclusion and matrix below are provisional evidence,
+not an acceptance verdict. TASK-79 still owns the required runtime repairs.
+
+This record does not claim TASK-79 AC5. The live Owlbear GM/player scenario
+remains owned by TASK-86.
+
+## Boundary matrix
+
+| Task criterion | Proven boundary | Evidence |
+| --- | --- | --- |
+| TASK-88 AC1 | The public upload reader calls `parsePresetFile` before encoding data for the replica. `presetProblems` emits item paths, and Builder maps each path to its source UID and disables download when a problem exists. Invalid duplicate ids, missing `nameField`s, malformed repeat values, and invalid structure are refused at their source item. | `src/ui/preset-actions.ts:262-281`; `src/core/preset.ts:741-989`; `src/builder/problems.ts:32-70`; current parser/Builder run below. |
+| TASK-88 AC2 | Repeat tabs, ordinary repeat sections and rows, and nested parent-local repeat ids remain valid. Reusing `attack` beneath different parent scopes is valid; only duplicate ids below the same parent are refused. | `docs/preset-format.md:27-29,137-169`; `src/core/preset.test.ts:382-417,950-978,1207-1226`; current parser run below. |
+| TASK-88 AC3 / TASK-77 AC2 | The historical temporary repeat-tab/nested-repeat refusal is obsolete. It must not be restored or claimed as tested. The current boundary is the normal v4 structural and rule validation above. | TASK-79 ticket criteria 1-6 and calibration evidence; `final-tested-state-mapping.txt`; TASK-77 AC2 wording plus TASK-88 preparation. |
+| TASK-88 AC4 | Published and canonical format documentation say that `repeat` is legal on all four container kinds, scopes may nest at any depth, and paths contain every ancestor pair. Neither document says nested scopes or repeat tabs are rejected. | `docs/preset-format.md:14-29,151-169`; `_bmad-output/specs/spec-muster-roll/preset-format.md:7-35,51-68`. These wording changes are already in accepted TASK-79 integration `29ffe1719f3e881b12dbbe2dfc7ee200902ae937`. |
+
+## Checks-only decision
+
+No test was added. TASK-88 changes the evidence record, not a consumer-visible
+contract or source behavior. A new regression would duplicate these existing
+owners:
+
+- `src/core/preset.test.ts` owns public parsing, supported repeat tabs,
+  parent-local nested ids, and item paths for rule failures.
+- `src/builder/problems.test.ts` owns mapping parser problems to Builder source
+  items and the blocked download.
+- `src/replica/engine-preset.test.ts` owns no-write preset diff and rejected
+  preset-upload behavior.
+- TASK-79 owns runtime nesting, complete paths, lexical lookup, duplication,
+  import, and browser rendering. Its calibrated tests are recorded in
+  `/Users/seigiard/.claude/artifacts/preset-v4-window4-20261117/task-79/nested-tdd-20261117-202031/test-writer-3.report.md`.
+
+No actual unsupported repeat shape or unowned occurrence was reproduced. TASK-80
+owns Builder controls and its additional tests; this record does not modify
+those files.
+
+## Current-run evidence
+
+Both commands ran from
+`/Users/seigiard/.herdr/worktrees/owlbear-muster-roll/task88-boundary-w4-20261117`
+at `29ffe1719f3e881b12dbbe2dfc7ee200902ae937`. The worktree had uncommitted
+TASK-88 Markdown only (`dirty=1`); no source or test file was changed.
+
+| Command | Exit | Raw output |
+| --- | ---: | --- |
+| `bun test src/core/preset.test.ts src/builder/problems.test.ts --test-name-pattern 'same nested repeat id\|repeat tab with its explicit name field\|lists every problem\|marks each invalid state'` | 0; 4 pass, 0 fail | `/Users/seigiard/.cache/herdr-run/task88-parser-builder.log`; durable state: `task88-parser-builder.meta`, `.exit` |
+| `bun test src/replica/engine-preset.test.ts --test-name-pattern 'answers with the count of stored values the preset erases, and writes nothing\|is refused when the stored preset does not decode'` | 0; 2 pass, 0 fail | `/Users/seigiard/.cache/herdr-run/task88-upload-boundary.log`; durable state: `task88-upload-boundary.meta`, `.exit` |
+
+Accepted TASK-79 browser evidence is tied to clean candidate
+`301dfcfb65028d815f6c9205ce31b4356a152f66`: focused nested owner `1 passed`
+and full Playwright `573 passed`; see
+`/Users/seigiard/.claude/artifacts/preset-v4-window4-20261117/task-79/nested-tdd-20261117-202031/final-tested-state-mapping.txt`.
+
+## Documentation checks
+
+| Command | Exit | Raw output |
+| --- | ---: | --- |
+| `bunx oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern --check "_bmad-output/implementation-artifacts/spec-task-88-supported-repeat-boundary.md" "_bmad-output/implementation-artifacts/task-88-boundary-evidence.md"` | 0; Markdown is excluded, so the formatter found no matching files | `/Users/seigiard/.cache/herdr-run/task88-doc-format.log`; durable state: `task88-doc-format.meta`, `.exit` |
+| `git diff --check` | 0; no output | `/Users/seigiard/.cache/herdr-run/task88-diff-check.log`; durable state: `task88-diff-check.meta`, `.exit` |

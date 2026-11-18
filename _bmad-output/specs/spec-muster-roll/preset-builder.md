@@ -12,17 +12,18 @@ The extension settings have a button that opens the builder in a new tab. Exchan
 
 ## Editing model
 
-- A structure tree (templates, tabs, sections, rows, cells) with a form for the selected item.
-- A new template starts with one untitled tab. Sections drag between tabs. The tab form sets its title and visibility.
+- A structure tree (templates, tabs, sections, rows, cells) with a form for the selected item. The form shows the keys the node's kind takes, from the registry in `preset-format.md` (Tree): a row has a form too, with `visibility` and `repeat`.
+- A new template starts with one untitled tab. Sections drag between tabs, rows between sections. The tab form sets its title, visibility and repeat.
+- `repeat` on a template, tab, section or row is one control that opens its `id` and `nameField`; the `nameField` choices are the `text` fields inside that scope. Turning `repeat` off on a loaded preset warns that its blocks in the room will be erased.
 - A live preview beside them, drawn by the extension's own sheet components.
 - The first click on a preview cell selects its item in the tree. A second click or Enter types a value into the snapshot (`builder-and-dev.md`).
 - The preview shows the tab that holds the item selected in the tree, and its tabs can be switched.
 
-## Field ids
+## Ids
 
-- Made once from the label at field creation: transliterated, follows the id rules, unique in scope.
+- A field id is made once from the label at field creation: transliterated, follows the id rules, unique in scope. A repeat scope's `id` and a token cell's `id` are made the same way from the node's title or its place.
 - Kept when the label changes.
-- Shown in the field form as the name for formulas.
+- Shown in the form as the name for formulas, records and links.
 - The GM may rewrite an id to a short name (`str`, `dex`, `attr_attack`).
 - Formula inputs offer field ids as completions.
 
@@ -30,8 +31,8 @@ The extension settings have a button that opens the builder in a new tab. Exchan
 
 - Rewrites the id in every formula that resolves to that field, by whole word: `str` does not touch `str_tired`.
 - Says how many formulas changed.
-- Scopes follow the parser (`resolveFieldReference`): a template's fields outside repeat sections are one scope, and each repeat section is its own. Each template is separate.
-- In a preset opened from a file, a changed id warns that the field's stored values in the room will be erased, because an upload erases values of removed ids (CAP-8).
+- Scopes follow the parser (`resolveFieldReference`): a block, then each enclosing block, then the template's fields outside every repeat scope. Each template is separate.
+- In a preset opened from a file, a changed id warns that the field's stored values in the room will be erased, because an upload erases values of removed ids (CAP-8). A changed repeat scope id warns the same about its blocks.
 
 ## Draft, undo, validation
 
@@ -45,10 +46,10 @@ The extension settings have a button that opens the builder in a new tab. Exchan
 
 The whole format of `docs/preset-format.md`:
 
-- every sheet set and single sheet with its properties;
-- tab `title` and `visibility`;
-- section `title`, `width`, `columns`, `repeat` and linkable;
-- every cell kind;
+- every template with its properties, `repeat` included;
+- tab, section and row `title`, `visibility` and `repeat` with its `id` and `nameField`;
+- section `width` and `columns`;
+- every cell kind, the token cell included;
 - `window`.
 
 ## Existing parts to reuse
@@ -83,7 +84,7 @@ Guidance for architecture, from research on 2026-11-11. Not product requirements
 - Build from parts, no editor library:
   - the tree is react-aria-components `Tree` with `useDragAndDrop`, already a dependency;
   - one store holds the preset itself, and undo/redo is a stack of past presets;
-  - property forms for the node kinds (tab, section, row, text, field, dice) are written by hand. Generating them from the zod schema was rejected on 2026-11-12: values drawn from other data (`nameField`, formula ids), edits with side effects (id rename, `set` ↔ `single`, field type) and the formula and option inputs stay hand-written, and the cell form is mostly such exceptions;
+  - property forms for the node kinds (template, tab, section, row, text, field, dice, token) are written by hand, one control per registry key. Generating them from the zod schema was rejected on 2026-11-12: values drawn from other data (`nameField`, formula ids), edits with side effects (id rename, `repeat` on and off, field type) and the formula and option inputs stay hand-written, and the cell form is mostly such exceptions. Version 4 shrinks the exceptions: `repeat` carries its `id` and `nameField`, and no key depends on another;
   - the preview uses our sheet components, and each cell carries a path for click-to-select;
   - zod `issue.path` puts each error at its item.
 - Rejected libraries:

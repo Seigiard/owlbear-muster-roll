@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-
 import { dicePlusDice, dicePlusFaces, dicePlusTarget } from '@/core/dice-plus';
 import type { DiceTerm } from '@/core/formula-evaluate';
 import type { JsonValue } from '@/core/json';
@@ -51,11 +50,9 @@ describe('dicePlusDice', () => {
   ])('writes %s as one positive notation', (_case, given, notation) => {
     // #when
     const dice = dicePlusDice(given);
-
     // #then
     expect(dice?.notation).toBe(notation);
   });
-
   test.each<[string, DiceTerm[]]>([
     ['no dice', []],
     ['a d3', terms([1, 3])],
@@ -69,7 +66,6 @@ describe('dicePlusDice', () => {
   ])('leaves %s to a local roll', (_case, given) => {
     // #when
     const dice = dicePlusDice(given);
-
     // #then
     expect(dice).toBeNull();
   });
@@ -79,7 +75,6 @@ describe('dicePlusTarget', () => {
   test('shows a roll of a visible sheet to everyone and of a hidden sheet to GM clients only', () => {
     // #when
     const targets = [dicePlusTarget(false), dicePlusTarget(true)];
-
     // #then
     expect(targets).toEqual(['everyone', 'gm_only']);
   });
@@ -106,7 +101,6 @@ describe('dicePlusFaces', () => {
       ],
     });
   });
-
   test('gives the faces back in tree order for groups in dice set order', () => {
     // #when: `1d20 + 1d4` goes as `1d4+1d20`.
     const faces = dicePlusFaces(
@@ -126,7 +120,6 @@ describe('dicePlusFaces', () => {
       ],
     });
   });
-
   test('splits a merged group between same-sided terms in their order', () => {
     // #when: `2d6 + 1d8 - 1d6` goes as `3d6+1d8`.
     const faces = dicePlusFaces(
@@ -148,11 +141,9 @@ describe('dicePlusFaces', () => {
       ],
     });
   });
-
   test('reads the 0 dicex reports for a d10 that shows 10 as 10', () => {
     // #when
     const faces = dicePlusFaces(terms([2, 10]), result([['d10', [0, 7]]]));
-
     // #then
     expect(faces).toEqual({
       ok: true,
@@ -162,7 +153,6 @@ describe('dicePlusFaces', () => {
       ],
     });
   });
-
   test.each<[string, DiceTerm[], JsonValue]>([
     ['one group missing', VOLLEY, result([['d6', [6, 1]]])],
     [
@@ -232,7 +222,6 @@ describe('dicePlusFaces', () => {
   ])('refuses a result with %s', (_case, given, data) => {
     // #when
     const faces = dicePlusFaces(given, data);
-
     // #then
     expect(faces.ok).toBe(false);
   });

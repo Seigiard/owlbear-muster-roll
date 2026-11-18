@@ -1,11 +1,12 @@
+import { fixtureRecord } from './block-fixtures';
 import { readFileSync } from 'node:fs';
-
 import { expect } from '@playwright/test';
 import type { BrowserContext, Page } from '@playwright/test';
 import { deflateSync, strToU8 } from 'fflate';
-import { z } from 'zod';
-
 import type { JsonValue } from '@/core/json';
+import { assembleRecords } from '@/core/merge';
+import { parsePresetFile } from '@/core/preset';
+import { blockDataSchema, recordSchema, type Cell, type VersionedRecord } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 // The side-effect-free part of the mock: its URL params and naming rules, never the platform.
 // oxlint-disable-next-line no-restricted-imports
@@ -30,7 +31,7 @@ import {
 } from '@/platform/mock/client-params';
 
 // The mock room's storage before any import: generation 0 with no author.
-export const STORAGE_PREFIX = `mr3:${MOCK_ROOM_ID}:0::`;
+export const STORAGE_PREFIX = `mr4:${MOCK_ROOM_ID}:0::`;
 
 export const EXAMPLE_PRESET_TEXT = readFileSync(
   new URL('../../docs/example-preset.json', import.meta.url),
@@ -39,33 +40,35 @@ export const EXAMPLE_PRESET_TEXT = readFileSync(
 
 // The "+" of the example preset's sheet set "Персонажи", which shows once a GM window has a preset.
 export const ADD = 'Добавить: Персонажи';
-
 const CHANNEL = 'app.muster-roll/ui';
-const ROOM_STORAGE_PREFIX = 'mr3:';
+const ROOM_STORAGE_PREFIX = 'mr4:';
 
 // A command id `afterSettling` sends, so a watched window can tell its probes from real commands.
 const PROBE_PREFIX = 'probe-';
 
 // What `storedData` reads for a key with no record, so a tombstone's `null` cannot pass for one.
 export const ABSENT = '(absent)';
+export const storedRecordSchema = recordSchema;
 
-export const storedRecordSchema = z.object({
-  k: z.string(),
-  d: z.json(),
-  c: z.number(),
-  a: z.string(),
-});
+export type StoredRecord = VersionedRecord;
 
-export type StoredRecord = { k: string; d: JsonValue; c: number; a: string };
+export type StorageGeneration = {
+  n: number;
+  a: string;
+};
 
-export type StorageGeneration = { n: number; a: string };
-
-export type StorageKeyParts = { generation: StorageGeneration; recordKey: string };
+export type StorageKeyParts = {
+  generation: StorageGeneration;
+  recordKey: string;
+};
 
 // Records by key, so a comparison does not depend on the order the storage lists its keys in.
 export type Keyed = Record<string, StoredRecord>;
 
-export type SeenCommand = { id: string; type: string };
+export type SeenCommand = {
+  id: string;
+  type: string;
+};
 
 // The mock's URL params for one client of the room. An empty client is the default one.
 export type ClientParams = {
@@ -88,12 +91,17 @@ export type ClientParams = {
 };
 
 // One client: its background page and one window, which share a connection id.
-export type RoomClient = { window: Page; background: Page; connectionId: string };
+export type RoomClient = {
+  window: Page;
+  background: Page;
+  connectionId: string;
+};
 
 declare global {
   interface Window {
     seenCommands: SeenCommand[];
     rejectedCommandIds: string[];
+    rejectedCommands: { id: string; reason: string }[];
   }
 }
 
@@ -101,24 +109,33 @@ let probes = 0;
 
 // A sheet of a sheet set. `set` is the sheet set's template id, `pc` in the example preset, and
 // `name` is the value of its name field, `name` in every fixture.
-export type SeededSheet = { id: string; name: string; order: number; set?: string };
+export type SeededSheet = {
+  id: string;
+  name: string;
+  order: number;
+  set?: string;
+};
 
 // A seeded record has the author "seed". A tombstone is minted by the background, as the mock's
 // own connection.
 export function record(k: string, d: JsonValue, c = 1): StoredRecord {
-  return { k, d, c, a: d === null ? 'mock-connection' : 'seed' };
+  return fixtureRecord(k, d, c, d === null ? 'mock-connection' : 'seed');
 }
 
-// AD-2: the `sheet:` record of a sheet of a sheet set. Its name lives in its name field's row.
+// AD-2: the root block record of a sheet of a sheet set.
 export function sheetRecord(sheet: SeededSheet): StoredRecord {
-  return record(`sheet:${sheet.id}`, { set: sheet.set ?? 'pc', order: sheet.order });
+  return record(`blk:${sheet.id}`, { set: sheet.set ?? 'pc', order: sheet.order });
 }
 
-// The `sheet:` record and the name field's `row:` record of a sheet, with no row for an empty name.
+// One assembled root record, with the name field cell when it has a value.
 export function sheetRecords(sheet: SeededSheet): StoredRecord[] {
-  return sheet.name === ''
-    ? [sheetRecord(sheet)]
-    : [sheetRecord(sheet), record(`row:${sheet.id}:name`, { name: sheet.name })];
+  return [
+    record(`blk:${sheet.id}`, {
+      set: sheet.set ?? 'pc',
+      order: sheet.order,
+      cells: sheet.name === '' ? {} : { name: sheet.name },
+    }),
+  ];
 }
 
 // A sheet of the example preset's sheet set "Персонажи".
@@ -134,7 +151,7 @@ export function repRecord(
   order: number,
   cells: Record<string, JsonValue>,
 ): StoredRecord {
-  return record(`rep:${sheetId}:${sectionId}:${instanceId}`, { order, cells });
+  return record(`blk:${sheetId}:${sectionId}:${instanceId}`, { order, cells });
 }
 
 // One NPC of the example preset: a repeat block of the single sheet "NPC", section "Противники".
@@ -159,7 +176,6 @@ export async function openBackground(
   path = '/background.html',
 ): Promise<Page> {
   const background = await context.newPage();
-
   await background.goto(path, { waitUntil: 'networkidle' });
 
   return background;
@@ -174,9 +190,7 @@ export async function openRoom(
 ): Promise<Page> {
   await page.goto('/index.html');
   await seedStorage(page, records, presetText);
-
   const background = await openBackground(context);
-
   await expect(page.getByRole('button', { name: ADD })).toBeVisible();
 
   return background;
@@ -192,8 +206,25 @@ export async function seedStorage(
   const prefix = `${deviceStoragePrefix(device)}${STORAGE_PREFIX}`;
   await writeStorageEntries(page, [
     [`${prefix}preset`, presetRecord(presetText)],
-    ...recordEntries(records, prefix),
+    ...recordEntries(materializedRecords(records, presetText), prefix),
   ]);
+}
+
+export function materializedRecords(
+  records: readonly StoredRecord[],
+  presetText = EXAMPLE_PRESET_TEXT,
+): StoredRecord[] {
+  const preset = parsePresetFile(presetText);
+
+  const singleRoots = preset.ok
+    ? preset.value.templates.flatMap((template) =>
+        template.repeat === undefined
+          ? [record(`blk:${template.id}`, { order: 0, cells: {} })]
+          : [],
+      )
+    : [];
+
+  return [...assembleRecords([...singleRoots, ...records]).values()];
 }
 
 // Seeds records under generation 0 without adding a preset.
@@ -216,7 +247,6 @@ export async function openClientWindow(
   params: ClientParams = {},
 ): Promise<Page> {
   const window = await context.newPage();
-
   await window.goto(`/index.html${clientQuery(params)}`);
 
   return window;
@@ -251,7 +281,6 @@ export async function openGmClients(
   }
 
   await seedStorage(first, records, presetText);
-
   const opened: RoomClient[] = [];
 
   for (const [index, params] of clients.entries()) {
@@ -263,7 +292,6 @@ export async function openGmClients(
 
     // oxlint-disable-next-line no-await-in-loop
     const background = await openClientBackground(context, params);
-
     // oxlint-disable-next-line no-await-in-loop
     await expect(window.getByRole('button', { name: ADD })).toBeVisible();
     opened.push({ window, background, connectionId: connectionIdOf(params) });
@@ -283,7 +311,6 @@ export async function postRemote(
     ([channel, sender, text]) => {
       // SAFETY: the text is the JSON.stringify of a JsonValue, one line below.
       const data = JSON.parse(text) as JsonValue;
-
       window.mockPlatform.sendRemoteAs(sender, channel, data);
     },
     [SYNC_CHANNEL, connectionId, JSON.stringify(message)] as const,
@@ -297,12 +324,14 @@ export async function addPartyMember(
   page: Page,
   connectionId: string,
   role: 'GM' | 'PLAYER',
-  as: { id?: string; name?: string } = {},
+  as: {
+    id?: string;
+    name?: string;
+  } = {},
 ): Promise<void> {
   await page.evaluate(
     ([key, channel, member]) => {
       const party: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
-
       localStorage.setItem(key, JSON.stringify([...(Array.isArray(party) ? party : []), member]));
       new BroadcastChannel(channel).postMessage('changed');
     },
@@ -323,6 +352,14 @@ export async function storedData(page: Page, key: string): Promise<JsonValue> {
   return text === null ? ABSENT : storedRecordSchema.parse(JSON.parse(text)).d;
 }
 
+export async function storedCell(page: Page, key: string, fieldId: string): Promise<Cell | string> {
+  const data = await storedData(page, key);
+
+  if (data === ABSENT) return ABSENT;
+
+  return blockDataSchema.parse(data).cells[fieldId] ?? ABSENT;
+}
+
 // Every stored record whose key starts with `prefix`, in no set order. The empty prefix reads every
 // record, the preset included.
 export async function storedRecords(page: Page, prefix = ''): Promise<StoredRecord[]> {
@@ -339,7 +376,7 @@ export async function storedRecords(page: Page, prefix = ''): Promise<StoredReco
 
 // Builds a record's room storage key under a generation, defaulting to generation 0.
 export function storageKey(key: string, generation: StorageGeneration = { n: 0, a: '' }): string {
-  return `mr3:${MOCK_ROOM_ID}:${generation.n}:${generation.a}:${key}`;
+  return `mr4:${MOCK_ROOM_ID}:${generation.n}:${generation.a}:${key}`;
 }
 
 // Reads every room storage key on this page's device, across all room ids.
@@ -358,7 +395,7 @@ export async function roomKeys(page: Page): Promise<string[]> {
 
 // Splits a room storage key into its generation and record key.
 export function storageKeyParts(key: string): StorageKeyParts {
-  const match = /^mr3:([^:]+):(\d+):([^:]*):(.*)$/.exec(key);
+  const match = /^mr4:([^:]+):(\d+):([^:]*):(.*)$/.exec(key);
 
   if (match === null) {
     throw new Error(`not a room storage key: ${key}`);
@@ -379,7 +416,9 @@ function recordEntries(
   records: readonly StoredRecord[],
   prefix: string,
 ): (readonly [string, string])[] {
-  return records.map((one) => [`${prefix}${one.k}`, JSON.stringify(one)] as const);
+  return [...assembleRecords(records).values()].map(
+    (one) => [`${prefix}${one.k}`, JSON.stringify(one)] as const,
+  );
 }
 
 async function writeStorageEntries(
@@ -422,7 +461,7 @@ export async function watchCommands(page: Page): Promise<void> {
     ([channel, probePrefix]) => {
       window.seenCommands = [];
       window.rejectedCommandIds = [];
-
+      window.rejectedCommands = [];
       window.mockPlatform.broadcast.onMessage(channel, (event) => {
         const message = Object(event.data);
         const id = String(message.id);
@@ -431,6 +470,7 @@ export async function watchCommands(page: Page): Promise<void> {
           window.seenCommands.push({ id, type: String(Object(message.command).type) });
         } else if (message.t === 'command-rejected') {
           window.rejectedCommandIds.push(id);
+          window.rejectedCommands.push({ id, reason: String(message.reason) });
         }
       });
     },
@@ -441,11 +481,12 @@ export async function watchCommands(page: Page): Promise<void> {
 // The background answers in order, so once it rejects a probe sent now, every command that reached
 // it before the probe has been handled and its records saved. Needs `watchCommands` first. The
 // stored records leave out the preset.
-export async function afterSettling(page: Page): Promise<{ commands: string[]; stored: Keyed }> {
+export async function afterSettling(page: Page): Promise<{
+  commands: string[];
+  stored: Keyed;
+}> {
   probes += 1;
-
   const probe = `${PROBE_PREFIX}${probes}`;
-
   await page.evaluate(
     ([channel, id]) => {
       void window.mockPlatform.broadcast.sendMessage(
@@ -459,7 +500,6 @@ export async function afterSettling(page: Page): Promise<{ commands: string[]; s
   await expect
     .poll(() => page.evaluate((id) => window.rejectedCommandIds.includes(id), probe))
     .toBe(true);
-
   const seen = await page.evaluate(() => window.seenCommands);
   const stored = (await storedRecords(page)).filter((one) => one.k !== 'preset');
 
@@ -467,10 +507,16 @@ export async function afterSettling(page: Page): Promise<{ commands: string[]; s
 }
 
 // The engine's own answer to a projection request: its sync state.
-export async function syncRead(page: Page): Promise<{ state: string; answered: boolean }> {
+export async function syncRead(page: Page): Promise<{
+  state: string;
+  answered: boolean;
+}> {
   return page.evaluate(
     (channel) =>
-      new Promise<{ state: string; answered: boolean }>((resolve) => {
+      new Promise<{
+        state: string;
+        answered: boolean;
+      }>((resolve) => {
         const nonce = `read-${Date.now()}`;
 
         const stop = window.mockPlatform.broadcast.onMessage(channel, (event) => {

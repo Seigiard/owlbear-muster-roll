@@ -1,27 +1,37 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { CommandOutcome, CommandOutcomePromise, ErasedCounts } from '@/ui/replica-client';
-
 import { snapshotReducer, type SnapshotState } from './snapshot-actions-reducer';
 
-type CheckingState = Extract<SnapshotState, { phase: 'checking' }>;
+type CheckingState = Extract<
+  SnapshotState,
+  {
+    phase: 'checking';
+  }
+>;
 
-type AskingState = Extract<SnapshotState, { phase: 'asking' }>;
+type AskingState = Extract<
+  SnapshotState,
+  {
+    phase: 'asking';
+  }
+>;
 
-type ImportingState = Extract<SnapshotState, { phase: 'importing' }>;
+type ImportingState = Extract<
+  SnapshotState,
+  {
+    phase: 'importing';
+  }
+>;
 
 describe('snapshotReducer', () => {
   test('resets a previous file message while preserving the confirmation count', () => {
     // #given
     const shown = idle({ message: 'Предыдущее сообщение', ask: 4 });
-
     // #when
     const reset = snapshotReducer(shown, { type: 'reset' });
-
     // #then
     expect(reset).toEqual({ phase: 'idle', message: null, ask: 4 });
   });
-
   test('shows a file error while preserving the confirmation count', () => {
     // #given
     const ready = idle({ ask: 4 });
@@ -39,7 +49,6 @@ describe('snapshotReducer', () => {
       ask: 4,
     });
   });
-
   test('waits for the supplied snapshot check request', () => {
     // #given
     const request = checkRequest();
@@ -60,7 +69,6 @@ describe('snapshotReducer', () => {
       ask: 2,
     });
   });
-
   test('asks for confirmation even when the check reports no losses', () => {
     // #given
     const checking = checkingState({ ask: 2 });
@@ -83,7 +91,6 @@ describe('snapshotReducer', () => {
       ask: 3,
     });
   });
-
   test('asks with the exact counts, digest, data, and next confirmation count from the check', () => {
     // #given
     const checking = checkingState({ data: 'snapshot-with-drops', ask: 5 });
@@ -106,15 +113,12 @@ describe('snapshotReducer', () => {
       ask: 6,
     });
   });
-
   test('starts importing with the supplied outcome after confirmation', () => {
     // #given
     const asking = askingState({ ask: 3 });
     const request = importRequest();
-
     // #when
     const importing = snapshotReducer(asking, { type: 'confirm', outcome: request });
-
     // #then
     expect(importing).toEqual({
       phase: 'importing',
@@ -123,29 +127,22 @@ describe('snapshotReducer', () => {
       ask: 3,
     });
   });
-
   test('cancels confirmation without advancing its count', () => {
     // #given
     const asking = askingState({ ask: 3 });
-
     // #when
     const cancelled = snapshotReducer(asking, { type: 'cancel' });
-
     // #then
     expect(cancelled).toEqual({ phase: 'idle', message: null, ask: 3 });
   });
-
   test('closes confirmation when catch-up starts', () => {
     // #given
     const asking = askingState({ ask: 3 });
-
     // #when
     const closed = snapshotReducer(asking, { type: 'catch-up-started' });
-
     // #then
     expect(closed).toEqual({ phase: 'idle', message: null, ask: 3 });
   });
-
   test('asks again with the changed count and digest', () => {
     // #given
     const importing = importingState({ data: 'snapshot-with-drops', ask: 3 });
@@ -178,7 +175,6 @@ describe('snapshotReducer', () => {
       ask: 4,
     });
   });
-
   test('reports a timed-out check as a failed snapshot import', () => {
     // #given
     const checking = checkingState({ ask: 3 });
@@ -198,7 +194,6 @@ describe('snapshotReducer', () => {
       ask: 3,
     });
   });
-
   test('reports a timed-out import as an answer that may still arrive', () => {
     // #given
     const importing = importingState({ ask: 3 });
@@ -218,7 +213,6 @@ describe('snapshotReducer', () => {
       ask: 3,
     });
   });
-
   test('maps a refused import without GM permission to its snapshot message', () => {
     // #given
     const importing = importingState({ ask: 3 });
@@ -241,7 +235,6 @@ describe('snapshotReducer', () => {
       ask: 3,
     });
   });
-
   test('reports a check answer without counts as a failed snapshot import', () => {
     // #given
     const checking = checkingState({ ask: 3 });
@@ -261,7 +254,6 @@ describe('snapshotReducer', () => {
       ask: 3,
     });
   });
-
   test('closes the flow without a message after a matching import succeeds', () => {
     // #given
     const importing = importingState({ ask: 3 });
@@ -277,7 +269,6 @@ describe('snapshotReducer', () => {
     // #then
     expect(completed).toEqual({ phase: 'idle', message: null, ask: 3 });
   });
-
   test('ignores an old check outcome after the flow resets', () => {
     // #given
     const checking = checkingState();
@@ -294,7 +285,6 @@ describe('snapshotReducer', () => {
     // #then
     expect(ignored).toBe(reset);
   });
-
   test('ignores the first check outcome after a new check starts', () => {
     // #given
     const first = checkingState({ data: 'first-snapshot' });
@@ -311,7 +301,6 @@ describe('snapshotReducer', () => {
     // #then
     expect(ignored).toBe(second);
   });
-
   test('ignores an outcome after the matching request has already reached confirmation', () => {
     // #given
     const checking = checkingState();
@@ -333,9 +322,18 @@ describe('snapshotReducer', () => {
 function idle({
   message = null,
   ask = 0,
-}: Partial<Extract<SnapshotState, { phase: 'idle' }>> = {}): Extract<
+}: Partial<
+  Extract<
+    SnapshotState,
+    {
+      phase: 'idle';
+    }
+  >
+> = {}): Extract<
   SnapshotState,
-  { phase: 'idle' }
+  {
+    phase: 'idle';
+  }
 > {
   return { phase: 'idle', message, ask };
 }

@@ -1,7 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-
 import type { RoomCopyStatus } from '@/core/ui-messages';
-
 import { roomCopyText } from './room-copy-text';
 
 // The texts of the 2.5 spec, written out by hand.
@@ -25,7 +23,6 @@ describe('roomCopyText', () => {
   ])('shows %s', (_name, roomCopy, expected) => {
     // #when
     const text = roomCopyText(roomCopy);
-
     // #then
     expect(text).toBe(expected);
   });
