@@ -1,20 +1,21 @@
 ---
 id: TASK-79
 title: 'Nested repeat: blocks inside blocks'
-status: In Progress
+status: Done
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-18T08:14:00Z'
+updated_date: '2026-11-18T08:42:00Z'
 labels:
   - format-v4
-  - blocked
 dependencies:
   - TASK-78
 references:
   - _bmad-output/specs/spec-muster-roll/preset-format.md
   - _bmad-output/specs/spec-muster-roll/storage-and-sync.md
   - _bmad-output/specs/spec-muster-roll/stories.yaml
+  - TASK-109
+  - TASK-86
 type: feature
 ordinal: 106000
 ---
@@ -58,3 +59,9 @@ Owner scope decision, 2026-11-18: keep ordinary visible nested editing and neste
 
 CURRENT window 5: repaired runtime is integrated at 3d0c96a. Format/lint/types/unit passed at that clean SHA (3432 pass/1 skip); browser579 and build passed at bc92efb with unchanged runtime inputs. Both review-fix batches are complete, but confirming round03 final (2/2 sources, no degradation) leaves TASK-109: opening a copied nested child from its token reveals the source on a plain tab. The real navigation reducer maps different parent paths to identical reveal state. TASK-108 is an optional constructed root/nested same-id case. The bounded two-fix loop ended blocked; no third repair or acceptance claim. TASK-86 remains owner-only. Durable record: _bmad-output/implementation-artifacts/task-79-window5-review.md.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed by explicit owner decision on 2026-11-18 to remove the completed implementation task from the active backlog. Nested-repeat implementation and repairs are integrated through 3d0c96a. The remaining copied-child token reveal defect is required follow-up TASK-109, not a reason to keep TASK-79 open. Live Owlbear verification remains tracked separately in TASK-86; no live check is claimed. Remaining completion sequence: fix TASK-109 and TASK-80, confirm checks, then close TASK-88 and TASK-77 AC2. This owner decision supersedes earlier notes that kept TASK-79 blocked.
+<!-- SECTION:FINAL_SUMMARY:END -->
