@@ -1,10 +1,11 @@
 ---
 id: TASK-114.1
 title: 'Core: block-address module, ADR-0003 and core consumers'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-18T18:24:00Z'
-updated_date: '2026-11-18T18:56:00Z'
+updated_date: '2026-11-18T19:54:00Z'
 labels: []
 dependencies: []
 parent_task_id: TASK-114
@@ -26,3 +27,9 @@ First PR of TASK-114. Core holds the three key forms (`blockKey`, `repKey`, `blo
 - [ ] #5 Full check passes: oxfmt, lint, typecheck, bun test, test:browser, build
 - [ ] #6 preset.ts exposes repeat scope, section and section-place lookups by scope path only; `repeatScopeById` and `repeatSectionById` no longer exist (`repeatTabById` stays: tabs exist only at depth 0; the private formula fallback in `scopeFieldsAt` stays under TASK-108)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Run the tdd chain against _bmad-output/implementation-artifacts/spec-task-114-1-block-address-core.md on branch task-114.1-block-address-core, merged into the integration branch implement-specs-114.
+<!-- SECTION:PLAN:END -->

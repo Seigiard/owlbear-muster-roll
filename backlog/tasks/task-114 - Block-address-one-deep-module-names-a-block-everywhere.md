@@ -1,9 +1,11 @@
 ---
 id: TASK-114
 title: 'Block address: one deep module names a block everywhere'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-18T18:24:00Z'
+updated_date: '2026-11-18T19:54:00Z'
 labels: []
 dependencies: []
 references:
