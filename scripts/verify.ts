@@ -84,13 +84,17 @@ async function main() {
 
   await Bun.write(resolve(evidence, 'working-tree.patch'), patch.stdout);
 
-  for (const file of untracked.stdout.toString().split('\0').filter(Boolean)) {
-    const destination = resolve(evidence, 'untracked', file);
-    // oxlint-disable-next-line no-await-in-loop
-    await mkdir(dirname(destination), { recursive: true });
-    // oxlint-disable-next-line no-await-in-loop
-    await Bun.write(destination, Bun.file(resolve(root, file)));
-  }
+  await Promise.all(
+    untracked.stdout
+      .toString()
+      .split('\0')
+      .filter(Boolean)
+      .map(async (file) => {
+        const destination = resolve(evidence, 'untracked', file);
+        await mkdir(dirname(destination), { recursive: true });
+        await Bun.write(destination, Bun.file(resolve(root, file)));
+      }),
+  );
 
   await Bun.write(
     resolve(evidence, 'metadata.json'),
@@ -119,28 +123,37 @@ async function main() {
     stderr: 'inherit',
   });
 
-  await Bun.write(
-    resolve(evidence, 'process.json'),
-    JSON.stringify(
-      {
-        launcherPid: process.pid,
-        childPid: child.pid,
-        command: [executable, ...args],
-        root,
-        startedAt: new Date().toISOString(),
-      },
-      null,
-      2,
-    ),
-  );
-
   const interrupt = () => child.kill('SIGINT');
   const terminate = () => child.kill('SIGTERM');
   process.on('SIGINT', interrupt);
   process.on('SIGTERM', terminate);
-  const exitCode = await child.exited;
-  process.off('SIGINT', interrupt);
-  process.off('SIGTERM', terminate);
+  let exitCode: number;
+
+  try {
+    await Bun.write(
+      resolve(evidence, 'process.json'),
+      JSON.stringify(
+        {
+          launcherPid: process.pid,
+          childPid: child.pid,
+          command: [executable, ...args],
+          root,
+          startedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+    exitCode = await child.exited;
+  } finally {
+    if (child.exitCode === null) {
+      child.kill('SIGTERM');
+      await child.exited;
+    }
+
+    process.off('SIGINT', interrupt);
+    process.off('SIGTERM', terminate);
+  }
 
   if (listing) {
     const assigned = [...profiles.entries()]
