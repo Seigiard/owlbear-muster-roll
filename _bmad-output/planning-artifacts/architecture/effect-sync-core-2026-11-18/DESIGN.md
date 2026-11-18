@@ -1,6 +1,6 @@
 # Replica machines as tables, failures as tagged results
 
-Status: proposed, 2026-11-18. Decision record: `docs/adr/0004-replica-machines-are-complete-transition-tables-with-tagged-results.md`. Spike: `prototypes/effect-machine-spike/`.
+Status: accepted, 2026-11-18. Decision record: `docs/adr/0004-replica-machines-are-complete-transition-tables-with-tagged-results.md`. Spike: `prototypes/effect-machine-spike/`.
 
 ## Goals, as the owner set them
 
@@ -36,7 +36,7 @@ TASK-64 (doc-4) mapped the machines and chose per-module shapes. Goal 3 needs on
 | 1, simpler core | the table replaces each module's `switch` and closure variables; `Result.gen` replaces `if (!x.ok) return x` ladders | the two above |
 | 1, lifecycle (`stopped`, timers) | one `AbortSignal` from the engine replaces the `stopped` getters; one timer helper `schedule(signal, ms, fn)` that cancels itself on `abort` | none; Effect's `Scope` later becomes a mechanical swap |
 | 1, superseded answers (the five epoch counters) | stay as they are; they answer "did a newer request of the same kind start meanwhile", not "did the client stop" | `effect` fibers, named in the revisit conditions |
-| 1, time | one clock port `{ now, schedule }` with the OBR and mock adapters; the rig moves time explicitly | none; Effect's `TestClock` is the later form |
+| 1, time | one clock port `{ now, schedule }` with the OBR and mock adapters; the rig keeps real time, and its move to explicit time is a later task | none; Effect's `TestClock` is the later form |
 | 1, sequencing (`roomMessages` chain) | deferred | `effect` `Queue`, when the ADR's revisit conditions hold |
 
 ## Findings folded in from the second review
@@ -188,6 +188,7 @@ The phase and event sets below are the starting point. Each machine's ticket fix
 | Machine | Phases (kinds) | Events it takes | Effects it emits | Verdict |
 | --- | --- | --- | --- | --- |
 | Catch-up and GM link (AD-6, AD-7, AD-9 gate) | `initializing`, `live`, `catching-up/ordinary`, `catching-up/adopting` | `enter`, `watch`, `room-copy-read`, `party-read`, `generation-heard`, `generation-read`, `adoption-staged`, `heard`, `state-requested`, `ping`, `alive`, `state-merged`, `fired(timer)`, `closing`, `party-changed`, `replica-replaced` | `CatchUpDecision`, unchanged | first table; already decision-shaped, 48 tests |
+| GM link (AD-6), `livenessTable` in the same module | `unknown`, `online`, `offline` | `heard(GM)`, `fired(gm-silence)`, `fired(ping)`, `role` | `arm`, `disarm`, `ping`, `show`, `gm-back` | first, beside the catch-up table; fed by the same shell |
 | Room copy (AD-8) | `idle`, `reading`, `writing`, `verifying`, `stopped` | `edited`, `caught-up`, `page-hidden`, `page-returned`, `fired(pause)`, `read-done`, `write-done`, `verify-done`, `failed` | `read-metadata`, `write-metadata`, `arm`, `publish-status`, `replaced` | second; `WritePhase` exists |
 | Generation and adoption (AD-9) | `settled`, `importing`, `staged`, `saving` | `import`, `wipe`, `check-snapshot`, `adopt-from-copy`, `see-generation`, `stage`, `clear-staged`, `save-adoption`, `store-written`, `store-failed`, `role-changed` | `write-store`, `remove-store`, `replace-replica`, `write-import`, `send-reset`, `flush-outbox`, `drop-pending`, `notice`, `reply` | third; keep the synchronous `saveAdoption` contract with `catch-up` |
 | Pending edits (AD-4) | per entry: `waiting`, `sent(attempt)`, `denied-quiet` | `edit`, `answered`, `rejected`, `gm-back`, `caught-up`, `fired(resend)`, `drain` | `enqueue-propose`, `arm`, `notice-denied`, `publish` | judged by its ticket |
@@ -213,7 +214,7 @@ One step per PR, the full check and a junit list equal to the baseline on each:
 | Step | Change | Oracle |
 | --- | --- | --- |
 | 0 | `src/replica/machine.ts`, `tests/support/machine-check.ts`, `docs/machines/`. `catch-up.ts` becomes a shell over `catch-up-table.ts` and `livenessTable`; the eight silent pairs become declared cells; `gmInParty` named; the engine does not change | `catch-up.test.ts` and the engine suite; the generated `docs/machines/catch-up.md` |
-| 0b | `catch-up-effects.ts`: the interpreter and the timer registry leave the engine behind an injected scheduler | engine suite; interpreter tests on a fake scheduler |
+| 0b | `catch-up-effects.ts`: the interpreter and the timer registry leave the engine behind the one timer helper `schedule(signal, ms, fn)` | engine suite; interpreter tests on a fake helper |
 | 1 | `better-result` replaces `src/core/result.ts` in 48 files, one mechanical PR, no behavior change. Owner decision of 2026-11-18 | `bun test`, `bun run test:browser` junit lists equal to the baseline |
 | 2 | Lifecycle, one PR over all six modules, after step 0b, in parallel with TASK-114, leaving `engine.ts:740-797` (`heldOpen`) untouched until TASK-114.2 is merged: the engine owns one `AbortController`; helpers take `signal` instead of `stopped: () => boolean`; one helper `schedule(signal, ms, fn)` replaces the four timer styles; subscriptions hang on `abort`; a read that returns after `stop()` is dropped by `signal.aborted`; `stop()` is one `abort()` plus the outbox flush. The five epoch counters stay | engine suite; `grep -c stopped src/replica` down to the `room-copy` phase name; one `setTimeout` call site in `src/replica` |
 | 3 | Clock port `{ now, schedule }` in `ports.ts` with the OBR and mock adapters; the engine and the timer helper take time from it; `Date.now` and `performance.now` leave `src/replica`. Owner decision of 2026-11-18: moving the rig to `advance(ms)` and replacing `pause()` and `waitUntil` is not part of this step; it is a later task, file by file | engine suite unchanged, `waitUntil` as it is; `grep -c "Date.now\|performance.now" src/replica` down to 0 |

@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Replica machines are complete transition tables; failures are tagged results; Effect waits
 
-At proposal time, `src/replica` holds the room's state machines in four shapes: a decision-list module (`catch-up`), injected-port modules (`generation-flow`, `room-protocol`, `roll-flow`, `room-copy`, `pending-edits`), a pure router (`command-routing`) and 1500 lines of wiring in `engine.ts`. Nothing checks that every phase answers every event: `switch` statements guarded by `never` helpers cover message kinds, not phase-event pairs, and eight pairs in `catch-up` answer with a silent empty list. Failures leave the replica through 86 `console.error` calls in seven patterns; the port failures `SendFailure` and `StorageFailure` are object literals with no exhaustive handling, and a domain verdict such as `too-large` reaches the player as "no write access". Stopping is a `stopped` flag in six modules, five epoch counters and a `stop()` of thirteen calls. The owner asked for a simpler core, typed errors, and state machines whose completeness is checked automatically.
+At acceptance on 2026-11-18, after three grilling rounds with the owner and a second reviewer's read, `src/replica` holds the room's state machines in four shapes: a decision-list module (`catch-up`), injected-port modules (`generation-flow`, `room-protocol`, `roll-flow`, `room-copy`, `pending-edits`), a pure router (`command-routing`) and 1500 lines of wiring in `engine.ts`. Nothing checks that every phase answers every event: `switch` statements guarded by `never` helpers cover message kinds, not phase-event pairs, and eight pairs in `catch-up` answer with a silent empty list. Failures leave the replica through 86 `console.error` calls in seven patterns; the port failures `SendFailure` and `StorageFailure` are object literals with no exhaustive handling, and a domain verdict such as `too-large` reaches the player as "no write access". Stopping is a `stopped` flag in six modules, five epoch counters and a `stop()` of thirteen calls. The owner asked for a simpler core, typed errors, and state machines whose completeness is checked automatically.
 
 The decision has four parts, in the order they land:
 
@@ -16,7 +16,7 @@ The decision has four parts, in the order they land:
 ## Consequences
 
 - `machine.ts` (the table type and `step`) and `tests/support/machine-check.ts` are plain TypeScript with `fast-check`, already a dev dependency. No runtime library enters for part 1.
-- `catch-up` is the first table, because it already returns decisions as data and has 48 module tests; its eight silent pairs become declared cells. Its interpreter and timer registry then leave the engine behind an injected scheduler, about 180 lines. `room-copy`, which already names its phases, and `generation-flow` follow. `room-protocol`, `pending-edits` and `roll-flow` are judged one by one: a machine with two phases may stay a linear function.
+- `catch-up` is the first table, because it already returns decisions as data and has 48 module tests; its eight silent pairs become declared cells. Its interpreter and timer registry then leave the engine behind the one timer helper `schedule(signal, ms, fn)`, about 180 lines. `room-copy`, which already names its phases, and `generation-flow` follow. `room-protocol`, `pending-edits` and `roll-flow` are judged one by one: a machine with two phases may stay a linear function.
 - `better-result` is the one `Result` in the repository. Its shape differs from the current type (`status === 'ok'`, `.value`, `.error`), so the swap is one mechanical change over 48 files and 314 `.ok` checks, with no behavior change. Cost: 3.4 KB gzip, zero dependencies, TypeScript 7.0.2 compiles it. Core receives only `Result` values, plain data; the error classes live beside their ports, so ADR-0003's rule for core holds.
 - Core keeps zod for the wire and the preset. UI flows keep the ADR-0002 reducer shape; a UI reducer may use the same table type when a flow has more than one phase, but nothing requires it.
 - The TASK-63 and TASK-64 criterion "no shared state-machine runtime is introduced" stands: a table type, a signal and a test helper are not a runtime. What changes is the shape rule: one shape for the state of every replica machine, so one check covers them all.
