@@ -309,7 +309,6 @@ describe('transition', () => {
       focusInWindow: false,
       tab: 'blk:rival',
       blockTab: null,
-      block: null,
       cellTab: null,
       ready: true,
     });
@@ -405,7 +404,6 @@ describe('transition', () => {
       focusInWindow: true,
       tab: 'blk:hero',
       blockTab: 1,
-      block: 'contact',
       cellTab: 1,
       ready: true,
     });
@@ -416,7 +414,6 @@ describe('transition', () => {
       focusInWindow: false,
       tab: 'blk:rival',
       blockTab: null,
-      block: null,
       cellTab: null,
       ready: true,
     });
@@ -432,7 +429,7 @@ describe('transition', () => {
       takenOpen: 'open-hero',
       blockReveal: {
         sheet: 'blk:hero',
-        instanceId: 'contact',
+        path: ['contacts', 'contact'],
         cellId: 'portrait',
         focus: true,
       },
@@ -455,7 +452,6 @@ describe('transition', () => {
       focusInWindow: true,
       tab: 'blk:hero',
       blockTab: 1,
-      block: 'contact',
       cellTab: 1,
       ready: true,
     });
@@ -474,7 +470,7 @@ describe('transition', () => {
       deleteAsk: { sheet: 'blk:hero', request: 1 },
       blockReveal: {
         sheet: 'blk:hero',
-        instanceId: 'contact',
+        path: ['contacts', 'contact'],
         cellId: 'portrait',
         focus: true,
       },
@@ -508,7 +504,7 @@ describe('transition', () => {
       focusActionsOf: 'blk:rival',
       blockReveal: {
         sheet: 'blk:hero',
-        instanceId: 'contact',
+        path: ['contacts', 'contact'],
         cellId: 'portrait',
         focus: true,
       },
@@ -520,13 +516,13 @@ describe('transition', () => {
     const unmatched = reduce(state, [
       { type: 'name-focused', sheet: 'blk:rival' },
       { type: 'actions-focused', sheet: 'blk:hero' },
-      { type: 'block-revealed', sheet: 'blk:hero', instanceId: 'other' },
+      { type: 'block-revealed', sheet: 'blk:hero', path: ['contacts', 'other'] },
     ]);
 
     const cleared = reduce(unmatched, [
       { type: 'name-focused', sheet: 'blk:hero' },
       { type: 'actions-focused', sheet: 'blk:rival' },
-      { type: 'block-revealed', sheet: 'blk:hero', instanceId: 'contact' },
+      { type: 'block-revealed', sheet: 'blk:hero', path: ['contacts', 'contact'] },
       { type: 'tab-revealed' },
       { type: 'focus-loss-handled' },
     ]);
@@ -551,7 +547,7 @@ describe('transition', () => {
         focusActionsOf: 'blk:rival',
         blockReveal: {
           sheet: 'blk:hero',
-          instanceId: 'contact',
+          path: ['contacts', 'contact'],
           cellId: 'portrait',
           focus: true,
         },
