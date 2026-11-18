@@ -129,9 +129,13 @@ describe('address comparison', () => {
     // #then
     expect({
       nested: isDescendantOf(address('s1', ['npc', 'a', 'atk', 'x']), parent),
-      stringPrefixOnly: isDescendantOf(address('s1', ['npc', 'ab']), parent),
+      stringPrefixOnly: isDescendantOf(address('s1', ['npc', 'ab', 'atk', 'x']), parent),
       self: isDescendantOf(parent, parent),
       selfOrNested: isSelfOrDescendantOf(address('s1', ['npc', 'a', 'atk', 'x']), parent),
+      selfOrStringPrefixOnly: isSelfOrDescendantOf(
+        address('s1', ['npc', 'ab', 'atk', 'x']),
+        parent,
+      ),
       selfOrSelf: isSelfOrDescendantOf(parent, parent),
       equal: sameAddress(parent, address('s1', ['npc', 'a'])),
       otherSheet: sameAddress(parent, address('s2', ['npc', 'a'])),
@@ -140,6 +144,7 @@ describe('address comparison', () => {
       stringPrefixOnly: false,
       self: false,
       selfOrNested: true,
+      selfOrStringPrefixOnly: false,
       selfOrSelf: true,
       equal: true,
       otherSheet: false,
@@ -179,6 +184,7 @@ describe('isLiveBlock', () => {
   const records = new Map([
     ['blk:s1:npc:a', fixtureRecord('blk:s1:npc:a', { order: 0, cells: {} }, 1, 'gm')],
     ['blk:s1:npc:b', fixtureRecord('blk:s1:npc:b', null, 2, 'gm')],
+    ['blk:s1:npc:b:atk:x', fixtureRecord('blk:s1:npc:b:atk:x', { order: 0, cells: {} }, 3, 'gm')],
   ]);
 
   test('keeps the root and a live block', () => {
