@@ -1,9 +1,9 @@
-import { acceptedFieldValue, targetFields } from '@/core/field-patch';
+import { acceptedFieldValue, targetFields, type FieldPatchTarget } from '@/core/field-patch';
+import { blockIdOf, parseBlockKey, sectionIdOf } from '@/core/block-address';
 import { compareCells, ownersBySheet } from '@/core/merge';
 import { plainRowIdOf, repeatTabById, type Preset } from '@/core/preset';
 import {
   blockDataSchema,
-  parseBlockPathKey,
   playerDataSchema,
   playerIdSchema,
   plinkPrefix,
@@ -355,11 +355,14 @@ function proposalJudgement(
   record: VersionedRecord,
 ): ProposalJudgement {
   if (!record.k.startsWith('blk:')) return 'denied';
-  const parts = record.k.split(':');
-  const sheetId = parts[1] ?? '';
+  const block = parseBlockKey(record.k);
+
+  if (block === null) return 'denied';
+
+  const sheetId = block.sheetId;
   const repeat = repeatTargetOf(record.k);
 
-  if (repeat === null && parts.length !== 2) return 'denied';
+  if (repeat === null && block.path.length !== 0) return 'denied';
   const policy = resolveSheet(context.records, context.preset, sheetId);
 
   if (policy === null || !playerMayEdit(policy, context.records, playerId)) return 'denied';
@@ -427,7 +430,17 @@ function proposalJudgement(
         ? { kind: 'row', rowId: rowId ?? '' }
         : { kind: 'rep', sectionId: repeat.sectionId, fieldId: id, ...repeatTarget };
 
-    const field = targetFields(policy.template, target)?.find((item) => item.id === id);
+    const fieldTarget: FieldPatchTarget =
+      repeat === null
+        ? { kind: 'row', rowId: rowId ?? '' }
+        : {
+            kind: 'rep',
+            sectionId: repeat.sectionId,
+            instanceId: repeat.instanceId,
+            path: repeat.path,
+          };
+
+    const field = targetFields(policy.template, fieldTarget)?.find((item) => item.id === id);
 
     if (field === undefined) verdict = 'unknown-field';
     else if (
@@ -476,16 +489,16 @@ type RepeatTarget = {
 };
 
 function repeatTargetOf(key: string): RepeatTarget | null {
-  const parsed = parseBlockPathKey(key);
+  const parsed = parseBlockKey(key);
 
   if (parsed === null) return null;
 
-  const sectionId = parsed.path.at(-2);
-  const instanceId = parsed.path.at(-1);
+  const sectionId = sectionIdOf(parsed);
+  const instanceId = blockIdOf(parsed);
 
-  return sectionId === undefined || instanceId === undefined
+  return sectionId === null || instanceId === null
     ? null
-    : { sheetId: parsed.sheetId, sectionId, instanceId, path: parsed.path };
+    : { sheetId: parsed.sheetId, sectionId, instanceId, path: [...parsed.path] };
 }
 
 function byName(first: AccessRow, second: AccessRow): number {

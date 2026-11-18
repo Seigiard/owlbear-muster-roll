@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { sheetRootAddress } from '@/core/block-address';
 import {
   firstFieldId,
   layoutSections,
@@ -265,7 +266,7 @@ function hasRepeatBlock(
 
   return (
     block !== null &&
-    repeatBlocks(records, sheetId, block.path.slice(0, -1)).some(
+    repeatBlocks(records, sheetRootAddress(sheetId), block.scopeId).some(
       (candidate) => candidate.instanceId === block.instanceId,
     )
   );

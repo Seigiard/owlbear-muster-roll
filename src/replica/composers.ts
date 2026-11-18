@@ -1,5 +1,12 @@
 import { aclKey, playerName, plinkKey } from '@/core/access';
 import {
+  type AddressFieldPatchTarget,
+  blockIdOf,
+  fieldPatchTargetOf,
+  hasValidSegments,
+  isLiveBlock,
+} from '@/core/block-address';
+import {
   acceptedFieldValue,
   findPatchField,
   patchedRecord,
@@ -8,13 +15,18 @@ import {
   type PatchedRecord,
 } from '@/core/field-patch';
 import type { RecordIdKind } from '@/core/ids';
-import { linkDataOf, linkTargetOf, liveLinkTarget, type LinkTarget } from '@/core/link-target';
+import {
+  blockOfLinkTarget,
+  linkDataOf,
+  linkTargetOf,
+  liveLinkTarget,
+  type LinkTarget,
+} from '@/core/link-target';
 import { recordFitsOneMessage } from '@/core/message-size';
 import type { Version } from '@/core/merge';
 import {
   decodePreset,
   encodePreset,
-  repeatSectionById,
   repeatSectionByPath,
   templateById,
   type Preset,
@@ -57,6 +69,8 @@ import { linkKey, tokenIdSchema } from '@/core/token-links';
 import type { Command, RejectionReason } from '@/core/ui-messages';
 
 export type FieldPatchCommand = Extract<Command, { type: 'field-patch' }>;
+
+type AddressFieldTarget = { kind: 'row'; rowId: string } | AddressFieldPatchTarget;
 
 export type ComposeMode = 'persisted' | 'pending';
 
@@ -292,26 +306,22 @@ export function createComposers(connectionId: string): Composers {
     }
 
     const { template } = policy.value;
+    const target = addressFieldPatchTargetOf(command.sheetId, command.target);
 
-    if (
-      command.target.kind === 'rep' &&
-      !matchesBlockTarget(command.target.path, command.target.sectionId, command.target.instanceId)
-    ) {
+    if (target === null) {
       return err('unknown-instance');
     }
 
     if (
-      command.target.kind === 'rep' &&
-      !validBlockPath(
-        context.records,
-        command.sheetId,
-        command.target.path ?? [command.target.sectionId, command.target.instanceId],
-      )
+      target.kind === 'rep' &&
+      (target.block.sheetId !== command.sheetId ||
+        !hasValidSegments(target.block) ||
+        !isLiveBlock(context.records, target.block))
     ) {
       return err('unknown-instance');
     }
 
-    const field = findPatchField(template, command.target, command.fieldId);
+    const field = findPatchField(template, target, command.fieldId);
 
     if (field === null) {
       return err('unknown-field');
@@ -323,13 +333,7 @@ export function createComposers(connectionId: string): Composers {
       return value;
     }
 
-    const patched = patchedRecord(
-      command.sheetId,
-      command.target,
-      current,
-      command.fieldId,
-      value.value,
-    );
+    const patched = patchedRecord(command.sheetId, target, current, command.fieldId, value.value);
 
     if (!patched.ok) {
       return patched;
@@ -345,7 +349,13 @@ export function createComposers(connectionId: string): Composers {
     context: ComposeContext,
     command: FieldPatchCommand,
   ): Result<VersionedRecord, RejectionReason> {
-    const existing = context.records.get(patchRecordKey(command.sheetId, command.target));
+    const target = addressFieldPatchTargetOf(command.sheetId, command.target);
+
+    if (target === null) {
+      return err('unknown-instance');
+    }
+
+    const existing = context.records.get(patchRecordKey(command.sheetId, target));
     const patched = patchOnto(context, command, existing);
 
     if (!patched.ok) {
@@ -370,9 +380,12 @@ export function createComposers(connectionId: string): Composers {
       return { record: null, refusals };
     }
 
-    const existing = context.records.get(
-      patchRecordKey(first.command.sheetId, first.command.target),
-    );
+    const firstTarget = addressFieldPatchTargetOf(first.command.sheetId, first.command.target);
+
+    const existing =
+      firstTarget === null
+        ? undefined
+        : context.records.get(patchRecordKey(first.command.sheetId, firstTarget));
 
     let working: PatchedRecord | null = null;
 
@@ -599,7 +612,7 @@ export function createComposers(connectionId: string): Composers {
 
     const section =
       command.path === undefined
-        ? repeatSectionById(policy.value.template, command.sectionId)
+        ? repeatSectionByPath(policy.value.template, [command.sectionId])
         : (() => {
             const scopePath = commandScopePath(command);
 
@@ -917,7 +930,8 @@ export function blockLinkTombstones(
   for (const [key, record] of context.records) {
     const target = key.startsWith('link:') ? linkTargetOf(record.d) : null;
 
-    const targetPath = target?.path ?? null;
+    const targetBlock = target === null ? null : blockOfLinkTarget(target);
+    const targetPath = targetBlock?.path ?? null;
 
     const isDescendant =
       path !== undefined &&
@@ -932,10 +946,10 @@ export function blockLinkTombstones(
       !validBlockPath(context.records, sheetId, targetPath);
 
     if (
-      target?.sheetId === sheetId &&
+      targetBlock?.sheetId === sheetId &&
       (isDescendant ||
         isLegacyInstanceTarget ||
-        (path === undefined && target?.instanceId === instanceId))
+        (path === undefined && targetBlock !== null && blockIdOf(targetBlock) === instanceId))
     ) {
       doomed.push(record);
     }
@@ -1103,6 +1117,21 @@ function mintedSheet(
   const record: VersionedRecord = { k, d, c, a, l: [c, a] };
 
   return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+}
+
+function addressFieldPatchTargetOf(
+  sheetId: string,
+  target: FieldPatchCommand['target'],
+): AddressFieldTarget | null {
+  if (target.kind === 'row') {
+    return target;
+  }
+
+  if ('block' in target) {
+    return target;
+  }
+
+  return fieldPatchTargetOf(sheetId, target);
 }
 
 // A tombstone holds no order, so only live repeat blocks count.

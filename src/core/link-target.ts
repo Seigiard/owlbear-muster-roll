@@ -1,36 +1,41 @@
 import type { JsonValue } from '@/core/json';
 import {
+  blockAddress,
+  blockIdOf,
+  isLiveBlock,
+  scopePathOf,
+  sectionIdOf,
+  sheetRootAddress,
+  type BlockAddress,
+} from '@/core/block-address';
+import {
   repeatSectionByPath,
-  repeatSectionPlace,
   repeatScopeByPath,
   repeatTabById,
-  repeatScopeById,
   placedSections,
   type Preset,
   type PresetSection,
   type PresetRow,
   type TemplateLayout,
 } from '@/core/preset';
-import {
-  linkDataSchema,
-  blockPathKey,
-  parseBlockPathKey,
-  repDataSchema,
-  type LinkData,
-  type VersionedRecord,
-} from '@/core/records';
+import { linkDataSchema, type LinkData, type VersionedRecord } from '@/core/records';
 import { renderedTabs } from '@/core/rendered-tabs';
 import { resolveSheet, sheetIdSchema, type SheetPolicy } from '@/core/sheets';
 
-// A v4 link names a sheet, an optional sequence of (repeat scope, block id)
-// pairs, and the token cell. `instanceId` remains as a derived compatibility
-// view for replica code that addresses one block at a time.
-export type LinkTarget = {
-  sheetId: string;
-  instanceId: string | null;
-  path?: string[] | null;
+type AddressLinkTarget = {
+  block: BlockAddress;
   cellId?: string;
 };
+
+type LegacyLinkTarget = {
+  block?: any;
+  sheetId: string;
+  instanceId: string | null;
+  path?: readonly string[] | null;
+  cellId?: string;
+};
+
+export type LinkTarget = AddressLinkTarget | LegacyLinkTarget;
 
 // A target a live link may name: its sheet's policy, and for a repeat block its section.
 export type LiveLinkTarget = {
@@ -48,9 +53,6 @@ export type TokenCellPlace = {
   row: PresetRow;
 };
 
-// Where each live repeat block of the replica is, by `blockIndexKey`.
-export type BlockIndex = ReadonlyMap<string, string>;
-
 // The target a `link:` record's data names, or `null` for a tombstone or an id no command could
 // write, which would make an open request no window takes.
 export function linkTargetOf(d: JsonValue): LinkTarget | null {
@@ -60,63 +62,45 @@ export function linkTargetOf(d: JsonValue): LinkTarget | null {
     return null;
   }
 
-  const path = data.data.path ?? null;
-  const instanceId = path === null ? null : (path.at(-1) ?? null);
+  const block =
+    data.data.path === undefined
+      ? sheetRootAddress(data.data.s)
+      : { sheetId: data.data.s, path: data.data.path };
 
-  return { sheetId: data.data.s, instanceId, path, cellId: data.data.c };
+  return { block, cellId: data.data.c };
 }
 
 // The `link:` record data for a target.
 export function linkDataOf(target: LinkTarget): LinkData {
-  return target.path === null || target.path === undefined
-    ? { s: target.sheetId, c: target.cellId ?? '' }
-    : { s: target.sheetId, path: target.path, c: target.cellId ?? '' };
+  const block = blockOfLinkTarget(target);
+  const { sheetId, path } = block;
+
+  return path.length === 0
+    ? { s: sheetId, c: targetCellId(target) ?? '' }
+    : { s: sheetId, path: [...path], c: targetCellId(target) ?? '' };
 }
 
 // One string per target, so targets can be kept in a set.
 export function linkTargetKey(target: LinkTarget): string {
-  const path = target.path?.join(':') ?? '';
+  const block = blockOfLinkTarget(target);
 
-  return `${target.sheetId}:${path}:${target.cellId ?? ''}`;
+  return `${block.sheetId}:${block.path.join(':')}:${targetCellId(target) ?? ''}`;
 }
 
 export function sameLinkTarget(first: LinkTarget, second: LinkTarget): boolean {
-  return (
-    first.sheetId === second.sheetId &&
-    first.instanceId === second.instanceId &&
-    first.cellId === second.cellId &&
-    JSON.stringify(first.path ?? null) === JSON.stringify(second.path ?? null)
-  );
-}
-
-// The section id of every live repeat block, by sheet id and instance id. An instance id is unique
-// in its sheet, so a link needs no section. When two live records share one, the first key in code
-// unit order wins on every client.
-export function blockIndex(records: Iterable<VersionedRecord>): BlockIndex {
-  const index = new Map<string, string>();
-  const keys = new Map<string, string>();
-
-  for (const record of records) {
-    const parts = parseBlockPathKey(record.k);
-
-    if (parts === null || !repDataSchema.safeParse(record.d).success) {
-      continue;
-    }
-
-    const instanceId = parts.path.at(-1);
-
-    if (instanceId === undefined) continue;
-
-    const key = blockIndexKey(parts.sheetId, instanceId);
-    const held = keys.get(key);
-
-    if (held === undefined || record.k < held) {
-      keys.set(key, record.k);
-      index.set(key, parts.path.at(-2) ?? '');
-    }
+  if (!('block' in first) && !('block' in second)) {
+    return (
+      first.sheetId === second.sheetId &&
+      first.instanceId === second.instanceId &&
+      first.cellId === second.cellId &&
+      JSON.stringify(first.path ?? null) === JSON.stringify(second.path ?? null)
+    );
   }
 
-  return index;
+  return (
+    sameBlock(blockOfLinkTarget(first), blockOfLinkTarget(second)) &&
+    targetCellId(first) === targetCellId(second)
+  );
 }
 
 // The tab that holds a live repeat block of a sheet: the tab of the repeat section its block path
@@ -124,41 +108,33 @@ export function blockIndex(records: Iterable<VersionedRecord>): BlockIndex {
 export function repeatBlockTabIndex(
   records: Iterable<VersionedRecord>,
   layout: TemplateLayout,
-  sheetId: string,
-  instanceId: string,
-  path?: readonly string[] | null,
+  target: BlockAddress,
 ): number | null {
   const recordList = [...records];
+  const scopePath = scopePathOf(target);
+  const sectionId = sectionIdOf(target);
+  const instanceId = blockIdOf(target);
+  const scoped = repeatScopeByPath(layout, scopePath);
+  const place = scoped === null ? null : { place: scoped.place };
 
-  const targetPath =
-    path === undefined || path === null ? null : path.filter((_part, index) => index % 2 === 0);
-
-  const sectionId =
-    targetPath?.at(-1) ?? blockIndex(recordList).get(blockIndexKey(sheetId, instanceId));
-
-  const scoped =
-    targetPath === null || targetPath.length === 0 ? null : repeatScopeByPath(layout, targetPath);
-
-  const place =
-    scoped === null
-      ? sectionId === undefined
-        ? null
-        : repeatSectionPlace(layout, sectionId)
-      : { place: scoped.place };
-
-  if (sectionId === undefined || place === null) return null;
+  if (
+    sectionId === null ||
+    instanceId === null ||
+    place === null ||
+    !isLiveBlock(new Map(recordList.map((record) => [record.k, record])), target)
+  ) {
+    return null;
+  }
 
   const tabRepeat = repeatTabById(layout, sectionId);
 
   const tab = layout.tabs[place.place.tabIndex];
-
-  const tabInstanceId =
-    targetPath !== null && tab?.repeat?.id === targetPath[0] ? (path?.[1] ?? null) : null;
+  const tabInstanceId = tab?.repeat?.id === scopePath[0] ? (target.path[1] ?? null) : null;
 
   const tabs = renderedTabs(
     layout,
     new Map(recordList.map((record) => [record.k, record] as const)),
-    sheetId,
+    target.sheetId,
   );
 
   const index = tabs.findIndex(
@@ -167,10 +143,10 @@ export function repeatBlockTabIndex(
       (tabRepeat === null
         ? tabInstanceId === null
           ? renderedTab.block === null
-          : renderedTab.block?.scopeId === targetPath?.[0] &&
-            renderedTab.block?.instanceId === tabInstanceId
-        : renderedTab.block?.scopeId === sectionId &&
-          renderedTab.block?.instanceId === (tabInstanceId ?? instanceId)),
+          : renderedTab.block?.block.path[0] === scopePath[0] &&
+            renderedTab.block?.block.path[1] === tabInstanceId
+        : renderedTab.block?.block.path[0] === sectionId &&
+          renderedTab.block?.block.path[1] === (tabInstanceId ?? instanceId)),
   );
 
   return index === -1 ? null : index;
@@ -183,127 +159,62 @@ export function liveLinkTarget(
   records: ReadonlyMap<string, VersionedRecord>,
   preset: Preset | null,
   target: LinkTarget,
-  blocks: BlockIndex = blockIndex(records.values()),
 ): LiveLinkTarget | null {
-  void blocks;
-  const policy = resolveSheet(records, preset, target.sheetId);
+  const block = blockOfLinkTarget(target);
+  const policy = resolveSheet(records, preset, block.sheetId);
 
   if (policy === null) {
     return null;
   }
 
-  if (target.instanceId === null) {
-    const cell = tokenCellPlace(policy.template, target.cellId, null);
+  if (block.path.length === 0) {
+    const cell = tokenCellPlace(policy.template, targetCellId(target), null);
 
     return policy.linkable && cell !== null ? { target, policy, section: null, cell } : null;
   }
 
-  const sectionId = target.path?.at(-2);
-  const instanceId = target.path?.at(-1);
-
-  if (
-    target.path === undefined ||
-    target.path === null ||
-    target.path.length < 2 ||
-    target.path.length % 2 !== 0 ||
-    sectionId === undefined ||
-    instanceId === undefined ||
-    instanceId !== target.instanceId ||
-    !isLiveRepeatBlock(records, target.sheetId, target.path)
-  ) {
+  if (sectionIdOf(block) === null || blockIdOf(block) === null || !isLiveBlock(records, block)) {
     return null;
   }
 
-  const scopePath = target.path.filter((_part, index) => index % 2 === 0);
+  const scopePath = scopePathOf(block);
   const section = repeatSectionByPath(policy.template, scopePath);
 
   const cell =
-    section === null ? null : tokenCellPlace(policy.template, target.cellId, sectionId, scopePath);
+    section === null ? null : tokenCellPlace(policy.template, targetCellId(target), scopePath);
 
   return section !== null && cell !== null ? { target, policy, section, cell } : null;
 }
 
-function isLiveRepeatBlock(
-  records: ReadonlyMap<string, VersionedRecord>,
-  sheetId: string,
-  path: readonly string[],
-): boolean {
-  if (path.length < 2 || path.length % 2 !== 0) return false;
+export function blockOfLinkTarget(target: LinkTarget): BlockAddress {
+  return 'block' in target
+    ? target.block
+    : (blockAddress(target.sheetId, target.path ?? []) ?? sheetRootAddress(target.sheetId));
+}
 
-  for (let length = 2; length <= path.length; length += 2) {
-    if (
-      !repDataSchema.safeParse(records.get(blockPathKey(sheetId, path.slice(0, length)))?.d).success
-    ) {
-      return false;
-    }
-  }
+function targetCellId(target: LinkTarget): string | undefined {
+  return target.cellId;
+}
 
-  return true;
+function sameBlock(first: BlockAddress, second: BlockAddress): boolean {
+  return (
+    first.sheetId === second.sheetId &&
+    first.path.length === second.path.length &&
+    first.path.every((segment, index) => second.path[index] === segment)
+  );
 }
 
 export function tokenCellPlace(
   template: TemplateLayout,
   cellId: string | undefined,
-  repeatSectionId: string | null,
-  repeatScopePath?: readonly string[],
+  repeatScopePath: readonly string[] | null,
 ): TokenCellPlace | null {
   if (cellId === undefined) {
     return null;
   }
 
-  if (repeatScopePath !== undefined) {
+  if (repeatScopePath !== null) {
     return tokenCellPlaceAtPath(template, cellId, repeatScopePath);
-  }
-
-  if (repeatSectionId !== null) {
-    const tab = repeatTabById(template, repeatSectionId);
-
-    if (tab !== null) {
-      for (const [sectionIndex, section] of tab.tab.sections.entries()) {
-        if (section.repeat !== undefined) continue;
-
-        for (const [rowIndex, row] of section.rows.entries()) {
-          if (row.repeat !== undefined) continue;
-
-          if (row.cells.some((cell) => cell.kind === 'token' && cell.id === cellId)) {
-            return {
-              tabIndex: tab.place.tabIndex,
-              sectionIndex,
-              rowIndex,
-              section,
-              row,
-            };
-          }
-        }
-      }
-
-      return null;
-    }
-
-    const scope = repeatScopeById(template, repeatSectionId);
-
-    if (scope === null) return null;
-
-    const rows =
-      scope.row === null
-        ? scope.section.rows.filter((row) => row.repeat === undefined)
-        : [scope.row];
-
-    const row = rows.find((candidate) =>
-      candidate.cells.some((cell) => cell.kind === 'token' && cell.id === cellId),
-    );
-
-    if (row !== undefined) {
-      return {
-        tabIndex: scope.place.tabIndex,
-        sectionIndex: scope.place.sectionIndex,
-        rowIndex: scope.section.rows.indexOf(row),
-        section: scope.section,
-        row,
-      };
-    }
-
-    return null;
   }
 
   for (const { place, section } of placedSections(template)) {
@@ -429,8 +340,4 @@ function tokenCellPlaceAtPath(
 
 function rowHasToken(row: PresetRow, cellId: string): boolean {
   return row.cells.some((cell) => cell.kind === 'token' && cell.id === cellId);
-}
-
-function blockIndexKey(sheetId: string, instanceId: string): string {
-  return `${sheetId}:${instanceId}`;
 }

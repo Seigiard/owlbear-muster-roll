@@ -2,9 +2,10 @@
 title: 'TASK-114.1: Core block-address module and core consumers'
 type: 'refactor'
 created: '2026-11-18'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
+baseline_commit: '7ccaf0fac9fb6a59bb8d76459b1ac786e350ae1c'
 context:
   - '{project-root}/CLAUDE.md'
   - '{project-root}/GLOSSARY.md'
@@ -79,6 +80,11 @@ Core has no `.transform()` yet; types come from `z.infer`. zod is 4.6.7: `.refin
 - Given the full check (`bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run test:browser`, `bun run build`), when run at the final commit, then each passes, and no `src/replica/engine-*.test.ts` literal changed.
 
 ## Implementation Notes
+
+- `src/replica/composers.ts` converts command wire targets with `fieldPatchTargetOf` and keeps the existing rejection order.
+- `src/replica/engine.ts` converts open requests to `{block, cellId}` at the UI boundary.
+- `src/ui/replica-client.ts` converts readonly address paths to mutable wire arrays and omits `path` for shallow repeat blocks.
+- `src/ui/sheet/preset-section.tsx` returns no link target when a root block address cannot be built.
 
 ## Spec Change Log
 

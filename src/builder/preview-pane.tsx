@@ -144,7 +144,7 @@ export function PreviewPane({
         if (command.type === 'repeat-block-add') {
           const path = command.path ?? [command.sectionId, command.instanceId];
           const key = blockPathKey(command.sheetId, path);
-          const prefix = `${blockPathKey(command.sheetId, path.slice(0, -1))}:`;
+          const prefix = `${key.slice(0, key.lastIndexOf(':'))}:`;
 
           const blocks = snapshotRecords
             .map((record) => (repDataSchema.safeParse(record.d).success ? record : null))

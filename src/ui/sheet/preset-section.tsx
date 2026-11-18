@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefCallback } from 'react';
 
+import { blockAddress, childAddress, sheetRootAddress } from '@/core/block-address';
 import { patchRecordKey, type FieldPatchTarget } from '@/core/field-patch';
 import { linkTargetKey, type LinkTarget } from '@/core/link-target';
 import {
@@ -900,20 +901,21 @@ function tokenTargetOf(
     return null;
   }
 
-  return row.instanceId === null
-    ? { sheetId: row.sheetId, instanceId: null, cellId: cell.id }
-    : {
-        sheetId: row.sheetId,
-        instanceId: row.instanceId,
-        path:
-          row.target?.kind === 'rep' && row.target.path !== undefined
-            ? [...row.target.path]
-            : [
-                sectionId ?? (row.target?.kind === 'rep' ? row.target.sectionId : ''),
-                row.instanceId,
-              ],
-        cellId: cell.id,
-      };
+  const legacySectionId =
+    row.target?.kind === 'rep' && !('block' in row.target) ? row.target.sectionId : null;
+
+  const path =
+    row.target?.kind === 'rep' && 'block' in row.target
+      ? row.target.block.path
+      : row.target?.kind === 'rep' && row.target.path !== undefined
+        ? row.target.path
+        : (sectionId ?? legacySectionId) === null || row.instanceId === null
+          ? []
+          : [sectionId ?? legacySectionId ?? '', row.instanceId];
+
+  const block = path.length === 0 ? sheetRootAddress(row.sheetId) : blockAddress(row.sheetId, path);
+
+  return block === null ? null : { block, cellId: cell.id };
 }
 
 function plainRows(
@@ -930,7 +932,7 @@ function plainRows(
   const blockValues =
     tabBlock === null
       ? null
-      : (repeatBlocks(records, sheetId, tabBlock.path.slice(0, -1)).find(
+      : (repeatBlocks(records, sheetRootAddress(sheetId), tabBlock.scopeId).find(
           (block) => block.instanceId === tabBlock.instanceId,
         )?.values ?? new Map());
 
@@ -1010,8 +1012,14 @@ function repeatBlocksOf(
     scopePath.filter((_part, index) => index % 2 === 0),
   );
 
-  return repeatBlocks(records, sheetId, scopePath).map((block) => {
-    const path = [...scopePath, block.instanceId];
+  const parent =
+    parentPath === null
+      ? sheetRootAddress(sheetId)
+      : (blockAddress(sheetId, parentPath) ?? sheetRootAddress(sheetId));
+
+  return repeatBlocks(records, parent, sectionId).map((block) => {
+    const address = childAddress(parent, sectionId, block.instanceId);
+    const path = [...address.path];
 
     const nested = section.rows.flatMap((row) => {
       const id = row.repeat?.id;
@@ -1032,9 +1040,7 @@ function repeatBlocksOf(
       instanceId: block.instanceId,
     };
 
-    if (parentPath !== null) {
-      target.path = path;
-    }
+    if (path.length > 2) target.path = path;
 
     const blockPending = rowPending(pending, patchRecordKey(sheetId, target), fieldIds, true);
     const place = placeOf(records, sheetId, target);

@@ -553,3 +553,7 @@ not optional scope. Evidence: `task-79-window5-review.md`.
 - TASK-109 is now repaired and independently reviewed. Its copied-child token
   owner and the existing repeat-tab below-fold owner pass in the full 583-test
   browser run at `6695d234`. The window5 blocker above is historical.
+
+## Deferred from: TASK-114.1 (2026-11-18)
+
+- `src/builder/preview-pane.tsx` and `src/preview/` keep the wire-shaped command handling until architecture-review candidate 3 runs the preview on the engine.

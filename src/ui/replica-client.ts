@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 
+import { wireFieldPatchTargetOf } from '@/core/block-address';
 import { fitsOneMessage } from '@/core/message-size';
 import type { Timing } from '@/core/timing';
 import {
@@ -132,15 +133,27 @@ function wireCommand(command: Command): CommandMessage['command'] {
     return { ...command, target: { kind: 'row', rowId: command.target.rowId } };
   }
 
+  if ('block' in command.target) {
+    const wire = wireFieldPatchTargetOf(command.target);
+
+    const target: WireRepeatTarget = {
+      kind: 'rep',
+      sectionId: wire.sectionId,
+      instanceId: wire.instanceId,
+    };
+
+    if (wire.path !== undefined) target.path = [...wire.path];
+
+    return { ...command, target };
+  }
+
   const target: WireRepeatTarget = {
     kind: 'rep',
     sectionId: command.target.sectionId,
     instanceId: command.target.instanceId,
   };
 
-  if (command.target.path !== undefined) {
-    target.path = [...command.target.path];
-  }
+  if (command.target.path !== undefined) target.path = [...command.target.path];
 
   return { ...command, target };
 }

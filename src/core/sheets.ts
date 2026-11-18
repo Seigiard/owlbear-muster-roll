@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { blockAddress, blockKeyOf, parseBlockKey } from '@/core/block-address';
 import {
   plainRowIdOf,
   sectionFields,
@@ -9,7 +10,6 @@ import {
   type Template,
 } from '@/core/preset';
 import {
-  blockPathKey,
   blockDataSchema,
   blockKey,
   linkDataSchema,
@@ -152,11 +152,13 @@ export function liveSheets(
   const sheets: SheetSummary[] = [];
 
   for (const record of records) {
-    if (!record.k.startsWith('blk:') || record.k.split(':').length !== 2) {
+    const block = parseBlockKey(record.k);
+
+    if (block === null || block.path.length !== 0) {
       continue;
     }
 
-    const sheetId = record.k.slice('blk:'.length);
+    const sheetId = block.sheetId;
     const data = sheetDataSchema.safeParse(record.d);
 
     if (data.success && data.data.set === setId && !templateIds.has(sheetId)) {
@@ -222,7 +224,11 @@ export function repeatBlockName(
   const key =
     path === undefined
       ? repKey(sheetId, section.repeat.id, instanceId)
-      : blockPathKey(sheetId, path);
+      : (() => {
+          const block = blockAddress(sheetId, path);
+
+          return block === null ? '' : blockKeyOf(block);
+        })();
 
   const block = repDataSchema.safeParse(records.get(key)?.d);
 

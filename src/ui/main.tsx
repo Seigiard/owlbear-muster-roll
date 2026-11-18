@@ -4,12 +4,14 @@ import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { playerMayEdit, playerMayEditField } from '@/core/access';
+import { blockAddress, scopePathOf, sheetRootAddress } from '@/core/block-address';
 import { newInstanceId, newSheetId } from '@/core/ids';
 import { openTabIndex, type RenderedTab, type SheetSetTemplate } from '@/core/preset';
 import { renderedTabs as renderTabs } from '@/core/rendered-tabs';
 import { isSheetSet, sheetKey } from '@/core/sheets';
 import { TIMING } from '@/core/timing';
 import {
+  blockOfLinkTarget,
   linkTargetKey,
   repeatBlockTabIndex,
   tokenCellPlace,
@@ -347,18 +349,15 @@ function WindowRoot({
     const template =
       tab === null ? undefined : tabs.find((listed) => listed.id === tab)?.policy.template;
 
-    const block = openRequest.path?.at(-1) ?? null;
+    const block =
+      openRequest.path === undefined
+        ? sheetRootAddress(openRequest.sheetId)
+        : blockAddress(openRequest.sheetId, openRequest.path);
 
     const blockTab =
-      block === null || template === undefined
+      block === null || template === undefined || block.path.length === 0
         ? null
-        : repeatBlockTabIndex(
-            records.values(),
-            template,
-            openRequest.sheetId,
-            block,
-            openRequest.path,
-          );
+        : repeatBlockTabIndex(records.values(), template, block);
 
     const listed = tab === null ? undefined : tabs.find((candidate) => candidate.id === tab);
     const visible = listed === undefined ? [] : visibleTemplateTabs(listed);
@@ -372,8 +371,7 @@ function WindowRoot({
         : (tokenCellPlace(
             template,
             openRequest.cellId,
-            openRequest.path?.[0] ?? null,
-            openRequest.path?.filter((_part, index) => index % 2 === 0),
+            openRequest.path === undefined ? null : block === null ? null : scopePathOf(block),
           )?.tabIndex ?? null);
 
     const sourceCellIndex =
@@ -493,8 +491,8 @@ function WindowRoot({
 
     return [...links.values()].some((live) => {
       if (
-        live.target.sheetId !== tab.sheetId ||
-        live.target.instanceId === null ||
+        blockOfLinkTarget(live.target).sheetId !== tab.sheetId ||
+        blockOfLinkTarget(live.target).path.length === 0 ||
         !mapMarks.targets.has(linkTargetKey(live.target))
       ) {
         return false;
@@ -503,9 +501,7 @@ function WindowRoot({
       const targetIndex = repeatBlockTabIndex(
         records.values(),
         tab.policy.template,
-        tab.sheetId,
-        live.target.instanceId,
-        live.target.path,
+        blockOfLinkTarget(live.target),
       );
 
       const targetTab = targetIndex === null ? undefined : targetTabs[targetIndex];

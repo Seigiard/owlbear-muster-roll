@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+import {
+  blockAddress,
+  blockKeyOf,
+  blockPathSchema,
+  keySegmentSchema,
+  parseBlockKey,
+  sheetRootAddress,
+} from '@/core/block-address';
 import { isTemplateId } from '@/core/field-id';
 import type { JsonValue } from '@/core/json';
 import { err, ok, type Result } from '@/core/result';
@@ -17,13 +25,11 @@ const PLAYER_ID_PATTERN = `${NOT_PROTO}[^:\\s]{1,128}`;
 export const playerIdSchema = z.string().regex(new RegExp(`^${PLAYER_ID_PATTERN}$`));
 
 // One id of a record key, as a file or message names it apart from the key.
-export const keySegmentSchema = z.string().regex(new RegExp(`^${KEY_SEGMENT}$`));
+export { keySegmentSchema };
 
 const presetKeySchema = z.literal('preset');
 
-const blockKeySchema = z
-  .string()
-  .regex(new RegExp(`^blk:${KEY_SEGMENT}(?::${KEY_SEGMENT}:${KEY_SEGMENT})*$`));
+const blockKeySchema = z.string().refine((key) => parseBlockKey(key) !== null);
 
 const aclKeySchema = z.string().regex(new RegExp(`^acl:${KEY_SEGMENT}:${PLAYER_ID_PATTERN}$`));
 const linkKeySchema = z.string().regex(new RegExp(`^link:${KEY_SEGMENT}$`));
@@ -73,11 +79,7 @@ export const playerDataSchema = z.strictObject({ name: z.string() });
 // A token-cell link names the sheet, an optional repeat scope path, and the cell id.
 export const linkDataSchema = z.strictObject({
   s: keySegmentSchema,
-  path: z
-    .array(keySegmentSchema)
-    .min(2)
-    .refine((parts) => parts.length % 2 === 0)
-    .optional(),
+  path: blockPathSchema.optional(),
   c: keySegmentSchema,
 });
 
@@ -108,7 +110,7 @@ export type Cells = z.infer<typeof cellsSchema>;
 export type Lifecycle = z.infer<typeof lifecycleSchema>;
 
 export function blockKey(sheetId: string): string {
-  return `blk:${sheetId}`;
+  return blockKeyOf(sheetRootAddress(sheetId));
 }
 
 export function cellValues(cells: Readonly<Cells>): FieldValues {
@@ -158,18 +160,20 @@ export function rowKey(sheetId: string, rowId: string): string {
   return blockKey(sheetId);
 }
 
-// The key prefix of every repeat block one sheet has in one repeat section. It ends with ":", so a
-// sheet "a" never reads the repeat blocks of a sheet "ab".
-export function repKeyPrefix(sheetId: string, sectionId: string): string {
-  return `blk:${sheetId}:${sectionId}:`;
-}
-
 export function repKey(sheetId: string, sectionId: string, instanceId: string): string {
-  return `${repKeyPrefix(sheetId, sectionId)}${instanceId}`;
+  const address = blockAddress(sheetId, [sectionId, instanceId]);
+
+  if (address === null) throw new Error('Repeat key path must have an even length');
+
+  return blockKeyOf(address);
 }
 
 export function blockPathKey(sheetId: string, path: readonly string[]): string {
-  return `blk:${[sheetId, ...path].join(':')}`;
+  const address = blockAddress(sheetId, path);
+
+  if (address === null) throw new Error('Block key path must have an even length');
+
+  return blockKeyOf(address);
 }
 
 export type RepKeyParts = { sheetId: string; sectionId: string; instanceId: string };
@@ -177,25 +181,16 @@ export type RepKeyParts = { sheetId: string; sectionId: string; instanceId: stri
 export type BlockPathParts = { sheetId: string; path: string[] };
 
 export function parseBlockPathKey(key: string): BlockPathParts | null {
-  const [form, sheetId, ...path] = key.split(':');
+  const parsed = parseBlockKey(key);
 
-  if (
-    form !== 'blk' ||
-    sheetId === undefined ||
-    !keySegmentSchema.safeParse(sheetId).success ||
-    path.length < 2 ||
-    path.length % 2 !== 0 ||
-    path.some((part) => !keySegmentSchema.safeParse(part).success)
-  ) {
-    return null;
-  }
-
-  return { sheetId, path };
+  return parsed === null || parsed.path.length < 2
+    ? null
+    : { sheetId: parsed.sheetId, path: [...parsed.path] };
 }
 
 // The ids of one repeat level, or null for a root, nested block, or another key form.
 export function parseRepKey(key: string): RepKeyParts | null {
-  const parsed = parseBlockPathKey(key);
+  const parsed = parseBlockKey(key);
 
   if (parsed === null || parsed.path.length !== 2) {
     return null;

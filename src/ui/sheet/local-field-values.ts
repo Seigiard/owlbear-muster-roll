@@ -2,6 +2,7 @@ import { atom, type ReadableAtom } from 'nanostores';
 
 import type { ShownValue } from '@/core/dice-roll';
 import type { FieldPatchTarget } from '@/core/field-patch';
+import { sameAddress } from '@/core/block-address';
 
 // A field whose shown value lives in the window only: text not sent yet, or an input error.
 export type LocalFieldValue = {
@@ -84,9 +85,16 @@ function sameTarget(first: FieldPatchTarget, second: FieldPatchTarget): boolean 
     return second.kind === 'row' && first.rowId === second.rowId;
   }
 
+  if (second.kind !== 'rep') return false;
+
+  if ('block' in first) {
+    return 'block' in second && sameAddress(first.block, second.block);
+  }
+
   return (
-    second.kind === 'rep' &&
+    !('block' in second) &&
     first.sectionId === second.sectionId &&
-    first.instanceId === second.instanceId
+    first.instanceId === second.instanceId &&
+    JSON.stringify(first.path ?? null) === JSON.stringify(second.path ?? null)
   );
 }

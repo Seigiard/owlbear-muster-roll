@@ -3,7 +3,12 @@ import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Button as AriaButton, Checkbox } from 'react-aria-components';
 
-import { linkTargetKey, linkTargetOf, type LinkTarget } from '@/core/link-target';
+import {
+  blockOfLinkTarget,
+  linkTargetKey,
+  linkTargetOf,
+  type LinkTarget,
+} from '@/core/link-target';
 import { repeatSectionId } from '@/core/preset';
 import { LINK_PICKER_TIMING, type LinkPickerTiming } from '@/core/timing';
 import {
@@ -274,20 +279,21 @@ export function LinkPicker({
     }
 
     const { target } = choice;
+    const block = blockOfLinkTarget(target);
 
     const command =
-      target.path === undefined || target.path === null
+      block.path.length === 0
         ? {
             type: 'link-set' as const,
             tokenId,
-            sheetId: target.sheetId,
+            sheetId: block.sheetId,
             cellId: target.cellId ?? choice.cellId,
           }
         : {
             type: 'link-set' as const,
             tokenId,
-            sheetId: target.sheetId,
-            path: target.path,
+            sheetId: block.sheetId,
+            path: [...block.path],
             cellId: target.cellId ?? choice.cellId,
           };
 
@@ -527,8 +533,11 @@ export function TokenCellPicker({
           sendCommand({
             type: 'link-set',
             tokenId,
-            sheetId: target.sheetId,
-            path: target.path ?? undefined,
+            sheetId: blockOfLinkTarget(target).sheetId,
+            path:
+              blockOfLinkTarget(target).path.length === 0
+                ? undefined
+                : [...blockOfLinkTarget(target).path],
             cellId: target.cellId ?? '',
           }),
         ),

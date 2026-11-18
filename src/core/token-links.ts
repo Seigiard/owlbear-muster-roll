@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
+import { blockIdOf, childAddress, sheetRootAddress, type BlockAddress } from '@/core/block-address';
 import {
+  blockOfLinkTarget,
   linkDataOf,
   linkTargetKey,
   linkTargetOf,
@@ -134,7 +136,7 @@ export function liveLinks(
 
     // A token id no command could write never reaches a menu filter.
     if (tokenId.success && live !== null) {
-      links.set(tokenId.data, live);
+      links.set(tokenId.data, { ...live, target: legacyTargetOf(live.target) });
     }
   }
 
@@ -188,6 +190,10 @@ export function pickerGroups(
   const linked = linkedTargetKeys(records, preset);
   const groups: PickerGroup[] = [];
 
+  const useAddressTargets =
+    preset.templates.some((template) => template.tabs.some((tab) => tab.repeat !== undefined)) &&
+    preset.templates.some((template) => tokenCells(template, null).length > 0);
+
   const targetOf = (
     template: Template,
     target: LinkTarget,
@@ -195,10 +201,10 @@ export function pickerGroups(
     blockName: string | null,
     section: PresetSection | null,
   ): PickerTarget => {
-    const targetSheetName = sheetName(records, preset, target.sheetId) ?? '';
+    const targetSheetName = sheetName(records, preset, blockOfLinkTarget(target).sheetId) ?? '';
 
     return {
-      target,
+      target: useAddressTargets ? target : pickerLegacyTargetOf(target),
       cellId,
       sheetName: targetSheetName,
       blockName,
@@ -219,7 +225,7 @@ export function pickerGroups(
         template,
         section: null,
         targets: sheetIds.map((sheetId) =>
-          targetOf(template, { sheetId, instanceId: null, cellId }, cellId, null, section),
+          targetOf(template, { block: sheetRootAddress(sheetId), cellId }, cellId, null, section),
         ),
       };
 
@@ -241,17 +247,17 @@ export function pickerGroups(
           template,
           section: repeatedSection,
           targets: sheetIds.flatMap((sheetId) =>
-            repeatBlockPaths(records, sheetId, scopePath).flatMap((path) => {
-              const instanceId = path.at(-1);
+            repeatBlockPaths(records, sheetId, scopePath).flatMap((block) => {
+              const instanceId = blockIdOf(block);
 
-              return instanceId === undefined
+              return instanceId === null
                 ? []
                 : [
                     targetOf(
                       template,
-                      { sheetId, instanceId, path, cellId },
+                      { block, cellId },
                       cellId,
-                      repeatBlockName(records, sheetId, repeatedSection, instanceId, path),
+                      repeatBlockName(records, sheetId, repeatedSection, instanceId, block.path),
                       repeatedSection,
                     ),
                   ];
@@ -365,26 +371,26 @@ function repeatBlockPaths(
   records: ReadonlyMap<string, VersionedRecord>,
   sheetId: string,
   scopePath: readonly string[],
-): string[][] {
-  const paths: string[][] = [];
+): BlockAddress[] {
+  const paths: BlockAddress[] = [];
 
-  function visit(parentPath: readonly string[], scopeIndex: number): void {
+  function visit(parent: BlockAddress, scopeIndex: number): void {
     const scopeId = scopePath[scopeIndex];
 
     if (scopeId === undefined) return;
 
-    for (const block of repeatBlocks(records, sheetId, [...parentPath, scopeId])) {
-      const path = [...parentPath, scopeId, block.instanceId];
+    for (const item of repeatBlocks(records, parent, scopeId)) {
+      const block = childAddress(parent, scopeId, item.instanceId);
 
       if (scopeIndex === scopePath.length - 1) {
-        paths.push(path);
+        paths.push(block);
       } else {
-        visit(path, scopeIndex + 1);
+        visit(block, scopeIndex + 1);
       }
     }
   }
 
-  visit([], 0);
+  visit(sheetRootAddress(sheetId), 0);
 
   return paths;
 }
@@ -423,7 +429,31 @@ export function openTarget(
   const target = linkTargetOf(records.get(linkKey(tokenId))?.d ?? null);
   const live = target === null ? null : liveLinkTarget(records, preset, target);
 
-  return live !== null && linkTargetShownTo(role, live) ? live.target : null;
+  return live !== null && linkTargetShownTo(role, live) ? legacyTargetOf(live.target) : null;
+}
+
+function legacyTargetOf(target: LinkTarget): LinkTarget {
+  const block = blockOfLinkTarget(target);
+
+  return {
+    sheetId: block.sheetId,
+    instanceId: blockIdOf(block),
+    path: block.path.length === 0 ? null : [...block.path],
+    cellId: target.cellId,
+  };
+}
+
+function pickerLegacyTargetOf(target: LinkTarget): LinkTarget {
+  const block = blockOfLinkTarget(target);
+
+  return block.path.length === 0
+    ? { sheetId: block.sheetId, instanceId: null, cellId: target.cellId }
+    : {
+        sheetId: block.sheetId,
+        instanceId: blockIdOf(block),
+        path: [...block.path],
+        cellId: target.cellId,
+      };
 }
 
 function linkEntries(links: ReadonlyMap<string, LiveLinkTarget>): TokenMenuEntry[] {
