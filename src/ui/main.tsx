@@ -329,7 +329,7 @@ function WindowRoot({
       dispatch({
         type: 'block-revealed',
         sheet: blockReveal.sheet,
-        instanceId: blockReveal.instanceId,
+        path: blockReveal.path,
       });
     }
   }, [blockReveal]);
@@ -403,7 +403,6 @@ function WindowRoot({
       focusInWindow: focusInWindow(),
       tab,
       blockTab,
-      block,
       cellTab,
       tabKey: openedTab === null ? undefined : templateTabKey(openedTab),
       ready,

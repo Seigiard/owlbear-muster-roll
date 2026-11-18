@@ -9,7 +9,7 @@ export type NavigationDeleteAsk = { sheet: string; request: number };
 
 export type NavigationBlockReveal = {
   sheet: string;
-  instanceId: string | null;
+  path: readonly string[] | null;
   cellId: string;
   focus: boolean;
 };
@@ -64,7 +64,6 @@ export type NavigationEvent =
       focusInWindow: boolean;
       tab: string | null;
       blockTab: number | null;
-      block: string | null;
       cellTab: number | null;
       tabKey?: string;
       ready: boolean;
@@ -72,7 +71,7 @@ export type NavigationEvent =
   | { type: 'name-focused'; sheet: string }
   | { type: 'actions-focused'; sheet: string }
   | { type: 'focus-actions'; sheet: string }
-  | { type: 'block-revealed'; sheet: string; instanceId: string | null }
+  | { type: 'block-revealed'; sheet: string; path: readonly string[] | null }
   | { type: 'tab-revealed' }
   | { type: 'focus-loss-handled' };
 
@@ -151,7 +150,7 @@ export function transition(state: NavigationState, event: NavigationEvent): Navi
         : { ...state, focusActionsOf: event.sheet };
     case 'block-revealed':
       return state.blockReveal?.sheet === event.sheet &&
-        state.blockReveal.instanceId === event.instanceId
+        samePath(state.blockReveal.path, event.path)
         ? { ...state, blockReveal: null }
         : state;
     case 'tab-revealed':
@@ -269,11 +268,9 @@ function openRequestTransition(
     return { ...state, takenOpen: event.request.id };
   }
 
-  const block = event.block;
-
   const blockReveal = {
     sheet: event.tab,
-    instanceId: block,
+    path: event.request.path ?? null,
     cellId: event.request.cellId,
     focus: event.focusInWindow,
   };
@@ -302,4 +299,12 @@ function openRequestTransition(
 
 function assertNever(value: never): never {
   throw new Error(`Unknown navigation event: ${JSON.stringify(value)}`);
+}
+
+function samePath(first: readonly string[] | null, second: readonly string[] | null): boolean {
+  if (first === null || second === null) {
+    return first === second;
+  }
+
+  return first.length === second.length && first.every((part, index) => part === second[index]);
 }
