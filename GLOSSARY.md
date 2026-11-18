@@ -141,8 +141,12 @@ The values of one sheet in a room, laid out by its template: one of a sheet set'
 _Avoid_: card, record, profile, character (a character or an NPC is preset content, not a kind of sheet)
 
 **Block**:
-The stored root of a sheet or one instance of a repeat scope. A block has its own field values and can be addressed by its repeat-scope path.
+The stored root of a sheet or one instance of a repeat scope. A block has its own field values, and code names it by its block address.
 _Avoid_: record, row, instance
+
+**Block address**:
+The one form in which code names a block: the sheet id plus the full path of (repeat scope id, block id) pairs from the sheet root down to the block. An empty path names the sheet root. The storage key, the wire message and the DOM carry a serialised view of it, and convert back at their edge; no other code holds a section id, an instance id or a partial path of its own.
+_Avoid_: instance id, section + instance, block path (as a thing of its own), scope chain
 
 **Value**:
 What one field holds on one sheet.
