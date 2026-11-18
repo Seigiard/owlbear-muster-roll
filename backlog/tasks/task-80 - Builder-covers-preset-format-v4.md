@@ -4,7 +4,7 @@ title: Builder covers preset format v4
 status: In Progress
 assignee: []
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-18T08:23:00Z'
+updated_date: '2026-11-18T08:48:00Z'
 labels:
   - format-v4
   - blocked
@@ -34,6 +34,12 @@ After format v4 the builder still edits v3 shapes: no row form, `kind` instead o
 - [ ] #6 Every example preset opens, round-trips and downloads unchanged; `parsePresetFile` gates the download
 <!-- AC:END -->
 
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Extend the existing locked tests at candidate517e808 for six accepted review defects. 2. Repair scoped ids, name-field defaults/choices, loaded-node warning identity, template warnings and field-rename propagation. 3. Validate and calibrate the repaired candidate, integrate TASK-109, then review and close the Builder acceptance criteria.
+<!-- SECTION:PLAN:END -->
+
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
@@ -53,4 +59,6 @@ Not started in the autonomous TASK-78–87 continuation because TASK-79 remains 
 HISTORICAL: Not started. Waiting for TASK-79 full-path validation/import repairs. The prepared Builder draft is not an accepted implementation; no TASK-80 source was merged.
 
 CURRENT window5: preserve UNMERGED candidate517e808 on feature/preset-v4-task-80-w4, checkout task80-builder-w4-20261117. It includes runtime3d0c96a. All checks passed:3441 unit/1 skip,579 browser, format/lint/build at67effe2; corrected typecheck/format/lint at517e808, whose emitted JavaScript is identical. Three test owners calibrated. Complete mixed review03 ran through subscription,6/6 sources/no degradation: five owned major findings remain (scope-wide generated ids, tab default nameField, template nameField scope, warning identity after reorder/removal, missing template warning). Pre-existing field-rename/nameField loss is also explicitly owned by AC2. No repair round started before the window limit. Candidate spec ready-for-dev is stale; continue existing code, do not reimplement. Durable dispositions: _bmad-output/implementation-artifacts/task-80-window5-review.md. No AC or Done claim; TASK-109 runtime prerequisite and owner-only TASK-86 remain.
+
+Window6 owner authorized repair of six accepted defects. Continue clean existing candidate517e808; new batch evidence is ~/.claude/artifacts/preset-v4-window6-20261118/task-80/. No initial implementation restart. Parent owns full browser slot and task acceptance.
 <!-- SECTION:NOTES:END -->

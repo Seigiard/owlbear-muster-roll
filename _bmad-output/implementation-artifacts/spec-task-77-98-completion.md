@@ -85,6 +85,8 @@ Planning estimate: 18–38 agent-hours of serial work, roughly 12–20 elapsed h
 
 ## Implementation Notes
 
+- 2026-11-18 window 6: Owner closed TASK-79 at `d66fb1a42bc32d7e5ea153854e59b3406fcc983c`, with remaining navigation work in TASK-109. Execute TASK-109 and the six owned TASK-80 defects, confirm checks, then close TASK-88 and TASK-77 AC2. TASK-79 stays Done. Start 08:45Z, budget 90 minutes, finish mode at 11:45Z. Two isolated test/implementation lanes reuse the existing runtime and Builder candidates. The Builder baseline is `517e8082849d8c1583d0c27fd383472c8f997297`; its initial implementation is already tested. Owner-only TASK-86 remains separate.
+
 - 2026-11-18 window 5: Owner requested another window after blocked closeout `51de85d9ab09bb32479760458905c4d2d6f8d8b9`. Start 05:24:55Z, budget 90 minutes, finish mode at 08:24:55Z. Resume the six TASK-79 review blockers plus the owned section→row dice finding in one TDD review-fix batch. Preserve the cumulative review base `3b779818ccaaec60c48fbc29be73046565d0ffdb` and saved TASK-80 candidate. TASK-80 and TASK-88/77 follow repaired automated runtime evidence; AC5 remains owner-only.
 
 - 2026-11-17: The owner approved separate ticket specs and chains, at most three parallel lanes, and a first 90-minute implementation window. Initial tickets: 89, 91 and the 81 oracle repair. The current checkout remains the integration workspace.
