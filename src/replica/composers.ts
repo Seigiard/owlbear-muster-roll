@@ -559,7 +559,13 @@ export function createComposers(connectionId: string): Composers {
         if (childData === undefined) continue;
 
         const childStripped = stripToTemplate(
-          { k: childKey, d: { ...childData, cells: { ...childData.cells } } },
+          {
+            k: childKey,
+            d: {
+              ...childData,
+              cells: versionCells(cellValues(childData.cells), childVersion.c, childVersion.a),
+            },
+          },
           policy.template,
         );
 

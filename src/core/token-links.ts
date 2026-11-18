@@ -9,8 +9,7 @@ import {
   type LiveLinkTarget,
 } from '@/core/link-target';
 import {
-  layoutSections,
-  repeatSectionById,
+  repeatSectionByPath,
   rowCells,
   type Preset,
   type PresetSection,
@@ -232,38 +231,31 @@ export function pickerGroups(
       });
     }
 
-    const repeatIds = [
-      ...template.tabs.flatMap((tab) => (tab.repeat === undefined ? [] : [tab.repeat.id])),
-      ...layoutSections(template).flatMap((section) => [
-        ...(section.repeat === undefined ? [] : [section.repeat.id]),
-        ...section.rows.flatMap((row) => (row.repeat === undefined ? [] : [row.repeat.id])),
-      ]),
-    ];
-
-    for (const sectionId of repeatIds) {
-      const repeatedSection = repeatSectionById(template, sectionId);
+    for (const scopePath of repeatScopePaths(template)) {
+      const repeatedSection = repeatSectionByPath(template, scopePath);
 
       if (repeatedSection === null) continue;
 
-      for (const { cellId } of tokenCells(template, sectionId)) {
+      for (const { cellId } of tokenCells(template, scopePath)) {
         const group: PickerGroup = {
           template,
           section: repeatedSection,
           targets: sheetIds.flatMap((sheetId) =>
-            repeatBlocks(records, sheetId, sectionId).map((block) =>
-              targetOf(
-                template,
-                {
-                  sheetId,
-                  instanceId: block.instanceId,
-                  path: [sectionId, block.instanceId],
-                  cellId,
-                },
-                cellId,
-                repeatBlockName(records, sheetId, repeatedSection, block.instanceId),
-                repeatedSection,
-              ),
-            ),
+            repeatBlockPaths(records, sheetId, scopePath).flatMap((path) => {
+              const instanceId = path.at(-1);
+
+              return instanceId === undefined
+                ? []
+                : [
+                    targetOf(
+                      template,
+                      { sheetId, instanceId, path, cellId },
+                      cellId,
+                      repeatBlockName(records, sheetId, repeatedSection, instanceId, path),
+                      repeatedSection,
+                    ),
+                  ];
+            }),
           ),
         };
 
@@ -305,9 +297,9 @@ export function pickerGroups(
 
 function tokenCells(
   template: Template,
-  repeatId: string | null,
+  scopePath: readonly string[] | null,
 ): { cellId: string; section: PresetSection }[] {
-  if (repeatId === null) {
+  if (scopePath === null) {
     return template.tabs.flatMap((tab) =>
       tab.repeat === undefined
         ? tab.sections.flatMap((section) =>
@@ -325,36 +317,76 @@ function tokenCells(
     );
   }
 
-  const repeatedTab = template.tabs.find((tab) => tab.repeat?.id === repeatId);
+  const section = repeatSectionByPath(template, scopePath);
+  const scopeId = scopePath.at(-1);
 
-  if (repeatedTab !== undefined) {
-    return repeatedTab.sections.flatMap((section) =>
-      section.repeat === undefined
-        ? section.rows
-            .filter((row) => row.repeat === undefined)
-            .flatMap((row) =>
-              rowCells(row).flatMap((cell) =>
-                cell.kind === 'token' ? [{ cellId: cell.id, section }] : [],
-              ),
-            )
-        : [],
-    );
-  }
+  if (section === null || scopeId === undefined) return [];
 
-  return layoutSections(template).flatMap((section) => {
-    const rows =
-      section.repeat?.id === repeatId
-        ? section.rows.filter((row) => row.repeat === undefined)
-        : section.repeat === undefined
-          ? section.rows.filter((row) => row.repeat?.id === repeatId)
-          : [];
-
-    return rows.flatMap((row) =>
+  return section.rows
+    .filter((row) => row.repeat === undefined || row.repeat.id === scopeId)
+    .flatMap((row) =>
       rowCells(row).flatMap((cell) =>
         cell.kind === 'token' ? [{ cellId: cell.id, section }] : [],
       ),
     );
-  });
+}
+
+function repeatScopePaths(template: Template): string[][] {
+  const paths: string[][] = [];
+
+  for (const tab of template.tabs) {
+    if (tab.repeat !== undefined) {
+      paths.push([tab.repeat.id]);
+    }
+  }
+
+  for (const tab of template.tabs) {
+    const tabPath = tab.repeat === undefined ? [] : [tab.repeat.id];
+
+    for (const section of tab.sections) {
+      const sectionPath = section.repeat === undefined ? tabPath : [...tabPath, section.repeat.id];
+
+      if (section.repeat !== undefined) {
+        paths.push(sectionPath);
+      }
+
+      for (const row of section.rows) {
+        if (row.repeat !== undefined) {
+          paths.push([...sectionPath, row.repeat.id]);
+        }
+      }
+    }
+  }
+
+  return paths;
+}
+
+function repeatBlockPaths(
+  records: ReadonlyMap<string, VersionedRecord>,
+  sheetId: string,
+  scopePath: readonly string[],
+): string[][] {
+  const paths: string[][] = [];
+
+  function visit(parentPath: readonly string[], scopeIndex: number): void {
+    const scopeId = scopePath[scopeIndex];
+
+    if (scopeId === undefined) return;
+
+    for (const block of repeatBlocks(records, sheetId, [...parentPath, scopeId])) {
+      const path = [...parentPath, scopeId, block.instanceId];
+
+      if (scopeIndex === scopePath.length - 1) {
+        paths.push(path);
+      } else {
+        visit(path, scopeIndex + 1);
+      }
+    }
+  }
+
+  visit([], 0);
+
+  return paths;
 }
 
 // AD-2 and UX-DR21: Owlbear filters match item keys only and do not change, so the menu is built
