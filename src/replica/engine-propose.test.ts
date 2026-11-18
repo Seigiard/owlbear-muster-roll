@@ -507,6 +507,62 @@ describe('a GM client answers a proposal', () => {
       stored: block,
     });
   });
+  test('accepts a visible nested field under the second same-named child scope', async () => {
+    // #given
+    const fixture = nestedAccessFixture({ hiddenNpc: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: fixture.records });
+    const proposed = fixturePatch(fixture.bossChild, { attack_name: 'Bite' }, 2, PLAYER_SOCKET);
+    joinPlayerSocket(room);
+
+    // #when
+    propose(room, proposed);
+    await waitUntil(
+      () => heardOf(room, 'gm-a', 'commit').length + heardOf(room, 'gm-a', 'reject').length === 1,
+    );
+
+    // #then
+    expect({
+      commits: heardOf(room, 'gm-a', 'commit'),
+      rejected: heardOf(room, 'gm-a', 'reject'),
+      child: storedRecord(gm, fixture.bossChild.k),
+      parent: storedRecord(gm, fixture.bossParent.k),
+      hiddenSibling: storedRecord(gm, fixture.npcParent.k),
+    }).toEqual({
+      commits: [commit([proposed], [{ k: proposed.k, c: 2, a: PLAYER_SOCKET }])],
+      rejected: [],
+      child: proposed,
+      parent: fixture.bossParent,
+      hiddenSibling: fixture.npcParent,
+    });
+  });
+  test('rejects a nested field edit whose parent block is deleted', async () => {
+    // #given
+    const fixture = nestedAccessFixture({ removedBoss: true });
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded: fixture.records });
+    const proposed = fixturePatch(fixture.bossChild, { attack_name: 'Bite' }, 2, PLAYER_SOCKET);
+    joinPlayerSocket(room);
+
+    // #when
+    propose(room, proposed);
+    await waitUntil(
+      () => heardOf(room, 'gm-a', 'commit').length + heardOf(room, 'gm-a', 'reject').length === 1,
+    );
+
+    // #then
+    expect({
+      rejected: heardOf(room, 'gm-a', 'reject'),
+      commits: heardOf(room, 'gm-a', 'commit'),
+      child: storedRecord(gm, fixture.bossChild.k),
+      parent: storedRecord(gm, fixture.bossParent.k),
+    }).toEqual({
+      rejected: [reject(proposed, 'denied')],
+      commits: [],
+      child: fixture.bossChild,
+      parent: fixture.bossParent,
+    });
+  });
   test('from a player that deletes a repeat-tab block: rejects it and preserves its token link', async () => {
     // #given
     const block: VersionedRecord = {
@@ -1820,6 +1876,94 @@ describe('a player and a GM client together', () => {
     }).toEqual({ gm: expected, player: expected });
   });
 });
+
+function nestedAccessFixture({
+  hiddenNpc = false,
+  removedBoss = false,
+}: {
+  hiddenNpc?: boolean;
+  removedBoss?: boolean;
+} = {}) {
+  const repeatTab = (id: 'npc' | 'boss', visibility?: 'gm') => ({
+    title: id === 'npc' ? 'NPC' : 'Boss',
+    visibility,
+    repeat: { id, nameField: `${id}_name` },
+    sections: [
+      {
+        rows: [
+          {
+            cells: [{ kind: 'field' as const, type: 'text' as const, id: `${id}_name` }],
+          },
+        ],
+      },
+      {
+        repeat: { id: 'attack', nameField: 'attack_name' },
+        rows: [
+          {
+            cells: [{ kind: 'field' as const, type: 'text' as const, id: 'attack_name' }],
+          },
+        ],
+      },
+    ],
+  });
+
+  const preset: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'encounter',
+        title: 'Encounter',
+        players: 'edit',
+        tabs: [repeatTab('npc', hiddenNpc ? 'gm' : undefined), repeatTab('boss')],
+      },
+    ],
+  };
+
+  const root: VersionedRecord = {
+    k: 'blk:encounter',
+    d: { order: 0, cells: {} },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  };
+
+  const npcParent: VersionedRecord = {
+    k: 'blk:encounter:npc:n1',
+    d: { order: 0, cells: { npc_name: ['Goblin', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  };
+
+  const bossParent: VersionedRecord = {
+    k: 'blk:encounter:boss:b1',
+    d: removedBoss ? null : { order: 0, cells: { boss_name: ['Dragon', 1, 'seed'] } },
+    c: removedBoss ? 2 : 1,
+    a: removedBoss ? 'gm-a' : 'seed',
+    l: [1, 'seed'],
+  };
+
+  const bossChild: VersionedRecord = {
+    k: `${bossParent.k}:attack:a1`,
+    d: { order: 0, cells: { attack_name: ['Claw', 1, 'seed'] } },
+    c: 1,
+    a: 'seed',
+    l: [1, 'seed'],
+  };
+
+  return {
+    records: [
+      { k: 'preset', d: encodePreset(preset), c: 1, a: 'seed' },
+      root,
+      npcParent,
+      bossParent,
+      bossChild,
+    ] satisfies VersionedRecord[],
+    npcParent,
+    bossParent,
+    bossChild,
+  };
+}
 
 // A GM loads the base and hands it to the player, then stops answering. It stays in the party, so
 // the test speaks for it.

@@ -1286,6 +1286,108 @@ describe("a player's pending edit when the preset changes", () => {
       notifications: [],
     });
   });
+  test('keeps a nested child path when a removed sibling field is stripped and proposed again', async () => {
+    // #given
+    const fixture = nestedScopesFixture();
+
+    const editablePreset: Preset = {
+      ...fixture.preset,
+      templates: fixture.preset.templates.map((template) => ({
+        ...template,
+        players: 'edit',
+      })),
+    };
+
+    const withoutRange: Preset = {
+      ...editablePreset,
+      templates: editablePreset.templates.map((template) => ({
+        ...template,
+        tabs: template.tabs.map((tab) =>
+          tab.repeat?.id !== 'boss'
+            ? tab
+            : {
+                ...tab,
+                sections: tab.sections.map((section) =>
+                  section.repeat?.id !== 'attack'
+                    ? section
+                    : {
+                        ...section,
+                        rows: section.rows.map((row) => ({
+                          ...row,
+                          cells: row.cells.filter(
+                            (cell) => cell.kind !== 'field' || cell.id !== 'range',
+                          ),
+                        })),
+                      },
+                ),
+              },
+        ),
+      })),
+    };
+
+    const seeded: VersionedRecord[] = fixture.records.map((record) =>
+      record.k === 'preset'
+        ? recordSchema.parse({ ...record, d: encodePreset(editablePreset) })
+        : record,
+    );
+
+    const room = roomRig.openRoom();
+    const gm = await startClient(room, 'gm-a', { seeded });
+    const player = await startClient(room, PLAYER_ID, { role: 'PLAYER', seeded: [] });
+    await waitUntil(() => shown(player, fixture.bossChild.k) !== undefined);
+    gm.engine.stop();
+    send(player, {
+      type: 'field-patch',
+      sheetId: 'encounter',
+      target: {
+        kind: 'rep',
+        sectionId: 'attack',
+        instanceId: 'a1',
+        path: ['boss', 'b1', 'attack', 'a1'],
+      },
+      fieldId: 'attack_name',
+      value: 'Bite',
+    });
+    send(player, {
+      type: 'field-patch',
+      sheetId: 'encounter',
+      target: {
+        kind: 'rep',
+        sectionId: 'attack',
+        instanceId: 'a1',
+        path: ['boss', 'b1', 'attack', 'a1'],
+      },
+      fieldId: 'range',
+      value: 40,
+    });
+    await waitUntil(() => proposals(room).length === 2);
+
+    // #when
+    answer(room, commit([{ k: 'preset', d: encodePreset(withoutRange), c: 2, a: 'gm-a' }]));
+    await waitUntil(
+      () => proposals(room).length === 3 && player.store.$replica.get().get('preset')?.c === 2,
+    );
+
+    // #then
+    const kept: VersionedRecord = {
+      ...fixture.bossChild,
+      d: { order: 0, cells: { attack_name: ['Bite', 4, PLAYER_ID] } },
+      c: 4,
+      a: PLAYER_ID,
+    };
+
+    expect({
+      newest: proposals(room)[2],
+      shown: shown(player, fixture.bossChild.k),
+      pending: pendingKeys(player),
+      notifications: player.platform.shownNotifications(),
+    }).toEqual({
+      newest: kept,
+      shown: kept,
+      pending: [fixture.bossChild.k],
+      notifications: [],
+    });
+  });
   test('whose older version the GM denies after the change: no notification', async () => {
     // #given
     const { room, player } = await playerWithSilentGm();

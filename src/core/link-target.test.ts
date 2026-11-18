@@ -12,6 +12,7 @@ import {
   liveLinkTarget,
   repeatBlockTabIndex,
   sameLinkTarget,
+  tokenCellPlace,
   type LinkTarget,
 } from './link-target';
 
@@ -451,6 +452,51 @@ describe('liveLinkTarget', () => {
   test('treats every link as inert with no decoded preset', () => {
     // #then
     expect(live({ sheetId: 'brok', instanceId: null, cellId: 'token' }, null)).toBeNull();
+  });
+});
+
+describe('tokenCellPlace', () => {
+  test('finds a token in a repeat row inside a repeat section on a plain tab', () => {
+    // #given
+    const template: Template = {
+      id: 'plain',
+      title: 'Plain',
+      tabs: [
+        {
+          sections: [
+            {
+              repeat: { id: 'group', nameField: 'group_name' },
+              rows: [
+                {
+                  cells: [{ kind: 'field', type: 'text', id: 'group_name' }],
+                },
+                {
+                  repeat: { id: 'move', nameField: 'move_name' },
+                  cells: [
+                    { kind: 'field', type: 'text', id: 'move_name' },
+                    { kind: 'token', id: 'move_token' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    // #when
+    const place = tokenCellPlace(template, 'move_token', 'move', ['group', 'move']);
+
+    // #then
+    expect(
+      place === null
+        ? null
+        : {
+            tabIndex: place.tabIndex,
+            sectionIndex: place.sectionIndex,
+            rowIndex: place.rowIndex,
+          },
+    ).toEqual({ tabIndex: 0, sectionIndex: 0, rowIndex: 1 });
   });
 });
 
