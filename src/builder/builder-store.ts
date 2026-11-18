@@ -169,7 +169,7 @@ export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
     },
     open: (preset, origin, name) => {
       apply(() => {
-        const document = fromPreset(preset);
+        const document = fromPreset(preset, origin ?? undefined);
 
         return {
           step: { document, origin, name, records: [] },
@@ -179,7 +179,7 @@ export function createBuilderStore(storage: DraftStorage | null): BuilderStore {
     },
     replacePreset: (preset, origin, name) => {
       apply((step) => {
-        const document = fromPreset(preset);
+        const document = fromPreset(preset, origin ?? undefined);
 
         return {
           step: {
@@ -321,9 +321,11 @@ function parseDraft(text: string, blank: BuilderStep): BuilderStep {
     return blank;
   }
 
+  const origin = draft.data.origin === null ? null : parsePresetStructure(draft.data.origin);
+
   return {
-    document: fromPreset(preset),
-    origin: draft.data.origin === null ? null : parsePresetStructure(draft.data.origin),
+    document: fromPreset(preset, origin ?? undefined),
+    origin,
     name: draft.data.name,
     records: draft.data.records ?? [],
   };

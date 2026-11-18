@@ -287,6 +287,8 @@ export const copy = {
     addToken: 'Добавить токен',
     emptyPreset: 'Добавьте набор или одиночный лист.',
     formulasChanged: (n: number): string => `Формулы изменены: ${n}.`,
+    repeatBlocksErased: (id: string): string =>
+      `Блоки «${id}» в комнате будут стёрты при загрузке пресета.`,
     fieldValuesErased: (id: string): string =>
       `Значения поля «${id}» в комнате будут стёрты при загрузке пресета.`,
     templateSheetsDeleted: (id: string): string =>

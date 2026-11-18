@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parsePresetFile, type Preset } from '@/core/preset';
+import {
+  parsePresetFile,
+  type Preset,
+  type PresetRow,
+  type PresetSection,
+  type PresetTab,
+} from '@/core/preset';
 import {
   acceptsDrop,
   addCell,
@@ -350,6 +356,39 @@ describe('addCell', () => {
     // #then
     expect(findCell(added.document, added.changed)).toMatchObject({ id: 'field_2' });
   });
+  test('token ids are unique beside other token ids in their scope', () => {
+    // #given
+    const document = fromPreset({
+      templates: [
+        {
+          id: 'crew',
+          title: 'Экипаж',
+          tabs: [
+            {
+              sections: [
+                {
+                  rows: [{ cells: [{ kind: 'token', id: 'token' }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const row = uid(document, 0, 0, 0, 0);
+
+    // #when
+    const second = applied(addCell(document, row, 'token'));
+    const third = applied(addCell(second.document, row, 'token'));
+
+    // #then
+    expect(toPreset(third.document).templates[0]?.tabs[0]?.sections[0]?.rows[0]?.cells).toEqual([
+      { kind: 'token', id: 'token' },
+      { kind: 'token', id: 'token_2' },
+      { kind: 'token', id: 'token_3' },
+    ]);
+  });
 });
 
 describe('moveItem', () => {
@@ -502,7 +541,57 @@ describe('renameField', () => {
     // #then
     expect(name?.document.templates[0]).toMatchObject({ repeat: { nameField: 'imya' } });
   });
+
+  test.each(['tab', 'section', 'row'] as const)(
+    'keeps a renamed field as the %s repeat name field in a valid preset',
+    (scope) => {
+      // #given
+      const document = fromPreset(repeatNameFieldPreset(scope));
+
+      // #when
+      const renamed = renameField(document, uid(document, 0, 0, 0, 0, 0), 'label');
+      const preset = toPreset(renamed?.document ?? EMPTY_DOCUMENT);
+      const tab = preset.templates[0]?.tabs[0];
+      const section = tab?.sections[0];
+
+      const repeat =
+        scope === 'tab'
+          ? tab?.repeat
+          : scope === 'section'
+            ? section?.repeat
+            : section?.rows[0]?.repeat;
+
+      // #then
+      expect({
+        nameField: repeat?.nameField,
+        presetAccepted: parsePresetFile(JSON.stringify(preset)).ok,
+      }).toEqual({
+        nameField: 'label',
+        presetAccepted: true,
+      });
+    },
+  );
 });
+
+function repeatNameFieldPreset(scope: 'tab' | 'section' | 'row'): Preset {
+  const repeat = { id: 'entries', nameField: 'name' };
+
+  const row: PresetRow = {
+    cells: [{ kind: 'field', type: 'text', id: 'name' }],
+  };
+
+  const section: PresetSection = { rows: [row] };
+
+  const tab: PresetTab = { sections: [section] };
+
+  if (scope === 'tab') tab.repeat = repeat;
+
+  if (scope === 'section') section.repeat = repeat;
+
+  if (scope === 'row') row.repeat = repeat;
+
+  return { v: 4, templates: [{ id: 'notes', title: 'Заметки', tabs: [tab] }] };
+}
 
 describe('withTemplateKind', () => {
   test('a single sheet that becomes a sheet set is named by its first text field', () => {
