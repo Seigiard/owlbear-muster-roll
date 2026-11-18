@@ -81,9 +81,9 @@
   },
   {
     "id": "A62",
-    "rule": "Each pending player record overrides its replica record in known records (#62).",
+    "rule": "Each pending player record is merged with its replica record in known records (#62).",
     "file": "src/replica/window-publisher.ts",
-    "find": "        playerKnown.set(key, record);\n",
+    "find": "        playerKnown.set(key, current === undefined ? record : mergeRecords(current, record));\n",
     "replace": "",
     "test": ["src/replica/window-publisher.test.ts"]
   },
