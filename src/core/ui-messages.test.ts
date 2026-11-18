@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { FieldPatchTarget } from '@/core/field-patch';
+import type { FieldPatchWireTarget } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
 import {
   parseEngineMessage,
@@ -281,7 +281,7 @@ describe('parseWindowMessage', () => {
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-  test.each<[string, FieldPatchTarget, JsonValue]>([
+  test.each<[string, FieldPatchWireTarget, JsonValue]>([
     ['a row field', { kind: 'row', rowId: 'str' }, 12],
     ['a repeat instance field', { kind: 'rep', sectionId: 'attack', instanceId: 'i1' }, 'Меч'],
     ['a clear', { kind: 'row', rowId: 'str' }, null],
