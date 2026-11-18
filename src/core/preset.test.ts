@@ -18,6 +18,7 @@ import {
   placedSections,
   plainRowIdOf,
   presetProblems,
+  repeatSectionPlaceByPath,
   repeatSectionId,
   resolveFieldReference,
   templateById,
@@ -76,6 +77,21 @@ const MINIMAL: Preset = {
       title: 'Персонажи',
       repeat: { nameField: 'name' },
       tabs: [{ sections: [{ rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] }] }],
+    },
+  ],
+};
+
+const REPEAT_LOOKUP_LAYOUT: TemplateLayout = {
+  tabs: [
+    {
+      repeat: { id: 'npc', nameField: 'name' },
+      sections: [
+        { rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }] },
+        {
+          repeat: { id: 'attack', nameField: 'attack' },
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'attack' }] }],
+        },
+      ],
     },
   ],
 };
@@ -151,6 +167,29 @@ function presetWithSelect(options: string[]): Preset {
 function decodeIndependently(data: string): JsonValue {
   return z.json().parse(JSON.parse(strFromU8(inflateSync(Buffer.from(data, 'base64')))));
 }
+
+describe('repeatSectionPlaceByPath', () => {
+  test('finds a nested repeat section from its scope path', () => {
+    // #then
+    expect(repeatSectionPlaceByPath(REPEAT_LOOKUP_LAYOUT, ['npc', 'attack'])).toEqual({
+      place: { tabIndex: 0, sectionIndex: 1 },
+      section: REPEAT_LOOKUP_LAYOUT.tabs[0]?.sections[1],
+    });
+  });
+
+  test('finds a repeat tab as its first section place', () => {
+    // #then
+    expect(repeatSectionPlaceByPath(REPEAT_LOOKUP_LAYOUT, ['npc'])).toEqual({
+      place: { tabIndex: 0, sectionIndex: 0 },
+      section: {
+        title: undefined,
+        visibility: undefined,
+        repeat: { id: 'npc', nameField: 'name' },
+        rows: [{ cells: [{ kind: 'field', type: 'text', id: 'name' }] }],
+      },
+    });
+  });
+});
 
 describe('parsePresetFile', () => {
   test('accepts the committed example preset as it is', () => {

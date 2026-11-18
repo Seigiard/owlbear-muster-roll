@@ -3,9 +3,9 @@ import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
 import type { Preset, PresetSection, Template, TemplateLayout } from '@/core/preset';
 import type { JsonValue } from '@/core/json';
+import { blockAddress, type BlockAddress } from './block-address';
 import type { VersionedRecord } from '@/core/records';
 import {
-  blockIndex,
   linkDataOf,
   linkTargetKey,
   linkTargetOf,
@@ -91,6 +91,18 @@ function record(k: string, d: JsonValue): VersionedRecord {
   return fixtureRecord(k, d, 1, 'gm');
 }
 
+function block(sheetId: string, path: readonly string[] = []): BlockAddress {
+  const value = blockAddress(sheetId, path);
+
+  if (value === null) throw new Error('fixture must be a block address');
+
+  return value;
+}
+
+function linkTarget(sheetId: string, path: readonly string[] = [], cellId?: string): LinkTarget {
+  return { block: block(sheetId, path), cellId };
+}
+
 const RECORDS: ReadonlyMap<string, VersionedRecord> = assembleRecords([
   record('blk:brok', { set: 'pc', order: 0 }),
   record('blk:gone', null),
@@ -112,18 +124,14 @@ describe('linkTargetOf', () => {
   test('reads a sheet link', () => {
     // #then
     expect(linkTargetOf({ s: 'brok', c: 'portrait' })).toEqual({
-      sheetId: 'brok',
-      instanceId: null,
-      path: null,
+      block: { sheetId: 'brok', path: [] },
       cellId: 'portrait',
     });
   });
   test('reads a repeat block link', () => {
     // #then
     expect(linkTargetOf({ s: 'brok', path: ['pet', 'wolf'], c: 'portrait' })).toEqual({
-      sheetId: 'brok',
-      instanceId: 'wolf',
-      path: ['pet', 'wolf'],
+      block: { sheetId: 'brok', path: ['pet', 'wolf'] },
       cellId: 'portrait',
     });
   });
@@ -141,38 +149,40 @@ describe('linkTargetOf', () => {
 });
 
 describe('linkDataOf', () => {
+  const linkDataCases: { s: string; path?: string[]; c: string }[] = [
+    { s: 'brok', c: 'portrait' },
+    { s: 'brok', path: ['pet', 'wolf'], c: 'portrait' },
+  ];
+
+  test.each(linkDataCases)('keeps the v4 storage bytes for %j', (data) => {
+    // #when
+    const parsed = linkTargetOf(data);
+
+    // #then
+    expect(parsed === null ? null : linkDataOf(parsed)).toEqual(data);
+  });
+
   test('writes a sheet target as { s, c }', () => {
     // #then
-    expect(linkDataOf({ sheetId: 'brok', instanceId: null, cellId: 'portrait' })).toEqual({
+    expect(linkDataOf(linkTarget('brok', [], 'portrait'))).toEqual({
       s: 'brok',
       c: 'portrait',
     });
   });
   test('writes a repeat block target as { s, path, c }', () => {
     // #then
-    expect(
-      linkDataOf({
-        sheetId: 'brok',
-        instanceId: 'wolf',
-        path: ['pet', 'wolf'],
-        cellId: 'portrait',
-      }),
-    ).toEqual({ s: 'brok', path: ['pet', 'wolf'], c: 'portrait' });
+    expect(linkDataOf(linkTarget('brok', ['pet', 'wolf'], 'portrait'))).toEqual({
+      s: 'brok',
+      path: ['pet', 'wolf'],
+      c: 'portrait',
+    });
   });
 });
 
 describe('linkTargetKey', () => {
   test.each<[LinkTarget, string]>([
-    [{ sheetId: 'brok', instanceId: null, cellId: 'portrait' }, 'brok::portrait'],
-    [
-      {
-        sheetId: 'brok',
-        instanceId: 'wolf',
-        path: ['pet', 'wolf'],
-        cellId: 'portrait',
-      },
-      'brok:pet:wolf:portrait',
-    ],
+    [linkTarget('brok', [], 'portrait'), 'brok::portrait'],
+    [linkTarget('brok', ['pet', 'wolf'], 'portrait'), 'brok:pet:wolf:portrait'],
   ])('keys %j as %s', (target, key) => {
     // #then
     expect(linkTargetKey(target)).toBe(key);
@@ -181,79 +191,21 @@ describe('linkTargetKey', () => {
 
 describe('sameLinkTarget', () => {
   test.each<[LinkTarget, LinkTarget, boolean]>([
+    [linkTarget('brok', [], 'token'), linkTarget('brok', [], 'token'), true],
     [
-      { sheetId: 'brok', instanceId: null, cellId: 'token' },
-      { sheetId: 'brok', instanceId: null, cellId: 'token' },
+      linkTarget('brok', ['pet', 'wolf'], 'token'),
+      linkTarget('brok', ['pet', 'wolf'], 'token'),
       true,
     ],
+    [linkTarget('brok', [], 'token'), linkTarget('brok', ['pet', 'wolf'], 'token'), false],
     [
-      {
-        sheetId: 'brok',
-        instanceId: 'wolf',
-        path: ['pet', 'wolf'],
-        cellId: 'token',
-      },
-      {
-        sheetId: 'brok',
-        instanceId: 'wolf',
-        path: ['pet', 'wolf'],
-        cellId: 'token',
-      },
-      true,
-    ],
-    [
-      { sheetId: 'brok', instanceId: null, cellId: 'token' },
-      {
-        sheetId: 'brok',
-        instanceId: 'wolf',
-        path: ['pet', 'wolf'],
-        cellId: 'token',
-      },
-      false,
-    ],
-    [
-      {
-        sheetId: 'brok',
-        instanceId: 'wolf',
-        path: ['pet', 'wolf'],
-        cellId: 'token',
-      },
-      {
-        sheetId: 'liza',
-        instanceId: 'wolf',
-        path: ['pet', 'wolf'],
-        cellId: 'token',
-      },
+      linkTarget('brok', ['pet', 'wolf'], 'token'),
+      linkTarget('liza', ['pet', 'wolf'], 'token'),
       false,
     ],
   ])('compares %j with %j as %p', (first, second, expected) => {
     // #then
     expect(sameLinkTarget(first, second)).toBe(expected);
-  });
-});
-
-describe('blockIndex', () => {
-  test('maps each live repeat block to its section by sheet id and instance id', () => {
-    // #when
-    const index = blockIndex(RECORDS.values());
-    // #then
-    expect([...index].sort(([left], [right]) => (left < right ? -1 : 1))).toEqual([
-      ['brok:rope', 'item'],
-      ['brok:wolf', 'pet'],
-      ['npc:s1', 'npc_name'],
-    ]);
-  });
-  test('gives one instance id held by two sections the section of the lower key on every client', () => {
-    // #given
-    const records = [
-      record('blk:brok:pet:twin', { order: 0, cells: {} }),
-      record('blk:brok:item:twin', { order: 0, cells: {} }),
-    ];
-
-    // #when
-    const indexes = [blockIndex(records), blockIndex([...records].reverse())];
-    // #then
-    expect(indexes.map((index) => index.get('brok:twin'))).toEqual(['item', 'item']);
   });
 });
 
@@ -296,12 +248,7 @@ describe('liveLinkTarget', () => {
       record('blk:npc:npc:b', { order: 1, cells: { name: 'Beta' } }),
     ]);
 
-    const target: LinkTarget = {
-      sheetId: 'npc',
-      instanceId: 'b',
-      path: ['npc', 'b'],
-      cellId: 'portrait',
-    };
+    const target = linkTarget('npc', ['npc', 'b'], 'portrait');
 
     // #when
     const found = liveLinkTarget(records, { v: 4, templates: [template] }, target);
@@ -326,30 +273,20 @@ describe('liveLinkTarget', () => {
 
   test('keeps a link to a live sheet of a linkable template', () => {
     // #given
-    const target = { sheetId: 'brok', instanceId: null, cellId: 'token' };
+    const target = linkTarget('brok', [], 'token');
     // #then
     expect(live(target)).toEqual({ target, template: PC, section: null });
   });
   test('keeps a link to a live repeat block of a linkable section', () => {
     // #given
-    const target = {
-      sheetId: 'brok',
-      instanceId: 'wolf',
-      path: ['pet', 'wolf'],
-      cellId: 'token',
-    };
+    const target = linkTarget('brok', ['pet', 'wolf'], 'token');
 
     // #then
     expect(live(target)).toEqual({ target, template: PC, section: PET_SECTION });
   });
   test('keeps a link to a repeat block of a hidden single sheet, as visibility is not liveness', () => {
     // #given
-    const target = {
-      sheetId: 'npc',
-      instanceId: 's1',
-      path: ['npc_name', 's1'],
-      cellId: 'token',
-    };
+    const target = linkTarget('npc', ['npc_name', 's1'], 'token');
 
     // #then
     expect(live(target)).toEqual({ target, template: NPC, section: NPC_SECTION });
@@ -385,73 +322,32 @@ describe('liveLinkTarget', () => {
       record('blk:npc:member:one', { order: 0, cells: { name: 'One' } }),
     ]);
 
-    const root = { sheetId: 'npc', instanceId: null, cellId: 'root' };
-
-    const repeat = {
-      sheetId: 'npc',
-      instanceId: 'one',
-      path: ['member', 'one'],
-      cellId: 'repeat',
-    };
+    const root = linkTarget('npc', [], 'root');
+    const repeat = linkTarget('npc', ['member', 'one'], 'repeat');
 
     // #when
-    const targets = [root, { sheetId: 'npc', instanceId: null, cellId: 'repeat' }, repeat].map(
-      (target) => liveLinkTarget(records, { v: 4, templates: [template] }, target),
+    const targets = [root, linkTarget('npc', [], 'repeat'), repeat].map((target) =>
+      liveLinkTarget(records, { v: 4, templates: [template] }, target),
     );
 
     // #then
     expect(targets.map((target) => target?.target ?? null)).toEqual([root, null, repeat]);
   });
   test.each<[string, LinkTarget]>([
-    [
-      'a sheet of a template with no root token',
-      { sheetId: 'npc', instanceId: null, cellId: 'token' },
-    ],
-    [
-      'a repeat block of a section with no tokens',
-      {
-        sheetId: 'brok',
-        instanceId: 'rope',
-        path: ['item', 'rope'],
-        cellId: 'token',
-      },
-    ],
-    [
-      'a removed repeat block',
-      {
-        sheetId: 'brok',
-        instanceId: 'dead',
-        path: ['pet', 'dead'],
-        cellId: 'token',
-      },
-    ],
-    [
-      'an unknown repeat block',
-      {
-        sheetId: 'brok',
-        instanceId: 'cat',
-        path: ['pet', 'cat'],
-        cellId: 'token',
-      },
-    ],
-    [
-      'a repeat block named under another sheet',
-      {
-        sheetId: 'npc',
-        instanceId: 'wolf',
-        path: ['npc_name', 'wolf'],
-        cellId: 'token',
-      },
-    ],
-    ['a deleted sheet', { sheetId: 'gone', instanceId: null, cellId: 'token' }],
-    ['a sheet with no sheet record', { sheetId: 'liza', instanceId: null, cellId: 'token' }],
+    ['a sheet of a template with no root token', linkTarget('npc', [], 'token')],
+    ['a repeat block of a section with no tokens', linkTarget('brok', ['item', 'rope'], 'token')],
+    ['a removed repeat block', linkTarget('brok', ['pet', 'dead'], 'token')],
+    ['an unknown repeat block', linkTarget('brok', ['pet', 'cat'], 'token')],
+    ['a repeat block named under another sheet', linkTarget('npc', ['npc_name', 'wolf'], 'token')],
+    ['a deleted sheet', linkTarget('gone', [], 'token')],
+    ['a sheet with no sheet record', linkTarget('liza', [], 'token')],
   ])('treats a link to %s as inert', (_name, target) => {
     // #then
     expect(live(target)).toBeNull();
   });
   test('treats every link as inert with no decoded preset', () => {
     // #then
-    expect(live({ sheetId: 'brok', instanceId: null, cellId: 'token' }, null)).toBeNull();
+    expect(live(linkTarget('brok', [], 'token'), null)).toBeNull();
   });
 });
 
@@ -485,7 +381,7 @@ describe('tokenCellPlace', () => {
     };
 
     // #when
-    const place = tokenCellPlace(template, 'move_token', 'move', ['group', 'move']);
+    const place = tokenCellPlace(template, 'move_token', ['group', 'move']);
 
     // #then
     expect(
@@ -512,18 +408,18 @@ describe('repeatBlockTabIndex', () => {
     ],
   };
 
-  const RECORDS: VersionedRecord[] = [
+  const REPEAT_TAB_RECORDS: VersionedRecord[] = [
     { k: 'blk:brok:pet:p1', d: { order: 0, cells: {} }, c: 1, a: 'gm', l: [1, 'seed'] },
     { k: 'blk:brok:pet:gone', d: null, c: 2, a: 'gm', l: [1, 'seed'] },
   ];
 
-  test.each<[string, string, number | null]>([
-    ['a live repeat block', 'p1', 1],
-    ['a removed repeat block', 'gone', null],
-    ['an unknown repeat block', 'nobody', null],
-  ])('finds the tab of %s', (_name, instanceId, expected) => {
+  test.each<[string, BlockAddress, number | null]>([
+    ['a live repeat block', block('brok', ['pet', 'p1']), 1],
+    ['a removed repeat block', block('brok', ['pet', 'gone']), null],
+    ['an unknown repeat block', block('brok', ['pet', 'nobody']), null],
+  ])('finds the tab of %s', (_name, target, expected) => {
     // #when
-    const tab = repeatBlockTabIndex(RECORDS, LAYOUT, 'brok', instanceId);
+    const tab = repeatBlockTabIndex(REPEAT_TAB_RECORDS, LAYOUT, target);
     // #then
     expect(tab).toBe(expected);
   });

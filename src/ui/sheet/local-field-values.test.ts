@@ -1,11 +1,21 @@
 import { describe, expect, test } from 'bun:test';
+import { blockAddress } from '@/core/block-address';
 import type { ShownValue } from '@/core/dice-roll';
 import type { FieldPatchTarget } from '@/core/field-patch';
 import { createLocalFieldValues, shownForRoll, type LocalFieldValue } from './local-field-values';
 
 const STR_ROW: FieldPatchTarget = { kind: 'row', rowId: 'str' };
-const ATTACK_ONE: FieldPatchTarget = { kind: 'rep', sectionId: 'attack', instanceId: 'i1' };
-const ATTACK_TWO: FieldPatchTarget = { kind: 'rep', sectionId: 'attack', instanceId: 'i2' };
+
+function repeatTarget(instanceId: string): FieldPatchTarget {
+  const block = blockAddress('brok', ['attack', instanceId]);
+
+  if (block === null) throw new Error('fixture must be a repeat block address');
+
+  return { kind: 'rep', block };
+}
+
+const ATTACK_ONE = repeatTarget('i1');
+const ATTACK_TWO = repeatTarget('i2');
 
 function local(target: FieldPatchTarget, fieldId: string, text: string): LocalFieldValue {
   return { sheetId: 'brok', target, fieldId, shown: { kind: 'text', text } };

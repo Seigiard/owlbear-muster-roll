@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { sheetRootAddress } from '@/core/block-address';
 import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
 import { parsePresetFile, type Preset, type PresetFieldCell } from '@/core/preset';
 import { blockDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
@@ -157,7 +158,7 @@ describe('previewSheets with sample content', () => {
   test('gives a repeat section two repeat blocks, each with every field of the section', () => {
     // #when
     const { records } = previewSheets(PRESET, 'sample');
-    const blocks = repeatBlocks(records, 'npc', 'foe');
+    const blocks = repeatBlocks(records, sheetRootAddress('npc'), 'foe');
     // #then
     expect(
       blocks.map((block) => ({ id: block.instanceId, values: Object.fromEntries(block.values) })),
@@ -191,7 +192,7 @@ describe('previewSheets with empty content', () => {
     expect({
       keys: [...records.keys()],
       name: sheetName(records, PRESET, 'preview-1'),
-      blocks: repeatBlocks(records, 'npc', 'foe'),
+      blocks: repeatBlocks(records, sheetRootAddress('npc'), 'foe'),
     }).toEqual({ keys: ['blk:preview-1', 'blk:npc'], name: '', blocks: [] });
   });
 });

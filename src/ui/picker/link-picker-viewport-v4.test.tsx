@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { sheetRootAddress } from '@/core/block-address';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
 import type { SyncState } from '@/core/ui-messages';
@@ -59,7 +60,7 @@ test('a failed viewport read still lists every scene token with globally unlinke
   await act(async () => {
     root.render(
       <TokenCellPicker
-        target={{ sheetId: 'shared', instanceId: null, cellId: 'portrait' }}
+        target={{ block: sheetRootAddress('shared'), cellId: 'portrait' }}
         store={store}
         sendCommand={async () => ({ kind: 'answered', answer: undefined })}
         scene={{
