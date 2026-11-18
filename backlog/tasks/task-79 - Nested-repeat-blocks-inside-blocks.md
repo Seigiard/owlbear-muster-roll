@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-18T06:48:00Z'
+updated_date: '2026-11-18T08:14:00Z'
 labels:
   - format-v4
   - blocked
@@ -55,4 +55,6 @@ HISTORICAL: Blocked; candidate d4fd388 remains on feature/preset-v4-task-79 and 
 Window 5 authorized by owner on 2026-11-18. Resume six owned critical/major findings and section-to-row dice lookup through one TDD review-fix batch from integration 51de85d. Budget 90 minutes from 05:24:55Z; finish mode 08:24:55Z. Cumulative review base stays 3b779818. TASK-80 and TASK-88/77 wait for repaired runtime evidence; AC5 remains owner-only.
 
 Owner scope decision, 2026-11-18: keep ordinary visible nested editing and nested token navigation in current acceptance. Delayed child edits after parent deletion and preset replacement while nested edits are pending are optional follow-ups TASK-102 and TASK-103, not acceptance blockers or dependencies. Multiple GMs and multiple windows of one GM are outside this completion scope. Retire only the two new diagnostic tests from 3abef2f; preserve prior accepted tests and retain the diagnostic commit as evidence.
+
+CURRENT window 5: repaired runtime is integrated at 3d0c96a. Format/lint/types/unit passed at that clean SHA (3432 pass/1 skip); browser579 and build passed at bc92efb with unchanged runtime inputs. Both review-fix batches are complete, but confirming round03 final (2/2 sources, no degradation) leaves TASK-109: opening a copied nested child from its token reveals the source on a plain tab. The real navigation reducer maps different parent paths to identical reveal state. TASK-108 is an optional constructed root/nested same-id case. The bounded two-fix loop ended blocked; no third repair or acceptance claim. TASK-86 remains owner-only. Durable record: _bmad-output/implementation-artifacts/task-79-window5-review.md.
 <!-- SECTION:NOTES:END -->

@@ -4,7 +4,7 @@ title: Reject repeat shapes that the runtime cannot handle (D19)
 status: In Progress
 assignee: []
 created_date: '2026-11-17T03:46:00Z'
-updated_date: '2026-11-17T23:10:00Z'
+updated_date: '2026-11-18T08:14:00Z'
 labels:
   - format-v4
   - review-follow-up
@@ -45,4 +45,6 @@ TASK-77 AC2 required a temporary rule check for repeat tabs and nested repeat sc
 Closing review follow-up docs+tests-claude-5 is tracked here, not in a duplicate issue. Snapshot 7dcd100 accepts a nested repeat shape despite the published/canonical docs claiming that rule checks reject it. TASK-79 remains unmerged. Keep supported repeat tabs enabled; verify the current supported/refused boundary before changing the claim or validation.
 
 Window 4 evidence commit 41301d9 is merged, but the closing review rejected the complete-support/supersession claim. Section-to-row nesting and other TASK-79 consumers remain unsupported despite parser acceptance. The evidence document now marks its matrix provisional. TASK-88 and TASK-77 AC2 stay open; repair TASK-79 before asserting the final supported/refused boundary. See _bmad-output/implementation-artifacts/task-79-window4-review.md.
+
+Window5: previous runtime failures were repaired at 3d0c96a, but confirming round03 leaves ordinary token reveal blocker TASK-109. Complete-support supersession and TASK-77 AC2 remain open. The boundary evidence record now points to task-79-window5-review.md; no temporary blanket ban was introduced.
 <!-- SECTION:NOTES:END -->

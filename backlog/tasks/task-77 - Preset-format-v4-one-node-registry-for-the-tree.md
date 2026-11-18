@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@openai'
 created_date: '2026-11-16T06:49:00Z'
-updated_date: '2026-11-17T23:10:00Z'
+updated_date: '2026-11-18T08:14:00Z'
 labels:
   - format-v4
 dependencies:
@@ -57,4 +57,6 @@ The single review and its bounded fix batch are complete at db11acc8cb09c1f9cd05
 D19 now has a durable Backlog record: TASK-88. It tracks validation of unsupported repeat shapes and the unresolved AC2 evidence. This does not authorize reintroducing a blanket repeat-tab ban after TASK-78 support, or checking the historical temporary refusal without proof.
 
 Window 4 closing review leaves AC2 open. TASK-88 checks passed selected parser/Builder/upload paths, but TASK-79 still has blocking nested-runtime defects. The provisional supersession claim was withdrawn; no blanket repeat-tab ban was introduced. See _bmad-output/implementation-artifacts/task-79-window4-review.md.
+
+Window5: AC2 remains open with TASK-88. Runtime fixes are integrated at 3d0c96a and pass all required checks, but the final confirming review leaves TASK-109. TASK-108 is optional, not a reason to narrow parent-local ids. No complete preset-v4 acceptance is claimed.
 <!-- SECTION:NOTES:END -->

@@ -2,6 +2,12 @@
 
 ## Verdict
 
+**Window 5:** The earlier runtime failures were repaired at `3d0c96a`, with
+3432 unit tests and 579 browser tests passing. Confirming review then found
+TASK-109: opening a copied nested child from its token can reveal the source
+child. TASK-79 remains blocked, so this record still does not claim complete
+support or close TASK-77 AC2. See `task-79-window5-review.md`.
+
 **Not accepted after integration review.** The checks below prove selected
 parser and runtime paths. They do not establish complete nested support.
 `task-79-window4-review.md` records unsupported section→row rendering, nested

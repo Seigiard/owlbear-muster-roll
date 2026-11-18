@@ -528,3 +528,16 @@
 
 The six critical/major findings and section→row dice lookup remain owned by
 TASK-79. They block acceptance and are not deferred follow-up scope.
+
+## Deferred from: TASK-77–98 window 5 (2026-11-18)
+
+- TASK-102: late child edits after parent deletion. Optional by owner decision S1.
+- TASK-103: pending nested edits during preset replacement. Optional by S1.
+- TASK-105: invalid local input during nested dice rolls. Optional; two constructed review cases.
+- TASK-106: snapshot accounting for children of deleted parents. Optional; no live value loss.
+- TASK-108: root and nested scopes with the same id. Optional constructed input; source-confirmed lookup gap.
+
+The previous six owned failures and the two round02 ordinary-flow failures
+were repaired. The current owned blocker is TASK-109: a copied nested child's
+token reveals the source child on a plain tab. It remains required work,
+not optional scope. Evidence: `task-79-window5-review.md`.
