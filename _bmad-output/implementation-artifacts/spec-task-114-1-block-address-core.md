@@ -83,8 +83,12 @@ Core has no `.transform()` yet; types come from `z.infer`. zod is 4.6.7: `.refin
 
 - `src/replica/composers.ts` converts command wire targets with `fieldPatchTargetOf` and keeps the existing rejection order.
 - `src/replica/engine.ts` converts open requests to `{block, cellId}` at the UI boundary.
+- `src/replica/pending-queue.ts` converts field-patch wire targets before grouping pending patches.
 - `src/ui/replica-client.ts` converts readonly address paths to mutable wire arrays and omits `path` for shallow repeat blocks.
+- `src/ui/sheet/use-field-edit.ts` converts address targets to wire field-patch targets before sending commands.
+- `src/builder/preview-pane.tsx` converts field-patch wire targets before applying preview edits.
 - `src/ui/sheet/preset-section.tsx` returns no link target when a root block address cannot be built.
+- `src/core/ui-messages.test.ts` uses the wire target type for unchanged v4 command literals.
 
 ## Spec Change Log
 
