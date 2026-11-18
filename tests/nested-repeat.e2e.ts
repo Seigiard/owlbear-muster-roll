@@ -442,6 +442,8 @@ test('a copied nested child opens and focuses from its complete token path', asy
 
   await expect(sourceTarget).toBeVisible();
   await expect(copiedTarget).toBeVisible();
+  await sourceTarget.click();
+  await expect(sourceTarget).toBeFocused();
 
   // #when
   const clicked = await background.evaluate(() =>
