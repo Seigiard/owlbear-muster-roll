@@ -9,7 +9,7 @@ import {
 } from '@/core/records';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
-import type { Command } from '@/core/ui-messages';
+import type { WireCommand } from '@/core/ui-messages';
 import type { ContextMenuIconFilter, PlayerRole } from '@/platform/ports';
 import {
   createRoomRig,
@@ -167,7 +167,7 @@ const BASE: readonly VersionedRecord[] = [
 ];
 
 // A field edit, which changes no menu filter.
-const FIELD_EDIT: Command = {
+const FIELD_EDIT: WireCommand = {
   type: 'field-patch',
   sheetId: 'brok',
   target: { kind: 'row', rowId: 'str' },
@@ -399,7 +399,7 @@ describe('link-set', () => {
       const client = await startClient(room, 'gm-a');
 
       // #when
-      const command: Extract<Command, { type: 'link-set' }> = {
+      const command: Extract<WireCommand, { type: 'link-set' }> = {
         type: 'link-set',
         tokenId: 't1',
         sheetId,

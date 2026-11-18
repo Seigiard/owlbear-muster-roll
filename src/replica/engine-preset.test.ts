@@ -13,7 +13,7 @@ import {
 } from '@/core/preset';
 import { NOTHING_ERASED, presetDiff } from '@/core/preset-migrate';
 import { cellValues, recordSchema, type VersionedRecord } from '@/core/records';
-import type { Command } from '@/core/ui-messages';
+import type { WireCommand } from '@/core/ui-messages';
 import type { Timing } from '@/core/timing';
 import type { PlayerRole } from '@/platform/ports';
 import {
@@ -1554,7 +1554,7 @@ function uploadOf(
   expectedCount: number,
   expectedDigest = digestOf(preset),
   expectedSheets = 0,
-): Command {
+): WireCommand {
   return {
     type: 'preset-upload',
     data: encodePreset(preset),
@@ -1588,7 +1588,7 @@ function reject(
   return { v: 4, g: GENERATION, t: 'reject', k: edit.k, c: edit.c, a: edit.a, reason };
 }
 
-function strEdit(fieldId: string, value: JsonValue): Command {
+function strEdit(fieldId: string, value: JsonValue): WireCommand {
   return {
     type: 'field-patch',
     sheetId: 'brok',

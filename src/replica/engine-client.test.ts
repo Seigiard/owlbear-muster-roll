@@ -19,7 +19,7 @@ import { err } from '@/core/result';
 import type { SnapshotFile } from '@/core/snapshot-file';
 import { encodeSnapshotFileData } from '@/core/snapshot-import';
 import type { Timing } from '@/core/timing';
-import { UI_CHANNEL, type Command } from '@/core/ui-messages';
+import { UI_CHANNEL, type WireCommand } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
 import type { PlayerRole, SendResult } from '@/platform/ports';
 import type { ReplicaEngine } from '@/replica/engine';
@@ -27,6 +27,7 @@ import {
   createRoomRig,
   pause,
   RIG_TIMING,
+  sendWire,
   storageKey,
   type RigClient,
   type RigPage,
@@ -269,8 +270,8 @@ async function openAndLoad(rig: Rig): Promise<WindowView> {
   return view;
 }
 
-async function rejectionOf(view: WindowView, command: Command): Promise<string | undefined> {
-  const settled = await Promise.resolve(view.client.sendCommand(command));
+async function rejectionOf(view: WindowView, command: WireCommand): Promise<string | undefined> {
+  const settled = await Promise.resolve(sendWire(view.client, command));
 
   return settled.kind === 'refused' ? settled.rejection.reason : undefined;
 }
@@ -359,7 +360,7 @@ describe('command id ownership', () => {
     seedRecords(rig, PRESET_RECORD);
     const engine = await startEngine(rig);
     const view = await openAndLoad(rig);
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'late', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'late', set: 'pc' });
     await waitUntil(() => recordsOf(view.store).some((record) => record.k === 'blk:late'));
     // #when
     engine.stop();
@@ -373,7 +374,7 @@ describe('command id ownership', () => {
     seedRecords(rig, PRESET_RECORD);
     const engine = await startEngine(rig);
     const view = await openAndLoad(rig);
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'now', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'now', set: 'pc' });
     await waitUntil(() => recordsOf(view.store).some((record) => record.k === 'blk:now'));
     // #when
     engine.flushNow();
@@ -471,7 +472,7 @@ describe('corrupt stored record', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'bad', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'bad', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
     await pause(5);
     // #then
@@ -533,7 +534,7 @@ describe('open window', () => {
     const view = openWindow(rig, ids('nonce-1'));
     await waitUntil(() => recordsOf(view.store).length === 2);
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'b', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'b', set: 'pc' });
     await waitUntil(() => recordsOf(view.store).length === 3);
     // #then
     expect({
@@ -898,7 +899,7 @@ describe('command', () => {
 
     // #when
     const outcome = Promise.resolve(
-      view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' }),
+      sendWire(view.client, { type: 'sheet-create', sheetId: 'brok', set: 'pc' }),
     );
 
     await waitUntil(() => deltas(rig).length === 1);
@@ -921,7 +922,7 @@ describe('command', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'brok', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
     // #then
     expect(deltas(rig)[0]?.records).toEqual([
@@ -941,9 +942,9 @@ describe('command', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'b', set: 'pc' });
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'l', set: 'pc' });
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 's', set: 'ally' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'b', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'l', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 's', set: 'ally' });
     await waitUntil(() => deltas(rig).length === 3);
     // #then
     expect(deltas(rig).map((message) => message.records?.[0]?.d)).toEqual([
@@ -959,7 +960,7 @@ describe('command', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'made', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'made', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
     // #then
     expect(rig.platform.storage.getItem(storageKey('blk:made'))).toEqual({
@@ -1024,7 +1025,7 @@ describe('command', () => {
     seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
     const view = await openAndLoad(rig);
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'x', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'x', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
     const before = rig.wire.length;
     // #when: every engine message on the wire is delivered back to the engine again.
@@ -1042,7 +1043,7 @@ describe('window lifecycle', () => {
     seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
     const first = await openAndLoad(rig);
-    first.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    sendWire(first.client, { type: 'sheet-create', sheetId: 'brok', set: 'pc' });
     await waitUntil(() => recordsOf(first.store).length === 2);
     first.client.stop();
     // #when
@@ -1056,7 +1057,7 @@ describe('window lifecycle', () => {
     seedRecords(rig, PRESET_RECORD);
     const engine = await startEngine(rig);
     const first = await openAndLoad(rig);
-    first.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    sendWire(first.client, { type: 'sheet-create', sheetId: 'brok', set: 'pc' });
     await waitUntil(() => recordsOf(first.store).length === 2);
     engine.stop();
     first.client.stop();
@@ -1072,13 +1073,13 @@ describe('window lifecycle', () => {
     seedRecords(rig, PRESET_RECORD);
     const engine = await startEngine(rig, ids('engine-1'));
     const view = await openAndLoad(rig);
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'before', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'before', set: 'pc' });
     await waitUntil(() => recordsOf(view.store).length === 2);
     engine.stop();
     await startEngine(rig, ids('engine-2'));
     const requestsBefore = requests(rig).length;
     // #when: the restarted engine counts from 1 again, so its delta must not look old.
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'after', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'after', set: 'pc' });
     await waitUntil(() => requests(rig).length > requestsBefore);
     await waitUntil(() => recordsOf(view.store).length === 3);
     // #then
@@ -1117,7 +1118,7 @@ describe('window lifecycle', () => {
 
     const requestsBefore = requests(rig).length;
     // #when: the new engine replaces its replica after the old window received engine-1's projection.
-    view.client.sendCommand({ type: 'snapshot-import', data, expectedDigest: check.answer.digest });
+    sendWire(view.client, { type: 'snapshot-import', data, expectedDigest: check.answer.digest });
     await waitUntil(() => requests(rig).length > requestsBefore);
     await waitUntil(() => keysOf(view.store).length === 3);
     // #then
@@ -1137,7 +1138,7 @@ describe('send queue through the engine', () => {
     const view = await openAndLoad(rig);
     rig.platform.failNextSends([{ kind: 'rate-limited' }, { kind: 'rate-limited' }]);
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'brok', set: 'pc' });
     await waitUntil(() => recordsOf(view.store).length === 2);
     // #then
     expect(view.store.$records.get().get('blk:brok')?.d).toEqual({
@@ -1158,7 +1159,7 @@ describe('record too large', () => {
 
     // #when
     const sent = await Promise.resolve(
-      view.client.sendCommand({
+      sendWire(view.client, {
         type: 'field-patch',
         sheetId: 'long',
         target: { kind: 'row', rowId: 'name' },
@@ -1192,7 +1193,7 @@ describe('sheet-create', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'b-1_X', set: 'ally' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'b-1_X', set: 'ally' });
     await waitUntil(() => deltas(rig).length === 1);
     // #then
     expect(rig.platform.storage.getItem(storageKey('blk:b-1_X'))).toEqual({
@@ -1327,7 +1328,7 @@ describe('sheet-create', () => {
     const view = await openAndLoad(rig);
     await rejectionOf(view, { type: 'sheet-create', sheetId: 'a:b', set: 'pc' });
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'brok', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
     // #then
     expect(keysOf(view.store)).toEqual(['blk:brok', 'preset']);
@@ -1394,7 +1395,7 @@ describe('sheet-delete', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    sendWire(view.client, { type: 'sheet-delete', sheetId: 'brok' });
     await waitUntil(() => deltas(rig).length === 1);
     await pause(5);
 
@@ -1434,7 +1435,7 @@ describe('sheet-delete', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    sendWire(view.client, { type: 'sheet-delete', sheetId: 'brok' });
     await waitUntil(() => deltas(rig).length === 1);
     // #then
     expect({
@@ -1466,7 +1467,7 @@ describe('sheet-delete', () => {
     });
     const engine = await startEngine(rig);
     const first = await openAndLoad(rig);
-    first.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    sendWire(first.client, { type: 'sheet-delete', sheetId: 'brok' });
     await waitUntil(() => deltas(rig).length === 1);
     engine.stop();
     first.client.stop();
@@ -1552,7 +1553,7 @@ describe('sheet-delete', () => {
         : setItem(key, value),
     );
 
-    first.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    sendWire(first.client, { type: 'sheet-delete', sheetId: 'brok' });
     await waitUntil(() => deltas(rig).length === 1);
     failing.mockRestore();
     engine.stop();
@@ -1561,7 +1562,7 @@ describe('sheet-delete', () => {
     const second = await openAndLoad(rig);
     const reloaded = second.store.$records.get().get('blk:brok')?.d;
     // #when
-    second.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    sendWire(second.client, { type: 'sheet-delete', sheetId: 'brok' });
     await waitUntil(() => second.store.$records.get().get('blk:brok')?.d === null);
     // #then
     expect({
@@ -1593,7 +1594,7 @@ describe('sheet-delete', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    sendWire(view.client, { type: 'sheet-delete', sheetId: 'brok' });
     await waitUntil(() => recordsOf(view.store).every((record) => record.d === null));
     // #then
     const parts = deltas(rig);
@@ -1619,7 +1620,7 @@ describe('sheet-delete', () => {
     const view = await openAndLoad(rig);
     rig.platform.setFailingStorageOperations(['write']);
     // #when
-    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
+    sendWire(view.client, { type: 'sheet-delete', sheetId: 'brok' });
     await waitUntil(() => deltas(rig).length === 1);
     await pause(5);
     // #then
@@ -1640,7 +1641,7 @@ describe('write failure', () => {
     const view = await openAndLoad(rig);
     rig.platform.setFailingStorageOperations(['write']);
     // #when
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'brok', set: 'pc' });
     await waitUntil(() => recordsOf(view.store).length === 2);
     // #then
     expect({
@@ -1659,11 +1660,11 @@ describe('write failure', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     rig.platform.setFailingStorageOperations(['write']);
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'flaky', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'flaky', set: 'pc' });
     await waitUntil(() => view.store.$notices.get().length === 1);
     rig.platform.setFailingStorageOperations([]);
     // #when
-    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'flaky' });
+    sendWire(view.client, { type: 'sheet-delete', sheetId: 'flaky' });
     await waitUntil(() => view.store.$notices.get().length === 0);
     // #then
     expect(rig.platform.storage.getItem(storageKey('blk:flaky'))).toEqual({
@@ -1680,11 +1681,11 @@ describe('write failure', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     rig.platform.setFailingStorageOperations(['write']);
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'flaky', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'flaky', set: 'pc' });
     await waitUntil(() => recordsOf(view.store).length === 2);
     rig.platform.setFailingStorageOperations([]);
     // #when
-    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'flaky' });
+    sendWire(view.client, { type: 'sheet-delete', sheetId: 'flaky' });
     await waitUntil(() => deltas(rig).length === 2);
     await pause(5);
     // #then
@@ -1705,7 +1706,7 @@ describe('write failure', () => {
       const view = await openAndLoad(rig);
       rig.platform.setFailingStorageOperations([]);
       // #when
-      view.client.sendCommand(upload(PRESET));
+      sendWire(view.client, upload(PRESET));
       await waitUntil(() => deltas(rig).length === 1);
       await pause(5);
       // #then
@@ -1754,7 +1755,7 @@ describe('preset upload', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    view.client.sendCommand(upload(examplePreset()));
+    sendWire(view.client, upload(examplePreset()));
     await waitUntil(() => view.store.$records.get().has('preset'));
     // #then
     expect({
@@ -1770,7 +1771,7 @@ describe('preset upload', () => {
     const rig = createRig();
     const engine = await startEngine(rig);
     const first = await openAndLoad(rig);
-    first.client.sendCommand(upload(examplePreset()));
+    sendWire(first.client, upload(examplePreset()));
     await waitUntil(() => first.store.$records.get().has('preset'));
     engine.stop();
     first.client.stop();
@@ -1787,10 +1788,10 @@ describe('preset upload', () => {
     const rig = createRig();
     await startEngine(rig);
     const view = await openAndLoad(rig);
-    view.client.sendCommand(upload(examplePreset()));
+    sendWire(view.client, upload(examplePreset()));
     await waitUntil(() => deltas(rig).length === 1);
     // #when
-    view.client.sendCommand(upload(PRESET));
+    sendWire(view.client, upload(PRESET));
     await waitUntil(() => deltas(rig).length === 2);
     // #then
     expect(storedPreset(rig)).toEqual({ c: 2, a: 'mock-connection', preset: PRESET });
@@ -1831,7 +1832,7 @@ describe('preset upload', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    const outcome = await Promise.resolve(view.client.sendCommand({ ...upload(PRESET), data }));
+    const outcome = await Promise.resolve(sendWire(view.client, { ...upload(PRESET), data }));
     // #then
     expect({
       outcome,
@@ -1859,7 +1860,7 @@ describe('preset upload', () => {
     const view = await openAndLoad(rig);
     const data = incompressiblePresetData();
     // #when
-    const outcome = await Promise.resolve(view.client.sendCommand({ ...upload(PRESET), data }));
+    const outcome = await Promise.resolve(sendWire(view.client, { ...upload(PRESET), data }));
     // #then
     expect({
       kind: outcome.kind,
@@ -1874,7 +1875,7 @@ describe('preset upload', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    const outcome = await Promise.resolve(view.client.sendCommand(upload(examplePreset())));
+    const outcome = await Promise.resolve(sendWire(view.client, upload(examplePreset())));
     await waitUntil(() => view.store.$records.get().has('preset'));
     // #then
     expect({
@@ -1896,7 +1897,7 @@ describe('preset upload', () => {
     await startEngine(rig);
     const view = await openAndLoad(rig);
     // #when
-    const outcome = Promise.resolve(view.client.sendCommand(upload(examplePreset())));
+    const outcome = Promise.resolve(sendWire(view.client, upload(examplePreset())));
     await waitUntil(() => deltas(rig).length === 1);
     await outcome;
     // #then
@@ -1911,10 +1912,10 @@ describe('preset upload', () => {
 
     // #when
     const created = Promise.resolve(
-      view.client.sendCommand({ type: 'sheet-create', sheetId: 'brok', set: 'pc' }),
+      sendWire(view.client, { type: 'sheet-create', sheetId: 'brok', set: 'pc' }),
     );
 
-    const uploaded = Promise.resolve(view.client.sendCommand(upload(examplePreset())));
+    const uploaded = Promise.resolve(sendWire(view.client, upload(examplePreset())));
     await waitUntil(() => view.store.$records.get().has('preset'));
     // #then
     expect({
@@ -2005,7 +2006,7 @@ describe('field-patch', () => {
 
   function patch(
     target: Extract<
-      Command,
+      WireCommand,
       {
         type: 'field-patch';
       }
@@ -2013,7 +2014,7 @@ describe('field-patch', () => {
     fieldId: string,
     value: JsonValue,
     sheetId = 'brok',
-  ): Command {
+  ): WireCommand {
     return { type: 'field-patch', sheetId, target, fieldId, value };
   }
 
@@ -2034,7 +2035,7 @@ describe('field-patch', () => {
     });
 
     // #when
-    view.client.sendCommand(patch(ROW_STR, 'str', 12));
+    sendWire(view.client, patch(ROW_STR, 'str', 12));
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
@@ -2059,7 +2060,7 @@ describe('field-patch', () => {
     // #given
     const { rig, view } = await patchRig();
     // #when
-    view.client.sendCommand(patch(ROW_STR, 'str_tired', false));
+    sendWire(view.client, patch(ROW_STR, 'str_tired', false));
     await waitUntil(() => deltas(rig).length === 1);
     // #then
     expect(stored(rig, 'blk:brok')).toEqual({
@@ -2074,7 +2075,7 @@ describe('field-patch', () => {
     // #given
     const { rig, view } = await patchRig();
     // #when
-    view.client.sendCommand(patch({ kind: 'row', rowId: 'notes' }, 'notes', ' abc\nдва '));
+    sendWire(view.client, patch({ kind: 'row', rowId: 'notes' }, 'notes', ' abc\nдва '));
     await waitUntil(() => deltas(rig).length === 1);
     // #then
     expect(view.store.$records.get().get('blk:brok')?.d).toEqual({
@@ -2094,7 +2095,7 @@ describe('field-patch', () => {
     });
 
     // #when
-    view.client.sendCommand(patch(ROW_STR, 'str', null));
+    sendWire(view.client, patch(ROW_STR, 'str', null));
     await waitUntil(() => deltas(rig).length === 1);
     // #then
     expect(stored(rig, 'blk:brok')).toEqual({
@@ -2123,7 +2124,7 @@ describe('field-patch', () => {
     });
 
     // #when
-    view.client.sendCommand(patch(ATTACK_I1, 'bonus', 2));
+    sendWire(view.client, patch(ATTACK_I1, 'bonus', 2));
     await waitUntil(() => deltas(rig).length === 1);
     // #then
     expect(stored(rig, 'blk:brok:attack:i1')).toEqual({
@@ -2149,7 +2150,7 @@ describe('field-patch', () => {
     });
 
     // #when
-    view.client.sendCommand(patch({ kind: 'row', rowId: 'name' }, 'name', 'Лиза'));
+    sendWire(view.client, patch({ kind: 'row', rowId: 'name' }, 'name', 'Лиза'));
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
@@ -2172,7 +2173,7 @@ describe('field-patch', () => {
     // #given
     const { rig, view } = await patchRig();
     // #when
-    view.client.sendCommand(patch({ kind: 'row', rowId: 'hp' }, 'hp', 7, 'npc'));
+    sendWire(view.client, patch({ kind: 'row', rowId: 'hp' }, 'hp', 7, 'npc'));
     await waitUntil(() => deltas(rig).length === 1);
     // #then
     expect(view.store.$records.get().get('blk:npc')?.d).toEqual({
@@ -2180,7 +2181,7 @@ describe('field-patch', () => {
       cells: { hp: [7, 1, 'mock-connection'] },
     });
   });
-  test.each<[string, string, Command, VersionedRecord[]]>([
+  test.each<[string, string, WireCommand, VersionedRecord[]]>([
     ['an unknown sheet', 'unknown-sheet', patch(ROW_STR, 'str', 1, 'nobody'), []],
     [
       'a deleted sheet',
@@ -2260,9 +2261,10 @@ describe('field-patch', () => {
   test('reads the preset uploaded after an earlier patch', async () => {
     // #given: a patch under the first preset, then the only sheet deleted so a new preset can load.
     const { view } = await patchRig();
-    view.client.sendCommand(patch(ROW_STR, 'str', 1));
-    view.client.sendCommand({ type: 'sheet-delete', sheetId: 'brok' });
-    view.client.sendCommand(
+    sendWire(view.client, patch(ROW_STR, 'str', 1));
+    sendWire(view.client, { type: 'sheet-delete', sheetId: 'brok' });
+    sendWire(
+      view.client,
       upload({
         v: 4,
         templates: [
@@ -2292,10 +2294,10 @@ describe('field-patch', () => {
         ],
       }),
     );
-    view.client.sendCommand({ type: 'sheet-create', sheetId: 'liza', set: 'pc' });
+    sendWire(view.client, { type: 'sheet-create', sheetId: 'liza', set: 'pc' });
     await waitUntil(() => view.store.$records.get().has('blk:liza'));
     // #when
-    view.client.sendCommand(patch(ROW_STR, 'dex', 5, 'liza'));
+    sendWire(view.client, patch(ROW_STR, 'dex', 5, 'liza'));
     await waitUntil(() => view.store.$records.get().has('blk:liza'));
 
     const removed = await rejectionOf(
@@ -2401,7 +2403,7 @@ describe('repeat blocks', () => {
     // #given
     const { rig, view } = await rowsRig();
     // #when
-    view.client.sendCommand(addRow('r1'));
+    sendWire(view.client, addRow('r1'));
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
@@ -2428,7 +2430,7 @@ describe('repeat blocks', () => {
     );
 
     // #when
-    view.client.sendCommand(addRow('r1'));
+    sendWire(view.client, addRow('r1'));
     await waitUntil(() => deltas(rig).length === 1);
     // #then
     expect(view.store.$records.get().get('blk:brok:attack:r1')?.d).toEqual({ order: 8, cells: {} });
@@ -2437,8 +2439,8 @@ describe('repeat blocks', () => {
     // #given
     const { rig, view } = await rowsRig(rep('blk:liza:attack:d', 0, { attack: 'Лук' }));
     // #when
-    view.client.sendCommand(addRow('r1'));
-    view.client.sendCommand(addRow('r2'));
+    sendWire(view.client, addRow('r1'));
+    sendWire(view.client, addRow('r2'));
     await waitUntil(() => deltas(rig).length === 2);
     // #then
     expect(
@@ -2459,7 +2461,7 @@ describe('repeat blocks', () => {
     );
 
     // #when
-    view.client.sendCommand(deleteRow('a'));
+    sendWire(view.client, deleteRow('a'));
     await waitUntil(() => deltas(rig).length === 1);
 
     // #then
@@ -2484,9 +2486,9 @@ describe('repeat blocks', () => {
   test('puts a row added after the last one was deleted after every live row', async () => {
     // #given: "A0" sorts before "a" by id, so only its order can put it last.
     const { rig, view } = await rowsRig(rep('blk:brok:attack:a', 0), rep('blk:brok:attack:b', 1));
-    view.client.sendCommand(deleteRow('b'));
+    sendWire(view.client, deleteRow('b'));
     // #when
-    view.client.sendCommand(addRow('A0'));
+    sendWire(view.client, addRow('A0'));
     await waitUntil(() => deltas(rig).length === 2);
     // #then
     expect(view.store.$records.get().get('blk:brok:attack:A0')?.d).toEqual({ order: 1, cells: {} });
@@ -2494,23 +2496,23 @@ describe('repeat blocks', () => {
   test('saves fields of an added block and retains a versioned null for a clear', async () => {
     // #given
     const { rig, view } = await rowsRig(rep('blk:brok:attack:a', 4));
-    view.client.sendCommand(addRow('r1'));
+    sendWire(view.client, addRow('r1'));
     // #when
-    view.client.sendCommand({
+    sendWire(view.client, {
       type: 'field-patch',
       sheetId: 'brok',
       target: { kind: 'rep', sectionId: 'attack', instanceId: 'r1' },
       fieldId: 'bonus',
       value: 2,
     });
-    view.client.sendCommand({
+    sendWire(view.client, {
       type: 'field-patch',
       sheetId: 'brok',
       target: { kind: 'rep', sectionId: 'attack', instanceId: 'r1' },
       fieldId: 'attack',
       value: 'Топор',
     });
-    view.client.sendCommand({
+    sendWire(view.client, {
       type: 'field-patch',
       sheetId: 'brok',
       target: { kind: 'rep', sectionId: 'attack', instanceId: 'r1' },
@@ -2536,10 +2538,10 @@ describe('repeat blocks', () => {
   test('shows the same rows after the background restarts over the same storage', async () => {
     // #given
     const { rig, engine, view } = await rowsRig(rep('blk:brok:attack:a', 0));
-    view.client.sendCommand(addRow('r1'));
-    view.client.sendCommand(addRow('r2'));
-    view.client.sendCommand(deleteRow('a'));
-    view.client.sendCommand(deleteRow('r1'));
+    sendWire(view.client, addRow('r1'));
+    sendWire(view.client, addRow('r2'));
+    sendWire(view.client, deleteRow('a'));
+    sendWire(view.client, deleteRow('r1'));
     await waitUntil(() => deltas(rig).length === 4);
     engine.stop();
     view.client.stop();
@@ -2567,7 +2569,7 @@ describe('repeat blocks', () => {
       sheet('liza'),
     ]);
   });
-  test.each<[string, string, Command, VersionedRecord[]]>([
+  test.each<[string, string, WireCommand, VersionedRecord[]]>([
     ['an add to an unknown sheet', 'unknown-sheet', addRow('r1', 'nobody'), []],
     [
       'an add to a deleted sheet',
@@ -2678,11 +2680,11 @@ describe('repeat blocks', () => {
   });
 });
 
-function addRow(instanceId: string, sheetId = 'brok', sectionId = 'attack'): Command {
+function addRow(instanceId: string, sheetId = 'brok', sectionId = 'attack'): WireCommand {
   return { type: 'repeat-block-add', sheetId, sectionId, instanceId };
 }
 
-function deleteRow(instanceId: string, sheetId = 'brok', sectionId = 'attack'): Command {
+function deleteRow(instanceId: string, sheetId = 'brok', sectionId = 'attack'): WireCommand {
   return { type: 'repeat-block-delete', sheetId, sectionId, instanceId };
 }
 
@@ -2718,7 +2720,7 @@ function textField(id: string): JsonValue {
 
 // An upload the GM confirmed with nothing to erase: no value and no sheet lost.
 function upload(preset: Preset): Extract<
-  Command,
+  WireCommand,
   {
     type: 'preset-upload';
   }
