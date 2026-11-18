@@ -146,6 +146,8 @@ test(
     // #then
     await expect(diePicker(restartedWindow)).toHaveValue('d1');
     await expect(diePicker(restartedWindow).locator('option:checked')).toHaveText('d1');
+    await expect(diePicker(restartedWindow).locator('option[value="d1"]')).toBeDisabled();
+    await expect(diePicker(restartedWindow).locator('option[value="d6"]')).toBeEnabled();
     await damageButton(restartedWindow).click();
     await expect
       .poll(() => restartedBackground.evaluate(() => window.mockPlatform.shownNotifications()))

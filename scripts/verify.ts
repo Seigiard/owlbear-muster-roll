@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
@@ -72,9 +72,24 @@ async function main() {
 
   const head = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: root });
   const dirty = Bun.spawnSync(['git', 'status', '--porcelain'], { cwd: root });
+  const patch = Bun.spawnSync(['git', 'diff', '--binary', 'HEAD'], { cwd: root });
 
-  if (head.exitCode !== 0 || dirty.exitCode !== 0) {
+  const untracked = Bun.spawnSync(['git', 'ls-files', '--others', '--exclude-standard', '-z'], {
+    cwd: root,
+  });
+
+  if ([head, dirty, patch, untracked].some((result) => result.exitCode !== 0)) {
     throw new Error('Cannot record Git metadata.');
+  }
+
+  await Bun.write(resolve(evidence, 'working-tree.patch'), patch.stdout);
+
+  for (const file of untracked.stdout.toString().split('\0').filter(Boolean)) {
+    const destination = resolve(evidence, 'untracked', file);
+    // oxlint-disable-next-line no-await-in-loop
+    await mkdir(dirname(destination), { recursive: true });
+    // oxlint-disable-next-line no-await-in-loop
+    await Bun.write(destination, Bun.file(resolve(root, file)));
   }
 
   await Bun.write(
@@ -103,6 +118,21 @@ async function main() {
     stdout: 'inherit',
     stderr: 'inherit',
   });
+
+  await Bun.write(
+    resolve(evidence, 'process.json'),
+    JSON.stringify(
+      {
+        launcherPid: process.pid,
+        childPid: child.pid,
+        command: [executable, ...args],
+        root,
+        startedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
 
   const interrupt = () => child.kill('SIGINT');
   const terminate = () => child.kill('SIGTERM');

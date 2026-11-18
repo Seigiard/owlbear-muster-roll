@@ -208,6 +208,21 @@ test(
       .first()
       .fill('Копьё');
     await page.keyboard.press('Tab');
+    await page
+      .getByRole('region', { name: 'Атаки', exact: true })
+      .getByRole('button', { name: 'Удалить блок 2', exact: true })
+      .click();
+    await page.getByRole('tab', { name: SETTINGS }).click();
+    await page.getByRole('tab', { name: 'Брок', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Класс', exact: true })).toHaveValue('Маг');
+    await expect(page.getByRole('textbox', { name: 'Уровень', exact: true })).toHaveValue('9');
+    const changedAttacks = page.getByRole('region', { name: 'Атаки', exact: true });
+    await expect(changedAttacks.getByRole('textbox', { name: 'attack', exact: true })).toHaveCount(
+      1,
+    );
+    await expect(changedAttacks.getByRole('textbox', { name: 'attack', exact: true })).toHaveValue(
+      'Копьё',
+    );
     await page.getByRole('tab', { name: SETTINGS }).click();
     const choosing = page.waitForEvent('filechooser');
     await importButton(page).click();
