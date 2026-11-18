@@ -745,7 +745,7 @@ function textFieldIds(row: DocRow): string[] {
 export function withRepeat(
   item: DocTab,
   repeat: boolean,
-  taken: ReadonlySet<string> = new Set(),
+  taken?: ReadonlySet<string>,
   label?: string,
 ): DocTab;
 export function withRepeat(
