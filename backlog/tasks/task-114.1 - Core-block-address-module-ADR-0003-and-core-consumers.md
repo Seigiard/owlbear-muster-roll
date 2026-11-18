@@ -4,6 +4,7 @@ title: 'Core: block-address module, ADR-0003 and core consumers'
 status: To Do
 assignee: []
 created_date: '2026-11-18T18:24:00Z'
+updated_date: '2026-11-18T18:56:00Z'
 labels: []
 dependencies: []
 parent_task_id: TASK-114
@@ -19,9 +20,9 @@ First PR of TASK-114. Core holds the three key forms (`blockKey`, `repKey`, `blo
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 A `block-address.test.ts` covers key round trip for root, one-level and nested blocks, parent, scopePath, isDescendantOf and the rejection of odd-length and empty-segment paths
-- [ ] #2 preset.ts exposes repeat scope and section lookups by scope path only; `repeatScopeById` and `repeatSectionById` no longer exist
-- [ ] #3 records.ts, field-patch.ts, link-target.ts, token-links.ts, visibility.ts, dice-roll.ts, sheets.ts and the snapshot modules hold no `path.at(-2)`, `slice(0, -2)`, `length % 2` or even-index filter of their own
-- [ ] #4 GLOSSARY.md defines Block address and docs/adr/0003 is accepted
-- [ ] #5 Core "lock" tests (`*-v4.test.ts`, `repeat-row-review-fix.test.ts`) that assert the old shapes are folded into the owning module tests or deleted when the type now forbids the case
-- [ ] #6 Full check passes: oxfmt, lint, typecheck, bun test, test:browser, build
+- [ ] #2 records.ts, field-patch.ts, link-target.ts, token-links.ts, visibility.ts, dice-roll.ts, sheets.ts and the snapshot modules hold no `path.at(-2)`, `slice(0, -2)`, `length % 2` or even-index filter of their own
+- [ ] #3 GLOSSARY.md defines Block address and docs/adr/0003 is accepted
+- [ ] #4 Core "lock" tests (`*-v4.test.ts`, `repeat-row-review-fix.test.ts`) that assert the old shapes are folded into the owning module tests or deleted when the type now forbids the case
+- [ ] #5 Full check passes: oxfmt, lint, typecheck, bun test, test:browser, build
+- [ ] #6 preset.ts exposes repeat scope, section and section-place lookups by scope path only; `repeatScopeById` and `repeatSectionById` no longer exist (`repeatTabById` stays: tabs exist only at depth 0; the private formula fallback in `scopeFieldsAt` stays under TASK-108)
 <!-- AC:END -->

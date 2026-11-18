@@ -4,7 +4,7 @@ title: 'UI: rows, reveal and tab identity carry the block address'
 status: To Do
 assignee: []
 created_date: '2026-11-18T18:24:00Z'
-updated_date: '2026-11-18T18:25:00Z'
+updated_date: '2026-11-18T18:55:00Z'
 labels: []
 dependencies:
   - TASK-114.2
@@ -27,3 +27,9 @@ Third PR of TASK-114. preset-section.tsx builds DiceRow with `instanceId`, `targ
 - [ ] #5 deferred-work.md records that the Builder preview keeps the wire form until candidate 3
 - [ ] #6 Full check passes: oxfmt, lint, typecheck, bun test, test:browser, build
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Spec decision: the dice place (roll-request, LOCAL wire) sends `path` whenever its block is not null, so plain rows in a tab block start sending path:[scope,id]; intended, nothing stores that message.
+<!-- SECTION:NOTES:END -->
