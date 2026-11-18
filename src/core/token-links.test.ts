@@ -125,37 +125,36 @@ const JOURNAL: Template = {
 
 const PRESET: Preset = { v: 4, templates: [PC, NPC, INVENTORY, JOURNAL] };
 
-const NESTED_TOKEN_PRESET: Preset = {
-  v: 4,
-  templates: [
+const NESTED_TOKEN_SECTION: PresetSection = {
+  title: 'Атаки',
+  repeat: { id: 'attack', nameField: 'attack_name' },
+  rows: [
     {
-      id: 'encounter',
-      title: 'Схватка',
-      tabs: [
-        {
-          repeat: { id: 'npc', nameField: 'npc_name' },
-          sections: [
-            {
-              rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }],
-            },
-            {
-              title: 'Атаки',
-              repeat: { id: 'attack', nameField: 'attack_name' },
-              rows: [
-                {
-                  cells: [
-                    { kind: 'field', type: 'text', id: 'attack_name' },
-                    { kind: 'token', id: 'attack_token' },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
+      cells: [
+        { kind: 'field', type: 'text', id: 'attack_name' },
+        { kind: 'token', id: 'attack_token' },
       ],
     },
   ],
 };
+
+const NESTED_TOKEN_TEMPLATE: Template = {
+  id: 'encounter',
+  title: 'Схватка',
+  tabs: [
+    {
+      repeat: { id: 'npc', nameField: 'npc_name' },
+      sections: [
+        {
+          rows: [{ cells: [{ kind: 'field', type: 'text', id: 'npc_name' }] }],
+        },
+        NESTED_TOKEN_SECTION,
+      ],
+    },
+  ],
+};
+
+const NESTED_TOKEN_PRESET: Preset = { v: 4, templates: [NESTED_TOKEN_TEMPLATE] };
 
 describe('liveLinks', () => {
   test('maps each token to the live target its link names, two tokens to one sheet included', () => {
@@ -377,8 +376,8 @@ describe('pickerGroups', () => {
     // #then
     expect(groups).toEqual([
       {
-        template: NESTED_TOKEN_PRESET.templates[0],
-        section: NESTED_TOKEN_PRESET.templates[0]?.tabs[0]?.sections[1],
+        template: NESTED_TOKEN_TEMPLATE,
+        section: NESTED_TOKEN_SECTION,
         targets: [
           {
             target: {
