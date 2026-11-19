@@ -170,6 +170,7 @@ test('typing sends nothing per keystroke and one save after the pause', async ({
   await page.clock.runFor(WITHIN_PAUSE_MS);
   const duringTyping = (await fieldPatches(page)).length;
   await page.clock.runFor(PAST_PAUSE_MS);
+  await expect.poll(() => storedCell(page, 'blk:brok', 'dex')).toEqual([123, 2, 'mock-connection']);
   // #then
   expect({
     duringTyping,
