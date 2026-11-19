@@ -2,7 +2,7 @@
 title: 'TASK-124: One fragment assembler in core for proposals and stale replies'
 type: 'refactor'
 created: '2026-11-19'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '96ceb050f7e47a4eb18c64cbb497a20ee3a98131'
@@ -63,9 +63,17 @@ context:
 
 ## Implementation Notes
 
+- Tests locked first (`aa1b982`, `aa266ba`): `src/core/fragment-assembler.test.ts` (seven cases, one per matrix row, literal records and `now` values) and two cases in `src/replica/pending-edits.test.ts` (33 parts complete; an oversized and an expired reply answer `null` per part, then a 2-part reply completes). `aa266ba` moves the clock to 120 000 before the recovered reply: at 60 000 the expired reply's lone second part would have completed it.
+- `0c87954` adds `createFragmentAssembler` and `GM_FRAGMENT_ASSEMBLER_LIMITS`, and puts both callers on it; `complete` reads the completing part's `k` from `assembleRecords`, with the part itself as the type-level fallback.
+- Mutation calibration: eight mutations (deadline refreshed by a later part, newest assembly evicted, identical duplicate dropped, changed duplicate kept, count mismatch kept, player `maxParts: 32`, player `maxBytes` and `retentionMs` as `Infinity`) each turned the owner test red on its protected assertion.
+- `bun test` goes from 3 496 to 3 505 tests at the merged master; the junit names before are a subset of after, and the nine new cases are the difference. `test:browser` stays at 583.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+- Review 01 (six sources): the too-many-parts test does not prove the cap precedes the lookup (minor, test-only, deferred); the TASK-77–98 deferred entry on stale-reply cleanup is now resolved (`f9a9c97`); the player's byte limit drops a legal reply of about 34 or more full parts, which follows the frozen spec, so it went to `deferred-work.md` beside the GM part cap (`edb3c90`).
+- Review 02 (`final`, two sources): no findings.
 
 ## Verification
 
