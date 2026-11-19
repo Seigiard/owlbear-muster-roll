@@ -1,10 +1,11 @@
 ---
 id: TASK-115.10
 title: 'Step 7: judge pending-edits and room-protocol for tables'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T08:34:00Z'
+updated_date: '2026-11-19T12:55:00Z'
 labels:
   - architecture
   - replica
@@ -29,6 +30,15 @@ DESIGN.md leaves `pending-edits` (per-entry waiting, sent, denied-quiet) and `ro
 - [ ] #1 For each of the two modules, either a `TransitionTable` with its generated diagram exists, or DESIGN.md records the reason it stays a linear function
 - [ ] #2 `engine-propose`, `engine-client` and `engine-no-gm` pass; engine suite junit list equals the baseline
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. A high-tier child reads pending-edits.ts and room-protocol.ts after TASK-114.2 and judges each: a table is worth it when the module has more than two phases or a silent no-op the completeness check would expose; otherwise it stays a linear function.
+2. The judgment, with evidence per module, lands as a report; the orchestrator decides.
+3. A module judged a table goes through the tdd chain like room-copy (TASK-115.8); a module judged a function gets its reason recorded in DESIGN.md.
+4. Full check.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
