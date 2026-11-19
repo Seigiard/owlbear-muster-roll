@@ -9,6 +9,7 @@ import {
   wireCommandOf,
   type Command,
   type EngineMessage,
+  type ParsedEngineMessage,
   type RollOutcome,
   type RoomCopyStatus,
   type SyncState,
@@ -254,7 +255,7 @@ describe('parseWindowMessage', () => {
     // #then
     expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
   });
-  test.each<[string, WireCommand]>([
+  test.each<[string, Extract<WireCommand, { type: 'repeat-block-add' }>]>([
     [
       'a triple command with a colon in its instance id',
       { type: 'repeat-block-add', sheetId: 'encounter', sectionId: 'npc', instanceId: 'a:b' },
@@ -599,7 +600,26 @@ describe('parseEngineMessage', () => {
     // #when
     const parsed = messages.map((message) => parseEngineMessage(message));
     // #then
-    expect(parsed).toEqual(messages.map((value) => ({ ok: true, value })));
+    expect(parsed).toEqual([
+      {
+        ok: true,
+        value: {
+          t: 'open-sheet',
+          id: 'o1',
+          block: { sheetId: 'brok', path: [] },
+          cellId: 'portrait',
+        },
+      },
+      {
+        ok: true,
+        value: {
+          t: 'open-sheet',
+          id: 'o2',
+          block: { sheetId: 'npc', path: ['npc_name', 'i1'] },
+          cellId: 'portrait',
+        },
+      },
+    ]);
   });
   test.each<[string, JsonValue]>([
     ['no sheet', { t: 'open-sheet', id: 'o1', cellId: 'portrait' }],
@@ -644,7 +664,7 @@ describe('parseEngineMessage', () => {
     // #then
     expect(parsed).toEqual([true, false, false, false, false]);
   });
-  test.each<[string, EngineMessage]>([
+  test.each<[string, ParsedEngineMessage]>([
     [
       'a preset diff result',
       { t: 'preset-diff-result', id: 'c1', count: 3, sheets: 2, digest: '0a1b2c3d' },
