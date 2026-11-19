@@ -79,7 +79,7 @@ function harness(sectionVisibility?: Visibility, rowVisibility?: Visibility) {
       ready: async () => 'absent',
       roll: async () => ok([]),
     },
-    gmInRoom: () => true,
+    gmInParty: () => true,
     playerId: 'player-1',
     playerName: async () => 'Игрок',
     random: () => 0,

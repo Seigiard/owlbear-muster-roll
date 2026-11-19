@@ -102,7 +102,7 @@ function createHarness(role: PlayerRole) {
     stopped: () => false,
     generation: () => ({ n: 0, a: '' }),
     dice: { ready: async () => 'absent', roll: async () => ok([]) },
-    gmInRoom: () => true,
+    gmInParty: () => true,
     playerId: 'gm',
     playerName: async () => 'Ведущий',
     random: () => 0,
