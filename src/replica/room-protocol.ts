@@ -56,6 +56,7 @@ type RoomProtocolCatchUp = Pick<
 >;
 
 export type RoomProtocolPorts = {
+  now: () => number;
   report: FailureReporter;
   senderOf: (connectionId: string) => Promise<RoomSender | null>;
   role: () => PlayerRole;
@@ -288,7 +289,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
       const outcome = proposalFragments.add(
         key,
         { i: message.i, n: message.n, record },
-        Date.now(),
+        ports.now(),
       );
 
       switch (outcome.kind) {

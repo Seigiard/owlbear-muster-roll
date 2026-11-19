@@ -1,4 +1,3 @@
-pass	prototypes/ui-second-flow/picker-caller.test.ts › GM can explicitly offer a replacement for an existing label
 pass	prototypes/ui-second-flow/picker-caller.test.ts › a missing label cannot be opted in
 pass	prototypes/ui-second-flow/picker-caller.test.ts › answer alone cannot write or close; matching arrival freezes the offered name
 pass	prototypes/ui-second-flow/picker-caller.test.ts › arrival first survives a late command timeout while closing
@@ -15,6 +14,7 @@ pass	prototypes/ui-second-flow/picker-caller.test.ts › dispose during writing 
 pass	prototypes/ui-second-flow/picker-caller.test.ts › empty-name links and closes without writing a label
 pass	prototypes/ui-second-flow/picker-caller.test.ts › existing-label links and closes without writing a label
 pass	prototypes/ui-second-flow/picker-caller.test.ts › failed read still permits an explicit label offer
+pass	prototypes/ui-second-flow/picker-caller.test.ts › GM can explicitly offer a replacement for an existing label
 pass	prototypes/ui-second-flow/picker-caller.test.ts › late write reject after timeout and close rejection cannot settle a new attempt
 pass	prototypes/ui-second-flow/picker-caller.test.ts › late write resolve after timeout and close rejection cannot settle a new attempt
 pass	prototypes/ui-second-flow/picker-caller.test.ts › missing-label links and closes without writing a label
@@ -56,8 +56,6 @@ pass	prototypes/ui-second-flow/picker-flow.test.ts › read waits for readiness 
 pass	prototypes/ui-second-flow/picker-flow.test.ts › stale command failure cannot clear a second attempt for the same target
 pass	prototypes/ui-second-flow/picker-flow.test.ts › wrong repeat block arrival does not finish the chosen block
 pass	scripts/dev-owlbear.test.ts › prints the manifest URL from its quick tunnel
-pass	src/builder/attached-files.test.ts › attached Builder files › Save As replaces the snapshot handle and keeps later snapshot edits attached
-pass	src/builder/attached-files.test.ts › attached Builder files › Save File writes the current preset and attaches the selected handle for later edits
 pass	src/builder/attached-files.test.ts › attached Builder files › applies a valid external snapshot result to the visible preview without reload
 pass	src/builder/attached-files.test.ts › attached Builder files › confirmed preset clear empties the linked file and undo restores both
 pass	src/builder/attached-files.test.ts › attached Builder files › confirmed snapshot clear empties the linked file and undo restores both
@@ -65,8 +63,8 @@ pass	src/builder/attached-files.test.ts › attached Builder files › detects a
 pass	src/builder/attached-files.test.ts › attached Builder files › does not expose native file-operation details in the attached-file status
 pass	src/builder/attached-files.test.ts › attached Builder files › explicit Save As retries a failed forced Keep Mine preset write to the selected file
 pass	src/builder/attached-files.test.ts › attached Builder files › explicit Save As retries a failed forced Keep Mine snapshot write to the selected file
-pass	src/builder/attached-files.test.ts › attached Builder files › keeps a pending conflict through a later external preset and resolves “Взять из файла”
 pass	src/builder/attached-files.test.ts › attached Builder files › keeps a pending conflict through a later external preset and resolves “Оставить мои”
+pass	src/builder/attached-files.test.ts › attached Builder files › keeps a pending conflict through a later external preset and resolves “Взять из файла”
 pass	src/builder/attached-files.test.ts › attached Builder files › keeps a pending-write conflict until the user chooses
 pass	src/builder/attached-files.test.ts › attached Builder files › keeps a valid open-only preset edit free of validation-problem status
 pass	src/builder/attached-files.test.ts › attached Builder files › keeps an attached compatible snapshot through preset own-write echo and external follow
@@ -76,12 +74,14 @@ pass	src/builder/attached-files.test.ts › attached Builder files › keeps sna
 pass	src/builder/attached-files.test.ts › attached Builder files › keeps the last good preset when an external result is refused
 pass	src/builder/attached-files.test.ts › attached Builder files › opening an identical preset attaches it without clearing the companion snapshot
 pass	src/builder/attached-files.test.ts › attached Builder files › pauses writes for a preset problem and resumes after the repair
-pass	src/builder/attached-files.test.ts › attached Builder files › resolves a conflict after a newer local preset was queued with “Взять из файла”
 pass	src/builder/attached-files.test.ts › attached Builder files › resolves a conflict after a newer local preset was queued with “Оставить мои”
-pass	src/builder/attached-files.test.ts › attached Builder files › resolves a simultaneous edit with “Взять из файла”
+pass	src/builder/attached-files.test.ts › attached Builder files › resolves a conflict after a newer local preset was queued with “Взять из файла”
 pass	src/builder/attached-files.test.ts › attached Builder files › resolves a simultaneous edit with “Оставить мои”
+pass	src/builder/attached-files.test.ts › attached Builder files › resolves a simultaneous edit with “Взять из файла”
 pass	src/builder/attached-files.test.ts › attached Builder files › resumes a failed forced Keep Mine preset write after a new edit
 pass	src/builder/attached-files.test.ts › attached Builder files › resumes a failed forced Keep Mine snapshot write after a new edit
+pass	src/builder/attached-files.test.ts › attached Builder files › Save As replaces the snapshot handle and keeps later snapshot edits attached
+pass	src/builder/attached-files.test.ts › attached Builder files › Save File writes the current preset and attaches the selected handle for later edits
 pass	src/builder/attached-files.test.ts › attached Builder files › serializes attached writes and leaves the newest page text on disk
 pass	src/builder/attached-files.test.ts › attached Builder files › stops after a failed forced Keep Mine preset write without new work
 pass	src/builder/attached-files.test.ts › attached Builder files › stops after a failed forced Keep Mine snapshot write without new work
@@ -144,10 +144,10 @@ pass	src/builder/document.test.ts › renameField › rewrites the formulas, fol
 pass	src/builder/document.test.ts › withTemplateKind › a single sheet that becomes a sheet set is named by its first text field
 pass	src/builder/file-name.test.ts › downloadFileName › a downloaded file opened again keeps one time
 pass	src/builder/file-name.test.ts › downloadFileName › adds the local date and time to the name
+pass	src/builder/file-name.test.ts › nameFromFile › reads "Мой пресет.JSON" as "Мой пресет"
 pass	src/builder/file-name.test.ts › nameFromFile › reads ".json" as "preset"
 pass	src/builder/file-name.test.ts › nameFromFile › reads "d20-2026-11-12-0930.json" as "d20"
 pass	src/builder/file-name.test.ts › nameFromFile › reads "d20.json" as "d20"
-pass	src/builder/file-name.test.ts › nameFromFile › reads "Мой пресет.JSON" as "Мой пресет"
 pass	src/builder/formula-input.test.tsx › formula completion keyboard confirmation › ignores Enter with isComposing and inserts the completion with the plain key
 pass	src/builder/formula-input.test.tsx › formula completion keyboard confirmation › ignores Enter with legacy keyCode 229 and inserts the completion with the plain key
 pass	src/builder/formula-input.test.tsx › formula completion keyboard confirmation › ignores Tab with isComposing and inserts the completion with the plain key
@@ -188,12 +188,12 @@ pass	src/builder/preview-records.test.ts › previewRecords › materializes the
 pass	src/builder/preview-records.test.ts › previewSheetName › names a sheet set by its name field id
 pass	src/builder/preview-records.test.ts › previewSheetName › names a sheet set with a name field that names no text field
 pass	src/builder/preview-records.test.ts › previewSheetName › names a single sheet by its title
-pass	src/builder/problems.test.ts › builderProblems with tabs › marks a template with no tabs at the template, and gives no download
-pass	src/builder/problems.test.ts › builderProblems with tabs › marks each untitled tab of a template with two tabs at the tab
 pass	src/builder/problems.test.ts › builderProblems › a preset the checks pass but the upload refuses has its problem at the preset
 pass	src/builder/problems.test.ts › builderProblems › marks each invalid state at its item, in tree order
 pass	src/builder/problems.test.ts › builderProblems › puts a template problem before the problems of its items
 pass	src/builder/problems.test.ts › builderProblems › the empty preset has one problem, at the preset, and no download
+pass	src/builder/problems.test.ts › builderProblems with tabs › marks a template with no tabs at the template, and gives no download
+pass	src/builder/problems.test.ts › builderProblems with tabs › marks each untitled tab of a template with two tabs at the tab
 pass	src/builder/problems.test.ts › downloadText › is the file the upload accepts
 pass	src/builder/problems.test.ts › problemReason › a preset with no templates says what to add
 pass	src/builder/problems.test.ts › problemReason › is the reason of the upload's refusal message
@@ -210,11 +210,6 @@ pass	src/core/access.test.ts › accessRows › marks a name as unknown when no 
 pass	src/core/access.test.ts › accessRows › names a player by the party first, then by acl:, then by plink:
 pass	src/core/access.test.ts › canEdit › is false for a player id no acl: key can hold
 pass	src/core/access.test.ts › canEdit › is true only for a live acl: of this sheet and this player
-pass	src/core/access.test.ts › checkProposal over values an older preset left › answers stale with the current record for a new value of a field the template lacks
-pass	src/core/access.test.ts › checkProposal over values an older preset left › commits a clear of the known field, which keeps the legacy cells
-pass	src/core/access.test.ts › checkProposal over values an older preset left › commits an edit of another cell of the repeat block, which keeps them
-pass	src/core/access.test.ts › checkProposal over values an older preset left › commits an edit of another field of the row, which keeps them
-pass	src/core/access.test.ts › checkProposal over values an older preset left › denies a new value of the wrong JSON type
 pass	src/core/access.test.ts › checkProposal › answers stale with the current record for a field id absent from the row, even with c above
 pass	src/core/access.test.ts › checkProposal › answers stale with the current record for a field id of another row in a repeat block, even with c above
 pass	src/core/access.test.ts › checkProposal › answers stale with the current record for a lower c
@@ -270,6 +265,11 @@ pass	src/core/access.test.ts › checkProposal › denies the GM key form plink:
 pass	src/core/access.test.ts › checkProposal › denies the GM key form preset
 pass	src/core/access.test.ts › checkProposal › denies the largest safe c
 pass	src/core/access.test.ts › checkProposal › denies the second field of a repeat section as its section id
+pass	src/core/access.test.ts › checkProposal over values an older preset left › answers stale with the current record for a new value of a field the template lacks
+pass	src/core/access.test.ts › checkProposal over values an older preset left › commits a clear of the known field, which keeps the legacy cells
+pass	src/core/access.test.ts › checkProposal over values an older preset left › commits an edit of another cell of the repeat block, which keeps them
+pass	src/core/access.test.ts › checkProposal over values an older preset left › commits an edit of another field of the row, which keeps them
+pass	src/core/access.test.ts › checkProposal over values an older preset left › denies a new value of the wrong JSON type
 pass	src/core/access.test.ts › inherited edit visibility › admits a visible edit and denies an edit under a hidden row in the same sheet
 pass	src/core/access.test.ts › ownedFirst › keeps the order by (order, sheetId) with nothing owned
 pass	src/core/access.test.ts › ownedFirst › puts an owned sheet first, then the rest by (order, sheetId)
@@ -370,10 +370,6 @@ pass	src/core/dice-roll.test.ts › dicePlaceOf › serialises a nested block wi
 pass	src/core/dice-roll.test.ts › dicePlaceOf › serialises a plain row in a one-pair tab block with its full path
 pass	src/core/dice-roll.test.ts › dicePlaceOf › serialises a root row without a path
 pass	src/core/dice-roll.test.ts › gives each repeat row its own field scope while repeat ids remain unique in the sheet scope
-pass	src/core/dice-roll.test.ts › rollDiceCell across tabs › finds no dice cell at a section index counted across the whole sheet
-pass	src/core/dice-roll.test.ts › rollDiceCell across tabs › reads a field in another plain section of the selected repeat-tab block
-pass	src/core/dice-roll.test.ts › rollDiceCell across tabs › reads a field of another tab of the same sheet
-pass	src/core/dice-roll.test.ts › rollDiceCell across tabs › rolls with the selected repeat-tab block instead of the root or a sibling
 pass	src/core/dice-roll.test.ts › rollDiceCell › a nested attack reads its own value, its NPC value and the sheet value
 pass	src/core/dice-roll.test.ts › rollDiceCell › adds the written chosen die to a named Nd field roll
 pass	src/core/dice-roll.test.ts › rollDiceCell › gives the arithmetic error with no field for a division by zero
@@ -403,6 +399,10 @@ pass	src/core/dice-roll.test.ts › rollDiceCell › uses the text a field shows
 pass	src/core/dice-roll.test.ts › rollDiceCell › uses the text a repeat row shows over its own instance
 pass	src/core/dice-roll.test.ts › rollDiceCell › writes out a formula label and rolls one chosen d8 with the bonus
 pass	src/core/dice-roll.test.ts › rollDiceCell › writes out a formula label and rolls the chosen count
+pass	src/core/dice-roll.test.ts › rollDiceCell across tabs › finds no dice cell at a section index counted across the whole sheet
+pass	src/core/dice-roll.test.ts › rollDiceCell across tabs › reads a field in another plain section of the selected repeat-tab block
+pass	src/core/dice-roll.test.ts › rollDiceCell across tabs › reads a field of another tab of the same sheet
+pass	src/core/dice-roll.test.ts › rollDiceCell across tabs › rolls with the selected repeat-tab block instead of the root or a sibling
 pass	src/core/dice-roll.test.ts › rolls a repeat-row dice cell from the scoped descendant block
 pass	src/core/digest.test.ts › recordDigest › changes when a record has another counter
 pass	src/core/digest.test.ts › recordDigest › changes when equal outer versions cover different data
@@ -418,13 +418,13 @@ pass	src/core/field-id-suggest.test.ts › suggestFieldId › makes "d20" follow
 pass	src/core/field-id-suggest.test.ts › suggestFieldId › makes "floor" follow the id rules as "floor_2"
 pass	src/core/field-id-suggest.test.ts › suggestFieldId › takes a numeric suffix for an id its scope already holds
 pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "  Сила!  " to "sila"
-pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "HP max" to "hp_max"
-pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "Élan" to "elan"
-pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "Бойцовый ёж" to "boytsovyy_ezh"
+pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "Щит и меч" to "shchit_i_mech"
 pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "Бонус атаки" to "bonus_ataki"
+pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "Бойцовый ёж" to "boytsovyy_ezh"
 pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "Ловкость" to "lovkost"
 pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "Сила" to "sila"
-pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "Щит и меч" to "shchit_i_mech"
+pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "Élan" to "elan"
+pass	src/core/field-id-suggest.test.ts › suggestFieldId › transliterates "HP max" to "hp_max"
 pass	src/core/field-id-suggest.test.ts › suggestTemplateId › is "sheet" for an empty title
 pass	src/core/field-id-suggest.test.ts › suggestTemplateId › transliterates the title and is unique among the template ids
 pass	src/core/field-patch.test.ts › acceptedFieldValue › a dice-choice field accepts any non-empty string without checking option membership
@@ -449,8 +449,6 @@ pass	src/core/field-patch.test.ts › findPatchField › finds nothing for a pla
 pass	src/core/field-patch.test.ts › findPatchField › finds nothing for a repeat field addressed as a row
 pass	src/core/field-patch.test.ts › findPatchField › finds nothing for a row id that is not a first field
 pass	src/core/field-patch.test.ts › findPatchField › finds nothing for an unknown field
-pass	src/core/field-patch.test.ts › patchRecordKey › names the repeat block record of a repeat target
-pass	src/core/field-patch.test.ts › patchRecordKey › names the row record of a row target
 pass	src/core/field-patch.test.ts › patchedRecord › merges into the cells of a live instance and keeps its order
 pass	src/core/field-patch.test.ts › patchedRecord › merges the value into the row record and keeps its other fields
 pass	src/core/field-patch.test.ts › patchedRecord › refuses a clear of an absent key as unchanged
@@ -464,18 +462,13 @@ pass	src/core/field-patch.test.ts › patchedRecordFits › passes a record well
 pass	src/core/field-patch.test.ts › patchedRecordFits › passes the longest text that keeps the record under the limit
 pass	src/core/field-patch.test.ts › patchedRecordFits › refuses a record over 15000 bytes
 pass	src/core/field-patch.test.ts › patchedRecordFits › refuses one character more
+pass	src/core/field-patch.test.ts › patchRecordKey › names the repeat block record of a repeat target
+pass	src/core/field-patch.test.ts › patchRecordKey › names the row record of a row target
 pass	src/core/field-patch.test.ts › targetFields › gives null for a section id that is the second field of a repeat section
 pass	src/core/field-patch.test.ts › targetFields › lists only the fields of one plain row
 pass	src/core/field-patch.test.ts › targetFields › lists the fields of every row of a repeat section, in row order
-pass	src/core/formula-evaluate.test.ts › evaluateFormula with listed faces › compares a listed face with the target
-pass	src/core/formula-evaluate.test.ts › evaluateFormula with listed faces › gives target-side dice the faces after the roll side
-pass	src/core/formula-evaluate.test.ts › evaluateFormula with listed faces › takes each face in tree order and applies the signs itself
-pass	src/core/formula-evaluate.test.ts › evaluateFormula with listed faces › throws on a face for other sides, as only a broken caller can give one
-pass	src/core/formula-evaluate.test.ts › evaluateFormula with listed faces › throws on a list that runs out, as only a broken caller can give one
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › 1 <= big * big leaves the safe integer range at some step and gives the arithmetic error
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › 1d20 <= nope fails inside a comparison or a call
-pass	src/core/formula-evaluate.test.ts › evaluateFormula › a Infinity value gives the arithmetic error
-pass	src/core/formula-evaluate.test.ts › evaluateFormula › a NaN value gives the arithmetic error
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › a check field checked counts toward the roll
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › a check field holding the number 1 counts 0, as only true checks it
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › a check field unchecked counts toward the roll
@@ -483,6 +476,8 @@ pass	src/core/formula-evaluate.test.ts › evaluateFormula › a check field wit
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › a dice cell in the second row of a repeat block reads a field from the first row of its block
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › a division by zero gives the arithmetic error with no field name
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › a formula with no comparison is all roll, with no target and no outcome
+pass	src/core/formula-evaluate.test.ts › evaluateFormula › a Infinity value gives the arithmetic error
+pass	src/core/formula-evaluate.test.ts › evaluateFormula › a NaN value gives the arithmetic error
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › a non-repeat row with no ownRow reads its own fields from its row record
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › a number field holding the text 12 counts 12
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › a number field holding the text abc gives the field error naming it
@@ -517,16 +512,19 @@ pass	src/core/formula-evaluate.test.ts › evaluateFormula › floor(nope) fails
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › floor(str / 3) gives 4, as only floor and ceil round
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › rolls every die in tree order and reports the roll and target faces apart
 pass	src/core/formula-evaluate.test.ts › evaluateFormula › str / 4 gives 3.5, as only floor and ceil round
+pass	src/core/formula-evaluate.test.ts › evaluateFormula with listed faces › compares a listed face with the target
+pass	src/core/formula-evaluate.test.ts › evaluateFormula with listed faces › gives target-side dice the faces after the roll side
+pass	src/core/formula-evaluate.test.ts › evaluateFormula with listed faces › takes each face in tree order and applies the signs itself
+pass	src/core/formula-evaluate.test.ts › evaluateFormula with listed faces › throws on a face for other sides, as only a broken caller can give one
+pass	src/core/formula-evaluate.test.ts › evaluateFormula with listed faces › throws on a list that runs out, as only a broken caller can give one
 pass	src/core/formula-evaluate.test.ts › formulaDiceTerms › lists both sides of a comparison, inside a call in tree order
 pass	src/core/formula-evaluate.test.ts › formulaDiceTerms › lists no dice in tree order
 pass	src/core/formula-evaluate.test.ts › formulaDiceTerms › lists one die in tree order
 pass	src/core/formula-evaluate.test.ts › formulaDiceTerms › lists several terms, signs dropped in tree order
 pass	src/core/formula-rename.test.ts › fieldFormulaCount › counts the formulas that resolve to the field
 pass	src/core/formula-rename.test.ts › formulaNames › in "1d20" finds "d20": false
-pass	src/core/formula-rename.test.ts › formulaNames › in "1d20+str" finds "str": true
 pass	src/core/formula-rename.test.ts › formulaNames › in "1d20+str_tired" finds "str": false
-pass	src/core/formula-rename.test.ts › renameFieldId and fieldFormulaCount across tabs › counts the formula of the other tab for the field of each tab
-pass	src/core/formula-rename.test.ts › renameFieldId and fieldFormulaCount across tabs › renames a field of tab 1 in a formula of tab 2, and leaves the cell of tab 2 at its indexes
+pass	src/core/formula-rename.test.ts › formulaNames › in "1d20+str" finds "str": true
 pass	src/core/formula-rename.test.ts › renameFieldId › a second field of one id renames no formula, because formulas read the first
 pass	src/core/formula-rename.test.ts › renameFieldId › a sheet set's name field follows its field
 pass	src/core/formula-rename.test.ts › renameFieldId › changes nothing when the cell is not the field it names
@@ -538,6 +536,8 @@ pass	src/core/formula-rename.test.ts › renameFieldId › renames in a repeat s
 pass	src/core/formula-rename.test.ts › renameFieldId › renames only the field and the name field when the field's scope holds the new id
 pass	src/core/formula-rename.test.ts › renameFieldId › renames only the field when the new id is not a valid id
 pass	src/core/formula-rename.test.ts › renameFieldId › rewrites the id by whole word and counts the formulas that changed
+pass	src/core/formula-rename.test.ts › renameFieldId and fieldFormulaCount across tabs › counts the formula of the other tab for the field of each tab
+pass	src/core/formula-rename.test.ts › renameFieldId and fieldFormulaCount across tabs › renames a field of tab 1 in a formula of tab 2, and leaves the cell of tab 2 at its indexes
 pass	src/core/formula.test.ts › parseFormula › accepts a formula of exactly 200 characters
 pass	src/core/formula.test.ts › parseFormula › accepts the dice limit 100d1000
 pass	src/core/formula.test.ts › parseFormula › accepts the dice limit 1d1
@@ -548,10 +548,10 @@ pass	src/core/formula.test.ts › parseFormula › parses a dice-choice term 2D(
 pass	src/core/formula.test.ts › parseFormula › parses a roll-under check into one comparison over two sums
 pass	src/core/formula.test.ts › parseFormula › parses floor and ceil calls
 pass	src/core/formula.test.ts › parseFormula › reads an upper-case D as a dice term
+pass	src/core/formula.test.ts › parseFormula › refuses "-1" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "(1" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "(a < b)" with syntax-error
-pass	src/core/formula.test.ts › parseFormula › refuses "-1" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "0d6" with dice-out-of-range
 pass	src/core/formula.test.ts › parseFormula › refuses "1 +" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "1)" with syntax-error
@@ -559,9 +559,9 @@ pass	src/core/formula.test.ts › parseFormula › refuses "101d6" with dice-out
 pass	src/core/formula.test.ts › parseFormula › refuses "1d" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "1d()" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "1d(2)" with syntax-error
-pass	src/core/formula.test.ts › parseFormula › refuses "1d(D20)" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "1d(a+b)" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "1d(constructor)" with syntax-error
+pass	src/core/formula.test.ts › parseFormula › refuses "1d(D20)" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "1d(d6)" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "1d(floor)" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "1d0" with dice-out-of-range
@@ -570,13 +570,13 @@ pass	src/core/formula.test.ts › parseFormula › refuses "1d6_" with syntax-er
 pass	src/core/formula.test.ts › parseFormula › refuses "1d6x" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "2abc" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "9007199254740992" with syntax-error
-pass	src/core/formula.test.ts › parseFormula › refuses "D1" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "a % 2" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "a < b < c" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "a == 2" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "a b" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "ceil + 1" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "constructor" with syntax-error
+pass	src/core/formula.test.ts › parseFormula › refuses "D1" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "d20" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "floor" with syntax-error
 pass	src/core/formula.test.ts › parseFormula › refuses "floor(a < b)" with syntax-error
@@ -642,12 +642,12 @@ pass	src/core/merge.test.ts › merge laws over equal (c, a) with different d �
 pass	src/core/merge.test.ts › mergeRecords › breaks a counter tie with the higher author
 pass	src/core/merge.test.ts › mergeRecords › keeps an explicitly supplied newer cell tuple when its value is unchanged
 pass	src/core/merge.test.ts › mergeRecords › lets a newer tombstone beat a record with data
-pass	src/core/merge.test.ts › mergeRecords › orders authors by UTF-16 code unit, not by code point
 pass	src/core/merge.test.ts › mergeRecords › orders authors by code unit, not by locale: "a" beats "Z"
-pass	src/core/merge.test.ts › mergeRecords › picks the higher JSON text of d for equal versions, from either side
-pass	src/core/merge.test.ts › mergeRecords › picks the higher JSON text of non-block data for equal versions from either side
+pass	src/core/merge.test.ts › mergeRecords › orders authors by UTF-16 code unit, not by code point
 pass	src/core/merge.test.ts › mergeRecords › picks the higher counter when it is the left record
 pass	src/core/merge.test.ts › mergeRecords › picks the higher counter when it is the right record
+pass	src/core/merge.test.ts › mergeRecords › picks the higher JSON text of d for equal versions, from either side
+pass	src/core/merge.test.ts › mergeRecords › picks the higher JSON text of non-block data for equal versions from either side
 pass	src/core/merge.test.ts › nextCounter › after known 12 and minted 8 gives 13
 pass	src/core/merge.test.ts › nextCounter › after known 7 and minted 0 gives 8
 pass	src/core/merge.test.ts › nextCounter › after known 7 and minted 8 gives 9
@@ -678,10 +678,10 @@ pass	src/core/message-size.test.ts › splitBatch › keeps the items in order a
 pass	src/core/message-size.test.ts › splitBatch › makes one empty part for an empty batch
 pass	src/core/message-size.test.ts › splitBatch › refuses an item that cannot fit one message
 pass	src/core/number-input.test.ts › parseNumberInput › reads " 12 " as 12
-pass	src/core/number-input.test.ts › parseNumberInput › reads "+3" as 3
-pass	src/core/number-input.test.ts › parseNumberInput › reads ",5" as 0.5
 pass	src/core/number-input.test.ts › parseNumberInput › reads "-2" as -2
+pass	src/core/number-input.test.ts › parseNumberInput › reads ",5" as 0.5
 pass	src/core/number-input.test.ts › parseNumberInput › reads ".5" as 0.5
+pass	src/core/number-input.test.ts › parseNumberInput › reads "+3" as 3
 pass	src/core/number-input.test.ts › parseNumberInput › reads "1,5" as 1.5
 pass	src/core/number-input.test.ts › parseNumberInput › reads "1." as 1
 pass	src/core/number-input.test.ts › parseNumberInput › reads "12" as 12
@@ -756,8 +756,8 @@ pass	src/core/preset.test.ts › decodePreset › refuses a stored preset of for
 pass	src/core/preset.test.ts › decodePreset › refuses base64 of bytes that are not deflated as an invalid structure
 pass	src/core/preset.test.ts › decodePreset › refuses text that is not base64 as an invalid structure
 pass	src/core/preset.test.ts › decodePreset › returns the preset that was encoded
-pass	src/core/preset.test.ts › encodePreset with a large preset › encodes deflated data far above one base64 chunk and decodes back to the input
 pass	src/core/preset.test.ts › encodePreset › deflates and base64-encodes the preset JSON
+pass	src/core/preset.test.ts › encodePreset with a large preset › encodes deflated data far above one base64 chunk and decodes back to the input
 pass	src/core/preset.test.ts › firstFieldId › is null for a row with no field
 pass	src/core/preset.test.ts › firstFieldId › is the id of the first field, after any text cell
 pass	src/core/preset.test.ts › formatPresetFile › gives back the same structure when the downloaded file is uploaded again
@@ -768,34 +768,6 @@ pass	src/core/preset.test.ts › openTabIndex › opens the right tab for a chos
 pass	src/core/preset.test.ts › openTabIndex › opens the right tab for a chosen tab the template has
 pass	src/core/preset.test.ts › openTabIndex › opens the right tab for a negative choice
 pass	src/core/preset.test.ts › openTabIndex › opens the right tab for no choice
-pass	src/core/preset.test.ts › parsePresetFile accepts a repeat tab with its explicit name field
-pass	src/core/preset.test.ts › parsePresetFile with a window size › accepts a common size
-pass	src/core/preset.test.ts › parsePresetFile with a window size › accepts the largest size
-pass	src/core/preset.test.ts › parsePresetFile with a window size › accepts the smallest size
-pass	src/core/preset.test.ts › parsePresetFile with a window size › keeps the window size through encode and decode
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a fractional width as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a height above 1080 as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a height below 360 as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a missing height as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a missing width as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a negative height as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a string width as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a width above 1440 as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a width below 480 as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a width of 400, which fits no sidebar beside a sheet as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a zero width as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses an array as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses an empty object as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses an extra key as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses null as a bad window
-pass	src/core/preset.test.ts › parsePresetFile with tabs › accepts a formula on one tab that names a field on another
-pass	src/core/preset.test.ts › parsePresetFile with tabs › accepts a template of one tab with no title
-pass	src/core/preset.test.ts › parsePresetFile with tabs › accepts a template of two titled tabs
-pass	src/core/preset.test.ts › parsePresetFile with tabs › accepts a visible template whose every tab is hidden from players
-pass	src/core/preset.test.ts › parsePresetFile with tabs › refuses a field id on two tabs outside repeat sections, at the second one
-pass	src/core/preset.test.ts › parsePresetFile with tabs › refuses a tab with a blank title beside another tab, naming the template
-pass	src/core/preset.test.ts › parsePresetFile with tabs › refuses a tab with no title beside another tab, naming the template
-pass	src/core/preset.test.ts › parsePresetFile with tabs › refuses a template with no tabs as a broken structure, which a builder draft holds
 pass	src/core/preset.test.ts › parsePresetFile › accepts a cell name on every field type and on a dice cell
 pass	src/core/preset.test.ts › parsePresetFile › accepts a columns row with fewer cells than the grid
 pass	src/core/preset.test.ts › parsePresetFile › accepts a dice-choice field with die options in preset order
@@ -812,15 +784,15 @@ pass	src/core/preset.test.ts › parsePresetFile › accepts one field id in two
 pass	src/core/preset.test.ts › parsePresetFile › accepts one id in a repeat section and outside it
 pass	src/core/preset.test.ts › parsePresetFile › accepts players edit on a repeated template
 pass	src/core/preset.test.ts › parsePresetFile › accepts the committed example preset as it is
-pass	src/core/preset.test.ts › parsePresetFile › accepts the field id "Floor"
 pass	src/core/preset.test.ts › parsePresetFile › accepts the field id "_hidden"
 pass	src/core/preset.test.ts › parsePresetFile › accepts the field id "d20x"
 pass	src/core/preset.test.ts › parsePresetFile › accepts the field id "dex"
+pass	src/core/preset.test.ts › parsePresetFile › accepts the field id "Floor"
 pass	src/core/preset.test.ts › parsePresetFile › accepts the field id "str_2"
 pass	src/core/preset.test.ts › parsePresetFile › accepts the same nested repeat id below two different parent scopes
-pass	src/core/preset.test.ts › parsePresetFile › accepts the template id "Gm_notes"
 pass	src/core/preset.test.ts › parsePresetFile › accepts the template id "_hidden"
 pass	src/core/preset.test.ts › parsePresetFile › accepts the template id "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+pass	src/core/preset.test.ts › parsePresetFile › accepts the template id "Gm_notes"
 pass	src/core/preset.test.ts › parsePresetFile › accepts the template id "pc"
 pass	src/core/preset.test.ts › parsePresetFile › accepts two templates with repeat sections that start with one id
 pass	src/core/preset.test.ts › parsePresetFile › counts the 1 MiB limit in UTF-8 bytes
@@ -902,14 +874,14 @@ pass	src/core/preset.test.ts › parsePresetFile › refuses options on a number
 pass	src/core/preset.test.ts › parsePresetFile › refuses options on a text field as an invalid structure
 pass	src/core/preset.test.ts › parsePresetFile › refuses players other than edit as an invalid structure
 pass	src/core/preset.test.ts › parsePresetFile › refuses section tokens without repeat as an invalid structure
+pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "__proto__"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the field id ""
 pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "1st"
-pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "D1"
-pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "__proto__"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "a-b"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "a:b"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "ceil"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "constructor"
+pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "D1"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "d20"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "floor"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "hasOwnProperty"
@@ -918,8 +890,8 @@ pass	src/core/preset.test.ts › parsePresetFile › refuses the field id "two w
 pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "(a < b)"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "0d6"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "101d6"
-pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "1d(D20)"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "1d(constructor)"
+pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "1d(D20)"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "1d(d6)"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "1d(floor)"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "1d0"
@@ -927,9 +899,9 @@ pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "1d1001
 pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "1d20 <"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "a < b < c"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the formula "sqrt(str)"
+pass	src/core/preset.test.ts › parsePresetFile › refuses the template id "__proto__"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the template id ""
 pass	src/core/preset.test.ts › parsePresetFile › refuses the template id "1st"
-pass	src/core/preset.test.ts › parsePresetFile › refuses the template id "__proto__"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the template id "a-b"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the template id "a:b"
 pass	src/core/preset.test.ts › parsePresetFile › refuses the template id "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -943,6 +915,34 @@ pass	src/core/preset.test.ts › parsePresetFile › refuses two repeat sections
 pass	src/core/preset.test.ts › parsePresetFile › refuses two repeat sections with one explicit id when its name field is in its first row
 pass	src/core/preset.test.ts › parsePresetFile › refuses two templates that share an id, whatever their kind
 pass	src/core/preset.test.ts › parsePresetFile › the committed example includes a select field
+pass	src/core/preset.test.ts › parsePresetFile accepts a repeat tab with its explicit name field
+pass	src/core/preset.test.ts › parsePresetFile with a window size › accepts a common size
+pass	src/core/preset.test.ts › parsePresetFile with a window size › accepts the largest size
+pass	src/core/preset.test.ts › parsePresetFile with a window size › accepts the smallest size
+pass	src/core/preset.test.ts › parsePresetFile with a window size › keeps the window size through encode and decode
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a fractional width as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a height above 1080 as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a height below 360 as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a missing height as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a missing width as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a negative height as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a string width as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a width above 1440 as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a width below 480 as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a width of 400, which fits no sidebar beside a sheet as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses a zero width as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses an array as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses an empty object as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses an extra key as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with a window size › refuses null as a bad window
+pass	src/core/preset.test.ts › parsePresetFile with tabs › accepts a formula on one tab that names a field on another
+pass	src/core/preset.test.ts › parsePresetFile with tabs › accepts a template of one tab with no title
+pass	src/core/preset.test.ts › parsePresetFile with tabs › accepts a template of two titled tabs
+pass	src/core/preset.test.ts › parsePresetFile with tabs › accepts a visible template whose every tab is hidden from players
+pass	src/core/preset.test.ts › parsePresetFile with tabs › refuses a field id on two tabs outside repeat sections, at the second one
+pass	src/core/preset.test.ts › parsePresetFile with tabs › refuses a tab with a blank title beside another tab, naming the template
+pass	src/core/preset.test.ts › parsePresetFile with tabs › refuses a tab with no title beside another tab, naming the template
+pass	src/core/preset.test.ts › parsePresetFile with tabs › refuses a template with no tabs as a broken structure, which a builder draft holds
 pass	src/core/preset.test.ts › parsePresetStructure › is null for a cell of no kind
 pass	src/core/preset.test.ts › parsePresetStructure › is null for a window of fractions
 pass	src/core/preset.test.ts › parsePresetStructure › is null for an unknown key
@@ -1001,8 +1001,8 @@ pass	src/core/records.test.ts › parseRecord accepts › a tombstone of the key
 pass	src/core/records.test.ts › parseRecord accepts › a tombstone of the key link:t2
 pass	src/core/records.test.ts › parseRecord accepts › a tombstone of the key plink:s1:p1
 pass	src/core/records.test.ts › parseRecord accepts › a tombstone of the key preset
-pass	src/core/records.test.ts › parseRecord accepts › the field value "x"
 pass	src/core/records.test.ts › parseRecord accepts › the field value -1.5
+pass	src/core/records.test.ts › parseRecord accepts › the field value "x"
 pass	src/core/records.test.ts › parseRecord accepts › the field value 0
 pass	src/core/records.test.ts › parseRecord accepts › the field value 3
 pass	src/core/records.test.ts › parseRecord accepts › the field value false
@@ -1029,16 +1029,16 @@ pass	src/core/records.test.ts › parseRecord refuses › a candidate with no d
 pass	src/core/records.test.ts › parseRecord refuses › a candidate with no k
 pass	src/core/records.test.ts › parseRecord refuses › a candidate with null
 pass	src/core/records.test.ts › parseRecord refuses › a repeat cell holding -Infinity
-pass	src/core/records.test.ts › parseRecord refuses › a repeat cell holding Infinity
-pass	src/core/records.test.ts › parseRecord refuses › a repeat cell holding NaN
 pass	src/core/records.test.ts › parseRecord refuses › a repeat cell holding array
 pass	src/core/records.test.ts › parseRecord refuses › a repeat cell holding empty string
+pass	src/core/records.test.ts › parseRecord refuses › a repeat cell holding Infinity
+pass	src/core/records.test.ts › parseRecord refuses › a repeat cell holding NaN
 pass	src/core/records.test.ts › parseRecord refuses › a repeat cell holding object
 pass	src/core/records.test.ts › parseRecord refuses › a row field holding -Infinity
-pass	src/core/records.test.ts › parseRecord refuses › a row field holding Infinity
-pass	src/core/records.test.ts › parseRecord refuses › a row field holding NaN
 pass	src/core/records.test.ts › parseRecord refuses › a row field holding array
 pass	src/core/records.test.ts › parseRecord refuses › a row field holding empty string
+pass	src/core/records.test.ts › parseRecord refuses › a row field holding Infinity
+pass	src/core/records.test.ts › parseRecord refuses › a row field holding NaN
 pass	src/core/records.test.ts › parseRecord refuses › a row field holding object
 pass	src/core/records.test.ts › parseRecord refuses › for the key acl:s:p the data {"name":"x","extra":1}
 pass	src/core/records.test.ts › parseRecord refuses › for the key acl:s:p the data {"name":5}
@@ -1066,68 +1066,68 @@ pass	src/core/records.test.ts › parseRecord refuses › for the key blk:s:sec:
 pass	src/core/records.test.ts › parseRecord refuses › for the key blk:s:sec:i the data {"order":1,"cells":{},"extra":1}
 pass	src/core/records.test.ts › parseRecord refuses › for the key blk:s:sec:i the data {"order":1}
 pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data "s"
-pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data 5
 pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data {"i":"i"}
-pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data {"s":""}
 pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data {"s":"__proto__"}
+pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data {"s":""}
 pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data {"s":"a:b"}
 pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data {"s":"s","i":""}
 pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data {"s":"s","i":"a:b"}
 pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data {"s":"s","section":"sec"}
 pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data {"sheetId":"s"}
 pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data {}
+pass	src/core/records.test.ts › parseRecord refuses › for the key link:t the data 5
 pass	src/core/records.test.ts › parseRecord refuses › for the key plink:s:p the data {"name":"x","extra":1}
 pass	src/core/records.test.ts › parseRecord refuses › for the key plink:s:p the data {}
 pass	src/core/records.test.ts › parseRecord refuses › for the key preset the data ""
 pass	src/core/records.test.ts › parseRecord refuses › for the key preset the data "not base64!"
-pass	src/core/records.test.ts › parseRecord refuses › for the key preset the data 5
 pass	src/core/records.test.ts › parseRecord refuses › for the key preset the data {"z":1}
+pass	src/core/records.test.ts › parseRecord refuses › for the key preset the data 5
 pass	src/core/records.test.ts › parseRecord refuses › lifecycle metadata on a non-block record
-pass	src/core/records.test.ts › parseRecord refuses › the counter "1"
 pass	src/core/records.test.ts › parseRecord refuses › the counter -1
+pass	src/core/records.test.ts › parseRecord refuses › the counter "1"
 pass	src/core/records.test.ts › parseRecord refuses › the counter 0
 pass	src/core/records.test.ts › parseRecord refuses › the counter 1.5
 pass	src/core/records.test.ts › parseRecord refuses › the counter 9007199254740992
 pass	src/core/records.test.ts › parseRecord refuses › the counter null
-pass	src/core/records.test.ts › parseRecord refuses › the key ""
-pass	src/core/records.test.ts › parseRecord refuses › the key "Preset"
 pass	src/core/records.test.ts › parseRecord refuses › the key "__proto__:x"
-pass	src/core/records.test.ts › parseRecord refuses › the key "acl:s"
+pass	src/core/records.test.ts › parseRecord refuses › the key ""
 pass	src/core/records.test.ts › parseRecord refuses › the key "acl:s:__proto__"
 pass	src/core/records.test.ts › parseRecord refuses › the key "acl:s:p:x"
-pass	src/core/records.test.ts › parseRecord refuses › the key "blk:"
+pass	src/core/records.test.ts › parseRecord refuses › the key "acl:s"
 pass	src/core/records.test.ts › parseRecord refuses › the key "blk:__proto__"
+pass	src/core/records.test.ts › parseRecord refuses › the key "blk:"
 pass	src/core/records.test.ts › parseRecord refuses › the key "blk:s:__proto__:block"
-pass	src/core/records.test.ts › parseRecord refuses › the key "blk:s:scope"
 pass	src/core/records.test.ts › parseRecord refuses › the key "blk:s:scope:__proto__"
 pass	src/core/records.test.ts › parseRecord refuses › the key "blk:s:scope:block:extra"
+pass	src/core/records.test.ts › parseRecord refuses › the key "blk:s:scope"
 pass	src/core/records.test.ts › parseRecord refuses › the key "constructor:x"
-pass	src/core/records.test.ts › parseRecord refuses › the key "link"
 pass	src/core/records.test.ts › parseRecord refuses › the key "link:__proto__"
 pass	src/core/records.test.ts › parseRecord refuses › the key "link:t:x"
+pass	src/core/records.test.ts › parseRecord refuses › the key "link"
 pass	src/core/records.test.ts › parseRecord refuses › the key "note:x"
 pass	src/core/records.test.ts › parseRecord refuses › the key "plink:__proto__:p"
-pass	src/core/records.test.ts › parseRecord refuses › the key "plink:s"
 pass	src/core/records.test.ts › parseRecord refuses › the key "plink:s:p:x"
+pass	src/core/records.test.ts › parseRecord refuses › the key "plink:s"
 pass	src/core/records.test.ts › parseRecord refuses › the key "preset:x"
-pass	src/core/records.test.ts › parseRecord refuses › the key "rep:s1:item:i1"
-pass	src/core/records.test.ts › parseRecord refuses › the key "rep:s::i"
+pass	src/core/records.test.ts › parseRecord refuses › the key "Preset"
 pass	src/core/records.test.ts › parseRecord refuses › the key "rep:s:__proto__:i"
-pass	src/core/records.test.ts › parseRecord refuses › the key "rep:s:sec"
+pass	src/core/records.test.ts › parseRecord refuses › the key "rep:s::i"
 pass	src/core/records.test.ts › parseRecord refuses › the key "rep:s:sec:__proto__"
 pass	src/core/records.test.ts › parseRecord refuses › the key "rep:s:sec:i:x"
-pass	src/core/records.test.ts › parseRecord refuses › the key "row::r"
+pass	src/core/records.test.ts › parseRecord refuses › the key "rep:s:sec"
+pass	src/core/records.test.ts › parseRecord refuses › the key "rep:s1:item:i1"
 pass	src/core/records.test.ts › parseRecord refuses › the key "row:__proto__:r"
+pass	src/core/records.test.ts › parseRecord refuses › the key "row::r"
+pass	src/core/records.test.ts › parseRecord refuses › the key "row:s:__proto__"
+pass	src/core/records.test.ts › parseRecord refuses › the key "row:s:"
+pass	src/core/records.test.ts › parseRecord refuses › the key "row:s:r:x"
 pass	src/core/records.test.ts › parseRecord refuses › the key "row:s"
 pass	src/core/records.test.ts › parseRecord refuses › the key "row:s1:str"
-pass	src/core/records.test.ts › parseRecord refuses › the key "row:s:"
-pass	src/core/records.test.ts › parseRecord refuses › the key "row:s:__proto__"
-pass	src/core/records.test.ts › parseRecord refuses › the key "row:s:r:x"
-pass	src/core/records.test.ts › parseRecord refuses › the key "sheet"
-pass	src/core/records.test.ts › parseRecord refuses › the key "sheet:"
 pass	src/core/records.test.ts › parseRecord refuses › the key "sheet:__proto__"
-pass	src/core/records.test.ts › parseRecord refuses › the key "sheet:s1"
+pass	src/core/records.test.ts › parseRecord refuses › the key "sheet:"
 pass	src/core/records.test.ts › parseRecord refuses › the key "sheet:s:x"
+pass	src/core/records.test.ts › parseRecord refuses › the key "sheet:s1"
+pass	src/core/records.test.ts › parseRecord refuses › the key "sheet"
 pass	src/core/records.test.ts › parseStoredRecord › parses a valid record filed under its own key
 pass	src/core/records.test.ts › parseStoredRecord › refuses a valid record filed under another key
 pass	src/core/records.test.ts › parseStoredRecord › refuses text that is not JSON without throwing
@@ -1368,7 +1368,6 @@ pass	src/core/sheet-values.test.ts › valueText › shows a number in its decim
 pass	src/core/sheet-values.test.ts › valueText › shows a text value as it is
 pass	src/core/sheet-values.test.ts › valueText › shows a value of another type as text
 pass	src/core/sheet-values.test.ts › valueText › shows no value as an empty area
-pass	src/core/sheets.test.ts › SHEET_NAME_MAX_LENGTH › is 100 characters, as TASK-8 names it
 pass	src/core/sheets.test.ts › dependentSheetId › reads a player link
 pass	src/core/sheets.test.ts › dependentSheetId › reads a row
 pass	src/core/sheets.test.ts › dependentSheetId › reads a row key with an empty sheet id
@@ -1420,15 +1419,16 @@ pass	src/core/sheets.test.ts › resolveSheet › resolves a sheet record whose 
 pass	src/core/sheets.test.ts › resolveSheet › resolves a sheet with no sheet record to no template
 pass	src/core/sheets.test.ts › resolveSheet › resolves a tombstoned sheet to no template
 pass	src/core/sheets.test.ts › resolveSheet › resolves nothing with no decoded preset
-pass	src/core/sheets.test.ts › sheetIdSchema › accepts V1StGXR8_Z5jdHi6B-myT
+pass	src/core/sheets.test.ts › SHEET_NAME_MAX_LENGTH › is 100 characters, as TASK-8 names it
 pass	src/core/sheets.test.ts › sheetIdSchema › accepts a
 pass	src/core/sheets.test.ts › sheetIdSchema › accepts aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+pass	src/core/sheets.test.ts › sheetIdSchema › accepts V1StGXR8_Z5jdHi6B-myT
 pass	src/core/sheets.test.ts › sheetIdSchema › refuses ""
-pass	src/core/sheets.test.ts › sheetIdSchema › refuses "a b"
-pass	src/core/sheets.test.ts › sheetIdSchema › refuses "a.b"
-pass	src/core/sheets.test.ts › sheetIdSchema › refuses "a:b"
-pass	src/core/sheets.test.ts › sheetIdSchema › refuses "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 pass	src/core/sheets.test.ts › sheetIdSchema › refuses "лист"
+pass	src/core/sheets.test.ts › sheetIdSchema › refuses "a b"
+pass	src/core/sheets.test.ts › sheetIdSchema › refuses "a:b"
+pass	src/core/sheets.test.ts › sheetIdSchema › refuses "a.b"
+pass	src/core/sheets.test.ts › sheetIdSchema › refuses "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 pass	src/core/sheets.test.ts › sheetName › cuts a long name field value to 100 code points
 pass	src/core/sheets.test.ts › sheetName › gives the empty name for a blank value
 pass	src/core/sheets.test.ts › sheetName › gives the empty name for a versioned cleared name
@@ -1531,7 +1531,6 @@ pass	src/core/snapshot.test.ts › readBackHolds › judges a read-back holding 
 pass	src/core/snapshot.test.ts › readBackHolds › judges a read-back holding the same records
 pass	src/core/snapshot.test.ts › readSnapshot › reads a room with no copy as null
 pass	src/core/snapshot.test.ts › readSnapshot › reads a stored copy back to its generation and records
-pass	src/core/snapshot.test.ts › readSnapshot › refuses JSON that is not a snapshot as invalid
 pass	src/core/snapshot.test.ts › readSnapshot › refuses a copy of the older format 1 without decoding its data
 pass	src/core/snapshot.test.ts › readSnapshot › refuses a copy of the older format 2 without decoding its data
 pass	src/core/snapshot.test.ts › readSnapshot › refuses a copy of the older format 3 without decoding its data
@@ -1546,6 +1545,7 @@ pass	src/core/snapshot.test.ts › readSnapshot › refuses an invalid record as
 pass	src/core/snapshot.test.ts › readSnapshot › refuses data that inflates past the cap
 pass	src/core/snapshot.test.ts › readSnapshot › refuses data that is not base64 as invalid
 pass	src/core/snapshot.test.ts › readSnapshot › refuses data that is not deflate as invalid
+pass	src/core/snapshot.test.ts › readSnapshot › refuses JSON that is not a snapshot as invalid
 pass	src/core/snapshot.test.ts › readSnapshot › refuses no v as invalid
 pass	src/core/snapshot.test.ts › roomCopyUsage › gives the copy key its own bytes and leaves the limit less all metadata free
 pass	src/core/snapshot.test.ts › roomCopyUsage › uses nothing with no copy and frees nothing below 0
@@ -1561,7 +1561,6 @@ pass	src/core/state-records.test.ts › stateAnswer › answers a room with no r
 pass	src/core/state-records.test.ts › stateAnswer › leaves out a record too large for one message even alone, and names its key
 pass	src/core/state-records.test.ts › stateAnswer › packs records that deflate well into fewer messages than their JSON size needs
 pass	src/core/state-records.test.ts › stateAnswer › splits records that do not deflate under the limit into numbered parts, each under it
-pass	src/core/storage-key.test.ts › INITIAL_GENERATION › is generation zero with an empty author
 pass	src/core/storage-key.test.ts › buildStorageKey › builds the AD-11 key
 pass	src/core/storage-key.test.ts › buildStorageKey › builds the key of the initial generation with an empty author segment
 pass	src/core/storage-key.test.ts › buildStorageKey › refuses a fractional generation
@@ -1578,6 +1577,7 @@ pass	src/core/storage-key.test.ts › generation marker › reads its room and g
 pass	src/core/storage-key.test.ts › incomplete generation marker › builds a key under the generation that no record key can take
 pass	src/core/storage-key.test.ts › incomplete generation marker › does not read a record key as a marker
 pass	src/core/storage-key.test.ts › incomplete generation marker › reads its room and generation back
+pass	src/core/storage-key.test.ts › INITIAL_GENERATION › is generation zero with an empty author
 pass	src/core/storage-key.test.ts › isOlderFormatRoomKey › answers for a key of a newer format
 pass	src/core/storage-key.test.ts › isOlderFormatRoomKey › answers for a key of the current format
 pass	src/core/storage-key.test.ts › isOlderFormatRoomKey › answers for a key of the format 1
@@ -1619,12 +1619,12 @@ pass	src/core/timing.test.ts › timing constants › gives wipe the same 60 s a
 pass	src/core/timing.test.ts › timing constants › holds a sheet opened from a token for a window 15 s
 pass	src/core/timing.test.ts › timing constants › starts catch-up at a 4 s timeout and an answer delay of 20 to 300 ms, as the 2.2 spec says
 pass	src/core/timing.test.ts › timing constants › starts send spacing at the 50 ms of AD-12
-pass	src/core/timing.test.ts › timing constants › starts the GM link timeout at the 20 s of the 2.4 spec
 pass	src/core/timing.test.ts › timing constants › starts the field save pause at the 800 ms of the 1.9 spec
+pass	src/core/timing.test.ts › timing constants › starts the GM link timeout at the 20 s of the 2.4 spec
 pass	src/core/timing.test.ts › timing constants › starts the room copy pause at 3 s with 2 s of jitter, as the 2.5 spec says
 pass	src/core/token-links.test.ts › labels an unnamed sheet-set sheet with its template title
-pass	src/core/token-links.test.ts › linkPickerUrl › names the token in the picker page query
 pass	src/core/token-links.test.ts › linkedTargetKeys › names each target a live link points to once
+pass	src/core/token-links.test.ts › linkPickerUrl › names the token in the picker page query
 pass	src/core/token-links.test.ts › lists literal root and scoped repeat-tab targets without a root target for the repeat-tab cell
 pass	src/core/token-links.test.ts › liveLinks › counts no inert link: a tombstone, a deleted or unknown sheet, a removed block, or a target with no tokens
 pass	src/core/token-links.test.ts › liveLinks › counts no link to a sheet id no command could write, even with a live sheet under it
@@ -1681,7 +1681,6 @@ pass	src/core/token-selection.test.ts › tokensByTarget › lists the tokens of
 pass	src/core/ui-messages-v4.test.ts › drops an open request whose repeat path has an odd number of segments
 pass	src/core/ui-messages-v4.test.ts › parses a cell-target open request with its repeat block address
 pass	src/core/ui-messages-v4.test.ts › round-trips a cell-target open request without changing its internal form
-pass	src/core/ui-messages.test.ts › UI_CHANNEL › is the channel of AD-10
 pass	src/core/ui-messages.test.ts › parseEngineMessage › accepts a delta and a rejected command
 pass	src/core/ui-messages.test.ts › parseEngineMessage › accepts a delta carrying the new-version notice and refuses an unknown notice
 pass	src/core/ui-messages.test.ts › parseEngineMessage › accepts a delta carrying the older-format room copy notice
@@ -1811,6 +1810,7 @@ pass	src/core/ui-messages.test.ts › parseWindowMessage › round-trips a field
 pass	src/core/ui-messages.test.ts › parseWindowMessage › round-trips a field-patch command for a repeat instance field
 pass	src/core/ui-messages.test.ts › parseWindowMessage › round-trips a field-patch command for a row field
 pass	src/core/ui-messages.test.ts › parseWindowMessage › round-trips a field-patch command for a value of any JSON type, for the engine to check
+pass	src/core/ui-messages.test.ts › UI_CHANNEL › is the channel of AD-10
 pass	src/core/version-minter.test.ts › createVersionMinter › follows newer knowledge that overtakes its own last counter
 pass	src/core/version-minter.test.ts › createVersionMinter › keeps the last counter per key
 pass	src/core/version-minter.test.ts › createVersionMinter › never repeats a counter when knowledge of the key stays stale
@@ -1853,17 +1853,17 @@ pass	src/platform/file-access.test.ts › file-access port fake › records writ
 pass	src/platform/file-access.test.ts › file-access port fake › reports missing files and injected follow failures as explicit results
 pass	src/platform/file-access.test.ts › file-access port fake › returns queued open and read results without consulting browser globals
 pass	src/platform/mock/index.test.ts › current platform under bun test › resolves to the mock adapter
-pass	src/platform/mock/index.test.ts › mock LOCAL bus shared between pages › delivers a LOCAL message to every platform on the bus, the sender included
 pass	src/platform/mock/index.test.ts › mock broadcast › delivers a LOCAL message to a listener on the same channel
 pass	src/platform/mock/index.test.ts › mock broadcast › does not deliver a message to a listener on another channel
 pass	src/platform/mock/index.test.ts › mock broadcast › does not echo a REMOTE message to its sender
 pass	src/platform/mock/index.test.ts › mock broadcast › stops calling a removed listener and keeps calling the others
+pass	src/platform/mock/index.test.ts › mock LOCAL bus shared between pages › delivers a LOCAL message to every platform on the bus, the sender included
 pass	src/platform/mock/index.test.ts › mock map selection › a failed write rejects and leaves the selection as it was
 pass	src/platform/mock/index.test.ts › mock map selection › adds and removes items as Owlbear's select with no replace and deselect do, for every page of the client only
 pass	src/platform/mock/index.test.ts › mock map selection › an empty list and a selection of the same ids call nothing back
-pass	src/platform/mock/index.test.ts › mock metadata isolation › keeps nested values out of reach of writers, listeners and readers
 pass	src/platform/mock/index.test.ts › mock metadata › merges an update and removes keys set to undefined
 pass	src/platform/mock/index.test.ts › mock metadata › stops notifying a removed metadata listener
+pass	src/platform/mock/index.test.ts › mock metadata isolation › keeps nested values out of reach of writers, listeners and readers
 pass	src/platform/mock/index.test.ts › mock page room scene › another page hears every step in order, even when it reads them after the last one
 pass	src/platform/mock/index.test.ts › mock readiness › calls the ready callback
 pass	src/platform/mock/index.test.ts › mock role › is the GM until a test changes it
@@ -1876,6 +1876,9 @@ pass	src/platform/mock/index.test.ts › mock room with several clients › list
 pass	src/platform/mock/index.test.ts › mock room with several clients › puts a message on the room as if another connection had sent it
 pass	src/platform/mock/index.test.ts › mock room with several clients › reads its own player from the client it was made for
 pass	src/platform/mock/index.test.ts › mock room with several clients › tells party listeners about a join, a role change and a leave
+pass	src/platform/mock/index.test.ts › mock scene › is one scene for the room: every client hears each change, a repeated one included
+pass	src/platform/mock/index.test.ts › mock scene › opens ready with no item
+pass	src/platform/mock/index.test.ts › mock scene › stops calling a removed scene listener
 pass	src/platform/mock/index.test.ts › mock scene labels › a label write shows to every client of the room as one item change, the list unchanged
 pass	src/platform/mock/index.test.ts › mock scene labels › a label write to a player client rejects and changes nothing
 pass	src/platform/mock/index.test.ts › mock scene labels › a label write to an item not in the scene rejects and changes nothing
@@ -1883,9 +1886,6 @@ pass	src/platform/mock/index.test.ts › mock scene labels › a label write to 
 pass	src/platform/mock/index.test.ts › mock scene labels › an item keeps its label when it leaves the scene and comes back
 pass	src/platform/mock/index.test.ts › mock scene labels › reads "" for an item with no label, the label once set, and null for an item not in the scene or with no label text
 pass	src/platform/mock/index.test.ts › mock scene labels › records each label call, and fails only the listed next calls
-pass	src/platform/mock/index.test.ts › mock scene › is one scene for the room: every client hears each change, a repeated one included
-pass	src/platform/mock/index.test.ts › mock scene › opens ready with no item
-pass	src/platform/mock/index.test.ts › mock scene › stops calling a removed scene listener
 pass	src/platform/mock/index.test.ts › mock send failures › fails only the simulated number of sends
 pass	src/platform/mock/index.test.ts › mock send failures › reports a simulated rate limit and delivers nothing
 pass	src/platform/mock/index.test.ts › mock storage › reads back a stored value and lists its key
@@ -1897,10 +1897,11 @@ pass	src/platform/mock/index.test.ts › mock storage › returns null for a rem
 pass	src/platform/mock/index.test.ts › mock storage › stops failing once the failing operations are cleared
 pass	src/platform/mock/index.test.ts › mock theme › stops calling a removed theme listener
 pass	src/platform/mock/index.test.ts › mock theme › tells listeners about a theme change and returns it on the next read
-pass	src/platform/mock/port-contract.test.ts › mock broadcast port contract › LOCAL broadcast reaches the sender client only
-pass	src/platform/mock/port-contract.test.ts › mock broadcast port contract › REMOTE broadcast reaches another client and does not echo
+pass	src/platform/mock/port-contract.test.ts › clock reads wall time and schedules, cancels, and aborts callbacks
 pass	src/platform/mock/port-contract.test.ts › mock broadcast port contract › a rate-limited send resolves and delivers no event
 pass	src/platform/mock/port-contract.test.ts › mock broadcast port contract › broadcast preserves one sender arrival order
+pass	src/platform/mock/port-contract.test.ts › mock broadcast port contract › LOCAL broadcast reaches the sender client only
+pass	src/platform/mock/port-contract.test.ts › mock broadcast port contract › REMOTE broadcast reaches another client and does not echo
 pass	src/platform/mock/port-contract.test.ts › mock metadata port contract › metadata merges retained entries and deletes undefined entries
 pass	src/platform/mock/port-contract.test.ts › mock rejecting port contract › metadata read returns its tagged failure
 pass	src/platform/mock/port-contract.test.ts › mock rejecting port contract › notification returns its tagged failure
@@ -1942,10 +1943,11 @@ pass	src/platform/obr/send-result.test.ts › toSendResult › reports a resolve
 pass	src/platform/obr/send-result.test.ts › toSendResult › reports a thrown Error as a failure
 pass	src/platform/obr/send-result.test.ts › toSendResult › reports another Owlbear rejection as a failure
 pass	src/platform/obr/send-result.test.ts › toSendResult › reports the Owlbear RateLimitHit rejection as rate-limited
-pass	src/platform/send-queue.test.ts › send queue with a composed message › composes when the queue takes it, so a change made while it waits goes out
-pass	src/platform/send-queue.test.ts › send queue with a composed message › flushNow composes a waiting message at once
-pass	src/platform/send-queue.test.ts › send queue with a composed message › resends the composed message through a rate limit without composing it again
-pass	src/platform/send-queue.test.ts › send queue with a composed message › sends nothing and waits no spacing for a composer that returns null
+pass	src/platform/schedule.test.ts › schedule abort prevents the callback from firing
+pass	src/platform/schedule.test.ts › schedule cancel prevents the callback from firing
+pass	src/platform/schedule.test.ts › schedule cancellation is a no-op after the callback fires
+pass	src/platform/schedule.test.ts › schedule does not schedule an already aborted signal
+pass	src/platform/schedule.test.ts › schedule fires a callback once after its delay
 pass	src/platform/send-queue.test.ts › send queue › flushNow sends the message in its backoff and every waiting one in order, once each
 pass	src/platform/send-queue.test.ts › send queue › goes on after a port that rejects, against its contract
 pass	src/platform/send-queue.test.ts › send queue › holds a message queued during the pause after the last send until the pause ends
@@ -1956,6 +1958,10 @@ pass	src/platform/send-queue.test.ts › send queue › sendNow makes one attemp
 pass	src/platform/send-queue.test.ts › send queue › sends in order and spaces each send by the injected value
 pass	src/platform/send-queue.test.ts › send queue › sends one at a time, waiting for the previous send
 pass	src/platform/send-queue.test.ts › send queue › waits with doubling, capped backoff and resends the same message in order
+pass	src/platform/send-queue.test.ts › send queue with a composed message › composes when the queue takes it, so a change made while it waits goes out
+pass	src/platform/send-queue.test.ts › send queue with a composed message › flushNow composes a waiting message at once
+pass	src/platform/send-queue.test.ts › send queue with a composed message › resends the composed message through a rate limit without composing it again
+pass	src/platform/send-queue.test.ts › send queue with a composed message › sends nothing and waits no spacing for a composer that returns null
 pass	src/replica/catch-up-effects.test.ts › a failed read logs its failure and leaves the interpreter resolved
 pass	src/replica/catch-up-effects.test.ts › a failed timer continuation logs its failure
 pass	src/replica/catch-up-effects.test.ts › aborting after a read starts drops its continuation
@@ -1974,7 +1980,12 @@ pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › 
 pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › keeps adoption active when another catch-up starts
 pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › keeps catch-up for a party read with a stale nonce
 pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › keeps catch-up for a room-copy read with a stale nonce
-pass	src/replica/catch-up.test.ts › catch-up › GM silence takes the link offline and only shows a projected link
+pass	src/replica/catch-up.test.ts › catch-up › a catch-up timeout leaves unanswered but retains gmAnswered
+pass	src/replica/catch-up.test.ts › catch-up › a changed digest is no longer ignored when its earlier value returns
+pass	src/replica/catch-up.test.ts › catch-up › a complete answer from one sender leaves answered
+pass	src/replica/catch-up.test.ts › catch-up › a foreign state does not mark the active request answered on a page return
+pass	src/replica/catch-up.test.ts › catch-up › a foreign state starts a gm-return catch-up for a live player
+pass	src/replica/catch-up.test.ts › catch-up › a generation read during catch-up keeps the active nonce
 pass	src/replica/catch-up.test.ts › catch-up › a GM alone leaves unanswered after its room copy read
 pass	src/replica/catch-up.test.ts › catch-up › a GM alone stays catching up after a failed party read
 pass	src/replica/catch-up.test.ts › catch-up › a GM alone stays catching up after an adoption in progress
@@ -1984,12 +1995,6 @@ pass	src/replica/catch-up.test.ts › catch-up › a GM in drift catch-up answer
 pass	src/replica/catch-up.test.ts › catch-up › a GM in ordinary catch-up holds a request and answers it only if still unanswered on exit
 pass	src/replica/catch-up.test.ts › catch-up › a GM re-arms an answer whose timer fires during ordinary catch-up
 pass	src/replica/catch-up.test.ts › catch-up › a GM retains only the newest 256 held requests
-pass	src/replica/catch-up.test.ts › catch-up › a catch-up timeout leaves unanswered but retains gmAnswered
-pass	src/replica/catch-up.test.ts › catch-up › a changed digest is no longer ignored when its earlier value returns
-pass	src/replica/catch-up.test.ts › catch-up › a complete answer from one sender leaves answered
-pass	src/replica/catch-up.test.ts › catch-up › a foreign state does not mark the active request answered on a page return
-pass	src/replica/catch-up.test.ts › catch-up › a foreign state starts a gm-return catch-up for a live player
-pass	src/replica/catch-up.test.ts › catch-up › a generation read during catch-up keeps the active nonce
 pass	src/replica/catch-up.test.ts › catch-up › a gm-return request is armed with its jitter delay
 pass	src/replica/catch-up.test.ts › catch-up › a held request is cleared after the catch-up that cannot answer it
 pass	src/replica/catch-up.test.ts › catch-up › a higher generation adopts, forgets drift, and enters with a fresh nonce
@@ -2034,14 +2039,15 @@ pass	src/replica/catch-up.test.ts › catch-up › closing while live follows it
 pass	src/replica/catch-up.test.ts › catch-up › does not leave for a partial answer
 pass	src/replica/catch-up.test.ts › catch-up › does not leave for an old nonce
 pass	src/replica/catch-up.test.ts › catch-up › does not leave for parts from mixed senders
-pass	src/replica/catch-up.test.ts › catch-up › does not start drift from a GM with unsent commits
 pass	src/replica/catch-up.test.ts › catch-up › does not start drift from a burst in one window
+pass	src/replica/catch-up.test.ts › catch-up › does not start drift from a GM with unsent commits
 pass	src/replica/catch-up.test.ts › catch-up › does not start drift from a match between differences
 pass	src/replica/catch-up.test.ts › catch-up › does not start drift from another generation
 pass	src/replica/catch-up.test.ts › catch-up › does not start drift from differences from two GMs
 pass	src/replica/catch-up.test.ts › catch-up › ends adoption after a failed adoption save
 pass	src/replica/catch-up.test.ts › catch-up › ends adoption after a saved complete answer
 pass	src/replica/catch-up.test.ts › catch-up › generation adoption clears the drift starter before an answered exit
+pass	src/replica/catch-up.test.ts › catch-up › GM silence takes the link offline and only shows a projected link
 pass	src/replica/catch-up.test.ts › catch-up › ignores a room-copy read for an old nonce
 pass	src/replica/catch-up.test.ts › catch-up › only a GM-origin message brings the link online and arms its watches
 pass	src/replica/catch-up.test.ts › catch-up › ping fires and rearms, and only a live vouching GM answers it
@@ -2122,8 +2128,8 @@ pass	src/replica/engine-access.test.ts › party in the projection › follows a
 pass	src/replica/engine-access.test.ts › party in the projection › gives a GM window every other party member with player id, name and role
 pass	src/replica/engine-access.test.ts › party in the projection › gives a player window no party
 pass	src/replica/engine-access.test.ts › party in the projection › publishes the same delayed initial party read while the engine is live
-pass	src/replica/engine-blocks.test.ts › a GM edit keeps every field in same-named child scopes under different parents
 pass	src/replica/engine-blocks.test.ts › a child field command after its parent was deleted is refused without changing the child
+pass	src/replica/engine-blocks.test.ts › a GM edit keeps every field in same-named child scopes under different parents
 pass	src/replica/engine-blocks.test.ts › a player patch preserves an unrelated GM cell and clears its pending ACK state
 pass	src/replica/engine-blocks.test.ts › an add without a parent path to a nested section is refused without writing a root block
 pass	src/replica/engine-blocks.test.ts › catch-up replays queued field intents over incoming cells without losing either value
@@ -2151,22 +2157,22 @@ pass	src/replica/engine-catch-up.test.ts › engine catch-up decisions › surfa
 pass	src/replica/engine-catch-up.test.ts › exit › a client with no complete answer leaves catching-up on the timeout
 pass	src/replica/engine-catch-up.test.ts › exit › a partial answer is merged, and catch-up ends only when all n parts of one responder are in
 pass	src/replica/engine-catch-up.test.ts › exit › a state for an old nonce, or one that comes while live, is still merged
-pass	src/replica/engine-catch-up.test.ts › pending queue › a GM edit shows at once, is not saved or sent, and takes c on exit
-pass	src/replica/engine-catch-up.test.ts › pending queue › a GM made a player during catch-up gets not-allowed for each pending intent
 pass	src/replica/engine-catch-up.test.ts › pending queue › a closing page applies and sends the pending intents before its queues flush
 pass	src/replica/engine-catch-up.test.ts › pending queue › a create shows its sheet at once, and create, rename, patch and block add replay in order
+pass	src/replica/engine-catch-up.test.ts › pending queue › a GM edit shows at once, is not saved or sent, and takes c on exit
+pass	src/replica/engine-catch-up.test.ts › pending queue › a GM made a player during catch-up gets not-allowed for each pending intent
 pass	src/replica/engine-catch-up.test.ts › pending queue › a key that leaves the pending view shows its replica record again while catching up
 pass	src/replica/engine-catch-up.test.ts › pending queue › a queued GM command gets one answered outcome when replay applies it
 pass	src/replica/engine-catch-up.test.ts › pending queue › a replay refusal sends a rejection with the original command id
 pass	src/replica/engine-catch-up.test.ts › pending queue › a window that opens during catch-up gets the pending view in its projection
 pass	src/replica/engine-catch-up.test.ts › pending queue › an intent the pending view refuses is rejected at once, and so is a preset upload
 pass	src/replica/engine-catch-up.test.ts › pending queue › two edits of one row combine into one entry, and both fields apply with one version
-pass	src/replica/engine-catch-up.test.ts › player visibility › a GM made a player gets a fresh projection with no hidden sheet in it
 pass	src/replica/engine-catch-up.test.ts › player visibility › a catch-up answered after an earlier one timed out sets gmAnswered
 pass	src/replica/engine-catch-up.test.ts › player visibility › a catch-up that ends by timeout leaves gmAnswered false
 pass	src/replica/engine-catch-up.test.ts › player visibility › a complete answer that comes after the timeout sets gmAnswered
 pass	src/replica/engine-catch-up.test.ts › player visibility › a demoted player does not persist a later room commit
 pass	src/replica/engine-catch-up.test.ts › player visibility › a failed storage probe on promotion keeps persistence disabled and shows the notice
+pass	src/replica/engine-catch-up.test.ts › player visibility › a GM made a player gets a fresh projection with no hidden sheet in it
 pass	src/replica/engine-catch-up.test.ts › player visibility › a link that a GM points from a visible sheet to a hidden one leaves the player window
 pass	src/replica/engine-catch-up.test.ts › player visibility › a player made GM gets a fresh projection with the hidden sheets in it
 pass	src/replica/engine-catch-up.test.ts › player visibility › a player window gets the preset and the visible sheets with their rows, and no hidden sheet
@@ -2192,12 +2198,6 @@ pass	src/replica/engine-catch-up.test.ts › start › a GM client whose party r
 pass	src/replica/engine-catch-up.test.ts › start › a GM client whose party read shows no other GM leaves at once, with no timeout wait
 pass	src/replica/engine-catch-up.test.ts › start › a late GM client gets the records of a live GM client and persists them
 pass	src/replica/engine-catch-up.test.ts › start › flushNow without queued intents leaves ordinary catch-up held until its GM answer
-pass	src/replica/engine-client.test.ts › GM start › loads only the highest generation
-pass	src/replica/engine-client.test.ts › GM start › puts every persisted record of the current generation in the replica
-pass	src/replica/engine-client.test.ts › command id ownership › answers a repeated raw window command id once
-pass	src/replica/engine-client.test.ts › command id ownership › does not release a held commit after stop
-pass	src/replica/engine-client.test.ts › command id ownership › flushNow sends a held commit before its save pause ends
-pass	src/replica/engine-client.test.ts › command id ownership › ignores local commands and room commits after stop
 pass	src/replica/engine-client.test.ts › command › answers a live GM command after the delta that carries its effect
 pass	src/replica/engine-client.test.ts › command › gives each new sheet of a sheet set the next order of that set
 pass	src/replica/engine-client.test.ts › command › has no effect and does not throw when it holds a whole-record field a
@@ -2208,6 +2208,10 @@ pass	src/replica/engine-client.test.ts › command › has one effect when one c
 pass	src/replica/engine-client.test.ts › command › ignores an echo of the window-bound messages it sent itself
 pass	src/replica/engine-client.test.ts › command › makes the replica compose d, mint c and emit a delta
 pass	src/replica/engine-client.test.ts › command › persists the new record for the GM
+pass	src/replica/engine-client.test.ts › command id ownership › answers a repeated raw window command id once
+pass	src/replica/engine-client.test.ts › command id ownership › does not release a held commit after stop
+pass	src/replica/engine-client.test.ts › command id ownership › flushNow sends a held commit before its save pause ends
+pass	src/replica/engine-client.test.ts › command id ownership › ignores local commands and room commits after stop
 pass	src/replica/engine-client.test.ts › corrupt stored record › counts as absent and clears the notice when that key is next written
 pass	src/replica/engine-client.test.ts › corrupt stored record › is skipped and raises the local-save notice
 pass	src/replica/engine-client.test.ts › engine startup waits for the initial catch-up deadline when a room-copy read never settles
@@ -2235,6 +2239,8 @@ pass	src/replica/engine-client.test.ts › field-patch › retains a versioned n
 pass	src/replica/engine-client.test.ts › field-patch › saves a field of an existing repeat instance into its cells and keeps its order
 pass	src/replica/engine-client.test.ts › field-patch › starts an absent row record empty and stores false for an unchecked box
 pass	src/replica/engine-client.test.ts › field-patch › stores a text value as typed, line breaks included
+pass	src/replica/engine-client.test.ts › GM start › loads only the highest generation
+pass	src/replica/engine-client.test.ts › GM start › puts every persisted record of the current generation in the replica
 pass	src/replica/engine-client.test.ts › open window › ignores a projection for another window
 pass	src/replica/engine-client.test.ts › open window › keeps waiting while an incomplete set still makes progress
 pass	src/replica/engine-client.test.ts › open window › receives a full projection echoing its nonce, then deltas
@@ -2427,14 +2433,8 @@ pass	src/replica/engine-duplicate.test.ts › repeat-block-duplicate › rejects
 pass	src/replica/engine-duplicate.test.ts › repeat-block-duplicate › sends fifty copies through the send queue to another GM client whole
 pass	src/replica/engine-duplicate.test.ts › repeat-block-duplicate › sends the copies to the room in commits, which another GM client merges and persists
 pass	src/replica/engine-duplicate.test.ts › repeat-block-duplicate › writes nine copies of "Скелет 1", "Скелет 2" to "Скелет 10", after the last repeat block of its section, with its values
-pass	src/replica/engine-import.test.ts › adoption guards › a client with no data adopts with no notification
-pass	src/replica/engine-import.test.ts › adoption guards › a commit held in the outbox when adoption starts never goes out under the new generation
-pass	src/replica/engine-import.test.ts › adoption guards › a commit of the adopted generation during adoption is there once it is complete
-pass	src/replica/engine-import.test.ts › adoption guards › an adopter whose save fails keeps its old generation, shows the notice and stays incomplete
-pass	src/replica/engine-import.test.ts › adoption guards › clears an obsolete corrupt-record notice when a higher generation replaces the replica
-pass	src/replica/engine-import.test.ts › adoption guards › keeps an unreadable-storage notice when a player-style adoption replaces the replica
-pass	src/replica/engine-import.test.ts › adoption › a GM adopts from another message of a higher generation and drops its waiting intents
 pass	src/replica/engine-import.test.ts › adoption › a generation replacement starts a fresh window projection stream
+pass	src/replica/engine-import.test.ts › adoption › a GM adopts from another message of a higher generation and drops its waiting intents
 pass	src/replica/engine-import.test.ts › adoption › a live GM adopts a room copy of a higher generation at once
 pass	src/replica/engine-import.test.ts › adoption › a partial answer does not complete it, and all parts of one responder do
 pass	src/replica/engine-import.test.ts › adoption › a player drops its waiting edits with the notification
@@ -2444,14 +2444,20 @@ pass	src/replica/engine-import.test.ts › adoption › does not stage a lower r
 pass	src/replica/engine-import.test.ts › adoption › leaves catch-up on its deadline after a room copy completes adoption
 pass	src/replica/engine-import.test.ts › adoption › persists the next edit under the generation adopted from the room copy
 pass	src/replica/engine-import.test.ts › adoption › while incomplete it keeps its data, writes no copy, answers nothing and asks again with backoff
+pass	src/replica/engine-import.test.ts › adoption guards › a client with no data adopts with no notification
+pass	src/replica/engine-import.test.ts › adoption guards › a commit held in the outbox when adoption starts never goes out under the new generation
+pass	src/replica/engine-import.test.ts › adoption guards › a commit of the adopted generation during adoption is there once it is complete
+pass	src/replica/engine-import.test.ts › adoption guards › an adopter whose save fails keeps its old generation, shows the notice and stays incomplete
+pass	src/replica/engine-import.test.ts › adoption guards › clears an obsolete corrupt-record notice when a higher generation replaces the replica
+pass	src/replica/engine-import.test.ts › adoption guards › keeps an unreadable-storage notice when a player-style adoption replaces the replica
 pass	src/replica/engine-import.test.ts › check › answers the count and digest of dropped values and writes nothing
 pass	src/replica/engine-import.test.ts › check › refuses a room with no preset
 pass	src/replica/engine-import.test.ts › check › refuses a snapshot check when the current preset record cannot be decoded
 pass	src/replica/engine-import.test.ts › check › refuses a snapshot placement whose record cannot fit one message
 pass	src/replica/engine-import.test.ts › check › refuses data that is no snapshot as a bad file
-pass	src/replica/engine-import.test.ts › import › a GM write during the import is refused until reset is out
 pass	src/replica/engine-import.test.ts › import › a copy over the limit still finishes the import, sends reset, shows the notice and removes the old copy
 pass	src/replica/engine-import.test.ts › import › a failed save stops before the room copy and reset, shows the local-save notice and changes nothing
+pass	src/replica/engine-import.test.ts › import › a GM write during the import is refused until reset is out
 pass	src/replica/engine-import.test.ts › import › a linked token deleted from the scene during the import loses its link once the import ends
 pass	src/replica/engine-import.test.ts › import › a player sees the imported data, read-only and with no owner
 pass	src/replica/engine-import.test.ts › import › an edit held in the outbox goes out under the old generation, before reset
@@ -2493,8 +2499,8 @@ pass	src/replica/engine-link.test.ts › link-set › refuses a root link to a t
 pass	src/replica/engine-link.test.ts › link-set › refuses a token id a link key cannot hold
 pass	src/replica/engine-link.test.ts › link-set › writes a link to a repeat block of a linkable section with the sheet and instance ids
 pass	src/replica/engine-link.test.ts › link-set › writes link:{tokenId} with the sheet id at c: 1 by this connection, saved and sent
-pass	src/replica/engine-link.test.ts › token menu › "Отвязать лист" tombstones the token's link
 pass	src/replica/engine-link.test.ts › token menu › "Привязать лист…" opens the link picker for the token, anchored to the pressed entry
+pass	src/replica/engine-link.test.ts › token menu › "Отвязать лист" tombstones the token's link
 pass	src/replica/engine-link.test.ts › token menu › a GM press on a GM-only source-section token in a visible repeat tab opens it
 pass	src/replica/engine-link.test.ts › token menu › a player press on a GM-only source-section token in a visible repeat tab opens nothing while a visible token opens
 pass	src/replica/engine-link.test.ts › token menu › an engine-made menu command sends no command-done to windows
@@ -2510,8 +2516,8 @@ pass	src/replica/engine-link.test.ts › token menu › makes no item before the
 pass	src/replica/engine-link.test.ts › token menu › re-creates every item when a link is written
 pass	src/replica/engine-link.test.ts › token menu › re-creates nothing for a change that leaves the filters as they were
 pass	src/replica/engine-link.test.ts › token menu › removes "Отвязать лист" and frees the token when the linked sheet is deleted
-pass	src/replica/engine-link.test.ts › token menu › removes GM items during catch-up after the GM becomes a player
 pass	src/replica/engine-link.test.ts › token menu › removes an item again on the next change after its remove failed
+pass	src/replica/engine-link.test.ts › token menu › removes GM items during catch-up after the GM becomes a player
 pass	src/replica/engine-link.test.ts › token menu › removes the GM items when the GM becomes a player, and keeps "Открыть лист"
 pass	src/replica/engine-link.test.ts › token menu › shows a notification when the engine refuses "Отвязать лист"
 pass	src/replica/engine-link.test.ts › token menu › stop() takes every item back out of Owlbear
@@ -2527,17 +2533,17 @@ pass	src/replica/engine-liveness.test.ts › gmLink › stays offline for a mess
 pass	src/replica/engine-liveness.test.ts › gmLink › stays offline while the party lists a GM that sends nothing
 pass	src/replica/engine-liveness.test.ts › gmLink › turns offline when no GM-origin message arrives for the timeout
 pass	src/replica/engine-liveness.test.ts › gmLink › turns online when any admitted message from a GM sender arrives
+pass	src/replica/engine-liveness.test.ts › ping › a client that hears no GM for half the timeout sends a ping, and repeats it
 pass	src/replica/engine-liveness.test.ts › ping › a GM answers a ping of another generation with its own generation
 pass	src/replica/engine-liveness.test.ts › ping › a GM in catching-up does not answer a ping
 pass	src/replica/engine-liveness.test.ts › ping › a GM-origin message puts off the ping
-pass	src/replica/engine-liveness.test.ts › ping › a client that hears no GM for half the timeout sends a ping, and repeats it
 pass	src/replica/engine-liveness.test.ts › ping › a live GM answers a ping at once with its generation and the digest of its records
 pass	src/replica/engine-liveness.test.ts › ping › a player does not answer a ping
+pass	src/replica/engine-no-gm.test.ts › a GM returns › a complete answer after the timeout from a GM not heard before counts, and starts no catch-up
 pass	src/replica/engine-no-gm.test.ts › a GM returns › a GM heard during the start catch-up is asked again with the same r, and no new one
 pass	src/replica/engine-no-gm.test.ts › a GM returns › a GM joining during a player start catch-up answers it once its own catch-up ends
 pass	src/replica/engine-no-gm.test.ts › a GM returns › a GM that speaks again after the link went offline starts another catch-up with a new r
 pass	src/replica/engine-no-gm.test.ts › a GM returns › a GM-origin message while the link is online starts no catch-up
-pass	src/replica/engine-no-gm.test.ts › a GM returns › a complete answer after the timeout from a GM not heard before counts, and starts no catch-up
 pass	src/replica/engine-no-gm.test.ts › a GM returns › a live GM that hears a new GM tab stays live and asks for nothing
 pass	src/replica/engine-no-gm.test.ts › a GM returns › a player gm-return request that reaches a GM still in its start catch-up is answered once that ends
 pass	src/replica/engine-no-gm.test.ts › a GM returns › the first GM-origin message while live sends a player to catching-up with a new r, and a complete answer brings current data
@@ -2553,16 +2559,16 @@ pass	src/replica/engine-no-gm.test.ts › a player alone reads the room copy ›
 pass	src/replica/engine-no-gm.test.ts › a player alone reads the room copy › sends no commit and no edit: only state-request reaches the room, and edits are refused
 pass	src/replica/engine-no-gm.test.ts › outcomes with nothing to read › a failed metadata read with no outcome yet shows the copy as unreadable
 pass	src/replica/engine-no-gm.test.ts › outcomes with nothing to read › a player that holds records adopts a copy of a higher generation in place of them
+pass	src/replica/engine-open.test.ts › open from token › a generation replacement decodes different preset content with the same counter and author
 pass	src/replica/engine-open.test.ts › open from token › a GM press on a repeat block on a hidden tab reaches the window
 pass	src/replica/engine-open.test.ts › open from token › a GM press on t-gone opens nothing
 pass	src/replica/engine-open.test.ts › open from token › a GM press on t-none opens nothing
 pass	src/replica/engine-open.test.ts › open from token › a GM request for an NPC is discarded when the GM becomes a player before delivery
-pass	src/replica/engine-open.test.ts › open from token › a PLAYER press on t-npc opens nothing
-pass	src/replica/engine-open.test.ts › open from token › a PLAYER press on t-secret opens nothing
-pass	src/replica/engine-open.test.ts › open from token › a generation replacement decodes different preset content with the same counter and author
 pass	src/replica/engine-open.test.ts › open from token › a held request stays discarded when a later generation restores its sheet before delivery
 pass	src/replica/engine-open.test.ts › open from token › a newer press replaces the request still held
 pass	src/replica/engine-open.test.ts › open from token › a player press on a character token reaches the window
+pass	src/replica/engine-open.test.ts › open from token › a PLAYER press on t-npc opens nothing
+pass	src/replica/engine-open.test.ts › open from token › a PLAYER press on t-secret opens nothing
 pass	src/replica/engine-open.test.ts › open from token › a promoted GM applies a newer stored preset before its held catch-up completes
 pass	src/replica/engine-open.test.ts › open from token › a request expires at the exact end of its lifetime
 pass	src/replica/engine-open.test.ts › open from token › a request is dropped at once when Owlbear refuses to open the window
@@ -2585,10 +2591,6 @@ pass	src/replica/engine-preset.test.ts › a preset diff › answers with the co
 pass	src/replica/engine-preset.test.ts › a preset diff › is refused to a player's window
 pass	src/replica/engine-preset.test.ts › a preset diff › is refused when the stored preset does not decode
 pass	src/replica/engine-preset.test.ts › a preset diff › is refused while the GM client is catching up
-pass	src/replica/engine-preset.test.ts › a preset upload that removes a template › refuses with count-changed when a sheet was added since the diff
-pass	src/replica/engine-preset.test.ts › a preset upload that removes a template › reports the sheets of the sheet set it deletes and, confirmed, tombstones each with its dependents
-pass	src/replica/engine-preset.test.ts › a preset upload that removes a template › that deletes only an empty sheet refuses an upload sent as 0 and 0, and deletes nothing
-pass	src/replica/engine-preset.test.ts › a preset upload that removes a template › that makes a repeat section unlinkable tombstones its links with no count
 pass	src/replica/engine-preset.test.ts › a preset upload › an unchanged upload preserves same-named child scopes with their exact fields and versions
 pass	src/replica/engine-preset.test.ts › a preset upload › applies a confirmed upload whose count is 0 now
 pass	src/replica/engine-preset.test.ts › a preset upload › duplicates the boss parent with only that path’s same-named child fields
@@ -2604,6 +2606,10 @@ pass	src/replica/engine-preset.test.ts › a preset upload › stops at a failed
 pass	src/replica/engine-preset.test.ts › a preset upload › when an NPC parent scope is removed, removes that parent and its child but keeps the boss path
 pass	src/replica/engine-preset.test.ts › a preset upload › when an NPC parent scope is renamed, removes that parent and its child but keeps the boss path
 pass	src/replica/engine-preset.test.ts › a preset upload › writes and sends new-key rows, then the preset, then tombstones, in that order
+pass	src/replica/engine-preset.test.ts › a preset upload that removes a template › refuses with count-changed when a sheet was added since the diff
+pass	src/replica/engine-preset.test.ts › a preset upload that removes a template › reports the sheets of the sheet set it deletes and, confirmed, tombstones each with its dependents
+pass	src/replica/engine-preset.test.ts › a preset upload that removes a template › that deletes only an empty sheet refuses an upload sent as 0 and 0, and deletes nothing
+pass	src/replica/engine-preset.test.ts › a preset upload that removes a template › that makes a repeat section unlinkable tombstones its links with no count
 pass	src/replica/engine-preset.test.ts › a write after an upload › of a GM field strips the values its row no longer has
 pass	src/replica/engine-preset.test.ts › a write after an upload › of a GM field writes a versioned armor clear after an interrupted upload
 pass	src/replica/engine-preset.test.ts › a write after an upload › of a player's proposal strips the values its row no longer has
@@ -2622,8 +2628,8 @@ pass	src/replica/engine-propose.test.ts › a GM client answers a proposal › f
 pass	src/replica/engine-propose.test.ts › a GM client answers a proposal › from a player that deletes a repeat-tab block: rejects it and preserves its token link
 pass	src/replica/engine-propose.test.ts › a GM client answers a proposal › identical to the current record, also when sent again: the same commit with its echo
 pass	src/replica/engine-propose.test.ts › a GM client answers a proposal › immediately publishes links removed by an existing repeat tombstone
-pass	src/replica/engine-propose.test.ts › a GM client answers a proposal › of a GM key form: rejects it as denied with its echo and keeps its records
 pass	src/replica/engine-propose.test.ts › a GM client answers a proposal › of a c far past the current one: rejects it as denied with its echo and keeps its records
+pass	src/replica/engine-propose.test.ts › a GM client answers a proposal › of a GM key form: rejects it as denied with its echo and keeps its records
 pass	src/replica/engine-propose.test.ts › a GM client answers a proposal › of a record too large for one message: rejects it as denied with its echo and keeps its records
 pass	src/replica/engine-propose.test.ts › a GM client answers a proposal › of a removal of a plain row: rejects it as denied with its echo and keeps its records
 pass	src/replica/engine-propose.test.ts › a GM client answers a proposal › of a repeat field on a hidden tab of a visible sheet with access: rejects it as denied with its echo and keeps its records
@@ -2670,10 +2676,6 @@ pass	src/replica/engine-propose.test.ts › a player's entry over its lifetime �
 pass	src/replica/engine-propose.test.ts › a player's entry over its lifetime › of a player made GM: applies as its own GM edit when catch-up ends and goes out in a commit
 pass	src/replica/engine-propose.test.ts › a player's entry over its lifetime › of a sheet whose access is revoked while live: dropped at once with the values back and one notification
 pass	src/replica/engine-propose.test.ts › a player's entry over its lifetime › stays when a revoke and a re-grant of its access come in one batch
-pass	src/replica/engine-roll.test.ts › a roll as state › leaves the records, the storage and the room metadata as they were
-pass	src/replica/engine-roll.test.ts › a roll that cannot be evaluated › a division by zero gives the arithmetic error, and nothing is sent or shown
-pass	src/replica/engine-roll.test.ts › a roll that cannot be evaluated › a referenced field the window shows in an error gives the field error, and nothing is sent or shown
-pass	src/replica/engine-roll.test.ts › a roll that cannot be evaluated › an empty field gives the field error by its label, and nothing is sent or shown
 pass	src/replica/engine-roll.test.ts › a roll › from a GM goes out once with its fields, and every client shows it, the roller included
 pass	src/replica/engine-roll.test.ts › a roll › from a hidden tab of a visible sheet goes out hidden and shows on GM clients only
 pass	src/replica/engine-roll.test.ts › a roll › from a hidden tab requested by a player is refused and sends nothing
@@ -2689,6 +2691,10 @@ pass	src/replica/engine-roll.test.ts › a roll › shows the name the party lis
 pass	src/replica/engine-roll.test.ts › a roll › that arrives twice, or comes back to its roller, shows once
 pass	src/replica/engine-roll.test.ts › a roll › whose failed send reaches the window diagnostics as SendFailure
 pass	src/replica/engine-roll.test.ts › a roll › whose send fails answers failed, and nothing shows
+pass	src/replica/engine-roll.test.ts › a roll as state › leaves the records, the storage and the room metadata as they were
+pass	src/replica/engine-roll.test.ts › a roll that cannot be evaluated › a division by zero gives the arithmetic error, and nothing is sent or shown
+pass	src/replica/engine-roll.test.ts › a roll that cannot be evaluated › a referenced field the window shows in an error gives the field error, and nothing is sent or shown
+pass	src/replica/engine-roll.test.ts › a roll that cannot be evaluated › an empty field gives the field error by its label, and nothing is sent or shown
 pass	src/replica/engine-roll.test.ts › the value a player's roll uses › is its edit still waiting for a GM client
 pass	src/replica/engine-roll.test.ts › the value a roll uses › is a GM edit still pending in catch-up
 pass	src/replica/engine-roll.test.ts › the value a roll uses › is the text the window shows in a field, over the record
@@ -2696,10 +2702,10 @@ pass	src/replica/engine-room-copy.test.ts › a room copy of an older format ›
 pass	src/replica/engine-room-copy.test.ts › a room copy of an older format › format 1: a player with no GM gets outcome older and no older-format notice
 pass	src/replica/engine-room-copy.test.ts › a room copy of an older format › format 2: a GM that reads it at catch-up shows the older-format notice and outcome older, and its writes never replace it
 pass	src/replica/engine-room-copy.test.ts › a room copy of an older format › format 2: a player with no GM gets outcome older and no older-format notice
+pass	src/replica/engine-room-copy.test.ts › catch-up merge › a client that holds records of its generation does not merge a copy of a lower one
 pass	src/replica/engine-room-copy.test.ts › catch-up merge › a GM alone in the room merges the copy and leaves catching-up with no wait
 pass	src/replica/engine-room-copy.test.ts › catch-up merge › a GM merges the copy before it broadcasts state-request on a later catch-up
 pass	src/replica/engine-room-copy.test.ts › catch-up merge › a GM on a new device with no other GM gets the data from the copy and saves it
-pass	src/replica/engine-room-copy.test.ts › catch-up merge › a client that holds records of its generation does not merge a copy of a lower one
 pass	src/replica/engine-room-copy.test.ts › catch-up merge › a player with no data takes the copy of a higher generation, merges it and asks in it
 pass	src/replica/engine-room-copy.test.ts › ids made before TASK-37 › records under 21-character ids load, merge, sync, take an edit and reach the room copy
 pass	src/replica/engine-room-copy.test.ts › interruption and rescheduling › a hidden page during a pause write stops that write and writes on its own
@@ -2710,10 +2716,10 @@ pass	src/replica/engine-room-copy.test.ts › interruption and rescheduling › 
 pass	src/replica/engine-room-copy.test.ts › interruption and rescheduling › a trigger during catch-up writes nothing then, and writes once catch-up ends
 pass	src/replica/engine-room-copy.test.ts › read-back › a write the room dropped fails the read-back and raises the notice
 pass	src/replica/engine-room-copy.test.ts › read-back › the next verified write clears the notice
-pass	src/replica/engine-room-copy.test.ts › review cases › a GM that cannot read the copy at catch-up shows the failed state
-pass	src/replica/engine-room-copy.test.ts › review cases › a GM that takes a higher generation from the copy saves under that generation
 pass	src/replica/engine-room-copy.test.ts › review cases › a commit merged from another GM schedules this GM to write the copy
 pass	src/replica/engine-room-copy.test.ts › review cases › a demotion clears the not-saved notice
+pass	src/replica/engine-room-copy.test.ts › review cases › a GM that cannot read the copy at catch-up shows the failed state
+pass	src/replica/engine-room-copy.test.ts › review cases › a GM that takes a higher generation from the copy saves under that generation
 pass	src/replica/engine-room-copy.test.ts › review cases › a player with no GM reads the sheet set from the copy, and no value of a GM-only single sheet reaches its window
 pass	src/replica/engine-room-copy.test.ts › review cases › a rejected write raises the notice and the failed state
 pass	src/replica/engine-room-copy.test.ts › review cases › a start whose room copy read never ends still starts, and catch-up ends on the timeout
@@ -2724,10 +2730,10 @@ pass	src/replica/engine-room-copy.test.ts › review cases › the writer adopts
 pass	src/replica/engine-room-copy.test.ts › room copy status in the projection › after a verified write it is saved, with the copy key bytes used and the rest free
 pass	src/replica/engine-room-copy.test.ts › room copy status in the projection › with no copy yet it is none, with the limit less all room metadata free
 pass	src/replica/engine-room-copy.test.ts › size check › over the limit with all metadata counted, the write is skipped, the previous copy stays and the notice shows
-pass	src/replica/engine-room-copy.test.ts › writer read and merge › a GM of a higher generation leaves a lower-generation copy unmerged and replaces it
 pass	src/replica/engine-room-copy.test.ts › writer read and merge › a copy of a higher generation is not overwritten: the GM adopts it in place of its own data
 pass	src/replica/engine-room-copy.test.ts › writer read and merge › a copy with a higher v stops the write, keeps the copy and raises its notices
 pass	src/replica/engine-room-copy.test.ts › writer read and merge › a copy with data that does not decode stops the write, keeps the copy and raises its notices
+pass	src/replica/engine-room-copy.test.ts › writer read and merge › a GM of a higher generation leaves a lower-generation copy unmerged and replaces it
 pass	src/replica/engine-room-copy.test.ts › writer read and merge › merges a copy of its generation before it writes, so records from the copy stay
 pass	src/replica/engine-room-copy.test.ts › writer triggers › a failed multi-record command does not owe an unchanged room-copy write
 pass	src/replica/engine-room-copy.test.ts › writer triggers › a failed preset batch does not owe an unchanged room-copy write
@@ -2756,22 +2762,22 @@ pass	src/replica/engine-scene.test.ts › two GM clients › a token back in the
 pass	src/replica/engine-scene.test.ts › two GM clients › both clear the link, both keep one record, and neither shows a message
 pass	src/replica/engine-scene.test.ts › two GM clients › forgets the oldest deletion after the bounded scene history fills
 pass	src/replica/engine-scene.test.ts › two GM clients › remembers the oldest deletion at the exact scene-history limit
-pass	src/replica/engine-sync.test.ts › GM edit goes out › as one commit on REMOTE with the written record, after it is merged and persisted
-pass	src/replica/engine-sync.test.ts › GM edit goes out › splits a commit over the message limit into parts that each fit and together hold all
-pass	src/replica/engine-sync.test.ts › GM whose storage could not be read › applies its own edit and sends no commit
 pass	src/replica/engine-sync.test.ts › coalescing › sends only the newer record of a key edited twice while the queue is held, and keeps the other keys
 pass	src/replica/engine-sync.test.ts › gate › a stopped engine ignores newer-format room ingress after live ingress worked
 pass	src/replica/engine-sync.test.ts › gate › answers a valid v4 ping without reporting a rejection
-pass	src/replica/engine-sync.test.ts › gate › drops a GM commit of a higher generation
-pass	src/replica/engine-sync.test.ts › gate › drops a GM commit of a lower generation
 pass	src/replica/engine-sync.test.ts › gate › drops a commit from a connection the party does not know after one re-read
 pass	src/replica/engine-sync.test.ts › gate › drops a commit from a known player
+pass	src/replica/engine-sync.test.ts › gate › drops a GM commit of a higher generation
+pass	src/replica/engine-sync.test.ts › gate › drops a GM commit of a lower generation
 pass	src/replica/engine-sync.test.ts › gate › drops a message with a higher v and keeps the new-version notice after later deltas
 pass	src/replica/engine-sync.test.ts › gate › drops a message with a lower v and shows no notice
 pass	src/replica/engine-sync.test.ts › gate › drops a message with the right v and a record that fails its schema, and throws nothing
 pass	src/replica/engine-sync.test.ts › gate › drops a message with the right v and an unknown type, and throws nothing
 pass	src/replica/engine-sync.test.ts › gate › drops a message with the right v and no envelope at all, and throws nothing
 pass	src/replica/engine-sync.test.ts › gate › handles room messages in arrival order, also when the first needs a party read
+pass	src/replica/engine-sync.test.ts › GM edit goes out › as one commit on REMOTE with the written record, after it is merged and persisted
+pass	src/replica/engine-sync.test.ts › GM edit goes out › splits a commit over the message limit into parts that each fit and together hold all
+pass	src/replica/engine-sync.test.ts › GM whose storage could not be read › applies its own edit and sends no commit
 pass	src/replica/engine-sync.test.ts › player client › merges a GM commit into its replica and persists nothing
 pass	src/replica/engine-sync.test.ts › player client › refuses {"type":"field-patch","sheetId":"brok","target":{"kind":"row","rowId":"name"},"fieldId":"name","value":"Брок Смелый"} as not allowed and changes nothing
 pass	src/replica/engine-sync.test.ts › player client › refuses {"type":"field-patch","sheetId":"brok","target":{"kind":"row","rowId":"str"},"fieldId":"str","value":12} as not allowed and changes nothing
@@ -2782,10 +2788,10 @@ pass	src/replica/engine-sync.test.ts › player client › refuses {"type":"repe
 pass	src/replica/engine-sync.test.ts › player client › refuses {"type":"sheet-create","sheetId":"lisa","set":"pc"} as not allowed and changes nothing
 pass	src/replica/engine-sync.test.ts › player client › refuses {"type":"sheet-delete","sheetId":"brok"} as not allowed and changes nothing
 pass	src/replica/engine-sync.test.ts › player client › refuses {"type":"wipe"} as not allowed and changes nothing
-pass	src/replica/engine-sync.test.ts › remote record too large for one message › is dropped, and the other records of its commit still apply
 pass	src/replica/engine-sync.test.ts › remote record › an unchanged winner does not read failed persistence or raise a notice
 pass	src/replica/engine-sync.test.ts › remote record › that cannot be saved stays in the replica and raises the local-save notice
 pass	src/replica/engine-sync.test.ts › remote record › that loses to the local one sends no delta and writes nothing
+pass	src/replica/engine-sync.test.ts › remote record too large for one message › is dropped, and the other records of its commit still apply
 pass	src/replica/engine-sync.test.ts › two GM clients › do not send a received commit on again
 pass	src/replica/engine-sync.test.ts › two GM clients › edit a row the other just changed from the record it received
 pass	src/replica/engine-sync.test.ts › two GM clients › in two tabs of one browser keep edits to different cells made at once, on both and in storage
@@ -2857,9 +2863,9 @@ pass	src/replica/party-roster.test.ts › party roster › shares one read among
 pass	src/replica/party-roster.test.ts › party roster › stops following party changes once its signal aborts
 pass	src/replica/party-roster.test.ts › party roster › takes a role change from a party change
 pass	src/replica/pending-edits.test.ts › pending edits › a 33-part stale reply completes without a player part cap
+pass	src/replica/pending-edits.test.ts › pending edits › a denied rejection drops the edit and shows one notification
 pass	src/replica/pending-edits.test.ts › pending edits › a GM return leaves a waiting edit unsent
 pass	src/replica/pending-edits.test.ts › pending edits › a GM return resends minted edits and backoff resends the same edit with doubling delays
-pass	src/replica/pending-edits.test.ts › pending edits › a denied rejection drops the edit and shows one notification
 pass	src/replica/pending-edits.test.ts › pending edits › a player-editable single sheet sends without an acl record
 pass	src/replica/pending-edits.test.ts › pending edits › a preset change drops a repeat entry whose section was removed without a notification
 pass	src/replica/pending-edits.test.ts › pending edits › a preset change drops an entry with only removed fields without a notification
@@ -2972,8 +2978,8 @@ pass	src/replica/record-store.test.ts › record store write › returns a failu
 pass	src/replica/record-store.test.ts › record store write › returns a failure for a room id that cannot form a key
 pass	src/replica/record-store.test.ts › record store write › returns a failure when the write fails
 pass	src/replica/record-store.test.ts › record store write › stores the record as JSON under the AD-11 key
-pass	src/replica/record-store.test.ts › record store write › writes the incoming record over JSON that is not a record
 pass	src/replica/record-store.test.ts › record store write › writes the incoming record over a record of another key
+pass	src/replica/record-store.test.ts › record store write › writes the incoming record over JSON that is not a record
 pass	src/replica/record-store.test.ts › record store write › writes the incoming record over text that is not JSON
 pass	src/replica/roll-delivery-v4.test.ts › GM and player notifications deliver hidden descendant rolls only to the GM
 pass	src/replica/roll-flow-v4.test.ts › a player rolls a visible row but section and row visibility each refuse the same roll
@@ -3115,11 +3121,6 @@ pass	src/replica/scene-watch.test.ts › watchSceneRemovals › takes a list tha
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › takes a list that shares no item with the last one as another scene, not as a deletion
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › tries a failed item read again, so the list it brings is the baseline
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › tries a failed readiness read again
-pass	src/replica/timers.test.ts › schedule abort prevents the callback from firing
-pass	src/replica/timers.test.ts › schedule cancel prevents the callback from firing
-pass	src/replica/timers.test.ts › schedule cancellation is a no-op after the callback fires
-pass	src/replica/timers.test.ts › schedule does not schedule an already aborted signal
-pass	src/replica/timers.test.ts › schedule fires a callback once after its delay
 pass	src/replica/window-publisher.test.ts › window publisher › a pending cell stays in the window when its replica cell is withdrawn
 pass	src/replica/window-publisher.test.ts › window publisher › answers a projection nonce again after its first projection has sent
 pass	src/replica/window-publisher.test.ts › window publisher › answers a projection nonce once while its first projection is queued
@@ -3206,16 +3207,16 @@ pass	src/ui/map-selection.test.ts › watchMapSelection › follows a new select
 pass	src/ui/map-selection.test.ts › watchMapSelection › starts from the selection and the items of the open scene
 pass	src/ui/map-selection.test.ts › watchMapSelection › stops following once stopped
 pass	src/ui/navigation.test.ts › transition › cancels a matching delete confirmation and returns focus to its actions
-pass	src/ui/navigation.test.ts › transition › clears GM-only work on a player projection
 pass	src/ui/navigation.test.ts › transition › clears a root reveal only for a matching root completion
 pass	src/ui/navigation.test.ts › transition › clears focus and reveal fields only for their matching completion events
+pass	src/ui/navigation.test.ts › transition › clears GM-only work on a player projection
 pass	src/ui/navigation.test.ts › transition › closes a delete confirmation when another sheet opens without a preset block
 pass	src/ui/navigation.test.ts › transition › closes an open delete confirmation when a new sheet is sent
 pass	src/ui/navigation.test.ts › transition › confirms one selected sheet deletion and ignores a stale outcome
 pass	src/ui/navigation.test.ts › transition › focuses only the target cell when a root open request enters the window
 pass	src/ui/navigation.test.ts › transition › increments the delete confirmation request when the same sheet is asked again
-pass	src/ui/navigation.test.ts › transition › keeps Settings when an unknown preset becomes present without listed tabs
 pass	src/ui/navigation.test.ts › transition › keeps a created sheet after its matching answered outcome
+pass	src/ui/navigation.test.ts › transition › keeps Settings when an unknown preset becomes present without listed tabs
 pass	src/ui/navigation.test.ts › transition › opens a repeat block on its template tab and clears another sheet name focus
 pass	src/ui/navigation.test.ts › transition › records a delete in flight and closes its confirmation
 pass	src/ui/navigation.test.ts › transition › records a sent creation
@@ -3307,13 +3308,6 @@ pass	src/ui/picker/link-picker.test.tsx › ported reverse-picker and command ou
 pass	src/ui/picker/link-picker.test.tsx › ported reverse-picker ordering and link command contracts › orders scene tokens by viewport first and linked state second
 pass	src/ui/picker/link-picker.test.tsx › ported reverse-picker ordering and link command contracts › reassigns selected tokens and selectively unlinks only selected links to this cell
 pass	src/ui/picker/link-picker.test.tsx › ported viewport fallback contract › a failed viewport read still lists every scene token with globally unlinked tokens first
-pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the cell-name failure {"code":"blank-name","detail":"1d20","cell":"dice"} its exact message
-pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the cell-name failure {"code":"blank-name","detail":"hp","cell":"field"} its exact message
-pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the cell-name failure {"code":"long-name","detail":"1d20","cell":"dice"} its exact message
-pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the cell-name failure {"code":"long-name","detail":"hp","cell":"field"} its exact message
-pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the dice-choice failure {"code":"bad-die-option","detail":"8","field":"weapon_die"} its exact message
-pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the dice-choice failure {"code":"die-field-as-number","detail":"1d20 + weapon_die","field":"weapon_die"} its exact message
-pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the dice-choice failure {"code":"field-not-die","detail":"1d(bonus)","field":"bonus"} its exact message
 pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives {"code":"bad-formula","detail":"1d0"} its message
 pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives {"code":"bad-name-field","detail":"pc","field":"hp"} its message
 pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives {"code":"bad-repeat"} its message
@@ -3330,6 +3324,13 @@ pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives {"code":"ro
 pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives {"code":"too-large"} its message
 pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives {"code":"unsupported-version"} its message
 pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives {"code":"untitled-tab","detail":"pc"} its message
+pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the cell-name failure {"code":"blank-name","detail":"1d20","cell":"dice"} its exact message
+pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the cell-name failure {"code":"blank-name","detail":"hp","cell":"field"} its exact message
+pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the cell-name failure {"code":"long-name","detail":"1d20","cell":"dice"} its exact message
+pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the cell-name failure {"code":"long-name","detail":"hp","cell":"field"} its exact message
+pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the dice-choice failure {"code":"bad-die-option","detail":"8","field":"weapon_die"} its exact message
+pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the dice-choice failure {"code":"die-field-as-number","detail":"1d20 + weapon_die","field":"weapon_die"} its exact message
+pass	src/ui/preset-errors.test.ts › presetFailureMessage › gives the dice-choice failure {"code":"field-not-die","detail":"1d(bonus)","field":"bonus"} its exact message
 pass	src/ui/preset-errors.test.ts › presetRejectionMessage › gives the engine reason invalid-preset its bad file message
 pass	src/ui/preset-errors.test.ts › presetRejectionMessage › gives the engine reason not-allowed its own message
 pass	src/ui/preset-errors.test.ts › presetRejectionMessage › gives the engine reason too-large its bad file message
@@ -3404,6 +3405,8 @@ pass	src/ui/settings/confirmation-text.test.ts › snapshotConfirmationText › 
 pass	src/ui/settings/confirmation-text.test.ts › snapshotConfirmationText › sheets dropped
 pass	src/ui/settings/confirmation-text.test.ts › snapshotConfirmationText › values and sheets dropped
 pass	src/ui/settings/confirmation-text.test.ts › snapshotConfirmationText › values dropped
+pass	src/ui/settings/diagnostics-text.test.ts › diagnosticsText › shows no entries for an empty diagnostic list
+pass	src/ui/settings/diagnostics-text.test.ts › diagnosticsText › shows the newest diagnostic first with its time, tag and optional detail
 pass	src/ui/settings/room-copy-text.test.ts › roomCopyText › shows a failed copy as the not-saved message
 pass	src/ui/settings/room-copy-text.test.ts › roomCopyText › shows a saved copy with used and free kB, one decimal after a comma
 pass	src/ui/settings/room-copy-text.test.ts › roomCopyText › shows no copy with the free kB

@@ -227,6 +227,7 @@ function createPorts(
   reported: string[] = [],
 ): RoomProtocolPorts {
   const ports: RoomProtocolPorts = {
+    now: () => Date.now(),
     report: (failure: { _tag: string }) => reported.push(failure._tag),
     senderOf,
     role: () => 'PLAYER',

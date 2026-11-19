@@ -64,7 +64,6 @@ import { createRollFlow } from '@/replica/roll-flow';
 import { catchUpRunner, createRoomProtocol } from '@/replica/room-protocol';
 import { watchSceneRemovals, type SceneWatch } from '@/replica/scene-watch';
 import { createTokenMenu, type TokenMenuCopy } from '@/replica/token-menu';
-import { schedule } from '@/replica/timers';
 import { createVersionMinter } from '@/core/version-minter';
 import { createWindowSizer } from '@/replica/window-size';
 import { createWindowPublisher, type WindowPublisher } from '@/replica/window-publisher';
@@ -96,6 +95,7 @@ const GENERATION_SAVE_MARK = '(generation-save)';
 
 export type ReplicaEnginePlatform = Pick<
   Platform,
+  | 'clock'
   | 'action'
   | 'broadcast'
   | 'contextMenu'
@@ -175,11 +175,12 @@ export async function startReplicaEngine(
   sendQueue: SendQueue,
   options: ReplicaEngineOptions = {},
 ): Promise<ReplicaEngine> {
+  const { now, schedule } = platform.clock;
   const timing = options.timing ?? TIMING;
   const newId = options.newId ?? nanoid;
   const newRecordIdOf = options.newRecordId ?? newRecordId;
   const random = options.random ?? Math.random;
-  const failures = createFailureSink({ now: () => Date.now() });
+  const failures = createFailureSink({ now });
   failures.subscribe((entry) => {
     console.error('Muster Roll diagnostic', entry);
   });
@@ -242,7 +243,7 @@ export async function startReplicaEngine(
     presetOf,
     compose: (view, command) => composers.compose(dryContext(view), command),
     mint: minter.mint,
-    now: () => performance.now(),
+    now,
     report,
     enqueue: (compose) =>
       sendQueue.enqueueComposed(
@@ -289,7 +290,7 @@ export async function startReplicaEngine(
     options.diceTiming ?? DICE_EXTENSION_TIMING,
     newId,
     () => role === 'GM',
-    { report, signal, schedule },
+    { report, signal, schedule, now },
   );
 
   diceExtension.start();
@@ -354,7 +355,7 @@ export async function startReplicaEngine(
     timing,
     random,
     newId,
-    now: () => Date.now(),
+    now,
     role: () => role,
     vouches: () => generationFlow.persistence() !== null,
     generation: () => generationFlow.generation(),
@@ -696,7 +697,7 @@ export async function startReplicaEngine(
     const block = target.block;
 
     heldOpen = { id, block, cellId: target.cellId ?? '' };
-    heldOpenUntil = Date.now() + timing.openRequestTtlMs;
+    heldOpenUntil = now() + timing.openRequestTtlMs;
     // No window opens for it, so a window opened by hand later does not jump to it.
     platform.action.open().catch((error) => {
       report(new OpenRequestLostFailure({ reason: String(error) }));
@@ -725,7 +726,7 @@ export async function startReplicaEngine(
   function dropStaleOpen(): void {
     if (
       heldOpen !== null &&
-      (Date.now() >= heldOpenUntil || !openTargetShown(openRequestTarget(heldOpen)))
+      (now() >= heldOpenUntil || !openTargetShown(openRequestTarget(heldOpen)))
     ) {
       heldOpen = null;
     }
@@ -1272,6 +1273,7 @@ export async function startReplicaEngine(
   }
 
   const roomProtocol = createRoomProtocol({
+    now,
     report,
     senderOf: roster.senderOf,
     role: () => role,
@@ -1371,7 +1373,7 @@ export async function startReplicaEngine(
   });
   // An alone GM is live when the engine resolves. A metadata or party read that never ends holds
   // the engine back no longer than the catch-up timeout, which by then ended catch-up.
-  await settledWithin(started, timing.catchUpTimeoutMs, report, signal);
+  await settledWithin(started, timing.catchUpTimeoutMs, report, signal, schedule);
 
   return {
     stop: () => {
@@ -1404,6 +1406,7 @@ async function settledWithin(
   milliseconds: number,
   report: FailureReporter,
   signal: AbortSignal,
+  schedule: Platform['clock']['schedule'],
 ): Promise<void> {
   let cancel = (): void => undefined;
 

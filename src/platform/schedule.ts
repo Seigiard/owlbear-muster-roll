@@ -1,4 +1,4 @@
-export type Schedule = (signal: AbortSignal, ms: number, fn: () => void) => () => void;
+import type { Schedule } from '@/platform/ports';
 
 export const schedule: Schedule = (signal, ms, fn) => {
   if (signal.aborted) {

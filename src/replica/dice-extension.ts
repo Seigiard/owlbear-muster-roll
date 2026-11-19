@@ -25,7 +25,7 @@ import { Result } from 'better-result';
 import type { DiceExtensionTiming } from '@/core/timing';
 import { SendFailure, type BroadcastOptions, type BroadcastPort } from '@/platform/ports';
 import { taggedSendFailure, type FailureReporter } from '@/replica/failures';
-import type { Schedule } from '@/replica/timers';
+import type { Schedule } from '@/platform/ports';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
 
@@ -86,10 +86,10 @@ export function createDiceExtension(
   timing: DiceExtensionTiming,
   newId: () => string,
   mayAskAccess: () => boolean,
-  options: { report: FailureReporter; signal: AbortSignal; schedule: Schedule },
+  options: { report: FailureReporter; signal: AbortSignal; schedule: Schedule; now: () => number },
 ): DiceExtension {
-  const { report, signal, schedule } = options;
-  // The latest answer to a probe, and when the latest probe started, on the monotonic clock.
+  const { report, signal, schedule, now } = options;
+  // The latest answer to a probe, and when the latest probe started, on the wall clock.
   let lastReady = false;
   let probedAt = Number.NEGATIVE_INFINITY;
   let latestProbe: LatestProbe | null = null;
@@ -213,7 +213,7 @@ export function createDiceExtension(
 
   function permit(): void {
     access = 'permitted';
-    permittedAt = performance.now();
+    permittedAt = now();
   }
 
   // A roll error that refuses access. The extension took back access it gave before, as when the
@@ -309,7 +309,7 @@ export function createDiceExtension(
     }
 
     const requestId = newId();
-    const startedAt = performance.now();
+    const startedAt = now();
     let settle: (ready: boolean) => void = ignore;
 
     const answer = new Promise<boolean>((resolve) => {
@@ -338,7 +338,7 @@ export function createDiceExtension(
     // The answer can come while the message is sent, so `probing` is set first.
     send(
       DICE_PLUS_READY_CHANNEL,
-      { requestId, timestamp: Date.now(), source: DICE_PLUS_SOURCE },
+      { requestId, timestamp: now(), source: DICE_PLUS_SOURCE },
       (sent) => {
         if (!sent) {
           unanswered();
@@ -408,7 +408,7 @@ export function createDiceExtension(
         return Promise.resolve('absent');
       }
 
-      const stale = !lastReady || performance.now() - probedAt >= timing.probeMaxAgeMs;
+      const stale = !lastReady || now() - probedAt >= timing.probeMaxAgeMs;
       const answer = probing ?? (stale ? probe() : null);
 
       return answer === null ? Promise.resolve(readiness()) : answer.then(readiness);
@@ -427,7 +427,7 @@ export function createDiceExtension(
         rollTarget: request.rollTarget,
         diceNotation: request.notation,
         showResults: false,
-        timestamp: Date.now(),
+        timestamp: now(),
         source: DICE_PLUS_SOURCE,
       };
 

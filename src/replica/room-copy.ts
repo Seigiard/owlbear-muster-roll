@@ -12,7 +12,7 @@ import {
 import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
 import type { Notice, RoomCopyOutcome, RoomCopyStatus } from '@/core/ui-messages';
-import { MetadataFailure, type MetadataPort } from '@/platform/ports';
+import { MetadataFailure, type MetadataPort, type Schedule } from '@/platform/ports';
 import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
 import { step } from '@/replica/machine';
 import {
@@ -23,7 +23,6 @@ import {
   type Phase,
   type RoomCopyEnv,
 } from '@/replica/room-copy-table';
-import type { Schedule } from '@/replica/timers';
 
 export type RoomCopyOptions = {
   metadata: Pick<MetadataPort, 'getMetadata' | 'setMetadata'>;
