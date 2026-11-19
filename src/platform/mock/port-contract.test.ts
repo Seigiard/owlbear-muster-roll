@@ -16,6 +16,7 @@ import {
   broadcastPreservesOneSenderArrivalOrder,
   localBroadcastReachesTheSenderClientOnly,
   metadataMergesRetainedEntriesAndDeletesUndefinedEntries,
+  observeClock,
   PORT_CONTRACT_SCENARIOS,
   portFailureIsReturned,
   rateLimitedSendResolvesAndDeliversNoEvent,
@@ -55,6 +56,26 @@ const mockPortContractFactory: PortContractFactory = {
   metadataReadFailure: supportedScenario(createMetadataReadFailureFixture, 'local-injection'),
   notificationFailure: supportedScenario(createNotificationFailureFixture, 'local-injection'),
 };
+
+test(PORT_CONTRACT_SCENARIOS.clock, async () => {
+  // #given
+  const clock = createMockPlatform().clock;
+
+  // #when
+  const observation = await observeClock(clock);
+
+  // #then
+  expect(observation).toEqual({
+    finite: true,
+    nondecreasing: true,
+    nearWallTime: true,
+    immediateCalls: 0,
+    calls: 1,
+    canceledCalls: 0,
+    abortedCalls: 0,
+    firedAfterDelay: true,
+  });
+});
 
 describe('mock storage port contract', () => {
   test(PORT_CONTRACT_SCENARIOS.storageLifecycle, async () => {

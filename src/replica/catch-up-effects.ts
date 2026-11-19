@@ -2,7 +2,7 @@ import type { Result } from 'better-result';
 import { PartyReadFailure } from '@/platform/ports';
 import type { CatchUp, CatchUpDecision, CatchUpTimer, PartyMember } from '@/replica/catch-up';
 import { MessageRejectedFailure, type ReplicaFailure } from '@/replica/failures';
-import type { Schedule } from '@/replica/timers';
+import type { Schedule } from '@/platform/ports';
 
 export type CatchUpEffectsPorts = {
   readonly signal: AbortSignal;

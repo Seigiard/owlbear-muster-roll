@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test';
-import { schedule } from './timers';
+import { schedule } from './schedule';
 
 beforeEach(() => {
   jest.useFakeTimers();

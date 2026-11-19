@@ -2,6 +2,10 @@ import type { JsonObject, JsonValue, ReadonlyJsonValue } from '@/core/json';
 import { Result, TaggedError } from 'better-result';
 import type { PlayerRole } from '@/core/visibility';
 
+export type Schedule = (signal: AbortSignal, ms: number, fn: () => void) => () => void;
+
+export type ClockPort = { now: () => number; schedule: Schedule };
+
 export type Unsubscribe = () => void;
 
 export type { PlayerRole };
@@ -252,6 +256,7 @@ export type ThemePort = {
 };
 
 export type Platform = {
+  clock: ClockPort;
   onReady: (callback: () => void) => void;
   broadcast: BroadcastPort;
   metadata: MetadataPort;

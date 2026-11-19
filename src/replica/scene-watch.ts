@@ -2,7 +2,7 @@ import { SCENE_READ_RETRY_MS } from '@/core/timing';
 import { removedItemIds } from '@/core/token-links';
 import type { ScenePort } from '@/platform/ports';
 import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
-import type { Schedule } from '@/replica/timers';
+import type { Schedule } from '@/platform/ports';
 
 export type SceneWatch = { stop: () => void };
 

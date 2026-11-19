@@ -1,3 +1,4 @@
+import { schedule } from '@/platform/schedule';
 import OBR from '@owlbear-rodeo/sdk';
 
 import type { JsonObject, JsonValue } from '@/core/json';
@@ -23,6 +24,7 @@ import { toSendResult } from './send-result';
 export const timing: Timing = TIMING;
 
 export const platform: Platform = {
+  clock: { now: () => Date.now(), schedule },
   onReady: (callback) => {
     OBR.onReady(callback);
   },
