@@ -886,3 +886,33 @@ async function downloadSnapshot(page: Page): Promise<{
     file: snapshotFileSchema.parse(JSON.parse(readFileSync(await download.path(), 'utf8'))),
   };
 }
+
+test('a preset problem makes preview fields read-only until fixed', async ({ page }) => {
+  // #given
+  await openPreset(page);
+  await openSnapshot(page, JSON.stringify(SNAPSHOT));
+  const strength = preview(page).getByRole('group', { name: 'Сила', exact: true });
+  await strength.click();
+  const fieldId = page.getByRole('textbox', { name: 'Id — имя для формул', exact: true });
+  await fieldId.fill('bad id');
+  await fieldId.blur();
+  await expect(page.getByRole('row', { name: 'bad id · Число', exact: true })).toHaveAttribute(
+    'data-problem',
+    'true',
+  );
+  await expect(strength).toBeVisible();
+
+  // #when
+  await strength.click();
+
+  // #then
+  const fieldEditor = preview(page).getByRole('textbox', { name: 'Сила', exact: true });
+  await expect(fieldEditor).toHaveCount(0);
+
+  // #when
+  await fieldId.fill('str');
+  await fieldId.blur();
+
+  // #then
+  await expect(fieldEditor).toBeVisible();
+});
