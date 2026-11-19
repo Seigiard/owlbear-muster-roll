@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import type { Preset, PresetSection, Template } from '@/core/preset';
 import type { JsonValue } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
+import { childAddress, sheetRootAddress } from '@/core/block-address';
 import {
   dependentSheetId,
   isDependentKey,
@@ -398,7 +399,13 @@ describe('repeatBlockName', () => {
     );
 
     // #then
-    expect(repeatBlockName(records, 'npc', NPC_SECTION, 's1')).toBe('Скелет 1');
+    expect(
+      repeatBlockName(
+        records,
+        childAddress(sheetRootAddress('npc'), 'npc_name', 's1'),
+        NPC_SECTION,
+      ),
+    ).toBe('Скелет 1');
   });
   test.each<[string, VersionedRecord[]]>([
     ['an empty first field', [record('blk:npc:npc_name:s1', { order: 0, cells: { hp: 7 } })]],
@@ -406,7 +413,13 @@ describe('repeatBlockName', () => {
     ['a tombstoned rep record', [record('blk:npc:npc_name:s1', null)]],
   ])('gives the empty name for %s', (_name, reps) => {
     // #then
-    expect(repeatBlockName(recordsOf(...reps), 'npc', NPC_SECTION, 's1')).toBe('');
+    expect(
+      repeatBlockName(
+        recordsOf(...reps),
+        childAddress(sheetRootAddress('npc'), 'npc_name', 's1'),
+        NPC_SECTION,
+      ),
+    ).toBe('');
   });
   test('gives the empty name when the first field is a check', () => {
     // #given
@@ -427,7 +440,9 @@ describe('repeatBlockName', () => {
     );
 
     // #then
-    expect(repeatBlockName(records, 'npc', section, 's1')).toBe('');
+    expect(
+      repeatBlockName(records, childAddress(sheetRootAddress('npc'), 'label', 's1'), section),
+    ).toBe('');
   });
 });
 

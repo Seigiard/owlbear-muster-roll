@@ -28,13 +28,11 @@ export function renderedTabs(
 
     blocks.set(
       scopeId,
-      repeatBlocks(records, sheetRootAddress(sheetId), scopeId).map((block) => ({
-        block: childAddress(sheetRootAddress(sheetId), scopeId, block.instanceId),
-        name: repeatBlockName(records, sheetId, section, block.instanceId, [
-          scopeId,
-          block.instanceId,
-        ]),
-      })),
+      repeatBlocks(records, sheetRootAddress(sheetId), scopeId).map((block) => {
+        const address = childAddress(sheetRootAddress(sheetId), scopeId, block.instanceId);
+
+        return { block: address, name: repeatBlockName(records, address, section) };
+      }),
     );
   }
 

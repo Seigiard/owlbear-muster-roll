@@ -252,7 +252,7 @@ export function pickerGroups(
                       template,
                       { block, cellId },
                       cellId,
-                      repeatBlockName(records, sheetId, repeatedSection, instanceId, block.path),
+                      repeatBlockName(records, block, repeatedSection),
                       repeatedSection,
                     ),
                   ];

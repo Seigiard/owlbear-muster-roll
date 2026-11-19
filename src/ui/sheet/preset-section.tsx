@@ -971,7 +971,7 @@ function repeatBlocksOf(
 
     return {
       block: address,
-      name: repeatBlockName(records, sheetId, section, block.instanceId, address.path),
+      name: repeatBlockName(records, address, section),
       nested,
       pending: blockPending,
       rows: section.rows.flatMap((row, rowIndex) => {
