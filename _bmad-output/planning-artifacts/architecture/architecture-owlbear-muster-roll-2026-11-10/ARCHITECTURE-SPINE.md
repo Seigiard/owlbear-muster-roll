@@ -136,8 +136,8 @@ A message with a higher generation also starts AD-9 adoption.
 ### AD-6 — GM liveness means a response
 
 - **Binds:** CAP-10, CAP-15
-- **Prevents:** A frozen Chrome tab counting as online, and a false offline status in a quiet room.
-- **Rule:** `livenessTable` in `src/replica/catch-up-table.ts` alone decides `gmLink`. The link starts `offline`. A GM-origin message sets it `online` and rearms the silence and ping timers. When the silence timer fires, the link becomes `offline` and the window shows "no connection to GM". The ping timer uses half the silence timeout plus jitter. `catchUpTable` lets a live GM client answer `ping` with `alive` if the client can vouch for the state. The party list never sets `gmLink`. A hidden tab that still responds counts as online.
+- **Prevents:** A frozen Chrome tab counting as online, and a false offline status in a quiet room or after the page's timers stopped.
+- **Rule:** `livenessTable` in `src/replica/catch-up-table.ts` alone decides `gmLink`. The link starts `offline`. A GM-origin message sets it `online` and rearms the silence and ping timers. When the silence timer fires after a ping the GM left unanswered, the link becomes `offline` and the window shows "no connection to GM". That holds when the timer fires at most a quarter of its timeout late and the last ping is at least a quarter of the timeout old. Otherwise an online link stays online, pings and waits a quarter of the timeout again. The ping timer uses half the silence timeout plus jitter. `catchUpTable` lets a live GM client answer `ping` with `alive` if the client can vouch for the state. The party list never sets `gmLink`. A hidden tab that still responds counts as online.
 
 ### AD-7 — Catch-up is full state [ADOPTED]
 
