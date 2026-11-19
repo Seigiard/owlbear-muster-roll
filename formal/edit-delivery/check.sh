@@ -39,9 +39,9 @@ done <<'EOF'
 EditDelivery.cfg pass
 Refusals.cfg pass
 Liveness.cfg pass
-DoubleApply.cfg NoDoubleApply
 broken/MintForgets.cfg OneVersionOneEdit
 broken/GmOverwrites.cfg OwnOrderKept
+broken/ForgetsCommitted.cfg NoDoubleApply
 broken/AckAny.cfg NoSilentLoss
 broken/DeniedSilent.cfg NoSilentLoss
 broken/ResendOnce.cfg NeverStranded
