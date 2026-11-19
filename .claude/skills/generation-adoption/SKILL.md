@@ -9,7 +9,7 @@ A TLA+ model of AD-9 in `formal/generation-adoption/GenerationAdoption.tla`. TLC
 
 ## Does my change touch the verified code?
 
-Run `git diff --stat 995e1c7 -- <coverage files>` with the files in the coverage record below. Any change in a function the record names needs a model check. A change elsewhere in those files needs a read of the code map to confirm that no modeled step changed.
+Run `formal/drift.sh generation-adoption`. It lists the covered files that changed after the sync commit in `formal/generation-adoption/coverage.txt`. Any change in a function the record names needs a model check. A change elsewhere in those files needs a read of the code map to confirm that no modeled step changed.
 
 ## Run
 
@@ -92,7 +92,7 @@ Two actions span awaits on purpose. `ImportCopyWritten` is the whole import copy
 
 Two clients `a` and `b`; the bounds per config are in the table under Run. A pass covers those bounds only.
 
-Left out: page reload and start (`loadReplica`), more than two clients and cross-sender reordering, nonces and partial `state` answers (so TASK-129, an own-nonce answer from a higher generation dropped while adopting, is outside this model; the `replica-catch-up` skill covers nonces), held requests of a GM that cannot answer yet, drift catch-ups, commits and player proposals, pending edits and the outbox (`flush`, `drop`), the routine room-copy write race (the `room-copy` skill covers it), failures of `removeGeneration`, `removeGenerationsBelow`, the AD-11 persist-all writes and storage reads, too-large records, and older storage formats. A wipe and an import are one action, because both run `replaceGeneration`.
+Left out: page reload and start (`loadReplica`), more than two clients and cross-sender reordering, nonces and partial `state` answers (the `replica-catch-up` skill covers nonces, including an own answer from a higher generation while adopting), held requests of a GM that cannot answer yet, drift catch-ups, commits and player proposals, pending edits and the outbox (`flush`, `drop`), the routine room-copy write race (the `room-copy` skill covers it), failures of `removeGeneration`, `removeGenerationsBelow`, the AD-11 persist-all writes and storage reads, too-large records, and older storage formats. A wipe and an import are one action, because both run `replaceGeneration`.
 
 Fairness for the liveness rules: a waiting message arrives, a catch-up timer fires, a copy read ends and an import's copy write ends. A GM's choices (import, role change, close, routine copy writes, `alive`) are not forced.
 
@@ -128,7 +128,7 @@ When a config ends against expectation, read the path with `/statechart`, then r
 
 ## Coverage record
 
-Sync commit: `995e1c7`. Move it forward only after you confirm that the model describes the covered functions at the new commit.
+Sync commit: `064e178` (also in `formal/generation-adoption/coverage.txt`). Move it forward only after you confirm that the model describes the covered functions at the new commit.
 
 - `src/replica/generation-flow.ts`: `createGenerationFlow` (`dispatch`, `run`, `writeImport`), `importFromSnapshot`, `wipe`, `adoptFromCopy`, `seeGeneration`, `stage`, `clearStaged`, `saveAdoption`, `roleChanged`, `saveGeneration`
 - `src/replica/generation-table.ts`: `generationTable`, `importGeneration`, `importSuperseded`, `seeGeneration`, `adoptFromCopy`, `stage`, `clearStaged`, `saveAdoption`, `storeWritten`, `storeFailed`, `copyWritten`, `removeOld`, `roleChanged`, `installed`, `rememberGeneration`, `withStaging`

@@ -1017,7 +1017,7 @@ function append(first: readonly Effect[], second: Step<Phase, Effect>): Step<Pha
   return { phase: second.phase, effects: [...first, ...second.effects] };
 }
 
-function isCatchingUp(
+export function isCatchingUp(
   phase: Phase,
 ): phase is Extract<Phase, { readonly kind: 'catching-up' | 'adopting' }> {
   return phase.kind === 'catching-up' || phase.kind === 'adopting';

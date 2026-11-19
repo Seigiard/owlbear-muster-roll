@@ -9,7 +9,7 @@ A TLA+ model of one room in `formal/catch-up/CatchUp.tla`: a player `p` and a GM
 
 ## 1. Does my change touch the verified code?
 
-Run `git diff --stat 995e1c7 -- src/replica/catch-up.ts src/replica/catch-up-table.ts src/replica/catch-up-effects.ts src/replica/machine.ts src/replica/engine.ts src/replica/room-protocol.ts src/core/room-messages.ts src/replica/generation-flow.ts src/replica/generation-table.ts src/replica/room-copy.ts src/replica/room-copy-table.ts`. Then read the coverage record below. A change in a function that the record names needs a model check. For a change elsewhere in those files, read the code map and confirm that no modeled step changed.
+Run `formal/drift.sh catch-up`. It lists the covered files that changed after the sync commit in `formal/catch-up/coverage.txt`. Then read the coverage record below. A change in a function that the record names needs a model check. For a change elsewhere in those files, read the code map and confirm that no modeled step changed.
 
 ## 2. Run
 
@@ -19,12 +19,12 @@ From the repository root:
 formal/catch-up/check.sh
 ```
 
-The script runs every configuration and checks its outcome. It takes about 5 minutes on a busy machine. Most TLC runs take under 60 seconds; `imports-gm.cfg` and `fixes/own-answer-kept-gm.cfg` (1.4 million states each) and `role.cfg` take 1 to 2 minutes when other jobs share the CPU. Exit 0 means every outcome is as expected:
+The script runs every configuration and checks its outcome. It takes about 5 minutes on a busy machine. Most TLC runs take under 60 seconds; `imports-gm.cfg` (1.4 million states) and `role.cfg` take 1 to 2 minutes when other jobs share the CPU. Exit 0 means every outcome is as expected:
 
 - `formal/catch-up/*.cfg` must hold (TLC exit 0): `CatchUp.cfg` (open, catch up, page return, close), `adoption.cfg` (importer, `reset`, room copy), `imports.cfg` (the importer imports twice; player only), `imports-gm.cfg` (the importer imports twice with the GM `g` too, no ping traffic), `return.cfg` (a client closes and opens again), `role.cfg` (one role change each), `save-fails.cfg` (the room of `adoption.cfg`, the GM's `saveAdoption` can fail, no ping traffic).
-- `fixes/*.cfg` must hold. Each one switches on a proposed code fix through the `Mutation` constant and shows that its finding holds with that fix. `own-answer-kept.cfg` checks the TASK-129 fix with the player alone, `own-answer-kept-gm.cfg` with a GM that adopts twice too.
+- `fixes/*.cfg` must hold. Each one switches on a proposed code fix through the `Mutation` constant and shows that its finding holds with that fix. Create the folder when a fix is proposed; none is open now.
 - `findings/*.cfg` must fail on the invariant in its `INVARIANT` line. These are the open findings below. When a fix lands, the finding config holds: move it next to the others, so that it must hold from then on.
-- `mutations/*.cfg` must fail on their invariant. Each one switches on a scratch break through the `Mutation` constant and proves that its invariant can fail. `save-fail-reenters.cfg` breaks the retry of a failed save (a failed save takes a new `r` and asks again); only a room with `SaveCanFail = TRUE` reaches it.
+- `mutations/*.cfg` must fail on their invariant. Each one switches on a scratch break through the `Mutation` constant and proves that its invariant can fail. `save-fail-reenters.cfg` breaks the retry of a failed save (a failed save takes a new `r` and asks again); only a room with `SaveCanFail = TRUE` reaches it. `answers-own-ordinary-only.cfg` brings back the TASK-129 regression: `answersOwn` counts only an ordinary catch-up.
 
 `formal/catch-up/check.sh holds` runs only the configurations that must hold. To run one configuration: `formal/tlc.sh formal/catch-up/CatchUp.tla formal/catch-up/<name>.cfg`. The script keeps each TLC log in the folder it prints.
 
@@ -43,7 +43,7 @@ Report a real bug as a finding. Keep the invariant as it is.
 
 Each operator carries the name of the function it mirrors (code map below). Change that operator so that it says what the code now says, in the same order of decisions. Keep each step atomic in the way the code is. When the change is meant to change a property, the owner decides; write the new property as a new invariant beside the old one. Add a mutation config for a new invariant, and see it fail. Run `check.sh`.
 
-When the model describes the code again and `check.sh` passes, move the sync commit in this file and in the coverage command to the commit you checked.
+When the model describes the code again and `check.sh` passes, move the sync commit in this file and in `formal/catch-up/coverage.txt` to the commit you checked.
 
 ## Invariants
 
@@ -58,7 +58,7 @@ When the model describes the code again and `check.sh` passes, move the sync com
 | `NoAnswerDroppedInAdoption` | A GM does not lose a request because its answer timer fired while it adopted. | As `AnswerKept`. | fails: finding 2 |
 | `OnlineGmAnswers` | A client shows the GM online only while the GM that keeps it online can answer. | A GM whose saved records cannot be read never answers, yet players see it online. | fails: finding 3 |
 | `AdoptionCanComplete` | A client that adopts a generation can still get it: from the room copy or a GM of that generation. | The client stays in catch-up forever. | fails: finding 4 (known, `deferred-work.md`, TASK-31) |
-| `OwnAnswerKeepsRequest` | A `state` that answers a client's active request keeps that request: the client does not take a new `r` and ask again. The promise is the comment in `room-protocol.ts` `handleRoomMessage`: "An answer to this client's own request keeps that request." | Every GM sends its full state once more, and adoption ends one answer delay later. No data is lost. | holds in `CatchUp.cfg`, `adoption.cfg`, `return.cfg`, `role.cfg` and `save-fails.cfg`; fails: finding 5 (TASK-129) |
+| `OwnAnswerKeepsRequest` | A `state` that answers a client's active request keeps that request: the client does not take a new `r` and ask again. The promise is the comment in `room-protocol.ts` `handleRoomMessage`: "An answer to this client's own request keeps that request." | Every GM sends its full state once more, and adoption ends one answer delay later. No data is lost. | holds in `CatchUp.cfg`, `adoption.cfg`, `imports.cfg`, `imports-gm.cfg`, `return.cfg`, `role.cfg` and `save-fails.cfg` since the TASK-129 fix; `mutations/answers-own-ordinary-only.cfg` breaks it |
 
 ## Open findings
 
@@ -66,9 +66,10 @@ When the model describes the code again and `check.sh` passes, move the sync com
 2. **Answer dropped during adoption** (`findings/answer-dropped-in-adoption.cfg`). The GM is live and arms an answer to the player's request; the player has already adopted generation 1 from the room copy and asked in it. The GM follows the copy and adopts. `fired('answer')` runs while it adopts: `canAnswer()` is false and the phase is not ordinary, so it neither answers nor holds (`catch-up-table.ts` `catchUpFired`, case `answer`). The GM finishes adoption and goes live in generation 1; the player still waits on that `r` and ends unanswered. Replayed on the module. `catch-up.test.ts` "an answer timer held during adoption is not armed after adoption completes" asserts the drop on purpose, for a request of the old generation.
 3. **Unreadable GM shows online** (`findings/unreadable-gm-online.cfg`). `heard` counts every admitted GM message, and a GM with unreadable storage still sends pings from its ping timer. It answers no ping and no request (`canAnswer()` needs `vouches()`), but players keep `gmLink` online. Replayed on the module.
 4. **Adoption with no source** (`findings/adoption-without-source.cfg`). Known: the importer leaves and its room copy did not fit.
-5. **Own answer dropped during adoption** (`findings/own-answer-dropped-in-adoption.cfg`), TASK-129, introduced by `79c879a` (TASK-115.1). A player opens. The importer imports generation 1, and its copy does not fit. The player hears `reset`, `enterFromGeneration` makes it adopt 1 with a new `r`, and it asks with that `r`. The importer imports generation 2 and answers that `r` with a `state` of generation 2. `answersOwn(r)` checks only `phase.kind === 'catching-up'`, so it is false in the `adopting` phase. `handleRoomMessage` passes `keepNonce = false` to `seeGeneration`, and the player takes a new `r`, drops the answer and asks again. Replayed on `createCatchUp` with `createRoomProtocol`. `fixes/own-answer-kept.cfg` holds with the fix (Mutation `fix-answers-own`: `answersOwn` counts the `adopting` phase too). When the fix lands, make that behavior the model's `AnswersOwn`, move the finding config next to the others, add `OwnAnswerKeepsRequest` to `imports.cfg` and `imports-gm.cfg`, and turn the old behavior into a mutation `answers-own-ordinary-only` that must fail on `OwnAnswerKeepsRequest`; then delete both fix configs. The same room with the GM `g` drops `g`'s own answer in the same way: without the fix, `fixes/own-answer-kept-gm.cfg` fails on `OwnAnswerKeepsRequest` for `g`.
 
-The owner's verdicts, 2026-11-19. Finding 1 is TASK-120, low. Findings 2-4 are accepted: generations will settle once the preset format does, an unreadable GM storage is rare, and finding 4 is covered by TASK-117. Finding 5 is TASK-129, shipped on the owner's decision. Keep their configs as expected failures and do not report them again.
+The owner's verdicts, 2026-11-19. Finding 1 is TASK-120, low. Findings 2-4 are accepted: generations will settle once the preset format does, an unreadable GM storage is rare, and finding 4 is covered by TASK-117. Keep their configs as expected failures and do not report them again.
+
+Fixed: former finding 5, TASK-129, introduced by `79c879a` (TASK-115.1). `answersOwn` counted only an ordinary catch-up, so a client that adopted generation 1 and got a generation 2 `state` for its own `r` took a new `r`, dropped the answer and asked again. Fixed in `064e178`. Its finding config became `mutations/answers-own-ordinary-only.cfg`, which brings the regression back, and `imports.cfg` and `imports-gm.cfg` now check `OwnAnswerKeepsRequest`.
 
 ## Code map
 
@@ -98,9 +99,9 @@ Ghost variables (`pinged`, `owed`, `dropped`, `lastHeard`, `badOffline`, `ownDro
 ## Bounds and what is left out
 
 - Two clients (player `p`, GM `g`) and the importer `x`. Two GMs answering one request, and the suppression between their answers, are not checked.
-- Per configuration: up to 3 catch-up ids per client (2 in `adoption.cfg`, `save-fails.cfg`, most findings and mutations; 4 in `imports.cfg` and `fixes/own-answer-kept.cfg`), 2 messages in flight, 1 page return, 1 reopen, 1 role change. `saveAdoption` always succeeds, except in `save-fails.cfg` and `mutations/save-fail-reenters.cfg` (`SaveCanFail = TRUE`): there a GM's save can fail any number of times, and the next `state` or room copy saves again (`SavePending` keeps `pend`). These two run with `NoPingTraffic` (below), as with pings the room took 2.6 million states and over 3 minutes. The `generation-adoption` skill covers what a failed save does to storage.
+- Per configuration: up to 3 catch-up ids per client (2 in `adoption.cfg`, `save-fails.cfg`, most findings and mutations; 4 in `imports.cfg`), 2 messages in flight, 1 page return, 1 reopen, 1 role change. `saveAdoption` always succeeds, except in `save-fails.cfg` and `mutations/save-fail-reenters.cfg` (`SaveCanFail = TRUE`): there a GM's save can fail any number of times, and the next `state` or room copy saves again (`SavePending` keeps `pend`). These two run with `NoPingTraffic` (below), as with pings the room took 2.6 million states and over 3 minutes. The `generation-adoption` skill covers what a failed save does to storage.
 - `NoPingTraffic` is an extra `CONSTRAINT`: TLC does not explore a state with a ping or `alive` on its way, so the configurations that use it leave out pings and gm-silence (a gm-silence fires only after a ping that reached nobody). They still check the answers, requests, adoption and saves.
-- Two imports (`Imports = 2`) with the player alone (`imports.cfg`, finding 5, `fixes/own-answer-kept.cfg`) keep pings, page return and 4 ids. With the GM `g` too (`imports-gm.cfg`, `fixes/own-answer-kept-gm.cfg`), the room has 3 ids, no page return and `NoPingTraffic`. With pings, the same room passed 5 million states in 3 minutes and was still growing. A VIEW that drops the answer ghosts saved only about 10 %, so no configuration uses one.
+- Two imports (`Imports = 2`) with the player alone (`imports.cfg`) keep pings, page return and 4 ids; `mutations/answers-own-ordinary-only.cfg` uses that room with 3 ids and no page return. With the GM `g` too (`imports-gm.cfg`), the room has 3 ids, no page return and `NoPingTraffic`. With pings, the same room passed 5 million states in 3 minutes and was still growing. A VIEW that drops the answer ghosts saved only about 10 %, so no configuration uses one.
 - Answers are one message (`n = 1`). Partial answers, lost and duplicated messages, and unknown senders are left out. Messages can arrive in any order.
 - Drift (`aliveReceived` digests, `DRIFT_ALIVE_COUNT`, ignored digests) is left out: `alive` only refreshes the link.
 - The held-request limit (256) is left out.
@@ -110,7 +111,7 @@ Ghost variables (`pinged`, `owed`, `dropped`, `lastHeard`, `badOffline`, `ownDro
 
 ## Coverage record
 
-Sync commit: `995e1c7`. At that commit the model describes:
+Sync commit: `064e178` (also in `formal/catch-up/coverage.txt`). At that commit the model describes:
 
 - `src/replica/catch-up.ts`: `createCatchUp` (`feed`, `answersOwn`, `adopting`, `live`).
 - `src/replica/catch-up-table.ts`: `catchUpTable` and `livenessTable`, apart from the drift part of `catchUpAlive`, `rememberAlive`, `catchUpPartyChanged`, `catchUpReplicaReplaced` and multi-part answers.

@@ -42,6 +42,7 @@ done
 
 if [ "$which" = all ]; then
   for cfg in "$here"/fixes/*.cfg; do
+    [ -f "$cfg" ] || continue
     result=$(run "$cfg")
     code=${result%%|*}
     if [ "$code" = 0 ]; then
@@ -54,6 +55,7 @@ if [ "$which" = all ]; then
   done
 
   for cfg in "$here"/findings/*.cfg "$here"/mutations/*.cfg; do
+    [ -f "$cfg" ] || continue
     inv=$(sed -n 's/^INVARIANT \([A-Za-z]*\).*/\1/p' "$cfg")
     result=$(run "$cfg")
     log=${result##*|}

@@ -1095,6 +1095,26 @@ describe('catch-up', () => {
     // #then
     expect(answers).toEqual({ live: false, foreign: false });
   });
+  test('answersOwn is true only for the active nonce of an adopting client', () => {
+    // #given
+    const harness = createHarness();
+    const previous = becomeLive(harness);
+    const adoption = harness.catchUp.generationHeard(NEXT, false);
+    const read = adoption.find((decision) => decision.type === 'read-room-copy');
+
+    if (read?.type !== 'read-room-copy') {
+      throw new Error('adoption must read the room copy');
+    }
+
+    // #when
+    const answers = {
+      active: harness.catchUp.answersOwn(read.r),
+      previous: harness.catchUp.answersOwn(previous),
+    };
+
+    // #then
+    expect(answers).toEqual({ active: true, previous: false });
+  });
   test('a changed digest is no longer ignored when its earlier value returns', () => {
     // #given
     const harness = createHarness();

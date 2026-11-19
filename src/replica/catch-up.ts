@@ -7,6 +7,7 @@ import {
   catchUpTable,
   initialLiveness,
   initialPhase,
+  isCatchingUp,
   livenessTable,
   type CatchUpEnv,
   type CatchUpTiming,
@@ -232,7 +233,7 @@ export function createCatchUp(options: CatchUpOptions): CatchUp {
     }),
     live: () => phase.kind === 'live',
     adopting: () => (phase.kind === 'adopting' ? phase.target : null),
-    answersOwn: (r) => phase.kind === 'catching-up' && phase.active.nonce === r,
+    answersOwn: (r) => isCatchingUp(phase) && phase.active.nonce === r,
   };
 }
 

@@ -629,7 +629,7 @@ Deviations from DESIGN.md that TASK-115.11 reconciles:
 
 ## Deferred from: the TASK-115 closing review (2026-11-19)
 
-Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic: the denial cause reaches the notice on the fresh-edit and stale-reject paths; a repeated ignored digest stays ignored; a failed send on the window channel no longer republishes. Shipped on the owner's decision: `answersOwn` ignores the `adopting` phase (TASK-129). Deferred as minor:
+Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic: the denial cause reaches the notice on the fresh-edit and stale-reject paths; a repeated ignored digest stays ignored; a failed send on the window channel no longer republishes. Shipped on the owner's decision: `answersOwn` ignores the `adopting` phase (TASK-129; resolved by spec-task-129-keep-own-answer-during-adoption). Deferred as minor:
 
 - A failed `removeIncomplete` at load starts a GM with no persistence; base logged and loaded the complete generation (`engine.ts` `loadReplica`).
 - A failed startup role read starts the engine as a player; `background-main.ts` no longer catches startup rejections.

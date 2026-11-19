@@ -1195,6 +1195,38 @@ describe('adoption', () => {
       notified: [DATA_REPLACED],
     });
   });
+  test('an adopting client keeps its request when a GM of a still higher generation answers it', async () => {
+    // #given: the client adopts the ghost's first import and asks for its state.
+    const room = roomRig.openRoom();
+    room.join(GHOST, 'GM');
+    const gm = await startClient(room, 'gm-b', { timing: { catchUpTimeoutMs: 2000 } });
+    room.post(GHOST, { v: 4, g: newGenerationOf(GHOST), t: 'alive', digest: 1 });
+    await roomRig.waitUntil(() => heardOf(room, 'gm-b', 'state-request').length > 1);
+    const asked = heardOf(room, 'gm-b', 'state-request').length;
+    const second: Generation = { n: 2, a: GHOST };
+    const anya = importedRecord(GHOST, 'blk:anya', { set: 'pc', order: 0 });
+    // #when: the ghost imports again and answers that request from the second import.
+    room.post(GHOST, stateMessage(lastRequest(room, 'gm-b'), [PRESET_RECORD, anya], second));
+    await roomRig.waitUntil(
+      () => sync(gm).state === 'live' || heardOf(room, 'gm-b', 'state-request').length > asked,
+    );
+    // #then
+    expect({
+      state: sync(gm).state,
+      requests: heardOf(room, 'gm-b', 'state-request').length - asked,
+      keys: shownKeys(gm),
+      stored: storedKeys(gm),
+    }).toEqual({
+      state: 'live',
+      requests: 0,
+      keys: ['blk:anya', 'preset'],
+      stored: [
+        storageKey('#generation', second),
+        storageKey('blk:anya', second),
+        storageKey('preset', second),
+      ],
+    });
+  });
   test('a live GM adopts a room copy of a higher generation at once', async () => {
     // #given
     const room = roomRig.openRoom();
