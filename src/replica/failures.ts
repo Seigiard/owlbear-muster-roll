@@ -100,13 +100,13 @@ export function report(failure: ReplicaFailure): Omit<Diagnostic, 'at'> {
 export type FailureSink = {
   report: FailureReporter;
   recent: () => readonly Diagnostic[];
-  subscribe: (listener: (entry: Diagnostic) => void) => () => void;
+  subscribe: (listener: (entry: Diagnostic, failure: ReplicaFailure) => void) => () => void;
 };
 
 export function createFailureSink(options: { limit?: number; now: () => number }): FailureSink {
   const limit = Math.max(0, Math.floor(options.limit ?? DIAGNOSTICS_LIMIT));
   const diagnostics: Diagnostic[] = [];
-  const listeners = new Set<(entry: Diagnostic) => void>();
+  const listeners = new Set<(entry: Diagnostic, failure: ReplicaFailure) => void>();
 
   function add(failure: ReplicaFailure): void {
     if (limit === 0) {
@@ -122,7 +122,7 @@ export function createFailureSink(options: { limit?: number; now: () => number }
     diagnostics.push(entry);
 
     for (const listener of listeners) {
-      listener(entry);
+      listener(entry, failure);
     }
   }
 
