@@ -5,7 +5,7 @@
     "file": "src/replica/room-copy-table.ts",
     "find": "    return decision({ ...next, rerun: true }, disarm);",
     "replace": "    return decision({ ...next, rerun: next.work.mode !== 'ordinary' || next.rerun }, disarm);",
-    "test": ["src/replica/room-copy.test.ts"]
+    "test": ["src/replica/room-copy-table.test.ts"]
   },
   {
     "id": "R2",
