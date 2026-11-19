@@ -1,9 +1,11 @@
 ---
 id: TASK-115.1
 title: 'Step 0: catch-up and liveness as transition tables with machine-check'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-18T19:41:00Z'
+updated_date: '2026-11-19T08:52:00Z'
 labels:
   - architecture
   - replica
@@ -29,3 +31,20 @@ Nothing checks that every catch-up phase answers every event: eight pairs return
 - [ ] #4 `gmLink` is decided only by the liveness table; the engine predicate is named `gmInParty` and `GLOSSARY.md` defines both terms
 - [ ] #5 `catch-up.test.ts` passes unchanged; the engine suite junit list equals the baseline; `engine.ts` does not change
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add src/replica/machine.ts (Tagged, Step, Cell, TransitionTable, step) with a type fixture proving a missing cell fails typecheck.
+2. Add tests/support/machine-check.ts: fast-check walk of every non-ignore cell, row/effect/invariant assertions, Mermaid stateDiagram-v2 rendering compared with docs/machines/<name>.md.
+3. Split catch-up.ts into a pure catch-up-table.ts (catchUpTable) plus livenessTable; closure state moves into the phase record; the shell feeds catch-up first, then liveness, and keeps today's decision order and the synchronous saveAdoption contract.
+4. Turn the eight silent pairs and the fired fallthrough into explicit 'ignore' cells or transitions; table tests in catch-up-table.test.ts cover conditional no-ops; machine-check files generate docs/machines/catch-up.md and liveness.md.
+5. Rename engine gmInRoom to gmInParty (RollFlowPorts key and stubs) and define Online GM and GM in party in GLOSSARY.md in the same commit.
+6. Run via the tdd chain (implement-spec run ~/.claude/artifacts/task-115-20261119/TASK-115.1); check catch-up.test.ts unchanged and the junit lists against _bmad-output/implementation-artifacts/task-115-baseline; full check.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented on task-115-1-catch-up-tables: src/replica/machine.ts (TransitionTable, step), tests/support/machine-check.ts (fast-check walk, row/effect/invariant checks, deterministic Mermaid compared with docs/machines/<name>.md, UPDATE_MACHINES=1 rewrites), src/replica/catch-up-table.ts (four per-phase rows, 22 explicit 'ignore' cells, liveness table offline/online), catch-up.ts a 253-line shell feeding catch-up then liveness with saveAdoption as a synchronous adoption-saved follow-up. gmInRoom renamed gmInParty; GLOSSARY.md gains GM in party. Tests: 21 new (machine, machine-check, catch-up-table, catch-up-machine, liveness-machine); catch-up.test.ts and engine-*.test.ts unchanged. Checks on dac5154: oxfmt, lint, typecheck, bun test (0 baseline lines missing), browser 583/583, build. Calibrated: invariant and stale-diagram rows. Deviations from DESIGN.md recorded in deferred-work.md.
+<!-- SECTION:NOTES:END -->

@@ -64,7 +64,7 @@ export type RollFlowPorts = {
   stopped: () => boolean;
   generation: () => Generation;
   dice: RollDicePort;
-  gmInRoom: () => boolean;
+  gmInParty: () => boolean;
   playerId: string;
   playerName: () => Promise<string>;
   random: RandomSource;
@@ -207,7 +207,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     }
 
     // With no GM in the room the extension refuses at once, so the window shows no wait for one.
-    if (readiness === 'pending' || (readiness === 'unknown' && ports.gmInRoom())) {
+    if (readiness === 'pending' || (readiness === 'unknown' && ports.gmInParty())) {
       ports.replyOutcome(requestId, { code: 'waiting-access' });
     }
 

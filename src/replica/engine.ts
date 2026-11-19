@@ -464,7 +464,7 @@ export async function startReplicaEngine(
     stopped: () => stopped,
     generation: () => generationFlow.generation(),
     dice: diceExtension,
-    gmInRoom,
+    gmInParty,
     playerId: ownPlayerId,
     playerName: () => platform.player.getName(),
     random,
@@ -1034,7 +1034,7 @@ export async function startReplicaEngine(
     });
   }
 
-  function gmInRoom(): boolean {
+  function gmInParty(): boolean {
     return role === 'GM' || roster.entries().some((member) => member.role === 'GM');
   }
 

@@ -562,3 +562,12 @@ not optional scope. Evidence: `task-79-window5-review.md`.
 
 - Deviation from the epic oracle "literals in `src/replica/engine-*.test.ts` do not change": `better-result` values are class instances, so a test that compared an in-memory result with a plain `{ ok, value }` literal now compares with `Result.ok(...)`/`Result.err(...)` holding the same payload, and `.ok` checks read `.isOk()`. No expected payload changed. Hunks: `engine-access.test.ts:772`; `engine-catch-up.test.ts:1, 485, 1492`; `engine-client.test.ts:18, 215, 224-226, 486, 966-969, 1199-1202, 1446-1454, 1551, 1669, 1729, 1851, 1867, 2022, 2704, 2756`; `engine-dice-extension.test.ts:11, 371`; `engine-import.test.ts:8, 224`; `engine-open.test.ts:639, 670`; `engine-preset.test.ts:6, 926`. TASK-115.11 reconciles the oracle wording in DESIGN.md.
 - `tests/open.e2e.ts:253` ("a GM on the NPC tab who opens another repeat block from its token scrolls to it") failed once on `toBeFocused` in a full browser run on the TASK-115.3 tip and passed 3 of 3 in `--repeat-each=3` and in the implementer's full run. Focus under full-suite load; not traced to the Result swap.
+## Deferred from: TASK-115.1 (2026-11-19)
+
+Deviations from DESIGN.md that TASK-115.11 reconciles:
+
+- `checkMachine` constrains effects by `type`, not `kind`: `Effect extends { readonly type: string }` and `allowedEffects` lists `Effect['type']`. `CatchUpDecision` is discriminated by `type` and stays unchanged. Phases and events stay `Tagged` (`kind`). Rule for later tables: effects use `type`, phases and events use `kind`.
+- The liveness table has two phases, `offline` and `online`. The catalog's `unknown` cannot differ in behavior: `gmLink` starts `offline`, and an `offline` → `offline` step emits nothing, as before.
+- The catch-up table has four rows: `initializing`, `catching-up`, `adopting` (catch-up in adopting mode as its own kind) and `live`. `LivenessEvent` is `Extract<Event, { kind: 'heard' | 'fired' | 'watch' }>`. The shell feeds `saveAdoption` back as a synchronous `adoption-saved` event, so cells stay pure.
+- `engine.ts` changed by one rename, `gmInRoom` → `gmInParty` (two lines). The ticket's "engine.ts does not change" meant the catch-up wiring.
+- `checkMachine` finds each cell's target phases by running it on generated data with a fixed seed, so the diagram is stable. A branch that the samples never reach draws no arrow; a cell's table test covers it.
