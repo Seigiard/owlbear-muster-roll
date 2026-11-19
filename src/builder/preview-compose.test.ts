@@ -68,7 +68,7 @@ describe('previewCompose', () => {
       {
         type: 'field-patch',
         sheetId: 's1',
-        target: { kind: 'row', rowId: 'hp' },
+        target: { kind: 'row', rowId: 'name' },
         fieldId: 'hp',
         value: 7,
       },
@@ -135,7 +135,7 @@ describe('previewCompose', () => {
     const first = previewCompose(snapshot, recordMap(snapshot), PRESET_DATA, minter, {
       type: 'field-patch',
       sheetId: 's1',
-      target: { kind: 'row', rowId: 'hp' },
+      target: { kind: 'row', rowId: 'name' },
       fieldId: 'hp',
       value: 7,
     });
@@ -143,7 +143,7 @@ describe('previewCompose', () => {
     const second = previewCompose(first.snapshot, recordMap(first.snapshot), PRESET_DATA, minter, {
       type: 'field-patch',
       sheetId: 's1',
-      target: { kind: 'row', rowId: 'hp' },
+      target: { kind: 'row', rowId: 'name' },
       fieldId: 'hp',
       value: 8,
     });
@@ -336,7 +336,7 @@ describe('previewCompose', () => {
       {
         type: 'field-patch',
         sheetId: 'builder-preview',
-        target: { kind: 'row', rowId: 'hp' },
+        target: { kind: 'row', rowId: 'name' },
         fieldId: 'hp',
         value: 7,
       },
