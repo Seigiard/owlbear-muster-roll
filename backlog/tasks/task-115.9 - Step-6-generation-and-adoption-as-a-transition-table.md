@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T12:48:00Z'
+updated_date: '2026-11-19T13:21:00Z'
 labels:
   - architecture
   - replica
@@ -39,3 +39,9 @@ ordinal: 152000
 3. machine-check with the AD-9 order invariants; docs/machines/generation.md generated.
 4. tdd chain (run ~/.claude/artifacts/task-115-20261119/TASK-115.9); full check.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented on task-115-9-generation-table (211c189). src/replica/generation-table.ts is a TransitionTable over settled, importing, staged, saving and the ticket's events, per-phase rows with explicit ignore cells; persistence, own generation, incoming and importing live in phase data. generation-flow.ts is the shell (~710 -> 374 lines) that runs effects in the order a cell emits them: local import flush, save, replace, write-import, reset; remote adoption save, replace, room-copy-replaced. saveAdoption stays synchronous; public API unchanged. machine-check: every cell present, no replace before save, saving left only by a store answer; docs/machines/generation.md generated. Checks: fmt, lint, typecheck, build; browser 587/587; bun: no baseline line lost, 13 new. Calibrated by mutation (reversed effects, store-failed and role-changed cells).
+<!-- SECTION:NOTES:END -->
