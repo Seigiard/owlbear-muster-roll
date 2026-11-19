@@ -172,6 +172,11 @@ pass	src/builder/item-form.test.tsx › v4 node forms › shows and rewrites a t
 pass	src/builder/item-form.test.tsx › v4 node forms › suggests a distinct repeat id from a repeated section with the same title
 pass	src/builder/item-form.test.tsx › v4 node forms › suggests unique repeat ids across plain containers in one parent repeat path
 pass	src/builder/item-form.test.tsx › v4 node forms › uses a tab text field when repeat is enabled
+pass	src/builder/preview-compose.test.ts › previewCompose › a block add follows direct live siblings and ignores their descendants
+pass	src/builder/preview-compose.test.ts › previewCompose › a block delete keeps its lifecycle and tombstones its link
+pass	src/builder/preview-compose.test.ts › previewCompose › a field edit keeps the other cells while a refused edit leaves the snapshot unchanged
+pass	src/builder/preview-compose.test.ts › previewCompose › a sample edit appends its root while another command leaves the snapshot unchanged
+pass	src/builder/preview-compose.test.ts › previewCompose › two edits of one field mint counters four and five
 pass	src/builder/preview-navigation.test.ts › previewNavigationReducer › keeps a null tab when the selected role can see no tabs
 pass	src/builder/preview-navigation.test.ts › previewNavigationReducer › keeps the previous shown tab when no template is available
 pass	src/builder/preview-navigation.test.ts › previewNavigationReducer › keeps the shown tab when the selected item is on it
@@ -323,6 +328,8 @@ pass	src/core/block-merge.test.ts › equal outer versions with incomplete cell 
 pass	src/core/block-merge.test.ts › the latest version of one cell wins repeated and reordered delivery
 pass	src/core/bounded-id-set.test.ts › createBoundedIdSet › forgets the oldest id past the limit and keeps the newer ones
 pass	src/core/bounded-id-set.test.ts › createBoundedIdSet › remembers an added id
+pass	src/core/compose.test.ts › createComposers › a GM delete tombstones links to the block and its descendants but keeps unrelated and stale links
+pass	src/core/compose.test.ts › createComposers › keeps a GM root number edit when a repeat tab has a same-id text field
 pass	src/core/deflate.test.ts › deflate › gives back the text it deflated, letters outside ASCII included
 pass	src/core/deflate.test.ts › deflate › refuses data that inflates past the cap, and takes data that inflates to it
 pass	src/core/deflate.test.ts › deflate › refuses data that is not deflated base64
@@ -576,6 +583,13 @@ pass	src/core/formula.test.ts › parseFormula › refuses "floor(a < b)" with s
 pass	src/core/formula.test.ts › parseFormula › refuses "sqrt(4)" with unknown-function
 pass	src/core/formula.test.ts › parseFormula › refuses "str(1)" with unknown-function
 pass	src/core/formula.test.ts › parseFormula › refuses a formula over 200 characters
+pass	src/core/fragment-assembler.test.ts › fragment assembler › completes two parts and removes the completed assembly
+pass	src/core/fragment-assembler.test.ts › fragment assembler › drops a count mismatch and removes its open assembly
+pass	src/core/fragment-assembler.test.ts › fragment assembler › drops an oversized assembly and evicts before rejecting an oversized first part
+pass	src/core/fragment-assembler.test.ts › fragment assembler › drops too many parts before looking up an assembly
+pass	src/core/fragment-assembler.test.ts › fragment assembler › evicts the oldest-created assembly when a new key reaches the limit
+pass	src/core/fragment-assembler.test.ts › fragment assembler › expires from the first part even after a later part arrives
+pass	src/core/fragment-assembler.test.ts › fragment assembler › keeps an identical duplicate and drops a changed duplicate
 pass	src/core/ids.test.ts › new record ids › a new instance id is 8 characters of the URL-safe alphabet
 pass	src/core/ids.test.ts › new record ids › a new sheet id is 12 characters of the URL-safe alphabet
 pass	src/core/ids.test.ts › new record ids › every new id passes the sheet id schema that refuses ":"
@@ -1797,6 +1811,11 @@ pass	src/core/ui-messages.test.ts › parseWindowMessage › round-trips a field
 pass	src/core/ui-messages.test.ts › parseWindowMessage › round-trips a field-patch command for a repeat instance field
 pass	src/core/ui-messages.test.ts › parseWindowMessage › round-trips a field-patch command for a row field
 pass	src/core/ui-messages.test.ts › parseWindowMessage › round-trips a field-patch command for a value of any JSON type, for the engine to check
+pass	src/core/version-minter.test.ts › createVersionMinter › follows newer knowledge that overtakes its own last counter
+pass	src/core/version-minter.test.ts › createVersionMinter › keeps the last counter per key
+pass	src/core/version-minter.test.ts › createVersionMinter › never repeats a counter when knowledge of the key stays stale
+pass	src/core/version-minter.test.ts › createVersionMinter › starts a key nobody has written at 1
+pass	src/core/version-minter.test.ts › createVersionMinter › takes the highest known counter + 1 with this connection as author
 pass	src/core/visibility.test.ts › rollShownTo › a GM client shows a roll with hidden false: true
 pass	src/core/visibility.test.ts › rollShownTo › a GM client shows a roll with hidden true: true
 pass	src/core/visibility.test.ts › rollShownTo › a PLAYER client shows a roll with hidden false: true
@@ -1933,17 +1952,24 @@ pass	src/platform/send-queue.test.ts › send queue › sendNow makes one attemp
 pass	src/platform/send-queue.test.ts › send queue › sends in order and spaces each send by the injected value
 pass	src/platform/send-queue.test.ts › send queue › sends one at a time, waiting for the previous send
 pass	src/platform/send-queue.test.ts › send queue › waits with doubling, capped backoff and resends the same message in order
-pass	src/preview/sample-records.test.ts › previewSheets over the repository presets › makes only records the room would accept from docs/example-preset.json
-pass	src/preview/sample-records.test.ts › previewSheets over the repository presets › makes only records the room would accept from tests/fixtures/presets/d20.json
-pass	src/preview/sample-records.test.ts › previewSheets over the repository presets › makes only records the room would accept from tests/fixtures/presets/d6-pool.json
-pass	src/preview/sample-records.test.ts › previewSheets with empty content › keeps only the sheet of the set, with no name, and no value or repeat block
-pass	src/preview/sample-records.test.ts › previewSheets with sample content › gives a repeat section two repeat blocks, each with every field of the section
-pass	src/preview/sample-records.test.ts › previewSheets with sample content › gives a select field one of the options from its preset
-pass	src/preview/sample-records.test.ts › previewSheets with sample content › gives a text field with no visible label its id, so no value is empty
-pass	src/preview/sample-records.test.ts › previewSheets with sample content › gives every field a value of its type, so the sheet of the set has a name
-pass	src/preview/sample-records.test.ts › previewSheets with sample content › gives the same records for the same preset
-pass	src/preview/sample-records.test.ts › previewSheets with sample content › makes no record for a row with no field
-pass	src/preview/sample-records.test.ts › previewSheets with sample content › makes one sheet per template, in preset order: a preview sheet for a set, the template id for a single sheet
+pass	src/replica/catch-up-effects.test.ts › a failed read logs its failure and leaves the interpreter resolved
+pass	src/replica/catch-up-effects.test.ts › a failed timer continuation logs its failure
+pass	src/replica/catch-up-effects.test.ts › aborting after a read starts drops its continuation
+pass	src/replica/catch-up-effects.test.ts › an aborted interpreter does not run direct decisions
+pass	src/replica/catch-up-effects.test.ts › disarming a timer prevents its callback from reaching catch-up
+pass	src/replica/catch-up-effects.test.ts › nonce-free timers keep separate keys
+pass	src/replica/catch-up-effects.test.ts › re-arming one timer ignores its stale callback and runs its replacement
+pass	src/replica/catch-up-effects.test.ts › request and answer timers with one nonce keep separate keys
+pass	src/replica/catch-up-effects.test.ts › run dispatches every synchronous catch-up decision to its port
+pass	src/replica/catch-up-effects.test.ts › run waits for started reads and interprets their results
+pass	src/replica/catch-up-machine.test.ts › catch-up transition table has valid phases, effects, invariants, and diagram
+pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › ignores a generation that is not higher than the current generation
+pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › ignores a higher-generation state part outside adoption
+pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › ignores a request timer for a stale nonce
+pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › ignores adoption-staged outside adoption
+pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › keeps adoption active when another catch-up starts
+pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › keeps catch-up for a party read with a stale nonce
+pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › keeps catch-up for a room-copy read with a stale nonce
 pass	src/replica/catch-up.test.ts › catch-up › GM silence takes the link offline and only shows a projected link
 pass	src/replica/catch-up.test.ts › catch-up › a GM alone leaves unanswered after its room copy read
 pass	src/replica/catch-up.test.ts › catch-up › a GM alone stays catching up after a failed party read
@@ -2049,8 +2075,6 @@ pass	src/replica/commit-outbox.test.ts › commit outbox › sends a record agai
 pass	src/replica/commit-outbox.test.ts › commit outbox › sends nothing after stop, not even a commit already waiting in the queue
 pass	src/replica/commit-outbox.test.ts › commit outbox › sends only the newer record of a key added twice while the commit waits, and keeps the other keys
 pass	src/replica/commit-outbox.test.ts › commit outbox › sends records over one message in parts that each fit, and the remainder after the first
-pass	src/replica/composers.test.ts › createComposers › a GM delete tombstones links to the block and its descendants but keeps unrelated and stale links
-pass	src/replica/composers.test.ts › createComposers › keeps a GM root number edit when a repeat tab has a same-id text field
 pass	src/replica/engine-access.test.ts › acl-set › a sheet delete tombstones the acl: records the command wrote
 pass	src/replica/engine-access.test.ts › acl-set › cuts the name at 100 code points it stores
 pass	src/replica/engine-access.test.ts › acl-set › grants access: acl:{sheetId}:{playerId} holds the name at c: 1 by this connection, saved and sent
@@ -2808,6 +2832,14 @@ pass	src/replica/generation-flow.test.ts › a wipe without writable persistence
 pass	src/replica/generation-flow.test.ts › an invalid snapshot import is rejected before storage or room effects
 pass	src/replica/generation-flow.test.ts › clearing an adopted generation with a retained nonce publishes the replacement state
 pass	src/replica/generation-flow.test.ts › room-copy adoption interprets generationRead before staging can synchronously save
+pass	src/replica/liveness-machine.test.ts › liveness transition table has valid phases, effects, and diagram
+pass	src/replica/liveness-machine.test.ts › livenessTable › brings an offline GM link online when a GM message is heard
+pass	src/replica/liveness-machine.test.ts › livenessTable › emits nothing when the offline silence timer fires again
+pass	src/replica/liveness-machine.test.ts › livenessTable › keeps the link unchanged for a catch-up-only timer
+pass	src/replica/liveness-machine.test.ts › livenessTable › rearms liveness watches when a GM message leaves the link online
+pass	src/replica/liveness-machine.test.ts › livenessTable › takes an online GM link offline when its silence timer fires
+pass	src/replica/machine.test.ts › step › keeps the phase and emits no effects for an explicit ignore cell
+pass	src/replica/machine.test.ts › step › returns the literal transition from a two-phase table
 pass	src/replica/party-roster.test.ts › party roster › applies a read that started after the last party change
 pass	src/replica/party-roster.test.ts › party roster › follows a party change, so a member who left is no longer known
 pass	src/replica/party-roster.test.ts › party roster › keeps a party change over a read that started before it
@@ -2818,6 +2850,7 @@ pass	src/replica/party-roster.test.ts › party roster › returns null for a se
 pass	src/replica/party-roster.test.ts › party roster › shares one read among misses that come while it is on its way
 pass	src/replica/party-roster.test.ts › party roster › stops following party changes once stopped
 pass	src/replica/party-roster.test.ts › party roster › takes a role change from a party change
+pass	src/replica/pending-edits.test.ts › pending edits › a 33-part stale reply completes without a player part cap
 pass	src/replica/pending-edits.test.ts › pending edits › a GM return leaves a waiting edit unsent
 pass	src/replica/pending-edits.test.ts › pending edits › a GM return resends minted edits and backoff resends the same edit with doubling delays
 pass	src/replica/pending-edits.test.ts › pending edits › a denied rejection drops the edit and shows one notification
@@ -2859,6 +2892,7 @@ pass	src/replica/pending-edits.test.ts › pending edits › records change drop
 pass	src/replica/pending-edits.test.ts › pending edits › records change drops another player revoked only when the pending edit is no longer allowed
 pass	src/replica/pending-edits.test.ts › pending edits › records change drops its own revoked access only when the pending edit is no longer allowed
 pass	src/replica/pending-edits.test.ts › pending edits › records change keeps another sheet entry when one sheet access is revoked
+pass	src/replica/pending-edits.test.ts › pending edits › stale reply limits drop oversized and expired replies before a later two-part reply completes
 pass	src/replica/pending-edits.test.ts › pending edits › the preflight refuses a hidden player-editable sheet before it reaches a GM
 pass	src/replica/pending-edits.test.ts › pending edits › the quiet window notifies only after its fake time has passed
 pass	src/replica/pending-queue.test.ts › pending queue › coalesces all root-cell patches at their first place, newer values winning
@@ -3074,11 +3108,11 @@ pass	src/replica/scene-watch.test.ts › watchSceneRemovals › takes a list tha
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › takes a list that shares no item with the last one as another scene, not as a deletion
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › tries a failed item read again, so the list it brings is the baseline
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › tries a failed readiness read again
-pass	src/replica/version-minter.test.ts › createVersionMinter › follows newer knowledge that overtakes its own last counter
-pass	src/replica/version-minter.test.ts › createVersionMinter › keeps the last counter per key
-pass	src/replica/version-minter.test.ts › createVersionMinter › never repeats a counter when knowledge of the key stays stale
-pass	src/replica/version-minter.test.ts › createVersionMinter › starts a key nobody has written at 1
-pass	src/replica/version-minter.test.ts › createVersionMinter › takes the highest known counter + 1 with this connection as author
+pass	src/replica/timers.test.ts › schedule abort prevents the callback from firing
+pass	src/replica/timers.test.ts › schedule cancel prevents the callback from firing
+pass	src/replica/timers.test.ts › schedule cancellation is a no-op after the callback fires
+pass	src/replica/timers.test.ts › schedule does not schedule an already aborted signal
+pass	src/replica/timers.test.ts › schedule fires a callback once after its delay
 pass	src/replica/window-publisher.test.ts › window publisher › a pending cell stays in the window when its replica cell is withdrawn
 pass	src/replica/window-publisher.test.ts › window publisher › answers a projection nonce again after its first projection has sent
 pass	src/replica/window-publisher.test.ts › window publisher › answers a projection nonce once while its first projection is queued
@@ -3461,6 +3495,11 @@ pass	tests/build.test.ts › default-mode vite build › ships the DESIGN.md val
 pass	tests/build.test.ts › default-mode vite build › ships the fixed warning and danger hex values
 pass	tests/build.test.ts › tailwind theme › exposes every DESIGN.md color, typography style, radius and spacing step
 pass	tests/build.test.ts › tailwind theme › generates nothing from the default Tailwind scales
+pass	tests/support/machine-check.test.ts › checkMachine › accepts valid transitions and the committed Mermaid diagram
+pass	tests/support/machine-check.test.ts › checkMachine › prints a replacement Mermaid diagram when the committed diagram is stale
+pass	tests/support/machine-check.test.ts › checkMachine › rejects a result phase kind that has no table row
+pass	tests/support/machine-check.test.ts › checkMachine › rejects a result phase that breaks an invariant
+pass	tests/support/machine-check.test.ts › checkMachine › rejects an effect that the result phase does not allow
 pass	tools/mutants/probe/baseline.test.ts › anchorKey › uses source identity rather than line number or replacement text
 pass	tools/mutants/probe/baseline.test.ts › compare › does not report a baseline survivor as missing after it becomes killed
 pass	tools/mutants/probe/baseline.test.ts › compare › reports a survivor with a different nth as new
