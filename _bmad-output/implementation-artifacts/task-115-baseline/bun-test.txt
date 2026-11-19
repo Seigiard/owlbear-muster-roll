@@ -583,6 +583,13 @@ pass	src/core/formula.test.ts › parseFormula › refuses "floor(a < b)" with s
 pass	src/core/formula.test.ts › parseFormula › refuses "sqrt(4)" with unknown-function
 pass	src/core/formula.test.ts › parseFormula › refuses "str(1)" with unknown-function
 pass	src/core/formula.test.ts › parseFormula › refuses a formula over 200 characters
+pass	src/core/fragment-assembler.test.ts › fragment assembler › completes two parts and removes the completed assembly
+pass	src/core/fragment-assembler.test.ts › fragment assembler › drops a count mismatch and removes its open assembly
+pass	src/core/fragment-assembler.test.ts › fragment assembler › drops an oversized assembly and evicts before rejecting an oversized first part
+pass	src/core/fragment-assembler.test.ts › fragment assembler › drops too many parts before looking up an assembly
+pass	src/core/fragment-assembler.test.ts › fragment assembler › evicts the oldest-created assembly when a new key reaches the limit
+pass	src/core/fragment-assembler.test.ts › fragment assembler › expires from the first part even after a later part arrives
+pass	src/core/fragment-assembler.test.ts › fragment assembler › keeps an identical duplicate and drops a changed duplicate
 pass	src/core/ids.test.ts › new record ids › a new instance id is 8 characters of the URL-safe alphabet
 pass	src/core/ids.test.ts › new record ids › a new sheet id is 12 characters of the URL-safe alphabet
 pass	src/core/ids.test.ts › new record ids › every new id passes the sheet id schema that refuses ":"
@@ -1945,6 +1952,16 @@ pass	src/platform/send-queue.test.ts › send queue › sendNow makes one attemp
 pass	src/platform/send-queue.test.ts › send queue › sends in order and spaces each send by the injected value
 pass	src/platform/send-queue.test.ts › send queue › sends one at a time, waiting for the previous send
 pass	src/platform/send-queue.test.ts › send queue › waits with doubling, capped backoff and resends the same message in order
+pass	src/replica/catch-up-effects.test.ts › a failed read logs its failure and leaves the interpreter resolved
+pass	src/replica/catch-up-effects.test.ts › a failed timer continuation logs its failure
+pass	src/replica/catch-up-effects.test.ts › aborting after a read starts drops its continuation
+pass	src/replica/catch-up-effects.test.ts › an aborted interpreter does not run direct decisions
+pass	src/replica/catch-up-effects.test.ts › disarming a timer prevents its callback from reaching catch-up
+pass	src/replica/catch-up-effects.test.ts › nonce-free timers keep separate keys
+pass	src/replica/catch-up-effects.test.ts › re-arming one timer ignores its stale callback and runs its replacement
+pass	src/replica/catch-up-effects.test.ts › request and answer timers with one nonce keep separate keys
+pass	src/replica/catch-up-effects.test.ts › run dispatches every synchronous catch-up decision to its port
+pass	src/replica/catch-up-effects.test.ts › run waits for started reads and interprets their results
 pass	src/replica/catch-up-machine.test.ts › catch-up transition table has valid phases, effects, invariants, and diagram
 pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › ignores a generation that is not higher than the current generation
 pass	src/replica/catch-up-table.test.ts › catchUpTable conditional no-ops › ignores a higher-generation state part outside adoption
@@ -2833,6 +2850,7 @@ pass	src/replica/party-roster.test.ts › party roster › returns null for a se
 pass	src/replica/party-roster.test.ts › party roster › shares one read among misses that come while it is on its way
 pass	src/replica/party-roster.test.ts › party roster › stops following party changes once stopped
 pass	src/replica/party-roster.test.ts › party roster › takes a role change from a party change
+pass	src/replica/pending-edits.test.ts › pending edits › a 33-part stale reply completes without a player part cap
 pass	src/replica/pending-edits.test.ts › pending edits › a GM return leaves a waiting edit unsent
 pass	src/replica/pending-edits.test.ts › pending edits › a GM return resends minted edits and backoff resends the same edit with doubling delays
 pass	src/replica/pending-edits.test.ts › pending edits › a denied rejection drops the edit and shows one notification
@@ -2874,6 +2892,7 @@ pass	src/replica/pending-edits.test.ts › pending edits › records change drop
 pass	src/replica/pending-edits.test.ts › pending edits › records change drops another player revoked only when the pending edit is no longer allowed
 pass	src/replica/pending-edits.test.ts › pending edits › records change drops its own revoked access only when the pending edit is no longer allowed
 pass	src/replica/pending-edits.test.ts › pending edits › records change keeps another sheet entry when one sheet access is revoked
+pass	src/replica/pending-edits.test.ts › pending edits › stale reply limits drop oversized and expired replies before a later two-part reply completes
 pass	src/replica/pending-edits.test.ts › pending edits › the preflight refuses a hidden player-editable sheet before it reaches a GM
 pass	src/replica/pending-edits.test.ts › pending edits › the quiet window notifies only after its fake time has passed
 pass	src/replica/pending-queue.test.ts › pending queue › coalesces all root-cell patches at their first place, newer values winning
@@ -3089,6 +3108,11 @@ pass	src/replica/scene-watch.test.ts › watchSceneRemovals › takes a list tha
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › takes a list that shares no item with the last one as another scene, not as a deletion
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › tries a failed item read again, so the list it brings is the baseline
 pass	src/replica/scene-watch.test.ts › watchSceneRemovals › tries a failed readiness read again
+pass	src/replica/timers.test.ts › schedule abort prevents the callback from firing
+pass	src/replica/timers.test.ts › schedule cancel prevents the callback from firing
+pass	src/replica/timers.test.ts › schedule cancellation is a no-op after the callback fires
+pass	src/replica/timers.test.ts › schedule does not schedule an already aborted signal
+pass	src/replica/timers.test.ts › schedule fires a callback once after its delay
 pass	src/replica/window-publisher.test.ts › window publisher › a pending cell stays in the window when its replica cell is withdrawn
 pass	src/replica/window-publisher.test.ts › window publisher › answers a projection nonce again after its first projection has sent
 pass	src/replica/window-publisher.test.ts › window publisher › answers a projection nonce once while its first projection is queued
