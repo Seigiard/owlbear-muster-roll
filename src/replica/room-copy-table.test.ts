@@ -180,3 +180,45 @@ test.each<[string, Event[], RoomCopyEnv, string[]]>([
   // #then
   expect(decision(result)).toEqual({ phase: 'idle', effects });
 });
+
+const stop = { kind: 'stop', env: gm } satisfies Event;
+const verifyDone = { kind: 'verify-done', metadata: verifiedCopy, env: gm } satisfies Event;
+const failed = { kind: 'failed', env: gm } satisfies Event;
+
+test.each<[string, RoomCopyEnv, string[]]>([
+  ['open', gm, ['read-metadata']],
+  ['closed', catchingUp, []],
+])('an already sent write answers after stop with the write gate %s', (_name, env, effects) => {
+  // #given
+  const phase = after(hidden, readDone, stop);
+  // #when
+  const result = advance(phase, { ...writeDone, env });
+  // #then
+  expect(decision(result)).toEqual({ phase: 'stopped', effects });
+});
+
+test.each<[string, Event[], Event]>([
+  ['a verified write', [writeDone], verifyDone],
+  ['a dropped write', [writeDone], { ...verifyDone, metadata: {} }],
+  ['a failed write', [], failed],
+])('a stopped room copy settles %s exactly once', (_name, prefix, completion) => {
+  // #given
+  const phase = after(hidden, readDone, stop, ...prefix);
+
+  // #when
+  const result = advance(phase, completion);
+
+  const repeated = [writeDone, verifyDone, failed].map((event) =>
+    decision(advance(result.phase, event)),
+  );
+
+  // #then
+  expect({ completion: decision(result), repeated }).toEqual({
+    completion: { phase: 'stopped', effects: ['publish-status'] },
+    repeated: [
+      { phase: 'stopped', effects: [] },
+      { phase: 'stopped', effects: [] },
+      { phase: 'stopped', effects: [] },
+    ],
+  });
+});

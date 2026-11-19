@@ -58,7 +58,14 @@ const phases = {
   ),
   writing: phaseArbitrary('writing', [hidden, read], [hidden, read, hidden]),
   verifying: phaseArbitrary('verifying', [hidden, read, written], [hidden, read, written, hidden]),
-  stopped: phaseArbitrary('stopped', [stop], [hidden, stop], [hidden, read, stop]),
+  stopped: phaseArbitrary(
+    'stopped',
+    [stop],
+    [hidden, stop],
+    [hidden, read, stop],
+    [hidden, read, written, stop],
+    [hidden, read, stop, written],
+  ),
 };
 
 const otherEffects = [
@@ -121,7 +128,7 @@ test('room-copy transition table keeps metadata writes in writing and matches it
     reading: otherEffects,
     writing: [...otherEffects, 'write-metadata'],
     verifying: otherEffects,
-    stopped: ['disarm'],
+    stopped: ['disarm', 'read-metadata', 'publish-status', 'complete-import'],
   };
 
   // #when
@@ -192,15 +199,28 @@ test('a read answer sends at most one metadata write', () => {
 test('a stopped room copy cannot restart, even when a held port call answers', () => {
   // #given
   const inputs = fc.oneof(...Object.values(events));
+  const quiescent = advance(initialPhase(), stop).phase;
+
+  const completionEffects: Partial<Record<Event['kind'], readonly string[]>> = {
+    'write-done': ['read-metadata', 'complete-import'],
+    'verify-done': ['publish-status', 'complete-import'],
+    failed: ['publish-status', 'complete-import'],
+  };
 
   // #when
   const check = () =>
     fc.assert(
       fc.property(phases.stopped, inputs, (phase, event) => {
         const next = advance(phase, event);
-        expect({ phase: next.phase.kind, effects: next.effects }).toEqual({
+        const allowed = completionEffects[event.kind] ?? [];
+        expect({
+          phase: next.phase.kind,
+          otherEffects: next.effects.filter(({ type }) => !allowed.includes(type)),
+          quiescent: advance(quiescent, event),
+        }).toEqual({
           phase: 'stopped',
-          effects: [],
+          otherEffects: [],
+          quiescent: { phase: quiescent, effects: [] },
         });
       }),
       { seed: 1151 },
