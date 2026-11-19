@@ -2844,6 +2844,19 @@ pass	src/replica/generation-flow.test.ts › an aborted room-copy adoption leave
 pass	src/replica/generation-flow.test.ts › an invalid snapshot import is rejected before storage or room effects
 pass	src/replica/generation-flow.test.ts › clearing an adopted generation with a retained nonce publishes the replacement state
 pass	src/replica/generation-flow.test.ts › room-copy adoption interprets generationRead before staging can synchronously save
+pass	src/replica/generation-machine.test.ts › every generation phase has a cell for every generation event
+pass	src/replica/generation-machine.test.ts › no generation transition replaces before saving or leaves saving without a store answer
+pass	src/replica/generation-machine.test.ts › the generation table matches its committed diagram
+pass	src/replica/generation-table.test.ts › a failed adoption save discards the partial store and preserves the prior phase
+pass	src/replica/generation-table.test.ts › a failed import save discards the partial store and preserves the prior phase
+pass	src/replica/generation-table.test.ts › a room copy below the adoption target cannot change the staged records or finish adoption
+pass	src/replica/generation-table.test.ts › a snapshot check from a player is refused even if its plan is valid
+pass	src/replica/generation-table.test.ts › hearing a generation below the adoption target but above the current generation does not start adoption
+pass	src/replica/generation-table.test.ts › hearing a generation below the current generation does not start adoption
+pass	src/replica/generation-table.test.ts › hearing a generation equal to the adoption target does not start adoption
+pass	src/replica/generation-table.test.ts › hearing a generation equal to the current generation does not start adoption
+pass	src/replica/generation-table.test.ts › local snapshot import plans flush, save, replacement, room copy and reset in that order
+pass	src/replica/generation-table.test.ts › remote adoption plans save before replacing the replica and notifying the room copy
 pass	src/replica/liveness-machine.test.ts › liveness transition table has valid phases, effects, and diagram
 pass	src/replica/liveness-machine.test.ts › livenessTable › brings an offline GM link online when a GM message is heard
 pass	src/replica/liveness-machine.test.ts › livenessTable › emits nothing when the offline silence timer fires again
