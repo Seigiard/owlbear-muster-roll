@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import { sheetRootAddress } from '@/core/block-address';
+import { blockAddress, sheetRootAddress } from '@/core/block-address';
 import type { JsonValue } from '@/core/json';
 import type { Timing } from '@/core/timing';
 import { UI_CHANNEL, type CommandRejectedMessage, type EngineMessage } from '@/core/ui-messages';
@@ -131,6 +131,78 @@ describe('replica client open requests', () => {
 });
 
 describe('replica client command outcomes', () => {
+  test('serialises block addresses once at the replica boundary', async () => {
+    // #given
+    const harness = await loadedHarness(['nested', 'one-pair', 'link']);
+    const nested = blockAddress('npc', ['npc', 'a', 'attack', 'x']);
+    const onePair = blockAddress('npc', ['npc', 'a']);
+
+    if (nested === null || onePair === null) {
+      throw new Error('fixtures must be block addresses');
+    }
+
+    // #when
+    const outcomes = [
+      harness.client.sendCommand({
+        type: 'repeat-block-delete',
+        sheetId: 'npc',
+        block: nested,
+      }),
+      harness.client.sendCommand({
+        type: 'repeat-block-delete',
+        sheetId: 'npc',
+        block: onePair,
+      }),
+      harness.client.sendCommand({
+        type: 'link-set',
+        tokenId: 'token',
+        sheetId: 'npc',
+        block: onePair,
+        cellId: 'portrait',
+      }),
+    ];
+
+    await pause(0);
+    harness.client.stop();
+    await Promise.all(outcomes);
+
+    // #then
+    expect(commandsOf(harness)).toEqual([
+      {
+        t: 'command',
+        id: 'nested',
+        command: {
+          type: 'repeat-block-delete',
+          sheetId: 'npc',
+          sectionId: 'attack',
+          instanceId: 'x',
+          path: ['npc', 'a', 'attack', 'x'],
+        },
+      },
+      {
+        t: 'command',
+        id: 'one-pair',
+        command: {
+          type: 'repeat-block-delete',
+          sheetId: 'npc',
+          sectionId: 'npc',
+          instanceId: 'a',
+        },
+      },
+      {
+        t: 'command',
+        id: 'link',
+        command: {
+          type: 'link-set',
+          tokenId: 'token',
+          sheetId: 'npc',
+          path: ['npc', 'a'],
+          cellId: 'portrait',
+        },
+      },
+    ]);
+  });
+
   test("a window takes the answer to its own wipe, and not another window's", async () => {
     // #given
     const harness = await loadedHarness(['wipe-own']);

@@ -1,4 +1,5 @@
 import { assembleRecords } from '@/core/merge';
+import { blockAddress } from '@/core/block-address';
 import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
 import { randomFaces } from '@/core/formula-evaluate';
@@ -11,6 +12,7 @@ import {
 import type { VersionedRecord } from '@/core/records';
 import {
   diceBlockOf,
+  dicePlaceOf,
   prepareDiceRoll,
   rollDiceCell,
   type DicePlace,
@@ -213,6 +215,88 @@ describe('diceBlockOf', () => {
 
     // #then
     expect(diceBlockOf(TEMPLATE, 'brok', place)).toBeNull();
+  });
+});
+
+describe('dicePlaceOf', () => {
+  test('serialises a plain row in a one-pair tab block with its full path', () => {
+    // #given
+    const block = blockAddress('npc', ['npc', 'a']);
+
+    if (block === null) throw new Error('fixture must be a block address');
+
+    const place = {
+      tabIndex: 1,
+      sectionIndex: 0,
+      rowIndex: 2,
+      cellIndex: 3,
+      instanceId: null,
+    };
+
+    // #when
+    const wire = dicePlaceOf(place, block);
+
+    // #then
+    expect(wire).toEqual({
+      tabIndex: 1,
+      sectionIndex: 0,
+      rowIndex: 2,
+      cellIndex: 3,
+      instanceId: 'a',
+      path: ['npc', 'a'],
+    });
+  });
+
+  test('serialises a nested block with its leaf id and unchanged full path', () => {
+    // #given
+    const block = blockAddress('npc', ['npc', 'a', 'attack', 'x']);
+
+    if (block === null) throw new Error('fixture must be a block address');
+
+    const place = {
+      tabIndex: 1,
+      sectionIndex: 1,
+      rowIndex: 0,
+      cellIndex: 2,
+      instanceId: null,
+    };
+
+    // #when
+    const wire = dicePlaceOf(place, block);
+
+    // #then
+    expect(wire).toEqual({
+      tabIndex: 1,
+      sectionIndex: 1,
+      rowIndex: 0,
+      cellIndex: 2,
+      instanceId: 'x',
+      path: ['npc', 'a', 'attack', 'x'],
+    });
+  });
+
+  test('serialises a root row without a path', () => {
+    // #given
+    const place = {
+      tabIndex: 0,
+      sectionIndex: 0,
+      rowIndex: 0,
+      cellIndex: 1,
+      instanceId: 'stale',
+      path: ['stale', 'stale'],
+    };
+
+    // #when
+    const wire = dicePlaceOf(place, null);
+
+    // #then
+    expect(wire).toEqual({
+      tabIndex: 0,
+      sectionIndex: 0,
+      rowIndex: 0,
+      cellIndex: 1,
+      instanceId: null,
+    });
   });
 });
 
