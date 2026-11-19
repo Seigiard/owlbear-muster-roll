@@ -1,21 +1,26 @@
 import { z } from 'zod';
 
 import { Result } from 'better-result';
-import type { SendResult } from '@/platform/ports';
+import { SendFailure, type SendResult } from '@/platform/ports';
 
 const rateLimitHitSchema = z.object({ error: z.object({ name: z.literal('RateLimitHit') }) });
 
-export async function toSendResult(send: () => Promise<void>): Promise<SendResult> {
+export async function toSendResult(
+  send: () => Promise<void>,
+  channel?: string,
+): Promise<SendResult> {
   try {
     await send();
 
     return Result.ok(undefined);
   } catch (cause) {
     if (rateLimitHitSchema.safeParse(cause).success) {
-      return Result.err({ kind: 'rate-limited' });
+      return Result.err(new SendFailure({ kind: 'rate-limited', channel }));
     }
 
-    return Result.err({ kind: 'failed', reason: describeRejection(cause) });
+    return Result.err(
+      new SendFailure({ kind: 'failed', reason: describeRejection(cause), channel }),
+    );
   }
 }
 

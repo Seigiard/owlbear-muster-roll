@@ -212,6 +212,7 @@ export const copy = {
   // An Owlbear notification when the engine refused "Отвязать лист".
   unlinkFailed: 'Не удалось отвязать лист. Попробуйте ещё раз.',
   editDenied: 'Нет прав на правку',
+  editTooLarge: 'Правка слишком большая',
   dataReplaced: 'Данные комнаты заменены',
   // In the access panel when a change was refused, could not be sent, or got no answer. It follows
   // the `duplicateFailed` pattern.

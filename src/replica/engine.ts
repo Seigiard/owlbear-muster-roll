@@ -37,7 +37,13 @@ import {
   wireOpenSheetOf,
 } from '@/core/ui-messages';
 import { linkTargetShownTo, type PlayerRole } from '@/core/visibility';
-import type { BroadcastOptions, Platform } from '@/platform/ports';
+import {
+  NotificationFailure,
+  PlayerReadFailure,
+  PartyReadFailure,
+  type BroadcastOptions,
+  type Platform,
+} from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
 import {
   createCatchUp,
@@ -56,7 +62,7 @@ import {
 import { createPartyRoster } from '@/replica/party-roster';
 import { createCommandRouting, type CommandRouting } from '@/replica/command-routing';
 import { createPendingQueue } from '@/replica/pending-queue';
-import { createPendingEdits } from '@/replica/pending-edits';
+import { createPendingEdits, type DenialCause } from '@/replica/pending-edits';
 import { createRecordStore } from '@/replica/record-store';
 import { createRoomCopy, type RoomCopy } from '@/replica/room-copy';
 import { createRollFlow } from '@/replica/roll-flow';
@@ -66,6 +72,14 @@ import { createTokenMenu, type TokenMenuCopy } from '@/replica/token-menu';
 import { createVersionMinter } from '@/core/version-minter';
 import { createWindowSizer } from '@/replica/window-size';
 import { createWindowPublisher, type WindowPublisher } from '@/replica/window-publisher';
+import {
+  MessageRejectedFailure,
+  OpenRequestLostFailure,
+  RecordTooLargeFailure,
+  createFailureSink,
+  recordStoreFailure,
+  type FailureReporter,
+} from '@/replica/failures';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
 
@@ -132,6 +146,7 @@ export type ReplicaEngineOptions = {
   // UX-DR29: the copy catalog's "Нет прав на правку". The background page passes it; with none, a
   // denied edit shows no notification.
   editDenied?: string;
+  editTooLarge?: string;
   // UX-DR31: the copy catalog's "Данные комнаты заменены". The background page passes it; with
   // none, an adopted generation shows no notification.
   dataReplaced?: string;
@@ -168,14 +183,27 @@ export async function startReplicaEngine(
   const newId = options.newId ?? nanoid;
   const newRecordIdOf = options.newRecordId ?? newRecordId;
   const random = options.random ?? Math.random;
+  const failures = createFailureSink({ now: () => Date.now() });
+  failures.subscribe((entry) => {
+    console.error('Muster Roll diagnostic', entry);
+  });
+  const report = failures.report;
+  sendQueue.setReporter(report);
 
-  const [startRole, connectionId, ownPlayerId] = await Promise.all([
+  const [startRoleRead, connectionId, ownPlayerId] = await Promise.all([
     platform.player.getRole(),
     platform.player.getConnectionId(),
     platform.player.getId(),
   ]);
 
-  const loaded = loadReplica(platform, startRole);
+  const startRoleResult = startRoleRead;
+  const startRole = startRoleResult.isOk() ? startRoleResult.value : 'PLAYER';
+
+  if (!startRoleResult.isOk()) {
+    report(startRoleResult.error);
+  }
+
+  const loaded = loadReplica(platform, startRole, report);
   const replica = new Map<string, VersionedRecord>();
   const problemKeys = loaded.problemKeys;
   const minter = createVersionMinter(connectionId);
@@ -187,7 +215,7 @@ export async function startReplicaEngine(
   // one, so the next replica change asks again.
   let sizedFor: string | null = null;
 
-  const windowSizer = createWindowSizer(platform.action, () => {
+  const windowSizer = createWindowSizer({ ...platform.action, report }, () => {
     sizedFor = null;
   });
 
@@ -195,7 +223,7 @@ export async function startReplicaEngine(
   // AD-5: re-read on every party change, and a change enters catch-up.
   let role = startRole;
   let generationFlow: GenerationFlow;
-  const outbox = createCommitOutbox(sendQueue, () => generationFlow.generation());
+  const outbox = createCommitOutbox(sendQueue, () => generationFlow.generation(), { report });
   let stopped = false;
   let catchUp: CatchUp;
 
@@ -211,6 +239,7 @@ export async function startReplicaEngine(
     compose: (view, command) => composers.compose(dryContext(view), command),
     mint: minter.mint,
     now: () => performance.now(),
+    report,
     enqueue: (compose) =>
       sendQueue.enqueueComposed(
         SYNC_CHANNEL,
@@ -233,9 +262,7 @@ export async function startReplicaEngine(
                     : part,
                 REMOTE,
               )
-              .catch((error) =>
-                console.error('Muster Roll could not send a proposal fragment', error),
-              );
+              .catch(reportRejected);
           }
 
           return first ?? null;
@@ -258,6 +285,7 @@ export async function startReplicaEngine(
     options.diceTiming ?? DICE_EXTENSION_TIMING,
     newId,
     () => role === 'GM',
+    report,
   );
 
   diceExtension.start();
@@ -265,7 +293,7 @@ export async function startReplicaEngine(
   const tokenMenu =
     options.menuCopy === undefined
       ? null
-      : createTokenMenu(platform, options.menuCopy, {
+      : createTokenMenu({ ...platform, report }, options.menuCopy, {
           unlink: (tokenId) => {
             const id = newId();
 
@@ -304,7 +332,7 @@ export async function startReplicaEngine(
   // Made after `stopped`, which its callback reads, and before `publisher`, which it also reads.
   // Its first replace follows the asynchronous party read; no await falls between this and the
   // publisher assignment.
-  const roster = createPartyRoster(platform.party, followParty);
+  const roster = createPartyRoster(platform.party, followParty, report);
   // The digest of the replica, until the replica changes.
   let cachedDigest: number | null = null;
   let roomCopy: RoomCopy;
@@ -325,6 +353,7 @@ export async function startReplicaEngine(
   });
 
   let publisher: WindowPublisher;
+  let diagnosticsPublishPending = false;
   let commandRouting: CommandRouting;
 
   for (const record of loaded.records) {
@@ -348,12 +377,13 @@ export async function startReplicaEngine(
     generation: () => generationFlow.generation(),
     records: () => [...replica.values()],
     receive: receiveRecords,
+    report,
     adopt: (copy) => {
       const decisions = generationFlow.adoptFromCopy(copy);
 
       if (decisions.adoptionStaged.length > 0) {
         void runCatchUp(decisions.adoptionStaged).catch((error) => {
-          console.error('Muster Roll could not complete adoption from the room copy', error);
+          reportRejected(error);
         });
       }
     },
@@ -362,6 +392,7 @@ export async function startReplicaEngine(
   });
 
   commandRouting = createCommandRouting({
+    report,
     role: () => role,
     importing: () => generationFlow.importing(),
     live: catchUp.live,
@@ -386,7 +417,7 @@ export async function startReplicaEngine(
     wipe: (id) => generationFlow.wipe(id),
     reply: (message) => {
       send(message).catch((error) => {
-        console.error('Muster Roll could not answer a command', error);
+        reportRejected(error);
       });
     },
   });
@@ -400,14 +431,31 @@ export async function startReplicaEngine(
       replica,
       pendingView: commandRouting.pendingViewRecords(),
       notices: currentNotices(),
+      diagnostics: failures.recent().length === 0 ? undefined : failures.recent(),
       sync: catchUp.view(),
       roomCopy: roomCopy.status(),
       // UX-DR12: only a GM's access panel lists the party, so a player's windows get none.
       party: role === 'GM' ? partyEntries(roster.entries()) : [],
     }),
+    report,
+  });
+  failures.subscribe(() => {
+    if (diagnosticsPublishPending) {
+      return;
+    }
+
+    diagnosticsPublishPending = true;
+    queueMicrotask(() => {
+      diagnosticsPublishPending = false;
+
+      if (!stopped) {
+        publisher.publish();
+      }
+    });
   });
 
   generationFlow = createGenerationFlow({
+    report,
     initialPersistence: loaded.persistence,
     connectionId,
     records: () => replica,
@@ -418,7 +466,7 @@ export async function startReplicaEngine(
     catchUp,
     interpretCatchUp: (decisions) => {
       void runCatchUp(decisions).catch((error) => {
-        console.error('Muster Roll could not start adoption from the room copy', error);
+        reportRejected(error);
       });
     },
     roomCopy,
@@ -426,7 +474,7 @@ export async function startReplicaEngine(
     dropOutbox: outbox.drop,
     sendRemote: (message) => {
       sendQueue.enqueue(SYNC_CHANNEL, message, REMOTE).catch((error) => {
-        console.error('Muster Roll could not send the reset', error);
+        reportRejected(error);
       });
     },
     replaceReplica: replaceReplicaRecords,
@@ -452,12 +500,13 @@ export async function startReplicaEngine(
     reject,
     reply: (message) => {
       send(message).catch((error) => {
-        console.error('Muster Roll could not report a generation result', error);
+        reportRejected(error);
       });
     },
   });
 
   const rollFlow = createRollFlow({
+    report,
     pendingView: commandRouting.pendingView,
     presetOf,
     role: () => role,
@@ -472,10 +521,10 @@ export async function startReplicaEngine(
     sendRemote: (message) => sendQueue.enqueueReported(SYNC_CHANNEL, message, REMOTE),
     replyOutcome: (id, outcome) => {
       send({ t: 'roll-outcome', id, outcome }).catch((error) => {
-        console.error('Muster Roll could not answer a roll request', error);
+        reportRejected(error);
       });
     },
-    notify: (text) => platform.notification.show(text).then(() => undefined),
+    notify: (text) => showNotification(text),
     rollCopy: options.rollCopy,
   });
 
@@ -503,6 +552,25 @@ export async function startReplicaEngine(
 
   function send(message: EngineMessage): Promise<void> {
     return sendQueue.enqueue(UI_CHANNEL, message, LOCAL);
+  }
+
+  function reportRejected(error: Error): void {
+    report(new MessageRejectedFailure({ reason: String(error) }));
+  }
+
+  async function showNotification(
+    message: string,
+    variant?: 'DEFAULT' | 'ERROR' | 'INFO' | 'SUCCESS' | 'WARNING',
+  ): Promise<void> {
+    try {
+      const result = await platform.notification.show(message, variant);
+
+      if (!result.isOk()) {
+        report(result.error);
+      }
+    } catch (error) {
+      report(new NotificationFailure({ reason: String(error) }));
+    }
   }
 
   function acceptCommand(id: string): boolean {
@@ -551,7 +619,7 @@ export async function startReplicaEngine(
 
       catchUpTimers.delete(key);
       void runCatchUp(catchUp.fired(timer)).catch((error) => {
-        console.error('Muster Roll could not run a catch-up timer', error);
+        reportRejected(error);
       });
     }, delayMs);
 
@@ -596,7 +664,7 @@ export async function startReplicaEngine(
                 return runCatchUp(catchUp.roomCopyRead(decision.r, decision.fresh));
               })
               .catch((error) => {
-                console.error('Muster Roll could not continue a room copy read', error);
+                reportRejected(error);
               }),
           );
           break;
@@ -610,10 +678,18 @@ export async function startReplicaEngine(
                   return;
                 }
 
-                return runCatchUp(catchUp.partyRead(decision.r, players));
+                const result = players;
+
+                if (!result.isOk()) {
+                  report(result.error);
+
+                  return;
+                }
+
+                return runCatchUp(catchUp.partyRead(decision.r, result.value));
               })
               .catch((error) => {
-                console.error('Muster Roll could not read the party', error);
+                report(new PartyReadFailure({ reason: String(error) }));
               }),
           );
           break;
@@ -626,7 +702,7 @@ export async function startReplicaEngine(
               REMOTE,
             )
             .catch((error) => {
-              console.error('Muster Roll could not ask for the room state', error);
+              reportRejected(error);
             });
           break;
         case 'answer': {
@@ -635,12 +711,12 @@ export async function startReplicaEngine(
           ]);
 
           for (const key of answer.skipped) {
-            console.error('Muster Roll left out a record too large for one state message', key);
+            report(new RecordTooLargeFailure({ key }));
           }
 
           for (const message of answer.messages) {
             sendQueue.enqueue(SYNC_CHANNEL, message, REMOTE).catch((error) => {
-              console.error('Muster Roll could not send the room state', error);
+              reportRejected(error);
             });
           }
 
@@ -651,14 +727,14 @@ export async function startReplicaEngine(
           sendQueue
             .enqueue(SYNC_CHANNEL, aliveMessage(generationFlow.generation(), ownDigest()), REMOTE)
             .catch((error) => {
-              console.error('Muster Roll could not answer a ping', error);
+              reportRejected(error);
             });
           break;
         case 'ping':
           sendQueue
             .enqueue(SYNC_CHANNEL, pingMessage(generationFlow.generation()), REMOTE)
             .catch((error) => {
-              console.error('Muster Roll could not ping the GM clients', error);
+              reportRejected(error);
             });
           break;
 
@@ -694,9 +770,7 @@ export async function startReplicaEngine(
     }
 
     if (menuCommandIds.has(id) && options.menuCopy !== undefined) {
-      platform.notification.show(options.menuCopy.unlinkFailed, 'ERROR').catch((error) => {
-        console.error('Muster Roll could not show a refused unlink', error);
-      });
+      void showNotification(options.menuCopy.unlinkFailed, 'ERROR');
     }
 
     const message: EngineMessage =
@@ -705,7 +779,7 @@ export async function startReplicaEngine(
         : { t: 'command-rejected', id, reason };
 
     send(message).catch((error) => {
-      console.error('Muster Roll could not reject a command', error);
+      reportRejected(error);
     });
   }
 
@@ -718,7 +792,7 @@ export async function startReplicaEngine(
     }
 
     send({ t: 'command-done', id }).catch((error) => {
-      console.error('Muster Roll could not answer a command', error);
+      reportRejected(error);
     });
   }
 
@@ -744,7 +818,7 @@ export async function startReplicaEngine(
     heldOpenUntil = Date.now() + timing.openRequestTtlMs;
     // No window opens for it, so a window opened by hand later does not jump to it.
     platform.action.open().catch((error) => {
-      console.error('Muster Roll could not open its window', error);
+      report(new OpenRequestLostFailure({ reason: String(error) }));
       dropOpen(id);
     });
     // An open window takes it at once. A closed one asks for a projection when it opens.
@@ -763,7 +837,7 @@ export async function startReplicaEngine(
     const message = wireOpenSheetOf(heldOpen);
 
     send(message).catch((error) => {
-      console.error('Muster Roll could not ask a window to open a sheet', error);
+      reportRejected(error);
     });
   }
 
@@ -849,6 +923,7 @@ export async function startReplicaEngine(
   function followScene(): void {
     if (role === 'GM' && !stopped) {
       sceneWatch ??= watchSceneRemovals(platform.scene, {
+        report,
         removed: unlinkRemoved,
         present: forgetPresent,
       });
@@ -925,7 +1000,7 @@ export async function startReplicaEngine(
       return { record: written.value, saved: true };
     }
 
-    console.error('Muster Roll could not save a record', written.error);
+    report(recordStoreFailure(written.error));
     problemKeys.add(record.k);
 
     return { record, saved: false };
@@ -1024,14 +1099,14 @@ export async function startReplicaEngine(
     followReplica();
   }
 
-  function notifyDenied(): void {
-    if (options.editDenied === undefined) {
+  function notifyDenied(cause: DenialCause = 'denied'): void {
+    const message = cause === 'too-large' ? options.editTooLarge : options.editDenied;
+
+    if (message === undefined) {
       return;
     }
 
-    platform.notification.show(options.editDenied, 'ERROR').catch((error) => {
-      console.error('Muster Roll could not show a denied edit', error);
-    });
+    void showNotification(message, 'ERROR');
   }
 
   function gmInParty(): boolean {
@@ -1071,19 +1146,21 @@ export async function startReplicaEngine(
     const load = currentPersistence.store.loadGeneration(currentPersistence.generation);
 
     if (!load.isOk()) {
-      console.error('Muster Roll could not read the saved records', load.error);
+      report(recordStoreFailure(load.error));
 
       return;
     }
 
     for (const key of load.value.corruptKeys) {
       problemKeys.add(key);
+      report(new MessageRejectedFailure({ reason: `invalid-record: ${key}` }));
     }
 
     for (const record of load.value.records) {
       // A record too large for a message could never reach a window, so it counts as corrupt.
       if (!recordFitsOneMessage(record)) {
         problemKeys.add(record.k);
+        report(new RecordTooLargeFailure({ key: record.k }));
         continue;
       }
 
@@ -1114,9 +1191,7 @@ export async function startReplicaEngine(
       return;
     }
 
-    platform.notification.show(options.dataReplaced).catch((error) => {
-      console.error('Muster Roll could not show that the room data was replaced', error);
-    });
+    void showNotification(options.dataReplaced);
   }
 
   function performCaughtUp(_exit: 'answered' | 'unanswered'): void {
@@ -1133,7 +1208,7 @@ export async function startReplicaEngine(
           : currentPersistence.store.markGeneration(currentPersistence.generation);
 
       if (kept !== undefined && !kept.isOk()) {
-        console.error('Muster Roll could not keep its generation', kept.error);
+        report(recordStoreFailure(kept.error));
       }
 
       for (const record of replica.values()) {
@@ -1147,7 +1222,7 @@ export async function startReplicaEngine(
     const pendingDenial = pendingEdits.caughtUp();
 
     if (pendingDenial.notify) {
-      notifyDenied();
+      notifyDenied(pendingDenial.cause);
     }
 
     // Sent in `live`, so the windows drop the pending view in the same step. With no window yet,
@@ -1177,7 +1252,7 @@ export async function startReplicaEngine(
     for (const record of records) {
       // A record this large could never reach a window, as with one read from storage.
       if (!recordFitsOneMessage(record)) {
-        console.error('Muster Roll dropped a remote record too large for one message', record.k);
+        report(new RecordTooLargeFailure({ key: record.k }));
         continue;
       }
 
@@ -1194,8 +1269,10 @@ export async function startReplicaEngine(
     if (changed.length > 0) {
       followReplica();
 
-      if (role !== 'GM' && pendingEdits.recordsChanged(presetBefore).notify) {
-        notifyDenied();
+      const changedDenial = role === 'GM' ? null : pendingEdits.recordsChanged(presetBefore);
+
+      if (changedDenial?.notify) {
+        notifyDenied(changedDenial.cause);
       }
     }
 
@@ -1222,9 +1299,17 @@ export async function startReplicaEngine(
     let next: PlayerRole;
 
     try {
-      next = await platform.player.getRole();
+      const result = await platform.player.getRole();
+
+      if (!result.isOk()) {
+        report(result.error);
+
+        return;
+      }
+
+      next = result.value;
     } catch (error) {
-      console.error('Muster Roll could not read its role', error);
+      report(new PlayerReadFailure({ field: 'role', reason: String(error) }));
 
       return;
     }
@@ -1276,7 +1361,7 @@ export async function startReplicaEngine(
         generationFlow.roleChanged({ store, generation });
         persistAllOnExit = true;
       } else {
-        console.error('Muster Roll could not read the saved records', probe.error);
+        report(recordStoreFailure(probe.error));
         problemKeys.add(UNREADABLE_STORAGE_MARK);
       }
     }
@@ -1300,6 +1385,7 @@ export async function startReplicaEngine(
   }
 
   const roomProtocol = createRoomProtocol({
+    report,
     senderOf: roster.senderOf,
     role: () => role,
     stopped: () => stopped,
@@ -1380,11 +1466,11 @@ export async function startReplicaEngine(
   const started = enterCatchUp('start');
 
   void runCatchUp(catchUp.watch()).catch((error) => {
-    console.error('Muster Roll could not start the GM link watch', error);
+    reportRejected(error);
   });
   // An alone GM is live when the engine resolves. A metadata or party read that never ends holds
   // the engine back no longer than the catch-up timeout, which by then ended catch-up.
-  await settledWithin(started, timing.catchUpTimeoutMs);
+  await settledWithin(started, timing.catchUpTimeoutMs, report);
 
   return {
     stop: () => {
@@ -1412,7 +1498,7 @@ export async function startReplicaEngine(
       // A closing page cannot wait for catch-up, so the intents it holds apply and go out now.
       if (!catchUp.live() && pending.entries().length > 0) {
         void runCatchUp(catchUp.closing()).catch((error) => {
-          console.error('Muster Roll could not close catch-up', error);
+          reportRejected(error);
         });
       }
 
@@ -1430,7 +1516,11 @@ export async function startReplicaEngine(
 }
 
 // Resolves when `work` settles or after `milliseconds`, whichever comes first, and never rejects.
-async function settledWithin(work: Promise<void>, milliseconds: number): Promise<void> {
+async function settledWithin(
+  work: Promise<void>,
+  milliseconds: number,
+  report: FailureReporter,
+): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const deadline = new Promise<void>((resolve) => {
@@ -1440,7 +1530,7 @@ async function settledWithin(work: Promise<void>, milliseconds: number): Promise
   try {
     await Promise.race([work, deadline]);
   } catch (error) {
-    console.error('Muster Roll could not start its catch-up', error);
+    report(new MessageRejectedFailure({ reason: String(error) }));
   } finally {
     clearTimeout(timer);
   }
@@ -1450,7 +1540,11 @@ function higherGeneration(first: Generation, second: Generation): Generation {
   return compareGenerations(first, second) >= 0 ? first : second;
 }
 
-function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedReplica {
+function loadReplica(
+  platform: ReplicaEnginePlatform,
+  role: PlayerRole,
+  report: FailureReporter,
+): LoadedReplica {
   // AD-11: a player client has no persistence at all.
   if (role !== 'GM') {
     return { records: [], problemKeys: new Set(), persistence: null };
@@ -1461,13 +1555,15 @@ function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedR
   const removed = store.removeIncomplete();
 
   if (!removed.isOk()) {
-    console.error('Muster Roll could not remove an incomplete generation', removed.error);
+    report(recordStoreFailure(removed.error));
+
+    return { records: [], problemKeys: new Set([UNREADABLE_STORAGE_MARK]), persistence: null };
   }
 
   const highest = store.readHighestGeneration();
 
   if (!highest.isOk()) {
-    console.error('Muster Roll could not read the saved records', highest.error);
+    report(recordStoreFailure(highest.error));
 
     // Without the saved records a write would pick the wrong generation or reuse an order.
     return { records: [], problemKeys: new Set([UNREADABLE_STORAGE_MARK]), persistence: null };
@@ -1478,13 +1574,13 @@ function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedR
   const below = store.removeGenerationsBelow(generation);
 
   if (!below.isOk()) {
-    console.error('Muster Roll could not remove a replaced generation', below.error);
+    report(recordStoreFailure(below.error));
   }
 
   const load = store.loadGeneration(generation);
 
   if (!load.isOk()) {
-    console.error('Muster Roll could not read the saved records', load.error);
+    report(recordStoreFailure(load.error));
 
     return { records: [], problemKeys: new Set([UNREADABLE_STORAGE_MARK]), persistence: null };
   }
@@ -1492,12 +1588,17 @@ function loadReplica(platform: ReplicaEnginePlatform, role: PlayerRole): LoadedR
   const records: VersionedRecord[] = [];
   const problemKeys = new Set(load.value.corruptKeys);
 
+  for (const key of load.value.corruptKeys) {
+    report(new MessageRejectedFailure({ reason: `invalid-record: ${key}` }));
+  }
+
   for (const record of load.value.records) {
     // A record too large for a message could never reach a window, so it counts as corrupt.
     if (recordFitsOneMessage(record)) {
       records.push(record);
     } else {
       problemKeys.add(record.k);
+      report(new RecordTooLargeFailure({ key: record.k }));
     }
   }
 

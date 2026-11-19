@@ -1,5 +1,6 @@
 import { Result } from 'better-result';
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { StorageFailure } from '@/platform/ports';
 import { createBrowserStorage } from './browser-storage';
 
 const QUOTA_ERROR = new DOMException('quota exceeded', 'QuotaExceededError');
@@ -68,7 +69,9 @@ describe('browser storage', () => {
     const written = storage.setItem('key', 'value');
     // #then
     expect(written).toEqual(
-      Result.err({ operation: 'write', reason: 'QuotaExceededError: quota exceeded' }),
+      Result.err(
+        new StorageFailure({ operation: 'write', reason: 'QuotaExceededError: quota exceeded' }),
+      ),
     );
   });
   test('returns a failure when a read throws', () => {
@@ -78,7 +81,9 @@ describe('browser storage', () => {
     const read = storage.getItem('key');
     // #then
     expect(read).toEqual(
-      Result.err({ operation: 'read', reason: 'QuotaExceededError: quota exceeded' }),
+      Result.err(
+        new StorageFailure({ operation: 'read', reason: 'QuotaExceededError: quota exceeded' }),
+      ),
     );
   });
   test('returns a failure when a remove throws', () => {
@@ -88,7 +93,9 @@ describe('browser storage', () => {
     const removed = storage.removeItem('key');
     // #then
     expect(removed).toEqual(
-      Result.err({ operation: 'remove', reason: 'QuotaExceededError: quota exceeded' }),
+      Result.err(
+        new StorageFailure({ operation: 'remove', reason: 'QuotaExceededError: quota exceeded' }),
+      ),
     );
   });
   test('returns a failure when listing throws', () => {
@@ -98,7 +105,9 @@ describe('browser storage', () => {
     const keys = storage.keys();
     // #then
     expect(keys).toEqual(
-      Result.err({ operation: 'list', reason: 'QuotaExceededError: quota exceeded' }),
+      Result.err(
+        new StorageFailure({ operation: 'list', reason: 'QuotaExceededError: quota exceeded' }),
+      ),
     );
   });
   test('returns a failure when reaching localStorage itself throws', () => {
@@ -112,6 +121,8 @@ describe('browser storage', () => {
     // #when
     const read = storage.getItem('key');
     // #then
-    expect(read).toEqual(Result.err({ operation: 'read', reason: 'SecurityError: access denied' }));
+    expect(read).toEqual(
+      Result.err(new StorageFailure({ operation: 'read', reason: 'SecurityError: access denied' })),
+    );
   });
 });

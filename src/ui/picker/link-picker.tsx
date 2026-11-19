@@ -16,7 +16,12 @@ import {
   type PickerTarget,
 } from '@/core/token-links';
 import type { Command } from '@/core/ui-messages';
-import type { Bounds, NotificationPort, ScenePort, ViewportPort } from '@/platform/ports';
+import {
+  type Bounds,
+  type NotificationPort,
+  type ScenePort,
+  type ViewportPort,
+} from '@/platform/ports';
 import { copy } from '@/copy';
 import type { ProjectionStore } from '@/ui/projection-store';
 import type { CommandOutcomePromise } from '@/ui/replica-client';
@@ -202,7 +207,13 @@ export function LinkPicker({
     let shown: Promise<string>;
 
     try {
-      shown = notification.show(copy.linkLabelFailed, 'ERROR');
+      shown = notification.show(copy.linkLabelFailed, 'ERROR').then((result) => {
+        if (!result.isOk()) {
+          throw result.error;
+        }
+
+        return result.value;
+      });
     } catch (error) {
       console.error('Muster Roll could not show a notification', error);
       dispatch({ type: 'notified', id: notifying.id });

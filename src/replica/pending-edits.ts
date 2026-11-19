@@ -16,6 +16,7 @@ import { Result } from 'better-result';
 import { type EditId, type RejectMessage } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import { type Command, type RejectionReason } from '@/core/ui-messages';
+import type { FailureReporter } from '@/replica/failures';
 import {
   combinePatches,
   createProposalQueue,
@@ -40,7 +41,9 @@ export type PlayerEditCommand =
 
 type FieldPatchCommandTarget = Extract<Command, { type: 'field-patch' }>['target'];
 
-export type Denial = { notify: boolean };
+export type DenialCause = 'gone' | 'too-large' | 'denied';
+
+export type Denial = { notify: false } | { notify: true; cause?: DenialCause };
 
 type PendingEditsOptions = {
   timing: Pick<Timing, 'proposeResendStartMs' | 'proposeResendMaxMs' | 'editDeniedQuietMs'>;
@@ -57,6 +60,7 @@ type PendingEditsOptions = {
   now: () => number;
   enqueue: ProposalQueueOptions['enqueue'];
   schedule?: ProposalQueueOptions['schedule'];
+  report?: FailureReporter;
 };
 
 export type PendingEdits = {
@@ -82,6 +86,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     timing: options.timing,
     enqueue: options.enqueue,
     schedule: options.schedule,
+    report: options.report,
   });
 
   const staleRejects = new Map<string, { n: number; parts: Map<number, VersionedRecord> }>();
@@ -217,7 +222,10 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     if (message.reason === 'denied' || message.current === undefined) {
       proposals.drop(entry.k);
 
-      return { ...denial(true), merge: null };
+      return {
+        ...denial(message.reason === 'denied' ? 'denied' : 'gone'),
+        merge: null,
+      };
     }
 
     const known = records().get(entry.k);
@@ -235,10 +243,12 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
         entry.record !== null && counterAbove(entry.record, message.current),
       );
 
-      if (deniesEdit(failure)) {
+      const cause = deniesEdit(failure);
+
+      if (cause !== null) {
         // The GM holds a `c` at least as high as this entry's, so no older version of it can win, and
         // a patch the GM's record already holds needs nothing more.
-        return { ...denial(true), merge: message.current };
+        return { ...denial(cause), merge: message.current };
       }
     }
 
@@ -249,7 +259,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   // then are proposed. One that the player may no longer make, or that edits a removed row, is
   // dropped with the notification.
   function caughtUp(): Denial {
-    let denied = false;
+    let cause: DenialCause | null = null;
 
     for (const entry of proposals.entries()) {
       if (entry.record !== null) {
@@ -263,11 +273,12 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
         proposals.put({ ...entry, record: made.value });
       } else {
         proposals.drop(entry.k);
-        denied ||= !made.isOk() ? deniesEdit(made.error) : true;
+        const nextCause = !made.isOk() ? recheckFailureCause(entry.k, made.error) : 'denied';
+        cause ??= nextCause;
       }
     }
 
-    return denial(denied);
+    return denial(cause);
   }
 
   // UX-DR29: once the records change, an entry the player may no longer make waits for no GM: its
@@ -282,7 +293,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     const currentRecords = records();
     const context = contextOf(currentRecords);
     const before = presetBefore === currentRecords.get('preset') ? null : presetOf(presetBefore);
-    let denied = false;
+    let cause: DenialCause | null = null;
 
     for (const found of proposals.entries()) {
       const moves =
@@ -293,7 +304,8 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
       const parts = moves === null ? null : movedPatches(found.k, found.patch, moves);
 
       if (parts === null || (parts.length === 1 && parts[0]?.k === found.k)) {
-        denied = recheckProposal(found, context, false) || denied;
+        const nextCause = recheckProposal(found, context, false);
+        cause ??= nextCause;
         continue;
       }
 
@@ -313,11 +325,12 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
           sent: existing?.sent ?? false,
         };
 
-        denied = recheckProposal(entry, context, true) || denied;
+        const nextCause = recheckProposal(entry, context, true);
+        cause ??= nextCause;
       }
     }
 
-    return denial(denied);
+    return denial(cause);
   }
 
   function gmBack(): void {
@@ -483,14 +496,14 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     found: ProposalEntry,
     context: ProposalContext,
     moved: boolean,
-  ): boolean {
+  ): DenialCause | null {
     const template = templateOfKey(records(), context.preset, found.k);
     const patch = template === null ? found.patch : strippedPatch(found.k, found.patch, template);
 
     if (patch === null) {
       proposals.drop(found.k);
 
-      return false;
+      return null;
     }
 
     const entry = patch === found.patch ? found : { ...found, patch };
@@ -507,17 +520,21 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     if (!made.isOk() || !proposalAllowed(context, options.playerId, made.value)) {
       proposals.drop(entry.k);
 
-      return made.isOk() || deniesEdit(made.error);
+      if (!made.isOk()) {
+        return recheckFailureCause(found.k, made.error);
+      }
+
+      return 'denied';
     }
 
     if (entry === found && !moved) {
-      return false;
+      return null;
     }
 
     if (entry.record === null) {
       proposals.put(entry);
 
-      return false;
+      return null;
     }
 
     return deniesEdit(proposeEntry(entry, records().get(entry.k), entry.sent));
@@ -526,8 +543,8 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
   // UX-DR29: one notification for `denied` answers that arrive close together, such as one revoke
   // refusing several keys. Only a shown one starts the quiet window, so a steady trickle of denials
   // still shows one notification per window.
-  function denial(required: boolean): Denial {
-    if (!required) {
+  function denial(cause: DenialCause | null): Denial {
+    if (cause === null) {
       return { notify: false };
     }
 
@@ -539,7 +556,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
 
     lastDeniedAt = current;
 
-    return { notify: true };
+    return { notify: true, cause };
   }
 
   return {
@@ -564,8 +581,20 @@ function proposalContext(
 }
 
 // A failure the player hears of as "Нет прав на правку": its edit cannot go to a GM client at all.
-function deniesEdit(failure: ProposalFailure | null): boolean {
-  return failure === 'gone' || failure === 'too-large';
+function deniesEdit(failure: ProposalFailure | null): DenialCause | null {
+  if (failure === 'gone' || failure === 'too-large') {
+    return failure;
+  }
+
+  return null;
+}
+
+function recheckFailureCause(key: string, failure: ProposalFailure): DenialCause | null {
+  if (failure !== 'gone') {
+    return deniesEdit(failure);
+  }
+
+  return parseBlockKey(key)?.path.length === 0 ? 'denied' : 'gone';
 }
 
 // The patch an edit makes, read from the record it composed: a field's value as the composer

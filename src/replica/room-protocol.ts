@@ -31,6 +31,12 @@ import type { CatchUp, CatchUpDecision } from '@/replica/catch-up';
 import type { PendingEdits } from '@/replica/pending-edits';
 import type { RoomSender } from '@/replica/party-roster';
 import type { RollFlow } from '@/replica/roll-flow';
+import {
+  MessageRejectedFailure,
+  RecordTooLargeFailure,
+  SendDroppedFailure,
+  type FailureReporter,
+} from '@/replica/failures';
 
 export type RoomProtocolEvent = {
   data: JsonValue;
@@ -49,6 +55,7 @@ type RoomProtocolCatchUp = Pick<
 >;
 
 export type RoomProtocolPorts = {
+  report: FailureReporter;
   senderOf: (connectionId: string) => Promise<RoomSender | null>;
   role: () => PlayerRole;
   stopped: () => boolean;
@@ -130,27 +137,28 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   const proposals = new Map<string, ProposalAssembly>();
 
   function receive(event: RoomProtocolEvent): void {
-    // One message at a time in arrival order, so a sender lookup never lets a later message
-    // overtake. The catch keeps one failed handler from stopping the ingress queue.
-    roomMessages = roomMessages
-      .then(() => handleRoomMessage(event))
-      .catch((error) => {
-        console.error('Muster Roll could not handle a room message', error);
-      });
-  }
-
-  async function handleRoomMessage(event: RoomProtocolEvent): Promise<void> {
     const parsed = parseRoomMessage(event.data);
 
     if (!parsed.isOk()) {
       if (parsed.error === 'newer-version') {
         ports.onNewerVersion();
+      } else if (parsed.error === 'invalid-message') {
+        ports.report(new MessageRejectedFailure({ reason: parsed.error }));
       }
 
       return;
     }
 
-    const message = parsed.value;
+    // One message at a time in arrival order, so a sender lookup never lets a later message
+    // overtake. The catch keeps one failed handler from stopping the ingress queue.
+    roomMessages = roomMessages
+      .then(() => handleRoomMessage(event, parsed.value))
+      .catch((error) => {
+        ports.report(new MessageRejectedFailure({ reason: String(error) }));
+      });
+  }
+
+  async function handleRoomMessage(event: RoomProtocolEvent, message: RoomMessage): Promise<void> {
     const sender = await ports.senderOf(event.connectionId);
 
     if (ports.stopped()) {
@@ -445,13 +453,13 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
 
   function sendRoom(message: RejectMessage): void {
     if (!fitsOneMessage(message)) {
-      console.error('Muster Roll built a rejection too large for one message', message.k);
+      ports.report(new RecordTooLargeFailure({ key: message.k }));
 
       return;
     }
 
     ports.sendRemote(message).catch((error) => {
-      console.error('Muster Roll could not answer a proposal', error);
+      ports.report(new SendDroppedFailure({ channel: 'sync', reason: String(error) }));
     });
   }
 
@@ -482,7 +490,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
     const records = decodeStateRecords(message.records);
 
     if (!records.isOk()) {
-      console.error('Muster Roll dropped a state message it could not read');
+      ports.report(new MessageRejectedFailure({ reason: records.error }));
 
       return;
     }
@@ -515,7 +523,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
 
   function continueCatchUp(decisions: readonly CatchUpDecision[], message: string): void {
     void ports.runCatchUp(decisions).catch((error) => {
-      console.error(message, error);
+      ports.report(new MessageRejectedFailure({ reason: `${message}: ${String(error)}` }));
     });
   }
 

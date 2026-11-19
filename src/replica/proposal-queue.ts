@@ -24,6 +24,7 @@ import {
 import { Result } from 'better-result';
 import { sameEditId, type EditId } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
+import { ProposeDroppedFailure, type FailureReporter } from '@/replica/failures';
 
 // What a player's edit of one key does, kept so it can be applied again to a newer record. `fields`
 // sets or clears (`null`) field values of a row or a repeat block. `add` is a new repeat block with
@@ -57,6 +58,7 @@ export type ProposalQueueOptions = {
   enqueue: (compose: () => VersionedRecord | null) => Promise<void>;
   // Runs `run` after `delay` and returns what cancels it. Tests inject it to read the backoff.
   schedule?: (run: () => void, delay: number) => () => void;
+  report?: FailureReporter;
 };
 
 export type ProposalQueue = {
@@ -79,6 +81,7 @@ type Resend = { cancel: () => void; delay: number };
 
 export function createProposalQueue(options: ProposalQueueOptions): ProposalQueue {
   const { timing, enqueue, schedule = scheduleWithTimer } = options;
+  const report = options.report ?? (() => undefined);
   const entries = new Map<string, ProposalEntry>();
   const resends = new Map<string, Resend>();
   // Keys with a `propose` in the send queue that has not been composed yet, by the token of that
@@ -125,7 +128,7 @@ export function createProposalQueue(options: ProposalQueueOptions): ProposalQueu
       return entry.record;
     }).then(release, (error: Error) => {
       release();
-      console.error('Muster Roll could not propose an edit', error);
+      report(new ProposeDroppedFailure({ key, reason: String(error) }));
     });
   }
 
