@@ -1,7 +1,11 @@
 import type { Diagnostic } from '@/core/ui-messages';
 import { copy } from '@/copy';
 
-const twoDigits = (value: number): string => String(value).padStart(2, '0');
+const timeFormat = new Intl.DateTimeFormat('ru-RU', {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
 
 export function diagnosticsText(
   diagnostics: readonly Diagnostic[],
@@ -19,7 +23,5 @@ export function diagnosticsText(
 }
 
 export function formatDiagnosticTime(at: number): string {
-  const date = new Date(at);
-
-  return `${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}:${twoDigits(date.getSeconds())}`;
+  return timeFormat.format(at);
 }
