@@ -574,7 +574,8 @@ function proposalContext(
   return { records, preset: presetOf(records.get('preset')) };
 }
 
-// A failure the player hears of as "Нет прав на правку": its edit cannot go to a GM client at all.
+// A failure that ends the edit with a notice: its edit cannot go to a GM client at all. The cause
+// picks the text, "Правка слишком большая" for too-large and "Нет прав на правку" otherwise.
 function deniesEdit(failure: ProposalFailure | null): DenialCause | null {
   if (failure === 'gone' || failure === 'too-large') {
     return failure;

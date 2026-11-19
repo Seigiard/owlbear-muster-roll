@@ -29,7 +29,7 @@ import type { PlayerRole } from '@/core/visibility';
 import type { ComposeContext } from '@/core/compose';
 import { blockLinkTombstones } from '@/core/compose';
 import type { CatchUp, CatchUpDecision } from '@/replica/catch-up';
-import type { PendingEdits } from '@/replica/pending-edits';
+import type { DenialCause, PendingEdits } from '@/replica/pending-edits';
 import type { RoomSender } from '@/replica/party-roster';
 import type { RollFlow } from '@/replica/roll-flow';
 import {
@@ -82,7 +82,7 @@ export type RoomProtocolPorts = {
     acks?: readonly ReturnType<typeof editIdOf>[],
   ) => void;
   sendRemote: (message: RejectMessage) => Promise<void>;
-  notifyDenied: () => void;
+  notifyDenied: (cause?: DenialCause) => void;
   rollFlow: Pick<RollFlow, 'receiveRoll'>;
 };
 
@@ -428,7 +428,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
     }
 
     if (result.notify) {
-      ports.notifyDenied();
+      ports.notifyDenied(result.cause);
     }
 
     // The GM's record merges too: it is newer than this client's.

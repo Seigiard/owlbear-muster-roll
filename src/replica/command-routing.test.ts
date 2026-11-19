@@ -456,6 +456,33 @@ test('a denied player edit shows its notice once', () => {
   expect(effects).toEqual(['denied', 'publish', 'done']);
 });
 
+test('a player edit denied for size passes its cause to the notice', () => {
+  // #given
+  const causes: (string | undefined)[] = [];
+
+  const routing = createCommandRouting(
+    routingPorts({
+      role: () => 'PLAYER',
+      pendingEdits: {
+        edit: () => Result.ok({ notify: true, cause: 'too-large' }),
+        overlay: () => undefined,
+      },
+      notifyDenied: (cause?: string) => causes.push(cause),
+    }),
+  );
+
+  // #when
+  routing.runCommand('edit', {
+    type: 'field-patch',
+    sheetId: 'a',
+    target: { kind: 'row', rowId: 'name' },
+    fieldId: 'name',
+    value: 'Ada',
+  });
+  // #then
+  expect(causes).toEqual(['too-large']);
+});
+
 test('a fully refused queued patch batch is never applied', () => {
   // #given
   const pending = createPendingQueue();
