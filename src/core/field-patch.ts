@@ -88,7 +88,7 @@ export function patchRecordKey(sheetId: string, target: FieldPatchTarget): strin
 }
 
 // The field with this id in the target: the plain row whose first field is `rowId`, or any row of
-// the repeat section `sectionId` names. A field of another row or section does not count.
+// the repeat section the target block lives in. A field of another row or section does not count.
 export function findPatchField(
   layout: TemplateLayout,
   target: FieldPatchTarget,
@@ -98,7 +98,7 @@ export function findPatchField(
 }
 
 // The fields of the target: a plain row whose first field is `rowId`, or every row of the repeat
-// section `sectionId` names, as one repeat block holds them. `null` when the template has no such
+// section the target block lives in, as one repeat block holds them. `null` when the template has no such
 // row or section.
 export function targetFields(
   layout: TemplateLayout,
