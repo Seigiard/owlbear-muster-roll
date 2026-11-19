@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T09:02:00Z'
+updated_date: '2026-11-19T09:44:00Z'
 labels:
   - architecture
   - replica
@@ -41,3 +41,9 @@ The 17-branch `runCatchUp`, `catchUpTimers` keyed by string, `armCatchUpTimer` a
 4. Interpreter tests on a fake schedule with no real time; timers tests; engine suite junit list against the baseline.
 5. tdd chain (run ~/.claude/artifacts/task-115-20261119/TASK-115.2); full check.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented on task-115-2-catch-up-effects (f3cbd18): src/replica/timers.ts schedule(signal, ms, fn) with cancel and abort; src/replica/catch-up-effects.ts createCatchUpEffects(ports).run interprets every CatchUpDecision and owns the CatchUpTimer key map; engine.ts wires it with one AbortController aborted in stop() and lost runCatchUp, catchUpTimers, armCatchUpTimer, disarmCatchUpTimer (1505 -> 1377 lines). Tests: timers.test.ts on bun fake timers, catch-up-effects.test.ts on a fake schedule (15 new). Checks: oxfmt, lint, typecheck, build; bun test 0 baseline lines missing; browser 583/583 (one link.e2e.ts flake in the first run, recorded in deferred-work.md). Calibrated both false-green rows.
+<!-- SECTION:NOTES:END -->

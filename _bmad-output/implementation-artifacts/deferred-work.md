@@ -580,3 +580,10 @@ Deviations from DESIGN.md that TASK-115.11 reconciles:
 - The catch-up table has four rows: `initializing`, `catching-up`, `adopting` (catch-up in adopting mode as its own kind) and `live`. `LivenessEvent` is `Extract<Event, { kind: 'heard' | 'fired' | 'watch' }>`. The shell feeds `saveAdoption` back as a synchronous `adoption-saved` event, so cells stay pure.
 - `engine.ts` changed by one rename, `gmInRoom` → `gmInParty` (two lines). The ticket's "engine.ts does not change" meant the catch-up wiring.
 - `checkMachine` finds each cell's target phases by running it on generated data with a fixed seed, so the diagram is stable. A branch that the samples never reach draws no arrow; a cell's table test covers it.
+
+## Deferred from: TASK-115.2 (2026-11-19)
+
+- `engine.ts` shrank by 128 lines, not the ~180 the design estimated: the four send ports (`state-request`, `state` answer, `alive`, `ping`) stay engine closures because they hold the send queue, the generation and the replica. The interpreter, the timer map and the timer key left the engine.
+- The engine owns one `AbortController` for the catch-up interpreter only; `stop()` aborts it. TASK-115.4 widens it to every module.
+- `src/replica/catch-up-effects.test.ts` 'a failed read logs its failure…' and 'a failed timer continuation logs its failure' observe `console.error`; TASK-115.6 moves those logs to `report`, and its merge ports the two tests.
+- `tests/link.e2e.ts:268` ("a scene change keeps the links of the scene left behind") failed once in a full browser run on the TASK-115.2 tip and passed 16 of 16 when repeated and 583 of 583 in a second full run.
