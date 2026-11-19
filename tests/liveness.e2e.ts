@@ -109,6 +109,8 @@ test('a player sees the no-GM banner once the GM pages close, and loses it when 
   // #when
   await gm.background.close({ runBeforeUnload: true });
   await gm.window.close();
+  await player.background.close();
+  player.background = await openClientBackground(context, PLAYER, true);
   // #then
   await player.background.clock.runFor(2 * GM_LINK_TIMEOUT_MS);
   await expect(banner).toHaveText(NO_GM);
