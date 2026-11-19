@@ -1,10 +1,11 @@
 ---
 id: TASK-121.1
 title: Move composers.ts to src/core/compose.ts
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-19T07:45:00Z'
-updated_date: '2026-11-19T08:01:00Z'
+updated_date: '2026-11-19T08:08:00Z'
 labels: []
 dependencies: []
 parent_task_id: TASK-121
@@ -29,3 +30,9 @@ First PR of the composer epic (see the parent). `src/replica/composers.ts` and `
 <!-- SECTION:PLAN:BEGIN -->
 Spec: _bmad-output/implementation-artifacts/spec-task-121-1-compose-to-core.md (ready-for-dev)
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Run started 2026-11-19 by Claude Code via implement-spec + tdd (OpenCode children). Junit baseline at 247bc0f: 3502 tests (3501 pass, 1 skip) across 132 files. core-*.js before: 190342 B raw, 57053 B gzip -9.
+<!-- SECTION:NOTES:END -->
