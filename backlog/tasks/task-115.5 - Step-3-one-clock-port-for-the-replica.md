@@ -1,9 +1,11 @@
 ---
 id: TASK-115.5
 title: 'Step 3: one clock port for the replica'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-18T19:41:00Z'
+updated_date: '2026-11-19T12:04:00Z'
 labels:
   - architecture
   - replica
@@ -29,3 +31,12 @@ The replica reads time from two sources, `Date.now` (`catch-up.ts:316`, `engine.
 - [ ] #2 `grep -c "Date.now\|performance.now" src/replica` is 0
 - [ ] #3 The engine suite and `tests/support/room-rig.ts` are unchanged and green
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. ports.ts: Clock = { now: () => number; schedule: Schedule }; Schedule moves to ports.ts; the schedule implementation moves to src/platform/schedule.ts and both adapters expose platform.clock.
+2. now() is wall-clock milliseconds (the dice protocol and diagnostics need wall time); every Date.now and performance.now in src/replica reads the clock instead.
+3. Port contract scenario for the clock; engine suite and room-rig unchanged.
+4. tdd chain (run ~/.claude/artifacts/task-115-20261119/TASK-115.5); full check.
+<!-- SECTION:PLAN:END -->
