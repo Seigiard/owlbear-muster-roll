@@ -24,7 +24,6 @@ export type CommitOutbox = {
   add: (records: readonly VersionedRecord[], acks?: readonly EditId[]) => void;
   // Hands every held record to the queue at once, for a page that is about to close.
   flush: () => void;
-  // Sends nothing more, not even a commit already waiting in the queue.
   // AD-9: forgets every held record and ack, so a commit waiting in the queue sends nothing. The
   // queue composes it with the generation of the moment it sends, which a replaced room changed.
   drop: () => void;
