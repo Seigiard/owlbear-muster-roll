@@ -529,6 +529,93 @@ describe('pending edits', () => {
       sent: [pcRecord({ str: 11 }, 3), pcRecord({ str: 11 }, 6)],
     });
   });
+  test('a 33-part stale reply completes without a player part cap', () => {
+    // #given
+
+    const harness = createHarness();
+    const current = fixturePatch(STR, { str: 20 }, 5, 'gm');
+
+    harness.pending.edit(field('str', 11), harness.records);
+    // #when
+
+    const results = Array.from({ length: 33 }, (_, index) =>
+      harness.pending.rejected({
+        ...reject({ k: STR.k, c: 3, a: CONNECTION }, 'stale', current),
+        i: index + 1,
+        n: 33,
+      }),
+    );
+    // #then
+
+    expect({ results, sent: harness.sent }).toEqual({
+      results: [...Array.from({ length: 32 }, () => null), { notify: false, merge: current }],
+      sent: [pcRecord({ str: 11 }, 3), pcRecord({ str: 11 }, 6)],
+    });
+  });
+  test('stale reply limits drop oversized and expired replies before a later two-part reply completes', () => {
+    // #given
+
+    const harness = createHarness();
+    const current = fixturePatch(STR, { str: 20 }, 5, 'gm');
+    const oversized = fixturePatch(STR, { note: 'x'.repeat(480_000) }, 5, 'gm');
+
+    harness.pending.edit(field('str', 11), harness.records);
+    // #when
+
+    const oversizedFirst = harness.pending.rejected({
+      ...reject({ k: STR.k, c: 3, a: CONNECTION }, 'stale', oversized),
+      i: 1,
+      n: 2,
+    });
+
+    const oversizedSecond = harness.pending.rejected({
+      ...reject({ k: STR.k, c: 3, a: CONNECTION }, 'stale', oversized),
+      i: 2,
+      n: 2,
+    });
+
+    const expiredFirst = harness.pending.rejected({
+      ...reject({ k: STR.k, c: 3, a: CONNECTION }, 'stale', current),
+      i: 1,
+      n: 2,
+    });
+
+    harness.setNow(60_000);
+
+    const expiredSecond = harness.pending.rejected({
+      ...reject({ k: STR.k, c: 3, a: CONNECTION }, 'stale', current),
+      i: 2,
+      n: 2,
+    });
+
+    const recoveredFirst = harness.pending.rejected({
+      ...reject({ k: STR.k, c: 3, a: CONNECTION }, 'stale', current),
+      i: 1,
+      n: 2,
+    });
+
+    const recoveredSecond = harness.pending.rejected({
+      ...reject({ k: STR.k, c: 3, a: CONNECTION }, 'stale', current),
+      i: 2,
+      n: 2,
+    });
+    // #then
+
+    expect({
+      results: [
+        oversizedFirst,
+        oversizedSecond,
+        expiredFirst,
+        expiredSecond,
+        recoveredFirst,
+        recoveredSecond,
+      ],
+      sent: harness.sent,
+    }).toEqual({
+      results: [null, null, null, null, null, { notify: false, merge: current }],
+      sent: [pcRecord({ str: 11 }, 3), pcRecord({ str: 11 }, 6)],
+    });
+  });
   test('caught-up drops a waiting edit whose access was revoked and notifies', () => {
     // #given
     const harness = createHarness({ catchingUp: true });
