@@ -55,6 +55,8 @@ Each is an operator in `RoomCopy.tla`.
 
 All three replay on the real `createRoomCopy` with two clients on a shared hand-held metadata fake: the edit is absent from the room copy and no timer or request is pending.
 
+The owner's verdicts, 2026-11-19. A room has one GM; two GM pages are one GM with two tabs, and that GM owns the result. Findings 1 and 2 need a second GM page, so they are accepted risks: keep their configs as expected failures and do not report them again. Finding 3 happens with one GM, whose last edits in the 3-5 s pause before closing the tab miss the room copy that players read without a GM; it is TASK-118.
+
 ## Code map
 
 One TLA+ action is one synchronous run of JavaScript between two awaits. Port answers are separate actions, so any other client's step can fall between a request and its answer.

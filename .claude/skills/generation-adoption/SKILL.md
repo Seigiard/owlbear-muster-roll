@@ -99,6 +99,8 @@ Each `finding-*.cfg` reproduces one. They were replayed against the real `create
 2. **The only holder of a new generation is demoted while the room has no copy of it** (`finding-holder-demoted.cfg`, `EventuallySettled`). The import's copy does not fit, so `removeLowerCopy` leaves the room with no copy. The importer sends `reset`, a GM peer adopts, then the importer becomes a player. A player never answers (`canAnswer`), so the peer stays adopting until the importer is a GM again.
 3. **An importer demoted mid-import sends `reset` as a player** (`finding-importer-demoted.cfg`, `EventuallyAgreed`). `replaceGeneration` checks `importSuperseded`, not the role, after the await, so it sends `reset` and replies `wiped` or `snapshot-imported`. Every receiver drops a `reset` from a player (`ADMISSION.reset` in `core/room-messages.ts`). When the copy does not fit, the demoted client stays on the new generation and the room on the old one, for good.
 
+The owner's verdicts, 2026-11-19. Finding 1 is TASK-117. Findings 2 and 3 are accepted: a room has one GM, generations change only while the preset format settles, and a GM is not demoted mid-import. Keep their configs as expected failures and do not report them again.
+
 When a fix lands, its finding config must pass: move it to the pass list in `check.sh` (rename it without the `finding-` prefix) and update this section.
 
 ## Real bug or modeling error?

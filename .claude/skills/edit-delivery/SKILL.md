@@ -63,6 +63,8 @@ Each is an operator in `EditDelivery.tla`. Status is at the sync commit.
 
 Replayed against the real `createPendingEdits`, `checkProposal` and `mergeRecords` with the `pending-edits.test.ts` harness: the GM's cell ends as `[11, 5, "player-connection"]` after its own `[15, 4, …]`. With no message lost (`MaxLosses = 0`) the rule holds, because one FIFO send queue on the GM delivers the commit's ack before any later reject. The cause is that neither side can tell "my committed version was overwritten" from "my version lost a race": `stale` only compares counters.
 
+The owner's verdict, 2026-11-19: a real bug of low priority, TASK-119.
+
 ## Code map
 
 | Model action | Code |
