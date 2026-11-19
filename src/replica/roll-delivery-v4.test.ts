@@ -119,8 +119,6 @@ function createHarness(role: PlayerRole) {
     rollCopy: copy,
   };
 
-  Object.assign(ports, { stopped: () => ports.signal.aborted });
-
   return {
     flow: createRollFlow(ports),
     messages: () => sent,

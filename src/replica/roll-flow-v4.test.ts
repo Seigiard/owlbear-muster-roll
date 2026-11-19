@@ -95,8 +95,6 @@ function harness(sectionVisibility?: Visibility, rowVisibility?: Visibility) {
     notify: () => undefined,
   };
 
-  Object.assign(ports, { stopped: () => ports.signal.aborted });
-
   return {
     flow: createRollFlow(ports),
     result: () => ({

@@ -175,15 +175,12 @@ function createSubject(
   let newer = 0;
   let changed = 0;
 
-  function scheduleForTest(
-    ...args: [AbortSignal, number, () => void] | [number, () => void]
-  ): () => void {
-    const [signal, delay, run] = args.length === 3 ? args : [undefined, args[0], args[1]];
+  function scheduleForTest(signal: AbortSignal, delay: number, run: () => void): () => void {
     const entry = { run, cancelled: false };
 
     scheduled.push(entry);
 
-    signal?.addEventListener(
+    signal.addEventListener(
       'abort',
       () => {
         entry.cancelled = true;

@@ -154,8 +154,6 @@ function createHarness(overrides: Partial<RollFlowPorts> = {}): FlowHarness {
     ...overrides,
   };
 
-  Object.assign(ports, { stopped: () => ports.signal.aborted });
-
   return { outcomes, sent, ports };
 }
 

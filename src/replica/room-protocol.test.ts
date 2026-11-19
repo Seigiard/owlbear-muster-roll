@@ -316,8 +316,6 @@ function createPorts(
     },
   };
 
-  Object.assign(ports, { stopped: () => ports.signal.aborted });
-
   return ports;
 }
 

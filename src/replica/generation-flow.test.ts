@@ -181,8 +181,6 @@ function createSubject(overrides: Partial<GenerationFlowPortsWithInterpreter> = 
     ...overrides,
   };
 
-  Object.assign(ports, { stopped: () => ports.signal.aborted });
-
   flow = createGenerationFlow(ports);
 
   return {
