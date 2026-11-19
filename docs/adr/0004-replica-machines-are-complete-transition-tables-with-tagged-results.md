@@ -23,6 +23,7 @@ The decision has four parts, in the order they land:
 - Timers remain schedulers, as CLAUDE.md requires: a timer fires an event into the table; the cell decides.
 - The `better-result` swap lands after TASK-114.3, the last of the three block-address PRs, and the failure sink after it; TASK-114.2 touches the same engine lines and adds one more parse drop that should go through `report` from the start. The catch-up tables, the `AbortSignal` and the clock port do not depend on either and run in parallel with TASK-114.
 - `GLOSSARY.md` gains the two GM terms: the online GM, by messages, and the GM in the party, by the list.
+- The module boundaries stay for this decision, not for ever. The 2026-11-18 architecture review (candidate 2) proposed merging `command-routing`, `room-protocol`, `generation-flow` and `roll-flow` into the engine because each takes 15 to 23 callback ports from it with one adapter. The owner deferred that on 2026-11-19 until this decision's last step has landed, because parts 2 and 3 remove `stopped`, timers and failure reporting from every fan. After step 8 the fans are measured again (TASK-122): a module still wider than about 10 ports with one adapter is a merge candidate, and this ADR is amended with the answer.
 
 ## Considered options
 
