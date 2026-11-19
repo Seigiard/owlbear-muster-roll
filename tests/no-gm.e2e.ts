@@ -144,7 +144,7 @@ test('a player alone reads every visible sheet from the room copy, read-only, wi
   // #when
   const player = await openPlayerAlone(context, copy);
   // #then
-  await expect(player.window.getByRole('status').first()).toHaveText(NO_GM);
+  await expect(player.window.getByRole('status')).toHaveText(NO_GM);
   await expect(player.window.getByRole('tab')).toHaveText(['Брок', 'Мира']);
   await expect(player.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
   await expect(panel(player.window).getByText(READ_ONLY)).toBeVisible();
@@ -160,7 +160,7 @@ test('a player alone with a room copy that holds a preset and only a hidden shee
   const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, GOBLIN]));
   // #then
   await expect(player.window.getByRole('main').getByText(NO_SHEETS, { exact: true })).toBeVisible();
-  await expect(player.window.getByRole('status').first()).toHaveText(NO_GM);
+  await expect(player.window.getByRole('status')).toHaveText(NO_GM);
 });
 
 test('a player alone with a room copy that holds no preset sees that the GM has not set up sheets', async ({
@@ -170,7 +170,7 @@ test('a player alone with a room copy that holds no preset sees that the GM has 
   const player = await openPlayerAlone(context, copyValue([...BROK]));
   // #then
   await expect(player.window.getByRole('main').getByText(NO_PRESET, { exact: true })).toBeVisible();
-  await expect(player.window.getByRole('status').first()).toHaveText(NO_GM);
+  await expect(player.window.getByRole('status')).toHaveText(NO_GM);
 });
 
 test('a player alone with no room copy sees that no GM has been in the room', async ({
@@ -182,7 +182,7 @@ test('a player alone with no room copy sees that no GM has been in the room', as
   await expect(
     player.window.getByRole('main').getByText(NO_GM_NO_DATA, { exact: true }),
   ).toBeVisible();
-  await expect(player.window.getByRole('status').first()).toHaveText(NO_GM);
+  await expect(player.window.getByRole('status')).toHaveText(NO_GM);
 });
 
 test('a room copy of a newer build is not read: the new-version banner shows and the panel keeps loading', async ({
@@ -191,7 +191,7 @@ test('a room copy of a newer build is not read: the new-version banner shows and
   // #when
   const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, ...BROK], 5));
   // #then
-  await expect(player.window.getByRole('status').first()).toHaveText(NEW_VERSION);
+  await expect(player.window.getByRole('status')).toHaveText(NEW_VERSION);
   await expect(player.window.getByRole('main').getByText(LOADING, { exact: true })).toBeVisible();
   await expect(player.window.getByRole('tab')).toHaveCount(0);
 });
@@ -203,7 +203,7 @@ test('a room copy that does not decode says so, with the no-GM banner', async ({
   await expect(
     player.window.getByRole('main').getByText(UNREADABLE, { exact: true }),
   ).toBeVisible();
-  await expect(player.window.getByRole('status').first()).toHaveText(NO_GM);
+  await expect(player.window.getByRole('status')).toHaveText(NO_GM);
 });
 
 test('a player alone sends no commit and no edit to the room', async ({ context }) => {
@@ -269,7 +269,7 @@ test('a player alone with no copy keeps loading once a GM speaks without answeri
   // #when: a GM-origin message, and no complete state.
   await postRemote(player.window, SILENT_GM, { v: 4, g: { n: 0, a: '' }, t: 'ping' });
   // #then: a GM is online but has not said what the room holds.
-  await expect(player.window.getByRole('status').first()).toBeEmpty();
+  await expect(player.window.getByRole('status')).toBeEmpty();
   await expect(player.window.getByRole('main').getByText(LOADING, { exact: true })).toBeVisible();
   await expect(player.window.getByText(NO_GM_NO_DATA)).toHaveCount(0);
 });
@@ -290,7 +290,7 @@ test('when a GM joins and answers, the no-GM banner goes and the sheets show cur
   );
   await openClientBackground(context, GM);
   // #then
-  await expect(player.window.getByRole('status').first()).toBeEmpty();
+  await expect(player.window.getByRole('status')).toBeEmpty();
   await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('18');
   await expect(player.window.getByRole('tab')).toHaveText(['Брок', 'Мира']);
 });
@@ -306,7 +306,7 @@ test('a player alone with no copy reads the GM sheets once a GM joins', async ({
   await seedStorage(gmWindow, [...BROK, BROK_STR], PRESET_TEXT, GM.device);
   await openClientBackground(context, GM);
   // #then
-  await expect(player.window.getByRole('status').first()).toBeEmpty();
+  await expect(player.window.getByRole('status')).toBeEmpty();
   await expect(player.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
   await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
 });
@@ -330,7 +330,7 @@ async function openPlayerAlone(
   }
 
   const background = await openClientBackground(context, params);
-  await expect(page.getByRole('status').first()).not.toBeEmpty();
+  await expect(page.getByRole('status')).not.toBeEmpty();
 
   return { window: page, background, connectionId: connectionIdOf(params) };
 }
