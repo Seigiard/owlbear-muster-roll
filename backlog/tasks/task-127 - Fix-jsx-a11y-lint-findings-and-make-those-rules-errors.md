@@ -1,9 +1,11 @@
 ---
 id: TASK-127
 title: Fix jsx-a11y lint findings and make those rules errors
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-19T13:18:00Z'
+updated_date: '2026-11-19T16:02:00Z'
 labels: []
 dependencies: []
 ordinal: 168000

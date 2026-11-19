@@ -1,9 +1,11 @@
 ---
 id: TASK-128
 title: Fix Playwright lint findings in e2e tests and make those rules errors
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-19T13:18:00Z'
+updated_date: '2026-11-19T16:02:00Z'
 labels: []
 dependencies: []
 ordinal: 169000

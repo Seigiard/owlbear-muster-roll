@@ -1,9 +1,11 @@
 ---
 id: TASK-126
 title: Fix React hook and render-purity lint findings and make those rules errors
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-19T13:18:00Z'
+updated_date: '2026-11-19T16:02:00Z'
 labels: []
 dependencies: []
 ordinal: 167000
