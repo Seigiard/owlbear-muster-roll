@@ -2,7 +2,7 @@
 title: 'TASK-121.1: Move the command composer from replica to core'
 type: 'refactor'
 created: '2026-11-19'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '0460c9d03c8b9ab94af05f7b1bac2937bedae681'
@@ -54,6 +54,11 @@ context:
 - Given the junit files from the procedure below, when the sorted `testcase name` attributes are compared, then they are equal, and the per-file counts are equal with the two moved paths mapped.
 
 ## Implementation Notes
+
+- The move is `c7ab3ac`: both files and their tests are 100% renames except the two test import lines; six replica importers and `.claude/skills/edit-delivery/SKILL.md` switched to the core paths. No shim remains.
+- `core-*.js` from `bun run build`: before (at `247bc0f`) 190 342 B raw, 57 053 B `gzip -9`; after (at `c7ab3ac`) 200 173 B raw, 59 900 B `gzip -9` (+2 847 B gzip on every page).
+- Junit list: 3 502 `testcase name` attributes before and after, equal when sorted; per-file counts equal with `src/replica/composers.test.ts` → `src/core/compose.test.ts` (2) and `src/replica/version-minter.test.ts` → `src/core/version-minter.test.ts` (5) mapped.
+- Old paths still appear in historical specs under `_bmad-output/` and in backlog tasks (TASK-99, TASK-115.3, …); they describe past state and are left as they are.
 
 ## Spec Change Log
 
