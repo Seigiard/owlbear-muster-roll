@@ -6,6 +6,7 @@ import {
   blockIdOf,
   blockKeyOf,
   isLiveBlock,
+  parseBlockKey,
   sheetRootAddress,
   type BlockAddress,
 } from '@/core/block-address';
@@ -346,12 +347,14 @@ function sheetValuesSignature(
     versions.push(record === undefined ? '' : versionOf(record));
   }
 
-  const repeatPrefix = `blk:${sheetId}:`;
-
   for (const record of records.values()) {
-    if (record.k.startsWith(repeatPrefix)) {
-      versions.push(versionOf(record));
+    const block = parseBlockKey(record.k);
+
+    if (block === null || block.sheetId !== sheetId || block.path.length === 0) {
+      continue;
     }
+
+    versions.push(versionOf(record));
   }
 
   // The records come in no set order.
