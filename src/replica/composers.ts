@@ -2,7 +2,6 @@ import { aclKey, playerName, plinkKey } from '@/core/access';
 import {
   blockKeyOf,
   childAddress,
-  type AddressFieldPatchTarget,
   blockIdOf,
   hasValidSegments,
   isDescendantOf,
@@ -71,8 +70,6 @@ import { linkKey, tokenIdSchema } from '@/core/token-links';
 import type { Command, RejectionReason } from '@/core/ui-messages';
 
 export type FieldPatchCommand = Extract<Command, { type: 'field-patch' }>;
-
-type AddressFieldTarget = { kind: 'row'; rowId: string } | AddressFieldPatchTarget;
 
 export type ComposeMode = 'persisted' | 'pending';
 
@@ -308,7 +305,7 @@ export function createComposers(connectionId: string): Composers {
     }
 
     const { template } = policy.value;
-    const target = addressFieldPatchTargetOf(command.target);
+    const target = command.target;
 
     if (
       target.kind === 'rep' &&
@@ -347,7 +344,7 @@ export function createComposers(connectionId: string): Composers {
     context: ComposeContext,
     command: FieldPatchCommand,
   ): Result<VersionedRecord, RejectionReason> {
-    const target = addressFieldPatchTargetOf(command.target);
+    const target = command.target;
 
     const existing = context.records.get(patchRecordKey(command.sheetId, target));
     const patched = patchOnto(context, command, existing);
@@ -374,7 +371,7 @@ export function createComposers(connectionId: string): Composers {
       return { record: null, refusals };
     }
 
-    const firstTarget = addressFieldPatchTargetOf(first.command.target);
+    const firstTarget = first.command.target;
 
     const existing = context.records.get(patchRecordKey(first.command.sheetId, firstTarget));
 
@@ -1062,10 +1059,6 @@ function mintedSheet(
   const record: VersionedRecord = { k, d, c, a, l: [c, a] };
 
   return recordFitsOneMessage(record) ? ok(record) : err('too-large');
-}
-
-function addressFieldPatchTargetOf(target: FieldPatchCommand['target']): AddressFieldTarget {
-  return target;
 }
 
 // A tombstone holds no order, so only live repeat blocks count.
