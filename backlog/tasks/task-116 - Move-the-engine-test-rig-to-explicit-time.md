@@ -1,9 +1,11 @@
 ---
 id: TASK-116
 title: Move the engine test rig to explicit time
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-18T19:41:00Z'
+updated_date: '2026-11-19T12:54:00Z'
 labels:
   - tests
   - replica
@@ -27,3 +29,18 @@ After the clock port lands (ADR-0004 step 3), `tests/support/room-rig.ts` still 
 - [ ] #1 The rig exposes `advance(ms)` on the mock clock and a test can fire a timer without real waiting
 - [ ] #2 At least the `engine-catch-up`, `engine-liveness` and `engine-no-gm` files run on explicit time and their wall time drops; the junit list equals the baseline
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. tests/support/room-rig.ts builds the mock platform with a manual clock: now() from a counter, schedule() into a timer queue; the rig exposes advance(ms), which fires due timers in order and lets their promise work settle.
+2. engine-catch-up, engine-liveness and engine-no-gm move from pause()/timing waits to advance(ms); waitUntil stays only where a test waits on another client's message.
+3. Literals in those engine tests stay; only helpers and waits change. Junit list equals the baseline; wall time of the three files drops.
+4. tdd chain (run ~/.claude/artifacts/task-115-20261119/TASK-116); full check.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented on task-116-rig-explicit-time (b7388f2). tests/support/room-rig.ts: createRoomRig({ clock: 'manual' }) gives every client of the room one manual clock (now() from a counter, schedule() into one queue by due time then insertion) and rig.advance(ms) fires due timers in order and lets their promise work settle; real time stays the default. engine-catch-up, engine-liveness and engine-no-gm run on it: no pause() left, three elapsed-time observations read roomRig.now(), literals unchanged. Wall time: 6.68->0.42 s, 4.25->0.25 s, 4.35->0.22 s. Checks: fmt, lint, typecheck, build; browser 587/587; bun: no baseline line lost; the three files green in three repeats.
+<!-- SECTION:NOTES:END -->

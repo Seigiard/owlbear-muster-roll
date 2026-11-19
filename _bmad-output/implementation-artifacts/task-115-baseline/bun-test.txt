@@ -3546,6 +3546,7 @@ pass	tests/support/machine-check.test.ts › checkMachine › prints a replaceme
 pass	tests/support/machine-check.test.ts › checkMachine › rejects a result phase kind that has no table row
 pass	tests/support/machine-check.test.ts › checkMachine › rejects a result phase that breaks an invariant
 pass	tests/support/machine-check.test.ts › checkMachine › rejects an effect that the result phase does not allow
+pass	tests/support/room-rig.test.ts › manual time runs due timers in order without real waiting
 pass	tools/mutants/probe/baseline.test.ts › anchorKey › uses source identity rather than line number or replacement text
 pass	tools/mutants/probe/baseline.test.ts › compare › does not report a baseline survivor as missing after it becomes killed
 pass	tools/mutants/probe/baseline.test.ts › compare › reports a survivor with a different nth as new
