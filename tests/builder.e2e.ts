@@ -623,7 +623,7 @@ test('builds a preset with the tree and the forms, and the window loads the down
   await form(page).getByRole('combobox', { name: builder.form.formula }).fill('1d20 <= sila');
   // #then
   await expect(preview(page).getByRole('button', { name: 'Сила' })).toBeVisible();
-  await expect(preview(page).getByRole('status', { name: 'Сила' })).toHaveText('sila');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('sila');
   // #when: the id is renamed, and the formula follows.
   await pick(item(page, `sila · ${builder.form.typeNumber}`));
   await expect(form(page).getByText(builder.form.fieldUses(1))).toBeVisible();
@@ -738,7 +738,7 @@ test('builds, previews and downloads a select field, then drops its options on a
   // #then
   await expect(item(page, 'bronya · Список')).toBeVisible();
   await expect(preview(page).getByRole('combobox', { name: 'Броня' })).toHaveCount(0);
-  const previewField = preview(page).getByRole('status', { name: 'Броня' });
+  const previewField = preview(page).getByRole('group', { name: 'Броня' });
   await expect(previewField).toHaveText('bronya');
   // #when
   await previewField.click();
@@ -1074,7 +1074,7 @@ test('the player projection hides GM-only content from a visible sheet', async (
   // #then
   await expect(shown.getByRole('tab', { name: 'Ария', exact: true })).toBeVisible();
   await expect(shown.getByRole('heading', { name: 'Ария', level: 1 })).toBeVisible();
-  await expect(shown.getByRole('status', { name: 'Сила', exact: true })).toHaveText('12');
+  await expect(shown.getByRole('group', { name: 'Сила', exact: true })).toHaveText('12');
   await expect(shown.getByRole('tab', { name: 'NPC', exact: true })).toHaveCount(0);
   await expect(shown.getByRole('tab', { name: 'Заметки ГМ', exact: true })).toHaveCount(0);
   await expect(shown.getByRole('tab', { name: 'Лич', exact: true })).toHaveCount(0);
@@ -1107,7 +1107,7 @@ test('the player projection renders no hidden fallback tab when every tab is GM-
   await openPlayerPreview(page, PLAYER_PREVIEW_SNAPSHOT, true);
   const shown = preview(page);
   await shown.getByRole('tab', { name: 'Закрытый лист', exact: true }).click();
-  await expect(shown.getByRole('status', { name: 'Секрет', exact: true })).toHaveText(
+  await expect(shown.getByRole('group', { name: 'Секрет', exact: true })).toHaveText(
     'Скрытое значение',
   );
   // #when
@@ -1115,7 +1115,7 @@ test('the player projection renders no hidden fallback tab when every tab is GM-
   // #then
   await expect(shown.getByRole('tab', { name: 'Закрытый лист', exact: true })).toBeVisible();
   await expect(shown.getByRole('tab', { name: 'Только мастеру', exact: true })).toHaveCount(0);
-  await expect(shown.getByRole('status', { name: 'Секрет', exact: true })).toHaveCount(0);
+  await expect(shown.getByRole('group', { name: 'Секрет', exact: true })).toHaveCount(0);
   await expect(shown.getByText('Скрытое значение', { exact: true })).toHaveCount(0);
 });
 
@@ -1147,15 +1147,15 @@ test('the player cannot edit a sheet-set sheet and can edit a player-editable si
   const shown = preview(page);
   await shown.getByRole('tab', { name: 'Ария', exact: true }).click();
   // #when
-  const characterName = shown.getByRole('status', { name: 'Имя' });
+  const characterName = shown.getByRole('group', { name: 'Имя' });
   await characterName.click();
   await characterName.click();
   // #then
   await expect(shown.getByRole('textbox', { name: 'Имя' })).toHaveCount(0);
-  await expect(shown.getByRole('status', { name: 'Имя' })).toHaveText('Ария');
+  await expect(shown.getByRole('group', { name: 'Имя' })).toHaveText('Ария');
   // #when
   await shown.getByRole('tab', { name: 'Инвентарь', exact: true }).click();
-  const gold = shown.getByRole('status', { name: 'Золото' });
+  const gold = shown.getByRole('group', { name: 'Золото' });
   await gold.click();
   await gold.click();
   // #then

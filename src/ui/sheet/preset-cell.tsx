@@ -245,28 +245,30 @@ function ReadOnlyValue({ field, label, values }: Omit<FieldProps, 'place' | 'pen
     const checked = isChecked(value);
 
     return (
-      <output
+      <span
+        role="img" // oxlint-disable-line jsx-a11y/prefer-tag-over-role -- An inline focusable read-only value cannot use <img>; <output> would make it a live region.
         aria-label={checked ? copy.label.checked(label) : copy.label.unchecked(label)}
         tabIndex={field.name === undefined ? undefined : 0}
         className={READ_ONLY_CHECK_CLASS}
         data-read-only-value
       >
         {checked ? CHECK_MARK : ''}
-      </output>
+      </span>
     );
   }
 
   const text = valueText(value);
 
   return (
-    <output
+    <span
+      role="group" // oxlint-disable-line jsx-a11y/prefer-tag-over-role -- An inline focusable read-only value cannot use <fieldset>; <output> would make it a live region.
       aria-label={label}
       tabIndex={field.name === undefined ? undefined : 0}
       className={READ_ONLY_VALUE_CLASS}
       data-read-only-value
     >
       {text === '' && preview !== null ? <span className="text-text-muted">{field.id}</span> : text}
-    </output>
+    </span>
   );
 }
 

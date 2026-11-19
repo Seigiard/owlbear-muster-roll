@@ -637,7 +637,7 @@ test('Room and Builder name two scoped add tabs and activate each by mouse and k
 
   // #when
   await builderNpcAdd.click();
-  await frame.getByRole('status', { name: 'name', exact: true }).click();
+  await frame.getByRole('group', { name: 'name', exact: true }).click();
   await page.keyboard.press('Enter');
 
   // #then
@@ -645,7 +645,7 @@ test('Room and Builder name two scoped add tabs and activate each by mouse and k
 
   // #when
   await builderGearAdd.press('Enter');
-  await frame.getByRole('status', { name: 'item', exact: true }).click();
+  await frame.getByRole('group', { name: 'item', exact: true }).click();
   await page.keyboard.press('Enter');
 
   // #then

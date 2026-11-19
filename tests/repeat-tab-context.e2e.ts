@@ -99,7 +99,7 @@ test('Enter starts editing the field from the second selected repeat-tab block',
   // #given
   const frame = await openBuilderPreview(page);
   await sheetTab(frame, 'Beta').click();
-  await frame.getByRole('status', { name: 'hp', exact: true }).click();
+  await frame.getByRole('group', { name: 'hp', exact: true }).click();
 
   // #when
   await page.keyboard.press('Enter');
@@ -114,7 +114,7 @@ test('editing a selected repeat-tab block changes only that snapshot block', asy
   // #given
   const frame = await openBuilderPreview(page);
   await sheetTab(frame, 'Beta').click();
-  await frame.getByRole('status', { name: 'hp', exact: true }).click();
+  await frame.getByRole('group', { name: 'hp', exact: true }).click();
   await page.keyboard.press('Enter');
 
   // #when

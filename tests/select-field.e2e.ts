@@ -146,7 +146,7 @@ test('a player without write access sees the labelled value as read-only text', 
   const player = await openClient(context, PLAYER);
 
   // #when
-  const value = player.window.getByRole('tabpanel').getByRole('status', {
+  const value = player.window.getByRole('tabpanel').getByRole('group', {
     name: 'Броня',
     exact: true,
   });

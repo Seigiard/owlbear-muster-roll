@@ -228,17 +228,17 @@ test('opens and downloads the snapshot with both set sheets, the single sheet, v
     '+ Добавить',
   );
   await expect(preview(page).getByRole('heading', { name: 'Аня', level: 1 })).toBeVisible();
-  await expect(preview(page).getByRole('status', { name: 'Сила' })).toHaveText('12');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('12');
   // #when
   await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
   // #then
   await expect(preview(page).getByRole('heading', { name: 'Брок', level: 1 })).toBeVisible();
-  await expect(preview(page).getByRole('status', { name: 'Сила' })).toHaveText('18');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
   // #when
   await sidebar(page).getByRole('tab', { name: 'Инвентарь', exact: true }).click();
   // #then
   await expect(preview(page).getByRole('heading', { name: 'Инвентарь', level: 1 })).toBeVisible();
-  await expect(preview(page).getByRole('status', { name: 'Золото' })).toHaveText('7');
+  await expect(preview(page).getByRole('group', { name: 'Золото' })).toHaveText('7');
   // #when
   const downloaded = await downloadSnapshot(page);
   // #then
@@ -254,7 +254,7 @@ test('the first click on a snapshot field selects its tree item and shows its fo
   // #given
   await openPreset(page);
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
-  const strength = preview(page).getByRole('status', { name: 'Сила', exact: true });
+  const strength = preview(page).getByRole('group', { name: 'Сила', exact: true });
   const treeField = page.getByRole('row', { name: 'str · Число', exact: true });
   // #when
   await strength.click();
@@ -271,7 +271,7 @@ test('the second click types a snapshot value, and Escape leaves typing with the
   // #given
   await openPreset(page);
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
-  const strength = preview(page).getByRole('status', { name: 'Сила', exact: true });
+  const strength = preview(page).getByRole('group', { name: 'Сила', exact: true });
   const treeField = page.getByRole('row', { name: 'str · Число', exact: true });
   await strength.click();
   // #when
@@ -291,7 +291,7 @@ test('the second click types a snapshot value, and Escape leaves typing with the
 test('a preview checkbox writes its exact snapshot patch', async ({ page }) => {
   // #given
   await openEditingPreview(page);
-  const ready = preview(page).getByRole('status', { name: 'Готов: не отмечено', exact: true });
+  const ready = preview(page).getByRole('img', { name: 'Готов: не отмечено', exact: true });
   await ready.click();
   await ready.click();
   // #when
@@ -305,7 +305,7 @@ test('a preview checkbox writes its exact snapshot patch', async ({ page }) => {
 test('editing a repeat field changes only the clicked instance', async ({ page }) => {
   // #given
   await openEditingPreview(page);
-  const items = preview(page).getByRole('status', { name: 'Вещь', exact: true });
+  const items = preview(page).getByRole('group', { name: 'Вещь', exact: true });
   await items.first().click();
   await expect(page.getByRole('row', { name: 'item · Текст', exact: true })).toHaveAttribute(
     'aria-selected',
@@ -336,7 +336,7 @@ test('Enter edits the specifically selected repeat instance and leaves the other
 }) => {
   // #given
   await openEditingPreview(page);
-  const items = preview(page).getByRole('status', { name: 'Вещь', exact: true });
+  const items = preview(page).getByRole('group', { name: 'Вещь', exact: true });
   await items.nth(1).click();
   await expect(page.getByRole('row', { name: 'item · Текст', exact: true })).toHaveAttribute(
     'aria-selected',
@@ -365,14 +365,14 @@ test('Enter on a selected repeat field with its instance missing does not trap l
 }) => {
   // #given
   await openEditingPreview(page);
-  const items = preview(page).getByRole('status', { name: 'Вещь', exact: true });
+  const items = preview(page).getByRole('group', { name: 'Вещь', exact: true });
   await items.first().click();
   await expect(page.getByRole('row', { name: 'item · Текст', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
   await openSnapshot(page, JSON.stringify(EDITING_SNAPSHOT_WITHOUT_FIRST_REPEAT));
-  const remaining = preview(page).getByRole('status', { name: 'Вещь', exact: true });
+  const remaining = preview(page).getByRole('group', { name: 'Вещь', exact: true });
   await expect(remaining).toHaveCount(1);
   await expect(remaining).toHaveText('Фляга');
   // #when
@@ -395,7 +395,7 @@ for (const field of [
   {
     name: 'check',
     label: 'Готов',
-    readOnlyRole: 'status' as const,
+    readOnlyRole: 'img' as const,
     readOnlyName: 'Готов: не отмечено',
     controlRole: 'checkbox' as const,
     treeName: 'ready · Флажок',
@@ -403,7 +403,7 @@ for (const field of [
   {
     name: 'select',
     label: 'Броня',
-    readOnlyRole: 'status' as const,
+    readOnlyRole: 'group' as const,
     readOnlyName: 'Броня',
     controlRole: 'combobox' as const,
     treeName: 'armor · Список',
@@ -411,7 +411,7 @@ for (const field of [
   {
     name: 'dice choice',
     label: 'Куб',
-    readOnlyRole: 'status' as const,
+    readOnlyRole: 'group' as const,
     readOnlyName: 'Куб',
     controlRole: 'combobox' as const,
     treeName: 'die · Выбор кубика',
@@ -449,7 +449,7 @@ for (const field of [
 test('pagehide flushes a pending preview value into the Builder draft', async ({ page }) => {
   // #given
   await openEditingPreview(page);
-  const strength = preview(page).getByRole('status', { name: 'Сила', exact: true });
+  const strength = preview(page).getByRole('group', { name: 'Сила', exact: true });
   await strength.click();
   await strength.click();
   const input = preview(page).getByRole('textbox', { name: 'Сила', exact: true });
@@ -478,7 +478,7 @@ test('Enter on a selected snapshot field starts typing its current value', async
   // #given
   await openPreset(page);
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
-  const strength = preview(page).getByRole('status', { name: 'Сила', exact: true });
+  const strength = preview(page).getByRole('group', { name: 'Сила', exact: true });
   await strength.click();
   // #when
   await page.keyboard.press('Enter');
@@ -520,19 +520,19 @@ test('one template structure edit reaches both sheets and undo restores both', a
   // #when
   await page.getByRole('textbox', { name: 'Текст', exact: true }).fill('Мощь');
   // #then
-  await expect(preview(page).getByRole('status', { name: 'Мощь', exact: true })).toHaveText('12');
+  await expect(preview(page).getByRole('group', { name: 'Мощь', exact: true })).toHaveText('12');
   // #when
   await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
   // #then
-  await expect(preview(page).getByRole('status', { name: 'Мощь', exact: true })).toHaveText('18');
+  await expect(preview(page).getByRole('group', { name: 'Мощь', exact: true })).toHaveText('18');
   // #when
   await page.getByRole('button', { name: 'Отменить правку', exact: true }).click();
   // #then
-  await expect(preview(page).getByRole('status', { name: 'Сила', exact: true })).toHaveText('18');
+  await expect(preview(page).getByRole('group', { name: 'Сила', exact: true })).toHaveText('18');
   // #when
   await sidebar(page).getByRole('tab', { name: 'Аня', exact: true }).click();
   // #then
-  await expect(preview(page).getByRole('status', { name: 'Сила', exact: true })).toHaveText('12');
+  await expect(preview(page).getByRole('group', { name: 'Сила', exact: true })).toHaveText('12');
 });
 
 test('an empty set has a pale selectable sample outside the file, and add creates a real sheet', async ({
@@ -595,7 +595,7 @@ test('reload restores the preset and snapshot without a replacement prompt', asy
   await openPreset(page);
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
   await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
-  await expect(preview(page).getByRole('status', { name: 'Сила' })).toHaveText('18');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
   // #when
   await page.reload();
   // #then
@@ -605,7 +605,7 @@ test('reload restores the preset and snapshot without a replacement prompt', asy
     'Брок',
     'Инвентарь',
   ]);
-  await expect(preview(page).getByRole('status', { name: 'Сила' })).toHaveText('12');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('12');
   await expect(page.getByRole('group', { name: /Черновик будет заменён/ })).toHaveCount(0);
 });
 
@@ -643,17 +643,17 @@ test('a preset edit drops values silently, and undo and redo restore the complet
   await fieldId.blur();
   // #then
   await expect(page.locator('[data-builder-rename]')).toHaveText('Формулы изменены: 0.');
-  await expect(preview(page).getByRole('status', { name: 'Сила' })).toHaveText('power');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('power');
   expect((await downloadSnapshot(page)).file).toEqual(SNAPSHOT_WITHOUT_STRENGTH);
   // #when
   await page.getByRole('button', { name: 'Отменить правку' }).click();
   // #then
-  await expect(preview(page).getByRole('status', { name: 'Сила' })).toHaveText('12');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('12');
   expect((await downloadSnapshot(page)).file).toEqual(SNAPSHOT);
   // #when
   await page.getByRole('button', { name: 'Повторить правку' }).click();
   // #then
-  await expect(preview(page).getByRole('status', { name: 'Сила' })).toHaveText('power');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('power');
 });
 
 test('an invalid template id keeps its structure selection and preview problem mark', async ({
@@ -755,7 +755,7 @@ test('a bad snapshot is refused and preserves the current preset and snapshot', 
   await openPreset(page);
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
   await sidebar(page).getByRole('tab', { name: 'Брок', exact: true }).click();
-  await expect(preview(page).getByRole('status', { name: 'Сила' })).toHaveText('18');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
   // #when
   await openSnapshot(page, '{');
   // #then
@@ -764,7 +764,7 @@ test('a bad snapshot is refused and preserves the current preset and snapshot', 
     'aria-selected',
     'true',
   );
-  await expect(preview(page).getByRole('status', { name: 'Сила' })).toHaveText('18');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
 });
 
 test('a schema-valid snapshot with an oversized record is refused and preserves current data', async ({
@@ -798,7 +798,7 @@ test('a schema-valid snapshot with an oversized record is refused and preserves 
     'aria-selected',
     'true',
   );
-  await expect(preview(page).getByRole('status', { name: 'Сила' })).toHaveText('18');
+  await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('18');
   expect((await downloadSnapshot(page)).file).toEqual(SNAPSHOT);
 });
 
@@ -891,7 +891,7 @@ test('a preset problem makes preview fields read-only until fixed', async ({ pag
   // #given
   await openPreset(page);
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
-  const strength = preview(page).getByRole('status', { name: 'Сила', exact: true });
+  const strength = preview(page).getByRole('group', { name: 'Сила', exact: true });
   await strength.click();
   const fieldId = page.getByRole('textbox', { name: 'Id — имя для формул', exact: true });
   await fieldId.fill('bad id');

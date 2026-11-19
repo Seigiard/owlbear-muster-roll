@@ -382,8 +382,8 @@ test('a revoke while an edit waits makes the sheet read-only at once, returns th
   const sheet = player.window.getByRole('tabpanel');
   await expect(sheet.getByText(READ_ONLY, { exact: true })).toBeVisible();
   await expect(sheet.getByRole('textbox')).toHaveCount(0);
-  await expect(sheet.getByRole('status', { name: 'Сила', exact: true })).toHaveText('14');
-  await expect(sheet.getByRole('status', { name: 'Атака', exact: true })).toHaveText('Меч');
+  await expect(sheet.getByRole('group', { name: 'Сила', exact: true })).toHaveText('14');
+  await expect(sheet.getByRole('group', { name: 'Атака', exact: true })).toHaveText('Меч');
   await expect(mark(player.window)).toHaveCount(0);
   await expect.poll(() => notifications(player)).toEqual([DENIED]);
 });

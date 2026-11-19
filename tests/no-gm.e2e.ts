@@ -148,7 +148,7 @@ test('a player alone reads every visible sheet from the room copy, read-only, wi
   await expect(player.window.getByRole('tab')).toHaveText(['Брок', 'Мира']);
   await expect(player.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
   await expect(panel(player.window).getByText(READ_ONLY)).toBeVisible();
-  await expect(panel(player.window).getByRole('status', { name: 'Сила' })).toHaveText('14');
+  await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
   await expect(panel(player.window).getByRole('textbox')).toHaveCount(0);
   await expect(player.window.getByText('Гоблин')).toHaveCount(0);
 });
@@ -218,7 +218,7 @@ test('a player alone sends no commit and no edit to the room', async ({ context 
     params,
   );
 
-  await expect(panel(player.window).getByRole('status', { name: 'Сила' })).toHaveText('14');
+  await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
   await watchCommands(player.window);
   // #when: a field edit goes the way a window sends one, and is refused.
   await player.window.evaluate((channel) => {
@@ -254,7 +254,7 @@ test('a player alone sends no commit and no edit to the room', async ({ context 
   );
 
   expect([...fromPlayer].sort()).toEqual(['ping', 'state-request']);
-  await expect(panel(player.window).getByRole('status', { name: 'Сила' })).toHaveText('14');
+  await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
 });
 
 test('a player alone with no copy keeps loading once a GM speaks without answering', async ({
@@ -279,7 +279,7 @@ test('when a GM joins and answers, the no-GM banner goes and the sheets show cur
 }) => {
   // #given: the copy is older than what the GM's own device holds.
   const player = await openPlayerAlone(context, copyValue([PRESET_RECORD, ...BROK, BROK_STR]));
-  await expect(panel(player.window).getByRole('status', { name: 'Сила' })).toHaveText('14');
+  await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
   // #when
   const gmWindow = await openClientWindow(context, GM);
   await seedStorage(
@@ -291,7 +291,7 @@ test('when a GM joins and answers, the no-GM banner goes and the sheets show cur
   await openClientBackground(context, GM);
   // #then
   await expect(player.window.getByRole('status').first()).toBeEmpty();
-  await expect(panel(player.window).getByRole('status', { name: 'Сила' })).toHaveText('18');
+  await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('18');
   await expect(player.window.getByRole('tab')).toHaveText(['Брок', 'Мира']);
 });
 
@@ -308,7 +308,7 @@ test('a player alone with no copy reads the GM sheets once a GM joins', async ({
   // #then
   await expect(player.window.getByRole('status').first()).toBeEmpty();
   await expect(player.window.getByRole('tab', { name: 'Брок', selected: true })).toBeVisible();
-  await expect(panel(player.window).getByRole('status', { name: 'Сила' })).toHaveText('14');
+  await expect(panel(player.window).getByRole('group', { name: 'Сила' })).toHaveText('14');
 });
 
 // A player alone in the room. `copy` is the room copy seeded before its background starts, or
