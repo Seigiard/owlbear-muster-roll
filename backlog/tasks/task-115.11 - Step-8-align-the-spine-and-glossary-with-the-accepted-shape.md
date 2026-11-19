@@ -1,9 +1,11 @@
 ---
 id: TASK-115.11
 title: 'Step 8: align the spine and glossary with the accepted shape'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-18T19:41:00Z'
+updated_date: '2026-11-19T13:22:00Z'
 labels:
   - docs
 dependencies:
@@ -33,3 +35,12 @@ At epic close the architecture spine must match the code: the Replica row and di
 - [ ] #2 `GLOSSARY.md` defines Online GM (by messages) and GM in party (by the list) with avoid-lists
 - [ ] #3 DESIGN.md migration table marks every step done with its PR
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Spine (architecture-owlbear-muster-roll-2026-11-10): Replica row, dependency diagram and AD-6/AD-7 rules name machine.ts, the catch-up, liveness, room-copy and generation tables, the AbortSignal, the clock port and the failure sink.
+2. GLOSSARY.md: check Online GM and GM in party with avoid-lists.
+3. DESIGN.md: migration table marks every step done with its PR; reconcile each deviation recorded in deferred-work.md under TASK-115.x and TASK-116 with DESIGN.md and ADR-0004.
+4. Docs-only checks.
+<!-- SECTION:PLAN:END -->
