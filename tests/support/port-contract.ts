@@ -1,9 +1,16 @@
 import type { JsonObject, JsonValue } from '@/core/json';
-import type { Result } from '@/core/result';
+import { Result } from 'better-result';
 import type {
   BroadcastEvent,
   BroadcastPort,
+  ClockPort,
+  MetadataFailure,
   MetadataPort,
+  NotificationFailure,
+  PartyMember,
+  PartyReadFailure,
+  PlayerRole,
+  PlayerReadFailure,
   SendResult,
   StorageFailure,
   StorageOperation,
@@ -12,6 +19,7 @@ import type {
 } from '@/platform/ports';
 
 export const PORT_CONTRACT_SCENARIOS = {
+  clock: 'clock reads wall time and schedules, cancels, and aborts callbacks',
   storageLifecycle: 'storage stores, overwrites, removes, and lists owned strings',
   storageReadFailure: 'storage returns a read failure when its backing throws',
   storageWriteFailure: 'storage returns a write failure when its backing throws',
@@ -22,6 +30,10 @@ export const PORT_CONTRACT_SCENARIOS = {
   broadcastOrder: 'broadcast preserves one sender arrival order',
   broadcastRateLimit: 'a rate-limited send resolves and delivers no event',
   metadataMerge: 'metadata merges retained entries and deletes undefined entries',
+  partyReadFailure: 'party read returns its tagged failure',
+  playerRoleFailure: 'player role read returns its tagged failure',
+  metadataReadFailure: 'metadata read returns its tagged failure',
+  notificationFailure: 'notification returns its tagged failure',
 } as const;
 
 export type PortContractScenarioName =
@@ -75,6 +87,12 @@ export type MetadataFixture = {
   cleanup: () => void | Promise<void>;
 };
 
+export type PortFailureFixture<Value, Failure> = {
+  inject: () => void;
+  invoke: () => Promise<Result<Value, Failure>>;
+  cleanup: () => void | Promise<void>;
+};
+
 export type PortContractFactory = {
   storageLifecycle: ScenarioBinding<() => StorageFixture | Promise<StorageFixture>>;
   storageExternalFailure: ScenarioBinding<
@@ -85,6 +103,26 @@ export type PortContractFactory = {
     () => RateLimitedBroadcastFixture | Promise<RateLimitedBroadcastFixture>
   >;
   metadata: ScenarioBinding<() => MetadataFixture | Promise<MetadataFixture>>;
+  partyReadFailure: ScenarioBinding<
+    () =>
+      | PortFailureFixture<PartyMember[], PartyReadFailure>
+      | Promise<PortFailureFixture<PartyMember[], PartyReadFailure>>
+  >;
+  playerRoleFailure: ScenarioBinding<
+    () =>
+      | PortFailureFixture<PlayerRole, PlayerReadFailure>
+      | Promise<PortFailureFixture<PlayerRole, PlayerReadFailure>>
+  >;
+  metadataReadFailure: ScenarioBinding<
+    () =>
+      | PortFailureFixture<JsonObject, MetadataFailure>
+      | Promise<PortFailureFixture<JsonObject, MetadataFailure>>
+  >;
+  notificationFailure: ScenarioBinding<
+    () =>
+      | PortFailureFixture<string, NotificationFailure>
+      | Promise<PortFailureFixture<string, NotificationFailure>>
+  >;
 };
 
 export type ScenarioSupportReport =
@@ -101,6 +139,65 @@ export type ScenarioSupportReport =
     };
 
 export type ObservationWait = { status: 'observed' } | { status: 'missing'; reason: string };
+
+export async function observeClock(clock: ClockPort): Promise<{
+  finite: boolean;
+  nondecreasing: boolean;
+  nearWallTime: boolean;
+  immediateCalls: number;
+  calls: number;
+  canceledCalls: number;
+  abortedCalls: number;
+  firedAfterDelay: boolean;
+}> {
+  const wallTime = Date.now();
+  const first = clock.now();
+  const second = clock.now();
+  const controller = new AbortController();
+  const canceled = new AbortController();
+  const aborted = new AbortController();
+  let calls = 0;
+  let canceledCalls = 0;
+  let abortedCalls = 0;
+  let elapsed = 0;
+  const start = performance.now();
+
+  const cancel = clock.schedule(controller.signal, 30, () => {
+    calls += 1;
+    elapsed = performance.now() - start;
+  });
+
+  const cancelOther = clock.schedule(canceled.signal, 30, () => {
+    canceledCalls += 1;
+  });
+
+  clock.schedule(aborted.signal, 30, () => {
+    abortedCalls += 1;
+  });
+  const immediateCalls = calls;
+  cancelOther();
+  aborted.abort();
+
+  try {
+    await waitForQuietPeriod(120);
+
+    return {
+      finite: Number.isFinite(first) && Number.isFinite(second),
+      nondecreasing: second >= first,
+      nearWallTime: Math.abs(first - wallTime) <= 1000 && Math.abs(second - wallTime) <= 1000,
+      immediateCalls,
+      calls,
+      canceledCalls,
+      abortedCalls,
+      firedAfterDelay: elapsed >= 29,
+    };
+  } finally {
+    cancel();
+    controller.abort();
+    canceled.abort();
+    aborted.abort();
+  }
+}
 
 export type StorageLifecycleObservation = {
   missing: ReturnType<StoragePort['getItem']>;
@@ -154,6 +251,10 @@ export type MetadataObservation = {
   observedFinalSnapshot: JsonObject | null;
 };
 
+export type PortFailureObservation<Value, Failure> =
+  | { status: 'returned'; result: Result<Value, Failure> }
+  | { status: 'threw'; error: string };
+
 const SCENARIO_CAPABILITIES: readonly {
   name: PortContractScenarioName;
   capability: keyof PortContractFactory;
@@ -197,6 +298,22 @@ const SCENARIO_CAPABILITIES: readonly {
   {
     name: PORT_CONTRACT_SCENARIOS.metadataMerge,
     capability: 'metadata',
+  },
+  {
+    name: PORT_CONTRACT_SCENARIOS.partyReadFailure,
+    capability: 'partyReadFailure',
+  },
+  {
+    name: PORT_CONTRACT_SCENARIOS.playerRoleFailure,
+    capability: 'playerRoleFailure',
+  },
+  {
+    name: PORT_CONTRACT_SCENARIOS.metadataReadFailure,
+    capability: 'metadataReadFailure',
+  },
+  {
+    name: PORT_CONTRACT_SCENARIOS.notificationFailure,
+    capability: 'notificationFailure',
   },
 ];
 
@@ -292,6 +409,26 @@ export async function storageFailureIsReturnedForOperation(
     };
   } catch (error) {
     return { status: 'threw', error: String(error) };
+  }
+}
+
+export async function portFailureIsReturned<Value, Failure>(
+  binding: ScenarioBinding<
+    () => PortFailureFixture<Value, Failure> | Promise<PortFailureFixture<Value, Failure>>
+  >,
+  scenarioName: PortContractScenarioName,
+): Promise<PortFailureObservation<Value, Failure>> {
+  const create = requireSupported(binding, scenarioName);
+  const fixture = await create();
+
+  try {
+    fixture.inject();
+
+    return { status: 'returned', result: await fixture.invoke() };
+  } catch (error) {
+    return { status: 'threw', error: String(error) };
+  } finally {
+    await fixture.cleanup();
   }
 }
 
@@ -426,7 +563,13 @@ export async function metadataMergesRetainedEntriesAndDeletesUndefinedEntries(
       fixture.observationTimeoutMs,
     );
 
-    const read = normalizeOwnedMetadata(await fixture.reader.getMetadata(), fixture, {
+    const result = await fixture.reader.getMetadata();
+
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    const read = normalizeOwnedMetadata(result.value, fixture, {
       [retained]: 'retained',
       [removed]: 'removed',
       [added]: 'added',
@@ -480,7 +623,7 @@ function normalizeOwnedKeys(
   fixture: StorageFixture,
   names: Readonly<Record<string, string>>,
 ): Result<string[], StorageFailure> {
-  if (!result.ok) {
+  if (!result.isOk()) {
     return result;
   }
 
@@ -490,10 +633,7 @@ function normalizeOwnedKeys(
   // oxlint-disable-next-line unicorn/no-array-sort
   keys.sort();
 
-  return {
-    ok: true,
-    value: keys,
-  };
+  return Result.ok(keys);
 }
 
 function invokeStorageOperation(

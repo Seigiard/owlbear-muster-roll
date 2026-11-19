@@ -21,9 +21,11 @@ import {
   type Lifecycle,
   type VersionedRecord,
 } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { sameEditId, type EditId } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
+import { ProposeDroppedFailure, type FailureReporter } from '@/replica/failures';
+import type { Schedule } from '@/platform/ports';
 
 // What a player's edit of one key does, kept so it can be applied again to a newer record. `fields`
 // sets or clears (`null`) field values of a row or a repeat block. `add` is a new repeat block with
@@ -56,7 +58,9 @@ export type ProposalQueueOptions = {
   // the send queue is done with it.
   enqueue: (compose: () => VersionedRecord | null) => Promise<void>;
   // Runs `run` after `delay` and returns what cancels it. Tests inject it to read the backoff.
-  schedule?: (run: () => void, delay: number) => () => void;
+  signal: AbortSignal;
+  schedule: Schedule;
+  report?: FailureReporter;
 };
 
 export type ProposalQueue = {
@@ -78,7 +82,8 @@ export type ProposalQueue = {
 type Resend = { cancel: () => void; delay: number };
 
 export function createProposalQueue(options: ProposalQueueOptions): ProposalQueue {
-  const { timing, enqueue, schedule = scheduleWithTimer } = options;
+  const { timing, enqueue, schedule, signal } = options;
+  const report = options.report ?? (() => undefined);
   const entries = new Map<string, ProposalEntry>();
   const resends = new Map<string, Resend>();
   // Keys with a `propose` in the send queue that has not been composed yet, by the token of that
@@ -125,7 +130,7 @@ export function createProposalQueue(options: ProposalQueueOptions): ProposalQueu
       return entry.record;
     }).then(release, (error: Error) => {
       release();
-      console.error('Muster Roll could not propose an edit', error);
+      report(new ProposeDroppedFailure({ key, reason: String(error) }));
     });
   }
 
@@ -139,7 +144,7 @@ export function createProposalQueue(options: ProposalQueueOptions): ProposalQueu
     stopResend(key);
     resends.set(key, {
       delay,
-      cancel: schedule(() => {
+      cancel: schedule(signal, delay, () => {
         const entry = entries.get(key);
 
         if (entry === undefined || entry.record === null) {
@@ -150,7 +155,7 @@ export function createProposalQueue(options: ProposalQueueOptions): ProposalQueu
 
         sendNow(key);
         armResend(key, Math.min(delay * 2, timing.proposeResendMaxMs));
-      }, delay),
+      }),
     });
   }
 
@@ -245,23 +250,29 @@ export function proposedRecord(
   lifecycle?: Lifecycle,
 ): Result<VersionedRecord, ProposalFailure> {
   if (patch.kind === 'remove') {
-    if (base !== undefined && base.d === null) return err('unchanged');
+    if (base !== undefined && base.d === null) return Result.err('unchanged');
     const version = mint();
 
-    return ok({ k: key, d: null, l: base?.l ?? lifecycle ?? [version.c, version.a], ...version });
+    return Result.ok({
+      k: key,
+      d: null,
+      l: base?.l ?? lifecycle ?? [version.c, version.a],
+      ...version,
+    });
   }
 
   if (base !== undefined && base.d === null) {
-    return err('gone');
+    return Result.err('gone');
   }
 
   const instance = blockDataSchema.safeParse(base?.d).data;
 
   if (patch.kind === 'add') {
-    if (!force && instance !== undefined && sameJson(instance, patch.d)) return err('unchanged');
+    if (!force && instance !== undefined && sameJson(instance, patch.d))
+      return Result.err('unchanged');
     const version = mint();
 
-    return ok({
+    return Result.ok({
       k: key,
       ...version,
       l: base?.l ?? lifecycle ?? [version.c, version.a],
@@ -277,7 +288,7 @@ export function proposedRecord(
   const parsedKey = parseBlockKey(key);
 
   if (instance === undefined && (parsedKey === null || parsedKey.path.length !== 0)) {
-    return err('gone');
+    return Result.err('gone');
   }
 
   if (
@@ -286,10 +297,10 @@ export function proposedRecord(
       ([id, value]) => (instance?.cells[id]?.[0] ?? null) === value,
     )
   )
-    return err('unchanged');
+    return Result.err('unchanged');
   const version = mint();
 
-  return ok({
+  return Result.ok({
     k: key,
     ...version,
     l: base?.l ?? [version.c, version.a],
@@ -330,7 +341,7 @@ export function strippedPatch(
   const entries = Object.entries(patch.values).filter(([fieldId, value]) => {
     const field = fields.find((cell) => cell.id === fieldId);
 
-    return field !== undefined && acceptedFieldValue(field, value).ok;
+    return field !== undefined && acceptedFieldValue(field, value).isOk();
   });
 
   if (entries.length === 0) {
@@ -393,12 +404,4 @@ export function movedPatches(
 
 function scopePathKey(block: BlockAddress): string {
   return scopePathOf(block).join(':');
-}
-
-function scheduleWithTimer(run: () => void, delay: number): () => void {
-  const timer = setTimeout(run, delay);
-
-  return () => {
-    clearTimeout(timer);
-  };
 }

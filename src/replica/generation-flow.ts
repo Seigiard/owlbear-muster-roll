@@ -1,29 +1,32 @@
-import { compareGenerations, mergeRecords } from '@/core/merge';
-import { recordFitsOneMessage } from '@/core/message-size';
-import {
-  generationRelation as roomGenerationRelation,
-  resetMessage,
-  type GenerationRelation,
-} from '@/core/room-messages';
-import {
-  decodeSnapshotFileData,
-  importSnapshot,
-  type SnapshotImport,
-} from '@/core/snapshot-import';
-import { generationSchema, INITIAL_GENERATION, type Generation } from '@/core/storage-key';
+import { Result } from 'better-result';
 import { presetDataSchema, type VersionedRecord } from '@/core/records';
-import { err, type Result } from '@/core/result';
+import { resetMessage } from '@/core/room-messages';
+import type { Preset } from '@/core/preset';
 import type { Snapshot } from '@/core/snapshot';
-import type { CatchUp, CatchUpDecision } from '@/replica/catch-up';
-import type { RecordStore } from '@/replica/record-store';
-import type { RoomCopy } from '@/replica/room-copy';
+import { decodeSnapshotFileData, importSnapshot } from '@/core/snapshot-import';
+import type { Generation } from '@/core/storage-key';
 import type {
   Command,
   EngineMessage,
   RejectionReason,
   SnapshotCheckMessage,
 } from '@/core/ui-messages';
-import type { Preset } from '@/core/preset';
+import type { CatchUp, CatchUpDecision } from '@/replica/catch-up';
+import { recordStoreFailure, type FailureReporter } from '@/replica/failures';
+import {
+  activePhase,
+  generationTable,
+  importSuperseded,
+  initialPhase,
+  isImporting,
+  type Effect,
+  type GenerationEnv,
+  type Input,
+  type ResetEffect,
+} from '@/replica/generation-table';
+import { step } from '@/replica/machine';
+import type { RecordStore, RecordStoreFailure } from '@/replica/record-store';
+import type { RoomCopy } from '@/replica/room-copy';
 
 export type GenerationPersistence = {
   store: RecordStore;
@@ -31,12 +34,13 @@ export type GenerationPersistence = {
 };
 
 export type GenerationFlowPorts = {
+  report?: FailureReporter;
   initialPersistence: GenerationPersistence | null;
   connectionId: string;
   records: () => ReadonlyMap<string, VersionedRecord>;
   presetOf: (record: VersionedRecord | undefined) => Preset | null;
   role: () => 'GM' | 'PLAYER';
-  stopped: () => boolean;
+  signal: AbortSignal;
   acceptCommand: (id: string) => boolean;
   catchUp: Pick<
     CatchUp,
@@ -92,474 +96,279 @@ export type GenerationFlow = {
   roleChanged: (next: GenerationPersistence | null) => void;
 };
 
-export function nextGeneration(
-  ownGeneration: Generation,
-  highestSeenGeneration: Generation,
-  connectionId: string,
-): Generation {
-  return {
-    n: Math.max(ownGeneration.n, highestSeenGeneration.n) + 1,
-    a: connectionId,
-  };
-}
-
-export function generationSchemaValid(generation: Generation): boolean {
-  return generationSchema.safeParse(generation).success;
-}
-
-export function importSuperseded(
-  stopped: boolean,
-  adopting: Generation | null,
-  ownGeneration: Generation,
-  generation: Generation,
-): boolean {
-  return stopped || adopting !== null || compareGenerations(ownGeneration, generation) !== 0;
-}
-
-export function generationRelation(
-  generation: Generation,
-  ownGeneration: Generation,
-): GenerationRelation {
-  return roomGenerationRelation(generation, ownGeneration);
-}
+type Outcome = {
+  saved?: boolean;
+  reset?: true;
+  decisions?: CatchUpDecision[];
+  writing?: Promise<void>;
+};
 
 export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow {
-  let persistence = ports.initialPersistence;
-  let ownGeneration = persistence?.generation ?? INITIAL_GENERATION;
-  let highestSeenGeneration = ownGeneration;
-  let incoming = new Map<string, VersionedRecord>();
-  let importing = false;
+  const report = ports.report ?? (() => undefined);
 
-  // AD-9: the file read again and placed over the current preset. An import needs a preset.
-  function planImport(data: string): Result<SnapshotImport, RejectionReason> {
-    const file = decodeSnapshotFileData(data);
+  let phase = initialPhase(
+    ports.initialPersistence?.generation ?? null,
+    ports.initialPersistence?.store,
+  );
 
-    if (!file.ok) {
-      return err(file.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
-    }
-
-    const stored = ports.records().get('preset');
-    const presetData = presetDataSchema.safeParse(stored?.d);
-
-    if (!presetData.success) {
-      return err('preset-required');
-    }
-
-    const preset = ports.presetOf(stored);
-
-    if (preset === null) {
-      return err('preset-unreadable');
-    }
-
-    const imported = importSnapshot(
-      file.value,
-      {
-        preset,
-        data: presetData.data,
+  function dispatch(input: Input, data?: string): Outcome {
+    const env: GenerationEnv = {
+      connectionId: ports.connectionId,
+      get role() {
+        return ports.role();
       },
-      ports.connectionId,
-    );
+      get aborted() {
+        return ports.signal.aborted;
+      },
+      get live() {
+        return ports.catchUp.live();
+      },
+      get adopting() {
+        return ports.catchUp.adopting();
+      },
+      get accepted() {
+        return input.kind === 'check-snapshot' && ports.acceptCommand(input.id);
+      },
+      get plan() {
+        return planImport(ports, data ?? '');
+      },
+    };
 
-    if (!imported.ok) {
-      return err(imported.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
-    }
+    const next = step(generationTable, phase, { ...input, env });
 
-    return imported;
+    phase = next.phase;
+
+    return run(next.effects);
   }
 
-  // AD-9: the confirmed import runs the placement again: values it drops other than the confirmed
-  // ones ask again. The importer takes a generation above every one it knows, saves it, writes the
-  // room copy, and only then sends `reset`. A failed save stops before the copy and `reset`, and the
-  // part saved goes, so nothing changes. A copy that cannot be saved does not stop the import.
-  async function importFromSnapshot(
-    id: string,
-    command: Extract<Command, { type: 'snapshot-import' }>,
-  ): Promise<void> {
-    if (importing) {
-      ports.reject(id, 'importing');
+  function run(effects: readonly Effect[]): Outcome {
+    const outcome: Outcome = {};
 
-      return;
-    }
+    for (const [index, effect] of effects.entries()) {
+      switch (effect.type) {
+        case 'flush':
+          ports.flush();
+          break;
+        case 'save': {
+          const result = saveGeneration(effect);
 
-    if (persistence === null) {
-      ports.reject(id, 'write-failed');
+          outcome.saved = result.isOk();
 
-      return;
-    }
+          if (result.isErr()) {
+            dispatch({ kind: 'store-failed', failure: result.error });
 
-    const planned = planImport(command.data);
+            return outcome;
+          }
 
-    if (!planned.ok) {
-      ports.reject(id, planned.error);
+          dispatch({ kind: 'store-written' });
+          break;
+        }
 
-      return;
-    }
+        case 'replace':
+          ports.replaceReplica(effect.records);
+          break;
+        case 'write-import': {
+          const reset = effects[index + 1];
 
-    const { records, count, sheets, digest } = planned.value;
+          if (reset?.type !== 'reset' || index + 2 !== effects.length) {
+            throw new Error('The room-copy write must be followed by its reset');
+          }
 
-    if (digest !== command.expectedDigest) {
-      ports.reject(id, 'count-changed', { count, sheets, digest });
+          outcome.writing = writeImport(effect.generation, reset);
 
-      return;
-    }
+          return outcome;
+        }
 
-    if (await replaceGeneration(id, records)) {
-      ports.reply({ t: 'snapshot-imported', id });
-    }
-  }
-
-  // AD-9, CAP-31: a wipe is a generation change with no records, `preset` included. The window
-  // asked its one confirmation. It works in a room whose data has an older format too: the room
-  // copy of an older format is written over, and the local keys of every format go.
-  async function wipe(id: string): Promise<void> {
-    if (importing) {
-      ports.reject(id, 'importing');
-
-      return;
-    }
-
-    if (persistence === null) {
-      ports.reject(id, 'write-failed');
-
-      return;
-    }
-
-    if (await replaceGeneration(id, [])) {
-      ports.reply({ t: 'wiped', id });
-    }
-  }
-
-  // AD-9: a window asks how many values of a snapshot file the current preset would drop before it
-  // asks the GM. A live GM client answers from its replica. The answer writes nothing.
-  function checkSnapshot(message: SnapshotCheckMessage): void {
-    if (!ports.acceptCommand(message.id)) {
-      return;
-    }
-
-    if (ports.role() !== 'GM') {
-      ports.reject(message.id, 'not-allowed');
-
-      return;
-    }
-
-    if (importing) {
-      ports.reject(message.id, 'importing');
-
-      return;
-    }
-
-    if (!ports.catchUp.live()) {
-      ports.reject(message.id, 'catching-up');
-
-      return;
-    }
-
-    // A GM client whose storage could not be read cannot save a new generation.
-    if (!persistence) {
-      ports.reject(message.id, 'write-failed');
-
-      return;
-    }
-
-    const planned = planImport(message.data);
-
-    if (!planned.ok) {
-      ports.reject(message.id, planned.error);
-
-      return;
-    }
-
-    const { count, sheets, digest } = planned.value;
-    ports.reply({ t: 'snapshot-check-result', id: message.id, count, sheets, digest });
-  }
-
-  // AD-9: the second half of an import, and all of a wipe. The client takes a generation above
-  // every one it knows, saves it, writes the room copy, and only then sends `reset`. A failed save
-  // stops before the copy and `reset`, and the part saved goes, so nothing changes. A copy that
-  // cannot be saved does not stop it. It also deletes this room's keys of older storage formats.
-  // True once the new generation is the room's.
-  async function replaceGeneration(
-    id: string,
-    records: readonly VersionedRecord[],
-  ): Promise<boolean> {
-    if (persistence === null) {
-      ports.reject(id, 'write-failed');
-
-      return false;
-    }
-
-    const generation = nextGeneration(ownGeneration, highestSeenGeneration, ports.connectionId);
-
-    if (!generationSchemaValid(generation)) {
-      ports.reject(id, 'write-failed');
-
-      return false;
-    }
-
-    // The commits held so far belong to the old generation, so they go out under it.
-    ports.flush();
-
-    const { store } = persistence;
-
-    if (!saveGeneration(store, generation, records)) {
-      const removed = store.removeGeneration(generation);
-
-      if (!removed.ok) {
-        console.error('Muster Roll could not remove a part saved generation', removed.error);
+        case 'reset':
+          ports.sendRemote(resetMessage(effect.generation));
+          outcome.reset = true;
+          break;
+        case 'room-copy-replaced':
+          ports.roomCopy.replaced(effect.fromCopy);
+          break;
+        case 'remove-store':
+          reportRemoval(effect.store?.removeGeneration(effect.generation));
+          break;
+        case 'remove-older-generations':
+          reportRemoval(effect.store?.removeGenerationsBelow(effect.generation));
+          break;
+        case 'remove-older-formats':
+          reportRemoval(effect.store?.removeOlderFormats());
+          break;
+        case 'replica-replaced':
+          ports.catchUp.replicaReplaced();
+          break;
+        case 'clear-pending-edits':
+          ports.clearPendingEdits();
+          break;
+        case 'drop-pending-work':
+          ports.dropPendingWork();
+          break;
+        case 'drop-outbox':
+          ports.dropOutbox();
+          break;
+        case 'notify-data-replaced':
+          ports.notifyDataReplaced();
+          break;
+        case 'clear-deleted-links':
+          ports.clearDeletedLinks();
+          break;
+        case 'generation-read':
+          ports.interpretCatchUp(ports.catchUp.generationRead(effect.copy.g));
+          outcome.decisions = dispatch({
+            kind: 'adopt-from-copy',
+            copy: effect.copy,
+            afterRead: true,
+          }).decisions;
+          break;
+        case 'generation-heard':
+          outcome.decisions = ports.catchUp.generationHeard(effect.generation, effect.keepNonce);
+          break;
+        case 'adoption-staged':
+          outcome.decisions = ports.catchUp.adoptionStaged();
+          break;
+        case 'report':
+          report(effect.failure);
+          break;
+        case 'notice':
+          ports.markGenerationSaveFailed();
+          break;
+        case 'publish':
+          ports.publish();
+          break;
+        case 'reject':
+          ports.reject(effect.id, effect.reason, effect.changed);
+          break;
+        case 'reply':
+          ports.reply(effect.message);
+          break;
       }
-
-      ports.publish();
-      ports.reject(id, 'write-failed');
-
-      return false;
     }
 
-    importing = true;
-    persistence = { store, generation };
-    ownGeneration = generation;
-    highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
-    ports.replaceReplica(records);
-    ports.catchUp.replicaReplaced();
-    ports.clearPendingEdits();
-    ports.publish();
+    return outcome;
+  }
+
+  async function writeImport(generation: Generation, reset: ResetEffect): Promise<void> {
+    let sentReset = false;
 
     try {
       await ports.roomCopy.writeImport(generation, () =>
-        importSuperseded(ports.stopped(), ports.catchUp.adopting(), ownGeneration, generation),
+        importSuperseded(
+          ports.signal.aborted,
+          ports.catchUp.adopting(),
+          activePhase(phase).ownGeneration,
+          generation,
+        ),
       );
-
-      if (ports.stopped()) {
-        return false;
-      }
-
-      // Another import of a higher generation won while the copy was written: this one is
-      // replaced, and its `reset` would only send the room after a generation already gone.
-      if (importSuperseded(ports.stopped(), ports.catchUp.adopting(), ownGeneration, generation)) {
-        ports.reject(id, 'data-replaced');
-
-        return false;
-      }
-
-      ports.sendRemote(resetMessage(generation));
-
-      const removed = store.removeGenerationsBelow(generation);
-
-      if (!removed.ok) {
-        console.error('Muster Roll could not remove the replaced records', removed.error);
-      }
-
-      removeOlderFormats(store);
+      sentReset =
+        dispatch({ kind: 'store-written', copy: { kind: 'written', reset } }).reset ?? false;
     } finally {
-      importing = false;
-      // Deletions that waited out the import, whether it finished, stopped or was replaced.
-      ports.clearDeletedLinks();
-    }
-
-    return true;
-  }
-
-  // AD-9 and gap 12: any client that reads a room copy of a higher generation adopts it, and a
-  // decoded copy of the generation it adopts completes it at once. A copy of a generation lower
-  // than the one it adopts already is left alone.
-  function adoptFromCopy(copy: Snapshot): AdoptFromCopyDecisions {
-    if (ports.stopped()) {
-      return { adoptionStaged: [] };
-    }
-
-    highestSeenGeneration = higherGeneration(highestSeenGeneration, copy.g);
-    const generationRead = ports.catchUp.generationRead(copy.g);
-    ports.interpretCatchUp(generationRead);
-    const target = ports.catchUp.adopting();
-
-    if (target === null || compareGenerations(copy.g, target) !== 0) {
-      return { adoptionStaged: [] };
-    }
-
-    stage(copy.records);
-
-    return {
-      adoptionStaged: ports.catchUp.adoptionStaged(),
-    };
-  }
-
-  // AD-9: a generation above this client's own, and above the one it adopts, starts adoption. Its
-  // pending queue, the GM intents and the player entries alike, drops with the notification, and
-  // catch-up runs. The replica keeps the old data until the new generation is complete.
-  // `keepNonce`: the message that shows it answers this client's current request, so the catch-up
-  // in progress keeps its `r` and takes that answer.
-  function seeGeneration(generation: Generation, keepNonce: boolean): CatchUpDecision[] {
-    if (ports.stopped()) {
-      return [];
-    }
-
-    highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
-
-    return ports.catchUp.generationHeard(generation, keepNonce);
-  }
-
-  // Records of the generation this client adopts, kept apart from the replica until it is
-  // complete. Every one is complete, so any number of them merge.
-  function stage(records: readonly VersionedRecord[]): void {
-    for (const record of records) {
-      if (!recordFitsOneMessage(record)) {
-        console.error('Muster Roll dropped a remote record too large for one message', record.k);
-        continue;
-      }
-
-      const current = incoming.get(record.k);
-
-      incoming.set(record.k, current === undefined ? record : mergeRecords(current, record));
+      dispatch({ kind: 'store-written', copy: { kind: 'finished', reset: sentReset } });
     }
   }
 
-  function clearStaged(hadData: boolean, keepNonce: boolean): void {
-    incoming = new Map();
-    // A held commit composes with the generation of the moment it sends, so it would carry old
-    // records into the new generation.
-    ports.dropOutbox();
-    ports.dropPendingWork();
-
-    if (hadData) {
-      ports.notifyDataReplaced();
+  function reportRemoval(result: Result<void, RecordStoreFailure> | undefined): void {
+    if (result?.isErr()) {
+      report(recordStoreFailure(result.error));
     }
-
-    if (keepNonce) {
-      ports.publish();
-    }
-  }
-
-  // AD-9: the new generation is complete. A GM client saves it under the new generation first and
-  // deletes the old one only once that save is complete. A save that fails keeps the old one and
-  // raises the local-save notice. The catch-up module continues after this synchronous callback
-  // succeeds.
-  // `fromCopy`: the room copy completed it, so a copy of this generation is in the room. A save
-  // that fails removes the part saved, keeps the old generation in storage and in the replica, and
-  // leaves the adoption open, so the next answer or copy tries again.
-  function saveAdoption(generation: Generation, fromCopy: boolean): boolean {
-    const records = [...incoming.values()];
-
-    if (persistence !== null) {
-      const { store } = persistence;
-
-      if (!saveGeneration(store, generation, records)) {
-        const removed = store.removeGeneration(generation);
-
-        if (!removed.ok) {
-          console.error('Muster Roll could not remove a part saved generation', removed.error);
-        }
-
-        ports.publish();
-
-        return false;
-      }
-
-      persistence = { store, generation };
-
-      const removed = store.removeGenerationsBelow(generation);
-
-      if (!removed.ok) {
-        console.error('Muster Roll could not remove the replaced records', removed.error);
-      }
-
-      // AD-9: a GM client that adopts a new generation, as after a wipe, drops this room's keys of
-      // older storage formats too.
-      removeOlderFormats(store);
-    }
-
-    incoming = new Map();
-    ownGeneration = generation;
-    highestSeenGeneration = higherGeneration(highestSeenGeneration, generation);
-    ports.replaceReplica(records);
-    ports.roomCopy.replaced(fromCopy);
-    ports.publish();
-
-    return true;
-  }
-
-  function roleChanged(next: GenerationPersistence | null): void {
-    persistence = next;
-
-    if (next !== null) {
-      ownGeneration = next.generation;
-      highestSeenGeneration = higherGeneration(highestSeenGeneration, next.generation);
-    }
-  }
-
-  // AD-9: the incomplete marker first, then the generation marker and every record, then the
-  // incomplete marker off. A failed write leaves the incomplete marker, so a start never reads the
-  // part that was written, and raises the local-save notice. The generation marker keeps a
-  // generation with no records, as after a wipe.
-  function saveGeneration(
-    store: RecordStore,
-    generation: Generation,
-    records: readonly VersionedRecord[],
-  ): boolean {
-    const marked = store.markIncomplete(generation);
-
-    if (!marked.ok) {
-      console.error('Muster Roll could not mark a new generation', marked.error);
-      ports.markGenerationSaveFailed();
-
-      return false;
-    }
-
-    const kept = store.markGeneration(generation);
-
-    if (!kept.ok) {
-      console.error('Muster Roll could not keep a new generation', kept.error);
-      ports.markGenerationSaveFailed();
-
-      return false;
-    }
-
-    for (const record of records) {
-      const written = store.write(generation, record);
-
-      if (!written.ok) {
-        console.error('Muster Roll could not save a record of a new generation', written.error);
-        ports.markGenerationSaveFailed();
-
-        return false;
-      }
-    }
-
-    const complete = store.markComplete(generation);
-
-    if (!complete.ok) {
-      console.error('Muster Roll could not mark a new generation complete', complete.error);
-      ports.markGenerationSaveFailed();
-
-      return false;
-    }
-
-    return true;
   }
 
   return {
-    generation: () => ownGeneration,
-    highestSeen: () => highestSeenGeneration,
-    importing: () => importing,
-    persistence: () => persistence,
-    importFromSnapshot,
-    wipe,
-    checkSnapshot,
-    adoptFromCopy,
-    seeGeneration,
-    stage,
-    clearStaged,
-    saveAdoption,
-    roleChanged,
+    generation: () => activePhase(phase).ownGeneration,
+    highestSeen: () => activePhase(phase).highestSeen,
+    importing: () => isImporting(phase),
+    persistence: () => {
+      const persistence = activePhase(phase).persistence;
+
+      return persistence?.store === undefined
+        ? null
+        : { generation: persistence.generation, store: persistence.store };
+    },
+    importFromSnapshot: async (id, { expectedDigest, data }) =>
+      dispatch({ kind: 'import', id, expectedDigest }, data).writing,
+    wipe: async (id) => dispatch({ kind: 'wipe', id }).writing,
+    checkSnapshot: ({ id, data }) => {
+      dispatch({ kind: 'check-snapshot', id }, data);
+    },
+    adoptFromCopy: (copy) => ({
+      adoptionStaged: dispatch({ kind: 'adopt-from-copy', copy }).decisions ?? [],
+    }),
+    seeGeneration: (generation, keepNonce) =>
+      dispatch({ kind: 'see-generation', generation, keepNonce }).decisions ?? [],
+    stage: (records) => {
+      dispatch({ kind: 'stage', records });
+    },
+    clearStaged: (hadData, keepNonce) => {
+      dispatch({ kind: 'clear-staged', hadData, keepNonce });
+    },
+    saveAdoption: (generation, fromCopy) =>
+      dispatch({ kind: 'save-adoption', generation, fromCopy }).saved ?? false,
+    roleChanged: (next) => {
+      dispatch({ kind: 'role-changed', generation: next?.generation ?? null, store: next?.store });
+    },
   };
 }
 
-function higherGeneration(first: Generation, second: Generation): Generation {
-  return compareGenerations(first, second) >= 0 ? first : second;
+function planImport(ports: GenerationFlowPorts, data: string): GenerationEnv['plan'] {
+  const file = decodeSnapshotFileData(data);
+
+  if (!file.isOk()) {
+    return Result.err(file.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
+  }
+
+  const stored = ports.records().get('preset');
+  const presetData = presetDataSchema.safeParse(stored?.d);
+
+  if (!presetData.success) {
+    return Result.err('preset-required');
+  }
+
+  const preset = ports.presetOf(stored);
+
+  if (preset === null) {
+    return Result.err('preset-unreadable');
+  }
+
+  const imported = importSnapshot(
+    file.value,
+    { preset, data: presetData.data },
+    ports.connectionId,
+  );
+
+  return imported.isOk()
+    ? Result.ok(imported.value)
+    : Result.err(imported.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
 }
 
-function removeOlderFormats(store: RecordStore): void {
-  const removed = store.removeOlderFormats();
-
-  if (!removed.ok) {
-    console.error('Muster Roll could not remove the records of an older format', removed.error);
+// AD-9: a reload skips a partial generation until its incomplete marker is removed.
+function saveGeneration({
+  store,
+  generation,
+  records,
+}: Extract<Effect, { type: 'save' }>): Result<void, RecordStoreFailure> {
+  if (store === undefined) {
+    return Result.ok();
   }
+
+  const marked = store.markIncomplete(generation);
+
+  if (marked.isErr()) {
+    return marked;
+  }
+
+  const kept = store.markGeneration(generation);
+
+  if (kept.isErr()) {
+    return kept;
+  }
+
+  for (const record of records) {
+    const written = store.write(generation, record);
+
+    if (written.isErr()) {
+      return Result.err(written.error);
+    }
+  }
+
+  return store.markComplete(generation);
 }

@@ -1,5 +1,6 @@
+import { Result } from 'better-result';
 import { fixtureCells, fixtureRecord } from '../../tests/support/block-fixtures';
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { mergeRecords, type Version } from '@/core/merge';
 import type { TemplateLayout } from '@/core/preset';
 import { presetMoves } from '@/core/preset-migrate';
@@ -31,6 +32,7 @@ type Rig = {
     delay: number;
     cancelled: boolean;
   }[];
+  reported: string[];
 };
 
 const MINT = (): Version => ({ c: 9, a: 'p-conn' });
@@ -39,6 +41,7 @@ function createRig(): Rig {
   const composes: Rig['composes'] = [];
   const settles: Rig['settles'] = [];
   const timers: Rig['timers'] = [];
+  const reported: string[] = [];
 
   const queue = createProposalQueue({
     timing: { proposeResendStartMs: 2000, proposeResendMaxMs: 30000 },
@@ -49,7 +52,8 @@ function createRig(): Rig {
         settles.push({ resolve, reject });
       });
     },
-    schedule: (run, delay) => {
+    signal: new AbortController().signal,
+    schedule: (_signal, delay, run) => {
       const timer = { run, delay, cancelled: false };
       timers.push(timer);
 
@@ -57,9 +61,10 @@ function createRig(): Rig {
         timer.cancelled = true;
       };
     },
+    report: (failure: { _tag: string }) => reported.push(failure._tag),
   });
 
-  return { queue, composes, settles, timers };
+  return { queue, composes, settles, timers, reported };
 }
 
 function entry(k: string, c: number | null, str = c ?? 0): ProposalEntry {
@@ -228,36 +233,40 @@ describe('proposal queue', () => {
       },
     ]);
   });
-  test.each<[string, (settle: Rig['settles'][number]) => void]>([
-    ['fails', (settle) => settle.reject(new Error('stopped'))],
-    ['settles with nothing composed', (settle) => settle.resolve()],
-  ])('a send that %s frees its key for the next version', async (_name, settle) => {
-    // #given
-    const rig = createRig();
-    const errors = spyOn(console, 'error').mockImplementation(() => {});
-    rig.queue.put(entry('blk:brok', 1));
-    rig.composes.splice(0);
-    const [first] = rig.settles;
+  test.each<[string, (settle: Rig['settles'][number]) => void, string[]]>([
+    ['fails', (settle) => settle.reject(new Error('stopped')), ['propose-dropped']],
+    ['settles with nothing composed', (settle) => settle.resolve(), []],
+  ])(
+    'a send that %s frees its key for the next version',
+    async (_name, settle, expectedReported) => {
+      // #given
+      const rig = createRig();
+      rig.queue.put(entry('blk:brok', 1));
+      rig.composes.splice(0);
+      const [first] = rig.settles;
 
-    if (first !== undefined) {
-      settle(first);
-    }
+      if (first !== undefined) {
+        settle(first);
+      }
 
-    await Promise.resolve();
-    // #when
-    rig.queue.put(entry('blk:brok', 2));
-    errors.mockRestore();
-    // #then
-    expect(sendAll(rig)).toEqual([
-      {
-        k: 'blk:brok',
-        d: { order: 0, cells: { str: [2, 2, 'p-conn'] } },
-        c: 2,
-        a: 'p-conn',
-        l: [1, 'seed'],
-      },
-    ]);
-  });
+      await Promise.resolve();
+      // #when
+      rig.queue.put(entry('blk:brok', 2));
+      // #then
+      expect({ sent: sendAll(rig), reported: rig.reported }).toEqual({
+        sent: [
+          {
+            k: 'blk:brok',
+            d: { order: 0, cells: { str: [2, 2, 'p-conn'] } },
+            c: 2,
+            a: 'p-conn',
+            l: [1, 'seed'],
+          },
+        ],
+        reported: expectedReported,
+      });
+    },
+  );
   test('matches only the (k, c, a) of the newest version of an entry', () => {
     // #given
     const rig = createRig();
@@ -319,7 +328,7 @@ describe('proposed repeat blocks', () => {
       lifecycle,
     );
 
-    if (!result.ok) throw new Error(result.error);
+    if (!result.isOk()) throw new Error(result.error);
 
     return result.value;
   }
@@ -477,9 +486,8 @@ describe('proposedRecord', () => {
     );
 
     // #then
-    expect(made).toEqual({
-      ok: true,
-      value: {
+    expect(made).toEqual(
+      Result.ok({
         k: ROW.k,
         d: {
           order: 0,
@@ -488,23 +496,22 @@ describe('proposedRecord', () => {
         c: 9,
         a: 'p-conn',
         l: [1, 'seed'],
-      },
-    });
+      }),
+    );
   });
   test('starts a row with no record empty', () => {
     // #when
     const made = proposedRecord(ROW.k, { kind: 'fields', values: { str: 1 } }, undefined, MINT);
     // #then
-    expect(made).toEqual({
-      ok: true,
-      value: {
+    expect(made).toEqual(
+      Result.ok({
         k: ROW.k,
         d: { order: 0, cells: { str: [1, 9, 'p-conn'] } },
         c: 9,
         a: 'p-conn',
         l: [9, 'p-conn'],
-      },
-    });
+      }),
+    );
   });
   test('refuses a patch the record already holds, unless forced', () => {
     // #when
@@ -515,33 +522,29 @@ describe('proposedRecord', () => {
 
     // #then
     expect(made).toEqual([
-      { ok: false, error: 'unchanged' },
-      {
-        ok: true,
-        value: {
-          k: ROW.k,
-          d: { order: 0, cells: { str: [5, 9, 'p-conn'] } },
-          c: 9,
-          a: 'p-conn',
-          l: [1, 'seed'],
-        },
-      },
+      Result.err('unchanged'),
+      Result.ok({
+        k: ROW.k,
+        d: { order: 0, cells: { str: [5, 9, 'p-conn'] } },
+        c: 9,
+        a: 'p-conn',
+        l: [1, 'seed'],
+      }),
     ]);
   });
   test('edits the cells of a live repeat row and keeps its order', () => {
     // #when
     const made = proposedRecord(REP.k, { kind: 'fields', values: { qty: 2 } }, REP, MINT);
     // #then
-    expect(made).toEqual({
-      ok: true,
-      value: {
+    expect(made).toEqual(
+      Result.ok({
         k: REP.k,
         d: { order: 2, cells: { qty: [2, 9, 'p-conn'] } },
         c: 9,
         a: 'p-conn',
         l: [1, 'seed'],
-      },
-    });
+      }),
+    );
   });
   test('a new row keeps its own order and cells over a live record of its key', () => {
     // #when
@@ -553,10 +556,9 @@ describe('proposedRecord', () => {
     );
 
     // #then
-    expect(made).toEqual({
-      ok: true,
-      value: fixtureRecord(REP.k, { order: 7, cells: { qty: 1 } }, 9, 'p-conn'),
-    });
+    expect(made).toEqual(
+      Result.ok(fixtureRecord(REP.k, { order: 7, cells: { qty: 1 } }, 9, 'p-conn')),
+    );
   });
   test('a removal stays a removal over a live row, and over no record', () => {
     // #when
@@ -567,17 +569,14 @@ describe('proposedRecord', () => {
 
     // #then
     expect(made).toEqual([
-      { ok: true, value: fixtureRecord(REP.k, null, 9, 'p-conn') },
-      {
-        ok: true,
-        value: {
-          k: REP.k,
-          d: null,
-          c: 9,
-          a: 'p-conn',
-          l: [9, 'p-conn'],
-        },
-      },
+      Result.ok(fixtureRecord(REP.k, null, 9, 'p-conn')),
+      Result.ok({
+        k: REP.k,
+        d: null,
+        c: 9,
+        a: 'p-conn',
+        l: [9, 'p-conn'],
+      }),
     ]);
   });
   test('an edit or a new row over a removed repeat row is gone, and its removal unchanged', () => {
@@ -591,10 +590,10 @@ describe('proposedRecord', () => {
 
     // #then
     expect(made).toEqual([
-      { ok: false, error: 'gone' },
-      { ok: false, error: 'gone' },
-      { ok: false, error: 'gone' },
-      { ok: false, error: 'unchanged' },
+      Result.err('gone'),
+      Result.err('gone'),
+      Result.err('gone'),
+      Result.err('unchanged'),
     ]);
   });
 });

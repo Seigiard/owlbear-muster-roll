@@ -1,19 +1,24 @@
+import { schedule } from '@/platform/schedule';
 import { mutableJson, type JsonValue } from '@/core/json';
 import type { WindowSize } from '@/core/preset';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { TIMING, type Timing } from '@/core/timing';
 import { sameItemIds } from '@/core/token-selection';
-import type {
-  Bounds,
-  ContextMenuItem,
-  PartyMember,
-  Platform,
-  Popover,
-  PlayerRole,
-  SendFailure,
+import {
+  MetadataFailure,
+  NotificationFailure,
+  PartyReadFailure,
+  PlayerReadFailure,
   StorageFailure,
-  StorageOperation,
-  Theme,
+  type Bounds,
+  type ContextMenuItem,
+  type PartyMember,
+  type Platform,
+  type Popover,
+  type PlayerRole,
+  type SendFailure,
+  type StorageOperation,
+  type Theme,
 } from '@/platform/ports';
 
 import {
@@ -117,7 +122,16 @@ export type MockPlatform = Platform & {
   // `rejoin: false` changes only the player's own role, as Owlbear does, with no party change.
   setRole: (role: PlayerRole, options?: { rejoin: boolean }) => void;
   setFailingStorageOperations: (operations: StorageOperation[]) => void;
-  failNextSends: (failures: SendFailure[]) => void;
+  failNextSends: (
+    failures: (
+      | SendFailure
+      | { kind: 'rate-limited' | 'failed'; reason?: string; channel?: string }
+    )[],
+  ) => void;
+  failNextPartyRead: () => void;
+  failNextPlayerRoleRead: () => void;
+  failNextMetadataRead: () => void;
+  failNextNotification: () => void;
   // Adds this client to the room's party, as Owlbear lists a connected client. One page per client
   // joins, so the party lists each connection once.
   joinParty: () => void;
@@ -225,7 +239,12 @@ export function createMockPlatform(
 ): MockPlatform {
   const themeListeners = new Set<ThemeListener>();
   const roleListeners = new Set<() => void>();
-  const sendFailures: SendFailure[] = [];
+
+  const sendFailures: (
+    | SendFailure
+    | { kind: 'rate-limited' | 'failed'; reason?: string; channel?: string }
+  )[] = [];
+
   const notifications: string[] = [];
   const menuItems = new Map<string, ContextMenuItem>();
   const menuCalls: ContextMenuCall[] = [];
@@ -243,6 +262,10 @@ export function createMockPlatform(
   let role: PlayerRole = client.role;
   let joined = false;
   let failingStorageOperations = new Set<StorageOperation>();
+  let partyReadFails = false;
+  let playerRoleReadFails = false;
+  let metadataReadFails = false;
+  let notificationFails = false;
   let currentTheme = MOCK_THEME;
 
   function attemptStorage<Value>(
@@ -250,13 +273,13 @@ export function createMockPlatform(
     action: () => Value,
   ): Result<Value, StorageFailure> {
     if (failingStorageOperations.has(operation)) {
-      return err({ operation, reason: 'mock storage failure' });
+      return Result.err(new StorageFailure({ operation, reason: 'mock storage failure' }));
     }
 
     try {
-      return ok(action());
+      return Result.ok(action());
     } catch (cause) {
-      return err({ operation, reason: String(cause) });
+      return Result.err(new StorageFailure({ operation, reason: String(cause) }));
     }
   }
 
@@ -326,7 +349,8 @@ export function createMockPlatform(
     changeScene('items', (scene) => ({ ...scene, labels: { ...scene.labels, [itemId]: label } }));
   }
 
-  return {
+  const platform: MockPlatform = {
+    clock: { now: () => Date.now(), schedule },
     onReady: (callback) => {
       queueMicrotask(callback);
     },
@@ -335,7 +359,7 @@ export function createMockPlatform(
         const failure = sendFailures.shift();
 
         if (failure !== undefined) {
-          return Promise.resolve(err(failure));
+          return Promise.resolve(Result.err(failure));
         }
 
         // LOCAL stays within this client. REMOTE reaches the other clients of the room only, as
@@ -346,7 +370,7 @@ export function createMockPlatform(
           room.postRemote(channel, mutableJson(data), connectionId);
         }
 
-        return Promise.resolve(ok(undefined));
+        return Promise.resolve(Result.ok(undefined));
       },
       onMessage: (channel, callback) => {
         const unsubscribeLocal = localBus.subscribe(channel, callback);
@@ -360,7 +384,19 @@ export function createMockPlatform(
     },
     metadata: {
       getRoomId: () => MOCK_ROOM_ID,
-      getMetadata: () => Promise.resolve(room.getMetadata()),
+      getMetadata: () => {
+        if (metadataReadFails) {
+          metadataReadFails = false;
+
+          return Promise.resolve(
+            Result.err(
+              new MetadataFailure({ operation: 'read', reason: 'mock metadata read failure' }),
+            ),
+          );
+        }
+
+        return Promise.resolve(Result.ok(room.getMetadata()));
+      },
       setMetadata: (update) => {
         room.setMetadata(update);
 
@@ -369,7 +405,17 @@ export function createMockPlatform(
       onMetadataChange: (callback) => room.onMetadataChange(callback),
     },
     party: {
-      getPlayers: () => Promise.resolve(others()),
+      getPlayers: () => {
+        if (partyReadFails) {
+          partyReadFails = false;
+
+          return Promise.resolve(
+            Result.err(new PartyReadFailure({ reason: 'mock party read failure' })),
+          );
+        }
+
+        return Promise.resolve(Result.ok(others()));
+      },
       onChange: (callback) =>
         room.onPartyChange(() => {
           callback(others());
@@ -379,7 +425,19 @@ export function createMockPlatform(
       getId: () => Promise.resolve(playerId),
       getConnectionId: () => Promise.resolve(connectionId),
       getName: () => Promise.resolve(name),
-      getRole: () => Promise.resolve(role),
+      getRole: () => {
+        if (playerRoleReadFails) {
+          playerRoleReadFails = false;
+
+          return Promise.resolve(
+            Result.err(
+              new PlayerReadFailure({ field: 'role', reason: 'mock player role read failure' }),
+            ),
+          );
+        }
+
+        return Promise.resolve(Result.ok(role));
+      },
       onRoleChange: (callback) => {
         roleListeners.add(callback);
 
@@ -489,7 +547,15 @@ export function createMockPlatform(
       show: (message) => {
         notifications.push(message);
 
-        return Promise.resolve(MOCK_NOTIFICATION_ID);
+        if (notificationFails) {
+          notificationFails = false;
+
+          return Promise.resolve(
+            Result.err(new NotificationFailure({ reason: 'mock notification failure' })),
+          );
+        }
+
+        return Promise.resolve(Result.ok(MOCK_NOTIFICATION_ID));
       },
     },
     // Owlbear calls back once per change, also with a readiness or a list it already reported.
@@ -615,6 +681,18 @@ export function createMockPlatform(
     failNextSends: (failures) => {
       sendFailures.push(...failures);
     },
+    failNextPartyRead: () => {
+      partyReadFails = true;
+    },
+    failNextPlayerRoleRead: () => {
+      playerRoleReadFails = true;
+    },
+    failNextMetadataRead: () => {
+      metadataReadFails = true;
+    },
+    failNextNotification: () => {
+      notificationFails = true;
+    },
     joinParty,
     leaveParty: () => {
       joined = false;
@@ -685,6 +763,8 @@ export function createMockPlatform(
       labelFailures.push(...kinds);
     },
   };
+
+  return platform;
 }
 
 // The one GM client every test had before rooms had several.

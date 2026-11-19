@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { DiceTerm, DieFace } from '@/core/formula-evaluate';
 import type { JsonValue } from '@/core/json';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 
 // TASK-36: the Dice+ broadcast protocol, as the `dicex` fork and the commercial Dice+ implement it.
 // Every message goes with destination `LOCAL`. Replies to a roll come on channels named by `source`.
@@ -167,17 +167,17 @@ export function dicePlusFaces(
   const parsed = dicePlusRollResultSchema.safeParse(data);
 
   if (dice === null) {
-    return err('the formula has no dice the extension rolls');
+    return Result.err('the formula has no dice the extension rolls');
   }
 
   if (!parsed.success) {
-    return err('the result does not parse');
+    return Result.err('the result does not parse');
   }
 
   const { groups } = parsed.data.result;
 
   if (groups.length !== dice.groups.length) {
-    return err(`the result has ${groups.length} dice groups, not ${dice.groups.length}`);
+    return Result.err(`the result has ${groups.length} dice groups, not ${dice.groups.length}`);
   }
 
   const bySides = new Map<number, number[]>();
@@ -187,24 +187,24 @@ export function dicePlusFaces(
     const faces = group?.dice.map((die) => faceOf(expected.sides, die.value)) ?? [];
 
     if (group?.diceType !== `d${expected.sides}`) {
-      return err(`group ${index + 1} is not d${expected.sides}`);
+      return Result.err(`group ${index + 1} is not d${expected.sides}`);
     }
 
     if (faces.length !== expected.count) {
-      return err(`group ${index + 1} has ${faces.length} dice, not ${expected.count}`);
+      return Result.err(`group ${index + 1} has ${faces.length} dice, not ${expected.count}`);
     }
 
     const bad = faces.find((face) => !Number.isInteger(face) || face < 1 || face > expected.sides);
 
     if (bad !== undefined) {
-      return err(`group ${index + 1} has the face ${bad}`);
+      return Result.err(`group ${index + 1} has the face ${bad}`);
     }
 
     bySides.set(expected.sides, faces);
   }
 
   // Each term takes the next faces of its sides, so same-sided terms keep their order.
-  return ok(
+  return Result.ok(
     terms.flatMap((term) =>
       (bySides.get(term.sides)?.splice(0, term.count) ?? []).map((face) => ({
         sides: term.sides,

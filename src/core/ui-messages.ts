@@ -16,7 +16,7 @@ import { dicePlaceSchema, shownValueSchema } from '@/core/dice-roll';
 import { fieldPatchTargetWireSchema } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
 import { playerIdSchema, recordSchema } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 
 export const UI_CHANNEL = 'app.muster-roll/ui';
 
@@ -34,6 +34,14 @@ export const noticeSchema = z.enum([
   'room-copy-older-format',
   'new-version',
 ]);
+
+export const diagnosticSchema = z.strictObject({
+  tag: z.string(),
+  at: z.number().int().nonnegative(),
+  detail: z.string().optional(),
+});
+
+export type Diagnostic = z.infer<typeof diagnosticSchema>;
 
 // What the last catch-up found in the room copy: `read` a copy of this client's generation, merged;
 // `none` no copy; `unreadable` a copy that does not decode, one of another generation, or a failed
@@ -103,6 +111,7 @@ const projectionSchema = z
     // (AD-4), which stand in until answered.
     pending: z.array(recordSchema),
     notices: z.array(noticeSchema),
+    diagnostics: z.array(diagnosticSchema).max(20).optional(),
     sync: syncSchema,
     roomCopy: roomCopySchema,
     party: partySchema,
@@ -121,6 +130,7 @@ const deltaSchema = z.strictObject({
   // again, and keys the role no longer sees.
   withdrawn: z.array(z.string()),
   notices: z.array(noticeSchema),
+  diagnostics: z.array(diagnosticSchema).max(20).optional(),
   sync: syncSchema,
   roomCopy: roomCopySchema,
   party: partySchema,
@@ -726,7 +736,7 @@ export function parseWindowMessage(
 ): Result<WindowMessage, UiMessageFailure> {
   const parsed = windowMessageSchema.safeParse(candidate);
 
-  return parsed.success ? ok(parsed.data) : err('invalid-message');
+  return parsed.success ? Result.ok(parsed.data) : Result.err('invalid-message');
 }
 
 export function parseEngineMessage(
@@ -734,7 +744,7 @@ export function parseEngineMessage(
 ): Result<ParsedEngineMessage, UiMessageFailure> {
   const parsed = engineMessageSchema.safeParse(candidate);
 
-  return parsed.success ? ok(parsed.data) : err('invalid-message');
+  return parsed.success ? Result.ok(parsed.data) : Result.err('invalid-message');
 }
 
 export function parseInternalEngineMessage(

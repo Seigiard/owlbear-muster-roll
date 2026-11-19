@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { expect, test } from 'bun:test';
 import { parseEngineMessage, wireOpenSheetOf } from './ui-messages';
 
@@ -19,15 +20,12 @@ test('parses a cell-target open request with its repeat block address', () => {
   // #then
   expect({ message, parsed }).toEqual({
     message: untouched,
-    parsed: {
-      ok: true,
-      value: {
-        t: 'open-sheet',
-        id: 'open-1',
-        block: { sheetId: 'heroes', path: ['attacks', 'attack-1'] },
-        cellId: 'portrait',
-      },
-    },
+    parsed: Result.ok({
+      t: 'open-sheet',
+      id: 'open-1',
+      block: { sheetId: 'heroes', path: ['attacks', 'attack-1'] },
+      cellId: 'portrait',
+    }),
   });
 });
 
@@ -44,7 +42,7 @@ test('round-trips a cell-target open request without changing its internal form'
   // #when
   const parsed = parseEngineMessage(structuredClone(literal));
 
-  if (!parsed.ok || parsed.value.t !== 'open-sheet') {
+  if (!parsed.isOk() || parsed.value.t !== 'open-sheet') {
     throw new Error('the wire open-sheet message must parse');
   }
 
@@ -70,5 +68,5 @@ test('drops an open request whose repeat path has an odd number of segments', ()
   });
   // #then
 
-  expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+  expect(parsed).toEqual(Result.err('invalid-message'));
 });

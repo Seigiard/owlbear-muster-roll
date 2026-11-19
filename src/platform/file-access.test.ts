@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { TestFileAccessFake } from '../../tests/support/file-access';
 import { createBrowserFileAccess } from '../builder/file-access';
@@ -10,17 +11,14 @@ describe('file-access port fake', () => {
     access.queueOpen(file);
     // #when
     const opened = await access.open({ mode: 'open' });
-    const read = opened.ok && opened.value !== null ? await access.read(opened.value) : null;
+    const read = opened.isOk() && opened.value !== null ? await access.read(opened.value) : null;
     // #then
     expect({ opened, read, requests: access.openRequests }).toEqual({
-      opened: { ok: true, value: { id: 'preset', name: 'crew.json' } },
-      read: {
-        ok: true,
-        value: {
-          text: '{"v":3}',
-          modifiedAt: new Date('2026-11-16T18:06:00.000Z'),
-        },
-      },
+      opened: Result.ok({ id: 'preset', name: 'crew.json' }),
+      read: Result.ok({
+        text: '{"v":3}',
+        modifiedAt: new Date('2026-11-16T18:06:00.000Z'),
+      }),
       requests: [{ mode: 'open' }],
     });
   });
@@ -47,13 +45,10 @@ describe('file-access port fake', () => {
       follows: access.followRequests,
       followed,
     }).toEqual({
-      write: {
-        ok: true,
-        value: {
-          text: 'from-page',
-          modifiedAt: new Date('2026-11-16T18:06:00.000Z'),
-        },
-      },
+      write: Result.ok({
+        text: 'from-page',
+        modifiedAt: new Date('2026-11-16T18:06:00.000Z'),
+      }),
       writes: [
         {
           file: { id: 'snapshot', name: 'crew-snapshot.json' },
@@ -62,13 +57,10 @@ describe('file-access port fake', () => {
       ],
       follows: [{ id: 'snapshot', name: 'crew-snapshot.json' }],
       followed: [
-        {
-          ok: true,
-          value: {
-            text: 'from-disk',
-            modifiedAt: new Date('2026-11-16T18:07:00.000Z'),
-          },
-        },
+        Result.ok({
+          text: 'from-disk',
+          modifiedAt: new Date('2026-11-16T18:07:00.000Z'),
+        }),
       ],
     });
   });
@@ -86,9 +78,9 @@ describe('file-access port fake', () => {
     access.externalFailure(missing, 'permission denied');
     // #then
     expect({ read, write, followed }).toEqual({
-      read: { ok: false, error: { reason: 'No fake file missing' } },
-      write: { ok: false, error: { reason: 'No fake file missing' } },
-      followed: [{ ok: false, error: { reason: 'permission denied' } }],
+      read: Result.err({ reason: 'No fake file missing' }),
+      write: Result.err({ reason: 'No fake file missing' }),
+      followed: [Result.err({ reason: 'permission denied' })],
     });
   });
 });
@@ -104,7 +96,7 @@ describe('browser file-access adapter', () => {
     const result = await createBrowserFileAccess().open({ mode: 'open' });
     restore();
     // #then
-    expect(result).toEqual({ ok: true, value: null });
+    expect(result).toEqual(Result.ok(null));
   });
   test('keeps a non-Abort picker failure as an error result', async () => {
     // #given
@@ -116,7 +108,7 @@ describe('browser file-access adapter', () => {
     const result = await createBrowserFileAccess().open({ mode: 'open' });
     restore();
     // #then
-    expect(result).toEqual({ ok: false, error: { reason: 'permission denied' } });
+    expect(result).toEqual(Result.err({ reason: 'permission denied' }));
   });
 });
 

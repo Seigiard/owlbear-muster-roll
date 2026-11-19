@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
@@ -157,7 +157,6 @@ function roomKeys(client: Client): string[] {
 describe('a wipe', () => {
   test('empties the room in a new generation, writes its empty copy over an older-format one, then sends reset and answers', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD], 1) });
     const gm = await startClient(room, 'gm-a', { until: 'live' });
@@ -184,7 +183,6 @@ describe('a wipe', () => {
   });
   test('takes the older-format notice away', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD], 1) });
     const gm = await startClient(room, 'gm-a', { until: 'live' });

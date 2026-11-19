@@ -7,6 +7,11 @@ import { commitEnvelope, SYNC_CHANNEL, type EditId } from '@/core/room-messages'
 import type { Generation } from '@/core/storage-key';
 import type { BroadcastOptions } from '@/platform/ports';
 import type { SendQueue } from '@/platform/send-queue';
+import {
+  RecordTooLargeFailure,
+  SendDroppedFailure,
+  type FailureReporter,
+} from '@/replica/failures';
 
 const REMOTE: BroadcastOptions = { destination: 'REMOTE' };
 
@@ -19,8 +24,6 @@ export type CommitOutbox = {
   add: (records: readonly VersionedRecord[], acks?: readonly EditId[]) => void;
   // Hands every held record to the queue at once, for a page that is about to close.
   flush: () => void;
-  // Sends nothing more, not even a commit already waiting in the queue.
-  stop: () => void;
   // AD-9: forgets every held record and ack, so a commit waiting in the queue sends nothing. The
   // queue composes it with the generation of the moment it sends, which a replaced room changed.
   drop: () => void;
@@ -35,19 +38,29 @@ export type CommitOutbox = {
 export function createCommitOutbox(
   sendQueue: SendQueue,
   generation: () => Generation,
+  options: { report?: FailureReporter; signal: AbortSignal },
 ): CommitOutbox {
+  const report = options.report ?? (() => undefined);
   const held = new Map<string, VersionedRecord>();
   const heldAcks = new Map<string, EditId[]>();
   let scheduled = false;
-  let stopped = false;
   // Commit sends the queue has not settled yet.
   let unsentSends = 0;
+
+  options.signal.addEventListener(
+    'abort',
+    () => {
+      held.clear();
+      heldAcks.clear();
+    },
+    { once: true },
+  );
 
   function track(send: Promise<void>): void {
     unsentSends += 1;
     send
       .catch((error) => {
-        console.error('Muster Roll could not send a commit', error);
+        report(new SendDroppedFailure({ channel: 'sync', reason: String(error) }));
       })
       .finally(() => {
         unsentSends -= 1;
@@ -69,8 +82,8 @@ export function createCommitOutbox(
     for (const assembled of held.values()) {
       const fragments = fragmentRecord(assembled);
 
-      if (!fragments.ok) {
-        console.error('Muster Roll dropped a commit record too large for one message', assembled.k);
+      if (!fragments.isOk()) {
+        report(new RecordTooLargeFailure({ key: assembled.k }));
         held.delete(assembled.k);
         heldAcks.delete(assembled.k);
         continue;
@@ -104,7 +117,7 @@ export function createCommitOutbox(
 
       // A record passes the one-message check before it is applied, so this means a broken one.
       if (fitting === null) {
-        console.error('Muster Roll dropped a commit record too large for one message', record.k);
+        report(new RecordTooLargeFailure({ key: record.k }));
         held.delete(record.k);
         heldAcks.delete(record.k);
         continue;
@@ -119,7 +132,7 @@ export function createCommitOutbox(
 
     // Measured with the acks of each record's key, so a part with its acks stays under the limit.
     const split = splitBatch(items, envelopeBytes);
-    const first = split.ok ? (split.value[0] ?? []) : [];
+    const first = split.isOk() ? (split.value[0] ?? []) : [];
     const records = first.map(([record]) => record);
     const acks = first.flatMap(([, keyAcks]) => keyAcks);
 
@@ -152,7 +165,7 @@ export function createCommitOutbox(
   function take(): JsonValue | null {
     scheduled = false;
 
-    if (stopped) {
+    if (options.signal.aborted) {
       return null;
     }
 
@@ -166,7 +179,7 @@ export function createCommitOutbox(
   }
 
   function schedule(): void {
-    if (scheduled || stopped) {
+    if (scheduled || options.signal.aborted) {
       return;
     }
 
@@ -176,7 +189,7 @@ export function createCommitOutbox(
 
   return {
     add: (records, acks = []) => {
-      if (records.length === 0 || stopped) {
+      if (records.length === 0 || options.signal.aborted) {
         return;
       }
 
@@ -200,11 +213,7 @@ export function createCommitOutbox(
         track(sendQueue.enqueue(SYNC_CHANNEL, message, REMOTE));
       }
     },
-    stop: () => {
-      stopped = true;
-      held.clear();
-      heldAcks.clear();
-    },
+
     drop: () => {
       held.clear();
       heldAcks.clear();
@@ -235,7 +244,7 @@ function fittingAcks(
   for (let count = acks.length; count >= 0; count -= 1) {
     const item: CommitItem = [record, acks.slice(0, count)];
 
-    if (splitBatch([item], envelopeBytes).ok) {
+    if (splitBatch([item], envelopeBytes).isOk()) {
       return count;
     }
   }

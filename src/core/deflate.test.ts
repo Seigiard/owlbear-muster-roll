@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { deflateToBase64, inflateFromBase64 } from '@/core/deflate';
 
@@ -8,7 +9,7 @@ describe('deflate', () => {
     // #when
     const text = inflateFromBase64(deflateToBase64('Брок 🎲'.repeat(20000)), LARGE_CAP);
     // #then
-    expect(text).toEqual({ ok: true, value: 'Брок 🎲'.repeat(20000) });
+    expect(text).toEqual(Result.ok('Брок 🎲'.repeat(20000)));
   });
   test('refuses data that is not deflated base64', () => {
     // #when
@@ -18,10 +19,7 @@ describe('deflate', () => {
     ];
 
     // #then
-    expect(results).toEqual([
-      { ok: false, error: 'invalid-data' },
-      { ok: false, error: 'invalid-data' },
-    ]);
+    expect(results).toEqual([Result.err('invalid-data'), Result.err('invalid-data')]);
   });
   test('refuses data that inflates past the cap, and takes data that inflates to it', () => {
     // #given a few hundred bytes that inflate to a megabyte
@@ -35,7 +33,7 @@ describe('deflate', () => {
 
     // #then
     expect(data.length).toBeLessThan(15000);
-    expect(results[0]).toEqual({ ok: false, error: 'too-large' });
-    expect(results[1]).toEqual({ ok: true, value: 'a'.repeat(1024 * 1024) });
+    expect(results[0]).toEqual(Result.err('too-large'));
+    expect(results[1]).toEqual(Result.ok('a'.repeat(1024 * 1024)));
   });
 });

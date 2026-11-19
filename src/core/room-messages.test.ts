@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import type { VersionedRecord } from '@/core/records';
 import { describe, expect, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
@@ -170,10 +171,9 @@ describe('parseRoomMessage', () => {
     // #when
     const parsed = parseRoomMessage(commit());
     // #then
-    expect(parsed).toEqual({
-      ok: true,
-      value: { v: 4, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], acks: [] },
-    });
+    expect(parsed).toEqual(
+      Result.ok({ v: 4, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], acks: [] }),
+    );
   });
   test('reads a commit that echoes the (k, c, a) of the proposals it answers', () => {
     // #given
@@ -181,10 +181,9 @@ describe('parseRoomMessage', () => {
     // #when
     const parsed = parseRoomMessage(commit({ acks }));
     // #then
-    expect(parsed).toEqual({
-      ok: true,
-      value: { v: 4, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], acks },
-    });
+    expect(parsed).toEqual(
+      Result.ok({ v: 4, g: { n: 0, a: '' }, t: 'commit', records: [RECORD], acks }),
+    );
   });
   test('builds a propose of one record that parses back as itself', () => {
     // #given
@@ -192,10 +191,9 @@ describe('parseRoomMessage', () => {
     // #when
     const parsed = parseRoomMessage(built);
     // #then
-    expect(parsed).toEqual({
-      ok: true,
-      value: { v: 4, g: { n: 1, a: 'x' }, t: 'propose', records: [ROW], i: 1, n: 1 },
-    });
+    expect(parsed).toEqual(
+      Result.ok({ v: 4, g: { n: 1, a: 'x' }, t: 'propose', records: [ROW], i: 1, n: 1 }),
+    );
   });
   test('builds a denied reject with no record and a stale one with the current record', () => {
     // #given
@@ -210,11 +208,8 @@ describe('parseRoomMessage', () => {
 
     // #then
     expect(parsed).toEqual([
-      { ok: true, value: { v: 4, g: { n: 0, a: '' }, t: 'reject', ...edit, reason: 'denied' } },
-      {
-        ok: true,
-        value: { v: 4, g: { n: 0, a: '' }, t: 'reject', ...edit, reason: 'stale', current },
-      },
+      Result.ok({ v: 4, g: { n: 0, a: '' }, t: 'reject', ...edit, reason: 'denied' }),
+      Result.ok({ v: 4, g: { n: 0, a: '' }, t: 'reject', ...edit, reason: 'stale', current }),
     ]);
   });
   test('reads a state-request and a state part', () => {
@@ -224,15 +219,15 @@ describe('parseRoomMessage', () => {
     const parsed = [parseRoomMessage(request), parseRoomMessage(state({ i: 2, n: 3 }))];
     // #then
     expect(parsed).toMatchObject([
-      { ok: true, value: request },
-      { ok: true, value: { t: 'state', r: 'r1', i: 2, n: 3 } },
+      Result.ok(request),
+      Result.ok({ t: 'state', r: 'r1', i: 2, n: 3 }),
     ]);
   });
   test('builds a state-request that parses back as itself', () => {
     // #when
     const request = stateRequestMessage({ n: 0, a: '' }, 'nonce-1');
     // #then
-    expect(parseRoomMessage(request)).toEqual({ ok: true, value: request });
+    expect(parseRoomMessage(request)).toEqual(Result.ok(request));
   });
   test('reads a ping and an alive with its digest', () => {
     // #given
@@ -241,25 +236,22 @@ describe('parseRoomMessage', () => {
     // #when
     const parsed = [parseRoomMessage(ping), parseRoomMessage(alive)];
     // #then
-    expect(parsed).toEqual([
-      { ok: true, value: ping },
-      { ok: true, value: alive },
-    ]);
+    expect(parsed).toEqual([Result.ok(ping), Result.ok(alive)]);
   });
   test('builds a ping and an alive that parse back as themselves', () => {
     // #when
     const built = [pingMessage({ n: 1, a: 'x' }), aliveMessage({ n: 1, a: 'x' }, 0)];
     // #then
     expect(built.map((message) => parseRoomMessage(message))).toEqual([
-      { ok: true, value: { v: 4, g: { n: 1, a: 'x' }, t: 'ping' } },
-      { ok: true, value: { v: 4, g: { n: 1, a: 'x' }, t: 'alive', digest: 0 } },
+      Result.ok({ v: 4, g: { n: 1, a: 'x' }, t: 'ping' }),
+      Result.ok({ v: 4, g: { n: 1, a: 'x' }, t: 'alive', digest: 0 }),
     ]);
   });
   test('reads a roll with its sheet, names, cell and result', () => {
     // #when
     const parsed = parseRoomMessage(ROLL);
     // #then
-    expect(parsed).toEqual({ ok: true, value: ROLL });
+    expect(parsed).toEqual(Result.ok(ROLL));
   });
   test('builds a roll that parses back as itself', () => {
     // #given
@@ -279,13 +271,13 @@ describe('parseRoomMessage', () => {
     // #when
     const parsed = parseRoomMessage(built);
     // #then
-    expect(parsed).toEqual({ ok: true, value: built });
+    expect(parsed).toEqual(Result.ok(built));
   });
   test('reports a higher v before it looks at the rest of the message', () => {
     // #when
     const parsed = parseRoomMessage({ v: 5, t: 'something-new', anything: [1, 2] });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'newer-version' });
+    expect(parsed).toEqual(Result.err('newer-version'));
   });
   test.each([[0], [1], [2], [3]])(
     'reports the lower v %j even for a message that is otherwise a valid commit',
@@ -293,7 +285,7 @@ describe('parseRoomMessage', () => {
       // #when
       const parsed = parseRoomMessage(commit({ v }));
       // #then
-      expect(parsed).toEqual({ ok: false, error: 'older-version' });
+      expect(parsed).toEqual(Result.err('older-version'));
     },
   );
   test.each<[string, JsonValue]>([
@@ -371,7 +363,7 @@ describe('parseRoomMessage', () => {
     // #when
     const parsed = parseRoomMessage(candidate);
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-message' });
+    expect(parsed).toEqual(Result.err('invalid-message'));
   });
 });
 

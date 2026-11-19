@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { encodePreset, type Preset, type PresetRow, type PresetSection } from '@/core/preset';
-import { ok } from '@/core/result';
+import { Result } from 'better-result';
 import type { RollMessage } from '@/core/room-messages';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
 import { createRollFlow, type RollFlowPorts } from './roll-flow';
@@ -73,13 +73,13 @@ function harness(sectionVisibility?: Visibility, rowVisibility?: Visibility) {
     pendingView: () => records,
     presetOf: () => preset,
     role: () => 'PLAYER',
-    stopped: () => false,
+    signal: new AbortController().signal,
     generation: () => ({ n: 0, a: '' }),
     dice: {
       ready: async () => 'absent',
-      roll: async () => ok([]),
+      roll: async () => Result.ok([]),
     },
-    gmInRoom: () => true,
+    gmInParty: () => true,
     playerId: 'player-1',
     playerName: async () => 'Игрок',
     random: () => 0,

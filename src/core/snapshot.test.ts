@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
 import type { JsonObject, JsonValue } from '@/core/json';
@@ -52,8 +53,8 @@ describe('encodeSnapshot', () => {
     const encoded = encodeSnapshot({ n: 2, a: 'gm' }, [SHEET, TOMBSTONE, ROW, ACL]);
     // #then
     expect({
-      v: encoded.ok ? encoded.value.v : null,
-      data: encoded.ok ? decodedData(encoded.value) : null,
+      v: encoded.isOk() ? encoded.value.v : null,
+      data: encoded.isOk() ? decodedData(encoded.value) : null,
     }).toEqual({
       v: 4,
       data: { g: { n: 2, a: 'gm' }, records: [ACL, SHEET, ROW, TOMBSTONE] },
@@ -72,7 +73,7 @@ describe('encodeSnapshot', () => {
     // #when
     const encoded = encodeSnapshot(INITIAL, [huge]);
     // #then
-    expect(encoded).toEqual({ ok: false, error: 'too-large' });
+    expect(encoded).toEqual(Result.err('too-large'));
   });
 });
 
@@ -83,13 +84,13 @@ describe('readSnapshot', () => {
     // #when
     const read = readSnapshot(metadata);
     // #then
-    expect(read).toEqual({ ok: true, value: { g: { n: 1, a: 'gm' }, records: [ROW, TOMBSTONE] } });
+    expect(read).toEqual(Result.ok({ g: { n: 1, a: 'gm' }, records: [ROW, TOMBSTONE] }));
   });
   test('reads a room with no copy as null', () => {
     // #when
     const read = readSnapshot({ 'other.extension/key': 1 });
     // #then
-    expect(read).toEqual({ ok: true, value: null });
+    expect(read).toEqual(Result.ok(null));
   });
   test('refuses a higher v without decoding its data', () => {
     // #given
@@ -97,7 +98,7 @@ describe('readSnapshot', () => {
     // #when
     const read = readSnapshot(metadata);
     // #then
-    expect(read).toEqual({ ok: false, error: 'newer-version' });
+    expect(read).toEqual(Result.err('newer-version'));
   });
   test.each([1, 2, 3])(
     'refuses a copy of the older format %i without decoding its data',
@@ -107,7 +108,7 @@ describe('readSnapshot', () => {
       // #when
       const read = readSnapshot(metadata);
       // #then
-      expect(read).toEqual({ ok: false, error: 'older-version' });
+      expect(read).toEqual(Result.err('older-version'));
     },
   );
   test.each([1, 2, 3])(
@@ -118,7 +119,7 @@ describe('readSnapshot', () => {
       // #when
       const read = readSnapshot(metadata);
       // #then
-      expect(read).toEqual({ ok: false, error: 'older-version' });
+      expect(read).toEqual(Result.err('older-version'));
     },
   );
   test.each<[string, JsonValue]>([
@@ -148,7 +149,7 @@ describe('readSnapshot', () => {
     // #when
     const read = readSnapshot({ [KEY]: value });
     // #then
-    expect(read).toEqual({ ok: false, error: 'invalid-snapshot' });
+    expect(read).toEqual(Result.err('invalid-snapshot'));
   });
   test('refuses data that inflates past the cap', () => {
     // #given
@@ -156,7 +157,7 @@ describe('readSnapshot', () => {
     // #when
     const read = readSnapshot({ [KEY]: { v: 4, data: bomb } });
     // #then
-    expect(read).toEqual({ ok: false, error: 'invalid-snapshot' });
+    expect(read).toEqual(Result.err('invalid-snapshot'));
   });
 });
 

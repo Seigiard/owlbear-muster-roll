@@ -37,7 +37,7 @@ The paths in the commit choose the checks. For a normal commit, inspect `git dif
 
 | Paths | Local checks |
 |---|---|
-| Source or tests (`src/`, `tests/`, `scripts/`, `tools/`, `test-setup.ts`), root HTML entry pages, shipped assets or presets (`public/`, `presets/`), `package.json`, `bun.lock`, or configuration consumed by these checks | Full check: `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run test:browser`, `bun run build`. |
+| Source or tests (`src/`, `tests/`, `scripts/`, `tools/`, `test-setup.ts`), root HTML entry pages, shipped assets or presets (`public/`, `presets/`), `package.json`, `bun.lock`, or configuration consumed by these checks | Full check: `bunx oxfmt --ignore-path .gitignore --check .`, `bun run lint`, `bun run typecheck`, `bun test`, `bun run mutants` (on committed files; it refuses a dirty target), `bun run test:browser`, `bun run build`. |
 | Backlog records (`backlog/`) | Read each touched task with `backlog task view <id> --plain`: the CLI must read it and its fields must match the intended change. Run `backlog doctor` for ID and dependency diagnostics, the touched-path format check below, and `git diff --cached --check`. |
 | Documentation: `docs/`, `_bmad-output/`, `GLOSSARY.md`, `CLAUDE.md`, or other Markdown outside source/test/config paths | Run the touched-path format check below and `git diff --cached --check`. Changes to `docs/preset-format.md` or `docs/example-preset.json` also require the example's parse test from the preset-format block. |
 

@@ -3,11 +3,12 @@ import type { ReactNode } from 'react';
 
 import type { Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import type { RoomCopyStatus } from '@/core/ui-messages';
+import type { Diagnostic, RoomCopyStatus } from '@/core/ui-messages';
 import { copy } from '@/copy';
 import { PresetDownload, uploadDisabledReason, usePresetUpload } from '@/ui/preset-actions';
 import { SECONDARY_BUTTON_CLASS } from '@/ui/primitives/button';
 import type { ReplicaClient } from '@/ui/replica-client';
+import { diagnosticsText, formatDiagnosticTime } from '@/ui/settings/diagnostics-text';
 import { roomCopyText } from '@/ui/settings/room-copy-text';
 import { useSnapshotActions } from '@/ui/settings/snapshot-actions';
 import { useWipeActions } from '@/ui/settings/wipe-actions';
@@ -21,6 +22,7 @@ type SettingsViewProps = {
   preset: Preset | null;
   catchingUp: boolean;
   roomCopy: RoomCopyStatus;
+  diagnostics: readonly Diagnostic[];
   client: Pick<ReplicaClient, 'sendCommand' | 'requestPresetDiff' | 'requestSnapshotCheck'>;
 };
 
@@ -33,6 +35,7 @@ export function SettingsView({
   preset,
   catchingUp,
   roomCopy,
+  diagnostics,
   client,
 }: SettingsViewProps): ReactNode {
   const headingId = useId();
@@ -49,6 +52,7 @@ export function SettingsView({
 
   const snapshot = useSnapshotActions({ records, preset, catchingUp, client });
   const wipe = useWipeActions({ catchingUp, client });
+  const entries = diagnosticsText(diagnostics, formatDiagnosticTime);
 
   return (
     <div className="flex flex-col gap-6">
@@ -109,6 +113,21 @@ export function SettingsView({
         </h2>
         <div className="flex flex-wrap items-start gap-2">{wipe.action}</div>
       </section>
+      <details className="flex flex-col gap-2">
+        <summary className="cursor-pointer text-section-heading text-text-muted">
+          {copy.diagnostics.sectionName}
+          {entries.length > 0 && ` ${copy.diagnostics.count(entries.length)}`}
+        </summary>
+        {entries.length === 0 ? (
+          <p>{copy.diagnostics.empty}</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {entries.map((entry, index) => (
+              <li key={`${entry}-${index}`}>{entry}</li>
+            ))}
+          </ul>
+        )}
+      </details>
     </div>
   );
 }

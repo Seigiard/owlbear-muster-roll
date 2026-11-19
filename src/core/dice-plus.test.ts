@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { dicePlusDice, dicePlusFaces, dicePlusTarget } from '@/core/dice-plus';
 import type { DiceTerm } from '@/core/formula-evaluate';
@@ -92,14 +93,13 @@ describe('dicePlusFaces', () => {
     );
 
     // #then
-    expect(faces).toEqual({
-      ok: true,
-      value: [
+    expect(faces).toEqual(
+      Result.ok([
         { sides: 6, face: 6 },
         { sides: 6, face: 1 },
         { sides: 8, face: 8 },
-      ],
-    });
+      ]),
+    );
   });
   test('gives the faces back in tree order for groups in dice set order', () => {
     // #when: `1d20 + 1d4` goes as `1d4+1d20`.
@@ -112,13 +112,12 @@ describe('dicePlusFaces', () => {
     );
 
     // #then
-    expect(faces).toEqual({
-      ok: true,
-      value: [
+    expect(faces).toEqual(
+      Result.ok([
         { sides: 20, face: 17 },
         { sides: 4, face: 3 },
-      ],
-    });
+      ]),
+    );
   });
   test('splits a merged group between same-sided terms in their order', () => {
     // #when: `2d6 + 1d8 - 1d6` goes as `3d6+1d8`.
@@ -131,27 +130,25 @@ describe('dicePlusFaces', () => {
     );
 
     // #then
-    expect(faces).toEqual({
-      ok: true,
-      value: [
+    expect(faces).toEqual(
+      Result.ok([
         { sides: 6, face: 1 },
         { sides: 6, face: 2 },
         { sides: 8, face: 8 },
         { sides: 6, face: 6 },
-      ],
-    });
+      ]),
+    );
   });
   test('reads the 0 dicex reports for a d10 that shows 10 as 10', () => {
     // #when
     const faces = dicePlusFaces(terms([2, 10]), result([['d10', [0, 7]]]));
     // #then
-    expect(faces).toEqual({
-      ok: true,
-      value: [
+    expect(faces).toEqual(
+      Result.ok([
         { sides: 10, face: 10 },
         { sides: 10, face: 7 },
-      ],
-    });
+      ]),
+    );
   });
   test.each<[string, DiceTerm[], JsonValue]>([
     ['one group missing', VOLLEY, result([['d6', [6, 1]]])],
@@ -223,6 +220,6 @@ describe('dicePlusFaces', () => {
     // #when
     const faces = dicePlusFaces(given, data);
     // #then
-    expect(faces.ok).toBe(false);
+    expect(faces.isOk()).toBe(false);
   });
 });

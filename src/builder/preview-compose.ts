@@ -46,7 +46,7 @@ export function previewCompose(
 
   const composed = createComposers('builder').compose(context, command);
 
-  if (!composed.ok) {
+  if (composed.isErr()) {
     return { snapshot, ok: false };
   }
 

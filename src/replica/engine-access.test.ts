@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import type { PartyEntry } from '@/core/access';
 import { ownerOf } from '@/core/merge';
@@ -740,7 +741,9 @@ function holdInitialPartyRead(): HeldInitialPartyRead {
         getPlayers: () => {
           reads += 1;
 
-          return reads === 1 ? read.promise : platform.party.getPlayers();
+          return reads === 1
+            ? read.promise.then((players) => Result.ok(players))
+            : platform.party.getPlayers();
         },
       },
     }),
@@ -769,7 +772,7 @@ function partyDeltas(client: Client): PartyEntry[][] {
   return client.local.flatMap((message) => {
     const parsed = parseEngineMessage(message);
 
-    return parsed.ok && parsed.value.t === 'delta' ? [parsed.value.party] : [];
+    return parsed.isOk() && parsed.value.t === 'delta' ? [parsed.value.party] : [];
   });
 }
 

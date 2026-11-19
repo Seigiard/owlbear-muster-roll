@@ -24,7 +24,7 @@ import {
   type FieldValue,
   type VersionedRecord,
 } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 
 const targetIdSchema = z.string().min(1).max(64);
 
@@ -129,12 +129,12 @@ export function acceptedFieldValue(
   value: JsonValue,
 ): Result<FieldPatchValue, 'invalid-value'> {
   if (value === null) {
-    return ok(null);
+    return Result.ok(null);
   }
 
   const parsed = VALUE_SCHEMAS[field.type].safeParse(value);
 
-  return parsed.success ? ok(parsed.data) : err('invalid-value');
+  return parsed.success ? Result.ok(parsed.data) : Result.err('invalid-value');
 }
 
 // The record data after the patch, merged into what the record holds now. An absent or deleted row
@@ -152,19 +152,19 @@ export function patchedRecord(
   const block = repDataSchema.safeParse(current?.d);
 
   if (!block.success) {
-    if (current?.d === null || target.kind === 'rep') return err('unknown-instance');
+    if (current?.d === null || target.kind === 'rep') return Result.err('unknown-instance');
 
     return value === null
-      ? err('unchanged')
-      : ok({
+      ? Result.err('unchanged')
+      : Result.ok({
           k,
           d: { order: 0, cells: { [fieldId]: [value, Number.MAX_SAFE_INTEGER, AUTHOR_STAND_IN] } },
         });
   }
 
-  if (sameFieldValue(block.data.cells[fieldId]?.[0], value)) return err('unchanged');
+  if (sameFieldValue(block.data.cells[fieldId]?.[0], value)) return Result.err('unchanged');
 
-  return ok({
+  return Result.ok({
     k,
     d: {
       ...block.data,

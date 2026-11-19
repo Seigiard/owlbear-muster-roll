@@ -1,9 +1,20 @@
+import { schedule } from '@/platform/schedule';
 import OBR from '@owlbear-rodeo/sdk';
 
 import type { JsonObject, JsonValue } from '@/core/json';
 import { TIMING, type Timing } from '@/core/timing';
 import { sameItemIds } from '@/core/token-selection';
-import type { Bounds, PartyMember, Platform, PlayerRole } from '@/platform/ports';
+import { Result } from 'better-result';
+import {
+  MetadataFailure,
+  NotificationFailure,
+  PartyReadFailure,
+  PlayerReadFailure,
+  type Bounds,
+  type PartyMember,
+  type Platform,
+  type PlayerRole,
+} from '@/platform/ports';
 
 import { createBrowserStorage } from './browser-storage';
 import { itemLabel, writeItemLabel } from './item-label';
@@ -13,12 +24,13 @@ import { toSendResult } from './send-result';
 export const timing: Timing = TIMING;
 
 export const platform: Platform = {
+  clock: { now: () => Date.now(), schedule },
   onReady: (callback) => {
     OBR.onReady(callback);
   },
   broadcast: {
     sendMessage: (channel, data, options) =>
-      toSendResult(() => OBR.broadcast.sendMessage(channel, data, options)),
+      toSendResult(() => OBR.broadcast.sendMessage(channel, data, options), channel),
     onMessage: (channel, callback) =>
       OBR.broadcast.onMessage(channel, (event) => {
         callback({
@@ -31,10 +43,15 @@ export const platform: Platform = {
   metadata: {
     getRoomId: () => OBR.room.id,
     getMetadata: async () => {
-      const metadata = await OBR.room.getMetadata();
+      const metadata = await Result.tryPromise({
+        try: () => OBR.room.getMetadata(),
+        catch: (cause) => new MetadataFailure({ operation: 'read', reason: String(cause) }),
+      });
 
-      // SAFETY: Owlbear stores only JSON, and core schemas parse the values before use.
-      return metadata as JsonObject;
+      return metadata.isOk()
+        ? // SAFETY: Owlbear metadata is a JSON object by the SDK contract.
+          Result.ok(metadata.value as JsonObject)
+        : metadata;
     },
     setMetadata: (update) => OBR.room.setMetadata(update),
     onMetadataChange: (callback) =>
@@ -45,9 +62,12 @@ export const platform: Platform = {
   },
   party: {
     getPlayers: async () => {
-      const players = await OBR.party.getPlayers();
+      const players = await Result.tryPromise({
+        try: () => OBR.party.getPlayers(),
+        catch: (cause) => new PartyReadFailure({ reason: String(cause) }),
+      });
 
-      return players.map(toPartyMember);
+      return players.isOk() ? Result.ok(players.value.map(toPartyMember)) : players;
     },
     onChange: (callback) =>
       OBR.party.onChange((players) => {
@@ -58,7 +78,11 @@ export const platform: Platform = {
     getId: () => OBR.player.getId(),
     getConnectionId: () => OBR.player.getConnectionId(),
     getName: () => OBR.player.getName(),
-    getRole: () => OBR.player.getRole(),
+    getRole: () =>
+      Result.tryPromise({
+        try: () => OBR.player.getRole(),
+        catch: (cause) => new PlayerReadFailure({ field: 'role', reason: String(cause) }),
+      }),
     onRoleChange: (callback) => {
       let lastRole: PlayerRole | null = null;
 
@@ -116,7 +140,11 @@ export const platform: Platform = {
     },
   },
   notification: {
-    show: (message, variant) => OBR.notification.show(message, variant),
+    show: (message, variant) =>
+      Result.tryPromise({
+        try: () => OBR.notification.show(message, variant),
+        catch: (cause) => new NotificationFailure({ reason: String(cause) }),
+      }),
   },
   scene: {
     isReady: () => OBR.scene.isReady(),

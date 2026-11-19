@@ -1,6 +1,10 @@
 import type { JsonObject, JsonValue, ReadonlyJsonValue } from '@/core/json';
-import type { Result } from '@/core/result';
+import { Result, TaggedError } from 'better-result';
 import type { PlayerRole } from '@/core/visibility';
+
+export type Schedule = (signal: AbortSignal, ms: number, fn: () => void) => () => void;
+
+export type ClockPort = { now: () => number; schedule: Schedule };
 
 export type Unsubscribe = () => void;
 
@@ -22,10 +26,21 @@ export type BroadcastOptions = { destination: BroadcastDestination };
 
 export type BroadcastEvent = { data: JsonValue; connectionId: string };
 
-// Only the adapter knows how Owlbear reports these. A send never rejects.
-export type SendFailure = { kind: 'rate-limited' } | { kind: 'failed'; reason: string };
+export class SendFailure extends TaggedError('SendFailure')<{
+  kind: 'rate-limited' | 'failed';
+  reason?: string;
+  channel?: string;
+}> {}
 
-export type SendResult = Result<void, SendFailure>;
+export type SendFailureData = {
+  kind: 'rate-limited' | 'failed';
+  reason?: string;
+  channel?: string;
+};
+
+// The data member keeps older test doubles source-compatible. Adapters always return the tagged
+// class, so failures that cross a real platform boundary are exhaustive.
+export type SendResult = Result<void, SendFailure | SendFailureData>;
 
 export type BroadcastSend = {
   (channel: string, data: JsonValue, options: BroadcastOptions): Promise<SendResult>;
@@ -42,7 +57,7 @@ export type MetadataUpdate = { [key: string]: JsonValue | undefined };
 
 export type MetadataPort = {
   getRoomId: () => string;
-  getMetadata: () => Promise<JsonObject>;
+  getMetadata: () => Promise<Result<JsonObject, MetadataFailure>>;
   setMetadata: (update: MetadataUpdate) => Promise<void>;
   onMetadataChange: (callback: (metadata: JsonObject) => void) => Unsubscribe;
 };
@@ -55,7 +70,7 @@ export type PartyMember = {
 };
 
 export type PartyPort = {
-  getPlayers: () => Promise<PartyMember[]>;
+  getPlayers: () => Promise<Result<PartyMember[], PartyReadFailure>>;
   onChange: (callback: (players: PartyMember[]) => void) => Unsubscribe;
 };
 
@@ -63,7 +78,7 @@ export type PlayerPort = {
   getId: () => Promise<string>;
   getConnectionId: () => Promise<string>;
   getName: () => Promise<string>;
-  getRole: () => Promise<PlayerRole>;
+  getRole: () => Promise<Result<PlayerRole, PlayerReadFailure>>;
   // Fires when this client's own role may have changed. The caller reads the role again.
   onRoleChange: (callback: () => void) => Unsubscribe;
 };
@@ -83,7 +98,45 @@ export type SelectionPort = {
 
 export type StorageOperation = 'read' | 'write' | 'remove' | 'list';
 
-export type StorageFailure = { operation: StorageOperation; reason: string };
+export class StorageFailureError extends TaggedError('StorageFailure')<{
+  operation: StorageOperation;
+  reason: string;
+  key?: string;
+}> {}
+
+export type StorageFailureData = {
+  operation: StorageOperation;
+  reason: string;
+  key?: string;
+};
+
+export const StorageFailure = StorageFailureError;
+
+export type StorageFailure = InstanceType<typeof StorageFailure> | StorageFailureData;
+
+export type StorageResultFailure = StorageFailure;
+
+export class PartyReadFailure extends TaggedError('PartyReadFailure')<{
+  reason: string;
+}> {}
+
+export class PlayerReadFailure extends TaggedError('PlayerReadFailure')<{
+  field: 'role' | 'name' | 'id';
+  reason: string;
+}> {}
+
+export class MetadataFailure extends TaggedError('MetadataFailure')<{
+  operation: 'read' | 'write';
+  reason: string;
+}> {}
+
+export class DiceExtensionFailure extends TaggedError('DiceExtensionFailure')<{
+  reason: string;
+}> {}
+
+export class NotificationFailure extends TaggedError('NotificationFailure')<{
+  reason: string;
+}> {}
 
 // Synchronous, because one step reads, merges and sets a persisted record.
 // A quota or access error is an expected failure, so it comes back as a result.
@@ -153,7 +206,10 @@ export type ActionPort = {
 export type NotificationVariant = 'DEFAULT' | 'ERROR' | 'INFO' | 'SUCCESS' | 'WARNING';
 
 export type NotificationPort = {
-  show: (message: string, variant?: NotificationVariant) => Promise<string>;
+  show: (
+    message: string,
+    variant?: NotificationVariant,
+  ) => Promise<Result<string, NotificationFailure>>;
 };
 
 export type Point = { x: number; y: number };
@@ -200,6 +256,7 @@ export type ThemePort = {
 };
 
 export type Platform = {
+  clock: ClockPort;
   onReady: (callback: () => void) => void;
   broadcast: BroadcastPort;
   metadata: MetadataPort;

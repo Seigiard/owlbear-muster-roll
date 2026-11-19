@@ -1,5 +1,6 @@
 import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, spyOn, test } from 'bun:test';
+import { Result } from 'better-result';
 import type { JsonValue } from '@/core/json';
 import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { encodePreset, type Preset } from '@/core/preset';
@@ -11,6 +12,7 @@ import type { PlayerRole, StorageOperation } from '@/platform/ports';
 import type { Wait } from '@/platform/send-queue';
 import {
   createRoomRig,
+  diagnostics,
   pause,
   send,
   sendWire,
@@ -519,10 +521,12 @@ describe('gate', () => {
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
     await startClient(room, 'gm-b');
-    spyOn(gm.platform.party, 'getPlayers').mockResolvedValue([
-      { id: 'owner', connectionId: 'late', name: 'late', role: 'GM' },
-      { id: 'owner', connectionId: 'gm-b', name: 'gm-b', role: 'GM' },
-    ]);
+    spyOn(gm.platform.party, 'getPlayers').mockResolvedValue(
+      Result.ok([
+        { id: 'owner', connectionId: 'late', name: 'late', role: 'GM' },
+        { id: 'owner', connectionId: 'gm-b', name: 'gm-b', role: 'GM' },
+      ]),
+    );
     // #when
     wire.post('late', commit([sheet('first', 1, 'late')]));
     wire.post('gm-b', commit([sheet('second', 1, 'gm-b')]));
@@ -644,23 +648,41 @@ describe('gate', () => {
   test.each<[string, JsonValue]>([
     ['a record that fails its schema', commit([{ ...sheet('lisa'), c: 0 }])],
     ['an unknown type', { v: 4, g: INITIAL, t: 'shout', records: [] }],
-    ['a type with no handler yet', { v: 4, g: INITIAL, t: 'ping' }],
     ['no envelope at all', 'commit'],
   ])('drops a message with the right v and %s, and throws nothing', async (_name, message) => {
     // #given
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
-    const errors = spyOn(console, 'error');
     await startClient(room, 'gm-b');
     // #when
     wire.post('gm-b', message);
     await afterMarker(wire.post, 'gm-b', gm);
     // #then
-    expect({ shown: shown(gm, 'blk:lisa'), errors: errors.mock.calls }).toEqual({
+    expect({
+      shown: shown(gm, 'blk:lisa'),
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
+    }).toEqual({
       shown: undefined,
-      errors: [],
+      diagnostics: ['message-rejected'],
     });
+  });
+  test('answers a valid v4 ping without reporting a rejection', async () => {
+    // #given
+    const room = roomRig.openRoom();
+    const wire = listen(room, ['alive']);
+    const gm = await startClient(room, 'gm-a');
+    await startClient(room, 'gm-b');
+    const heardBeforePing = wire.heard.length;
+    // #when
+    wire.post('gm-b', { v: 4, g: INITIAL, t: 'ping' });
+    await afterMarker(wire.post, 'gm-b', gm);
+    await waitUntil(() => wire.heard.slice(heardBeforePing).some(({ from }) => from === 'gm-a'));
+    // #then
+    expect({
+      shown: shown(gm, 'blk:lisa'),
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
+    }).toEqual({ shown: undefined, diagnostics: [] });
   });
 });
 
@@ -670,7 +692,6 @@ describe('remote record', () => {
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
-    spyOn(console, 'error').mockImplementation(() => undefined);
     await startClient(room, 'gm-b');
     gm.platform.setFailingStorageOperations(['write']);
     // #when
@@ -681,10 +702,12 @@ describe('remote record', () => {
       shown: shown(gm, 'blk:lisa'),
       stored: storedRecord(gm, 'blk:lisa'),
       notices: gm.store.$notices.get(),
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
     }).toEqual({
       shown: sheet('lisa', 1, 'gm-b'),
       stored: null,
       notices: ['local-save-failed'],
+      diagnostics: ['StorageFailure'],
     });
   });
   test('that loses to the local one sends no delta and writes nothing', async () => {
@@ -708,7 +731,6 @@ describe('remote record', () => {
   });
   test('an unchanged winner does not read failed persistence or raise a notice', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     const wire = listen(room);
     const local = sheet('brok', 5, 'seed');
@@ -722,7 +744,8 @@ describe('remote record', () => {
     expect({
       shown: shown(gm, local.k),
       notices: gm.store.$notices.get(),
-    }).toEqual({ shown: local, notices: [] });
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
+    }).toEqual({ shown: local, notices: [], diagnostics: [] });
   });
 });
 
@@ -731,7 +754,6 @@ describe('GM whose storage could not be read', () => {
     // #given
     const room = roomRig.openRoom();
     const wire = listen(room);
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const gm = await startClient(room, 'gm-a', { failingStorage: ['list'], seeded: [] });
     // #when: a new sheet needs a preset, and the GM holds none.
     send(gm, {
@@ -748,7 +770,10 @@ describe('GM whose storage could not be read', () => {
     send(gm, rename('lisa', 'Лиза Смелая'));
     await waitUntil(() => shown(gm, 'blk:lisa') !== undefined);
     // #then
-    expect(wire.heard).toEqual([]);
+    expect({ heard: wire.heard, diagnostics: diagnostics(gm).map(({ tag }) => tag) }).toEqual({
+      heard: [],
+      diagnostics: ['StorageFailure'],
+    });
   });
 });
 
@@ -767,15 +792,19 @@ describe('remote record too large for one message', () => {
       l: [1, 'seed'],
     };
 
-    spyOn(console, 'error').mockImplementation(() => undefined);
     await startClient(room, 'gm-b');
     // #when
     wire.post('gm-b', commit([huge, sheet('lisa', 1, 'gm-b')]));
     await waitUntil(() => shown(gm, 'blk:lisa') !== undefined);
     // #then
-    expect({ shown: shown(gm, huge.k), stored: storedRecord(gm, huge.k) }).toEqual({
+    expect({
+      shown: shown(gm, huge.k),
+      stored: storedRecord(gm, huge.k),
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
+    }).toEqual({
       shown: BROK,
       stored: BROK,
+      diagnostics: ['record-too-large'],
     });
   });
 });

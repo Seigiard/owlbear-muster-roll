@@ -9,7 +9,7 @@ import {
   MESSAGE_BYTE_LIMIT,
 } from '@/core/message-size';
 import { recordSchema, type VersionedRecord } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import type { StateMessage } from '@/core/room-messages';
 import type { Generation } from '@/core/storage-key';
 
@@ -37,16 +37,16 @@ export function encodeStateRecords(records: readonly VersionedRecord[]): string 
 export function decodeStateRecords(data: string): Result<VersionedRecord[], StateRecordsFailure> {
   const text = inflateFromBase64(data, STATE_INFLATED_BYTE_LIMIT);
 
-  if (!text.ok) {
-    return err('invalid-records');
+  if (!text.isOk()) {
+    return Result.err('invalid-records');
   }
 
   try {
     const parsed = stateRecordsSchema.safeParse(JSON.parse(text.value));
 
-    return parsed.success ? ok(parsed.data) : err('invalid-records');
+    return parsed.success ? Result.ok(parsed.data) : Result.err('invalid-records');
   } catch {
-    return err('invalid-records');
+    return Result.err('invalid-records');
   }
 }
 

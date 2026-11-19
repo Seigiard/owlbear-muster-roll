@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { VersionedRecord } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import type { StorageFailure, StorageOperation, StoragePort } from '@/platform/ports';
 import { createRecordStore } from '@/replica/record-store';
 
@@ -19,7 +19,7 @@ type FakeStorage = {
 };
 
 function failure(operation: StorageOperation): Result<never, StorageFailure> {
-  return err({ operation, reason: 'fake failure' });
+  return Result.err({ operation, reason: 'fake failure' });
 }
 
 function createFakeStorage(): FakeStorage {
@@ -32,7 +32,8 @@ function createFakeStorage(): FakeStorage {
     failing,
     attemptedWrites,
     port: {
-      getItem: (key) => (failing.has('read') ? failure('read') : ok(entries.get(key) ?? null)),
+      getItem: (key) =>
+        failing.has('read') ? failure('read') : Result.ok(entries.get(key) ?? null),
       setItem: (key, value) => {
         attemptedWrites.push(key);
 
@@ -42,7 +43,7 @@ function createFakeStorage(): FakeStorage {
 
         entries.set(key, value);
 
-        return ok(undefined);
+        return Result.ok(undefined);
       },
       removeItem: (key) => {
         if (failing.has('remove')) {
@@ -51,9 +52,9 @@ function createFakeStorage(): FakeStorage {
 
         entries.delete(key);
 
-        return ok(undefined);
+        return Result.ok(undefined);
       },
-      keys: () => (failing.has('list') ? failure('list') : ok([...entries.keys()])),
+      keys: () => (failing.has('list') ? failure('list') : Result.ok([...entries.keys()])),
     },
   };
 }
@@ -78,7 +79,7 @@ describe('record store write', () => {
     const written = createRecordStore(storage.port, 'r').write(GENERATION, link(4, 'new'));
     // #then
     expect({ written, stored: storage.entries.get(STORAGE_KEY) }).toEqual({
-      written: ok(link(4, 'new')),
+      written: Result.ok(link(4, 'new')),
       stored: '{"k":"link:t","d":{"s":"new","c":"token"},"c":4,"a":"conn"}',
     });
   });
@@ -92,7 +93,7 @@ describe('record store write', () => {
     const written = staleTab.write(GENERATION, link(3, 'stale'));
     // #then
     expect({ written, stored: storage.entries.get(STORAGE_KEY) }).toEqual({
-      written: ok(link(5, 'fresh')),
+      written: Result.ok(link(5, 'fresh')),
       stored: '{"k":"link:t","d":{"s":"fresh","c":"token"},"c":5,"a":"conn"}',
     });
   });
@@ -105,7 +106,7 @@ describe('record store write', () => {
     // #when
     const written = store.write(GENERATION, link(3));
     // #then
-    expect(written).toEqual(ok(link(5)));
+    expect(written).toEqual(Result.ok(link(5)));
   });
   test('keeps a stored tombstone when a lower-version write carries data', () => {
     // #given
@@ -115,7 +116,7 @@ describe('record store write', () => {
     const written = createRecordStore(storage.port, 'r').write(GENERATION, link(5));
     // #then
     expect({ written, stored: storage.entries.get(STORAGE_KEY) }).toEqual({
-      written: ok({ k: 'link:t', d: null, c: 6, a: 'conn' }),
+      written: Result.ok({ k: 'link:t', d: null, c: 6, a: 'conn' }),
       stored: '{"k":"link:t","d":null,"c":6,"a":"conn"}',
     });
   });
@@ -129,7 +130,7 @@ describe('record store write', () => {
     const written = store.write(GENERATION, link(5));
     // #then
     expect({ written, attemptedWrites: storage.attemptedWrites }).toEqual({
-      written: ok(link(5)),
+      written: Result.ok(link(5)),
       attemptedWrites: [STORAGE_KEY],
     });
   });
@@ -151,7 +152,7 @@ describe('record store write', () => {
       written,
       size: storage.entries.size,
       attemptedWrites: storage.attemptedWrites,
-    }).toEqual({ written: err('invalid-record'), size: 0, attemptedWrites: [] });
+    }).toEqual({ written: Result.err('invalid-record'), size: 0, attemptedWrites: [] });
   });
   test.each([
     ['text that is not JSON', '{not json'],
@@ -175,7 +176,7 @@ describe('record store write', () => {
     // #when
     const written = createRecordStore(storage.port, 'r').write(GENERATION, link(1));
     // #then
-    expect(written).toEqual(err({ operation: 'write', reason: 'fake failure' }));
+    expect(written).toEqual(Result.err({ operation: 'write', reason: 'fake failure' }));
   });
   test('returns a failure and writes nothing when the read fails', () => {
     // #given
@@ -185,7 +186,7 @@ describe('record store write', () => {
     const written = createRecordStore(storage.port, 'r').write(GENERATION, link(1));
     // #then
     expect({ written, size: storage.entries.size }).toEqual({
-      written: err({ operation: 'read', reason: 'fake failure' }),
+      written: Result.err({ operation: 'read', reason: 'fake failure' }),
       size: 0,
     });
   });
@@ -196,7 +197,7 @@ describe('record store write', () => {
     const written = createRecordStore(storage.port, 'a:b').write(GENERATION, link(1));
     // #then
     expect({ written, size: storage.entries.size }).toEqual({
-      written: err('invalid-storage-key'),
+      written: Result.err('invalid-storage-key'),
       size: 0,
     });
   });
@@ -227,7 +228,7 @@ describe('record store loadGeneration', () => {
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
     // #then
     expect(loaded).toEqual(
-      ok({
+      Result.ok({
         records: [{ k: 'link:t', d: { s: 'mine', c: 'token' }, c: 1, a: 'conn' }],
         corruptKeys: [],
       }),
@@ -241,7 +242,7 @@ describe('record store loadGeneration', () => {
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
     // #then
     expect(loaded).toEqual(
-      ok({ records: [{ k: 'link:t', d: null, c: 6, a: 'conn' }], corruptKeys: [] }),
+      Result.ok({ records: [{ k: 'link:t', d: null, c: 6, a: 'conn' }], corruptKeys: [] }),
     );
   });
   test('skips a corrupt value and keeps the valid records', () => {
@@ -255,7 +256,7 @@ describe('record store loadGeneration', () => {
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
     // #then
-    expect(loaded).toEqual(ok({ records: [link(1)], corruptKeys: ['link:bad'] }));
+    expect(loaded).toEqual(Result.ok({ records: [link(1)], corruptKeys: ['link:bad'] }));
   });
   test('does not report a corrupt value of another generation', () => {
     // #given
@@ -264,7 +265,7 @@ describe('record store loadGeneration', () => {
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
     // #then
-    expect(loaded).toEqual(ok({ records: [], corruptKeys: [] }));
+    expect(loaded).toEqual(Result.ok({ records: [], corruptKeys: [] }));
   });
   test('reports a record filed under another key as corrupt', () => {
     // #given
@@ -276,7 +277,7 @@ describe('record store loadGeneration', () => {
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
     // #then
-    expect(loaded).toEqual(ok({ records: [], corruptKeys: ['link:t'] }));
+    expect(loaded).toEqual(Result.ok({ records: [], corruptKeys: ['link:t'] }));
   });
   test('returns a failure when listing keys fails', () => {
     // #given
@@ -285,7 +286,7 @@ describe('record store loadGeneration', () => {
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
     // #then
-    expect(loaded).toEqual(err({ operation: 'list', reason: 'fake failure' }));
+    expect(loaded).toEqual(Result.err({ operation: 'list', reason: 'fake failure' }));
   });
   test('returns a failure, not a partial load, when a read fails', () => {
     // #given
@@ -295,7 +296,7 @@ describe('record store loadGeneration', () => {
     // #when
     const loaded = createRecordStore(storage.port, 'r').loadGeneration(GENERATION);
     // #then
-    expect(loaded).toEqual(err({ operation: 'read', reason: 'fake failure' }));
+    expect(loaded).toEqual(Result.err({ operation: 'read', reason: 'fake failure' }));
   });
 });
 
@@ -310,7 +311,7 @@ describe('record store readHighestGeneration', () => {
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
     // #then
-    expect(generation).toEqual(ok({ n: 0, a: '' }));
+    expect(generation).toEqual(Result.ok({ n: 0, a: '' }));
   });
   test('returns the highest stored generation and ignores other rooms', () => {
     // #given
@@ -330,7 +331,7 @@ describe('record store readHighestGeneration', () => {
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
     // #then
-    expect(generation).toEqual(ok({ n: 2, a: 'a' }));
+    expect(generation).toEqual(Result.ok({ n: 2, a: 'a' }));
   });
   test('breaks a generation tie by author', () => {
     // #given
@@ -346,7 +347,7 @@ describe('record store readHighestGeneration', () => {
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
     // #then
-    expect(generation).toEqual(ok({ n: 2, a: 'b' }));
+    expect(generation).toEqual(Result.ok({ n: 2, a: 'b' }));
   });
   test('counts a generation that holds only tombstones', () => {
     // #given
@@ -359,7 +360,7 @@ describe('record store readHighestGeneration', () => {
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
     // #then
-    expect(generation).toEqual(ok({ n: 7, a: 'a' }));
+    expect(generation).toEqual(Result.ok({ n: 7, a: 'a' }));
   });
   test('does not count a generation that holds only corrupt values', () => {
     // #given
@@ -372,7 +373,7 @@ describe('record store readHighestGeneration', () => {
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
     // #then
-    expect(generation).toEqual(ok({ n: 1, a: 'a' }));
+    expect(generation).toEqual(Result.ok({ n: 1, a: 'a' }));
   });
   test('returns a failure when listing keys fails', () => {
     // #given
@@ -381,7 +382,7 @@ describe('record store readHighestGeneration', () => {
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
     // #then
-    expect(generation).toEqual(err({ operation: 'list', reason: 'fake failure' }));
+    expect(generation).toEqual(Result.err({ operation: 'list', reason: 'fake failure' }));
   });
   test('returns a failure when a read fails', () => {
     // #given
@@ -391,7 +392,7 @@ describe('record store readHighestGeneration', () => {
     // #when
     const generation = createRecordStore(storage.port, 'r').readHighestGeneration();
     // #then
-    expect(generation).toEqual(err({ operation: 'read', reason: 'fake failure' }));
+    expect(generation).toEqual(Result.err({ operation: 'read', reason: 'fake failure' }));
   });
 });
 
@@ -407,7 +408,7 @@ describe('record store generations', () => {
     // #when
     const generation = store.readHighestGeneration();
     // #then
-    expect(generation).toEqual(ok({ n: 1, a: 'a' }));
+    expect(generation).toEqual(Result.ok({ n: 1, a: 'a' }));
   });
   test('reads a generation again once it is marked complete', () => {
     // #given
@@ -421,7 +422,7 @@ describe('record store generations', () => {
     expect({
       generation: store.readHighestGeneration(),
       keys: [...storage.entries.keys()],
-    }).toEqual({ generation: ok({ n: 2, a: 'b' }), keys: ['mr4:r:2:b:link:t'] });
+    }).toEqual({ generation: Result.ok({ n: 2, a: 'b' }), keys: ['mr4:r:2:b:link:t'] });
   });
   test('removes every key of an incomplete generation of this room, and nothing else', () => {
     // #given
@@ -465,7 +466,7 @@ describe('record store generations', () => {
     const generation = store.readHighestGeneration();
     // #then
     expect({ generation, keys: [...storage.entries.keys()].sort() }).toEqual({
-      generation: ok({ n: 3, a: 'w' }),
+      generation: Result.ok({ n: 3, a: 'w' }),
       keys: ['mr4:r:1:a:link:t', 'mr4:r:3:w:#generation'],
     });
   });
@@ -479,7 +480,7 @@ describe('record store generations', () => {
     // #when
     const generation = store.readHighestGeneration();
     // #then
-    expect(generation).toEqual(ok({ n: 1, a: 'a' }));
+    expect(generation).toEqual(Result.ok({ n: 1, a: 'a' }));
   });
   test('removes the generation markers of the generations below one', () => {
     // #given
@@ -505,7 +506,7 @@ describe('record store generations', () => {
     const removed = store.removeOlderFormats();
     // #then
     expect({ removed, keys: [...storage.entries.keys()].sort() }).toEqual({
-      removed: ok(undefined),
+      removed: Result.ok(undefined),
       keys: ['mr1:other:0::blk:liza', 'mr4:r:1:a:link:t', 'unrelated'],
     });
   });

@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { Result } from 'better-result';
 
 export type TestFileAccessCapability = 'open-only' | 'write-and-follow';
 
@@ -16,15 +17,7 @@ export type TestFileAccessFailure = {
   reason: string;
 };
 
-export type TestFileAccessResult<Value> =
-  | {
-      ok: true;
-      value: Value;
-    }
-  | {
-      ok: false;
-      error: TestFileAccessFailure;
-    };
+export type TestFileAccessResult<Value> = Result<Value, TestFileAccessFailure>;
 
 export type TestOpenRequest = {
   mode: 'open' | 'save';
@@ -241,7 +234,7 @@ export class TestFileAccessFake implements TestFileAccessPort {
     const contents = this.replaceFile(file, text);
 
     for (const notify of this.followers.get(file.id) ?? []) {
-      notify({ ok: true, value: contents });
+      notify(Result.ok(contents));
     }
   }
   externalWriteSilently(file: TestFileReference, text: string): void {
@@ -261,13 +254,13 @@ export class TestFileAccessFake implements TestFileAccessPort {
   }
   externalFailure(file: TestFileReference, reason: string): void {
     for (const notify of this.followers.get(file.id) ?? []) {
-      notify({ ok: false, error: { reason } });
+      notify(Result.err({ reason }));
     }
   }
   async open(request: TestOpenRequest): Promise<TestFileAccessResult<TestFileReference | null>> {
     this.openRequests.push(request);
 
-    return { ok: true, value: this.openQueue.shift() ?? null };
+    return Result.ok(this.openQueue.shift() ?? null);
   }
   read(file: TestFileReference): Promise<TestFileAccessResult<TestFileContents>> {
     this.readRequests.push(file);
@@ -290,11 +283,8 @@ export class TestFileAccessFake implements TestFileAccessPort {
     const current = this.files.get(file.id);
 
     return current === undefined
-      ? { ok: false, error: { reason: `No fake file ${file.id}` } }
-      : {
-          ok: true,
-          value: { text: current.text, modifiedAt: current.modifiedAt },
-        };
+      ? Result.err({ reason: `No fake file ${file.id}` })
+      : Result.ok({ text: current.text, modifiedAt: current.modifiedAt });
   }
   write(file: TestFileReference, text: string): Promise<TestFileAccessResult<TestFileContents>> {
     this.writeRequests.push({ file, text });
@@ -327,18 +317,18 @@ export class TestFileAccessFake implements TestFileAccessPort {
     const failure = this.writeFailures.shift();
 
     if (failure !== undefined) {
-      return { ok: false, error: { reason: failure } };
+      return Result.err({ reason: failure });
     }
 
     const current = this.files.get(file.id);
 
     if (current === undefined) {
-      return { ok: false, error: { reason: `No fake file ${file.id}` } };
+      return Result.err({ reason: `No fake file ${file.id}` });
     }
 
     const contents = { text, modifiedAt: this.nextModifiedAt };
     this.files.set(file.id, { ...current, ...contents });
 
-    return { ok: true, value: contents };
+    return Result.ok(contents);
   }
 }

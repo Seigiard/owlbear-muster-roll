@@ -3,7 +3,7 @@ import { fixturePatch } from '../../tests/support/block-fixtures';
 import { describe, expect, spyOn, test } from 'bun:test';
 import { deflateToBase64 } from '@/core/deflate';
 import type { JsonValue } from '@/core/json';
-import { err } from '@/core/result';
+import { Result } from 'better-result';
 import {
   encodePreset,
   type Preset,
@@ -923,7 +923,7 @@ describe('a preset upload', () => {
     const setItem = gm.platform.storage.setItem;
     spyOn(gm.platform.storage, 'setItem').mockImplementation((key, value) =>
       key === storageKey('blk:npc')
-        ? err({ operation: 'write', reason: 'quota' })
+        ? Result.err({ operation: 'write', reason: 'quota' })
         : setItem(key, value),
     );
     // #when

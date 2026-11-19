@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { assembleRecords } from '@/core/merge';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
@@ -102,9 +103,8 @@ describe('createComposers', () => {
     );
 
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: [
+    expect(result).toEqual(
+      Result.ok([
         {
           k: 'blk:brok',
           d: { set: 'pc', order: 0, cells: { hp: [8, 2, 'gm'] } },
@@ -112,8 +112,8 @@ describe('createComposers', () => {
           a: 'gm',
           l: [1, 'seed'],
         },
-      ],
-    });
+      ]),
+    );
   });
   test('a GM delete tombstones links to the block and its descendants but keeps unrelated and stale links', () => {
     // #given
@@ -177,13 +177,12 @@ describe('createComposers', () => {
     );
 
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: [
+    expect(result).toEqual(
+      Result.ok([
         { k: 'blk:encounter:npc:a', d: null, c: 2, a: 'gm', l: [1, 'seed'] },
         { k: 'link:a', d: null, c: 2, a: 'gm' },
         { k: 'link:child', d: null, c: 2, a: 'gm' },
-      ],
-    });
+      ]),
+    );
   });
 });

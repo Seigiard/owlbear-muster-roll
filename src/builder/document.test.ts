@@ -43,7 +43,7 @@ const D20 = readPreset(join(import.meta.dir, '../../tests/fixtures/presets/d20.j
 function readPreset(path: string): Preset {
   const parsed = parsePresetFile(readFileSync(path, 'utf8'));
 
-  if (!parsed.ok) {
+  if (!parsed.isOk()) {
     throw new Error(`${path} is no preset`);
   }
 
@@ -564,7 +564,7 @@ describe('renameField', () => {
       // #then
       expect({
         nameField: repeat?.nameField,
-        presetAccepted: parsePresetFile(JSON.stringify(preset)).ok,
+        presetAccepted: parsePresetFile(JSON.stringify(preset)).isOk(),
       }).toEqual({
         nameField: 'label',
         presetAccepted: true,
@@ -691,7 +691,7 @@ describe('addTab', () => {
 
     // #then
     const parsed = parsePresetFile(JSON.stringify(toPreset(moved.document)));
-    const tabs = parsed.ok ? parsed.value.templates[0]?.tabs : null;
+    const tabs = parsed.isOk() ? parsed.value.templates[0]?.tabs : null;
     expect(uidAt(moved.document, [0, 1, 0])).toBe(section);
     expect(tabs?.map((tab) => tab.title)).toEqual(['Основное', 'Бой']);
     expect(tabs?.[1]?.sections.map((one) => one.title)).toEqual(['Характеристики']);

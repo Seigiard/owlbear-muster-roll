@@ -1,10 +1,15 @@
 import { SCENE_READ_RETRY_MS } from '@/core/timing';
 import { removedItemIds } from '@/core/token-links';
 import type { ScenePort } from '@/platform/ports';
+import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
+import type { Schedule } from '@/platform/ports';
 
 export type SceneWatch = { stop: () => void };
 
 export type SceneWatchHandlers = {
+  report?: FailureReporter;
+  signal: AbortSignal;
+  schedule: Schedule;
   // Item ids that left the ready scene, once the scene answered that it is still ready.
   removed: (itemIds: string[]) => void;
   // Every item list of the ready scene, the first one of each ready period included.
@@ -21,7 +26,8 @@ export function watchSceneRemovals(
   handlers: SceneWatchHandlers,
   retryMs = SCENE_READ_RETRY_MS,
 ): SceneWatch {
-  let stopped = false;
+  const reportFailure = handlers.report ?? (() => undefined);
+  const { signal, schedule } = handlers;
   let ready = false;
   // Counts readiness changes, so a read or a check that one of them overtook is dropped.
   let period = 0;
@@ -30,30 +36,33 @@ export function watchSceneRemovals(
   // Removed ids that wait for the scene to answer that it is still ready.
   const waiting = new Set<string>();
   let asking = false;
-  const timers = new Set<ReturnType<typeof setTimeout>>();
+  let subscriptions: (() => void)[] | null = [];
+  const cancellations = new Set<() => void>();
 
   function later(task: () => void): void {
-    const timer = setTimeout(() => {
-      timers.delete(timer);
+    if (signal.aborted || subscriptions === null) {
+      return;
+    }
 
-      if (!stopped) {
-        task();
-      }
-    }, retryMs);
+    const cancel = schedule(signal, retryMs, () => {
+      cancellations.delete(cancel);
 
-    timers.add(timer);
+      if (subscriptions !== null) task();
+    });
+
+    cancellations.add(cancel);
   }
 
   function readReady(): void {
     scene.isReady().then(
       (nowReady) => {
         // A readiness change that came first is newer than this read.
-        if (!stopped && period === 0) {
+        if (!signal.aborted && subscriptions !== null && period === 0) {
           startPeriod(nowReady);
         }
       },
       (error) => {
-        console.error('Muster Roll could not read whether the scene is ready', error);
+        reportFailure(new MessageRejectedFailure({ reason: String(error) }));
 
         if (period === 0) {
           later(readReady);
@@ -77,12 +86,12 @@ export function watchSceneRemovals(
     scene.getItemIds().then(
       (itemIds) => {
         // A list the change callback already brought is newer than this read can be.
-        if (!stopped && started === period && seen === null) {
+        if (!signal.aborted && subscriptions !== null && started === period && seen === null) {
           see(new Set(itemIds));
         }
       },
       (error) => {
-        console.error('Muster Roll could not read the scene items', error);
+        reportFailure(new MessageRejectedFailure({ reason: String(error) }));
 
         if (started === period && seen === null) {
           later(() => {
@@ -100,7 +109,7 @@ export function watchSceneRemovals(
 
   // Owlbear calls back on every item update, a drag included, so most lists remove nothing.
   function followItems(itemIds: string[]): void {
-    if (stopped || !ready) {
+    if (signal.aborted || subscriptions === null || !ready) {
       return;
     }
 
@@ -132,7 +141,7 @@ export function watchSceneRemovals(
   // scene must still be ready, in the same period, after the list arrived. Only the ids that waited
   // when the question went out count, so a later list waits for its own answer.
   function confirm(): void {
-    if (stopped || asking || waiting.size === 0) {
+    if (signal.aborted || subscriptions === null || asking || waiting.size === 0) {
       return;
     }
 
@@ -145,7 +154,7 @@ export function watchSceneRemovals(
       (stillReady) => {
         asking = false;
 
-        if (stopped) {
+        if (signal.aborted || subscriptions === null) {
           return;
         }
 
@@ -159,7 +168,7 @@ export function watchSceneRemovals(
       },
       (error) => {
         asking = false;
-        console.error('Muster Roll could not read whether the scene is ready', error);
+        reportFailure(new MessageRejectedFailure({ reason: String(error) }));
         // The removal keeps waiting, and the scene is asked again.
         later(confirm);
       },
@@ -183,28 +192,28 @@ export function watchSceneRemovals(
 
   const unsubscribeReady = scene.onReadyChange((nowReady) => {
     // Owlbear can report the same readiness again, which starts no new period.
-    if (!stopped && (period === 0 || nowReady !== ready)) {
+    if (!signal.aborted && subscriptions !== null && (period === 0 || nowReady !== ready)) {
       startPeriod(nowReady);
     }
   });
 
   const unsubscribeItems = scene.onItemsChange(followItems);
 
+  subscriptions = [unsubscribeReady, unsubscribeItems];
   readReady();
 
-  return {
-    stop: () => {
-      stopped = true;
-      unsubscribeReady();
-      unsubscribeItems();
+  const stop = (): void => {
+    for (const cancel of cancellations) cancel();
 
-      for (const timer of timers) {
-        clearTimeout(timer);
-      }
-
-      timers.clear();
-    },
+    cancellations.clear();
+    subscriptions?.forEach((unsubscribe) => unsubscribe());
+    subscriptions = null;
+    signal.removeEventListener('abort', stop);
   };
+
+  signal.addEventListener('abort', stop, { once: true });
+
+  return { stop };
 }
 
 // Two lists with items, none of them shared.

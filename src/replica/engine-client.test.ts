@@ -15,7 +15,7 @@ import {
   recordSchema,
   type VersionedRecord,
 } from '@/core/records';
-import { err } from '@/core/result';
+import { Result } from 'better-result';
 import type { SnapshotFile } from '@/core/snapshot-file';
 import { encodeSnapshotFileData } from '@/core/snapshot-import';
 import type { Timing } from '@/core/timing';
@@ -25,6 +25,7 @@ import type { PlayerRole, SendResult } from '@/platform/ports';
 import type { ReplicaEngine } from '@/replica/engine';
 import {
   createRoomRig,
+  diagnostics,
   pause,
   RIG_TIMING,
   sendWire,
@@ -125,10 +126,6 @@ type Aftermath = {
 let generatedIds = 0;
 const roomRig = createRoomRig({ timing: { catchUpTimeoutMs: 200 } });
 
-function silenceErrors(): void {
-  spyOn(console, 'error').mockImplementation(() => undefined);
-}
-
 function createRig(
   role: PlayerRole = 'GM',
   platform?: (platform: MockPlatform) => MockPlatform,
@@ -212,7 +209,7 @@ function byKey(records: readonly VersionedRecord[]): VersionedRecord[] {
 function storedRecords(rig: Rig): VersionedRecord[] {
   const keys = rig.platform.storage.keys();
 
-  if (!keys.ok) {
+  if (!keys.isOk()) {
     throw new Error('the mock storage could not list its keys');
   }
 
@@ -221,7 +218,9 @@ function storedRecords(rig: Rig): VersionedRecord[] {
     .map((key) => {
       const text = rig.platform.storage.getItem(key);
 
-      return recordSchema.parse(JSON.parse(text.ok && text.value !== null ? text.value : 'null'));
+      return recordSchema.parse(
+        JSON.parse(text.isOk() && text.value !== null ? text.value : 'null'),
+      );
     });
 }
 
@@ -399,7 +398,7 @@ test('engine startup waits for the initial catch-up deadline when a room-copy re
       ...platform,
       metadata: {
         ...platform.metadata,
-        getMetadata: () => new Promise(() => undefined),
+        getMetadata: () => new Promise<never>(() => undefined),
       },
     }),
   });
@@ -481,11 +480,9 @@ describe('corrupt stored record', () => {
       stored: rig.platform.storage.getItem(storageKey('blk:bad')),
     }).toEqual({
       notices: [],
-      stored: {
-        ok: true,
-        value:
-          '{"k":"blk:bad","d":{"order":0,"set":"pc","cells":{}},"c":1,"a":"mock-connection","l":[1,"mock-connection"]}',
-      },
+      stored: Result.ok(
+        '{"k":"blk:bad","d":{"order":0,"set":"pc","cells":{}},"c":1,"a":"mock-connection","l":[1,"mock-connection"]}',
+      ),
     });
   });
 });
@@ -526,6 +523,29 @@ describe('player start', () => {
 });
 
 describe('open window', () => {
+  test('records a failed window delta without publishing another delta', async () => {
+    // #given
+    const rig = createRoomRig({ clock: 'manual', until: 'live' });
+    const room = rig.openRoom();
+    const gm = await rig.startClient(room, 'gm');
+    await rig.advance(0);
+    const sendMessage = spyOn(gm.platform.broadcast, 'sendMessage');
+    gm.platform.failNextSends([{ kind: 'failed', channel: UI_CHANNEL }]);
+
+    // #when
+    room.join('player', 'PLAYER');
+    await rig.advance(100);
+    const attempts = sendMessage.mock.calls.filter(([channel]) => channel === UI_CHANNEL).length;
+    const secondWindow = gm.openWindow();
+    await rig.waitUntil(() => secondWindow.store.$loaded.get());
+
+    // #then
+    expect({
+      attempts,
+      diagnostics: diagnostics(secondWindow).map(({ tag }) => tag),
+    }).toEqual({ attempts: 1, diagnostics: ['SendFailure'] });
+  });
+
   test('receives a full projection echoing its nonce, then deltas', async () => {
     // #given
     const rig = createRig();
@@ -963,11 +983,11 @@ describe('command', () => {
     sendWire(view.client, { type: 'sheet-create', sheetId: 'made', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
     // #then
-    expect(rig.platform.storage.getItem(storageKey('blk:made'))).toEqual({
-      ok: true,
-      value:
+    expect(rig.platform.storage.getItem(storageKey('blk:made'))).toEqual(
+      Result.ok(
         '{"k":"blk:made","d":{"order":0,"set":"pc","cells":{}},"c":1,"a":"mock-connection","l":[1,"mock-connection"]}',
-    });
+      ),
+    );
   });
   test.each([
     ['k', { k: 'blk:z' }],
@@ -1196,11 +1216,11 @@ describe('sheet-create', () => {
     sendWire(view.client, { type: 'sheet-create', sheetId: 'b-1_X', set: 'ally' });
     await waitUntil(() => deltas(rig).length === 1);
     // #then
-    expect(rig.platform.storage.getItem(storageKey('blk:b-1_X'))).toEqual({
-      ok: true,
-      value:
+    expect(rig.platform.storage.getItem(storageKey('blk:b-1_X'))).toEqual(
+      Result.ok(
         '{"k":"blk:b-1_X","d":{"order":0,"set":"ally","cells":{}},"c":1,"a":"mock-connection","l":[1,"mock-connection"]}',
-    });
+      ),
+    );
   });
   test('rejects an id whose sheet exists and leaves that sheet as it was', async () => {
     // #given
@@ -1443,16 +1463,15 @@ describe('sheet-delete', () => {
       stored: rig.platform.storage.getItem(storageKey('blk:brok')),
     }).toEqual({
       delta: [{ k: 'blk:brok', d: null, c: 2, a: 'mock-connection', l: [1, 'seed'] }],
-      stored: {
-        ok: true,
-        value: JSON.stringify({
+      stored: Result.ok(
+        JSON.stringify({
           k: 'blk:brok',
           d: null,
           c: 2,
           a: 'mock-connection',
           l: [1, 'seed'],
         }),
-      },
+      ),
     });
   });
   test('keeps the sheet deleted after the background restarts over the same storage', async () => {
@@ -1529,7 +1548,6 @@ describe('sheet-delete', () => {
     // #given
     const rig = createRig();
     const setItem = rig.platform.storage.setItem;
-    silenceErrors();
 
     for (const record of [
       {
@@ -1549,12 +1567,13 @@ describe('sheet-delete', () => {
 
     const failing = spyOn(rig.platform.storage, 'setItem').mockImplementation((key, value) =>
       key === storageKey('acl:brok:p1')
-        ? err({ operation: 'write', reason: 'quota' })
+        ? Result.err({ operation: 'write', reason: 'quota' })
         : setItem(key, value),
     );
 
     sendWire(first.client, { type: 'sheet-delete', sheetId: 'brok' });
     await waitUntil(() => deltas(rig).length === 1);
+    const firstDiagnostics = diagnostics({ store: first.store }).map(({ tag }) => tag);
     failing.mockRestore();
     engine.stop();
     first.client.stop();
@@ -1568,12 +1587,14 @@ describe('sheet-delete', () => {
     expect({
       reloaded,
       stored: byKey(storedRecords(rig)).map((record) => [record.k, record.d]),
+      diagnostics: firstDiagnostics,
     }).toEqual({
       reloaded: { set: 'pc', order: 0, cells: { str: [3, 1, 'z'] } },
       stored: [
         ['acl:brok:p1', null],
         ['blk:brok', null],
       ],
+      diagnostics: ['StorageFailure'],
     });
   });
   test('splits a delete over the message limit into parts in sequence that all arrive', async () => {
@@ -1614,7 +1635,6 @@ describe('sheet-delete', () => {
   test('raises the notice when a tombstone cannot be saved and still removes the sheet', async () => {
     // #given
     const rig = createRig();
-    silenceErrors();
     seedRecords(rig, sheet('brok'));
     await startEngine(rig);
     const view = await openAndLoad(rig);
@@ -1624,9 +1644,14 @@ describe('sheet-delete', () => {
     await waitUntil(() => deltas(rig).length === 1);
     await pause(5);
     // #then
-    expect({ window: recordsOf(view.store), notices: view.store.$notices.get() }).toEqual({
+    expect({
+      window: recordsOf(view.store),
+      notices: view.store.$notices.get(),
+      diagnostics: diagnostics({ store: view.store }).map(({ tag }) => tag),
+    }).toEqual({
       window: [{ k: 'blk:brok', d: null, c: 2, a: 'mock-connection', l: [1, 'seed'] }],
       notices: ['local-save-failed'],
+      diagnostics: ['StorageFailure'],
     });
   });
 });
@@ -1635,7 +1660,6 @@ describe('write failure', () => {
   test('keeps the value in the replica and raises the notice', async () => {
     // #given
     const rig = createRig();
-    silenceErrors();
     seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
     const view = await openAndLoad(rig);
@@ -1647,15 +1671,16 @@ describe('write failure', () => {
     expect({
       sheet: view.store.$records.get().get('blk:brok')?.d,
       notices: view.store.$notices.get(),
+      diagnostics: diagnostics({ store: view.store }).map(({ tag }) => tag),
     }).toEqual({
       sheet: { set: 'pc', order: 0, cells: {} },
       notices: ['local-save-failed'],
+      diagnostics: ['StorageFailure'],
     });
   });
   test('clears the notice when the same key later writes', async () => {
     // #given
     const rig = createRig();
-    silenceErrors();
     seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
     const view = await openAndLoad(rig);
@@ -1667,15 +1692,19 @@ describe('write failure', () => {
     sendWire(view.client, { type: 'sheet-delete', sheetId: 'flaky' });
     await waitUntil(() => view.store.$notices.get().length === 0);
     // #then
-    expect(rig.platform.storage.getItem(storageKey('blk:flaky'))).toEqual({
-      ok: true,
-      value: '{"k":"blk:flaky","d":null,"c":2,"a":"mock-connection","l":[1,"mock-connection"]}',
+    expect({
+      stored: rig.platform.storage.getItem(storageKey('blk:flaky')),
+      diagnostics: diagnostics({ store: view.store }).map(({ tag }) => tag),
+    }).toEqual({
+      stored: Result.ok(
+        '{"k":"blk:flaky","d":null,"c":2,"a":"mock-connection","l":[1,"mock-connection"]}',
+      ),
+      diagnostics: ['StorageFailure'],
     });
   });
   test('keeps the notice while another failed or corrupt key remains', async () => {
     // #given
     const rig = createRig();
-    silenceErrors();
     seedRecords(rig, PRESET_RECORD);
     seed(rig, 'blk:bad', '{not json');
     await startEngine(rig);
@@ -1689,7 +1718,13 @@ describe('write failure', () => {
     await waitUntil(() => deltas(rig).length === 2);
     await pause(5);
     // #then
-    expect(view.store.$notices.get()).toEqual(['local-save-failed']);
+    expect({
+      notices: view.store.$notices.get(),
+      diagnostics: diagnostics({ store: view.store }).map(({ tag }) => tag),
+    }).toEqual({
+      notices: ['local-save-failed'],
+      diagnostics: ['message-rejected', 'StorageFailure'],
+    });
   });
   // The failure ends before the command, or `store.write` would refuse on its own read. The command
   // is a preset upload, as the failed read leaves no preset for a sheet to need.
@@ -1698,7 +1733,6 @@ describe('write failure', () => {
     async (operation) => {
       // #given
       const rig = createRig();
-      silenceErrors();
       seedRecords(rig, PRESET_RECORD, sheet('saved'));
       rig.platform.setFailingStorageOperations([operation]);
       const setItem = spyOn(rig.platform.storage, 'setItem');
@@ -1713,7 +1747,8 @@ describe('write failure', () => {
       expect({
         notices: view.store.$notices.get(),
         calls: setItem.mock.calls.length,
-      }).toEqual({ notices: ['local-save-failed'], calls: 0 });
+        diagnostics: diagnostics({ store: view.store }).map(({ tag }) => tag),
+      }).toEqual({ notices: ['local-save-failed'], calls: 0, diagnostics: ['StorageFailure'] });
     },
   );
   test('starts with an empty read-only replica when the highest-generation read alone fails', async () => {
@@ -1728,13 +1763,12 @@ describe('write failure', () => {
           keyReads += 1;
 
           return keyReads === 3
-            ? err({ operation: 'list', reason: 'highest generation unavailable' })
+            ? Result.err({ operation: 'list', reason: 'highest generation unavailable' })
             : platform.storage.keys();
         },
       },
     }));
 
-    silenceErrors();
     seedRecords(rig, PRESET_RECORD);
     // #when
     const [startup] = await Promise.allSettled([startEngine(rig)]);
@@ -1744,7 +1778,14 @@ describe('write failure', () => {
       startup: startup.status,
       records: view === undefined ? null : recordsOf(view.store),
       notices: view === undefined ? null : view.store.$notices.get(),
-    }).toEqual({ startup: 'fulfilled', records: [], notices: ['local-save-failed'] });
+      diagnostics:
+        view === undefined ? null : diagnostics({ store: view.store }).map(({ tag }) => tag),
+    }).toEqual({
+      startup: 'fulfilled',
+      records: [],
+      notices: ['local-save-failed'],
+      diagnostics: ['StorageFailure'],
+    });
   });
 });
 
@@ -1850,7 +1891,7 @@ describe('preset upload', () => {
       },
       records: [],
       deltas: 0,
-      stored: { ok: true, value: [] },
+      stored: Result.ok([]),
     });
   });
   test('rejects a preset whose record cannot fit one message and stores nothing', async () => {
@@ -1866,7 +1907,7 @@ describe('preset upload', () => {
       kind: outcome.kind,
       rejection: outcome.kind === 'refused' ? outcome.rejection.reason : null,
       stored: rig.platform.storage.keys(),
-    }).toEqual({ kind: 'refused', rejection: 'too-large', stored: { ok: true, value: [] } });
+    }).toEqual({ kind: 'refused', rejection: 'too-large', stored: Result.ok([]) });
   });
   test('accepts an upload while a sheet exists', async () => {
     // #given
@@ -2021,7 +2062,7 @@ describe('field-patch', () => {
   function stored(rig: Rig, key: string): JsonValue {
     const text = rig.platform.storage.getItem(storageKey(key));
 
-    return text.ok && text.value !== null ? z.json().parse(JSON.parse(text.value)) : null;
+    return text.isOk() && text.value !== null ? z.json().parse(JSON.parse(text.value)) : null;
   }
 
   test('merges a number into the row record as a JSON number, keeps its other fields and persists it', async () => {
@@ -2703,7 +2744,7 @@ function storedRecord(rig: Rig, key: string): VersionedRecord | null {
 function examplePreset(): Preset {
   const parsed = parsePresetFile(EXAMPLE_PRESET_TEXT);
 
-  if (!parsed.ok) {
+  if (!parsed.isOk()) {
     throw new Error('the committed example preset must parse');
   }
 
@@ -2755,7 +2796,7 @@ function storedPreset(rig: Rig): {
 } | null {
   const text = rig.platform.storage.getItem(storageKey('preset'));
 
-  if (!text.ok || text.value === null) {
+  if (!text.isOk() || text.value === null) {
     return null;
   }
 

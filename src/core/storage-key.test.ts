@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ok } from '@/core/result';
+import { Result } from 'better-result';
 import {
   buildStorageKey,
   generationMarkerKey,
@@ -12,7 +12,7 @@ import {
   roomKeyFormat,
 } from '@/core/storage-key';
 
-const INVALID = { ok: false, error: 'invalid-storage-key' } as const;
+const INVALID = Result.err<never, 'invalid-storage-key'>('invalid-storage-key');
 
 describe('INITIAL_GENERATION', () => {
   test('is generation zero with an empty author', () => {
@@ -26,13 +26,13 @@ describe('buildStorageKey', () => {
     // #when
     const built = buildStorageKey('r', { n: 2, a: 'x' }, 'preset');
     // #then
-    expect(built).toEqual({ ok: true, value: 'mr4:r:2:x:preset' });
+    expect(built).toEqual(Result.ok('mr4:r:2:x:preset'));
   });
   test('builds the key of the initial generation with an empty author segment', () => {
     // #when
     const built = buildStorageKey('r', { n: 0, a: '' }, 'blk:s');
     // #then
-    expect(built).toEqual({ ok: true, value: 'mr4:r:0::blk:s' });
+    expect(built).toEqual(Result.ok('mr4:r:0::blk:s'));
   });
   test.each([
     ['a room id with a colon', 'r:1', { n: 1, a: 'x' }, 'preset'],
@@ -54,19 +54,15 @@ describe('parseStorageKey', () => {
     // #when
     const parsed = parseStorageKey('mr4:r:2:x:blk:s:sec:i');
     // #then
-    expect(parsed).toEqual({
-      ok: true,
-      value: { roomId: 'r', generation: { n: 2, a: 'x' }, key: 'blk:s:sec:i' },
-    });
+    expect(parsed).toEqual(
+      Result.ok({ roomId: 'r', generation: { n: 2, a: 'x' }, key: 'blk:s:sec:i' }),
+    );
   });
   test('reads an empty generation author', () => {
     // #when
     const parsed = parseStorageKey('mr4:r:0::preset');
     // #then
-    expect(parsed).toEqual({
-      ok: true,
-      value: { roomId: 'r', generation: { n: 0, a: '' }, key: 'preset' },
-    });
+    expect(parsed).toEqual(Result.ok({ roomId: 'r', generation: { n: 0, a: '' }, key: 'preset' }));
   });
   test.each([
     ['the older format version', 'mr1:r:2:x:preset'],
@@ -96,8 +92,8 @@ describe('incomplete generation marker', () => {
     // #when
     const key = incompleteMarkerKey('room', { n: 3, a: 'gm' });
     // #then
-    expect({ key, asRecord: key.ok ? parseStorageKey(key.value).ok : true }).toEqual({
-      key: ok('mr4:room:3:gm:#incomplete'),
+    expect({ key, asRecord: key.isOk() ? parseStorageKey(key.value).isOk() : true }).toEqual({
+      key: Result.ok('mr4:room:3:gm:#incomplete'),
       asRecord: false,
     });
   });
@@ -105,13 +101,13 @@ describe('incomplete generation marker', () => {
     // #when
     const parts = parseIncompleteMarkerKey('mr4:room:0::#incomplete');
     // #then
-    expect(parts).toEqual(ok({ roomId: 'room', generation: { n: 0, a: '' } }));
+    expect(parts).toEqual(Result.ok({ roomId: 'room', generation: { n: 0, a: '' } }));
   });
   test('does not read a record key as a marker', () => {
     // #when
     const parts = parseIncompleteMarkerKey('mr4:room:3:gm:blk:brok');
     // #then
-    expect(parts.ok).toBe(false);
+    expect(parts.isOk()).toBe(false);
   });
 });
 
@@ -120,8 +116,8 @@ describe('generation marker', () => {
     // #when
     const key = generationMarkerKey('room', { n: 3, a: 'gm' });
     // #then
-    expect({ key, asRecord: key.ok ? parseStorageKey(key.value).ok : true }).toEqual({
-      key: ok('mr4:room:3:gm:#generation'),
+    expect({ key, asRecord: key.isOk() ? parseStorageKey(key.value).isOk() : true }).toEqual({
+      key: Result.ok('mr4:room:3:gm:#generation'),
       asRecord: false,
     });
   });
@@ -129,7 +125,7 @@ describe('generation marker', () => {
     // #when
     const parts = parseGenerationMarkerKey('mr4:room:0::#generation');
     // #then
-    expect(parts).toEqual(ok({ roomId: 'room', generation: { n: 0, a: '' } }));
+    expect(parts).toEqual(Result.ok({ roomId: 'room', generation: { n: 0, a: '' } }));
   });
   test.each([
     ['an incomplete marker', 'mr4:room:3:gm:#incomplete'],
@@ -139,7 +135,7 @@ describe('generation marker', () => {
     // #when
     const parts = parseGenerationMarkerKey(storageKey);
     // #then
-    expect(parts.ok).toBe(false);
+    expect(parts.isOk()).toBe(false);
   });
 });
 

@@ -5,6 +5,7 @@ import type { Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type {
   DeltaMessage,
+  Diagnostic,
   EngineMessage,
   Notice,
   ProjectionMessage,
@@ -12,6 +13,11 @@ import type {
   SyncState,
 } from '@/core/ui-messages';
 import { visibleRecords, type PlayerRole } from '@/core/visibility';
+import {
+  MessageRejectedFailure,
+  RecordTooLargeFailure,
+  type FailureReporter,
+} from '@/replica/failures';
 
 type PublisherSync = Omit<SyncState, 'role'>;
 
@@ -21,6 +27,7 @@ export type WindowPublisherState = {
   // The pending view contains only keys whose pending value differs from the replica.
   pendingView: ReadonlyMap<string, VersionedRecord>;
   notices: readonly Notice[];
+  diagnostics?: readonly Diagnostic[];
   sync: PublisherSync;
   roomCopy: RoomCopyStatus;
   party: readonly PartyEntry[];
@@ -31,6 +38,7 @@ export type WindowPublisherOptions = {
   newId: () => string;
   presetOf: (record: VersionedRecord | undefined) => Preset | null;
   state: () => WindowPublisherState;
+  report?: FailureReporter;
 };
 
 export type WindowPublisher = {
@@ -43,6 +51,7 @@ type Part = { records: VersionedRecord[]; pending: VersionedRecord[] };
 
 type Header = {
   notices: readonly Notice[];
+  diagnostics?: readonly Diagnostic[];
   sync: SyncState;
   roomCopy: RoomCopyStatus;
   party: readonly PartyEntry[];
@@ -59,6 +68,7 @@ type HeldState = VisibleState;
 
 // Owns the window stream and compares the state a window holds with the current visible state.
 export function createWindowPublisher(options: WindowPublisherOptions): WindowPublisher {
+  const report = options.report ?? (() => undefined);
   let engineId = options.newId();
   let sequence = 0;
   let held: HeldState | undefined;
@@ -156,6 +166,10 @@ export function createWindowPublisher(options: WindowPublisherOptions): WindowPu
       party: [...current.header.party],
     };
 
+    if (current.header.diagnostics !== undefined) {
+      envelope.diagnostics = [...current.header.diagnostics];
+    }
+
     const parts = splitParts(
       [...current.records.values()],
       [...current.pending.values()],
@@ -163,7 +177,7 @@ export function createWindowPublisher(options: WindowPublisherOptions): WindowPu
     );
 
     if (parts === null) {
-      console.error('Muster Roll could not split a projection');
+      report(new RecordTooLargeFailure({}));
 
       return false;
     }
@@ -186,7 +200,7 @@ export function createWindowPublisher(options: WindowPublisherOptions): WindowPu
         answeringNonces.delete(nonce);
       })
       .catch((error) => {
-        console.error('Muster Roll could not send a projection', error);
+        report(new MessageRejectedFailure({ reason: String(error) }));
       });
 
     return true;
@@ -243,10 +257,17 @@ export function createWindowPublisher(options: WindowPublisherOptions): WindowPu
       pending,
       header: {
         notices: source.notices,
+        diagnostics: source.diagnostics,
         sync,
         roomCopy: source.roomCopy,
         party: source.party,
-        signature: JSON.stringify([source.notices, sync, source.roomCopy, source.party]),
+        signature: JSON.stringify([
+          source.notices,
+          source.diagnostics,
+          sync,
+          source.roomCopy,
+          source.party,
+        ]),
       },
     };
   }
@@ -267,10 +288,14 @@ export function createWindowPublisher(options: WindowPublisherOptions): WindowPu
       party: [...header.party],
     };
 
+    if (header.diagnostics !== undefined) {
+      envelope.diagnostics = [...header.diagnostics];
+    }
+
     const parts = splitParts(content.records, content.pending, jsonByteLength(envelope));
 
     if (parts === null) {
-      console.error('Muster Roll could not split a delta');
+      report(new RecordTooLargeFailure({}));
 
       return false;
     }
@@ -283,10 +308,10 @@ export function createWindowPublisher(options: WindowPublisherOptions): WindowPu
 
       try {
         options.send({ ...envelope, seq: sequence, withdrawn, ...part }).catch((error) => {
-          console.error('Muster Roll could not send a delta', error);
+          report(new MessageRejectedFailure({ reason: String(error) }));
         });
       } catch (error) {
-        console.error('Muster Roll could not send a delta', error);
+        report(new MessageRejectedFailure({ reason: String(error) }));
       }
     }
 
@@ -361,11 +386,11 @@ function splitParts(
       ? null
       : splitBatch(fragmentRecords(pendingView, recordReserve), envelopeBytes);
 
-  if (recordParts !== null && !recordParts.ok) {
+  if (recordParts !== null && !recordParts.isOk()) {
     return null;
   }
 
-  if (pendingParts !== null && !pendingParts.ok) {
+  if (pendingParts !== null && !pendingParts.isOk()) {
     return null;
   }
 

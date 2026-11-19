@@ -20,10 +20,16 @@ import { prepareDiceRoll, type DiceRollFailure, type PreparedDiceRoll } from '@/
 import { resolveSheet, sheetName } from '@/core/sheets';
 import type { Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import type { Generation } from '@/core/storage-key';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
 import { rollShownTo, rollTargetShownTo, type PlayerRole } from '@/core/visibility';
+import { DiceExtensionFailure } from '@/platform/ports';
+import {
+  MessageRejectedFailure,
+  RecordTooLargeFailure,
+  type FailureReporter,
+} from '@/replica/failures';
 
 const RECENT_REQUEST_ID_LIMIT = 256;
 
@@ -58,13 +64,14 @@ export type RollDicePort = {
 };
 
 export type RollFlowPorts = {
+  report?: FailureReporter;
   pendingView: () => ReadonlyMap<string, VersionedRecord>;
   presetOf: (record: VersionedRecord | undefined) => Preset | null;
   role: () => PlayerRole;
-  stopped: () => boolean;
+  signal: AbortSignal;
   generation: () => Generation;
   dice: RollDicePort;
-  gmInRoom: () => boolean;
+  gmInParty: () => boolean;
   playerId: string;
   playerName: () => Promise<string>;
   random: RandomSource;
@@ -83,6 +90,7 @@ export type RollFlow = {
 // The roll pipeline is independent from the room, window, and platform adapters. The engine wires
 // these ports to its live state and transport.
 export function createRollFlow(ports: RollFlowPorts): RollFlow {
+  const report = ports.report ?? (() => undefined);
   const recentRequestIds = createBoundedIdSet(RECENT_REQUEST_ID_LIMIT);
   const recentRollIds = createBoundedIdSet(RECENT_ROLL_ID_LIMIT);
 
@@ -101,7 +109,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
 
     const prepared = prepareRoll(message);
 
-    if (!prepared.ok) {
+    if (!prepared.isOk()) {
       ports.replyOutcome(message.id, prepared.error);
 
       return;
@@ -109,7 +117,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
 
     const local = evaluatedWith(prepared.value, randomFaces(ports.random));
 
-    if (!local.ok) {
+    if (!local.isOk()) {
       ports.replyOutcome(message.id, local.error);
 
       return;
@@ -128,7 +136,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     const hidden = policy !== null && !rollTargetShownTo('PLAYER', policy.template, message.place);
 
     if (policy === null || !rollShownTo(ports.role(), hidden)) {
-      return err({ code: 'refused' });
+      return Result.err({ code: 'refused' });
     }
 
     const dice = prepareDiceRoll(
@@ -139,11 +147,11 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
       new Map(Object.entries(message.shown)),
     );
 
-    if (!dice.ok) {
-      return err(rollFailure(dice.error));
+    if (!dice.isOk()) {
+      return Result.err(rollFailure(dice.error));
     }
 
-    return ok({
+    return Result.ok({
       sheetId: message.sheetId,
       hidden,
       // "" for an empty name: every client shows the fallback label.
@@ -167,7 +175,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     try {
       roller = await ports.playerName();
     } catch (error) {
-      console.error('Muster Roll could not read the player name for a roll', error);
+      report(new MessageRejectedFailure({ reason: String(error) }));
       ports.replyOutcome(requestId, { code: 'failed' });
 
       return;
@@ -182,8 +190,8 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
       return;
     }
 
-    const readiness = ports.stopped() ? 'absent' : await ports.dice.ready();
-    const stoppedAfterReadiness = ports.stopped();
+    const readiness = ports.signal.aborted ? 'absent' : await ports.dice.ready();
+    const stoppedAfterReadiness = ports.signal.aborted;
 
     if (!stoppedAfterReadiness && (readiness === 'absent' || readiness === 'refused')) {
       console.info(
@@ -207,7 +215,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     }
 
     // With no GM in the room the extension refuses at once, so the window shows no wait for one.
-    if (readiness === 'pending' || (readiness === 'unknown' && ports.gmInRoom())) {
+    if (readiness === 'pending' || (readiness === 'unknown' && ports.gmInParty())) {
       ports.replyOutcome(requestId, { code: 'waiting-access' });
     }
 
@@ -220,19 +228,16 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     });
 
     // A stopped page sends nothing more, and its wait was no failure of the extension.
-    if (ports.stopped()) {
+    if (ports.signal.aborted) {
       return;
     }
 
-    if (!faces.ok) {
+    if (!faces.isOk()) {
       if (faces.error.code === 'stopped') {
         return;
       }
 
-      console.error(
-        'Muster Roll rolled locally, as the dice extension gave no faces:',
-        faces.error.reason,
-      );
+      report(new DiceExtensionFailure({ reason: faces.error.reason }));
       console.info('Muster Roll rolled locally: the dice extension gave no faces');
       await sendRoll(requestId, local, roller);
 
@@ -248,13 +253,13 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     try {
       evaluated = evaluatedWith(prepared, listedFaces(faces.value));
     } catch (error) {
-      console.error('Muster Roll could not apply the dice extension faces', error);
+      report(new MessageRejectedFailure({ reason: String(error) }));
       ports.replyOutcome(requestId, { code: 'failed' });
 
       return;
     }
 
-    if (!evaluated.ok) {
+    if (!evaluated.isOk()) {
       ports.replyOutcome(requestId, evaluated.error);
 
       return;
@@ -270,7 +275,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     evaluated: EvaluatedRoll,
     roller: string,
   ): Promise<void> {
-    if (ports.stopped()) {
+    if (ports.signal.aborted) {
       return;
     }
 
@@ -284,8 +289,17 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     const message = rollMessage(ports.generation(), { id: ports.newId(), roller, ...evaluated });
 
     // A roll a receiver would drop, or one too large to send, never goes out.
-    if (!parseRoomMessage(message).ok || !fitsOneMessage(message)) {
-      console.error('Muster Roll built a roll the room would not take');
+    const parsed = parseRoomMessage(message);
+
+    if (!parsed.isOk()) {
+      report(new MessageRejectedFailure({ reason: parsed.error }));
+      ports.replyOutcome(requestId, { code: 'failed' });
+
+      return;
+    }
+
+    if (!fitsOneMessage(message)) {
+      report(new RecordTooLargeFailure({}));
       ports.replyOutcome(requestId, { code: 'failed' });
 
       return;
@@ -293,7 +307,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
 
     const sent = await ports.sendRemote(message);
 
-    if (ports.stopped()) {
+    if (ports.signal.aborted) {
       return;
     }
 
@@ -328,7 +342,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     const text = rollNotificationText({ ...message, roller }, ports.rollCopy);
 
     Promise.resolve(ports.notify(text)).catch((error) => {
-      console.error('Muster Roll could not show a roll', error);
+      report(new MessageRejectedFailure({ reason: String(error) }));
     });
   }
 
@@ -345,11 +359,11 @@ function evaluatedWith(
 ): Result<EvaluatedRoll, RollOutcome> {
   const rolled = prepared.dice.roll(faces);
 
-  if (!rolled.ok) {
-    return err(rollFailure(rolled.error));
+  if (!rolled.isOk()) {
+    return Result.err(rollFailure(rolled.error));
   }
 
-  return ok({
+  return Result.ok({
     sheetId: prepared.sheetId,
     hidden: prepared.hidden,
     sheetName: prepared.sheetName,

@@ -9,6 +9,7 @@ import {
 } from '@/core/token-links';
 import type { PlayerRole } from '@/core/visibility';
 import type { ContextMenuContext, ContextMenuItem, Platform } from '@/platform/ports';
+import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
 
 export const TOKEN_MENU_IDS: Readonly<Record<TokenMenuAction, string>> = {
   link: 'app.muster-roll/link-sheet',
@@ -55,10 +56,12 @@ export type TokenMenu = {
     preset: Preset | null,
     role: PlayerRole,
   ) => void;
-  stop: () => void;
 };
 
-type TokenMenuPorts = Pick<Platform, 'contextMenu' | 'popover'>;
+type TokenMenuPorts = Pick<Platform, 'contextMenu' | 'popover'> & {
+  report?: FailureReporter;
+  signal: AbortSignal;
+};
 
 // AD-10: only the background page owns the token menu. Owlbear filters do not change once an item
 // is created, so the items are re-created from the current records and role when either changes.
@@ -67,6 +70,7 @@ export function createTokenMenu(
   copy: TokenMenuCopy,
   actions: TokenMenuActions,
 ): TokenMenu {
+  const report = ports.report ?? (() => undefined);
   // The filter each item was last created with, as JSON, by action.
   const created = new Map<TokenMenuAction, string>();
   // Items a failed call may have left in Owlbear, as they were or under an older filter. The next
@@ -74,7 +78,6 @@ export function createTokenMenu(
   const stale = new Set<TokenMenuAction>();
   // One port call at a time, so a remove never overtakes the create before it.
   let calls: Promise<void> = Promise.resolve();
-  let stopped = false;
 
   // A rejected call marks its item stale, unless a newer update already changed it. The Owlbear SDK
   // resolves `create` without waiting for the host, so a create the host drops in silence is not
@@ -85,7 +88,7 @@ export function createTokenMenu(
     call: () => Promise<void>,
   ): void {
     calls = calls.then(call).catch((error) => {
-      console.error('Muster Roll could not change the token menu', error);
+      report(new MessageRejectedFailure({ reason: String(error) }));
 
       if (created.get(action) === signature) {
         created.delete(action);
@@ -109,7 +112,7 @@ export function createTokenMenu(
       onClick: (context, elementId) => {
         const tokenId = onlyItemId(context);
 
-        if (tokenId === null || stopped) {
+        if (tokenId === null || ports.signal.aborted) {
           return;
         }
 
@@ -129,15 +132,25 @@ export function createTokenMenu(
             anchorElementId: elementId,
           })
           .catch((error) => {
-            console.error('Muster Roll could not open the link picker', error);
+            report(new MessageRejectedFailure({ reason: String(error) }));
           });
       },
     };
   }
 
+  ports.signal.addEventListener(
+    'abort',
+    () => {
+      for (const action of ACTIONS) {
+        if (created.has(action) || stale.has(action)) queueRemove(action);
+      }
+    },
+    { once: true },
+  );
+
   return {
     update: (records, preset, role) => {
-      if (stopped) {
+      if (ports.signal.aborted) {
         return;
       }
 
@@ -162,19 +175,8 @@ export function createTokenMenu(
           stale.delete(action);
           // A create still queued when the menu stops is dropped.
           queue(action, signature, () =>
-            stopped ? Promise.resolve() : ports.contextMenu.create(item),
+            ports.signal.aborted ? Promise.resolve() : ports.contextMenu.create(item),
           );
-        }
-      }
-    },
-    // Takes every item this menu may have left in Owlbear back out, so none stays with a click
-    // that does nothing.
-    stop: () => {
-      stopped = true;
-
-      for (const action of ACTIONS) {
-        if (created.has(action) || stale.has(action)) {
-          queueRemove(action);
         }
       }
     },

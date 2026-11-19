@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { FORMAT_VERSION } from '@/core/format-version';
 import { recordKeySchema } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 
 // AD-11: the key prefix of the current storage format, `mr` and the format version.
 const STORAGE_FORMAT = `mr${FORMAT_VERSION}`;
@@ -37,12 +37,12 @@ export function buildStorageKey(
   const parts = storageKeyPartsSchema.safeParse({ roomId, generation, key });
 
   if (!parts.success) {
-    return err('invalid-storage-key');
+    return Result.err('invalid-storage-key');
   }
 
   const { n, a } = parts.data.generation;
 
-  return ok(`${STORAGE_FORMAT}:${parts.data.roomId}:${n}:${a}:${parts.data.key}`);
+  return Result.ok(`${STORAGE_FORMAT}:${parts.data.roomId}:${n}:${a}:${parts.data.key}`);
 }
 
 // AD-9: the marker a client sets before it writes the records of a new generation and removes once
@@ -107,7 +107,7 @@ export function parseStorageKey(storageKey: string): Result<StorageKeyParts, Sto
   const [format, roomId, counter, author, ...keySegments] = storageKey.split(':');
 
   if (format !== STORAGE_FORMAT || counter === undefined || !CANONICAL_INTEGER.test(counter)) {
-    return err('invalid-storage-key');
+    return Result.err('invalid-storage-key');
   }
 
   const parts = storageKeyPartsSchema.safeParse({
@@ -116,7 +116,7 @@ export function parseStorageKey(storageKey: string): Result<StorageKeyParts, Sto
     key: keySegments.join(':'),
   });
 
-  return parts.success ? ok(parts.data) : err('invalid-storage-key');
+  return parts.success ? Result.ok(parts.data) : Result.err('invalid-storage-key');
 }
 
 function markerKey(
@@ -127,12 +127,12 @@ function markerKey(
   const parts = markerPartsSchema.safeParse({ roomId, generation });
 
   if (!parts.success) {
-    return err('invalid-storage-key');
+    return Result.err('invalid-storage-key');
   }
 
   const { n, a } = parts.data.generation;
 
-  return ok(`${STORAGE_FORMAT}:${parts.data.roomId}:${n}:${a}:${mark}`);
+  return Result.ok(`${STORAGE_FORMAT}:${parts.data.roomId}:${n}:${a}:${mark}`);
 }
 
 function parseMarkerKey(
@@ -148,7 +148,7 @@ function parseMarkerKey(
     found !== mark ||
     rest.length > 0
   ) {
-    return err('invalid-storage-key');
+    return Result.err('invalid-storage-key');
   }
 
   const parts = markerPartsSchema.safeParse({
@@ -156,5 +156,5 @@ function parseMarkerKey(
     generation: { n: Number(counter), a: author },
   });
 
-  return parts.success ? ok(parts.data) : err('invalid-storage-key');
+  return parts.success ? Result.ok(parts.data) : Result.err('invalid-storage-key');
 }

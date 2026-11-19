@@ -8,7 +8,7 @@ import {
   DICE_PLUS_RESULT_CHANNEL,
 } from '@/core/dice-plus';
 import type { JsonValue } from '@/core/json';
-import { err } from '@/core/result';
+import { Result } from 'better-result';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import type { DiceExtensionTiming } from '@/core/timing';
@@ -25,6 +25,7 @@ import type { PlayerRole } from '@/platform/ports';
 import { copy } from '@/copy';
 import {
   createRoomRig,
+  diagnostics,
   outcome,
   pause,
   requestRoll as trackedRoll,
@@ -368,7 +369,7 @@ async function startClient(
     if (channel === DICE_PLUS_REQUEST_ACCESS_CHANNEL && accessFailures > 0) {
       accessFailures -= 1;
 
-      return err({ kind: 'failed', reason: 'test' });
+      return Result.err({ kind: 'failed', reason: 'test' });
     }
 
     return sendMessage(channel, data, sendOptions);
@@ -722,7 +723,6 @@ describe('a roll falls back to a local roll', () => {
   });
   test('on an error reply, and logs its reason', async () => {
     // #given
-    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер', dice: { kind: 'error' } });
     // #when
@@ -731,7 +731,7 @@ describe('a roll falls back to a local roll', () => {
     expect({
       requests: requests(gm).length,
       shown: shown(gm),
-      reasons: fallbackReasons(errors.mock.calls),
+      reasons: fallbackReasons(gm),
     }).toEqual({
       requests: 1,
       shown: ['Мастер: Брок, Удар — 21'],
@@ -740,7 +740,6 @@ describe('a roll falls back to a local roll', () => {
   });
   test('at once on an error reply that carries only its roll id', async () => {
     // #given: the result wait is far past the test's wait limit.
-    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
 
     const gm = await startClient(room, 'gm-a', {
@@ -760,7 +759,7 @@ describe('a roll falls back to a local roll', () => {
     expect({
       outcome: await outcome,
       shown: shown(gm),
-      reasons: fallbackReasons(errors.mock.calls),
+      reasons: fallbackReasons(gm),
     }).toEqual({
       outcome: { code: 'rolled' },
       shown: ['Мастер: Брок, Удар — 21'],
@@ -784,7 +783,6 @@ describe('a roll falls back to a local roll', () => {
     ['a face of 2.5', [['d20', [2.5]]], 'group 1 has the face 2.5'],
   ])('on a result with %s, and logs its reason', async (_name, groups, reason) => {
     // #given
-    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
 
     const gm = await startClient(room, 'gm-a', {
@@ -795,14 +793,13 @@ describe('a roll falls back to a local roll', () => {
     // #when
     await roll(gm, STRIKE);
     // #then
-    expect({ shown: shown(gm), reasons: fallbackReasons(errors.mock.calls) }).toEqual({
+    expect({ shown: shown(gm), reasons: fallbackReasons(gm) }).toEqual({
       shown: ['Мастер: Брок, Удар — 21'],
       reasons: [reason],
     });
   });
   test('when no result comes in time, and logs its reason', async () => {
     // #given
-    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
 
     const gm = await startClient(room, 'gm-a', {
@@ -818,7 +815,7 @@ describe('a roll falls back to a local roll', () => {
       outcome,
       requests: requests(gm).length,
       shown: shown(gm),
-      reasons: fallbackReasons(errors.mock.calls),
+      reasons: fallbackReasons(gm),
     }).toEqual({
       outcome: { code: 'rolled' },
       requests: 1,
@@ -828,7 +825,6 @@ describe('a roll falls back to a local roll', () => {
   });
   test('at once when the roll request cannot be sent, well before the result wait', async () => {
     // #given: the result wait is far past the test's wait limit.
-    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { name: 'Мастер', dice: { kind: 'silent' } });
     gm.platform.failNextSends([{ kind: 'failed', reason: 'test' }]);
@@ -839,7 +835,7 @@ describe('a roll falls back to a local roll', () => {
       outcome,
       requests: requests(gm).length,
       shown: shown(gm),
-      reasons: fallbackReasons(errors.mock.calls),
+      reasons: fallbackReasons(gm),
     }).toEqual({
       outcome: { code: 'rolled' },
       requests: 0,
@@ -1049,7 +1045,6 @@ describe('the dice extension client', () => {
   });
   test('a roll with no result in time marks the extension gone and probes again', async () => {
     // #given: the extension answered at start, then went away.
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
 
     const gm = await startClient(room, 'gm-a', {
@@ -1135,7 +1130,6 @@ describe('the dice extension client', () => {
   });
   test('a page that stops while a roll waits for its dice logs no local roll and sends nothing', async () => {
     // #given
-    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
     const gm = await startClient(room, 'gm-a', { dice: { kind: 'silent' } });
     gm.window.requestRoll(STRIKE);
@@ -1144,7 +1138,7 @@ describe('the dice extension client', () => {
     gm.engine.stop();
     await pause(20);
     // #then
-    expect({ reasons: fallbackReasons(errors.mock.calls), rolls: room.rolls }).toEqual({
+    expect({ reasons: fallbackReasons(gm), rolls: room.rolls }).toEqual({
       reasons: [],
       rolls: [],
     });
@@ -1377,7 +1371,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
   });
   test('refuses a waiting roll when the GM denies, and it rolls locally', async () => {
     // #given
-    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
 
     const gm = await startClient(room, 'gm-a', {
@@ -1395,7 +1388,7 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     expect({
       outcomes: gm.outcomes.get(id),
       shown: shown(gm),
-      reasons: fallbackReasons(errors.mock.calls),
+      reasons: fallbackReasons(gm),
     }).toEqual({
       outcomes: [{ code: 'waiting-access' }, { code: 'rolled' }],
       shown: ['Мастер: Брок, Удар — 21'],
@@ -1404,7 +1397,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
   });
   test('refuses a waiting roll when the GM does not answer in time, and it rolls locally', async () => {
     // #given: the GM's prompt for the start's access request timed out already.
-    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
 
     const gm = await startClient(room, 'gm-a', {
@@ -1422,7 +1414,7 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
     expect({
       outcomes: gm.outcomes.get(id),
       shown: shown(gm),
-      reasons: fallbackReasons(errors.mock.calls),
+      reasons: fallbackReasons(gm),
     }).toEqual({
       outcomes: [{ code: 'waiting-access' }, { code: 'rolled' }],
       shown: ['Мастер: Брок, Удар — 21'],
@@ -1432,7 +1424,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
   test('with no GM in the room refuses a roll at once, the window hears no wait for a GM, and the next roll asks nothing', async () => {
     // #given: the GM left after the player loaded the sheets, so neither the extension nor the
     // party has a GM. The result wait is far past the test's wait limit.
-    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
     const gm = await startClient(room, 'gm-a');
 
@@ -1457,7 +1448,7 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       outcomes: ids.map((id) => player.outcomes.get(id)),
       requests: requests(player).length,
       shown: shown(player),
-      reasons: fallbackReasons(errors.mock.calls),
+      reasons: fallbackReasons(player),
     }).toEqual({
       outcomes: [[{ code: 'rolled' }], [{ code: 'rolled' }]],
       requests: 1,
@@ -1497,7 +1488,6 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
   });
   test('that takes access back refuses the roll, a GM client asks again, and the next roll asks nothing', async () => {
     // #given: a roll went through, then the GM denied Muster Roll in the extension.
-    const errors = spyOn(console, 'error').mockImplementation(() => undefined);
     const room = openRoom();
 
     const gm = await startClient(room, 'gm-a', {
@@ -1518,7 +1508,7 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
       revoked: gm.outcomes.get(revoked),
       requests: requests(gm).length,
       shown: shown(gm),
-      reasons: fallbackReasons(errors.mock.calls),
+      reasons: fallbackReasons(gm),
     }).toEqual({
       revoked: [{ code: 'rolled' }],
       requests: 2,
@@ -1755,11 +1745,9 @@ describe('a dice extension that lets Muster Roll roll only after the GM allows i
   });
 });
 
-// The reasons logged for each roll that fell back to a local one, oldest first.
-function fallbackReasons(calls: readonly (readonly JsonValue[])[]): JsonValue[] {
-  return calls.flatMap((call) =>
-    call[0] === 'Muster Roll rolled locally, as the dice extension gave no faces:'
-      ? [call[1] ?? null]
-      : [],
+// The reported reasons for each roll that fell back to a local one, oldest first.
+function fallbackReasons(client: Pick<RigClient, 'store'>): JsonValue[] {
+  return diagnostics(client).flatMap((entry) =>
+    entry.tag === 'DiceExtensionFailure' ? [entry.detail ?? null] : [],
   );
 }

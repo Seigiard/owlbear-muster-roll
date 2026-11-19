@@ -1,5 +1,6 @@
 import type { PartyEntry } from '@/core/access';
-import type { PartyMember, PartyPort, PlayerRole } from '@/platform/ports';
+import { type PartyMember, type PartyPort, type PlayerRole } from '@/platform/ports';
+import type { FailureReporter } from '@/replica/failures';
 
 // `name` is the player name the party lists for the connection.
 export type RoomSender = { role: PlayerRole; playerId: string; name: string };
@@ -9,13 +10,15 @@ export type PartyRoster = {
   senderOf: (connectionId: string) => Promise<RoomSender | null>;
   // The party as last read, one entry per connection, for the access panel.
   entries: () => PartyEntry[];
-  stop: () => void;
 };
 
 // AD-5: a room message names its sender only by connection id, and the party port maps it to a role
 // and a player id. Another GM connection of the same account is a member of its own. `onReplace`
 // hears every new read of the party.
-export function createPartyRoster(party: PartyPort, onReplace?: () => void): PartyRoster {
+export function createPartyRoster(
+  party: PartyPort & { report: FailureReporter; signal: AbortSignal; onReplace?: () => void },
+): PartyRoster {
+  const { report, signal, onReplace } = party;
   let members = new Map<string, RoomSender>();
   // Counts party changes, so a read that started before one cannot bring the older list back.
   let epoch = 0;
@@ -38,11 +41,11 @@ export function createPartyRoster(party: PartyPort, onReplace?: () => void): Par
     try {
       const players = await party.getPlayers();
 
-      if (epoch === started) {
-        replace(players);
+      if (players.isErr()) {
+        report(players.error);
+      } else if (!signal.aborted && epoch === started) {
+        replace(players.value);
       }
-    } catch (error) {
-      console.error('Muster Roll could not read the party', error);
     } finally {
       reading = null;
     }
@@ -58,6 +61,8 @@ export function createPartyRoster(party: PartyPort, onReplace?: () => void): Par
     epoch += 1;
     replace(players);
   });
+
+  signal.addEventListener('abort', unsubscribe, { once: true });
 
   // Fills the map before the first message, so a known sender usually needs no read of its own.
   void reread();
@@ -81,6 +86,5 @@ export function createPartyRoster(party: PartyPort, onReplace?: () => void): Par
         name: member.name,
         role: member.role,
       })),
-    stop: unsubscribe,
   };
 }

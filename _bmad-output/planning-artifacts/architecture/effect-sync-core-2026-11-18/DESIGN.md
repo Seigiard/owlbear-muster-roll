@@ -33,10 +33,10 @@ TASK-64 (doc-4) mapped the machines and chose per-module shapes. Goal 3 needs on
 | --- | --- | --- |
 | 3, completeness | `TransitionTable` type plus `machine-check` | none; `fast-check` is already present |
 | 2, errors | `TaggedError` classes, exhaustive `.match`, `Result.gen` for linear chains | `better-result` 3.0.1, 3.4 KB gzip |
-| 1, simpler core | the table replaces each module's `switch` and closure variables; `Result.gen` replaces `if (!x.ok) return x` ladders | the two above |
-| 1, lifecycle (`stopped`, timers) | one `AbortSignal` from the engine replaces the `stopped` getters; one timer helper `schedule(signal, ms, fn)` that cancels itself on `abort` | none; Effect's `Scope` later becomes a mechanical swap |
+| 1, simpler core | tables replace state switches and closure variables in the machine shells. `Result.gen` and `.isErr()` replace old result checks | the two above |
+| 1, lifecycle (`stopped`, timers) | one `AbortSignal` from the engine replaces lifecycle flags. `stop()` only aborts. The outbox discards held commits and acknowledgements on abort. `flushNow()` on page hide sends them instead. `schedule(signal, ms, fn)` cancels its timer on abort | none |
 | 1, superseded answers (the five epoch counters) | stay as they are; they answer "did a newer request of the same kind start meanwhile", not "did the client stop" | `effect` fibers, named in the revisit conditions |
-| 1, time | one clock port `{ now, schedule }` with the OBR and mock adapters; the rig keeps real time, and its move to explicit time is a later task | none; Effect's `TestClock` is the later form |
+| 1, time | `Platform.clock` supplies `now` and `schedule` to the replica. Both adapters use wall time (`Date.now()`) even for elapsed durations. A wall-clock change can affect dice readiness, probe age and pending-edit timing. The dice protocol and diagnostics need wall time. The mock rig also offers explicit time | none |
 | 1, sequencing (`roomMessages` chain) | deferred | `effect` `Queue`, when the ADR's revisit conditions hold |
 
 ## Findings folded in from the second review
@@ -46,8 +46,8 @@ A parallel review of the same three goals (report of 2026-11-18, `https://report
 | Finding | Where in the code | What the design does with it |
 | --- | --- | --- |
 | Two definitions of an online GM: `knowledge.gmLink` from GM-origin messages (the glossary's meaning) and `gmInRoom()` from the party list, used by the roll flow when dice readiness is unknown | `catch-up.ts:159-163`, `engine.ts:1040`, `roll-flow.ts:210` | They answer different questions. Owner decision of 2026-11-18: the party one is renamed `gmInParty`, the roll flow's behavior does not change, and both terms go to `GLOSSARY.md` |
-| Eight phase-event pairs answered by a silent `return []`, plus the `fired` fallthrough that `deferred-work.md` already lists | `catch-up.ts:285, 340, 489, 534, 554-562, 649-655, 738-740, 753` | Each becomes an `'ignore'` cell or a transition in the table. The list is the step 0 checklist; the generated diagram shows every `'ignore'` to the reviewer |
-| The decision interpreter and the timer registry live in the engine: `catchUpTimers` keyed by string, `arm`/`disarm`, a 17-branch `runCatchUp` | `engine.ts:310, 517-558, 560-683` | Step 0b: `catch-up-effects.ts` behind the one timer helper `schedule(signal, ms, fn)`; the engine loses about 180 lines. After step 0 is green, so the oracle sees one change at a time |
+| Eight phase-event cases with a silent return, including the `fired` fallthrough | `catch-up.ts:285, 340, 489, 534, 554-562, 649-655, 738-740, 753` | The table gives each case an explicit `'ignore'` cell or a branch within a cell. The diagram omits `'ignore'` cells |
+| The decision interpreter and the timer registry live in the engine: `catchUpTimers` keyed by string, `arm`/`disarm`, a 17-branch `runCatchUp` | `engine.ts:310, 517-558, 560-683` | Step 0b moves the interpreter and timer registry to `catch-up-effects.ts`. The engine loses 128 lines and keeps the four send ports |
 | Seven failure patterns: `Result` up to the composition seam; `.catch` to console (about 40, 23 in the engine); `try/catch`, log, `null`; sentinel strings in `problemKeys`; a domain enum collapsed to one text (`too-large` shown as "Нет прав на правку"); silent zod rejections; silent drops of oversized messages | `engine.ts:80-84, 931, 1030-1038, 1343-1349`, `room-copy.ts:651`, `party-roster.ts:38`, `send-queue.ts:102, 121, 188`, `pending-edits.ts:561`, `room-protocol.ts:144-150, 285, 314, 332`, `dice-extension.ts:109, 126`, `commit-outbox.ts:73, 107` | Part 2 covers port failures. Domain verdicts keep their reason: `deniesEdit` returns the cause and the window shows `too-large` apart from `denied`. Silent drops become reported failures with a tag each |
 | Where the window never learns of a failure: a failed `commit`, `state` or `propose` send; a metadata read; a role read that leaves the old role; a party read; `action.open()` losing an open request; a GM not in `live` dropping a `propose` | `engine.ts:746-749, 1229`, `room-protocol.ts:271` | Each is a `ReplicaFailure` tag; the sink below publishes them |
 | `stopped` in six modules, four styles of timer ownership, five epoch counters, a `stop()` of thirteen calls, construction order held by a comment | `engine.ts:303, 1393-1413`, `room-copy.ts`, `commit-outbox.ts:42`, `scene-watch.ts:24`, `dice-extension.ts:97`, `proposal-queue.ts:389`, `party-roster.ts:21` | The lifecycle step below takes `stopped` and the timer styles. Owner decision of 2026-11-18: the five epoch counters stay, because they detect a superseded answer, not a stop; they are the first item of the Effect revisit condition |
@@ -85,32 +85,15 @@ What it does not buy: a cell may return a phase of any kind, and may emit any ef
 
 ### Where the table sits in a module
 
-A module today, `catch-up.ts` for instance, is `createCatchUp(options): CatchUp` with twelve event methods, a `phase` variable and eight closure variables for knowledge, nonces, held requests and digests. After:
+`catch-up.ts` keeps the `CatchUp` interface and holds the current phase. `catch-up-table.ts` defines four rows: `initializing`, `catching-up`, `adopting`, and `live`. The table keeps the data that used to sit in closure variables in the phase records. `CatchUpDecision` retains its `type` discriminant. Phases and events use `kind`.
 
-```ts
-// catch-up-table.ts: pure, imports core only
-export type Phase = ...;   // phase kind plus the knowledge that used to live in closure variables
-export type Event = ...;   // one kind per former method: enter, heard, fired, stateMerged, ...
-export type Effect = CatchUpDecision;   // unchanged: the engine already interprets these
-export const catchUpTable: TransitionTable<Phase, Event, Effect> = { ... };
+`livenessTable` is the second table in `catch-up-table.ts`. It starts `offline` and has no `unknown` phase. A silence event when already `offline` emits nothing. The shell feeds `heard`, `fired`, and `watch` to `catchUpTable` first and then to `livenessTable`. The tables do not call each other. `catchUpTable` handles incoming `ping` and decides whether to answer `alive`; `livenessTable` decides `gmLink`. The roll flow's `gmInParty` check still reads the party list. Step 0 renamed that predicate in the engine but left the catch-up wiring in place.
 
-// catch-up.ts: the existing CatchUp interface, now a thin shell
-export function createCatchUp(options: CatchUpOptions): CatchUp {
-  let phase: Phase = initial(options);
-  const feed = (event: Event) => { const next = step(catchUpTable, phase, event); phase = next.phase; return next.effects; };
-  return { enter: (trigger) => feed({ kind: 'enter', trigger }), heard: (role, message) => feed({ kind: 'heard', role, message }), ... };
-}
-```
+The catch-up shell calls `saveAdoption` synchronously and feeds its result into the table as `adoption-saved`. The `answersOwn` check stays in `catch-up.ts`. The room protocol uses it when a GM's higher-generation `state` answers this client's request. Generation flow receives `keepNonce`, not the nonce.
 
-The engine, `runCatchUp` and the 48 module tests do not change. Module-private state moves into the phase record, so a cell is a pure function of its inputs and `machine-check` can generate it.
+The step 0 checklist came from the old `catch-up.ts`: `enter` while adopting, adoption staged outside adopting, a generation not higher than the target, stale nonces for party reads, room-copy reads, state parts and request timers, and the `fired` fallthrough. The table makes each case an ignored cell or a decision within a cell.
 
-Timer rule: `fired(timer)` is one event kind with the timer in its payload. The cell decides; the engine still owns `setTimeout` until step 0b.
-
-GM link: a second table, `livenessTable`, in the same module, with phases `unknown`, `online`, `offline`. The shell feeds each event to the catch-up table first and then to the liveness table, synchronously, so no runner is needed and the two tables never call each other. The `catching-up` phase still decides whether a GM answers `alive`; the liveness table only decides the link. `gmInRoom()` in the engine is a different question, whether a GM is in the party at all, asked by the roll flow when dice readiness is unknown; it is renamed `gmInParty` and both terms land in `GLOSSARY.md`. The owner confirmed the two tables in one shell, the rename and step 0b on 2026-11-18, in the first grilling round on catch-up; the ADR moves to accepted after the second reviewer's read of this document, and the backlog epic is created from the migration table then.
-
-Step 0 checklist, the silent pairs that become declared cells: `catch-up.ts:285` (`enter` while adopting), `:340` (adoption staged outside adopting), `:489` (a generation not higher than the target), `:534` (a party read for another nonce), `:554-562` (room-copy read outside the active request), `:649-655` (a state part for another nonce), `:738-740` (a request timer for another nonce), `:753` (the `fired` fallthrough).
-
-Step 0b: `catch-up-effects.ts` takes the 17-branch `runCatchUp`, `catchUpTimers`, `armCatchUpTimer` and `disarmCatchUpTimer` out of the engine. Timers go through the one replica timer helper, `schedule(signal, ms, fn)`, which returns a cancel function and cancels itself on `abort`; the helper knows no keys, so the map from a `CatchUpTimer` key to its cancel function stays inside `catch-up-effects.ts`. The interpreter is tested with a fake helper and the engine loses about 180 lines. It lands only after step 0 is green, so the engine suite sees one change at a time.
+`catch-up-effects.ts` runs the returned decisions and maps each timer key to its cancel function. `Platform.clock.schedule(signal, ms, fn)` knows no timer keys. A timer feeds `fired` with the timer in its payload and the cell decides what to do. The engine keeps the `state-request`, `state`, `alive`, and `ping` send ports because they use the send queue, generation or replica. Step 0b first used the controller for the interpreter alone. Step 2 extended that signal across the engine's helpers. Step 4 redirected the interpreter's failure tests from the console to `report`.
 
 Boundary of the completeness check: a conditional no-op inside a cell, such as a stale nonce returning `{ phase, effects: [] }`, is a decision of that cell and is covered by its table test in `*-table.test.ts`, not by `machine-check`. `machine-check` sees cells, not branches inside them.
 
@@ -119,20 +102,20 @@ Boundary of the completeness check: a conditional no-op inside a cell, such as a
 `tests/support/machine-check.ts` exports one function:
 
 ```ts
-export function checkMachine<Phase extends Tagged<string>, Event extends Tagged<string>, Effect extends Tagged<string>>(spec: {
+export function checkMachine<Phase extends Tagged<string>, Event extends Tagged<string>, Effect extends { readonly type: string }>(spec: {
   name: string;
   table: TransitionTable<Phase, Event, Effect>;
   phases: { [K in Phase['kind']]: fc.Arbitrary<Extract<Phase, { kind: K }>> };
   events: { [K in Event['kind']]: fc.Arbitrary<Extract<Event, { kind: K }>> };
-  allowedEffects: { [K in Phase['kind']]: readonly Effect['kind'][] };   // effects a step may emit when it lands in K
+  allowedEffects: { [K in Phase['kind']]: readonly Effect['type'][] };   // effects a step may emit when it lands in K
   invariants: readonly { name: string; holds: (phase: Phase) => boolean }[];
   diagram: string;   // path under docs/machines/
 }): void;
 ```
 
-For every cell it runs `fc.assert` over the generated phase and event and asserts: the result phase kind is a row of the table; each emitted effect kind is allowed for the result phase; every invariant holds on the result. Then it renders the table to Mermaid `stateDiagram-v2`, one arrow per non-`ignore` cell labelled with the event kind, and compares with the committed file; a stale file fails and the message prints the new text. A `bun:test` file per machine calls it once.
+For each non-`ignore` cell, `checkMachine` samples phases and events with a fixed seed. It checks that the result phase has a row, that the result phase allows every emitted effect `type`, and that each invariant holds. The Mermaid diagram draws an arrow for each sampled destination, labelled by event `kind`. It does not draw `'ignore'` cells or branches the samples miss. The table tests cover those branches. The checker compares the generated diagram with the committed file and prints the replacement if it differs.
 
-Example invariants from today's code: `adopting` implies `catching-up`; `active.sentNonce` is `null` or equals `active.nonce`; a `write-metadata` effect appears only when the result phase is `writing`.
+For example, catch-up checks that `active.sentNonce` is `null` or equals `active.nonce`. Room copy allows `write-metadata` when the result phase is `writing`, never when it is `stopped`.
 
 ## Part 2: better-result
 
@@ -146,22 +129,13 @@ Example invariants from today's code: `adopting` implies `catching-up`; `active.
 | `if (!r.ok) return r` | `yield* r` inside `Result.gen`, or `r.isErr()` |
 | `ok(v)`, `err(e)` | `Result.ok(v)`, `Result.err(e)` |
 
-One mechanical change over 48 files; the junit list of `bun test` and `bun run test:browser` equals the baseline. The zod schemas in `ui-messages` and `room-messages` that serialize a `Result`-like shape on the wire, if any, keep their own wire shape; the swap is in memory only.
+The swap changes in-memory results, not the wire format. Engine tests now compare `Result` instances or read `.isOk()` instead of comparing the old object literals. The expected payloads did not change.
 
 ### Failures
 
-```ts
-export class StorageFailure extends TaggedError('StorageFailure')<{ operation: StorageOperation; reason: string; key?: string }> {}
-export class SendFailure    extends TaggedError('SendFailure')<{ kind: 'rate-limited' | 'failed'; reason?: string; channel: string }> {}
-export class PartyReadFailure extends TaggedError('PartyReadFailure')<{ cause: unknown }> {}
-export class PlayerReadFailure extends TaggedError('PlayerReadFailure')<{ field: 'role' | 'name' | 'id'; cause: unknown }> {}
-export class MetadataFailure extends TaggedError('MetadataFailure')<{ operation: 'read' | 'write'; cause: unknown }> {}
-export class DiceExtensionFailure extends TaggedError('DiceExtensionFailure')<{ reason: string }> {}
-```
+`src/platform/ports.ts` defines the `TaggedError` classes that both adapters construct. The port contract tests of TASK-64.3 assert their tags and fields. Send and storage types still accept plain failure data from older test doubles. The replica normalizes those values before reporting them.
 
-They live in `src/platform/ports.ts` beside the port they belong to, because both adapters construct them. The port contract tests of TASK-64.3 assert the tag and fields instead of the literal shape.
-
-Port methods that reject today (`party.getPlayers`, `player.getRole`, `metadata.getMetadata`, `notification.show`) return `Promise<Result<T, XFailure>>` through `Result.tryPromise({ try, catch })` in the adapter, so a rejection has a type at the boundary and the replica stops writing `.catch((error) => console.error(...))`.
+`party.getPlayers`, `player.getRole`, `metadata.getMetadata`, and `notification.show` return `Result` values in their promises. The OBR adapter uses `Result.tryPromise` for those calls. `metadata.setMetadata` still returns `Promise<void>` and can reject. The room-copy shell reports a rejected write as `MetadataFailure` with operation `write`. A rejected `action.setSize` reports `message-rejected`. There is no dedicated window-size failure class.
 
 Three kinds of outcome, kept apart:
 
@@ -173,27 +147,33 @@ Three kinds of outcome, kept apart:
 
 ### Policy in the module, delivery in one sink
 
-The module decides what a failure means for its flow, because only it knows: a failed room-copy write retries on the existing backoff, a failed role read keeps the old role, a failed `state` send waits for the next `state-request`. That decision is an exhaustive `failure.match({...})` per module, so adding a failure class to a port's union fails to compile until every module that sees it answers.
+The module decides what a failure means for its flow. For example, a failed role read keeps the old role, and a failed `state` send waits for the next `state-request`. The sink uses exhaustive `.match` to turn each `ReplicaFailure` tag into diagnostic detail. `createPartyRoster` takes a single options object with the party port, required `report` and `signal`, and an optional `onReplace`.
 
-Delivery is one place: `src/replica/failures.ts` exports `ReplicaFailure`, the union of every port failure class plus the replica's own tags (`send-dropped`, `record-too-large`, `message-rejected`, `open-request-lost`, `propose-dropped`), and `report(failure)`. The engine holds a bounded list of recent failures and publishes it in the projection as a `diagnostics` notice, beside the four notices that exist. The window shows it to a GM only, as a collapsed block «Диагностика» in the settings; the banners players see do not change; the text lives in `src/copy.ts`. Tests read the list instead of `spyOn(console, 'error')`, which about 15 tests do today and which pins the console as the sink. The console keeps one subscriber. The 86 `console.error` calls become `match` arms or `report` calls, or disappear where a typed result is handled upstream.
+`createFailureSink` in `src/replica/failures.ts` accepts tagged port and replica failures through its `report` callback. It keeps a bounded list of timestamped diagnostics. The engine publishes the list as the `diagnostics` field of the window projection. Only GMs see the collapsed «Диагностика» block in Settings. Player banners do not change. The text lives in `src/copy.ts`. Tests that check failure delivery read reports or diagnostics. Tests with console spies that only silenced expected output no longer use those spies or assert the tags. The engine's console subscriber is the replica's only `console.error` call.
 
-Domain verdicts keep their reason. `deniesEdit` in `pending-edits.ts` collapses `gone` and `too-large` into one boolean and one text; it returns the cause instead, and the window shows "too large" apart from "no write access". The silent zod rejections in `engine.ts`, `room-protocol.ts` and `dice-extension.ts`, and the silent drops of oversized messages, become `message-rejected` and `record-too-large` reports.
+Domain verdicts keep their reason. `deniesEdit` in `pending-edits.ts` returns the denial cause. The player sees a different notification for `too-large` than for a lack of write access. Parse failures and oversized records can reach the sink as `message-rejected` and `record-too-large`.
 
-The error classes are `Error` subclasses and live in `src/platform/ports.ts`, not in `src/core`; core receives only `Result` values, which are plain data, so ADR-0003's rule for core holds.
+The port error classes stay in `src/platform/ports.ts`. Core uses `Result` without importing the platform.
 
 ## Machine catalog
 
-The phase and event sets below are the starting point. Each machine's ticket fixes its table from the module tests that exist today, and the table, not this document, is then the source of truth.
+The tables are the source of truth for their cells. The catalog names the phases and points to each diagram. The remaining rows describe why those flows do not need a table.
 
 | Machine | Phases (kinds) | Events it takes | Effects it emits | Verdict |
 | --- | --- | --- | --- | --- |
-| Catch-up and GM link (AD-6, AD-7, AD-9 gate) | `initializing`, `live`, `catching-up/ordinary`, `catching-up/adopting` | `enter`, `watch`, `room-copy-read`, `party-read`, `generation-heard`, `generation-read`, `adoption-staged`, `heard`, `state-requested`, `ping`, `alive`, `state-merged`, `fired(timer)`, `closing`, `party-changed`, `replica-replaced` | `CatchUpDecision`, unchanged | first table; already decision-shaped, 48 tests |
-| GM link (AD-6), `livenessTable` in the same module | `unknown`, `online`, `offline` | `heard(GM)`, `fired(gm-silence)`, `fired(ping)`, `role` | `arm`, `disarm`, `ping`, `show`, `gm-back` | first, beside the catch-up table; fed by the same shell |
-| Room copy (AD-8) | `idle`, `reading`, `writing`, `verifying`, `stopped` | `edited`, `caught-up`, `page-hidden`, `page-returned`, `fired(pause)`, `read-done`, `write-done`, `verify-done`, `failed` | `read-metadata`, `write-metadata`, `arm`, `publish-status`, `replaced` | second; `WritePhase` exists |
-| Generation and adoption (AD-9) | `settled`, `importing`, `staged`, `saving` | `import`, `wipe`, `check-snapshot`, `adopt-from-copy`, `see-generation`, `stage`, `clear-staged`, `save-adoption`, `store-written`, `store-failed`, `role-changed` | `write-store`, `remove-store`, `replace-replica`, `write-import`, `send-reset`, `flush-outbox`, `drop-pending`, `notice`, `reply` | third; keep the synchronous `saveAdoption` contract with `catch-up` |
-| Pending edits (AD-4) | per entry: `waiting`, `sent(attempt)`, `denied-quiet` | `edit`, `answered`, `rejected`, `gm-back`, `caught-up`, `fired(resend)`, `drain` | `enqueue-propose`, `arm`, `notice-denied`, `publish` | judged by its ticket |
-| Room protocol (AD-5) | `idle`, `assembling(proposals)` | `message`, `sender-known`, `fired(retention)` | `catch-up-event`, `apply`, `reject`, `commit`, `deliver-roll`, `see-generation`, `stage` | judged by its ticket; the promise chain stays until Effect |
-| Roll (AD-13) | `idle`, `awaiting-dice` | `roll-request`, `dice-ready`, `dice-result`, `dice-failed`, `roll-received` | `check-dice`, `roll-dice`, `send-roll`, `reply-outcome`, `notify` | stays a linear function with `Result.gen`; two phases add nothing |
+| Catch-up (AD-7, AD-9 gate) | `initializing`, `catching-up`, `adopting`, `live` | `Event` in `catch-up-table.ts`, including `adoption-saved` | `CatchUpDecision`, unchanged | `catchUpTable`, [diagram](../../../../docs/machines/catch-up.md) |
+| GM link (AD-6) | `offline`, `online` | `heard`, `fired`, `watch` | `arm`, `ping`, `show`, `gm-back` | `livenessTable` in `catch-up-table.ts`, [diagram](../../../../docs/machines/liveness.md) |
+| Room copy (AD-8) | `idle`, `reading`, `writing`, `verifying`, `stopped` | `Event` in `room-copy-table.ts`, including `stop` and `edited` with import data | `Effect` in `room-copy-table.ts` | `roomCopyTable` in the `room-copy.ts` shell, [diagram](../../../../docs/machines/room-copy.md) |
+| Generation and adoption (AD-9) | `settled`, `importing`, `staged`, `saving` | `Event` in `generation-table.ts` | `Effect` in `generation-table.ts` | `generationTable` in the `generation-flow.ts` shell, [diagram](../../../../docs/machines/generation.md). `saveAdoption` stays synchronous |
+| Pending edits (AD-4) | No phase table | edits, replies, catch-up exit, and resend | queue proposals, publish, or notify | stays linear (TASK-115.10). An entry either waits for a version or has one. The denial quiet window spans keys |
+| Room protocol (AD-5) | No phase table | incoming room messages | validate, dispatch, and reply as needed | stays linear (TASK-115.10). Fragment assembly belongs to one edit tuple, not to a protocol phase |
+| Roll (AD-13) | No phase table | roll request and dice or room replies | roll, send, reply, or notify | stays a linear function |
+
+Ordinary and import writes share the room-copy phase as their mutex. An import attaches its data to `edited` rather than adding an event kind. The `stopped` phase retains an in-flight write. A write sent before `stop()` can finish its read-back, publish status and resolve a waiting import. It cannot write again, merge records or arm the pause timer. The dice result code `'stopped'` also remains. It means the background stopped while a roll waited, not that a lifecycle flag remains.
+
+`pending-edits` stays a linear function. Each live entry in `proposal-queue` either waits for a version or has a version. The `sent` bit tracks whether any version was composed for sending. The denial quiet window spans keys and starts only when a notice is shown; it is not an entry phase. An entry without a version cannot match an acknowledgement or be resent. Other decisions use the current records or match the exact edit tuple. `proposal-queue` stays separate: resend timing and send-time composition belong to the queue. The cross-module rules (an edit applied at most once, an older answer never clearing a newer edit) are the subject of `formal/edit-delivery/`, not of a table.
+
+`room-protocol` stays a linear function. `roomMessages` serializes handler dispatch even when a sender lookup is slow. An incomplete proposal belongs to one sender, generation and edit tuple, and does not change how the protocol handles other messages. The fragment assembler expires incomplete sets when a later fragment arrives. AD-5 already lists the allowed messages by sender role and generation relation. The `roomMessages` promise chain stays unchanged until the Effect revisit.
 
 Not machines: `command-routing` stays a pure router; `composers`, `record-store`, `version-minter`, `party-roster` and `window-publisher` are libraries. The token menu, scene watch and open requests stay engine wiring, as doc-4 left them.
 
@@ -204,28 +184,29 @@ Not machines: `command-routing` stays a pure router; `composers`, `record-store`
 | Table tests, `src/replica/*-table.test.ts` | `step()` on the table | a cell's decision |
 | machine-check, one `bun:test` file per machine | every cell with generated data | completeness, invariants, diagram freshness |
 | Module tests, existing `catch-up.test.ts`, `room-copy.test.ts`, `generation-flow.test.ts` | the module shell over its table, fake ports | unchanged module behavior |
-| Engine tests, `src/replica/engine-*.test.ts` | the rig, mock platform, real clock | unchanged room behavior, junit list equal to the baseline per step |
+| Engine tests, `src/replica/engine-*.test.ts` | the room rig and mock platform. `engine-catch-up`, `engine-liveness`, and `engine-no-gm` use `createRoomRig({ clock: 'manual' })` and `rig.advance(ms)`. The other files keep real time and `pause()` | room behavior. Catch-up elapsed-time assertions use `roomRig.now()` with the original bounds |
 | Port contract, TASK-64.3 | mock and Chromium | tagged failures where literal failures were |
 
 ## Migration
 
-One step per PR, the full check and a junit list equal to the baseline on each:
+The implementation PRs land in `epic/task-115`. The [epic PR #63](https://github.com/Seigiard/owlbear-muster-roll/pull/63) targets `master`.
 
-| Step | Change | Oracle |
-| --- | --- | --- |
-| 0 | `src/replica/machine.ts`, `tests/support/machine-check.ts`, `docs/machines/`. `catch-up.ts` becomes a shell over `catch-up-table.ts` and `livenessTable`; the eight silent pairs become declared cells; `gmInParty` named; the engine does not change | `catch-up.test.ts` and the engine suite; the generated `docs/machines/catch-up.md` |
-| 0b | `catch-up-effects.ts`: the interpreter and the timer registry leave the engine behind the one timer helper `schedule(signal, ms, fn)` | engine suite; interpreter tests on a fake helper |
-| 1 | `better-result` replaces `src/core/result.ts` in 48 files, one mechanical PR, no behavior change. Owner decision of 2026-11-18 | `bun test`, `bun run test:browser` junit lists equal to the baseline |
-| 2 | Lifecycle, one PR over all six modules, after step 0b, in parallel with TASK-114, leaving `engine.ts:740-797` (`heldOpen`) untouched until TASK-114.2 is merged: the engine owns one `AbortController`; helpers take `signal` instead of `stopped: () => boolean`; one helper `schedule(signal, ms, fn)` replaces the four timer styles; subscriptions hang on `abort`; a read that returns after `stop()` is dropped by `signal.aborted`; `stop()` is one `abort()` plus the outbox flush. The five epoch counters stay | engine suite; `grep -c stopped src/replica` down to the `room-copy` phase name; one `setTimeout` call site in `src/replica` |
-| 3 | Clock port `{ now, schedule }` in `ports.ts` with the OBR and mock adapters; the engine and the timer helper take time from it; `Date.now` and `performance.now` leave `src/replica`. Owner decision of 2026-11-18: moving the rig to `advance(ms)` and replacing `pause()` and `waitUntil` is not part of this step; it is a later task, file by file | engine suite unchanged, `waitUntil` as it is; `grep -c "Date.now\|performance.now" src/replica` down to 0 |
-| 4 | Tagged failures in `ports.ts`; the four rejecting port methods return results; both adapters and the port contract updated; `failures.ts` with `ReplicaFailure`, `report` and the bounded list published in the projection as the `diagnostics` notice; `deniesEdit` returns its cause; `console.error` in `src/replica` replaced, the console one subscriber. After TASK-114.2. Owner decision of 2026-11-18: the hybrid as written in part 2, policy in the module, delivery in one sink | port contract, engine suite, `grep -c console.error src/replica` down to 1 |
-| 4b | The window shows `diagnostics` to a GM only, as a collapsed block «Диагностика» in the settings; player banners do not change; the text lives in `src/copy.ts`. Owner decision of 2026-11-18 | `window-view` and settings tests; the e2e suite for a player sees no new banner |
-| 5 | `room-copy` as a table | `room-copy.test.ts`, `engine-room-copy` |
-| 6 | `generation-flow` as a table | `generation-flow.test.ts`, `engine-import`, `engine-catch-up` |
-| 7 | `pending-edits` and `room-protocol` judged; tables where the ticket finds more than two phases. After TASK-114.2, whose spec forbids merging `proposal-queue` into `pending-edits` | their module tests, `engine-propose`, `engine-client` |
-| 8 | Spine: the Replica row names `machine.ts`, the table rule, the signal and the clock port; `GLOSSARY.md` gains the two GM terms; ADR-0004 to accepted | docs checks |
+| Step | Task | Status and PR | Change | Oracle |
+| --- | --- | --- | --- | --- |
+| 0 | TASK-115.1 | Done [#62](https://github.com/Seigiard/owlbear-muster-roll/pull/62) | `machine.ts`, `machine-check.ts`, `catchUpTable`, and `livenessTable`. Renamed `gmInParty` without changing catch-up wiring | catch-up tests and both generated diagrams |
+| 0b | TASK-115.2 | Done [#66](https://github.com/Seigiard/owlbear-muster-roll/pull/66) | Moved interpretation and timer keys to `catch-up-effects.ts` | interpreter tests with a fake scheduler and engine tests |
+| 1 | TASK-115.3 | Done [#58](https://github.com/Seigiard/owlbear-muster-roll/pull/58) | `better-result` replaced `src/core/result.ts` | unit and browser test lists against baseline. Engine tests use `Result` instances without changing the expected payloads |
+| 2 | TASK-115.4 | Done [#68](https://github.com/Seigiard/owlbear-muster-roll/pull/68) | One engine `AbortController`. `stop()` aborts and the outbox discards held commits and acknowledgements. Epoch counters still reject superseded answers | engine tests, including no held commit after stop. Lifecycle tests renamed to describe abort. `stopped` remains a room-copy phase and a dice result code, not a flag |
+| 3 | TASK-115.5 | Done [#70](https://github.com/Seigiard/owlbear-muster-roll/pull/70) | OBR and mock implement `Platform.clock`. `Date.now`, `performance.now`, and `setTimeout` are absent from replica production code. The platform send queue and mock keep their own timers | engine tests and the five scheduler tests, moved unchanged to `src/platform/schedule.test.ts` |
+| 4 | TASK-115.6 | Done [#67](https://github.com/Seigiard/owlbear-muster-roll/pull/67) | Tagged port failures, the failure sink and projection diagnostics | port contract and engine tests. The send-queue test now says it reports a failure. The room gate test now expects a valid v4 `ping` to get an answer without a rejection |
+| 4b | TASK-115.7 | Done [#69](https://github.com/Seigiard/owlbear-muster-roll/pull/69) | GM-only «Диагностика» in Settings | settings and browser tests |
+| 5 | TASK-115.8 | Done [#71](https://github.com/Seigiard/owlbear-muster-roll/pull/71) | `room-copy-table.ts` | room-copy table, shell and engine tests, including completion of a write sent before stop |
+| 6 | TASK-115.9 | Done [#74](https://github.com/Seigiard/owlbear-muster-roll/pull/74) | `generation-table.ts`. Synchronous adoption and the catch-up nonce check stay at their module boundaries | generation table, shell and engine tests |
+| 7 | TASK-115.10 | Done [#73](https://github.com/Seigiard/owlbear-muster-roll/pull/73) | Kept `pending-edits` and `room-protocol` linear and left `proposal-queue` separate | existing module and engine tests |
+| 8 | TASK-115.11 | Done [#75](https://github.com/Seigiard/owlbear-muster-roll/pull/75) | Aligned the architecture spine, DESIGN, and ADR-0004 with the code. The glossary already defined both GM terms | docs checks |
+| Rig | TASK-116 | Done [#72](https://github.com/Seigiard/owlbear-muster-roll/pull/72) | Three engine test files moved to manual time. The rest can migrate file by file | unchanged elapsed-time bounds in `engine-catch-up` |
 
-Each step is one backlog task under the epic TASK-115: steps 0 to 8 are TASK-115.1 to TASK-115.11 in table order, and the rig's move to explicit time is TASK-116. Order, as the owner set it on 2026-11-18: steps 0, 0b, 2 and 3 do not depend on `better-result` and run in parallel with TASK-114; step 1 lands after TASK-114.3 is merged, so after all three block-address PRs; step 4 follows step 1, and steps 4b and 7 also wait for TASK-114.2. Steps 5 to 7 are independent once 0 to 4 are in. The rig's move to explicit time is a task of its own, outside this table.
+The baseline records test names, not unchanged source literals. Steps 2 and 4 include the renames noted above. `deferred-work.md` records isolated browser reruns for steps 0b, 1, and 4. They do not change the replica design.
 
 ## When Effect comes back
 
@@ -242,8 +223,8 @@ The spike's `runner.ts` is the shape to start from: the same tables, a `Queue` p
 | Risk | Bound |
 | --- | --- |
 | `better-result` is a one-author library at 3.0.1 | zero dependencies, 3.4 KB, MIT; its `Result` is a small surface the repo could vendor if it stalls |
-| The `Result` swap touches 48 files | mechanical, one PR, no behavior change, lists equal to the baseline |
-| A table that turns `'ignore'` into a silent drop | `'ignore'` is written per cell on purpose; `machine-check`'s diagram shows the dropped events to a reviewer |
+| The `Result` swap changes the in-memory representation | tests compare the new representation with the same expected payloads |
+| A table that turns `'ignore'` into a silent drop | the table declares `'ignore'` in each ignored cell. The diagram omits those cells, so read the table to see the drops |
 | A conditional no-op inside a cell, such as a stale nonce returning `{ phase, effects: [] }`, hides from `machine-check` | Owner decision of 2026-11-18: this is the check's boundary. Such branches are covered by the cell's table test in `*-table.test.ts`; a reviewer reads them as code, not as a diagram arrow |
 | Phase records grow when closure variables move into them | the module tests already name every variable; the record mirrors them |
 | The adoption contract between `catch-up` and `generation-flow` | unchanged in this design: `saveAdoption` stays a synchronous callback |

@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import type { JsonObject } from '../../src/core/json';
 import { mergeRecords } from '../../src/core/merge';
 import type { VersionedRecord } from '../../src/core/records';
@@ -37,7 +38,7 @@ function createHeldWriteCopy() {
   let afterWrite: (() => void) | null = null;
 
   const metadataPort = {
-    getMetadata: async () => metadata,
+    getMetadata: async () => Result.ok(metadata),
     setMetadata: async (update: MetadataUpdate) => {
       writes += 1;
       activeWrites += 1;
@@ -61,7 +62,10 @@ function createHeldWriteCopy() {
     },
   };
 
+  const controller = new AbortController();
+
   const roomCopy = createRoomCopy({
+    signal: controller.signal,
     metadata: metadataPort,
     timing: { snapshotPauseMs: 10, snapshotJitterMs: 0 },
     random: () => 0,
@@ -78,6 +82,7 @@ function createHeldWriteCopy() {
 
   return {
     copy: roomCopy,
+    stop: () => controller.abort(),
     holdWrite: () => {
       heldWrite = new Promise((resolve) => {
         releaseWrite = resolve;
@@ -92,7 +97,7 @@ function createHeldWriteCopy() {
     setLowerCopy: () => {
       const encoded = encodeSnapshot(INITIAL, [RECORD]);
 
-      if (!encoded.ok) {
+      if (!encoded.isOk()) {
         throw new Error('observer fixture did not encode');
       }
 
@@ -101,7 +106,7 @@ function createHeldWriteCopy() {
     snapshot: () => {
       const read = readSnapshot(metadata);
 
-      if (!read.ok || read.value === null) {
+      if (!read.isOk() || read.value === null) {
         throw new Error('observer fixture did not decode');
       }
 
@@ -128,7 +133,7 @@ async function observeStoppedWrite(): Promise<void> {
   subject.copy.pageHidden();
   await waitFor(() => subject.writes() === 1);
   const imported = subject.copy.writeImport(HIGHER, () => false);
-  subject.copy.stop();
+  subject.stop();
   subject.releaseWrite();
   await imported;
   console.log(

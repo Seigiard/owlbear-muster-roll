@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { assembleRecords, mergeRecords } from '@/core/merge';
 import { blockAddress } from '@/core/block-address';
 import { fixturePatch } from '../../tests/support/block-fixtures';
@@ -141,7 +142,7 @@ describe('pending edits', () => {
     const result = harness.pending.edit(field('str', 11), harness.records);
     // #then
     expect({ result, sent: harness.sent }).toEqual({
-      result: { ok: true, value: { notify: false } },
+      result: Result.ok({ notify: false }),
       sent: [
         {
           k: 'blk:brok',
@@ -175,7 +176,7 @@ describe('pending edits', () => {
       const result = harness.pending.edit(command, harness.records);
       // #then
       expect({ result, sent: harness.sent }).toEqual({
-        result: { ok: false, error: reason },
+        result: Result.err(reason),
         sent: [],
       });
     },
@@ -192,7 +193,7 @@ describe('pending edits', () => {
 
     // #then
     expect({ result, sent: harness.sent }).toEqual({
-      result: { ok: true, value: { notify: false } },
+      result: Result.ok({ notify: false }),
       sent: [
         {
           k: 'blk:camp',
@@ -214,7 +215,7 @@ describe('pending edits', () => {
     const result = harness.pending.edit(field('str', 11, 'hidden'), harness.records);
     // #then
     expect({ result, sent: harness.sent }).toEqual({
-      result: { ok: false, error: 'not-allowed' },
+      result: Result.err('not-allowed'),
       sent: [],
     });
   });
@@ -254,7 +255,7 @@ describe('pending edits', () => {
     const result = harness.pending.edit(field('note', 'ы'.repeat(8000)), harness.records);
     // #then
     expect({ result, sent: harness.sent, size: harness.pending.size() }).toEqual({
-      result: { ok: false, error: 'too-large' },
+      result: Result.err('too-large'),
       sent: [],
       size: 0,
     });
@@ -281,7 +282,7 @@ describe('pending edits', () => {
 
     // #then
     expect({ result, sent: harness.sent, size: harness.pending.size() }).toEqual({
-      result: { ok: true, value: { notify: true } },
+      result: Result.ok({ notify: true, cause: 'gone' }),
       sent: [],
       size: 0,
     });
@@ -329,7 +330,7 @@ describe('pending edits', () => {
     harness.pending.overlay(view);
     // #then
     expect({ result, record: view.get(STR.k), size: harness.pending.size() }).toEqual({
-      result: { ok: false, error: 'unchanged' },
+      result: Result.err('unchanged'),
       record: STR,
       size: 0,
     });
@@ -383,7 +384,7 @@ describe('pending edits', () => {
     const result = harness.pending.rejected(reject({ k: STR.k, c: 3, a: CONNECTION }, 'denied'));
     // #then
     expect({ result, size: harness.pending.size() }).toEqual({
-      result: { notify: true, merge: null },
+      result: { notify: true, cause: 'denied', merge: null },
       size: 0,
     });
   });
@@ -394,6 +395,7 @@ describe('pending edits', () => {
       {
         merge: VersionedRecord | null;
         notify: boolean;
+        cause?: 'gone' | 'too-large' | 'denied';
       },
       VersionedRecord[],
     ]
@@ -413,7 +415,7 @@ describe('pending edits', () => {
     [
       'drops stale above when the current repeat block was removed',
       fixturePatch(SWORD, null, 5, 'gm'),
-      { merge: fixturePatch(SWORD, null, 5, 'gm'), notify: true },
+      { merge: fixturePatch(SWORD, null, 5, 'gm'), notify: true, cause: 'gone' },
       [],
     ],
   ])('%s', (_name, current, expected, resent) => {
@@ -480,6 +482,29 @@ describe('pending edits', () => {
       result: { notify: false, merge: current },
       sent: [pcRecord({ str: 11 }, 3), pcRecord({ str: 11 }, 6)],
       size: 1,
+    });
+  });
+  test('caught-up returns too-large when a waiting edit no longer fits over the GM record', () => {
+    // #given
+    const harness = createHarness({ catchingUp: true });
+    harness.pending.edit(add('new'), harness.records);
+    harness.records.set('blk:brok:item:new', {
+      k: 'blk:brok:item:new',
+      d: { order: 5, cells: { item: ['Shield', 5, 'gm'] } },
+      c: 5,
+      a: 'gm',
+      l: [1, 'g'.repeat(15000)],
+    });
+    harness.setCatchingUp(false);
+
+    // #when
+    const result = harness.pending.caughtUp();
+
+    // #then
+    expect({ result, sent: harness.sent, size: harness.pending.size() }).toEqual({
+      result: { notify: true, cause: 'too-large' },
+      sent: [],
+      size: 0,
     });
   });
   test('a stale answer below the edit rebuilds over the newest known record, not only the answer', () => {
@@ -627,7 +652,7 @@ describe('pending edits', () => {
     const result = harness.pending.caughtUp();
     // #then
     expect({ result, sent: harness.sent, size: harness.pending.size() }).toEqual({
-      result: { notify: true },
+      result: { notify: true, cause: 'denied' },
       sent: [],
       size: 0,
     });
@@ -699,6 +724,7 @@ describe('pending edits', () => {
       (harness: Harness) => void,
       {
         notify: boolean;
+        cause?: 'gone' | 'too-large' | 'denied';
         size: number;
       },
     ]
@@ -712,13 +738,13 @@ describe('pending edits', () => {
           c: 2,
           a: 'gm',
         }),
-      { notify: true, size: 0 },
+      { notify: true, cause: 'denied', size: 0 },
     ],
     [
       'a deleted sheet',
       (harness) =>
         harness.records.set('blk:brok', { k: 'blk:brok', d: null, c: 2, a: 'gm', l: [1, 'seed'] }),
-      { notify: true, size: 0 },
+      { notify: true, cause: 'denied', size: 0 },
     ],
     [
       'another player revoked',
@@ -737,7 +763,10 @@ describe('pending edits', () => {
       const result = harness.pending.recordsChanged(undefined);
       // #then
       expect({ result, size: harness.pending.size() }).toEqual({
-        result: { notify: expected.notify },
+        result:
+          expected.cause === undefined
+            ? { notify: expected.notify }
+            : { notify: expected.notify, cause: expected.cause },
         size: expected.size,
       });
     },
@@ -769,7 +798,10 @@ describe('pending edits', () => {
     // #when
     const result = harness.pending.recordsChanged(undefined);
     // #then
-    expect({ result, size: harness.pending.size() }).toEqual({ result: { notify: true }, size: 0 });
+    expect({ result, size: harness.pending.size() }).toEqual({
+      result: { notify: true, cause: 'gone' },
+      size: 0,
+    });
   });
   test('records change drops a waiting edit at a revoke before catch-up ends', () => {
     // #given
@@ -779,7 +811,10 @@ describe('pending edits', () => {
     // #when
     const result = harness.pending.recordsChanged(undefined);
     // #then
-    expect({ result, size: harness.pending.size() }).toEqual({ result: { notify: true }, size: 0 });
+    expect({ result, size: harness.pending.size() }).toEqual({
+      result: { notify: true, cause: 'denied' },
+      size: 0,
+    });
   });
   test('records change keeps another sheet entry when one sheet access is revoked', () => {
     // #given
@@ -799,7 +834,7 @@ describe('pending edits', () => {
     const remaining = pendingView(harness).get(STR.k);
     // #then
     expect({ result, sent: harness.sent, size: harness.pending.size(), remaining }).toEqual({
-      result: { notify: true },
+      result: { notify: true, cause: 'denied' },
       sent: [
         pcRecord({ str: 11 }, 3),
         {
@@ -935,9 +970,9 @@ describe('pending edits', () => {
 
     // #then
     expect({ first, second, third }).toEqual({
-      first: { notify: true, merge: null },
+      first: { notify: true, cause: 'denied', merge: null },
       second: { notify: false, merge: null },
-      third: { notify: true, merge: null },
+      third: { notify: true, cause: 'denied', merge: null },
     });
   });
   test('a GM return resends minted edits and backoff resends the same edit with doubling delays', () => {
@@ -1037,7 +1072,7 @@ function createHarness(
 
       const decoded = decodePreset(data.data);
 
-      return decoded.ok ? decoded.value : null;
+      return decoded.isOk() ? decoded.value : null;
     },
     compose: (view, command) =>
       composers.compose(
@@ -1061,7 +1096,8 @@ function createHarness(
 
       return Promise.resolve();
     },
-    schedule: (run, delay) => {
+    signal: new AbortController().signal,
+    schedule: (_signal, delay, run) => {
       const scheduledEntry = { run, delay, cancelled: false };
       scheduled.push(scheduledEntry);
 

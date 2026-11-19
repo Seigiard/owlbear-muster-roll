@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -196,13 +197,13 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(EXAMPLE_TEXT);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(EXAMPLE_TEXT) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(EXAMPLE_TEXT)));
   });
   test('the committed example includes a select field', () => {
     // #given
     const parsed = parsePresetFile(EXAMPLE_TEXT);
 
-    if (!parsed.ok) {
+    if (!parsed.isOk()) {
       throw new Error('the committed example must parse');
     }
 
@@ -229,7 +230,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test('accepts a dice-choice field with die options in preset order', () => {
     // #given
@@ -240,7 +241,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test('accepts every cell kind, columns, repeat and every width', () => {
     // #given
@@ -262,7 +263,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test('accepts a cell name on every field type and on a dice cell', () => {
     // #given
@@ -292,7 +293,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test('refuses a name on a text cell as an invalid structure', () => {
     // #given
@@ -300,7 +301,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'invalid-structure' } });
+    expect(parsed).toEqual(Result.err({ code: 'invalid-structure' }));
   });
   test.each([
     [
@@ -330,7 +331,7 @@ describe('parsePresetFile', () => {
     const parsed = parsePresetFile(text);
     const actual: unknown = parsed;
     // #then
-    expect(actual).toEqual({ ok: false, error });
+    expect(actual).toEqual(Result.err(error));
   });
   test('accepts a field and a dice name of exactly 60 Unicode code points', () => {
     // #given
@@ -352,7 +353,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test.each([
     [
@@ -372,7 +373,7 @@ describe('parsePresetFile', () => {
     const parsed = parsePresetFile(text);
     const actual: unknown = parsed;
     // #then
-    expect(actual).toEqual({ ok: false, error });
+    expect(actual).toEqual(Result.err(error));
   });
   test('accepts every template property the format names', () => {
     // #given
@@ -404,7 +405,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test('accepts one field id in two templates', () => {
     // #given
@@ -416,7 +417,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
   });
   test('accepts one id in a repeat section and outside it', () => {
     // #given
@@ -435,7 +436,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
   });
   test('accepts a repeat section of several rows whose first field is in a later row', () => {
     // #given
@@ -453,7 +454,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test('accepts a columns row with fewer cells than the grid', () => {
     // #given
@@ -464,7 +465,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
   });
   test.each<[string, string]>([
     ['not JSON', '{"v": 3,'],
@@ -473,7 +474,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'not-json' } });
+    expect(parsed).toEqual(Result.err({ code: 'not-json' }));
   });
   test('refuses a file over 1 MiB before it parses it', () => {
     // #given
@@ -481,7 +482,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'too-large' } });
+    expect(parsed).toEqual(Result.err({ code: 'too-large' }));
   });
   test('counts the 1 MiB limit in UTF-8 bytes', () => {
     // #given: 524289 two-byte letters are under 1 MiB characters but over 1 MiB bytes.
@@ -489,7 +490,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'too-large' } });
+    expect(parsed).toEqual(Result.err({ code: 'too-large' }));
   });
   test.each<[string, JsonValue]>([
     ['an integer above the current one', 5],
@@ -500,7 +501,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'newer-version' } });
+    expect(parsed).toEqual(Result.err({ code: 'newer-version' }));
   });
   test('refuses a file whose v is above the largest safe integer as newer', () => {
     // #given: JSON preserves this integer, and it is greater than the current format version.
@@ -508,7 +509,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'newer-version' } });
+    expect(parsed).toEqual(Result.err({ code: 'newer-version' }));
   });
   test.each<[string, JsonValue | undefined]>([
     ['absent', undefined],
@@ -525,7 +526,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'unsupported-version' } });
+    expect(parsed).toEqual(Result.err({ code: 'unsupported-version' }));
   });
   test('refuses a whole preset of format 1 as an unsupported version', () => {
     // #given
@@ -538,7 +539,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'unsupported-version' } });
+    expect(parsed).toEqual(Result.err({ code: 'unsupported-version' }));
   });
   test('refuses a whole preset of format 2, with sections in a template, as an unsupported version', () => {
     // #given
@@ -557,13 +558,13 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'unsupported-version' } });
+    expect(parsed).toEqual(Result.err({ code: 'unsupported-version' }));
   });
   test('refuses a whole preset of format 3 as an unsupported version', () => {
     // #when
     const parsed = parsePresetFile(JSON.stringify(OLDER_V3));
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'unsupported-version' } });
+    expect(parsed).toEqual(Result.err({ code: 'unsupported-version' }));
   });
   test('accepts a template without the removed kind property', () => {
     // #given
@@ -571,7 +572,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test('accepts players edit on a repeated template', () => {
     // #given
@@ -579,7 +580,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test.each<[string, JsonValue]>([
     ['an array', [MINIMAL]],
@@ -678,7 +679,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(JSON.stringify(file));
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'invalid-structure' } });
+    expect(parsed).toEqual(Result.err({ code: 'invalid-structure' }));
   });
   test.each<[string, string[], SelectFailure]>([
     ['no option', [], { code: 'no-options', field: 'armor' }],
@@ -696,7 +697,7 @@ describe('parsePresetFile', () => {
     const parsed = parsePresetFile(text);
     const actual: unknown = parsed;
     // #then
-    expect(actual).toEqual({ ok: false, error });
+    expect(actual).toEqual(Result.err(error));
   });
   test.each([
     ['a number without d', ['d8', '8'], '8'],
@@ -710,10 +711,7 @@ describe('parsePresetFile', () => {
     const parsed = parsePresetFile(text);
     const actual: unknown = parsed;
     // #then
-    expect(actual).toEqual({
-      ok: false,
-      error: { code: 'bad-die-option', detail, field: 'weapon_die' },
-    });
+    expect(actual).toEqual(Result.err({ code: 'bad-die-option', detail, field: 'weapon_die' }));
   });
   test.each([
     [
@@ -737,7 +735,7 @@ describe('parsePresetFile', () => {
     const parsed = parsePresetFile(text);
     const actual: unknown = parsed;
     // #then
-    expect(actual).toEqual({ ok: false, error });
+    expect(actual).toEqual(Result.err(error));
   });
   test('accepts an unknown id in a dice-choice slot for a roll-time field error', () => {
     // #given
@@ -745,7 +743,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test.each<[string, string]>([
     ['two words', 'two words'],
@@ -764,7 +762,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'invalid-template-id', detail } });
+    expect(parsed).toEqual(Result.err({ code: 'invalid-template-id', detail }));
   });
   test.each(['pc', '_hidden', 'Gm_notes', 'a'.repeat(64)])('accepts the template id %j', (id) => {
     // #given
@@ -772,7 +770,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
   });
   test('refuses two templates that share an id, whatever their kind', () => {
     // #given
@@ -780,7 +778,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'duplicate-template', detail: 'pc' } });
+    expect(parsed).toEqual(Result.err({ code: 'duplicate-template', detail: 'pc' }));
   });
   test.each<[string, JsonValue[]]>([
     ['a number field', [{ rows: [{ cells: [NUMBER_FIELD('title')] }] }]],
@@ -802,10 +800,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({
-      ok: false,
-      error: { code: 'bad-name-field', detail: 'crew', field: 'title' },
-    });
+    expect(parsed).toEqual(Result.err({ code: 'bad-name-field', detail: 'crew', field: 'title' }));
   });
   test('accepts a name field that a text field outside repeat sections holds in any row', () => {
     // #given
@@ -826,7 +821,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
   });
   test.each([
     'two words',
@@ -848,7 +843,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'invalid-id', detail: id } });
+    expect(parsed).toEqual(Result.err({ code: 'invalid-id', detail: id }));
   });
   test.each(['_hidden', 'dex', 'd20x', 'Floor', 'str_2'])('accepts the field id %j', (id) => {
     // #given
@@ -856,7 +851,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
   });
   test.each<[string, JsonValue[], string]>([
     ['one row', [{ rows: [{ cells: [NUMBER_FIELD('str'), NUMBER_FIELD('str')] }] }], 'str'],
@@ -897,7 +892,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(fileOf(sections));
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'duplicate-id', detail: id } });
+    expect(parsed).toEqual(Result.err({ code: 'duplicate-id', detail: id }));
   });
   test('refuses an id twice in one scope of a later template', () => {
     // #given
@@ -909,7 +904,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'duplicate-id', detail: 'hp' } });
+    expect(parsed).toEqual(Result.err({ code: 'duplicate-id', detail: 'hp' }));
   });
   test.each<[string, JsonValue]>([
     ['no row', { repeat: { id: 'name', nameField: 'name' }, rows: [] }],
@@ -931,10 +926,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(fileOf([section]));
     // #then
-    expect(parsed).toEqual({
-      ok: false,
-      error: { code: 'bad-name-field', detail: 'name', field: 'name' },
-    });
+    expect(parsed).toEqual(Result.err({ code: 'bad-name-field', detail: 'name', field: 'name' }));
   });
   test.each<[string, JsonValue]>([
     [
@@ -961,7 +953,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'duplicate-section', detail: 'item' } });
+    expect(parsed).toEqual(Result.err({ code: 'duplicate-section', detail: 'item' }));
   });
   test('accepts two templates with repeat sections that start with one id', () => {
     // #given
@@ -977,7 +969,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
   });
   test('accepts the same nested repeat id below two different parent scopes', () => {
     // #given
@@ -1014,7 +1006,7 @@ describe('parsePresetFile', () => {
     const parsed = parsePresetFile(text);
 
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test('refuses a columns row with more cells than the grid', () => {
     // #given
@@ -1025,7 +1017,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'row-too-wide' } });
+    expect(parsed).toEqual(Result.err({ code: 'row-too-wide' }));
   });
   test.each([
     '1d20 <',
@@ -1046,7 +1038,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'bad-formula', detail: formula } });
+    expect(parsed).toEqual(Result.err({ code: 'bad-formula', detail: formula }));
   });
   test('refuses a formula over 200 characters and shortens it in the detail', () => {
     // #given: 201 characters, valid in every other way.
@@ -1057,10 +1049,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({
-      ok: false,
-      error: { code: 'bad-formula', detail: `str+${' '.repeat(36)}…` },
-    });
+    expect(parsed).toEqual(Result.err({ code: 'bad-formula', detail: `str+${' '.repeat(36)}…` }));
   });
   test('cuts a long id in the detail to 40 characters and an ellipsis', () => {
     // #given
@@ -1069,10 +1058,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({
-      ok: false,
-      error: { code: 'duplicate-id', detail: `a${'b'.repeat(39)}…` },
-    });
+    expect(parsed).toEqual(Result.err({ code: 'duplicate-id', detail: `a${'b'.repeat(39)}…` }));
   });
   test('accepts a formula that names an id absent from the sheet', () => {
     // #given
@@ -1080,7 +1066,7 @@ describe('parsePresetFile', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
   });
 });
 
@@ -1106,7 +1092,7 @@ describe('parsePresetFile with tabs', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
   });
   test('accepts a template of one tab with no title', () => {
     // #given
@@ -1114,7 +1100,7 @@ describe('parsePresetFile with tabs', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
   });
   test('accepts a visible template whose every tab is hidden from players', () => {
     // #given
@@ -1130,7 +1116,7 @@ describe('parsePresetFile with tabs', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+    expect(parsed).toEqual(Result.ok(JSON.parse(text)));
   });
   test.each<[string, JsonObject]>([
     ['no title', {}],
@@ -1148,7 +1134,7 @@ describe('parsePresetFile with tabs', () => {
     const parsed = parsePresetFile(text);
     const preset = parsePresetStructure(JSON.parse(text));
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'untitled-tab', detail: 'pc' } });
+    expect(parsed).toEqual(Result.err({ code: 'untitled-tab', detail: 'pc' }));
     expect(preset === null ? null : presetProblems(preset)).toEqual([
       { failure: { code: 'untitled-tab', detail: 'pc' }, path: [0, 1] },
     ]);
@@ -1161,7 +1147,7 @@ describe('parsePresetFile with tabs', () => {
     const structure = parsePresetStructure(draft);
     const actual: unknown = structure;
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'invalid-structure' } });
+    expect(parsed).toEqual(Result.err({ code: 'invalid-structure' }));
     expect(actual).toEqual(draft);
   });
   test('refuses a field id on two tabs outside repeat sections, at the second one', () => {
@@ -1186,7 +1172,7 @@ describe('parsePresetFile with tabs', () => {
     const parsed = parsePresetFile(text);
     const preset = parsePresetStructure(JSON.parse(text));
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'duplicate-id', detail: 'str' } });
+    expect(parsed).toEqual(Result.err({ code: 'duplicate-id', detail: 'str' }));
     expect(preset === null ? null : presetProblems(preset)).toEqual([
       { failure: { code: 'duplicate-id', detail: 'str' }, path: [0, 1, 1, 0, 0] },
     ]);
@@ -1209,9 +1195,9 @@ describe('parsePresetFile with tabs', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
 
-    if (parsed.ok) {
+    if (parsed.isOk()) {
       const template = parsed.value.templates[0];
       expect(
         template === undefined
@@ -1261,7 +1247,7 @@ test('parsePresetFile accepts a repeat tab with its explicit name field', () => 
   const parsed = parsePresetFile(text);
 
   // #then
-  expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+  expect(parsed).toEqual(Result.ok(JSON.parse(text)));
 });
 
 describe('parsePresetFile with a window size', () => {
@@ -1275,7 +1261,7 @@ describe('parsePresetFile with a window size', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: { ...MINIMAL, window } });
+    expect(parsed).toEqual(Result.ok({ ...MINIMAL, window }));
   });
   test.each<[string, JsonValue]>([
     ['a width below 480', { width: 479, height: 700 }],
@@ -1299,7 +1285,7 @@ describe('parsePresetFile with a window size', () => {
     // #when
     const parsed = parsePresetFile(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'bad-window' } });
+    expect(parsed).toEqual(Result.err({ code: 'bad-window' }));
   });
   test('keeps the window size through encode and decode', () => {
     // #given
@@ -1307,7 +1293,7 @@ describe('parsePresetFile with a window size', () => {
     // #when
     const decoded = decodePreset(encodePreset(preset));
     // #then
-    expect(decoded).toEqual({ ok: true, value: preset });
+    expect(decoded).toEqual(Result.ok(preset));
   });
 });
 
@@ -1627,7 +1613,7 @@ describe('decodePreset', () => {
     // #when
     const decoded = decodePreset(encodePreset(preset));
     // #then
-    expect(decoded).toEqual({ ok: true, value: JSON.parse(EXAMPLE_TEXT) });
+    expect(decoded).toEqual(Result.ok(JSON.parse(EXAMPLE_TEXT)));
   });
   test('refuses a stored preset of format 1 as an unsupported version', () => {
     // #given: the record data an older build stored, deflated and base64-encoded by hand.
@@ -1641,7 +1627,7 @@ describe('decodePreset', () => {
     // #when
     const decoded = decodePreset(data);
     // #then
-    expect(decoded).toEqual({ ok: false, error: { code: 'unsupported-version' } });
+    expect(decoded).toEqual(Result.err({ code: 'unsupported-version' }));
   });
   test.each([
     ['text that is not base64', 'not base64!'],
@@ -1650,7 +1636,7 @@ describe('decodePreset', () => {
     // #when
     const decoded = decodePreset(data);
     // #then
-    expect(decoded).toEqual({ ok: false, error: { code: 'invalid-structure' } });
+    expect(decoded).toEqual(Result.err({ code: 'invalid-structure' }));
   });
 });
 
@@ -1683,14 +1669,14 @@ describe('formatPresetFile', () => {
     // #given
     const uploaded = parsePresetFile(EXAMPLE_TEXT);
 
-    if (!uploaded.ok) {
+    if (!uploaded.isOk()) {
       throw new Error('the example preset must parse');
     }
 
     // #when
     const reuploaded = parsePresetFile(formatPresetFile(uploaded.value));
     // #then
-    expect(reuploaded).toEqual({ ok: true, value: JSON.parse(EXAMPLE_TEXT) });
+    expect(reuploaded).toEqual(Result.ok(JSON.parse(EXAMPLE_TEXT)));
   });
 });
 
@@ -1720,7 +1706,7 @@ describe('the e2e preset fixtures', () => {
       // #when
       const parsed = parsePresetFile(text);
       // #then
-      expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+      expect(parsed).toEqual(Result.ok(JSON.parse(text)));
     });
   }
 });
@@ -1736,7 +1722,7 @@ describe('the preset files in presets/', () => {
     const text = readFileSync(join(PRESET_DIR, 'cairn-2e.json'), 'utf8');
     const parsed = parsePresetFile(text);
 
-    if (!parsed.ok) {
+    if (!parsed.isOk()) {
       throw new Error('the Cairn preset must parse');
     }
 
@@ -1811,7 +1797,7 @@ describe('the preset files in presets/', () => {
       // #when
       const parsed = parsePresetFile(text);
       // #then
-      expect(parsed).toEqual({ ok: true, value: JSON.parse(text) });
+      expect(parsed).toEqual(Result.ok(JSON.parse(text)));
     });
     // The parse accepts any valid id in a formula, so a misspelt one shows only when it is rolled.
     test(`${name} names in each formula only fields its dice cell can read`, () => {
@@ -1826,7 +1812,7 @@ describe('the preset files in presets/', () => {
             for (const cell of row.cells) {
               const tree = cell.kind === 'dice' ? parseFormula(cell.formula) : null;
 
-              if (tree === null || !tree.ok) {
+              if (tree === null || !tree.isOk()) {
                 continue;
               }
 
@@ -2015,7 +2001,7 @@ describe('presetProblems', () => {
     const parsed = parsePresetFile(text);
     // #then
     expect(problems.length).toBeGreaterThan(1);
-    expect(parsed.ok ? null : parsed.error).toEqual(problems[0]?.failure ?? null);
+    expect(parsed.isOk() ? null : parsed.error).toEqual(problems[0]?.failure ?? null);
   });
   test.each<[string, string[], SelectFailure]>([
     ['no options', [], { code: 'no-options', field: 'armor' }],

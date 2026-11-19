@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
 import type { PresetFieldCell, TemplateLayout } from '@/core/preset';
@@ -134,7 +135,7 @@ describe('acceptedFieldValue', () => {
     ['null for any field', STR, null],
   ])('accepts %s', (_name, field, value) => {
     // #then
-    expect(acceptedFieldValue(field, value)).toEqual({ ok: true, value });
+    expect(acceptedFieldValue(field, value)).toEqual(Result.ok(value));
   });
   test.each([
     ['a string for a number field', STR, '12'],
@@ -146,7 +147,7 @@ describe('acceptedFieldValue', () => {
     ['an array for any field', STR, [12]],
   ])('refuses %s', (_name, field, value) => {
     // #then
-    expect(acceptedFieldValue(field, value)).toEqual({ ok: false, error: 'invalid-value' });
+    expect(acceptedFieldValue(field, value)).toEqual(Result.err('invalid-value'));
   });
   test('a select accepts any non-empty string, including a stale option, and nothing else', () => {
     // #given
@@ -169,10 +170,10 @@ describe('acceptedFieldValue', () => {
       helperSuccess: { result: 'control' },
       helperFailure: { threw: 'control error' },
       results: {
-        listed: { result: { ok: true, value: 'Кожаная' } },
-        stale: { result: { ok: true, value: 'Латы' } },
-        empty: { result: { ok: false, error: 'invalid-value' } },
-        number: { result: { ok: false, error: 'invalid-value' } },
+        listed: { result: Result.ok('Кожаная') },
+        stale: { result: Result.ok('Латы') },
+        empty: { result: Result.err('invalid-value') },
+        number: { result: Result.err('invalid-value') },
       },
     });
   });
@@ -190,10 +191,10 @@ describe('acceptedFieldValue', () => {
 
     // #then
     expect(results).toEqual({
-      listed: { result: { ok: true, value: 'd8' } },
-      stale: { result: { ok: true, value: 'd12' } },
-      empty: { result: { ok: false, error: 'invalid-value' } },
-      number: { result: { ok: false, error: 'invalid-value' } },
+      listed: { result: Result.ok('d8') },
+      stale: { result: Result.ok('d12') },
+      empty: { result: Result.err('invalid-value') },
+      number: { result: Result.err('invalid-value') },
     });
   });
 });
@@ -217,9 +218,8 @@ describe('patchedRecord', () => {
   const REP = repeatTarget();
   test('merges the value into the row record and keeps its other fields', () => {
     // #then
-    expect(patchedRecord('brok', ROW, row({ str: 9, str_tired: true }), 'str', 12)).toEqual({
-      ok: true,
-      value: {
+    expect(patchedRecord('brok', ROW, row({ str: 9, str_tired: true }), 'str', 12)).toEqual(
+      Result.ok({
         k: 'blk:brok',
         d: {
           order: 0,
@@ -228,27 +228,25 @@ describe('patchedRecord', () => {
             str_tired: [true, 3, 'seed'],
           },
         },
-      },
-    });
+      }),
+    );
   });
   test('starts an absent row record empty', () => {
     // #then
-    expect(patchedRecord('brok', ROW, undefined, 'str_tired', false)).toEqual({
-      ok: true,
-      value: {
+    expect(patchedRecord('brok', ROW, undefined, 'str_tired', false)).toEqual(
+      Result.ok({
         k: 'blk:brok',
         d: {
           order: 0,
           cells: { str_tired: [false, Number.MAX_SAFE_INTEGER, 'a'.repeat(64)] },
         },
-      },
-    });
+      }),
+    );
   });
   test('writes a versioned null for a cleared field', () => {
     // #then
-    expect(patchedRecord('brok', ROW, row({ str: 9, str_tired: true }), 'str', null)).toEqual({
-      ok: true,
-      value: {
+    expect(patchedRecord('brok', ROW, row({ str: 9, str_tired: true }), 'str', null)).toEqual(
+      Result.ok({
         k: 'blk:brok',
         d: {
           order: 0,
@@ -257,43 +255,37 @@ describe('patchedRecord', () => {
             str_tired: [true, 3, 'seed'],
           },
         },
-      },
-    });
+      }),
+    );
   });
   test('refuses a clear of an absent key as unchanged', () => {
     // #then
-    expect(patchedRecord('brok', ROW, row({ str_tired: true }), 'str', null)).toEqual({
-      ok: false,
-      error: 'unchanged',
-    });
+    expect(patchedRecord('brok', ROW, row({ str_tired: true }), 'str', null)).toEqual(
+      Result.err('unchanged'),
+    );
   });
   test('refuses the value the record already holds as unchanged', () => {
     // #then
-    expect(patchedRecord('brok', ROW, row({ str: 9 }), 'str', 9)).toEqual({
-      ok: false,
-      error: 'unchanged',
-    });
+    expect(patchedRecord('brok', ROW, row({ str: 9 }), 'str', 9)).toEqual(Result.err('unchanged'));
   });
   test('saves a number over a string of the same digits', () => {
     // #then
-    expect(patchedRecord('brok', ROW, row({ str: '9' }), 'str', 9)).toEqual({
-      ok: true,
-      value: {
+    expect(patchedRecord('brok', ROW, row({ str: '9' }), 'str', 9)).toEqual(
+      Result.ok({
         k: 'blk:brok',
         d: {
           order: 0,
           cells: { str: [9, Number.MAX_SAFE_INTEGER, 'a'.repeat(64)] },
         },
-      },
-    });
+      }),
+    );
   });
   test('merges into the cells of a live instance and keeps its order', () => {
     // #then
     expect(
       patchedRecord('brok', REP, rep({ order: 2, cells: { attack: 'Меч' } }), 'bonus', 3),
-    ).toEqual({
-      ok: true,
-      value: {
+    ).toEqual(
+      Result.ok({
         k: 'blk:brok:attack:i1',
         d: {
           order: 2,
@@ -302,18 +294,15 @@ describe('patchedRecord', () => {
             bonus: [3, Number.MAX_SAFE_INTEGER, 'a'.repeat(64)],
           },
         },
-      },
-    });
+      }),
+    );
   });
   test.each([
     ['an unknown instance', undefined],
     ['a deleted instance', rep(null)],
   ])('refuses %s', (_name, current) => {
     // #then
-    expect(patchedRecord('brok', REP, current, 'bonus', 3)).toEqual({
-      ok: false,
-      error: 'unknown-instance',
-    });
+    expect(patchedRecord('brok', REP, current, 'bonus', 3)).toEqual(Result.err('unknown-instance'));
   });
 });
 

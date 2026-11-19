@@ -35,7 +35,7 @@ test('projection assembles all cells of a fragmented root', () => {
 
   const fragments = fragmentRecord(large);
 
-  if (!fragments.ok) throw new Error(fragments.error);
+  if (!fragments.isOk()) throw new Error(fragments.error);
   const projection = createProjectionStore();
   // #when
   projection.replaceAll([...fragments.value].reverse(), [], [], sync);

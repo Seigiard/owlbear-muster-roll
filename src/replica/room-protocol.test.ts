@@ -1,5 +1,5 @@
 import type { VersionedRecord } from '@/core/records';
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
 import {
   type GenerationRelation,
@@ -224,11 +224,14 @@ const ADMITTED_CONTROLS: Record<RoomMessageType, AdmissionControl> = {
 function createPorts(
   effects: string[],
   senderOf: RoomProtocolPorts['senderOf'] = async () => PLAYER,
+  reported: string[] = [],
 ): RoomProtocolPorts {
-  return {
+  const ports: RoomProtocolPorts = {
+    now: () => Date.now(),
+    report: (failure: { _tag: string }) => reported.push(failure._tag),
     senderOf,
     role: () => 'PLAYER',
-    stopped: () => false,
+    signal: new AbortController().signal,
     generation: () => OWN_GENERATION,
     catchUp: {
       adopting: () => null,
@@ -315,6 +318,8 @@ function createPorts(
       },
     },
   };
+
+  return ports;
 }
 
 function createAdmissionPorts(
@@ -439,26 +444,26 @@ describe('createRoomProtocol', () => {
   test('continues with the next room event after a handler throws', async () => {
     // #given
     const effects: string[] = [];
+    const reported: string[] = [];
     const ports = createPorts(effects);
     ports.catchUp.pingReceived = () => {
       effects.push('ping');
       throw new Error('handler failed');
     };
 
+    ports.report = (failure: { _tag: string }) => reported.push(failure._tag);
     const protocol = createRoomProtocol(ports);
-    const errors = spyOn(console, 'error').mockImplementation(() => {});
 
     // #when
-    try {
-      protocol.receive(event(messageFor('ping', OWN_GENERATION)));
-      protocol.receive(event(messageFor('state-request', OWN_GENERATION)));
-      await settleIngress();
-    } finally {
-      errors.mockRestore();
-    }
+    protocol.receive(event(messageFor('ping', OWN_GENERATION)));
+    protocol.receive(event(messageFor('state-request', OWN_GENERATION)));
+    await settleIngress();
 
     // #then
-    expect(effects).toEqual(['ping', 'state-request:request']);
+    expect({ effects, reported }).toEqual({
+      effects: ['ping', 'state-request:request'],
+      reported: ['message-rejected'],
+    });
   });
   test('drops a malformed room message before it reaches admission', async () => {
     // #given
@@ -478,7 +483,7 @@ describe('createRoomProtocol', () => {
     protocol.receive(event(malformed));
     await settleIngress();
     // #then
-    expect({ parsed: parseRoomMessage(malformed).ok, senderLookups, handlerEffects }).toEqual({
+    expect({ parsed: parseRoomMessage(malformed).isOk(), senderLookups, handlerEffects }).toEqual({
       parsed: false,
       senderLookups: [],
       handlerEffects: [],
@@ -514,7 +519,7 @@ describe('createRoomProtocol', () => {
       await settleIngress();
       // #then
       expect({
-        parsed: parseRoomMessage(rejectedMessage).ok,
+        parsed: parseRoomMessage(rejectedMessage).isOk(),
         rejected: rejectedEffects,
         admittedControl: {
           handlerEffects: handlerEffects.slice(rejectedEffects.handlerEffects.length),
@@ -538,7 +543,7 @@ describe('createRoomProtocol', () => {
   test('drops an in-flight room message when the engine stops during sender lookup', async () => {
     // #given
     const effects: string[] = [];
-    let stopped = false;
+    const controller = new AbortController();
     let release!: (sender: RoomSender | null) => void;
 
     const sender = new Promise<RoomSender | null>((resolve) => {
@@ -546,12 +551,12 @@ describe('createRoomProtocol', () => {
     });
 
     const ports = createPorts(effects, () => sender);
-    ports.stopped = () => stopped;
+    ports.signal = controller.signal;
     const protocol = createRoomProtocol(ports);
     // #when
     protocol.receive(event(messageFor('state-request', OWN_GENERATION)));
     await settleIngress();
-    stopped = true;
+    controller.abort();
     release(PLAYER);
     await settleIngress();
     // #then
@@ -601,6 +606,20 @@ describe('createRoomProtocol', () => {
     await settleIngress();
     // #then
     expect(effects).toEqual(['heard', 'publish']);
+  });
+  test('a stale rejection that denies an edit passes its cause to the notice', async () => {
+    // #given
+    const causes: (string | undefined)[] = [];
+    const ports = createPorts([], async () => GM);
+    ports.pendingEdits.rejected = () => ({ notify: true, cause: 'too-large', merge: null });
+    ports.notifyDenied = (cause?: string) => causes.push(cause);
+    const protocol = createRoomProtocol(ports);
+
+    // #when
+    protocol.receive(event(messageFor('reject', OWN_GENERATION)));
+    await settleIngress();
+    // #then
+    expect(causes).toEqual(['too-large']);
   });
   test('a higher state outside the current adoption target is not staged', async () => {
     // #given

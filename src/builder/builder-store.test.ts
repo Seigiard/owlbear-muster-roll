@@ -34,7 +34,7 @@ const D20 = readPreset(join(import.meta.dir, '../../tests/fixtures/presets/d20.j
 function readPreset(path: string): Preset {
   const parsed = parsePresetFile(readFileSync(path, 'utf8'));
 
-  if (!parsed.ok) {
+  if (!parsed.isOk()) {
     throw new Error(`${path} is no preset`);
   }
 

@@ -572,3 +572,71 @@ not optional scope. Evidence: `task-79-window5-review.md`.
 - `src/builder/builder-store.ts` `addSheet` mints its own `sheet:` record (`nanoid(8)`, `c: 1`, `a: 'builder'`) while the composer has `sheet-create`. The store's `apply` wants a synchronous step and a chosen id; a later task can hand it `createComposers('builder').compose` with a `ComposeContext` over `step.records` the same way the preview does.
 - A preview sample edit or add appends `blk:builder-preview…` records with no real sheet, as before TASK-121.2. `encodeSnapshotFile` iterates per preset sheet, so a download should ignore them; unverified. Source: `spec-task-121-2-preview-composes.md`.
 - Entries above that cite `preview.html` or `src/preview/themes.ts` are historical: both were deleted (f3291a7, 43f31ef) and `src/preview/` goes with TASK-121.2.
+
+## Deferred from: TASK-115.3 (2026-11-19)
+
+- Deviation from the epic oracle "literals in `src/replica/engine-*.test.ts` do not change": `better-result` values are class instances, so a test that compared an in-memory result with a plain `{ ok, value }` literal now compares with `Result.ok(...)`/`Result.err(...)` holding the same payload, and `.ok` checks read `.isOk()`. No expected payload changed. Hunks: `engine-access.test.ts:772`; `engine-catch-up.test.ts:1, 485, 1492`; `engine-client.test.ts:18, 215, 224-226, 486, 966-969, 1199-1202, 1446-1454, 1551, 1669, 1729, 1851, 1867, 2022, 2704, 2756`; `engine-dice-extension.test.ts:11, 371`; `engine-import.test.ts:8, 224`; `engine-open.test.ts:639, 670`; `engine-preset.test.ts:6, 926`. TASK-115.11 reconciles the oracle wording in DESIGN.md.
+- `tests/open.e2e.ts:253` ("a GM on the NPC tab who opens another repeat block from its token scrolls to it") failed once on `toBeFocused` in a full browser run on the TASK-115.3 tip and passed 3 of 3 in `--repeat-each=3` and in the implementer's full run. Focus under full-suite load; not traced to the Result swap.
+
+## Deferred from: TASK-115.1 (2026-11-19)
+
+Deviations from DESIGN.md that TASK-115.11 reconciles:
+
+- `checkMachine` constrains effects by `type`, not `kind`: `Effect extends { readonly type: string }` and `allowedEffects` lists `Effect['type']`. `CatchUpDecision` is discriminated by `type` and stays unchanged. Phases and events stay `Tagged` (`kind`). Rule for later tables: effects use `type`, phases and events use `kind`.
+- The liveness table has two phases, `offline` and `online`. The catalog's `unknown` cannot differ in behavior: `gmLink` starts `offline`, and an `offline` → `offline` step emits nothing, as before.
+- The catch-up table has four rows: `initializing`, `catching-up`, `adopting` (catch-up in adopting mode as its own kind) and `live`. `LivenessEvent` is `Extract<Event, { kind: 'heard' | 'fired' | 'watch' }>`. The shell feeds `saveAdoption` back as a synchronous `adoption-saved` event, so cells stay pure.
+- `engine.ts` changed by one rename, `gmInRoom` → `gmInParty` (two lines). The ticket's "engine.ts does not change" meant the catch-up wiring.
+- `checkMachine` finds each cell's target phases by running it on generated data with a fixed seed, so the diagram is stable. A branch that the samples never reach draws no arrow; a cell's table test covers it.
+
+## Deferred from: TASK-115.2 (2026-11-19)
+
+- `engine.ts` shrank by 128 lines, not the ~180 the design estimated: the four send ports (`state-request`, `state` answer, `alive`, `ping`) stay engine closures because they hold the send queue, the generation and the replica. The interpreter, the timer map and the timer key left the engine.
+- The engine owns one `AbortController` for the catch-up interpreter only; `stop()` aborts it. TASK-115.4 widens it to every module.
+- `src/replica/catch-up-effects.test.ts` 'a failed read logs its failure…' and 'a failed timer continuation logs its failure' observe `console.error`; TASK-115.6 moves those logs to `report`, and its merge ports the two tests.
+- `tests/link.e2e.ts:268` ("a scene change keeps the links of the scene left behind") failed once in a full browser run on the TASK-115.2 tip and passed 16 of 16 when repeated and 583 of 583 in a second full run.
+
+## Deferred from: TASK-115.6 (2026-11-19)
+
+- Two baseline test names changed with the lock: `send-queue.test.ts` "logs another send failure and goes on with the next message" is now "reports another send failure…", and the `engine-sync.test.ts` gate row "a type with no handler yet" (`ping`) is now "answers a valid v4 ping without reporting a rejection", because a v4 `ping` has had a liveness handler since TASK-115.1 and is not rejected.
+- Console spies that only silenced expected output were removed from `engine-{catch-up,import,no-gm,propose,room-copy,wipe}.test.ts`; those faults reach `diagnostics` but their tests do not assert the tag.
+- A rejected `action.setSize` reports `message-rejected`; the replica has no dedicated window-size failure class.
+- `metadata.setMetadata` still rejects on failure instead of returning `Result`: the ticket covered the reads and `notification.show` only.
+- The diagnostics list is published in the projection but not shown yet: TASK-115.7 adds the GM's «Диагностика» block in Settings.
+- Browser runs by the attempt-1 implementer saw `tests/open.e2e.ts:253` (focus) and `tests/builder-snapshot.e2e.ts:770` (download menu item detached) fail once each; both passed on rerun and the orchestrator's full run was 583/583.
+
+## Deferred from: TASK-115.4 (2026-11-19)
+
+- DESIGN correction: TASK-115.4 AC #3 says `engine.stop()` "aborts the signal and flushes the outbox". Today `stop()` discarded held commits (`outbox.stop()`), and `engine-client.test.ts` 'does not release a held commit after stop' locks that. The step kept the behavior: `stop()` is one `abort()`, the outbox discards its held records and acks on that abort, and only `flushNow` (page hide) sends everything.
+- AC #1's grep `rg "\bstopped\b" src/replica` still finds, besides the room-copy phase name, the dice result literal `'stopped'` (`dice-extension.ts`, `roll-flow.ts`) and prose comments. The literal is a dice outcome, not a lifecycle flag, and stays; no option, port, variable or getter named `stopped` remains.
+- Eight baseline test names changed with the lock ("stopped" → "its signal aborts" / "aborted"); each renamed test passes.
+- `createPartyRoster` takes one options object `{ ...party, report, signal, onReplace? }`; `report` is required and the `reportOverride` parameter from TASK-115.6 is gone.
+
+## Deferred from: TASK-115.5 (2026-11-19)
+
+- The clock is wall time (`Date.now()`) for durations too: the replica used `performance.now()` for the dice readiness window, the probe age and the pending-edit timing. A system clock change during one of those waits now moves it. The dice protocol and the diagnostics need wall time, and one source was the step's goal.
+- The five `schedule` tests moved with the implementation from `src/replica/timers.test.ts` to `src/platform/schedule.test.ts`; same names and literals.
+- The ticket's "one `setTimeout` call site outside UI" was too broad: `send-queue` and the mock adapter keep their own timers. Under `src/replica` there is no `setTimeout` left.
+
+## Deferred from: TASK-115.8 (2026-11-19)
+
+- The `stopped` phase carries the write in flight: an ordinary or import write sent before `stop()` may still finish its read-back, publish its status and complete a waiting import, but never writes again, merges records or arms the pause. The first lock forbade every effect in `stopped`; `room-copy.test.ts` 'a healthy observer receives stopped-write import completion…' (today's behavior) won, and the lock was corrected.
+- Import and ordinary writes share the table's phase as their mutex; the import arrives through an existing event with its data in the event, not through a new event kind.
+
+## Deferred from: TASK-116 (2026-11-19)
+
+- Only `engine-catch-up`, `engine-liveness` and `engine-no-gm` run on the manual clock (`createRoomRig({ clock: 'manual' })`, `rig.advance(ms)`); every other engine file keeps real time and `pause()`. Migrate the rest file by file.
+- Three expectations in `engine-catch-up.test.ts` read elapsed time from `roomRig.now()` instead of `Date.now()`; their numeric bounds did not change.
+
+## Deferred from: the TASK-115 closing review (2026-11-19)
+
+Three revmux rounds (mixed, final, final) on `epic/task-115`. Fixed in the epic: the denial cause reaches the notice on the fresh-edit and stale-reject paths; a repeated ignored digest stays ignored; a failed send on the window channel no longer republishes. Shipped on the owner's decision: `answersOwn` ignores the `adopting` phase (TASK-129). Deferred as minor:
+
+- A failed `removeIncomplete` at load starts a GM with no persistence; base logged and loaded the complete generation (`engine.ts` `loadReplica`).
+- A failed startup role read starts the engine as a player; `background-main.ts` no longer catches startup rejections.
+- Window send queues (`src/ui/main.tsx`, `src/ui/picker/main.tsx`) have no reporter, so their send failures leave no trace.
+- Diagnostics travel in every window envelope and eat into the 512-byte reserve of `recordFitsOneMessage`; one ~14 KB cell can stop reaching the window, and `publish` advances `held` after a failed split.
+- `engine-catch-up.test.ts:476-480`: the delay check became true by construction on the manual clock.
+- Port failure shapes: `SendFailureData` and `StorageFailureData` keep plain-data members for older test doubles; `StorageFailure` has three names; `DiceExtensionFailure` sits in `ports.ts` but is a replica failure; the ports.ts comment says adapters always return the tagged class.
+- `failures.ts`: the free function `report` shares its name with `FailureSink.report`; `Diagnostic` and the limit duplicate the wire schema; the `limit` option has no caller. `send-queue.ts` keeps a dead `onFailure` parameter.
+- `roll-flow.ts` uses `message-rejected` as a catch-all tag; `catchUpRunner` in `room-protocol.ts` is a pass-through.
+- The table rewrite removed about 190 comment lines of AD rationale from `catch-up.ts`, `room-copy.ts` and `generation-flow.ts`; decide which belong back in code.

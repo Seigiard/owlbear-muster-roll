@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
-import { err, ok } from '@/core/result';
+import { Result } from 'better-result';
 import type { Timing } from '@/core/timing';
-import type { SendFailure, SendResult } from '@/platform/ports';
+import { SendFailure, type SendResult } from '@/platform/ports';
 import { createSendQueue, type Wait } from './send-queue';
 
 const TIMING: Timing = {
@@ -41,6 +41,8 @@ type Rig = {
   sent: JsonValue[];
   waits: number[];
   failures: SendFailure[];
+  reported: string[];
+  report: (failure: SendFailure) => void;
   sendMessage: (channel: string, data: JsonValue) => Promise<SendResult>;
   wait: Wait;
 };
@@ -49,21 +51,24 @@ function createRig(): Rig {
   const sent: JsonValue[] = [];
   const waits: number[] = [];
   const failures: SendFailure[] = [];
+  const reported: string[] = [];
 
   return {
     sent,
     waits,
     failures,
+    reported,
+    report: (failure) => reported.push(failure._tag),
     sendMessage: (_channel, data) => {
       const failure = failures.shift();
 
       if (failure !== undefined) {
-        return Promise.resolve(err(failure));
+        return Promise.resolve(Result.err(failure));
       }
 
       sent.push(data);
 
-      return Promise.resolve(ok(undefined));
+      return Promise.resolve(Result.ok(undefined));
     },
     wait: (milliseconds) => {
       waits.push(milliseconds);
@@ -82,8 +87,10 @@ describe('send queue', () => {
     // #given
     const rig = createRig();
     const queue = createSendQueue(rig, TIMING, rig.wait);
-    spyOn(console, 'error').mockImplementation(() => undefined);
-    rig.failures.push({ kind: 'failed', reason: 'down' }, { kind: 'rate-limited' });
+    rig.failures.push(
+      new SendFailure({ kind: 'failed', reason: 'down', channel: 'ui' }),
+      new SendFailure({ kind: 'rate-limited', channel: 'ui' }),
+    );
 
     // #when
     const reports = await Promise.all([
@@ -93,7 +100,11 @@ describe('send queue', () => {
     ]);
 
     // #then: the first meets the failure, and the second waits out the rate limit.
-    expect({ reports, sent: rig.sent }).toEqual({ reports: [false, true, true], sent: [2, 3] });
+    expect({ reports, sent: rig.sent, reported: rig.reported }).toEqual({
+      reports: [false, true, true],
+      sent: [2, 3],
+      reported: ['SendFailure'],
+    });
   });
   test('sends in order and spaces each send by the injected value', async () => {
     // #given
@@ -129,7 +140,7 @@ describe('send queue', () => {
     void queue.enqueue('ui', 'second', LOCAL);
     await Promise.resolve();
     const startedBeforeFinish = [...started];
-    finishFirst(ok(undefined));
+    finishFirst(Result.ok(undefined));
     await first;
     // #then
     expect(startedBeforeFinish).toEqual(['first']);
@@ -167,10 +178,10 @@ describe('send queue', () => {
     const rig = createRig();
     const queue = createSendQueue(rig, TIMING, rig.wait);
     rig.failures.push(
-      { kind: 'rate-limited' },
-      { kind: 'rate-limited' },
-      { kind: 'rate-limited' },
-      { kind: 'rate-limited' },
+      new SendFailure({ kind: 'rate-limited', channel: 'ui' }),
+      new SendFailure({ kind: 'rate-limited', channel: 'ui' }),
+      new SendFailure({ kind: 'rate-limited', channel: 'ui' }),
+      new SendFailure({ kind: 'rate-limited', channel: 'ui' }),
     );
     // #when
     await Promise.all([queue.enqueue('ui', 'a', LOCAL), queue.enqueue('ui', 'b', LOCAL)]);
@@ -212,12 +223,15 @@ describe('send queue', () => {
     // #given
     const rig = createRig();
     const queue = createSendQueue(rig, TIMING, rig.wait);
-    spyOn(console, 'error').mockImplementation(() => undefined);
-    rig.failures.push({ kind: 'rate-limited' });
+    rig.failures.push(new SendFailure({ kind: 'rate-limited', channel: 'ui' }));
     // #when
     await queue.sendNow('ui', 'urgent', LOCAL);
     // #then
-    expect({ sent: rig.sent, waits: rig.waits }).toEqual({ sent: [], waits: [] });
+    expect({ sent: rig.sent, waits: rig.waits, reported: rig.reported }).toEqual({
+      sent: [],
+      waits: [],
+      reported: ['SendFailure'],
+    });
   });
   test('flushNow sends the message in its backoff and every waiting one in order, once each', async () => {
     // #given: the first message met a rate limit and waits out its backoff, two wait behind it.
@@ -230,7 +244,7 @@ describe('send queue', () => {
       });
     });
 
-    rig.failures.push({ kind: 'rate-limited' });
+    rig.failures.push(new SendFailure({ kind: 'rate-limited', channel: 'ui' }));
 
     const all = Promise.all([
       queue.enqueue('ui', 'in backoff', LOCAL),
@@ -255,31 +269,22 @@ describe('send queue', () => {
       sent: ['in backoff', 'second', 'third'],
     });
   });
-  test('logs another send failure and goes on with the next message', async () => {
+  test('reports another send failure and goes on with the next message', async () => {
     // #given
     const rig = createRig();
     const queue = createSendQueue(rig, TIMING, rig.wait);
-    const logged: string[] = [];
-    const originalError = console.error;
-    console.error = (message: string) => {
-      logged.push(message);
-    };
-
-    rig.failures.push({ kind: 'failed', reason: 'gone' });
+    rig.failures.push(new SendFailure({ kind: 'failed', reason: 'gone', channel: 'ui' }));
     // #when
     await Promise.all([queue.enqueue('ui', 'lost', LOCAL), queue.enqueue('ui', 'kept', LOCAL)]);
-    console.error = originalError;
     // #then
-    expect({ logged, sent: rig.sent }).toEqual({
-      logged: ['Muster Roll could not send a message'],
+    expect({ reported: rig.reported, sent: rig.sent }).toEqual({
+      reported: ['SendFailure'],
       sent: ['kept'],
     });
   });
   test('goes on after a port that rejects, against its contract', async () => {
     // #given
     const rig = createRig();
-    const originalError = console.error;
-    console.error = () => undefined;
 
     const queue = createSendQueue(
       {
@@ -288,6 +293,7 @@ describe('send queue', () => {
             ? Promise.reject(new Error('port broke'))
             : rig.sendMessage(channel, data);
         },
+        report: rig.report,
       },
       TIMING,
       rig.wait,
@@ -295,9 +301,11 @@ describe('send queue', () => {
 
     // #when
     await Promise.all([queue.enqueue('ui', 'bad', LOCAL), queue.enqueue('ui', 'good', LOCAL)]);
-    console.error = originalError;
     // #then
-    expect(rig.sent).toEqual(['good']);
+    expect({ sent: rig.sent, reported: rig.reported }).toEqual({
+      sent: ['good'],
+      reported: ['SendFailure'],
+    });
   });
 });
 
@@ -344,7 +352,7 @@ describe('send queue with a composed message', () => {
     const rig = createRig();
     const queue = createSendQueue(rig, TIMING, rig.wait);
     let composes = 0;
-    rig.failures.push({ kind: 'rate-limited' });
+    rig.failures.push(new SendFailure({ kind: 'rate-limited', channel: 'sync' }));
     // #when
     await queue.enqueueComposed(
       'sync',

@@ -67,7 +67,7 @@ describe('room copy size of the TASK-41 worst case', () => {
     console.log(`snapshot bytes: ${bytes}, margin: ${margin}`);
     const readBack = readSnapshot({ [SNAPSHOT_KEY]: encoded });
     // #then
-    expect(readBack.ok ? readBack.value?.records.length : null).toBe(records.length);
+    expect(readBack.isOk() ? readBack.value?.records.length : null).toBe(records.length);
     expect(margin).toBeGreaterThanOrEqual(REQUIRED_MARGIN);
   });
 });
@@ -75,7 +75,7 @@ describe('room copy size of the TASK-41 worst case', () => {
 function encodedCopy(records: readonly VersionedRecord[]): SnapshotValue {
   const encoded = encodeSnapshot({ n: 0, a: '' }, records);
 
-  if (!encoded.ok) {
+  if (!encoded.isOk()) {
     throw new Error(`the room did not encode: ${encoded.error}`);
   }
 
@@ -90,7 +90,7 @@ function copyBytes(encoded: SnapshotValue): number {
 function loadPreset(): Preset {
   const parsed = parsePresetFile(readFileSync(FIXTURE_PATH, 'utf8'));
 
-  if (!parsed.ok) {
+  if (!parsed.isOk()) {
     throw new Error(`the fixture did not parse: ${parsed.error.code}`);
   }
 

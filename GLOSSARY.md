@@ -24,6 +24,10 @@ _Avoid_: anonymous player
 A GM who is in the room and whose client answers right now. A hidden tab that still answers is online.
 _Avoid_: present GM, active GM
 
+**GM in party**:
+A GM listed in the room's party. This answers whether a GM is present, not whether a GM client answers messages.
+_Avoid_: Online GM, present GM
+
 ## Presets
 
 **Preset**:

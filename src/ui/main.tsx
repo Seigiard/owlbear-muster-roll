@@ -109,11 +109,15 @@ platform.onReady(() => {
 
 async function start(): Promise<void> {
   try {
-    const [initialRole, playerId] = await Promise.all([
+    const [initialRoleResult, playerId] = await Promise.all([
       platform.player.getRole(),
       platform.player.getId(),
       followTheme(platform.theme, document.documentElement),
     ]);
+
+    if (!initialRoleResult.isOk()) {
+      throw initialRoleResult.error;
+    }
 
     const mapSelection = watchMapSelection(platform.selection, platform.scene);
 
@@ -133,7 +137,7 @@ async function start(): Promise<void> {
 
     root.render(
       <WindowRoot
-        initialRole={initialRole}
+        initialRole={initialRoleResult.value}
         playerId={playerId}
         store={store}
         pendingMarks={pendingMarks}
@@ -163,6 +167,7 @@ function WindowRoot({
   acknowledgeOpen,
 }: WindowRootProps): ReactNode {
   const notices = useStore(projection.$notices);
+  const diagnostics = useStore(projection.$diagnostics);
   const loaded = useStore(projection.$loaded);
   const sync = useStore(projection.$sync);
   const roomCopy = useStore(projection.$roomCopy);
@@ -764,6 +769,7 @@ function WindowRoot({
       preset={preset}
       catchingUp={catchingUp}
       roomCopy={roomCopy}
+      diagnostics={diagnostics}
       client={presetClient}
     />
   );

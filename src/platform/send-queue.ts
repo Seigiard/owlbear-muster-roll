@@ -1,10 +1,11 @@
 import type { JsonValue } from '@/core/json';
 import type { Timing } from '@/core/timing';
-import type { BroadcastOptions, SendResult } from '@/platform/ports';
+import { SendFailure, type BroadcastOptions, type SendResult } from '@/platform/ports';
 
 export type Wait = (milliseconds: number) => Promise<void>;
 
 export type SendQueue = {
+  setReporter: (report: (failure: SendFailure) => void) => void;
   // Resolves once this message was sent or given up on. It never rejects.
   enqueue: (channel: string, data: JsonValue, options: BroadcastOptions) => Promise<void>;
   // As `enqueue`, and resolves `true` once the message was sent, `false` once it was given up on.
@@ -30,6 +31,7 @@ export type SendQueue = {
 
 type MutableBroadcastPort = {
   sendMessage: (channel: string, data: JsonValue, options: BroadcastOptions) => Promise<SendResult>;
+  report?: (failure: SendFailure) => void;
 };
 
 type Message = { channel: string; data: JsonValue; options: BroadcastOptions };
@@ -52,7 +54,9 @@ export function createSendQueue(
   broadcast: MutableBroadcastPort,
   timing: Timing,
   wait: Wait = waitWithTimer,
+  onFailure?: (failure: SendFailure) => void,
 ): SendQueue {
+  let report = broadcast.report ?? onFailure ?? (() => undefined);
   const queued: QueuedSend[] = [];
   let draining = false;
   let inFlight: InFlight | null = null;
@@ -64,12 +68,12 @@ export function createSendQueue(
     while (!item.flushed) {
       const result = await broadcast.sendMessage(message.channel, message.data, message.options);
 
-      if (result.ok) {
+      if (result.isOk()) {
         return true;
       }
 
       if (result.error.kind !== 'rate-limited') {
-        console.error('Muster Roll could not send a message', result.error);
+        report(taggedSendFailure(result.error));
 
         return false;
       }
@@ -87,7 +91,7 @@ export function createSendQueue(
     // The pause after the last send stays inside the loop, so a message queued
     // right after it is spaced too.
     for (let item = queued.shift(); item !== undefined; item = queued.shift()) {
-      const message = composed(item);
+      const message = composed(item, report);
 
       // Nothing to send needs no spacing either.
       if (message === null) {
@@ -102,7 +106,7 @@ export function createSendQueue(
       try {
         sent = await sendUntilAnswered(inFlight);
       } catch (error) {
-        console.error('Muster Roll could not send a message', error);
+        report(sendFailure(message.channel, error));
       }
 
       inFlight = null;
@@ -122,13 +126,13 @@ export function createSendQueue(
     try {
       const result = await broadcast.sendMessage(item.channel, item.data, item.options);
 
-      if (!result.ok) {
-        console.error('Muster Roll could not send a message', result.error);
+      if (!result.isOk()) {
+        report(taggedSendFailure(result.error));
       }
 
-      return result.ok;
+      return result.isOk();
     } catch (error) {
-      console.error('Muster Roll could not send a message', error);
+      report(sendFailure(item.channel, error));
 
       return false;
     }
@@ -141,13 +145,16 @@ export function createSendQueue(
       if (!draining) {
         drain().catch((error) => {
           draining = false;
-          console.error('Muster Roll stopped sending messages', error);
+          report(sendFailure('queue', error));
         });
       }
     });
   }
 
   return {
+    setReporter: (nextReport) => {
+      report = nextReport;
+    },
     sendNow: async (channel, data, options) => {
       await sendOnce({ channel, data, options });
     },
@@ -155,7 +162,7 @@ export function createSendQueue(
       const sends: InFlight[] = inFlight === null || inFlight.item.flushed ? [] : [inFlight];
 
       for (const item of queued.splice(0)) {
-        const message = composed(item);
+        const message = composed(item, report);
 
         if (message === null) {
           item.settle(false);
@@ -170,7 +177,7 @@ export function createSendQueue(
         sendOnce(message)
           .then(item.settle)
           .catch((error) => {
-            console.error('Muster Roll could not send a message', error);
+            report(sendFailure(message.channel, error));
           });
       }
     },
@@ -185,16 +192,26 @@ export function createSendQueue(
 }
 
 // A composer that throws sends nothing, like one that returns `null`.
-function composed(item: QueuedSend): Message | null {
+function composed(item: QueuedSend, report: (failure: SendFailure) => void): Message | null {
   try {
     const data = item.compose();
 
     return data === null ? null : { channel: item.channel, data, options: item.options };
   } catch (error) {
-    console.error('Muster Roll could not compose a message', error);
+    report(sendFailure(item.channel, error));
 
     return null;
   }
+}
+
+function sendFailure(channel: string, cause: unknown): SendFailure {
+  return new SendFailure({ kind: 'failed', reason: String(cause), channel });
+}
+
+function taggedSendFailure(
+  failure: SendFailure | { kind: 'rate-limited' | 'failed'; reason?: string; channel?: string },
+): SendFailure {
+  return failure instanceof SendFailure ? failure : new SendFailure(failure);
 }
 
 function waitWithTimer(milliseconds: number): Promise<void> {

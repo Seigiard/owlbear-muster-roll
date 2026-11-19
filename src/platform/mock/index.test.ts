@@ -1,7 +1,8 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import type { JsonObject, JsonValue } from '@/core/json';
 import { platform as currentPlatform } from '@/platform/current';
-import type { PlayerRole } from '@/platform/ports';
+import { StorageFailure, type PlayerRole } from '@/platform/ports';
 import { LIGHT_THEME } from '../../../tests/support/colors';
 import { createMemoryBus, createMemoryRoom, createMockPlatform, type MockPlatform } from './index';
 import { createPageRoom, type MockRoom, type MockScene } from './room';
@@ -141,9 +142,9 @@ describe('mock room with several clients', () => {
     // #when
     const seenByGm = await gm.party.getPlayers();
     // #then
-    expect(seenByGm).toEqual([
-      { id: 'player-p', connectionId: 'p', name: 'Name p', role: 'PLAYER' },
-    ]);
+    expect(seenByGm).toEqual(
+      Result.ok([{ id: 'player-p', connectionId: 'p', name: 'Name p', role: 'PLAYER' }]),
+    );
   });
   test('tells party listeners about a join, a role change and a leave', () => {
     // #given
@@ -187,7 +188,7 @@ describe('mock room with several clients', () => {
     ]);
 
     // #then
-    expect(read).toEqual(['player-a', 'a', 'Name a', 'PLAYER']);
+    expect(read).toEqual(['player-a', 'a', 'Name a', Result.ok('PLAYER')]);
   });
 });
 
@@ -204,7 +205,7 @@ describe('mock send failures', () => {
     const result = await platform.broadcast.sendMessage('ui', 'x', { destination: 'LOCAL' });
     // #then
     expect({ result, received }).toEqual({
-      result: { ok: false, error: { kind: 'rate-limited' } },
+      result: Result.err({ kind: 'rate-limited' }),
       received: [],
     });
   });
@@ -216,7 +217,7 @@ describe('mock send failures', () => {
     // #when
     const second = await platform.broadcast.sendMessage('ui', 'second', { destination: 'LOCAL' });
     // #then
-    expect(second).toEqual({ ok: true, value: undefined });
+    expect(second).toEqual(Result.ok(undefined));
   });
 });
 
@@ -229,8 +230,8 @@ describe('mock role', () => {
     platform.setRole('PLAYER');
     // #then
     expect({ initial, changed: await platform.player.getRole() }).toEqual({
-      initial: 'GM',
-      changed: 'PLAYER',
+      initial: Result.ok('GM'),
+      changed: Result.ok('PLAYER'),
     });
   });
 });
@@ -243,7 +244,7 @@ describe('mock metadata', () => {
     // #when
     await platform.metadata.setMetadata({ drop: undefined, add: 3 });
     // #then
-    expect(await platform.metadata.getMetadata()).toEqual({ keep: 1, add: 3 });
+    expect(await platform.metadata.getMetadata()).toEqual(Result.ok({ keep: 1, add: 3 }));
   });
   test('stops notifying a removed metadata listener', async () => {
     // #given
@@ -277,7 +278,7 @@ describe('mock room metadata', () => {
     await writer.metadata.setMetadata({ big: 'x'.repeat(16 * 1024) });
     // #then
     expect({ read: await writer.metadata.getMetadata(), heard }).toEqual({
-      read: { kept: 1 },
+      read: Result.ok({ kept: 1 }),
       heard: [],
     });
   });
@@ -294,7 +295,7 @@ describe('mock room metadata', () => {
     await writer.metadata.setMetadata({ copy: { v: 1 } });
     // #then
     expect({ read: await reader.metadata.getMetadata(), heard }).toEqual({
-      read: { copy: { v: 1 } },
+      read: Result.ok({ copy: { v: 1 } }),
       heard: [{ copy: { v: 1 } }],
     });
   });
@@ -305,7 +306,7 @@ describe('mock room metadata', () => {
     // #when
     await writer.metadata.setMetadata({ copy: 1 });
     // #then
-    expect(await other.metadata.getMetadata()).toEqual({});
+    expect(await other.metadata.getMetadata()).toEqual(Result.ok({}));
   });
 });
 
@@ -318,9 +319,16 @@ describe('mock metadata isolation', () => {
     await platform.metadata.setMetadata({ list: written });
     // #when
     written.push(2);
-    pushIntoList(await platform.metadata.getMetadata());
+    const metadata = await platform.metadata.getMetadata();
+
+    if (!metadata.isOk()) {
+      throw new Error('metadata read failed');
+    }
+
+    pushIntoList(metadata.value);
+
     // #then
-    expect(await platform.metadata.getMetadata()).toEqual({ list: [1] });
+    expect(await platform.metadata.getMetadata()).toEqual(Result.ok({ list: [1] }));
   });
 });
 
@@ -335,8 +343,8 @@ describe('mock storage', () => {
       value: platform.storage.getItem('mr1:room:0::preset'),
       keys: platform.storage.keys(),
     }).toEqual({
-      value: { ok: true, value: 'value' },
-      keys: { ok: true, value: ['mr1:room:0::preset'] },
+      value: Result.ok('value'),
+      keys: Result.ok(['mr1:room:0::preset']),
     });
   });
   test('returns null for a removed key', () => {
@@ -346,7 +354,7 @@ describe('mock storage', () => {
     // #when
     platform.storage.removeItem('key');
     // #then
-    expect(platform.storage.getItem('key')).toEqual({ ok: true, value: null });
+    expect(platform.storage.getItem('key')).toEqual(Result.ok(null));
   });
   test('reports a simulated write failure and keeps the stored value', () => {
     // #given
@@ -357,8 +365,10 @@ describe('mock storage', () => {
     const written = platform.storage.setItem('key', 'new');
     // #then
     expect({ written, read: platform.storage.getItem('key') }).toEqual({
-      written: { ok: false, error: { operation: 'write', reason: 'mock storage failure' } },
-      read: { ok: true, value: 'old' },
+      written: Result.err(
+        new StorageFailure({ operation: 'write', reason: 'mock storage failure' }),
+      ),
+      read: Result.ok('old'),
     });
   });
   test.each([
@@ -372,7 +382,9 @@ describe('mock storage', () => {
     // #when
     const result = platform.storage[method]('key');
     // #then
-    expect(result).toEqual({ ok: false, error: { operation, reason: 'mock storage failure' } });
+    expect(result).toEqual(
+      Result.err(new StorageFailure({ operation, reason: 'mock storage failure' })),
+    );
   });
   test('stops failing once the failing operations are cleared', () => {
     // #given
@@ -382,7 +394,7 @@ describe('mock storage', () => {
     // #when
     const written = platform.storage.setItem('key', 'value');
     // #then
-    expect(written).toEqual({ ok: true, value: undefined });
+    expect(written).toEqual(Result.ok(undefined));
   });
 });
 

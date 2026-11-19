@@ -428,7 +428,7 @@ function proposalJudgement(
     if (field === undefined) verdict = 'unknown-field';
     else if (
       !playerMayEditField(policy, context.records, playerId, target) ||
-      !acceptedFieldValue(field, cell[0]).ok
+      !acceptedFieldValue(field, cell[0]).isOk()
     )
       return 'denied';
   }

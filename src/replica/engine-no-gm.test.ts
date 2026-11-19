@@ -1,4 +1,5 @@
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
+import { Result } from 'better-result';
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
@@ -7,12 +8,11 @@ import type { Generation } from '@/core/storage-key';
 import type { Timing } from '@/core/timing';
 import type { RoomCopyStatus, SyncState } from '@/core/ui-messages';
 import type { MockPlatform } from '@/platform/current';
-import type { PlayerRole } from '@/platform/ports';
+import { MetadataFailure, type PlayerRole } from '@/platform/ports';
 import {
   copyValue,
   createRoomRig,
   lastRequest,
-  pause,
   requestsOf,
   sendWire,
   sync,
@@ -110,11 +110,12 @@ function nameRow(id: string, name: string, c = 1, a = 'seed'): VersionedRecord {
 }
 
 const roomRig = createRoomRig({
+  clock: 'manual',
   seeded: [PRESET_RECORD, BROK],
   timing: { catchUpTimeoutMs: 100, stateAnswerDelayMaxMs: 5 },
 });
 
-const emptyRig = createRoomRig();
+const emptyRig = createRoomRig({ clock: 'manual' });
 
 async function startClient(
   room: Room,
@@ -222,7 +223,6 @@ describe('a player alone reads the room copy', () => {
   });
   test('a copy of a newer build: outcome newer, the new-version notice, nothing read', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 5) });
     // #when
@@ -238,7 +238,6 @@ describe('a player alone reads the room copy', () => {
     'a copy of the older format %i: outcome older, no notice for a player, nothing read',
     async (format) => {
       // #given
-      spyOn(console, 'error').mockImplementation(() => undefined);
       const room = roomRig.openRoom();
       room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], format) });
       // #when
@@ -253,7 +252,6 @@ describe('a player alone reads the room copy', () => {
   );
   test('a copy that does not decode: outcome unreadable, no notice for a player', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     room.room.setMetadata({ [KEY]: { v: 4, data: 'bm90IGRlZmxhdGU=' } });
     // #when
@@ -290,7 +288,7 @@ describe('a player alone reads the room copy', () => {
       }),
     );
 
-    await pause(100);
+    await roomRig.advance(100);
     // #then
     expect({
       reason: settled.kind === 'refused' ? settled.rejection.reason : settled.kind,
@@ -314,6 +312,7 @@ describe('a GM returns', () => {
     room.join(GHOST, 'GM');
     // #when
     room.post(GHOST, commit([MIRA]));
+    await roomRig.advance(0);
     await waitUntil(() => requestsOf(room, PLAYER).length === 2);
     const during = sync(player);
     const renamed = nameRow('brok', 'Брок Смелый', 2, GHOST);
@@ -348,11 +347,11 @@ describe('a GM returns', () => {
     expect(sync(player).state).toBe('catching-up');
     room.post(GHOST, ping());
     await waitUntil(() => sync(player).gmLink === 'online');
-    await waitUntil(() => sync(player).state === 'live');
-    await waitUntil(() => sync(player).gmLink === 'offline');
+    await roomRig.advance(150);
     const before = requestsOf(room, PLAYER);
     // #when
     room.post(GHOST, commit([BROK]));
+    await roomRig.advance(0);
     await waitUntil(() => requestsOf(room, PLAYER).length === before.length + 1);
     // #then
     expect({
@@ -379,7 +378,7 @@ describe('a GM returns', () => {
     room.post(GHOST, stateMessage(lastRequest(room, PLAYER), [PRESET_RECORD, BROK]));
     await waitUntil(() => sync(player).state === 'live');
     // A third request would go out at once.
-    await pause(50);
+    await roomRig.advance(50);
     // #then
     expect({
       nonces: new Set(requestsOf(room, PLAYER)).size,
@@ -409,6 +408,7 @@ describe('a GM returns', () => {
       seeded: [PRESET_RECORD, renamed, MIRA],
       timing: { catchUpTimeoutMs: 200 },
     });
+    await roomRig.advance(200);
     await waitUntil(() => sync(player).gmAnswered);
     // #then
     expect({ keys: keysOf(player), brok: player.store.$records.get().get(renamed.k) }).toEqual({
@@ -427,7 +427,9 @@ describe('a GM returns', () => {
       seeded: [PRESET_RECORD, renamed, MIRA],
       timing: { catchUpTimeoutMs: 200 },
     });
+    await roomRig.advance(0);
     await waitUntil(() => requestsOf(room, PLAYER).length === 2);
+    await roomRig.advance(200);
     await waitUntil(() => sync(player).gmAnswered);
     // #then
     expect({
@@ -447,6 +449,7 @@ describe('a GM returns', () => {
     room.join(GHOST, 'GM');
     // #when: the ghost asks for state, as a GM tab that just opened does.
     room.post(GHOST, { v: 4, g: INITIAL, t: 'state-request', r: 'ghost-r' });
+    await roomRig.advance(5);
     await waitUntil(() =>
       room.heard.some(
         (message) =>
@@ -478,7 +481,7 @@ describe('a GM returns', () => {
     // #when
     room.post(GHOST, commit([BROK]));
     await waitUntil(() => player.store.$records.get().has(BROK.k));
-    await pause(50);
+    await roomRig.advance(50);
     // #then
     expect({ requests: requestsOf(room, PLAYER).length, state: sync(player).state }).toEqual({
       requests: 1,
@@ -493,7 +496,7 @@ describe('a GM returns', () => {
     // #when
     room.post(GHOST, stateMessage(lastRequest(room, PLAYER), [PRESET_RECORD]));
     await waitUntil(() => sync(player).gmAnswered);
-    await pause(50);
+    await roomRig.advance(50);
     // #then
     expect({ requests: requestsOf(room, PLAYER).length, sync: sync(player) }).toEqual({
       requests: 1,
@@ -505,7 +508,6 @@ describe('a GM returns', () => {
 describe('outcomes with nothing to read', () => {
   test('a failed metadata read with no outcome yet shows the copy as unreadable', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
 
     // #when
@@ -517,7 +519,12 @@ describe('outcomes with nothing to read', () => {
         ...platform,
         metadata: {
           ...platform.metadata,
-          getMetadata: () => Promise.reject(new Error('metadata read failed')),
+          getMetadata: () =>
+            Promise.resolve(
+              Result.err(
+                new MetadataFailure({ operation: 'read', reason: 'metadata read failed' }),
+              ),
+            ),
         },
       }),
     });
@@ -539,7 +546,7 @@ describe('outcomes with nothing to read', () => {
     expect(sync(player).state).toBe('catching-up');
     room.post(GHOST, commit([PRESET_RECORD, BROK]));
     await waitUntil(() => player.store.$records.get().has(BROK.k));
-    await waitUntil(() => sync(player).state === 'live');
+    await roomRig.advance(200);
     room.room.setMetadata({ [KEY]: copyValue({ n: 1, a: 'importer' }, [PRESET_RECORD, MIRA]) });
     // #when
     player.engine.catchUp();

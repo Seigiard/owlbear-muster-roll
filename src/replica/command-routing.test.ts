@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { expect, test } from 'bun:test';
 import type { VersionedRecord } from '@/core/records';
 import type { Command, RejectionReason } from '@/core/ui-messages';
@@ -28,10 +29,10 @@ function routingPorts(overrides: Partial<CommandRoutingPorts> = {}): CommandRout
     live: () => true,
     acceptCommand: () => true,
     composers: {
-      compose: () => ({ ok: true, value: [] }),
+      compose: () => Result.ok([]),
       composePatches: () => ({ record: null, refusals: [] }),
-      composePresetUpload: () => ({ ok: false, error: { reason: 'invalid-preset' } }),
-      presetDiffResult: () => ({ ok: false, error: 'invalid-preset' }),
+      composePresetUpload: () => Result.err({ reason: 'invalid-preset' }),
+      presetDiffResult: () => Result.err('invalid-preset'),
     },
     records: () => new Map(),
     liveContext: () => ({
@@ -51,7 +52,7 @@ function routingPorts(overrides: Partial<CommandRoutingPorts> = {}): CommandRout
     newRecordId: () => 'unused',
     pending: createPendingQueue(),
     pendingEdits: {
-      edit: () => ({ ok: false, error: 'not-allowed' }),
+      edit: () => Result.err('not-allowed'),
       overlay: () => undefined,
     },
     apply: () => [],
@@ -265,17 +266,14 @@ test('pending replay continues after a partial entry and composes the next entry
         composeContexts.push([...current.records.keys()]);
 
         if (command.type === 'sheet-create' && command.sheetId === 'first') {
-          return { ok: true, value: [firstA, firstB] };
+          return Result.ok([firstA, firstB]);
         }
 
-        return {
-          ok: true,
-          value: current.records.has(firstA.k) ? [secondAfterFirstA] : [],
-        };
+        return Result.ok(current.records.has(firstA.k) ? [secondAfterFirstA] : []);
       },
       composePatches: () => ({ record: null, refusals: [] }),
-      composePresetUpload: () => ({ ok: false, error: { reason: 'invalid-preset' } }),
-      presetDiffResult: () => ({ ok: false, error: 'invalid-preset' }),
+      composePresetUpload: () => Result.err({ reason: 'invalid-preset' }),
+      presetDiffResult: () => Result.err('invalid-preset'),
     },
     records: () => records,
     liveContext: () => context('persisted'),
@@ -283,7 +281,7 @@ test('pending replay continues after a partial entry and composes the next entry
     newRecordId: () => 'unused',
     pending,
     pendingEdits: {
-      edit: () => ({ ok: false, error: 'not-allowed' }),
+      edit: () => Result.err('not-allowed'),
       overlay: () => undefined,
     },
     apply: (group) => {
@@ -335,11 +333,11 @@ test('a repeated window command id runs its command once', () => {
         compose: () => {
           events.push('compose');
 
-          return { ok: true, value: [] };
+          return Result.ok([]);
         },
         composePatches: () => ({ record: null, refusals: [] }),
-        composePresetUpload: () => ({ ok: false, error: { reason: 'invalid-preset' } }),
-        presetDiffResult: () => ({ ok: false, error: 'invalid-preset' }),
+        composePresetUpload: () => Result.err({ reason: 'invalid-preset' }),
+        presetDiffResult: () => Result.err('invalid-preset'),
       },
       commandDone: () => {
         events.push('done');
@@ -375,10 +373,10 @@ test('a queued intent that becomes invalid is rejected on catch-up exit', () => 
   const routing = createCommandRouting(
     routingPorts({
       composers: {
-        compose: () => ({ ok: false, error: 'deleted-sheet' }),
+        compose: () => Result.err('deleted-sheet'),
         composePatches: () => ({ record: null, refusals: [] }),
-        composePresetUpload: () => ({ ok: false, error: { reason: 'invalid-preset' } }),
-        presetDiffResult: () => ({ ok: false, error: 'invalid-preset' }),
+        composePresetUpload: () => Result.err({ reason: 'invalid-preset' }),
+        presetDiffResult: () => Result.err('invalid-preset'),
       },
       pending,
       apply: (records) => {
@@ -416,10 +414,7 @@ test('a repeated preset diff id produces one terminal result', () => {
       },
       composers: {
         ...routingPorts().composers,
-        presetDiffResult: () => ({
-          ok: true,
-          value: { count: 0, sheets: 0, digest: 'none' },
-        }),
+        presetDiffResult: () => Result.ok({ count: 0, sheets: 0, digest: 'none' }),
       },
       reply: (message) => replies.push(`${message.t}:${'id' in message ? message.id : ''}`),
     }),
@@ -440,7 +435,7 @@ test('a denied player edit shows its notice once', () => {
     routingPorts({
       role: () => 'PLAYER',
       pendingEdits: {
-        edit: () => ({ ok: true, value: { notify: true } }),
+        edit: () => Result.ok({ notify: true }),
         overlay: () => undefined,
       },
       notifyDenied: () => effects.push('denied'),
@@ -459,6 +454,33 @@ test('a denied player edit shows its notice once', () => {
   });
   // #then
   expect(effects).toEqual(['denied', 'publish', 'done']);
+});
+
+test('a player edit denied for size passes its cause to the notice', () => {
+  // #given
+  const causes: (string | undefined)[] = [];
+
+  const routing = createCommandRouting(
+    routingPorts({
+      role: () => 'PLAYER',
+      pendingEdits: {
+        edit: () => Result.ok({ notify: true, cause: 'too-large' }),
+        overlay: () => undefined,
+      },
+      notifyDenied: (cause?: string) => causes.push(cause),
+    }),
+  );
+
+  // #when
+  routing.runCommand('edit', {
+    type: 'field-patch',
+    sheetId: 'a',
+    target: { kind: 'row', rowId: 'name' },
+    fieldId: 'name',
+    value: 'Ada',
+  });
+  // #then
+  expect(causes).toEqual(['too-large']);
 });
 
 test('a fully refused queued patch batch is never applied', () => {

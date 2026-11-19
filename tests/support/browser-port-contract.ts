@@ -1,9 +1,14 @@
+import type { Result } from 'better-result';
+
 // This binding must exercise the OBR adapter's real Chromium storage primitive.
 // oxlint-disable-next-line no-restricted-imports
 import { createBrowserStorage } from '@/platform/obr/browser-storage';
+// oxlint-disable-next-line no-restricted-imports
+import { platform as obrPlatform } from '@/platform/obr';
 
 import {
   reportPortContractSupport,
+  observeClock,
   storageStoresOverwritesRemovesAndListsOwnedStrings,
   supportedScenario,
   unsupportedScenario,
@@ -27,14 +32,47 @@ export const browserPortContractFactory: PortContractFactory = {
     'A real Owlbear rate-limit outcome and recovery require an owner-run live room.',
   ),
   metadata: unsupportedScenario('live-only', LIVE_ONLY_REASON),
+  partyReadFailure: unsupportedScenario('local-injection-only', LIVE_ONLY_REASON),
+  playerRoleFailure: unsupportedScenario('local-injection-only', LIVE_ONLY_REASON),
+  metadataReadFailure: unsupportedScenario('local-injection-only', LIVE_ONLY_REASON),
+  notificationFailure: unsupportedScenario('local-injection-only', LIVE_ONLY_REASON),
 };
 
-export function runBrowserStorageLifecycle(): Promise<StorageLifecycleObservation> {
-  return storageStoresOverwritesRemovesAndListsOwnedStrings(browserPortContractFactory);
+type PlainResult<Value, Failure> = { ok: true; value: Value } | { ok: false; error: Failure };
+
+type BrowserStorageLifecycleObservation = {
+  [Key in keyof StorageLifecycleObservation]: StorageLifecycleObservation[Key] extends Result<
+    infer Value,
+    infer Failure
+  >
+    ? PlainResult<Value, Failure>
+    : never;
+};
+
+export async function runBrowserStorageLifecycle(): Promise<BrowserStorageLifecycleObservation> {
+  const observation = await storageStoresOverwritesRemovesAndListsOwnedStrings(
+    browserPortContractFactory,
+  );
+
+  return {
+    missing: toPlainResult(observation.missing),
+    firstWrite: toPlainResult(observation.firstWrite),
+    overwrite: toPlainResult(observation.overwrite),
+    secondWrite: toPlainResult(observation.secondWrite),
+    overwritten: toPlainResult(observation.overwritten),
+    keysBeforeRemove: toPlainResult(observation.keysBeforeRemove),
+    remove: toPlainResult(observation.remove),
+    removed: toPlainResult(observation.removed),
+    keysAfterRemove: toPlainResult(observation.keysAfterRemove),
+  };
 }
 
 export function browserPortContractSupport(): ScenarioSupportReport[] {
   return reportPortContractSupport(browserPortContractFactory);
+}
+
+export async function runBrowserClockContract(): ReturnType<typeof observeClock> {
+  return observeClock(obrPlatform.clock);
 }
 
 function createChromiumStorageFixture(): StorageFixture {
@@ -48,7 +86,7 @@ function createChromiumStorageFixture(): StorageFixture {
     cleanup: () => {
       const keys = storage.keys();
 
-      if (!keys.ok) {
+      if (!keys.isOk()) {
         return;
       }
 
@@ -59,4 +97,10 @@ function createChromiumStorageFixture(): StorageFixture {
       }
     },
   };
+}
+
+function toPlainResult<Value, Failure>(
+  result: Result<Value, Failure>,
+): PlainResult<Value, Failure> {
+  return result.isOk() ? { ok: true, value: result.value } : { ok: false, error: result.error };
 }

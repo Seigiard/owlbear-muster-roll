@@ -396,5 +396,5 @@ function reconcileRecords(
     BUILDER_AUTHOR,
   );
 
-  return imported.ok ? imported.value.records : records;
+  return imported.isOk() ? imported.value.records : records;
 }

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { copy } from '@/copy';
 import { encodePreset, type Preset } from '@/core/preset';
-import { ok } from '@/core/result';
+import { Result } from 'better-result';
 import type { RollMessage } from '@/core/room-messages';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
 import type { PlayerRole } from '@/core/visibility';
@@ -99,10 +99,10 @@ function createHarness(role: PlayerRole) {
     pendingView: () => records,
     presetOf: () => PRESET,
     role: () => role,
-    stopped: () => false,
+    signal: new AbortController().signal,
     generation: () => ({ n: 0, a: '' }),
-    dice: { ready: async () => 'absent', roll: async () => ok([]) },
-    gmInRoom: () => true,
+    dice: { ready: async () => 'absent', roll: async () => Result.ok([]) },
+    gmInParty: () => true,
     playerId: 'gm',
     playerName: async () => 'Ведущий',
     random: () => 0,

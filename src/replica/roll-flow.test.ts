@@ -3,7 +3,7 @@ import { copy } from '@/copy';
 import type { DieFace } from '@/core/formula-evaluate';
 import { assembleRecords } from '@/core/merge';
 import { encodePreset, type Preset } from '@/core/preset';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import type { Generation } from '@/core/storage-key';
 import type { RollMessage } from '@/core/room-messages';
 import type { RollOutcome, RollRequestMessage } from '@/core/ui-messages';
@@ -131,13 +131,13 @@ function createHarness(overrides: Partial<RollFlowPorts> = {}): FlowHarness {
     pendingView: () => RECORDS,
     presetOf: (record) => (record?.k === 'preset' ? PRESET : null),
     role: () => 'GM',
-    stopped: () => false,
+    signal: new AbortController().signal,
     generation: () => ({ n: 0, a: '' }),
     dice: {
       ready: async () => 'permitted',
-      roll: async () => ok([{ sides: 20, face: 17 }]),
+      roll: async () => Result.ok([{ sides: 20, face: 17 }]),
     },
-    gmInRoom: () => true,
+    gmInParty: () => true,
     playerId: 'player-1',
     playerName: async () => 'Ada Player',
     random: () => 0.3,
@@ -176,7 +176,7 @@ test('replies waiting-access before a permitted dice roll finishes', async () =>
   // #when
   flow.handleRollRequest(REQUEST);
   await drain();
-  diceResult.resolve(ok([{ sides: 20, face: 17 }]));
+  diceResult.resolve(Result.ok([{ sides: 20, face: 17 }]));
   await drain();
   // #then
   expect(harness.outcomes).toEqual([{ code: 'waiting-access' }, { code: 'rolled' }]);
@@ -194,7 +194,7 @@ test('refuses a hidden request from a player before it asks the dice port', () =
 
         return 'permitted';
       },
-      roll: async () => ok([{ sides: 20, face: 17 }]),
+      roll: async () => Result.ok([{ sides: 20, face: 17 }]),
     },
   });
 
@@ -270,7 +270,7 @@ test('falls back to the local result when no dice extension is available', async
       roll: async () => {
         diceRolls += 1;
 
-        return ok([{ sides: 20, face: 17 }]);
+        return Result.ok([{ sides: 20, face: 17 }]);
       },
     },
   });
@@ -337,19 +337,21 @@ test('reports failed when the remote roll send fails', async () => {
   });
 });
 
-test('does not ask readiness when already stopped', async () => {
+test('does not ask readiness when its signal is already aborted', async () => {
   // #given
   let readinessCalls = 0;
+  const controller = new AbortController();
+  controller.abort();
 
   const harness = createHarness({
-    stopped: () => true,
+    signal: controller.signal,
     dice: {
       ready: async () => {
         readinessCalls += 1;
 
         return 'permitted';
       },
-      roll: async () => ok([{ sides: 20, face: 17 }]),
+      roll: async () => Result.ok([{ sides: 20, face: 17 }]),
     },
   });
 
@@ -365,24 +367,24 @@ test('does not ask readiness when already stopped', async () => {
   });
 });
 
-test('does not ask the dice port when stopped after readiness', async () => {
+test('does not ask the dice port when its signal aborts after readiness', async () => {
   // #given
-  let stoppedAfterReadiness = false;
+  const stoppedController = new AbortController();
   let stoppedDiceRolls = 0;
   let permittedDiceRolls = 0;
 
   const stoppedHarness = createHarness({
-    stopped: () => stoppedAfterReadiness,
+    signal: stoppedController.signal,
     dice: {
       ready: async () => {
-        stoppedAfterReadiness = true;
+        stoppedController.abort();
 
         return 'permitted';
       },
       roll: async () => {
         stoppedDiceRolls += 1;
 
-        return ok([{ sides: 20, face: 17 }]);
+        return Result.ok([{ sides: 20, face: 17 }]);
       },
     },
   });
@@ -393,7 +395,7 @@ test('does not ask the dice port when stopped after readiness', async () => {
       roll: async () => {
         permittedDiceRolls += 1;
 
-        return ok([{ sides: 20, face: 17 }]);
+        return Result.ok([{ sides: 20, face: 17 }]);
       },
     },
   });
@@ -412,13 +414,13 @@ test('does not ask the dice port when stopped after readiness', async () => {
   });
 });
 
-test('does not report a malformed dice result after stopped during the dice wait', async () => {
+test('does not report a malformed dice result after its signal aborts during the dice wait', async () => {
   // #given
-  let stopped = false;
+  const controller = new AbortController();
   const diceResult = deferred<Result<DieFace[], RollDiceFailure>>();
 
   const harness = createHarness({
-    stopped: () => stopped,
+    signal: controller.signal,
     dice: {
       ready: async () => 'permitted',
       roll: () => diceResult.promise,
@@ -429,8 +431,8 @@ test('does not report a malformed dice result after stopped during the dice wait
   // #when
   flow.handleRollRequest({ ...REQUEST, id: 'stopped-during-dice' });
   await drain();
-  stopped = true;
-  diceResult.resolve(ok([{ sides: 6, face: 1 }]));
+  controller.abort();
+  diceResult.resolve(Result.ok([{ sides: 6, face: 1 }]));
   await drain();
   // #then
   expect(harness.outcomes).toEqual([]);
@@ -485,9 +487,9 @@ test('uses the live role after readiness and again before it sends', async () =>
   });
 });
 
-test('uses the current generation and stops after a reported send', async () => {
+test('uses the current generation and aborts after a reported send', async () => {
   // #given
-  let stopped = false;
+  const controller = new AbortController();
   let generation: Generation = { n: 0, a: '' };
   let notifications = 0;
 
@@ -500,11 +502,11 @@ test('uses the current generation and stops after a reported send', async () => 
     },
     sendRemote: async (message) => {
       harness.sent.push(message);
-      stopped = true;
+      controller.abort();
 
       return true;
     },
-    stopped: () => stopped,
+    signal: controller.signal,
     notify: () => {
       notifications += 1;
     },
@@ -575,7 +577,7 @@ test('a stopped dice operation produces no fallback roll or outcome', async () =
   const harness = createHarness({
     dice: {
       ready: async () => 'permitted',
-      roll: async () => err({ code: 'stopped' }),
+      roll: async () => Result.err({ code: 'stopped' }),
     },
   });
 
