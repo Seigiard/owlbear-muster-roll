@@ -18,7 +18,7 @@ import {
   type TemplateRowPlace,
 } from '@/core/preset';
 import type { FieldValue } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { isChecked, valueText, type FieldValues } from '@/core/sheet-values';
 
 const NO_VALUES: FieldValues = new Map();
@@ -78,10 +78,10 @@ export function evaluateFormula(
     const value = evaluateStep(expression);
 
     if (
-      value.ok &&
+      value.isOk() &&
       (!Number.isFinite(value.value) || Math.abs(value.value) > Number.MAX_SAFE_INTEGER)
     ) {
-      return err({ code: 'arithmetic' });
+      return Result.err({ code: 'arithmetic' });
     }
 
     return value;
@@ -89,44 +89,46 @@ export function evaluateFormula(
 
   function evaluateStep(expression: FormulaExpression): Result<number, EvaluationFailure> {
     if (expression.kind === 'integer') {
-      return ok(expression.value);
+      return Result.ok(expression.value);
     }
 
     if (expression.kind === 'dice') {
-      return ok(rollDice(expression.count, expression.sides));
+      return Result.ok(rollDice(expression.count, expression.sides));
     }
 
     if (expression.kind === 'field') {
       const value = lookup(expression.id);
 
-      return value === null ? err({ code: 'field', fieldId: expression.id }) : ok(value);
+      return value === null
+        ? Result.err({ code: 'field', fieldId: expression.id })
+        : Result.ok(value);
     }
 
     if (expression.kind === 'dice-field') {
-      return err({ code: 'field', fieldId: expression.id });
+      return Result.err({ code: 'field', fieldId: expression.id });
     }
 
     if (expression.kind === 'call') {
       const argument = evaluate(expression.argument);
 
-      if (!argument.ok) {
+      if (!argument.isOk()) {
         return argument;
       }
 
-      return ok(
+      return Result.ok(
         expression.name === 'floor' ? Math.floor(argument.value) : Math.ceil(argument.value),
       );
     }
 
     const left = evaluate(expression.left);
 
-    if (!left.ok) {
+    if (!left.isOk()) {
       return left;
     }
 
     const right = evaluate(expression.right);
 
-    if (!right.ok) {
+    if (!right.isOk()) {
       return right;
     }
 
@@ -149,14 +151,14 @@ export function evaluateFormula(
   if (tree.kind !== 'comparison') {
     const roll = evaluate(tree);
 
-    return roll.ok
-      ? ok({ roll: roll.value, faces: rollFaces, target: null, targetFaces, outcome: null })
+    return roll.isOk()
+      ? Result.ok({ roll: roll.value, faces: rollFaces, target: null, targetFaces, outcome: null })
       : roll;
   }
 
   const roll = evaluate(tree.left);
 
-  if (!roll.ok) {
+  if (!roll.isOk()) {
     return roll;
   }
 
@@ -164,13 +166,13 @@ export function evaluateFormula(
 
   const target = evaluate(tree.right);
 
-  if (!target.ok) {
+  if (!target.isOk()) {
     return target;
   }
 
   const holds = compare(tree.operator, roll.value, target.value);
 
-  return ok({
+  return Result.ok({
     roll: roll.value,
     faces: rollFaces,
     target: target.value,
@@ -295,8 +297,8 @@ export function resolveFormulaDiceFields(
       const sides = lookup(expression.id);
 
       return sides === null
-        ? err({ code: 'field', fieldId: expression.id })
-        : ok({ kind: 'dice', count: expression.count, sides });
+        ? Result.err({ code: 'field', fieldId: expression.id })
+        : Result.ok({ kind: 'dice', count: expression.count, sides });
     }
 
     if (
@@ -304,36 +306,38 @@ export function resolveFormulaDiceFields(
       expression.kind === 'dice' ||
       expression.kind === 'field'
     ) {
-      return ok(expression);
+      return Result.ok(expression);
     }
 
     if (expression.kind === 'call') {
       const argument = resolveExpression(expression.argument);
 
-      return argument.ok ? ok({ ...expression, argument: argument.value }) : argument;
+      return argument.isOk() ? Result.ok({ ...expression, argument: argument.value }) : argument;
     }
 
     const left = resolveExpression(expression.left);
 
-    if (!left.ok) {
+    if (!left.isOk()) {
       return left;
     }
 
     const right = resolveExpression(expression.right);
 
-    return right.ok ? ok({ ...expression, left: left.value, right: right.value }) : right;
+    return right.isOk()
+      ? Result.ok({ ...expression, left: left.value, right: right.value })
+      : right;
   }
 
   if (tree.kind === 'comparison') {
     const left = resolveExpression(tree.left);
 
-    if (!left.ok) {
+    if (!left.isOk()) {
       return left;
     }
 
     const right = resolveExpression(tree.right);
 
-    return right.ok ? ok({ ...tree, left: left.value, right: right.value }) : right;
+    return right.isOk() ? Result.ok({ ...tree, left: left.value, right: right.value }) : right;
   }
 
   return resolveExpression(tree);
@@ -396,7 +400,7 @@ function fieldNumber(cell: PresetFieldCell, value: FieldValue | undefined): numb
 
   const parsed = parseNumberInput(valueText(value));
 
-  return parsed.ok ? parsed.value : null;
+  return parsed.isOk() ? parsed.value : null;
 }
 
 function diceChoiceSides(value: string): number | null {
@@ -411,18 +415,18 @@ function arithmetic(
   right: number,
 ): Result<number, EvaluationFailure> {
   if (operator === '+') {
-    return ok(left + right);
+    return Result.ok(left + right);
   }
 
   if (operator === '-') {
-    return ok(left - right);
+    return Result.ok(left - right);
   }
 
   if (operator === '*') {
-    return ok(left * right);
+    return Result.ok(left * right);
   }
 
-  return right === 0 ? err({ code: 'arithmetic' }) : ok(left / right);
+  return right === 0 ? Result.err({ code: 'arithmetic' }) : Result.ok(left / right);
 }
 
 // A random source outside [0, 1) would give a face of 0 or sides + 1, and NaN no face at all.

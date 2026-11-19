@@ -10,7 +10,7 @@ import {
 } from '@/core/field-patch';
 import { parseNumberInput, type NumberInputFailure } from '@/core/number-input';
 import type { FieldValue, VersionedRecord } from '@/core/records';
-import { ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { isChecked, valueText } from '@/core/sheet-values';
 import type { CommandRejectedMessage } from '@/core/ui-messages';
 import type { CommandOutcomePromise, ReplicaClient } from '@/ui/replica-client';
@@ -178,7 +178,7 @@ export function useTextFieldEdit(
     const showsMessage = mode === 'enter' || mode === 'blur';
     const parsed = parseText(current.type, draft.text);
 
-    if (!parsed.ok) {
+    if (!parsed.isOk()) {
       if (showsMessage) {
         update({ draft, error: 'bad-number' });
       }
@@ -198,7 +198,7 @@ export function useTextFieldEdit(
     // may be on its way. A vanished repeat instance takes nothing.
     const unchanged =
       sameFieldValue(parsed.value, draft.baseline) ||
-      (!patched.ok && patched.error === 'unknown-instance');
+      (!patched.isOk() && patched.error === 'unknown-instance');
 
     if (unchanged) {
       if (mode === 'blur') {
@@ -213,7 +213,7 @@ export function useTextFieldEdit(
       return;
     }
 
-    if (patched.ok && !patchedRecordFits(patched.value)) {
+    if (patched.isOk() && !patchedRecordFits(patched.value)) {
       if (showsMessage) {
         update({ draft, error: 'too-long' });
       }
@@ -502,5 +502,5 @@ function parseText(
     return parseNumberInput(text);
   }
 
-  return ok(text === '' ? null : text);
+  return Result.ok(text === '' ? null : text);
 }

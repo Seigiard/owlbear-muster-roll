@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import type { JsonObject, JsonValue } from '@/core/json';
 import { parseRecord, parseStoredRecord, repKey } from '@/core/records';
@@ -120,9 +121,9 @@ describe('parseRecord accepts', () => {
     // #when
     const parsed = parseRecord(candidate);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
 
-    if (!parsed.ok) throw new Error(parsed.error);
+    if (!parsed.isOk()) throw new Error(parsed.error);
     const actual: unknown = parsed.value;
 
     expect(actual).toEqual(candidate);
@@ -133,9 +134,9 @@ describe('parseRecord accepts', () => {
     // #when
     const parsed = parseRecord(candidate);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
 
-    if (!parsed.ok) throw new Error(parsed.error);
+    if (!parsed.isOk()) throw new Error(parsed.error);
     const actual: unknown = parsed.value;
 
     expect(actual).toEqual(candidate);
@@ -147,9 +148,9 @@ describe('parseRecord accepts', () => {
     // #when
     const parsed = parseRecord(candidate);
     // #then
-    expect(parsed.ok).toBe(true);
+    expect(parsed.isOk()).toBe(true);
 
-    if (!parsed.ok) throw new Error(parsed.error);
+    if (!parsed.isOk()) throw new Error(parsed.error);
     const actual: unknown = parsed.value;
 
     expect(actual).toEqual(candidate);
@@ -161,13 +162,13 @@ describe('parseRecord refuses', () => {
     // #when
     const parsed = parseRecord(candidateOf(k, null, 1));
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+    expect(parsed).toEqual(Result.err('invalid-record'));
   });
   test.each(INVALID_DATA)('for the key %s the data %j', (k, d) => {
     // #when
     const parsed = parseRecord(candidateOf(k, d, 1));
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+    expect(parsed).toEqual(Result.err('invalid-record'));
   });
   test.each(INVALID_FIELD_VALUES)('a row field holding %s', (_name, value) => {
     // #when
@@ -176,7 +177,7 @@ describe('parseRecord refuses', () => {
     );
 
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+    expect(parsed).toEqual(Result.err('invalid-record'));
   });
   test.each(INVALID_FIELD_VALUES)('a repeat cell holding %s', (_name, value) => {
     // #when
@@ -189,7 +190,7 @@ describe('parseRecord refuses', () => {
     });
 
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+    expect(parsed).toEqual(Result.err('invalid-record'));
   });
   test('lifecycle metadata on a non-block record', () => {
     // #given
@@ -197,7 +198,7 @@ describe('parseRecord refuses', () => {
     // #when
     const parsed = parseRecord(candidate);
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+    expect(parsed).toEqual(Result.err('invalid-record'));
   });
   test.each<[string, JsonValue]>([
     ['blk:s', { order: 0, cells: ownProtoKey([1, 1, 'conn']) }],
@@ -206,13 +207,13 @@ describe('parseRecord refuses', () => {
     // #when
     const parsed = parseRecord(candidateOf(k, d, 1));
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+    expect(parsed).toEqual(Result.err('invalid-record'));
   });
   test.each([[0], [-1], [1.5], ['1'], [null], [2 ** 53]])('the counter %j', (c) => {
     // #when
     const parsed = parseRecord({ k: 'preset', d: null, c, a: 'conn' });
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+    expect(parsed).toEqual(Result.err('invalid-record'));
   });
   test.each<[string, JsonValue]>([
     ['no d', { k: 'preset', c: 1, a: 'conn' }],
@@ -228,7 +229,7 @@ describe('parseRecord refuses', () => {
     // #when
     const parsed = parseRecord(candidate);
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+    expect(parsed).toEqual(Result.err('invalid-record'));
   });
 });
 
@@ -239,16 +240,13 @@ describe('parseStoredRecord', () => {
     // #when
     const parsed = parseStoredRecord(text, 'link:t');
     // #then
-    expect(parsed).toEqual({
-      ok: true,
-      value: { k: 'link:t', d: { s: 's', c: 'token' }, c: 3, a: 'conn' },
-    });
+    expect(parsed).toEqual(Result.ok({ k: 'link:t', d: { s: 's', c: 'token' }, c: 3, a: 'conn' }));
   });
   test('refuses text that is not JSON without throwing', () => {
     // #when
     const parsed = parseStoredRecord('{not json', 'link:t');
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+    expect(parsed).toEqual(Result.err('invalid-record'));
   });
   test('refuses valid JSON that is not a record', () => {
     // #when
@@ -258,13 +256,13 @@ describe('parseStoredRecord', () => {
     );
 
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+    expect(parsed).toEqual(Result.err('invalid-record'));
   });
   test('refuses a valid record filed under another key', () => {
     // #when
     const parsed = parseStoredRecord('{"k":"link:t","d":{"s":"s"},"c":3,"a":"conn"}', 'link:other');
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-record' });
+    expect(parsed).toEqual(Result.err('invalid-record'));
   });
 });
 

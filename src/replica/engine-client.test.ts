@@ -15,7 +15,7 @@ import {
   recordSchema,
   type VersionedRecord,
 } from '@/core/records';
-import { err } from '@/core/result';
+import { Result } from 'better-result';
 import type { SnapshotFile } from '@/core/snapshot-file';
 import { encodeSnapshotFileData } from '@/core/snapshot-import';
 import type { Timing } from '@/core/timing';
@@ -212,7 +212,7 @@ function byKey(records: readonly VersionedRecord[]): VersionedRecord[] {
 function storedRecords(rig: Rig): VersionedRecord[] {
   const keys = rig.platform.storage.keys();
 
-  if (!keys.ok) {
+  if (!keys.isOk()) {
     throw new Error('the mock storage could not list its keys');
   }
 
@@ -221,7 +221,9 @@ function storedRecords(rig: Rig): VersionedRecord[] {
     .map((key) => {
       const text = rig.platform.storage.getItem(key);
 
-      return recordSchema.parse(JSON.parse(text.ok && text.value !== null ? text.value : 'null'));
+      return recordSchema.parse(
+        JSON.parse(text.isOk() && text.value !== null ? text.value : 'null'),
+      );
     });
 }
 
@@ -481,11 +483,9 @@ describe('corrupt stored record', () => {
       stored: rig.platform.storage.getItem(storageKey('blk:bad')),
     }).toEqual({
       notices: [],
-      stored: {
-        ok: true,
-        value:
-          '{"k":"blk:bad","d":{"order":0,"set":"pc","cells":{}},"c":1,"a":"mock-connection","l":[1,"mock-connection"]}',
-      },
+      stored: Result.ok(
+        '{"k":"blk:bad","d":{"order":0,"set":"pc","cells":{}},"c":1,"a":"mock-connection","l":[1,"mock-connection"]}',
+      ),
     });
   });
 });
@@ -963,11 +963,11 @@ describe('command', () => {
     sendWire(view.client, { type: 'sheet-create', sheetId: 'made', set: 'pc' });
     await waitUntil(() => deltas(rig).length === 1);
     // #then
-    expect(rig.platform.storage.getItem(storageKey('blk:made'))).toEqual({
-      ok: true,
-      value:
+    expect(rig.platform.storage.getItem(storageKey('blk:made'))).toEqual(
+      Result.ok(
         '{"k":"blk:made","d":{"order":0,"set":"pc","cells":{}},"c":1,"a":"mock-connection","l":[1,"mock-connection"]}',
-    });
+      ),
+    );
   });
   test.each([
     ['k', { k: 'blk:z' }],
@@ -1196,11 +1196,11 @@ describe('sheet-create', () => {
     sendWire(view.client, { type: 'sheet-create', sheetId: 'b-1_X', set: 'ally' });
     await waitUntil(() => deltas(rig).length === 1);
     // #then
-    expect(rig.platform.storage.getItem(storageKey('blk:b-1_X'))).toEqual({
-      ok: true,
-      value:
+    expect(rig.platform.storage.getItem(storageKey('blk:b-1_X'))).toEqual(
+      Result.ok(
         '{"k":"blk:b-1_X","d":{"order":0,"set":"ally","cells":{}},"c":1,"a":"mock-connection","l":[1,"mock-connection"]}',
-    });
+      ),
+    );
   });
   test('rejects an id whose sheet exists and leaves that sheet as it was', async () => {
     // #given
@@ -1443,16 +1443,15 @@ describe('sheet-delete', () => {
       stored: rig.platform.storage.getItem(storageKey('blk:brok')),
     }).toEqual({
       delta: [{ k: 'blk:brok', d: null, c: 2, a: 'mock-connection', l: [1, 'seed'] }],
-      stored: {
-        ok: true,
-        value: JSON.stringify({
+      stored: Result.ok(
+        JSON.stringify({
           k: 'blk:brok',
           d: null,
           c: 2,
           a: 'mock-connection',
           l: [1, 'seed'],
         }),
-      },
+      ),
     });
   });
   test('keeps the sheet deleted after the background restarts over the same storage', async () => {
@@ -1549,7 +1548,7 @@ describe('sheet-delete', () => {
 
     const failing = spyOn(rig.platform.storage, 'setItem').mockImplementation((key, value) =>
       key === storageKey('acl:brok:p1')
-        ? err({ operation: 'write', reason: 'quota' })
+        ? Result.err({ operation: 'write', reason: 'quota' })
         : setItem(key, value),
     );
 
@@ -1667,10 +1666,9 @@ describe('write failure', () => {
     sendWire(view.client, { type: 'sheet-delete', sheetId: 'flaky' });
     await waitUntil(() => view.store.$notices.get().length === 0);
     // #then
-    expect(rig.platform.storage.getItem(storageKey('blk:flaky'))).toEqual({
-      ok: true,
-      value: '{"k":"blk:flaky","d":null,"c":2,"a":"mock-connection","l":[1,"mock-connection"]}',
-    });
+    expect(rig.platform.storage.getItem(storageKey('blk:flaky'))).toEqual(
+      Result.ok('{"k":"blk:flaky","d":null,"c":2,"a":"mock-connection","l":[1,"mock-connection"]}'),
+    );
   });
   test('keeps the notice while another failed or corrupt key remains', async () => {
     // #given
@@ -1728,7 +1726,7 @@ describe('write failure', () => {
           keyReads += 1;
 
           return keyReads === 3
-            ? err({ operation: 'list', reason: 'highest generation unavailable' })
+            ? Result.err({ operation: 'list', reason: 'highest generation unavailable' })
             : platform.storage.keys();
         },
       },
@@ -1850,7 +1848,7 @@ describe('preset upload', () => {
       },
       records: [],
       deltas: 0,
-      stored: { ok: true, value: [] },
+      stored: Result.ok([]),
     });
   });
   test('rejects a preset whose record cannot fit one message and stores nothing', async () => {
@@ -1866,7 +1864,7 @@ describe('preset upload', () => {
       kind: outcome.kind,
       rejection: outcome.kind === 'refused' ? outcome.rejection.reason : null,
       stored: rig.platform.storage.keys(),
-    }).toEqual({ kind: 'refused', rejection: 'too-large', stored: { ok: true, value: [] } });
+    }).toEqual({ kind: 'refused', rejection: 'too-large', stored: Result.ok([]) });
   });
   test('accepts an upload while a sheet exists', async () => {
     // #given
@@ -2021,7 +2019,7 @@ describe('field-patch', () => {
   function stored(rig: Rig, key: string): JsonValue {
     const text = rig.platform.storage.getItem(storageKey(key));
 
-    return text.ok && text.value !== null ? z.json().parse(JSON.parse(text.value)) : null;
+    return text.isOk() && text.value !== null ? z.json().parse(JSON.parse(text.value)) : null;
   }
 
   test('merges a number into the row record as a JSON number, keeps its other fields and persists it', async () => {
@@ -2703,7 +2701,7 @@ function storedRecord(rig: Rig, key: string): VersionedRecord | null {
 function examplePreset(): Preset {
   const parsed = parsePresetFile(EXAMPLE_PRESET_TEXT);
 
-  if (!parsed.ok) {
+  if (!parsed.isOk()) {
     throw new Error('the committed example preset must parse');
   }
 
@@ -2755,7 +2753,7 @@ function storedPreset(rig: Rig): {
 } | null {
   const text = rig.platform.storage.getItem(storageKey('preset'));
 
-  if (!text.ok || text.value === null) {
+  if (!text.isOk() || text.value === null) {
     return null;
   }
 

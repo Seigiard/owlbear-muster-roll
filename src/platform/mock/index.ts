@@ -1,6 +1,6 @@
 import { mutableJson, type JsonValue } from '@/core/json';
 import type { WindowSize } from '@/core/preset';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { TIMING, type Timing } from '@/core/timing';
 import { sameItemIds } from '@/core/token-selection';
 import type {
@@ -250,13 +250,13 @@ export function createMockPlatform(
     action: () => Value,
   ): Result<Value, StorageFailure> {
     if (failingStorageOperations.has(operation)) {
-      return err({ operation, reason: 'mock storage failure' });
+      return Result.err({ operation, reason: 'mock storage failure' });
     }
 
     try {
-      return ok(action());
+      return Result.ok(action());
     } catch (cause) {
-      return err({ operation, reason: String(cause) });
+      return Result.err({ operation, reason: String(cause) });
     }
   }
 
@@ -335,7 +335,7 @@ export function createMockPlatform(
         const failure = sendFailures.shift();
 
         if (failure !== undefined) {
-          return Promise.resolve(err(failure));
+          return Promise.resolve(Result.err(failure));
         }
 
         // LOCAL stays within this client. REMOTE reaches the other clients of the room only, as
@@ -346,7 +346,7 @@ export function createMockPlatform(
           room.postRemote(channel, mutableJson(data), connectionId);
         }
 
-        return Promise.resolve(ok(undefined));
+        return Promise.resolve(Result.ok(undefined));
       },
       onMessage: (channel, callback) => {
         const unsubscribeLocal = localBus.subscribe(channel, callback);

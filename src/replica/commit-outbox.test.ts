@@ -2,7 +2,7 @@ import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
 import { jsonByteLength, MESSAGE_BYTE_LIMIT } from '@/core/message-size';
 import { blockDataSchema, type Cells, type VersionedRecord } from '@/core/records';
-import { ok } from '@/core/result';
+import { Result } from 'better-result';
 import { SYNC_CHANNEL } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import type { BroadcastOptions } from '@/platform/ports';
@@ -67,7 +67,7 @@ function createRig(): Rig {
       sendMessage: (channel, data, options) => {
         sent.push({ channel, data, options });
 
-        return Promise.resolve(ok(undefined));
+        return Promise.resolve(Result.ok(undefined));
       },
     },
     TIMING,

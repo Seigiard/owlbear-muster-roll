@@ -1,4 +1,4 @@
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import type { StorageFailure, StorageOperation, StoragePort } from '@/platform/ports';
 
 // Reading `localStorage` itself throws when the browser blocks storage for the iframe,
@@ -25,9 +25,9 @@ function attempt<Value>(
   action: () => Value,
 ): Result<Value, StorageFailure> {
   try {
-    return ok(action());
+    return Result.ok(action());
   } catch (cause) {
-    return err({ operation, reason: String(cause) });
+    return Result.err({ operation, reason: String(cause) });
   }
 }
 

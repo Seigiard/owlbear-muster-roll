@@ -13,7 +13,7 @@ import {
   type RollResult,
 } from '@/core/formula-evaluate';
 import type { TemplateLayout, TemplateRowPlace } from '@/core/preset';
-import type { Result } from '@/core/result';
+import { Result } from 'better-result';
 import type { FieldValues } from '@/core/sheet-values';
 
 // Sections: 0 the sheet grid, 1 attacks (repeat), 2 inventory (repeat), 3 a dice row with no field.
@@ -127,7 +127,7 @@ function sequence(values: readonly number[]): RandomSource {
 function treeOf(formula: string): FormulaTree {
   const parsed = parseFormula(formula);
 
-  if (!parsed.ok) {
+  if (!parsed.isOk()) {
     throw new Error(`Test formula does not parse: ${formula}`);
   }
 
@@ -154,20 +154,18 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('1d20 <= str - 2*str_tired', DICE_ROW_LOOKUP, [0.3]);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 7, faces: [7], target: 10, targetFaces: [], outcome: 'success' },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 7, faces: [7], target: 10, targetFaces: [], outcome: 'success' }),
+    );
   });
   test('a roll-under check that does not hold is a failure', () => {
     // #given 0.7 on a d20 shows 15
     // #when
     const result = evaluateAt('1d20 <= str - 2*str_tired', DICE_ROW_LOOKUP, [0.7]);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 15, faces: [15], target: 10, targetFaces: [], outcome: 'failure' },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 15, faces: [15], target: 10, targetFaces: [], outcome: 'failure' }),
+    );
   });
   test.each<[string, 'success' | 'failure']>([
     ['<=', 'success'],
@@ -179,20 +177,18 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt(`1d20 ${operator} 10`, DICE_ROW_LOOKUP, [0.45]);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 10, faces: [10], target: 10, targetFaces: [], outcome },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 10, faces: [10], target: 10, targetFaces: [], outcome }),
+    );
   });
   test('a formula with no comparison is all roll, with no target and no outcome', () => {
     // #given 0.5 and 0.7 on a d6 show 4 and 5; dex is 3
     // #when
     const result = evaluateAt('2d6 + dex', DICE_ROW_LOOKUP, [0.5, 0.7]);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 12, faces: [4, 5], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 12, faces: [4, 5], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test.each<[string, number]>([
     ['floor(str / 3)', 4],
@@ -202,20 +198,18 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt(formula, DICE_ROW_LOOKUP);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: expected, faces: [], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: expected, faces: [], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test('rolls every die in tree order and reports the roll and target faces apart', () => {
     // #given faces floor(r * M) + 1: d10 0 -> 1, d10 0.99 -> 10, d4 0.5 -> 3, d6 0.25 -> 2
     // #when
     const result = evaluateAt('2d10 + 1d4 < 1d6', DICE_ROW_LOOKUP, [0, 0.99, 0.5, 0.25]);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 14, faces: [1, 10, 3], target: 2, targetFaces: [2], outcome: 'failure' },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 14, faces: [1, 10, 3], target: 2, targetFaces: [2], outcome: 'failure' }),
+    );
   });
   test.each<[string, FieldValues, number]>([
     ['checked', new Map([['bless', true]]), 8],
@@ -227,10 +221,9 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('1d20 + bless', lookup, [0.3]);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: expected, faces: [7], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: expected, faces: [7], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test.each<[string, string, FieldValues]>([
     ['an empty number field', 'str', NO_VALUES],
@@ -243,7 +236,7 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt(`1d20 + ${rowId}`, lookup, [0.3]);
     // #then
-    expect(result).toEqual({ ok: false, error: { code: 'field', fieldId: rowId } });
+    expect(result).toEqual(Result.err({ code: 'field', fieldId: rowId }));
   });
   test.each<[string, number]>([
     ['1,5', 3],
@@ -255,10 +248,9 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('note * 2', lookup);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: expected, faces: [], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: expected, faces: [], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test.each<[string, string]>([
     ['an id on no row of the sheet', 'nope'],
@@ -267,7 +259,7 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt(`1d20 + ${id}`, DICE_ROW_LOOKUP, [0.3]);
     // #then
-    expect(result).toEqual({ ok: false, error: { code: 'field', fieldId: id } });
+    expect(result).toEqual(Result.err({ code: 'field', fieldId: id }));
   });
   test.each<[string, TemplateRowPlace, FieldValues]>([
     ['a non-repeat row', DICE_ROW, NO_VALUES],
@@ -278,7 +270,7 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('1d20 + weight', lookup, [0.3]);
     // #then
-    expect(result).toEqual({ ok: false, error: { code: 'field', fieldId: 'weight' } });
+    expect(result).toEqual(Result.err({ code: 'field', fieldId: 'weight' }));
   });
   test('an id in its own repeat row reads that row over the sheet field of the same id', () => {
     // #given the attack row holds bonus 5, the sheet grid bonus 2
@@ -286,10 +278,9 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('1d20 + bonus', lookup, [0.3]);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 12, faces: [7], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 12, faces: [7], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test('a dice cell in the second row of a repeat block reads a field from the first row of its block', () => {
     // #given a two-row repeat section; the block holds bonus 3 in row one and range 2 in row two
@@ -335,10 +326,9 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('1d20 + bonus + range', lookup, [0.3]);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 12, faces: [7], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 12, faces: [7], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test('a repeat row reads a sheet field from the row record that holds it', () => {
     // #given `level` 4 shares its row record with the sheet's `bonus`
@@ -346,16 +336,15 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('str + level', lookup);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 18, faces: [], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 18, faces: [], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test('a division by zero gives the arithmetic error with no field name', () => {
     // #when
     const result = evaluateAt('str / (dex - dex)', DICE_ROW_LOOKUP);
     // #then
-    expect(result).toEqual({ ok: false, error: { code: 'arithmetic' } });
+    expect(result).toEqual(Result.err({ code: 'arithmetic' }));
   });
   test.each<[string]>([['1 <= big * big'], ['big + 1'], ['floor(1 / (big * big))']])(
     '%s leaves the safe integer range at some step and gives the arithmetic error',
@@ -364,7 +353,7 @@ describe('evaluateFormula', () => {
       // #when
       const result = evaluateAt(formula, DICE_ROW_LOOKUP);
       // #then
-      expect(result).toEqual({ ok: false, error: { code: 'arithmetic' } });
+      expect(result).toEqual(Result.err({ code: 'arithmetic' }));
     },
   );
   test.each<[string, FieldLookup]>([
@@ -374,7 +363,7 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('1d20 + str', lookup, [0.3]);
     // #then
-    expect(result).toEqual({ ok: false, error: { code: 'arithmetic' } });
+    expect(result).toEqual(Result.err({ code: 'arithmetic' }));
   });
   test.each<[string, EvaluationFailure]>([
     ['1d20 <= nope', { code: 'field', fieldId: 'nope' }],
@@ -384,17 +373,16 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt(formula, DICE_ROW_LOOKUP, [0.3]);
     // #then
-    expect(result).toEqual({ ok: false, error });
+    expect(result).toEqual(Result.err(error));
   });
   test('a sheet field read from a dice row comes from the row record that holds it', () => {
     // #given `bonus` 2 is the second field of the grid row named `level`
     // #when
     const result = evaluateAt('bonus', DICE_ROW_LOOKUP);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 2, faces: [], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 2, faces: [], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test('a non-repeat row with no ownRow reads its own fields from its row record', () => {
     // #given the grid row `level` holds level 4 and bonus 2
@@ -402,10 +390,9 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('level + bonus', lookup);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 6, faces: [], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 6, faces: [], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test('a number field holding the text 12 counts 12', () => {
     // #given
@@ -414,10 +401,9 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('str', lookup);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 12, faces: [], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 12, faces: [], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test('a number field holding the text abc gives the field error naming it', () => {
     // #given
@@ -426,7 +412,7 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('str', lookup);
     // #then
-    expect(result).toEqual({ ok: false, error: { code: 'field', fieldId: 'str' } });
+    expect(result).toEqual(Result.err({ code: 'field', fieldId: 'str' }));
   });
   test('a check field holding the number 1 counts 0, as only true checks it', () => {
     // #given
@@ -435,10 +421,9 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('bless', lookup);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 0, faces: [], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 0, faces: [], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test.each<[string, number, number]>([
     ['1', 1, 6],
@@ -449,10 +434,9 @@ describe('evaluateFormula', () => {
     // #when
     const result = evaluateAt('1d6', DICE_ROW_LOOKUP, [random]);
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: face, faces: [face], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: face, faces: [face], target: null, targetFaces: [], outcome: null }),
+    );
   });
 });
 
@@ -505,10 +489,9 @@ describe('evaluateFormula with listed faces', () => {
     );
 
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 16, faces: [6, 5, 8, 3], target: null, targetFaces: [], outcome: null },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 16, faces: [6, 5, 8, 3], target: null, targetFaces: [], outcome: null }),
+    );
   });
   test('compares a listed face with the target', () => {
     // #when: the target is 14 - 2 * 2 = 10.
@@ -519,10 +502,9 @@ describe('evaluateFormula with listed faces', () => {
     );
 
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 15, faces: [15], target: 10, targetFaces: [], outcome: 'failure' },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 15, faces: [15], target: 10, targetFaces: [], outcome: 'failure' }),
+    );
   });
   test('gives target-side dice the faces after the roll side', () => {
     // #when
@@ -533,10 +515,9 @@ describe('evaluateFormula with listed faces', () => {
     );
 
     // #then
-    expect(result).toEqual({
-      ok: true,
-      value: { roll: 4, faces: [4], target: 7, targetFaces: [5], outcome: 'failure' },
-    });
+    expect(result).toEqual(
+      Result.ok({ roll: 4, faces: [4], target: 7, targetFaces: [5], outcome: 'failure' }),
+    );
   });
   test.each<[string, [number, number][]]>([
     [

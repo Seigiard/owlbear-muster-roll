@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
+import { Result } from 'better-result';
 
 import { rollDiceCell } from '@/core/dice-roll';
 import { blockAddress, blockIdOf, fieldPatchTargetOf, sectionIdOf } from '@/core/block-address';
@@ -229,7 +230,7 @@ export function PreviewPane({
 
         const value = field === null ? null : acceptedFieldValue(field, command.value);
 
-        if (value === null || !value.ok || target === null) {
+        if (value === null || !value.isOk() || target === null) {
           return Promise.resolve({ kind: 'answered' as const, answer: undefined });
         }
 
@@ -244,7 +245,7 @@ export function PreviewPane({
           value.value,
         );
 
-        if (!patched.ok) {
+        if (!patched.isOk()) {
           return Promise.resolve({ kind: 'answered' as const, answer: undefined });
         }
 
@@ -294,7 +295,7 @@ export function PreviewPane({
       requestRoll: (request) => {
         const result =
           template === null
-            ? { ok: false as const, error: { code: 'not-dice' as const } }
+            ? Result.err({ code: 'not-dice' as const })
             : rollDiceCell(
                 template,
                 records,
@@ -304,7 +305,7 @@ export function PreviewPane({
                 () => Math.random(),
               );
 
-        const answer: PreviewRollOutcome = result.ok
+        const answer: PreviewRollOutcome = result.isOk()
           ? { code: 'rolled' }
           : result.error.code === 'field'
             ? { code: 'field', field: result.error.field }

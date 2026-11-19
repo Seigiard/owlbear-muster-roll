@@ -56,7 +56,7 @@ import {
   type VersionedRecord,
 } from '@/core/records';
 import { duplicateBlockCells, isDuplicateCount } from '@/core/repeat-block-duplicate';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import {
   dependentSheetId,
   isSheetDependent,
@@ -150,8 +150,8 @@ export function createComposers(connectionId: string): Composers {
   ): Result<PlannedUpload, RejectionReason> {
     const preset = decodePreset(data);
 
-    if (!preset.ok) {
-      return err('invalid-preset');
+    if (!preset.isOk()) {
+      return Result.err('invalid-preset');
     }
 
     // Composed from the validated preset, so the record never holds what the window sent as is.
@@ -159,17 +159,17 @@ export function createComposers(connectionId: string): Composers {
 
     // Measured at the largest counter a version can reach, so the check needs no mint.
     if (!recordFitsOneMessage({ k: 'preset', d, c: Number.MAX_SAFE_INTEGER, a: connectionId })) {
-      return err('too-large');
+      return Result.err('too-large');
     }
 
     const stored = context.records.get('preset');
     const old = stored === undefined ? null : currentPreset(context);
 
     if (stored !== undefined && old === null) {
-      return err('preset-unreadable');
+      return Result.err('preset-unreadable');
     }
 
-    return ok({ d, migration: presetDiff(context.records, old, preset.value) });
+    return Result.ok({ d, migration: presetDiff(context.records, old, preset.value) });
   }
 
   // AD-14: three groups in send order: rows under new keys and rows that gain values, then
@@ -182,8 +182,8 @@ export function createComposers(connectionId: string): Composers {
   ): Result<PresetUploadBatch, PresetUploadRefusal> {
     const planned = planPresetUpload(context, command.data);
 
-    if (!planned.ok) {
-      return err({ reason: planned.error });
+    if (!planned.isOk()) {
+      return Result.err({ reason: planned.error });
     }
 
     const { d, migration } = planned.value;
@@ -194,7 +194,7 @@ export function createComposers(connectionId: string): Composers {
         migration.sheets !== command.expectedSheets ||
         migration.digest !== command.expectedDigest)
     ) {
-      return err({ reason: 'count-changed', changed: lossOf(migration) });
+      return Result.err({ reason: 'count-changed', changed: lossOf(migration) });
     }
 
     const minted = (write: PlannedWrite): VersionedRecord => {
@@ -232,8 +232,8 @@ export function createComposers(connectionId: string): Composers {
     ];
 
     return groups.every((group) => group.every(recordFitsOneMessage))
-      ? ok({ groups, count: migration.count, sheets: migration.sheets })
-      : err({ reason: 'too-large' });
+      ? Result.ok({ groups, count: migration.count, sheets: migration.sheets })
+      : Result.err({ reason: 'too-large' });
   }
 
   // AD-18: the policy of a sheet a template owns. A single sheet's id is its template id. Any other
@@ -245,7 +245,7 @@ export function createComposers(connectionId: string): Composers {
     noPreset: RejectionReason,
   ): Result<SheetPolicy, RejectionReason> {
     if (!sheetIdSchema.safeParse(sheetId).success) {
-      return err('invalid-sheet-id');
+      return Result.err('invalid-sheet-id');
     }
 
     const preset = currentPreset(context);
@@ -253,42 +253,42 @@ export function createComposers(connectionId: string): Composers {
     if (preset === null || templateById(preset, sheetId) === null) {
       const current = liveSheetRecord(context, sheetId);
 
-      if (!current.ok) {
+      if (!current.isOk()) {
         return current;
       }
 
       if (preset === null) {
-        return err(noPreset);
+        return Result.err(noPreset);
       }
     }
 
     const policy = resolveSheet(context.records, preset, sheetId);
 
-    return policy === null ? err('unknown-sheet') : ok(policy);
+    return policy === null ? Result.err('unknown-sheet') : Result.ok(policy);
   }
 
   // A sheet of a sheet set: never a single sheet. With no preset, `set` on a live root block says
   // so.
   function sheetOfSet(context: ComposeContext, sheetId: string): Result<null, RejectionReason> {
     if (!sheetIdSchema.safeParse(sheetId).success) {
-      return err('invalid-sheet-id');
+      return Result.err('invalid-sheet-id');
     }
 
     const preset = currentPreset(context);
 
     if (preset !== null && templateById(preset, sheetId) !== null) {
-      return err('not-sheet-set');
+      return Result.err('not-sheet-set');
     }
 
     const current = liveSheetRecord(context, sheetId);
 
-    if (!current.ok) {
+    if (!current.isOk()) {
       return current;
     }
 
     return preset === null || resolveSheet(context.records, preset, sheetId) !== null
-      ? ok(null)
-      : err('unknown-sheet');
+      ? Result.ok(null)
+      : Result.err('unknown-sheet');
   }
 
   // The field must be in the targeted row or repeat block of the sheet's own template, and the
@@ -300,7 +300,7 @@ export function createComposers(connectionId: string): Composers {
   ): Result<PatchedRecord, RejectionReason> {
     const policy = sheetPolicyOf(context, command.sheetId, 'unknown-field');
 
-    if (!policy.ok) {
+    if (!policy.isOk()) {
       return policy;
     }
 
@@ -313,31 +313,31 @@ export function createComposers(connectionId: string): Composers {
         !hasValidSegments(target.block) ||
         !isLiveBlock(context.records, target.block))
     ) {
-      return err('unknown-instance');
+      return Result.err('unknown-instance');
     }
 
     const field = findPatchField(template, target, command.fieldId);
 
     if (field === null) {
-      return err('unknown-field');
+      return Result.err('unknown-field');
     }
 
     const value = acceptedFieldValue(field, command.value);
 
-    if (!value.ok) {
+    if (!value.isOk()) {
       return value;
     }
 
     const patched = patchedRecord(command.sheetId, target, current, command.fieldId, value.value);
 
-    if (!patched.ok) {
+    if (!patched.isOk()) {
       return patched;
     }
 
     // AD-14: a new version keeps no value the template no longer has in this row or repeat block.
     const stripped = stripToTemplate(patched.value, template);
 
-    return patchedRecordFits(stripped) ? ok(stripped) : err('too-large');
+    return patchedRecordFits(stripped) ? Result.ok(stripped) : Result.err('too-large');
   }
 
   function composeFieldPatch(
@@ -349,13 +349,13 @@ export function createComposers(connectionId: string): Composers {
     const existing = context.records.get(patchRecordKey(command.sheetId, target));
     const patched = patchOnto(context, command, existing);
 
-    if (!patched.ok) {
+    if (!patched.isOk()) {
       return patched;
     }
 
     const { c, a } = context.mint(patched.value.k, existing?.c ?? 0);
 
-    return ok(mintedPatch(patched.value, existing, { c, a }, context.mode));
+    return Result.ok(mintedPatch(patched.value, existing, { c, a }, context.mode));
   }
 
   // A patch that changes nothing on the record built so far is skipped in silence: the window
@@ -385,7 +385,7 @@ export function createComposers(connectionId: string): Composers {
 
       const patched = patchOnto(context, patch.command, base);
 
-      if (patched.ok) {
+      if (patched.isOk()) {
         working = patched.value;
       } else if (patched.error !== 'unchanged') {
         refusals.push({ id: patch.id, reason: patched.error });
@@ -410,7 +410,7 @@ export function createComposers(connectionId: string): Composers {
   ): Result<VersionedRecord, RejectionReason> {
     const section = repeatSectionOf(context, command);
 
-    if (!section.ok) {
+    if (!section.isOk()) {
       return section;
     }
 
@@ -421,18 +421,18 @@ export function createComposers(connectionId: string): Composers {
       instanceId === null ||
       !sheetIdSchema.safeParse(instanceId).success
     ) {
-      return err('invalid-instance-id');
+      return Result.err('invalid-instance-id');
     }
 
     if (sheetInstanceIds(context, command.sheetId).has(instanceId)) {
-      return err('instance-exists');
+      return Result.err('instance-exists');
     }
 
     const parent = parentOf(command.block);
     const sectionId = sectionIdOf(command.block);
 
     if (parent === null || sectionId === null || !isLiveBlock(context.records, parent)) {
-      return err('unknown-instance');
+      return Result.err('unknown-instance');
     }
 
     const k = blockKeyOf(command.block);
@@ -446,7 +446,7 @@ export function createComposers(connectionId: string): Composers {
       l: [c, a],
     };
 
-    return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+    return recordFitsOneMessage(record) ? Result.ok(record) : Result.err('too-large');
   }
 
   // AD-19: the repeat block's tombstone, then the tombstones of the links to it.
@@ -456,7 +456,7 @@ export function createComposers(connectionId: string): Composers {
   ): Result<VersionedRecord[], RejectionReason> {
     const section = repeatSectionOf(context, command);
 
-    if (!section.ok) {
+    if (!section.isOk()) {
       return section;
     }
 
@@ -468,10 +468,10 @@ export function createComposers(connectionId: string): Composers {
       command.block.sheetId !== command.sheetId ||
       !isLiveBlock(context.records, command.block)
     ) {
-      return err('unknown-instance');
+      return Result.err('unknown-instance');
     }
 
-    return ok([tombstone(context, current), ...blockLinkTombstones(context, command.block)]);
+    return Result.ok([tombstone(context, current), ...blockLinkTombstones(context, command.block)]);
   }
 
   // CAP-30: `count` new repeat blocks of the same sheet and section after its last one, at `c: 1`,
@@ -484,12 +484,12 @@ export function createComposers(connectionId: string): Composers {
     command: Extract<Command, { type: 'repeat-block-duplicate' }>,
   ): Result<VersionedRecord[], RejectionReason> {
     if (!isDuplicateCount(command.count)) {
-      return err('invalid-count');
+      return Result.err('invalid-count');
     }
 
     const section = repeatSectionOf(context, command);
 
-    if (!section.ok) {
+    if (!section.isOk()) {
       return section;
     }
 
@@ -503,14 +503,14 @@ export function createComposers(connectionId: string): Composers {
       : repDataSchema.safeParse(undefined);
 
     if (!sourceData.success) {
-      return err('unknown-instance');
+      return Result.err('unknown-instance');
     }
 
     const parent = parentOf(source);
     const sectionId = sectionIdOf(source);
 
     if (parent === null || sectionId === null) {
-      return err('unknown-instance');
+      return Result.err('unknown-instance');
     }
 
     const siblings = sectionBlocks(context, parent, sectionId);
@@ -522,8 +522,8 @@ export function createComposers(connectionId: string): Composers {
       command.count,
     );
 
-    if (!cells.ok) {
-      return err('invalid-value');
+    if (!cells.isOk()) {
+      return Result.err('invalid-value');
     }
 
     const firstOrder = nextBlockOrder(context, parent, sectionId);
@@ -534,7 +534,7 @@ export function createComposers(connectionId: string): Composers {
       const instanceId = drawFreeId(context, 'instance', `block:${index}`, (id) => !taken.has(id));
 
       if (instanceId === null) {
-        return err('instance-exists');
+        return Result.err('instance-exists');
       }
 
       taken.add(instanceId);
@@ -590,7 +590,7 @@ export function createComposers(connectionId: string): Composers {
       }
     }
 
-    return copies.every(recordFitsOneMessage) ? ok(copies) : err('too-large');
+    return copies.every(recordFitsOneMessage) ? Result.ok(copies) : Result.err('too-large');
   }
 
   // The sheet must be a sheet a template owns, and the section a repeat section of that template.
@@ -603,13 +603,15 @@ export function createComposers(connectionId: string): Composers {
   ): Result<{ policy: SheetPolicy; section: PresetSection }, RejectionReason> {
     const policy = sheetPolicyOf(context, command.sheetId, 'unknown-section');
 
-    if (!policy.ok) {
+    if (!policy.isOk()) {
       return policy;
     }
 
     const section = repeatSectionByPath(policy.value.template, scopePathOf(command.block));
 
-    return section === null ? err('unknown-section') : ok({ policy: policy.value, section });
+    return section === null
+      ? Result.err('unknown-section')
+      : Result.ok({ policy: policy.value, section });
   }
 
   // AD-18: a new sheet of the sheet set `set`, after its last sheet. Its name field is empty, so it
@@ -619,14 +621,14 @@ export function createComposers(connectionId: string): Composers {
     command: Extract<Command, { type: 'sheet-create' }>,
   ): Result<VersionedRecord, RejectionReason> {
     if (!sheetIdSchema.safeParse(command.sheetId).success) {
-      return err('invalid-sheet-id');
+      return Result.err('invalid-sheet-id');
     }
 
     const preset = currentPreset(context);
     const set = preset === null ? null : templateById(preset, command.set);
 
     if (preset === null || set === null || !isSheetSet(set)) {
-      return err('unknown-template');
+      return Result.err('unknown-template');
     }
 
     const k = sheetKey(command.sheetId);
@@ -639,7 +641,7 @@ export function createComposers(connectionId: string): Composers {
       context.records.has(k) ||
       liveDependentSheetIds(context).has(command.sheetId)
     ) {
-      return err('sheet-exists');
+      return Result.err('sheet-exists');
     }
 
     return mintedSheet(context, k, 0, {
@@ -658,13 +660,13 @@ export function createComposers(connectionId: string): Composers {
   ): Result<VersionedRecord[], RejectionReason> {
     const sheet = sheetOfSet(context, command.sheetId);
 
-    if (!sheet.ok) {
+    if (!sheet.isOk()) {
       return sheet;
     }
 
     const current = liveSheetRecord(context, command.sheetId);
 
-    if (!current.ok) {
+    if (!current.isOk()) {
       return current;
     }
 
@@ -683,7 +685,7 @@ export function createComposers(connectionId: string): Composers {
 
     doomed.push(current.value);
 
-    return ok(doomed.map((record) => tombstone(context, record)));
+    return Result.ok(doomed.map((record) => tombstone(context, record)));
   }
 
   // AD-19: a token links to one sheet or repeat block, so the new link replaces the old one. A
@@ -694,12 +696,12 @@ export function createComposers(connectionId: string): Composers {
     command: Extract<Command, { type: 'link-set' }>,
   ): Result<VersionedRecord, RejectionReason> {
     if (!tokenIdSchema.safeParse(command.tokenId).success) {
-      return err('invalid-token-id');
+      return Result.err('invalid-token-id');
     }
 
     const policy = sheetPolicyOf(context, command.sheetId, 'not-linkable');
 
-    if (!policy.ok) {
+    if (!policy.isOk()) {
       return policy;
     }
 
@@ -707,28 +709,28 @@ export function createComposers(connectionId: string): Composers {
     const instanceId = blockIdOf(block);
 
     if (block.sheetId !== command.sheetId) {
-      return err('unknown-instance');
+      return Result.err('unknown-instance');
     }
 
     if (instanceId !== null && !sheetIdSchema.safeParse(instanceId).success) {
-      return err('invalid-instance-id');
+      return Result.err('invalid-instance-id');
     }
 
     if (!isLiveBlock(context.records, block)) {
-      return err('unknown-instance');
+      return Result.err('unknown-instance');
     }
 
     const target: LinkTarget = { block, cellId: command.cellId };
 
     if (liveLinkTarget(context.records, currentPreset(context), target) === null) {
-      return err('not-linkable');
+      return Result.err('not-linkable');
     }
 
     const k = linkKey(command.tokenId);
     const { c, a } = context.mint(k, context.records.get(k)?.c ?? 0);
     const record: VersionedRecord = { k, d: linkDataOf(target), c, a };
 
-    return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+    return recordFitsOneMessage(record) ? Result.ok(record) : Result.err('too-large');
   }
 
   // FR3: access on is a live `acl:` record with the player's last known name, and off is its
@@ -741,12 +743,12 @@ export function createComposers(connectionId: string): Composers {
   ): Result<VersionedRecord, RejectionReason> {
     const sheet = sheetOfSet(context, command.sheetId);
 
-    if (!sheet.ok) {
+    if (!sheet.isOk()) {
       return sheet;
     }
 
     if (!playerIdSchema.safeParse(command.playerId).success) {
-      return err('invalid-player-id');
+      return Result.err('invalid-player-id');
     }
 
     const k = aclKey(command.sheetId, command.playerId);
@@ -754,20 +756,20 @@ export function createComposers(connectionId: string): Composers {
 
     if (!command.on) {
       return existing === undefined || existing.d === null
-        ? err('unchanged')
-        : ok(tombstone(context, existing));
+        ? Result.err('unchanged')
+        : Result.ok(tombstone(context, existing));
     }
 
     const name = playerName(command.name);
 
     if (playerDataSchema.safeParse(existing?.d).data?.name === name) {
-      return err('unchanged');
+      return Result.err('unchanged');
     }
 
     const { c, a } = context.mint(k, existing?.c ?? 0);
     const record: VersionedRecord = { k, d: { name }, c, a };
 
-    return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+    return recordFitsOneMessage(record) ? Result.ok(record) : Result.err('too-large');
   }
 
   // FR19: one batch. Picking a player writes their `acl:` when it is not live, so editing turns on,
@@ -783,7 +785,7 @@ export function createComposers(connectionId: string): Composers {
   ): Result<VersionedRecord[], RejectionReason> {
     const sheet = sheetOfSet(context, command.sheetId);
 
-    if (!sheet.ok) {
+    if (!sheet.isOk()) {
       return sheet;
     }
 
@@ -793,7 +795,7 @@ export function createComposers(connectionId: string): Composers {
       playerId !== null &&
       (!playerIdSchema.safeParse(playerId).success || context.isGmPlayer(playerId))
     ) {
-      return err('invalid-player-id');
+      return Result.err('invalid-player-id');
     }
 
     const owner = playerId === null ? null : plinkKey(command.sheetId, playerId);
@@ -827,10 +829,10 @@ export function createComposers(connectionId: string): Composers {
     }
 
     if (batch.length === 0) {
-      return err('unchanged');
+      return Result.err('unchanged');
     }
 
-    return batch.every(recordFitsOneMessage) ? ok(batch) : err('too-large');
+    return batch.every(recordFitsOneMessage) ? Result.ok(batch) : Result.err('too-large');
   }
 
   function currentPreset(context: ComposeContext): Preset | null {
@@ -843,7 +845,7 @@ export function createComposers(connectionId: string): Composers {
     if (decodedPreset?.d !== data.data) {
       const decoded = decodePreset(data.data);
 
-      decodedPreset = { d: data.data, preset: decoded.ok ? decoded.value : null };
+      decodedPreset = { d: data.data, preset: decoded.isOk() ? decoded.value : null };
     }
 
     return decodedPreset.preset;
@@ -869,12 +871,12 @@ export function createComposers(connectionId: string): Composers {
         // AD-14: an upload is an ordered batch with its own confirmation, sent through
         // `composePresetUpload` only. A flat list here would lose the order.
         case 'preset-upload':
-          return err('not-allowed');
+          return Result.err('not-allowed');
         // AD-9: an import and a wipe replace the generation, so the engine runs each on its own
         // path.
         case 'snapshot-import':
         case 'wipe':
-          return err('not-allowed');
+          return Result.err('not-allowed');
 
         case 'field-patch':
           return listOf(composeFieldPatch(context, command));
@@ -891,7 +893,7 @@ export function createComposers(connectionId: string): Composers {
     presetDiffResult: (context, data) => {
       const planned = planPresetUpload(context, data);
 
-      return planned.ok ? ok(lossOf(planned.value.migration)) : planned;
+      return planned.isOk() ? Result.ok(lossOf(planned.value.migration)) : planned;
     },
   };
 }
@@ -928,14 +930,14 @@ function composeLinkClear(
   command: Extract<Command, { type: 'link-clear' }>,
 ): Result<VersionedRecord, RejectionReason> {
   if (!tokenIdSchema.safeParse(command.tokenId).success) {
-    return err('invalid-token-id');
+    return Result.err('invalid-token-id');
   }
 
   const current = context.records.get(linkKey(command.tokenId));
 
   return current === undefined || current.d === null
-    ? err('unknown-link')
-    : ok(tombstone(context, current));
+    ? Result.err('unknown-link')
+    : Result.ok(tombstone(context, current));
 }
 
 // The repeat blocks one sheet has in one section, live ones only, with their data.
@@ -1031,16 +1033,16 @@ function liveSheetRecord(
   sheetId: string,
 ): Result<VersionedRecord, RejectionReason> {
   if (!sheetIdSchema.safeParse(sheetId).success) {
-    return err('invalid-sheet-id');
+    return Result.err('invalid-sheet-id');
   }
 
   const current = context.records.get(sheetKey(sheetId));
 
   if (current === undefined) {
-    return err('unknown-sheet');
+    return Result.err('unknown-sheet');
   }
 
-  return current.d === null ? err('deleted-sheet') : ok(current);
+  return current.d === null ? Result.err('deleted-sheet') : Result.ok(current);
 }
 
 function tombstone(context: ComposeContext, record: VersionedRecord): VersionedRecord {
@@ -1058,7 +1060,7 @@ function mintedSheet(
   const { c, a } = context.mint(k, highestKnownCounter);
   const record: VersionedRecord = { k, d, c, a, l: [c, a] };
 
-  return recordFitsOneMessage(record) ? ok(record) : err('too-large');
+  return recordFitsOneMessage(record) ? Result.ok(record) : Result.err('too-large');
 }
 
 // A tombstone holds no order, so only live repeat blocks count.
@@ -1130,7 +1132,7 @@ function mintedPatch(
 }
 
 function listOf<Value, Failure>(result: Result<Value, Failure>): Result<Value[], Failure> {
-  return result.ok ? ok([result.value]) : result;
+  return result.isOk() ? Result.ok([result.value]) : result;
 }
 
 // `tsc` fails here when a command type has no composer above.

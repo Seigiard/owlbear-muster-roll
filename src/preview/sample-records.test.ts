@@ -209,7 +209,7 @@ describe('previewSheets over the repository presets', () => {
     // #given
     const parsed = parsePresetFile(readFileSync(join(REPOSITORY_ROOT, path), 'utf8'));
 
-    if (!parsed.ok) {
+    if (!parsed.isOk()) {
       throw new Error(`${path} is not a valid preset: ${parsed.error.code}`);
     }
 

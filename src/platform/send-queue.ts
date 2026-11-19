@@ -64,7 +64,7 @@ export function createSendQueue(
     while (!item.flushed) {
       const result = await broadcast.sendMessage(message.channel, message.data, message.options);
 
-      if (result.ok) {
+      if (result.isOk()) {
         return true;
       }
 
@@ -122,11 +122,11 @@ export function createSendQueue(
     try {
       const result = await broadcast.sendMessage(item.channel, item.data, item.options);
 
-      if (!result.ok) {
+      if (!result.isOk()) {
         console.error('Muster Roll could not send a message', result.error);
       }
 
-      return result.ok;
+      return result.isOk();
     } catch (error) {
       console.error('Muster Roll could not send a message', error);
 

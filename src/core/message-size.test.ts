@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import type { VersionedRecord } from '@/core/records';
 import { describe, expect, test } from 'bun:test';
 import { fitsOneMessage, jsonByteLength, recordFitsOneMessage, splitBatch } from './message-size';
@@ -108,13 +109,13 @@ describe('splitBatch', () => {
     // #when
     const split = splitBatch([], 100);
     // #then
-    expect(split).toEqual({ ok: true, value: [[]] });
+    expect(split).toEqual(Result.ok([[]]));
   });
   test('keeps a batch that fits in one part', () => {
     // #when
     const split = splitBatch(['a', 'b'], 100);
     // #then
-    expect(split).toEqual({ ok: true, value: [['a', 'b']] });
+    expect(split).toEqual(Result.ok([['a', 'b']]));
   });
   test('keeps every part with its envelope under the limit for multibyte text', () => {
     // #given
@@ -124,7 +125,7 @@ describe('splitBatch', () => {
     const split = splitBatch(items, envelopeBytes);
     // #then
     expect(
-      split.ok
+      split.isOk()
         ? split.value.map((part) => jsonByteLength({ t: 'delta', records: part }) < 15000)
         : [],
     ).toEqual([true, true, true, true, true, true]);
@@ -135,7 +136,7 @@ describe('splitBatch', () => {
     // #when
     const split = splitBatch(items, 50);
     // #then
-    expect(split.ok ? split.value.flat() : []).toEqual(items);
+    expect(split.isOk() ? split.value.flat() : []).toEqual(items);
   });
   test('fills a part exactly up to 14999 bytes with its envelope', () => {
     // #given: envelope 9 bytes, so an item of 14990 bytes leaves the total at 14999.
@@ -143,12 +144,12 @@ describe('splitBatch', () => {
     // #when
     const split = splitBatch([item], 9);
     // #then
-    expect(split).toEqual({ ok: true, value: [[item]] });
+    expect(split).toEqual(Result.ok([[item]]));
   });
   test('refuses an item that cannot fit one message', () => {
     // #when
     const split = splitBatch(['a'.repeat(14989)], 9);
     // #then
-    expect(split).toEqual({ ok: false, error: 'item-too-large' });
+    expect(split).toEqual(Result.err('item-too-large'));
   });
 });

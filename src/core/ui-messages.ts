@@ -16,7 +16,7 @@ import { dicePlaceSchema, shownValueSchema } from '@/core/dice-roll';
 import { fieldPatchTargetWireSchema } from '@/core/field-patch';
 import type { JsonValue } from '@/core/json';
 import { playerIdSchema, recordSchema } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 
 export const UI_CHANNEL = 'app.muster-roll/ui';
 
@@ -726,7 +726,7 @@ export function parseWindowMessage(
 ): Result<WindowMessage, UiMessageFailure> {
   const parsed = windowMessageSchema.safeParse(candidate);
 
-  return parsed.success ? ok(parsed.data) : err('invalid-message');
+  return parsed.success ? Result.ok(parsed.data) : Result.err('invalid-message');
 }
 
 export function parseEngineMessage(
@@ -734,7 +734,7 @@ export function parseEngineMessage(
 ): Result<ParsedEngineMessage, UiMessageFailure> {
   const parsed = engineMessageSchema.safeParse(candidate);
 
-  return parsed.success ? ok(parsed.data) : err('invalid-message');
+  return parsed.success ? Result.ok(parsed.data) : Result.err('invalid-message');
 }
 
 export function parseInternalEngineMessage(

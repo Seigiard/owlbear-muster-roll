@@ -21,7 +21,7 @@ import {
 } from '@/core/dice-plus';
 import type { DiceTerm, DieFace } from '@/core/formula-evaluate';
 import type { JsonValue } from '@/core/json';
-import { err, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import type { DiceExtensionTiming } from '@/core/timing';
 import type { BroadcastOptions, BroadcastPort } from '@/platform/ports';
 
@@ -153,7 +153,11 @@ export function createDiceExtension(
 
     const faces = dicePlusFaces(waiting.terms, event.data);
 
-    waiting.finish(faces.ok ? faces : err({ code: 'failed', reason: faces.error }));
+    waiting.finish(
+      faces.isOk()
+        ? Result.ok<DieFace[], DiceExtensionFailure>(faces.value)
+        : Result.err({ code: 'failed', reason: faces.error }),
+    );
   });
 
   // Matched by `rollId` alone, as a result is: any error for a waiting roll ends its wait.
@@ -170,7 +174,7 @@ export function createDiceExtension(
       refuse(error);
     }
 
-    waiting.finish(err({ code: 'failed', reason: refusalReason(error) }));
+    waiting.finish(Result.err({ code: 'failed', reason: refusalReason(error) }));
   });
 
   function waitingFor(data: JsonValue): WaitingRoll | undefined {
@@ -198,11 +202,11 @@ export function createDiceExtension(
   ): void {
     broadcast.sendMessage(channel, message, LOCAL).then(
       (result) => {
-        if (!result.ok) {
+        if (!result.isOk()) {
           console.error('Muster Roll could not send to the dice extension', result.error);
         }
 
-        then(result.ok);
+        then(result.isOk());
       },
       (error) => {
         console.error('Muster Roll could not send to the dice extension', error);
@@ -369,13 +373,15 @@ export function createDiceExtension(
     const wait = timing.resultTimeoutMs + (access === 'permitted' ? 0 : timing.accessWaitMs);
 
     after(wait, () => {
-      rolls.get(message.rollId)?.finish(err({ code: 'failed', reason: 'no result in time' }), true);
+      rolls
+        .get(message.rollId)
+        ?.finish(Result.err({ code: 'failed', reason: 'no result in time' }), true);
     });
     send(DICE_PLUS_ROLL_REQUEST_CHANNEL, message, (sent) => {
       if (!sent) {
         rolls
           .get(message.rollId)
-          ?.finish(err({ code: 'failed', reason: 'the roll request was not sent' }), true);
+          ?.finish(Result.err({ code: 'failed', reason: 'the roll request was not sent' }), true);
       }
     });
   }
@@ -396,7 +402,7 @@ export function createDiceExtension(
     },
     roll: (request) => {
       if (stopped) {
-        return Promise.resolve(err({ code: 'stopped' }));
+        return Promise.resolve(Result.err({ code: 'stopped' }));
       }
 
       const rollId = newId();
@@ -460,7 +466,7 @@ export function createDiceExtension(
       latestProbe?.settle(false);
 
       for (const waiting of rolls.values()) {
-        waiting.finish(err({ code: 'stopped' }));
+        waiting.finish(Result.err({ code: 'stopped' }));
       }
     },
   };

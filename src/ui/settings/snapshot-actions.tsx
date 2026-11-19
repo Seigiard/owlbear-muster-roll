@@ -4,7 +4,7 @@ import { FileTrigger } from 'react-aria-components';
 
 import type { Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { encodeSnapshotFile, formatSnapshotFile, snapshotFileName } from '@/core/snapshot-file';
 import {
   encodeSnapshotFileData,
@@ -79,7 +79,7 @@ export function useSnapshotActions({
 
     const data = await readSnapshotFile(file);
 
-    if (!data.ok) {
+    if (!data.isOk()) {
       dispatch({ type: 'file-error', message: data.error });
 
       return;
@@ -207,7 +207,7 @@ function snapshotDisabledReason(preset: Preset | null, catchingUp: boolean): str
 async function readSnapshotFile(file: File): Promise<Result<string, string>> {
   // Checked before reading, so a huge file is never read into the window.
   if (file.size > SNAPSHOT_FILE_BYTE_LIMIT) {
-    return err(copy.badFile(copy.badFileReason.tooLarge));
+    return Result.err(copy.badFile(copy.badFileReason.tooLarge));
   }
 
   let text: string;
@@ -216,10 +216,12 @@ async function readSnapshotFile(file: File): Promise<Result<string, string>> {
   try {
     text = await file.text();
   } catch {
-    return err(copy.badFile(copy.badFileReason.notJson));
+    return Result.err(copy.badFile(copy.badFileReason.notJson));
   }
 
   const parsed = parseSnapshotFile(text);
 
-  return parsed.ok ? ok(encodeSnapshotFileData(parsed.value)) : err(fileFailureText(parsed.error));
+  return parsed.isOk()
+    ? Result.ok(encodeSnapshotFileData(parsed.value))
+    : Result.err(fileFailureText(parsed.error));
 }

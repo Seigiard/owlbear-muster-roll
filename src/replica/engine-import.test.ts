@@ -5,7 +5,7 @@ import { inflateSync, strFromU8 } from 'fflate';
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { blockDataSchema, recordSchema, type VersionedRecord } from '@/core/records';
-import { err } from '@/core/result';
+import { Result } from 'better-result';
 import type { SnapshotFile } from '@/core/snapshot-file';
 import { encodeSnapshotFileData } from '@/core/snapshot-import';
 import { encodeStateRecords } from '@/core/state-records';
@@ -221,7 +221,7 @@ function failingNewGeneration(saved: number): (platform: MockPlatform) => MockPl
           writes += 1;
 
           if (writes > saved) {
-            return err({ operation: 'write', reason: 'quota' });
+            return Result.err({ operation: 'write', reason: 'quota' });
           }
         }
 

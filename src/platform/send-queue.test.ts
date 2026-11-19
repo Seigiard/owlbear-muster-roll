@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
-import { err, ok } from '@/core/result';
+import { Result } from 'better-result';
 import type { Timing } from '@/core/timing';
 import type { SendFailure, SendResult } from '@/platform/ports';
 import { createSendQueue, type Wait } from './send-queue';
@@ -58,12 +58,12 @@ function createRig(): Rig {
       const failure = failures.shift();
 
       if (failure !== undefined) {
-        return Promise.resolve(err(failure));
+        return Promise.resolve(Result.err(failure));
       }
 
       sent.push(data);
 
-      return Promise.resolve(ok(undefined));
+      return Promise.resolve(Result.ok(undefined));
     },
     wait: (milliseconds) => {
       waits.push(milliseconds);
@@ -129,7 +129,7 @@ describe('send queue', () => {
     void queue.enqueue('ui', 'second', LOCAL);
     await Promise.resolve();
     const startedBeforeFinish = [...started];
-    finishFirst(ok(undefined));
+    finishFirst(Result.ok(undefined));
     await first;
     // #then
     expect(startedBeforeFinish).toEqual(['first']);

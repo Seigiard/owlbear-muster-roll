@@ -21,7 +21,7 @@ import {
   type Lifecycle,
   type VersionedRecord,
 } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { sameEditId, type EditId } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 
@@ -245,23 +245,29 @@ export function proposedRecord(
   lifecycle?: Lifecycle,
 ): Result<VersionedRecord, ProposalFailure> {
   if (patch.kind === 'remove') {
-    if (base !== undefined && base.d === null) return err('unchanged');
+    if (base !== undefined && base.d === null) return Result.err('unchanged');
     const version = mint();
 
-    return ok({ k: key, d: null, l: base?.l ?? lifecycle ?? [version.c, version.a], ...version });
+    return Result.ok({
+      k: key,
+      d: null,
+      l: base?.l ?? lifecycle ?? [version.c, version.a],
+      ...version,
+    });
   }
 
   if (base !== undefined && base.d === null) {
-    return err('gone');
+    return Result.err('gone');
   }
 
   const instance = blockDataSchema.safeParse(base?.d).data;
 
   if (patch.kind === 'add') {
-    if (!force && instance !== undefined && sameJson(instance, patch.d)) return err('unchanged');
+    if (!force && instance !== undefined && sameJson(instance, patch.d))
+      return Result.err('unchanged');
     const version = mint();
 
-    return ok({
+    return Result.ok({
       k: key,
       ...version,
       l: base?.l ?? lifecycle ?? [version.c, version.a],
@@ -277,7 +283,7 @@ export function proposedRecord(
   const parsedKey = parseBlockKey(key);
 
   if (instance === undefined && (parsedKey === null || parsedKey.path.length !== 0)) {
-    return err('gone');
+    return Result.err('gone');
   }
 
   if (
@@ -286,10 +292,10 @@ export function proposedRecord(
       ([id, value]) => (instance?.cells[id]?.[0] ?? null) === value,
     )
   )
-    return err('unchanged');
+    return Result.err('unchanged');
   const version = mint();
 
-  return ok({
+  return Result.ok({
     k: key,
     ...version,
     l: base?.l ?? [version.c, version.a],
@@ -330,7 +336,7 @@ export function strippedPatch(
   const entries = Object.entries(patch.values).filter(([fieldId, value]) => {
     const field = fields.find((cell) => cell.id === fieldId);
 
-    return field !== undefined && acceptedFieldValue(field, value).ok;
+    return field !== undefined && acceptedFieldValue(field, value).isOk();
   });
 
   if (entries.length === 0) {

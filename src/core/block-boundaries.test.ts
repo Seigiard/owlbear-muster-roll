@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { fixturePatch } from '../../tests/support/block-fixtures';
 import { expect, test } from 'bun:test';
 import fc from 'fast-check';
@@ -140,7 +141,7 @@ test('manual snapshots use root cells and restore values and live links without 
   const file = encodeSnapshotFile(records, preset);
   const imported = importSnapshot(file, { preset, data: encodePreset(preset) }, 'importer');
 
-  if (!imported.ok) throw new Error(imported.error);
+  if (!imported.isOk()) throw new Error(imported.error);
   // #then
   expect({
     file,
@@ -164,7 +165,7 @@ test('an old manual snapshot is refused as older-version before its structure is
   // #when
   const parsed = parseSnapshotFile(text);
   // #then
-  expect(parsed).toEqual({ ok: false, error: 'older-version' });
+  expect(parsed).toEqual(Result.err('older-version'));
 });
 
 test('large blocks split at cell boundaries and full-state assembly preserves both literals', () => {
@@ -182,13 +183,13 @@ test('large blocks split at cell boundaries and full-state assembly preserves bo
   // #when
   const fragments = fragmentRecord(large);
 
-  if (!fragments.ok) throw new Error(fragments.error);
+  if (!fragments.isOk()) throw new Error(fragments.error);
   const answer = stateAnswer(generation, 'request', [large]);
 
   const decoded = answer.messages.flatMap((message) => {
     const result = decodeStateRecords(message.records);
 
-    if (!result.ok) throw new Error(result.error);
+    if (!result.isOk()) throw new Error(result.error);
 
     return result.value;
   });

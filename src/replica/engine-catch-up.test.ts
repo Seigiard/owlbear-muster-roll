@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { fixturePatch } from '../../tests/support/block-fixtures';
 import { describe, expect, spyOn, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
@@ -482,7 +483,7 @@ describe('answer', () => {
     }).toEqual({
       waited: true,
       parts: [['r-asker', 1, 1]],
-      records: { ok: true, value: [PRESET_RECORD, gone] },
+      records: Result.ok([PRESET_RECORD, gone]),
     });
   });
   test('a live GM sends nothing when another answer to the same nonce arrives during its delay', async () => {
@@ -1489,7 +1490,7 @@ describe('player visibility', () => {
     await waitUntil(() => sync(client).role === 'GM' && sync(client).state === 'live');
     await pause(20);
     const marker = generationMarkerKey(client.platform.metadata.getRoomId(), generation);
-    expect(marker.ok ? client.backing.get(marker.value) : null).toBe('1');
+    expect(marker.isOk() ? client.backing.get(marker.value) : null).toBe('1');
     room.room.leave(GHOST);
     await pause(20);
     client.engine.stop();

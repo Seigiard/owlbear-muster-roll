@@ -489,7 +489,7 @@ export function templateScopes(layout: TemplateLayout): TemplateScopes {
 }
 
 export function holdsValue(field: PresetFieldCell | undefined, value: FieldValue): boolean {
-  return field !== undefined && acceptedFieldValue(field, value).ok;
+  return field !== undefined && acceptedFieldValue(field, value).isOk();
 }
 
 function parseRepeatPath(key: string): RepeatPathParts | null {

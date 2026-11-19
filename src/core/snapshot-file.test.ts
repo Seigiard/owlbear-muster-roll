@@ -542,7 +542,7 @@ describe('snapshotFileName', () => {
 function record(k: string, d: JsonValue, c = 1): VersionedRecord {
   const parsed = parseRecord(fixtureRecord(k, d, c, 'seed'));
 
-  if (!parsed.ok) {
+  if (!parsed.isOk()) {
     throw new Error(`the test record ${k} does not parse`);
   }
 

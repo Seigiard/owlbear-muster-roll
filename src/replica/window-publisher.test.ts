@@ -810,7 +810,7 @@ function publisherHarness(
   const unlistenMessages = bus.subscribe(UI_CHANNEL, (event) => {
     const message = parseEngineMessage(event.data);
 
-    if (message.ok && (message.value.t === 'projection' || message.value.t === 'delta')) {
+    if (message.isOk() && (message.value.t === 'projection' || message.value.t === 'delta')) {
       messages.push(message.value);
     }
   });
@@ -818,7 +818,7 @@ function publisherHarness(
   const unlistenRequests = bus.subscribe(UI_CHANNEL, (event) => {
     const message = parseWindowMessage(event.data);
 
-    if (message.ok && message.value.t === 'projection-request') {
+    if (message.isOk() && message.value.t === 'projection-request') {
       publisher.project(message.value.nonce);
     }
   });
@@ -886,7 +886,7 @@ function presetOf(presetRecord: VersionedRecord | undefined): Preset | null {
 
   const decoded = decodePreset(data.data);
 
-  return decoded.ok ? decoded.value : null;
+  return decoded.isOk() ? decoded.value : null;
 }
 
 function presetWithPartyVisibility(): Preset {

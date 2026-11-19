@@ -1,5 +1,6 @@
 import { fixtureSnapshotCells, fixtureSnapshotBlocks } from './support/block-fixtures';
 import { readFileSync } from 'node:fs';
+import { Result } from 'better-result';
 import { expect, test } from '@playwright/test';
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 import { parsePresetFile } from '@/core/preset';
@@ -219,7 +220,7 @@ async function openSnapshotFile(page: Page, name: string, text: string): Promise
 function playerPreviewPreset(includePrivateTab = false): string {
   const parsed = parsePresetFile(D20_TEXT);
 
-  if (!parsed.ok) {
+  if (!parsed.isOk()) {
     throw new Error('Expected the d20 fixture to be a valid preset');
   }
 
@@ -651,9 +652,8 @@ test('builds a preset with the tree and the forms, and the window loads the down
   const text = readFileSync(path, 'utf8');
   // #then
   expect(download.suggestedFilename()).toMatch(DOWNLOAD_NAME);
-  expect(parsePresetFile(text)).toEqual({
-    ok: true,
-    value: {
+  expect(parsePresetFile(text)).toEqual(
+    Result.ok({
       v: 4,
       window: { width: 800, height: 600 },
       templates: [
@@ -692,8 +692,8 @@ test('builds a preset with the tree and the forms, and the window loads the down
           ],
         },
       ],
-    },
-  });
+    }),
+  );
   // #when: the file goes through "Загрузить пресет" in an empty room.
   const window = await context.newPage();
   await openWindowAndBackground(window, context);
@@ -1323,7 +1323,7 @@ test('adds a tab, drags a section into it, and the preview shows the tab of the 
   await (await presetDownloadButton(page)).click();
   const parsed = parsePresetFile(readFileSync(await (await downloading).path(), 'utf8'));
   // #then
-  const tabs = parsed.ok ? parsed.value.templates[0]?.tabs : null;
+  const tabs = parsed.isOk() ? parsed.value.templates[0]?.tabs : null;
   expect(tabs?.map((tab) => tab.title)).toEqual(['Основное', 'Бой']);
   expect(tabs?.[1]?.sections.map((section) => section.title)).toEqual(['Атаки']);
   // #when: "Персонаж", section 0 of "Основное", gets fewer columns than its rows have cells.

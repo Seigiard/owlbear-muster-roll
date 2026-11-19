@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { parsePresetFile, parsePresetStructure, presetProblems } from './preset';
 
@@ -67,7 +68,7 @@ describe('preset format v4', () => {
     const actual: unknown = parsed;
 
     // #then
-    expect(actual).toEqual({ ok: true, value: VALID_V4 });
+    expect(actual).toEqual(Result.ok(VALID_V4));
   });
 
   test('refuses the complete older v3 shape as unsupported', () => {
@@ -102,7 +103,7 @@ describe('preset format v4', () => {
     const parsed = parsePresetFile(JSON.stringify(older));
 
     // #then
-    expect(parsed).toEqual({ ok: false, error: { code: 'unsupported-version' } });
+    expect(parsed).toEqual(Result.err({ code: 'unsupported-version' }));
   });
 
   test('locates a duplicate field id at its second cell', () => {

@@ -6,7 +6,7 @@ import { canonicalJson, type JsonObject, type JsonValue } from '@/core/json';
 import { compareGenerations, recordHolds } from '@/core/merge';
 import { jsonByteLength } from '@/core/message-size';
 import { recordSchema, type VersionedRecord } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { generationSchema, type Generation } from '@/core/storage-key';
 
 // AD-8: the room copy lives in room metadata under this key.
@@ -59,10 +59,10 @@ export function encodeSnapshot(
 
   // A copy this client could not read back would fail every read-back.
   if (new TextEncoder().encode(text).length > SNAPSHOT_INFLATED_BYTE_LIMIT) {
-    return err('too-large');
+    return Result.err('too-large');
   }
 
-  return ok({ v: FORMAT_VERSION, data: deflateToBase64(text) });
+  return Result.ok({ v: FORMAT_VERSION, data: deflateToBase64(text) });
 }
 
 // Reads the room copy out of all room metadata. `null` when the room has none.
@@ -70,13 +70,13 @@ export function readSnapshot(metadata: JsonObject): Result<Snapshot | null, Snap
   const value = metadata[SNAPSHOT_KEY];
 
   if (value === undefined) {
-    return ok(null);
+    return Result.ok(null);
   }
 
   const version = versionSchema.safeParse(value);
 
   if (version.success && version.data.v > FORMAT_VERSION) {
-    return err('newer-version');
+    return Result.err('newer-version');
   }
 
   if (
@@ -85,27 +85,27 @@ export function readSnapshot(metadata: JsonObject): Result<Snapshot | null, Snap
     version.data.v >= 1 &&
     version.data.v < FORMAT_VERSION
   ) {
-    return err('older-version');
+    return Result.err('older-version');
   }
 
   const parsed = snapshotValueSchema.safeParse(value);
 
   if (!parsed.success) {
-    return err('invalid-snapshot');
+    return Result.err('invalid-snapshot');
   }
 
   const text = inflateFromBase64(parsed.data.data, SNAPSHOT_INFLATED_BYTE_LIMIT);
 
-  if (!text.ok) {
-    return err('invalid-snapshot');
+  if (!text.isOk()) {
+    return Result.err('invalid-snapshot');
   }
 
   try {
     const content = snapshotContentSchema.safeParse(JSON.parse(text.value));
 
-    return content.success ? ok(content.data) : err('invalid-snapshot');
+    return content.success ? Result.ok(content.data) : Result.err('invalid-snapshot');
   } catch {
-    return err('invalid-snapshot');
+    return Result.err('invalid-snapshot');
   }
 }
 

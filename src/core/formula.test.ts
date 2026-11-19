@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import { parseFormula, type FormulaFailure, type FormulaTree } from './formula';
 
@@ -6,9 +7,8 @@ describe('parseFormula', () => {
     // #when
     const parsed = parseFormula('1d20 <= str - 2*str_tired');
     // #then
-    expect(parsed).toEqual({
-      ok: true,
-      value: {
+    expect(parsed).toEqual(
+      Result.ok({
         kind: 'comparison',
         operator: '<=',
         left: { kind: 'dice', count: 1, sides: 20 },
@@ -23,16 +23,15 @@ describe('parseFormula', () => {
             right: { kind: 'field', id: 'str_tired' },
           },
         },
-      },
-    });
+      }),
+    );
   });
   test('parses floor and ceil calls', () => {
     // #when
     const parsed = parseFormula('floor(a/2)+ceil(b)');
     // #then
-    expect(parsed).toEqual({
-      ok: true,
-      value: {
+    expect(parsed).toEqual(
+      Result.ok({
         kind: 'binary',
         operator: '+',
         left: {
@@ -46,22 +45,21 @@ describe('parseFormula', () => {
           },
         },
         right: { kind: 'call', name: 'ceil', argument: { kind: 'field', id: 'b' } },
-      },
-    });
+      }),
+    );
   });
   test('reads an upper-case D as a dice term', () => {
     // #when
     const parsed = parseFormula('2D6+1');
     // #then
-    expect(parsed).toEqual({
-      ok: true,
-      value: {
+    expect(parsed).toEqual(
+      Result.ok({
         kind: 'binary',
         operator: '+',
         left: { kind: 'dice', count: 2, sides: 6 },
         right: { kind: 'integer', value: 1 },
-      },
-    });
+      }),
+    );
   });
   test.each<[string, unknown]>([
     ['1d(weapon_die)', { kind: 'dice-field', count: 1, id: 'weapon_die' }],
@@ -71,41 +69,35 @@ describe('parseFormula', () => {
     const parsed = parseFormula(formula);
     const actual: unknown = parsed;
     // #then
-    expect(actual).toEqual({ ok: true, value: tree });
+    expect(actual).toEqual(Result.ok(tree));
   });
   test('groups subtraction from the left and lets parentheses override it', () => {
     // #when
     const parsed = [parseFormula('a - b - c'), parseFormula('a - (b - c)')];
     // #then
     expect(parsed).toEqual([
-      {
-        ok: true,
-        value: {
-          kind: 'binary',
-          operator: '-',
-          left: {
-            kind: 'binary',
-            operator: '-',
-            left: { kind: 'field', id: 'a' },
-            right: { kind: 'field', id: 'b' },
-          },
-          right: { kind: 'field', id: 'c' },
-        },
-      },
-      {
-        ok: true,
-        value: {
+      Result.ok({
+        kind: 'binary',
+        operator: '-',
+        left: {
           kind: 'binary',
           operator: '-',
           left: { kind: 'field', id: 'a' },
-          right: {
-            kind: 'binary',
-            operator: '-',
-            left: { kind: 'field', id: 'b' },
-            right: { kind: 'field', id: 'c' },
-          },
+          right: { kind: 'field', id: 'b' },
         },
-      },
+        right: { kind: 'field', id: 'c' },
+      }),
+      Result.ok({
+        kind: 'binary',
+        operator: '-',
+        left: { kind: 'field', id: 'a' },
+        right: {
+          kind: 'binary',
+          operator: '-',
+          left: { kind: 'field', id: 'b' },
+          right: { kind: 'field', id: 'c' },
+        },
+      }),
     ]);
   });
   test.each<[string, FormulaTree]>([
@@ -115,7 +107,7 @@ describe('parseFormula', () => {
     // #when
     const parsed = parseFormula(formula);
     // #then
-    expect(parsed).toEqual({ ok: true, value: tree });
+    expect(parsed).toEqual(Result.ok(tree));
   });
   test('accepts a formula of exactly 200 characters', () => {
     // #given
@@ -123,15 +115,14 @@ describe('parseFormula', () => {
     // #when
     const parsed = parseFormula(formula);
     // #then
-    expect(parsed).toEqual({
-      ok: true,
-      value: {
+    expect(parsed).toEqual(
+      Result.ok({
         kind: 'binary',
         operator: '+',
         left: { kind: 'field', id: 'a' },
         right: { kind: 'field', id: 'b' },
-      },
-    });
+      }),
+    );
   });
   test('refuses a formula over 200 characters', () => {
     // #given
@@ -139,7 +130,7 @@ describe('parseFormula', () => {
     // #when
     const parsed = parseFormula(formula);
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'too-long' });
+    expect(parsed).toEqual(Result.err('too-long'));
   });
   test.each<[string, FormulaFailure]>([
     ['0d6', 'dice-out-of-range'],
@@ -180,12 +171,12 @@ describe('parseFormula', () => {
     // #when
     const parsed = parseFormula(formula);
     // #then
-    expect(parsed).toEqual({ ok: false, error: failure });
+    expect(parsed).toEqual(Result.err(failure));
   });
   test('accepts the largest safe integer', () => {
     // #when
     const parsed = parseFormula('9007199254740991');
     // #then
-    expect(parsed).toEqual({ ok: true, value: { kind: 'integer', value: 9007199254740991 } });
+    expect(parsed).toEqual(Result.ok({ kind: 'integer', value: 9007199254740991 }));
   });
 });

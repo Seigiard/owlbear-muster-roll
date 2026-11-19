@@ -7,7 +7,7 @@ import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
 import { parseFormula, type FormulaExpression, type FormulaTree } from '@/core/formula';
 import type { JsonValue } from '@/core/json';
 import { PRESET_REGISTRY } from '@/core/preset-registry';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 
 export const PRESET_FILE_BYTE_LIMIT = 1024 * 1024;
 export const CELL_NAME_MAX_CHARACTERS = 60;
@@ -219,44 +219,45 @@ export type PresetProblem = { failure: PresetFailure; path: readonly number[] };
 const encoder = new TextEncoder();
 
 export function parsePresetFile(text: string): Result<Preset, PresetFailure> {
-  if (encoder.encode(text).length > PRESET_FILE_BYTE_LIMIT) return err({ code: 'too-large' });
+  if (encoder.encode(text).length > PRESET_FILE_BYTE_LIMIT)
+    return Result.err({ code: 'too-large' });
   let candidate: unknown;
 
   try {
     candidate = JSON.parse(text);
   } catch {
-    return err({ code: 'not-json' });
+    return Result.err({ code: 'not-json' });
   }
 
   const object = fileObject.safeParse(candidate);
 
-  if (!object.success) return err({ code: 'invalid-structure' });
+  if (!object.success) return Result.err({ code: 'invalid-structure' });
   const versionResult = z.number().safeParse(object.data.v);
 
   if (!versionResult.success || !Number.isInteger(versionResult.data)) {
-    return err({ code: 'unsupported-version' });
+    return Result.err({ code: 'unsupported-version' });
   }
 
   const version = versionResult.data;
   const candidateObject = object.data;
 
-  if (version > FORMAT_VERSION) return err({ code: 'newer-version' });
+  if (version > FORMAT_VERSION) return Result.err({ code: 'newer-version' });
 
-  if (version < FORMAT_VERSION) return err({ code: 'unsupported-version' });
+  if (version < FORMAT_VERSION) return Result.err({ code: 'unsupported-version' });
 
   if (
     Object.hasOwn(candidateObject, 'window') &&
     !fileSchema.shape.window.safeParse(candidateObject.window).success
   ) {
-    return err({ code: 'bad-window' });
+    return Result.err({ code: 'bad-window' });
   }
 
   const parsed = fileSchema.safeParse(candidateObject);
 
-  if (!parsed.success) return err({ code: 'invalid-structure' });
+  if (!parsed.success) return Result.err({ code: 'invalid-structure' });
   const failure = presetProblems(parsed.data)[0]?.failure ?? null;
 
-  return failure === null ? ok(parsed.data) : err(failure);
+  return failure === null ? Result.ok(parsed.data) : Result.err(failure);
 }
 
 export function parsePresetStructure(candidate: JsonValue): Preset | null {
@@ -272,7 +273,7 @@ export function encodePreset(preset: Preset): string {
 export function decodePreset(data: string): Result<Preset, PresetFailure> {
   const text = inflateFromBase64(data, PRESET_FILE_BYTE_LIMIT);
 
-  return text.ok ? parsePresetFile(text.value) : err({ code: 'invalid-structure' });
+  return text.isOk() ? parsePresetFile(text.value) : Result.err({ code: 'invalid-structure' });
 }
 
 export function formatPresetFile(preset: Preset): string {
@@ -806,7 +807,7 @@ function formulaTypeProblems(template: Template, templatePath: number[]): Preset
         if (candidate.kind !== 'dice') return;
         const parsed = parseFormula(candidate.formula);
 
-        const failure = parsed.ok
+        const failure = parsed.isOk()
           ? formulaTypeFailure(template, { ...place, rowIndex }, parsed.value, candidate.formula)
           : null;
 
@@ -1042,7 +1043,7 @@ function cellFailure(candidate: PresetCell, scope: Set<string>): PresetFailure |
   if (candidate.kind === 'dice') {
     const parsed = parseFormula(candidate.formula);
 
-    if (!parsed.ok) return { code: 'bad-formula', detail: short(candidate.formula) };
+    if (!parsed.isOk()) return { code: 'bad-formula', detail: short(candidate.formula) };
 
     return nameFailure(candidate.name, short(candidate.formula), 'dice');
   }

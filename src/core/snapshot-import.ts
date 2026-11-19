@@ -26,7 +26,7 @@ import {
   type FieldValues,
   type VersionedRecord,
 } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { snapshotFileSchema, SNAPSHOT_FILE_TYPE, type SnapshotFile } from '@/core/snapshot-file';
 import { isSheetSet } from '@/core/sheets';
 
@@ -53,13 +53,14 @@ export type SnapshotImport = {
 };
 
 export function parseSnapshotFile(text: string): Result<SnapshotFile, SnapshotFileFailure> {
-  if (new TextEncoder().encode(text).length > SNAPSHOT_FILE_BYTE_LIMIT) return err('too-large');
+  if (new TextEncoder().encode(text).length > SNAPSHOT_FILE_BYTE_LIMIT)
+    return Result.err('too-large');
   let candidate: unknown;
 
   try {
     candidate = JSON.parse(text.startsWith('\uFEFF') ? text.slice(1) : text);
   } catch {
-    return err('not-json');
+    return Result.err('not-json');
   }
 
   const envelope = z
@@ -70,26 +71,26 @@ export function parseSnapshotFile(text: string): Result<SnapshotFile, SnapshotFi
     })
     .safeParse(candidate);
 
-  if (!envelope.success) return err('invalid-structure');
+  if (!envelope.success) return Result.err('invalid-structure');
 
   if (envelope.data.type !== undefined && envelope.data.type !== SNAPSHOT_FILE_TYPE)
-    return err('not-snapshot');
+    return Result.err('not-snapshot');
 
   if (envelope.data.type === undefined && envelope.data.templates !== undefined)
-    return err('not-snapshot');
+    return Result.err('not-snapshot');
   const parsedVersion = z.number().int().positive().safeParse(envelope.data.v);
 
-  if (!parsedVersion.success) return err('unsupported-version');
+  if (!parsedVersion.success) return Result.err('unsupported-version');
   const version = parsedVersion.data;
 
-  if (version > FORMAT_VERSION) return err('newer-version');
+  if (version > FORMAT_VERSION) return Result.err('newer-version');
 
-  if (version < FORMAT_VERSION) return err('older-version');
+  if (version < FORMAT_VERSION) return Result.err('older-version');
 
-  if (envelope.data.type !== SNAPSHOT_FILE_TYPE) return err('not-snapshot');
+  if (envelope.data.type !== SNAPSHOT_FILE_TYPE) return Result.err('not-snapshot');
   const parsed = snapshotFileSchema.safeParse(candidate);
 
-  return parsed.success ? ok(parsed.data) : err('invalid-structure');
+  return parsed.success ? Result.ok(parsed.data) : Result.err('invalid-structure');
 }
 
 export function encodeSnapshotFileData(file: SnapshotFile): string {
@@ -99,9 +100,9 @@ export function encodeSnapshotFileData(file: SnapshotFile): string {
 export function decodeSnapshotFileData(data: string): Result<SnapshotFile, SnapshotFileFailure> {
   const text = inflateFromBase64(data, SNAPSHOT_FILE_BYTE_LIMIT);
 
-  return text.ok
+  return text.isOk()
     ? parseSnapshotFile(text.value)
-    : err(text.error === 'too-large' ? 'too-large' : 'invalid-structure');
+    : Result.err(text.error === 'too-large' ? 'too-large' : 'invalid-structure');
 }
 
 export function importSnapshot(
@@ -243,12 +244,17 @@ export function importSnapshot(
   }
 
   for (const record of records) {
-    if (!recordSchema.safeParse(record).success) return err('invalid-structure');
+    if (!recordSchema.safeParse(record).success) return Result.err('invalid-structure');
 
-    if (!recordFitsOneMessage(record)) return err('too-large');
+    if (!recordFitsOneMessage(record)) return Result.err('too-large');
   }
 
   records.sort((a, b) => (a.k < b.k ? -1 : 1));
 
-  return ok({ records, count: dropped.length - sheets, sheets, digest: erasedDigest(dropped) });
+  return Result.ok({
+    records,
+    count: dropped.length - sheets,
+    sheets,
+    digest: erasedDigest(dropped),
+  });
 }

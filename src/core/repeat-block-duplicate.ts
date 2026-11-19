@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { sectionFields, type PresetSection } from '@/core/preset';
 import type { FieldValue, FieldValues } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 
 // A value a `text` field holds. A field whose type changed can leave a value of another type.
 const textValueSchema = z.string().min(1);
@@ -47,7 +47,7 @@ export function duplicateBlockCells(
   const value = nameId === null ? null : textValue(source[nameId]);
 
   if (nameId === null || nameField === null || nameField.type !== 'text' || value === null) {
-    return ok(Array.from({ length: count }, () => ({ ...source })));
+    return Result.ok(Array.from({ length: count }, () => ({ ...source })));
   }
 
   const existing = siblings.flatMap((cells) => {
@@ -58,7 +58,9 @@ export function duplicateBlockCells(
 
   const names = duplicateNames(value, existing, count);
 
-  return names.ok ? ok(names.value.map((name) => ({ ...source, [nameId]: name }))) : names;
+  return names.isOk()
+    ? Result.ok(names.value.map((name) => ({ ...source, [nameId]: name })))
+    : names;
 }
 
 // UX-DR20: the source name without its trailing number, then the highest number any repeat block of
@@ -90,7 +92,7 @@ export function duplicateNames(
     const name = fittedName(base, number.toString());
 
     if (name === null) {
-      return err('name-too-long');
+      return Result.err('name-too-long');
     }
 
     if (!taken.has(name)) {
@@ -98,7 +100,7 @@ export function duplicateNames(
     }
   }
 
-  return ok(names);
+  return Result.ok(names);
 }
 
 // Only a whole number in digits counts, so "1.5", "1e1" and "+3" are refused. Spaces around it are
@@ -107,12 +109,12 @@ export function parseDuplicateCount(text: string): Result<number, DuplicateCount
   const trimmed = text.trim();
 
   if (!DIGITS.test(trimmed)) {
-    return err('invalid-count');
+    return Result.err('invalid-count');
   }
 
   const count = Number(trimmed);
 
-  return isDuplicateCount(count) ? ok(count) : err('invalid-count');
+  return isDuplicateCount(count) ? Result.ok(count) : Result.err('invalid-count');
 }
 
 export function isDuplicateCount(count: number): boolean {

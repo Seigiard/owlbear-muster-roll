@@ -200,7 +200,7 @@ describe('attached Builder files', () => {
       requestsBeforeFirstCompletion,
       requestsAfterFirstCompletion,
       writes: access.writeRequests.map((request) => JSON.parse(request.text)),
-      disk: disk.ok ? JSON.parse(disk.value.text) : null,
+      disk: disk.isOk() ? JSON.parse(disk.value.text) : null,
     }).toEqual({
       requestsBeforeFirstCompletion: 1,
       requestsAfterFirstCompletion: 2,
@@ -382,7 +382,7 @@ describe('attached Builder files', () => {
     // #then
     expect({
       writes: access.writeRequests,
-      disk: disk.ok ? JSON.parse(disk.value.text) : null,
+      disk: disk.isOk() ? JSON.parse(disk.value.text) : null,
       actions: conflictActions(),
     }).toEqual({
       writes: [],
@@ -423,7 +423,7 @@ describe('attached Builder files', () => {
     // #then
     expect({
       page: toPreset(store.$state.get().step.document),
-      disk: disk.ok ? JSON.parse(disk.value.text) : null,
+      disk: disk.isOk() ? JSON.parse(disk.value.text) : null,
     }).toEqual({ page: expected, disk: expected });
   });
   test.each([
@@ -463,7 +463,7 @@ describe('attached Builder files', () => {
         pageBeforeChoice,
         actionsBeforeChoice,
         page: toPreset(store.$state.get().step.document),
-        disk: disk.ok ? JSON.parse(disk.value.text) : null,
+        disk: disk.isOk() ? JSON.parse(disk.value.text) : null,
       }).toEqual({
         pageBeforeChoice: LOCAL_PRESET,
         actionsBeforeChoice: { takeFile: true, keepMine: true },
@@ -504,13 +504,13 @@ describe('attached Builder files', () => {
     const diskAfterOwnEcho = await access.read(file);
     // #then
     expect({
-      diskBeforeRelease: diskBeforeRelease.ok ? JSON.parse(diskBeforeRelease.value.text) : null,
+      diskBeforeRelease: diskBeforeRelease.isOk() ? JSON.parse(diskBeforeRelease.value.text) : null,
       beforeRelease,
       afterRelease: {
         writes: access.writeRequests.length,
         actions: conflictActions(),
       },
-      diskAfterOwnEcho: diskAfterOwnEcho.ok ? JSON.parse(diskAfterOwnEcho.value.text) : null,
+      diskAfterOwnEcho: diskAfterOwnEcho.isOk() ? JSON.parse(diskAfterOwnEcho.value.text) : null,
     }).toEqual({
       diskBeforeRelease: DISK_PRESET,
       beforeRelease: {
@@ -561,7 +561,7 @@ describe('attached Builder files', () => {
       const disk = await access.read(file);
       expect({
         page: toPreset(store.$state.get().step.document),
-        disk: disk.ok ? JSON.parse(disk.value.text) : null,
+        disk: disk.isOk() ? JSON.parse(disk.value.text) : null,
       }).toEqual({ page: expected, disk: expected });
     },
   );
@@ -829,7 +829,7 @@ describe('attached Builder files', () => {
       refused,
       repaired,
       readsAfterNewEdit,
-      disk: disk.ok ? JSON.parse(disk.value.text) : null,
+      disk: disk.isOk() ? JSON.parse(disk.value.text) : null,
     }).toEqual({
       refused: {
         reads: 1,
@@ -890,7 +890,7 @@ describe('attached Builder files', () => {
       refused,
       repaired,
       readsAfterNewEdit,
-      disk: disk.ok ? JSON.parse(disk.value.text) : null,
+      disk: disk.isOk() ? JSON.parse(disk.value.text) : null,
     }).toEqual({
       refused: {
         reads: 1,
@@ -1151,7 +1151,7 @@ function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
 function snapshotRecords(text: string): readonly VersionedRecord[] {
   const parsed = parseSnapshotFile(text);
 
-  if (!parsed.ok) {
+  if (!parsed.isOk()) {
     throw new Error('The snapshot fixture does not parse');
   }
 
@@ -1161,7 +1161,7 @@ function snapshotRecords(text: string): readonly VersionedRecord[] {
     'builder',
   );
 
-  if (!imported.ok) {
+  if (!imported.isOk()) {
     throw new Error('The snapshot fixture does not import');
   }
 
@@ -1261,7 +1261,7 @@ async function readFakeDocument(
 ): Promise<Preset | SnapshotFile> {
   const result = await access.read(file);
 
-  if (!result.ok) {
+  if (!result.isOk()) {
     throw new Error(`Could not read fake file: ${result.error.reason}`);
   }
 
@@ -1271,7 +1271,7 @@ async function readFakeDocument(
 function parseAttachedDocument(kind: AttachedFileKind, text: string): Preset | SnapshotFile {
   const result = kind === 'preset' ? parsePresetFile(text) : parseSnapshotFile(text);
 
-  if (!result.ok) {
+  if (!result.isOk()) {
     throw new Error(`Could not parse ${kind} fixture`);
   }
 

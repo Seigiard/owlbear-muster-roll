@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { fixtureCells, fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, spyOn, test } from 'bun:test';
 import { mergeRecords, type Version } from '@/core/merge';
@@ -319,7 +320,7 @@ describe('proposed repeat blocks', () => {
       lifecycle,
     );
 
-    if (!result.ok) throw new Error(result.error);
+    if (!result.isOk()) throw new Error(result.error);
 
     return result.value;
   }
@@ -477,9 +478,8 @@ describe('proposedRecord', () => {
     );
 
     // #then
-    expect(made).toEqual({
-      ok: true,
-      value: {
+    expect(made).toEqual(
+      Result.ok({
         k: ROW.k,
         d: {
           order: 0,
@@ -488,23 +488,22 @@ describe('proposedRecord', () => {
         c: 9,
         a: 'p-conn',
         l: [1, 'seed'],
-      },
-    });
+      }),
+    );
   });
   test('starts a row with no record empty', () => {
     // #when
     const made = proposedRecord(ROW.k, { kind: 'fields', values: { str: 1 } }, undefined, MINT);
     // #then
-    expect(made).toEqual({
-      ok: true,
-      value: {
+    expect(made).toEqual(
+      Result.ok({
         k: ROW.k,
         d: { order: 0, cells: { str: [1, 9, 'p-conn'] } },
         c: 9,
         a: 'p-conn',
         l: [9, 'p-conn'],
-      },
-    });
+      }),
+    );
   });
   test('refuses a patch the record already holds, unless forced', () => {
     // #when
@@ -515,33 +514,29 @@ describe('proposedRecord', () => {
 
     // #then
     expect(made).toEqual([
-      { ok: false, error: 'unchanged' },
-      {
-        ok: true,
-        value: {
-          k: ROW.k,
-          d: { order: 0, cells: { str: [5, 9, 'p-conn'] } },
-          c: 9,
-          a: 'p-conn',
-          l: [1, 'seed'],
-        },
-      },
+      Result.err('unchanged'),
+      Result.ok({
+        k: ROW.k,
+        d: { order: 0, cells: { str: [5, 9, 'p-conn'] } },
+        c: 9,
+        a: 'p-conn',
+        l: [1, 'seed'],
+      }),
     ]);
   });
   test('edits the cells of a live repeat row and keeps its order', () => {
     // #when
     const made = proposedRecord(REP.k, { kind: 'fields', values: { qty: 2 } }, REP, MINT);
     // #then
-    expect(made).toEqual({
-      ok: true,
-      value: {
+    expect(made).toEqual(
+      Result.ok({
         k: REP.k,
         d: { order: 2, cells: { qty: [2, 9, 'p-conn'] } },
         c: 9,
         a: 'p-conn',
         l: [1, 'seed'],
-      },
-    });
+      }),
+    );
   });
   test('a new row keeps its own order and cells over a live record of its key', () => {
     // #when
@@ -553,10 +548,9 @@ describe('proposedRecord', () => {
     );
 
     // #then
-    expect(made).toEqual({
-      ok: true,
-      value: fixtureRecord(REP.k, { order: 7, cells: { qty: 1 } }, 9, 'p-conn'),
-    });
+    expect(made).toEqual(
+      Result.ok(fixtureRecord(REP.k, { order: 7, cells: { qty: 1 } }, 9, 'p-conn')),
+    );
   });
   test('a removal stays a removal over a live row, and over no record', () => {
     // #when
@@ -567,17 +561,14 @@ describe('proposedRecord', () => {
 
     // #then
     expect(made).toEqual([
-      { ok: true, value: fixtureRecord(REP.k, null, 9, 'p-conn') },
-      {
-        ok: true,
-        value: {
-          k: REP.k,
-          d: null,
-          c: 9,
-          a: 'p-conn',
-          l: [9, 'p-conn'],
-        },
-      },
+      Result.ok(fixtureRecord(REP.k, null, 9, 'p-conn')),
+      Result.ok({
+        k: REP.k,
+        d: null,
+        c: 9,
+        a: 'p-conn',
+        l: [9, 'p-conn'],
+      }),
     ]);
   });
   test('an edit or a new row over a removed repeat row is gone, and its removal unchanged', () => {
@@ -591,10 +582,10 @@ describe('proposedRecord', () => {
 
     // #then
     expect(made).toEqual([
-      { ok: false, error: 'gone' },
-      { ok: false, error: 'gone' },
-      { ok: false, error: 'gone' },
-      { ok: false, error: 'unchanged' },
+      Result.err('gone'),
+      Result.err('gone'),
+      Result.err('gone'),
+      Result.err('unchanged'),
     ]);
   });
 });

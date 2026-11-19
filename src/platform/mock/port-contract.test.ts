@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 
 import type { PlayerRole, StorageOperation } from '@/platform/ports';
@@ -51,15 +52,15 @@ describe('mock storage port contract', () => {
 
     // #then
     expect(observation).toEqual({
-      missing: { ok: true, value: null },
-      firstWrite: { ok: true, value: undefined },
-      overwrite: { ok: true, value: undefined },
-      secondWrite: { ok: true, value: undefined },
-      overwritten: { ok: true, value: 'overwritten value' },
-      keysBeforeRemove: { ok: true, value: ['first', 'second'] },
-      remove: { ok: true, value: undefined },
-      removed: { ok: true, value: null },
-      keysAfterRemove: { ok: true, value: ['second'] },
+      missing: Result.ok(null),
+      firstWrite: Result.ok(undefined),
+      overwrite: Result.ok(undefined),
+      secondWrite: Result.ok(undefined),
+      overwritten: Result.ok('overwritten value'),
+      keysBeforeRemove: Result.ok(['first', 'second']),
+      remove: Result.ok(undefined),
+      removed: Result.ok(null),
+      keysAfterRemove: Result.ok(['second']),
     });
   });
 
@@ -73,10 +74,7 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: {
-        ok: false,
-        error: { operation: 'read', reason: STORAGE_FAILURE_REASON },
-      },
+      result: Result.err({ operation: 'read', reason: STORAGE_FAILURE_REASON }),
     });
   });
 
@@ -90,10 +88,7 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: {
-        ok: false,
-        error: { operation: 'write', reason: STORAGE_FAILURE_REASON },
-      },
+      result: Result.err({ operation: 'write', reason: STORAGE_FAILURE_REASON }),
     });
   });
 
@@ -107,10 +102,7 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: {
-        ok: false,
-        error: { operation: 'remove', reason: STORAGE_FAILURE_REASON },
-      },
+      result: Result.err({ operation: 'remove', reason: STORAGE_FAILURE_REASON }),
     });
   });
 
@@ -124,10 +116,7 @@ describe('mock storage port contract', () => {
     // #then
     expect(observation).toEqual({
       status: 'returned',
-      result: {
-        ok: false,
-        error: { operation: 'list', reason: STORAGE_FAILURE_REASON },
-      },
+      result: Result.err({ operation: 'list', reason: STORAGE_FAILURE_REASON }),
     });
   });
 });
@@ -143,7 +132,7 @@ describe('mock broadcast port contract', () => {
     // #then
     expect(observation).toEqual({
       delivery: { status: 'observed' },
-      send: { status: 'resolved', result: { ok: true, value: undefined } },
+      send: { status: 'resolved', result: Result.ok(undefined) },
       events: [
         {
           recipient: 'local-peer',
@@ -165,7 +154,7 @@ describe('mock broadcast port contract', () => {
     // #then
     expect(observation).toEqual({
       delivery: { status: 'observed' },
-      send: { status: 'resolved', result: { ok: true, value: undefined } },
+      send: { status: 'resolved', result: Result.ok(undefined) },
       events: [
         {
           recipient: 'remote-peer',
@@ -187,9 +176,9 @@ describe('mock broadcast port contract', () => {
     expect(observation).toEqual({
       delivery: { status: 'observed' },
       sends: [
-        { status: 'resolved', result: { ok: true, value: undefined } },
-        { status: 'resolved', result: { ok: true, value: undefined } },
-        { status: 'resolved', result: { ok: true, value: undefined } },
+        { status: 'resolved', result: Result.ok(undefined) },
+        { status: 'resolved', result: Result.ok(undefined) },
+        { status: 'resolved', result: Result.ok(undefined) },
       ],
       received: ['first', 'second', 'third'],
     });
@@ -206,7 +195,7 @@ describe('mock broadcast port contract', () => {
     expect(observation).toEqual({
       send: {
         status: 'resolved',
-        result: { ok: false, error: { kind: 'rate-limited' } },
+        result: Result.err({ kind: 'rate-limited' }),
       },
       events: [],
     });
@@ -247,7 +236,7 @@ function createStorageFixture(): StorageFixture {
     cleanup: () => {
       const keys = platform.storage.keys();
 
-      for (const key of keys.ok ? keys.value : []) {
+      for (const key of keys.isOk() ? keys.value : []) {
         if (key.startsWith(prefix)) {
           platform.storage.removeItem(key);
         }

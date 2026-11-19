@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { describe, expect, test } from 'bun:test';
 import type { PresetSection } from '@/core/preset';
 import {
@@ -41,9 +42,8 @@ describe('duplicateBlockCells', () => {
     // #when
     const cells = duplicateBlockCells(NPC_SECTION, source, [source], 9);
     // #then
-    expect(cells).toEqual({
-      ok: true,
-      value: [
+    expect(cells).toEqual(
+      Result.ok([
         { npc_name: 'Скелет 2', hp: 7, elite: false },
         { npc_name: 'Скелет 3', hp: 7, elite: false },
         { npc_name: 'Скелет 4', hp: 7, elite: false },
@@ -53,8 +53,8 @@ describe('duplicateBlockCells', () => {
         { npc_name: 'Скелет 8', hp: 7, elite: false },
         { npc_name: 'Скелет 9', hp: 7, elite: false },
         { npc_name: 'Скелет 10', hp: 7, elite: false },
-      ],
-    });
+      ]),
+    );
   });
   test('numbers after the highest number among the repeat blocks of the section', () => {
     // #given
@@ -63,7 +63,7 @@ describe('duplicateBlockCells', () => {
     // #when
     const cells = duplicateBlockCells(NPC_SECTION, source, siblings, 1);
     // #then
-    expect(cells).toEqual({ ok: true, value: [{ npc_name: 'Скелет 5' }] });
+    expect(cells).toEqual(Result.ok([{ npc_name: 'Скелет 5' }]));
   });
   test('copies the values as they are when the first field is empty', () => {
     // #given
@@ -71,7 +71,7 @@ describe('duplicateBlockCells', () => {
     // #when
     const cells = duplicateBlockCells(NPC_SECTION, source, [source], 2);
     // #then
-    expect(cells).toEqual({ ok: true, value: [{ hp: 4 }, { hp: 4 }] });
+    expect(cells).toEqual(Result.ok([{ hp: 4 }, { hp: 4 }]));
   });
   test('numbers the explicit name field when it is not the first field', () => {
     // #given
@@ -79,13 +79,12 @@ describe('duplicateBlockCells', () => {
     // #when
     const cells = duplicateBlockCells(NUMBER_FIRST_SECTION, source, [source], 2);
     // #then
-    expect(cells).toEqual({
-      ok: true,
-      value: [
+    expect(cells).toEqual(
+      Result.ok([
         { qty: 2, item: 'Верёвка 2' },
         { qty: 2, item: 'Верёвка 3' },
-      ],
-    });
+      ]),
+    );
   });
 });
 
@@ -94,9 +93,8 @@ describe('duplicateNames', () => {
     // #when
     const names = duplicateNames('Скелет 1', ['Скелет 1'], 9);
     // #then
-    expect(names).toEqual({
-      ok: true,
-      value: [
+    expect(names).toEqual(
+      Result.ok([
         'Скелет 2',
         'Скелет 3',
         'Скелет 4',
@@ -106,56 +104,56 @@ describe('duplicateNames', () => {
         'Скелет 8',
         'Скелет 9',
         'Скелет 10',
-      ],
-    });
+      ]),
+    );
   });
   test('continues from the highest number among repeat blocks of the same base', () => {
     // #when
     const names = duplicateNames('Скелет 1', ['Скелет 1', 'Скелет 7', 'Гоблин 12'], 2);
     // #then
-    expect(names).toEqual({ ok: true, value: ['Скелет 8', 'Скелет 9'] });
+    expect(names).toEqual(Result.ok(['Скелет 8', 'Скелет 9']));
   });
   test('numbers an unnumbered source from 1 and leaves its own name out', () => {
     // #when
     const names = duplicateNames('Скелет', ['Скелет'], 2);
     // #then
-    expect(names).toEqual({ ok: true, value: ['Скелет 1', 'Скелет 2'] });
+    expect(names).toEqual(Result.ok(['Скелет 1', 'Скелет 2']));
   });
   test('numbers an unnumbered source after a numbered namesake', () => {
     // #when
     const names = duplicateNames('Скелет', ['Скелет', 'Скелет 3'], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: ['Скелет 4'] });
+    expect(names).toEqual(Result.ok(['Скелет 4']));
   });
   test('does not count a name whose base only starts like the source base', () => {
     // #when
     const names = duplicateNames('Скелет 1', ['Скелет 1', 'Скелет-лучник 3', 'Скелеты 5'], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: ['Скелет 2'] });
+    expect(names).toEqual(Result.ok(['Скелет 2']));
   });
   test('does not count a name with the number glued on or with text after it', () => {
     // #when
     const names = duplicateNames('Скелет 1', ['Скелет 1', 'Скелет5', 'Скелет 6 б'], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: ['Скелет 2'] });
+    expect(names).toEqual(Result.ok(['Скелет 2']));
   });
   test('takes only the last number off, so "Отряд 2 1" has the base "Отряд 2"', () => {
     // #when
     const names = duplicateNames('Отряд 2 1', ['Отряд 2 1', 'Отряд 5'], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: ['Отряд 2 2'] });
+    expect(names).toEqual(Result.ok(['Отряд 2 2']));
   });
   test('reads a number with leading zeros by its value', () => {
     // #when
     const names = duplicateNames('Скелет 007', ['Скелет 007'], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: ['Скелет 8'] });
+    expect(names).toEqual(Result.ok(['Скелет 8']));
   });
   test('counts a number past the precision of a double exactly', () => {
     // #when
     const names = duplicateNames('Скелет 99999999999999999999', ['Скелет 99999999999999999999'], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: ['Скелет 100000000000000000000'] });
+    expect(names).toEqual(Result.ok(['Скелет 100000000000000000000']));
   });
   test('keeps a 97-letter base whole when it fits 100 characters with the new number', () => {
     // #given: 97 letters, a space and "9" make 99 characters.
@@ -163,7 +161,7 @@ describe('duplicateNames', () => {
     // #when
     const names = duplicateNames(`${base} 9`, [`${base} 9`], 2);
     // #then: "10" and "11" need 3 more characters with the space, so the base keeps 97.
-    expect(names).toEqual({ ok: true, value: [`${'Щ'.repeat(97)} 10`, `${'Щ'.repeat(97)} 11`] });
+    expect(names).toEqual(Result.ok([`${'Щ'.repeat(97)} 10`, `${'Щ'.repeat(97)} 11`]));
   });
   test('cuts the base by one letter when the number gains a digit at the limit', () => {
     // #given: 98 letters, a space and "9" make 100 characters.
@@ -171,13 +169,13 @@ describe('duplicateNames', () => {
     // #when
     const names = duplicateNames(`${base} 9`, [`${base} 9`], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: [`${'Щ'.repeat(97)} 10`] });
+    expect(names).toEqual(Result.ok([`${'Щ'.repeat(97)} 10`]));
   });
   test('counts a source number written after two spaces with its single-spaced namesakes', () => {
     // #when
     const names = duplicateNames('Скелет  1', ['Скелет  1', 'Скелет 5'], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: ['Скелет 6'] });
+    expect(names).toEqual(Result.ok(['Скелет 6']));
   });
   test('skips a number whose shortened name a repeat block already has, so a second duplicate repeats none', () => {
     // #given: 98 letters, a space and "9" make 100 characters, and a first duplicate made "… 10".
@@ -185,7 +183,7 @@ describe('duplicateNames', () => {
     // #when
     const names = duplicateNames(source, [source, `${'Щ'.repeat(97)} 10`], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: [`${'Щ'.repeat(97)} 11`] });
+    expect(names).toEqual(Result.ok([`${'Щ'.repeat(97)} 11`]));
   });
   test('cuts a long base between graphemes, so a letter keeps its combining mark', () => {
     // #given: "А", 49 letters "й" written as "и" and a combining breve, and "Б": 100 code points.
@@ -193,7 +191,7 @@ describe('duplicateNames', () => {
     // #when: " 1" leaves 98 code points, which would end inside the 49th "й".
     const names = duplicateNames(source, [source], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: [`А${'й'.repeat(48)} 1`] });
+    expect(names).toEqual(Result.ok([`А${'й'.repeat(48)} 1`]));
   });
   test('fails when the number alone cannot fit a name', () => {
     // #given: a stored name longer than the limit, with a 100-digit number.
@@ -201,7 +199,7 @@ describe('duplicateNames', () => {
     // #when
     const names = duplicateNames(source, [source], 1);
     // #then
-    expect(names).toEqual({ ok: false, error: 'name-too-long' });
+    expect(names).toEqual(Result.err('name-too-long'));
   });
   test('counts a letter outside the BMP once when it shortens the base', () => {
     // #given: 99 skulls, each two code units, as an unnumbered name.
@@ -209,7 +207,7 @@ describe('duplicateNames', () => {
     // #when
     const names = duplicateNames(base, [base], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: [`${'💀'.repeat(98)} 1`] });
+    expect(names).toEqual(Result.ok([`${'💀'.repeat(98)} 1`]));
   });
   test('drops the spaces a cut leaves at the end of the base', () => {
     // #given: 100 characters with no number. " 1" leaves room for 98, and the 98th is the space.
@@ -217,7 +215,7 @@ describe('duplicateNames', () => {
     // #when
     const names = duplicateNames(base, [base], 1);
     // #then
-    expect(names).toEqual({ ok: true, value: [`${'Щ'.repeat(96)}А 1`] });
+    expect(names).toEqual(Result.ok([`${'Щ'.repeat(96)}А 1`]));
   });
 });
 
@@ -232,7 +230,7 @@ describe('parseDuplicateCount', () => {
     // #when
     const parsed = parseDuplicateCount(text);
     // #then
-    expect(parsed).toEqual({ ok: true, value: count });
+    expect(parsed).toEqual(Result.ok(count));
   });
   test.each([
     ['empty', ''],
@@ -252,7 +250,7 @@ describe('parseDuplicateCount', () => {
     // #when
     const parsed = parseDuplicateCount(text);
     // #then
-    expect(parsed).toEqual({ ok: false, error: 'invalid-count' });
+    expect(parsed).toEqual(Result.err('invalid-count'));
   });
 });
 

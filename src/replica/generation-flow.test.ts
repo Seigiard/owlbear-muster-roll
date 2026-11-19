@@ -2,7 +2,7 @@ import { fixtureSnapshotCells, fixtureSnapshotBlocks } from '../../tests/support
 import { expect, test } from 'bun:test';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { err, ok } from '@/core/result';
+import { Result } from 'better-result';
 import type { Snapshot } from '@/core/snapshot';
 import type { SnapshotFile } from '@/core/snapshot-file';
 import { encodeSnapshotFileData } from '@/core/snapshot-import';
@@ -219,46 +219,46 @@ function createStore(
     write: (generation, record) => {
       events.push(`store:write:${generationId(generation)}:${record.k}`);
 
-      return writesFail() ? err({ operation: 'write', reason: 'quota' }) : ok(record);
+      return writesFail() ? Result.err({ operation: 'write', reason: 'quota' }) : Result.ok(record);
     },
-    loadGeneration: () => ok({ records: [], corruptKeys: [] }),
-    readHighestGeneration: () => ok(INITIAL),
+    loadGeneration: () => Result.ok({ records: [], corruptKeys: [] }),
+    readHighestGeneration: () => Result.ok(INITIAL),
     markIncomplete: (generation) => {
       events.push(`store:incomplete:${generationId(generation)}`);
 
       return failedOperations.has('mark-incomplete')
-        ? err({ operation: 'write', reason: 'quota' })
-        : ok(undefined);
+        ? Result.err({ operation: 'write', reason: 'quota' })
+        : Result.ok(undefined);
     },
     markComplete: (generation) => {
       events.push(`store:complete:${generationId(generation)}`);
 
       return failedOperations.has('mark-complete')
-        ? err({ operation: 'write', reason: 'quota' })
-        : ok(undefined);
+        ? Result.err({ operation: 'write', reason: 'quota' })
+        : Result.ok(undefined);
     },
     markGeneration: (generation) => {
       events.push(`store:generation:${generationId(generation)}`);
 
       return failedOperations.has('mark-generation')
-        ? err({ operation: 'write', reason: 'quota' })
-        : ok(undefined);
+        ? Result.err({ operation: 'write', reason: 'quota' })
+        : Result.ok(undefined);
     },
     removeGeneration: (generation) => {
       events.push(`store:remove:${generationId(generation)}`);
 
-      return ok(undefined);
+      return Result.ok(undefined);
     },
     removeGenerationsBelow: (generation) => {
       events.push(`store:remove-below:${generationId(generation)}`);
 
-      return ok(undefined);
+      return Result.ok(undefined);
     },
-    removeIncomplete: () => ok(undefined),
+    removeIncomplete: () => Result.ok(undefined),
     removeOlderFormats: () => {
       events.push('store:remove-older-formats');
 
-      return ok(undefined);
+      return Result.ok(undefined);
     },
   };
 }

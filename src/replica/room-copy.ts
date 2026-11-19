@@ -143,7 +143,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
   function mergeReadRoomCopy(metadata: JsonObject): void {
     const read = readSnapshot(metadata);
 
-    if (!read.ok) {
+    if (!read.isOk()) {
       console.error('Muster Roll could not read the room copy', read.error);
       outcome = outcomeOf(read.error);
       unreadableRoomCopy(metadata, read.error);
@@ -267,7 +267,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     const read = readSnapshot(metadata);
 
     // Step 1: a copy this build cannot read is never overwritten.
-    if (!read.ok) {
+    if (!read.isOk()) {
       console.error('Muster Roll could not read the room copy', read.error);
       unreadableRoomCopy(metadata, read.error);
 
@@ -295,7 +295,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     const value = encodeSnapshot(written.g, written.records);
 
     // Step 4: over the limit the previous copy stays.
-    if (!value.ok || roomMetadataBytes(metadata, value.value) > ROOM_METADATA_BYTE_LIMIT) {
+    if (!value.isOk() || roomMetadataBytes(metadata, value.value) > ROOM_METADATA_BYTE_LIMIT) {
       failRoomCopy(metadata);
 
       return;
@@ -344,13 +344,13 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     const check = readSnapshot(readBack);
 
     // A copy of a higher generation holds none of this client's records, so it is not saved.
-    if (check.ok && check.value !== null && compareGenerations(check.value.g, written.g) > 0) {
+    if (check.isOk() && check.value !== null && compareGenerations(check.value.g, written.g) > 0) {
       options.adopt(check.value);
 
       return;
     }
 
-    if (!check.ok || !readBackHolds(written, check.value)) {
+    if (!check.isOk() || !readBackHolds(written, check.value)) {
       failRoomCopy(readBack);
 
       return;
@@ -431,7 +431,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
 
     const current = readSnapshot(metadata);
 
-    if (!current.ok && current.error === 'newer-version') {
+    if (!current.isOk() && current.error === 'newer-version') {
       console.error('Muster Roll could not replace the room copy of a newer build');
       options.newerVersion();
 
@@ -446,7 +446,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     const written: Snapshot = { g: generation, records: [...options.records()] };
     const value = encodeSnapshot(written.g, written.records);
 
-    if (!value.ok || roomMetadataBytes(metadata, value.value) > ROOM_METADATA_BYTE_LIMIT) {
+    if (!value.isOk() || roomMetadataBytes(metadata, value.value) > ROOM_METADATA_BYTE_LIMIT) {
       return null;
     }
 
@@ -469,14 +469,14 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
 
     const check = readSnapshot(readBack);
 
-    return check.ok && readBackHolds(written, check.value) ? readBack : null;
+    return check.isOk() && readBackHolds(written, check.value) ? readBack : null;
   }
 
   // Adopts a room copy of a generation above `generation`, and says whether there was one.
   function adoptedHigherCopy(metadata: JsonObject, generation: Generation): boolean {
     const read = readSnapshot(metadata);
 
-    if (!read.ok || read.value === null || compareGenerations(read.value.g, generation) <= 0) {
+    if (!read.isOk() || read.value === null || compareGenerations(read.value.g, generation) <= 0) {
       return false;
     }
 
@@ -502,7 +502,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
 
     const read = readSnapshot(metadata);
 
-    if (!read.ok || read.value === null || compareGenerations(read.value.g, generation) >= 0) {
+    if (!read.isOk() || read.value === null || compareGenerations(read.value.g, generation) >= 0) {
       noteRoomCopy(metadata, false);
 
       return;
@@ -564,7 +564,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     }
 
     const read = readSnapshot(metadata);
-    const copy = read.ok ? read.value : null;
+    const copy = read.isOk() ? read.value : null;
 
     if (copy !== null && compareGenerations(copy.g, options.generation()) > 0) {
       options.adopt(copy);
@@ -578,7 +578,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     const usage = roomCopyUsage(metadata);
     const read = readSnapshot(metadata);
 
-    older = !read.ok && read.error === 'older-version';
+    older = !read.isOk() && read.error === 'older-version';
     exists = copyExists;
     used = usage.usedBytes;
     free = usage.freeBytes;

@@ -94,7 +94,7 @@ function staleReplyFragments(
   let fragments = fragmentRecord(current, reserveBytes);
 
   for (;;) {
-    if (!fragments.ok) {
+    if (!fragments.isOk()) {
       return null;
     }
 
@@ -110,8 +110,8 @@ function staleReplyFragments(
     reserveBytes = jsonByteLength(numbered) - jsonByteLength(current) + 1;
     const next = fragmentRecord(current, reserveBytes);
 
-    if (!next.ok || next.value.length === total) {
-      return next.ok ? next.value : null;
+    if (!next.isOk() || next.value.length === total) {
+      return next.isOk() ? next.value : null;
     }
 
     fragments = next;
@@ -142,7 +142,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   async function handleRoomMessage(event: RoomProtocolEvent): Promise<void> {
     const parsed = parseRoomMessage(event.data);
 
-    if (!parsed.ok) {
+    if (!parsed.isOk()) {
       if (parsed.error === 'newer-version') {
         ports.onNewerVersion();
       }
@@ -481,7 +481,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   function receiveState(message: StateMessage, sender: string, relation: GenerationRelation): void {
     const records = decodeStateRecords(message.records);
 
-    if (!records.ok) {
+    if (!records.isOk()) {
       console.error('Muster Roll dropped a state message it could not read');
 
       return;

@@ -5,7 +5,7 @@ import { fragmentRecords } from '@/core/message-size';
 import type { JsonValue } from '@/core/json';
 import { compareGenerations } from '@/core/merge';
 import { recordSchema, type VersionedRecord } from '@/core/records';
-import { err, ok, type Result } from '@/core/result';
+import { Result } from 'better-result';
 import { generationSchema, type Generation } from '@/core/storage-key';
 import type { PlayerRole } from '@/core/visibility';
 
@@ -236,20 +236,20 @@ export function parseRoomMessage(candidate: JsonValue): Result<RoomMessage, Room
   const envelope = envelopeSchema.safeParse(candidate);
 
   if (!envelope.success) {
-    return err('invalid-message');
+    return Result.err('invalid-message');
   }
 
   if (envelope.data.v > FORMAT_VERSION) {
-    return err('newer-version');
+    return Result.err('newer-version');
   }
 
   if (envelope.data.v < FORMAT_VERSION) {
-    return err('older-version');
+    return Result.err('older-version');
   }
 
   const parsed = roomMessageSchema.safeParse(candidate);
 
-  return parsed.success ? ok(parsed.data) : err('invalid-message');
+  return parsed.success ? Result.ok(parsed.data) : Result.err('invalid-message');
 }
 
 export function generationRelation(message: Generation, own: Generation): GenerationRelation {

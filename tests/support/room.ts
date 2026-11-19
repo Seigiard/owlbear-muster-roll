@@ -216,7 +216,7 @@ export function materializedRecords(
 ): StoredRecord[] {
   const preset = parsePresetFile(presetText);
 
-  const singleRoots = preset.ok
+  const singleRoots = preset.isOk()
     ? preset.value.templates.flatMap((template) =>
         template.repeat === undefined
           ? [record(`blk:${template.id}`, { order: 0, cells: {} })]

@@ -1,3 +1,4 @@
+import { Result } from 'better-result';
 import { fixtureRecord } from '../../tests/support/block-fixtures';
 import { describe, expect, test } from 'bun:test';
 import {
@@ -257,7 +258,7 @@ describe('v4 token-cell link records', () => {
     const parsed = parseRecord(candidate);
 
     // #then
-    expect(parsed).toEqual({ ok: true, value: candidate });
+    expect(parsed).toEqual(Result.ok(candidate));
   });
 
   test('accepts a link to a token cell in a repeat block path', () => {
@@ -273,6 +274,6 @@ describe('v4 token-cell link records', () => {
     const parsed = parseRecord(candidate);
 
     // #then
-    expect(parsed).toEqual({ ok: true, value: candidate });
+    expect(parsed).toEqual(Result.ok(candidate));
   });
 });
