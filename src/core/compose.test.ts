@@ -3,7 +3,7 @@ import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
 import { parseCommand } from '@/core/ui-messages';
 import { describe, expect, test } from 'bun:test';
-import { createComposers } from './composers';
+import { createComposers } from './compose';
 
 const PRESET: Preset = {
   v: 4,

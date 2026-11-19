@@ -7,7 +7,7 @@ import { decodePreset, encodePreset, type Preset } from '@/core/preset';
 import { presetDataSchema, type FieldValue, type VersionedRecord } from '@/core/records';
 import type { RejectMessage } from '@/core/room-messages';
 import type { Command, RejectionReason } from '@/core/ui-messages';
-import { createComposers } from '@/replica/composers';
+import { createComposers } from '@/core/compose';
 import {
   createPendingEdits,
   type PendingEdits,
