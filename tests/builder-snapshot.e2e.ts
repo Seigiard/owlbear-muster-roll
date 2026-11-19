@@ -219,11 +219,7 @@ test('opens and downloads the snapshot with both set sheets, the single sheet, v
   // #when
   await openSnapshot(page, JSON.stringify(SNAPSHOT));
   // #then
-  expect(await sidebar(page).getByRole('tab').allTextContents()).toEqual([
-    'Аня',
-    'Брок',
-    'Инвентарь',
-  ]);
+  await expect(sidebar(page).getByRole('tab')).toHaveText(['Аня', 'Брок', 'Инвентарь']);
   await expect(preview(page).getByRole('button', { name: 'Добавить: Экипаж' })).toHaveText(
     '+ Добавить',
   );
@@ -600,11 +596,7 @@ test('reload restores the preset and snapshot without a replacement prompt', asy
   await page.reload();
   // #then
   await expect(page.getByRole('row', { name: 'Экипаж · Набор', exact: true })).toBeVisible();
-  expect(await sidebar(page).getByRole('tab').allTextContents()).toEqual([
-    'Аня',
-    'Брок',
-    'Инвентарь',
-  ]);
+  await expect(sidebar(page).getByRole('tab')).toHaveText(['Аня', 'Брок', 'Инвентарь']);
   await expect(preview(page).getByRole('group', { name: 'Сила' })).toHaveText('12');
   await expect(page.getByRole('group', { name: /Черновик будет заменён/ })).toHaveCount(0);
 });
@@ -694,7 +686,7 @@ test('duplicate template ids keep each sidebar entry mapped to its document temp
   await templateId.fill('inventory');
   await templateId.blur();
   // #then
-  expect(await sidebar(page).getByRole('tab').allTextContents()).toEqual(['Образец', 'Инвентарь']);
+  await expect(sidebar(page).getByRole('tab')).toHaveText(['Образец', 'Инвентарь']);
   // #when
   await sidebar(page).getByRole('tab', { name: 'Инвентарь', exact: true }).click();
   // #then

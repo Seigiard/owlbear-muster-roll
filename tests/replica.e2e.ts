@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import type { JsonValue } from '@/core/json';
 import type { VersionedRecord } from '@/core/records';
-import { openBackground, presetRecord, STORAGE_PREFIX } from './support/room';
+import { openBackground, presetRecord, STORAGE_PREFIX, waitForElapsed } from './support/room';
 
 const CHANNEL = 'app.muster-roll/ui';
 const LOCAL_SAVE_FAILED = 'Не удалось сохранить в браузере. Скачайте снимок.';
@@ -149,7 +149,7 @@ test('a whole record in a command has no effect', async ({ page, context }) => {
       l: [1, 'seed'],
     },
   });
-  await page.waitForTimeout(200);
+  await waitForElapsed(200);
   // #then
   expect(await projectedSheets(page, 'after-whole')).toEqual([]);
 });
@@ -164,7 +164,7 @@ test('a command delivered twice has one effect', async ({ page, context }) => {
   await sendCommand(page, 'echoed');
   await sendCommand(page, 'echoed');
   await expect.poll(() => projectedSheets(page, 'echo-check')).toEqual(['blk:echoed']);
-  await page.waitForTimeout(200);
+  await waitForElapsed(200);
   // #then
   expect(await projectedSheets(page, 'echo-final')).toEqual(['blk:echoed']);
 });

@@ -105,9 +105,10 @@ test('Settings shows "Не сохранена" with the free size before any cop
 }) => {
   // #given
   const a = await openClient(context, { client: 'a', device: 'a', ...QUICK }, RECORDS);
+  await expect(strength(a.window)).toHaveValue('14');
   await a.window.getByRole('tab', { name: SETTINGS }).click();
   // The room metadata is `{}`: 2 bytes.
-  const before = await roomCopyText(a.window).textContent();
+  await expect(roomCopyText(a.window)).toHaveText('Не сохранена. Свободно 15,5 кБ.');
   await a.window.getByRole('tab', { name: 'Брок' }).click();
   // #when
   await strength(a.window).fill('18');
@@ -119,7 +120,6 @@ test('Settings shows "Не сохранена" with the free size before any cop
   await expect(roomCopyText(a.window)).toHaveText(
     `Сохранена. Занято ${kilobytes(total - 2)} кБ, свободно ${kilobytes(LIMIT - total)} кБ.`,
   );
-  expect(before).toBe('Не сохранена. Свободно 15,5 кБ.');
 });
 
 test('a copy that does not fit next to the other metadata is not written, and the banner and Settings say so', async ({

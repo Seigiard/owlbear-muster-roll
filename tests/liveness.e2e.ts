@@ -13,6 +13,7 @@ import {
   type ClientParams,
   type RoomClient,
   type StoredRecord,
+  waitForElapsed,
 } from './support/room';
 
 const NO_GM = 'Нет связи с ГМ. Правки ждут его и пропадут, если закрыть вкладку.';
@@ -96,7 +97,7 @@ test('a player sees the no-GM banner once the GM pages close, and loses it when 
   const banner = player.window.getByRole('status');
   await expect(player.window.getByRole('tab', { name: 'Брок' })).toBeVisible();
   // Two timeouts with only pings and their answers from the GM.
-  await player.window.waitForTimeout(2 * GM_LINK_TIMEOUT_MS);
+  await waitForElapsed(2 * GM_LINK_TIMEOUT_MS);
   await expect(banner).toHaveText('');
   // #when
   await gm.background.close({ runBeforeUnload: true });
@@ -115,7 +116,7 @@ test('a GM alone in the room never shows the no-GM banner, though its link is of
   // #given
   const gm = await openGm(context);
   // #when
-  await gm.window.waitForTimeout(2 * GM_LINK_TIMEOUT_MS);
+  await waitForElapsed(2 * GM_LINK_TIMEOUT_MS);
   // #then
   expect({
     banner: await gm.window.getByRole('status').textContent(),

@@ -176,9 +176,18 @@ export async function openBackground(
   path = '/background.html',
 ): Promise<Page> {
   const background = await context.newPage();
-  await background.goto(path, { waitUntil: 'networkidle' });
+  await background.goto(path);
+  await expect(background).toHaveTitle('Muster Roll background');
 
   return background;
+}
+
+export async function waitForElapsed(durationMs: number): Promise<void> {
+  const startedAt = Date.now();
+
+  await expect
+    .poll(() => Date.now() - startedAt, { intervals: [10, 25, 50], timeout: durationMs + 1000 })
+    .toBeGreaterThanOrEqual(durationMs);
 }
 
 // The window loads first, so the storage it seeds is what the background reads at start.
