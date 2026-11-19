@@ -11,6 +11,7 @@ import type { PlayerRole, StorageOperation } from '@/platform/ports';
 import type { Wait } from '@/platform/send-queue';
 import {
   createRoomRig,
+  diagnostics,
   pause,
   send,
   sendWire,
@@ -651,15 +652,17 @@ describe('gate', () => {
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
-    const errors = spyOn(console, 'error');
     await startClient(room, 'gm-b');
     // #when
     wire.post('gm-b', message);
     await afterMarker(wire.post, 'gm-b', gm);
     // #then
-    expect({ shown: shown(gm, 'blk:lisa'), errors: errors.mock.calls }).toEqual({
+    expect({
+      shown: shown(gm, 'blk:lisa'),
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
+    }).toEqual({
       shown: undefined,
-      errors: [],
+      diagnostics: ['message-rejected'],
     });
   });
 });
@@ -670,7 +673,6 @@ describe('remote record', () => {
     const room = roomRig.openRoom();
     const wire = listen(room);
     const gm = await startClient(room, 'gm-a');
-    spyOn(console, 'error').mockImplementation(() => undefined);
     await startClient(room, 'gm-b');
     gm.platform.setFailingStorageOperations(['write']);
     // #when
@@ -681,10 +683,12 @@ describe('remote record', () => {
       shown: shown(gm, 'blk:lisa'),
       stored: storedRecord(gm, 'blk:lisa'),
       notices: gm.store.$notices.get(),
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
     }).toEqual({
       shown: sheet('lisa', 1, 'gm-b'),
       stored: null,
       notices: ['local-save-failed'],
+      diagnostics: ['StorageFailure'],
     });
   });
   test('that loses to the local one sends no delta and writes nothing', async () => {
@@ -708,7 +712,6 @@ describe('remote record', () => {
   });
   test('an unchanged winner does not read failed persistence or raise a notice', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     const wire = listen(room);
     const local = sheet('brok', 5, 'seed');
@@ -722,7 +725,8 @@ describe('remote record', () => {
     expect({
       shown: shown(gm, local.k),
       notices: gm.store.$notices.get(),
-    }).toEqual({ shown: local, notices: [] });
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
+    }).toEqual({ shown: local, notices: [], diagnostics: [] });
   });
 });
 
@@ -731,7 +735,6 @@ describe('GM whose storage could not be read', () => {
     // #given
     const room = roomRig.openRoom();
     const wire = listen(room);
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const gm = await startClient(room, 'gm-a', { failingStorage: ['list'], seeded: [] });
     // #when: a new sheet needs a preset, and the GM holds none.
     send(gm, {
@@ -748,7 +751,10 @@ describe('GM whose storage could not be read', () => {
     send(gm, rename('lisa', 'Лиза Смелая'));
     await waitUntil(() => shown(gm, 'blk:lisa') !== undefined);
     // #then
-    expect(wire.heard).toEqual([]);
+    expect({ heard: wire.heard, diagnostics: diagnostics(gm).map(({ tag }) => tag) }).toEqual({
+      heard: [],
+      diagnostics: ['StorageFailure'],
+    });
   });
 });
 
@@ -767,15 +773,19 @@ describe('remote record too large for one message', () => {
       l: [1, 'seed'],
     };
 
-    spyOn(console, 'error').mockImplementation(() => undefined);
     await startClient(room, 'gm-b');
     // #when
     wire.post('gm-b', commit([huge, sheet('lisa', 1, 'gm-b')]));
     await waitUntil(() => shown(gm, 'blk:lisa') !== undefined);
     // #then
-    expect({ shown: shown(gm, huge.k), stored: storedRecord(gm, huge.k) }).toEqual({
+    expect({
+      shown: shown(gm, huge.k),
+      stored: storedRecord(gm, huge.k),
+      diagnostics: diagnostics(gm).map(({ tag }) => tag),
+    }).toEqual({
       shown: BROK,
       stored: BROK,
+      diagnostics: ['record-too-large'],
     });
   });
 });

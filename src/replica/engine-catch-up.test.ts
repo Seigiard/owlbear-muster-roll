@@ -1,6 +1,6 @@
 import { Result } from 'better-result';
 import { fixturePatch } from '../../tests/support/block-fixtures';
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import { recordSchema, type VersionedRecord } from '@/core/records';
@@ -253,7 +253,6 @@ describe('start', () => {
   });
   test('a GM client whose party read fails waits for answers, then the timeout', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
 
     const failingParty = (platform: MockPlatform): MockPlatform => ({
@@ -366,7 +365,6 @@ describe('engine catch-up decisions', () => {
   });
   test('still enters catch-up when the persisted generation cannot be read again', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     room.join(GHOST, 'GM');
 
@@ -386,7 +384,6 @@ describe('engine catch-up decisions', () => {
   });
   test('a GM without readable persistence can re-enter catch-up', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'gm-a', {
@@ -530,7 +527,6 @@ describe('answer', () => {
   });
   test('a GM client whose storage reads failed at start does not answer', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
 
     const failingReads = (platform: MockPlatform): MockPlatform => {
@@ -549,7 +545,6 @@ describe('answer', () => {
   });
   test('a state that cannot be read does not stop a live GM from answering', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     await startClient(room, 'gm-a', {
       timing: { stateAnswerDelayMinMs: 60, stateAnswerDelayMaxMs: 60 },
@@ -1374,7 +1369,6 @@ describe('player visibility', () => {
   });
   test('a failed storage probe on promotion keeps persistence disabled and shows the notice', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
 
     const client = await startClient(room, 'player-p', {
@@ -1452,7 +1446,6 @@ describe('player visibility', () => {
   });
   test('persists promotion data once, not on every later catch-up', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     const client = await answeredPlayer(room, 100);
     client.platform.setRole('GM');

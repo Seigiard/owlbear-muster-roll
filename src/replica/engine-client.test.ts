@@ -25,6 +25,7 @@ import type { PlayerRole, SendResult } from '@/platform/ports';
 import type { ReplicaEngine } from '@/replica/engine';
 import {
   createRoomRig,
+  diagnostics,
   pause,
   RIG_TIMING,
   sendWire,
@@ -124,10 +125,6 @@ type Aftermath = {
 
 let generatedIds = 0;
 const roomRig = createRoomRig({ timing: { catchUpTimeoutMs: 200 } });
-
-function silenceErrors(): void {
-  spyOn(console, 'error').mockImplementation(() => undefined);
-}
 
 function createRig(
   role: PlayerRole = 'GM',
@@ -1528,7 +1525,6 @@ describe('sheet-delete', () => {
     // #given
     const rig = createRig();
     const setItem = rig.platform.storage.setItem;
-    silenceErrors();
 
     for (const record of [
       {
@@ -1554,6 +1550,7 @@ describe('sheet-delete', () => {
 
     sendWire(first.client, { type: 'sheet-delete', sheetId: 'brok' });
     await waitUntil(() => deltas(rig).length === 1);
+    const firstDiagnostics = diagnostics({ store: first.store }).map(({ tag }) => tag);
     failing.mockRestore();
     engine.stop();
     first.client.stop();
@@ -1567,12 +1564,14 @@ describe('sheet-delete', () => {
     expect({
       reloaded,
       stored: byKey(storedRecords(rig)).map((record) => [record.k, record.d]),
+      diagnostics: firstDiagnostics,
     }).toEqual({
       reloaded: { set: 'pc', order: 0, cells: { str: [3, 1, 'z'] } },
       stored: [
         ['acl:brok:p1', null],
         ['blk:brok', null],
       ],
+      diagnostics: ['StorageFailure'],
     });
   });
   test('splits a delete over the message limit into parts in sequence that all arrive', async () => {
@@ -1613,7 +1612,6 @@ describe('sheet-delete', () => {
   test('raises the notice when a tombstone cannot be saved and still removes the sheet', async () => {
     // #given
     const rig = createRig();
-    silenceErrors();
     seedRecords(rig, sheet('brok'));
     await startEngine(rig);
     const view = await openAndLoad(rig);
@@ -1623,9 +1621,14 @@ describe('sheet-delete', () => {
     await waitUntil(() => deltas(rig).length === 1);
     await pause(5);
     // #then
-    expect({ window: recordsOf(view.store), notices: view.store.$notices.get() }).toEqual({
+    expect({
+      window: recordsOf(view.store),
+      notices: view.store.$notices.get(),
+      diagnostics: diagnostics({ store: view.store }).map(({ tag }) => tag),
+    }).toEqual({
       window: [{ k: 'blk:brok', d: null, c: 2, a: 'mock-connection', l: [1, 'seed'] }],
       notices: ['local-save-failed'],
+      diagnostics: ['StorageFailure'],
     });
   });
 });
@@ -1634,7 +1637,6 @@ describe('write failure', () => {
   test('keeps the value in the replica and raises the notice', async () => {
     // #given
     const rig = createRig();
-    silenceErrors();
     seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
     const view = await openAndLoad(rig);
@@ -1646,15 +1648,16 @@ describe('write failure', () => {
     expect({
       sheet: view.store.$records.get().get('blk:brok')?.d,
       notices: view.store.$notices.get(),
+      diagnostics: diagnostics({ store: view.store }).map(({ tag }) => tag),
     }).toEqual({
       sheet: { set: 'pc', order: 0, cells: {} },
       notices: ['local-save-failed'],
+      diagnostics: ['StorageFailure'],
     });
   });
   test('clears the notice when the same key later writes', async () => {
     // #given
     const rig = createRig();
-    silenceErrors();
     seedRecords(rig, PRESET_RECORD);
     await startEngine(rig);
     const view = await openAndLoad(rig);
@@ -1666,14 +1669,19 @@ describe('write failure', () => {
     sendWire(view.client, { type: 'sheet-delete', sheetId: 'flaky' });
     await waitUntil(() => view.store.$notices.get().length === 0);
     // #then
-    expect(rig.platform.storage.getItem(storageKey('blk:flaky'))).toEqual(
-      Result.ok('{"k":"blk:flaky","d":null,"c":2,"a":"mock-connection","l":[1,"mock-connection"]}'),
-    );
+    expect({
+      stored: rig.platform.storage.getItem(storageKey('blk:flaky')),
+      diagnostics: diagnostics({ store: view.store }).map(({ tag }) => tag),
+    }).toEqual({
+      stored: Result.ok(
+        '{"k":"blk:flaky","d":null,"c":2,"a":"mock-connection","l":[1,"mock-connection"]}',
+      ),
+      diagnostics: ['StorageFailure'],
+    });
   });
   test('keeps the notice while another failed or corrupt key remains', async () => {
     // #given
     const rig = createRig();
-    silenceErrors();
     seedRecords(rig, PRESET_RECORD);
     seed(rig, 'blk:bad', '{not json');
     await startEngine(rig);
@@ -1687,7 +1695,13 @@ describe('write failure', () => {
     await waitUntil(() => deltas(rig).length === 2);
     await pause(5);
     // #then
-    expect(view.store.$notices.get()).toEqual(['local-save-failed']);
+    expect({
+      notices: view.store.$notices.get(),
+      diagnostics: diagnostics({ store: view.store }).map(({ tag }) => tag),
+    }).toEqual({
+      notices: ['local-save-failed'],
+      diagnostics: ['message-rejected', 'StorageFailure'],
+    });
   });
   // The failure ends before the command, or `store.write` would refuse on its own read. The command
   // is a preset upload, as the failed read leaves no preset for a sheet to need.
@@ -1696,7 +1710,6 @@ describe('write failure', () => {
     async (operation) => {
       // #given
       const rig = createRig();
-      silenceErrors();
       seedRecords(rig, PRESET_RECORD, sheet('saved'));
       rig.platform.setFailingStorageOperations([operation]);
       const setItem = spyOn(rig.platform.storage, 'setItem');
@@ -1711,7 +1724,8 @@ describe('write failure', () => {
       expect({
         notices: view.store.$notices.get(),
         calls: setItem.mock.calls.length,
-      }).toEqual({ notices: ['local-save-failed'], calls: 0 });
+        diagnostics: diagnostics({ store: view.store }).map(({ tag }) => tag),
+      }).toEqual({ notices: ['local-save-failed'], calls: 0, diagnostics: ['StorageFailure'] });
     },
   );
   test('starts with an empty read-only replica when the highest-generation read alone fails', async () => {
@@ -1732,7 +1746,6 @@ describe('write failure', () => {
       },
     }));
 
-    silenceErrors();
     seedRecords(rig, PRESET_RECORD);
     // #when
     const [startup] = await Promise.allSettled([startEngine(rig)]);
@@ -1742,7 +1755,14 @@ describe('write failure', () => {
       startup: startup.status,
       records: view === undefined ? null : recordsOf(view.store),
       notices: view === undefined ? null : view.store.$notices.get(),
-    }).toEqual({ startup: 'fulfilled', records: [], notices: ['local-save-failed'] });
+      diagnostics:
+        view === undefined ? null : diagnostics({ store: view.store }).map(({ tag }) => tag),
+    }).toEqual({
+      startup: 'fulfilled',
+      records: [],
+      notices: ['local-save-failed'],
+      diagnostics: ['StorageFailure'],
+    });
   });
 });
 

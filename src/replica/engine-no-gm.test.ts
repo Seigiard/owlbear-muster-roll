@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
@@ -222,7 +222,6 @@ describe('a player alone reads the room copy', () => {
   });
   test('a copy of a newer build: outcome newer, the new-version notice, nothing read', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], 5) });
     // #when
@@ -238,7 +237,6 @@ describe('a player alone reads the room copy', () => {
     'a copy of the older format %i: outcome older, no notice for a player, nothing read',
     async (format) => {
       // #given
-      spyOn(console, 'error').mockImplementation(() => undefined);
       const room = roomRig.openRoom();
       room.room.setMetadata({ [KEY]: copyValue(INITIAL, [PRESET_RECORD, BROK], format) });
       // #when
@@ -253,7 +251,6 @@ describe('a player alone reads the room copy', () => {
   );
   test('a copy that does not decode: outcome unreadable, no notice for a player', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     room.room.setMetadata({ [KEY]: { v: 4, data: 'bm90IGRlZmxhdGU=' } });
     // #when
@@ -505,7 +502,6 @@ describe('a GM returns', () => {
 describe('outcomes with nothing to read', () => {
   test('a failed metadata read with no outcome yet shows the copy as unreadable', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
 
     // #when

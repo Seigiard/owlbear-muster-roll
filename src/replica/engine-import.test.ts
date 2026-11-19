@@ -1,6 +1,6 @@
 import { fixtureSnapshotCells, fixtureSnapshotBlocks } from '../../tests/support/block-fixtures';
 import { fixtureRecord } from '../../tests/support/block-fixtures';
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { inflateSync, strFromU8 } from 'fflate';
 import type { JsonValue } from '@/core/json';
 import { encodePreset, type Preset } from '@/core/preset';
@@ -580,7 +580,6 @@ describe('import', () => {
   });
   test('does not write over a room copy of a newer build, and raises the new-version notice', async () => {
     // #given: the copy appears after catch-up, so only the import reads it.
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     const gm = await startClient(room, 'gm-a', { until: 'live' });
     const newer = { v: 5, data: 'from a newer build' };
@@ -593,7 +592,6 @@ describe('import', () => {
   });
   test('writes over a room copy of an older format, and the older-format notice goes', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     room.room.setMetadata({ [KEY]: copyValue(INITIAL, [], 1) });
     const gm = await startClient(room, 'gm-a', { until: 'live' });
@@ -730,7 +728,6 @@ describe('import', () => {
   });
   test('a failed save stops before the room copy and reset, shows the local-save notice and changes nothing', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
 
     // The marker and two records save, then the storage is full.
@@ -763,7 +760,6 @@ describe('import', () => {
   });
   test('the notice of a failed import save goes with the next record that saves', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
 
     const gm = await startClient(room, 'gm-a', {
@@ -1365,7 +1361,6 @@ describe('adoption', () => {
 describe('adoption guards', () => {
   test('keeps an unreadable-storage notice when a player-style adoption replaces the replica', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     const generation = newGenerationOf('gm-a');
     const anya = importedRecord('gm-a', 'blk:anya', { set: 'pc', order: 0 });
@@ -1436,7 +1431,6 @@ describe('adoption guards', () => {
   });
   test('an adopter whose save fails keeps its old generation, shows the notice and stays incomplete', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     const importer = await startClient(room, 'gm-a', { until: 'live' });
 

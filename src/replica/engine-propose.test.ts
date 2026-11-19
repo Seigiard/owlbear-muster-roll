@@ -242,7 +242,6 @@ describe('a GM client answers a proposal', () => {
   });
   test('an idempotent proposal does not owe an unchanged room-copy write', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     let metadataWrites = 0;
     let rejectMetadata = false;
@@ -302,7 +301,6 @@ describe('a GM client answers a proposal', () => {
   });
   test('a repeat tombstone with no links does not owe an unchanged room-copy write', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     let metadataWrites = 0;
 
@@ -1164,7 +1162,6 @@ describe('a GM client answers a proposal', () => {
   });
   test('whose storage could not be read: neither commits nor rejects', async () => {
     // #given
-    spyOn(console, 'error').mockImplementation(() => undefined);
     const room = roomRig.openRoom();
     await startClient(room, 'gm-a', {
       platform: (platform) => {

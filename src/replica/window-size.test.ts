@@ -1,15 +1,7 @@
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import type { WindowSize } from '@/core/preset';
 import { createMockPlatform } from '@/platform/current';
 import { createWindowSizer } from './window-size';
-
-const cleanups: (() => void)[] = [];
-
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
 
 describe('createWindowSizer', () => {
   test('asks for a size once while it stays the same', () => {
@@ -43,12 +35,18 @@ describe('createWindowSizer', () => {
     // #given
     const platform = createMockPlatform();
     let failures = 0;
+    const reported: string[] = [];
 
-    const sizer = createWindowSizer(platform.action, () => {
-      failures += 1;
-    });
+    const sizer = createWindowSizer(
+      {
+        ...platform.action,
+        report: (failure: { _tag: string }) => reported.push(failure._tag),
+      },
+      () => {
+        failures += 1;
+      },
+    );
 
-    const logged = silenceErrors();
     platform.failNextActionSize();
     sizer.apply({ width: 900, height: 700 });
     await settle();
@@ -57,14 +55,14 @@ describe('createWindowSizer', () => {
     // #then
     expect({
       sizes: platform.actionSizes(),
-      logged: logged.mock.calls.length,
+      reported,
       failures,
     }).toEqual({
       sizes: [
         { width: 900, height: 700 },
         { width: 900, height: 700 },
       ],
-      logged: 1,
+      reported: ['message-rejected'],
       failures: 1,
     });
   });
@@ -72,34 +70,34 @@ describe('createWindowSizer', () => {
     // #given
     const platform = createMockPlatform();
     let failures = 0;
+    const reported: string[] = [];
 
-    const sizer = createWindowSizer(platform.action, () => {
-      failures += 1;
-    });
+    const sizer = createWindowSizer(
+      {
+        ...platform.action,
+        report: (failure: { _tag: string }) => reported.push(failure._tag),
+      },
+      () => {
+        failures += 1;
+      },
+    );
 
-    silenceErrors();
     platform.failNextActionSize();
     sizer.apply({ width: 900, height: 700 });
     // #when
     sizer.apply({ width: 900, height: 700 });
     await settle();
     // #then
-    expect({ sizes: platform.actionSizes(), failures }).toEqual({
+    expect({ sizes: platform.actionSizes(), failures, reported }).toEqual({
       sizes: [
         { width: 900, height: 700 },
         { width: 900, height: 700 },
       ],
       failures: 0,
+      reported: ['message-rejected'],
     });
   });
 });
-
-function silenceErrors() {
-  const logged = spyOn(console, 'error').mockImplementation(() => {});
-  cleanups.push(() => logged.mockRestore());
-
-  return logged;
-}
 
 function settle(): Promise<void> {
   return new Promise((resolve) => {
