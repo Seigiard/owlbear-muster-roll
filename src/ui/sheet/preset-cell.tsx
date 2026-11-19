@@ -239,6 +239,7 @@ function CellContent({
 // Named by the field's label, as the GM's control is, so a screen reader says what the value is.
 function ReadOnlyValue({ field, label, values }: Omit<FieldProps, 'place' | 'pending'>): ReactNode {
   const value = values.get(field.id);
+  const preview = useContext(CellPreviewContext);
 
   if (field.type === 'check') {
     const checked = isChecked(value);
@@ -256,7 +257,6 @@ function ReadOnlyValue({ field, label, values }: Omit<FieldProps, 'place' | 'pen
     );
   }
 
-  const preview = useContext(CellPreviewContext);
   const text = valueText(value);
 
   return (
