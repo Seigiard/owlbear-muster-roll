@@ -45,11 +45,11 @@ VARIABLES
     xLife,      \* "none", "present" or "gone"
     xGen,       \* the importer's generation: 0 before it imports
     copyGen,    \* the generation the room copy holds
-    pinged,     \* [c -> BOOLEAN] ghost: a ping went out since gm-silence was last armed
+    pinged,     \* [c -> BOOLEAN] a ping went out since gm-silence was last armed (`pingSentAt`)
     owed,       \* [c -> set of r] ghost: requests this GM heard and has not answered or seen answered
     dropped,    \* [c -> set of r] ghost: owed requests whose answer timer fired while adopting
     lastHeard,  \* [c -> sender] ghost: the GM client whose message last armed gm-silence
-    badOffline, \* [c -> {"no", "visible", "hidden"}] ghost: gm-silence fired while a GM reply was due
+    badOffline, \* [c -> {"no", "visible", "hidden"}] ghost: gm-silence took the link offline while a GM reply was due
     ownDropped  \* [c -> BOOLEAN] ghost: a `state` for the client's active `r` made it take a new `r`
 
 vars == <<life, role, hidden, m, timers, reads, net, opens, returns, roleChanges,
@@ -254,7 +254,13 @@ StateRequested(M, r) ==
        ELSE ScheduleAnswer(M1, r)
 
 \* fired(timer): catchUpFired, and livenessFired for ping and gm-silence.
-Fired(c, M, k) ==
+\* gm-silence takes the link offline only when `silenceAnswered`: it fires on
+\* time (`late` is a page whose timers stopped) and its last ping is at least a
+\* quarter of the timeout old (`pingOld`). Otherwise it keeps the link, pings
+\* and arms itself again (`recheckGm`, TASK-120). The Mutation
+\* "silence-ignores-pause" takes the link offline as before the fix;
+\* "silence-ignores-ping-age" checks lateness only.
+Fired(c, M, k, late, pingOld) ==
     CASE k.kind = "catch-up" ->
             IF M.phase \notin CatchingUp THEN Same(M)
             ELSE IF M.phase = "adopting"
@@ -262,7 +268,11 @@ Fired(c, M, k) ==
                  ELSE Leave(c, M, "unanswered")
       [] k.kind = "ping" ->
             Res(M, <<D("ping")>> \o (IF Mutated("ping-not-rearmed") THEN <<>> ELSE <<Arm(PK)>>))
-      [] k.kind = "gm-silence" -> SetGmLink(c, M, "offline", FALSE)
+      [] k.kind = "gm-silence" ->
+            IF M.link = "online" /\ ~Mutated("silence-ignores-pause")
+               /\ (late \/ (~pingOld /\ ~Mutated("silence-ignores-ping-age")))
+            THEN Res(M, <<Arm(SK), D("ping")>>)
+            ELSE SetGmLink(c, M, "offline", FALSE)
       [] k.kind = "request" ->
             IF M.phase \in CatchingUp /\ Own(c, M) = k.r THEN RequestR(c, M, k.r) ELSE Same(M)
       [] k.kind = "answer" ->
@@ -411,13 +421,22 @@ AnsweringGm(c) ==
 Quiet(c) == ~\E msg \in net : msg.to = c \/ (msg.from = c /\ msg.t = "ping")
 
 \* Real delays the clockless model keeps. watch() arms ping at 1/2..3/4 of
-\* gmLinkTimeoutMs and gm-silence at the whole of it, and a reply takes far
-\* less than a quarter of it, so in a running page gm-silence fires only after
-\* a ping went out and every reply came back. `hidden` stands for a page whose
-\* timers stopped for a while (a frozen or suspended tab, a sleeping laptop):
-\* when it runs again, every overdue timer fires back to back, before any reply.
+\* gmLinkTimeoutMs and gm-silence at the whole of it; recheckGm pings and arms
+\* gm-silence at a quarter. So in a running page gm-silence fires after a ping.
+\* `hidden` stands for a page whose timers stopped for a while (a frozen or
+\* suspended tab, a sleeping laptop): when it runs again, every overdue timer
+\* fires back to back, before any reply, and its gm-silence fires more than a
+\* quarter late. It runs again from that gm-silence on (Fire). A page that
+\* wakes less than a quarter after its gm-silence came due is left out: its
+\* replies may still wait behind it.
 TimingOK(c, k) ==
-    k = SK => (hidden[c] \/ Mutated("silence-not-after-ping") \/ (pinged[c] /\ Quiet(c)))
+    k = SK => (hidden[c] \/ Mutated("silence-not-after-ping") \/ pinged[c])
+
+\* The clock, at a gm-silence: can its last ping be a quarter of the timeout
+\* old? A reply takes far less than a quarter, so in a running page an old
+\* ping's replies came back; a young one went out when the page woke.
+PingCanBeOld(c) ==
+    pinged[c] /\ (hidden[c] \/ Quiet(c) \/ Mutated("silence-not-after-ping"))
 
 (***************************************************************************)
 (* Actions                                                                 *)
@@ -490,14 +509,18 @@ RoleChange(c) ==
 \* catch-up-effects.ts arm's callback: the key is removed, then fired(timer) runs.
 Fire(c, k) ==
     /\ life[c] = "open" /\ k \in timers[c] /\ TimingOK(c, k)
-    /\ RunWithD(c, Fired(c, m[c], k), timers[c] \ {k}, reads[c], net, owed[c],
-                IF k.kind = "answer" /\ m[c].phase = "adopting"
-                THEN dropped[c] \cup {k.r} ELSE dropped[c])
+    /\ \E pingOld \in {o \in BOOLEAN : o => PingCanBeOld(c)} :
+        RunWithD(c, Fired(c, m[c], k, hidden[c], pingOld), timers[c] \ {k}, reads[c], net,
+                 owed[c],
+                 IF k.kind = "answer" /\ m[c].phase = "adopting"
+                 THEN dropped[c] \cup {k.r} ELSE dropped[c])
     /\ badOffline' =
-          IF k = SK /\ m[c].link = "online" /\ AnsweringGm(c) /\ ~(pinged[c] /\ Quiet(c))
+          IF k = SK /\ m[c].link = "online" /\ m'[c].link = "offline" /\ AnsweringGm(c)
+             /\ ~(pinged[c] /\ Quiet(c))
           THEN [badOffline EXCEPT ![c] = IF hidden[c] THEN "hidden" ELSE "visible"]
           ELSE badOffline
-    /\ UNCHANGED <<life, role, hidden, opens, returns, roleChanges, xLife, xGen, copyGen, lastHeard,
+    /\ hidden' = IF k = SK THEN [hidden EXCEPT ![c] = FALSE] ELSE hidden
+    /\ UNCHANGED <<life, role, opens, returns, roleChanges, xLife, xGen, copyGen, lastHeard,
                    ownDropped>>
 
 \* room-protocol.ts receive, after `await senderOf`: seeGeneration, admission,

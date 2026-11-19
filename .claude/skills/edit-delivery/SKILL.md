@@ -72,7 +72,7 @@ The owner's verdict, 2026-11-19: a real bug of low priority, TASK-119.
 | `PlayerEdits` | `command-routing.ts` `handlePlayerCommand` → `src/replica/pending-edits.ts` `edit` → `proposeEntry` → `rebuiltRecord`, `proposal-queue.ts` `proposedRecord`, `put` |
 | `QueueTakesPropose` | `proposal-queue.ts` `sendNow`'s compose, run by the `enqueue` option of `createPendingEdits` in `engine.ts` |
 | `ResendFires` | `proposal-queue.ts` `armResend` timer, through `platform/schedule.ts` `schedule` |
-| `GmLinkLost` | `catch-up-table.ts` `livenessFired` on `gm-silence` |
+| `GmLinkLost` | `catch-up-table.ts` `livenessFired` on `gm-silence` when `silenceAnswered` |
 | `GmBack` | `catch-up.ts` `heard` → `catch-up-table.ts` `livenessHeard` emits `gm-back` → `catch-up-effects.ts` `run` → `pendingEdits.gmBack()` → `resendAll`; in the same run `catchUpHeard` enters `gm-return` for a live player |
 | `CatchUpStarts`, `CatchUpEnds` | `engine.ts` `enterCatchUp` → `catchUpEnter`; `catch-up-table.ts` `leave` emits `caught-up` → `catch-up-effects.ts` → `engine.ts` `performCaughtUp` → `pending-edits.ts` `caughtUp`; the `state` answer merges first in the same handler (`room-protocol.ts` `receiveState`: `receiveRecords`, then `stateMerged`) |
 | `PlayerReceives` (commit) | `room-protocol.ts` `dispatchRoomMessage` `case 'commit'` → `answered`, then `engine.ts` `receiveRecords` → `recordsChanged` for a revoke |

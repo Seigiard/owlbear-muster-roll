@@ -198,8 +198,8 @@ ResendFires ==
   /\ UNCHANGED <<entry, pCell, pAllowed, catching, pLink, lastMinted, edits>>
   /\ UNCHANGED <<gmVars, toGM, toP, ghostVars, budgetVars>>
 
-\* catch-up-table.ts livenessFired on 'gm-silence': no GM-origin message for the timeout,
-\* so the liveness phase goes offline.
+\* catch-up-table.ts livenessFired on 'gm-silence': no GM-origin message for the timeout
+\* and none since a ping (silenceAnswered), so the liveness phase goes offline.
 GmLinkLost ==
   /\ pLink = "online"
   /\ ~gLive
