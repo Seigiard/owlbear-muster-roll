@@ -1,3 +1,4 @@
+import { schedule } from '@/platform/schedule';
 import { mutableJson, type JsonValue } from '@/core/json';
 import type { WindowSize } from '@/core/preset';
 import { Result } from 'better-result';
@@ -349,6 +350,7 @@ export function createMockPlatform(
   }
 
   const platform: MockPlatform = {
+    clock: { now: () => Date.now(), schedule },
     onReady: (callback) => {
       queueMicrotask(callback);
     },

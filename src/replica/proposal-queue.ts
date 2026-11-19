@@ -25,7 +25,7 @@ import { Result } from 'better-result';
 import { sameEditId, type EditId } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import { ProposeDroppedFailure, type FailureReporter } from '@/replica/failures';
-import type { Schedule } from '@/replica/timers';
+import type { Schedule } from '@/platform/ports';
 
 // What a player's edit of one key does, kept so it can be applied again to a newer record. `fields`
 // sets or clears (`null`) field values of a row or a repeat block. `add` is a new repeat block with

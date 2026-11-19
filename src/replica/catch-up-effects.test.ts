@@ -3,7 +3,7 @@ import { Result } from 'better-result';
 import type { CatchUpDecision, CatchUpTimer, PartyMember } from './catch-up';
 import { createCatchUpEffects, type CatchUpEffectsPorts } from './catch-up-effects';
 import type { ReplicaFailure } from './failures';
-import type { Schedule } from './timers';
+import type { Schedule } from '@/platform/ports';
 
 type Scheduled = {
   readonly ms: number;

@@ -18,7 +18,7 @@ import type { Timing } from '@/core/timing';
 import type { Notice, RoomCopyOutcome, RoomCopyStatus } from '@/core/ui-messages';
 import { MetadataFailure, type MetadataPort } from '@/platform/ports';
 import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
-import type { Schedule } from '@/replica/timers';
+import type { Schedule } from '@/platform/ports';
 
 export type RoomCopyOptions = {
   metadata: Pick<MetadataPort, 'getMetadata' | 'setMetadata'>;

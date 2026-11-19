@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createMockPlatform } from '@/platform/current';
 import type { ScenePort } from '@/platform/ports';
-import { schedule } from '@/replica/timers';
+import { schedule } from '@/platform/schedule';
 import { watchSceneRemovals, type SceneWatch } from '@/replica/scene-watch';
 
 const RETRY_MS = 5;
