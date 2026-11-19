@@ -62,6 +62,33 @@ export type ShownValues = ReadonlyMap<string, ShownValue>;
 
 export type DicePlace = z.infer<typeof dicePlaceSchema>;
 
+export function dicePlaceOf(
+  place: Omit<DicePlace, 'instanceId' | 'path'>,
+  block: BlockAddress | null,
+): DicePlace {
+  if (block === null) {
+    return {
+      tabIndex: place.tabIndex,
+      sectionIndex: place.sectionIndex,
+      rowIndex: place.rowIndex,
+      cellIndex: place.cellIndex,
+      instanceId: null,
+    };
+  }
+
+  const instanceId = blockIdOf(block);
+
+  if (instanceId === null) {
+    throw new Error('A dice place block must name a repeat block');
+  }
+
+  return {
+    ...place,
+    instanceId,
+    path: [...block.path],
+  };
+}
+
 export function diceBlockOf(
   layout: TemplateLayout,
   sheetId: string,

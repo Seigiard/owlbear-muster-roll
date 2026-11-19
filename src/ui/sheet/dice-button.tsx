@@ -2,7 +2,8 @@ import clsx from 'clsx';
 import { createContext, useContext, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import type { DicePlace } from '@/core/dice-roll';
+import { dicePlaceOf, type DicePlace } from '@/core/dice-roll';
+import type { BlockAddress } from '@/core/block-address';
 import type { FieldPatchTarget } from '@/core/field-patch';
 import type { RollOutcome } from '@/core/ui-messages';
 import { copy } from '@/copy';
@@ -31,8 +32,7 @@ export type DiceRow = {
   tabIndex: number;
   sectionIndex: number;
   rowIndex: number;
-  instanceId: string | null;
-  path?: readonly string[];
+  block: BlockAddress | null;
   // The row's record, `null` for a row with no field.
   target: FieldPatchTarget | null;
   fieldIds: ReadonlySet<string>;
@@ -83,17 +83,12 @@ export function DiceButton({
 
     setMessage(null);
 
-    const place: DicePlace = {
+    const place: Omit<DicePlace, 'instanceId' | 'path'> = {
       tabIndex: row.tabIndex,
       sectionIndex: row.sectionIndex,
       rowIndex: row.rowIndex,
       cellIndex,
-      instanceId: row.instanceId,
     };
-
-    if (row.path !== undefined) {
-      place.path = [...row.path];
-    }
 
     const shown = shownForRoll(sheet.localValues.read(row.sheetId), row.target, row.fieldIds);
 
@@ -103,7 +98,7 @@ export function DiceButton({
     const outcome = sheet.requestRoll(
       {
         sheetId: row.sheetId,
-        place,
+        place: dicePlaceOf(place, row.block),
         shown: Object.fromEntries(shown),
       },
       () => {

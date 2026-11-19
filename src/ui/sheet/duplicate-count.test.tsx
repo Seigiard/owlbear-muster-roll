@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { blockAddress } from '@/core/block-address';
 import type { VersionedRecord } from '@/core/records';
 import type { Command, SyncState } from '@/core/ui-messages';
 import { copy } from '@/copy';
@@ -24,6 +25,8 @@ const SOURCE: VersionedRecord = {
   a: 'seed',
   l: [1, 'seed'],
 };
+
+const SOURCE_BLOCK = address('npc', ['name', 'source']);
 
 const mounted: Root[] = [];
 
@@ -66,9 +69,7 @@ describe('duplicate count outcomes', () => {
     await act(async () => {
       root.render(
         <DuplicateCount
-          sheetId="npc"
-          sectionId="name"
-          instanceId="source"
+          block={SOURCE_BLOCK}
           sendCommand={() =>
             new Promise<DuplicateOutcome>((resolve) => {
               answer = () => resolve({ kind: 'answered', answer: undefined });
@@ -119,9 +120,7 @@ describe('duplicate count outcomes', () => {
     await act(async () => {
       root.render(
         <DuplicateCount
-          sheetId="npc"
-          sectionId="name"
-          instanceId="source"
+          block={SOURCE_BLOCK}
           sendCommand={() => Promise.resolve(outcome)}
           focusRequest={0}
           onDone={() => {
@@ -188,9 +187,7 @@ async function openDuplicateCount(): Promise<DuplicateForm> {
   await act(async () => {
     root.render(
       <DuplicateCount
-        sheetId="npc"
-        sectionId="name"
-        instanceId="source"
+        block={SOURCE_BLOCK}
         sendCommand={(command) => {
           commands.push(command);
 
@@ -245,4 +242,12 @@ function confirmButton(container: HTMLElement): HTMLButtonElement {
   }
 
   return button;
+}
+
+function address(sheetId: string, path: readonly string[]) {
+  const block = blockAddress(sheetId, path);
+
+  if (block === null) throw new Error('fixture must be a block address');
+
+  return block;
 }

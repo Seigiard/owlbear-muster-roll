@@ -556,4 +556,4 @@ not optional scope. Evidence: `task-79-window5-review.md`.
 
 ## Deferred from: TASK-114.1 (2026-11-18)
 
-- `src/builder/preview-pane.tsx` and `src/preview/` keep the wire-shaped command handling until architecture-review candidate 3 runs the preview on the engine.
+- The Builder preview command handler in `src/builder/preview-pane.tsx` and `src/preview/` keep the wire form until architecture-review candidate 3 replaces the preview with the engine.

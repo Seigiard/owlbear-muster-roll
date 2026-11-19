@@ -6,7 +6,7 @@ import {
   type TemplateLayout,
 } from '@/core/preset';
 import type { VersionedRecord } from '@/core/records';
-import { childAddress, sheetRootAddress } from '@/core/block-address';
+import { childAddress, sameAddress, sheetRootAddress } from '@/core/block-address';
 import { repeatBlocks } from '@/core/sheet-values';
 import { repeatBlockName } from '@/core/sheets';
 
@@ -30,9 +30,6 @@ export function renderedTabs(
       scopeId,
       repeatBlocks(records, sheetRootAddress(sheetId), scopeId).map((block) => ({
         block: childAddress(sheetRootAddress(sheetId), scopeId, block.instanceId),
-        scopeId,
-        instanceId: block.instanceId,
-        path: [scopeId, block.instanceId],
         name: repeatBlockName(records, sheetId, section, block.instanceId, [
           scopeId,
           block.instanceId,
@@ -42,4 +39,16 @@ export function renderedTabs(
   }
 
   return expandedTabs(template, blocks);
+}
+
+export function sameRenderedTab(first: RenderedTab, second: RenderedTab): boolean {
+  if (first.sourceIndex !== second.sourceIndex) {
+    return false;
+  }
+
+  if (first.block === null || second.block === null) {
+    return first.block === second.block;
+  }
+
+  return sameAddress(first.block.block, second.block.block);
 }

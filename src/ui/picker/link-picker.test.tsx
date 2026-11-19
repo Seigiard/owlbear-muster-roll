@@ -1,16 +1,18 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { act } from 'react';
+import { act, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { blockAddress } from '@/core/block-address';
+import { blockAddress, sheetRootAddress } from '@/core/block-address';
 import { PRESET_FORMAT_VERSION as FORMAT_VERSION } from '@/core/format-version';
 import { linkDataOf, type LinkTarget } from '@/core/link-target';
 import { encodePreset, type Preset } from '@/core/preset';
-import type { VersionedRecord } from '@/core/records';
+import { recordSchema, type BlockData, type VersionedRecord } from '@/core/records';
 import type { LinkPickerTiming } from '@/core/timing';
 import type { Command, SyncState } from '@/core/ui-messages';
-import type { NotificationVariant } from '@/platform/ports';
+import { copy } from '@/copy';
+import type { Bounds, NotificationVariant } from '@/platform/ports';
 import { createProjectionStore, type ProjectionStore } from '@/ui/projection-store';
-import { LinkPicker } from './link-picker';
+import { createRoomRig } from '../../../tests/support/room-rig';
+import { LinkPicker, TokenCellPicker } from './link-picker';
 
 // React warns about updates outside `act` unless the environment says it is a test.
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -837,3 +839,884 @@ async function settle(): Promise<void> {
       }),
   );
 }
+
+describe('ported reverse-picker and command outcome contracts', () => {
+  const LIVE: SyncState = {
+    state: 'live',
+    firstCatchUpDone: true,
+    gmAnswered: true,
+    gmLink: 'online',
+    role: 'GM',
+  };
+
+  const PRESET: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'crew',
+        title: 'Персонажи',
+        repeat: { nameField: 'name' },
+        tabs: [
+          {
+            sections: [
+              {
+                title: 'Персонаж',
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'field', type: 'text', id: 'name' },
+                      { kind: 'token', id: 'portrait' },
+                      { kind: 'token', id: 'mount' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const RECORDS: VersionedRecord[] = [
+    { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
+    {
+      k: 'blk:brok',
+      d: { set: 'crew', order: 0, cells: { name: ['Брок', 1, 'seed'] } },
+      c: 1,
+      a: 'seed',
+      l: [1, 'seed'],
+    },
+  ];
+
+  const mounted: Root[] = [];
+  const outcomeRig = createRoomRig({ seeded: RECORDS, until: 'live' });
+  const timeoutRig = createRoomRig({ timing: { commandTimeoutMs: 5, linkSetTimeoutMs: 5 } });
+
+  type ReverseSend = ComponentProps<typeof TokenCellPicker>['sendCommand'];
+
+  function rootTarget(sheetId: string, cellId: string): LinkTarget {
+    return { block: sheetRootAddress(sheetId), cellId };
+  }
+
+  afterEach(() => {
+    for (const root of mounted.splice(0)) {
+      act(() => root.unmount());
+    }
+
+    document.body.innerHTML = '';
+  });
+
+  test('distinguishes equal forward-picker groups by token cell without changing the offered label', async () => {
+    // #given
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    const store = createProjectionStore();
+    store.replaceAll(RECORDS, [], [], LIVE);
+    document.body.append(container);
+    mounted.push(root);
+
+    // #when
+    await act(async () => {
+      root.render(
+        <LinkPicker
+          tokenId="token"
+          store={store}
+          sendCommand={async () => ({ kind: 'answered', answer: undefined })}
+          scene={{ getItemLabel: async () => '', setItemLabel: async () => undefined }}
+          notification={{ show: async () => 'notice' }}
+          onLinked={async () => undefined}
+        />,
+      );
+    });
+    await settle();
+
+    const groups = [...container.querySelectorAll('section')].map((section) => ({
+      name: section.getAttribute('aria-label'),
+      choice: section.querySelector('button')?.textContent?.trim(),
+      accessibleChoice: section.querySelector('button')?.getAttribute('aria-label'),
+    }));
+
+    // #then
+    expect(groups).toEqual([
+      { name: 'Персонаж — portrait', choice: 'Брок', accessibleChoice: 'Брок, portrait' },
+      { name: 'Персонаж — mount', choice: 'Брок', accessibleChoice: 'Брок, mount' },
+    ]);
+  });
+
+  test('keeps the reverse picker open and announces a refused real command batch', async () => {
+    // #given
+    const room = outcomeRig.openRoom();
+    const gm = await outcomeRig.startClient(room, 'gm-a');
+    const closed: string[] = [];
+
+    const picker = await renderReversePicker({
+      target: rootTarget('brok', 'removed-cell'),
+      store: gm.store,
+      sendCommand: gm.window.sendCommand,
+      ids: ['free', 'second-free'],
+      onLinked: async () => {
+        closed.push('closed');
+      },
+    });
+
+    await choose(picker, 'free');
+    await choose(picker, 'second-free');
+
+    // #when
+    await press(picker, copy.command.linkSheet);
+    await settle(20);
+
+    // #then
+    expect({
+      closed,
+      live: picker.querySelector('[aria-live]')?.textContent,
+      selected: [...picker.querySelectorAll<HTMLInputElement>('input:checked')].length,
+    }).toEqual({ closed: [], live: copy.linkFailed, selected: 2 });
+  });
+
+  test('keeps the reverse picker open and announces a timed-out real command', async () => {
+    // #given
+    const room = timeoutRig.openRoom();
+    const orphan = timeoutRig.createClient(room, 'gm-timeout');
+    orphan.openWindow();
+    const store = createProjectionStore();
+    store.replaceAll(RECORDS, [], [], LIVE);
+    const closed: string[] = [];
+
+    const picker = await renderReversePicker({
+      target: rootTarget('brok', 'portrait'),
+      store,
+      sendCommand: orphan.window.sendCommand,
+      ids: ['free'],
+      onLinked: async () => {
+        closed.push('closed');
+      },
+    });
+
+    await choose(picker, 'free');
+
+    // #when
+    await press(picker, copy.command.linkSheet);
+    await settle(20);
+
+    // #then
+    expect({
+      closed,
+      live: picker.querySelector('[aria-live]')?.textContent,
+      selected: [...picker.querySelectorAll<HTMLInputElement>('input:checked')].length,
+    }).toEqual({ closed: [], live: copy.linkFailed, selected: 1 });
+  });
+
+  test('marks current-cell and elsewhere links separately and unlinks only current-cell selections', async () => {
+    // #given
+    const commands: Command[] = [];
+
+    const picker = await reversePicker(async (command) => {
+      commands.push(command);
+
+      return { kind: 'answered', answer: undefined };
+    });
+
+    // #when
+    await choose(picker, 'current');
+    await choose(picker, 'elsewhere');
+    await press(picker, copy.command.unlinkSheet);
+
+    const statuses = Object.fromEntries(
+      [...picker.querySelectorAll('li label')].map((label) => [
+        label.querySelector('span')?.textContent,
+        label.querySelector('span:last-child')?.textContent,
+      ]),
+    );
+
+    // #then
+    expect({ statuses, commands }).toEqual({
+      statuses: {
+        current: 'Привязан к этой ячейке',
+        elsewhere: 'Привязан к другой ячейке',
+        free: 'free',
+      },
+      commands: [{ type: 'link-clear', tokenId: 'current' }],
+    });
+  });
+
+  test('keeps the reverse picker open when a real unlink becomes stale and is refused', async () => {
+    // #given
+    const room = outcomeRig.openRoom();
+
+    const link: VersionedRecord = {
+      k: 'link:current',
+      d: { s: 'brok', c: 'portrait' },
+      c: 1,
+      a: 'seed',
+    };
+
+    const gm = await outcomeRig.startClient(room, 'gm-unlink', { seeded: [...RECORDS, link] });
+    const closed: string[] = [];
+
+    // SAFETY: both command variants have the same `undefined` answer in the real client.
+    const staleUnlink = (async (command: Extract<Command, { type: 'link-set' | 'link-clear' }>) => {
+      if (command.type === 'link-clear') {
+        await gm.window.sendCommand(command);
+      }
+
+      return gm.window.sendCommand(command);
+    }) as ReverseSend;
+
+    const picker = await renderReversePicker({
+      target: rootTarget('brok', 'portrait'),
+      store: gm.store,
+      sendCommand: staleUnlink,
+      ids: ['current'],
+      onLinked: async () => {
+        closed.push('closed');
+      },
+    });
+
+    await choose(picker, 'current');
+
+    // #when
+    await press(picker, copy.command.unlinkSheet);
+
+    // #then
+    expect({
+      closed,
+      live: picker.querySelector('[aria-live]')?.textContent,
+      selected: [...picker.querySelectorAll<HTMLInputElement>('input:checked')].length,
+    }).toEqual({ closed: [], live: copy.linkFailed, selected: 1 });
+  });
+
+  async function reversePicker(
+    sendCommand: ReverseSend,
+    onLinked: () => Promise<void> = async () => undefined,
+  ): Promise<HTMLElement> {
+    const store = createProjectionStore();
+
+    const records: VersionedRecord[] = [
+      ...RECORDS,
+      { k: 'link:current', d: { s: 'brok', c: 'portrait' }, c: 1, a: 'seed' },
+      { k: 'link:elsewhere', d: { s: 'brok', c: 'mount' }, c: 1, a: 'seed' },
+    ];
+
+    store.replaceAll(records, [], [], LIVE);
+
+    return renderReversePicker({
+      target: rootTarget('brok', 'portrait'),
+      store,
+      sendCommand,
+      ids: ['current', 'elsewhere', 'free'],
+      onLinked,
+    });
+  }
+
+  async function renderReversePicker({
+    target,
+    store,
+    sendCommand,
+    ids,
+    onLinked,
+  }: {
+    target: LinkTarget;
+    store: ReturnType<typeof createProjectionStore>;
+    sendCommand: ReverseSend;
+    ids: string[];
+    onLinked: () => Promise<void>;
+  }): Promise<HTMLElement> {
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    document.body.append(container);
+    mounted.push(root);
+
+    await act(async () => {
+      root.render(
+        <TokenCellPicker
+          target={target}
+          store={store}
+          sendCommand={sendCommand}
+          scene={{
+            getItemIds: async () => ids,
+            getItemBounds: async () => new Map(ids.map((id, index) => [id, bounds(index + 1)])),
+          }}
+          viewport={{ getBounds: async () => bounds(0, 10) }}
+          onLinked={onLinked}
+        />,
+      );
+    });
+    await settle();
+
+    return container;
+  }
+
+  function bounds(minimum: number, maximum = minimum + 1): Bounds {
+    return {
+      min: { x: minimum, y: minimum },
+      max: { x: maximum, y: maximum },
+      width: maximum - minimum,
+      height: maximum - minimum,
+      center: { x: (minimum + maximum) / 2, y: (minimum + maximum) / 2 },
+    };
+  }
+
+  async function choose(container: HTMLElement, name: string): Promise<void> {
+    const label = [...container.querySelectorAll('label')].find((node) =>
+      node.textContent.includes(name),
+    );
+
+    const input = label?.querySelector('input');
+
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error(`No token choice ${name}`);
+    }
+
+    await act(async () => input.click());
+  }
+
+  async function press(container: HTMLElement, name: string): Promise<void> {
+    const button = [...container.querySelectorAll('button')].find(
+      (node) => node.textContent === name,
+    );
+
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`No button ${name}`);
+    }
+
+    await act(async () => button.click());
+    await settle();
+  }
+
+  async function settle(milliseconds = 0): Promise<void> {
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, milliseconds);
+        }),
+    );
+  }
+});
+
+describe('ported reverse-picker ordering and link command contracts', () => {
+  const TARGET = { block: sheetRootAddress('shared'), cellId: 'portrait' };
+
+  const SYNC: SyncState = {
+    state: 'live',
+    firstCatchUpDone: true,
+    gmAnswered: true,
+    gmLink: 'online',
+    role: 'GM',
+  };
+
+  const PRESET: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'shared',
+        title: 'Общий лист',
+        tabs: [
+          {
+            sections: [
+              {
+                rows: [
+                  {
+                    cells: [
+                      { kind: 'token', id: 'portrait' },
+                      { kind: 'token', id: 'camp' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const mounted: Root[] = [];
+
+  afterEach(() => {
+    for (const root of mounted.splice(0)) {
+      act(() => root.unmount());
+    }
+
+    document.body.innerHTML = '';
+  });
+
+  test('orders scene tokens by viewport first and linked state second', async () => {
+    // #given
+    const picker = await openPicker();
+
+    // #when
+    const choices = listedChoices(picker.container);
+
+    // #then
+    expect(choices).toEqual([
+      { name: 'near-free', linked: false },
+      { name: 'far-free', linked: false },
+      { name: 'near-linked', linked: true },
+      { name: 'near-other-linked', linked: true },
+      { name: 'far-linked', linked: true },
+    ]);
+  });
+
+  test('reassigns selected tokens and selectively unlinks only selected links to this cell', async () => {
+    // #given
+    const picker = await openPicker();
+
+    // #when
+    await choose(picker.container, 'near-other-linked');
+    await choose(picker.container, 'near-linked');
+    await press(picker.container, 'Привязать лист…');
+
+    const linkedCommands = [...picker.commands];
+    picker.commands.length = 0;
+
+    await press(picker.container, 'Отвязать лист');
+
+    // #then
+    expect({ linkedCommands, unlinkedCommands: picker.commands }).toEqual({
+      linkedCommands: [
+        {
+          type: 'link-set',
+          tokenId: 'near-other-linked',
+          sheetId: 'shared',
+          block: TARGET.block,
+          cellId: 'portrait',
+        },
+        {
+          type: 'link-set',
+          tokenId: 'near-linked',
+          sheetId: 'shared',
+          block: TARGET.block,
+          cellId: 'portrait',
+        },
+      ],
+      unlinkedCommands: [{ type: 'link-clear', tokenId: 'near-linked' }],
+    });
+  });
+
+  async function openPicker() {
+    const store = createProjectionStore();
+    const commands: Command[] = [];
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    const records: VersionedRecord[] = [
+      { k: 'preset', d: encodePreset(PRESET), c: 1, a: 'seed' },
+      { k: 'link:near-linked', d: { s: 'shared', c: 'portrait' }, c: 1, a: 'seed' },
+      { k: 'link:far-linked', d: { s: 'shared', c: 'portrait' }, c: 1, a: 'seed' },
+      { k: 'link:near-other-linked', d: { s: 'shared', c: 'camp' }, c: 1, a: 'seed' },
+    ];
+
+    document.body.append(container);
+    mounted.push(root);
+    store.replaceAll(records, [], [], SYNC);
+
+    await act(async () => {
+      root.render(
+        <TokenCellPicker
+          target={TARGET}
+          store={store}
+          sendCommand={(command) => {
+            commands.push(command);
+
+            return Promise.resolve({ kind: 'answered', answer: undefined });
+          }}
+          scene={{
+            getItemIds: async () => [
+              'far-linked',
+              'near-free',
+              'near-linked',
+              'far-free',
+              'near-other-linked',
+            ],
+            getItemBounds: async () =>
+              new Map([
+                ['near-free', bounds(1)],
+                ['near-linked', bounds(2)],
+                ['near-other-linked', bounds(3)],
+                ['far-free', bounds(100)],
+                ['far-linked', bounds(101)],
+              ]),
+          }}
+          viewport={{ getBounds: async () => bounds(0, 10) }}
+          onLinked={async () => undefined}
+        />,
+      );
+    });
+    await settle();
+
+    return { container, commands };
+  }
+
+  function bounds(minimum: number, maximum = minimum + 1): Bounds {
+    return {
+      min: { x: minimum, y: minimum },
+      max: { x: maximum, y: maximum },
+      width: maximum - minimum,
+      height: maximum - minimum,
+      center: { x: (minimum + maximum) / 2, y: (minimum + maximum) / 2 },
+    };
+  }
+
+  function listedChoices(container: HTMLElement): { name: string; linked: boolean }[] {
+    return [...container.querySelectorAll('li label')].map((label) => ({
+      name: label.querySelector('span:first-of-type')?.textContent ?? '',
+      linked: label.textContent.includes('Привязан к '),
+    }));
+  }
+
+  async function choose(container: HTMLElement, name: string): Promise<void> {
+    const label = [...container.querySelectorAll('label')].find((node) =>
+      node.textContent.includes(name),
+    );
+
+    const input = label?.querySelector('input');
+
+    if (input === null || input === undefined) {
+      throw new Error(`No token choice ${name}`);
+    }
+
+    await act(async () => input.click());
+  }
+
+  async function press(container: HTMLElement, name: string): Promise<void> {
+    const button = [...container.querySelectorAll('button')].find(
+      (node) => node.textContent === name,
+    );
+
+    if (button === undefined) {
+      throw new Error(`No button ${name}`);
+    }
+
+    await act(async () => button.click());
+    await settle();
+  }
+
+  async function settle(): Promise<void> {
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        }),
+    );
+  }
+});
+
+describe('ported linked-target naming contracts', () => {
+  const SYNC: SyncState = {
+    state: 'live',
+    firstCatchUpDone: true,
+    gmAnswered: true,
+    gmLink: 'online',
+    role: 'GM',
+  };
+
+  const mounted: Root[] = [];
+
+  afterEach(() => {
+    for (const root of mounted.splice(0)) {
+      act(() => root.unmount());
+    }
+
+    document.body.innerHTML = '';
+  });
+
+  test('labels a token by the nearest nonblank block, section, sheet or template name', async () => {
+    // #given
+    const cases = [
+      blockCase('Удар', 'Атаки'),
+      blockCase('', 'Атаки'),
+      rootSetCase('Ада'),
+      rootSingleCase(),
+    ];
+
+    // #when
+    const labels: string[] = [];
+
+    for (const fixture of cases) {
+      // oxlint-disable-next-line no-await-in-loop
+      labels.push(await linkedLabel(fixture));
+    }
+
+    // #then
+    expect(labels).toEqual(['Удар', 'Атаки', 'Ада', 'Инвентарь']);
+  });
+
+  type PickerFixture = {
+    preset: Preset;
+    records: VersionedRecord[];
+  };
+
+  function blockCase(blockName: string, sectionTitle: string): PickerFixture {
+    return {
+      preset: {
+        v: 4,
+        templates: [
+          {
+            id: 'bestiary',
+            title: 'Бестиарий',
+            tabs: [
+              {
+                sections: [
+                  {
+                    title: sectionTitle,
+                    repeat: { id: 'attacks', nameField: 'name' },
+                    rows: [
+                      {
+                        cells: [
+                          { kind: 'field', type: 'text', id: 'name' },
+                          { kind: 'token', id: 'portrait' },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      records: [
+        blockRecord('blk:bestiary', { order: 0, cells: {} }),
+        blockRecord('blk:bestiary:attacks:a1', {
+          order: 0,
+          cells: blockName === '' ? {} : { name: [blockName, 1, 'seed'] },
+        }),
+      ],
+    };
+  }
+
+  function rootSetCase(sheetName: string): PickerFixture {
+    return {
+      preset: {
+        v: 4,
+        templates: [
+          {
+            id: 'heroes',
+            title: 'Герои',
+            repeat: { nameField: 'sheet_name' },
+            tabs: [
+              {
+                sections: [
+                  {
+                    rows: [
+                      {
+                        cells: [
+                          { kind: 'field', type: 'text', id: 'sheet_name' },
+                          { kind: 'token', id: 'portrait' },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      records: [
+        blockRecord('blk:h1', {
+          set: 'heroes',
+          order: 0,
+          cells: { sheet_name: [sheetName, 1, 'seed'] },
+        }),
+      ],
+    };
+  }
+
+  function rootSingleCase(): PickerFixture {
+    return {
+      preset: {
+        v: 4,
+        templates: [
+          {
+            id: 'inventory',
+            title: 'Инвентарь',
+            tabs: [
+              {
+                sections: [{ rows: [{ cells: [{ kind: 'token', id: 'portrait' }] }] }],
+              },
+            ],
+          },
+        ],
+      },
+      records: [blockRecord('blk:inventory', { order: 0, cells: {} })],
+    };
+  }
+
+  async function linkedLabel(fixture: PickerFixture): Promise<string> {
+    const store = createProjectionStore();
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    const writes: string[] = [];
+
+    document.body.append(container);
+    mounted.push(root);
+    store.replaceAll(
+      [record('preset', encodePreset(fixture.preset)), ...fixture.records],
+      [],
+      [],
+      SYNC,
+    );
+
+    await act(async () => {
+      root.render(
+        <LinkPicker
+          tokenId="token"
+          store={store}
+          sendCommand={async () => ({ kind: 'answered', answer: undefined })}
+          scene={{
+            getItemLabel: async () => '',
+            setItemLabel: async (_id, label) => {
+              writes.push(label);
+            },
+          }}
+          notification={{ show: async () => 'notice' }}
+          onLinked={async () => undefined}
+        />,
+      );
+    });
+    await settle();
+
+    const button = container.querySelector('section button');
+
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error('the picker rendered no target');
+    }
+
+    await act(async () => button.click());
+    const commandTarget = targetOf(fixture);
+
+    await act(async () => {
+      store.applyDelta([record('link:token', commandTarget)], [], [], [], SYNC);
+    });
+    await settle();
+
+    return writes[0] ?? '(no label)';
+  }
+
+  function targetOf(fixture: PickerFixture) {
+    const repeated = fixture.records.find((item) => item.k.includes(':attacks:'));
+
+    return repeated === undefined
+      ? {
+          s: fixture.preset.templates[0]?.repeat === undefined ? 'inventory' : 'h1',
+          c: 'portrait',
+        }
+      : { s: 'bestiary', path: ['attacks', 'a1'], c: 'portrait' };
+  }
+
+  function record(k: string, d: VersionedRecord['d']): VersionedRecord {
+    return recordSchema.parse({ k, d, c: 1, a: 'seed' });
+  }
+
+  function blockRecord(k: string, d: BlockData): VersionedRecord {
+    // SAFETY: every caller supplies a blk key and block data with its required lifecycle.
+    return { k, d, c: 1, a: 'seed', l: [1, 'seed'] };
+  }
+
+  async function settle(): Promise<void> {
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        }),
+    );
+  }
+});
+
+describe('ported viewport fallback contract', () => {
+  const PRESET: Preset = {
+    v: 4,
+    templates: [
+      {
+        id: 'shared',
+        title: 'Общий лист',
+        tabs: [
+          {
+            sections: [{ rows: [{ cells: [{ kind: 'token', id: 'portrait' }] }] }],
+          },
+        ],
+      },
+    ],
+  };
+
+  const SYNC: SyncState = {
+    state: 'live',
+    firstCatchUpDone: true,
+    gmAnswered: true,
+    gmLink: 'online',
+    role: 'GM',
+  };
+
+  const mounted: Root[] = [];
+
+  afterEach(() => {
+    for (const root of mounted.splice(0)) {
+      act(() => root.unmount());
+    }
+  });
+
+  test('a failed viewport read still lists every scene token with globally unlinked tokens first', async () => {
+    // #given
+    const store = createProjectionStore();
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    const records: VersionedRecord[] = [
+      record('preset', encodePreset(PRESET)),
+      record('link:linked-b', { s: 'shared', c: 'portrait' }),
+      record('link:linked-a', { s: 'shared', c: 'portrait' }),
+    ];
+
+    mounted.push(root);
+    store.replaceAll(records, [], [], SYNC);
+
+    // #when
+    await act(async () => {
+      root.render(
+        <TokenCellPicker
+          target={{ block: sheetRootAddress('shared'), cellId: 'portrait' }}
+          store={store}
+          sendCommand={async () => ({ kind: 'answered', answer: undefined })}
+          scene={{
+            getItemIds: async () => ['linked-b', 'free-a', 'linked-a', 'free-b'],
+            getItemBounds: async () => new Map(),
+          }}
+          viewport={{ getBounds: async () => Promise.reject(new Error('viewport unavailable')) }}
+          onLinked={async () => undefined}
+        />,
+      );
+    });
+    await settle();
+
+    // #then
+    expect(listed(container)).toEqual([
+      { name: 'free-a', linked: false },
+      { name: 'free-b', linked: false },
+      { name: 'linked-b', linked: true },
+      { name: 'linked-a', linked: true },
+    ]);
+  });
+
+  function listed(container: HTMLElement): { name: string; linked: boolean }[] {
+    return [...container.querySelectorAll('li label')].map((label) => ({
+      name: label.querySelector('span:first-of-type')?.textContent ?? '',
+      linked: label.textContent.includes('Привязан к этой ячейке'),
+    }));
+  }
+
+  function record(k: string, d: VersionedRecord['d']): VersionedRecord {
+    return recordSchema.parse({ k, d, c: 1, a: 'seed' });
+  }
+
+  async function settle(): Promise<void> {
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        }),
+    );
+  }
+});

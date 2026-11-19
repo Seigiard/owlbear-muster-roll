@@ -165,9 +165,6 @@ export type PresetFieldCell = z.infer<typeof fieldCell>;
 
 export type TabBlock = {
   block: BlockAddress;
-  scopeId: string;
-  instanceId: string;
-  path: readonly string[];
   name: string;
 };
 
