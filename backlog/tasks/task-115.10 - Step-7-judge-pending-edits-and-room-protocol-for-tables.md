@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-18T19:41:00Z'
-updated_date: '2026-11-19T12:55:00Z'
+updated_date: '2026-11-19T12:58:00Z'
 labels:
   - architecture
   - replica
@@ -44,4 +44,6 @@ DESIGN.md leaves `pending-edits` (per-entry waiting, sent, denied-quiet) and `ro
 
 <!-- SECTION:NOTES:BEGIN -->
 Note 2026-11-19 (architecture review candidate 4): whether proposal-queue folds into pending-edits is this task's call, as part of judging the module's shape; pending-queue stays (GM intents during catch-up, a different role). See TASK-125 for the command-storage follow-up.
+
+Judged both modules (report by a high-tier reviewer, accepted by the orchestrator): pending-edits keeps two live states per key (waiting, versioned) and a denial quiet window that spans keys, so a per-entry table would add rows without owning the cross-module ordering rules (formal/edit-delivery covers those); room-protocol's 'assembling' belongs to one fragment key, AD-5 already lists the admitted messages, and the roomMessages chain owns ordering. Both stay linear functions; DESIGN.md records why (catalog rows and two paragraphs). No runtime change.
 <!-- SECTION:NOTES:END -->
