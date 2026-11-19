@@ -1,6 +1,6 @@
 ---
 name: generation-adoption
-description: Model-check AD-9 generation and adoption (snapshot import, wipe, `reset`, staging, `saveAdoption`) with TLA+. Use when a change touches src/replica/generation-flow.ts, the adopting phase of src/replica/catch-up.ts, or their wiring in engine.ts, room-protocol.ts, room-copy.ts or command-routing.ts; or to answer whether a client can end behind, mix two generations, lose saved data, or stay stuck adopting.
+description: Model-check AD-9 generation and adoption (snapshot import, wipe, `reset`, staging, `saveAdoption`) with TLA+. Use when a change touches src/replica/generation-flow.ts or generation-table.ts, the adopting phase of src/replica/catch-up.ts or catch-up-table.ts, the import write of room-copy.ts or room-copy-table.ts, or their wiring in engine.ts, catch-up-effects.ts, room-protocol.ts or command-routing.ts; or to answer whether a client can end behind, mix two generations, lose saved data, or stay stuck adopting.
 ---
 
 # Generation and adoption model
@@ -9,7 +9,7 @@ A TLA+ model of AD-9 in `formal/generation-adoption/GenerationAdoption.tla`. TLC
 
 ## Does my change touch the verified code?
 
-Run `git diff --stat 19232ad -- <coverage files>` with the files in the coverage record below. Any change in a function the record names needs a model check. A change elsewhere in those files needs a read of the code map to confirm that no modeled step changed.
+Run `git diff --stat 995e1c7 -- <coverage files>` with the files in the coverage record below. Any change in a function the record names needs a model check. A change elsewhere in those files needs a read of the code map to confirm that no modeled step changed.
 
 ## Run
 
@@ -23,6 +23,7 @@ It runs every config in `formal/generation-adoption/` in about 40 seconds and pr
 | --- | --- | --- |
 | `GenerationAdoption.cfg` | pass | all safety rules; 1 import, 1 role change, 1 page close, 1 failed save, 1 failed copy write |
 | `TwoImports.cfg` | pass | all safety rules; 2 imports (two GMs mint at once, superseded import), 1 failed save, 1 failed copy write |
+| `Promoted.cfg` | pass | all safety rules; GM `a` and player `b`; 1 import, 1 role change (a promotion or a demotion), 1 page close, 1 failed save, 1 failed copy write. Only here does a promoted client hold an old-generation `state` that retries a failed adoption save |
 | `Liveness.cfg` | pass | `EventuallySettled`, `EventuallyAgreed`; 1 role change, 1 failed save, no close, no copy failure |
 | `LivenessCopyFails.cfg` | pass | the same two; 1 failed save, 1 failed copy write, no role change, no close |
 | `finding-*.cfg` | fail | the open findings below |
@@ -52,7 +53,9 @@ Each rule is an invariant or a temporal property in the spec. Harm is what a use
 
 ### One atomic step
 
-One action is one synchronous run of JavaScript between two `await`s, because the background page is single-threaded. Examples: `Import` is `replaceGeneration` up to `await ports.roomCopy.writeImport`; `Deliver` is one room message from the admission gate to the end of its handler, including a synchronous `saveAdoption` inside `finishAdoption`. The `adopt` decision runs `clearStaged` inside the same step as `seeGeneration` or `adoptFromCopy`, because `runCatchUp` handles it before its first await.
+One action is one synchronous run of JavaScript between two `await`s, because the background page is single-threaded. Examples: `Import` is the `import` or `wipe` event of `generation-table.ts` with the effects that `generation-flow.ts` `run` applies, up to `await ports.roomCopy.writeImport` in `writeImport`; `Deliver` is one room message from the admission gate to the end of its handler, including the synchronous `saveAdoption` that `catch-up.ts` `feed` calls after a `state-merged` event. The `adopt` decision runs `clearStaged` inside the same step as `seeGeneration` or `adoptFromCopy`, because `catch-up-effects.ts` `run` handles it before its first await.
+
+Two actions span awaits on purpose. `ImportCopyWritten` is the whole import copy write in `room-copy-table.ts` (read, write, read-back, cleanup), and `Deliver` of a `request` includes the GM's answer timer.
 
 ### Abstractions
 
@@ -61,43 +64,44 @@ One action is one synchronous run of JavaScript between two `await`s, because th
 - Storage is the set of complete generations (`complete`). A failed save writes nothing complete and `removeGeneration` removes the attempted one. `hi` is a ghost: the highest complete generation the storage ever held.
 - Each client has one inbox in arrival order. With two clients, that is Owlbear's one-sender order. Identical messages waiting in one inbox count once.
 - Catch-up phases: `live`, `catching` (ordinary catch-up) and `adopting` with `target`. Nonces are left out: an answer of the adopted generation counts as the answer to the current request.
+- `pending` is the catch-up table's `pendingAdoption` after a failed save: `copy` or `answer`, by the save's `fromCopy`. While it is set, any `state` the client merges retries the save with that `fromCopy`: a `state` of its own generation, or one of the target that the model may also count as an answer. A new target and a role change drop it.
 - A message's sender role is read when the message arrives (`senderOf`); a closed client is no longer in the party.
 
 ### Code map
 
 | Action or operator | Code |
 | --- | --- |
-| `Import` | `command-routing.ts` `decideCommandRoute` (GM, not importing, live); `generation-flow.ts` `importFromSnapshot` / `wipe` -> `replaceGeneration` up to `await ports.roomCopy.writeImport`, with `saveGeneration` |
-| `ImportCopyWritten` | `room-copy.ts` `writeImportCopy` -> `runImportCopy` -> `importCopyVerified` (superseded check, `adoptedHigherCopy`, `setMetadata`), `removeLowerCopy` when the copy does not fit or fails read-back |
-| `ImportFinished` | `generation-flow.ts` `replaceGeneration` after the await: `importSuperseded`, `ports.sendRemote(resetMessage(...))`, `store.removeGenerationsBelow` |
-| `Superseded` | `generation-flow.ts` `importSuperseded` |
-| `Deliver` | `room-protocol.ts` `handleRoomMessage` (generation gate, `seeGeneration` for a higher GM message), `admitRoomMessage` in `core/room-messages.ts`, `dispatchRoomMessage`, `receiveState` (`stageGeneration`); `catch-up.ts` `stateMerged`, `stateRequested`; `engine.ts` `runCatchUp` case `answer` |
-| `SeeGeneration` | `catch-up.ts` `enterFromGeneration` via `generationHeard` / `generationRead`; `engine.ts` `runCatchUp` case `adopt` -> `generation-flow.ts` `clearStaged` |
-| `SaveAdoption` | `catch-up.ts` `finishAdoption` -> `generation-flow.ts` `saveAdoption` and `saveGeneration` |
-| `Leave` | `catch-up.ts` `leave`; `engine.ts` `performCaughtUp` (`persistAllOnExit`) |
-| `ReadCopy`, `ReadCopyInto` | `room-copy.ts` `read` -> `mergeReadRoomCopy`, and `followMetadata`; `generation-flow.ts` `adoptFromCopy`; `catch-up.ts` `adoptionStaged` |
-| `WriteCopy` | `room-copy.ts` `runRoomCopyWrite` with `engine.ts` `canWriteRoomCopy` |
-| `Ask` | `catch-up.ts` `request`, `ask`, and `fired` case `catch-up` while adopting |
-| `SpeakAlive` | `catch-up.ts` `pingReceived` / `canAnswer`; `engine.ts` `runCatchUp` case `alive` |
-| `Timeout` | `catch-up.ts` `fired` case `catch-up` (ordinary), `partyRead` alone |
-| `RoleChange` | `engine.ts` `changeRole` -> `generation-flow.ts` `roleChanged`; `catch-up.ts` `enter('role')` |
-| `Close` | `engine.ts` `stop` |
+| `Import` | `command-routing.ts` `decideCommandRoute` (GM, not importing, live); `generation-flow.ts` `importFromSnapshot` / `wipe` -> `dispatch` -> `generation-table.ts` `importGeneration`, then `storeWritten` (local) or `storeFailed`; `generation-flow.ts` `run` and `saveGeneration` up to `await ports.roomCopy.writeImport` in `writeImport` |
+| `ImportCopyWritten` | `room-copy.ts` `writeImport` -> `room-copy-table.ts` `edited` (import, queued behind a write in flight), `importRead` (superseded check, `adopt` of a higher copy, `recheck-import`), `encodeWrite`, `writeDone`, `verifyDone`, `importRejected`, `cleanupRead` (removes a lower copy when the copy does not fit or fails read-back) |
+| `ImportFinished` | `generation-flow.ts` `writeImport` after the await -> `generation-table.ts` `copyWritten` with `written` (`importSuperseded`, the `reset` effect, `removeOld`), then with `finished` |
+| `Superseded` | `generation-table.ts` `importSuperseded` |
+| `Deliver` | `room-protocol.ts` `handleRoomMessage` (generation gate, `seeGeneration` for a higher GM message), `admitRoomMessage` in `core/room-messages.ts`, `dispatchRoomMessage`, `receiveState` (`stageGeneration`); `catch-up.ts` `feed` (saves a pending adoption after `state-merged`); `catch-up-table.ts` `catchUpStateMerged`, `catchUpStateRequested`, `catchUpFired` case `answer`; `catch-up-effects.ts` `run` case `answer` -> `engine.ts` `sendStateAnswer` |
+| `SeeGeneration` | `generation-table.ts` `seeGeneration` / `adoptFromCopy` -> `catch-up-table.ts` `enterFromGeneration` via `catchUpGenerationHeard` / `catchUpGenerationRead`; `catch-up-effects.ts` `run` case `adopt` -> `generation-flow.ts` `clearStaged` -> `generation-table.ts` `clearStaged` |
+| `SaveAdoption` | `catch-up.ts` `feed` -> `generation-flow.ts` `saveAdoption` -> `generation-table.ts` `saveAdoption`, `storeWritten`, `storeFailed`, and `saveGeneration`; `catch-up-table.ts` `catchUpAdoptionSaved` |
+| `Leave` | `catch-up-table.ts` `leave`; `engine.ts` `performCaughtUp` (`persistAllOnExit`) |
+| `ReadCopy`, `ReadCopyInto` | `room-copy.ts` `read` -> `room-copy-table.ts` `observeRead` -> `mergeReadRoomCopy`, and `followed` -> `followMetadata`; `generation-table.ts` `adoptFromCopy` (`afterRead`); `catch-up-table.ts` `catchUpAdoptionStaged` |
+| `WriteCopy` | `room-copy-table.ts` `trigger`, `readDone`, `encodeWrite`, `verifyDone` (ordinary) with `engine.ts` `canWriteRoomCopy` |
+| `Ask` | `catch-up-table.ts` `request`, `ask`, `catchUpRoomCopyRead`, and `catchUpFired` case `catch-up` while adopting |
+| `SpeakAlive` | `catch-up-table.ts` `catchUpPing` / `canAnswer`; `catch-up-effects.ts` `run` case `alive` -> `engine.ts` `sendAlive` |
+| `Timeout` | `catch-up-table.ts` `catchUpFired` case `catch-up` (ordinary), `catchUpPartyRead` alone |
+| `RoleChange` | `engine.ts` `changeRole` -> `generation-flow.ts` `roleChanged` -> `generation-table.ts` `roleChanged`; `catch-up-table.ts` `catchUpEnter` with `role` (drops `pendingAdoption`) |
+| `Close` | `engine.ts` `stop` (`controller.abort()`) |
 
 ### Bounds and what is left out
 
 Two clients `a` and `b`; the bounds per config are in the table under Run. A pass covers those bounds only.
 
-Left out: page reload and start (`loadReplica`), more than two clients and cross-sender reordering, nonces and partial `state` answers, held requests of a GM that cannot answer yet, drift catch-ups, commits and player proposals, pending edits and the outbox (`flush`, `drop`), the routine room-copy write race (the `room-copy` skill covers it), failures of `removeGeneration`, `removeGenerationsBelow`, the AD-11 persist-all writes and storage reads, too-large records, and older storage formats. A wipe and an import are one action, because both run `replaceGeneration`.
+Left out: page reload and start (`loadReplica`), more than two clients and cross-sender reordering, nonces and partial `state` answers (so TASK-129, an own-nonce answer from a higher generation dropped while adopting, is outside this model; the `replica-catch-up` skill covers nonces), held requests of a GM that cannot answer yet, drift catch-ups, commits and player proposals, pending edits and the outbox (`flush`, `drop`), the routine room-copy write race (the `room-copy` skill covers it), failures of `removeGeneration`, `removeGenerationsBelow`, the AD-11 persist-all writes and storage reads, too-large records, and older storage formats. A wipe and an import are one action, because both run `replaceGeneration`.
 
 Fairness for the liveness rules: a waiting message arrives, a catch-up timer fires, a copy read ends and an import's copy write ends. A GM's choices (import, role change, close, routine copy writes, `alive`) are not forced.
 
 ## Open findings
 
-Each `finding-*.cfg` reproduces one. They were replayed against the real `createCatchUp` and `createGenerationFlow` in a scratch bun test at the sync commit.
+Each `finding-*.cfg` reproduces one. They were replayed against the real `createCatchUp` and `createGenerationFlow` in a scratch bun test at `19232ad`; findings 1 and 3 were replayed again at `995e1c7`.
 
-1. **The importer leaks the new generation before its room copy and `reset`** (`finding-importer-leaves.cfg`, `EventuallySettled`). During `await ports.roomCopy.writeImport`, the importer is a live GM, so `pingReceived` answers `alive` and `stateRequested` answers `state`, both with the new generation (`engine.ts` `runCatchUp` cases `alive` and `answer`). A peer that hears it adopts. If the importer's page then closes before the copy lands, nothing holds the new generation: the peer stays in `catching-up/adopting` and its retries never end. AD-9 says the importer writes the copy and only then sends `reset`; the code keeps that order for `reset` only. With the leak removed in the model, this config passes.
+1. **The importer leaks the new generation before its room copy and `reset`** (`finding-importer-leaves.cfg`, `EventuallySettled`). During `await ports.roomCopy.writeImport`, the importer is a live GM, so `pingReceived` answers `alive` and `stateRequested` answers `state`, both with the new generation (`catch-up-effects.ts` `run` cases `alive` and `answer`, sent by `engine.ts` with `generationFlow.generation()`). A peer that hears it adopts. If the importer's page then closes before the copy lands, nothing holds the new generation: the peer stays in `catching-up/adopting` and its retries never end. AD-9 says the importer writes the copy and only then sends `reset`; the code keeps that order for `reset` only. With the leak removed in the model, this config passes.
 2. **The only holder of a new generation is demoted while the room has no copy of it** (`finding-holder-demoted.cfg`, `EventuallySettled`). The import's copy does not fit, so `removeLowerCopy` leaves the room with no copy. The importer sends `reset`, a GM peer adopts, then the importer becomes a player. A player never answers (`canAnswer`), so the peer stays adopting until the importer is a GM again.
-3. **An importer demoted mid-import sends `reset` as a player** (`finding-importer-demoted.cfg`, `EventuallyAgreed`). `replaceGeneration` checks `importSuperseded`, not the role, after the await, so it sends `reset` and replies `wiped` or `snapshot-imported`. Every receiver drops a `reset` from a player (`ADMISSION.reset` in `core/room-messages.ts`). When the copy does not fit, the demoted client stays on the new generation and the room on the old one, for good.
+3. **An importer demoted mid-import sends `reset` as a player** (`finding-importer-demoted.cfg`, `EventuallyAgreed`). `generation-table.ts` `copyWritten` checks `importSuperseded`, not the role, after the await, so it sends `reset` and replies `wiped` or `snapshot-imported`. Every receiver drops a `reset` from a player (`ADMISSION.reset` in `core/room-messages.ts`). When the copy does not fit, the demoted client stays on the new generation and the room on the old one, for good.
 
 The owner's verdicts, 2026-11-19. Finding 1 is TASK-117. Findings 2 and 3 are accepted: a room has one GM, generations change only while the preset format settles, and a GM is not demoted mid-import. Keep their configs as expected failures and do not report them again.
 
@@ -121,13 +125,17 @@ When a config ends against expectation, read the path with `/statechart`, then r
 
 ## Coverage record
 
-Sync commit: `19232ad`. Move it forward only after you confirm that the model describes the covered functions at the new commit.
+Sync commit: `995e1c7`. Move it forward only after you confirm that the model describes the covered functions at the new commit.
 
-- `src/replica/generation-flow.ts`: `importFromSnapshot`, `wipe`, `replaceGeneration`, `importSuperseded`, `nextGeneration`, `adoptFromCopy`, `seeGeneration`, `stage`, `clearStaged`, `saveAdoption`, `saveGeneration`, `roleChanged`
-- `src/replica/catch-up.ts`: `enterFromGeneration`, `finishAdoption`, `leave`, `enter`, `canAnswer`, `stateMerged`, `stateRequested`, `pingReceived`, `fired` (`catch-up`, `answer`), `adoptionStaged`, `generationRead`, `generationHeard`
-- `src/replica/engine.ts`: `runCatchUp` (`adopt`, `alive`, `answer`, `request`), `changeRole`, `performCaughtUp`, `canWriteRoomCopy`, the `createGenerationFlow` and `createCatchUp` wiring
+- `src/replica/generation-flow.ts`: `createGenerationFlow` (`dispatch`, `run`, `writeImport`), `importFromSnapshot`, `wipe`, `adoptFromCopy`, `seeGeneration`, `stage`, `clearStaged`, `saveAdoption`, `roleChanged`, `saveGeneration`
+- `src/replica/generation-table.ts`: `generationTable`, `importGeneration`, `importSuperseded`, `seeGeneration`, `adoptFromCopy`, `stage`, `clearStaged`, `saveAdoption`, `storeWritten`, `storeFailed`, `copyWritten`, `removeOld`, `roleChanged`, `installed`, `rememberGeneration`, `withStaging`
+- `src/replica/catch-up.ts`: `createCatchUp` (`feed` and its pending-adoption save), `live`, `adopting`
+- `src/replica/catch-up-table.ts`: `catchUpTable` rows, `catchUpEnter`, `catchUpRoomCopyRead`, `catchUpPartyRead`, `catchUpGenerationHeard`, `catchUpGenerationRead`, `catchUpAdoptionStaged`, `catchUpStateRequested`, `catchUpPing`, `catchUpStateMerged`, `catchUpFired` (`catch-up`, `answer`), `catchUpAdoptionSaved`, `enterFromGeneration`, `leave`, `ask`, `request`, `canAnswer`, `scheduleAnswer`
+- `src/replica/catch-up-effects.ts`: `run` (`adopt`, `alive`, `answer`, `request`, `read-room-copy`, `caught-up`)
+- `src/replica/engine.ts`: `changeRole`, `performCaughtUp`, `canWriteRoomCopy`, `sendStateAnswer`, `sendAlive`, `stop`, the `createGenerationFlow`, `createCatchUp`, `createCatchUpEffects` and `createRoomCopy` (`adopt`) wiring
 - `src/replica/room-protocol.ts`: `handleRoomMessage`, `dispatchRoomMessage`, `receiveState`
-- `src/replica/room-copy.ts`: `mergeReadRoomCopy`, `followMetadata`, `runRoomCopyWrite`, `writeImportCopy`, `runImportCopy`, `importCopyVerified`, `adoptedHigherCopy`, `removeLowerCopy`
+- `src/replica/room-copy.ts`: `writeImport`, `read`, `followed`, `mergeReadRoomCopy`, `followMetadata`
+- `src/replica/room-copy-table.ts`: `edited`, `trigger`, `finish`, `nextImport`, `observeRead`, `readDone`, `importRead`, `adoptForOrdinary`, `afterAdoption`, `cleanupRead`, `encodeWrite`, `writeDone`, `verifyDone`, `importRejected`, `failed`
 - `src/replica/command-routing.ts`: `decideCommandRoute`
 - `src/replica/record-store.ts`: `readHighestGeneration`, `removeGeneration`, `removeGenerationsBelow`
 - `src/core/room-messages.ts`: `ADMISSION`, `admitRoomMessage`, `generationRelation`
