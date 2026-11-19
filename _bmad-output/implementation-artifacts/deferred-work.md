@@ -557,3 +557,13 @@ not optional scope. Evidence: `task-79-window5-review.md`.
 ## Deferred from: TASK-114.1 (2026-11-18)
 
 - The Builder preview command handler in `src/builder/preview-pane.tsx` and `src/preview/` keep the wire form until architecture-review candidate 3 replaces the preview with the engine.
+
+## Deferred from: TASK-115.1 (2026-11-19)
+
+Deviations from DESIGN.md that TASK-115.11 reconciles:
+
+- `checkMachine` constrains effects by `type`, not `kind`: `Effect extends { readonly type: string }` and `allowedEffects` lists `Effect['type']`. `CatchUpDecision` is discriminated by `type` and stays unchanged. Phases and events stay `Tagged` (`kind`). Rule for later tables: effects use `type`, phases and events use `kind`.
+- The liveness table has two phases, `offline` and `online`. The catalog's `unknown` cannot differ in behavior: `gmLink` starts `offline`, and an `offline` → `offline` step emits nothing, as before.
+- The catch-up table has four rows: `initializing`, `catching-up`, `adopting` (catch-up in adopting mode as its own kind) and `live`. `LivenessEvent` is `Extract<Event, { kind: 'heard' | 'fired' | 'watch' }>`. The shell feeds `saveAdoption` back as a synchronous `adoption-saved` event, so cells stay pure.
+- `engine.ts` changed by one rename, `gmInRoom` → `gmInParty` (two lines). The ticket's "engine.ts does not change" meant the catch-up wiring.
+- `checkMachine` finds each cell's target phases by running it on generated data with a fixed seed, so the diagram is stable. A branch that the samples never reach draws no arrow; a cell's table test covers it.
