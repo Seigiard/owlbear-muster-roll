@@ -25,6 +25,7 @@ import { Result } from 'better-result';
 import type { DiceExtensionTiming } from '@/core/timing';
 import { SendFailure, type BroadcastOptions, type BroadcastPort } from '@/platform/ports';
 import { taggedSendFailure, type FailureReporter } from '@/replica/failures';
+import type { Schedule } from '@/replica/timers';
 
 const LOCAL: BroadcastOptions = { destination: 'LOCAL' };
 
@@ -63,7 +64,6 @@ export type DiceExtension = {
   roll: (request: DiceExtensionRoll) => Promise<Result<DieFace[], DiceExtensionFailure>>;
   // This client became a GM's: it probes, and asks for access when the answer says it has none.
   becameGm: () => void;
-  stop: () => void;
 };
 
 // `gone` marks an answer that shows no extension is listening: a failed send or no result.
@@ -86,8 +86,9 @@ export function createDiceExtension(
   timing: DiceExtensionTiming,
   newId: () => string,
   mayAskAccess: () => boolean,
-  report: FailureReporter = () => undefined,
+  options: { report: FailureReporter; signal: AbortSignal; schedule: Schedule },
 ): DiceExtension {
+  const { report, signal, schedule } = options;
   // The latest answer to a probe, and when the latest probe started, on the monotonic clock.
   let lastReady = false;
   let probedAt = Number.NEGATIVE_INFINITY;
@@ -96,7 +97,6 @@ export function createDiceExtension(
   let access: DiceAccess = 'unknown';
   // When access was last granted. A probe that started before then cannot take it back.
   let permittedAt = Number.NEGATIVE_INFINITY;
-  let stopped = false;
   // Settles when the roll asked for last has its answer, so the next one waits for it.
   let lastRoll: Promise<void> = Promise.resolve();
   // Access is asked once per start. A `timeout` or `no-gm` answer, no answer in time, a failed send,
@@ -104,14 +104,13 @@ export function createDiceExtension(
   let accessAsked = false;
   const accessRequests = new Set<string>();
   const rolls = new Map<string, WaitingRoll>();
-  const timers = new Set<ReturnType<typeof setTimeout>>();
 
   // A late answer to the latest probe still counts, for the next roll.
   const unsubscribeReady = broadcast.onMessage(DICE_PLUS_READY_CHANNEL, (event) => {
     const reply = dicePlusReadyReplySchema.safeParse(event.data);
     const latest = latestProbe;
 
-    if (!reply.success || latest === null || reply.data.requestId !== latest.id || stopped) {
+    if (!reply.success || latest === null || reply.data.requestId !== latest.id || signal.aborted) {
       return;
     }
 
@@ -188,12 +187,7 @@ export function createDiceExtension(
   // Runs `action` after `delay`, unless the client stops first. An answer that comes first leaves
   // the timer to find nothing waiting.
   function after(delay: number, action: () => void): void {
-    const timer = setTimeout(() => {
-      timers.delete(timer);
-      action();
-    }, delay);
-
-    timers.add(timer);
+    schedule(signal, delay, action);
   }
 
   // A failed send, or one that threw, counts as not sent.
@@ -261,7 +255,7 @@ export function createDiceExtension(
 
   // The GM's client asks once, so the GM answers the extension's prompt before anyone rolls.
   function askAccess(): void {
-    if (accessAsked || stopped || !mayAskAccess()) {
+    if (accessAsked || signal.aborted || !mayAskAccess()) {
       return;
     }
 
@@ -357,7 +351,7 @@ export function createDiceExtension(
 
   function probeAtStart(retriesLeft: number, delay: number): void {
     void probe().then((ready) => {
-      if (!ready && !stopped && retriesLeft > 0) {
+      if (!ready && !signal.aborted && retriesLeft > 0) {
         after(delay, () => {
           probeAtStart(retriesLeft - 1, delay * 2);
         });
@@ -388,12 +382,29 @@ export function createDiceExtension(
     });
   }
 
+  signal.addEventListener(
+    'abort',
+    () => {
+      unsubscribeReady();
+      unsubscribeResult();
+      unsubscribeError();
+      unsubscribeAccess();
+
+      latestProbe?.settle(false);
+
+      for (const waiting of rolls.values()) {
+        waiting.finish(Result.err({ code: 'stopped' }));
+      }
+    },
+    { once: true },
+  );
+
   return {
     start: () => {
       probeAtStart(timing.startProbeRetries, timing.startProbeRetryMs);
     },
     ready: () => {
-      if (stopped) {
+      if (signal.aborted) {
         return Promise.resolve('absent');
       }
 
@@ -403,7 +414,7 @@ export function createDiceExtension(
       return answer === null ? Promise.resolve(readiness()) : answer.then(readiness);
     },
     roll: (request) => {
-      if (stopped) {
+      if (signal.aborted) {
         return Promise.resolve(Result.err({ code: 'stopped' }));
       }
 
@@ -429,7 +440,7 @@ export function createDiceExtension(
             }
 
             // An extension that stopped answering is gone until a probe finds it again.
-            if (gone && !stopped) {
+            if (gone && !signal.aborted) {
               lastReady = false;
               void probe();
             }
@@ -449,26 +460,8 @@ export function createDiceExtension(
       return answer;
     },
     becameGm: () => {
-      if (!stopped) {
+      if (!signal.aborted) {
         void probe();
-      }
-    },
-    stop: () => {
-      stopped = true;
-      unsubscribeReady();
-      unsubscribeResult();
-      unsubscribeError();
-      unsubscribeAccess();
-
-      for (const timer of timers) {
-        clearTimeout(timer);
-      }
-
-      timers.clear();
-      latestProbe?.settle(false);
-
-      for (const waiting of rolls.values()) {
-        waiting.finish(Result.err({ code: 'stopped' }));
       }
     },
   };

@@ -59,7 +59,7 @@ export type RoomProtocolPorts = {
   report: FailureReporter;
   senderOf: (connectionId: string) => Promise<RoomSender | null>;
   role: () => PlayerRole;
-  stopped: () => boolean;
+  signal: AbortSignal;
   generation: () => Generation;
   catchUp: RoomProtocolCatchUp;
   seeGeneration: (generation: Generation, keepNonce: boolean) => CatchUpDecision[];
@@ -156,7 +156,7 @@ export function createRoomProtocol(ports: RoomProtocolPorts): RoomProtocol {
   async function handleRoomMessage(event: RoomProtocolEvent, message: RoomMessage): Promise<void> {
     const sender = await ports.senderOf(event.connectionId);
 
-    if (ports.stopped()) {
+    if (ports.signal.aborted) {
       return;
     }
 

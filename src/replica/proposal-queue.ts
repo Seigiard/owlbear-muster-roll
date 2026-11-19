@@ -25,6 +25,7 @@ import { Result } from 'better-result';
 import { sameEditId, type EditId } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
 import { ProposeDroppedFailure, type FailureReporter } from '@/replica/failures';
+import type { Schedule } from '@/replica/timers';
 
 // What a player's edit of one key does, kept so it can be applied again to a newer record. `fields`
 // sets or clears (`null`) field values of a row or a repeat block. `add` is a new repeat block with
@@ -57,7 +58,8 @@ export type ProposalQueueOptions = {
   // the send queue is done with it.
   enqueue: (compose: () => VersionedRecord | null) => Promise<void>;
   // Runs `run` after `delay` and returns what cancels it. Tests inject it to read the backoff.
-  schedule?: (run: () => void, delay: number) => () => void;
+  signal: AbortSignal;
+  schedule: Schedule;
   report?: FailureReporter;
 };
 
@@ -80,7 +82,7 @@ export type ProposalQueue = {
 type Resend = { cancel: () => void; delay: number };
 
 export function createProposalQueue(options: ProposalQueueOptions): ProposalQueue {
-  const { timing, enqueue, schedule = scheduleWithTimer } = options;
+  const { timing, enqueue, schedule, signal } = options;
   const report = options.report ?? (() => undefined);
   const entries = new Map<string, ProposalEntry>();
   const resends = new Map<string, Resend>();
@@ -142,7 +144,7 @@ export function createProposalQueue(options: ProposalQueueOptions): ProposalQueu
     stopResend(key);
     resends.set(key, {
       delay,
-      cancel: schedule(() => {
+      cancel: schedule(signal, delay, () => {
         const entry = entries.get(key);
 
         if (entry === undefined || entry.record === null) {
@@ -153,7 +155,7 @@ export function createProposalQueue(options: ProposalQueueOptions): ProposalQueu
 
         sendNow(key);
         armResend(key, Math.min(delay * 2, timing.proposeResendMaxMs));
-      }, delay),
+      }),
     });
   }
 
@@ -402,12 +404,4 @@ export function movedPatches(
 
 function scopePathKey(block: BlockAddress): string {
   return scopePathOf(block).join(':');
-}
-
-function scheduleWithTimer(run: () => void, delay: number): () => void {
-  const timer = setTimeout(run, delay);
-
-  return () => {
-    clearTimeout(timer);
-  };
 }

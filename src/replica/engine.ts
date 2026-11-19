@@ -219,15 +219,22 @@ export async function startReplicaEngine(
   // AD-5: re-read on every party change, and a change enters catch-up.
   let role = startRole;
   let generationFlow: GenerationFlow;
-  const outbox = createCommitOutbox(sendQueue, () => generationFlow.generation(), { report });
-  let stopped = false;
+  const controller = new AbortController();
+  const { signal } = controller;
+
+  const outbox = createCommitOutbox(sendQueue, () => generationFlow.generation(), {
+    report,
+    signal,
+  });
+
   let catchUp: CatchUp;
-  const catchUpController = new AbortController();
 
   // AD-4: a player's edits, one entry per key, until a GM client answers each. Only the newest
   // version of an entry is composed into the `propose` the queue takes.
   const pendingEdits = createPendingEdits({
     timing,
+    signal,
+    schedule,
     playerId: ownPlayerId,
     connectionId,
     records: () => replica,
@@ -243,7 +250,7 @@ export async function startReplicaEngine(
         () => {
           const record = compose();
 
-          if (record === null || stopped || role === 'GM') return null;
+          if (record === null || signal.aborted || role === 'GM') return null;
           const generation = generationFlow.generation();
           const [first, ...rest] = proposeMessages(generation, record);
 
@@ -252,7 +259,7 @@ export async function startReplicaEngine(
               .enqueueComposed(
                 SYNC_CHANNEL,
                 () =>
-                  stopped ||
+                  signal.aborted ||
                   role === 'GM' ||
                   compareGenerations(generation, generationFlow.generation()) !== 0
                     ? null
@@ -282,7 +289,7 @@ export async function startReplicaEngine(
     options.diceTiming ?? DICE_EXTENSION_TIMING,
     newId,
     () => role === 'GM',
-    report,
+    { report, signal, schedule },
   );
 
   diceExtension.start();
@@ -290,7 +297,7 @@ export async function startReplicaEngine(
   const tokenMenu =
     options.menuCopy === undefined
       ? null
-      : createTokenMenu({ ...platform, report }, options.menuCopy, {
+      : createTokenMenu({ ...platform, report, signal }, options.menuCopy, {
           unlink: (tokenId) => {
             const id = newId();
 
@@ -326,10 +333,18 @@ export async function startReplicaEngine(
   // AD-11: a client that became GM persists every held record when its catch-up ends.
   let persistAllOnExit = false;
   let roleReads = 0;
-  // Made after `stopped`, which its callback reads, and before `publisher`, which it also reads.
+
+  // Made before `publisher`, which its callback reads.
   // Its first replace follows the asynchronous party read; no await falls between this and the
   // publisher assignment.
-  const roster = createPartyRoster(platform.party, followParty, report);
+  const roster = createPartyRoster({
+    ...platform.party,
+    getPlayers: () => platform.party.getPlayers(),
+    report,
+    signal,
+    onReplace: followParty,
+  });
+
   // The digest of the replica, until the replica changes.
   let cachedDigest: number | null = null;
   let roomCopy: RoomCopy;
@@ -364,11 +379,8 @@ export async function startReplicaEngine(
     metadata: platform.metadata,
     timing,
     random,
-    schedule: (delayMs, run) => {
-      const timer = setTimeout(run, delayMs);
-
-      return () => clearTimeout(timer);
-    },
+    signal,
+    schedule,
     writable: canWriteRoomCopy,
     gm: () => role === 'GM',
     generation: () => generationFlow.generation(),
@@ -445,14 +457,14 @@ export async function startReplicaEngine(
     queueMicrotask(() => {
       diagnosticsPublishPending = false;
 
-      if (!stopped) {
+      if (!signal.aborted) {
         publisher.publish();
       }
     });
   });
 
   catchUpEffects = createCatchUpEffects({
-    signal: catchUpController.signal,
+    signal,
     schedule,
     report,
     catchUp,
@@ -506,7 +518,7 @@ export async function startReplicaEngine(
     records: () => replica,
     presetOf,
     role: () => role,
-    stopped: () => stopped,
+    signal,
     acceptCommand,
     catchUp,
     interpretCatchUp: (decisions) => {
@@ -555,7 +567,7 @@ export async function startReplicaEngine(
     pendingView: commandRouting.pendingView,
     presetOf,
     role: () => role,
-    stopped: () => stopped,
+    signal,
     generation: () => generationFlow.generation(),
     dice: diceExtension,
     gmInParty,
@@ -669,7 +681,7 @@ export async function startReplicaEngine(
   // already hides such an item, but a press can race a link or role change. A repeat block target
   // opens its sheet scrolled to it (CAP-14).
   function openFromToken(tokenId: string): void {
-    if (stopped) {
+    if (signal.aborted) {
       return;
     }
 
@@ -738,7 +750,7 @@ export async function startReplicaEngine(
 
   // A party change reaches a GM's windows at once, so the access panel lists who is in the room.
   function followParty(): void {
-    if (stopped) {
+    if (signal.aborted) {
       return;
     }
 
@@ -749,7 +761,7 @@ export async function startReplicaEngine(
   // brought the room's links. It reads the replica, not the pending view, so a queued link shows
   // in the menu when it applies. Records that change nothing leave the filters as they were.
   function refreshTokenMenu(): void {
-    if (tokenMenu !== null && !stopped && catchUp.view().firstCatchUpDone) {
+    if (tokenMenu !== null && !signal.aborted && catchUp.view().firstCatchUpDone) {
       tokenMenu.update(replica, presetOf(replica.get('preset')), role);
     }
   }
@@ -760,7 +772,7 @@ export async function startReplicaEngine(
   function followWindowSize(): void {
     const record = replica.get('preset');
 
-    if (stopped || (record === undefined && !catchUp.view().firstCatchUpDone)) {
+    if (signal.aborted || (record === undefined && !catchUp.view().firstCatchUpDone)) {
       return;
     }
 
@@ -790,12 +802,16 @@ export async function startReplicaEngine(
   // Only a GM client watches the scene. A fresh watch has seen no item, so a role change never counts
   // the tokens already gone as deleted.
   function followScene(): void {
-    if (role === 'GM' && !stopped) {
-      sceneWatch ??= watchSceneRemovals(platform.scene, {
-        report,
-        removed: unlinkRemoved,
-        present: forgetPresent,
-      });
+    if (role === 'GM' && !signal.aborted) {
+      if (sceneWatch === null) {
+        sceneWatch = watchSceneRemovals(platform.scene, {
+          signal,
+          schedule,
+          report,
+          removed: unlinkRemoved,
+          present: forgetPresent,
+        });
+      }
 
       return;
     }
@@ -806,7 +822,7 @@ export async function startReplicaEngine(
   }
 
   function unlinkRemoved(itemIds: readonly string[]): void {
-    if (stopped || role !== 'GM') {
+    if (signal.aborted || role !== 'GM') {
       return;
     }
 
@@ -840,7 +856,7 @@ export async function startReplicaEngine(
   // `link-clear` per token, each with an id no window owns. Engine-made, so its id stays out of
   // `recentCommandIds`, which only guards against window repeats.
   function clearDeletedLinks(): void {
-    if (stopped || role !== 'GM' || !catchUp.live() || generationFlow.importing()) {
+    if (signal.aborted || role !== 'GM' || !catchUp.live() || generationFlow.importing()) {
       return;
     }
 
@@ -1042,7 +1058,7 @@ export async function startReplicaEngine(
   function enterCatchUp(
     trigger: 'start' | 'page-return' | 'role' | 'generation' | 'drift' | 'gm-return',
   ): Promise<void> {
-    if (stopped) {
+    if (signal.aborted) {
       return Promise.resolve();
     }
 
@@ -1052,7 +1068,9 @@ export async function startReplicaEngine(
   // AD-8: only a live GM client that can vouch for its records writes, as only such a client
   // answers a `state-request`. Checked again after every await.
   function canWriteRoomCopy(): boolean {
-    return !stopped && role === 'GM' && generationFlow.persistence() !== null && catchUp.live();
+    return (
+      !signal.aborted && role === 'GM' && generationFlow.persistence() !== null && catchUp.live()
+    );
   }
 
   function notifyDataReplaced(): void {
@@ -1183,7 +1201,7 @@ export async function startReplicaEngine(
       return;
     }
 
-    if (stopped || read !== roleReads || next === role) {
+    if (signal.aborted || read !== roleReads || next === role) {
       return;
     }
 
@@ -1257,7 +1275,7 @@ export async function startReplicaEngine(
     report,
     senderOf: roster.senderOf,
     role: () => role,
-    stopped: () => stopped,
+    signal,
     generation: () => generationFlow.generation(),
     catchUp: {
       adopting: catchUp.adopting,
@@ -1330,6 +1348,20 @@ export async function startReplicaEngine(
 
   const unsubscribeMetadata = platform.metadata.onMetadataChange(roomCopy.followed);
 
+  signal.addEventListener(
+    'abort',
+    () => {
+      pendingEdits.clear();
+      unsubscribeUi();
+      unsubscribeRoom();
+      unsubscribeParty();
+      unsubscribeRole();
+      unsubscribeMetadata();
+      followScene();
+    },
+    { once: true },
+  );
+
   followScene();
 
   const started = enterCatchUp('start');
@@ -1339,24 +1371,11 @@ export async function startReplicaEngine(
   });
   // An alone GM is live when the engine resolves. A metadata or party read that never ends holds
   // the engine back no longer than the catch-up timeout, which by then ended catch-up.
-  await settledWithin(started, timing.catchUpTimeoutMs, report);
+  await settledWithin(started, timing.catchUpTimeoutMs, report, signal);
 
   return {
     stop: () => {
-      stopped = true;
-      catchUpController.abort();
-      roomCopy.stop();
-      pendingEdits.clear();
-      unsubscribeUi();
-      unsubscribeRoom();
-      unsubscribeParty();
-      unsubscribeRole();
-      unsubscribeMetadata();
-      roster.stop();
-      outbox.stop();
-      tokenMenu?.stop();
-      diceExtension.stop();
-      followScene();
+      controller.abort();
     },
     flushNow: () => {
       // A closing page cannot wait for catch-up, so the intents it holds apply and go out now.
@@ -1384,11 +1403,12 @@ async function settledWithin(
   work: Promise<void>,
   milliseconds: number,
   report: FailureReporter,
+  signal: AbortSignal,
 ): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel = (): void => undefined;
 
   const deadline = new Promise<void>((resolve) => {
-    timer = setTimeout(resolve, milliseconds);
+    cancel = schedule(signal, milliseconds, resolve);
   });
 
   try {
@@ -1396,7 +1416,7 @@ async function settledWithin(
   } catch (error) {
     report(new MessageRejectedFailure({ reason: String(error) }));
   } finally {
-    clearTimeout(timer);
+    cancel();
   }
 }
 

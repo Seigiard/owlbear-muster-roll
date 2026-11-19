@@ -1096,7 +1096,8 @@ function createHarness(
 
       return Promise.resolve();
     },
-    schedule: (run, delay) => {
+    signal: new AbortController().signal,
+    schedule: (_signal, delay, run) => {
       const scheduledEntry = { run, delay, cancelled: false };
       scheduled.push(scheduledEntry);
 

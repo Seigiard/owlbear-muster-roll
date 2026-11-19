@@ -62,7 +62,10 @@ function createHeldWriteCopy() {
     },
   };
 
+  const controller = new AbortController();
+
   const roomCopy = createRoomCopy({
+    signal: controller.signal,
     metadata: metadataPort,
     timing: { snapshotPauseMs: 10, snapshotJitterMs: 0 },
     random: () => 0,
@@ -79,6 +82,7 @@ function createHeldWriteCopy() {
 
   return {
     copy: roomCopy,
+    stop: () => controller.abort(),
     holdWrite: () => {
       heldWrite = new Promise((resolve) => {
         releaseWrite = resolve;
@@ -129,7 +133,7 @@ async function observeStoppedWrite(): Promise<void> {
   subject.copy.pageHidden();
   await waitFor(() => subject.writes() === 1);
   const imported = subject.copy.writeImport(HIGHER, () => false);
-  subject.copy.stop();
+  subject.stop();
   subject.releaseWrite();
   await imported;
   console.log(

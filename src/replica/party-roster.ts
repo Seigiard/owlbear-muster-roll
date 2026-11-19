@@ -10,18 +10,15 @@ export type PartyRoster = {
   senderOf: (connectionId: string) => Promise<RoomSender | null>;
   // The party as last read, one entry per connection, for the access panel.
   entries: () => PartyEntry[];
-  stop: () => void;
 };
 
 // AD-5: a room message names its sender only by connection id, and the party port maps it to a role
 // and a player id. Another GM connection of the same account is a member of its own. `onReplace`
 // hears every new read of the party.
 export function createPartyRoster(
-  party: PartyPort & { report?: FailureReporter },
-  onReplace?: () => void,
-  reportOverride?: FailureReporter,
+  party: PartyPort & { report: FailureReporter; signal: AbortSignal; onReplace?: () => void },
 ): PartyRoster {
-  const report = reportOverride ?? party.report ?? (() => undefined);
+  const { report, signal, onReplace } = party;
   let members = new Map<string, RoomSender>();
   // Counts party changes, so a read that started before one cannot bring the older list back.
   let epoch = 0;
@@ -46,7 +43,7 @@ export function createPartyRoster(
 
       if (players.isErr()) {
         report(players.error);
-      } else if (epoch === started) {
+      } else if (!signal.aborted && epoch === started) {
         replace(players.value);
       }
     } finally {
@@ -64,6 +61,8 @@ export function createPartyRoster(
     epoch += 1;
     replace(players);
   });
+
+  signal.addEventListener('abort', unsubscribe, { once: true });
 
   // Fills the map before the first message, so a known sender usually needs no read of its own.
   void reread();
@@ -87,6 +86,5 @@ export function createPartyRoster(
         name: member.name,
         role: member.role,
       })),
-    stop: unsubscribe,
   };
 }

@@ -52,7 +52,8 @@ function createRig(): Rig {
         settles.push({ resolve, reject });
       });
     },
-    schedule: (run, delay) => {
+    signal: new AbortController().signal,
+    schedule: (_signal, delay, run) => {
       const timer = { run, delay, cancelled: false };
       timers.push(timer);
 

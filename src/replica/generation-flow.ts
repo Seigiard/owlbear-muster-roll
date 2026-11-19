@@ -42,7 +42,7 @@ export type GenerationFlowPorts = {
   records: () => ReadonlyMap<string, VersionedRecord>;
   presetOf: (record: VersionedRecord | undefined) => Preset | null;
   role: () => 'GM' | 'PLAYER';
-  stopped: () => boolean;
+  signal: AbortSignal;
   acceptCommand: (id: string) => boolean;
   catchUp: Pick<
     CatchUp,
@@ -114,12 +114,12 @@ export function generationSchemaValid(generation: Generation): boolean {
 }
 
 export function importSuperseded(
-  stopped: boolean,
+  aborted: boolean,
   adopting: Generation | null,
   ownGeneration: Generation,
   generation: Generation,
 ): boolean {
-  return stopped || adopting !== null || compareGenerations(ownGeneration, generation) !== 0;
+  return aborted || adopting !== null || compareGenerations(ownGeneration, generation) !== 0;
 }
 
 export function generationRelation(
@@ -332,16 +332,18 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
 
     try {
       await ports.roomCopy.writeImport(generation, () =>
-        importSuperseded(ports.stopped(), ports.catchUp.adopting(), ownGeneration, generation),
+        importSuperseded(ports.signal.aborted, ports.catchUp.adopting(), ownGeneration, generation),
       );
 
-      if (ports.stopped()) {
+      if (ports.signal.aborted) {
         return false;
       }
 
       // Another import of a higher generation won while the copy was written: this one is
       // replaced, and its `reset` would only send the room after a generation already gone.
-      if (importSuperseded(ports.stopped(), ports.catchUp.adopting(), ownGeneration, generation)) {
+      if (
+        importSuperseded(ports.signal.aborted, ports.catchUp.adopting(), ownGeneration, generation)
+      ) {
         ports.reject(id, 'data-replaced');
 
         return false;
@@ -369,7 +371,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
   // decoded copy of the generation it adopts completes it at once. A copy of a generation lower
   // than the one it adopts already is left alone.
   function adoptFromCopy(copy: Snapshot): AdoptFromCopyDecisions {
-    if (ports.stopped()) {
+    if (ports.signal.aborted) {
       return { adoptionStaged: [] };
     }
 
@@ -395,7 +397,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
   // `keepNonce`: the message that shows it answers this client's current request, so the catch-up
   // in progress keeps its `r` and takes that answer.
   function seeGeneration(generation: Generation, keepNonce: boolean): CatchUpDecision[] {
-    if (ports.stopped()) {
+    if (ports.signal.aborted) {
       return [];
     }
 
