@@ -1,10 +1,11 @@
 ---
 id: TASK-124
 title: One fragment assembler in core for proposals and stale replies
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-19T08:34:00Z'
-updated_date: '2026-11-19T08:40:00Z'
+updated_date: '2026-11-19T08:56:00Z'
 labels:
   - replica
   - architecture
@@ -31,5 +32,5 @@ Architecture review 2026-11-18, candidate 4, the one part the owner accepted now
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-Spec: _bmad-output/implementation-artifacts/spec-task-124-fragment-assembler.md
+Run through implement-spec: tdd chain (OpenCode test writer then implementer) in worktree task-124/assembler; merge into integration branch task-124-fragment-assembler-implementati; full check; code-review; one PR with auto-merge. Spec: _bmad-output/implementation-artifacts/spec-task-124-fragment-assembler.md
 <!-- SECTION:PLAN:END -->
