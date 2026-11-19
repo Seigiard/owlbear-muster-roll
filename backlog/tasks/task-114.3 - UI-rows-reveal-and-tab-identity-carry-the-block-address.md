@@ -1,10 +1,11 @@
 ---
 id: TASK-114.3
 title: 'UI: rows, reveal and tab identity carry the block address'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-18T18:24:00Z'
-updated_date: '2026-11-18T18:55:00Z'
+updated_date: '2026-11-19T03:12:00Z'
 labels: []
 dependencies:
   - TASK-114.2
@@ -27,6 +28,12 @@ Third PR of TASK-114. preset-section.tsx builds DiceRow with `instanceId`, `targ
 - [ ] #5 deferred-work.md records that the Builder preview keeps the wire form until candidate 3
 - [ ] #6 Full check passes: oxfmt, lint, typecheck, bun test, test:browser, build
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Run the tdd chain against _bmad-output/implementation-artifacts/spec-task-114-3-block-address-ui.md on branch task-114.3-block-address-ui, merged into the integration branch implement-specs-114.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
