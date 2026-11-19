@@ -2,7 +2,7 @@
 title: 'TASK-121.2: The Builder preview composes through core/compose'
 type: 'refactor'
 created: '2026-11-19'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '0460c9d03c8b9ab94af05f7b1bac2937bedae681'
@@ -74,6 +74,11 @@ context:
 - Given `tests/builder-snapshot.e2e.ts` and `tests/builder.e2e.ts`, when `bun run test:browser` runs, then every existing test passes with no edit and the new read-only test passes.
 
 ## Implementation Notes
+
+- Tests locked first (`2b9ccd4`): `src/builder/preview-compose.test.ts` (five cases, literal records from the I/O matrix) and one new test in `tests/builder-snapshot.e2e.ts`. One locked fixture was corrected in `66e6c83`: a plain-row field patch is addressed by the row's first field id (`plainRow` in `src/core/preset.ts`), so the edits of `hp` in the row `[name, hp]` carry `rowId: 'name'`; the expected records did not change.
+- `266af15` adds `previewCompose` and moves `sendCommand` onto it; `ba0a637` keeps the selected field's edit intent while a problem turns editing off, so fixing the problem brings the editor back without another click. The write policy now also guards `repeat-block-add` and `repeat-block-delete`; the tab controls were already gated by the same policy.
+- Mutation calibration: four mutations (replace instead of merge, write back only the first composed record, `ok: true` on refusal, no problem gate) each turned the owner test red on its protected assertion.
+- `bun test` goes from 3 502 to 3 496 tests: the 11 cases of `src/preview/sample-records.test.ts` leave and five `previewCompose` cases arrive; every other file keeps its count. `test:browser` stays at 583: the dice-choice sample case leaves, the read-only case arrives. The builder chunk is 80 974 B `gzip -9` at `ba0a637`.
 
 ## Spec Change Log
 
