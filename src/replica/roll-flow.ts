@@ -68,7 +68,7 @@ export type RollFlowPorts = {
   pendingView: () => ReadonlyMap<string, VersionedRecord>;
   presetOf: (record: VersionedRecord | undefined) => Preset | null;
   role: () => PlayerRole;
-  stopped: () => boolean;
+  signal: AbortSignal;
   generation: () => Generation;
   dice: RollDicePort;
   gmInParty: () => boolean;
@@ -190,8 +190,8 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
       return;
     }
 
-    const readiness = ports.stopped() ? 'absent' : await ports.dice.ready();
-    const stoppedAfterReadiness = ports.stopped();
+    const readiness = ports.signal.aborted ? 'absent' : await ports.dice.ready();
+    const stoppedAfterReadiness = ports.signal.aborted;
 
     if (!stoppedAfterReadiness && (readiness === 'absent' || readiness === 'refused')) {
       console.info(
@@ -228,7 +228,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     });
 
     // A stopped page sends nothing more, and its wait was no failure of the extension.
-    if (ports.stopped()) {
+    if (ports.signal.aborted) {
       return;
     }
 
@@ -275,7 +275,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
     evaluated: EvaluatedRoll,
     roller: string,
   ): Promise<void> {
-    if (ports.stopped()) {
+    if (ports.signal.aborted) {
       return;
     }
 
@@ -307,7 +307,7 @@ export function createRollFlow(ports: RollFlowPorts): RollFlow {
 
     const sent = await ports.sendRemote(message);
 
-    if (ports.stopped()) {
+    if (ports.signal.aborted) {
       return;
     }
 

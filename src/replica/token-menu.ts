@@ -56,11 +56,11 @@ export type TokenMenu = {
     preset: Preset | null,
     role: PlayerRole,
   ) => void;
-  stop: () => void;
 };
 
 type TokenMenuPorts = Pick<Platform, 'contextMenu' | 'popover'> & {
   report?: FailureReporter;
+  signal: AbortSignal;
 };
 
 // AD-10: only the background page owns the token menu. Owlbear filters do not change once an item
@@ -78,7 +78,6 @@ export function createTokenMenu(
   const stale = new Set<TokenMenuAction>();
   // One port call at a time, so a remove never overtakes the create before it.
   let calls: Promise<void> = Promise.resolve();
-  let stopped = false;
 
   // A rejected call marks its item stale, unless a newer update already changed it. The Owlbear SDK
   // resolves `create` without waiting for the host, so a create the host drops in silence is not
@@ -113,7 +112,7 @@ export function createTokenMenu(
       onClick: (context, elementId) => {
         const tokenId = onlyItemId(context);
 
-        if (tokenId === null || stopped) {
+        if (tokenId === null || ports.signal.aborted) {
           return;
         }
 
@@ -139,9 +138,19 @@ export function createTokenMenu(
     };
   }
 
+  ports.signal.addEventListener(
+    'abort',
+    () => {
+      for (const action of ACTIONS) {
+        if (created.has(action) || stale.has(action)) queueRemove(action);
+      }
+    },
+    { once: true },
+  );
+
   return {
     update: (records, preset, role) => {
-      if (stopped) {
+      if (ports.signal.aborted) {
         return;
       }
 
@@ -166,19 +175,8 @@ export function createTokenMenu(
           stale.delete(action);
           // A create still queued when the menu stops is dropped.
           queue(action, signature, () =>
-            stopped ? Promise.resolve() : ports.contextMenu.create(item),
+            ports.signal.aborted ? Promise.resolve() : ports.contextMenu.create(item),
           );
-        }
-      }
-    },
-    // Takes every item this menu may have left in Owlbear back out, so none stays with a click
-    // that does nothing.
-    stop: () => {
-      stopped = true;
-
-      for (const action of ACTIONS) {
-        if (created.has(action) || stale.has(action)) {
-          queueRemove(action);
         }
       }
     },

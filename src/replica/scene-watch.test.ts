@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createMockPlatform } from '@/platform/current';
 import type { ScenePort } from '@/platform/ports';
+import { schedule } from '@/replica/timers';
 import { watchSceneRemovals, type SceneWatch } from '@/replica/scene-watch';
 
 const RETRY_MS = 5;
@@ -182,9 +183,12 @@ function watch(scene: ScenePort): Watched {
   const removed: string[][] = [];
   const present: string[][] = [];
 
-  const sceneWatch = watchSceneRemovals(
+  const controller = new AbortController();
+  watchSceneRemovals(
     scene,
     {
+      signal: controller.signal,
+      schedule,
       removed: (itemIds) => {
         removed.push(itemIds);
       },
@@ -195,7 +199,7 @@ function watch(scene: ScenePort): Watched {
     RETRY_MS,
   );
 
-  return { removed, present, watch: sceneWatch };
+  return { removed, present, watch: { stop: () => controller.abort() } };
 }
 
 type FakeScene = {

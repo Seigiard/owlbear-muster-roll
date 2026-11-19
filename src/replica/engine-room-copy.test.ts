@@ -526,6 +526,7 @@ describe('interruption and rescheduling', () => {
     client.engine.catchUp();
     await settle();
     // #when
+    const publishesAtStop = client.local.length;
     client.engine.stop();
     read.release();
     await pause(20);
@@ -534,10 +535,12 @@ describe('interruption and rescheduling', () => {
       mira: shown(client, MIRA.k) ?? null,
       stored: storedRecord(client, MIRA.k),
       writes: gate.writes,
+      postStop: client.local.slice(publishesAtStop),
     }).toEqual({
       mira: null,
       stored: null,
       writes: 0,
+      postStop: [],
     });
   });
   test('a live GM merges the same held equal-generation metadata read', async () => {

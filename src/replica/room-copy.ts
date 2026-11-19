@@ -18,12 +18,14 @@ import type { Timing } from '@/core/timing';
 import type { Notice, RoomCopyOutcome, RoomCopyStatus } from '@/core/ui-messages';
 import { MetadataFailure, type MetadataPort } from '@/platform/ports';
 import { MessageRejectedFailure, type FailureReporter } from '@/replica/failures';
+import type { Schedule } from '@/replica/timers';
 
 export type RoomCopyOptions = {
   metadata: Pick<MetadataPort, 'getMetadata' | 'setMetadata'>;
   timing: Pick<Timing, 'snapshotPauseMs' | 'snapshotJitterMs'>;
   random: () => number;
-  schedule: (delayMs: number, run: () => void) => () => void;
+  signal: AbortSignal;
+  schedule: Schedule;
   writable: () => boolean;
   gm: () => boolean;
   generation: () => Generation;
@@ -44,7 +46,6 @@ export type RoomCopy = {
   followed: (metadata: JsonObject) => void;
   replaced: (fromCopy: boolean) => void;
   demoted: () => void;
-  stop: () => void;
   writeImport: (generation: Generation, superseded: () => boolean) => Promise<void>;
   status: () => RoomCopyStatus;
   notices: () => Notice[];
@@ -195,7 +196,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     const delay =
       options.timing.snapshotPauseMs + options.random() * options.timing.snapshotJitterMs;
 
-    const cancel = options.schedule(delay, () => {
+    const cancel = options.schedule(options.signal, delay, () => {
       deferred.scheduled = undefined;
       void writeRoomCopy().catch((error) => {
         report(new MetadataFailure({ operation: 'write', reason: String(error) }));
@@ -221,7 +222,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
       return;
     }
 
-    if (!options.writable()) {
+    if (options.signal.aborted || !options.writable()) {
       return;
     }
 
@@ -257,7 +258,7 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     const metadata = await readMetadata(options.metadata, report);
 
     // Step 2: a `resume` or a visibility change during the read stops the write.
-    if (!options.writable() || pageChanges !== changesAtRead) {
+    if (options.signal.aborted || !options.writable() || pageChanges !== changesAtRead) {
       return;
     }
 
@@ -588,6 +589,16 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
     options.changed();
   }
 
+  options.signal.addEventListener(
+    'abort',
+    () => {
+      const active = activeWrite();
+      cancelScheduledWrite();
+      lifecycle = active === undefined ? { phase: 'stopped' } : { phase: 'stopped', active };
+    },
+    { once: true },
+  );
+
   return {
     edited: scheduleRoomCopy,
     pageHidden: () => {
@@ -622,11 +633,6 @@ export function createRoomCopy(options: RoomCopyOptions): RoomCopy {
       cancelScheduledWrite();
       deferred.owed = false;
       notSaved = false;
-    },
-    stop: () => {
-      const active = activeWrite();
-      cancelScheduledWrite();
-      lifecycle = active === undefined ? { phase: 'stopped' } : { phase: 'stopped', active };
     },
     writeImport: writeImportCopy,
     status: () => {

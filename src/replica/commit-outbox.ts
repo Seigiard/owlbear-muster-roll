@@ -25,7 +25,6 @@ export type CommitOutbox = {
   // Hands every held record to the queue at once, for a page that is about to close.
   flush: () => void;
   // Sends nothing more, not even a commit already waiting in the queue.
-  stop: () => void;
   // AD-9: forgets every held record and ack, so a commit waiting in the queue sends nothing. The
   // queue composes it with the generation of the moment it sends, which a replaced room changed.
   drop: () => void;
@@ -40,15 +39,23 @@ export type CommitOutbox = {
 export function createCommitOutbox(
   sendQueue: SendQueue,
   generation: () => Generation,
-  options: { report?: FailureReporter } = {},
+  options: { report?: FailureReporter; signal: AbortSignal },
 ): CommitOutbox {
   const report = options.report ?? (() => undefined);
   const held = new Map<string, VersionedRecord>();
   const heldAcks = new Map<string, EditId[]>();
   let scheduled = false;
-  let stopped = false;
   // Commit sends the queue has not settled yet.
   let unsentSends = 0;
+
+  options.signal.addEventListener(
+    'abort',
+    () => {
+      held.clear();
+      heldAcks.clear();
+    },
+    { once: true },
+  );
 
   function track(send: Promise<void>): void {
     unsentSends += 1;
@@ -159,7 +166,7 @@ export function createCommitOutbox(
   function take(): JsonValue | null {
     scheduled = false;
 
-    if (stopped) {
+    if (options.signal.aborted) {
       return null;
     }
 
@@ -173,7 +180,7 @@ export function createCommitOutbox(
   }
 
   function schedule(): void {
-    if (scheduled || stopped) {
+    if (scheduled || options.signal.aborted) {
       return;
     }
 
@@ -183,7 +190,7 @@ export function createCommitOutbox(
 
   return {
     add: (records, acks = []) => {
-      if (records.length === 0 || stopped) {
+      if (records.length === 0 || options.signal.aborted) {
         return;
       }
 
@@ -207,11 +214,7 @@ export function createCommitOutbox(
         track(sendQueue.enqueue(SYNC_CHANNEL, message, REMOTE));
       }
     },
-    stop: () => {
-      stopped = true;
-      held.clear();
-      heldAcks.clear();
-    },
+
     drop: () => {
       held.clear();
       heldAcks.clear();

@@ -60,7 +60,8 @@ type PendingEditsOptions = {
   mint: (key: string, highestKnownCounter: number) => Version;
   now: () => number;
   enqueue: ProposalQueueOptions['enqueue'];
-  schedule?: ProposalQueueOptions['schedule'];
+  signal: AbortSignal;
+  schedule: ProposalQueueOptions['schedule'];
   report?: FailureReporter;
 };
 
@@ -87,6 +88,7 @@ export function createPendingEdits(options: PendingEditsOptions): PendingEdits {
     timing: options.timing,
     enqueue: options.enqueue,
     schedule: options.schedule,
+    signal: options.signal,
     report: options.report,
   });
 

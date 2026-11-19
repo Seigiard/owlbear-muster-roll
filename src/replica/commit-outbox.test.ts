@@ -91,8 +91,9 @@ function createRig(): Rig {
   };
 }
 
-function createOutbox(rig: Rig) {
+function createOutbox(rig: Rig, signal = new AbortController().signal) {
   return createCommitOutbox(rig.queue, () => GENERATION, {
+    signal,
     report: (failure: { _tag: string }) => rig.reported.push(failure._tag),
   });
 }
@@ -220,11 +221,12 @@ describe('commit outbox', () => {
   test('sends nothing after stop, not even a commit already waiting in the queue', async () => {
     // #given
     const rig = createRig();
-    const outbox = createOutbox(rig);
+    const controller = new AbortController();
+    const outbox = createOutbox(rig, controller.signal);
     await holdQueue(rig);
     outbox.add([row('str', 1)]);
     // #when
-    outbox.stop();
+    controller.abort();
     outbox.add([row('dex', 1)]);
     await drained(rig);
     // #then

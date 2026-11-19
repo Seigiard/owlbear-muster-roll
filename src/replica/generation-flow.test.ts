@@ -143,7 +143,7 @@ function createSubject(overrides: Partial<GenerationFlowPortsWithInterpreter> = 
     records: () => new Map([[PRESET_RECORD.k, PRESET_RECORD]]),
     presetOf: (record) => (record?.k === 'preset' ? PRESET : null),
     role: () => 'GM',
-    stopped: () => false,
+    signal: new AbortController().signal,
     acceptCommand: () => true,
     catchUp,
     roomCopy: {
@@ -481,9 +481,11 @@ test('a wipe without writable persistence is rejected without replacing data', a
   expect(subject.events).toEqual(['reject:wipe:write-failed']);
 });
 
-test('a stopped room-copy adoption leaves the replica unchanged', () => {
+test('an aborted room-copy adoption leaves the replica unchanged', () => {
   // #given
-  const subject = createSubject({ stopped: () => true });
+  const controller = new AbortController();
+  controller.abort();
+  const subject = createSubject({ signal: controller.signal });
   // #when
   const actual = subject.flow.adoptFromCopy(COPY);
   // #then

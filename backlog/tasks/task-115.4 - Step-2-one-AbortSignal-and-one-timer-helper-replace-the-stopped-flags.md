@@ -1,9 +1,11 @@
 ---
 id: TASK-115.4
 title: 'Step 2: one AbortSignal and one timer helper replace the stopped flags'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-18T19:41:00Z'
+updated_date: '2026-11-19T12:03:00Z'
 labels:
   - architecture
   - replica
@@ -29,3 +31,19 @@ Stopping is a `stopped` flag in six modules read at 126 places, four styles of t
 - [ ] #3 `engine.stop()` aborts the signal and flushes the outbox and nothing else; the five epoch counters are unchanged
 - [ ] #4 `engine.ts:740-797` is byte-identical to its base until TASK-114.2 is merged; engine suite junit list equals the baseline
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. The engine's one AbortController (from TASK-115.2) becomes the lifecycle of every replica module: options take signal: AbortSignal in place of stopped: () => boolean.
+2. Every replica timer (dice-extension, scene-watch, proposal-queue, engine helpers, room-copy, pending-edits) goes through schedule(signal, ms, fn); setTimeout keeps one call site, in timers.ts.
+3. Subscriptions and module stop() hooks hang on abort; a read that returns after stop() is dropped by signal.aborted; engine.stop() is one abort() plus the outbox flush. The five epoch counters stay.
+4. Module tests port from stopped getters to an AbortController; engine suite against the baseline.
+5. tdd chain (run ~/.claude/artifacts/task-115-20261119/TASK-115.4); the implementer starts after TASK-115.6 is merged, since both rewrite the same lines; full check.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented on task-115-4-abort-signal (f218c62). The engine owns one AbortController; every replica module takes signal in place of a stopped getter, and every timer goes through schedule(signal, ms, fn): setTimeout has one call site under src/replica (timers.ts). Subscriptions and module stop work hang on abort; engine.stop() is one abort(); the outbox discards held records on abort as it did on stop (DESIGN correction in deferred-work.md). The five epoch counters are unchanged. Checks: fmt, lint, typecheck, build; browser 583/583; bun: 8 lock renames, nothing else lost. Calibrated the three false-green rows.
+<!-- SECTION:NOTES:END -->

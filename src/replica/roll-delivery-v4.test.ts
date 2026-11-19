@@ -99,7 +99,7 @@ function createHarness(role: PlayerRole) {
     pendingView: () => records,
     presetOf: () => PRESET,
     role: () => role,
-    stopped: () => false,
+    signal: new AbortController().signal,
     generation: () => ({ n: 0, a: '' }),
     dice: { ready: async () => 'absent', roll: async () => Result.ok([]) },
     gmInParty: () => true,
