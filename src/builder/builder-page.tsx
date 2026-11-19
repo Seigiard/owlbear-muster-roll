@@ -1,6 +1,15 @@
 import clsx from 'clsx';
 import { useStore } from '@nanostores/react';
-import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 
@@ -145,7 +154,54 @@ export function BuilderPage({
     snapshot: { active: null, queued: null },
   });
 
-  filesRef.current = files;
+  const drainWriteQueueRef = useRef<((kind: FileBlockKind) => Promise<void>) | null>(null);
+
+  const enqueueWrite = useCallback(
+    (
+      kind: FileBlockKind,
+      file: AttachedFile,
+      text: string,
+      canonicalDocumentText: string,
+    ): void => {
+      const queue = writeQueues.current[kind];
+      const pending = { file, text, canonicalDocumentText };
+      const active = queue.active;
+      const queued = queue.queued;
+
+      if (
+        active !== null &&
+        active.file.reference?.id === file.reference?.id &&
+        active.text === text &&
+        active.canonicalDocumentText === canonicalDocumentText
+      ) {
+        return;
+      }
+
+      if (
+        queued !== null &&
+        queued.file.reference?.id === file.reference?.id &&
+        queued.text === text &&
+        queued.canonicalDocumentText === canonicalDocumentText
+      ) {
+        if (active === null) {
+          void drainWriteQueueRef.current?.(kind);
+        }
+
+        return;
+      }
+
+      queue.queued = pending;
+
+      if (queue.active === null) {
+        void drainWriteQueueRef.current?.(kind);
+      }
+    },
+    [writeQueues],
+  );
+
+  useLayoutEffect(() => {
+    filesRef.current = files;
+  }, [files]);
 
   useEffect(() => {
     applyTheme(PREVIEW_THEMES[theme], window.document.documentElement);
@@ -202,6 +258,7 @@ export function BuilderPage({
     const file = attachedFile(kind);
 
     if (file?.reference !== null && file?.reference !== undefined) {
+      // oxlint-disable-next-line react/immutability -- This hoisted queue helper is called by the clear event handler.
       enqueueWrite(kind, file, text, text);
     }
 
@@ -469,6 +526,8 @@ export function BuilderPage({
     enqueueWrite('preset', file, textForWrite(files.preset, presetText), presetText);
   }, [
     fileAccess,
+    enqueueWrite,
+    files.preset,
     files.preset.conflict,
     files.preset.file,
     files.preset.failedDocumentText,
@@ -528,6 +587,8 @@ export function BuilderPage({
     );
   }, [
     fileAccess,
+    enqueueWrite,
+    files.snapshot,
     files.snapshot.file,
     files.snapshot.failedDocumentText,
     files.snapshot.forceWrite,
@@ -538,7 +599,9 @@ export function BuilderPage({
     generatedSnapshot,
   ]);
 
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- Keep one subscription effect per attached-file reference; the callback reads current state from filesRef.
   useEffect(() => followAttachedFile('preset'), [fileAccess, files.preset.file?.reference?.id]);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- Keep one subscription effect per attached-file reference; the callback reads current state from filesRef.
   useEffect(() => followAttachedFile('snapshot'), [fileAccess, files.snapshot.file?.reference?.id]);
 
   function followAttachedFile(kind: FileBlockKind): () => void {
@@ -684,46 +747,6 @@ export function BuilderPage({
     dispatchFiles({ type: 'take-file', kind });
   }
 
-  function enqueueWrite(
-    kind: FileBlockKind,
-    file: AttachedFile,
-    text: string,
-    canonicalDocumentText: string,
-  ): void {
-    const queue = writeQueues.current[kind];
-    const pending = { file, text, canonicalDocumentText };
-    const active = queue.active;
-    const queued = queue.queued;
-
-    if (
-      active !== null &&
-      active.file.reference?.id === file.reference?.id &&
-      active.text === text &&
-      active.canonicalDocumentText === canonicalDocumentText
-    ) {
-      return;
-    }
-
-    if (
-      queued !== null &&
-      queued.file.reference?.id === file.reference?.id &&
-      queued.text === text &&
-      queued.canonicalDocumentText === canonicalDocumentText
-    ) {
-      if (active === null) {
-        void drainWriteQueue(kind);
-      }
-
-      return;
-    }
-
-    queue.queued = pending;
-
-    if (queue.active === null) {
-      void drainWriteQueue(kind);
-    }
-  }
-
   async function drainWriteQueue(kind: FileBlockKind): Promise<void> {
     const queue = writeQueues.current[kind];
 
@@ -768,6 +791,10 @@ export function BuilderPage({
       }
     }
   }
+
+  useLayoutEffect(() => {
+    drainWriteQueueRef.current = drainWriteQueue;
+  });
 
   async function writeFile(
     kind: FileBlockKind,

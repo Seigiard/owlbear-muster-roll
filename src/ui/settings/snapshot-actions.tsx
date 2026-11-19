@@ -54,6 +54,7 @@ export function useSnapshotActions({
   const waiting = state.phase === 'checking' || state.phase === 'importing';
 
   if (catchingUp && state.phase === 'asking') {
+    // oxlint-disable-next-line react/refs -- Preserve focus restoration across the render that closes a confirmation during catch-up.
     refocus.current = true;
     dispatch({ type: 'catch-up-started' });
   }

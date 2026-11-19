@@ -267,7 +267,7 @@ function WindowRoot({
       pageHideFlushes,
       localValues: localFieldValues,
     }),
-    [sendCommand, projection],
+    [sendCommand],
   );
 
   const presetClient = useMemo(
@@ -280,7 +280,7 @@ function WindowRoot({
       requestRoll,
       localValues: localFieldValues,
     }),
-    [requestRoll, projection],
+    [requestRoll],
   );
 
   const blockTools = useMemo<BlockTools>(
@@ -319,8 +319,10 @@ function WindowRoot({
     shownTab = firstTab;
   }
 
-  function tabOf(sheet: string): string | null {
-    return tabIds.includes(sheet) ? sheet : null;
+  function visibleTemplateTabs(tab: SidebarSheet): RenderedTab[] {
+    return renderTabs(tab.policy.template, records, tab.sheetId).filter((candidate) =>
+      tabShownTo(role, tab.policy.template, candidate.sourceIndex),
+    );
   }
 
   const clearNameFocus = useCallback(() => {
@@ -353,7 +355,7 @@ function WindowRoot({
     }
 
     const sheet = sheetKey(openRequest.sheetId);
-    const tab = tabOf(sheet);
+    const tab = tabIds.includes(sheet) ? sheet : null;
 
     const template =
       tab === null ? undefined : tabs.find((listed) => listed.id === tab)?.policy.template;
@@ -366,7 +368,13 @@ function WindowRoot({
         : repeatBlockTabIndex(records.values(), template, block);
 
     const listed = tab === null ? undefined : tabs.find((candidate) => candidate.id === tab);
-    const visible = listed === undefined ? [] : visibleTemplateTabs(listed);
+
+    const visible =
+      listed === undefined
+        ? []
+        : renderTabs(listed.policy.template, records, listed.sheetId).filter((candidate) =>
+            tabShownTo(role, listed.policy.template, candidate.sourceIndex),
+          );
 
     const rendered =
       template === undefined ? [] : renderTabs(template, records, openRequest.sheetId);
@@ -417,7 +425,7 @@ function WindowRoot({
             },
       ready,
     });
-  }, [openRequest, preset, ready, records, tabIds, tabs, takenOpen]);
+  }, [openRequest, preset, ready, records, role, tabIds, tabs, takenOpen]);
 
   // Taken: the engine drops the request, so a reload or another window does not open it again.
   useEffect(() => {
@@ -464,12 +472,6 @@ function WindowRoot({
 
   // AD-26: the chosen tab stays while this role sees it; otherwise the first tab this role sees, else
   // none.
-  function visibleTemplateTabs(tab: SidebarSheet): RenderedTab[] {
-    return renderTabs(tab.policy.template, records, tab.sheetId).filter((candidate) =>
-      tabShownTo(role, tab.policy.template, candidate.sourceIndex),
-    );
-  }
-
   function openTemplateTab(tab: SidebarSheet): { index: number; tab: RenderedTab } | null {
     const visible = visibleTemplateTabs(tab);
     const chosen = chosenTemplateTabs.get(tab.id);
@@ -549,7 +551,9 @@ function WindowRoot({
 
     if (tab === undefined) return;
 
-    const visible = visibleTemplateTabs(tab);
+    const visible = renderTabs(tab.policy.template, records, tab.sheetId).filter((candidate) =>
+      tabShownTo(role, tab.policy.template, candidate.sourceIndex),
+    );
 
     const index = visible.findIndex(
       (candidate) =>
@@ -570,8 +574,9 @@ function WindowRoot({
       },
       visible: true,
     });
+    // oxlint-disable-next-line react/set-state-in-effect -- Clear the pending marker only after rendered records expose the new tab.
     setCreatingBlock(null);
-  }, [creatingBlock, records, tabs]);
+  }, [creatingBlock, records, role, tabs]);
 
   function askDelete(tab: SidebarSheet): void {
     // A new request remounts the block, so a repeated "Удалить" takes the focus again.
@@ -604,7 +609,7 @@ function WindowRoot({
           type: 'delete-outcome',
           sheet,
           outcome,
-          tab: tabOf(sheet),
+          tab: tabIds.includes(sheet) ? sheet : null,
         });
       })
       .catch((error) => {

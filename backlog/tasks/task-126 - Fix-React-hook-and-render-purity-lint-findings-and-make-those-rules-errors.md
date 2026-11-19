@@ -1,9 +1,10 @@
 ---
 id: TASK-126
 title: Fix React hook and render-purity lint findings and make those rules errors
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-19T13:18:00Z'
+updated_date: '2026-11-19T16:48:00Z'
 labels: []
 dependencies: []
 ordinal: 167000
@@ -21,3 +22,11 @@ Oxlint's built-in react plugin was enabled with every rule that already had find
 - [ ] #2 Those six rules are set to error in .oxlintrc.json
 - [ ] #3 The link picker effect ignores results from a superseded run, and a test shows an out-of-order resolution does not change the item order
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Set the six named React lint rules to errors and clear their existing findings while preserving behavior.
+2. Guard superseded reverse-picker async runs and keep the locked regression test unchanged.
+3. Verify formatting, lint, typecheck, unit and browser tests, mutation checks, and production build.
+<!-- SECTION:PLAN:END -->

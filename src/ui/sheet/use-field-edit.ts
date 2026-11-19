@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type { KeyboardEvent } from 'react';
 
 import {
@@ -80,7 +88,12 @@ type EditState = { draft: Draft | null; error: FieldErrorKind | null };
 // `pagehide` save what they can and show nothing.
 type SaveMode = 'pause' | 'enter' | 'blur' | 'unmount' | 'pagehide';
 
-type Latest = FieldArguments & { editing: FieldEditing; type: 'text' | 'number'; shown: Shown };
+type Latest = FieldArguments & {
+  editing: FieldEditing;
+  type: 'text' | 'number';
+  shown: Shown;
+  hold: (held: Held) => void;
+};
 
 // `refused` is the held value a rejection just named, with its reason.
 type Shown = {
@@ -125,16 +138,26 @@ export function useTextFieldEdit(
   const [state, setState] = useState<EditState>(NO_EDIT);
   // Timers, the unmount and `pagehide` run outside a render, so they read the newest of each here.
   const stateRef = useRef(state);
-  const latest = useRef<Latest>({ place, fieldId, recordValue, editing, type, shown });
+
+  const latest = useRef<Latest>({
+    place,
+    fieldId,
+    recordValue,
+    editing,
+    type,
+    shown,
+    hold: shown.hold,
+  });
+
   const pauseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const focused = useRef(false);
   const wasDisabled = useRef(disabled);
 
   useLayoutEffect(() => {
-    latest.current = { place, fieldId, recordValue, editing, type, shown };
+    latest.current = { place, fieldId, recordValue, editing, type, shown, hold: shown.hold };
   });
 
-  function update(next: EditState): void {
+  const update = useCallback((next: EditState): void => {
     const previous = stateRef.current;
 
     stateRef.current = next;
@@ -143,112 +166,115 @@ export function useTextFieldEdit(
     if (shownLocallyChanged(previous, next)) {
       latest.current.editing.localValues.changed(latest.current.place.sheetId);
     }
-  }
+  }, []);
 
   // Shows the value as it is now and measures change from it.
-  function frozenAtCurrent(): EditState {
+  const frozenAtCurrent = useCallback((): EditState => {
     const { value } = latest.current.shown;
 
     return {
       draft: { text: valueText(value ?? undefined), baseline: value, changed: false },
       error: null,
     };
-  }
+  }, []);
 
-  function save(mode: SaveMode): void {
-    clearTimeout(pauseTimer.current);
+  const save = useCallback(
+    (mode: SaveMode): void => {
+      clearTimeout(pauseTimer.current);
 
-    const { draft } = stateRef.current;
+      const { draft } = stateRef.current;
 
-    if (draft === null) {
-      return;
-    }
+      if (draft === null) {
+        return;
+      }
 
-    if (!draft.changed) {
-      if (mode === 'blur') {
-        update(NO_EDIT);
+      if (!draft.changed) {
+        if (mode === 'blur') {
+          update(NO_EDIT);
+        } else if (mode === 'enter') {
+          update(frozenAtCurrent());
+        }
+
+        return;
+      }
+
+      const current = latest.current;
+      const showsMessage = mode === 'enter' || mode === 'blur';
+      const parsed = parseText(current.type, draft.text);
+
+      if (!parsed.isOk()) {
+        if (showsMessage) {
+          update({ draft, error: 'bad-number' });
+        }
+
+        return;
+      }
+
+      const patched = patchedRecord(
+        current.place.sheetId,
+        current.place.target,
+        current.place.record,
+        current.fieldId,
+        parsed.value,
+      );
+
+      // A value the record already holds can still need sending: an earlier save of another value
+      // may be on its way. A vanished repeat instance takes nothing.
+      const unchanged =
+        sameFieldValue(parsed.value, draft.baseline) ||
+        (!patched.isOk() && patched.error === 'unknown-instance');
+
+      if (unchanged) {
+        if (mode === 'blur') {
+          update(NO_EDIT);
+        } else if (mode === 'enter') {
+          update(frozenAtCurrent());
+        } else if (mode === 'pause') {
+          // The text is valid again, so an earlier message no longer applies.
+          update({ draft, error: null });
+        }
+
+        return;
+      }
+
+      if (patched.isOk() && !patchedRecordFits(patched.value)) {
+        if (showsMessage) {
+          update({ draft, error: 'too-long' });
+        }
+
+        return;
+      }
+
+      const outcome = current.editing.sendCommand(
+        {
+          type: 'field-patch',
+          sheetId: current.place.sheetId,
+          target: current.place.target,
+          fieldId: current.fieldId,
+          value: parsed.value,
+        },
+        { urgent: mode === 'pagehide' },
+      );
+
+      const held: Held = { value: parsed.value, text: draft.text, outcome };
+
+      // `enter` freezes the text at the value just sent, before the next render brings it.
+      current.shown = { value: parsed.value, held, refused: null };
+      latest.current.hold(held);
+
+      if (mode === 'pause') {
+        update({
+          draft: { text: draft.text, baseline: parsed.value, changed: false },
+          error: null,
+        });
       } else if (mode === 'enter') {
         update(frozenAtCurrent());
-      }
-
-      return;
-    }
-
-    const current = latest.current;
-    const showsMessage = mode === 'enter' || mode === 'blur';
-    const parsed = parseText(current.type, draft.text);
-
-    if (!parsed.isOk()) {
-      if (showsMessage) {
-        update({ draft, error: 'bad-number' });
-      }
-
-      return;
-    }
-
-    const patched = patchedRecord(
-      current.place.sheetId,
-      current.place.target,
-      current.place.record,
-      current.fieldId,
-      parsed.value,
-    );
-
-    // A value the record already holds can still need sending: an earlier save of another value
-    // may be on its way. A vanished repeat instance takes nothing.
-    const unchanged =
-      sameFieldValue(parsed.value, draft.baseline) ||
-      (!patched.isOk() && patched.error === 'unknown-instance');
-
-    if (unchanged) {
-      if (mode === 'blur') {
+      } else if (mode !== 'unmount') {
         update(NO_EDIT);
-      } else if (mode === 'enter') {
-        update(frozenAtCurrent());
-      } else if (mode === 'pause') {
-        // The text is valid again, so an earlier message no longer applies.
-        update({ draft, error: null });
       }
-
-      return;
-    }
-
-    if (patched.isOk() && !patchedRecordFits(patched.value)) {
-      if (showsMessage) {
-        update({ draft, error: 'too-long' });
-      }
-
-      return;
-    }
-
-    const outcome = current.editing.sendCommand(
-      {
-        type: 'field-patch',
-        sheetId: current.place.sheetId,
-        target: current.place.target,
-        fieldId: current.fieldId,
-        value: parsed.value,
-      },
-      { urgent: mode === 'pagehide' },
-    );
-
-    const held: Held = { value: parsed.value, text: draft.text, outcome };
-
-    // `enter` freezes the text at the value just sent, before the next render brings it.
-    current.shown = { value: parsed.value, held, refused: null };
-    shown.hold(held);
-
-    if (mode === 'pause') {
-      update({
-        draft: { text: draft.text, baseline: parsed.value, changed: false },
-        error: null,
-      });
-    } else if (mode === 'enter') {
-      update(frozenAtCurrent());
-    } else if (mode !== 'unmount') {
-      update(NO_EDIT);
-    }
-  }
+    },
+    [frozenAtCurrent, update],
+  );
 
   useEffect(() => {
     const unregister = latest.current.editing.pageHideFlushes.register(() => {
@@ -259,8 +285,7 @@ export function useTextFieldEdit(
       unregister();
       save('unmount');
     };
-    // Registered once: `save` reads everything it needs through the refs.
-  }, []);
+  }, [save]);
 
   // While a field holds a draft, it shows the draft and not the record: typing not sent yet, the
   // text a focused field keeps, or an input error. A roll uses that value, so it reads it here.
@@ -314,7 +339,7 @@ export function useTextFieldEdit(
       },
       error: 'too-long',
     });
-  }, [refusedTooLong]);
+  }, [refusedTooLong, update]);
 
   return {
     text: state.draft?.text ?? valueText(shown.value ?? undefined),
@@ -438,6 +463,7 @@ function useShownValue(
 
   useEffect(() => {
     if (settled) {
+      // oxlint-disable-next-line react/set-state-in-effect -- Clear the held edit after the external record projection confirms it.
       setHeld(null);
     }
   }, [settled]);

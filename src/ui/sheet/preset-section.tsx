@@ -481,8 +481,10 @@ function RepeatContent({
 
   const add = (
     <Button
+      // oxlint-disable-next-line react/refs -- This stable ref must reach the add button for repeat-block focus restoration.
       ref={controls.addButton}
       accessibleName={copy.label.addToSection(title)}
+      // oxlint-disable-next-line react/refs -- The callback reads focus refs only when the user activates the button.
       onPress={controls.add}
     >
       {copy.command.add}
