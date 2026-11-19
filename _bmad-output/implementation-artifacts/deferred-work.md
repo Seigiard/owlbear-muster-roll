@@ -1,3 +1,6 @@
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-124-fragment-assembler.md`
+  summary: `staleReplyFragments` has no part cap, so a GM can send a stale reply the GM side itself would refuse as a proposal; a GM-side cap or a `denied` answer is a later decision.
+  evidence: Player stale replies use no part cap because legal replies can contain 33 or more parts.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-1-load-the-empty-extension.md`
   summary: Make the mock's LOCAL broadcast and storage cross pages and survive a reload.
   evidence: Each page has its own in-memory instance. Stories 1.3 and 1.4 need the window-to-replica path under Playwright.
