@@ -164,7 +164,7 @@ export function createGenerationFlow(ports: GenerationFlowPorts): GenerationFlow
       return Result.err(imported.error === 'too-large' ? 'too-large' : 'invalid-snapshot');
     }
 
-    return imported;
+    return Result.ok(imported.value);
   }
 
   // AD-9: the confirmed import runs the placement again: values it drops other than the confirmed

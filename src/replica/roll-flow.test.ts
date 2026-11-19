@@ -137,7 +137,7 @@ function createHarness(overrides: Partial<RollFlowPorts> = {}): FlowHarness {
       ready: async () => 'permitted',
       roll: async () => Result.ok([{ sides: 20, face: 17 }]),
     },
-    gmInRoom: () => true,
+    gmInParty: () => true,
     playerId: 'player-1',
     playerName: async () => 'Ada Player',
     random: () => 0.3,

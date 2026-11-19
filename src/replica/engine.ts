@@ -46,7 +46,7 @@ import {
   type CatchUpTimer,
 } from '@/replica/catch-up';
 import { createCommitOutbox } from '@/replica/commit-outbox';
-import { createComposers, type ComposeContext, type PresetUploadLoss } from '@/replica/composers';
+import { createComposers, type ComposeContext, type PresetUploadLoss } from '@/core/compose';
 import { createDiceExtension } from '@/replica/dice-extension';
 import {
   createGenerationFlow,
@@ -63,7 +63,7 @@ import { createRollFlow } from '@/replica/roll-flow';
 import { createRoomProtocol } from '@/replica/room-protocol';
 import { watchSceneRemovals, type SceneWatch } from '@/replica/scene-watch';
 import { createTokenMenu, type TokenMenuCopy } from '@/replica/token-menu';
-import { createVersionMinter } from '@/replica/version-minter';
+import { createVersionMinter } from '@/core/version-minter';
 import { createWindowSizer } from '@/replica/window-size';
 import { createWindowPublisher, type WindowPublisher } from '@/replica/window-publisher';
 
@@ -464,7 +464,7 @@ export async function startReplicaEngine(
     stopped: () => stopped,
     generation: () => generationFlow.generation(),
     dice: diceExtension,
-    gmInRoom,
+    gmInParty,
     playerId: ownPlayerId,
     playerName: () => platform.player.getName(),
     random,
@@ -1034,7 +1034,7 @@ export async function startReplicaEngine(
     });
   }
 
-  function gmInRoom(): boolean {
+  function gmInParty(): boolean {
     return role === 'GM' || roster.entries().some((member) => member.role === 'GM');
   }
 

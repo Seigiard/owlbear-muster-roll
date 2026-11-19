@@ -24,4 +24,4 @@ Code named a repeat block in five forms: the `blk:` storage key, an even-length 
 - `FieldPatchTarget` is `{kind: 'row', rowId}` or `{kind: 'rep', block}`; `LinkTarget` is `{block, cellId?}`; the internal `Command` holds a block address and no longer differs from its wire type by `readonly` alone.
 - The DOM carries the address key for reveal, and the `block-revealed` navigation event carries an address.
 - `isLegacyInstanceTarget` and the `instanceId` compatibility view are deleted; only the owner's test rooms hold data older than the November 2026 path fixes.
-- The work lands as three PRs, core then replica then ui (TASK-114). The Builder preview keeps the wire form until the architecture review's candidate 3 runs it on the engine.
+- The work lands as three PRs, core then replica then ui (TASK-114). The Builder preview kept the wire form until ADR-0005, which has it compose through the shared `src/core/compose.ts` module.
