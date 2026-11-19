@@ -4,7 +4,6 @@ import type { DicePlace } from '@/core/dice-roll';
 import {
   firstFieldId,
   placedSections,
-  repeatSectionPlaceByPath,
   repeatScopeByPath,
   type Preset,
   type Template,
@@ -249,28 +248,17 @@ function fieldTargetTabIndex(template: Template, target: FieldVisibilityTarget):
 
     const scoped = repeatScopeByPath(template, scopePath);
 
-    const repeated =
-      scoped === null
-        ? (() => {
-            const placed = repeatSectionPlaceByPath(template, scopePath);
-
-            return placed === null ? null : { ...placed, row: null };
-          })()
-        : scoped;
-
-    if (repeated === null || repeated.section === undefined) {
+    if (scoped === null || scoped.section === undefined) {
       return null;
     }
 
-    const { section, place } = repeated;
+    const { section, place } = scoped;
 
     if (target.fieldId === undefined) {
-      return section.visibility === 'gm' || scoped?.row?.visibility === 'gm'
-        ? null
-        : place.tabIndex;
+      return section.visibility === 'gm' || scoped.row?.visibility === 'gm' ? null : place.tabIndex;
     }
 
-    if (scoped?.row !== null && scoped?.row !== undefined) {
+    if (scoped.row !== null && scoped.row !== undefined) {
       return scoped.row.visibility === 'gm' ||
         section.visibility === 'gm' ||
         !scoped.row.cells.some((cell) => cell.kind === 'field' && cell.id === target.fieldId)
