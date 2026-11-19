@@ -8,6 +8,7 @@ import {
   type WireCommand,
   type EngineMessage,
   type OpenSheetRequest,
+  wireOpenSheetOf,
 } from '@/core/ui-messages';
 import type { JsonValue } from '@/core/json';
 import type { MockPlatform } from '@/platform/current';
@@ -636,7 +637,7 @@ async function startBackground(
         const parsed = parseEngineMessage(data);
 
         if (!parsed.ok || parsed.value.t !== 'open-sheet') return [];
-        const { t: _type, ...request } = parsed.value;
+        const { t: _type, ...request } = wireOpenSheetOf(parsed.value);
 
         return [request];
       });

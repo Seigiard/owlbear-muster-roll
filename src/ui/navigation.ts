@@ -291,7 +291,7 @@ function openRequestTransition(
     takenOpen: event.request.id,
     selectedTab: event.sheet,
     blockReveal,
-    tabReveal: { tab: event.sheet, focus: event.focusInWindow && blockReveal.block === null },
+    tabReveal: { tab: event.sheet, focus: false },
     chosenTemplateTabs:
       event.tab !== undefined
         ? new Map(state.chosenTemplateTabs).set(event.sheet, event.tab)

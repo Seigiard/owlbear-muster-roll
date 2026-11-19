@@ -12,7 +12,6 @@ import {
   type WireCommandMessage,
   type CommandRejectedMessage,
   type DeltaMessage,
-  type ParsedCommand,
   type ParsedEngineMessage,
   type PresetDiffResultMessage,
   type PresetUploadedMessage,
@@ -56,7 +55,7 @@ export type CommandOutcomePromise<Answer> = {
   readonly [Symbol.toStringTag]: string;
 };
 
-type SendableCommand = Command | ParsedCommand;
+type SendableCommand = Command;
 
 function readonlyJsonOf(value: WireWindowMessage): ReadonlyJsonValue {
   // SAFETY: transport messages are built only from JSON-compatible wire schemas and values.

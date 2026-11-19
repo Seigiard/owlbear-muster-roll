@@ -15,7 +15,7 @@ import {
 import { err, ok, type Result } from '@/core/result';
 import { type EditId, type RejectMessage } from '@/core/room-messages';
 import type { Timing } from '@/core/timing';
-import { type Command, type InternalCommand, type RejectionReason } from '@/core/ui-messages';
+import { type Command, type RejectionReason } from '@/core/ui-messages';
 import {
   combinePatches,
   createProposalQueue,
@@ -29,7 +29,7 @@ import {
 } from '@/replica/proposal-queue';
 
 type InternalPlayerEditCommand = Extract<
-  InternalCommand,
+  Command,
   { type: 'field-patch' | 'repeat-block-add' | 'repeat-block-delete' }
 >;
 
@@ -38,7 +38,7 @@ export type PlayerEditCommand =
   | Extract<Command, { type: 'repeat-block-add' }>
   | Extract<Command, { type: 'repeat-block-delete' }>;
 
-type FieldPatchCommandTarget = Extract<InternalCommand, { type: 'field-patch' }>['target'];
+type FieldPatchCommandTarget = Extract<Command, { type: 'field-patch' }>['target'];
 
 export type Denial = { notify: boolean };
 
@@ -51,7 +51,7 @@ type PendingEditsOptions = {
   presetOf: (record: VersionedRecord | undefined) => Preset | null;
   compose: (
     view: ReadonlyMap<string, VersionedRecord>,
-    command: InternalCommand,
+    command: Command,
   ) => Result<VersionedRecord[], RejectionReason>;
   mint: (key: string, highestKnownCounter: number) => Version;
   now: () => number;

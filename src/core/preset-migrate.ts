@@ -518,7 +518,7 @@ function repeatScopePath(parts: RepeatPathParts): string[] {
 }
 
 function scopePathKey(path: readonly string[]): string {
-  return path.join(':');
+  return path.filter((_part, index) => index % 2 === 0).join(':');
 }
 
 function fieldsForRepeatPath(

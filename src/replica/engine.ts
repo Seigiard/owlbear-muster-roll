@@ -29,7 +29,6 @@ import {
 } from '@/core/timing';
 import {
   parseWindowMessage,
-  registerWireEngineMessage,
   UI_CHANNEL,
   type EngineMessage,
   type Notice,
@@ -762,7 +761,6 @@ export async function startReplicaEngine(
     }
 
     const message = wireOpenSheetOf(heldOpen);
-    registerWireEngineMessage(message);
 
     send(message).catch((error) => {
       console.error('Muster Roll could not ask a window to open a sheet', error);

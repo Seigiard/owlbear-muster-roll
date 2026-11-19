@@ -1,15 +1,15 @@
 import { patchRecordKey } from '@/core/field-patch';
-import type { InternalCommand } from '@/core/ui-messages';
+import type { Command } from '@/core/ui-messages';
 import type { FieldPatchCommand, IdentifiedPatch } from '@/replica/composers';
 
 // AD-7: one GM intent made during catch-up, in arrival order. Field patches of one record key share
 // one entry, which keeps the place of the first.
 export type PendingEntry =
-  | { kind: 'intent'; id: string; command: Exclude<InternalCommand, FieldPatchCommand> }
+  | { kind: 'intent'; id: string; command: Exclude<Command, FieldPatchCommand> }
   | { kind: 'patches'; key: string; patches: IdentifiedPatch[] };
 
 export type PendingQueue = {
-  add: (id: string, command: InternalCommand) => void;
+  add: (id: string, command: Command) => void;
   entries: () => readonly PendingEntry[];
   // Hands every entry over in arrival order and empties the queue.
   takeAll: () => PendingEntry[];

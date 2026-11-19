@@ -68,9 +68,9 @@ import {
   type SheetPolicy,
 } from '@/core/sheets';
 import { linkKey, tokenIdSchema } from '@/core/token-links';
-import type { InternalCommand, RejectionReason } from '@/core/ui-messages';
+import type { Command, RejectionReason } from '@/core/ui-messages';
 
-export type FieldPatchCommand = Extract<InternalCommand, { type: 'field-patch' }>;
+export type FieldPatchCommand = Extract<Command, { type: 'field-patch' }>;
 
 type AddressFieldTarget = { kind: 'row'; rowId: string } | AddressFieldPatchTarget;
 
@@ -123,13 +123,13 @@ type PlannedUpload = { d: string; migration: PresetMigration };
 export type Composers = {
   compose: (
     context: ComposeContext,
-    command: InternalCommand,
+    command: Command,
   ) => Result<VersionedRecord[], RejectionReason>;
   // Several field patches of one record key, applied in order and minted once.
   composePatches: (context: ComposeContext, patches: readonly IdentifiedPatch[]) => ComposedPatches;
   composePresetUpload: (
     context: ComposeContext,
-    command: Extract<InternalCommand, { type: 'preset-upload' }>,
+    command: Extract<Command, { type: 'preset-upload' }>,
   ) => Result<PresetUploadBatch, PresetUploadRefusal>;
   // AD-14: how many stored values the preset in `data` would erase and how many sheets it would
   // delete, and their digest. It mints nothing.
@@ -181,7 +181,7 @@ export function createComposers(connectionId: string): Composers {
   // new counts. One that erases nothing and deletes nothing applies.
   function composePresetUpload(
     context: ComposeContext,
-    command: Extract<InternalCommand, { type: 'preset-upload' }>,
+    command: Extract<Command, { type: 'preset-upload' }>,
   ): Result<PresetUploadBatch, PresetUploadRefusal> {
     const planned = planPresetUpload(context, command.data);
 
@@ -409,7 +409,7 @@ export function createComposers(connectionId: string): Composers {
   // counts as taken, so a removed repeat block never comes back.
   function composeRepeatBlockAdd(
     context: ComposeContext,
-    command: Extract<InternalCommand, { type: 'repeat-block-add' }>,
+    command: Extract<Command, { type: 'repeat-block-add' }>,
   ): Result<VersionedRecord, RejectionReason> {
     const section = repeatSectionOf(context, command);
 
@@ -455,7 +455,7 @@ export function createComposers(connectionId: string): Composers {
   // AD-19: the repeat block's tombstone, then the tombstones of the links to it.
   function composeRepeatBlockDelete(
     context: ComposeContext,
-    command: Extract<InternalCommand, { type: 'repeat-block-delete' }>,
+    command: Extract<Command, { type: 'repeat-block-delete' }>,
   ): Result<VersionedRecord[], RejectionReason> {
     const section = repeatSectionOf(context, command);
 
@@ -484,7 +484,7 @@ export function createComposers(connectionId: string): Composers {
   // again, and one still taken refuses the command.
   function composeRepeatBlockDuplicate(
     context: ComposeContext,
-    command: Extract<InternalCommand, { type: 'repeat-block-duplicate' }>,
+    command: Extract<Command, { type: 'repeat-block-duplicate' }>,
   ): Result<VersionedRecord[], RejectionReason> {
     if (!isDuplicateCount(command.count)) {
       return err('invalid-count');
@@ -619,7 +619,7 @@ export function createComposers(connectionId: string): Composers {
   // shows the fallback name until someone types one.
   function composeSheetCreate(
     context: ComposeContext,
-    command: Extract<InternalCommand, { type: 'sheet-create' }>,
+    command: Extract<Command, { type: 'sheet-create' }>,
   ): Result<VersionedRecord, RejectionReason> {
     if (!sheetIdSchema.safeParse(command.sheetId).success) {
       return err('invalid-sheet-id');
@@ -657,7 +657,7 @@ export function createComposers(connectionId: string): Composers {
   // leaves a live sheet the GM can delete again. A single sheet is never deleted.
   function composeSheetDelete(
     context: ComposeContext,
-    command: Extract<InternalCommand, { type: 'sheet-delete' }>,
+    command: Extract<Command, { type: 'sheet-delete' }>,
   ): Result<VersionedRecord[], RejectionReason> {
     const sheet = sheetOfSet(context, command.sheetId);
 
@@ -694,7 +694,7 @@ export function createComposers(connectionId: string): Composers {
   // template or repeat section is not linkable, is refused.
   function composeLinkSet(
     context: ComposeContext,
-    command: Extract<InternalCommand, { type: 'link-set' }>,
+    command: Extract<Command, { type: 'link-set' }>,
   ): Result<VersionedRecord, RejectionReason> {
     if (!tokenIdSchema.safeParse(command.tokenId).success) {
       return err('invalid-token-id');
@@ -740,7 +740,7 @@ export function createComposers(connectionId: string): Composers {
   // adds no version.
   function composeAclSet(
     context: ComposeContext,
-    command: Extract<InternalCommand, { type: 'acl-set' }>,
+    command: Extract<Command, { type: 'acl-set' }>,
   ): Result<VersionedRecord, RejectionReason> {
     const sheet = sheetOfSet(context, command.sheetId);
 
@@ -782,7 +782,7 @@ export function createComposers(connectionId: string): Composers {
   // refused, so a repeated pick adds no version. Only a sheet of a sheet set has an owner.
   function composeOwnerSet(
     context: ComposeContext,
-    command: Extract<InternalCommand, { type: 'owner-set' }>,
+    command: Extract<Command, { type: 'owner-set' }>,
   ): Result<VersionedRecord[], RejectionReason> {
     const sheet = sheetOfSet(context, command.sheetId);
 
@@ -928,7 +928,7 @@ function lossOf(migration: PresetMigration): PresetUploadLoss {
 // it can be cleared too.
 function composeLinkClear(
   context: ComposeContext,
-  command: Extract<InternalCommand, { type: 'link-clear' }>,
+  command: Extract<Command, { type: 'link-clear' }>,
 ): Result<VersionedRecord, RejectionReason> {
   if (!tokenIdSchema.safeParse(command.tokenId).success) {
     return err('invalid-token-id');

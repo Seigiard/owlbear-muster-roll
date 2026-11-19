@@ -528,20 +528,6 @@ const engineMessageSchema = z.discriminatedUnion('t', [
   commandDoneSchema,
 ]);
 
-const engineMessageWireSchema = z.discriminatedUnion('t', [
-  projectionSchema,
-  deltaSchema,
-  commandRejectedSchema,
-  rollOutcomeSchema,
-  openSheetWireSchema,
-  presetDiffResultSchema,
-  presetUploadedSchema,
-  snapshotCheckResultSchema,
-  snapshotImportedSchema,
-  wipedSchema,
-  commandDoneSchema,
-]);
-
 export type Notice = z.infer<typeof noticeSchema>;
 
 export type SyncState = z.infer<typeof syncSchema>;
@@ -554,35 +540,9 @@ export type RoomCopyOutcome = z.infer<typeof roomCopyOutcomeSchema>;
 
 export type PartyList = z.infer<typeof partySchema>;
 
-export type WireCommand = z.input<typeof commandIntentSchema> & {
-  readonly instanceId?: string;
-};
+export type WireCommand = z.input<typeof commandIntentSchema>;
 
 export type Command = z.output<typeof commandIntentSchema>;
-
-export type InternalCommand = Command;
-
-type ParsedBlockAddress = Readonly<{
-  sheetId: string;
-  path: readonly (string | undefined)[];
-}>;
-
-type ParsedRepeatBlockCommand<
-  T extends Extract<
-    Command,
-    { type: 'repeat-block-add' | 'repeat-block-delete' | 'repeat-block-duplicate' }
-  > = Extract<
-    Command,
-    { type: 'repeat-block-add' | 'repeat-block-delete' | 'repeat-block-duplicate' }
-  >,
-> = T extends unknown ? Omit<T, 'block'> & { block: ParsedBlockAddress } : never;
-
-export type ParsedCommand =
-  | Exclude<
-      Command,
-      { type: 'repeat-block-add' | 'repeat-block-delete' | 'repeat-block-duplicate' }
-    >
-  | ParsedRepeatBlockCommand;
 
 export type CommandMessage = z.output<typeof commandSchema>;
 
@@ -674,40 +634,16 @@ export type UiMessageFailure = 'invalid-message';
 
 type EngineMessageCandidate = JsonValue | EngineMessage | ParsedEngineMessage | WireEngineMessage;
 
-const wireEngineMessageIds = new Set<string>();
-
-export function registerWireEngineMessage(message: WireEngineMessage): void {
-  if (message.t === 'open-sheet') {
-    wireEngineMessageIds.add(message.id);
-
-    if (wireEngineMessageIds.size > 256) {
-      const oldest = wireEngineMessageIds.values().next().value;
-
-      if (oldest !== undefined) {
-        wireEngineMessageIds.delete(oldest);
-      }
-    }
-  }
-}
-
-type ParsedCommandFor<T extends WireCommand> = undefined extends T['instanceId']
-  ? ParsedCommand
-  : Command;
-
-export function parseCommand<T extends WireCommand>(wire: T): ParsedCommandFor<T> {
+export function parseCommand(wire: WireCommand): Command {
   return commandIntentSchema.parse(wire);
 }
 
-export function wireCommandOf(command: Command | ParsedCommand): WireCommand {
+export function wireCommandOf(command: Command): WireCommand {
   switch (command.type) {
     case 'repeat-block-add':
     case 'repeat-block-delete':
     case 'repeat-block-duplicate': {
       const { block, ...rest } = command;
-
-      if (!hasCompleteBlockAddress(block)) {
-        throw new Error('The repeat command has an incomplete block address');
-      }
 
       const target = wireBlockTargetOf(block);
 
@@ -746,10 +682,6 @@ export function wireCommandOf(command: Command | ParsedCommand): WireCommand {
   }
 }
 
-function hasCompleteBlockAddress(block: ParsedBlockAddress | BlockAddress): block is BlockAddress {
-  return block.path.every((segment): segment is string => segment !== undefined);
-}
-
 export type WireOpenSheetMessage = z.input<typeof openSheetWireSchema>;
 
 type WireOpenSheetInput = {
@@ -770,25 +702,22 @@ export function wireOpenSheetOf(
   request: OpenSheetInput,
 ): WireOpenSheetMessage | WireOpenSheetInput {
   const source = 't' in request ? request : { t: 'open-sheet' as const, ...request };
-  const { block, ...rest } = source;
-  const path = wirePathOf(block);
+  const path = wirePathOf(source.block);
 
-  const wire =
-    path === undefined
-      ? { ...rest, sheetId: block.sheetId }
-      : { ...rest, sheetId: block.sheetId, path: [...path] };
-
-  if ('t' in request) {
-    for (const key of Object.keys(request)) {
-      Reflect.deleteProperty(request, key);
-    }
-
-    Object.assign(request, wire);
-
-    return wire;
-  }
-
-  return wire;
+  return path === undefined
+    ? {
+        t: source.t,
+        id: source.id,
+        sheetId: source.block.sheetId,
+        cellId: source.cellId,
+      }
+    : {
+        t: source.t,
+        id: source.id,
+        sheetId: source.block.sheetId,
+        path: [...path],
+        cellId: source.cellId,
+      };
 }
 
 export function parseWindowMessage(
@@ -800,59 +729,15 @@ export function parseWindowMessage(
 }
 
 export function parseEngineMessage(
-  candidate: EngineMessage,
-): Result<EngineMessage, UiMessageFailure>;
-
-export function parseEngineMessage(
-  candidate: EngineMessageCandidate,
-): Result<ParsedEngineMessage, UiMessageFailure>;
-
-export function parseEngineMessage(
-  candidate: EngineMessageCandidate,
-): Result<ParsedEngineMessage | EngineMessage, UiMessageFailure> {
-  const header = z.object({ t: z.string(), id: z.string().optional() }).safeParse(candidate);
-
-  if (
-    header.success &&
-    header.data.t === 'open-sheet' &&
-    header.data.id !== undefined &&
-    wireEngineMessageIds.has(header.data.id)
-  ) {
-    const parsedWire = engineMessageWireSchema.safeParse(candidate);
-
-    return parsedWire.success ? ok(parsedWire.data) : err('invalid-message');
-  }
-
-  const parsed = engineMessageSchema.safeParse(candidate);
-
-  if (!parsed.success) {
-    return err('invalid-message');
-  }
-
-  if (parsed.data.t === 'open-sheet') {
-    if (isMessageObject(candidate)) {
-      Reflect.deleteProperty(candidate, 'sheetId');
-      Reflect.deleteProperty(candidate, 'path');
-      Object.assign(candidate, parsed.data);
-
-      // SAFETY: the engine schema parsed this same object as the internal open-sheet variant.
-      return ok(candidate as ParsedEngineMessage);
-    }
-  }
-
-  return ok(parsed.data);
-}
-
-function isMessageObject(
-  candidate: EngineMessageCandidate,
-): candidate is EngineMessage | ParsedEngineMessage {
-  return z.object({ t: z.string() }).safeParse(candidate).success;
-}
-
-export function parseInternalEngineMessage(
   candidate: EngineMessageCandidate,
 ): Result<ParsedEngineMessage, UiMessageFailure> {
   const parsed = engineMessageSchema.safeParse(candidate);
 
   return parsed.success ? ok(parsed.data) : err('invalid-message');
+}
+
+export function parseInternalEngineMessage(
+  candidate: EngineMessageCandidate,
+): Result<ParsedEngineMessage, UiMessageFailure> {
+  return parseEngineMessage(candidate);
 }

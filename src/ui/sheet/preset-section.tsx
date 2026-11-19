@@ -459,12 +459,6 @@ function RepeatContent({
   const controls = useRepeatBlocks(sheetId, sectionId, instanceIds, parent);
   const title = sectionTitle(section) ?? templateTitle;
 
-  const hasAmbiguousAddLabel = blocks.some((block) =>
-    block.nested.some(
-      ({ section: nestedSection }) => (sectionTitle(nestedSection) ?? templateTitle) === title,
-    ),
-  );
-
   const body = (
     <Body>
       <Blocks
@@ -495,12 +489,7 @@ function RepeatContent({
     </Button>
   );
 
-  return hasAmbiguousAddLabel ? (
-    <div className="flex flex-col">
-      <div className="order-2 mt-1">{add}</div>
-      <div className="order-1">{body}</div>
-    </div>
-  ) : (
+  return (
     <>
       {body}
       <div className="mt-1">{add}</div>
