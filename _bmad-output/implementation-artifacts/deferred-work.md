@@ -1,3 +1,9 @@
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-124-fragment-assembler.md`
+  summary: `staleReplyFragments` has no part cap, so a GM can send a stale reply the GM side itself would refuse as a proposal; a GM-side cap or a `denied` answer is a later decision.
+  evidence: Player stale replies use no part cap because legal replies can contain 33 or more parts.
+- source_spec: `_bmad-output/implementation-artifacts/spec-task-124-fragment-assembler.md`
+  summary: The player's 480 000-byte stale-reply limit drops a legal reply of about 34 or more full parts, so that edit resends for ever; decide with the GM-side part cap whether the player's `maxBytes` becomes `Infinity` (assemblies and retention still bound memory) or the GM answers `denied`.
+  evidence: "Review 01 adversarial-claude-1: no limit caps a GM-held record's total size; `staleReplyFragments` sends parts just under 15 000 bytes, so about 34 full parts exceed 480 000 bytes. The spec gives the player the GM's byte limit; the trigger needs about 470 KB of held text in the cells one patch touches."
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-1-load-the-empty-extension.md`
   summary: Make the mock's LOCAL broadcast and storage cross pages and survive a reload.
   evidence: Each page has its own in-memory instance. Stories 1.3 and 1.4 need the window-to-replica path under Playwright.
@@ -500,6 +506,7 @@
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-task-77-98-completion.md`
   summary: Define cleanup for obsolete incomplete stale-reply assemblies.
+  status: resolved by spec-task-124 (TASK-124): the player's stale-reply assembler drops an assembly 60 s after its first part and holds at most 32.
   evidence: "Review lean-codex-1 traced two GMs' A1/B1/A2/B2 reply interleave. After one tuple completes, a late fragment for the obsolete tuple can create another incomplete assembly, retained until clear or preset change. This is a code-traced retention risk, not a measured incident. TASK-81's proposal-assembly bounds do not define stale-reply cleanup. The final review left this minor finding deferred."
 
 ## Deferred from: TASK-77–98 window 2 (2026-11-17)
